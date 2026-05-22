@@ -37,6 +37,79 @@ class ProfileComparison:
         return len(self.differences) > 0
 
 
+def _missing_diff(key: str, missing_platform: str, side: str) -> BehaviorDifference:
+    """Build a ``diff_type="missing"`` ``BehaviorDifference``.
+
+    ``side`` is ``"a"`` when the key exists in profile A but not B, ``"b"``
+    when only in B. The ``platform_a_value`` / ``platform_b_value`` fields
+    are populated as ``"present"`` / ``"missing"`` accordingly.
+    """
+    if side == "a":
+        return BehaviorDifference(
+            construct_id=key,
+            diff_type="missing",
+            details=f"Construct {key} missing in {missing_platform}",
+            platform_a_value="present",
+            platform_b_value="missing",
+        )
+    return BehaviorDifference(
+        construct_id=key,
+        diff_type="missing",
+        details=f"Construct {key} missing in {missing_platform}",
+        platform_a_value="missing",
+        platform_b_value="present",
+    )
+
+
+def _diff_common_behavior(
+    key: str, beh_a: Any, beh_b: Any, differences: list[BehaviorDifference]
+) -> None:
+    """Append error / count / attribute differences for a single shared construct.
+
+    Mutates ``differences`` in place. ``key`` is the shared construct id;
+    ``beh_a`` and ``beh_b`` are the per-profile behavior records.
+
+    r37ev (dogfood): lifted from ``compare_profiles`` so the parent body
+    reads as a linear missing-A → missing-B → common-walk dispatch.
+    """
+    if beh_a.has_error != beh_b.has_error:
+        differences.append(
+            BehaviorDifference(
+                construct_id=key,
+                diff_type="error_mismatch",
+                details=f"Error status mismatch for {key}",
+                platform_a_value=beh_a.has_error,
+                platform_b_value=beh_b.has_error,
+            )
+        )
+
+    if beh_a.element_count != beh_b.element_count:
+        differences.append(
+            BehaviorDifference(
+                construct_id=key,
+                diff_type="count_mismatch",
+                details=f"Element count mismatch for {key}",
+                platform_a_value=beh_a.element_count,
+                platform_b_value=beh_b.element_count,
+            )
+        )
+
+    # r37dx (dogfood): flatten nesting 6 → 4 via early-continue.
+    if beh_a.attributes == beh_b.attributes:
+        return
+    if not DeepDiff(beh_a.attributes, beh_b.attributes, ignore_order=True):
+        return
+    differences.append(
+        BehaviorDifference(
+            construct_id=key,
+            diff_type="attribute_mismatch",
+            details=f"Attributes mismatch for {key}",
+            platform_a_value=beh_a.attributes,
+            platform_b_value=beh_b.attributes,
+        )
+    )
+
+
 def compare_profiles(
     profile_a: BehaviorProfile, profile_b: BehaviorProfile
 ) -> ProfileComparison:
@@ -49,78 +122,23 @@ def compare_profiles(
 
     Returns:
         ProfileComparison: The comparison result.
-    """
-    differences = []
 
-    # Check for missing constructs
+    r37ev (dogfood): 91→~20 lines of orchestration. ``_missing_diff`` builds
+    the "construct only on one side" rows; ``_diff_common_behavior`` walks
+    each shared construct and appends error / count / attribute mismatches.
+    """
+    differences: list[BehaviorDifference] = []
     keys_a = set(profile_a.behaviors.keys())
     keys_b = set(profile_b.behaviors.keys())
 
     for key in keys_a - keys_b:
-        differences.append(
-            BehaviorDifference(
-                construct_id=key,
-                diff_type="missing",
-                details=f"Construct {key} missing in {profile_b.platform_key}",
-                platform_a_value="present",
-                platform_b_value="missing",
-            )
-        )
-
+        differences.append(_missing_diff(key, profile_b.platform_key, "a"))
     for key in keys_b - keys_a:
-        differences.append(
-            BehaviorDifference(
-                construct_id=key,
-                diff_type="missing",
-                details=f"Construct {key} missing in {profile_a.platform_key}",
-                platform_a_value="missing",
-                platform_b_value="present",
-            )
-        )
+        differences.append(_missing_diff(key, profile_a.platform_key, "b"))
 
-    # Compare common constructs
-    for key in keys_a.intersection(keys_b):
-        beh_a = profile_a.behaviors[key]
-        beh_b = profile_b.behaviors[key]
-
-        # Compare error status
-        if beh_a.has_error != beh_b.has_error:
-            differences.append(
-                BehaviorDifference(
-                    construct_id=key,
-                    diff_type="error_mismatch",
-                    details=f"Error status mismatch for {key}",
-                    platform_a_value=beh_a.has_error,
-                    platform_b_value=beh_b.has_error,
-                )
-            )
-
-        # Compare element count
-        if beh_a.element_count != beh_b.element_count:
-            differences.append(
-                BehaviorDifference(
-                    construct_id=key,
-                    diff_type="count_mismatch",
-                    details=f"Element count mismatch for {key}",
-                    platform_a_value=beh_a.element_count,
-                    platform_b_value=beh_b.element_count,
-                )
-            )
-
-        # r37dx (dogfood): flatten nesting 6 → 4 via early-continue.
-        if beh_a.attributes == beh_b.attributes:
-            continue
-        diff = DeepDiff(beh_a.attributes, beh_b.attributes, ignore_order=True)
-        if not diff:
-            continue
-        differences.append(
-            BehaviorDifference(
-                construct_id=key,
-                diff_type="attribute_mismatch",
-                details=f"Attributes mismatch for {key}",
-                platform_a_value=beh_a.attributes,
-                platform_b_value=beh_b.attributes,
-            )
+    for key in keys_a & keys_b:
+        _diff_common_behavior(
+            key, profile_a.behaviors[key], profile_b.behaviors[key], differences
         )
 
     return ProfileComparison(
