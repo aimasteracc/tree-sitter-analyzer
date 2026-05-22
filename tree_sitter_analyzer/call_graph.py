@@ -45,7 +45,7 @@ _EXCLUDE_DIRS = {
 class FunctionRef:
     """A qualified reference to a function/method in the project."""
 
-    __slots__ = ("file_path", "name", "start_line", "language", "receiver")
+    __slots__ = ("file_path", "name", "start_line", "end_line", "language", "receiver")
 
     def __init__(
         self,
@@ -54,10 +54,12 @@ class FunctionRef:
         start_line: int,
         language: str,
         receiver: str | None = None,
+        end_line: int | None = None,
     ) -> None:
         self.file_path = file_path
         self.name = name
         self.start_line = start_line
+        self.end_line = end_line if end_line is not None else start_line
         self.language = language
         self.receiver = receiver
 
@@ -83,6 +85,7 @@ class FunctionRef:
             "file": self.file_path,
             "name": self.name,
             "line": self.start_line,
+            "end_line": self.end_line,
             "language": self.language,
         }
         if self.receiver:
@@ -402,6 +405,7 @@ class CallGraph:
         self._functions: list[FunctionRef] = []
         self._func_by_name: dict[str, list[FunctionRef]] = defaultdict(list)
         self._func_by_qualified: dict[str, FunctionRef] = {}
+        self._func_by_file: dict[str, list[FunctionRef]] = defaultdict(list)
         self._callees: dict[FunctionRef, list[FunctionRef]] = defaultdict(list)
         self._callers: dict[FunctionRef, list[FunctionRef]] = defaultdict(list)
         self._call_edges: list[tuple[FunctionRef, FunctionRef, int]] = []
@@ -472,9 +476,11 @@ class CallGraph:
                     start_line=defn["start_line"],
                     language=language,
                     receiver=defn.get("class"),
+                    end_line=defn.get("end_line", defn["start_line"]),
                 )
                 self._functions.append(ref)
                 self._func_by_name[defn["name"]].append(ref)
+                self._func_by_file[rel_path].append(ref)
                 qname = ref.qualified_name()
                 self._func_by_qualified[qname] = ref
                 file_funcs[defn["name"]] = ref
@@ -564,8 +570,21 @@ class CallGraph:
         file_funcs: dict[str, FunctionRef],
         call_line: int,
     ) -> FunctionRef | None:
-        """Find the function that contains the given line number."""
+        """Find the function that contains the given line number.
+
+        Uses both start_line and end_line for accurate range containment.
+        Falls back to closest start_line when end_line is unreliable.
+        """
         best: FunctionRef | None = None
+        for ref in file_funcs.values():
+            if ref.start_line <= call_line <= ref.end_line:
+                if best is None or (
+                    (ref.end_line - ref.start_line)
+                    < (best.end_line - best.start_line)
+                ):
+                    best = ref
+        if best is not None:
+            return best
         for ref in file_funcs.values():
             if ref.start_line <= call_line:
                 if best is None or ref.start_line > best.start_line:
@@ -704,6 +723,43 @@ class CallGraph:
         self.build()
         return [f.to_dict() for f in self._functions]
 
+    def functions_in_file(self, file_path: str) -> list[dict[str, Any]]:
+        """Return all functions defined in the given file."""
+        self.build()
+        return [f.to_dict() for f in self._func_by_file.get(file_path, [])]
+
+    def file_impact(self, file_path: str) -> dict[str, Any]:
+        """Analyze call-graph impact of changes to a file.
+
+        Returns functions defined in the file, their callers (who depends
+        on this file), and their callees (what this file depends on).
+        """
+        self.build()
+        funcs = self._func_by_file.get(file_path, [])
+        upstream: list[dict[str, Any]] = []
+        downstream: list[dict[str, Any]] = []
+        seen_up: set[str] = set()
+        seen_down: set[str] = set()
+        for func in funcs:
+            for caller in self._callers.get(func, []):
+                key = caller.qualified_name()
+                if key not in seen_up:
+                    seen_up.add(key)
+                    upstream.append(caller.to_dict())
+            for callee in self._callees.get(func, []):
+                key = callee.qualified_name()
+                if key not in seen_down:
+                    seen_down.add(key)
+                    downstream.append(callee.to_dict())
+        return {
+            "file": file_path,
+            "function_count": len(funcs),
+            "upstream_count": len(upstream),
+            "downstream_count": len(downstream),
+            "upstream": upstream,
+            "downstream": downstream,
+        }
+
     def summary(self) -> dict[str, Any]:
         """Return call graph summary statistics."""
         self.build()
@@ -788,9 +844,11 @@ class CachedCallGraph(CallGraph):
                 name=func["name"],
                 start_line=func["line"],
                 language=func["language"],
+                end_line=func.get("end_line", func["line"]),
             )
             self._functions.append(ref)
             self._func_by_name[func["name"]].append(ref)
+            self._func_by_file[func["file"]].append(ref)
             qname = ref.qualified_name()
             self._func_by_qualified[qname] = ref
             rel_files.add(func["file"])

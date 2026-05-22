@@ -1027,6 +1027,29 @@ class ASTCache:
                     )
         return functions
 
+    def get_functions_by_file(self, file_path: str) -> list[dict[str, Any]]:
+        """Return indexed function definitions for a specific file."""
+        conn = self._get_conn()
+        row = conn.execute(
+            "SELECT symbols_json, language FROM ast_index WHERE file_path = ?",
+            (file_path,),
+        ).fetchone()
+        if row is None:
+            return []
+        symbols = json.loads(row["symbols_json"])
+        return [
+            {
+                "name": sym["name"],
+                "file": file_path,
+                "line": sym.get("line", 0),
+                "end_line": sym.get("end_line", 0),
+                "language": row["language"],
+                "params": sym.get("params", ""),
+            }
+            for sym in symbols.get("symbols", [])
+            if sym.get("kind") == "function"
+        ]
+
     def get_imports(self) -> dict[str, list[str]]:
         """Return per-file import lists from the cache.
 

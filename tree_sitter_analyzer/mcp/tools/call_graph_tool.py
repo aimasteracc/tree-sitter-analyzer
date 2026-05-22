@@ -40,7 +40,9 @@ class CodeGraphCallTool(BaseMCPTool):
                 "Function-level call graph (CodeGraph parity). Modes: "
                 "callers (who calls X), callees (what does X call), "
                 "chain (transitive call chain), summary (stats), "
-                "all_functions (list all discovered functions). "
+                "all_functions (list all discovered functions), "
+                "file_impact (upstream/downstream impact of changing a file), "
+                "functions_in_file (list functions defined in a file). "
                 "No other built-in tool provides function-level call tracking."
             ),
             "inputSchema": self.get_tool_schema(),
@@ -58,6 +60,8 @@ class CodeGraphCallTool(BaseMCPTool):
                         "chain",
                         "summary",
                         "all_functions",
+                        "file_impact",
+                        "functions_in_file",
                     ],
                     "description": "Query mode (default: summary)",
                     "default": "summary",
@@ -68,7 +72,7 @@ class CodeGraphCallTool(BaseMCPTool):
                 },
                 "file_path": {
                     "type": "string",
-                    "description": "Optional file path to disambiguate overloaded functions",
+                    "description": "Optional file path to disambiguate overloaded functions, or required for file_impact/functions_in_file modes",
                 },
                 "depth": {
                     "type": "integer",
@@ -89,6 +93,8 @@ class CodeGraphCallTool(BaseMCPTool):
         mode = arguments.get("mode", "summary")
         if mode in ("callers", "callees", "chain") and "function_name" not in arguments:
             raise ValueError(f"function_name is required for mode '{mode}'")
+        if mode in ("file_impact", "functions_in_file") and "file_path" not in arguments:
+            raise ValueError(f"file_path is required for mode '{mode}'")
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -156,6 +162,26 @@ class CodeGraphCallTool(BaseMCPTool):
                 "depth": depth,
                 "edge_count": len(chain),
                 "chain": chain,
+            }
+        elif mode == "file_impact":
+            file_path = arguments["file_path"]
+            impact = graph.file_impact(file_path)
+            result = {
+                "success": True,
+                "mode": "file_impact",
+                "verdict": "INFO" if impact["function_count"] > 0 else "NOT_FOUND",
+                **impact,
+            }
+        elif mode == "functions_in_file":
+            file_path = arguments["file_path"]
+            funcs = graph.functions_in_file(file_path)
+            result = {
+                "success": True,
+                "mode": "functions_in_file",
+                "verdict": "INFO" if funcs else "NOT_FOUND",
+                "file": file_path,
+                "function_count": len(funcs),
+                "functions": funcs,
             }
         else:
             raise ValueError(f"Unknown mode: {mode}")

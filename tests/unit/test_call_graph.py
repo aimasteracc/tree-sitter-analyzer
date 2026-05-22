@@ -91,7 +91,11 @@ class TestFunctionRef:
     def test_to_dict_no_receiver(self):
         ref = FunctionRef("main.py", "foo", 10, "python")
         d = ref.to_dict()
-        assert d == {"file": "main.py", "name": "foo", "line": 10, "language": "python"}
+        assert d["file"] == "main.py"
+        assert d["name"] == "foo"
+        assert d["line"] == 10
+        assert d["end_line"] == 10
+        assert d["language"] == "python"
         assert "receiver" not in d
 
     def test_to_dict_with_receiver(self):
@@ -822,3 +826,85 @@ class TestCachedCallGraphImportResolution:
         assert len(callers) == 1
         assert callers[0]["name"] == "main"
         assert callers[0]["file"] == "main.py"
+
+    def test_cache_passes_end_line(self):
+        functions = [
+            {
+                "name": "handler",
+                "file": "app.py",
+                "line": 5,
+                "end_line": 20,
+                "language": "python",
+            },
+        ]
+        cache = self._make_mock_cache(functions, [], {})
+        cg = CachedCallGraph("/tmp/project", cache=cache)
+        cg.build()
+        funcs = cg.all_functions()
+        assert len(funcs) == 1
+        assert funcs[0]["end_line"] == 20
+
+
+class TestFunctionRefEndLine:
+    def test_end_line_defaults_to_start(self):
+        ref = FunctionRef("a.py", "foo", 10, "python")
+        assert ref.end_line == 10
+
+    def test_end_line_explicit(self):
+        ref = FunctionRef("a.py", "foo", 10, "python", end_line=25)
+        assert ref.end_line == 25
+
+    def test_to_dict_includes_end_line(self):
+        ref = FunctionRef("a.py", "foo", 5, "python", end_line=20)
+        d = ref.to_dict()
+        assert d["end_line"] == 20
+
+
+class TestFindEnclosingFuncRange:
+    def test_range_containment(self):
+        cg = CallGraph("/tmp")
+        outer = FunctionRef("a.py", "outer", 1, "python", end_line=50)
+        inner = FunctionRef("a.py", "inner", 10, "python", end_line=20)
+        file_funcs = {"outer": outer, "inner": inner}
+        assert cg._find_enclosing_func(file_funcs, 15) == inner
+
+    def test_range_picks_tighter_scope(self):
+        cg = CallGraph("/tmp")
+        outer = FunctionRef("a.py", "outer", 1, "python", end_line=50)
+        inner = FunctionRef("a.py", "inner", 10, "python", end_line=20)
+        file_funcs = {"outer": outer, "inner": inner}
+        result = cg._find_enclosing_func(file_funcs, 15)
+        assert result.name == "inner"
+
+    def test_fallback_closest_start(self):
+        cg = CallGraph("/tmp")
+        f1 = FunctionRef("a.py", "foo", 5, "python", end_line=5)
+        f2 = FunctionRef("a.py", "bar", 15, "python", end_line=15)
+        file_funcs = {"foo": f1, "bar": f2}
+        result = cg._find_enclosing_func(file_funcs, 10)
+        assert result.name == "foo"
+
+
+class TestFileImpact:
+    def test_file_impact_basic(self):
+        cg = CallGraph(str(PY_PROJECT))
+        cg.build()
+        funcs = cg.functions_in_file("main.py")
+        assert isinstance(funcs, list)
+
+    def test_file_impact_returns_upstream_downstream(self):
+        cg = CallGraph(str(PY_PROJECT))
+        cg.build()
+        impact = cg.file_impact("main.py")
+        assert "upstream" in impact
+        assert "downstream" in impact
+        assert "function_count" in impact
+        assert impact["file"] == "main.py"
+
+    def test_file_impact_nonexistent_file(self):
+        cg = CallGraph(str(PY_PROJECT))
+        cg.build()
+        impact = cg.file_impact("nonexistent.py")
+        assert impact["function_count"] == 0
+        assert impact["upstream_count"] == 0
+        assert impact["downstream_count"] == 0
