@@ -18,47 +18,67 @@ def extract_sql_tables(
     get_node_text: Callable[..., str],
     sql_elements: list[Any],
 ) -> None:
-    """Extract CREATE TABLE statements with enhanced metadata."""
+    """Extract CREATE TABLE statements with enhanced metadata.
+
+    r37by (dogfood): tool flagged this at nesting depth 8 (L34). The
+    table-name discovery loop now lives in ``_find_table_name``.
+    """
     for node in traverse_nodes(root_node):
-        if node.type == "create_table":
-            table_name = None
-            columns: list[SQLColumn] = []
-            constraints: list[SQLConstraint] = []
-
-            for child in node.children:
-                if child.type == "object_reference":
-                    for subchild in child.children:
-                        if subchild.type == "identifier":
-                            table_name = get_node_text(subchild).strip()
-                            if table_name and is_valid_identifier(table_name):
-                                break
-                            else:
-                                table_name = None
-                    if table_name:
-                        break
-
-            extract_table_columns(
-                node, columns, constraints, traverse_nodes, get_node_text
+        if node.type != "create_table":
+            continue
+        table_name = _find_table_name(node, get_node_text)
+        columns: list[SQLColumn] = []
+        constraints: list[SQLConstraint] = []
+        extract_table_columns(node, columns, constraints, traverse_nodes, get_node_text)
+        if not table_name:
+            continue
+        try:
+            sql_elements.append(
+                SQLTable(
+                    name=table_name,
+                    start_line=node.start_point[0] + 1,
+                    end_line=node.end_point[0] + 1,
+                    raw_text=get_node_text(node),
+                    language="sql",
+                    columns=columns,
+                    constraints=constraints,
+                )
             )
+        except Exception as e:
+            log_debug(f"Failed to extract enhanced table: {e}")
 
-            if table_name:
-                try:
-                    start_line = node.start_point[0] + 1
-                    end_line = node.end_point[0] + 1
-                    raw_text = get_node_text(node)
 
-                    table = SQLTable(
-                        name=table_name,
-                        start_line=start_line,
-                        end_line=end_line,
-                        raw_text=raw_text,
-                        language="sql",
-                        columns=columns,
-                        constraints=constraints,
-                    )
-                    sql_elements.append(table)
-                except Exception as e:
-                    log_debug(f"Failed to extract enhanced table: {e}")
+def _find_table_name(
+    create_table_node: "tree_sitter.Node",
+    get_node_text: Callable[..., str],
+) -> str | None:
+    """Walk a ``create_table`` AST node and return its table-identifier text.
+
+    r37by: extracted from ``extract_sql_tables`` so the per-object_reference
+    inner loop reads as a focused 8-line helper instead of a depth-8
+    nested block.
+    """
+    for child in create_table_node.children:
+        if child.type != "object_reference":
+            continue
+        name = _first_valid_identifier(child, get_node_text)
+        if name:
+            return name
+    return None
+
+
+def _first_valid_identifier(
+    object_reference: "tree_sitter.Node",
+    get_node_text: Callable[..., str],
+) -> str | None:
+    """Return the first valid identifier under an ``object_reference`` node."""
+    for subchild in object_reference.children:
+        if subchild.type != "identifier":
+            continue
+        text = get_node_text(subchild).strip()
+        if text and is_valid_identifier(text):
+            return text
+    return None
 
 
 def extract_table_columns(
