@@ -634,6 +634,27 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
         "Shorthand for --call-graph callers --call-graph-function",
     )
     parser.add_argument(
+        "--codegraph-navigate",
+        metavar="SYMBOL",
+        help="Unified symbol navigation: go-to-def + references + call hierarchy in one call",
+    )
+    parser.add_argument(
+        "--codegraph-navigate-mode",
+        choices=["definition", "references", "hierarchy", "full"],
+        default="full",
+        help="Mode for --codegraph-navigate (default: full)",
+    )
+    parser.add_argument(
+        "--codegraph-navigate-file",
+        help="File path to disambiguate for --codegraph-navigate",
+    )
+    parser.add_argument(
+        "--codegraph-navigate-depth",
+        type=int,
+        default=2,
+        help="Max transitive depth for --codegraph-navigate hierarchy (default: 2)",
+    )
+    parser.add_argument(
         "--callers-file",
         help="File path to disambiguate overloaded functions for --callers",
     )

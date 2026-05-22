@@ -31,6 +31,8 @@ def create_tool_registry(
     from .tools.callers_tool import CodeGraphCallersTool
     from .tools.change_impact_tool import ChangeImpactTool
     from .tools.code_patterns_tool import CodePatternsTool
+    from .tools.codegraph_impact_tool import CodeGraphImpactTool
+    from .tools.codegraph_navigate_tool import CodeGraphNavigateTool
     from .tools.dependency_analysis_tool import DependencyAnalysisTool
     from .tools.file_health_tool import FileHealthTool
     from .tools.find_and_grep_tool import FindAndGrepTool
@@ -44,6 +46,7 @@ def create_tool_registry(
     from .tools.route_detector_tool import RouteDetectorTool
     from .tools.safe_to_edit_tool import SafeToEditTool
     from .tools.search_content_tool import SearchContentTool
+    from .tools.semantic_classify_tool import SemanticClassifyTool
     from .tools.smart_context_tool import SmartContextTool
     from .tools.symbol_lineage_tool import SymbolLineageTool
     from .tools.symbol_resolve_tool import CodeGraphSymbolResolveTool
@@ -72,12 +75,15 @@ def create_tool_registry(
         ("codegraph_ast_path", CodeGraphASTPathTool(project_root)),
         ("codegraph_symbol_search", CodeGraphSymbolSearchTool(project_root)),
         ("codegraph_resolve", CodeGraphSymbolResolveTool(project_root)),
+        ("codegraph_impact", CodeGraphImpactTool(project_root)),
+        ("codegraph_navigate", CodeGraphNavigateTool(project_root)),
         ("analyze_change_impact", ChangeImpactTool(project_root)),
         ("refactoring_suggestions", RefactoringSuggestionsTool(project_root)),
         ("safe_to_edit", SafeToEditTool(project_root)),
         ("smart_context", SmartContextTool(project_root)),
         ("symbol_lineage", SymbolLineageTool(project_root)),
         ("code_patterns", CodePatternsTool(project_root)),
+        ("semantic_classify", SemanticClassifyTool(project_root)),
         ("detect_routes", RouteDetectorTool(project_root)),
     ]
     return tool_instances, dict(tool_instances)

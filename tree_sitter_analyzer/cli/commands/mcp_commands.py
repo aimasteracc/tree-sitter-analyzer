@@ -19,6 +19,9 @@ from tree_sitter_analyzer.cli.commands.mcp_command_helpers import (
 # noqa codes keep refactor-cleaner / autoflake / ruff from stripping them.
 from tree_sitter_analyzer.mcp.tools.ast_cache_tool import ASTCacheTool  # noqa: F401
 from tree_sitter_analyzer.mcp.tools.ast_diff_tool import ASTDiffTool  # noqa: F401
+from tree_sitter_analyzer.mcp.tools.ast_path_tool import (
+    CodeGraphASTPathTool,  # noqa: F401
+)
 from tree_sitter_analyzer.mcp.tools.call_graph_tool import (
     CodeGraphCallTool,  # noqa: F401
 )
@@ -33,6 +36,12 @@ from tree_sitter_analyzer.mcp.tools.change_impact_tool import (
 )
 from tree_sitter_analyzer.mcp.tools.code_patterns_tool import (
     CodePatternsTool,  # noqa: F401
+)
+from tree_sitter_analyzer.mcp.tools.codegraph_impact_tool import (
+    CodeGraphImpactTool,  # noqa: F401
+)
+from tree_sitter_analyzer.mcp.tools.codegraph_navigate_tool import (
+    CodeGraphNavigateTool,  # noqa: F401
 )
 from tree_sitter_analyzer.mcp.tools.codegraph_overview_tool import (
     CodeGraphOverviewTool,  # noqa: F401
@@ -58,6 +67,9 @@ from tree_sitter_analyzer.mcp.tools.route_detector_tool import (
 )
 from tree_sitter_analyzer.mcp.tools.safe_to_edit_tool import (
     SafeToEditTool,  # noqa: F401
+)
+from tree_sitter_analyzer.mcp.tools.semantic_classify_tool import (
+    SemanticClassifyTool,  # noqa: F401
 )
 from tree_sitter_analyzer.mcp.tools.smart_context_tool import (
     SmartContextTool,  # noqa: F401
@@ -344,6 +356,59 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
             "output_format": output_format,
         },
     ),
+    McpCommandSpec(
+        flag_name="codegraph_impact",
+        tool_attr="CodeGraphImpactTool",
+        label="Function blast radius analysis (CodeGraph parity)",
+        build_tool_args=lambda args, output_format: {
+            "mode": getattr(args, "codegraph_impact_mode", "function_impact")
+            or "function_impact",
+            "function_name": getattr(args, "codegraph_impact_function", None),
+            "function_names": getattr(args, "codegraph_impact_functions", None),
+            "file_path": getattr(args, "codegraph_impact_file", None),
+            "depth": getattr(args, "codegraph_impact_depth", 5),
+            "output_format": output_format,
+        },
+    ),
+    McpCommandSpec(
+        flag_name="codegraph_navigate",
+        tool_attr="CodeGraphNavigateTool",
+        label="Unified symbol navigation: go-to-def + references + call hierarchy",
+        build_tool_args=lambda args, output_format: {
+            "symbol": getattr(args, "codegraph_navigate", ""),
+            "mode": getattr(args, "codegraph_navigate_mode", "full") or "full",
+            "file_path": getattr(args, "codegraph_navigate_file", None),
+            "depth": getattr(args, "codegraph_navigate_depth", 2),
+            "output_format": output_format,
+        },
+    ),
+    McpCommandSpec(
+        flag_name="ast_path",
+        tool_attr="CodeGraphASTPathTool",
+        label="AST path/scope navigation (CodeGraph parity)",
+        required_file_error="--ast-path requires a file path",
+        build_tool_args=lambda args, output_format: {
+            "mode": getattr(args, "ast_path_mode", "scope") or "scope",
+            "file_path": args.file_path,
+            "line": getattr(args, "ast_path_line", None),
+            "max_depth": getattr(args, "ast_path_max_depth", 3),
+            "output_format": output_format,
+        },
+    ),
+    McpCommandSpec(
+        flag_name="semantic_classify",
+        tool_attr="SemanticClassifyTool",
+        label="Semantic change classification",
+        build_tool_args=lambda args, output_format: {
+            "mode": getattr(args, "semantic_classify_mode", "classify_file")
+            or "classify_file",
+            "file_path": getattr(args, "file_path", None),
+            "old_ref": getattr(args, "semantic_classify_old_ref", "HEAD~1"),
+            "new_ref": getattr(args, "semantic_classify_new_ref", "HEAD"),
+            "language": getattr(args, "semantic_classify_language", None),
+            "output_format": output_format,
+        },
+    ),
 )
 
 
@@ -401,7 +466,9 @@ _TOOL_CLASS_NAMES: frozenset[str] = frozenset(
         "RouteDetectorTool",
         "CodeGraphSymbolSearchTool",
         "CodeGraphSymbolResolveTool",
+        "CodeGraphImpactTool",
         "CodeGraphASTPathTool",
+        "SemanticClassifyTool",
     }
 )
 
