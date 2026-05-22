@@ -716,19 +716,13 @@ class ProjectIndexManager:
             if candidate.is_file():
                 found.append(entry_name)
 
-        # Also check one level of sub-directories (src/, pkg/, cmd/, etc.)
+        # r37e3 (dogfood): subdir scan抽到 _scan_subdir_entry_points,
+        # flatten nesting 6 → 3.
         try:
             for subdir in root_path.iterdir():
                 if not subdir.is_dir() or subdir.name.startswith("."):
                     continue
-                for entry_name_raw in _ENTRY_POINT_NAMES:
-                    # Only bare filenames (no path separator) for sub-dir check
-                    if "/" in entry_name_raw:
-                        continue
-                    candidate2 = subdir / entry_name_raw
-                    if candidate2.is_file():
-                        rel = str(candidate2.relative_to(root_path))
-                        found.append(rel)
+                found.extend(self._scan_subdir_entry_points(root_path, subdir))
         except OSError:
             pass
 
@@ -766,6 +760,28 @@ class ProjectIndexManager:
         }
     )
 
+    @staticmethod
+    def _scan_subdir_entry_points(root_path: Path, subdir: Path) -> list[str]:
+        """Return relative paths of entry-point files in ``subdir``.
+
+        Looks for each bare-filename entry from ``_ENTRY_POINT_NAMES``
+        (skip names with ``/`` — they target the root, not subdirs) and
+        returns the path relative to ``root_path``. Empty list when no
+        candidates are found.
+
+        r37e3 (dogfood): lifted from ``_find_entry_points`` to flatten
+        the for-for-if chain from depth 6 to 3.
+        """
+        results: list[str] = []
+        for entry_name_raw in _ENTRY_POINT_NAMES:
+            if "/" in entry_name_raw:
+                continue
+            candidate = subdir / entry_name_raw
+            if not candidate.is_file():
+                continue
+            results.append(str(candidate.relative_to(root_path)))
+        return results
+
     def _build_top_level_structure(
         self, root_path: Path, all_files: list[str]
     ) -> list[dict[str, Any]]:
@@ -801,24 +817,38 @@ class ProjectIndexManager:
             sub_counts.setdefault(top_dir, {})
             sub_counts[top_dir][sub_dir] = sub_counts[top_dir].get(sub_dir, 0) + 1
 
-        # Sort by file count descending; only include dirs that actually have files
+        # r37e3 (dogfood): flatten subdirectory list-comp nesting 6 → 3
+        # by lifting per-dir entry construction to _build_dir_entry.
         structure: list[dict[str, Any]] = []
         for name, count in sorted(dir_counts.items(), key=lambda kv: (-kv[1], kv[0])):
-            entry: dict[str, Any] = {
-                "name": name,
-                "type": "directory",
-                "file_count": count,
-            }
-            # Attach sub-directory breakdown if it exists
-            if name in sub_counts:
-                entry["subdirectories"] = [
-                    {"name": sname, "file_count": scount}
-                    for sname, scount in sorted(
-                        sub_counts[name].items(), key=lambda kv: (-kv[1], kv[0])
-                    )
-                ]
-            structure.append(entry)
+            structure.append(self._build_dir_entry(name, count, sub_counts))
         return structure
+
+    @staticmethod
+    def _build_dir_entry(
+        name: str,
+        count: int,
+        sub_counts: dict[str, dict[str, int]],
+    ) -> dict[str, Any]:
+        """Build a single ``top_level_structure[i]`` dict for ``name``.
+
+        Adds the ``subdirectories`` field only when ``sub_counts[name]``
+        exists, sorted by descending file count (ties broken
+        alphabetically) so the output is deterministic.
+        """
+        entry: dict[str, Any] = {
+            "name": name,
+            "type": "directory",
+            "file_count": count,
+        }
+        if name in sub_counts:
+            entry["subdirectories"] = [
+                {"name": sname, "file_count": scount}
+                for sname, scount in sorted(
+                    sub_counts[name].items(), key=lambda kv: (-kv[1], kv[0])
+                )
+            ]
+        return entry
 
     @staticmethod
     def _extract_readme_excerpt(root_path: Path) -> str:
@@ -996,20 +1026,12 @@ class ProjectIndexManager:
             scores: dict[str, float] = dict.fromkeys(node_list, 1.0 / n)
             dangling = {nd for nd in node_list if nd not in out_edges}
 
+            # r37e3 (dogfood): inner power-iteration step抽到
+            # _pagerank_step so the outer loop stays at ≤3 nesting.
             for _ in range(max_iter):
-                new_scores: dict[str, float] = {}
-                # Dangling nodes distribute their score uniformly
-                dangling_sum = alpha * sum(scores[nd] for nd in dangling) / n
-
-                for nd in node_list:
-                    new_scores[nd] = (1.0 - alpha) / n + dangling_sum
-
-                for src, dsts in out_edges.items():
-                    contrib = alpha * scores[src] / len(dsts)
-                    for dst in dsts:
-                        new_scores[dst] = new_scores.get(dst, 0.0) + contrib
-
-                # Convergence check
+                new_scores = self._pagerank_step(
+                    scores, node_list, out_edges, dangling, alpha, n
+                )
                 err = sum(abs(new_scores[nd] - scores[nd]) for nd in node_list)
                 scores = new_scores
                 if err < 1.0e-6 * n:
@@ -1055,6 +1077,62 @@ class ProjectIndexManager:
     )
 
     _TOON_DIR_COL: int = 26
+
+    def _scan_subdir_descriptions(
+        self,
+        top_name: str,
+        top_path: Path,
+        descriptions: dict[str, str],
+    ) -> None:
+        """Populate ``descriptions`` with ``top/sub`` → ``desc`` mappings.
+
+        Skips dot-prefixed and artifact directories so the description
+        map only carries user-facing structural names. Mutates
+        ``descriptions`` in place to match the original side-effecting
+        loop.
+
+        r37e3 (dogfood): lifted from ``_extract_module_descriptions`` to
+        flatten the for-if-if chain (depth 6) into a single-pass scan.
+        """
+        for sub in sorted(top_path.iterdir()):
+            if not sub.is_dir():
+                continue
+            if sub.name in self._ARTIFACT_DIRS or sub.name.startswith("."):
+                continue
+            sub_desc = self._describe_dir(sub, sub.name)
+            if sub_desc:
+                descriptions[f"{top_name}/{sub.name}"] = sub_desc
+
+    @staticmethod
+    def _pagerank_step(
+        scores: dict[str, float],
+        node_list: list[str],
+        out_edges: dict[str, Any],
+        dangling: set[str],
+        alpha: float,
+        n: int,
+    ) -> dict[str, float]:
+        """Run one power-iteration step of PageRank.
+
+        Returns the next ``new_scores`` dict. Dangling nodes distribute
+        their probability uniformly across all nodes (PageRank random-
+        teleportation handling). Edge contributions are added on top of
+        the base ``(1 - alpha) / n + dangling_sum`` floor.
+
+        r37e3 (dogfood): lifted from ``_compute_pagerank`` so the outer
+        max_iter loop stays at depth 3 instead of 6 (method → with →
+        for-iter → for-node + for-src + for-dst).
+        """
+        new_scores: dict[str, float] = {}
+        dangling_sum = alpha * sum(scores[nd] for nd in dangling) / n
+        base = (1.0 - alpha) / n + dangling_sum
+        for nd in node_list:
+            new_scores[nd] = base
+        for src, dsts in out_edges.items():
+            contrib = alpha * scores[src] / len(dsts)
+            for dst in dsts:
+                new_scores[dst] = new_scores.get(dst, 0.0) + contrib
+        return new_scores
 
     def render_toon(self, index: ProjectIndex) -> str:
         """Render the project index as TOON-format text.
@@ -1311,17 +1389,9 @@ class ProjectIndexManager:
             if desc:
                 descriptions[top_name] = desc
 
-            # Depth-2
+            # r37e3 (dogfood): nesting 6 → 3 via _scan_subdir_descriptions.
             try:
-                for sub in sorted(top_path.iterdir()):
-                    if not sub.is_dir():
-                        continue
-                    if sub.name in self._ARTIFACT_DIRS or sub.name.startswith("."):
-                        continue
-                    rel = f"{top_name}/{sub.name}"
-                    sub_desc = self._describe_dir(sub, sub.name)
-                    if sub_desc:
-                        descriptions[rel] = sub_desc
+                self._scan_subdir_descriptions(top_name, top_path, descriptions)
             except OSError:
                 pass
 
