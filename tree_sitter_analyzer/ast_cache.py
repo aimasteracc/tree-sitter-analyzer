@@ -299,6 +299,91 @@ def _extract_symbols(tree: Any, source_code: str, language: str) -> dict[str, An
     return {"symbols": symbols, "node_count": _count_nodes(root)}
 
 
+def _emit_function_symbol(
+    node: Any, name_node: Any, source: str, language: str
+) -> dict[str, Any]:
+    params_node = node.child_by_field_name("parameters")
+    params = _node_text(params_node, source) if params_node else ""
+    return {
+        "kind": "function",
+        "name": _node_text(name_node, source),
+        "line": node.start_point[0] + 1,
+        "end_line": node.end_point[0] + 1,
+        "params": params,
+        "language": language,
+    }
+
+
+def _emit_class_symbol(
+    node: Any, name_node: Any, source: str, language: str
+) -> dict[str, Any]:
+    return {
+        "kind": "class",
+        "name": _node_text(name_node, source),
+        "line": node.start_point[0] + 1,
+        "end_line": node.end_point[0] + 1,
+        "language": language,
+    }
+
+
+def _emit_import_symbols(node: Any, source: str, language: str) -> list[dict[str, Any]]:
+    """Emit one symbol row per locally bound import target.
+
+    K7: ``from X import (A, B, C)`` previously stored the entire
+    parenthesised block — newlines, alias keyword, trailing
+    comments and all — as a single ``text`` field. The FTS5
+    writer then derived ``name = sym.get("name", sym.get("text"))``,
+    so an FTS search for ``execute`` returned import rows with
+    280-char ``name`` values. Emit one row per *bound* identifier
+    so each row's ``name`` is a single locally bound symbol.
+    """
+    line_no = node.start_point[0] + 1
+    end_line_no = node.end_point[0] + 1
+    bound_names = _extract_import_bound_names(node, source)
+    if bound_names:
+        return [
+            {
+                "kind": "import",
+                "name": bound,
+                "text": bound,
+                "line": line_no,
+                "end_line": end_line_no,
+                "language": language,
+            }
+            for bound in bound_names
+        ]
+    # Defensive fallback for syntactically unusual import nodes
+    # (wildcard imports, syntax errors, languages we don't
+    # specifically handle below). Cap ``name`` at 100 chars so
+    # the FTS row stays scannable.
+    raw_text = _node_text(node, source).replace("\n", " ").strip()
+    short_name = raw_text[:100]
+    return [
+        {
+            "kind": "import",
+            "name": short_name,
+            "text": short_name,
+            "line": line_no,
+            "end_line": end_line_no,
+            "language": language,
+        }
+    ]
+
+
+def _emit_variable_symbol(
+    node: Any, name_node: Any, source: str, language: str, depth: int
+) -> dict[str, Any] | None:
+    name = _node_text(name_node, source)
+    if name.startswith("_") and depth >= 3:
+        return None
+    return {
+        "kind": "variable",
+        "name": name,
+        "line": node.start_point[0] + 1,
+        "language": language,
+    }
+
+
 def _walk_for_symbols(
     node: Any,
     source: str,
@@ -306,86 +391,26 @@ def _walk_for_symbols(
     language: str,
     depth: int = 0,
 ) -> None:
+    """Recursive AST walk emitting function / class / import / variable rows.
+
+    r37e9 (dogfood): 89 lines → ~15 of dispatch. Each per-kind branch
+    delegates to a dedicated ``_emit_*_symbol`` helper so the body stays
+    flat and the depth-cap / child-walk logic is unambiguous.
+    """
     if depth > 20:
         return
     node_type = node.type
     name_node = node.child_by_field_name("name")
     if node_type in _FUNCTION_LIKE and name_node is not None:
-        name = _node_text(name_node, source)
-        params_node = node.child_by_field_name("parameters")
-        params = _node_text(params_node, source) if params_node else ""
-        symbols.append(
-            {
-                "kind": "function",
-                "name": name,
-                "line": node.start_point[0] + 1,
-                "end_line": node.end_point[0] + 1,
-                "params": params,
-                "language": language,
-            }
-        )
+        symbols.append(_emit_function_symbol(node, name_node, source, language))
     elif node_type in _CLASS_LIKE and name_node is not None:
-        name = _node_text(name_node, source)
-        symbols.append(
-            {
-                "kind": "class",
-                "name": name,
-                "line": node.start_point[0] + 1,
-                "end_line": node.end_point[0] + 1,
-                "language": language,
-            }
-        )
+        symbols.append(_emit_class_symbol(node, name_node, source, language))
     elif node_type in _IMPORT_LIKE:
-        # K7: ``from X import (A, B, C)`` previously stored the entire
-        # parenthesised block — newlines, alias keyword, trailing
-        # comments and all — as a single ``text`` field. The FTS5
-        # writer then derived ``name = sym.get("name", sym.get("text"))``,
-        # so an FTS search for ``execute`` returned import rows with
-        # 280-char ``name`` values. Emit one row per *bound* identifier
-        # so each row's ``name`` is a single locally bound symbol.
-        line_no = node.start_point[0] + 1
-        end_line_no = node.end_point[0] + 1
-        bound_names = _extract_import_bound_names(node, source)
-        if bound_names:
-            for bound in bound_names:
-                symbols.append(
-                    {
-                        "kind": "import",
-                        "name": bound,
-                        "text": bound,
-                        "line": line_no,
-                        "end_line": end_line_no,
-                        "language": language,
-                    }
-                )
-        else:
-            # Defensive fallback for syntactically unusual import nodes
-            # (wildcard imports, syntax errors, languages we don't
-            # specifically handle below). Cap ``name`` at 100 chars so
-            # the FTS row stays scannable.
-            raw_text = _node_text(node, source).replace("\n", " ").strip()
-            short_name = raw_text[:100]
-            symbols.append(
-                {
-                    "kind": "import",
-                    "name": short_name,
-                    "text": short_name,
-                    "line": line_no,
-                    "end_line": end_line_no,
-                    "language": language,
-                }
-            )
+        symbols.extend(_emit_import_symbols(node, source, language))
     elif node_type in _VAR_DECL_LIKE and name_node is not None:
-        name = _node_text(name_node, source)
-        if not name.startswith("_") or depth < 3:
-            symbols.append(
-                {
-                    "kind": "variable",
-                    "name": name,
-                    "line": node.start_point[0] + 1,
-                    "language": language,
-                }
-            )
+        var_row = _emit_variable_symbol(node, name_node, source, language, depth)
+        if var_row is not None:
+            symbols.append(var_row)
     for child in node.children:
         _walk_for_symbols(child, source, symbols, language, depth + 1)
 
