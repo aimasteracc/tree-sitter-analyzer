@@ -133,7 +133,14 @@ class RefactoringSuggestionsTool(BaseMCPTool):
 
     # Source file reading and analysis
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        """Execute refactoring analysis on a source file."""
+        """Execute refactoring analysis on a source file.
+
+        r37bk (dogfood): tool flagged this at 112 lines. Split into
+        argument parse + path validation + language gate + file read +
+        suggestion pipeline + envelope finalize. Each phase is now ≤25
+        lines. O8 mismatch gate, J9 cross-tool surfacing, M14 language
+        echo all preserved.
+        """
         file_path = arguments.get("file_path", "")
         explicit_language = arguments.get("language")
         max_suggestions = arguments.get("max_suggestions", 10)
@@ -149,28 +156,61 @@ class RefactoringSuggestionsTool(BaseMCPTool):
                 project_root=self.project_root,
             )
 
-        # O8 (round-30 dogfood): ``--refactor file.py --language java``
-        # previously returned ``verdict=SAFE`` with zero suggestions —
-        # the Java pattern detectors saw nothing in a Python file. Strict
-        # gate refuses the mismatched language with a canonical
-        # validation envelope; callers must omit ``--language`` to
-        # auto-detect, or fix the override.
+        mismatch_response = self._check_language_mismatch(
+            resolved, file_path, explicit_language, output_format
+        )
+        if mismatch_response is not None:
+            return mismatch_response
+
+        source = self._read_source_or_error(resolved, file_path)
+        if isinstance(source, dict):
+            return source  # error envelope
+
+        suggestions = self._build_suggestions_for_source(
+            resolved, source, include_extractions
+        )
+        result = build_success_response(
+            resolved,
+            suggestions,
+            max_suggestions,
+            include_skeleton,
+            project_root=self.project_root,
+        )
+        self._echo_detected_language(resolved, result)
+
+        from ..utils.format_helper import apply_toon_format_to_response
+
+        return apply_toon_format_to_response(result, output_format)
+
+    def _check_language_mismatch(
+        self,
+        resolved: str,
+        file_path: str,
+        explicit_language: str | None,
+        output_format: str,
+    ) -> dict[str, Any] | None:
+        """O8 gate: reject ``--language java`` on a ``.py`` file."""
         mismatch = detect_language_mismatch(
             resolved,
             explicit_language,
             project_root=self.project_root,
         )
-        if mismatch:
-            response = language_mismatch_error_response(
-                tool_name="refactoring_suggestions",
-                file_path=file_path,
-                warning=mismatch,
-            )
-            response["output_format"] = output_format
-            return response
+        if not mismatch:
+            return None
+        response = language_mismatch_error_response(
+            tool_name="refactoring_suggestions",
+            file_path=file_path,
+            warning=mismatch,
+        )
+        response["output_format"] = output_format
+        return response
 
+    def _read_source_or_error(
+        self, resolved: str, file_path: str
+    ) -> str | dict[str, Any]:
+        """Read source text; return an error envelope on failure."""
         try:
-            source = Path(resolved).read_text(encoding="utf-8", errors="replace")
+            return Path(resolved).read_text(encoding="utf-8", errors="replace")
         except Exception as e:
             return error_response(
                 file_path,
@@ -178,8 +218,14 @@ class RefactoringSuggestionsTool(BaseMCPTool):
                 project_root=self.project_root,
             )
 
+    def _build_suggestions_for_source(
+        self,
+        resolved: str,
+        source: str,
+        include_extractions: bool,
+    ) -> list[dict[str, Any]]:
+        """Run tree-sitter analysis + python bonus + J9 cross-tool surfacing."""
         analysis = extract_elements(resolved, self.project_root)
-        # Tree-sitter based pattern analysis
         suggestions = analyze_treesitter_patterns(
             source,
             analysis,
@@ -188,7 +234,6 @@ class RefactoringSuggestionsTool(BaseMCPTool):
             _EXTRACTABLE_PATTERNS,
             resolved,
         )
-
         ext = Path(resolved).suffix.lower()
         if ext == ".py" and analysis:
             python_bonus_analysis(
@@ -198,34 +243,14 @@ class RefactoringSuggestionsTool(BaseMCPTool):
                 _PATTERN_RULES,
                 _EXTRACTABLE_PATTERNS,
             )
-
-        # J9 (round-22): bridge anti-patterns + security findings into the
-        # refactor suggestion stream. Before this, a file containing
-        # ``def f(x=[])``, ``except:``, and ``eval(...)`` returned
-        # ``refactor=clean`` while ``code_patterns`` flagged 4 findings on
-        # the same file — agents that ran refactor first shipped the bugs.
-        # The structural detectors above only catch length / nesting /
-        # large-class smells; anti-patterns + security live in their own
-        # module. We pull from the same helpers ``code_patterns`` uses so
-        # the two tools no longer disagree on the same input.
-        _surface_security_and_anti_patterns(resolved, suggestions, file_path=file_path)
-
+        # J9: bridge anti-patterns + security findings (so refactor and
+        # code_patterns no longer disagree on the same input).
+        _surface_security_and_anti_patterns(resolved, suggestions, file_path=resolved)
         build_precise_plans(resolved, source, analysis, suggestions)
+        return suggestions
 
-        result = build_success_response(
-            resolved,
-            suggestions,
-            max_suggestions,
-            include_skeleton,
-            project_root=self.project_root,
-        )
-
-        # M14 (round-26): echo the detected language. ``refactor`` and
-        # ``file_health`` previously returned ``language: None`` on a
-        # ``.ts`` file even though both apply TypeScript-specific
-        # analysis — agents that cross-checked ``analyze_scale`` saw a
-        # contradiction. Detect once here (best-effort: detector
-        # failures must not block the suggestion stream).
+    def _echo_detected_language(self, resolved: str, result: dict[str, Any]) -> None:
+        """M14 (round-26): echo detected language so callers don't see None."""
         from ...language_detector import detect_language_from_file
 
         try:
@@ -240,10 +265,6 @@ class RefactoringSuggestionsTool(BaseMCPTool):
             and "language" not in result
         ):
             result["language"] = detected_language
-
-        from ..utils.format_helper import apply_toon_format_to_response
-
-        return apply_toon_format_to_response(result, output_format)
 
     # Input validation - fail fast with clear error messages
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
