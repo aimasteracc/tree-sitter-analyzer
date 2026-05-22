@@ -425,6 +425,76 @@ def _walk_for_symbols(
         _walk_for_symbols(child, source, symbols, language, depth + 1)
 
 
+_IMPORT_NOISE_TOKENS: frozenset[str] = frozenset({"import", "from", "as", "use", "pub"})
+
+
+def _dispatch_import_node(node: Any, source: str, names: list[str]) -> None:
+    """Walk a single import-like node and append bound identifiers to ``names``.
+
+    Per-language helpers do the actual extraction; this function only routes
+    on ``node.type``. Unknown types are a no-op (the caller treats an empty
+    result as "fall back to truncated raw text").
+    """
+    node_type = node.type
+    if node_type == "import_from_statement":
+        _collect_python_from_import(node, source, names)
+    elif node_type == "import_statement":
+        # Python ``import a, b``; JS/TS ``import x, { y } from 'foo'``;
+        # the children disambiguate.
+        _collect_import_statement(node, source, names)
+    elif node_type == "import_declaration":
+        # Java / JS — single-symbol shape predominantly, but JS uses
+        # ``import_clause`` children that we walk recursively.
+        _collect_import_declaration(node, source, names)
+    elif node_type == "use_declaration":
+        # Rust ``use mod::{A, B};``
+        _collect_rust_use(node, source, names)
+    elif node_type == "package_declaration":
+        # Go ``package x`` — emit the package name itself.
+        # r37du (dogfood): flatten nesting 6 → 3 via _first_text_child.
+        _first_text_child(node, source, ("identifier", "package_identifier"), names)
+    elif node_type == "require_statement":
+        # Some JS / Lua dialects expose ``require_statement`` directly.
+        _first_text_child(
+            node,
+            source,
+            ("string", "string_fragment", "identifier"),
+            names,
+            strip_chars="'\"",
+        )
+    elif node_type == "include_directive":
+        # C/C++ — header name is the user-facing handle.
+        _first_text_child(
+            node,
+            source,
+            ("string_literal", "system_lib_string"),
+            names,
+            strip_chars='<>"',
+        )
+    elif node_type == "extern_crate_item":
+        _collect_extern_crate_names(node, source, names)
+
+
+def _dedupe_bound_names(names: list[str]) -> list[str]:
+    """Dedupe import-name list while dropping empties and syntax keywords.
+
+    Strips wrapping ``(){};,`` characters, filters ``_IMPORT_NOISE_TOKENS``
+    (``import`` / ``from`` / ``as`` / ``use`` / ``pub``) and preserves the
+    original order of first appearance.
+    """
+    seen: set[str] = set()
+    result: list[str] = []
+    for raw in names:
+        cleaned = raw.strip().strip("(){};,")
+        if not cleaned or cleaned in _IMPORT_NOISE_TOKENS:
+            continue
+        if cleaned in seen:
+            continue
+        seen.add(cleaned)
+        result.append(cleaned)
+    return result
+
+
 def _extract_import_bound_names(node: Any, source: str) -> list[str]:
     """Return the locally bound identifiers introduced by an import-like node.
 
@@ -440,62 +510,17 @@ def _extract_import_bound_names(node: Any, source: str) -> list[str]:
     index (Python, JS/TS, Java, Go, Rust, C/C++) by walking direct
     children rather than running per-language tree-sitter queries. It
     never raises; on unfamiliar shapes it returns ``[]``.
+
+    r37eb (dogfood): 71 lines → ~10 of orchestration. Per-language dispatch
+    moved to ``_dispatch_import_node``; dedupe+filter moved to
+    ``_dedupe_bound_names``.
     """
     names: list[str] = []
     try:
-        node_type = node.type
-        if node_type == "import_from_statement":
-            _collect_python_from_import(node, source, names)
-        elif node_type == "import_statement":
-            # Python ``import a, b``; JS/TS ``import x, { y } from 'foo'``;
-            # the children disambiguate.
-            _collect_import_statement(node, source, names)
-        elif node_type == "import_declaration":
-            # Java / JS — single-symbol shape predominantly, but JS uses
-            # ``import_clause`` children that we walk recursively.
-            _collect_import_declaration(node, source, names)
-        elif node_type == "use_declaration":
-            # Rust ``use mod::{A, B};``
-            _collect_rust_use(node, source, names)
-        elif node_type == "package_declaration":
-            # Go ``package x`` — emit the package name itself.
-            # r37du (dogfood): flatten nesting 6 → 3 via _first_text_child.
-            _first_text_child(node, source, ("identifier", "package_identifier"), names)
-        elif node_type == "require_statement":
-            # Some JS / Lua dialects expose ``require_statement`` directly.
-            _first_text_child(
-                node,
-                source,
-                ("string", "string_fragment", "identifier"),
-                names,
-                strip_chars="'\"",
-            )
-        elif node_type == "include_directive":
-            # C/C++ — header name is the user-facing handle.
-            _first_text_child(
-                node,
-                source,
-                ("string_literal", "system_lib_string"),
-                names,
-                strip_chars='<>"',
-            )
-        elif node_type == "extern_crate_item":
-            _collect_extern_crate_names(node, source, names)
+        _dispatch_import_node(node, source, names)
     except Exception:  # noqa: BLE001 — never crash the indexer on a weird node
         return []
-
-    # De-duplicate while preserving order; drop empties and obvious noise.
-    seen: set[str] = set()
-    result: list[str] = []
-    for raw in names:
-        cleaned = raw.strip().strip("(){};,")
-        if not cleaned or cleaned in {"import", "from", "as", "use", "pub"}:
-            continue
-        if cleaned in seen:
-            continue
-        seen.add(cleaned)
-        result.append(cleaned)
-    return result
+    return _dedupe_bound_names(names)
 
 
 def _bound_name_from_aliased(node: Any, source: str) -> str:
