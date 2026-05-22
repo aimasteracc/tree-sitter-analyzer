@@ -449,6 +449,31 @@ class CsvFormatter(IFormatter):
         return csv_content.rstrip("\n")
 
 
+def _append_full_element_lines(lines: list[str], element: CodeElement) -> None:
+    """Append the per-element block lines used by ``FullFormatter.format``.
+
+    r37cl (dogfood): tool flagged ``FullFormatter.format`` at nesting
+    depth 7 (L498). The per-element ``hasattr`` chain (visibility →
+    parameters → return_type) moves here so the outer formatter body
+    stays flat.
+    """
+    lines.append(f"  {element.name}")
+    lines.append(f"    Lines: {element.start_line}-{element.end_line}")
+    lines.append(f"    Language: {element.language}")
+
+    if hasattr(element, "visibility"):
+        lines.append(f"    Visibility: {getattr(element, 'visibility', 'unknown')}")
+    if hasattr(element, "parameters"):
+        params = getattr(element, "parameters", [])
+        if params:
+            lines.append(f"    Parameters: {', '.join(str(p) for p in params)}")
+    if hasattr(element, "return_type"):
+        ret_type = getattr(element, "return_type", None)
+        if ret_type:
+            lines.append(f"    Return Type: {ret_type}")
+    lines.append("")
+
+
 class FullFormatter(IFormatter):
     """Full table formatter for CodeElement lists"""
 
@@ -481,29 +506,9 @@ class FullFormatter(IFormatter):
         for element_type, group_elements in element_groups.items():
             lines.append(f"{element_type.upper()}S ({len(group_elements)})")
             lines.append("-" * 40)
-
             for element in group_elements:
-                lines.append(f"  {element.name}")
-                lines.append(f"    Lines: {element.start_line}-{element.end_line}")
-                lines.append(f"    Language: {element.language}")
-
-                if hasattr(element, "visibility"):
-                    lines.append(
-                        f"    Visibility: {getattr(element, 'visibility', 'unknown')}"
-                    )
-                if hasattr(element, "parameters"):
-                    params = getattr(element, "parameters", [])
-                    if params:
-                        lines.append(
-                            f"    Parameters: {', '.join(str(p) for p in params)}"
-                        )
-                if hasattr(element, "return_type"):
-                    ret_type = getattr(element, "return_type", None)
-                    if ret_type:
-                        lines.append(f"    Return Type: {ret_type}")
-
-                lines.append("")
-
+                # r37cl (dogfood): extracted to flatten nesting 7 → 3.
+                _append_full_element_lines(lines, element)
             lines.append("")
 
         return "\n".join(lines)
