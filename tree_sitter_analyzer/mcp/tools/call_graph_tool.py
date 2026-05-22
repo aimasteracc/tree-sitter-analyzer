@@ -98,13 +98,24 @@ class CodeGraphCallTool(BaseMCPTool):
         output_format = arguments.get("output_format", "toon")
         graph = self._get_call_graph()
 
+        # pain #6 (dogfood): call_graph emitted verdict=null in every mode.
+        # For function lookups, NOT_FOUND when the function isn't anywhere
+        # tells the agent to stop chasing — INFO otherwise.
         if mode == "summary":
-            result = {"success": True, "mode": "summary", **graph.summary()}
+            summary = graph.summary()
+            verdict = "INFO" if summary.get("function_count", 0) > 0 else "NOT_FOUND"
+            result = {
+                "success": True,
+                "mode": "summary",
+                "verdict": verdict,
+                **summary,
+            }
         elif mode == "all_functions":
             funcs = graph.all_functions()
             result = {
                 "success": True,
                 "mode": "all_functions",
+                "verdict": "INFO" if funcs else "NOT_FOUND",
                 "count": len(funcs),
                 "functions": funcs,
             }
@@ -115,6 +126,7 @@ class CodeGraphCallTool(BaseMCPTool):
             result = {
                 "success": True,
                 "mode": "callers",
+                "verdict": "INFO" if callers else "NOT_FOUND",
                 "function": func_name,
                 "caller_count": len(callers),
                 "callers": callers,
@@ -126,6 +138,7 @@ class CodeGraphCallTool(BaseMCPTool):
             result = {
                 "success": True,
                 "mode": "callees",
+                "verdict": "INFO" if callees else "NOT_FOUND",
                 "function": func_name,
                 "callee_count": len(callees),
                 "callees": callees,
@@ -138,6 +151,7 @@ class CodeGraphCallTool(BaseMCPTool):
             result = {
                 "success": True,
                 "mode": "chain",
+                "verdict": "INFO" if chain else "NOT_FOUND",
                 "function": func_name,
                 "depth": depth,
                 "edge_count": len(chain),

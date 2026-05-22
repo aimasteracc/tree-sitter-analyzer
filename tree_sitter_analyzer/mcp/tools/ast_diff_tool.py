@@ -106,10 +106,17 @@ class ASTDiffTool(BaseMCPTool):
         mode = arguments.get("mode", "diff_files")
         if mode == "diff_files":
             if not arguments.get("old_file") or not arguments.get("new_file"):
-                raise ValueError("old_file and new_file are required for diff_files mode")
+                raise ValueError(
+                    "old_file and new_file are required for diff_files mode"
+                )
         elif mode == "diff_strings":
-            if arguments.get("old_source") is None or arguments.get("new_source") is None:
-                raise ValueError("old_source and new_source are required for diff_strings mode")
+            if (
+                arguments.get("old_source") is None
+                or arguments.get("new_source") is None
+            ):
+                raise ValueError(
+                    "old_source and new_source are required for diff_strings mode"
+                )
             if not arguments.get("language"):
                 raise ValueError("language is required for diff_strings mode")
         elif mode == "diff_git":
@@ -141,7 +148,17 @@ class ASTDiffTool(BaseMCPTool):
         else:
             raise ValueError(f"Unknown mode: {mode}")
 
-        response: dict[str, Any] = {"success": True, **result.to_dict()}
+        result_dict = result.to_dict()
+        # pain #5 (dogfood): ast-diff had no verdict. NOT_FOUND when the two
+        # sides are identical (zero hunks), INFO when there are real changes.
+        # We deliberately don't escalate to REVIEW/CAUTION here — diff
+        # severity is the semantic_classify tool's job.
+        verdict = "NOT_FOUND" if not result_dict.get("hunks") else "INFO"
+        response: dict[str, Any] = {
+            "success": True,
+            "verdict": verdict,
+            **result_dict,
+        }
 
         from ..utils.format_helper import apply_toon_format_to_response
 
