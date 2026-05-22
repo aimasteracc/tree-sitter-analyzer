@@ -202,6 +202,37 @@ def _record_field_usage(node: Any, ns: NodeStats, lang_obj: Any) -> None:
         )
 
 
+def _empty_gap_report(language: str) -> CoverageGapReport:
+    """Build a zeroed ``CoverageGapReport`` ready for in-place edits.
+
+    Used by ``analyze_coverage_gap`` as the canvas for both error paths
+    (grammar load failure, missing corpus) so the report shape is
+    consistent across early returns.
+    """
+    return CoverageGapReport(
+        language=language,
+        total_node_types=0,
+        discovered_node_types=[],
+        missing_node_types=[],
+        wrapper_candidates=[],
+        coverage_rate=0.0,
+        elapsed_ms=0.0,
+    )
+
+
+def _no_corpus_report(
+    empty_report: CoverageGapReport,
+    all_types: list[str],
+    start: float,
+) -> CoverageGapReport:
+    """Populate ``empty_report`` for the "grammar loaded, corpus missing" branch."""
+    log_warning(f"No corpus code for '{empty_report.language}', skipping discovery")
+    empty_report.total_node_types = len(all_types)
+    empty_report.missing_node_types = list(all_types)
+    empty_report.elapsed_ms = (time.perf_counter() - start) * 1000
+    return empty_report
+
+
 def _append_wrapper_lines(
     lines: list[str], wrapper_candidates: list[WrapperCandidate]
 ) -> None:
@@ -223,6 +254,87 @@ def _append_wrapper_lines(
             f"reasons: {', '.join(wc.reasons)})"
         )
     lines.append("")
+
+
+def _append_summary_rows(
+    lines: list[str], results: dict[str, CoverageGapReport]
+) -> tuple[int, int]:
+    """Append summary-table rows to ``lines``; return ``(total_types, total_discovered)``.
+
+    OK reports contribute to the totals via ``coverage_rate``-based
+    back-calculation. Failed reports emit a single error row with em-dash
+    placeholders so the table still tabulates the failure.
+
+    r37eg (dogfood): lifted from ``generate_report`` to keep the main body
+    a thin orchestrator.
+    """
+    total_types = 0
+    total_discovered = 0
+    for lang, report in sorted(results.items()):
+        if not report.is_ok:
+            lines.append(f"| {lang} | — | — | — | — | ❌ {report.error} |")
+            continue
+        # Use coverage_rate to back-calculate discovered count in grammar
+        discovered_in_grammar = round(
+            report.coverage_rate / 100 * report.total_node_types
+        )
+        wrapper_count = len(report.wrapper_candidates)
+        status = "✅" if report.coverage_rate >= 80 else "⚠️"
+        lines.append(
+            f"| {lang} "
+            f"| {report.total_node_types} "
+            f"| {discovered_in_grammar} "
+            f"| {report.coverage_rate:.1f}% "
+            f"| {wrapper_count} "
+            f"| {status} |"
+        )
+        total_types += report.total_node_types
+        total_discovered += discovered_in_grammar
+    return total_types, total_discovered
+
+
+def _overall_totals_lines(total_discovered: int, total_types: int) -> list[str]:
+    """Build the ``**Total**: discovered/total (X.X% overall coverage)`` line."""
+    overall = total_discovered / total_types * 100 if total_types else 0
+    return [
+        "",
+        f"**Total**: {total_discovered}/{total_types} types discovered "
+        f"({overall:.1f}% overall coverage)",
+        "",
+    ]
+
+
+def _append_language_detail(
+    lines: list[str], lang: str, report: CoverageGapReport
+) -> None:
+    """Append the per-language ``### <lang>`` Markdown section.
+
+    Caller is responsible for filtering failed reports (``report.is_ok``)
+    before calling.
+    """
+    lines += [
+        f"### {lang}",
+        "",
+        f"- **Node types in grammar**: {report.total_node_types}",
+        f"- **Discovered in corpus**: {len(report.discovered_node_types)}",
+        f"- **Coverage**: {report.coverage_rate:.1f}%",
+        f"- **Analysis time**: {report.elapsed_ms:.1f}ms",
+        "",
+    ]
+    # r37dy (dogfood): flatten nesting 6 → 4 via _append_wrapper_lines.
+    _append_wrapper_lines(lines, report.wrapper_candidates)
+    if report.missing_node_types:
+        lines.append(
+            f"**Missing from corpus** ({len(report.missing_node_types)} types):"
+        )
+        shown = report.missing_node_types[:10]
+        lines.append(
+            "```\n"
+            + "\n".join(shown)
+            + ("\n..." if len(report.missing_node_types) > 10 else "")
+            + "\n```"
+        )
+        lines.append("")
 
 
 def _safe_field_name_for_id(lang_obj: Any, field_id: int) -> str | None:
@@ -449,63 +561,70 @@ class AutoDiscoveryEngine:
 
         Returns:
             CoverageGapReport 实例
+
+        r37eh (dogfood): 79 → ~20 lines. ``_empty_gap_report`` builds the
+        zeroed report; ``_load_node_types_or_empty`` handles the grammar
+        load + error path; ``_no_corpus_report`` and
+        ``_compute_corpus_coverage`` own the no-corpus / with-corpus paths.
         """
         start = time.perf_counter()
-
         if corpus_code is None:
             corpus_code = BUILTIN_CORPUS.get(language, "")
 
-        empty_report = CoverageGapReport(
-            language=language,
-            total_node_types=0,
-            discovered_node_types=[],
-            missing_node_types=[],
-            wrapper_candidates=[],
-            coverage_rate=0.0,
-            elapsed_ms=0.0,
+        empty_report = _empty_gap_report(language)
+        all_types_or_error = self._load_node_types_or_empty(
+            language, start, empty_report
         )
-
-        # 获取语法定义的全量 named node types
-        try:
-            all_types = self.get_all_node_types(language)
-        except (ValueError, ImportError) as e:
-            log_warning(f"Skipping '{language}': {e}")
-            elapsed = (time.perf_counter() - start) * 1000
-            empty_report.error = str(e)
-            empty_report.elapsed_ms = elapsed
-            return empty_report
+        if isinstance(all_types_or_error, CoverageGapReport):
+            return all_types_or_error
+        all_types = all_types_or_error
 
         if not corpus_code:
-            log_warning(f"No corpus code for '{language}', skipping discovery")
-            elapsed = (time.perf_counter() - start) * 1000
-            empty_report.total_node_types = len(all_types)
-            empty_report.missing_node_types = list(all_types)
-            empty_report.elapsed_ms = elapsed
+            return _no_corpus_report(empty_report, all_types, start)
+
+        return self._compute_corpus_coverage(language, corpus_code, all_types, start)
+
+    def _load_node_types_or_empty(
+        self,
+        language: str,
+        start: float,
+        empty_report: CoverageGapReport,
+    ) -> list[str] | CoverageGapReport:
+        """Return grammar node types or an early ``empty_report`` on failure."""
+        try:
+            return self.get_all_node_types(language)
+        except (ValueError, ImportError) as e:
+            log_warning(f"Skipping '{language}': {e}")
+            empty_report.error = str(e)
+            empty_report.elapsed_ms = (time.perf_counter() - start) * 1000
             return empty_report
 
-        # 解析 corpus，统计出现的节点类型
+    def _compute_corpus_coverage(
+        self,
+        language: str,
+        corpus_code: str,
+        all_types: list[str],
+        start: float,
+    ) -> CoverageGapReport:
+        """Parse ``corpus_code``, collect node stats, and assemble the gap report."""
         stats_map = _collect_node_stats(language, corpus_code)
         discovered = sorted(stats_map.keys())
 
         all_types_set = set(all_types)
         discovered_set = set(discovered)
         missing = sorted(all_types_set - discovered_set)
-
         coverage = (
             len(discovered_set & all_types_set) / len(all_types_set) * 100
             if all_types_set
             else 0.0
         )
 
-        # 检测 wrapper 节点
         wrappers = self.detect_wrapper_nodes(language, corpus_code)
-
         elapsed = (time.perf_counter() - start) * 1000
         log_debug(
             f"[{language}] {len(discovered)}/{len(all_types)} types discovered "
             f"({coverage:.1f}%) in {elapsed:.1f}ms"
         )
-
         return CoverageGapReport(
             language=language,
             total_node_types=len(all_types),
@@ -547,6 +666,10 @@ class AutoDiscoveryEngine:
 
         Returns:
             Markdown 字符串
+
+        r37eg (dogfood): 87 → ~15 lines of orchestration. Per-section
+        helpers (``_summary_table_lines`` / ``_overall_totals_line`` /
+        ``_language_detail_lines``) own each Markdown subsection.
         """
         lines: list[str] = [
             "# Phase 3 Auto-Discovery Report",
@@ -556,70 +679,12 @@ class AutoDiscoveryEngine:
             "| Language | Total Types | Discovered | Coverage | Wrappers | Status |",
             "|----------|-------------|------------|----------|----------|--------|",
         ]
+        total_types, total_discovered = _append_summary_rows(lines, results)
+        lines += _overall_totals_lines(total_discovered, total_types)
 
-        total_types = 0
-        total_discovered = 0
-
-        for lang, report in sorted(results.items()):
-            if not report.is_ok:
-                lines.append(f"| {lang} | — | — | — | — | ❌ {report.error} |")
-                continue
-
-            # Use coverage_rate to back-calculate discovered count in grammar
-            discovered_in_grammar = round(
-                report.coverage_rate / 100 * report.total_node_types
-            )
-            wrapper_count = len(report.wrapper_candidates)
-            status = "✅" if report.coverage_rate >= 80 else "⚠️"
-
-            lines.append(
-                f"| {lang} "
-                f"| {report.total_node_types} "
-                f"| {discovered_in_grammar} "
-                f"| {report.coverage_rate:.1f}% "
-                f"| {wrapper_count} "
-                f"| {status} |"
-            )
-            total_types += report.total_node_types
-            total_discovered += discovered_in_grammar
-
-        overall = total_discovered / total_types * 100 if total_types else 0
-        lines += [
-            "",
-            f"**Total**: {total_discovered}/{total_types} types discovered "
-            f"({overall:.1f}% overall coverage)",
-            "",
-        ]
-
-        # 每语言详情
         lines += ["## Details", ""]
         for lang, report in sorted(results.items()):
             if not report.is_ok:
                 continue
-            lines += [
-                f"### {lang}",
-                "",
-                f"- **Node types in grammar**: {report.total_node_types}",
-                f"- **Discovered in corpus**: {len(report.discovered_node_types)}",
-                f"- **Coverage**: {report.coverage_rate:.1f}%",
-                f"- **Analysis time**: {report.elapsed_ms:.1f}ms",
-                "",
-            ]
-
-            # r37dy (dogfood): flatten nesting 6 → 4 via _append_wrapper_lines.
-            _append_wrapper_lines(lines, report.wrapper_candidates)
-
-            if report.missing_node_types:
-                lines.append(
-                    f"**Missing from corpus** ({len(report.missing_node_types)} types):"
-                )
-                shown = report.missing_node_types[:10]
-                lines.append(
-                    "```\n"
-                    + "\n".join(shown)
-                    + ("\n..." if len(report.missing_node_types) > 10 else "")
-                    + "\n```"
-                )
-                lines.append("")
-
+            _append_language_detail(lines, lang, report)
         return "\n".join(lines)
