@@ -59,7 +59,12 @@ _EXCLUDE_DIRS = {
 }
 
 _SOURCE_EXTENSIONS = {
-    ".py", ".js", ".jsx", ".ts", ".tsx", ".java",
+    ".py",
+    ".js",
+    ".jsx",
+    ".ts",
+    ".tsx",
+    ".java",
 }
 
 _FRAMEWORK_FILES = {
@@ -135,6 +140,23 @@ class RouteInfo:
         )
 
 
+def _resolve_symlink_target(symlink_path: str, root: Path) -> Path | None:
+    """Resolve a file-symlink, returning its target if it lives under ``root``.
+
+    r37bf: extracted so ``RouteDetector._classify_dir_entry`` reads as a
+    flat dispatch. Returns ``None`` on any resolution / boundary / extension
+    miss — caller treats that as "skip this entry".
+    """
+    try:
+        target = Path(symlink_path).resolve()
+        target.relative_to(root)
+    except (OSError, ValueError):
+        return None
+    if target.suffix.lower() not in _SOURCE_EXTENSIONS:
+        return None
+    return target
+
+
 class RouteDetector:
     """
     Detect HTTP route declarations across web frameworks.
@@ -205,7 +227,11 @@ class RouteDetector:
         ``bulk_put`` transaction at the end. Reduces SQLite chatter from
         2N (lookups + inserts) to ~2 queries total.
         """
-        assert self._cache is not None
+        # r37bf: was ``assert self._cache is not None`` — bandit B101 flags
+        # asserts as stripped under ``-O``. Replace with an explicit raise so
+        # the invariant holds in all build modes.
+        if self._cache is None:
+            raise RuntimeError("_detect_all_cached called without an enabled cache")
         path_with_mtime: list[tuple[str, int]] = []
         mtime_lookup: dict[str, int] = {}
         for fp in files:
@@ -289,12 +315,16 @@ class RouteDetector:
         On the analyzer's own repo this dropped walk time from 260 ms to
         ~30 ms (5–8× faster), and it scales linearly with source-file count
         rather than total tree size.
+
+        r37bf (dogfood): tool flagged this at nesting depth 8 (L318). The
+        per-entry classification (excluded dir / dir / symlink / file)
+        moved into ``_classify_dir_entry`` so this method now walks the
+        stack and delegates each entry. Behaviour preserved.
         """
         import os as _os
 
         files: list[Path] = []
         root = self.project_root
-        # Use a stack of (dir_path, dir_entry_is_symlink) so we resolve once.
         stack: list[str] = [str(root)]
         while stack:
             current = stack.pop()
@@ -304,33 +334,42 @@ class RouteDetector:
                 continue
             with it:
                 for entry in it:
-                    name = entry.name
-                    if name in _EXCLUDE_DIRS:
-                        continue
-                    if entry.is_dir(follow_symlinks=False):
-                        stack.append(entry.path)
-                        continue
-                    if not entry.is_file(follow_symlinks=False):
-                        # A symlink to a file — must resolve and re-check
-                        # boundary before parsing.
-                        if entry.is_symlink():
-                            try:
-                                target = Path(entry.path).resolve()
-                                target.relative_to(root)
-                            except (OSError, ValueError):
-                                continue
-                            if target.suffix.lower() not in _SOURCE_EXTENSIONS:
-                                continue
-                            files.append(Path(entry.path))
-                        continue
-                    # Plain file — extension filter is cheaper than path ops.
-                    dot = name.rfind(".")
-                    if dot == -1:
-                        continue
-                    if name[dot:].lower() not in _SOURCE_EXTENSIONS:
-                        continue
-                    files.append(Path(entry.path))
+                    self._classify_dir_entry(entry, root, stack, files)
         return files
+
+    @staticmethod
+    def _classify_dir_entry(
+        entry: Any,
+        root: Path,
+        stack: list[str],
+        files: list[Path],
+    ) -> None:
+        """Sort a single scandir entry into ``stack`` (recurse) or ``files``.
+
+        r37bf (dogfood): extracted to flatten 8-deep nesting in
+        ``_walk_source_files``. Excluded dirs are dropped, plain files
+        get an extension check, file-symlinks are resolved-then-checked
+        for boundary + extension.
+        """
+        name = entry.name
+        if name in _EXCLUDE_DIRS:
+            return
+        if entry.is_dir(follow_symlinks=False):
+            stack.append(entry.path)
+            return
+        if not entry.is_file(follow_symlinks=False):
+            if entry.is_symlink():
+                resolved = _resolve_symlink_target(entry.path, root)
+                if resolved is not None:
+                    files.append(Path(entry.path))
+            return
+        # Plain file — extension filter (cheaper than path ops).
+        dot = name.rfind(".")
+        if dot == -1:
+            return
+        if name[dot:].lower() not in _SOURCE_EXTENSIONS:
+            return
+        files.append(Path(entry.path))
 
     def _parse_tree(self, file_path: str, language: str):
         result = self._parser.parse_file(file_path, language)
