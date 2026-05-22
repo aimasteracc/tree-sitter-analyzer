@@ -67,6 +67,81 @@ def _canonicalize_change_impact_verdict(result: dict[str, Any]) -> None:
         result["verdict"] = _canonicalize_verdict(top)
 
 
+_JOURNAL_VERDICT_RANK: dict[str, int] = {
+    "SAFE": 0,
+    "INFO": 0,
+    "NOT_FOUND": 0,
+    "CAUTION": 1,
+    "REVIEW": 2,
+    "WARN": 3,
+    "ERROR": 4,
+    "UNSAFE": 5,
+}
+
+
+def _enrich_with_journal_decisions(
+    result: dict[str, Any],
+    project_root: str | None,
+    changed_files: list[str],
+) -> None:
+    """Phase 3 (r37fG): surface related decision_journal entries.
+
+    For every file in ``changed_files``, search the project's decision
+    journal for entries whose ``scope_paths`` covers that file. Attach
+    matches to ``result["related_decisions"]`` and — if any matched
+    verdict is more severe than the current change_impact verdict —
+    upgrade the envelope verdict so the calling agent cannot silently
+    bypass a recorded REVIEW / UNSAFE / WARN decision.
+
+    Mutates ``result`` in place. Never downgrades. Never raises — a
+    journal-side failure must not block change_impact's primary output.
+    """
+    if not project_root or not changed_files:
+        return
+    try:
+        from ...decision_journal import DecisionJournal
+
+        journal = DecisionJournal(project_root)
+        matches: dict[str, dict[str, Any]] = {}
+        for fp in changed_files[:32]:
+            for rec in journal.search(path_scope=fp, limit=10):
+                matches[rec.id] = rec.to_dict()
+        if not matches:
+            return
+        related = list(matches.values())
+        result["related_decisions"] = related
+        strongest = max(
+            (_JOURNAL_VERDICT_RANK.get(d.get("verdict", ""), 0) for d in related),
+            default=0,
+        )
+        if strongest <= 0:
+            return
+        strongest_label = next(
+            (lbl for lbl, rank in _JOURNAL_VERDICT_RANK.items() if rank == strongest),
+            None,
+        )
+        if strongest_label is None:
+            return
+        agent_summary = result.get("agent_summary")
+        current_verdict = (
+            agent_summary.get("verdict") if isinstance(agent_summary, dict) else None
+        )
+        current_rank = _JOURNAL_VERDICT_RANK.get(current_verdict or "", 0)
+        if strongest <= current_rank:
+            return
+        if isinstance(agent_summary, dict):
+            agent_summary["verdict"] = strongest_label
+            existing_next = agent_summary.get("next_step") or ""
+            agent_summary["next_step"] = (
+                f"⚠ {len(related)} recorded decision(s) match the changed "
+                f"files — strongest verdict={strongest_label}. Surface "
+                "related_decisions verbatim; do NOT reframe. " + str(existing_next)
+            ).strip()
+        result["verdict"] = strongest_label
+    except Exception:
+        return
+
+
 def _resolve_scope_path(project_root: str | None, raw: str) -> Path:
     """Resolve a user-supplied scope path against the project root.
 
@@ -285,6 +360,11 @@ class ChangeImpactTool(BaseMCPTool):
                 scope_paths=scope_paths,
             )
         )
+        # r37fG phase 3: surface related decision_journal entries and
+        # upgrade the envelope verdict if any matched decision is more
+        # severe than the change-impact builder's primary verdict. The
+        # journal stays advisory — never downgrades, never raises.
+        _enrich_with_journal_decisions(result, self.project_root, changed_files)
         result = attach_queue_ledger(
             result,
             mode=mode,
