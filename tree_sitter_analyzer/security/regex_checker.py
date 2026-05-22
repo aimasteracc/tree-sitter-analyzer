@@ -128,17 +128,18 @@ class RegexSafetyChecker:
         Returns:
             Description of dangerous pattern found, or None if safe
         """
+        # r37dh (dogfood): flattened nesting 6 → 4 via early-continue
+        # when ``re.search`` doesn't match.
         for dangerous_pattern in self.DANGEROUS_PATTERNS:
             try:
-                if re.search(dangerous_pattern, pattern):
-                    log_warning(
-                        f"Dangerous pattern detected: {dangerous_pattern} in {pattern}"
-                    )
-                    return dangerous_pattern
+                match = re.search(dangerous_pattern, pattern)
             except re.error:
                 # If the dangerous pattern itself is invalid, skip it
                 continue
-
+            if match is None:
+                continue
+            log_warning(f"Dangerous pattern detected: {dangerous_pattern} in {pattern}")
+            return dangerous_pattern
         return None
 
     def _check_compilation(self, pattern: str) -> str | None:
