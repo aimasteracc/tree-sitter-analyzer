@@ -86,6 +86,96 @@ def _per_element_counts(elements: Sequence[object]) -> dict[str, int]:
     return counts
 
 
+def _collect_complexity_metrics(elements: Sequence[object]) -> dict[str, float]:
+    """Aggregate function-level complexity stats from ``elements``.
+
+    Returns ``{"total": int, "average": float, "max": int}``.
+    Non-function elements are ignored; missing ``complexity_score`` defaults
+    to 1 (a single-statement function has cyclomatic complexity 1).
+    """
+    scores = [
+        getattr(element, "complexity_score", 1)
+        for element in elements
+        if is_element_of_type(element, ELEMENT_TYPE_FUNCTION)
+    ]
+    total = sum(scores) if scores else 0
+    return {
+        "total": total,
+        "average": round(total / len(scores), 2) if scores else 0.0,
+        "max": max(scores) if scores else 0,
+    }
+
+
+def _build_elements_payload(
+    elements: Sequence[object],
+) -> list[dict[str, object]]:
+    """Convert AST elements to JSON-payload dicts via ``element_to_dict``.
+
+    Q1 (round-33 dogfood): uses the canonical helper instead of hand-rolling
+    9 keys. The helper iterates the documented ``_OPTIONAL_ELEM_FIELDS`` list,
+    so plugin-populated values like ``is_async`` / ``is_static`` /
+    ``is_constructor`` / ``is_method`` / ``superclass`` / ``class_type`` /
+    ``module_path`` / ``is_constant`` reach the JSON output instead of
+    being silently stripped. Adds the legacy ``type`` + ``complexity`` aliases.
+    """
+    payload: list[dict[str, object]] = []
+    elements_list = list(elements)
+    for element in elements_list:
+        elem_dict = element_to_dict(element, elements_list)
+        elem_dict["type"] = get_element_type(element)
+        elem_dict["complexity"] = elem_dict.get("complexity_score")
+        payload.append(elem_dict)
+    return payload
+
+
+def _full_analysis_dict(
+    analysis_result: "AnalysisResult",
+    elements_payload: list[dict[str, object]],
+    counts: dict[str, int],
+    complexity: dict[str, float],
+) -> dict[str, object]:
+    """Assemble the canonical full-analysis envelope.
+
+    S1 (round-37 dogfood): per-kind aggregations match MCP ``analyze_scale``.
+    r37y (dogfood): emit ``summary_line`` + ``agent_summary`` + ``verdict``
+    so agents can branch on shape without special-casing CLI vs MCP.
+    """
+    summary_line = _build_advanced_summary_line(
+        analysis_result.file_path,
+        analysis_result.language,
+        analysis_result.line_count,
+        counts,
+        len(analysis_result.elements),
+        mode="full",
+    )
+    agent_summary = {
+        "summary_line": summary_line,
+        "next_step": (
+            "Use --statistics for counts only, or `analyze_code_structure` "
+            "(MCP) for grouped element tables."
+        ),
+        "verdict": "INFO",
+    }
+    return {
+        "file_path": analysis_result.file_path,
+        "language": analysis_result.language,
+        "line_count": analysis_result.line_count,
+        "element_count": len(analysis_result.elements),
+        "method_count": counts["method_count"],
+        "class_count": counts["class_count"],
+        "field_count": counts["field_count"],
+        "import_count": counts["import_count"],
+        "node_count": analysis_result.node_count,
+        "elements": elements_payload,
+        "complexity": complexity,
+        "success": analysis_result.success,
+        "analysis_time": analysis_result.analysis_time,
+        "summary_line": summary_line,
+        "verdict": "INFO",
+        "agent_summary": agent_summary,
+    }
+
+
 class AdvancedCommand(BaseCommand):
     """Command for advanced analysis."""
 
@@ -173,92 +263,32 @@ class AdvancedCommand(BaseCommand):
                 output_data(f"{key}: {value}")
 
     def _output_full_analysis(self, analysis_result: "AnalysisResult") -> None:
-        """Output full analysis results."""
+        """Output full analysis results.
+
+        r37f0 (dogfood): 87→~25 lines. ``_collect_complexity_metrics`` does
+        the function-level complexity aggregation; ``_build_elements_payload``
+        converts AST elements via the canonical helper; ``_full_analysis_dict``
+        assembles the envelope (preserves r37y agent_summary contract).
+        """
         if self.args.output_format not in ("json", "toon"):
             output_section("Advanced Analysis Results")
-        complexity_scores = [
-            getattr(element, "complexity_score", 1)
-            for element in analysis_result.elements
-            if is_element_of_type(element, ELEMENT_TYPE_FUNCTION)
-        ]
-        total_complexity = sum(complexity_scores) if complexity_scores else 0
-        avg_complexity = (
-            total_complexity / len(complexity_scores) if complexity_scores else 0
-        )
 
-        elements_payload: list[dict[str, object]] = []
-        for element in analysis_result.elements:
-            # Q1 (round-33 dogfood): use the canonical helper instead of
-            # hand-rolling 9 keys. The helper iterates the documented
-            # ``_OPTIONAL_ELEM_FIELDS`` list, so plugin-populated values
-            # like ``is_async``, ``is_static``, ``is_constructor``,
-            # ``is_method``, ``superclass``, ``class_type``,
-            # ``module_path``, ``is_constant`` reach the JSON output
-            # instead of being silently stripped.
-            elem_dict = element_to_dict(element, analysis_result.elements)
-            # Preserve the canonical ``type`` (lowercased class name) from
-            # the helper, but also preserve the legacy element_type used
-            # by older consumers — they agree for normal elements.
-            elem_dict["type"] = get_element_type(element)
-            # Back-compat shim: CLI historically exposed ``complexity``
-            # as the element-level shortcut for ``complexity_score``.
-            elem_dict["complexity"] = elem_dict.get("complexity_score")
-            elements_payload.append(elem_dict)
-
-        # S1 (round-37 dogfood): add per-kind aggregations for parity with
-        # MCP ``analyze_scale`` (see _output_statistics for the same fix).
+        complexity = _collect_complexity_metrics(analysis_result.elements)
+        elements_payload = _build_elements_payload(analysis_result.elements)
         counts = _per_element_counts(analysis_result.elements)
-        # r37y (dogfood): canonical envelope — same fix as
-        # ``_output_statistics`` above. The full-analysis path used to
-        # emit zero envelope keys (``summary_line``/``agent_summary``/
-        # ``verdict`` all None), making it impossible for agents to
-        # branch on the response shape without special-casing.
-        summary_line = _build_advanced_summary_line(
-            analysis_result.file_path,
-            analysis_result.language,
-            analysis_result.line_count,
-            counts,
-            len(analysis_result.elements),
-            mode="full",
+        result_dict = _full_analysis_dict(
+            analysis_result, elements_payload, counts, complexity
         )
-        agent_summary = {
-            "summary_line": summary_line,
-            "next_step": (
-                "Use --statistics for counts only, or `analyze_code_structure` "
-                "(MCP) for grouped element tables."
-            ),
-            "verdict": "INFO",
-        }
-        result_dict: dict[str, object] = {
-            "file_path": analysis_result.file_path,
-            "language": analysis_result.language,
-            "line_count": analysis_result.line_count,
-            "element_count": len(analysis_result.elements),
-            "method_count": counts["method_count"],
-            "class_count": counts["class_count"],
-            "field_count": counts["field_count"],
-            "import_count": counts["import_count"],
-            "node_count": analysis_result.node_count,
-            "elements": elements_payload,
-            "complexity": {
-                "total": total_complexity,
-                "average": round(avg_complexity, 2),
-                "max": max(complexity_scores) if complexity_scores else 0,
-            },
-            "success": analysis_result.success,
-            "analysis_time": analysis_result.analysis_time,
-            "summary_line": summary_line,
-            "verdict": "INFO",
-            "agent_summary": agent_summary,
-        }
+
         if self.args.output_format == "json":
             output_json(result_dict)
-        elif self.args.output_format == "toon" and _toon_available:
+            return
+        if self.args.output_format == "toon" and _toon_available:
             use_tabs = getattr(self.args, "toon_use_tabs", False)
             formatter = ToonFormatter(use_tabs=use_tabs)
             print(formatter.format(result_dict))
-        else:
-            self._output_text_analysis(analysis_result)
+            return
+        self._output_text_analysis(analysis_result)
 
     def _output_text_analysis(self, analysis_result: "AnalysisResult") -> None:
         """Output analysis in text format."""
