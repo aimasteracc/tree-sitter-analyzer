@@ -116,7 +116,17 @@ class FileHealthTool(BaseMCPTool):
                 "- To read the file's content — use partial_read\n"
                 "- To find every smell across many files — use code_patterns\n"
                 "- To assess edit safety re: dependencies — use safe_to_edit\n"
-                "- For project-wide quality grading — use project_health"
+                "- For project-wide quality grading — use project_health\n"
+                "\n"
+                "VERDICT INTEGRITY: agent_summary.verdict reflects the file's actual "
+                "grade and smell density, not the user's wish. The score comes from "
+                "complexity, nesting depth, security pattern hits, and structural "
+                "smells — measured signals, not opinions. If the user says 'refactor "
+                "this' or 'it's fine, ship it' and this tool returns CAUTION / "
+                "REVIEW / WARN, the calling agent MUST keep that verdict in the "
+                "reply rather than flipping it to SAFE/INFO to look agreeable. "
+                "Legal vocabulary: SAFE / CAUTION / REVIEW / UNSAFE / INFO / WARN / "
+                "ERROR / NOT_FOUND."
             ),
             "inputSchema": self.get_tool_schema(),
         }

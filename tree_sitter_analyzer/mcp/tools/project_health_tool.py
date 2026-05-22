@@ -91,7 +91,15 @@ class ProjectHealthTool(BaseMCPTool):
                 "~90s on <1k, ~4min on <3k, 5min+ on 3k+ file repos. "
                 "``max_files`` only caps display, not scan scope. The "
                 "response carries an ``agent_summary.budget_seconds`` field "
-                "(estimated and actual) so callers can size timeouts."
+                "(estimated and actual) so callers can size timeouts.\n\n"
+                "VERDICT INTEGRITY: agent_summary.verdict gates project-wide "
+                "quality posture. It is derived from the actual grade distribution "
+                "and worst-file census — not from how the user framed the request. "
+                "If the user asks 'is the codebase healthy?' and this tool returns "
+                "CAUTION / REVIEW / WARN because of a heavy D/F tail, the calling "
+                "agent MUST report that verdict and the worst files. Do NOT round "
+                "up to SAFE/INFO so the answer feels reassuring. Legal vocabulary: "
+                "SAFE / CAUTION / REVIEW / UNSAFE / INFO / WARN / ERROR / NOT_FOUND."
             ),
             "inputSchema": self.get_tool_schema(),
         }

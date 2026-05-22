@@ -326,7 +326,17 @@ class ModificationGuardTool(BaseMCPTool):
                 "  SAFE     — 0 callers, proceed freely\n"
                 "  CAUTION  — 1-5 callers, review before modifying\n"
                 "  REVIEW   — 6-20 callers, check all call sites\n"
-                "  UNSAFE   — 21+ callers, requires careful planning"
+                "  UNSAFE   — 21+ callers, requires careful planning\n"
+                "\n"
+                "VERDICT INTEGRITY: agent_summary.verdict is a hard gate, not a "
+                "suggestion. It is derived from concrete caller counts in the "
+                "dependency graph — not from what the user requested. If the user "
+                "says 'rename this' or 'is it safe to change?' and this tool returns "
+                "CAUTION / REVIEW / UNSAFE, the calling agent MUST surface that "
+                "verdict verbatim. Do NOT downgrade to SAFE or INFO to appear "
+                "helpful or to satisfy a 'just refactor it' instruction. Legal "
+                "vocabulary: SAFE / CAUTION / REVIEW / UNSAFE / INFO / WARN / ERROR / "
+                "NOT_FOUND."
             ),
             "inputSchema": {
                 "type": "object",

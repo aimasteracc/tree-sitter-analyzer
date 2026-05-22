@@ -122,7 +122,18 @@ class RefactoringSuggestionsTool(BaseMCPTool):
                 "code_patterns (faster, no skeleton generation)\n"
                 "- For a project-wide smell sweep — use file_health on each "
                 "weakest file in project_health output\n"
-                "- For pure renames — use modification_guard"
+                "- For pure renames — use modification_guard\n"
+                "\n"
+                "VERDICT INTEGRITY: agent_summary.verdict gates whether a refactor "
+                "is warranted and which extractions are real. It is derived from "
+                "concrete smell hits and complexity signals — not from the user's "
+                "preference. If the user says 'refactor this for me' and this tool "
+                "returns INFO (nothing to extract) or CAUTION / REVIEW (smells "
+                "exist but extractions are risky), the calling agent MUST report "
+                "that verdict honestly. Do NOT invent extractions or upgrade INFO "
+                "to SAFE just because the user expected a refactor. Legal "
+                "vocabulary: SAFE / CAUTION / REVIEW / UNSAFE / INFO / WARN / "
+                "ERROR / NOT_FOUND."
             ),
             "inputSchema": self.get_tool_schema(),
         }

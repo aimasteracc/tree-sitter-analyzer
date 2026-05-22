@@ -195,7 +195,17 @@ class ChangeImpactTool(BaseMCPTool):
                 "WHEN NOT TO USE:\n"
                 "- Before editing — use safe_to_edit instead\n"
                 "- For symbol-level rename — use modification_guard\n"
-                "- To see WHO calls a symbol — use trace_impact"
+                "- To see WHO calls a symbol — use trace_impact\n"
+                "\n"
+                "VERDICT INTEGRITY: agent_summary.verdict is the blast-radius gate, "
+                "not a tone signal. It is computed from the actual changed-file set, "
+                "dependency edges, and impacted test count — not from the user's "
+                "framing. If the user says 'just ship it' or 'is this safe to merge?' "
+                "and this tool returns REVIEW / WARN / UNSAFE / ERROR, the calling "
+                "agent MUST report that verdict verbatim and surface the impacted "
+                "files. Do NOT rewrite a REVIEW/WARN as SAFE/INFO to keep the user "
+                "moving. Legal vocabulary: SAFE / CAUTION / REVIEW / UNSAFE / INFO / "
+                "WARN / ERROR / NOT_FOUND."
             ),
             "inputSchema": self.get_tool_schema(),
         }

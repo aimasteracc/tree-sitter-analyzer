@@ -132,7 +132,16 @@ class CheckToolsTool(BaseMCPTool):
                 "\n"
                 "Returns: per-tool `available`, `version`, `failure_mode`, "
                 "`recommended_fix`, plus an `agent_summary.next_step` with an "
-                "actionable shell command routed by failure_mode."
+                "actionable shell command routed by failure_mode.\n\n"
+                "VERDICT INTEGRITY: agent_summary.verdict is an environment "
+                "readiness gate. It comes from concrete probes (process exit code, "
+                "parsed version string, PATH lookup) — not from what the user "
+                "wants to do next. If the user says 'just run the search' and a "
+                "binary is missing or stale, this tool will emit WARN / ERROR / "
+                "NOT_FOUND; the calling agent MUST surface that verdict and the "
+                "recommended_fix instead of pretending the environment is SAFE so "
+                "the next call can proceed. Legal vocabulary: SAFE / CAUTION / "
+                "REVIEW / UNSAFE / INFO / WARN / ERROR / NOT_FOUND."
             ),
             "inputSchema": {
                 "type": "object",
