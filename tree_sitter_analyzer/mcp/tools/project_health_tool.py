@@ -9,6 +9,7 @@ Returns grade distribution, F/D file list with recommendations, and top refactor
 import shlex
 import time
 from collections import Counter
+from dataclasses import dataclass
 from typing import Any
 
 from ...health_scorer import DIMENSION_WEIGHTS, HealthScorer
@@ -156,6 +157,58 @@ _GRADE_RECOMMENDATIONS = {
 }
 
 
+@dataclass(frozen=True)
+class _ProjectHealthAggregates:
+    """Pre-computed aggregates shared between health-result fields.
+
+    r37f2 (dogfood): held the call-graph between the half-dozen helpers
+    that ``_build_project_health_result`` had to thread through the dict
+    construction. Bundling them into a frozen dataclass lets the
+    response-assembly helper read fields by name instead of taking a
+    13-parameter signature.
+    """
+
+    grade_counts: Counter
+    grade_distribution: dict[str, int]
+    dim_avgs: dict[str, float | None]
+    signal_dims: dict[str, float]
+    worst: list[Any]
+    weakest_dim: str
+    agent_backlog: list[dict[str, Any]]
+    files: list[dict[str, Any]]
+    visible_limit: int
+
+
+def _compute_project_health_aggregates(
+    all_scores: list[Any], min_grade: str, max_files: int
+) -> _ProjectHealthAggregates:
+    """Pre-compute the aggregates that the response dict needs.
+
+    Grouped here so the construction site stays declarative — every
+    aggregate is named once when assembled and again when consumed.
+    """
+    grade_counts = Counter(score.grade for score in all_scores)
+    grade_distribution = {grade: grade_counts.get(grade, 0) for grade in "ABCDF"}
+    dim_avgs = _average_dimensions(all_scores)
+    signal_dims = _numeric_dimensions(dim_avgs)
+    worst = _scores_at_or_below_min_grade(all_scores, min_grade)
+    weakest_dim = _weakest_dimension(dim_avgs)
+    visible_limit = _visible_file_limit(max_files)
+    agent_backlog = _build_agent_backlog(all_scores, limit=visible_limit)
+    files = _file_details(worst, max_files)
+    return _ProjectHealthAggregates(
+        grade_counts=grade_counts,
+        grade_distribution=grade_distribution,
+        dim_avgs=dim_avgs,
+        signal_dims=signal_dims,
+        worst=worst,
+        weakest_dim=weakest_dim,
+        agent_backlog=agent_backlog,
+        files=files,
+        visible_limit=visible_limit,
+    )
+
+
 def _build_project_health_result(
     root: str,
     all_scores: list[Any],
@@ -168,47 +221,44 @@ def _build_project_health_result(
     ``actual_seconds`` is the measured scan wall-clock from the calling
     tool. When omitted (legacy callers and unit tests that build results
     directly), the timing fields fall back to the size-based estimate.
-    """
-    grade_counts = Counter(score.grade for score in all_scores)
-    grade_distribution = {grade: grade_counts.get(grade, 0) for grade in "ABCDF"}
-    dim_avgs = _average_dimensions(all_scores)
-    signal_dims = _numeric_dimensions(dim_avgs)
-    worst = _scores_at_or_below_min_grade(all_scores, min_grade)
-    weakest_dim = _weakest_dimension(dim_avgs)
-    visible_limit = _visible_file_limit(max_files)
-    agent_backlog = _build_agent_backlog(all_scores, limit=visible_limit)
-    files = _file_details(worst, max_files)
 
+    r37f2 (dogfood): 56→25 lines. The 9 aggregates moved to
+    ``_compute_project_health_aggregates`` returning a frozen dataclass;
+    the response dict is now an inline literal with named-field access.
+    """
     from .base_tool import mirror_summary_line
 
+    agg = _compute_project_health_aggregates(all_scores, min_grade, max_files)
     return mirror_summary_line(
         {
             "success": True,
             "project_root": root,
             "total_files": len(all_scores),
-            "matching_file_count": len(worst),
+            "matching_file_count": len(agg.worst),
             "detail_limit": max_files,
-            "detail_count": len(files),
-            "hidden_detail_count": max(0, len(worst) - len(files)),
-            "grade_distribution": grade_distribution,
-            "signal": _build_signal(signal_dims),
-            "average_dimensions": dim_avgs,
-            "coverage_status": _coverage_status(dim_avgs),
-            "weakest_dimension": weakest_dim,
-            "top_refactoring_targets": _top_refactoring_targets(worst, visible_limit),
+            "detail_count": len(agg.files),
+            "hidden_detail_count": max(0, len(agg.worst) - len(agg.files)),
+            "grade_distribution": agg.grade_distribution,
+            "signal": _build_signal(agg.signal_dims),
+            "average_dimensions": agg.dim_avgs,
+            "coverage_status": _coverage_status(agg.dim_avgs),
+            "weakest_dimension": agg.weakest_dim,
+            "top_refactoring_targets": _top_refactoring_targets(
+                agg.worst, agg.visible_limit
+            ),
             "agent_summary": _build_project_agent_summary(
                 root=root,
                 total_files=len(all_scores),
-                grade_distribution=grade_distribution,
-                weakest_dim=weakest_dim,
-                agent_backlog=agent_backlog,
+                grade_distribution=agg.grade_distribution,
+                weakest_dim=agg.weakest_dim,
+                agent_backlog=agg.agent_backlog,
                 max_files=max_files,
                 actual_seconds=actual_seconds,
             ),
-            "agent_backlog": agent_backlog,
-            "files": files,
+            "agent_backlog": agg.agent_backlog,
+            "files": agg.files,
             "recommendation": _build_project_recommendation(
-                grade_counts, weakest_dim, len(all_scores)
+                agg.grade_counts, agg.weakest_dim, len(all_scores)
             ),
         }
     )
