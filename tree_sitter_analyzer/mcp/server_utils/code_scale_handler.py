@@ -27,7 +27,11 @@ async def analyze_code_scale(
     initialization_complete: bool = True,
     path_class: Any = PathClass,
 ) -> dict[str, Any]:
-    """Handle check_code_scale tool execution with full validation."""
+    """Handle check_code_scale tool execution with full validation.
+
+    r37bx (dogfood): tool flagged this at 102 lines. Split into init
+    check + dispatch + path validation + analysis + result assembly.
+    """
     if not initialization_complete:
         from ..utils.error_handler import MCPError
 
@@ -43,33 +47,22 @@ async def analyze_code_scale(
         raise ValueError("file_path is required")
 
     file_path = arguments["file_path"]
-    language = arguments.get("language")
     include_complexity = arguments.get("include_complexity", True)
     include_details = arguments.get("include_details", False)
 
-    base_root = _get_base_root(security_validator)
-    resolved_path = _resolve_path(file_path, base_root)
-
-    _validate_security(resolved_path, base_root, security_validator)
-
-    if not path_class(resolved_path).exists():
-        raise FileNotFoundError(f"File not found: {file_path}")
-
-    from ...language_detector import detect_language_from_file
-
-    if not language:
-        language = detect_language_from_file(resolved_path, project_root=base_root)
-
-    from ...core.analysis_engine import AnalysisRequest
-
-    request = AnalysisRequest(
-        file_path=resolved_path,
-        language=language,
-        include_complexity=include_complexity,
-        include_details=include_details,
+    base_root, resolved_path = _validate_and_resolve_path(
+        file_path, security_validator, path_class
     )
-
-    analysis_result = await analysis_engine.analyze(request)
+    language = _detect_language_for_scale(
+        arguments.get("language"), resolved_path, base_root
+    )
+    analysis_result = await _run_scale_analysis(
+        analysis_engine,
+        resolved_path,
+        language,
+        include_complexity,
+        include_details,
+    )
 
     if analysis_result is None or not analysis_result.success:
         error_msg = (
@@ -79,9 +72,76 @@ async def analyze_code_scale(
         )
         raise RuntimeError(f"Failed to analyze file: {file_path} - {error_msg}")
 
+    return _build_code_scale_result(
+        file_path=file_path,
+        language=language,
+        analysis_result=analysis_result,
+        base_root=base_root,
+        resolved_path=resolved_path,
+        include_complexity=include_complexity,
+        include_details=include_details,
+    )
+
+
+def _validate_and_resolve_path(
+    file_path: str,
+    security_validator: Any,
+    path_class: Any,
+) -> tuple[str | None, str]:
+    """Resolve + security-validate the file path, returning (base_root, resolved)."""
+    base_root = _get_base_root(security_validator)
+    resolved_path = _resolve_path(file_path, base_root)
+    _validate_security(resolved_path, base_root, security_validator)
+    if not path_class(resolved_path).exists():
+        raise FileNotFoundError(f"File not found: {file_path}")
+    return base_root, resolved_path
+
+
+def _detect_language_for_scale(
+    explicit: str | None,
+    resolved_path: str,
+    base_root: str | None,
+) -> str | None:
+    """Detect language when caller didn't pass one explicitly."""
+    if explicit:
+        return explicit
+    from ...language_detector import detect_language_from_file
+
+    return detect_language_from_file(resolved_path, project_root=base_root)
+
+
+async def _run_scale_analysis(
+    analysis_engine: Any,
+    resolved_path: str,
+    language: str | None,
+    include_complexity: bool,
+    include_details: bool,
+) -> Any:
+    """Construct AnalysisRequest and run the engine."""
+    from ...core.analysis_engine import AnalysisRequest
+
+    request = AnalysisRequest(
+        file_path=resolved_path,
+        language=language,
+        include_complexity=include_complexity,
+        include_details=include_details,
+    )
+    return await analysis_engine.analyze(request)
+
+
+def _build_code_scale_result(
+    *,
+    file_path: str,
+    language: str | None,
+    analysis_result: Any,
+    base_root: str | None,
+    resolved_path: str,
+    include_complexity: bool,
+    include_details: bool,
+) -> dict[str, Any]:
+    """Assemble metrics envelope + optional complexity + optional detailed elements."""
     elements = analysis_result.elements or []
     counts = _count_elements(elements)
-
     file_metrics = compute_file_metrics(
         resolved_path, language=language, project_root=base_root
     )
