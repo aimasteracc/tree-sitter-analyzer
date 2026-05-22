@@ -6,14 +6,25 @@ from __future__ import annotations
 def find_long_blocks_heuristic(
     lines: list[str], threshold: int = 50
 ) -> list[tuple[str, int, int]]:
-    """Fallback long block detection using indentation heuristics."""
+    """Fallback long block detection using indentation heuristics.
+
+    r37d4 (dogfood): skip lines inside triple-quoted strings so embedded
+    corpus / fixture code in Python modules (e.g. a Ruby ``def self.X``
+    inside a triple-quoted BUILTIN_CORPUS entry) is no longer reported as
+    a long Python method. The detector was hitting a 303-line false
+    positive in ``grammar_coverage/discovery_corpus.py`` for that reason.
+    """
     results: list[tuple[str, int, int]] = []
     tracker = _BlockTracker()
+    string_state = _TripleQuoteTracker()
 
     for i, line in enumerate(lines):
+        # Update the multi-line string state BEFORE the def-check below so
+        # lines inside triple-quoted strings are skipped wholesale.
+        in_string = string_state.update(line)
         stripped = line.strip()
 
-        if stripped.startswith(("def ", "async def ")):
+        if not in_string and stripped.startswith(("def ", "async def ")):
             if tracker.active and tracker.block_lines > threshold:
                 results.append(tracker.snapshot())
             after_def = stripped.split("def ", 1)[-1] if "def " in stripped else ""
@@ -26,7 +37,11 @@ def find_long_blocks_heuristic(
 
         if tracker.active:
             tracker.process_line()
-            if tracker.ended_at(stripped, line) and tracker.block_lines > threshold:
+            if (
+                not in_string
+                and tracker.ended_at(stripped, line)
+                and tracker.block_lines > threshold
+            ):
                 results.append(tracker.snapshot())
 
     if tracker.active and tracker.block_lines > threshold:
@@ -74,3 +89,49 @@ class _BlockTracker:
             return False
         self.active = False
         return True
+
+
+class _TripleQuoteTracker:
+    """Track whether the current line is inside a triple-quoted string.
+
+    Counts triple-quote markers on each line and toggles an "inside"
+    flag whenever they appear. ``update(line)`` returns ``True`` when
+    the *post-update* state is "inside a string" (i.e. the next
+    def-keyword we see on this line should be ignored). The heuristic
+    is intentionally simple — it doesn't track backslash-escaped
+    quotes — because the false positives we're targeting are large
+    corpus dictionaries, not edge-case string syntax.
+    """
+
+    def __init__(self) -> None:
+        self.inside = False
+        self.delimiter = ""
+
+    def update(self, line: str) -> bool:
+        """Advance the tracker for ``line`` and return the resulting state.
+
+        We process delimiter occurrences left-to-right so a one-line
+        triple-quoted literal closes itself without leaving us inside.
+        """
+        i = 0
+        while i < len(line):
+            if not self.inside:
+                if line.startswith('"""', i):
+                    self.inside = True
+                    self.delimiter = '"""'
+                    i += 3
+                    continue
+                if line.startswith("'''", i):
+                    self.inside = True
+                    self.delimiter = "'''"
+                    i += 3
+                    continue
+                i += 1
+                continue
+            if line.startswith(self.delimiter, i):
+                self.inside = False
+                self.delimiter = ""
+                i += 3
+                continue
+            i += 1
+        return self.inside
