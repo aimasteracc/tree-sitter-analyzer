@@ -207,6 +207,8 @@ def test_registered_mcp_tools_have_cli_parity() -> None:
         "batch_search": ("main", "--batch-search"),
         "build_project_index": ("main", "--build-project-index"),
         "check_tools": ("main", "--check-tools"),
+        "ast_diff": ("main", "--ast-diff"),  # r37fJ
+        "decision_journal": ("main", "--decision-journal"),  # r37fG
     }
 
     tool_names = {name for name, _tool in _create_tool_registry(str(PROJECT_ROOT))[0]}
