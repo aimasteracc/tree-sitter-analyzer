@@ -19,6 +19,34 @@ from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error
 
 
+def _parse_scaladoc_text(comment_text: str) -> str | None:
+    """Convert raw ``/** ... */`` scaladoc to the cleaned multi-line string.
+
+    Returns ``None`` when the block isn't a Scaladoc comment (must start
+    with ``/**`` but not ``/***``) or yields no non-empty lines. Strips
+    the opening ``/**`` and closing ``*/``, then trims each line and
+    removes a leading ``*`` for the canonical multi-line Scaladoc shape.
+
+    r37dw (dogfood): lifted from ``_extract_docstring`` to flatten the
+    inner for/if chain from depth 6 to a pure transform.
+    """
+    if not comment_text.startswith("/**") or comment_text.startswith("/***"):
+        return None
+    content = comment_text[3:]
+    if content.endswith("*/"):
+        content = content[:-2]
+    cleaned_lines: list[str] = []
+    for line in content.split("\n"):
+        stripped = line.strip()
+        if stripped.startswith("*"):
+            stripped = stripped[1:].strip()
+        if stripped:
+            cleaned_lines.append(stripped)
+    if not cleaned_lines:
+        return None
+    return "\n".join(cleaned_lines)
+
+
 class ScalaElementExtractor(ElementExtractor):
     """Scala-specific element extractor"""
 
@@ -228,18 +256,35 @@ class ScalaElementExtractor(ElementExtractor):
             stack.extend(reversed(current.children))
 
     def _extract_package(self, node: "tree_sitter.Node") -> None:
-        """Extract package declaration from package_clause"""
+        """Extract package declaration from package_clause.
+
+        r37dw (dogfood): flatten nesting 6 → 3 via
+        ``_scala_package_name_from_clause`` (mirror of kotlin r37ds).
+        """
         for child in node.children:
-            if child.type == "package_clause":
-                # package_clause -> 'package' qualified_identifier
-                for grandchild in child.children:
-                    if (
-                        grandchild.type == "package_identifier"
-                        or grandchild.type == "identifier"
-                        or "identifier" in grandchild.type
-                    ):
-                        self.current_package = self._get_node_text(grandchild)
-                        return
+            if child.type != "package_clause":
+                continue
+            pkg_name = self._scala_package_name_from_clause(child)
+            if pkg_name is not None:
+                self.current_package = pkg_name
+                return
+
+    def _scala_package_name_from_clause(
+        self, package_clause: "tree_sitter.Node"
+    ) -> str | None:
+        """Return the package name string from a ``package_clause`` node.
+
+        Scala's grammar emits ``package_identifier`` for qualified names
+        (``a.b.c``) or plain ``identifier`` for top-level packages; some
+        forks fall back to a node whose ``type`` contains the substring
+        ``"identifier"``. We accept any of those at the first match.
+        """
+        for grandchild in package_clause.children:
+            if grandchild.type in ("package_identifier", "identifier"):
+                return self._get_node_text(grandchild)
+            if "identifier" in grandchild.type:
+                return self._get_node_text(grandchild)
+        return None
 
     def _extract_function(self, node: "tree_sitter.Node") -> Function | None:
         """Extract function definition (with body)"""
@@ -252,51 +297,21 @@ class ScalaElementExtractor(ElementExtractor):
         return self._extract_function_common(node)
 
     def _extract_function_common(self, node: "tree_sitter.Node") -> Function | None:
-        """Common extraction logic for Scala functions"""
-        try:
-            # Find function name (identifier node)
-            name = "anonymous"
-            name_node = node.child_by_field_name("name")
-            if name_node:
-                name = self._get_node_text(name_node)
-            else:
-                # Fallback: search for identifier
-                for child in node.children:
-                    if child.type == "identifier":
-                        name = self._get_node_text(child)
-                        break
+        """Common extraction logic for Scala functions.
 
+        r37dw (dogfood): flatten name-fallback (depth 6) + return-type
+        scan + visibility scan into focused helpers.
+        """
+        try:
+            name = self._scala_function_name(node)
             start_line = node.start_point[0] + 1
             end_line = node.end_point[0] + 1
-
-            # Extract parameters
-            parameters = []
-            # Look for parameter_clause or parameters
+            parameters: list[str] = []
             for child in node.children:
                 if "parameter" in child.type:
-                    params = self._extract_parameters(child)
-                    parameters.extend(params)
-
-            # Extract return type
-            return_type = "Unit"
-            # Look for type annotation after ':'
-            for i, child in enumerate(node.children):
-                if child.type == ":":
-                    if i + 1 < len(node.children):
-                        return_type = self._get_node_text(node.children[i + 1])
-                    break
-
-            # Extract visibility and modifiers
-            visibility = "public"
-            modifiers_text = ""
-            for child in node.children:
-                if child.type == "modifiers":
-                    modifiers_text = self._get_node_text(child)
-                    if "private" in modifiers_text:
-                        visibility = "private"
-                    elif "protected" in modifiers_text:
-                        visibility = "protected"
-                    break
+                    parameters.extend(self._extract_parameters(child))
+            return_type = self._scala_return_type(node)
+            visibility = self._scala_visibility(node)
 
             # Extract docstring
             docstring = self._extract_docstring(node)
@@ -318,30 +333,106 @@ class ScalaElementExtractor(ElementExtractor):
             log_error(f"Error extracting Scala function: {e}")
             return None
 
-    def _extract_parameters(self, param_node: "tree_sitter.Node") -> list[str]:
-        """Extract parameters from a parameter clause"""
-        parameters = []
-        for child in param_node.children:
-            if child.type == "parameter" or child.type == "class_parameter":
-                # parameter -> identifier : type
-                param_name = ""
-                param_type = ""
-                for grandchild in child.children:
-                    if grandchild.type == "identifier":
-                        param_name = self._get_node_text(grandchild)
-                    elif (
-                        "type" in grandchild.type
-                        or grandchild.type == "type_identifier"
-                    ):
-                        param_type = self._get_node_text(grandchild)
+    def _scala_class_like_name(self, node: "tree_sitter.Node") -> str:
+        """Return class/object/trait name, falling back to identifier scan."""
+        name_node = node.child_by_field_name("name")
+        if name_node:
+            return self._get_node_text(name_node)
+        for child in node.children:
+            if child.type in ("identifier", "type_identifier"):
+                return self._get_node_text(child)
+        return "anonymous"
 
+    def _scala_function_name(self, node: "tree_sitter.Node") -> str:
+        """Return the function name, falling back to the first identifier child.
+
+        r37dw (dogfood): lifted from ``_extract_function_common`` to
+        flatten its name-resolution branch from depth 6 to 3.
+        """
+        name_node = node.child_by_field_name("name")
+        if name_node:
+            return self._get_node_text(name_node)
+        for child in node.children:
+            if child.type == "identifier":
+                return self._get_node_text(child)
+        return "anonymous"
+
+    def _scala_return_type(self, node: "tree_sitter.Node") -> str:
+        """Return the type annotation after a ``:`` child, default ``Unit``.
+
+        For variable declarations use ``_scala_type_after_colon(node, "Inferred")``
+        instead — function return types want ``Unit`` as the missing-type sentinel.
+        """
+        return self._scala_type_after_colon(node, "Unit")
+
+    def _scala_type_after_colon(self, node: "tree_sitter.Node", default: str) -> str:
+        """Scan ``node.children`` for ``:`` and return the next sibling text.
+
+        Returns ``default`` when no ``:`` child exists or it's the last
+        child (caller picks ``"Unit"`` for functions, ``"Inferred"`` for
+        val/var declarations to match Scala-language conventions).
+        """
+        children = node.children
+        for i, child in enumerate(children):
+            if child.type == ":":
+                if i + 1 < len(children):
+                    return self._get_node_text(children[i + 1])
+                return default
+        return default
+
+    def _scala_visibility(self, node: "tree_sitter.Node") -> str:
+        """Return ``private`` / ``protected`` / ``public`` from a modifiers child.
+
+        Scans for the first ``modifiers`` child and checks its text for
+        the explicit keywords. Defaults to ``public`` when no modifiers
+        node is present or contains neither keyword.
+        """
+        for child in node.children:
+            if child.type != "modifiers":
+                continue
+            modifiers_text = self._get_node_text(child)
+            if "private" in modifiers_text:
+                return "private"
+            if "protected" in modifiers_text:
+                return "protected"
+            return "public"
+        return "public"
+
+    def _extract_parameters(self, param_node: "tree_sitter.Node") -> list[str]:
+        """Extract parameters from a parameter clause.
+
+        r37dw (dogfood): flatten nesting 6 → 3 via _scala_parameter_pair
+        (mirror of kotlin r37dt).
+        """
+        parameters: list[str] = []
+        for child in param_node.children:
+            if child.type in ("parameter", "class_parameter"):
+                param_name, param_type = self._scala_parameter_pair(child)
                 if param_name:
                     parameters.append(f"{param_name}: {param_type or 'Any'}")
             elif child.type == "parameters" or "parameter" in child.type:
                 # Recursively extract nested parameters
                 parameters.extend(self._extract_parameters(child))
-
         return parameters
+
+    def _scala_parameter_pair(
+        self, parameter_node: "tree_sitter.Node"
+    ) -> tuple[str, str]:
+        """Return ``(name, type)`` from a Scala ``parameter`` / ``class_parameter``.
+
+        Recognises ``identifier`` for the name and any node whose type
+        contains ``"type"`` (including ``type_identifier``) for the type.
+        Empty strings when either side is missing; caller fills ``"Any"``
+        for blank types to match Scala's defaulting.
+        """
+        param_name = ""
+        param_type = ""
+        for grandchild in parameter_node.children:
+            if grandchild.type == "identifier":
+                param_name = self._get_node_text(grandchild)
+            elif "type" in grandchild.type or grandchild.type == "type_identifier":
+                param_type = self._get_node_text(grandchild)
+        return param_name, param_type
 
     def _extract_class(self, node: "tree_sitter.Node") -> Class | None:
         """Extract class definition"""
@@ -356,33 +447,18 @@ class ScalaElementExtractor(ElementExtractor):
         return self._extract_class_like(node, "trait")
 
     def _extract_class_like(self, node: "tree_sitter.Node", kind: str) -> Class | None:
-        """Generic extraction for class/object/trait"""
+        """Generic extraction for class/object/trait.
+
+        r37dw (dogfood): name-fallback抽到 _scala_class_like_name.
+        """
         try:
-            # Extract name
-            name = "anonymous"
-            name_node = node.child_by_field_name("name")
-            if name_node:
-                name = self._get_node_text(name_node)
-            else:
-                for child in node.children:
-                    if child.type == "identifier" or child.type == "type_identifier":
-                        name = self._get_node_text(child)
-                        break
+            name = self._scala_class_like_name(node)
 
             start_line = node.start_point[0] + 1
             end_line = node.end_point[0] + 1
 
-            # Extract visibility
-            visibility = "public"
-            for child in node.children:
-                if child.type == "modifiers":
-                    mods = self._get_node_text(child)
-                    if "private" in mods:
-                        visibility = "private"
-                    elif "protected" in mods:
-                        visibility = "protected"
-                    break
-
+            # r37dw (dogfood): reuse _scala_visibility helper.
+            visibility = self._scala_visibility(node)
             raw_text = self._get_node_text(node)
 
             # Extract docstring
@@ -425,25 +501,9 @@ class ScalaElementExtractor(ElementExtractor):
             start_line = node.start_point[0] + 1
             end_line = node.end_point[0] + 1
 
-            # Extract type
-            var_type = "Inferred"
-            for i, child in enumerate(node.children):
-                if child.type == ":":
-                    if i + 1 < len(node.children):
-                        var_type = self._get_node_text(node.children[i + 1])
-                    break
-
-            # Extract visibility
-            visibility = "public"
-            for child in node.children:
-                if child.type == "modifiers":
-                    mods = self._get_node_text(child)
-                    if "private" in mods:
-                        visibility = "private"
-                    elif "protected" in mods:
-                        visibility = "protected"
-                    break
-
+            # r37dw (dogfood): reuse _scala_type_after_colon + _scala_visibility.
+            var_type = self._scala_type_after_colon(node, "Inferred")
+            visibility = self._scala_visibility(node)
             docstring = self._extract_docstring(node)
             raw_text = self._get_node_text(node)
 
@@ -472,15 +532,44 @@ class ScalaElementExtractor(ElementExtractor):
 
         r37ca (dogfood): extracted from ``_extract_variable`` to flatten its
         7-deep nesting (for-elif-for-if-break).
+        r37dw: pattern_list inner scan moved into ``_first_identifier_in``
+        helper to drop nesting from 6 to 3.
         """
         for child in node.children:
             if child.type == "identifier":
                 return str(self._get_node_text(child))
             if child.type == "pattern_list":
-                for grandchild in child.children:
-                    if grandchild.type == "identifier":
-                        return str(self._get_node_text(grandchild))
+                inner = self._first_identifier_in(child)
+                if inner is not None:
+                    return inner
         return "unknown"
+
+    def _first_identifier_in(self, node: "tree_sitter.Node") -> str | None:
+        """Return the first ``identifier`` child's text or ``None``."""
+        for grandchild in node.children:
+            if grandchild.type == "identifier":
+                return str(self._get_node_text(grandchild))
+        return None
+
+    def _last_nearby_block_comment(
+        self, node: "tree_sitter.Node"
+    ) -> "tree_sitter.Node | None":
+        """Return the last ``block_comment`` sibling within 2 lines of ``node``.
+
+        Walks left-to-right through ``node.parent.children`` up to (but
+        not including) ``node`` itself; tracks the most recent
+        ``block_comment`` and only returns it when it ends ≤ 2 lines
+        before ``node`` starts. ``None`` when no eligible comment exists
+        (Scaladoc must be adjacent for the binding to be unambiguous).
+        """
+        last_close: tree_sitter.Node | None = None
+        for sibling in node.parent.children:
+            if sibling == node:
+                break
+            if sibling.type == "block_comment":
+                if node.start_point[0] - sibling.end_point[0] <= 2:
+                    last_close = sibling
+        return last_close
 
     def _extract_import(self, node: "tree_sitter.Node") -> Import | None:
         """Extract import declaration"""
@@ -602,40 +691,16 @@ class ScalaElementExtractor(ElementExtractor):
                 break
             prev_sibling = sibling
 
-        # Check if the previous sibling is a block_comment
+        # r37dw (dogfood): flatten nesting 6 → 3 via _last_nearby_block_comment.
         if prev_sibling and prev_sibling.type == "block_comment":
             prev_comment = prev_sibling
-        # Also check for block_comment that might be separated by whitespace
         elif prev_sibling and prev_sibling.type != "block_comment":
-            # Look for the last block_comment before this node
-            for sibling in node.parent.children:
-                if sibling == node:
-                    break
-                if sibling.type == "block_comment":
-                    # Only use it if it's close to our node (within a few lines)
-                    if node.start_point[0] - sibling.end_point[0] <= 2:
-                        prev_comment = sibling
+            prev_comment = self._last_nearby_block_comment(node)
 
-        if prev_comment:
-            comment_text = self._get_node_text(prev_comment)
-            if comment_text.startswith("/**") and not comment_text.startswith("/***"):
-                # Extract content without /** and */
-                content = comment_text[3:]
-                if content.endswith("*/"):
-                    content = content[:-2]
-                # Clean up leading * on each line
-                lines = content.split("\n")
-                cleaned_lines = []
-                for line in lines:
-                    stripped = line.strip()
-                    if stripped.startswith("*"):
-                        stripped = stripped[1:].strip()
-                    if stripped:  # Only add non-empty lines
-                        cleaned_lines.append(stripped)
-                if cleaned_lines:
-                    return "\n".join(cleaned_lines)
-
-        return None
+        # r37dw (dogfood): scaladoc parsing抽到 _parse_scaladoc_text.
+        if prev_comment is None:
+            return None
+        return _parse_scaladoc_text(self._get_node_text(prev_comment))
 
 
 class ScalaPlugin(LanguagePlugin):
