@@ -28,6 +28,23 @@ _SIGNAL_MAP = {
 }
 
 
+def _file_health_verdict(grade: str) -> str:
+    """Map A-F grade to canonical verdict vocabulary.
+
+    Anti-bias: when in doubt err toward higher severity — a false REVIEW
+    is recoverable; a false INFO ships bugs.
+
+    A or B → INFO; C → REVIEW; D or F → CAUTION.
+    """
+    if grade in ("A", "B"):
+        return "INFO"
+    if grade == "C":
+        return "REVIEW"
+    if grade in ("D", "F"):
+        return "CAUTION"
+    return "REVIEW"
+
+
 def build_file_health_result(
     file_path: str,
     health: Any,
@@ -57,6 +74,7 @@ def _build_base_health_result(
     """Build the common file-health response fields."""
     return {
         "success": True,
+        "verdict": _file_health_verdict(health.grade),
         "file_path": file_path,
         "grade": health.grade,
         "total_score": health.total,
@@ -260,6 +278,7 @@ def _build_agent_summary(
     """Build the compact first-read health decision summary for agents."""
     weakest_dimension, weakest_score = _weakest_dimension_score(health.dimensions)
     summary = {
+        "verdict": _file_health_verdict(health.grade),
         "risk": action["priority"],
         "grade": health.grade,
         "score": health.total,
