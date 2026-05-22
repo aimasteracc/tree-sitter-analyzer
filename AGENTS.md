@@ -1,5 +1,18 @@
 # Agent Instructions
 
+> **Discovery path**: read this file → skim [`CLAUDE.md`](CLAUDE.md) for the locked design decisions → load only the [`docs/CODEMAPS/`](docs/CODEMAPS/) map matching the area you're touching. Do **not** load the full source tree blindly — the codemaps exist to keep agent context lean.
+
+## Codemap Index
+
+| Area | Codemap |
+|---|---|
+| High-level topology | [`docs/CODEMAPS/architecture.md`](docs/CODEMAPS/architecture.md) |
+| 23 MCP tools | [`docs/CODEMAPS/mcp-tools.md`](docs/CODEMAPS/mcp-tools.md) |
+| CLI flags / commands | [`docs/CODEMAPS/cli.md`](docs/CODEMAPS/cli.md) |
+| 17 language plugins | [`docs/CODEMAPS/languages.md`](docs/CODEMAPS/languages.md) |
+| Output formatters | [`docs/CODEMAPS/formatters.md`](docs/CODEMAPS/formatters.md) |
+| Security boundary | [`docs/CODEMAPS/security.md`](docs/CODEMAPS/security.md) |
+
 ## Test Runtime Contract
 
 - The default full-suite command is `uv run pytest -q`.

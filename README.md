@@ -466,6 +466,21 @@ When contributing new features:
 
 ## 📚 Documentation
 
+### For AI Agents — Token-Lean Codemaps
+
+| File | Scope |
+|---|---|
+| [docs/CODEMAPS/architecture.md](docs/CODEMAPS/architecture.md) | High-level topology · data flow · critical invariants |
+| [docs/CODEMAPS/mcp-tools.md](docs/CODEMAPS/mcp-tools.md) | 23 MCP tools + envelope contract |
+| [docs/CODEMAPS/cli.md](docs/CODEMAPS/cli.md) | CLI flags / commands / parity contract |
+| [docs/CODEMAPS/languages.md](docs/CODEMAPS/languages.md) | 17 language plugins + grammar coverage |
+| [docs/CODEMAPS/formatters.md](docs/CODEMAPS/formatters.md) | TOON / JSON / table / CSV / YAML |
+| [docs/CODEMAPS/security.md](docs/CODEMAPS/security.md) | Boundary enforcement · threat model |
+
+> Each map is < 1k tokens — designed to fit in agent context without bloat. Load only what you need.
+
+### For Humans
+
 | Document | Description |
 |----------|-------------|
 | [Installation Guide](docs/installation.md) | Setup for all platforms |
@@ -477,6 +492,8 @@ When contributing new features:
 | [Contributing](docs/CONTRIBUTING.md) | Development guidelines |
 | [Test Writing Guide](docs/test-writing-guide.md) | Comprehensive test writing guide |
 | [Regression Testing Guide](docs/regression-testing-guide.md) | Golden Master methodology |
+| [AGENTS.md](AGENTS.md) | Agent runtime contracts (pytest, MCP/CLI parity) |
+| [CLAUDE.md](CLAUDE.md) | Locked design decisions + swarm/routing config |
 | [Changelog](CHANGELOG.md) | Version history |
 
 ---
