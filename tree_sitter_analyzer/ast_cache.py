@@ -205,6 +205,32 @@ def _content_hash(source: str | bytes) -> str:
     return hashlib.sha256(source).hexdigest()
 
 
+def _match_symbols_in_row(row: Any, query_lower: str) -> list[dict[str, Any]]:
+    """Return matching symbol dicts from one ``ast_index`` row.
+
+    Loads ``symbols_json``, then yields a flattened symbol dict for every
+    symbol whose ``name`` contains ``query_lower`` (case-insensitive).
+    The flattened dict adds ``file`` + ``language`` columns.
+
+    r37cz (dogfood): module-level helper so ``_search_symbols_linear``
+    stays at ≤3 levels of nesting.
+    """
+    matches: list[dict[str, Any]] = []
+    symbols = json.loads(row["symbols_json"])
+    for sym in symbols.get("symbols", []):
+        name = sym.get("name", sym.get("text", ""))
+        if query_lower not in name.lower():
+            continue
+        matches.append(
+            {
+                "file": row["file_path"],
+                "language": row["language"],
+                **sym,
+            }
+        )
+    return matches
+
+
 def _extract_symbols(tree: Any, source_code: str, language: str) -> dict[str, Any]:
     symbols: list[dict[str, Any]] = []
     if tree is None:
@@ -1181,32 +1207,33 @@ class ASTCache:
     def _search_symbols_linear(
         self, query: str, language: str | None = None
     ) -> list[dict[str, Any]]:
-        conn = self._get_conn()
-        if language:
-            rows = conn.execute(
-                "SELECT file_path, symbols_json, language FROM ast_index WHERE language = ?",
-                (language,),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                "SELECT file_path, symbols_json, language FROM ast_index"
-            ).fetchall()
+        """Linear ``LIKE``-style symbol search (used when FTS5 is unavailable).
 
+        r37cz (dogfood): flattened nesting 7 → 3 by extracting the
+        per-row match loop into ``_match_symbols_in_row``.
+        """
+        rows = self._fetch_index_rows_for_search(language)
         results: list[dict[str, Any]] = []
         query_lower = query.lower()
         for row in rows:
-            symbols = json.loads(row["symbols_json"])
-            for sym in symbols.get("symbols", []):
-                name = sym.get("name", sym.get("text", ""))
-                if query_lower in name.lower():
-                    results.append(
-                        {
-                            "file": row["file_path"],
-                            "language": row["language"],
-                            **sym,
-                        }
-                    )
+            results.extend(_match_symbols_in_row(row, query_lower))
         return results
+
+    def _fetch_index_rows_for_search(self, language: str | None) -> list[Any]:
+        """Return ``ast_index`` rows, optionally filtered by ``language``."""
+        conn = self._get_conn()
+        if language:
+            return list(
+                conn.execute(
+                    "SELECT file_path, symbols_json, language FROM ast_index WHERE language = ?",
+                    (language,),
+                ).fetchall()
+            )
+        return list(
+            conn.execute(
+                "SELECT file_path, symbols_json, language FROM ast_index"
+            ).fetchall()
+        )
 
     def get_stats(self) -> dict[str, Any]:
         conn = self._get_conn()
