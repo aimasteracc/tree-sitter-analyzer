@@ -453,41 +453,58 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
 
     # Main entry point - dispatches to mode-specific handler
     async def execute(self, args: dict[str, Any]) -> dict[str, Any]:
-        """Execute AST structure analysis and return formatted results."""
-        try:
-            # O3 (round-30 dogfood): strict mismatch gate. Resolve the
-            # path FIRST so we can validate the explicit language
-            # against the real extension; the heavy
-            # ``_prepare_execution_options`` (language detection +
-            # security sanitisation) only runs if the gate passes.
-            file_path = args.get("file_path")
-            if isinstance(file_path, str) and file_path.strip():
-                try:
-                    resolved_for_check = self.resolve_and_validate_file_path(file_path)
-                except Exception:
-                    resolved_for_check = file_path
-                mismatch = detect_language_mismatch(
-                    resolved_for_check,
-                    args.get("language")
-                    if isinstance(args.get("language"), str)
-                    else None,
-                    project_root=self.project_root,
-                )
-                if mismatch:
-                    response = language_mismatch_error_response(
-                        tool_name="analyze_code_structure",
-                        file_path=file_path,
-                        warning=mismatch,
-                    )
-                    response["output_format"] = args.get("output_format", "toon")
-                    return response
+        """Execute AST structure analysis and return formatted results.
 
+        r37db (dogfood): extracted the O3 language-mismatch gate into
+        ``_pre_validate_language_mismatch`` so the main path stays flat
+        (depth 6 → 3). The heavy ``_prepare_execution_options``
+        (language detection + security sanitisation) only runs if the
+        gate passes.
+        """
+        try:
+            early_response = self._pre_validate_language_mismatch(args)
+            if early_response is not None:
+                return early_response
             options = self._prepare_execution_options(args)
             result = await self._analyze_structure(options)
             return self._format_response(result, options)
         except Exception as e:
             self.logger.error(f"Error in code structure analysis tool: {e}")
             raise
+
+    def _pre_validate_language_mismatch(
+        self, args: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        """Return an error response when the explicit ``language`` conflicts
+        with the file's actual extension.
+
+        O3 (round-30 dogfood): strict mismatch gate that resolves the
+        path FIRST so we can validate the explicit language against the
+        real extension. Returns ``None`` on the happy path so the caller
+        can proceed.
+        """
+        file_path = args.get("file_path")
+        if not isinstance(file_path, str) or not file_path.strip():
+            return None
+        try:
+            resolved_for_check = self.resolve_and_validate_file_path(file_path)
+        except Exception:
+            resolved_for_check = file_path
+        explicit_language = args.get("language")
+        mismatch = detect_language_mismatch(
+            resolved_for_check,
+            explicit_language if isinstance(explicit_language, str) else None,
+            project_root=self.project_root,
+        )
+        if mismatch is None:
+            return None
+        response = language_mismatch_error_response(
+            tool_name="analyze_code_structure",
+            file_path=file_path,
+            warning=mismatch,
+        )
+        response["output_format"] = args.get("output_format", "toon")
+        return response
 
     def _format_response(
         self, result: Any, options: _ExecutionOptions
