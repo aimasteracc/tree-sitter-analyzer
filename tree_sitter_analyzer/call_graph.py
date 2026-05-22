@@ -240,6 +240,64 @@ def _find_first_identifier(parent: Any) -> str | None:
     return None
 
 
+def _extract_c_call_from_children(node: Any, source: str) -> dict[str, Any] | None:
+    """Fallback C/C++ call extraction when ``function`` field is absent.
+
+    Some tree-sitter-c parses macro-style invocations (``FOO(x)``)
+    without filling the ``function`` field. We then scan children for
+    the first ``identifier`` and treat that as the call target.
+    Returns ``None`` when no identifier child exists.
+    """
+    for child in node.children:
+        if child.type != "identifier":
+            continue
+        text = _node_text(child, source)
+        return {
+            "name": text,
+            "full_name": text,
+            "line": node.start_point[0] + 1,
+            "receiver": None,
+        }
+    return None
+
+
+def _extract_java_call(node: Any, source: str) -> dict[str, Any] | None:
+    """Extract call target info from a Java call/method-reference node.
+
+    r37df (dogfood): lifted from inline branch of ``_extract_call`` to
+    flatten its Java path from depth 6 to 3. Identifiers return as bare
+    names; ``field_access`` / ``method_reference`` split the rightmost
+    dotted segment so ``foo.bar.baz()`` yields receiver=``foo.bar`` and
+    name=``baz``. Returns ``None`` when no child shape matches — the
+    caller treats that as "no actionable call info".
+    """
+    for child in node.children:
+        if child.type == "identifier":
+            text = _node_text(child, source)
+            return {
+                "name": text,
+                "full_name": text,
+                "line": node.start_point[0] + 1,
+                "receiver": None,
+            }
+        if child.type not in ("field_access", "method_reference"):
+            continue
+        text = _node_text(child, source)
+        receiver: str | None = None
+        name = text
+        if "." in text:
+            parts = text.rsplit(".", 1)
+            receiver = parts[0]
+            name = parts[1]
+        return {
+            "name": name,
+            "full_name": text,
+            "line": node.start_point[0] + 1,
+            "receiver": receiver,
+        }
+    return None
+
+
 def _extract_call(node: Any, source: str, language: str) -> dict[str, Any] | None:
     """Extract call target info from a call node."""
     try:
@@ -276,30 +334,8 @@ def _extract_call(node: Any, source: str, language: str) -> dict[str, Any] | Non
                 "receiver": receiver,
             }
         elif language == "java":
-            for child in node.children:
-                if child.type == "identifier":
-                    text = _node_text(child, source)
-                    return {
-                        "name": text,
-                        "full_name": text,
-                        "line": node.start_point[0] + 1,
-                        "receiver": None,
-                    }
-                if child.type in ("field_access", "method_reference"):
-                    text = _node_text(child, source)
-                    receiver = None
-                    name = text
-                    if "." in text:
-                        parts = text.rsplit(".", 1)
-                        receiver = parts[0]
-                        name = parts[1]
-                    return {
-                        "name": name,
-                        "full_name": text,
-                        "line": node.start_point[0] + 1,
-                        "receiver": receiver,
-                    }
-            return None
+            # r37df (dogfood): nesting 6 → 3 via _extract_java_call helper.
+            return _extract_java_call(node, source)
         elif language == "go":
             func_node = node.child_by_field_name("function")
             if func_node is None:
@@ -317,18 +353,10 @@ def _extract_call(node: Any, source: str, language: str) -> dict[str, Any] | Non
                 "receiver": receiver,
             }
         elif language in ("c", "cpp"):
+            # r37df (dogfood): nesting 6 → 3 via _extract_c_call_no_func helper.
             func_node = node.child_by_field_name("function")
             if func_node is None:
-                for child in node.children:
-                    if child.type == "identifier":
-                        text = _node_text(child, source)
-                        return {
-                            "name": text,
-                            "full_name": text,
-                            "line": node.start_point[0] + 1,
-                            "receiver": None,
-                        }
-                return None
+                return _extract_c_call_from_children(node, source)
             name = _node_text(func_node, source)
             return {
                 "name": name,
@@ -369,36 +397,64 @@ def _node_text(node: Any, source: str) -> str:
 
 
 def _find_parent_class_python(node: Any) -> str | None:
-    """Walk up from a function node to find enclosing class."""
+    """Walk up from a function node to find the enclosing class.
+
+    r37df (dogfood): flattened nesting 6 → 3 via
+    ``_python_class_name`` helper. Walk stays a while-loop; the
+    identifier scan inside each ``class_definition`` is its own helper.
+    """
     if node is None:
         return None
     current = node.parent
     while current is not None:
         if current.type == "class_definition":
-            for child in current.children:
-                if child.type == "identifier":
-                    text = child.text
-                    return (
-                        text.decode("utf-8") if isinstance(text, bytes) else str(text)
-                    )
+            name = _python_class_name(current)
+            if name is not None:
+                return name
         current = current.parent
     return None
 
 
+def _python_class_name(class_node: Any) -> str | None:
+    """Return the first ``identifier`` child's text from a Python class.
+
+    Decodes bytes to str when needed (tree-sitter returns ``bytes`` on
+    some bindings, ``str`` on others). Returns ``None`` if no identifier
+    is found — caller treats that as "anonymous / can't name".
+    """
+    for child in class_node.children:
+        if child.type != "identifier":
+            continue
+        text = child.text
+        return text.decode("utf-8") if isinstance(text, bytes) else str(text)
+    return None
+
+
 def _find_parent_class_java(node: Any) -> str | None:
-    """Walk up from a method node to find enclosing class."""
+    """Walk up from a method node to find the enclosing class.
+
+    r37df (dogfood): flattened nesting 6 → 3 via ``_java_class_name``
+    helper (mirror of ``_python_class_name``).
+    """
     if node is None:
         return None
     current = node.parent
     while current is not None:
         if current.type == "class_declaration":
-            for child in current.children:
-                if child.type == "identifier":
-                    text = child.text
-                    return (
-                        text.decode("utf-8") if isinstance(text, bytes) else str(text)
-                    )
+            name = _java_class_name(current)
+            if name is not None:
+                return name
         current = current.parent
+    return None
+
+
+def _java_class_name(class_node: Any) -> str | None:
+    """Return the first ``identifier`` child's text from a Java class."""
+    for child in class_node.children:
+        if child.type != "identifier":
+            continue
+        text = child.text
+        return text.decode("utf-8") if isinstance(text, bytes) else str(text)
     return None
 
 
@@ -682,22 +738,24 @@ class CallGraph:
         visited: set[str] = set()
         queue: deque[tuple[FunctionRef, int]] = deque((t, 0) for t in targets)
 
+        # r37df (dogfood): nesting 6 → 4 via early-continue on visited edges.
         while queue:
             current, d = queue.popleft()
             if d >= depth:
                 continue
             for callee in self._callees.get(current, []):
                 key = f"{current.qualified_name()}->{callee.qualified_name()}"
-                if key not in visited:
-                    visited.add(key)
-                    result.append(
-                        {
-                            "caller": current.to_dict(),
-                            "callee": callee.to_dict(),
-                            "depth": d + 1,
-                        }
-                    )
-                    queue.append((callee, d + 1))
+                if key in visited:
+                    continue
+                visited.add(key)
+                result.append(
+                    {
+                        "caller": current.to_dict(),
+                        "callee": callee.to_dict(),
+                        "depth": d + 1,
+                    }
+                )
+                queue.append((callee, d + 1))
         return result
 
     def all_functions(self) -> list[dict[str, Any]]:
