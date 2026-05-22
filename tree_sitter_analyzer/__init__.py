@@ -17,7 +17,9 @@ __email__ = "aimasteracc@gmail.com"
 
 # Legacy imports for backward compatibility
 
-from .core.analysis_engine import UnifiedAnalysisEngine as UniversalCodeAnalyzer  # deprecated: use AnalysisEngine from .core
+from .core.analysis_engine import (
+    UnifiedAnalysisEngine as UniversalCodeAnalyzer,  # deprecated: use AnalysisEngine from .core
+)
 from .encoding_utils import (
     EncodingManager,
     detect_encoding,

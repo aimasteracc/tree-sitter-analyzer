@@ -193,6 +193,7 @@ def test_registered_mcp_tools_have_cli_parity() -> None:
         "codegraph_callers": ("main", "--call-graph"),
         "codegraph_callees": ("main", "--call-graph"),
         "codegraph_symbol_search": ("main", "--symbol-search"),
+        "codegraph_resolve": ("main", "--symbol-resolve"),
         "ast_cache": ("main", "--ast-cache"),
         "ast_diff": ("main", "--ast-diff"),
         "codegraph_ast_path": ("main", "--ast-path"),

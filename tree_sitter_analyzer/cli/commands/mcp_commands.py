@@ -22,6 +22,12 @@ from tree_sitter_analyzer.mcp.tools.ast_diff_tool import ASTDiffTool  # noqa: F4
 from tree_sitter_analyzer.mcp.tools.call_graph_tool import (
     CodeGraphCallTool,  # noqa: F401
 )
+from tree_sitter_analyzer.mcp.tools.callees_tool import (
+    CodeGraphCalleesTool,  # noqa: F401
+)
+from tree_sitter_analyzer.mcp.tools.callers_tool import (
+    CodeGraphCallersTool,  # noqa: F401
+)
 from tree_sitter_analyzer.mcp.tools.change_impact_tool import (
     ChangeImpactTool,  # noqa: F401
 )
@@ -58,6 +64,9 @@ from tree_sitter_analyzer.mcp.tools.smart_context_tool import (
 )
 from tree_sitter_analyzer.mcp.tools.symbol_lineage_tool import (
     SymbolLineageTool,  # noqa: F401
+)
+from tree_sitter_analyzer.mcp.tools.symbol_resolve_tool import (
+    CodeGraphSymbolResolveTool,  # noqa: F401
 )
 from tree_sitter_analyzer.mcp.tools.symbol_search_tool import (
     CodeGraphSymbolSearchTool,  # noqa: F401
@@ -242,6 +251,26 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
         },
     ),
     McpCommandSpec(
+        flag_name="callers",
+        tool_attr="CodeGraphCallersTool",
+        label="Find callers of a function (CodeGraph parity)",
+        build_tool_args=lambda args, output_format: {
+            "function_name": getattr(args, "callers", ""),
+            "file_path": getattr(args, "callers_file", None),
+            "output_format": output_format,
+        },
+    ),
+    McpCommandSpec(
+        flag_name="callees",
+        tool_attr="CodeGraphCalleesTool",
+        label="Find callees of a function (CodeGraph parity)",
+        build_tool_args=lambda args, output_format: {
+            "function_name": getattr(args, "callees", ""),
+            "file_path": getattr(args, "callees_file", None),
+            "output_format": output_format,
+        },
+    ),
+    McpCommandSpec(
         flag_name="ast_cache",
         tool_attr="ASTCacheTool",
         label="Pre-indexed AST cache (CodeGraph parity)",
@@ -305,6 +334,16 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
             "output_format": output_format,
         },
     ),
+    McpCommandSpec(
+        flag_name="symbol_resolve",
+        tool_attr="CodeGraphSymbolResolveTool",
+        label="Go-to-definition and find-all-references (CodeGraph parity)",
+        build_tool_args=lambda args, output_format: {
+            "symbol": getattr(args, "symbol_resolve", ""),
+            "mode": getattr(args, "symbol_resolve_mode", "resolve") or "resolve",
+            "output_format": output_format,
+        },
+    ),
 )
 
 
@@ -354,11 +393,14 @@ _TOOL_CLASS_NAMES: frozenset[str] = frozenset(
         "SymbolLineageTool",
         "CodePatternsTool",
         "CodeGraphCallTool",
+        "CodeGraphCallersTool",
+        "CodeGraphCalleesTool",
         "CodeGraphOverviewTool",
         "ASTCacheTool",
         "ASTDiffTool",
         "RouteDetectorTool",
         "CodeGraphSymbolSearchTool",
+        "CodeGraphSymbolResolveTool",
         "CodeGraphASTPathTool",
     }
 )

@@ -629,6 +629,24 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
         help="Max coupled files in --codegraph-overview output (default: 15)",
     )
     parser.add_argument(
+        "--callers",
+        help="Find all functions that call the given function (CodeGraph parity). "
+        "Shorthand for --call-graph callers --call-graph-function",
+    )
+    parser.add_argument(
+        "--callers-file",
+        help="File path to disambiguate overloaded functions for --callers",
+    )
+    parser.add_argument(
+        "--callees",
+        help="Find all functions called by the given function (CodeGraph parity). "
+        "Shorthand for --call-graph callees --call-graph-function",
+    )
+    parser.add_argument(
+        "--callees-file",
+        help="File path to disambiguate overloaded functions for --callees",
+    )
+    parser.add_argument(
         "--symbol-search",
         help="FTS5-powered instant symbol search (CodeGraph parity). "
         "Use exact name, * wildcards, or ~ fuzzy prefix",
@@ -648,4 +666,16 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
         type=int,
         default=50,
         help="Max results for --symbol-search (default: 50)",
+    )
+    parser.add_argument(
+        "--symbol-resolve",
+        metavar="SYMBOL",
+        help="Go-to-definition: find where a symbol is defined (CodeGraph parity). "
+        "Supports dotted names like module.Class.method",
+    )
+    parser.add_argument(
+        "--symbol-resolve-mode",
+        choices=["resolve", "references"],
+        default="resolve",
+        help="Mode for --symbol-resolve: resolve=go-to-def, references=find-all-refs (default: resolve)",
     )

@@ -126,6 +126,7 @@ def _create_tool_registry(
     from .tools.search_content_tool import SearchContentTool
     from .tools.smart_context_tool import SmartContextTool
     from .tools.symbol_lineage_tool import SymbolLineageTool
+    from .tools.symbol_resolve_tool import CodeGraphSymbolResolveTool
     from .tools.symbol_search_tool import CodeGraphSymbolSearchTool
 
     tool_instances: list[tuple[str, Any]] = [
@@ -150,6 +151,7 @@ def _create_tool_registry(
         ("codegraph_callees", CodeGraphCalleesTool(project_root)),
         ("codegraph_overview", CodeGraphOverviewTool(project_root)),
         ("codegraph_symbol_search", CodeGraphSymbolSearchTool(project_root)),
+        ("codegraph_resolve", CodeGraphSymbolResolveTool(project_root)),
         ("analyze_change_impact", ChangeImpactTool(project_root)),
         ("refactoring_suggestions", RefactoringSuggestionsTool(project_root)),
         ("safe_to_edit", SafeToEditTool(project_root)),

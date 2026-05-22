@@ -19,12 +19,21 @@ MCP_COMMAND_FLAGS = (
     "dependencies",
     "refactor",
     "smart_context",
+    "callers",
+    "callees",
+    "symbol_resolve",
 )
 
 
 def _args(**overrides: Any) -> Namespace:
     defaults = dict.fromkeys(MCP_COMMAND_FLAGS, False)
     defaults["dependencies"] = None
+    defaults["callers"] = False
+    defaults["callees"] = False
+    defaults["callers_file"] = None
+    defaults["callees_file"] = None
+    defaults["symbol_resolve"] = False
+    defaults["symbol_resolve_mode"] = "resolve"
     defaults.update(
         {
             "file_path": "target.py",
@@ -532,5 +541,98 @@ def test_change_impact_cli_forwards_mode_and_test_discovery_toggle(monkeypatch) 
             "output_format": "json",
             "scope_paths": [],
             "agent_summary_only": False,
+        },
+    }
+
+
+def test_callers_cli_delegates_to_callers_tool(monkeypatch) -> None:
+    seen: dict[str, Any] = {}
+
+    class FakeCallersTool:
+        def __init__(self, project_root: str | None = None) -> None:
+            seen["project_root"] = project_root
+
+        async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+            seen["arguments"] = arguments
+            return {"success": True, "toon_content": "callers result"}
+
+    monkeypatch.setattr(mcp_commands, "CodeGraphCallersTool", FakeCallersTool)
+
+    result = mcp_commands.handle_mcp_commands(
+        _args(callers="parse_file", callers_file="src/parser.py"),
+        lambda payload: None,
+        lambda error: None,
+        lambda: "json",
+    )
+
+    assert result == 0
+    assert seen == {
+        "project_root": "/repo",
+        "arguments": {
+            "function_name": "parse_file",
+            "file_path": "src/parser.py",
+            "output_format": "json",
+        },
+    }
+
+
+def test_callees_cli_delegates_to_callees_tool(monkeypatch) -> None:
+    seen: dict[str, Any] = {}
+
+    class FakeCalleesTool:
+        def __init__(self, project_root: str | None = None) -> None:
+            seen["project_root"] = project_root
+
+        async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+            seen["arguments"] = arguments
+            return {"success": True, "toon_content": "callees result"}
+
+    monkeypatch.setattr(mcp_commands, "CodeGraphCalleesTool", FakeCalleesTool)
+
+    result = mcp_commands.handle_mcp_commands(
+        _args(callees="main", callees_file=None),
+        lambda payload: None,
+        lambda error: None,
+        lambda: "json",
+    )
+
+    assert result == 0
+    assert seen == {
+        "project_root": "/repo",
+        "arguments": {
+            "function_name": "main",
+            "file_path": None,
+            "output_format": "json",
+        },
+    }
+
+
+def test_symbol_resolve_cli_delegates_to_resolve_tool(monkeypatch) -> None:
+    seen: dict[str, Any] = {}
+
+    class FakeResolveTool:
+        def __init__(self, project_root: str | None = None) -> None:
+            seen["project_root"] = project_root
+
+        async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+            seen["arguments"] = arguments
+            return {"success": True, "toon_content": "resolve result"}
+
+    monkeypatch.setattr(mcp_commands, "CodeGraphSymbolResolveTool", FakeResolveTool)
+
+    result = mcp_commands.handle_mcp_commands(
+        _args(symbol_resolve="UserService.get_user", symbol_resolve_mode="resolve"),
+        lambda payload: None,
+        lambda error: None,
+        lambda: "json",
+    )
+
+    assert result == 0
+    assert seen == {
+        "project_root": "/repo",
+        "arguments": {
+            "symbol": "UserService.get_user",
+            "mode": "resolve",
+            "output_format": "json",
         },
     }
