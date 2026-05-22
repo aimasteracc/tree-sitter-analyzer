@@ -103,6 +103,37 @@ TOOL_SCHEMA: dict[str, Any] = {
 }
 
 
+def _pr_invalid_url_envelope(pr_url: str, output_format: str) -> dict[str, Any]:
+    """Pre-flight failure envelope when ``pr_url`` cannot be parsed.
+
+    r37em (dogfood): lifted from ``_execute_pr_analysis`` to keep the
+    main body focused on the happy path.
+    """
+    return apply_toon_format_to_response(
+        {
+            "success": False,
+            "error": f"Invalid GitHub PR URL: {pr_url}",
+            "hint": "Expected format: https://github.com/owner/repo/pull/123",
+            "output_format": output_format,
+        },
+        output_format,
+    )
+
+
+def _pr_gh_unavailable_envelope(parsed: Any, output_format: str) -> dict[str, Any]:
+    """Pre-flight failure envelope when ``gh`` CLI is missing or unauthenticated."""
+    return apply_toon_format_to_response(
+        {
+            "success": False,
+            "error": "gh CLI not available or not authenticated",
+            "hint": "Install gh CLI and run 'gh auth login'",
+            "pr_url": parsed.url,
+            "output_format": output_format,
+        },
+        output_format,
+    )
+
+
 class ChangeImpactTool(BaseMCPTool):
     """Analyze the impact of code changes using git diff + dependency graph."""
 
@@ -229,30 +260,19 @@ class ChangeImpactTool(BaseMCPTool):
         scope_paths: list[str],
         agent_summary_only: bool,
     ) -> dict[str, Any]:
-        """Analyze a GitHub PR's diff via gh CLI."""
+        """Analyze a GitHub PR's diff via gh CLI.
+
+        r37em (dogfood): 95→~25 lines. Pre-flight envelopes moved to
+        ``_pr_invalid_url_envelope`` / ``_pr_gh_unavailable_envelope``;
+        shared postprocessing (PR fields → queue ledger → scope validation
+        → summary-only → mirror → TOON) collapsed into ``_finalize_pr_result``.
+        """
         parsed = parse_pr_url(pr_url)
         if parsed is None:
-            return apply_toon_format_to_response(
-                {
-                    "success": False,
-                    "error": f"Invalid GitHub PR URL: {pr_url}",
-                    "hint": "Expected format: https://github.com/owner/repo/pull/123",
-                    "output_format": output_format,
-                },
-                output_format,
-            )
+            return _pr_invalid_url_envelope(pr_url, output_format)
 
         if not check_gh_available():
-            return apply_toon_format_to_response(
-                {
-                    "success": False,
-                    "error": "gh CLI not available or not authenticated",
-                    "hint": "Install gh CLI and run 'gh auth login'",
-                    "pr_url": parsed.url,
-                    "output_format": output_format,
-                },
-                output_format,
-            )
+            return _pr_gh_unavailable_envelope(parsed, output_format)
 
         # H8: validate scope paths against disk (PR mode treats them as
         # path prefixes from the local checkout).
@@ -267,25 +287,15 @@ class ChangeImpactTool(BaseMCPTool):
             ]
 
         if not changed_files:
-            result = build_no_changes_result("pr", scope_paths)
-            result["pr_url"] = parsed.url
-            result["pr_number"] = parsed.pr_number
-            result["repo"] = parsed.slug
-            result = attach_queue_ledger(
-                result,
-                mode="pr",
+            return self._finalize_pr_result(
+                build_no_changes_result("pr", scope_paths),
+                parsed=parsed,
                 scope_paths=scope_paths,
-                scoped_changed_files=[],
-                workspace_changed_files=[],
+                scope_paths_invalid=scope_paths_invalid,
+                changed_files=[],
+                agent_summary_only=agent_summary_only,
+                output_format=output_format,
             )
-            result = apply_scope_validation(result, scope_paths_invalid)
-            if agent_summary_only:
-                result = build_agent_summary_only_response(result)
-            result["output_format"] = output_format
-            # M5/M10: mirror summary_line + verdict between top-level and
-            # agent_summary so direct callers see the same envelope shape.
-            result = mirror_summary_line(result)
-            return apply_toon_format_to_response(result, output_format)
 
         diff_stat = fetch_pr_diff_stat(parsed)
         result = _build_change_impact_result(
@@ -298,6 +308,38 @@ class ChangeImpactTool(BaseMCPTool):
                 scope_paths=scope_paths,
             )
         )
+        return self._finalize_pr_result(
+            result,
+            parsed=parsed,
+            scope_paths=scope_paths,
+            scope_paths_invalid=scope_paths_invalid,
+            changed_files=changed_files,
+            agent_summary_only=agent_summary_only,
+            output_format=output_format,
+        )
+
+    @staticmethod
+    def _finalize_pr_result(
+        result: dict[str, Any],
+        *,
+        parsed: Any,
+        scope_paths: list[str],
+        scope_paths_invalid: Any,
+        changed_files: list[str],
+        agent_summary_only: bool,
+        output_format: str,
+    ) -> dict[str, Any]:
+        """Attach PR metadata + queue ledger + scope validation, mirror, and TOON.
+
+        Shared by both the no-changes and with-changes branches of
+        ``_execute_pr_analysis``. ``changed_files`` doubles as both
+        ``scoped_changed_files`` and ``workspace_changed_files`` because
+        PR mode pulls them from the same gh-CLI source.
+
+        M5/M10: ``mirror_summary_line`` syncs ``summary_line`` + ``verdict``
+        between top-level and ``agent_summary`` so direct callers see the
+        same envelope shape regardless of routing.
+        """
         result["pr_url"] = parsed.url
         result["pr_number"] = parsed.pr_number
         result["repo"] = parsed.slug
@@ -312,7 +354,5 @@ class ChangeImpactTool(BaseMCPTool):
         if agent_summary_only:
             result = build_agent_summary_only_response(result)
         result["output_format"] = output_format
-        # M5/M10: mirror summary_line + verdict between top-level and
-        # agent_summary so direct callers see the same envelope shape.
         result = mirror_summary_line(result)
         return apply_toon_format_to_response(result, output_format)
