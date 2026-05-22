@@ -205,6 +205,65 @@ def _content_hash(source: str | bytes) -> str:
     return hashlib.sha256(source).hexdigest()
 
 
+def _first_text_child(
+    node: Any,
+    source: str,
+    accepted_types: tuple[str, ...],
+    names: list[str],
+    strip_chars: str = "",
+) -> None:
+    """Find the first child whose ``type`` is in ``accepted_types``; append text.
+
+    Used by Go/Python ``package_declaration``, JS ``require_statement``,
+    C/C++ ``include_directive`` etc. — all share the "scan children for
+    first matching type, append non-empty text, break" pattern.
+    Optional ``strip_chars`` removes wrapping quotes / brackets so e.g.
+    ``"foo"`` becomes ``foo``.
+
+    r37du (dogfood): extracted from ``_extract_import_bound_names`` to
+    collapse 4 mirror branches (depth 6) into 4 helper calls (depth 3).
+    """
+    for child in node.children:
+        if child.type not in accepted_types:
+            continue
+        text = _node_text(child, source)
+        if strip_chars:
+            text = text.strip(strip_chars)
+        if text:
+            names.append(text)
+            return
+
+
+def _collect_extern_crate_names(node: Any, source: str, names: list[str]) -> None:
+    """Collect non-``extern`` identifier children of a ``extern_crate_item``.
+
+    Rust's ``extern crate foo;`` exposes ``foo`` as one of the
+    identifier children alongside the literal ``extern`` keyword node.
+    """
+    for child in node.children:
+        if child.type != "identifier":
+            continue
+        text = _node_text(child, source)
+        if text and text != "extern":
+            names.append(text)
+
+
+def _rust_use_as_clause_alias(node: Any, source: str) -> str:
+    """Return the alias bound by a Rust ``use_as_clause`` (``X as y``).
+
+    Walks children for the literal ``as`` keyword and the identifier
+    that follows it. Empty string when the shape doesn't match.
+    """
+    seen_as = False
+    for grand in node.children:
+        if grand.type == "as":
+            seen_as = True
+            continue
+        if seen_as and grand.type == "identifier":
+            return _node_text(grand, source)
+    return ""
+
+
 def _match_symbols_in_row(row: Any, query_lower: str) -> list[dict[str, Any]]:
     """Return matching symbol dicts from one ``ast_index`` row.
 
@@ -365,37 +424,28 @@ def _extract_import_bound_names(node: Any, source: str) -> list[str]:
             _collect_rust_use(node, source, names)
         elif node_type == "package_declaration":
             # Go ``package x`` — emit the package name itself.
-            for child in node.children:
-                if child.type in ("identifier", "package_identifier"):
-                    text = _node_text(child, source)
-                    if text:
-                        names.append(text)
-                        break
+            # r37du (dogfood): flatten nesting 6 → 3 via _first_text_child.
+            _first_text_child(node, source, ("identifier", "package_identifier"), names)
         elif node_type == "require_statement":
             # Some JS / Lua dialects expose ``require_statement`` directly.
-            for child in node.children:
-                if child.type in ("string", "string_fragment", "identifier"):
-                    text = _node_text(child, source).strip("'\"")
-                    if text:
-                        names.append(text)
-                        break
+            _first_text_child(
+                node,
+                source,
+                ("string", "string_fragment", "identifier"),
+                names,
+                strip_chars="'\"",
+            )
         elif node_type == "include_directive":
             # C/C++ — header name is the user-facing handle.
-            for child in node.children:
-                if child.type in (
-                    "string_literal",
-                    "system_lib_string",
-                ):
-                    text = _node_text(child, source).strip('<>"')
-                    if text:
-                        names.append(text)
-                        break
+            _first_text_child(
+                node,
+                source,
+                ("string_literal", "system_lib_string"),
+                names,
+                strip_chars='<>"',
+            )
         elif node_type == "extern_crate_item":
-            for child in node.children:
-                if child.type == "identifier":
-                    text = _node_text(child, source)
-                    if text and text != "extern":
-                        names.append(text)
+            _collect_extern_crate_names(node, source, names)
     except Exception:  # noqa: BLE001 — never crash the indexer on a weird node
         return []
 
@@ -435,6 +485,12 @@ def _bound_name_from_aliased(node: Any, source: str) -> str:
 
 
 def _collect_python_from_import(node: Any, source: str, names: list[str]) -> None:
+    """Collect bound names from a Python ``from X import ...`` statement.
+
+    r37du (dogfood): flatten nesting 6 → 3 by extracting the
+    aliased / dotted / wildcard handling into ``_collect_one_python_import_target``.
+    The ``import_list`` branch reuses the same handler via inner loop.
+    """
     saw_import = False
     for child in node.children:
         if child.type == "import":
@@ -442,26 +498,34 @@ def _collect_python_from_import(node: Any, source: str, names: list[str]) -> Non
             continue
         if not saw_import:
             continue
-        if child.type == "aliased_import":
-            bound = _bound_name_from_aliased(child, source)
-            if bound:
-                names.append(bound)
-        elif child.type in ("dotted_name", "identifier"):
-            text = _node_text(child, source)
-            if text:
-                names.append(text)
-        elif child.type == "import_list":
+        if child.type == "import_list":
             for sub in child.children:
-                if sub.type == "aliased_import":
-                    bound = _bound_name_from_aliased(sub, source)
-                    if bound:
-                        names.append(bound)
-                elif sub.type in ("dotted_name", "identifier"):
-                    text = _node_text(sub, source)
-                    if text:
-                        names.append(text)
-        elif child.type == "wildcard_import":
-            names.append("*")
+                _collect_one_python_import_target(sub, source, names)
+            continue
+        _collect_one_python_import_target(child, source, names)
+
+
+def _collect_one_python_import_target(
+    child: Any, source: str, names: list[str]
+) -> None:
+    """Append the bound name from one Python import target child node.
+
+    Handles ``aliased_import`` (extract bound alias), ``dotted_name`` /
+    ``identifier`` (raw name), and ``wildcard_import`` (emit ``*``).
+    No-op on any other shape.
+    """
+    if child.type == "aliased_import":
+        bound = _bound_name_from_aliased(child, source)
+        if bound:
+            names.append(bound)
+        return
+    if child.type in ("dotted_name", "identifier"):
+        text = _node_text(child, source)
+        if text:
+            names.append(text)
+        return
+    if child.type == "wildcard_import":
+        names.append("*")
 
 
 def _collect_import_statement(node: Any, source: str, names: list[str]) -> None:
@@ -565,15 +629,9 @@ def _collect_rust_use(node: Any, source: str, names: list[str]) -> None:
             elif child.type == "use_list":
                 stack.append(child)
             elif child.type == "use_as_clause":
-                # ``C as d`` — bound is the alias.
-                bound = ""
-                seen_as = False
-                for grand in child.children:
-                    if grand.type == "as":
-                        seen_as = True
-                        continue
-                    if seen_as and grand.type == "identifier":
-                        bound = _node_text(grand, source)
+                # r37du (dogfood): flatten nesting 6 → 3 via
+                # _rust_use_as_clause_alias helper.
+                bound = _rust_use_as_clause_alias(child, source)
                 if bound:
                     names.append(bound)
             elif child.type == "scoped_identifier":
@@ -1039,35 +1097,56 @@ class ASTCache:
         Batching avoids the per-insert fsync/commit cost that dominated the
         post-parallel timing on medium projects (~1 ms per file).
         """
+        # r37du (dogfood): flatten nesting 6 → 4 by extracting the
+        # per-result handling into _apply_one_index_result.
         conn = self._get_conn()
         indexed_at = datetime.now(timezone.utc).isoformat()
         conn.execute("BEGIN")
         try:
             for r in results:
-                if r["status"] in ("io_error", "parse_failed"):
-                    stats["errors"] += 1
-                    stats["files"].append(
-                        {
-                            "file": r["rel_path"],
-                            "status": "error",
-                            "reason": r["reason"],
-                        }
-                    )
-                    continue
-                self._insert_index_row(r, indexed_at)
-                stats["indexed"] += 1
-                stats["files"].append(
-                    {
-                        "file": r["rel_path"],
-                        "status": "indexed",
-                        "symbols": r["symbols_count"],
-                        "content_hash": r["content_hash"][:16],
-                    }
-                )
+                self._apply_one_index_result(r, stats, indexed_at)
             conn.execute("COMMIT")
         except Exception:
             conn.execute("ROLLBACK")
             raise
+
+    def _apply_one_index_result(
+        self,
+        r: dict[str, Any],
+        stats: dict[str, Any],
+        indexed_at: str,
+    ) -> None:
+        """Apply one parse result to ``stats`` + insert into the index table.
+
+        Error results (``io_error`` / ``parse_failed``) bump
+        ``stats['errors']`` and record an ``error`` files-row. Success
+        results call ``_insert_index_row``, bump ``stats['indexed']``,
+        and record an ``indexed`` files-row with symbol count + short
+        content hash.
+
+        r37du (dogfood): lifted out of ``_apply_index_results`` to flatten
+        nesting 6 → 4.
+        """
+        if r["status"] in ("io_error", "parse_failed"):
+            stats["errors"] += 1
+            stats["files"].append(
+                {
+                    "file": r["rel_path"],
+                    "status": "error",
+                    "reason": r["reason"],
+                }
+            )
+            return
+        self._insert_index_row(r, indexed_at)
+        stats["indexed"] += 1
+        stats["files"].append(
+            {
+                "file": r["rel_path"],
+                "status": "indexed",
+                "symbols": r["symbols_count"],
+                "content_hash": r["content_hash"][:16],
+            }
+        )
 
     def _index_parallel(
         self, candidates: list[tuple[str, str]], workers: int

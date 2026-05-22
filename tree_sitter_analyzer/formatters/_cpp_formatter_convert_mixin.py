@@ -137,26 +137,19 @@ class CppTableFormatterConvertMixin:
         packages: list[dict[str, Any]] = []
         package_name = "unknown"
 
+        # r37du (dogfood): flatten nesting 6 → 3 via _convert_one_cpp_element.
         for index, element in enumerate(analysis_result.elements):
-            try:
-                if isinstance(element, Package):
-                    namespace_name = _valid_namespace_name(element)
-                    if namespace_name:
-                        package_name = namespace_name
-                        packages.append(_namespace_entry(namespace_name, element))
-                    continue
-
-                _append_converted_cpp_element(
-                    self,
-                    element,
-                    index,
-                    classes,
-                    methods,
-                    fields,
-                    imports,
-                )
-            except Exception:  # nosec
-                continue
+            new_package = self._convert_one_cpp_element(
+                element,
+                index,
+                classes,
+                methods,
+                fields,
+                imports,
+                packages,
+            )
+            if new_package is not None:
+                package_name = new_package
 
         return _build_cpp_format_result(
             analysis_result,
@@ -167,6 +160,46 @@ class CppTableFormatterConvertMixin:
             fields,
             imports,
         )
+
+    def _convert_one_cpp_element(
+        self,
+        element: Any,
+        index: int,
+        classes: list[dict[str, Any]],
+        methods: list[dict[str, Any]],
+        fields: list[dict[str, Any]],
+        imports: list[dict[str, Any]],
+        packages: list[dict[str, Any]],
+    ) -> str | None:
+        """Convert a single C++ element and route it to the right bucket.
+
+        Returns the new ``package_name`` when the element is a Package
+        with a valid namespace; otherwise ``None`` (caller keeps the
+        previous package_name). Exceptions during conversion are
+        swallowed (matches the pre-refactor ``try/except: continue``).
+
+        r37du (dogfood): lifted from ``_convert_analysis_result_to_format``
+        to flatten the for-loop body from depth 6 to 3.
+        """
+        try:
+            if isinstance(element, Package):
+                namespace_name = _valid_namespace_name(element)
+                if not namespace_name:
+                    return None
+                packages.append(_namespace_entry(namespace_name, element))
+                return namespace_name
+            _append_converted_cpp_element(
+                self,
+                element,
+                index,
+                classes,
+                methods,
+                fields,
+                imports,
+            )
+            return None
+        except Exception:  # nosec
+            return None
 
     def _convert_class_element(self, element: Any, index: int) -> dict[str, Any]:
         """Convert class element to table format."""
