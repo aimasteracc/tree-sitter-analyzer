@@ -42,7 +42,7 @@ class SemanticClassifyTool(BaseMCPTool):
             "name": "semantic_classify",
             "description": (
                 "Classify code changes into semantic categories with risk assessment. "
-                "Modes: classify_strings (two code strings), classify_git (file between git refs). "
+                "Modes: classify_string (two code strings), classify_file (file between git refs). "
                 "Returns dominant category, risk level, confidence, and per-hunk classification. "
                 "No other tool provides semantic change understanding."
             ),
@@ -55,25 +55,29 @@ class SemanticClassifyTool(BaseMCPTool):
             "properties": {
                 "mode": {
                     "type": "string",
-                    "enum": ["classify_strings", "classify_git"],
+                    # pain #11 (dogfood pass 2): the tests pinned a contract
+                    # with singular ``classify_string`` and ``classify_file``;
+                    # the tool had previously drifted to plural / "_git" names.
+                    # Rename for parity, the tested names are also more intuitive.
+                    "enum": ["classify_string", "classify_file"],
                     "description": "Classification mode",
-                    "default": "classify_strings",
+                    "default": "classify_string",
                 },
                 "old_source": {
                     "type": "string",
-                    "description": "Old source code string (for classify_strings mode)",
+                    "description": "Old source code string (for classify_string mode)",
                 },
                 "new_source": {
                     "type": "string",
-                    "description": "New source code string (for classify_strings mode)",
+                    "description": "New source code string (for classify_string mode)",
                 },
                 "language": {
                     "type": "string",
-                    "description": "Language for classify_strings mode (auto-detected for classify_git)",
+                    "description": "Language for classify_string mode (auto-detected for classify_file)",
                 },
                 "file_path": {
                     "type": "string",
-                    "description": "File path (for classify_git mode or as context for classify_strings)",
+                    "description": "File path (for classify_file mode or as context for classify_string)",
                 },
                 "old_ref": {
                     "type": "string",
@@ -97,37 +101,37 @@ class SemanticClassifyTool(BaseMCPTool):
         }
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
-        mode = arguments.get("mode", "classify_strings")
-        if mode == "classify_strings":
+        mode = arguments.get("mode", "classify_string")
+        if mode == "classify_string":
             if (
                 arguments.get("old_source") is None
                 or arguments.get("new_source") is None
             ):
                 raise ValueError(
-                    "old_source and new_source are required for classify_strings mode"
+                    "old_source and new_source are required for classify_string mode"
                 )
             if not arguments.get("language"):
-                raise ValueError("language is required for classify_strings mode")
-        elif mode == "classify_git":
+                raise ValueError("language is required for classify_string mode")
+        elif mode == "classify_file":
             if not arguments.get("file_path"):
-                raise ValueError("file_path is required for classify_git mode")
+                raise ValueError("file_path is required for classify_file mode")
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate_arguments(arguments)
 
-        mode = arguments.get("mode", "classify_strings")
+        mode = arguments.get("mode", "classify_string")
         output_format = arguments.get("output_format", "toon")
         differ = self._get_differ()
 
-        if mode == "classify_strings":
+        if mode == "classify_string":
             diff_result = differ.diff_strings(
                 old_source=arguments["old_source"],
                 new_source=arguments["new_source"],
                 language=arguments["language"],
             )
             file_path = arguments.get("file_path")
-        elif mode == "classify_git":
+        elif mode == "classify_file":
             file_path = arguments["file_path"]
             diff_result = self._diff_git(differ, arguments)
         else:
@@ -137,18 +141,28 @@ class SemanticClassifyTool(BaseMCPTool):
         classification = classifier.classify(diff_result)
         class_dict = classification.to_dict()
 
-        # Map risk_level to canonical verdict vocabulary (pain-01 tsa-landing contract).
+        # Map risk_level to canonical verdict vocabulary (pain-01 tsa-landing
+        # contract). NOT_FOUND when there are zero classifications (identical
+        # sources) so agents skip downstream change-impact tools.
+        classifications = class_dict.get("classifications") or []
         risk_level = class_dict.get("risk_level", "medium")
-        verdict = (
-            "CAUTION"
-            if risk_level == "high"
-            else ("REVIEW" if risk_level == "medium" else "INFO")
-        )
+        if not classifications:
+            verdict = "NOT_FOUND"
+        elif risk_level == "high":
+            verdict = "CAUTION"
+        elif risk_level == "medium":
+            verdict = "REVIEW"
+        else:
+            verdict = "INFO"
 
+        # change_count is part of the agent-contract shape: a scalar that
+        # downstream tools can branch on without walking the classifications
+        # list. Tests pin this name (pain pass 2).
         response: dict[str, Any] = {
             "success": True,
             "file_path": file_path,
             "diff_hunks": len(diff_result.hunks),
+            "change_count": len(class_dict.get("classifications", [])),
             "verdict": verdict,
             **class_dict,
         }

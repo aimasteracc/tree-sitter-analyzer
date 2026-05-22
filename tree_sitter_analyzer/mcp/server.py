@@ -110,8 +110,10 @@ def _create_tool_registry(
     from .tools.callers_tool import CodeGraphCallersTool
     from .tools.change_impact_tool import ChangeImpactTool
     from .tools.code_patterns_tool import CodePatternsTool
+    from .tools.codegraph_impact_tool import CodeGraphImpactTool
     from .tools.codegraph_navigate_tool import CodeGraphNavigateTool
     from .tools.codegraph_overview_tool import CodeGraphOverviewTool
+    from .tools.codegraph_pr_review_tool import CodeGraphPRReviewTool
     from .tools.dependency_analysis_tool import DependencyAnalysisTool
     from .tools.file_health_tool import FileHealthTool
     from .tools.find_and_grep_tool import FindAndGrepTool
@@ -125,6 +127,7 @@ def _create_tool_registry(
     from .tools.route_detector_tool import RouteDetectorTool
     from .tools.safe_to_edit_tool import SafeToEditTool
     from .tools.search_content_tool import SearchContentTool
+    from .tools.semantic_classify_tool import SemanticClassifyTool
     from .tools.smart_context_tool import SmartContextTool
     from .tools.symbol_lineage_tool import SymbolLineageTool
     from .tools.symbol_resolve_tool import CodeGraphSymbolResolveTool
@@ -152,6 +155,7 @@ def _create_tool_registry(
         ("codegraph_callees", CodeGraphCalleesTool(project_root)),
         ("codegraph_overview", CodeGraphOverviewTool(project_root)),
         ("codegraph_navigate", CodeGraphNavigateTool(project_root)),
+        ("codegraph_pr_review", CodeGraphPRReviewTool(project_root)),
         ("codegraph_symbol_search", CodeGraphSymbolSearchTool(project_root)),
         ("codegraph_resolve", CodeGraphSymbolResolveTool(project_root)),
         ("analyze_change_impact", ChangeImpactTool(project_root)),
@@ -161,6 +165,8 @@ def _create_tool_registry(
         ("symbol_lineage", SymbolLineageTool(project_root)),
         ("code_patterns", CodePatternsTool(project_root)),
         ("codegraph_ast_path", CodeGraphASTPathTool(project_root)),
+        ("codegraph_impact", CodeGraphImpactTool(project_root)),
+        ("semantic_classify", SemanticClassifyTool(project_root)),
         ("detect_routes", RouteDetectorTool(project_root)),
     ]
     return tool_instances, dict(tool_instances)

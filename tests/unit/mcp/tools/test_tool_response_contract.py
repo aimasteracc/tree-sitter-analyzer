@@ -219,6 +219,21 @@ class TestExecuteAcrossAllTools:
             "codegraph_resolve": {"symbol": "greet"},
             "codegraph_ast_path": {"mode": "outline", "file_path": sample_file},
             "codegraph_overview": {},
+            # Pain pass 2: 4 new tools were registered without being added
+            # to this envelope-contract table, which made the suite fail
+            # on a contract-coverage check.
+            "codegraph_impact": {
+                "mode": "risk_score",
+                "function_name": "greet",
+            },
+            "codegraph_navigate": {"mode": "outline", "file_path": sample_file},
+            "codegraph_pr_review": {"mode": "diff"},
+            "semantic_classify": {
+                "mode": "classify_string",
+                "old_source": "a = 1",
+                "new_source": "a = 2",
+                "language": "python",
+            },
         }
         skipped: list[str] = []
         for name, tool in registered_tools:

@@ -46,6 +46,9 @@ from tree_sitter_analyzer.mcp.tools.codegraph_navigate_tool import (
 from tree_sitter_analyzer.mcp.tools.codegraph_overview_tool import (
     CodeGraphOverviewTool,  # noqa: F401
 )
+from tree_sitter_analyzer.mcp.tools.codegraph_pr_review_tool import (
+    CodeGraphPRReviewTool,  # noqa: F401
+)
 from tree_sitter_analyzer.mcp.tools.dependency_analysis_tool import (
     DependencyAnalysisTool,  # noqa: F401
 )
@@ -409,6 +412,17 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
             "output_format": output_format,
         },
     ),
+    McpCommandSpec(
+        flag_name="pr_review",
+        tool_attr="CodeGraphPRReviewTool",
+        label="AI-powered PR review: AST diff + semantic + call graph",
+        build_tool_args=lambda args, output_format: {
+            "mode": getattr(args, "pr_review", "diff") or "diff",
+            "pr_url": getattr(args, "pr_review_url", "") or "",
+            "include_call_graph": True,
+            "output_format": output_format,
+        },
+    ),
 )
 
 
@@ -469,6 +483,8 @@ _TOOL_CLASS_NAMES: frozenset[str] = frozenset(
         "CodeGraphImpactTool",
         "CodeGraphASTPathTool",
         "SemanticClassifyTool",
+        "CodeGraphPRReviewTool",
+        "CodeGraphNavigateTool",
     }
 )
 

@@ -654,6 +654,43 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
         default=2,
         help="Max transitive depth for --codegraph-navigate hierarchy (default: 2)",
     )
+    # Pain pass 2: 3 new MCP tools (codegraph_impact, codegraph_pr_review,
+    # semantic_classify) need CLI parity to satisfy the contract test.
+    parser.add_argument(
+        "--codegraph-impact",
+        metavar="FUNCTION",
+        help="Function-level blast radius / risk score (CodeGraph parity).",
+    )
+    parser.add_argument(
+        "--codegraph-impact-mode",
+        choices=["function_impact", "blast_radius", "risk_score"],
+        default="function_impact",
+        help="Mode for --codegraph-impact (default: function_impact)",
+    )
+    parser.add_argument(
+        "--codegraph-impact-file",
+        help="File path to disambiguate for --codegraph-impact",
+    )
+    parser.add_argument(
+        "--codegraph-impact-depth",
+        type=int,
+        default=5,
+        help="Max transitive depth for --codegraph-impact (default: 5)",
+    )
+    parser.add_argument(
+        "--pr-review",
+        nargs="?",
+        const="diff",
+        choices=["diff", "staged", "branch"],
+        help="AI-powered PR review (AST diff + semantic classify + call graph).",
+    )
+    parser.add_argument(
+        "--semantic-classify",
+        nargs="?",
+        const="classify_file",
+        choices=["classify_file", "classify_string"],
+        help="Semantic change classification (api_change/refactor/feature/...).",
+    )
     parser.add_argument(
         "--callers-file",
         help="File path to disambiguate overloaded functions for --callers",

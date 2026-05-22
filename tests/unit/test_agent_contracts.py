@@ -198,6 +198,10 @@ def test_registered_mcp_tools_have_cli_parity() -> None:
         "ast_diff": ("main", "--ast-diff"),
         "codegraph_ast_path": ("main", "--ast-path"),
         "codegraph_overview": ("main", "--codegraph-overview"),
+        "codegraph_navigate": ("main", "--codegraph-navigate"),
+        "codegraph_impact": ("main", "--codegraph-impact"),
+        "codegraph_pr_review": ("main", "--pr-review"),
+        "semantic_classify": ("main", "--semantic-classify"),
         "detect_routes": ("main", "--detect-routes"),
     }
 

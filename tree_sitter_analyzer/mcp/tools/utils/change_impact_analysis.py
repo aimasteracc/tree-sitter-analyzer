@@ -343,3 +343,80 @@ def _build_change_impact_result(request: ChangeImpactRequest) -> dict[str, Any]:
 _build_no_changes_result = build_no_changes_result
 _build_agent_summary = build_agent_summary
 _build_change_impact_response = build_change_impact_response
+
+
+def _classify_changed_files(
+    changed_files: list[str],
+    project_root: str | None,
+) -> list[dict[str, Any]]:
+    """Run semantic_classify over a list of changed files; best-effort.
+
+    Used by change_impact to attach a per-file semantic_change summary when
+    callers opt in. Returns an empty list when:
+      - no files provided
+      - project_root is None (we need it to git-show old sources)
+      - any individual file fails to classify (we skip, don't raise)
+
+    Each result row mirrors the SemanticClassifyTool response shape so
+    downstream agents can branch on the same keys (dominant_category,
+    risk_level, change_count).
+    """
+    if not changed_files or not project_root:
+        return []
+
+    try:
+        from ....project_graph import _language_from_ext
+        from ....semantic_change_classifier import SemanticChangeClassifier
+        from ...ast_diff import ASTDiffer
+    except Exception:
+        # If any of the required modules can't be imported (e.g. in a
+        # bare-minimum install), degrade silently to "no semantic data".
+        return []
+
+    differ = ASTDiffer()
+    results: list[dict[str, Any]] = []
+    for file_path in changed_files:
+        language = _language_from_ext(file_path) or ""
+        if not language:
+            continue
+        try:
+            import subprocess  # nosec B404 - fixed git command
+
+            old_proc = subprocess.run(  # nosec B603,B607
+                ["git", "show", f"HEAD:{file_path}"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
+                cwd=project_root,
+            )
+            old_source = old_proc.stdout if old_proc.returncode == 0 else ""
+            new_path = Path(project_root) / file_path
+            new_source = (
+                new_path.read_text(encoding="utf-8", errors="replace")
+                if new_path.is_file()
+                else ""
+            )
+            diff = differ.diff_strings(
+                old_source=old_source,
+                new_source=new_source,
+                language=language,
+                old_file=file_path,
+                new_file=file_path,
+            )
+            classification = SemanticChangeClassifier(file_path=file_path).classify(
+                diff
+            )
+            class_dict = classification.to_dict()
+            results.append(
+                {
+                    "file": file_path,
+                    "language": language,
+                    "change_count": len(class_dict.get("classifications", [])),
+                    **class_dict,
+                }
+            )
+        except Exception:
+            # One bad file should not poison the whole batch.
+            continue
+    return results

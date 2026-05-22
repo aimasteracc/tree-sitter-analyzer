@@ -33,6 +33,8 @@ def create_tool_registry(
     from .tools.code_patterns_tool import CodePatternsTool
     from .tools.codegraph_impact_tool import CodeGraphImpactTool
     from .tools.codegraph_navigate_tool import CodeGraphNavigateTool
+    from .tools.codegraph_overview_tool import CodeGraphOverviewTool
+    from .tools.codegraph_pr_review_tool import CodeGraphPRReviewTool
     from .tools.dependency_analysis_tool import DependencyAnalysisTool
     from .tools.file_health_tool import FileHealthTool
     from .tools.find_and_grep_tool import FindAndGrepTool
@@ -77,6 +79,11 @@ def create_tool_registry(
         ("codegraph_resolve", CodeGraphSymbolResolveTool(project_root)),
         ("codegraph_impact", CodeGraphImpactTool(project_root)),
         ("codegraph_navigate", CodeGraphNavigateTool(project_root)),
+        # Pain pass 2: codegraph_overview was imported in server.py but
+        # missing from the central registry, which broke the cli-mcp-parity
+        # contract test. Re-register here so both code paths agree.
+        ("codegraph_overview", CodeGraphOverviewTool(project_root)),
+        ("codegraph_pr_review", CodeGraphPRReviewTool(project_root)),
         ("analyze_change_impact", ChangeImpactTool(project_root)),
         ("refactoring_suggestions", RefactoringSuggestionsTool(project_root)),
         ("safe_to_edit", SafeToEditTool(project_root)),
