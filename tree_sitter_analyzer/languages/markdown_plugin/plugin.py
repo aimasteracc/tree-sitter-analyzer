@@ -211,87 +211,29 @@ class MarkdownPlugin(LanguagePlugin):
     async def analyze_file(
         self, file_path: str, request: AnalysisRequest
     ) -> AnalysisResult:
-        """Analyze a Markdown file and return the analysis results."""
-        if not TREE_SITTER_AVAILABLE:
-            return AnalysisResult(
-                file_path=file_path,
-                language=self.get_language_name(),
-                success=False,
-                error_message="Tree-sitter library not available.",
-            )
+        """Analyze a Markdown file and return the analysis results.
+
+        r37da (dogfood): 101 lines → ~30 lines of phase dispatch.
+        Sub-helpers ``_check_markdown_runtime``, ``_collect_markdown_elements``
+        own the precondition gating and the per-category extraction batch.
+        Output ``AnalysisResult`` shape is preserved byte-for-byte.
+        """
+        precheck_error = self._check_markdown_runtime(file_path)
+        if precheck_error is not None:
+            return precheck_error
 
         language = self.get_tree_sitter_language()
-        if not language:
-            return AnalysisResult(
-                file_path=file_path,
-                language=self.get_language_name(),
-                success=False,
-                error_message="Could not load Markdown language for parsing.",
-            )
-
         try:
             from ...encoding_utils import read_file_safe
 
             source_code, _ = read_file_safe(file_path)
-
             parser = tree_sitter.Parser()
             parser.language = language
             tree = parser.parse(source_code.encode("utf-8"))
 
             extractor = self.create_extractor()
             extractor.current_file = file_path  # Set current file for context
-
-            elements: list[CodeElement] = []
-
-            # Extract all element types using the markdown-specific extractor
-            if isinstance(extractor, MarkdownElementExtractor):
-                headers = extractor.extract_headers(tree, source_code)
-                code_blocks = extractor.extract_code_blocks(tree, source_code)
-                links = extractor.extract_links(tree, source_code)
-                images = extractor.extract_images(tree, source_code)
-                references = extractor.extract_references(tree, source_code)
-                lists = extractor.extract_lists(tree, source_code)
-                tables = extractor.extract_tables(tree, source_code)
-
-                # Extract new element types
-                blockquotes = extractor.extract_blockquotes(tree, source_code)
-                horizontal_rules = extractor.extract_horizontal_rules(tree, source_code)
-                html_elements = extractor.extract_html_elements(tree, source_code)
-                text_formatting = extractor.extract_text_formatting(tree, source_code)
-                footnotes = extractor.extract_footnotes(tree, source_code)
-            else:
-                # Fallback for base ElementExtractor
-                headers = []
-                code_blocks = []
-                links = []
-                images = []
-                references = []
-                lists = []
-                tables = []
-                blockquotes = []
-                horizontal_rules = []
-                html_elements = []
-                text_formatting = []
-                footnotes = []
-
-            elements.extend(headers)
-            elements.extend(code_blocks)
-            elements.extend(links)
-            elements.extend(images)
-            elements.extend(references)
-            elements.extend(lists)
-            elements.extend(tables)
-            elements.extend(blockquotes)
-            elements.extend(horizontal_rules)
-            elements.extend(html_elements)
-            elements.extend(text_formatting)
-            elements.extend(footnotes)
-
-            def count_nodes(node: "tree_sitter.Node") -> int:
-                count = 1
-                for child in node.children:
-                    count += count_nodes(child)
-                return count
+            elements = self._collect_markdown_elements(extractor, tree, source_code)
 
             return AnalysisResult(
                 file_path=file_path,
@@ -299,7 +241,7 @@ class MarkdownPlugin(LanguagePlugin):
                 success=True,
                 elements=elements,
                 line_count=len(source_code.splitlines()),
-                node_count=count_nodes(tree.root_node),
+                node_count=_count_markdown_nodes(tree.root_node),
             )
         except Exception as e:
             log_error(f"Error analyzing Markdown file {file_path}: {e}")
@@ -309,6 +251,60 @@ class MarkdownPlugin(LanguagePlugin):
                 success=False,
                 error_message=str(e),
             )
+
+    def _check_markdown_runtime(self, file_path: str) -> AnalysisResult | None:
+        """Return a failure result when tree-sitter / language is unavailable.
+
+        Returns ``None`` on the happy path so the caller can proceed with
+        parsing. Splitting this out keeps ``analyze_file`` focused on the
+        success flow.
+        """
+        if not TREE_SITTER_AVAILABLE:
+            return AnalysisResult(
+                file_path=file_path,
+                language=self.get_language_name(),
+                success=False,
+                error_message="Tree-sitter library not available.",
+            )
+        if not self.get_tree_sitter_language():
+            return AnalysisResult(
+                file_path=file_path,
+                language=self.get_language_name(),
+                success=False,
+                error_message="Could not load Markdown language for parsing.",
+            )
+        return None
+
+    @staticmethod
+    def _collect_markdown_elements(
+        extractor: Any,
+        tree: "tree_sitter.Tree",
+        source_code: str,
+    ) -> list[CodeElement]:
+        """Run every markdown-specific extractor and concatenate results.
+
+        The list order matches the prior in-line block so existing
+        consumers that index by position keep working: headers,
+        code_blocks, links, images, references, lists, tables,
+        blockquotes, horizontal_rules, html_elements, text_formatting,
+        footnotes.
+        """
+        if not isinstance(extractor, MarkdownElementExtractor):
+            return []
+        elements: list[CodeElement] = []
+        elements.extend(extractor.extract_headers(tree, source_code))
+        elements.extend(extractor.extract_code_blocks(tree, source_code))
+        elements.extend(extractor.extract_links(tree, source_code))
+        elements.extend(extractor.extract_images(tree, source_code))
+        elements.extend(extractor.extract_references(tree, source_code))
+        elements.extend(extractor.extract_lists(tree, source_code))
+        elements.extend(extractor.extract_tables(tree, source_code))
+        elements.extend(extractor.extract_blockquotes(tree, source_code))
+        elements.extend(extractor.extract_horizontal_rules(tree, source_code))
+        elements.extend(extractor.extract_html_elements(tree, source_code))
+        elements.extend(extractor.extract_text_formatting(tree, source_code))
+        elements.extend(extractor.extract_footnotes(tree, source_code))
+        return elements
 
     def execute_query(self, tree: "tree_sitter.Tree", query_name: str) -> dict:
         """Execute a specific query on the tree"""
@@ -482,3 +478,17 @@ class MarkdownPlugin(LanguagePlugin):
             ],
             "text_content": ["atx_heading", "setext_heading", "inline", "paragraph"],
         }
+
+
+def _count_markdown_nodes(node: "tree_sitter.Node") -> int:
+    """Return the total number of AST nodes under ``node`` (inclusive).
+
+    r37da (dogfood): lifted from a closure inside ``analyze_file`` so the
+    method itself stays a thin phase dispatcher. Recursion is iterative-
+    friendly (each call counts the node plus its subtree), matching the
+    original semantics.
+    """
+    count = 1
+    for child in node.children:
+        count += _count_markdown_nodes(child)
+    return count
