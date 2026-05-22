@@ -61,6 +61,7 @@ def build_agent_workflow_pack(
     )
     result = {
         "success": True,
+        "verdict": "INFO",
         "workflow": "SMART agent workflow pack",
         "workflow_mode": "SMART-SET-MAP-ANALYZE-RETRIEVE-TRACE",
         "project_root": project_root,
@@ -81,6 +82,10 @@ def build_agent_workflow_pack(
             recommended_commands,
         ),
     }
+    # Mirror verdict into agent_summary (M10 bidirectional pattern).
+    agent_summary_dict = result["agent_summary"]
+    if isinstance(agent_summary_dict, dict):
+        agent_summary_dict["verdict"] = result["verdict"]
     result["toon_content"] = _build_toon_content(result)
     return result
 

@@ -214,6 +214,9 @@ def _build_result(
     else:
         result["smart_workflow_hint"] = _health_opt_in_hint()
     result["agent_summary"] = _build_agent_summary(result, include_health)
+    # Mirror top-level verdict into agent_summary so consumers branching
+    # on either surface see the same envelope (M10 pattern).
+    result["agent_summary"]["verdict"] = result.get("verdict", "INFO")
     result["tool_routing"] = _build_tool_routing()
     return result
 
@@ -227,6 +230,7 @@ def _build_base_result(root: Path, scan: dict[str, Any]) -> dict[str, Any]:
     source_count = sum(lang_dist.values())
     return {
         "success": True,
+        "verdict": "INFO",
         "project_root": str(root),
         "summary": {
             "total_files": total_files,
@@ -268,6 +272,9 @@ def _add_health_data(
     unhealthy = [entry for entry in health_results if entry["grade"] in ("D", "F")]
     if unhealthy:
         result["health_alert"] = _build_health_alert(unhealthy)
+        # Escalate verdict from INFO → REVIEW when D/F files surface
+        # (anti-bias: a missed alert ships bugs; a false REVIEW is recoverable).
+        result["verdict"] = "REVIEW"
 
 
 def _score_health_entry(

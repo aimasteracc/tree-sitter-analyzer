@@ -48,6 +48,34 @@ SIDE_EFFECT_MARKERS = {
 ACTIONABILITY_PREVIEW_LIMIT = 3
 
 
+def _skills_verdict(
+    validation: dict[str, Any],
+    gaps: dict[str, Any],
+    root_path: Path,
+) -> str:
+    """Canonical verdict for the agent-skills envelope.
+
+    pain-01c: tsa-landing reads ``list_agent_skills.verdict`` as part of
+    its decision surface. Map validation status to the canonical
+    vocabulary, anti-bias toward higher severity.
+
+      skills_root missing          → CAUTION  (no skills installed)
+      blocking validation status   → CAUTION
+      caution-level gaps           → REVIEW
+      ready / no gaps              → INFO
+    """
+    if not root_path.exists():
+        return "CAUTION"
+    status = validation.get("status", "")
+    if status in ("blocking", "missing"):
+        return "CAUTION"
+    if validation.get("blocking_gap_count", 0) > 0:
+        return "CAUTION"
+    if status in ("caution", "warning") or validation.get("caution_gap_count", 0) > 0:
+        return "REVIEW"
+    return "INFO"
+
+
 def build_agent_skills_inventory(
     project_root: str,
     skills_root: str | None = None,
@@ -59,8 +87,12 @@ def build_agent_skills_inventory(
     gaps = _build_gaps(skills, root_path)
     validation = build_skill_validation(gaps)
 
+    agent_summary = _build_agent_summary(skills, gaps, validation)
+    verdict = _skills_verdict(validation, gaps, root_path)
+    agent_summary["verdict"] = verdict
     result = {
         "success": True,
+        "verdict": verdict,
         "inventory": "project agent skills",
         "project_root": str(project_path),
         "skills_root": _display_path(root_path, project_path),
@@ -69,7 +101,7 @@ def build_agent_skills_inventory(
         "skills": skills,
         "gaps": gaps,
         "validation": validation,
-        "agent_summary": _build_agent_summary(skills, gaps, validation),
+        "agent_summary": agent_summary,
     }
     result["toon_content"] = _build_toon_content(result)
     return result

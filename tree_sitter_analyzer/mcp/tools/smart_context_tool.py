@@ -197,6 +197,24 @@ def _resolve_graph_node(graph: DependencyGraph, rel_path: str) -> str:
     return next((node for node in graph._nodes if node.endswith(rel_path)), rel_path)
 
 
+def _smart_context_verdict(profile: SmartContextProfile) -> str:
+    """Map smart-context resolution state to canonical verdict vocabulary.
+
+    Anti-bias: when in doubt, err toward higher severity.
+
+    - No exports AND no structure resolvable → NOT_FOUND
+    - Has structure but missing exports/imports info → REVIEW
+    - Has structure and exports (context complete) → INFO
+    """
+    has_structure = bool(profile.structure)
+    has_exports = bool(profile.exports)
+    if not has_structure and not has_exports:
+        return "NOT_FOUND"
+    if not has_structure or not has_exports:
+        return "REVIEW"
+    return "INFO"
+
+
 # _build_smart_context_result: implementation
 def _build_smart_context_result(profile: SmartContextProfile) -> dict[str, Any]:
     grade = profile.health.grade
@@ -212,8 +230,12 @@ def _build_smart_context_result(profile: SmartContextProfile) -> dict[str, Any]:
         downstream_count=len(profile.dependents),
         test_files=profile.test_files,
     )
+    verdict = _smart_context_verdict(profile)
+    agent_summary = _build_agent_summary(summary_input)
+    agent_summary["verdict"] = verdict
     return {
         "success": True,
+        "verdict": verdict,
         "file_path": profile.file_path,
         "line_count": profile.line_count,
         "language": profile.language,
@@ -223,7 +245,7 @@ def _build_smart_context_result(profile: SmartContextProfile) -> dict[str, Any]:
             "signal": _build_signal(profile.health.dimensions),
             "weakest_dimension": weakest,
         },
-        "agent_summary": _build_agent_summary(summary_input),
+        "agent_summary": agent_summary,
         "exports": profile.exports,
         "structure": profile.structure,
         "dependencies": {
