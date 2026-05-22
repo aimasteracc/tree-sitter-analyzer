@@ -128,13 +128,20 @@ def _build_base_health_result(
         "file_path": file_path,
         "grade": adjusted_grade,
         "verdict": verdict,
-        # ``total_score`` is the canonical name; ``health_score`` and
-        # ``overall_score`` are documented aliases so callers that follow
-        # the more common naming conventions still find the value
-        # without needing to know our exact field name.
+        # ``total_score`` is the canonical name; ``health_score``,
+        # ``overall_score`` and ``score`` are documented aliases so
+        # callers that follow the more common naming conventions still
+        # find the value without needing to know our exact field name.
+        #
+        # r37f7-U4: ``score`` was missing from the top-level envelope
+        # even though ``summary_line`` carried ``score=N`` and
+        # ``agent_summary.score`` carried the float. Agents that read
+        # the envelope by JSON key (``result["score"]``) saw ``None`` and
+        # had to string-parse the headline. The alias closes the drift.
         "total_score": adjusted_total,
         "health_score": adjusted_total,
         "overall_score": adjusted_total,
+        "score": adjusted_total,
         "signal": _build_signal(health.dimensions),
         "dimensions": health.dimensions,
         "code_smells": smells,

@@ -9,6 +9,7 @@ search (search symbols), stats (cache statistics), invalidate (remove entry).
 CodeGraph parity: equivalent to CodeGraph's pre-indexed code intelligence.
 """
 
+import os
 import re
 from typing import Any
 
@@ -391,11 +392,44 @@ class ASTCacheTool(BaseMCPTool):
 
     @staticmethod
     def _handle_stats(cache: Any) -> dict[str, Any]:
-        """``mode=stats``: aggregate row counts + FTS5 capability flag."""
+        """``mode=stats``: aggregate row counts + FTS5 capability flag.
+
+        r37f7-U3: promote summary-line scalars to top-level envelope fields.
+        Before the fix, ``summary_line`` carried ``files=1263 symbols=30238
+        fts5=True`` but the only top-level scalars were ``total_files`` /
+        ``total_symbols`` / ``fts5_available``. Agents that read the
+        envelope by the agent-friendly aliases (``indexed_files``,
+        ``db_size_mb``) saw ``null`` and had to string-parse the headline
+        to recover the numbers. We now mirror the canonical counts under
+        the alias names and compute the SQLite file size on disk.
+        """
         stats = cache.get_stats()
         total_files = int(stats.get("total_files", 0) or 0)
         total_symbols = int(stats.get("total_symbols", 0) or 0)
         fts5_available = bool(stats.get("fts5_available", False))
+
+        # U3: ``indexed_files`` is the agent-friendly alias for
+        # ``total_files``. Both keys carry the same number so callers
+        # branching on either field see consistent data.
+        stats.setdefault("indexed_files", total_files)
+
+        # U3: compute the on-disk db size in megabytes for agents that
+        # want a quick capacity check without re-reading ``db_path``.
+        # ``os.path.getsize`` may raise ``OSError`` if the cache file
+        # has been removed between ``get_stats()`` and now — we treat
+        # that as "unknown" and emit ``0.0`` so the field is never
+        # ``None`` (agents that branch on ``is None`` would otherwise
+        # see a regression from the no-cache path).
+        db_path = stats.get("db_path")
+        db_size_mb = 0.0
+        if isinstance(db_path, str) and db_path:
+            try:
+                db_size_bytes = os.path.getsize(db_path)
+                db_size_mb = round(db_size_bytes / (1024 * 1024), 3)
+            except OSError:
+                db_size_mb = 0.0
+        stats.setdefault("db_size_mb", db_size_mb)
+
         summary_line = (
             f"ast_cache stats files={total_files} "
             f"symbols={total_symbols} fts5={fts5_available}"

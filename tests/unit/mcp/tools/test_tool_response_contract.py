@@ -10248,3 +10248,147 @@ class TestT7DescriptionQualityFloor:
             "200-char description floor. If you have a legitimate reason to "
             "raise the baseline, document it in this test with a comment."
         )
+
+
+class TestU34FieldDrift:
+    """r37f7-U3+U4: top-level envelope fields must NOT diverge from
+    the headline ``summary_line``.
+
+    Pre-fix symptoms (dogfood round-37f7):
+
+    * ``ast_cache --mode=stats`` shipped ``summary_line=
+      "ast_cache stats files=1263 symbols=30238 fts5=True"`` while the
+      top-level aliases ``indexed_files`` / ``db_size_mb`` were absent
+      (``None`` when an agent read by JSON key). The agent had to
+      string-parse the headline to recover the real numbers.
+    * ``check_file_health`` shipped ``summary_line=
+      "<file> grade=D score=65.6 smells=5 weakest=complexity"`` but
+      ``result["score"]`` was ``None`` — only ``total_score`` /
+      ``health_score`` / ``overall_score`` carried the float. Again
+      the agent had to parse the headline.
+
+    Both fixes promote the summary-line scalars to top-level fields so
+    callers that branch on the canonical JSON key see real numbers.
+    """
+
+    def test_ast_cache_stats_promotes_indexed_files(self, tmp_path: Path) -> None:
+        """U3: ``ast_cache --mode=stats`` exposes ``indexed_files`` /
+        ``total_symbols`` / ``db_size_mb`` / ``fts5_available`` at the
+        top level so agents reading by JSON key see real numbers — no
+        more string-parsing of ``summary_line``."""
+        from tree_sitter_analyzer.mcp.tools.ast_cache_tool import ASTCacheTool
+
+        (tmp_path / "sample.py").write_text(
+            "def alpha() -> int:\n    return 1\ndef beta() -> int:\n    return 2\n",
+            encoding="utf-8",
+        )
+        tool = ASTCacheTool(str(tmp_path))
+        # Populate the cache so total_files > 0 (sanity-check the alias
+        # holds non-zero numbers, not just defaults).
+        _run(tool.execute({"mode": "index"}))
+        result = _run(tool.execute({"mode": "stats"}))
+
+        assert result.get("success") is True
+        sl = result.get("summary_line", "")
+
+        # U3.a: ``indexed_files`` must be a populated scalar (not None).
+        indexed_files = result.get("indexed_files")
+        assert indexed_files is not None, (
+            f"U3: ast_cache stats top-level 'indexed_files' must not be None "
+            f"— it shadows summary_line {sl!r}"
+        )
+        assert isinstance(indexed_files, int), (
+            f"U3: 'indexed_files' must be int, got {type(indexed_files).__name__}"
+        )
+
+        # U3.b: matches the count embedded in the summary_line headline.
+        import re as _re
+
+        match = _re.search(r"files=(\d+)", sl)
+        assert match is not None, f"U3: summary_line missing files=N — {sl!r}"
+        sl_files = int(match.group(1))
+        assert indexed_files == sl_files, (
+            f"U3: 'indexed_files' ({indexed_files}) must match "
+            f"summary_line files= ({sl_files}) — {sl!r}"
+        )
+
+        # U3.c: ``total_symbols`` is the canonical name; same value.
+        total_symbols = result.get("total_symbols")
+        assert total_symbols is not None, (
+            f"U3: ast_cache stats top-level 'total_symbols' must not be None "
+            f"— summary_line {sl!r}"
+        )
+        sym_match = _re.search(r"symbols=(\d+)", sl)
+        assert sym_match is not None, f"U3: summary_line missing symbols=N — {sl!r}"
+        assert total_symbols == int(sym_match.group(1)), (
+            f"U3: 'total_symbols' must match summary_line symbols= — "
+            f"got {total_symbols} vs {sym_match.group(1)}"
+        )
+
+        # U3.d: ``db_size_mb`` is a float (may be 0.0 on a freshly-created
+        # empty cache, but the key must be present and not None).
+        db_size_mb = result.get("db_size_mb")
+        assert db_size_mb is not None, (
+            "U3: ast_cache stats top-level 'db_size_mb' must not be None"
+        )
+        assert isinstance(db_size_mb, int | float), (
+            f"U3: 'db_size_mb' must be numeric, got {type(db_size_mb).__name__}"
+        )
+        assert db_size_mb >= 0.0, (
+            f"U3: 'db_size_mb' must be non-negative, got {db_size_mb!r}"
+        )
+
+        # U3.e: ``fts5_available`` is present at top level (no surprise None).
+        assert result.get("fts5_available") is not None, (
+            "U3: ast_cache stats top-level 'fts5_available' must not be None"
+        )
+
+    def test_file_health_promotes_score(self, tmp_path: Path) -> None:
+        """U4: ``check_file_health`` exposes ``score`` at the top level
+        so agents reading ``result["score"]`` see the float — no more
+        string-parsing of ``summary_line``."""
+        from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool
+
+        # Use a file with a measurable structure so score is a real number.
+        src = tmp_path / "sample.py"
+        src.write_text(
+            "def alpha(x: int) -> int:\n"
+            "    return x + 1\n"
+            "\n"
+            "def beta(y: int) -> int:\n"
+            "    return y * 2\n",
+            encoding="utf-8",
+        )
+        tool = FileHealthTool(str(tmp_path))
+        result = _run(tool.execute({"file_path": str(src), "output_format": "json"}))
+
+        assert result.get("success") is True
+        sl = result.get("summary_line", "")
+
+        # U4.a: ``score`` must be a populated scalar (not None).
+        score = result.get("score")
+        assert score is not None, (
+            f"U4: file_health top-level 'score' must not be None "
+            f"— it shadows summary_line {sl!r}"
+        )
+        assert isinstance(score, int | float), (
+            f"U4: 'score' must be numeric, got {type(score).__name__}"
+        )
+
+        # U4.b: matches the float embedded in the summary_line headline.
+        import re as _re
+
+        match = _re.search(r"score=([\d.]+)", sl)
+        assert match is not None, f"U4: summary_line missing score=N — {sl!r}"
+        sl_score = float(match.group(1))
+        assert float(score) == sl_score, (
+            f"U4: 'score' ({score}) must match summary_line score= "
+            f"({sl_score}) — {sl!r}"
+        )
+
+        # U4.c: existing aliases keep the same value (back-compat).
+        for alias in ("total_score", "health_score", "overall_score"):
+            assert result.get(alias) == score, (
+                f"U4: '{alias}' must equal 'score' for back-compat — "
+                f"got {result.get(alias)!r} vs {score!r}"
+            )
