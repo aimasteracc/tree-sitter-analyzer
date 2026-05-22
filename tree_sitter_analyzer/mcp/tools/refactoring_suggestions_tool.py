@@ -275,6 +275,70 @@ class RefactoringSuggestionsTool(BaseMCPTool):
         return True
 
 
+# Severity mapping: code_patterns uses ``critical/warning/info``;
+# refactor's downstream logic uses ``critical/major/minor``. Keep the
+# ordering parallel so ``_agent_risk`` still produces ``high`` for any
+# critical finding.
+_REFACTOR_SEVERITY_MAP: dict[str, str] = {
+    "critical": "critical",
+    "warning": "major",
+    "info": "minor",
+}
+
+
+def _collect_security_and_anti_pattern_findings(
+    resolved: str, language: str
+) -> list[dict[str, Any]]:
+    """Run both detectors against ``resolved``; never raise.
+
+    Detector failures are silenced so the refactor tool degrades to
+    "structural suggestions only" rather than aborting the whole
+    refactor call.
+    """
+    findings: list[dict[str, Any]] = []
+    try:
+        findings.extend(_detect_security(resolved, language))
+    except Exception:  # nosec B110 — detector failure must not block refactor
+        pass
+    try:
+        findings.extend(_detect_anti_patterns(resolved, language))
+    except Exception:  # nosec B110 — detector failure must not block refactor
+        pass
+    return findings
+
+
+def _finding_to_refactor_suggestion(finding: dict[str, Any]) -> dict[str, Any]:
+    """Map one ``code_patterns`` finding to the refactor suggestion contract.
+
+    Priority pulls criticals above structural suggestions but leaves
+    room (100) for the god-file pattern. ``code_patterns`` already
+    attaches a severity ordering — mirror it here so the most
+    dangerous finding sorts to the top of the response.
+    """
+    sev_raw = str(finding.get("severity") or "info")
+    sev = _REFACTOR_SEVERITY_MAP.get(sev_raw, "minor")
+    category = str(finding.get("category") or "")
+    finding_id = str(finding.get("id") or finding.get("type") or "unknown")
+    finding_type = str(finding.get("type") or finding_id)
+    message = str(finding.get("message") or finding_type)
+    line = finding.get("line")
+    priority = 85 if sev == "critical" else (60 if sev == "major" else 40)
+    suggestion: dict[str, Any] = {
+        "type": "anti_pattern" if category == "anti_patterns" else "security",
+        "id": finding_id,
+        "name": finding_type,
+        "pattern": finding_type,
+        "severity": sev,
+        "message": message,
+        "priority_score": priority,
+        "source": "code_patterns",
+        "category": category,
+    }
+    if isinstance(line, int):
+        suggestion["line_range"] = {"start": line, "end": line}
+    return suggestion
+
+
 def _surface_security_and_anti_patterns(
     resolved: str,
     suggestions: list[dict[str, Any]],
@@ -304,6 +368,11 @@ def _surface_security_and_anti_patterns(
     mapped (critical→critical, warning→major, info→minor) so the
     existing ``_agent_risk`` and severity-counting logic keeps working
     without special casing.
+
+    r37eq (dogfood): 91 → ~15 lines. ``_collect_security_and_anti_pattern_findings``
+    runs both detectors with silenced failures; ``_finding_to_refactor_suggestion``
+    maps each finding to the refactor contract; this function becomes
+    language-resolve → collect → map → append.
     """
     from ...language_detector import detect_language_from_file
 
@@ -311,56 +380,15 @@ def _surface_security_and_anti_patterns(
         language = detect_language_from_file(resolved)
     except Exception:  # nosec B110 — language detection is best-effort
         return
-
     if not language:
         return
 
-    findings: list[dict[str, Any]] = []
-    try:
-        findings.extend(_detect_security(resolved, language))
-    except Exception:  # nosec B110 — detector failure must not block refactor
-        pass
-    try:
-        findings.extend(_detect_anti_patterns(resolved, language))
-    except Exception:  # nosec B110 — detector failure must not block refactor
-        pass
-
+    findings = _collect_security_and_anti_pattern_findings(resolved, language)
     if not findings:
         return
 
-    # Severity mapping: code_patterns uses ``critical/warning/info``;
-    # refactor's downstream logic uses ``critical/major/minor``. Keep
-    # the ordering parallel so ``_agent_risk`` still produces
-    # ``high`` for any critical finding.
-    severity_map = {"critical": "critical", "warning": "major", "info": "minor"}
-
     for finding in findings:
-        sev_raw = str(finding.get("severity") or "info")
-        sev = severity_map.get(sev_raw, "minor")
-        category = str(finding.get("category") or "")
-        finding_id = str(finding.get("id") or finding.get("type") or "unknown")
-        finding_type = str(finding.get("type") or finding_id)
-        message = str(finding.get("message") or finding_type)
-        line = finding.get("line")
-        # Priority pulls criticals above structural suggestions but
-        # leaves room (100) for the god-file pattern. ``code_patterns``
-        # already attaches a severity ordering — mirror it here so the
-        # most dangerous finding sorts to the top of the response.
-        priority = 85 if sev == "critical" else (60 if sev == "major" else 40)
-        suggestion: dict[str, Any] = {
-            "type": "anti_pattern" if category == "anti_patterns" else "security",
-            "id": finding_id,
-            "name": finding_type,
-            "pattern": finding_type,
-            "severity": sev,
-            "message": message,
-            "priority_score": priority,
-            "source": "code_patterns",
-            "category": category,
-        }
-        if isinstance(line, int):
-            suggestion["line_range"] = {"start": line, "end": line}
-        suggestions.append(suggestion)
+        suggestions.append(_finding_to_refactor_suggestion(finding))
 
     # Side-effect documented: callers receive the augmented list in
     # place. The display ``file_path`` is unused here — kept in the
