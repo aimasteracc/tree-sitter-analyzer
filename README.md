@@ -10,7 +10,7 @@
 [![Version](https://img.shields.io/badge/version-1.10.4-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
-> 🚀 **The MCP code-analysis server built for AI agents** — 23 MCP tools · 17 languages · **TOON output cuts tokens by ~73%** · pure `uvx`, no graph DB required
+> 🚀 **The MCP code-analysis server built for AI agents** — 27 MCP tools · 17 languages · **TOON output cuts tokens by ~73%** · pure `uvx`, no graph DB required
 
 ### Why AI agents reach for this over a raw tree-sitter wrapper
 
@@ -246,7 +246,7 @@ Restart Cursor; the tools appear under **Available Tools** for the agent.
 
 After restart, hand off control to the AI: `Please set the project root directory to: /path/to/your/project`
 
-📖 **[MCP Tools Reference](docs/api/mcp_tools_specification.md)** for the complete 23-tool API.
+📖 **[MCP Tools Reference](docs/api/mcp_tools_specification.md)** for the complete 27-tool API.
 
 ---
 
@@ -471,7 +471,7 @@ When contributing new features:
 | File | Scope |
 |---|---|
 | [docs/CODEMAPS/architecture.md](docs/CODEMAPS/architecture.md) | High-level topology · data flow · critical invariants |
-| [docs/CODEMAPS/mcp-tools.md](docs/CODEMAPS/mcp-tools.md) | 23 MCP tools + envelope contract |
+| [docs/CODEMAPS/mcp-tools.md](docs/CODEMAPS/mcp-tools.md) | 27 MCP tools + envelope contract |
 | [docs/CODEMAPS/cli.md](docs/CODEMAPS/cli.md) | CLI flags / commands / parity contract |
 | [docs/CODEMAPS/languages.md](docs/CODEMAPS/languages.md) | 17 language plugins + grammar coverage |
 | [docs/CODEMAPS/formatters.md](docs/CODEMAPS/formatters.md) | TOON / JSON / table / CSV / YAML |

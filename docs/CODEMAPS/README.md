@@ -9,7 +9,7 @@ Each map under ~1k tokens — load only the one(s) you need.
 | File | Scope |
 |---|---|
 | [architecture.md](./architecture.md) | High-level topology · data flow · cross-cutting concerns |
-| [mcp-tools.md](./mcp-tools.md) | 23 MCP tools registered in `mcp/server.py` |
+| [mcp-tools.md](./mcp-tools.md) | 27 MCP tools registered in `mcp/server.py` |
 | [cli.md](./cli.md) | CLI flags / commands / `tree-sitter-analyzer` entry points |
 | [languages.md](./languages.md) | 17 language plugins + grammar coverage |
 | [formatters.md](./formatters.md) | Output formats (TOON / JSON / table / CSV / YAML) |

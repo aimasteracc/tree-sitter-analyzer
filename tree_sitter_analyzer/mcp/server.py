@@ -64,6 +64,7 @@ from .server_utils.code_scale_handler import analyze_code_scale
 from .server_utils.prompt_registration import register_prompts
 from .server_utils.resource_registration import register_resources
 from .server_utils.tool_registration import register_tools
+
 # PERF-3: tool classes are imported lazily inside _create_tool_registry().
 # At module load time we ship only the module-level Server entry points;
 # importing the 23 individual tool modules eagerly cost ~316 ms cold start
@@ -108,7 +109,10 @@ def _create_tool_registry(
     from .tools.dependency_analysis_tool import DependencyAnalysisTool
     from .tools.file_health_tool import FileHealthTool
     from .tools.find_and_grep_tool import FindAndGrepTool
+    from .tools.get_code_outline_tool import GetCodeOutlineTool
+    from .tools.get_project_summary_tool import GetProjectSummaryTool
     from .tools.list_files_tool import ListFilesTool
+    from .tools.modification_guard_tool import ModificationGuardTool
     from .tools.parser_readiness_tool import ParserReadinessTool
     from .tools.project_health_tool import ProjectHealthTool
     from .tools.project_overview_tool import ProjectOverviewTool
@@ -120,11 +124,19 @@ def _create_tool_registry(
     from .tools.search_content_tool import SearchContentTool
     from .tools.smart_context_tool import SmartContextTool
     from .tools.symbol_lineage_tool import SymbolLineageTool
+    from .tools.trace_impact_tool import TraceImpactTool
 
+    # r37f3 (dogfood): 23 → 27 tools. Earlier audit found 4 tools referenced
+    # in OTHER tools' descriptions (``get_code_outline`` / ``trace_impact`` /
+    # ``modification_guard`` / ``get_project_summary``) but NOT exposed via
+    # MCP — agents reading those descriptions would attempt to call tools
+    # the server wouldn't recognise. Registering them honours the
+    # description contract and the CLI-MCP parity rule.
     tool_instances: list[tuple[str, Any]] = [
         ("check_code_scale", AnalyzeScaleTool(project_root)),
         ("analyze_code_structure", AnalyzeCodeStructureTool(project_root)),
         ("extract_code_section", ReadPartialTool(project_root)),
+        ("get_code_outline", GetCodeOutlineTool(project_root)),
         ("query_code", QueryTool(project_root)),
         ("list_files", ListFilesTool(project_root)),
         ("search_content", SearchContentTool(project_root)),
@@ -133,14 +145,17 @@ def _create_tool_registry(
         ("get_agent_workflow", AgentWorkflowTool(project_root)),
         ("advise_parser_readiness", ParserReadinessTool(project_root)),
         ("get_project_overview", ProjectOverviewTool(project_root)),
+        ("get_project_summary", GetProjectSummaryTool(project_root)),
         ("check_project_health", ProjectHealthTool(project_root)),
         ("check_file_health", FileHealthTool(project_root)),
         ("analyze_dependencies", DependencyAnalysisTool(project_root)),
         ("ast_cache", ASTCacheTool(project_root)),
         ("codegraph_call_graph", CodeGraphCallTool(project_root)),
         ("analyze_change_impact", ChangeImpactTool(project_root)),
+        ("trace_impact", TraceImpactTool(project_root)),
         ("refactoring_suggestions", RefactoringSuggestionsTool(project_root)),
         ("safe_to_edit", SafeToEditTool(project_root)),
+        ("modification_guard", ModificationGuardTool(project_root)),
         ("smart_context", SmartContextTool(project_root)),
         ("symbol_lineage", SymbolLineageTool(project_root)),
         ("code_patterns", CodePatternsTool(project_root)),

@@ -192,6 +192,15 @@ def test_registered_mcp_tools_have_cli_parity() -> None:
         "codegraph_call_graph": ("main", "--call-graph"),
         "ast_cache": ("main", "--ast-cache"),
         "detect_routes": ("main", "--detect-routes"),
+        # r37f3 (dogfood): 4 tools newly registered to MCP. Three are paired
+        # with existing CLI flags; ``get_project_summary`` and
+        # ``get_code_outline`` share entry points with the structural commands
+        # (--overview / --structure resp.) so the parity rule maps them onto
+        # the closest CLI surface area until dedicated flags ship.
+        "get_code_outline": ("main", "--structure"),
+        "get_project_summary": ("main", "--overview"),
+        "trace_impact": ("main", "--trace-impact"),
+        "modification_guard": ("main", "--modification-guard"),
     }
 
     tool_names = {name for name, _tool in _create_tool_registry(str(PROJECT_ROOT))[0]}

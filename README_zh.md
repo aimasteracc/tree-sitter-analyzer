@@ -237,7 +237,7 @@ Cursor → **Settings** → **MCP** → **Add new MCP server**，或编辑 `~/.c
 
 重启后，告诉 AI: `请将项目根目录设置为: /path/to/your/project`
 
-📖 完整 23 工具 API 文档请查看 **[MCP 工具参考](docs/api/mcp_tools_specification.md)**。
+📖 完整 27 工具 API 文档请查看 **[MCP 工具参考](docs/api/mcp_tools_specification.md)**。
 
 ---
 

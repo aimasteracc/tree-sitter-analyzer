@@ -1,7 +1,7 @@
 <!-- Generated: 2026-05-22 -->
 # MCP Tools Codemap
 
-23 MCP tools registered in [`mcp/server.py:124`](../../tree_sitter_analyzer/mcp/server.py#L124).
+27 MCP tools registered in [`mcp/server.py:124`](../../tree_sitter_analyzer/mcp/server.py#L124).
 All tools default to **TOON output** (locked — see `CLAUDE.md`).
 
 ## Tool Registry
@@ -11,6 +11,7 @@ All tools default to **TOON output** (locked — see `CLAUDE.md`).
 | `check_code_scale` | `--check-scale` | Per-file metrics (LOC, complexity, classes/methods/imports counts) |
 | `analyze_code_structure` | `--table` / `--summary` | Full structural AST table |
 | `extract_code_section` | `--partial-read --start-line N --end-line M` | Token-efficient line range |
+| `get_code_outline` | (MCP-only; CLI: `--table compact`) | Structural navigation map (hierarchy, no method bodies) |
 | `query_code` | `--query-key methods --filter "public=true"` | tree-sitter query DSL |
 | `list_files` | `list-files` subcommand (fd) | Discovery |
 | `search_content` | `search-content` subcommand (ripgrep) | Regex search |
@@ -19,14 +20,17 @@ All tools default to **TOON output** (locked — see `CLAUDE.md`).
 | `get_agent_workflow` | `--smart-context` | SMART workflow (Set→Map→Analyze→Retrieve→Trace) |
 | `advise_parser_readiness` | `--parser-readiness` | Pre-flight check before parsing |
 | `get_project_overview` | `--project-overview` | One-screen project snapshot |
+| `get_project_summary` | (MCP-only) | Persistent architecture overview from disk-backed index |
 | `check_project_health` | `--project-health` | Health-score per file + grade distribution |
 | `check_file_health` | `--file-health` | One-file health score + actionable smells |
 | `analyze_dependencies` | `--dependencies` | Import graph + cycle detection |
 | `ast_cache` | `--ast-cache` | Index project / lookup / invalidate AST cache |
 | `codegraph_call_graph` | `--call-graph` | Caller/callee graph (sqlite-backed) |
 | `analyze_change_impact` | `--change-impact` | Blast radius + verification command for edits |
+| `trace_impact` | `--trace-impact --trace-impact-symbol SYM` | Find every caller/usage site of a symbol |
 | `refactoring_suggestions` | `--refactor` | Concrete refactor recipes for `code_patterns` findings |
 | `safe_to_edit` | `--safe-to-edit` | Verdict + downstream caller risk |
+| `modification_guard` | `--modification-guard --modification-guard-symbol SYM` | Pre-modification safety check (run BEFORE editing public symbol) |
 | `smart_context` | `--smart-context --query "X"` | Targeted context for a symbol/file |
 | `symbol_lineage` | `--symbol-lineage SYM` | Where a symbol was defined / renamed / moved |
 | `code_patterns` | `--code-patterns` | Code smells (long_method, deep_nesting, god_class, sql_injection, …) |

@@ -208,6 +208,13 @@ class TestExecuteAcrossAllTools:
             "symbol_lineage": {"symbol": "greet"},
             "code_patterns": {"file_path": sample_file},
             "detect_routes": {"mode": "summary"},
+            # r37f3 (dogfood): 4 tools newly registered to MCP — they were
+            # already referenced in OTHER tools' descriptions, so agents
+            # would have hit "tool not found" when following those hints.
+            "get_code_outline": {"file_path": sample_file},
+            "get_project_summary": {},
+            "trace_impact": {"symbol": "greet", "mode": "callers"},
+            "modification_guard": {"file_path": sample_file, "symbol": "greet"},
         }
         skipped: list[str] = []
         for name, tool in registered_tools:
