@@ -158,37 +158,42 @@ class AnalysisSession:
         Returns:
             {file_path: sha256_hash} 字典，文件不存在时 hash 为 None
         """
+        # r37do (dogfood): flattened nesting 6 → 3 by extracting the
+        # single-file hash logic into _hash_one_file (which returns the
+        # digest or None when the file can't be read).
         hashes: dict[str, str | None] = {}
         for file_path in file_paths:
-            path = Path(file_path)
-            if not path.exists():
-                hashes[file_path] = None
-                continue
-
-            try:
-                current_mtime = path.stat().st_mtime
-
-                # mtime キャッシュチェック
-                cached = _file_hash_cache.get(file_path)
-                if cached is not None:
-                    cached_mtime, cached_hash = cached
-                    if cached_mtime == current_mtime:
-                        hashes[file_path] = cached_hash
-                        continue
-
-                # キャッシュミス：SHA256 を計算してキャッシュに保存
-                sha256_hash = hashlib.sha256()
-                with open(path, "rb") as f:
-                    for chunk in iter(lambda: f.read(8192), b""):
-                        sha256_hash.update(chunk)
-                digest = sha256_hash.hexdigest()
-                _file_hash_cache[file_path] = (current_mtime, digest)
-                hashes[file_path] = digest
-
-            except Exception:
-                hashes[file_path] = None
-
+            hashes[file_path] = self._hash_one_file(file_path)
         return hashes
+
+    @staticmethod
+    def _hash_one_file(file_path: str) -> str | None:
+        """Return SHA256 digest of ``file_path``, using the mtime cache.
+
+        Cache hit fast-path: when ``_file_hash_cache`` carries a row
+        whose ``mtime`` matches the current ``st_mtime``, return the
+        stored digest without reading the file. Otherwise stream the
+        file in 8 KiB chunks, hash, and refresh the cache. ``None`` is
+        returned on missing files or read errors.
+        """
+        path = Path(file_path)
+        if not path.exists():
+            return None
+        try:
+            current_mtime = path.stat().st_mtime
+            cached = _file_hash_cache.get(file_path)
+            if cached is not None and cached[0] == current_mtime:
+                cached_digest: str | None = cached[1]
+                return cached_digest
+            sha256_hash = hashlib.sha256()
+            with open(path, "rb") as f:
+                for chunk in iter(lambda: f.read(8192), b""):
+                    sha256_hash.update(chunk)
+            digest = sha256_hash.hexdigest()
+            _file_hash_cache[file_path] = (current_mtime, digest)
+            return digest
+        except Exception:
+            return None
 
     def _detect_git_commit(self) -> str | None:
         """
