@@ -66,6 +66,48 @@ def _validate_int_field(
             raise ValueError(f"{field} must be >= {min_val}")
 
 
+def _read_failure_envelope(file_path: str) -> dict[str, Any]:
+    """Build the canonical error envelope when ``file_handler`` returned None.
+
+    Distinct from the empty-range / out-of-range responses — this is a
+    genuine IO error or validation rejection, so ``success=False``.
+    """
+    return {
+        "success": False,
+        "error": f"Failed to read partial content from file: {file_path}",
+        "file_path": file_path,
+    }
+
+
+def _compute_range_flags(
+    content: str,
+    file_lines: int | None,
+    start_line: int,
+    end_line: int | None,
+) -> tuple[bool, bool, list[int] | None]:
+    """K8: classify the range as ``out_of_range`` / ``partial_range``.
+
+    Returns ``(out_of_range, partial_range, clamped_to)`` so callers can
+    surface structured response flags instead of treating any empty read
+    as a generic failure. Agents read these flags and recover with a
+    valid range. ``clamped_to=[start_line, file_lines]`` is set only when
+    ``partial_range`` is true (caller honours the file boundary).
+    """
+    out_of_range = bool(
+        content == "" and file_lines is not None and start_line > file_lines
+    )
+    partial_range = bool(
+        file_lines is not None
+        and end_line is not None
+        and start_line <= file_lines
+        and end_line > file_lines
+    )
+    clamped_to: list[int] | None = (
+        [start_line, file_lines] if partial_range and file_lines is not None else None
+    )
+    return out_of_range, partial_range, clamped_to
+
+
 class ReadPartialTool(BaseMCPTool):
     """MCP Tool for reading partial content from code files.
 
@@ -153,46 +195,27 @@ class ReadPartialTool(BaseMCPTool):
         output_file: str | None,
         suppress_output: bool,
     ) -> dict[str, Any]:
-        """Read partial content and format the response."""
-        # Read the partial content from the resolved file path
+        """Read partial content and format the response.
+
+        r37ex (dogfood): 87→~25 lines. Range-status math moved to
+        ``_compute_range_flags``; the early-return error envelope moved to
+        ``_read_failure_envelope``.
+        """
         content = self._read_file_partial(
             resolved_path, start_line, end_line, start_column, end_column
         )
-
-        # Handle read failure — file_handler returned None (genuine IO
-        # error or validation rejection). This is distinct from an
-        # empty range, which is treated below as a structured
-        # ``out_of_range`` response so the caller can recover.
         if content is None:
-            return {
-                "success": False,
-                "error": f"Failed to read partial content from file: {file_path}",
-                "file_path": file_path,
-            }
+            # file_handler returned None — genuine IO error or validation
+            # rejection. Distinct from empty range (handled as out_of_range).
+            return _read_failure_envelope(file_path)
 
         # K8: compute lines_extracted from the ACTUAL content. The old
         # ``end_line - start_line + 1`` formula lied when the requested
         # range was past EOF (content empty but lines_extracted=N).
         lines_extracted = len(content.splitlines()) if content else 0
-
-        # K8: surface out-of-range / partial-overlap as structured
-        # response flags rather than a generic error. Agents can read
-        # ``out_of_range``/``partial_range`` and recover with a valid
-        # range instead of giving up on a false "failure".
         file_lines = count_file_lines(resolved_path)
-        out_of_range = bool(
-            content == "" and file_lines is not None and start_line > file_lines
-        )
-        partial_range = bool(
-            file_lines is not None
-            and end_line is not None
-            and start_line <= file_lines
-            and end_line > file_lines
-        )
-        clamped_to: list[int] | None = (
-            [start_line, file_lines]
-            if partial_range and file_lines is not None
-            else None
+        out_of_range, partial_range, clamped_to = _compute_range_flags(
+            content, file_lines, start_line, end_line
         )
 
         logger.info(
