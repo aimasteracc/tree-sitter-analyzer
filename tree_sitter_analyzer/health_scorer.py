@@ -448,46 +448,65 @@ class HealthScorer:
     # All others are pure functions delegated to module-level
 
     def _load_coverage_data(self) -> dict[str, float]:
-        """Load coverage data from coverage.json in current or parent directories."""
+        """Load coverage data from coverage.json in current or parent directories.
+
+        r37di (dogfood): flattened nesting 6 → 3 by extracting the
+        per-directory probe into ``_try_load_coverage_from_dir`` and
+        the dict-population step into ``_populate_coverage_cache``.
+        """
         if self._coverage_cache is not None:
             return self._coverage_cache
 
-        self._coverage_cache = {}
-
-        search_paths = [Path.cwd()]
-        for parent in Path.cwd().parents[:3]:
-            search_paths.append(parent)
-
+        cache: dict[str, float] = {}
+        self._coverage_cache = cache
+        search_paths = [Path.cwd(), *Path.cwd().parents[:3]]
         for search_dir in search_paths:
-            cov_file = search_dir / "coverage.json"
-            if cov_file.exists():
-                coverage_db = search_dir / ".coverage"
-                if _coverage_json_is_stale(cov_file, coverage_db):
-                    logger.info(
-                        "Ignoring stale coverage.json because .coverage is newer: "
-                        f"{cov_file}"
-                    )
-                    continue
-                try:
-                    data = json.loads(cov_file.read_text(encoding="utf-8"))
-                    files = data.get("files", {})
-                    for file_path, file_data in files.items():
-                        summary = file_data.get("summary", {})
-                        pct = summary.get("percent_covered", 0.0)
-                        self._coverage_cache[file_path] = float(pct)
-
-                    total = data.get("totals", {}).get("percent_covered", 0)
-                    logger.info(
-                        f"Loaded coverage data for {len(self._coverage_cache)} files "
-                        f"from {cov_file} (total: {total:.1f}%)"
-                    )
-                    return self._coverage_cache
-                except (json.JSONDecodeError, KeyError, TypeError) as e:
-                    logger.warning(f"Failed to parse coverage.json: {e}")
-                    continue
-
+            if self._try_load_coverage_from_dir(search_dir, cache):
+                return cache
         logger.debug("No coverage.json found")
-        return self._coverage_cache
+        return cache
+
+    @staticmethod
+    def _try_load_coverage_from_dir(search_dir: Path, cache: dict[str, float]) -> bool:
+        """Probe ``search_dir`` for a fresh ``coverage.json``; populate cache.
+
+        Returns ``True`` when the cache is populated (caller stops walking
+        parents), ``False`` when no usable coverage.json was found. Stale
+        files (older than ``.coverage``) and parse errors both yield
+        ``False`` so the caller can keep looking.
+        """
+        cov_file = search_dir / "coverage.json"
+        if not cov_file.exists():
+            return False
+        coverage_db = search_dir / ".coverage"
+        if _coverage_json_is_stale(cov_file, coverage_db):
+            logger.info(
+                f"Ignoring stale coverage.json because .coverage is newer: {cov_file}"
+            )
+            return False
+        try:
+            data = json.loads(cov_file.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, KeyError, TypeError) as e:
+            logger.warning(f"Failed to parse coverage.json: {e}")
+            return False
+        HealthScorer._populate_coverage_cache(data, cov_file, cache)
+        return True
+
+    @staticmethod
+    def _populate_coverage_cache(
+        data: dict, cov_file: Path, cache: dict[str, float]
+    ) -> None:
+        """Fill ``cache`` from a parsed coverage.json payload (in place)."""
+        files = data.get("files", {})
+        for file_path, file_data in files.items():
+            summary = file_data.get("summary", {})
+            pct = summary.get("percent_covered", 0.0)
+            cache[file_path] = float(pct)
+        total = data.get("totals", {}).get("percent_covered", 0)
+        logger.info(
+            f"Loaded coverage data for {len(cache)} files "
+            f"from {cov_file} (total: {total:.1f}%)"
+        )
 
     def _score_coverage(self, file_path: str) -> float | None:
         """Score based on test coverage. Returns None if no coverage data available."""
