@@ -111,6 +111,12 @@ class CodePatternsTool(BaseMCPTool):
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Scan a file for code-quality patterns.
+
+        r37bm (dogfood): tool flagged this at 152 lines. Split into
+        early-exit guards + detection scatter + envelope assembly.
+        Pol2 / M3 / G4 / Pol1 / M10 contracts preserved exactly.
+        """
         file_path = arguments["file_path"]
         categories = arguments.get("categories", ["all"])
         severity_threshold = arguments.get("severity_threshold", "info")
@@ -120,148 +126,138 @@ class CodePatternsTool(BaseMCPTool):
         if not Path(resolved).is_file():
             raise ValueError(f"Not a file: {file_path}")
 
-        # Pol2 (round-21): mirror ``file_health_tool`` and short-circuit on
-        # empty / whitespace-only files. Running the smell + security passes
-        # against zero bytes produces a true-but-misleading verdict=SAFE
-        # — "you have 0 patterns" reads as "this file is clean to ship"
-        # even though there is nothing to ship. ``file_health`` already
-        # returns ``signal=empty_file``; aligning the two tools lets agents
-        # branch on a single signal instead of reconciling cross-tool drift.
+        # Pol2: short-circuit empty / whitespace-only files so the agent
+        # gets the same ``signal=empty_file`` envelope file_health emits.
         empty_response = _empty_file_response(resolved, file_path, output_format)
         if empty_response is not None:
             return empty_response
-
-        min_sev = _SEVERITY_ORDER.get(severity_threshold, 0)
 
         from ...language_detector import detect_language_from_file
 
         language = detect_language_from_file(resolved, project_root=self.project_root)
 
-        # M3 (round-26 dogfood): a file containing only ``def broken(:`` used
-        # to be graded ``SAFE``. tree-sitter is permissive — it sprinkles
-        # ``ERROR`` nodes through the tree but still hands back a "result",
-        # so every downstream detector ran against garbled output and
-        # reported zero findings. An agent reading that envelope would
-        # happily "proceed with planned change" on a broken file. The
-        # syntax gate short-circuits before any smell/pattern/security
-        # detector runs and pins ``verdict=ERROR signal=syntax_error`` so
-        # all three syntax-gated tools (code_patterns, file_health,
-        # safe_to_edit) agree on the same envelope.
+        # M3: short-circuit on parse errors so we don't grade garbled output.
         syntax_response = _syntax_error_response(
             resolved, file_path, language, output_format
         )
         if syntax_response is not None:
             return syntax_response
 
-        all_patterns: list[dict[str, Any]] = []
+        all_patterns = self._collect_patterns(resolved, language, categories)
+        min_sev = _SEVERITY_ORDER.get(severity_threshold, 0)
+        filtered = _filter_and_sort_patterns(all_patterns, min_sev)
 
-        scan_all = "all" in categories
-
-        if scan_all or "smells" in categories:
-            all_patterns.extend(_detect_smells(resolved, language, self.project_root))
-
-        if scan_all or "security" in categories:
-            all_patterns.extend(_detect_security(resolved, language))
-
-        if scan_all or "anti_patterns" in categories:
-            all_patterns.extend(_detect_anti_patterns(resolved, language))
-
-        # G4 dedup: ``_detect_smells`` already re-emits security issues via
-        # ``_check_security_smells`` (so ``file_health`` users see them). When
-        # ``_detect_security`` also runs, the same finding shows up twice —
-        # once under ``smells`` with id ``security:<name>``, once under
-        # ``security`` with id ``<name>``. Drop the ``smells`` mirror; keep
-        # the ``security``-namespaced entry as the canonical record. This
-        # only fires when the same ``(line, normalized_type)`` is present
-        # under both categories, so non-security smells are unaffected.
-        all_patterns = _dedup_security_mirror(all_patterns)
-
-        filtered = [
-            p
-            for p in all_patterns
-            if _SEVERITY_ORDER.get(p.get("severity"), 0) >= min_sev
-        ]
-        filtered.sort(
-            key=lambda p: _SEVERITY_ORDER.get(p.get("severity"), 0), reverse=True
+        response = _build_code_patterns_response(
+            file_path=file_path,
+            language=language,
+            filtered=filtered,
         )
-
-        by_category: dict[str, list[dict[str, Any]]] = {}
-        for p in filtered:
-            cat = p["category"]
-            by_category.setdefault(cat, []).append(p)
-
-        critical_count = sum(1 for p in filtered if p.get("severity") == "critical")
-        warning_count = sum(1 for p in filtered if p.get("severity") == "warning")
-
-        # One-line headline an LLM (or grep) can read at a glance.
-        # Pol1 (round-21): build via ``" ".join`` over a parts list so an
-        # empty segment can never re-introduce the double-space we shipped
-        # in round-20 (``"... patterns  critical=..."``). Any downstream
-        # regex that splits on a single space stays correct.
-        summary_line = " ".join(
-            [
-                file_path,
-                f"{len(filtered)} patterns",
-                f"critical={critical_count}",
-                f"warning={warning_count}",
-            ]
-        )
-        # Verdict mirrors the safety-tool vocabulary so callers can chain.
-        if critical_count:
-            verdict = "UNSAFE"
-            next_step = "refactoring_suggestions for concrete fix recipes — start with critical findings"
-        elif warning_count:
-            verdict = "CAUTION"
-            next_step = "refactoring_suggestions or address warnings before shipping"
-        else:
-            verdict = "SAFE"
-            next_step = "no patterns flagged — proceed with planned change"
-
-        response: dict[str, Any] = {
-            "success": True,
-            "file_path": file_path,
-            "language": language,
-            "total_patterns": len(filtered),
-            # ``count`` and ``results`` are cross-tool canonical aliases —
-            # every search/scan tool emits a top-level ``count`` (int) and
-            # a list under ``results``. Mirror the same names here so an
-            # agent walking generic envelopes doesn't have to know each
-            # tool's nickname.
-            #
-            # J13 (round-22): the legacy ``patterns`` key duplicated
-            # ``results`` byte-for-byte (pure token waste in TOON output).
-            # Removed in favour of the canonical ``results`` list. If a
-            # caller still depends on ``patterns``, switch it to
-            # ``results``.
-            "count": len(filtered),
-            "results": filtered[:50],
-            "by_category": {k: len(v) for k, v in by_category.items()},
-            "critical_count": critical_count,
-            "warning_count": warning_count,
-            "summary": _build_summary(filtered),
-            "smart_workflow_hint": (
-                f"Found {len(filtered)} pattern(s) in {file_path}. "
-                + (
-                    "Critical issues found — fix these first. "
-                    if critical_count
-                    else "Review warnings and decide which to address. "
-                )
-                + "Use refactoring_suggestions for concrete fix recipes."
-            ),
-            "summary_line": summary_line,
-            "agent_summary": {
-                "summary_line": summary_line,
-                "next_step": next_step,
-                "verdict": verdict,
-            },
-        }
-
-        # M10 (round-26): mirror ``agent_summary.verdict`` to the top
-        # level so chained agents reading either surface see the same
-        # answer. code_patterns historically only set the agent-side
-        # value; ``mirror_summary_line`` now copies it to the top.
+        # M10: mirror agent_summary.verdict to top level.
         response = mirror_summary_line(response)
         return apply_toon_format_to_response(response, output_format)
+
+    def _collect_patterns(
+        self,
+        resolved: str,
+        language: str | None,
+        categories: list[str],
+    ) -> list[dict[str, Any]]:
+        """Run the 3 category detectors per ``categories``, then G4-dedup."""
+        all_patterns: list[dict[str, Any]] = []
+        scan_all = "all" in categories
+        if scan_all or "smells" in categories:
+            all_patterns.extend(_detect_smells(resolved, language, self.project_root))
+        if scan_all or "security" in categories:
+            all_patterns.extend(_detect_security(resolved, language))
+        if scan_all or "anti_patterns" in categories:
+            all_patterns.extend(_detect_anti_patterns(resolved, language))
+        # G4: drop the smells-namespaced duplicate of a security finding.
+        return _dedup_security_mirror(all_patterns)
+
+
+def _filter_and_sort_patterns(
+    patterns: list[dict[str, Any]], min_sev: int
+) -> list[dict[str, Any]]:
+    """Drop patterns below ``min_sev`` and sort the rest by severity descending."""
+    filtered = [
+        p for p in patterns if _SEVERITY_ORDER.get(p.get("severity"), 0) >= min_sev
+    ]
+    filtered.sort(key=lambda p: _SEVERITY_ORDER.get(p.get("severity"), 0), reverse=True)
+    return filtered
+
+
+def _build_code_patterns_response(
+    *,
+    file_path: str,
+    language: str | None,
+    filtered: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Assemble the canonical code_patterns envelope from a filtered findings list.
+
+    r37bm: extracted from ``execute`` so the 30-line envelope literal +
+    verdict/next_step dispatch live in one focused function. Pol1
+    summary_line formatting + count/results cross-tool aliases preserved.
+    """
+    by_category: dict[str, list[dict[str, Any]]] = {}
+    for p in filtered:
+        by_category.setdefault(p["category"], []).append(p)
+
+    critical_count = sum(1 for p in filtered if p.get("severity") == "critical")
+    warning_count = sum(1 for p in filtered if p.get("severity") == "warning")
+
+    # Pol1: " ".join keeps the headline well-formed even if a part is empty.
+    summary_line = " ".join(
+        [
+            file_path,
+            f"{len(filtered)} patterns",
+            f"critical={critical_count}",
+            f"warning={warning_count}",
+        ]
+    )
+
+    if critical_count:
+        verdict = "UNSAFE"
+        next_step = (
+            "refactoring_suggestions for concrete fix recipes — start with "
+            "critical findings"
+        )
+    elif warning_count:
+        verdict = "CAUTION"
+        next_step = "refactoring_suggestions or address warnings before shipping"
+    else:
+        verdict = "SAFE"
+        next_step = "no patterns flagged — proceed with planned change"
+
+    hint_critical = (
+        "Critical issues found — fix these first. "
+        if critical_count
+        else "Review warnings and decide which to address. "
+    )
+
+    return {
+        "success": True,
+        "file_path": file_path,
+        "language": language,
+        "total_patterns": len(filtered),
+        # ``count`` + ``results`` are cross-tool canonical aliases.
+        "count": len(filtered),
+        "results": filtered[:50],
+        "by_category": {k: len(v) for k, v in by_category.items()},
+        "critical_count": critical_count,
+        "warning_count": warning_count,
+        "summary": _build_summary(filtered),
+        "smart_workflow_hint": (
+            f"Found {len(filtered)} pattern(s) in {file_path}. "
+            + hint_critical
+            + "Use refactoring_suggestions for concrete fix recipes."
+        ),
+        "summary_line": summary_line,
+        "agent_summary": {
+            "summary_line": summary_line,
+            "next_step": next_step,
+            "verdict": verdict,
+        },
+    }
 
 
 def _dedup_security_mirror(
