@@ -113,46 +113,29 @@ class QueryTool(BaseMCPTool):
                 "output_format": arguments.get("output_format", "json"),
             }
 
-    # _execute_file_query: implementation
     async def _execute_file_query(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        """Execute a single-file query."""
+        """Execute a single-file query.
+
+        r37bn (dogfood): tool flagged this at 128 lines. Split into
+        argument validation + mismatch gate + query execution + envelope
+        assembly. O3 mismatch / truncation / agent_summary preserved.
+        """
         file_path = arguments.get("file_path")
         if not file_path:
             raise _analysis_error("file_path or symbol is required")
 
-        query_key = arguments.get("query_key")
-        query_string = arguments.get("query_string")
-        if not query_key and not query_string:
-            raise _analysis_error("Either query_key or query_string must be provided")
-
-        if query_key and query_string:
-            return {
-                "success": False,
-                "error": "Cannot provide both query_key and query_string",
-                "output_format": arguments.get("output_format", "json"),
-            }
+        validation = self._validate_query_arguments(arguments)
+        if validation is not None:
+            return validation
 
         resolved = self.resolve_and_validate_file_path(file_path)
         logger.info(f"Querying file: {file_path} (resolved to: {resolved})")
 
-        # O3 (round-30 dogfood): strict mismatch gate. Refuse a query
-        # against a Python file with ``language='java'`` rather than
-        # silently returning zero results.
-        explicit_language = arguments.get("language")
-        if isinstance(explicit_language, str) and explicit_language.strip():
-            mismatch = detect_language_mismatch(
-                resolved,
-                explicit_language,
-                project_root=self.project_root,
-            )
-            if mismatch:
-                response = language_mismatch_error_response(
-                    tool_name="query_code",
-                    file_path=file_path,
-                    warning=mismatch,
-                )
-                response["output_format"] = arguments.get("output_format", "json")
-                return response
+        mismatch_response = self._check_query_language_mismatch(
+            resolved, file_path, arguments
+        )
+        if mismatch_response is not None:
+            return mismatch_response
 
         language = self._detect_language(resolved, arguments)
         if not language:
@@ -161,19 +144,12 @@ class QueryTool(BaseMCPTool):
                 "error": f"Could not detect language for file: {file_path}",
             }
 
-        # Validate query_key
-        if query_key:
-            available = self.query_service.get_available_queries(language)
-            if query_key not in available:
-                return {
-                    "success": False,
-                    "error": f"Query key '{query_key}' not found for {language}. Available: {sorted(available)}",
-                    "available_queries": categorize_queries(available, language),
-                    "language": language,
-                    "hint": "Use one of the available query keys, or provide query_string for a custom tree-sitter query.",
-                }
+        query_key = arguments.get("query_key")
+        query_string = arguments.get("query_string")
+        unknown_key = self._reject_unknown_query_key(query_key, language)
+        if unknown_key is not None:
+            return unknown_key
 
-        # Execute query (timed)
         started = time.perf_counter()
         results = await self.query_service.execute_query(
             resolved, language, query_key, query_string, arguments.get("filter")
@@ -191,57 +167,117 @@ class QueryTool(BaseMCPTool):
                 output_format=arguments.get("output_format", "json"),
             )
 
-        # Detect truncation against optional max_count
-        max_count = arguments.get("max_count")
-        total_results = len(results)
-        truncated = False
-        if isinstance(max_count, int) and max_count > 0 and total_results > max_count:
-            results = results[:max_count]
-            truncated = True
-
+        results, truncated, total_results = _apply_max_count_cap(
+            results, arguments.get("max_count")
+        )
         query_used = query_key or query_string or ""
-
-        # Format results
-        result_format = arguments.get("result_format", "json")
-        if result_format == "summary":
-            formatted = format_summary(results, query_key or "custom", language)
-            formatted.setdefault("results", results)
-        else:
-            formatted = {
-                "success": True,
-                "results": results,
-                "count": len(results),
-                "file_path": file_path,
-                "language": language,
-                "query": query_used,
-            }
-
-        formatted["elapsed_ms"] = elapsed_ms
-        formatted["truncated"] = truncated
-        # Echo output_format so agents can audit envelope parity without
-        # re-reading the call site.
-        formatted["output_format"] = arguments.get("output_format", "json")
-        formatted["agent_summary"] = build_query_agent_summary(
+        formatted = self._format_query_results(
+            results, arguments, file_path, language, query_used
+        )
+        _attach_query_envelope_extras(
+            formatted,
+            arguments=arguments,
             file_path=file_path,
             language=language,
-            query=query_used,
-            count=len(results),
+            query_used=query_used,
+            results=results,
             elapsed_ms=elapsed_ms,
             truncated=truncated,
+            total_results=total_results,
         )
-
-        steps = build_next_steps(results, file_path, query_used)
-        if steps:
-            formatted["next_steps"] = steps
-
-        normalize_envelope(
-            formatted,
-            total_count=total_results,
-        )
-
         return self._handle_output(
             formatted, arguments, file_path, language, query_used
         )
+
+    @staticmethod
+    def _validate_query_arguments(
+        arguments: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        """Reject missing / mutually-exclusive ``query_key`` + ``query_string``."""
+        query_key = arguments.get("query_key")
+        query_string = arguments.get("query_string")
+        if not query_key and not query_string:
+            raise _analysis_error("Either query_key or query_string must be provided")
+        if query_key and query_string:
+            return {
+                "success": False,
+                "error": "Cannot provide both query_key and query_string",
+                "output_format": arguments.get("output_format", "json"),
+            }
+        return None
+
+    def _check_query_language_mismatch(
+        self,
+        resolved: str,
+        file_path: str,
+        arguments: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        """O3 (round-30): refuse ``--language java`` on a ``.py`` file."""
+        explicit_language = arguments.get("language")
+        if not (isinstance(explicit_language, str) and explicit_language.strip()):
+            return None
+        mismatch = detect_language_mismatch(
+            resolved,
+            explicit_language,
+            project_root=self.project_root,
+        )
+        if not mismatch:
+            return None
+        response = language_mismatch_error_response(
+            tool_name="query_code",
+            file_path=file_path,
+            warning=mismatch,
+        )
+        response["output_format"] = arguments.get("output_format", "json")
+        return response
+
+    def _reject_unknown_query_key(
+        self, query_key: str | None, language: str
+    ) -> dict[str, Any] | None:
+        """Return an error envelope when ``query_key`` isn't registered for ``language``."""
+        if not query_key:
+            return None
+        available = self.query_service.get_available_queries(language)
+        if query_key in available:
+            return None
+        return {
+            "success": False,
+            "error": (
+                f"Query key '{query_key}' not found for {language}. "
+                f"Available: {sorted(available)}"
+            ),
+            "available_queries": categorize_queries(available, language),
+            "language": language,
+            "hint": (
+                "Use one of the available query keys, or provide query_string "
+                "for a custom tree-sitter query."
+            ),
+        }
+
+    @staticmethod
+    def _format_query_results(
+        results: list[Any],
+        arguments: dict[str, Any],
+        file_path: str,
+        language: str,
+        query_used: str,
+    ) -> dict[str, Any]:
+        """Pick the result envelope shape based on ``result_format``."""
+        result_format = arguments.get("result_format", "json")
+        if result_format == "summary":
+            formatted: dict[str, Any] = format_summary(
+                results, arguments.get("query_key") or "custom", language
+            )
+            formatted.setdefault("results", results)
+            return formatted
+        return {
+            "success": True,
+            "results": results,
+            "count": len(results),
+            "file_path": file_path,
+            "language": language,
+            "query": query_used,
+        }
 
     # _detect_language: implementation
     def _detect_language(self, resolved: str, arguments: dict[str, Any]) -> str | None:
@@ -362,6 +398,46 @@ class QueryTool(BaseMCPTool):
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         """Validate file_path/symbol, query_key/query_string, and options."""
         return validate_query_arguments(arguments)
+
+
+def _apply_max_count_cap(
+    results: list[Any], max_count: Any
+) -> tuple[list[Any], bool, int]:
+    """Return (capped_results, truncated, total) — caps if ``max_count`` set."""
+    total = len(results)
+    if isinstance(max_count, int) and max_count > 0 and total > max_count:
+        return results[:max_count], True, total
+    return results, False, total
+
+
+def _attach_query_envelope_extras(
+    formatted: dict[str, Any],
+    *,
+    arguments: dict[str, Any],
+    file_path: str,
+    language: str,
+    query_used: str,
+    results: list[Any],
+    elapsed_ms: float,
+    truncated: bool,
+    total_results: int,
+) -> None:
+    """Attach elapsed/truncated/output_format/agent_summary + next_steps in place."""
+    formatted["elapsed_ms"] = elapsed_ms
+    formatted["truncated"] = truncated
+    formatted["output_format"] = arguments.get("output_format", "json")
+    formatted["agent_summary"] = build_query_agent_summary(
+        file_path=file_path,
+        language=language,
+        query=query_used,
+        count=len(results),
+        elapsed_ms=elapsed_ms,
+        truncated=truncated,
+    )
+    steps = build_next_steps(results, file_path, query_used)
+    if steps:
+        formatted["next_steps"] = steps
+    normalize_envelope(formatted, total_count=total_results)
 
 
 # _analysis_error: implementation
