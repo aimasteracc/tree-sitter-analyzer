@@ -80,23 +80,59 @@ uv run tree-sitter-analyzer --show-supported-languages
 
 ## 🤖 AI集成
 
-通过MCP协议配置AI助手使用Tree-sitter Analyzer。
+通过 MCP 协议配置 AI 助手使用 Tree-sitter Analyzer。**不同环境的 MCP 配置格式略有差异**，请选择匹配你的工具的章节。
 
 当你的 AI 助手面对超大文件、噪音很多的全仓库上下文，或者一次性加载成本很高的遗留代码时，这种方式尤其有用。
 
-### Claude Desktop / Cursor / Roo Code
+> **以下配置共用的核心字段**
+> - `command`: `uvx`
+> - `args`: `["--from", "tree-sitter-analyzer[mcp]", "tree-sitter-analyzer-mcp"]`
+> - `env.TREE_SITTER_PROJECT_ROOT`: 项目根目录的绝对路径
+> - `env.TREE_SITTER_OUTPUT_PATH`（可选）：MCP 工具写入大输出文件的目录
 
-添加到MCP配置：
+<details>
+<summary><b>📘 Claude Code (CLI) —— 推荐</b></summary>
+
+在你的项目根目录运行一行命令：
+
+```bash
+claude mcp add tree-sitter-analyzer \
+  --env TREE_SITTER_PROJECT_ROOT="$PWD" \
+  -- uvx --from "tree-sitter-analyzer[mcp]" tree-sitter-analyzer-mcp
+```
+
+验证：`claude mcp list` —— 应该能看到 `tree-sitter-analyzer`。
+
+或手动编辑 `~/.claude.json` 中对应项目的条目：
 
 ```json
 {
   "mcpServers": {
     "tree-sitter-analyzer": {
       "command": "uvx",
-      "args": [
-        "--from", "tree-sitter-analyzer[mcp]",
-        "tree-sitter-analyzer-mcp"
-      ],
+      "args": ["--from", "tree-sitter-analyzer[mcp]", "tree-sitter-analyzer-mcp"],
+      "env": { "TREE_SITTER_PROJECT_ROOT": "/path/to/your/project" }
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><b>📗 Claude Desktop</b></summary>
+
+编辑 `claude_desktop_config.json`：
+- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+- **Linux**: `~/.config/Claude/claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "tree-sitter-analyzer": {
+      "command": "uvx",
+      "args": ["--from", "tree-sitter-analyzer[mcp]", "tree-sitter-analyzer-mcp"],
       "env": {
         "TREE_SITTER_PROJECT_ROOT": "/path/to/your/project",
         "TREE_SITTER_OUTPUT_PATH": "/path/to/output/directory"
@@ -106,14 +142,102 @@ uv run tree-sitter-analyzer --show-supported-languages
 }
 ```
 
-**配置文件位置:**
-- **Claude Desktop**: `%APPDATA%\Claude\claude_desktop_config.json` (Windows) / `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
-- **Cursor**: 内置MCP设置
-- **Roo Code**: MCP配置
+保存后重启 Claude Desktop。
 
-重启后，告诉AI: `请将项目根目录设置为: /path/to/your/project`
+</details>
 
-📖 完整API文档请查看 **[MCP工具参考](docs/api/mcp_tools_specification.md)**。
+<details>
+<summary><b>📙 GitHub Copilot（VS Code，启用 MCP）</b></summary>
+
+> 需要支持 MCP 的 VS Code（Copilot Chat agent mode，2025+）。
+
+在工作区创建/编辑 `.vscode/mcp.json`（Copilot 使用 `servers` 键，**不是** `mcpServers`）：
+
+```json
+{
+  "servers": {
+    "tree-sitter-analyzer": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["--from", "tree-sitter-analyzer[mcp]", "tree-sitter-analyzer-mcp"],
+      "env": { "TREE_SITTER_PROJECT_ROOT": "${workspaceFolder}" }
+    }
+  }
+}
+```
+
+用户级（所有工作区共享）：打开命令面板 → **MCP: Open User Configuration**，添加相同的 `servers.tree-sitter-analyzer` 块。
+
+</details>
+
+<details>
+<summary><b>📕 Roo Code（VS Code 扩展）</b></summary>
+
+Roo Code 从工作区配置读取 MCP servers。打开 Roo Code 侧边栏的 **MCP** 面板 → **Edit MCP Settings**，添加：
+
+```json
+{
+  "mcpServers": {
+    "tree-sitter-analyzer": {
+      "command": "uvx",
+      "args": ["--from", "tree-sitter-analyzer[mcp]", "tree-sitter-analyzer-mcp"],
+      "env": { "TREE_SITTER_PROJECT_ROOT": "${workspaceFolder}" },
+      "alwaysAllow": [
+        "check_code_scale",
+        "analyze_code_structure",
+        "extract_code_section",
+        "query_code",
+        "list_files",
+        "search_content",
+        "find_and_grep"
+      ]
+    }
+  }
+}
+```
+
+`alwaysAllow` 是 Roo Code 专属字段——为安全的只读工具跳过每次调用的确认弹窗。
+
+</details>
+
+<details>
+<summary><b>🖱 Cursor</b></summary>
+
+Cursor → **Settings** → **MCP** → **Add new MCP server**，或编辑 `~/.cursor/mcp.json`：
+
+```json
+{
+  "mcpServers": {
+    "tree-sitter-analyzer": {
+      "command": "uvx",
+      "args": ["--from", "tree-sitter-analyzer[mcp]", "tree-sitter-analyzer-mcp"],
+      "env": { "TREE_SITTER_PROJECT_ROOT": "/path/to/your/project" }
+    }
+  }
+}
+```
+
+重启 Cursor，工具会出现在 agent 的 **Available Tools** 列表中。
+
+</details>
+
+<details>
+<summary><b>🤖 Cline / Continue / 其他 MCP 客户端</b></summary>
+
+- **Cline**：Cline 的 MCP servers 面板 → **Edit settings** → 使用上面 Claude Desktop 的 `mcpServers` 块（schema 相同）。
+- **Continue**：编辑 `~/.continue/config.json`，在 `experimental.modelContextProtocolServers` 下添加一项指向同样的 `uvx` 命令。
+- **其他基于 stdio 的 MCP 客户端**：使用标准 `mcpServers.<name>.{command,args,env}` 结构；server 名称 `tree-sitter-analyzer` 是约定俗成，可以自定义。
+
+</details>
+
+> ⚠️ **路径和隔离的注意事项**
+> - `TREE_SITTER_PROJECT_ROOT` 必须是**绝对路径**（或客户端支持的话用 `${workspaceFolder}`）。相对路径会破坏安全边界校验。
+> - Windows 下要转义反斜杠（`"C:\\Users\\you\\project"`）或改用正斜杠。
+> - server **绝不会**读取 `TREE_SITTER_PROJECT_ROOT` 之外的文件——由 `SecurityBoundaryManager` 强制保证。
+
+重启后，告诉 AI: `请将项目根目录设置为: /path/to/your/project`
+
+📖 完整 23 工具 API 文档请查看 **[MCP 工具参考](docs/api/mcp_tools_specification.md)**。
 
 ---
 

@@ -80,23 +80,59 @@ uv run tree-sitter-analyzer --show-supported-languages
 
 ## 🤖 AI統合
 
-MCPプロトコルでAIアシスタントにTree-sitter Analyzerを設定します。
+MCP プロトコルで AI アシスタントに Tree-sitter Analyzer を設定します。**環境ごとに MCP 設定フォーマットが微妙に異なる**ため、ご自身のツールに合うセクションを選んでください。
 
 特に、非常に大きなファイル、ノイズの多いリポジトリ全体コンテキスト、あるいは一括投入コストが高いレガシーコードで効果を発揮します。
 
-### Claude Desktop / Cursor / Roo Code
+> **以下の設定で共通の値**
+> - `command`: `uvx`
+> - `args`: `["--from", "tree-sitter-analyzer[mcp]", "tree-sitter-analyzer-mcp"]`
+> - `env.TREE_SITTER_PROJECT_ROOT`: プロジェクトルートの絶対パス
+> - `env.TREE_SITTER_OUTPUT_PATH`（任意）: MCP ツールが大きな出力を書き出すディレクトリ
 
-MCP設定に追加:
+<details>
+<summary><b>📘 Claude Code (CLI) — 推奨</b></summary>
+
+プロジェクトルートで 1 行で追加:
+
+```bash
+claude mcp add tree-sitter-analyzer \
+  --env TREE_SITTER_PROJECT_ROOT="$PWD" \
+  -- uvx --from "tree-sitter-analyzer[mcp]" tree-sitter-analyzer-mcp
+```
+
+検証: `claude mcp list` で `tree-sitter-analyzer` が表示されれば OK。
+
+または `~/.claude.json` の該当プロジェクト項目を手動編集:
 
 ```json
 {
   "mcpServers": {
     "tree-sitter-analyzer": {
       "command": "uvx",
-      "args": [
-        "--from", "tree-sitter-analyzer[mcp]",
-        "tree-sitter-analyzer-mcp"
-      ],
+      "args": ["--from", "tree-sitter-analyzer[mcp]", "tree-sitter-analyzer-mcp"],
+      "env": { "TREE_SITTER_PROJECT_ROOT": "/path/to/your/project" }
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><b>📗 Claude Desktop</b></summary>
+
+`claude_desktop_config.json` を編集:
+- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+- **Linux**: `~/.config/Claude/claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "tree-sitter-analyzer": {
+      "command": "uvx",
+      "args": ["--from", "tree-sitter-analyzer[mcp]", "tree-sitter-analyzer-mcp"],
       "env": {
         "TREE_SITTER_PROJECT_ROOT": "/path/to/your/project",
         "TREE_SITTER_OUTPUT_PATH": "/path/to/output/directory"
@@ -106,14 +142,102 @@ MCP設定に追加:
 }
 ```
 
-**設定ファイルの場所:**
-- **Claude Desktop**: `%APPDATA%\Claude\claude_desktop_config.json` (Windows) / `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
-- **Cursor**: 内蔵MCP設定
-- **Roo Code**: MCP設定
+保存後 Claude Desktop を再起動してください。
 
-再起動後、AIに伝える: `プロジェクトルートディレクトリを設定してください: /path/to/your/project`
+</details>
 
-📖 完全なAPIドキュメントは **[MCPツールリファレンス](docs/api/mcp_tools_specification.md)** をご覧ください。
+<details>
+<summary><b>📙 GitHub Copilot（VS Code、MCP 対応版）</b></summary>
+
+> MCP 対応の VS Code（Copilot Chat agent モード、2025+）が必要。
+
+ワークスペースに `.vscode/mcp.json` を作成/編集（Copilot は `mcpServers` ではなく **`servers`** キーを使う点に注意）:
+
+```json
+{
+  "servers": {
+    "tree-sitter-analyzer": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["--from", "tree-sitter-analyzer[mcp]", "tree-sitter-analyzer-mcp"],
+      "env": { "TREE_SITTER_PROJECT_ROOT": "${workspaceFolder}" }
+    }
+  }
+}
+```
+
+ユーザーレベル（全ワークスペース共有）: コマンドパレット → **MCP: Open User Configuration** で同じ `servers.tree-sitter-analyzer` ブロックを追加。
+
+</details>
+
+<details>
+<summary><b>📕 Roo Code（VS Code 拡張）</b></summary>
+
+Roo Code はワークスペース設定から MCP server を読み込みます。Roo Code サイドバーの **MCP** パネル → **Edit MCP Settings** で次を追加:
+
+```json
+{
+  "mcpServers": {
+    "tree-sitter-analyzer": {
+      "command": "uvx",
+      "args": ["--from", "tree-sitter-analyzer[mcp]", "tree-sitter-analyzer-mcp"],
+      "env": { "TREE_SITTER_PROJECT_ROOT": "${workspaceFolder}" },
+      "alwaysAllow": [
+        "check_code_scale",
+        "analyze_code_structure",
+        "extract_code_section",
+        "query_code",
+        "list_files",
+        "search_content",
+        "find_and_grep"
+      ]
+    }
+  }
+}
+```
+
+`alwaysAllow` は Roo Code 固有のフィールドで、安全な読み取り専用ツールについて毎回の確認ダイアログを省略します。
+
+</details>
+
+<details>
+<summary><b>🖱 Cursor</b></summary>
+
+Cursor → **Settings** → **MCP** → **Add new MCP server**、または `~/.cursor/mcp.json` を編集:
+
+```json
+{
+  "mcpServers": {
+    "tree-sitter-analyzer": {
+      "command": "uvx",
+      "args": ["--from", "tree-sitter-analyzer[mcp]", "tree-sitter-analyzer-mcp"],
+      "env": { "TREE_SITTER_PROJECT_ROOT": "/path/to/your/project" }
+    }
+  }
+}
+```
+
+Cursor を再起動すると、エージェントの **Available Tools** にツールが表示されます。
+
+</details>
+
+<details>
+<summary><b>🤖 Cline / Continue / その他の MCP クライアント</b></summary>
+
+- **Cline**: Cline の MCP servers パネル → **Edit settings** → Claude Desktop セクションの `mcpServers` ブロックをそのまま使用（同じスキーマ）。
+- **Continue**: `~/.continue/config.json` を編集し、`experimental.modelContextProtocolServers` に同じ `uvx` コマンドを指すエントリを追加。
+- **その他の stdio ベースの MCP クライアント**: 標準の `mcpServers.<name>.{command,args,env}` スキーマを使用。`tree-sitter-analyzer` という名前は慣例で、自由に変更可能。
+
+</details>
+
+> ⚠️ **パスとサンドボックスの注意**
+> - `TREE_SITTER_PROJECT_ROOT` は**絶対パス**にしてください（クライアントが対応する場合は `${workspaceFolder}` も可）。相対パスではセキュリティ境界チェックが正しく動きません。
+> - Windows ではバックスラッシュをエスケープする（`"C:\\Users\\you\\project"`）か、スラッシュを使ってください。
+> - server は `TREE_SITTER_PROJECT_ROOT` の外側のファイルを**絶対に読みません**——`SecurityBoundaryManager` で強制されています。
+
+再起動後、AI に伝えてください: `プロジェクトルートディレクトリを設定してください: /path/to/your/project`
+
+📖 完全な 23 ツールの API ドキュメントは **[MCP ツールリファレンス](docs/api/mcp_tools_specification.md)** をご覧ください。
 
 ---
 

@@ -91,21 +91,57 @@ uv run tree-sitter-analyzer --show-supported-languages
 
 ## 🤖 AI Integration
 
-Configure your AI assistant to use Tree-sitter Analyzer via MCP protocol.
+Configure your AI assistant to use Tree-sitter Analyzer via MCP protocol. Pick the section that matches your tool — **each environment has a slightly different config format**.
 
-### Claude Desktop / Cursor / Roo Code
+> **Common values used below**
+> - `command`: `uvx`
+> - `args`: `["--from", "tree-sitter-analyzer[mcp]", "tree-sitter-analyzer-mcp"]`
+> - `env.TREE_SITTER_PROJECT_ROOT`: absolute path to your project root
+> - `env.TREE_SITTER_OUTPUT_PATH` (optional): where MCP tools write large outputs
 
-Add to your MCP configuration:
+<details>
+<summary><b>📘 Claude Code (CLI) — recommended</b></summary>
+
+One-line install (run from your project root):
+
+```bash
+claude mcp add tree-sitter-analyzer \
+  --env TREE_SITTER_PROJECT_ROOT="$PWD" \
+  -- uvx --from "tree-sitter-analyzer[mcp]" tree-sitter-analyzer-mcp
+```
+
+Verify: `claude mcp list` — you should see `tree-sitter-analyzer` listed.
+
+Or edit `~/.claude.json` manually under the matching project entry:
 
 ```json
 {
   "mcpServers": {
     "tree-sitter-analyzer": {
       "command": "uvx",
-      "args": [
-        "--from", "tree-sitter-analyzer[mcp]",
-        "tree-sitter-analyzer-mcp"
-      ],
+      "args": ["--from", "tree-sitter-analyzer[mcp]", "tree-sitter-analyzer-mcp"],
+      "env": { "TREE_SITTER_PROJECT_ROOT": "/path/to/your/project" }
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><b>📗 Claude Desktop</b></summary>
+
+Edit `claude_desktop_config.json`:
+- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+- **Linux**: `~/.config/Claude/claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "tree-sitter-analyzer": {
+      "command": "uvx",
+      "args": ["--from", "tree-sitter-analyzer[mcp]", "tree-sitter-analyzer-mcp"],
       "env": {
         "TREE_SITTER_PROJECT_ROOT": "/path/to/your/project",
         "TREE_SITTER_OUTPUT_PATH": "/path/to/output/directory"
@@ -115,14 +151,102 @@ Add to your MCP configuration:
 }
 ```
 
-**Configuration file locations:**
-- **Claude Desktop**: `%APPDATA%\Claude\claude_desktop_config.json` (Windows) / `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
-- **Cursor**: Built-in MCP settings
-- **Roo Code**: MCP configuration
+Restart Claude Desktop after saving.
 
-After restart, tell the AI: `Please set the project root directory to: /path/to/your/project`
+</details>
 
-📖 **[MCP Tools Reference](docs/api/mcp_tools_specification.md)** for complete API documentation.
+<details>
+<summary><b>📙 GitHub Copilot (VS Code, MCP-enabled)</b></summary>
+
+> Requires VS Code with MCP support (Copilot Chat agent mode, 2025+).
+
+Create or edit `.vscode/mcp.json` in your workspace (Copilot uses the `servers` key, **not** `mcpServers`):
+
+```json
+{
+  "servers": {
+    "tree-sitter-analyzer": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["--from", "tree-sitter-analyzer[mcp]", "tree-sitter-analyzer-mcp"],
+      "env": { "TREE_SITTER_PROJECT_ROOT": "${workspaceFolder}" }
+    }
+  }
+}
+```
+
+For user-level (all workspaces): open Command Palette → **MCP: Open User Configuration** and add the same `servers.tree-sitter-analyzer` block.
+
+</details>
+
+<details>
+<summary><b>📕 Roo Code (VS Code extension)</b></summary>
+
+Roo Code reads MCP servers from its workspace config. Open the **MCP** panel in the Roo Code sidebar → **Edit MCP Settings**, then add:
+
+```json
+{
+  "mcpServers": {
+    "tree-sitter-analyzer": {
+      "command": "uvx",
+      "args": ["--from", "tree-sitter-analyzer[mcp]", "tree-sitter-analyzer-mcp"],
+      "env": { "TREE_SITTER_PROJECT_ROOT": "${workspaceFolder}" },
+      "alwaysAllow": [
+        "check_code_scale",
+        "analyze_code_structure",
+        "extract_code_section",
+        "query_code",
+        "list_files",
+        "search_content",
+        "find_and_grep"
+      ]
+    }
+  }
+}
+```
+
+`alwaysAllow` is Roo Code-specific — it skips the per-tool confirmation prompt for safe read-only tools.
+
+</details>
+
+<details>
+<summary><b>🖱 Cursor</b></summary>
+
+Cursor → **Settings** → **MCP** → **Add new MCP server**, or edit `~/.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "tree-sitter-analyzer": {
+      "command": "uvx",
+      "args": ["--from", "tree-sitter-analyzer[mcp]", "tree-sitter-analyzer-mcp"],
+      "env": { "TREE_SITTER_PROJECT_ROOT": "/path/to/your/project" }
+    }
+  }
+}
+```
+
+Restart Cursor; the tools appear under **Available Tools** for the agent.
+
+</details>
+
+<details>
+<summary><b>🤖 Cline / Continue / other MCP clients</b></summary>
+
+- **Cline**: Cline MCP servers panel → **Edit settings** → use the `mcpServers` block from the Claude Desktop section above (same schema).
+- **Continue**: edit `~/.continue/config.json`, add an `experimental.modelContextProtocolServers` entry pointing at the same `uvx` command.
+- **Other stdio-based MCP clients**: use the standard `mcpServers.<name>.{command,args,env}` shape; the server name `tree-sitter-analyzer` is conventional but free-form.
+
+</details>
+
+> ⚠️ **Path & isolation notes**
+> - `TREE_SITTER_PROJECT_ROOT` must be **absolute** (or use `${workspaceFolder}` if your client supports VS Code variables). Relative paths break security boundary checks.
+> - On Windows, escape backslashes (`"C:\\Users\\you\\project"`) or use forward slashes.
+> - The server **never** reads files outside `TREE_SITTER_PROJECT_ROOT` — this is enforced by `SecurityBoundaryManager`.
+
+After restart, hand off control to the AI: `Please set the project root directory to: /path/to/your/project`
+
+📖 **[MCP Tools Reference](docs/api/mcp_tools_specification.md)** for the complete 23-tool API.
 
 ---
 
