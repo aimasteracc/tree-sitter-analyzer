@@ -11,6 +11,7 @@ Key classes:
 
 import os
 from collections import defaultdict, deque
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -187,6 +188,128 @@ def extract_imports_from_file(
 
 
 # ============================================================
+# Per-language import resolvers (r37bi)
+# ============================================================
+
+
+def _resolve_python_import(
+    module: str, source_rel: str, nodes: set[str], is_relative: bool
+) -> str | None:
+    """Python import → package/__init__.py or module.py."""
+    if is_relative:
+        init_candidate = _relative_init_candidate(module, source_rel)
+        if init_candidate and init_candidate in nodes:
+            return init_candidate
+        file_candidate = _resolve_relative_import(module, source_rel)
+        if file_candidate and file_candidate in nodes:
+            return file_candidate
+        # ``from . import name`` fallback to ancestor's ``__init__.py``.
+        anchor_init = _relative_anchor_init(module, source_rel)
+        if anchor_init and anchor_init in nodes:
+            return anchor_init
+        return file_candidate  # legacy: return file form even if absent
+    # Absolute import — package form takes precedence (matches CPython).
+    init_candidate_abs = module.replace(".", "/") + "/__init__.py"
+    if init_candidate_abs in nodes:
+        return init_candidate_abs
+    file_candidate_abs = module.replace(".", "/") + ".py"
+    if file_candidate_abs in nodes:
+        return file_candidate_abs
+    return None
+
+
+def _resolve_js_ts_import(
+    module: str, source_rel: str, nodes: set[str], is_relative: bool
+) -> str | None:
+    """JS/TS import → ``./foo`` resolved to file/index w/ common extensions."""
+    if not is_relative:
+        return None
+    source_dir = Path(source_rel).parent
+    candidate_raw = str(source_dir / module)
+    for ext in (".js", ".ts", ".jsx", ".tsx", "/index.js", "/index.ts"):
+        candidate = candidate_raw + ext
+        if candidate in nodes:
+            return candidate
+    if candidate_raw in nodes:
+        return candidate_raw
+    return None
+
+
+def _resolve_go_import(
+    module: str, source_rel: str, nodes: set[str], is_relative: bool
+) -> str | None:
+    """Go relative imports — extension probe similar to JS."""
+    if not is_relative:
+        return None
+    source_dir = Path(source_rel).parent
+    candidate_raw = str(source_dir / module)
+    if candidate_raw in nodes:
+        return candidate_raw
+    for ext in (".go", "/index.go"):
+        candidate = candidate_raw + ext
+        if candidate in nodes:
+            return candidate
+    return None
+
+
+def _resolve_rust_import(
+    module: str, source_rel: str, nodes: set[str], is_relative: bool
+) -> str | None:
+    """Rust relative imports — strip crate/super/self, replace ``::`` with ``/``."""
+    if not is_relative:
+        return None
+    path_parts = (
+        module.replace("crate::", "").replace("super::", "").replace("self::", "")
+    )
+    path = path_parts.replace("::", "/")
+    source_dir = Path(source_rel).parent
+    candidate = str(source_dir / path)
+    if candidate in nodes:
+        return candidate
+    for ext in (".rs", "/mod.rs", "/lib.rs"):
+        candidate_with_ext = candidate + ext
+        if candidate_with_ext in nodes:
+            return candidate_with_ext
+    return None
+
+
+def _resolve_c_cpp_import(
+    module: str, source_rel: str, nodes: set[str], is_relative: bool
+) -> str | None:
+    """C/C++ ``#include "foo.h"`` → relative to source dir."""
+    source_dir = Path(source_rel).parent
+    candidate = str(source_dir / module)
+    if candidate in nodes:
+        return candidate
+    return None
+
+
+def _resolve_java_import(
+    module: str, source_rel: str, nodes: set[str], is_relative: bool
+) -> str | None:
+    """Java import → ``com.foo.Bar`` to ``com/foo/Bar.java``."""
+    candidate = module.replace(".", "/") + ".java"
+    if candidate in nodes:
+        return candidate
+    return None
+
+
+# r37bi: per-language dispatch table replaces the 6-branch if/elif chain
+# inside ``_resolve_to_project_file``. Adding a new language is now a one-
+# line dict entry + a focused resolver.
+_IMPORT_RESOLVERS: dict[str, Callable[[str, str, set[str], bool], str | None]] = {
+    "python": _resolve_python_import,
+    "javascript": _resolve_js_ts_import,
+    "typescript": _resolve_js_ts_import,
+    "go": _resolve_go_import,
+    "rust": _resolve_rust_import,
+    "c": _resolve_c_cpp_import,
+    "cpp": _resolve_c_cpp_import,
+    "java": _resolve_java_import,
+}
+
+
+# ============================================================
 # DependencyGraph
 # ============================================================
 
@@ -338,109 +461,22 @@ class DependencyGraph:
         source_rel: str,
         rel_to_abs: dict[str, str],
     ) -> str | None:
-        """Resolve an import dict to a project-relative file path."""
+        """Resolve an import dict to a project-relative file path.
+
+        r37bi (dogfood): tool flagged this at 109 lines. The per-language
+        if/elif chain was 6 near-identical branches. Refactored into a
+        dispatch table of resolver functions; each resolver receives
+        ``(module, source_rel, nodes, is_relative)`` and returns a
+        candidate path or ``None``.
+        """
         language = imp.get("language", "")
         module = imp.get("module_name", "")
         is_relative = imp.get("is_relative", False)
 
-        if language == "python":
-            if is_relative:
-                # Match Python's actual import semantics: a package
-                # (``foo/bar/__init__.py``) takes precedence over a
-                # sibling file module (``foo/bar.py``) when both
-                # exist. In practice projects use one or the other, so
-                # the choice rarely matters — but we pin the package
-                # form to match the interpreter.
-                init_candidate = _relative_init_candidate(module, source_rel)
-                if init_candidate and init_candidate in self._nodes:
-                    return init_candidate
-                file_candidate = _resolve_relative_import(module, source_rel)
-                if file_candidate and file_candidate in self._nodes:
-                    return file_candidate
-                # ``from . import name`` / ``from .. import name`` where
-                # ``name`` is neither a file-module nor a sub-package:
-                # Python falls back to the attribute defined in the
-                # ancestor package's ``__init__.py``. Emit the edge to
-                # that ``__init__.py`` so e.g. ``from . import
-                # __version__`` is not silently dropped.
-                anchor_init = _relative_anchor_init(module, source_rel)
-                if anchor_init and anchor_init in self._nodes:
-                    return anchor_init
-                return file_candidate  # legacy: return file form even if absent
-            else:
-                # Absolute import: e.g., "pkg.submodule" → pkg/submodule.py
-                # Package-module form (``pkg/submodule/__init__.py``)
-                # takes precedence over file-module form (``pkg/submodule.py``)
-                # when both exist — matches Python's import semantics.
-                init_candidate_abs: str = module.replace(".", "/") + "/__init__.py"
-                if init_candidate_abs in self._nodes:
-                    return init_candidate_abs
-                candidate: str = module.replace(".", "/") + ".py"
-                if candidate in self._nodes:
-                    return candidate
-                return None
-
-        elif language in ("javascript", "typescript"):
-            if is_relative:
-                # './src/utils' → src/utils.js or src/utils/index.js
-                source_dir = Path(source_rel).parent
-                candidate_raw = str(source_dir / module)
-                # Try common extensions
-                for ext in (".js", ".ts", ".jsx", ".tsx", "/index.js", "/index.ts"):
-                    candidate = candidate_raw + ext
-                    if candidate in self._nodes:
-                        return candidate
-                # Also try without extension
-                if candidate_raw in self._nodes:
-                    return candidate_raw
+        resolver = _IMPORT_RESOLVERS.get(language)
+        if resolver is None:
             return None
-
-        elif language == "go":
-            if not is_relative:
-                return None
-            source_dir = Path(source_rel).parent
-            candidate_raw = str(source_dir / module)
-            if candidate_raw in self._nodes:
-                return candidate_raw
-            for ext in (".go", "/index.go"):
-                candidate = candidate_raw + ext
-                if candidate in self._nodes:
-                    return candidate
-            return None
-
-        elif language == "rust":
-            if not is_relative:
-                return None
-            path_parts = (
-                module.replace("crate::", "")
-                .replace("super::", "")
-                .replace("self::", "")
-            )
-            path = path_parts.replace("::", "/")
-            source_dir = Path(source_rel).parent
-            candidate = str(source_dir / path)
-            if candidate in self._nodes:
-                return candidate
-            for ext in (".rs", "/mod.rs", "/lib.rs"):
-                candidate_with_ext = candidate + ext
-                if candidate_with_ext in self._nodes:
-                    return candidate_with_ext
-            return None
-
-        elif language in ("c", "cpp"):
-            source_dir = Path(source_rel).parent
-            candidate = str(source_dir / module)
-            if candidate in self._nodes:
-                return candidate
-            return None
-
-        elif language == "java":
-            candidate = module.replace(".", "/") + ".java"
-            if candidate in self._nodes:
-                return candidate
-            return None
-
-        return None
+        return resolver(module, source_rel, self._nodes, is_relative)
 
     def nodes(self) -> list[str]:
         """Return all nodes (relative file paths) in the graph."""
