@@ -113,9 +113,13 @@ class CodePatternsTool(BaseMCPTool):
             all_patterns.extend(_detect_anti_patterns(resolved, language))
 
         filtered = [
-            p for p in all_patterns if _SEVERITY_ORDER.get(p.get("severity"), 0) >= min_sev
+            p
+            for p in all_patterns
+            if _SEVERITY_ORDER.get(p.get("severity"), 0) >= min_sev
         ]
-        filtered.sort(key=lambda p: _SEVERITY_ORDER.get(p.get("severity"), 0), reverse=True)
+        filtered.sort(
+            key=lambda p: _SEVERITY_ORDER.get(p.get("severity"), 0), reverse=True
+        )
 
         by_category: dict[str, list[dict[str, Any]]] = {}
         for p in filtered:
@@ -124,6 +128,7 @@ class CodePatternsTool(BaseMCPTool):
 
         response: dict[str, Any] = {
             "success": True,
+            "verdict": _code_patterns_verdict(filtered),
             "file_path": file_path,
             "language": language,
             "total_patterns": len(filtered),
@@ -183,9 +188,14 @@ def _detect_security(file_path: str, language: str) -> list[dict[str, Any]]:
                 "id": issue.get("id", issue.get("type", "unknown")),
                 "category": "security",
                 "type": issue.get("type", ""),
-                "severity": "critical" if issue.get("type") in (
-                    "hardcoded_secret", "sql_injection", "shell_injection",
-                ) else "warning",
+                "severity": "critical"
+                if issue.get("type")
+                in (
+                    "hardcoded_secret",
+                    "sql_injection",
+                    "shell_injection",
+                )
+                else "warning",
                 "message": issue.get("message", ""),
                 "line": issue.get("line"),
             }
@@ -258,8 +268,7 @@ def _check_python_anti_patterns(
         stripped = line.strip()
 
         if "=" in stripped and any(
-            f"={t}" in stripped
-            for t in ("[]", "{},", "set()", "[],")
+            f"={t}" in stripped for t in ("[]", "{},", "set()", "[],")
         ):
             if "def " in lines[max(0, i - 5) : i][-1] or any(
                 "def " in ln for ln in lines[max(0, i - 10) : i]
@@ -288,9 +297,7 @@ def _check_python_anti_patterns(
             )
 
         if "print(" in stripped and not stripped.startswith("#"):
-            in_def = any(
-                "def " in ln for ln in lines[max(0, i - 30) : i]
-            )
+            in_def = any("def " in ln for ln in lines[max(0, i - 30) : i])
             if in_def:
                 patterns.append(
                     {
@@ -304,9 +311,7 @@ def _check_python_anti_patterns(
                 )
 
 
-def _check_js_anti_patterns(
-    lines: list[str], patterns: list[dict[str, Any]]
-) -> None:
+def _check_js_anti_patterns(lines: list[str], patterns: list[dict[str, Any]]) -> None:
     for i, line in enumerate(lines, 1):
         stripped = line.strip()
         if "var " in stripped and not stripped.startswith("//"):
@@ -334,9 +339,7 @@ def _check_js_anti_patterns(
                 )
 
 
-def _check_java_anti_patterns(
-    lines: list[str], patterns: list[dict[str, Any]]
-) -> None:
+def _check_java_anti_patterns(lines: list[str], patterns: list[dict[str, Any]]) -> None:
     for i, line in enumerate(lines, 1):
         stripped = line.strip()
         if "System.out.println" in stripped and not stripped.startswith("//"):
@@ -361,6 +364,26 @@ def _check_java_anti_patterns(
                     "line": i,
                 }
             )
+
+
+def _code_patterns_verdict(patterns: list[dict[str, Any]]) -> str:
+    """Map detected anti-patterns to canonical verdict vocabulary.
+
+    Anti-bias: when in doubt, err toward higher severity.
+
+    - 0 patterns → INFO
+    - any "critical" or "error" severity → CAUTION
+    - has "warning" severity → REVIEW
+    - otherwise → INFO
+    """
+    if not patterns:
+        return "INFO"
+    severities = {p.get("severity") for p in patterns}
+    if severities & {"critical", "error"}:
+        return "CAUTION"
+    if "warning" in severities:
+        return "REVIEW"
+    return "INFO"
 
 
 def _build_summary(patterns: list[dict[str, Any]]) -> str:
