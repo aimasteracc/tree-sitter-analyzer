@@ -884,27 +884,56 @@ class ASTCache:
           * ``0`` or ``1``: force serial path.
           * ``>=2``: use that many worker processes.
           Configurable per-call; overridden by ``TSA_INDEX_WORKERS`` env var.
+
+        r37cy (dogfood): 143 lines → ~25 lines of phase dispatch.
+        Sub-helpers: ``_clear_index_on_force``, ``_enumerate_index_candidates``,
+        ``_resolve_worker_count``, ``_run_candidate_workers``,
+        ``_apply_index_results``.
         """
         if force:
-            conn = self._get_conn()
-            conn.execute("DELETE FROM ast_index")
-            conn.commit()
+            self._clear_index_on_force()
 
-        # Pass 1: enumerate candidate files and partition into
-        # (already-cached, needs-parse). The "already-cached" partition
-        # is handled inline because it is one SQL lookup per file with
-        # no parsing — cheaper than dispatching to workers.
-        candidates: list[tuple[str, str]] = []  # (abs_path, language)
-        already_cached: list[dict[str, Any]] = []
-        stats: dict[str, Any] = {
+        stats = self._empty_index_stats()
+        candidates, count = self._enumerate_index_candidates(max_files, stats)
+        workers = self._resolve_worker_count(workers, len(candidates))
+        results = self._run_candidate_workers(candidates, workers)
+        self._apply_index_results(results, stats)
+        stats["total_files"] = count
+        stats["workers"] = workers
+        return stats
+
+    @staticmethod
+    def _empty_index_stats() -> dict[str, Any]:
+        """Return the baseline ``index_project`` stats dict (mutated in place)."""
+        return {
             "indexed": 0,
             "cached": 0,
             "errors": 0,
             "skipped": 0,
             "files": [],
         }
-        count = 0
+
+    def _clear_index_on_force(self) -> None:
+        """Drop every row in ``ast_index`` (used when ``force=True``)."""
         conn = self._get_conn()
+        conn.execute("DELETE FROM ast_index")
+        conn.commit()
+
+    def _enumerate_index_candidates(
+        self, max_files: int, stats: dict[str, Any]
+    ) -> tuple[list[tuple[str, str]], int]:
+        """Walk source files; partition into (needs-parse, already-cached).
+
+        Already-cached entries are appended to ``stats['files']`` (and
+        ``stats['cached']`` is incremented) inline because the cache check
+        is one SQL lookup with no parsing — cheaper than dispatching to
+        workers. Returns ``(candidates, count)`` where ``candidates`` is
+        the list of ``(abs_path, language)`` tuples for the parse phase.
+        """
+        conn = self._get_conn()
+        candidates: list[tuple[str, str]] = []
+        already_cached: list[dict[str, Any]] = []
+        count = 0
         for abs_path in _walk_source_files(self.project_root):
             if count >= max_files:
                 break
@@ -926,11 +955,7 @@ class ASTCache:
                 "SELECT mtime_ns, file_size FROM ast_index WHERE file_path = ?",
                 (rel_path,),
             ).fetchone()
-            if (
-                row is not None
-                and row["mtime_ns"] == int(stat.st_mtime_ns)
-                and row["file_size"] == stat.st_size
-            ):
+            if self._cache_matches_stat(row, stat):
                 already_cached.append(
                     {"file": rel_path, "status": "cached", "reason": "unchanged"}
                 )
@@ -939,8 +964,24 @@ class ASTCache:
 
         stats["cached"] += len(already_cached)
         stats["files"].extend(already_cached)
+        return candidates, count
 
-        # Pass 2: process the parse-needed list. Decide serial vs parallel.
+    @staticmethod
+    def _cache_matches_stat(row: Any, stat: os.stat_result) -> bool:
+        """Return True iff ``row`` exists and its mtime/size match ``stat``."""
+        if row is None:
+            return False
+        if row["mtime_ns"] != int(stat.st_mtime_ns):
+            return False
+        return bool(row["file_size"] == stat.st_size)
+
+    @staticmethod
+    def _resolve_worker_count(workers: int | None, candidate_count: int) -> int:
+        """Pick a worker count, honouring ``TSA_INDEX_WORKERS`` env override.
+
+        Default rule: use a process pool when the candidate list is large
+        enough (``>= 64``) to amortise spawn cost; otherwise stay serial.
+        """
         env_workers = os.environ.get("TSA_INDEX_WORKERS")
         if env_workers is not None:
             try:
@@ -948,37 +989,36 @@ class ASTCache:
             except ValueError:
                 pass
         if workers is None:
-            if len(candidates) < 64:
+            if candidate_count < 64:
                 workers = 0  # serial — spawn overhead not worth it on tiny sets
             else:
                 workers = max(2, (os.cpu_count() or 4) - 1)
+        return workers
 
+    def _run_candidate_workers(
+        self, candidates: list[tuple[str, str]], workers: int
+    ) -> list[dict[str, Any]]:
+        """Parse the candidate list either serially or via a process pool."""
         if workers and workers >= 2 and len(candidates) >= 2:
-            results = self._index_parallel(candidates, workers)
-        else:
-            results = [
-                _worker_index_file((p, self.project_root, lang))
-                for p, lang in candidates
-            ]
+            return self._index_parallel(candidates, workers)
+        return [
+            _worker_index_file((p, self.project_root, lang)) for p, lang in candidates
+        ]
 
-        # Pass 3: single-writer SQLite insert wrapped in one transaction.
-        # Batching avoids the per-insert fsync/commit cost that dominated
-        # the post-parallel timing on medium projects (~1 ms per file).
+    def _apply_index_results(
+        self, results: list[dict[str, Any]], stats: dict[str, Any]
+    ) -> None:
+        """Apply parse results in a single SQLite transaction (single writer).
+
+        Batching avoids the per-insert fsync/commit cost that dominated the
+        post-parallel timing on medium projects (~1 ms per file).
+        """
+        conn = self._get_conn()
         indexed_at = datetime.now(timezone.utc).isoformat()
         conn.execute("BEGIN")
         try:
             for r in results:
-                if r["status"] == "io_error":
-                    stats["errors"] += 1
-                    stats["files"].append(
-                        {
-                            "file": r["rel_path"],
-                            "status": "error",
-                            "reason": r["reason"],
-                        }
-                    )
-                    continue
-                if r["status"] == "parse_failed":
+                if r["status"] in ("io_error", "parse_failed"):
                     stats["errors"] += 1
                     stats["files"].append(
                         {
@@ -1002,9 +1042,6 @@ class ASTCache:
         except Exception:
             conn.execute("ROLLBACK")
             raise
-        stats["total_files"] = count
-        stats["workers"] = workers
-        return stats
 
     def _index_parallel(
         self, candidates: list[tuple[str, str]], workers: int
