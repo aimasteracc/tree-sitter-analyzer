@@ -698,10 +698,16 @@ class ASTCache:
         conn.commit()
 
     def index_file(self, file_path: str, language: str | None = None) -> dict[str, Any]:
+        """Parse one file and persist its symbols / imports / structure.
+
+        r37cx (dogfood): 110 lines → ~30 of phase dispatch.
+        Sub-helpers: ``_resolve_language_for_path``, ``_check_existing_index``,
+        ``_persist_indexed_file``, ``_reindex_fts_rows``.
+        """
         abs_path = os.path.abspath(file_path)
         rel_path = os.path.relpath(abs_path, self.project_root)
-        if language is None:
-            language = _language_from_ext(abs_path)
+
+        language = self._resolve_language_for_path(abs_path, language)
         if language is None:
             return {
                 "file": rel_path,
@@ -714,18 +720,15 @@ class ASTCache:
         except OSError as e:
             return {"file": rel_path, "status": "error", "reason": str(e)}
 
-        source_code: str | None = None
         conn = self._get_conn()
         row = conn.execute(
             "SELECT content_hash, mtime_ns, file_size FROM ast_index WHERE file_path = ?",
             (rel_path,),
         ).fetchone()
-        if row is not None:
-            if (
-                row["mtime_ns"] == int(stat.st_mtime_ns)
-                and row["file_size"] == stat.st_size
-            ):
-                return {"file": rel_path, "status": "cached", "reason": "unchanged"}
+
+        cache_response = self._check_existing_index(row, stat, rel_path)
+        if cache_response is not None:
+            return cache_response
 
         try:
             with open(abs_path, encoding="utf-8", errors="replace") as f:
@@ -734,7 +737,6 @@ class ASTCache:
             return {"file": rel_path, "status": "error", "reason": str(e)}
 
         content_hash = _content_hash(source_code)
-
         if row is not None and row["content_hash"] == content_hash:
             conn.execute(
                 "UPDATE ast_index SET mtime_ns = ?, file_size = ? WHERE file_path = ?",
@@ -754,8 +756,64 @@ class ASTCache:
         symbols = _extract_symbols(result.tree, source_code, language)
         imports = _extract_imports(symbols)
         structure = _extract_structure(symbols)
-        indexed_at = datetime.now(timezone.utc).isoformat()
+        self._persist_indexed_file(
+            conn,
+            rel_path=rel_path,
+            content_hash=content_hash,
+            language=language,
+            stat=stat,
+            symbols=symbols,
+            imports=imports,
+            structure=structure,
+        )
+        if self._fts5_available:
+            self._reindex_fts_rows(conn, rel_path, language, symbols)
+        conn.commit()
+        return {
+            "file": rel_path,
+            "status": "indexed",
+            "symbols": len(symbols.get("symbols", [])),
+            "content_hash": content_hash[:16],
+        }
 
+    @staticmethod
+    def _resolve_language_for_path(abs_path: str, language: str | None) -> str | None:
+        """Pick the language to parse with, defaulting to file-extension lookup."""
+        if language is not None:
+            return language
+        return _language_from_ext(abs_path)
+
+    @staticmethod
+    def _check_existing_index(
+        row: Any, stat: os.stat_result, rel_path: str
+    ) -> dict[str, Any] | None:
+        """Return a "cached" response if stat-based fingerprint matches, else None.
+
+        Fast path: if mtime_ns + file_size both match the stored row, skip the
+        file read entirely. The caller then proceeds to read+hash on a miss.
+        """
+        if row is None:
+            return None
+        if row["mtime_ns"] != int(stat.st_mtime_ns):
+            return None
+        if row["file_size"] != stat.st_size:
+            return None
+        return {"file": rel_path, "status": "cached", "reason": "unchanged"}
+
+    @staticmethod
+    def _persist_indexed_file(
+        conn: Any,
+        *,
+        rel_path: str,
+        content_hash: str,
+        language: str,
+        stat: os.stat_result,
+        symbols: dict[str, Any],
+        imports: Any,
+        structure: Any,
+    ) -> None:
+        """Upsert the ast_index row for ``rel_path``."""
+        indexed_at = datetime.now(timezone.utc).isoformat()
         conn.execute(
             """INSERT OR REPLACE INTO ast_index
                (file_path, content_hash, language, mtime_ns, file_size,
@@ -774,39 +832,35 @@ class ASTCache:
             ),
         )
 
-        if self._fts5_available:
+    @staticmethod
+    def _reindex_fts_rows(
+        conn: Any, rel_path: str, language: str, symbols: dict[str, Any]
+    ) -> None:
+        """Replace FTS5 symbol rows for ``rel_path`` (delete then re-insert)."""
+        conn.execute(
+            "DELETE FROM ast_symbol_rows WHERE file_path = ?",
+            (rel_path,),
+        )
+        conn.execute(
+            "DELETE FROM ast_symbols_fts WHERE file_path = ?",
+            (rel_path,),
+        )
+        for sym in symbols.get("symbols", []):
+            sym_name = sym.get("name", sym.get("text", ""))
+            sym_kind = sym.get("kind", "unknown")
+            sym_line = sym.get("line", 0)
+            sym_end = sym.get("end_line", 0)
+            row_id = conn.execute(
+                """INSERT INTO ast_symbol_rows
+                   (name, kind, file_path, language, line, end_line)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (sym_name, sym_kind, rel_path, language, sym_line, sym_end),
+            ).lastrowid
             conn.execute(
-                "DELETE FROM ast_symbol_rows WHERE file_path = ?",
-                (rel_path,),
+                """INSERT INTO ast_symbols_fts (rowid, name, kind, file_path, language)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (row_id, sym_name, sym_kind, rel_path, language),
             )
-            conn.execute(
-                "DELETE FROM ast_symbols_fts WHERE file_path = ?",
-                (rel_path,),
-            )
-            for sym in symbols.get("symbols", []):
-                sym_name = sym.get("name", sym.get("text", ""))
-                sym_kind = sym.get("kind", "unknown")
-                sym_line = sym.get("line", 0)
-                sym_end = sym.get("end_line", 0)
-                row_id = conn.execute(
-                    """INSERT INTO ast_symbol_rows
-                       (name, kind, file_path, language, line, end_line)
-                       VALUES (?, ?, ?, ?, ?, ?)""",
-                    (sym_name, sym_kind, rel_path, language, sym_line, sym_end),
-                ).lastrowid
-                conn.execute(
-                    """INSERT INTO ast_symbols_fts (rowid, name, kind, file_path, language)
-                       VALUES (?, ?, ?, ?, ?)""",
-                    (row_id, sym_name, sym_kind, rel_path, language),
-                )
-
-        conn.commit()
-        return {
-            "file": rel_path,
-            "status": "indexed",
-            "symbols": len(symbols.get("symbols", [])),
-            "content_hash": content_hash[:16],
-        }
 
     def index_project(
         self,
