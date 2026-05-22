@@ -49,19 +49,35 @@ def extract_attributes(
         return attribute_cache[cache_key]
 
     attributes: list[dict[str, Any]] = []
+    # r37cn (dogfood): extracted to flatten nesting from 8 to ≤3.
     for child in node.children:
         if child.type == "attribute_list":
-            for attr_group in child.children:
-                if attr_group.type == "attribute_group":
-                    for attr in attr_group.children:
-                        if attr.type == "attribute":
-                            name_node = attr.child_by_field_name("name")
-                            if name_node:
-                                attr_name = get_node_text(name_node)
-                                attributes.append({"name": attr_name, "arguments": []})
-
+            _collect_php_attribute_list(child, get_node_text, attributes)
     attribute_cache[cache_key] = attributes
     return attributes
+
+
+def _collect_php_attribute_list(
+    attribute_list_node: Any,
+    get_node_text: Callable[..., str],
+    attributes: list[dict[str, Any]],
+) -> None:
+    """Walk one ``attribute_list`` node, appending each attribute name.
+
+    r37cn: extracted from ``extract_php_attributes`` so the 4-level for/if
+    chain (attribute_list → attribute_group → attribute → name) reads as
+    two focused helpers.
+    """
+    for attr_group in attribute_list_node.children:
+        if attr_group.type != "attribute_group":
+            continue
+        for attr in attr_group.children:
+            if attr.type != "attribute":
+                continue
+            name_node = attr.child_by_field_name("name")
+            if name_node is None:
+                continue
+            attributes.append({"name": get_node_text(name_node), "arguments": []})
 
 
 # Extract elements from AST: extract_use_statement
@@ -69,32 +85,41 @@ def extract_use_statement(
     node: Any,
     get_node_text: Callable[..., str],
 ) -> list[Import]:
-    """Extract use statement elements."""
+    """Extract use statement elements.
+
+    r37co (dogfood): extracted per-clause logic to flatten nesting 7 → 3.
+    """
     imports: list[Import] = []
     try:
         for child in node.children:
-            if child.type == "namespace_use_clause":
-                name_node = child.child_by_field_name("name")
-                alias_node = child.child_by_field_name("alias")
-
-                if name_node:
-                    import_name = get_node_text(name_node)
-                    alias = None
-                    if alias_node:
-                        alias = get_node_text(alias_node)
-
-                    imports.append(
-                        Import(
-                            name=import_name,
-                            start_line=node.start_point[0] + 1,
-                            end_line=node.end_point[0] + 1,
-                            alias=alias,
-                            is_wildcard=False,
-                        )
-                    )
+            if child.type != "namespace_use_clause":
+                continue
+            imp = _build_use_clause_import(node, child, get_node_text)
+            if imp is not None:
+                imports.append(imp)
     except Exception as e:
         log_error(f"Error extracting use statement: {e}")
     return imports
+
+
+def _build_use_clause_import(
+    use_node: Any,
+    clause_node: Any,
+    get_node_text: Callable[..., str],
+) -> Import | None:
+    """Build one ``Import`` from a ``namespace_use_clause`` node."""
+    name_node = clause_node.child_by_field_name("name")
+    if not name_node:
+        return None
+    alias_node = clause_node.child_by_field_name("alias")
+    alias = get_node_text(alias_node) if alias_node else None
+    return Import(
+        name=get_node_text(name_node),
+        start_line=use_node.start_point[0] + 1,
+        end_line=use_node.end_point[0] + 1,
+        alias=alias,
+        is_wildcard=False,
+    )
 
 
 # Extract elements from AST: extract_php_class_element
@@ -264,37 +289,56 @@ def extract_php_property_elements(
     try:
         modifiers = extract_modifiers_fn(node)
         visibility = determine_visibility(modifiers)
-
-        var_type = "mixed"
         type_node = node.child_by_field_name("type")
-        if type_node:
-            var_type = get_node_text(type_node)
+        var_type = get_node_text(type_node) if type_node else "mixed"
 
-        # Iterate over child
+        # r37cp (dogfood): extracted to flatten nesting 7 → 3.
         for child in node.children:
-            if child.type == "property_element":
-                name_node = child.child_by_field_name("name")
-                if name_node:
-                    name = get_node_text(name_node).lstrip("$")
-                    full_name = f"{parent_class}::{name}" if parent_class else name
-
-                    variables.append(
-                        Variable(
-                            name=full_name,
-                            start_line=node.start_point[0] + 1,
-                            end_line=node.end_point[0] + 1,
-                            visibility=visibility,
-                            is_static="static" in modifiers,
-                            is_constant=False,
-                            is_final=False,
-                            is_readonly="readonly" in modifiers,
-                            variable_type=var_type,
-                            modifiers=modifiers,
-                        )
-                    )
+            if child.type != "property_element":
+                continue
+            var = _build_php_property_variable(
+                node,
+                child,
+                parent_class,
+                get_node_text,
+                modifiers,
+                visibility,
+                var_type,
+            )
+            if var is not None:
+                variables.append(var)
     except Exception as e:
         log_error(f"Error extracting property elements: {e}")
     return variables
+
+
+def _build_php_property_variable(
+    property_node: Any,
+    element_node: Any,
+    parent_class: str,
+    get_node_text: Callable[..., str],
+    modifiers: list[str],
+    visibility: str,
+    var_type: str,
+) -> Variable | None:
+    """Build a ``Variable`` from one ``property_element`` AST child."""
+    name_node = element_node.child_by_field_name("name")
+    if name_node is None:
+        return None
+    name = get_node_text(name_node).lstrip("$")
+    full_name = f"{parent_class}::{name}" if parent_class else name
+    return Variable(
+        name=full_name,
+        start_line=property_node.start_point[0] + 1,
+        end_line=property_node.end_point[0] + 1,
+        visibility=visibility,
+        is_static="static" in modifiers,
+        is_constant=False,
+        is_final=False,
+        is_readonly="readonly" in modifiers,
+        variable_type=var_type,
+        modifiers=modifiers,
+    )
 
 
 # Extract elements from AST: extract_php_constant_elements
@@ -309,28 +353,42 @@ def extract_php_constant_elements(
     try:
         modifiers = extract_modifiers_fn(node)
         visibility = determine_visibility(modifiers)
-
-        # Iterate over child
+        # r37cq (dogfood): extracted to flatten nesting 7 → 3.
         for child in node.children:
-            if child.type == "const_element":
-                name_node = child.child_by_field_name("name")
-                if name_node:
-                    name = get_node_text(name_node)
-                    full_name = f"{parent_class}::{name}" if parent_class else name
-
-                    variables.append(
-                        Variable(
-                            name=full_name,
-                            start_line=node.start_point[0] + 1,
-                            end_line=node.end_point[0] + 1,
-                            visibility=visibility,
-                            is_static=True,
-                            is_constant=True,
-                            is_final=True,
-                            variable_type="const",
-                            modifiers=modifiers,
-                        )
-                    )
+            if child.type != "const_element":
+                continue
+            var = _build_php_constant_variable(
+                node, child, parent_class, get_node_text, modifiers, visibility
+            )
+            if var is not None:
+                variables.append(var)
     except Exception as e:
         log_error(f"Error extracting constant elements: {e}")
     return variables
+
+
+def _build_php_constant_variable(
+    const_node: Any,
+    element_node: Any,
+    parent_class: str,
+    get_node_text: Callable[..., str],
+    modifiers: list[str],
+    visibility: str,
+) -> Variable | None:
+    """Build a ``Variable`` from one ``const_element`` AST child."""
+    name_node = element_node.child_by_field_name("name")
+    if name_node is None:
+        return None
+    name = get_node_text(name_node)
+    full_name = f"{parent_class}::{name}" if parent_class else name
+    return Variable(
+        name=full_name,
+        start_line=const_node.start_point[0] + 1,
+        end_line=const_node.end_point[0] + 1,
+        visibility=visibility,
+        is_static=True,
+        is_constant=True,
+        is_final=True,
+        variable_type="const",
+        modifiers=modifiers,
+    )
