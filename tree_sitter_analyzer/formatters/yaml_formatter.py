@@ -237,108 +237,24 @@ class YAMLFormatter(BaseFormatter):
 
     # Format data for output: _format_full
     def _format_full(self, analysis_result: dict[str, Any]) -> str:
-        """Format full table output for YAML files."""
+        """Format full table output for YAML files.
+
+        r37d0 (dogfood): 104 lines → ~25 lines of section dispatch.
+        Each element category renders via a focused ``_yaml_section_*``
+        module helper that takes the pre-filtered list + output buffer.
+        Output bytes are preserved exactly.
+        """
         file_path = analysis_result.get("file_path", "")
         elements = analysis_result.get("elements", [])
 
-        # Extract filename from path
-        filename = file_path.split("/")[-1].split("\\")[-1]
-        if filename.endswith((".yaml", ".yml")):
-            filename = filename.rsplit(".", 1)[0]
-
-        output = [f"# {filename}\n"]
-
-        # Document Overview
-        output.append("## Document Overview\n")
-        output.append("| Property | Value |")
-        output.append("|----------|-------|")
-        output.append(f"| File | {file_path} |")
-        output.append("| Language | yaml |")
-        output.append(f"| Total Lines | {analysis_result.get('line_count', 0)} |")
-        output.append(f"| Total Elements | {len(elements)} |")
-        output.append("")
-
-        # Documents Section
-        documents = [e for e in elements if e.get("element_type") == "document"]
-        if documents:
-            output.append("## Documents\n")
-            output.append("| Index | Lines | Children |")
-            output.append("|-------|-------|----------|")
-            for doc in documents:
-                idx = doc.get("document_index", 0)
-                start = doc.get("start_line", 0)
-                end = doc.get("end_line", 0)
-                children = doc.get("child_count", 0)
-                output.append(f"| {idx} | {start}-{end} | {children} |")
-            output.append("")
-
-        # Mappings Section
-        mappings = [e for e in elements if e.get("element_type") == "mapping"]
-        if mappings:
-            output.append("## Mappings\n")
-            output.append("| Key | Value Type | Nesting | Line |")
-            output.append("|-----|------------|---------|------|")
-            for m in mappings[:50]:  # Limit to 50 for readability
-                key = m.get("key", "")[:30]
-                vtype = m.get("value_type", "")
-                nesting = m.get("nesting_level", 0)
-                line = m.get("start_line", 0)
-                output.append(f"| {key} | {vtype} | {nesting} | {line} |")
-            if len(mappings) > 50:
-                output.append(f"| ... | ({len(mappings) - 50} more) | | |")
-            output.append("")
-
-        # Sequences Section
-        sequences = [e for e in elements if e.get("element_type") == "sequence"]
-        if sequences:
-            output.append("## Sequences\n")
-            output.append("| Items | Nesting | Line |")
-            output.append("|-------|---------|------|")
-            for s in sequences:
-                items = s.get("child_count", 0)
-                nesting = s.get("nesting_level", 0)
-                line = s.get("start_line", 0)
-                output.append(f"| {items} | {nesting} | {line} |")
-            output.append("")
-
-        # Anchors Section
-        anchors = [e for e in elements if e.get("element_type") == "anchor"]
-        if anchors:
-            output.append("## Anchors\n")
-            output.append("| Name | Line |")
-            output.append("|------|------|")
-            for a in anchors:
-                name = a.get("anchor_name", "")
-                line = a.get("start_line", 0)
-                output.append(f"| &{name} | {line} |")
-            output.append("")
-
-        # Aliases Section
-        aliases = [e for e in elements if e.get("element_type") == "alias"]
-        if aliases:
-            output.append("## Aliases\n")
-            output.append("| Target | Line |")
-            output.append("|--------|------|")
-            for a in aliases:
-                target = a.get("alias_target", "")
-                line = a.get("start_line", 0)
-                output.append(f"| *{target} | {line} |")
-            output.append("")
-
-        # Comments Section
-        comments = [e for e in elements if e.get("element_type") == "comment"]
-        if comments:
-            output.append("## Comments\n")
-            output.append("| Content | Line |")
-            output.append("|---------|------|")
-            for c in comments:
-                content = c.get("value", "")[:50]
-                if len(c.get("value", "")) > 50:
-                    content += "..."
-                line = c.get("start_line", 0)
-                output.append(f"| {content} | {line} |")
-            output.append("")
-
+        output: list[str] = [f"# {_strip_yaml_extension(file_path)}\n"]
+        _yaml_section_overview(output, file_path, analysis_result, len(elements))
+        _yaml_section_documents(output, _yaml_filter(elements, "document"))
+        _yaml_section_mappings(output, _yaml_filter(elements, "mapping"))
+        _yaml_section_sequences(output, _yaml_filter(elements, "sequence"))
+        _yaml_section_anchors(output, _yaml_filter(elements, "anchor"))
+        _yaml_section_aliases(output, _yaml_filter(elements, "alias"))
+        _yaml_section_comments(output, _yaml_filter(elements, "comment"))
         return "\n".join(output)
 
     # Format data for output: _format_compact
@@ -475,3 +391,133 @@ class YAMLFormatter(BaseFormatter):
         output = [f"--- {title} ---"]
         output.append(json.dumps(data, indent=2, ensure_ascii=False))
         return "\n".join(output)
+
+
+# ---------------------------------------------------------------------------
+# YAML full-format section helpers (r37d0)
+# ---------------------------------------------------------------------------
+
+
+def _strip_yaml_extension(file_path: str) -> str:
+    """Return the filename without its ``.yaml`` / ``.yml`` extension."""
+    filename = file_path.split("/")[-1].split("\\")[-1]
+    if filename.endswith((".yaml", ".yml")):
+        filename = filename.rsplit(".", 1)[0]
+    return filename
+
+
+def _yaml_filter(
+    elements: list[dict[str, Any]], element_type: str
+) -> list[dict[str, Any]]:
+    """Return elements whose ``element_type`` field equals ``element_type``."""
+    return [e for e in elements if e.get("element_type") == element_type]
+
+
+def _yaml_section_overview(
+    output: list[str],
+    file_path: str,
+    analysis_result: dict[str, Any],
+    element_count: int,
+) -> None:
+    """Document Overview — file path, language, line + element counts."""
+    output.append("## Document Overview\n")
+    output.append("| Property | Value |")
+    output.append("|----------|-------|")
+    output.append(f"| File | {file_path} |")
+    output.append("| Language | yaml |")
+    output.append(f"| Total Lines | {analysis_result.get('line_count', 0)} |")
+    output.append(f"| Total Elements | {element_count} |")
+    output.append("")
+
+
+def _yaml_section_documents(output: list[str], documents: list[dict[str, Any]]) -> None:
+    """Documents table — index + line span + children count."""
+    if not documents:
+        return
+    output.append("## Documents\n")
+    output.append("| Index | Lines | Children |")
+    output.append("|-------|-------|----------|")
+    for doc in documents:
+        idx = doc.get("document_index", 0)
+        start = doc.get("start_line", 0)
+        end = doc.get("end_line", 0)
+        children = doc.get("child_count", 0)
+        output.append(f"| {idx} | {start}-{end} | {children} |")
+    output.append("")
+
+
+def _yaml_section_mappings(output: list[str], mappings: list[dict[str, Any]]) -> None:
+    """Mappings table — first 50 key entries, with a ``... (N more)`` tail."""
+    if not mappings:
+        return
+    output.append("## Mappings\n")
+    output.append("| Key | Value Type | Nesting | Line |")
+    output.append("|-----|------------|---------|------|")
+    for m in mappings[:50]:  # Limit to 50 for readability
+        key = m.get("key", "")[:30]
+        vtype = m.get("value_type", "")
+        nesting = m.get("nesting_level", 0)
+        line = m.get("start_line", 0)
+        output.append(f"| {key} | {vtype} | {nesting} | {line} |")
+    if len(mappings) > 50:
+        output.append(f"| ... | ({len(mappings) - 50} more) | | |")
+    output.append("")
+
+
+def _yaml_section_sequences(output: list[str], sequences: list[dict[str, Any]]) -> None:
+    """Sequences table — child count + nesting level."""
+    if not sequences:
+        return
+    output.append("## Sequences\n")
+    output.append("| Items | Nesting | Line |")
+    output.append("|-------|---------|------|")
+    for s in sequences:
+        items = s.get("child_count", 0)
+        nesting = s.get("nesting_level", 0)
+        line = s.get("start_line", 0)
+        output.append(f"| {items} | {nesting} | {line} |")
+    output.append("")
+
+
+def _yaml_section_anchors(output: list[str], anchors: list[dict[str, Any]]) -> None:
+    """Anchors table — ``&name`` + line number."""
+    if not anchors:
+        return
+    output.append("## Anchors\n")
+    output.append("| Name | Line |")
+    output.append("|------|------|")
+    for a in anchors:
+        name = a.get("anchor_name", "")
+        line = a.get("start_line", 0)
+        output.append(f"| &{name} | {line} |")
+    output.append("")
+
+
+def _yaml_section_aliases(output: list[str], aliases: list[dict[str, Any]]) -> None:
+    """Aliases table — ``*target`` + line number."""
+    if not aliases:
+        return
+    output.append("## Aliases\n")
+    output.append("| Target | Line |")
+    output.append("|--------|------|")
+    for a in aliases:
+        target = a.get("alias_target", "")
+        line = a.get("start_line", 0)
+        output.append(f"| *{target} | {line} |")
+    output.append("")
+
+
+def _yaml_section_comments(output: list[str], comments: list[dict[str, Any]]) -> None:
+    """Comments table — first 50 chars of content + line number."""
+    if not comments:
+        return
+    output.append("## Comments\n")
+    output.append("| Content | Line |")
+    output.append("|---------|------|")
+    for c in comments:
+        content = c.get("value", "")[:50]
+        if len(c.get("value", "")) > 50:
+            content += "..."
+        line = c.get("start_line", 0)
+        output.append(f"| {content} | {line} |")
+    output.append("")
