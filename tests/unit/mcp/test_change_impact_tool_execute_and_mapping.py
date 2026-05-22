@@ -44,6 +44,7 @@ def test_execute_exposes_verification_fields_for_agents(monkeypatch):
     assert result["verification_strategy"] == "docs_only"
     assert result["verification_steps"] == ["git diff --check"]
     assert result["agent_summary"] == {
+        "verdict": "INFO",
         "risk": "unknown",
         "scope": "workspace",
         "changed_count": 1,

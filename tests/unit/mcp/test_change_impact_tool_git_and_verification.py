@@ -1,6 +1,5 @@
 """Unit tests for change-impact git helpers and verification planning."""
 
-
 from tree_sitter_analyzer.mcp.tools.utils import (
     change_impact_analysis as change_impact_tool,
 )
@@ -339,6 +338,7 @@ def test_no_changes_result_keeps_agent_scope_signal():
     )
 
     assert result["agent_summary"] == {
+        "verdict": "INFO",
         "risk": "none",
         "scope": "scoped",
         "changed_count": 0,
@@ -386,6 +386,7 @@ def test_agent_summary_only_response_omits_noisy_details():
 
     assert result == {
         "success": True,
+        "verdict": "CAUTION",
         "mode": "diff",
         "scope_paths": [],
         "scope_filtered": False,
