@@ -139,6 +139,7 @@ def _build_project_health_result(
 
     return {
         "success": True,
+        "verdict": _project_health_verdict(grade_distribution),
         "project_root": root,
         "total_files": len(all_scores),
         "matching_file_count": len(worst),
@@ -387,6 +388,24 @@ def _project_risk(grade_distribution: dict[str, int]) -> str:
     if grade_distribution.get("C", 0) > 0:
         return "medium"
     return "low"
+
+
+def _project_health_verdict(grade_distribution: dict[str, int]) -> str:
+    """Verdict for the project-health envelope.
+
+    Maps grade distribution to the canonical verdict vocabulary that
+    downstream agent consumers (tsa-landing, decision_journal, CLI
+    bridges) branch on. Per the anti-bias note in tsa-landing.md, we
+    err toward higher severity when in doubt — a false REVIEW is
+    recoverable; a false INFO ships bugs into the agent workflow.
+
+    Returns one of: "CAUTION" | "REVIEW" | "INFO".
+    """
+    if grade_distribution.get("F", 0) > 0:
+        return "CAUTION"
+    if grade_distribution.get("D", 0) > 0:
+        return "REVIEW"
+    return "INFO"
 
 
 def _build_agent_backlog_item(score: Any) -> dict[str, Any]:
