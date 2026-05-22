@@ -12,7 +12,7 @@ Provides project-wide call graph intelligence:
 CodeGraph parity: equivalent to CodeGraph's code intelligence overview.
 """
 
-from typing import Any
+from typing import Any, cast
 
 from ...call_graph import CachedCallGraph, CallGraph
 from ...utils import setup_logger
@@ -155,14 +155,18 @@ def _find_entry_points(graph: CallGraph, limit: int) -> list[dict[str, Any]]:
     for func in graph._functions:
         callers = graph._callers.get(func, [])
         if not callers:
-            entry_points.append({
-                "name": func.name,
-                "file": func.file_path,
-                "line": func.start_line,
-                "language": func.language,
-                "callee_count": len(graph._callees.get(func, [])),
-            })
-    entry_points.sort(key=lambda x: (-cast(int, x["callee_count"]), cast(str, x["name"])))
+            entry_points.append(
+                {
+                    "name": func.name,
+                    "file": func.file_path,
+                    "line": func.start_line,
+                    "language": func.language,
+                    "callee_count": len(graph._callees.get(func, [])),
+                }
+            )
+    entry_points.sort(
+        key=lambda x: (-cast(int, x["callee_count"]), cast(str, x["name"]))
+    )
     return entry_points[:limit]
 
 
@@ -172,14 +176,16 @@ def _find_hub_functions(graph: CallGraph, limit: int) -> list[dict[str, Any]]:
     for func in graph._functions:
         callers = graph._callers.get(func, [])
         if len(callers) >= 3:
-            hubs.append({
-                "name": func.name,
-                "file": func.file_path,
-                "line": func.start_line,
-                "caller_count": len(callers),
-                "caller_files": sorted({c.file_path for c in callers}),
-            })
-    hubs.sort(key=lambda x: -x["caller_count"])
+            hubs.append(
+                {
+                    "name": func.name,
+                    "file": func.file_path,
+                    "line": func.start_line,
+                    "caller_count": len(callers),
+                    "caller_files": sorted({c.file_path for c in callers}),
+                }
+            )
+    hubs.sort(key=lambda x: -cast(int, x["caller_count"]))
     return hubs[:limit]
 
 
@@ -190,12 +196,14 @@ def _find_dead_code(graph: CallGraph, limit: int) -> list[dict[str, Any]]:
         callers = graph._callers.get(func, [])
         callees = graph._callees.get(func, [])
         if not callers and not callees:
-            dead.append({
-                "name": func.name,
-                "file": func.file_path,
-                "line": func.start_line,
-                "language": func.language,
-            })
+            dead.append(
+                {
+                    "name": func.name,
+                    "file": func.file_path,
+                    "line": func.start_line,
+                    "language": func.language,
+                }
+            )
     dead.sort(key=lambda x: (x["file"], x["name"]))
     return dead[:limit]
 
@@ -246,9 +254,7 @@ def _compute_depth_distribution(graph: CallGraph) -> dict[str, Any]:
     }
 
 
-def _compute_module_coupling(
-    graph: CallGraph, limit: int
-) -> list[dict[str, Any]]:
+def _compute_module_coupling(graph: CallGraph, limit: int) -> list[dict[str, Any]]:
     """Files with the most cross-file calls (high coupling)."""
     file_coupling: dict[str, dict[str, int]] = {}
     for caller, callees in graph._callees.items():
@@ -266,13 +272,13 @@ def _compute_module_coupling(
     result = []
     for src, targets in file_coupling.items():
         total_calls = sum(targets.values())
-        result.append({
-            "file": src,
-            "outgoing_calls": total_calls,
-            "target_files": len(targets),
-            "top_targets": sorted(
-                targets.items(), key=lambda x: -x[1]
-            )[:5],
-        })
-    result.sort(key=lambda x: -x["outgoing_calls"])
+        result.append(
+            {
+                "file": src,
+                "outgoing_calls": total_calls,
+                "target_files": len(targets),
+                "top_targets": sorted(targets.items(), key=lambda x: -x[1])[:5],
+            }
+        )
+    result.sort(key=lambda x: -cast(int, x["outgoing_calls"]))
     return result[:limit]
