@@ -132,9 +132,7 @@ class BashElementExtractor(ElementExtractor):
 
         return expressions
 
-    def extract_classes(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Any]:
+    def extract_classes(self, tree: "tree_sitter.Tree", source_code: str) -> list[Any]:
         """Bash does not have classes"""
         return []
 
@@ -144,9 +142,7 @@ class BashElementExtractor(ElementExtractor):
         """Bash variable extraction not implemented in this phase"""
         return []
 
-    def extract_imports(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Any]:
+    def extract_imports(self, tree: "tree_sitter.Tree", source_code: str) -> list[Any]:
         """Bash does not have traditional imports (source statements are handled separately)"""
         return []
 
@@ -223,23 +219,10 @@ class BashElementExtractor(ElementExtractor):
 
             # Process target nodes
             if node_type in target_node_types:
-                node_id = id(current_node)
-
-                if node_id in self._processed_nodes:
-                    continue
-
-                self._processed_nodes.add(node_id)
-
-                # Extract element
-                extractor = extractors.get(node_type)
-                if extractor:
-                    try:
-                        element = extractor(current_node)
-                        if element:
-                            results.append(element)
-                    except Exception:
-                        # Skip nodes that cause extraction errors
-                        pass
+                # r37cd (dogfood): extracted to flatten 7-deep nesting.
+                self._try_extract_bash_node(
+                    current_node, node_type, extractors, results
+                )
 
             # Add children to stack
             if current_node.children:
@@ -255,6 +238,60 @@ class BashElementExtractor(ElementExtractor):
                     node_stack.append((child, depth + 1))
 
         log_debug(f"Iterative traversal processed {processed_nodes} nodes")
+
+    def _extract_multiline_text(
+        self,
+        start_point: tuple[int, int],
+        end_point: tuple[int, int],
+    ) -> str:
+        """Slice multi-line node text from ``self.content_lines``.
+
+        r37ce (dogfood): extracted from ``_get_node_text_optimized``'s
+        fallback branch to drop nesting from 8 to ≤3. Handles the
+        first-line / last-line / interior-line columns.
+        """
+        lines: list[str] = []
+        for i in range(start_point[0], end_point[0] + 1):
+            if i >= len(self.content_lines):
+                continue
+            line = self.content_lines[i]
+            if i == start_point[0]:
+                start_col = max(0, min(start_point[1], len(line)))
+                lines.append(line[start_col:])
+            elif i == end_point[0]:
+                end_col = max(0, min(end_point[1], len(line)))
+                lines.append(line[:end_col])
+            else:
+                lines.append(line)
+        return "\n".join(lines)
+
+    def _try_extract_bash_node(
+        self,
+        current_node: "tree_sitter.Node",
+        node_type: str,
+        extractors: dict[str, Any],
+        results: list[Any],
+    ) -> None:
+        """Look up the extractor for a node type and append its result.
+
+        r37cd (dogfood): extracted from the stack-traversal loop in
+        ``_extract_elements_iterative`` to drop nesting from 7 to ≤3.
+        Skips already-processed nodes (by id) and swallows per-extractor
+        errors so a single bad node doesn't abort the walk.
+        """
+        node_id = id(current_node)
+        if node_id in self._processed_nodes:
+            return
+        self._processed_nodes.add(node_id)
+        extractor = extractors.get(node_type)
+        if not extractor:
+            return
+        try:
+            element = extractor(current_node)
+        except Exception:
+            return
+        if element:
+            results.append(element)
 
     def _get_node_text_optimized(self, node: "tree_sitter.Node") -> str:
         """Get node text with optimized caching"""
@@ -295,22 +332,10 @@ class BashElementExtractor(ElementExtractor):
                 result: str = line[start_col:end_col]
                 self._node_text_cache[cache_key] = result
                 return result
-            else:
-                lines = []
-                for i in range(start_point[0], end_point[0] + 1):
-                    if i < len(self.content_lines):
-                        line = self.content_lines[i]
-                        if i == start_point[0]:
-                            start_col = max(0, min(start_point[1], len(line)))
-                            lines.append(line[start_col:])
-                        elif i == end_point[0]:
-                            end_col = max(0, min(end_point[1], len(line)))
-                            lines.append(line[:end_col])
-                        else:
-                            lines.append(line)
-                result = "\n".join(lines)
-                self._node_text_cache[cache_key] = result
-                return result
+            # r37ce (dogfood): extracted to drop nesting from 8 to ≤3.
+            result = self._extract_multiline_text(start_point, end_point)
+            self._node_text_cache[cache_key] = result
+            return result
         except Exception as fallback_error:
             log_error(f"Fallback text extraction also failed: {fallback_error}")
             return ""
@@ -501,7 +526,9 @@ class BashElementExtractor(ElementExtractor):
             log_error(f"Failed to extract redirect: {e}")
             return None
 
-    def _extract_process_substitution(self, node: "tree_sitter.Node") -> Expression | None:
+    def _extract_process_substitution(
+        self, node: "tree_sitter.Node"
+    ) -> Expression | None:
         """Extract process substitution expressions"""
         try:
             start_line = node.start_point[0] + 1
@@ -618,9 +645,7 @@ class BashPlugin(LanguagePlugin):
         extractor = self.get_extractor()
         return extractor.extract_functions(tree, source_code)
 
-    def extract_classes(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Any]:
+    def extract_classes(self, tree: "tree_sitter.Tree", source_code: str) -> list[Any]:
         """Extract classes from the tree (Bash has no classes)"""
         return []
 
@@ -630,9 +655,7 @@ class BashPlugin(LanguagePlugin):
         """Extract variables from the tree"""
         return []
 
-    def extract_imports(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Any]:
+    def extract_imports(self, tree: "tree_sitter.Tree", source_code: str) -> list[Any]:
         """Extract imports from the tree"""
         return []
 
