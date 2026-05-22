@@ -70,8 +70,38 @@ class AnalysisSession:
 
         Raises:
             ValueError: 输入验证失败时抛出
+
+        r37el (dogfood): 76→~20 lines. Validation moved to
+        ``_validate_session_inputs``; UUID/timestamp build moved to
+        ``_make_session_id``; git-commit resolution moved to
+        ``_resolve_git_commit``.
         """
-        # 输入验证
+        self._validate_session_inputs(
+            input_files, output_format, token_count_before, token_count_after
+        )
+
+        self.session_id, self.timestamp = self._make_session_id()
+
+        # 基本信息
+        self.input_files = input_files
+        self.output_format = output_format
+        self.tools_used = tools_used or []
+        self.token_count_before = token_count_before
+        self.token_count_after = token_count_after
+
+        self.file_hashes = self._calculate_file_hashes(input_files)
+        self.git_commit: str | None = self._resolve_git_commit(
+            git_commit, auto_detect_git_commit
+        )
+
+    @staticmethod
+    def _validate_session_inputs(
+        input_files: list[str],
+        output_format: str,
+        token_count_before: int | None,
+        token_count_after: int | None,
+    ) -> None:
+        """Reject empty input list / unknown format / negative token counts."""
         if not input_files:
             raise ValueError("input_files cannot be empty")
 
@@ -84,44 +114,32 @@ class AnalysisSession:
 
         if token_count_before is not None and token_count_before < 0:
             raise ValueError("Token counts cannot be negative")
-
         if token_count_after is not None and token_count_after < 0:
             raise ValueError("Token counts cannot be negative")
 
-        # 生成 session ID: YYYYMMDD-HHMMSS-uuid4
-        # Use a timezone-aware UTC datetime (deprecation-clean on Python
-        # 3.12+) and strip the offset for the backwards-compatible
-        # ``...Z`` ISO 8601 timestamp used by older session readers.
-        # ``timezone.utc`` is the cross-version-safe form (``datetime.UTC``
-        # is Python 3.11+ only).
+    @staticmethod
+    def _make_session_id() -> tuple[str, str]:
+        """Return ``(session_id, iso_timestamp)`` — UTC-stamped with UUID4 suffix.
+
+        Uses ``timezone.utc`` (cross-version-safe; ``datetime.UTC`` is 3.11+
+        only). The timestamp keeps the legacy ``...Z`` suffix that older
+        session readers expect.
+        """
         now = datetime.now(timezone.utc)
         timestamp_part = now.strftime("%Y%m%d-%H%M%S")
-        uuid_part = str(uuid4())
-        self.session_id = f"{timestamp_part}-{uuid_part}"
+        session_id = f"{timestamp_part}-{uuid4()}"
+        iso_timestamp = now.replace(tzinfo=None).isoformat() + "Z"
+        return session_id, iso_timestamp
 
-        # ISO 8601 timestamp (with explicit "Z" suffix for back-compat)
-        self.timestamp = now.replace(tzinfo=None).isoformat() + "Z"
-
-        # 基本信息
-        self.input_files = input_files
-        self.output_format = output_format
-        self.tools_used = tools_used or []
-        self.token_count_before = token_count_before
-        self.token_count_after = token_count_after
-
-        # 计算文件 hash
-        self.file_hashes = self._calculate_file_hashes(input_files)
-
-        # Git commit
-        self.git_commit: str | None
+    def _resolve_git_commit(
+        self, git_commit: str | None, auto_detect: bool
+    ) -> str | None:
+        """Pick the git commit string: explicit arg > auto-detect > None."""
         if git_commit:
-            # 手动提供的 git_commit 优先
-            self.git_commit = git_commit
-        elif auto_detect_git_commit:
-            # 自动检测 git commit
-            self.git_commit = self._detect_git_commit()
-        else:
-            self.git_commit = None
+            return git_commit
+        if auto_detect:
+            return self._detect_git_commit()
+        return None
 
     @property
     def token_savings_pct(self) -> float | None:
