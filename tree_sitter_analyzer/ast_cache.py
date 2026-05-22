@@ -1027,6 +1027,21 @@ class ASTCache:
                     )
         return functions
 
+    def get_imports(self) -> dict[str, list[str]]:
+        """Return per-file import lists from the cache.
+
+        Returns dict mapping relative file path -> list of import text strings.
+        Used by CachedCallGraph for import-aware cross-file call resolution.
+        """
+        conn = self._get_conn()
+        rows = conn.execute(
+            "SELECT file_path, imports_json FROM ast_index"
+        ).fetchall()
+        result: dict[str, list[str]] = {}
+        for row in rows:
+            result[row["file_path"]] = json.loads(row["imports_json"])
+        return result
+
     def close(self) -> None:
         conn = getattr(self._local, "conn", None)
         if conn is not None:

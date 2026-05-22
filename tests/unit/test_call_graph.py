@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 from tree_sitter_analyzer.call_graph import (
+    CachedCallGraph,
     CallGraph,
     FunctionRef,
     _extract_call,
@@ -669,3 +670,155 @@ class TestCallGraphInternalMethods:
         cg = CallGraph(str(PY_PROJECT))
         result = cg._resolve_targets("nonexistent")
         assert result == []
+
+
+class TestCachedCallGraphImportResolution:
+    """Tests for import-aware cross-file resolution in CachedCallGraph."""
+
+    @staticmethod
+    def _make_mock_cache(
+        functions, edges, imports=None,
+    ):
+        cache = MagicMock()
+        cache.get_functions.return_value = functions
+        cache.get_call_edges.return_value = edges
+        cache.get_imports.return_value = imports or {}
+        return cache
+
+    def test_same_file_resolution(self):
+        functions = [
+            {"name": "main", "file": "app.py", "line": 5, "language": "python"},
+            {"name": "helper", "file": "app.py", "line": 15, "language": "python"},
+        ]
+        edges = [
+            {
+                "caller_name": "main",
+                "caller_file": "app.py",
+                "caller_line": 5,
+                "callee_name": "helper",
+                "callee_full": "helper",
+                "callee_line": 8,
+            },
+        ]
+        cache = self._make_mock_cache(functions, edges, {"app.py": []})
+        cg = CachedCallGraph("/tmp/project", cache=cache)
+        cg.build()
+        callees = cg.callees_of("main")
+        assert len(callees) == 1
+        assert callees[0]["name"] == "helper"
+        assert callees[0]["file"] == "app.py"
+
+    def test_cross_file_import_resolution(self):
+        functions = [
+            {"name": "process", "file": "service.py", "line": 10, "language": "python"},
+            {"name": "load_data", "file": "models.py", "line": 5, "language": "python"},
+        ]
+        edges = [
+            {
+                "caller_name": "process",
+                "caller_file": "service.py",
+                "caller_line": 10,
+                "callee_name": "load_data",
+                "callee_full": "load_data",
+                "callee_line": 13,
+            },
+        ]
+        imports = {
+            "service.py": ["from models import load_data"],
+        }
+        cache = self._make_mock_cache(functions, edges, imports)
+        cg = CachedCallGraph("/tmp/project", cache=cache)
+        cg.build()
+        callees = cg.callees_of("process")
+        assert len(callees) == 1
+        assert callees[0]["name"] == "load_data"
+        assert callees[0]["file"] == "models.py"
+
+    def test_dotted_callee_resolution(self):
+        functions = [
+            {"name": "run", "file": "main.py", "line": 5, "language": "python"},
+            {"name": "fetch", "file": "client.py", "line": 10, "language": "python"},
+        ]
+        edges = [
+            {
+                "caller_name": "run",
+                "caller_file": "main.py",
+                "caller_line": 5,
+                "callee_name": "client.fetch",
+                "callee_full": "client.fetch",
+                "callee_line": 7,
+            },
+        ]
+        imports = {
+            "main.py": ["from client import fetch"],
+        }
+        cache = self._make_mock_cache(functions, edges, imports)
+        cg = CachedCallGraph("/tmp/project", cache=cache)
+        cg.build()
+        callees = cg.callees_of("run")
+        assert len(callees) == 1
+        assert callees[0]["name"] == "fetch"
+        assert callees[0]["file"] == "client.py"
+
+    def test_fallback_to_first_candidate(self):
+        functions = [
+            {"name": "handler", "file": "app.py", "line": 5, "language": "python"},
+            {"name": "validate", "file": "validators.py", "line": 3, "language": "python"},
+        ]
+        edges = [
+            {
+                "caller_name": "handler",
+                "caller_file": "app.py",
+                "caller_line": 5,
+                "callee_name": "validate",
+                "callee_full": "validate",
+                "callee_line": 8,
+            },
+        ]
+        cache = self._make_mock_cache(functions, edges, {"app.py": []})
+        cg = CachedCallGraph("/tmp/project", cache=cache)
+        cg.build()
+        callees = cg.callees_of("handler")
+        assert len(callees) == 1
+        assert callees[0]["name"] == "validate"
+
+    def test_empty_cache_falls_back(self):
+        cache = MagicMock()
+        cache.get_functions.return_value = []
+        cache.get_call_edges.return_value = []
+        cg = CachedCallGraph(str(PY_PROJECT), cache=cache, fallback=True)
+        cg.build()
+        funcs = cg.all_functions()
+        assert len(funcs) > 0
+
+    def test_no_fallback_skips_parse(self):
+        cache = MagicMock()
+        cache.get_functions.return_value = []
+        cache.get_call_edges.return_value = []
+        cg = CachedCallGraph(str(PY_PROJECT), cache=cache, fallback=False)
+        cg.build()
+        assert not cg._built
+
+    def test_reverse_callers(self):
+        functions = [
+            {"name": "main", "file": "main.py", "line": 1, "language": "python"},
+            {"name": "process", "file": "service.py", "line": 5, "language": "python"},
+        ]
+        edges = [
+            {
+                "caller_name": "main",
+                "caller_file": "main.py",
+                "caller_line": 1,
+                "callee_name": "process",
+                "callee_full": "process",
+                "callee_line": 3,
+            },
+        ]
+        imports = {"main.py": ["from service import process"]}
+        cache = self._make_mock_cache(functions, edges, imports)
+        cg = CachedCallGraph("/tmp/project", cache=cache)
+        cg.build()
+        callers = cg.callers_of("process")
+        assert len(callers) == 1
+        assert callers[0]["name"] == "main"
+        assert callers[0]["file"] == "main.py"

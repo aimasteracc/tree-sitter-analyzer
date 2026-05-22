@@ -774,12 +774,14 @@ class CachedCallGraph(CallGraph):
                 return
             edges = self._cache.get_call_edges()
             functions = self._cache.get_functions()
+            imports_raw = self._cache.get_imports()
         except Exception:
             return
 
         if not functions and not edges:
             return
 
+        rel_files: set[str] = set()
         for func in functions:
             ref = FunctionRef(
                 file_path=func["file"],
@@ -791,12 +793,44 @@ class CachedCallGraph(CallGraph):
             self._func_by_name[func["name"]].append(ref)
             qname = ref.qualified_name()
             self._func_by_qualified[qname] = ref
+            rel_files.add(func["file"])
+
+        module_to_file: dict[str, str] = {}
+        for rel in rel_files:
+            p = Path(rel)
+            stem = p.stem
+            if stem == "__init__":
+                mod = str(p.parent).replace("/", ".").replace("\\", ".")
+            else:
+                mod = str(p.with_suffix("")).replace("/", ".").replace("\\", ".")
+            module_to_file[mod] = rel
+
+        file_import_map: dict[str, dict[str, str]] = {}
+        for file_path, import_texts in imports_raw.items():
+            name_map: dict[str, str] = {}
+            for imp_text in import_texts:
+                parts = imp_text.split()
+                if len(parts) >= 4 and parts[0] == "from":
+                    mod_name = parts[1]
+                    imported_names = [n.strip(",") for n in parts[3:] if n != "import"]
+                    target_file = module_to_file.get(mod_name, "")
+                    if target_file:
+                        for name in imported_names:
+                            name_map[name] = target_file
+                elif len(parts) >= 2 and parts[0] == "import":
+                    mod_name = parts[1].split(".")[0]
+                    target_file = module_to_file.get(mod_name, "")
+                    if target_file:
+                        name_map[mod_name] = target_file
+            if name_map:
+                file_import_map[file_path] = name_map
 
         for edge in edges:
+            caller_file = edge["caller_file"]
             caller_candidates = self._func_by_name.get(edge["caller_name"], [])
             caller_ref = None
             for c in caller_candidates:
-                if c.file_path == edge["caller_file"]:
+                if c.file_path == caller_file:
                     caller_ref = c
                     break
             if caller_ref is None and caller_candidates:
@@ -805,14 +839,22 @@ class CachedCallGraph(CallGraph):
                 continue
 
             callee_name = edge["callee_name"]
+            dot_parts = callee_name.rsplit(".", 1)
+            if len(dot_parts) == 2:
+                base_name = dot_parts[0]
+                callee_name = dot_parts[1]
+            else:
+                base_name = callee_name
+
             callee_candidates = self._func_by_name.get(callee_name, [])
             if not callee_candidates:
                 continue
 
-            same_file = [
-                c for c in callee_candidates if c.file_path == edge["caller_file"]
-            ]
-            for callee_ref in same_file if same_file else callee_candidates:
+            resolved = self._resolve_callee_from_cache(
+                callee_name, base_name, caller_file, callee_candidates, file_import_map
+            )
+
+            for callee_ref in resolved:
                 self._callees[caller_ref].append(callee_ref)
                 self._callers[callee_ref].append(caller_ref)
                 self._call_edges.append(
@@ -820,3 +862,24 @@ class CachedCallGraph(CallGraph):
                 )
 
         self._built = True
+
+    def _resolve_callee_from_cache(
+        self,
+        callee_name: str,
+        base_name: str,
+        caller_file: str,
+        candidates: list[FunctionRef],
+        file_import_map: dict[str, dict[str, str]],
+    ) -> list[FunctionRef]:
+        same_file = [c for c in candidates if c.file_path == caller_file]
+        if same_file:
+            return same_file
+
+        imports = file_import_map.get(caller_file, {})
+        target_file = imports.get(base_name) or imports.get(callee_name)
+        if target_file:
+            imported = [c for c in candidates if c.file_path == target_file]
+            if imported:
+                return imported
+
+        return candidates[:1]
