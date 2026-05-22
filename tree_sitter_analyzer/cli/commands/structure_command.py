@@ -65,6 +65,9 @@ class StructureCommand(BaseCommand):
         helpers (``_partition_structure_elements``, ``_legacy_package_block``,
         ``_legacy_statistics_block``, ``_attach_structure_envelope``) own
         the per-section work. Output dict keys + tuple shapes are preserved.
+
+        r37dy (dogfood): per-element row builders抽到 static helpers so
+        the assembly dict drops from depth 6 to 3.
         """
         classes, methods, fields, imports, packages = (
             self._partition_structure_elements(analysis_result)
@@ -73,52 +76,10 @@ class StructureCommand(BaseCommand):
             "file_path": analysis_result.file_path,
             "language": analysis_result.language,
             "package": self._legacy_package_block(packages),
-            "classes": [
-                {
-                    "name": getattr(c, "name", "unknown"),
-                    "visibility": getattr(c, "visibility", ""),
-                    "line_range": (
-                        getattr(c, "start_line", 0),
-                        getattr(c, "end_line", 0),
-                    ),
-                }
-                for c in classes
-            ],
-            "methods": [
-                {
-                    "name": getattr(m, "name", "unknown"),
-                    "visibility": getattr(m, "visibility", ""),
-                    "line_range": (
-                        getattr(m, "start_line", 0),
-                        getattr(m, "end_line", 0),
-                    ),
-                }
-                for m in methods
-            ],
-            "fields": [
-                {
-                    "name": getattr(f, "name", "unknown"),
-                    "type": getattr(f, "type_annotation", ""),
-                    "line_range": (
-                        getattr(f, "start_line", 0),
-                        getattr(f, "end_line", 0),
-                    ),
-                }
-                for f in fields
-            ],
-            "imports": [
-                {
-                    "name": getattr(i, "name", "unknown"),
-                    "is_static": getattr(i, "is_static", False),
-                    "is_wildcard": getattr(i, "is_wildcard", False),
-                    "statement": getattr(i, "import_statement", ""),
-                    "line_range": (
-                        getattr(i, "start_line", 0),
-                        getattr(i, "end_line", 0),
-                    ),
-                }
-                for i in imports
-            ],
+            "classes": [self._legacy_class_row(c) for c in classes],
+            "methods": [self._legacy_method_row(m) for m in methods],
+            "fields": [self._legacy_field_row(f) for f in fields],
+            "imports": [self._legacy_import_row(i) for i in imports],
             "annotations": [],
             "statistics": self._legacy_statistics_block(
                 analysis_result, classes, methods, fields, imports
@@ -134,6 +95,56 @@ class StructureCommand(BaseCommand):
             imports=imports,
         )
         return legacy_dict
+
+    @staticmethod
+    def _legacy_class_row(c: Any) -> dict[str, Any]:
+        """Return the legacy ``classes[]`` dict row for one class element."""
+        return {
+            "name": getattr(c, "name", "unknown"),
+            "visibility": getattr(c, "visibility", ""),
+            "line_range": (
+                getattr(c, "start_line", 0),
+                getattr(c, "end_line", 0),
+            ),
+        }
+
+    @staticmethod
+    def _legacy_method_row(m: Any) -> dict[str, Any]:
+        """Return the legacy ``methods[]`` dict row for one method element."""
+        return {
+            "name": getattr(m, "name", "unknown"),
+            "visibility": getattr(m, "visibility", ""),
+            "line_range": (
+                getattr(m, "start_line", 0),
+                getattr(m, "end_line", 0),
+            ),
+        }
+
+    @staticmethod
+    def _legacy_field_row(f: Any) -> dict[str, Any]:
+        """Return the legacy ``fields[]`` dict row for one field element."""
+        return {
+            "name": getattr(f, "name", "unknown"),
+            "type": getattr(f, "type_annotation", ""),
+            "line_range": (
+                getattr(f, "start_line", 0),
+                getattr(f, "end_line", 0),
+            ),
+        }
+
+    @staticmethod
+    def _legacy_import_row(i: Any) -> dict[str, Any]:
+        """Return the legacy ``imports[]`` dict row for one import element."""
+        return {
+            "name": getattr(i, "name", "unknown"),
+            "is_static": getattr(i, "is_static", False),
+            "is_wildcard": getattr(i, "is_wildcard", False),
+            "statement": getattr(i, "import_statement", ""),
+            "line_range": (
+                getattr(i, "start_line", 0),
+                getattr(i, "end_line", 0),
+            ),
+        }
 
     @staticmethod
     def _partition_structure_elements(

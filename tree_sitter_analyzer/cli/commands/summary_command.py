@@ -29,6 +29,31 @@ if TYPE_CHECKING:
     from ...models import AnalysisResult
 
 
+def _format_element_summary_line(element: dict[str, Any]) -> str:
+    """Format a single ``element`` dict as the text-summary bullet line.
+
+    Joins ``name | L<start>-<end> | <visibility> | <modifiers>`` with
+    ``|`` separators, skipping fields that are missing or sentinel
+    values (``unknown``, ``None``, empty string). Used by
+    ``_output_text_format`` to render each element row.
+
+    r37dy (dogfood): lifted to flatten nesting 6 → 3.
+    """
+    name = str(element.get("name", "unknown"))
+    parts: list[str] = [name]
+    start = element.get("start_line")
+    end = element.get("end_line")
+    if start and end:
+        parts.append(f"L{start}-{end}")
+    vis = element.get("visibility")
+    if vis and str(vis) not in ("unknown", "None", ""):
+        parts.append(str(vis))
+    modifiers = element.get("modifiers", [])
+    if modifiers:
+        parts.append(" ".join(str(m) for m in modifiers))
+    return " | ".join(parts)
+
+
 class SummaryCommand(BaseCommand):
     """Command for summary analysis with specified element types."""
 
@@ -228,29 +253,19 @@ class SummaryCommand(BaseCommand):
         output_data(f"File: {summary_data['file_path']}")
         output_data(f"Language: {summary_data['language']}")
 
+        # r37dy (dogfood): flatten nesting 6 → 3 via early-continue +
+        # _format_element_summary_line helper.
+        type_name_map = {
+            "classes": "Classes",
+            "methods": "Methods",
+            "fields": "Fields",
+            "imports": "Imports",
+        }
         for element_type in requested_types:
-            if element_type in summary_data["summary"]:
-                elements = summary_data["summary"][element_type]
-                type_name_map = {
-                    "classes": "Classes",
-                    "methods": "Methods",
-                    "fields": "Fields",
-                    "imports": "Imports",
-                }
-                type_name = type_name_map.get(element_type, element_type)
-                output_data(f"\n{type_name} ({len(elements)} items):")
-                for element in elements:
-                    name = str(element.get("name", "unknown"))
-                    start = element.get("start_line")
-                    end = element.get("end_line")
-                    vis = element.get("visibility")
-                    modifiers = element.get("modifiers", [])
-
-                    parts = [name]
-                    if start and end:
-                        parts.append(f"L{start}-{end}")
-                    if vis and str(vis) not in ("unknown", "None", ""):
-                        parts.append(str(vis))
-                    if modifiers:
-                        parts.append(" ".join(str(m) for m in modifiers))
-                    output_data(f"  - {' | '.join(parts)}")
+            if element_type not in summary_data["summary"]:
+                continue
+            elements = summary_data["summary"][element_type]
+            type_name = type_name_map.get(element_type, element_type)
+            output_data(f"\n{type_name} ({len(elements)} items):")
+            for element in elements:
+                output_data(f"  - {_format_element_summary_line(element)}")

@@ -164,24 +164,16 @@ class BaseCommand(ABC):
         output_error(error_message)
 
     async def analyze_file(self, language: str) -> Optional["AnalysisResult"]:
-        """Perform file analysis using the unified analysis engine."""
+        """Perform file analysis using the unified analysis engine.
+
+        r37dy (dogfood): flatten partial-read precheck (depth 6) via
+        ``_try_partial_read_precheck`` helper. The helper returns
+        ``True`` when the precheck passes (or is disabled) and ``False``
+        when caller should bail with ``None``.
+        """
         try:
-            # Handle partial read if enabled
-            if hasattr(self.args, "partial_read") and self.args.partial_read:
-                try:
-                    partial_content = read_file_partial(
-                        self.args.file_path,
-                        start_line=self.args.start_line,
-                        end_line=getattr(self.args, "end_line", None),
-                        start_column=getattr(self.args, "start_column", None),
-                        end_column=getattr(self.args, "end_column", None),
-                    )
-                    if partial_content is None:
-                        output_error("Failed to read file partially")
-                        return None
-                except Exception as e:
-                    output_error(f"Failed to read file partially: {e}")
-                    return None
+            if not self._try_partial_read_precheck():
+                return None
 
             request = AnalysisRequest(
                 file_path=self.args.file_path,
@@ -205,6 +197,38 @@ class BaseCommand(ABC):
         except Exception as e:
             output_error(f"An error occurred during analysis: {e}")
             return None
+
+    def _try_partial_read_precheck(self) -> bool:
+        """Run the partial-read precheck when ``--partial-read`` was passed.
+
+        Returns ``True`` on the happy path (precheck disabled, or content
+        was successfully read). Returns ``False`` only when partial read
+        is enabled AND the read fails (caller should propagate ``None``
+        back to the caller). The actual partial content is *not*
+        captured here — ``analyze_file`` re-reads via the analysis
+        engine anyway; this precheck just sanity-checks the range so a
+        clearer error surfaces before the heavier pipeline runs.
+
+        r37dy (dogfood): lifted from ``analyze_file`` to flatten the
+        try/except-inside-if from depth 6 to 3.
+        """
+        if not hasattr(self.args, "partial_read") or not self.args.partial_read:
+            return True
+        try:
+            partial_content = read_file_partial(
+                self.args.file_path,
+                start_line=self.args.start_line,
+                end_line=getattr(self.args, "end_line", None),
+                start_column=getattr(self.args, "start_column", None),
+                end_column=getattr(self.args, "end_column", None),
+            )
+        except Exception as e:
+            output_error(f"Failed to read file partially: {e}")
+            return False
+        if partial_content is None:
+            output_error("Failed to read file partially")
+            return False
+        return True
 
     def execute(self) -> int:
         """

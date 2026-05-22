@@ -202,6 +202,29 @@ def _record_field_usage(node: Any, ns: NodeStats, lang_obj: Any) -> None:
         )
 
 
+def _append_wrapper_lines(
+    lines: list[str], wrapper_candidates: list[WrapperCandidate]
+) -> None:
+    """Append the ``**Wrapper node candidates:**`` block (top-5) to ``lines``.
+
+    No-op when ``wrapper_candidates`` is empty (the report section is
+    optional). Each candidate shows ``- `node_type` (score=N, reasons:
+    a, b, c)`` followed by a trailing blank line.
+
+    r37dy (dogfood): lifted from ``generate_report`` to flatten the
+    if/for/append chain from depth 6 to 4.
+    """
+    if not wrapper_candidates:
+        return
+    lines.append("**Wrapper node candidates:**")
+    for wc in wrapper_candidates[:5]:
+        lines.append(
+            f"- `{wc.node_type}` (score={wc.score:.0f}, "
+            f"reasons: {', '.join(wc.reasons)})"
+        )
+    lines.append("")
+
+
 def _safe_field_name_for_id(lang_obj: Any, field_id: int) -> str | None:
     """Return ``lang_obj.field_name_for_id(i)`` or None on lookup error.
 
@@ -583,14 +606,8 @@ class AutoDiscoveryEngine:
                 "",
             ]
 
-            if report.wrapper_candidates:
-                lines.append("**Wrapper node candidates:**")
-                for wc in report.wrapper_candidates[:5]:
-                    lines.append(
-                        f"- `{wc.node_type}` (score={wc.score:.0f}, "
-                        f"reasons: {', '.join(wc.reasons)})"
-                    )
-                lines.append("")
+            # r37dy (dogfood): flatten nesting 6 → 4 via _append_wrapper_lines.
+            _append_wrapper_lines(lines, report.wrapper_candidates)
 
             if report.missing_node_types:
                 lines.append(
