@@ -30,7 +30,7 @@ from ._route_detector_helpers import (
 )
 
 if TYPE_CHECKING:
-    from .route_detector import RouteInfo
+    pass
 
 
 # ---------------------------------------------------------------------------
@@ -166,7 +166,15 @@ def scan_express_routes(
 ) -> list[Any]:
     routes: list[Any] = []
     http_methods = {
-        "get", "post", "put", "delete", "patch", "head", "options", "all", "use",
+        "get",
+        "post",
+        "put",
+        "delete",
+        "patch",
+        "head",
+        "options",
+        "all",
+        "use",
     }
     for node in walk(root):
         if node.type != "call_expression":
@@ -272,36 +280,48 @@ def scan_spring_annotations(
     return routes
 
 
+def _url_from_paren_child(node: Any) -> str | None:
+    """Return the URL string literal that immediately follows '(' in node."""
+    children = list(node.children)
+    for idx, child in enumerate(children):
+        if child.type == "(":
+            nxt = children[idx + 1] if idx + 1 < len(children) else None
+            if nxt is not None and nxt.type == "string_literal":
+                return unquote_java_string(nxt.text.decode())
+    return None
+
+
+def _method_from_args_node(args_node: Any) -> str:
+    """Return the HTTP method declared inside a @RequestMapping args node."""
+    for child in args_node.children:
+        text = child.text.decode()
+        if "method" in text and "=" in text:
+            m = re.search(r"RequestMethod\.(\w+)", text)
+            if m:
+                return m.group(1).upper()
+            kw_node = find_keyword(args_node, "method")
+            if kw_node:
+                val = kw_node.child_by_field_name("value")
+                if val:
+                    vm = re.search(r"RequestMethod\.(\w+)", val.text.decode())
+                    if vm:
+                        return vm.group(1).upper()
+    return "GET"
+
+
 def parse_request_mapping(node: Any) -> tuple[str, str | None]:
     """Extract (http_method, url_pattern) from a Spring @RequestMapping.
 
     Defaults to GET. Returns ``(method, None)`` if no URL pattern is found.
     """
-    method = "GET"
-    url: str | None = None
     args_node = node.child_by_field_name("arguments")
     if args_node is None:
-        for child in node.children:
-            if child.type == "(":
-                idx = list(node.children).index(child)
-                if idx + 1 < len(node.children):
-                    next_child = node.children[idx + 1]
-                    if next_child.type == "string_literal":
-                        url = unquote_java_string(next_child.text.decode())
-    if args_node:
-        for child in args_node.children:
-            text = child.text.decode()
-            if child.type == "string_literal":
-                url = unquote_java_string(text)
-            elif "method" in text and "=" in text:
-                m = re.search(r"RequestMethod\.(\w+)", text)
-                if m:
-                    method = m.group(1).upper()
-                kw_node = find_keyword(args_node, "method")
-                if kw_node:
-                    val = kw_node.child_by_field_name("value")
-                    if val:
-                        vm = re.search(r"RequestMethod\.(\w+)", val.text.decode())
-                        if vm:
-                            method = vm.group(1).upper()
+        return "GET", _url_from_paren_child(node)
+
+    url: str | None = None
+    for child in args_node.children:
+        if child.type == "string_literal":
+            url = unquote_java_string(child.text.decode())
+            break
+    method = _method_from_args_node(args_node)
     return method, url

@@ -1,77 +1,15 @@
 {
-  "timestamp": "2026-05-22T16:19:40.163Z",
+  "timestamp": "2026-05-22T18:42:08.164Z",
   "mode": "headless",
   "workerType": "audit",
   "model": "haiku",
-  "durationMs": 112793,
-  "executionId": "audit_1779466667370_4wgo7u",
-  "success": true,
+  "durationMs": 273005,
+  "executionId": "audit_1779475055159_1fgq2f",
+  "success": false,
   "findings": {
-    "vulnerabilities": [
-      {
-        "severity": "medium",
-        "file": "tree_sitter_analyzer/core/_analysis_engine_code_mixin.py",
-        "line": 72,
-        "description": "tempfile.NamedTemporaryFile with delete=False creates a predictable temp file with a language-derived suffix. While the temp dir is cleaned up in the finally block (line 34), a race window exists between file creation and cleanup where the temp file is world-readable (default umask). An attacker with local filesystem access could read source code being analyzed."
-      },
-      {
-        "severity": "medium",
-        "file": "tree_sitter_analyzer/mcp/tools/ast_diff_tool.py",
-        "line": 162,
-        "description": "User-supplied git refs (old_ref, new_ref) are interpolated into f-string git commands: f\"{old_ref}:{file_path}\". While subprocess.run with a list avoids shell injection, a crafted ref like '--output=/etc/shadow' could be interpreted as a git flag. No ref format validation is performed."
-      },
-      {
-        "severity": "low",
-        "file": "tree_sitter_analyzer/_health_scorer_helpers.py",
-        "line": 58,
-        "description": "User-controlled pathspec derived from file_path is passed to git log -- [pathspec]. While subprocess.run with a list avoids shell injection, the pathspec is not validated against directory traversal. This is mitigated by the fact it's used as a git pathspec (not a filesystem path), but a crafted filename could cause unexpected git behavior."
-      },
-      {
-        "severity": "low",
-        "file": "tree_sitter_analyzer/pr_url.py",
-        "line": 73,
-        "description": "subprocess.run(['gh'] + args) passes URL-derived owner/repo strings to gh CLI. While regex-parsed and list-based (safe from shell injection), the owner/repo values are not further sanitized before being passed as CLI arguments. A crafted URL could pass unexpected characters."
-      },
-      {
-        "severity": "low",
-        "file": "tree_sitter_analyzer/mcp/tools/fd_rg_utils.py",
-        "line": 103,
-        "description": "asyncio.create_subprocess_exec builds commands from user-supplied patterns (search queries, glob patterns, paths). While exec-based invocation avoids shell interpretation, no validation is performed on query strings passed to ripgrep. Malformed patterns could cause resource exhaustion via ReDoS in ripgrep."
-      },
-      {
-        "severity": "low",
-        "file": "examples/ModernJavaScript.js",
-        "line": 41,
-        "description": "Example file contains '#secretKey = hidden-value' with a pragma allowlist comment. While this is a demo file, the pattern could be copy-pasted by users. Low risk since it's explicitly an example."
-      },
-      {
-        "severity": "info",
-        "file": "tree_sitter_analyzer/mcp/tools/fd_rg_utils.py",
-        "line": 333,
-        "description": "Custom contextlib.suppress shim shadows the standard library contextlib module. If this code is ever run in a context where the real contextlib is needed (e.g., by another import), it could cause unexpected behavior. Not a direct security vulnerability but a code quality concern."
-      },
-      {
-        "severity": "info",
-        "file": ".claude/skills/gstack/bin/gstack-global-discover.ts",
-        "line": 156,
-        "description": "execSync('git remote get-url origin') in the gstack skill uses shell-based execution. While the cwd is controlled, this pattern is less safe than execFileSync. Only triggered by explicit gstack skill invocation."
-      }
-    ],
-    "riskScore": 28,
-    "recommendations": [
-      "Add git ref format validation in ast_diff_tool.py: validate old_ref/new_ref against ^[a-zA-Z0-9._~/@-]+$ before passing to subprocess.",
-      "Set explicit file permissions (0600) on temp files created in _analysis_engine_code_mixin.py using os.chmod or os.fdopen after tempfile creation.",
-      "Add path traversal validation for user-supplied file_path arguments in _health_scorer_helpers.py by verifying the resolved path is within the project root.",
-      "Validate owner/repo strings from parsed PR URLs in pr_url.py against ^[a-zA-Z0-9._-]+$ before passing to gh CLI.",
-      "Consider adding query length limits and pattern validation in fd_rg_utils.py to prevent resource exhaustion via pathological regex patterns.",
-      "The codebase already has strong security infrastructure: ProjectBoundaryManager, SecurityValidator, PathResolver with symlink protection, and RegexSafetyChecker for ReDoS prevention. These are well-designed.",
-      "All subprocess calls correctly use list-based argument passing (avoiding shell injection). The nosec annotations are appropriate.",
-      "SQL operations in ast_cache.py and _route_cache.py correctly use parameterized queries (? placeholders). No SQL injection risk.",
-      "No hardcoded secrets were found in production code. Example and test fixtures appropriately use placeholder values.",
-      "No TLS verification disabling (verify=False) was found in production code.",
-      "No pickle/yaml.load usage in production code (only detected in the security_scanner.py pattern detection logic itself)."
-    ]
+    "parseError": true,
+    "rawOutput": "API Error: Request rejected (429) · [1308][Usage limit reached for 5 hour. Your limit will reset at 2026-05-23 03:51:11][20260523024207bb2f57e073b34820]\n"
   },
-  "rawOutputPreview": "I now have a comprehensive picture of the security posture. Here's the full analysis:\n\n```json\n{\n  \"vulnerabilities\": [\n    {\n      \"severity\": \"medium\",\n      \"file\": \"tree_sitter_analyzer/core/_analysis_engine_code_mixin.py\",\n      \"line\": 72,\n      \"description\": \"tempfile.NamedTemporaryFile with delete=False creates a predictable temp file with a language-derived suffix. While the temp dir is cleaned up in the finally block (line 34), a race window exists between file creation and cleanup where the temp file is world-readable (default umask). An attacker with local filesystem access could read source code being analyzed.\"\n    },\n    {\n      \"severity\": \"medium\",\n      \"file\": \"tree_sitter_analyzer/mcp/tools/ast_diff_tool.py\",\n      \"line\": 162,\n      \"description\": \"User-supplied git refs (old_ref, new_ref) are interpolated into f-string git commands: f\\\"{old_ref}:{file_path}\\\". While subprocess.run with a list avoids shell injection, a crafted ref like '--output=/etc/shadow' could be interpreted as a git flag. No ref format validation is performed.\"\n    },\n    {\n      \"severity\": \"low\",\n      \"file\": \"tree_sitter_analyzer/_health_scorer_helpers.py\",\n      \"line\": 58,\n      \"description\": \"User-controlled pathspec derived from file_path is passed to git log -- [pathspec]. While subprocess.run with a list avoids shell injection, the pathspec is not validated against directory traversal. This is mitigated by the fact it's used as a git pathspec (not a filesystem path), but a crafted filename could cause unexpected git behavior.\"\n    },\n    {\n      \"severity\": \"low\",\n      \"file\": \"tree_sitter_analyzer/pr_url.py\",\n      \"line\": 73,\n      \"description\": \"subprocess.run(['gh'] + args) passes URL-derived owner/repo strings to gh CLI. While regex-parsed and list-based (safe from shell injection), the owner/repo values are not further sanitized before being passed as CLI arguments. A crafted URL could pass unexpected characters.\"\n    },\n    {\n      \"severity\": \"low\",\n  ",
-  "rawOutputLength": 5569
+  "rawOutputPreview": "API Error: Request rejected (429) · [1308][Usage limit reached for 5 hour. Your limit will reset at 2026-05-23 03:51:11][20260523024207bb2f57e073b34820]\n",
+  "rawOutputLength": 153
 }

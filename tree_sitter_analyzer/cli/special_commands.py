@@ -253,6 +253,10 @@ def _handle_mcp_commands(
     """Delegate MCP-equivalent CLI commands to the command table."""
     from .commands.mcp_commands import handle_mcp_commands
 
+    if getattr(args, "watch", False):
+        args.ast_cache = True
+        args.ast_cache_mode = "watch_start"
+
     return handle_mcp_commands(
         args,
         context.output_json,

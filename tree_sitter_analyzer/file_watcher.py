@@ -173,7 +173,7 @@ class FileWatcherDaemon:
 
     def _run_watchdog(self) -> None:
         try:
-            from watchdog.observers import Observer  # type: ignore[import-untyped]
+            from watchdog.observers import Observer
         except ImportError:
             logger.warning("watchdog not installed, falling back to polling")
             self._run_polling()
@@ -198,9 +198,7 @@ class FileWatcherDaemon:
         project_root = self._cache.project_root
         for dirpath, dirnames, filenames in os.walk(project_root):
             dirnames[:] = [
-                d
-                for d in dirnames
-                if d not in _EXT_TO_LANG and not d.startswith(".")
+                d for d in dirnames if d not in _EXT_TO_LANG and not d.startswith(".")
             ]
             for fname in filenames:
                 ext = os.path.splitext(fname)[1].lower()
@@ -220,9 +218,7 @@ class FileWatcherDaemon:
         project_root = self._cache.project_root
         for dirpath, dirnames, filenames in os.walk(project_root):
             dirnames[:] = [
-                d
-                for d in dirnames
-                if d not in _EXT_TO_LANG and not d.startswith(".")
+                d for d in dirnames if d not in _EXT_TO_LANG and not d.startswith(".")
             ]
             for fname in filenames:
                 ext = os.path.splitext(fname)[1].lower()

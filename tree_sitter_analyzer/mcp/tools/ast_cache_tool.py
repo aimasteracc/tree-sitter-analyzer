@@ -12,6 +12,7 @@ CodeGraph parity: equivalent to CodeGraph's pre-indexed code intelligence.
 from typing import Any
 
 from ...ast_cache import ASTCache
+from ...file_watcher import FileWatcherDaemon
 from ...incremental_sync import IncrementalSync
 from ...utils import setup_logger
 from .base_tool import BaseMCPTool
@@ -25,9 +26,13 @@ class ASTCacheTool(BaseMCPTool):
     def __init__(self, project_root: str | None = None) -> None:
         self._cache: ASTCache | None = None
         self._sync: IncrementalSync | None = None
+        self._watcher: FileWatcherDaemon | None = None
         super().__init__(project_root)
 
     def _on_project_root_changed(self, project_root: str | None) -> None:
+        if self._watcher is not None and self._watcher.is_running():
+            self._watcher.stop()
+        self._watcher = None
         self._cache = None
         self._sync = None
 
@@ -43,17 +48,32 @@ class ASTCacheTool(BaseMCPTool):
             self._sync = IncrementalSync(self._get_cache())
         return self._sync
 
+    def _get_watcher(
+        self, poll_interval: float = 5.0, backend: str = "poll"
+    ) -> FileWatcherDaemon:
+        if self._watcher is None:
+            self._watcher = FileWatcherDaemon(
+                self._get_cache(),
+                poll_interval=poll_interval,
+                backend=backend,
+            )
+        return self._watcher
+
     def get_tool_definition(self) -> dict[str, Any]:
         return {
             "name": "ast_cache",
             "description": (
-                "Pre-indexed AST cache with FTS5 search and incremental sync (CodeGraph parity). Modes: "
+                "Pre-indexed AST cache with FTS5 search, incremental sync, and file watcher "
+                "(CodeGraph parity). Modes: "
                 "index (index project or single file), "
                 "lookup (get cached parse data for a file), "
                 "search (FTS5 full-text symbol search across indexed files), "
                 "fts_search (ranked FTS5 search with multi-term support), "
                 "sync (incremental sync — detect changed/new/deleted files via content hash), "
                 "changes (preview changes without re-indexing), "
+                "watch_start (start background file watcher for auto-sync), "
+                "watch_stop (stop file watcher), "
+                "watch_status (watcher status and stats), "
                 "stats (cache statistics), "
                 "invalidate (remove cached entry). "
                 "No other tool provides persistent cross-session AST caching."
@@ -74,6 +94,9 @@ class ASTCacheTool(BaseMCPTool):
                         "fts_search",
                         "sync",
                         "changes",
+                        "watch_start",
+                        "watch_stop",
+                        "watch_status",
                         "stats",
                         "invalidate",
                     ],
@@ -103,6 +126,15 @@ class ASTCacheTool(BaseMCPTool):
                     "type": "boolean",
                     "description": "Force full re-index (default: false)",
                 },
+                "poll_interval": {
+                    "type": "number",
+                    "description": "Watcher poll interval in seconds (default: 5.0)",
+                },
+                "backend": {
+                    "type": "string",
+                    "enum": ["poll", "watchdog"],
+                    "description": "Watcher backend: poll (default) or watchdog",
+                },
             },
             "required": ["mode"],
             "additionalProperties": False,
@@ -117,6 +149,9 @@ class ASTCacheTool(BaseMCPTool):
             "fts_search",
             "sync",
             "changes",
+            "watch_start",
+            "watch_stop",
+            "watch_status",
             "stats",
             "invalidate",
         }
@@ -142,15 +177,20 @@ class ASTCacheTool(BaseMCPTool):
                 max_files = arguments.get("max_files", 5000)
                 force = arguments.get("force", False)
                 result = cache.index_project(max_files=max_files, force=force)
-            return {"success": True, "mode": "index", **result}
+            return {"success": True, "mode": "index", "verdict": "INFO", **result}
 
         elif mode == "lookup":
             file_path = arguments.get("file_path", "")
             resolved = self.resolve_and_validate_file_path(file_path)
             result = cache.lookup(resolved)
             if result is None:
-                return {"success": True, "file": file_path, "status": "not_found"}
-            return {"success": True, "mode": "lookup", **result}
+                return {
+                    "success": True,
+                    "file": file_path,
+                    "status": "not_found",
+                    "verdict": "NOT_FOUND",
+                }
+            return {"success": True, "mode": "lookup", "verdict": "INFO", **result}
 
         elif mode == "search":
             query = arguments.get("query", "")
@@ -162,6 +202,7 @@ class ASTCacheTool(BaseMCPTool):
                 "query": query,
                 "results": results,
                 "count": len(results),
+                "verdict": "INFO" if results else "NOT_FOUND",
             }
 
         elif mode == "fts_search":
@@ -176,16 +217,27 @@ class ASTCacheTool(BaseMCPTool):
                 "results": results,
                 "count": len(results),
                 "fts5_available": cache._fts5_available,
+                "verdict": "INFO" if results else "NOT_FOUND",
             }
 
         elif mode == "stats":
-            return {"success": True, "mode": "stats", **cache.get_stats()}
+            return {
+                "success": True,
+                "mode": "stats",
+                "verdict": "INFO",
+                **cache.get_stats(),
+            }
 
         elif mode == "sync":
             sync_engine = self._get_sync()
             max_files = arguments.get("max_files", 5000)
             sync_result = sync_engine.sync(max_files=max_files)
-            return {"success": True, "mode": "sync", **sync_result.to_dict()}
+            return {
+                "success": True,
+                "mode": "sync",
+                "verdict": "INFO",
+                **sync_result.to_dict(),
+            }
 
         elif mode == "changes":
             sync_engine = self._get_sync()
@@ -199,12 +251,79 @@ class ASTCacheTool(BaseMCPTool):
                 "deleted_count": len(changes["deleted"]),
                 "total_changes": total,
                 "changes": changes,
+                "verdict": "INFO",
             }
 
         elif mode == "invalidate":
             file_path = arguments.get("file_path", "")
             resolved = self.resolve_and_validate_file_path(file_path)
             removed = cache.invalidate(resolved)
-            return {"success": True, "file": file_path, "invalidated": removed}
+            return {
+                "success": True,
+                "file": file_path,
+                "invalidated": removed,
+                "verdict": "INFO",
+            }
 
-        return {"success": False, "error": f"Unknown mode: {mode}"}
+        elif mode == "watch_start":
+            poll_interval = arguments.get("poll_interval", 5.0)
+            backend = arguments.get("backend", "poll")
+            watcher = self._get_watcher(
+                poll_interval=float(poll_interval), backend=backend
+            )
+            if watcher.is_running():
+                return {
+                    "success": True,
+                    "mode": "watch_start",
+                    "status": "already_running",
+                    "stats": watcher.get_stats(),
+                    "verdict": "INFO",
+                }
+            watcher.start()
+            return {
+                "success": True,
+                "mode": "watch_start",
+                "status": "started",
+                "backend": backend,
+                "poll_interval": poll_interval,
+                "stats": watcher.get_stats(),
+                "verdict": "INFO",
+            }
+
+        elif mode == "watch_stop":
+            if self._watcher is None or not self._watcher.is_running():
+                return {
+                    "success": True,
+                    "mode": "watch_stop",
+                    "status": "not_running",
+                    "verdict": "INFO",
+                }
+            final_stats = self._watcher.get_stats()
+            self._watcher.stop()
+            return {
+                "success": True,
+                "mode": "watch_stop",
+                "status": "stopped",
+                "final_stats": final_stats,
+                "verdict": "INFO",
+            }
+
+        elif mode == "watch_status":
+            if self._watcher is None:
+                return {
+                    "success": True,
+                    "mode": "watch_status",
+                    "running": False,
+                    "watcher_created": False,
+                    "verdict": "INFO",
+                }
+            return {
+                "success": True,
+                "mode": "watch_status",
+                "running": self._watcher.is_running(),
+                "watcher_created": True,
+                "stats": self._watcher.get_stats(),
+                "verdict": "INFO",
+            }
+
+        return {"success": False, "error": f"Unknown mode: {mode}", "verdict": "ERROR"}

@@ -450,7 +450,18 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--ast-cache-mode",
-        choices=["index", "lookup", "search", "sync", "changes", "stats", "invalidate"],
+        choices=[
+            "index",
+            "lookup",
+            "search",
+            "sync",
+            "changes",
+            "watch_start",
+            "watch_stop",
+            "watch_status",
+            "stats",
+            "invalidate",
+        ],
         default="stats",
         help="AST cache operation mode (default: stats)",
     )
@@ -472,6 +483,23 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
         "--ast-cache-force",
         action="store_true",
         help="Force full re-index with --ast-cache",
+    )
+    parser.add_argument(
+        "--watch",
+        action="store_true",
+        help="Start background file watcher for auto-sync (shortcut for --ast-cache --ast-cache-mode watch_start)",
+    )
+    parser.add_argument(
+        "--watch-poll-interval",
+        type=float,
+        default=5.0,
+        help="Poll interval in seconds for --watch (default: 5.0)",
+    )
+    parser.add_argument(
+        "--watch-backend",
+        choices=["poll", "watchdog"],
+        default="poll",
+        help="File watcher backend for --watch (default: poll)",
     )
     parser.add_argument(
         "--min-grade",

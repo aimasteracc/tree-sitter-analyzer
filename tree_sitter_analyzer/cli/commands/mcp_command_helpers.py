@@ -35,6 +35,10 @@ def find_selected_mcp_command(
             return spec
         elif spec.flag_name == "dependencies" and value:
             return spec
+    if getattr(args, "watch", False):
+        for spec in command_specs:
+            if spec.flag_name == "ast_cache":
+                return spec
     return None
 
 

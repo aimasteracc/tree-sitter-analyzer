@@ -57,7 +57,8 @@ repos:
     hooks:
       - id: bandit
         exclude: ^tests/|^openspec/changes/archive/|^scripts/|^build_standalone\.py$|^check_quality\.py$|^run_regression_tests\.py$|^test_fixes\.py$|^upload_interactive\.py$|^upload_to_pypi\.py$|^examples/
-        args: [--format, json]
+        args: [--format, json, -c, pyproject.toml]
+        additional_dependencies: ["bandit[toml]"]
 
   # Type checking
   - repo: https://github.com/pre-commit/mirrors-mypy
