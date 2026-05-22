@@ -421,15 +421,8 @@ def extract_js_imports(node: Any, source: str, imports: list[dict[str, Any]]) ->
 
     if node_type == "import_statement":
         # import { foo } from './bar'
-        module_path = None
-        for child in node.children:
-            if getattr(child, "type", None) == "string":
-                raw = _node_text(child, source).strip("'\"")
-                if not raw.startswith(".") and not raw.startswith("/"):
-                    if raw in _JS_BUILTIN:
-                        continue
-                module_path = raw
-
+        # r37de (dogfood): nesting 6 → 3 via _js_import_module_path helper.
+        module_path = _js_import_module_path(node, source)
         if module_path:
             imports.append(
                 {
@@ -445,6 +438,24 @@ def extract_js_imports(node: Any, source: str, imports: list[dict[str, Any]]) ->
         # r37cg (dogfood): extracted to flatten the require('./foo') walk
         # from depth 7 to 3.
         _collect_require_call_imports(node, source, imports)
+
+
+def _js_import_module_path(node: Any, source: str) -> str | None:
+    """Return the module path of a JS ``import ... from "X"`` statement.
+
+    Skips builtin module names (e.g. ``"fs"``, ``"path"``) so the
+    detected dependency list reflects user-space imports only.
+    Returns ``None`` when the statement has no string child.
+    """
+    module_path: str | None = None
+    for child in node.children:
+        if getattr(child, "type", None) != "string":
+            continue
+        raw = _node_text(child, source).strip("'\"")
+        if not raw.startswith(".") and not raw.startswith("/") and raw in _JS_BUILTIN:
+            continue
+        module_path = raw
+    return module_path
 
 
 # Extract elements from AST: _extract_import_names
@@ -480,22 +491,33 @@ def _collect_require_call_imports(
 
 
 def _extract_import_names(names_node: Any, source: str) -> list[str]:
-    """Extract individual names from an import_list or aliased_import node."""
-    names = []
-    if hasattr(names_node, "children"):
-        for child in names_node.children:
-            ct = getattr(child, "type", None)
-            if ct == "dotted_name" or ct == "identifier":
-                text = _node_text(child, source)
-                if text and text != ",":
-                    names.append(text)
-            elif ct == "aliased_import":
-                # Handle 'foo as bar'
-                for sub in child.children:
-                    st = getattr(sub, "type", None)
-                    if st in ("dotted_name", "identifier"):
-                        names.append(_node_text(sub, source))
+    """Extract individual names from an import_list or aliased_import node.
+
+    r37de (dogfood): flattened nesting 6 → 3 by extracting the
+    ``aliased_import`` walk into ``_collect_aliased_import_names``.
+    """
+    names: list[str] = []
+    if not hasattr(names_node, "children"):
+        return names
+    for child in names_node.children:
+        ct = getattr(child, "type", None)
+        if ct in ("dotted_name", "identifier"):
+            text = _node_text(child, source)
+            if text and text != ",":
+                names.append(text)
+        elif ct == "aliased_import":
+            _collect_aliased_import_names(child, source, names)
     return names
+
+
+def _collect_aliased_import_names(
+    aliased_node: Any, source: str, names: list[str]
+) -> None:
+    """Append identifiers from ``aliased_import`` (handles ``foo as bar``)."""
+    for sub in aliased_node.children:
+        st = getattr(sub, "type", None)
+        if st in ("dotted_name", "identifier"):
+            names.append(_node_text(sub, source))
 
 
 # Extract elements from AST: _extract_js_imports
