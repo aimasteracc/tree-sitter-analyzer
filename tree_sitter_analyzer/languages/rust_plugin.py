@@ -20,6 +20,24 @@ from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error
 
 
+def _rust_function_is_async(node: "tree_sitter.Node") -> bool:
+    """Return ``True`` when ``node`` carries an ``async`` modifier.
+
+    r37bz (dogfood): extracted from ``_extract_function`` to flatten its
+    nesting (was 7-deep nested for-if-for-if-break loop). Handles both
+    the modern ``function_modifiers`` wrapper node and older
+    tree-sitter-rust versions that exposed ``async`` as a direct child.
+    """
+    for child in node.children:
+        if child.type == "function_modifiers":
+            for modifier in child.children:
+                if modifier.type == "async":
+                    return True
+        elif child.type == "async":
+            return True
+    return False
+
+
 class RustElementExtractor(ElementExtractor):
     """Rust-specific element extractor"""
 
@@ -250,21 +268,8 @@ class RustElementExtractor(ElementExtractor):
             # Visibility
             visibility = self._extract_visibility(node)
 
-            # Async - check function_modifiers node for async keyword
-            is_async = False
-            for child in node.children:
-                if child.type == "function_modifiers":
-                    # Check if async is in the modifiers
-                    for modifier in child.children:
-                        if modifier.type == "async":
-                            is_async = True
-                            break
-                    if is_async:
-                        break
-                # Also check for direct async child (older tree-sitter versions)
-                elif child.type == "async":
-                    is_async = True
-                    break
+            # Async detection via function_modifiers node or direct child.
+            is_async = _rust_function_is_async(node)
 
             # Docstring
             docstring = self._extract_docstring(node)
