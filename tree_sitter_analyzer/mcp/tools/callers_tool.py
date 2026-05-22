@@ -101,8 +101,12 @@ class CodeGraphCallersTool(BaseMCPTool):
         graph = self._get_call_graph()
 
         callers = graph.callers_of(func_name, file_path)
+        # Pain #19 (dogfood pass 3): callers_tool emitted no verdict.
+        # NOT_FOUND when no callers (symbol may not exist or is unused);
+        # INFO otherwise so downstream agents branch correctly.
         result: dict[str, Any] = {
             "success": True,
+            "verdict": "INFO" if callers else "NOT_FOUND",
             "function": func_name,
             "caller_count": len(callers),
             "callers": callers,

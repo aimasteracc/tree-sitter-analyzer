@@ -328,7 +328,10 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
         tool_attr="CodeGraphSymbolSearchTool",
         label="FTS5-powered instant symbol search (CodeGraph parity)",
         build_tool_args=lambda args, output_format: {
-            "query": getattr(args, "symbol_search_query", ""),
+            # Pain #21 (dogfood pass 3): same dest-name bug as #17. --symbol-search QUERY
+            # stores into args.symbol_search; reading symbol_search_query was always None
+            # so the tool always raised "query is required".
+            "query": getattr(args, "symbol_search", "") or "",
             "language": getattr(args, "symbol_search_language", None),
             "kind": getattr(args, "symbol_search_kind", "any") or "any",
             "limit": getattr(args, "symbol_search_limit", 50),
@@ -366,7 +369,11 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
         build_tool_args=lambda args, output_format: {
             "mode": getattr(args, "codegraph_impact_mode", "function_impact")
             or "function_impact",
-            "function_name": getattr(args, "codegraph_impact_function", None),
+            # Pain #17 (dogfood pass 3): --codegraph-impact FUNCTION argparse
+            # dest is ``codegraph_impact``, not ``codegraph_impact_function``.
+            # Reading the wrong attr meant function_name was always None and
+            # the tool always raised at CLI invocation.
+            "function_name": getattr(args, "codegraph_impact", None),
             "function_names": getattr(args, "codegraph_impact_functions", None),
             "file_path": getattr(args, "codegraph_impact_file", None),
             "depth": getattr(args, "codegraph_impact_depth", 5),

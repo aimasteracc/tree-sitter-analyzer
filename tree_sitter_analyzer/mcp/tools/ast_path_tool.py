@@ -126,10 +126,20 @@ class CodeGraphASTPathTool(BaseMCPTool):
         else:
             raise ValueError(f"Unknown mode: {mode}")
 
+        # Pain #24 (dogfood pass 3): ast_path emitted no verdict. NOT_FOUND
+        # when the result is effectively empty (no nodes/path), INFO when
+        # there is structural data for the agent to act on.
+        result_dict = result.to_dict()
+        # Treat any non-empty list field or non-empty ``path`` as "found".
+        has_data = any(
+            bool(result_dict.get(k))
+            for k in ("path", "nodes", "siblings", "outline", "scope")
+        )
         response: dict[str, Any] = {
             "success": True,
             "mode": mode,
-            **result.to_dict(),
+            "verdict": "INFO" if has_data else "NOT_FOUND",
+            **result_dict,
         }
 
         from ..utils.format_helper import apply_toon_format_to_response

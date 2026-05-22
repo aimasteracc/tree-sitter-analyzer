@@ -101,8 +101,12 @@ class CodeGraphCalleesTool(BaseMCPTool):
         graph = self._get_call_graph()
 
         callees = graph.callees_of(func_name, file_path)
+        # Pain #20 (dogfood pass 3): callees_tool emitted no verdict.
+        # NOT_FOUND when func has no outgoing calls (leaf or missing);
+        # INFO otherwise.
         result: dict[str, Any] = {
             "success": True,
+            "verdict": "INFO" if callees else "NOT_FOUND",
             "function": func_name,
             "callee_count": len(callees),
             "callees": callees,

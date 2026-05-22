@@ -114,8 +114,11 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
             fp = r.get("file", "")
             by_file[fp] = by_file.get(fp, 0) + 1
 
+        # Pain #25 (dogfood pass 3): symbol_search emitted no verdict.
+        # NOT_FOUND on zero matches so agents stop chasing; INFO otherwise.
         result: dict[str, Any] = {
             "success": True,
+            "verdict": "INFO" if results else "NOT_FOUND",
             "query": query,
             "match_count": len(results),
             "file_count": len(by_file),

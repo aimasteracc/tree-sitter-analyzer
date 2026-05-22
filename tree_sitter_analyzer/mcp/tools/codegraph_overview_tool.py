@@ -126,8 +126,21 @@ class CodeGraphOverviewTool(BaseMCPTool):
 
         summary = graph.summary()
 
+        # Pain #18 (dogfood pass 3): codegraph_overview emitted no verdict.
+        # REVIEW when there is significant dead code (signals project debt),
+        # NOT_FOUND for an empty graph, INFO otherwise.
+        fn_count = summary.get("function_count", 0)
+        dead_count = len(dead_code)
+        if fn_count == 0:
+            verdict = "NOT_FOUND"
+        elif dead_count > 10:
+            verdict = "REVIEW"
+        else:
+            verdict = "INFO"
+
         result: dict[str, Any] = {
             "success": True,
+            "verdict": verdict,
             "project_root": self.project_root,
             "summary": {
                 "function_count": summary.get("function_count", 0),

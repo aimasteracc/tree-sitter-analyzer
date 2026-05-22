@@ -105,6 +105,7 @@ class CodeGraphSymbolResolveTool(BaseMCPTool):
             return apply_toon_format_to_response(
                 {
                     "success": False,
+                    "verdict": "ERROR",
                     "error": "AST cache is empty. Run ast_cache mode=index first.",
                     "hint": "Use codegraph_symbol_search or ast_cache mode=index to build the index.",
                     "symbol": symbol,
@@ -119,8 +120,12 @@ class CodeGraphSymbolResolveTool(BaseMCPTool):
         else:
             result = resolver.resolve(symbol)
 
+        # Pain #23 (dogfood pass 3): symbol_resolve emitted no verdict.
+        # NOT_FOUND when no definitions are found (agents should stop chasing);
+        # INFO otherwise.
         response: dict[str, Any] = {
             "success": True,
+            "verdict": "INFO" if result.definitions else "NOT_FOUND",
             "symbol": result.symbol,
             "mode": mode,
             "definition_count": len(result.definitions),

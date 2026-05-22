@@ -157,9 +157,23 @@ class CodeGraphNavigateTool(BaseMCPTool):
         if mode in ("hierarchy", "full"):
             result["hierarchy"] = self._call_hierarchy(symbol, file_path, depth)
 
+        # Pain #16 (dogfood pass 3): codegraph_navigate emitted no verdict.
+        # NOT_FOUND when nothing matched (definition/references/hierarchy
+        # all empty), INFO otherwise. Agents that branch on verdict
+        # were silently treating "no symbol anywhere" as "INFO -> proceed
+        # to edit" — the same anti-pattern symbol_lineage had in pass 1.
+        def_found = bool(
+            (result.get("definition") or {}).get("found")
+        )
+        ref_found = bool(
+            (result.get("references") or {}).get("found")
+        )
+        hi = result.get("hierarchy", {}) or {}
+        hi_found = bool(hi.get("callers")) or bool(hi.get("callees"))
+        result["verdict"] = "INFO" if (def_found or ref_found or hi_found) else "NOT_FOUND"
+
         if not result.get("definition") and not result.get("references"):
-            hi = result.get("hierarchy", {})
-            if not hi.get("callers") and not hi.get("callees"):
+            if not hi_found:
                 result["hint"] = (
                     f"No results for '{symbol}'. Check spelling or build AST cache "
                     "(ast_cache mode=index)."
