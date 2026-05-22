@@ -10,6 +10,42 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+
+# r37dd (dogfood): module-level constant + helper extracted from
+# ``ProjectRootDetector._traverse_upward`` so the loop body stays at
+# ≤3 levels of nesting. These markers short-circuit the upward walk —
+# any project that has one of them is unambiguously a project root.
+_HIGH_PRIORITY_PROJECT_MARKERS: frozenset[str] = frozenset(
+    {
+        ".git",
+        "pyproject.toml",
+        "package.json",
+        "pom.xml",
+        "Cargo.toml",
+        "go.mod",
+    }
+)
+
+
+def _has_high_priority_marker(markers_found: list[str]) -> bool:
+    """Return True iff any high-priority marker is in ``markers_found``."""
+    for marker in markers_found:
+        if marker in _HIGH_PRIORITY_PROJECT_MARKERS:
+            return True
+    return False
+
+
+def _marker_exists_in_dir(dir_path: Path, marker: str) -> bool:
+    """Return True iff ``marker`` exists in ``dir_path``.
+
+    Glob patterns (markers containing ``*``) are matched via
+    ``Path.glob``; exact names use ``Path.exists()``.
+    """
+    if "*" in marker:
+        return bool(list(dir_path.glob(marker)))
+    return (dir_path / marker).exists()
+
+
 # Common project root indicators (in priority order)
 PROJECT_MARKERS = [
     # Version control
@@ -126,37 +162,19 @@ class ProjectRootDetector:
 
         Returns:
             Project root directory path, or None if not found
+
+        r37dd (dogfood): flattened nesting 6 → 3 by promoting the inline
+        high-priority marker check to a module helper
+        (``_has_high_priority_marker``) and the early-return list to a
+        module constant (``_HIGH_PRIORITY_PROJECT_MARKERS``).
         """
         current_dir = str(Path(start_dir).resolve())
-        candidates = []
+        candidates: list[tuple[str, int, list[str]]] = []
 
         for _depth in range(self.max_depth):
-            # Check for project markers in current directory
-            markers_found = self._find_markers_in_dir(current_dir)
-
-            if markers_found:
-                # Calculate score based on marker priority and count
-                score = self._calculate_score(markers_found)
-                candidates.append((current_dir, score, markers_found))
-
-                # If we find high-priority markers, we can stop early
-                if any(
-                    marker
-                    in [
-                        ".git",
-                        "pyproject.toml",
-                        "package.json",
-                        "pom.xml",
-                        "Cargo.toml",
-                        "go.mod",
-                    ]
-                    for marker in markers_found
-                ):
-                    logger.debug(
-                        f"Found high-priority project root: {current_dir} (markers: {markers_found})"
-                    )
-                    return current_dir
-
+            early = self._record_dir_candidates(current_dir, candidates)
+            if early is not None:
+                return early
             # Move up one directory
             current_path = Path(current_dir)
             parent_path = current_path.parent
@@ -172,10 +190,35 @@ class ProjectRootDetector:
             logger.debug(
                 f"Selected project root: {best_candidate[0]} (score: {best_candidate[1]}, markers: {best_candidate[2]})"
             )
-            return best_candidate[0]
+            best_root: str = best_candidate[0]
+            return best_root
 
         logger.debug(f"No project root detected from {start_dir}")
         return None
+
+    def _record_dir_candidates(
+        self,
+        current_dir: str,
+        candidates: list[tuple[str, int, list[str]]],
+    ) -> str | None:
+        """Score the markers in ``current_dir``; short-circuit on high priority.
+
+        Mutates ``candidates`` with ``(dir, score, markers)`` when markers
+        exist. Returns the directory immediately if it carries any
+        high-priority marker (``.git`` / ``pyproject.toml`` etc.) so the
+        caller can break the upward walk.
+        """
+        markers_found = self._find_markers_in_dir(current_dir)
+        if not markers_found:
+            return None
+        score = self._calculate_score(markers_found)
+        candidates.append((current_dir, score, markers_found))
+        if not _has_high_priority_marker(markers_found):
+            return None
+        logger.debug(
+            f"Found high-priority project root: {current_dir} (markers: {markers_found})"
+        )
+        return current_dir
 
     def _find_markers_in_dir(self, directory: str) -> list[str]:
         """
@@ -187,24 +230,15 @@ class ProjectRootDetector:
         Returns:
             List of found marker names
         """
-        found_markers = []
-
+        # r37dd: flattened nesting 6 → 3 via per-marker helper.
+        found_markers: list[str] = []
         try:
             dir_path = Path(directory)
-
             for marker in PROJECT_MARKERS:
-                if "*" in marker:
-                    # Handle glob patterns using pathlib
-                    if list(dir_path.glob(marker)):
-                        found_markers.append(marker)
-                else:
-                    # Handle exact matches
-                    if (dir_path / marker).exists():
-                        found_markers.append(marker)
-
+                if _marker_exists_in_dir(dir_path, marker):
+                    found_markers.append(marker)
         except (OSError, PermissionError) as e:
             logger.debug(f"Cannot access directory {directory}: {e}")
-
         return found_markers
 
     def _calculate_score(self, markers: list[str]) -> int:
@@ -253,16 +287,18 @@ class ProjectRootDetector:
 
         Returns:
             Fallback directory (file's directory or cwd)
+
+        r37dd: flattened nesting 6 → 3 via early-return guards.
         """
         try:
-            if file_path:
-                path = Path(file_path)
-                if path.exists():
-                    if path.is_file():
-                        return str(path.resolve().parent)
-                    else:
-                        return str(path.resolve())
-            return str(Path.cwd())
+            if not file_path:
+                return str(Path.cwd())
+            path = Path(file_path)
+            if not path.exists():
+                return str(Path.cwd())
+            if path.is_file():
+                return str(path.resolve().parent)
+            return str(path.resolve())
         except Exception:
             return str(Path.cwd())
 
