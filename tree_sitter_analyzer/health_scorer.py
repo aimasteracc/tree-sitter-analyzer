@@ -81,6 +81,20 @@ STRUCTURE_DEPTH_MAX = 30  # Max AST depth for scoring
 HOTSPOT_COMMITS_LOW = 5  # ≤ 5 commits in 90 days → full score (stable)
 HOTSPOT_COMMITS_HIGH = 50  # ≥ 50 commits in 90 days → 0 score (volatile)
 
+# Per-language function-definition node types for per-function CC normalization
+FUNCTION_NODE_TYPES: dict[str, set[str]] = {
+    "python": {"function_definition"},
+    "javascript": {"function_declaration", "method_definition", "arrow_function"},
+    "typescript": {"function_declaration", "method_definition", "arrow_function"},
+    "java": {"method_declaration", "constructor_declaration"},
+    "go": {"function_declaration", "method_declaration"},
+    "c": {"function_definition"},
+    "cpp": {"function_definition"},
+    "rust": {"function_item"},
+    "ruby": {"method", "singleton_method"},
+}
+
+
 # Per-language decision node types for McCabe Cyclomatic Complexity
 # CC = 1 + count(decision_nodes)
 DECISION_NODE_TYPES: dict[str, set[str]] = {
@@ -520,7 +534,20 @@ def score_size(line_count: int) -> float:
 
 
 def score_complexity(file_path: str, source: str, language: str | None) -> float:
-    """Score based on McCabe Cyclomatic Complexity (CC = 1 + decision nodes)."""
+    """Score based on McCabe Cyclomatic Complexity.
+
+    For files with ≥3 functions, scores the **average CC per function**
+    against industry-standard thresholds (≤5 simple, 5-10 moderate,
+    10-15 complex). This stops penalizing well-factored modules that
+    contain many small functions — a file with 30 functions each at
+    CC=3 has a healthy 3.0 avg, even though the file-level total CC=91
+    looks "complex" under naive aggregation.
+
+    For files with <3 functions (utility scripts, single-function
+    modules), the original file-level CC against CC_IDEAL/CC_MODERATE/
+    CC_COMPLEX thresholds is preserved — those thresholds remain the
+    right call for "one function with many branches".
+    """
     try:
         if language is None:
             return 50.0
@@ -532,24 +559,47 @@ def score_complexity(file_path: str, source: str, language: str | None) -> float
             return 50.0
 
         decision_types = DECISION_NODE_TYPES.get(language, set())
+        function_types = FUNCTION_NODE_TYPES.get(language, set())
         cc = 1
+        n_funcs = 0
 
         def walk(node: Any, depth: int) -> None:
-            nonlocal cc
-            if hasattr(node, "type") and node.type in decision_types:
-                cc += 1
+            nonlocal cc, n_funcs
+            if hasattr(node, "type"):
+                if node.type in decision_types:
+                    cc += 1
+                if node.type in function_types:
+                    n_funcs += 1
             if hasattr(node, "children"):
                 for child in node.children:
                     walk(child, depth + 1)
 
         walk(result.tree.root_node, 0)
 
+        # Multi-function file: score the average CC per function
+        # against industry-standard thresholds. This is the right
+        # interpretation for any module with real structure.
+        if n_funcs >= 3:
+            avg_cc = cc / n_funcs
+            if avg_cc <= 5.0:
+                return 100.0
+            if avg_cc <= 10.0:
+                ratio = (avg_cc - 5.0) / 5.0
+                return max(30.0, 100.0 - 70.0 * ratio)
+            if avg_cc <= 15.0:
+                ratio = (avg_cc - 10.0) / 5.0
+                return max(5.0, 30.0 - 25.0 * ratio)
+            return 5.0
+
+        # Few-function file: stick with absolute CC thresholds — the
+        # original tuning was already correct for "one function with
+        # many branches" cases.
         if cc <= CC_IDEAL:
             return 100.0
-        elif cc <= CC_MODERATE:
+        if cc <= CC_MODERATE:
             ratio = (cc - CC_IDEAL) / (CC_MODERATE - CC_IDEAL)
             return max(30.0, 100.0 - 70.0 * ratio)
-        elif cc <= CC_COMPLEX:
+        if cc <= CC_COMPLEX:
             ratio = (cc - CC_MODERATE) / (CC_COMPLEX - CC_MODERATE)
             return max(5.0, 30.0 - 25.0 * ratio)
         return 5.0
