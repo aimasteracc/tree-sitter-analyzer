@@ -733,40 +733,8 @@ def _extract_cpp_imports(node: Any, source: str, imports: list[dict[str, Any]]) 
                 return
 
 
-def _extract_java_imports(
-    node: Any, source: str, imports: list[dict[str, Any]]
-) -> None:
-    """Extract Java import declarations.
-
-    Handles:
-        import java.util.List;
-        import static org.junit.Assert.*;
-        import com.example.MyClass;
-    """
-    node_type = getattr(node, "type", None)
-    if node_type != "import_declaration":
-        return
-
-    raw = _node_text(node, source).strip()
-    if not raw.startswith("import"):
-        return
-
-    path = raw
-    path = path.rstrip(";").strip()
-    if path.startswith("import static "):
-        path = path[len("import static ") :]
-    elif path.startswith("import "):
-        path = path[len("import ") :]
-
-    path = path.strip()
-    if not path:
-        return
-
-    if path.endswith(".*"):
-        path = path[:-2]
-
-    root_pkg = path.split(".")[0]
-    _JAVA_STD_ROOTS = {
+_JAVA_STD_ROOTS: frozenset[str] = frozenset(
+    {
         "java",
         "javax",
         "sun",
@@ -776,7 +744,58 @@ def _extract_java_imports(
         "org.ietf",
         "org.omg",
     }
-    if any(root_pkg == r or path.startswith(r + ".") for r in _JAVA_STD_ROOTS):
+)
+
+
+def _strip_java_import_keywords(raw: str) -> str:
+    """Strip ``import`` / ``import static`` prefix, trailing ``;`` and ``.*`` glob.
+
+    Returns the bare dotted FQN (or empty string if the input wasn't a valid
+    Java import statement after stripping).
+    """
+    path = raw.rstrip(";").strip()
+    if path.startswith("import static "):
+        path = path[len("import static ") :]
+    elif path.startswith("import "):
+        path = path[len("import ") :]
+    path = path.strip()
+    if path.endswith(".*"):
+        path = path[:-2]
+    return path
+
+
+def _is_java_stdlib_path(path: str) -> bool:
+    """True if ``path`` is rooted at one of ``_JAVA_STD_ROOTS`` (java/javax/sun/…)."""
+    root_pkg = path.split(".")[0]
+    return any(root_pkg == r or path.startswith(r + ".") for r in _JAVA_STD_ROOTS)
+
+
+def _extract_java_imports(
+    node: Any, source: str, imports: list[dict[str, Any]]
+) -> None:
+    """Extract Java import declarations.
+
+    Handles:
+        import java.util.List;
+        import static org.junit.Assert.*;
+        import com.example.MyClass;
+
+    r37ej (dogfood): 55→20 lines. Stdlib-root set lifted to a module-level
+    ``frozenset`` (was a re-created dict on every call); keyword stripping
+    moved to ``_strip_java_import_keywords``; stdlib check moved to
+    ``_is_java_stdlib_path``.
+    """
+    if getattr(node, "type", None) != "import_declaration":
+        return
+
+    raw = _node_text(node, source).strip()
+    if not raw.startswith("import"):
+        return
+
+    path = _strip_java_import_keywords(raw)
+    if not path:
+        return
+    if _is_java_stdlib_path(path):
         return
 
     imports.append(
