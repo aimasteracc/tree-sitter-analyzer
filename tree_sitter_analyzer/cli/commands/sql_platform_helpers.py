@@ -5,6 +5,80 @@ import pathlib
 from typing import Any
 
 
+def _sql_platform_profile_payload(profile: Any) -> dict[str, Any] | None:
+    """Project the loaded ``BehaviorProfile`` into the JSON envelope shape."""
+    if not profile:
+        return None
+    return {
+        "schema_version": profile.schema_version,
+        "behaviors_recorded": len(profile.behaviors),
+        "adaptation_rules": list(profile.adaptation_rules),
+    }
+
+
+def _emit_sql_platform_json(output_json_fn: Any, info: Any, profile: Any) -> None:
+    """Emit the canonical JSON envelope for ``sql_platform_info``."""
+    summary_line = (
+        f"sql_platform_info: {info.platform_key} "
+        f"({'profile loaded' if profile else 'no profile (defaults)'})"
+    )
+    output_json_fn(
+        {
+            "success": True,
+            "platform": {
+                "os_name": info.os_name,
+                "os_version": info.os_version,
+                "python_version": info.python_version,
+                "platform_key": info.platform_key,
+            },
+            "profile": _sql_platform_profile_payload(profile),
+            "summary_line": summary_line,
+            "verdict": "INFO",
+            "agent_summary": {
+                "summary_line": summary_line,
+                "next_step": (
+                    "Use --record-sql-profile to capture behavior on a new "
+                    "platform, or --compare-sql-profiles to diff two."
+                ),
+                "verdict": "INFO",
+            },
+        }
+    )
+
+
+def _emit_sql_platform_text(output_list_fn: Any, info: Any, profile: Any) -> None:
+    """Emit the legacy human-readable text output (multi-line list)."""
+    output_list_fn(
+        [
+            "SQL Platform Information:",
+            f"  OS Name: {info.os_name}",
+            f"  OS Version: {info.os_version}",
+            f"  Python Version: {info.python_version}",
+            f"  Platform Key: {info.platform_key}",
+            "",
+        ]
+    )
+    if profile:
+        rules = (
+            ", ".join(profile.adaptation_rules) if profile.adaptation_rules else "None"
+        )
+        output_list_fn(
+            [
+                f"Loaded Profile: {info.platform_key}",
+                f"  Schema Version: {profile.schema_version}",
+                f"  Behaviors Recorded: {len(profile.behaviors)}",
+                f"  Adaptation Rules: {rules}",
+            ]
+        )
+        return
+    output_list_fn(
+        [
+            f"No profile found for {info.platform_key}",
+            "  Using default adaptation rules.",
+        ]
+    )
+
+
 def handle_sql_platform_info(
     output_list_fn: Any,
     output_json_fn: Any = None,
@@ -16,82 +90,22 @@ def handle_sql_platform_info(
     ``--format=json`` (or default ``--output-format=json``), emit a
     canonical envelope instead of plain text. The legacy text path
     (``output_list_fn``) is preserved for backward compatibility.
+
+    r37eu (dogfood): 88→15 lines. JSON envelope + text output moved to
+    ``_emit_sql_platform_json`` / ``_emit_sql_platform_text``.
     """
+    from tree_sitter_analyzer.cli.output_format import wants_json_output
     from tree_sitter_analyzer.platform_compat.detector import PlatformDetector
     from tree_sitter_analyzer.platform_compat.profiles import BehaviorProfile
 
     info = PlatformDetector.detect()
     profile = BehaviorProfile.load(info.platform_key)
 
-    # r37an (dogfood): use shared output-format helper instead of the
-    # inline two-call format/output_format getattr idiom (was the 4th
-    # copy of the pattern that r37am consolidated, missed because the
-    # original guard only caught function definitions, not inline use).
-    from tree_sitter_analyzer.cli.output_format import wants_json_output
-
     if args is not None and wants_json_output(args) and output_json_fn is not None:
-        profile_payload: dict[str, Any] | None = None
-        if profile:
-            profile_payload = {
-                "schema_version": profile.schema_version,
-                "behaviors_recorded": len(profile.behaviors),
-                "adaptation_rules": list(profile.adaptation_rules),
-            }
-        summary_line = (
-            f"sql_platform_info: {info.platform_key} "
-            f"({'profile loaded' if profile else 'no profile (defaults)'})"
-        )
-        output_json_fn(
-            {
-                "success": True,
-                "platform": {
-                    "os_name": info.os_name,
-                    "os_version": info.os_version,
-                    "python_version": info.python_version,
-                    "platform_key": info.platform_key,
-                },
-                "profile": profile_payload,
-                "summary_line": summary_line,
-                "verdict": "INFO",
-                "agent_summary": {
-                    "summary_line": summary_line,
-                    "next_step": (
-                        "Use --record-sql-profile to capture behavior on a new "
-                        "platform, or --compare-sql-profiles to diff two."
-                    ),
-                    "verdict": "INFO",
-                },
-            }
-        )
+        _emit_sql_platform_json(output_json_fn, info, profile)
         return 0
 
-    output_list_fn(
-        [
-            "SQL Platform Information:",
-            f"  OS Name: {info.os_name}",
-            f"  OS Version: {info.os_version}",
-            f"  Python Version: {info.python_version}",
-            f"  Platform Key: {info.platform_key}",
-            "",
-        ]
-    )
-
-    if profile:
-        output_list_fn(
-            [
-                f"Loaded Profile: {info.platform_key}",
-                f"  Schema Version: {profile.schema_version}",
-                f"  Behaviors Recorded: {len(profile.behaviors)}",
-                f"  Adaptation Rules: {', '.join(profile.adaptation_rules) if profile.adaptation_rules else 'None'}",
-            ]
-        )
-    else:
-        output_list_fn(
-            [
-                f"No profile found for {info.platform_key}",
-                "  Using default adaptation rules.",
-            ]
-        )
+    _emit_sql_platform_text(output_list_fn, info, profile)
     return 0
 
 
