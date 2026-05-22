@@ -1,6 +1,23 @@
-"""Tests for the MCP SMART agent workflow tool."""
+"""Tests for the MCP SMART agent workflow tool.
+
+r37fC (round-37f): the quality audit rated this file at 2/5. The
+original suite covered the happy paths (full JSON pack, compact
+TOON, scoped queue-ledger command, absolute-path rejection) but
+never the error / boundary surfaces an MCP caller will hit:
+invalid_target_path variants, unsupported language extensions,
+phase-corruption inputs, concurrent execute(), and the cross-format
+envelope contract. The block below adds coverage for those gaps.
+
+The tests run against the real :class:`AgentWorkflowTool` (no
+mocks) with tmp_path fixtures. The tool is a pure planning surface
+- there is no file I/O during workflow build - so the tests focus
+on the planning contract: phase resolution, command shape, target
+path interpolation, and envelope mirroring.
+"""
 
 from __future__ import annotations
+
+import asyncio
 
 import pytest
 
@@ -153,3 +170,267 @@ async def test_agent_workflow_tool_rejects_external_absolute_target(tmp_path):
 
     with pytest.raises(ValueError, match="Invalid target_path"):
         await tool.execute({"target_path": "/tmp/outside.py"})
+
+
+# ----------------------------------------------------------------------
+# r37fC: error-path coverage (audit gap - was 2/5 missing
+# invalid_target_path / unsupported_lang / phase_corruption)
+# ----------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_agent_workflow_tool_rejects_empty_and_whitespace_target(tmp_path):
+    """Empty / whitespace-only target_path must fail at validation.
+
+    Audit gap (invalid_target_path): the original suite covered the
+    absolute-outside case but not the trivially-bad inputs that the
+    validate_arguments guard exists for. Each of these should fail
+    before the planning builder is invoked.
+    """
+    tool = AgentWorkflowTool(str(tmp_path))
+
+    for bad in ("", "   ", "\n", "\t\t"):
+        with pytest.raises(ValueError, match="target_path"):
+            await tool.execute({"target_path": bad})
+
+
+@pytest.mark.asyncio
+async def test_agent_workflow_tool_rejects_non_string_target_path(tmp_path):
+    """target_path that isn't a string fails fast.
+
+    Audit gap (invalid_target_path): callers passing a list or dict
+    where a string was expected - common when chaining tool outputs -
+    must fail at the validation boundary with a clear ``target_path``
+    error, not with an opaque ``AttributeError`` from the planner.
+    """
+    tool = AgentWorkflowTool(str(tmp_path))
+
+    for bad in (123, 1.5, ["src/a.py"], {"path": "x"}, True):
+        with pytest.raises(ValueError, match="target_path"):
+            await tool.execute({"target_path": bad})
+
+
+@pytest.mark.asyncio
+async def test_agent_workflow_tool_rejects_path_traversal_target(tmp_path):
+    """Relative paths with .. that escape the project root are rejected.
+
+    Audit gap (invalid_target_path): the absolute-path check is one
+    of several. A relative path with ``..`` that resolves outside the
+    project root must also be caught by the security validator.
+    """
+    tool = AgentWorkflowTool(str(tmp_path))
+
+    with pytest.raises(ValueError, match="Invalid target_path"):
+        await tool.execute({"target_path": "../../../etc/passwd"})
+
+
+@pytest.mark.asyncio
+async def test_agent_workflow_tool_unsupported_extension_still_plans(tmp_path):
+    """An unsupported language extension still produces a workflow.
+
+    Audit gap (unsupported_lang): the workflow tool is a planning
+    surface - it never opens the file or runs language detection.
+    The contract: even when the target is ``.unknownext``, the tool
+    must still emit a valid pack so downstream callers can see *what
+    commands to run* even before the file is analysable.
+    """
+    target = tmp_path / "src" / "service.unknownext"
+    target.parent.mkdir()
+    target.write_text("nothing here\n", encoding="utf-8")
+
+    result = await AgentWorkflowTool(str(tmp_path)).execute(
+        {"target_path": "src/service.unknownext", "output_format": "json"}
+    )
+
+    assert result["success"] is True
+    assert result["workflow"] == "SMART agent workflow pack"
+    assert result["current_phase"] == "analyze"
+    analyze_step = next(step for step in result["steps"] if step["step"] == "analyze")
+    assert any("src/service.unknownext" in cmd for cmd in analyze_step["cli_commands"])
+    # Agent_summary surface populated (next_step references the path so
+    # callers can branch even on unsupported languages).
+    assert "src/service.unknownext" in result["agent_summary"]["next_step"]
+
+
+@pytest.mark.asyncio
+async def test_agent_workflow_tool_phase_selection_responds_to_target_presence(
+    tmp_path,
+):
+    """Phase planning must flip cleanly between targeted and untargeted modes.
+
+    Audit gap (phase_corruption): the current_phase resolver
+    branches on ``target_path is None``. The contract:
+        - no target -> phase 'set' (project surface discovery)
+        - any target -> phase 'analyze' (single-file edit risk)
+    """
+    tool = AgentWorkflowTool(str(tmp_path))
+
+    no_target = await tool.execute({"output_format": "json"})
+    assert no_target["current_phase"] == "set"
+    assert no_target["current_step"]["step"] == "set"
+    assert no_target["sprint_contract"]["scope"] == "project_surface_discovery"
+    assert no_target["sprint_contract"]["current_phase"] == "set"
+    assert no_target["sprint_contract"]["next_phase"] == "map"
+    assert no_target["phase_order"] == ["set", "map", "analyze", "retrieve", "trace"]
+
+    target = tmp_path / "src" / "service.py"
+    target.parent.mkdir()
+    target.write_text("def run():\n    return 1\n", encoding="utf-8")
+    with_target = await tool.execute(
+        {"target_path": "src/service.py", "output_format": "json"}
+    )
+    assert with_target["current_phase"] == "analyze"
+    assert with_target["current_step"]["step"] == "analyze"
+    assert with_target["sprint_contract"]["scope"] == "single_target_file"
+    assert with_target["sprint_contract"]["current_phase"] == "analyze"
+    assert with_target["sprint_contract"]["next_phase"] == "retrieve"
+
+
+@pytest.mark.asyncio
+async def test_agent_workflow_tool_handles_long_target_path(tmp_path):
+    """A deeply-nested target path embeds verbatim into every step's commands.
+
+    Audit gap (phase_corruption / boundary): a long path with many
+    segments tests that the planner doesn't truncate or mangle the
+    path when interpolating into CLI commands.
+    """
+    nested = tmp_path / "a" / "b" / "c" / "d" / "service.py"
+    nested.parent.mkdir(parents=True)
+    nested.write_text("def run():\n    return 1\n", encoding="utf-8")
+
+    result = await AgentWorkflowTool(str(tmp_path)).execute(
+        {"target_path": "a/b/c/d/service.py", "output_format": "json"}
+    )
+
+    assert result["success"] is True
+    for step_name in ("analyze", "retrieve", "trace"):
+        step = next(s for s in result["steps"] if s["step"] == step_name)
+        for cmd in step["cli_commands"]:
+            assert "a/b/c/d/service.py" in cmd, (
+                f"step {step_name!r} cli_command missing path: {cmd!r}"
+            )
+    assert "a/b/c/d/service.py" in result["agent_summary"]["next_step"]
+
+
+@pytest.mark.asyncio
+async def test_agent_workflow_tool_concurrent_calls_are_safe(tmp_path):
+    """Parallel execute calls must each return an independent pack.
+
+    Audit gap (concurrent / re-entrant safety): the workflow builder
+    is stateless, but the tool layer holds a single security
+    validator. Multiple parallel calls must each get their own
+    response dict - no shared list references between calls.
+    """
+    target = tmp_path / "src" / "service.py"
+    target.parent.mkdir()
+    target.write_text("def run():\n    return 1\n", encoding="utf-8")
+    tool = AgentWorkflowTool(str(tmp_path))
+
+    results = await asyncio.gather(
+        *(
+            tool.execute({"target_path": "src/service.py", "output_format": "json"})
+            for _ in range(8)
+        ),
+    )
+
+    assert all(result["success"] is True for result in results)
+    steps_ids = [id(result["steps"]) for result in results]
+    assert len(set(steps_ids)) == len(steps_ids), (
+        "execute() returns a shared steps list across concurrent calls - "
+        "callers mutating their copy would corrupt other callers"
+    )
+    for result in results:
+        assert result["target_path"] == "src/service.py"
+        assert result["current_phase"] == "analyze"
+
+
+@pytest.mark.asyncio
+async def test_agent_workflow_tool_rejects_invalid_output_format(tmp_path):
+    """Invalid output_format must fail at validation.
+
+    Audit gap (invalid input): the validate_arguments path for
+    output_format is exercised by the parser-readiness suite but
+    never by agent-workflow. Pin it here so a regression in either
+    surface trips a test.
+    """
+    tool = AgentWorkflowTool(str(tmp_path))
+
+    with pytest.raises(ValueError, match="output_format"):
+        await tool.execute({"output_format": "yaml"})
+    with pytest.raises(ValueError, match="output_format"):
+        await tool.execute({"output_format": "xml"})
+
+
+@pytest.mark.asyncio
+async def test_agent_workflow_tool_phase_routing_uses_canonical_routes(tmp_path):
+    """Every phase's handoff metadata matches PHASE_ROUTING source-of-truth.
+
+    Audit gap (phase_corruption): the original suite checked the
+    happy path on phase 'analyze'. Pin the entire routing table so a
+    silent change to PHASE_ROUTING (or to how _build_step_handoffs
+    consumes it) trips this test instead of leaking into agent
+    behaviour.
+    """
+    target = tmp_path / "src" / "service.py"
+    target.parent.mkdir()
+    target.write_text("def run():\n    return 1\n", encoding="utf-8")
+
+    result = await AgentWorkflowTool(str(tmp_path)).execute(
+        {"target_path": "src/service.py", "output_format": "json"}
+    )
+
+    expected_routes = {route["from"]: route for route in agent_workflow.PHASE_ROUTING}
+    for step in result["steps"]:
+        expected = expected_routes[step["step"]]
+        handoff = step["handoff"]
+        assert handoff["to"] == expected["to"], (
+            f"step {step['step']!r} handoff.to drift: {handoff['to']!r} != "
+            f"{expected['to']!r}"
+        )
+        assert handoff["condition"] == expected["condition"]
+        assert handoff["goal"] == expected["goal"]
+        assert handoff["transition_command"] == step["cli_commands"][0]
+    assert [route["from"] for route in result["routing"]] == [
+        "set",
+        "map",
+        "analyze",
+        "retrieve",
+        "trace",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_agent_workflow_tool_envelope_holds_for_both_formats(tmp_path):
+    """Both JSON and TOON outputs carry a consistent envelope shape.
+
+    Audit gap (envelope contract): pins next_step, summary_line
+    mirror, and phase invariants on both output formats. Note: at
+    the current point in r37 this tool does NOT canonicalise
+    ``verdict`` (the F1 commit was reverted) so we only check the
+    non-verdict surface.
+    """
+    target = tmp_path / "src" / "service.py"
+    target.parent.mkdir()
+    target.write_text("def run():\n    return 1\n", encoding="utf-8")
+    tool = AgentWorkflowTool(str(tmp_path))
+
+    for target_path in (None, "src/service.py"):
+        for output_format in ("json", "toon"):
+            args: dict[str, object] = {"output_format": output_format}
+            if target_path is not None:
+                args["target_path"] = target_path
+            result = await tool.execute(args)
+
+            assert result["success"] is True, (
+                f"failed for target={target_path!r} format={output_format}"
+            )
+            agent_summary = result["agent_summary"]
+            next_step = agent_summary["next_step"]
+            assert isinstance(next_step, str) and next_step.strip(), (
+                f"next_step empty for target={target_path!r} format={output_format}"
+            )
+            assert next_step.startswith("uv run tree-sitter-analyzer")
+            # Phase invariants: targeted -> analyze, untargeted -> set.
+            expected_phase = "analyze" if target_path else "set"
+            assert agent_summary["current_phase"] == expected_phase
+            assert result["current_phase"] == expected_phase
