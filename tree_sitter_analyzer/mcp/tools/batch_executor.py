@@ -271,6 +271,56 @@ def _process_file_request(
     return file_result
 
 
+def _enforce_section_count_limit(acc: _BatchAccumulator, allow_truncate: bool) -> bool:
+    """K7: check the ``max_sections_total`` ceiling.
+
+    Returns ``True`` when the caller should stop processing the file
+    (limit reached, truncation allowed). Raises ``ValueError`` when
+    truncation is disallowed.
+    """
+    acc.sections_seen_total += 1
+    if acc.sections_seen_total <= BATCH_LIMITS["max_sections_total"]:
+        return False
+    if not allow_truncate:
+        raise ValueError(
+            f"Too many sections in requests: "
+            f"> max_sections_total={BATCH_LIMITS['max_sections_total']}"
+        )
+    acc.truncated = True
+    return True
+
+
+def _enforce_bytes_lines_limit(
+    acc: _BatchAccumulator,
+    content_bytes: int,
+    content_lines: int,
+    allow_truncate: bool,
+) -> bool:
+    """Check ``max_total_bytes`` / ``max_total_lines`` ceilings.
+
+    Returns ``True`` when the caller should stop (limit reached, truncation
+    allowed). Mutates ``acc`` totals on success so consecutive calls compose
+    correctly. Raises ``ValueError`` when truncation is disallowed.
+    """
+    would_bytes = acc.total_bytes + content_bytes
+    would_lines = acc.total_lines + content_lines
+    if (
+        would_bytes <= BATCH_LIMITS["max_total_bytes"]
+        and would_lines <= BATCH_LIMITS["max_total_lines"]
+    ):
+        acc.total_bytes = would_bytes
+        acc.total_lines = would_lines
+        return False
+    if not allow_truncate:
+        raise ValueError(
+            "Batch extract exceeds limits: "
+            f"max_total_bytes={BATCH_LIMITS['max_total_bytes']}, "
+            f"max_total_lines={BATCH_LIMITS['max_total_lines']}"
+        )
+    acc.truncated = True
+    return True
+
+
 def _process_one_section(
     *,
     section: Any,
@@ -282,7 +332,13 @@ def _process_one_section(
     content_format: str,
     read_file_partial_fn: Callable[..., str | None],
 ) -> bool:
-    """Process one section. Return True when the caller should ``break``."""
+    """Process one section. Return True when the caller should ``break``.
+
+    r37ey (dogfood): 87→~30 lines. ``_enforce_section_count_limit`` and
+    ``_enforce_bytes_lines_limit`` own the per-batch ceilings; this body
+    becomes validate → count-gate → read → empty-content-gate →
+    size-gate → record-section.
+    """
     if not isinstance(section, dict):
         acc.error_count += 1
         file_result["errors"].append({"error": "Invalid section entry"})
@@ -298,14 +354,7 @@ def _process_one_section(
         file_result["errors"].append(range_err)
         return fail_fast
 
-    acc.sections_seen_total += 1
-    if acc.sections_seen_total > BATCH_LIMITS["max_sections_total"]:
-        if not allow_truncate:
-            raise ValueError(
-                f"Too many sections in requests: "
-                f"> max_sections_total={BATCH_LIMITS['max_sections_total']}"
-            )
-        acc.truncated = True
+    if _enforce_section_count_limit(acc, allow_truncate):
         return True
 
     content = read_file_partial_fn(resolved, start_line, end_line)
@@ -328,35 +377,21 @@ def _process_one_section(
         if end_line is not None
         else (len(content.split("\n")) if content else 0)
     )
-    would_bytes = acc.total_bytes + content_bytes
-    would_lines = acc.total_lines + content_lines
-    if (
-        would_bytes > BATCH_LIMITS["max_total_bytes"]
-        or would_lines > BATCH_LIMITS["max_total_lines"]
-    ):
-        if not allow_truncate:
-            raise ValueError(
-                "Batch extract exceeds limits: "
-                f"max_total_bytes={BATCH_LIMITS['max_total_bytes']}, "
-                f"max_total_lines={BATCH_LIMITS['max_total_lines']}"
-            )
-        acc.truncated = True
+    if _enforce_bytes_lines_limit(acc, content_bytes, content_lines, allow_truncate):
         return True
 
-    acc.total_bytes = would_bytes
-    acc.total_lines = would_lines
     acc.ok_sections += 1
-
-    section_result: dict[str, Any] = {
-        "label": label,
-        "range": {"start_line": start_line, "end_line": end_line},
-        "content_length": len(content),
-        "content": content,
-    }
     # ``content_format`` is reserved for future raw-vs-rendered variants;
     # both modes currently emit the verbatim content.
     _ = content_format
-    file_result["sections"].append(section_result)
+    file_result["sections"].append(
+        {
+            "label": label,
+            "range": {"start_line": start_line, "end_line": end_line},
+            "content_length": len(content),
+            "content": content,
+        }
+    )
     return False
 
 
