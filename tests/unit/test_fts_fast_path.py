@@ -116,7 +116,7 @@ class TestTryFts5FastPath:
         found_names = [r["name"] for r in result["results"]]
         assert "MyClass" in found_names
 
-    def test_total_only_mode_returns_int(self, tmp_path):
+    def test_total_only_mode_returns_dict(self, tmp_path):
         _write_py_file(
             str(tmp_path),
             "app.py",
@@ -131,8 +131,10 @@ class TestTryFts5FastPath:
             str(tmp_path),
             "total_only",
         )
-        assert isinstance(result, int)
-        assert result >= 1
+        # total_only returns a success envelope dict with total_matches count
+        assert isinstance(result, dict)
+        assert result.get("success") is True
+        assert result.get("total_matches", 0) >= 1
 
     def test_count_only_mode(self, tmp_path):
         _write_py_file(
@@ -244,10 +246,12 @@ class TestSearchContentFtsIntegration:
         tool = SearchContentTool(project_root=str(tmp_path))
 
         result = asyncio.run(
-            tool.execute({
-                "query": "MyWidget",
-                "roots": [str(tmp_path)],
-            })
+            tool.execute(
+                {
+                    "query": "MyWidget",
+                    "roots": [str(tmp_path)],
+                }
+            )
         )
         assert isinstance(result, dict)
         assert result.get("success") is True
@@ -259,10 +263,12 @@ class TestSearchContentFtsIntegration:
 
         tool = SearchContentTool(project_root=str(tmp_path))
         result = asyncio.run(
-            tool.execute({
-                "query": "foo.*bar",
-                "roots": [str(tmp_path)],
-            })
+            tool.execute(
+                {
+                    "query": "foo.*bar",
+                    "roots": [str(tmp_path)],
+                }
+            )
         )
         assert isinstance(result, dict)
         assert result.get("data_source") != "fts5"

@@ -88,7 +88,8 @@ class TestPathAtLine:
 
     def test_line_at_standalone_function(self, python_file):
         nav = ASTPathNavigator()
-        result = nav.path_at_line(python_file, 23)
+        # Line 26 is inside standalone (the docstring line), line 23 is an empty gap
+        result = nav.path_at_line(python_file, 26)
         scope_names = [n.name for n in result.path if n.name]
         assert "standalone" in scope_names
 
@@ -131,7 +132,8 @@ class TestScopeAt:
 
     def test_scope_at_standalone(self, python_file):
         nav = ASTPathNavigator()
-        result = nav.scope_at(python_file, 23)
+        # Line 26 is inside standalone body; line 23 is an empty gap before it
+        result = nav.scope_at(python_file, 26)
         assert result.enclosing_scope is not None
         assert result.enclosing_scope.name == "standalone"
 

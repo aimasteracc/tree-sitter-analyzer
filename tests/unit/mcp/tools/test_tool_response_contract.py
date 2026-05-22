@@ -217,6 +217,7 @@ class TestExecuteAcrossAllTools:
             "codegraph_callees": {"function_name": "greet"},
             "codegraph_symbol_search": {"query": "greet"},
             "codegraph_ast_path": {"mode": "outline", "file_path": sample_file},
+            "codegraph_overview": {},
         }
         skipped: list[str] = []
         for name, tool in registered_tools:

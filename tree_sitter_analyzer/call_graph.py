@@ -405,6 +405,8 @@ class CallGraph:
         self._callers: dict[FunctionRef, list[FunctionRef]] = defaultdict(list)
         self._call_edges: list[tuple[FunctionRef, FunctionRef, int]] = []
         self._built = False
+        self._file_imports: dict[str, dict[str, str]] = {}
+        self._file_module_map: dict[str, str] = {}
 
     def build(self) -> None:
         """Scan the project and build the call graph."""

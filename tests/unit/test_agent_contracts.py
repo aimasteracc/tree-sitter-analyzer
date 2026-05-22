@@ -196,6 +196,7 @@ def test_registered_mcp_tools_have_cli_parity() -> None:
         "ast_cache": ("main", "--ast-cache"),
         "ast_diff": ("main", "--ast-diff"),
         "codegraph_ast_path": ("main", "--ast-path"),
+        "codegraph_overview": ("main", "--codegraph-overview"),
         "detect_routes": ("main", "--detect-routes"),
     }
 

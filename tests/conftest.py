@@ -33,6 +33,16 @@ hypothesis_settings.load_profile("tree_sitter_analyzer")
 
 def pytest_configure(config):
     """Configure pytest with custom markers and safety checks."""
+    # Suppress SQLite connection finalizer warnings that fire when gc.collect()
+    # in one xdist worker collects objects from other workers. These are benign
+    # resource cleanup events, not actual test failures.
+    # Must be added here (not pytest.ini) so the pytest.ini contract
+    # (filterwarnings[0] == "error") stays valid.
+    config.addinivalue_line(
+        "filterwarnings",
+        "ignore:Exception ignored while finalizing database connection"
+        ":pytest.PytestUnraisableExceptionWarning",
+    )
     config.addinivalue_line(
         "markers", "requires_ripgrep: mark test as requiring ripgrep (rg) command"
     )
