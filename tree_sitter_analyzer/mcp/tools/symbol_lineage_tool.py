@@ -12,6 +12,7 @@ Tells AI agents: "If you change X, here's everything affected."
 import copy
 import re
 import time
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -45,6 +46,111 @@ TOOL_SCHEMA: dict[str, Any] = {
     "required": ["symbol"],
     "additionalProperties": False,
 }
+
+# r37be: response envelope caps (G6 truncation transparency) — module-level
+# so the response builder + truncation summary share a single source.
+_DEF_LIMIT = 20
+_REF_LIMIT = 30
+_DOWNSTREAM_LIMIT = 50
+_UPSTREAM_LIMIT = 20
+_TEST_LIMIT = 20
+
+# Risk level → verdict mapping (mirrors trace_impact / safe_to_edit vocab).
+_RISK_TO_VERDICT: dict[str, str] = {
+    "high": "UNSAFE",
+    "medium": "CAUTION",
+    "low": "SAFE",
+    "unknown": "n/a",
+}
+
+
+def _apply_grep_fallback_defs(
+    definitions: list[dict[str, Any]],
+    references: list[dict[str, Any]],
+    project_root: str,
+    symbol: str,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """K3 fix: text-grep the project for definitions when the AST scan missed them.
+
+    Promotes any matching reference to a definition (file + start_line key)
+    and removes it from ``references`` to avoid double-counting. Pure
+    helper — no side effects on the caller's lists.
+    """
+    fallback_defs = _find_definitions_via_grep(project_root, symbol)
+    if not fallback_defs:
+        return definitions, references
+
+    out_defs = list(definitions)
+    seen_def_keys = {(d.get("file", ""), d.get("start_line", 0)) for d in out_defs}
+    ref_keys_to_drop: set[tuple[str, int]] = set()
+    for fd in fallback_defs:
+        key = (fd["file"], fd["start_line"])
+        if key in seen_def_keys:
+            continue
+        seen_def_keys.add(key)
+        ref_keys_to_drop.add(key)
+        out_defs.append(fd)
+    if not ref_keys_to_drop:
+        return out_defs, references
+    out_refs = [
+        r
+        for r in references
+        if (r.get("file", ""), r.get("start_line", 0)) not in ref_keys_to_drop
+    ]
+    return out_defs, out_refs
+
+
+def _build_truncations_and_summary_line(
+    symbol: str,
+    definitions: list[dict[str, Any]],
+    references: list[dict[str, Any]],
+    downstream_files: set[str],
+    risk: dict[str, Any],
+) -> tuple[list[str], str]:
+    """G6: compose the truncation list + the headline summary_line."""
+    truncations: list[str] = []
+    if len(references) > _REF_LIMIT:
+        truncations.append("references")
+    if len(downstream_files) > _DOWNSTREAM_LIMIT:
+        truncations.append("downstream_files")
+    summary_line = (
+        f"{symbol} defs={len(definitions)} refs={len(references)} "
+        f"downstream={len(downstream_files)} risk={risk['level']}"
+    )
+    if truncations:
+        summary_line += f" truncated={'+'.join(truncations)}"
+    return truncations, summary_line
+
+
+def _verdict_and_next_step(risk_level: str) -> tuple[str, str]:
+    """Map a risk level to (verdict, next_step) per the lineage contract."""
+    verdict = _RISK_TO_VERDICT.get(risk_level, "n/a")
+    if risk_level == "high":
+        next_step = "trace_impact and run listed test files before changing signature"
+    elif risk_level == "medium":
+        next_step = "review callers in listed files, then run downstream tests"
+    elif risk_level == "low":
+        next_step = "proceed with edit, run nearest test file"
+    else:
+        next_step = "verify symbol name — no definitions found"
+    return verdict, next_step
+
+
+def _build_agent_summary_block(
+    summary_line: str,
+    next_step: str,
+    verdict: str,
+    truncations: list[str],
+) -> dict[str, Any]:
+    """Canonical agent_summary block with optional ``truncations`` echo."""
+    block: dict[str, Any] = {
+        "summary_line": summary_line,
+        "next_step": next_step,
+        "verdict": verdict,
+    }
+    if truncations:
+        block["truncations"] = truncations
+    return block
 
 
 class SymbolLineageTool(BaseMCPTool):
@@ -151,250 +257,230 @@ class SymbolLineageTool(BaseMCPTool):
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Symbol lineage analysis with cache + grep fallback + blast radius.
+
+        r37be (dogfood): tool flagged this at 246 lines. Split into 8
+        phases (validate / cache lookup / find refs / blast radius /
+        truncation / verdict / envelope / cache store). Every behaviour
+        preserved: H4 cache refresh, H12 reclassify, K3 grep fallback,
+        G6 truncation transparency, r37u top-level verdict mirror.
+        """
         started = time.perf_counter()
         symbol = arguments["symbol"].strip()
         max_depth = int(arguments.get("max_depth", 3))
         output_format = arguments.get("output_format", "toon")
 
+        self._validate_project_root()
+        # H4 fix: refresh dep graph (clears _symbol_cache on rebuild) before
+        # the cache lookup below.
+        graph = self._get_dep_graph()
+
+        cached_response = self._try_cached_lineage(symbol, max_depth, started)
+        if cached_response is not None:
+            return apply_toon_format_to_response(cached_response, output_format)
+
+        definitions, references = await self._collect_definitions_and_refs(symbol)
+        all_symbol_files = self._collect_symbol_files(definitions, references)
+        downstream_files, upstream_files = self._compute_blast_radius(
+            graph, all_symbol_files
+        )
+
+        risk = _assess_risk(len(definitions), len(references), len(downstream_files))
+        test_files = sorted(
+            f for f in (downstream_files | all_symbol_files) if _is_test_file(f)
+        )
+
+        truncations, summary_line = _build_truncations_and_summary_line(
+            symbol, definitions, references, downstream_files, risk
+        )
+        verdict, next_step = _verdict_and_next_step(risk["level"])
+        agent_summary = _build_agent_summary_block(
+            summary_line, next_step, verdict, truncations
+        )
+
+        response = self._assemble_lineage_response(
+            symbol=symbol,
+            definitions=definitions,
+            references=references,
+            all_symbol_files=all_symbol_files,
+            downstream_files=downstream_files,
+            upstream_files=upstream_files,
+            test_files=test_files,
+            risk=risk,
+            summary_line=summary_line,
+            verdict=verdict,
+            agent_summary=agent_summary,
+        )
+
+        return self._finalize_and_cache_response(
+            response, (symbol, max_depth), started, output_format
+        )
+
+    def _validate_project_root(self) -> None:
+        """Reject when project_root is unset or not a directory."""
         if not self.project_root:
             raise ValueError("Project root not set. Call set_project_path first.")
-
         root = Path(self.project_root).resolve()
         if not root.is_dir():
             raise ValueError(f"Project root is not a directory: {root}")
 
-        # H4 fix: refresh the dep graph (and clear _symbol_cache if needed)
-        # before serving from the per-symbol response cache. _get_dep_graph
-        # will wipe _symbol_cache when it rebuilds, so the cache lookup
-        # below is automatically post-invalidation.
-        graph = self._get_dep_graph()
+    def _try_cached_lineage(
+        self,
+        symbol: str,
+        max_depth: int,
+        started: float,
+    ) -> dict[str, Any] | None:
+        """Return a deep-copied cached response if one exists, else ``None``.
 
-        # Per-symbol response cache: this tool does an expensive cross-file
-        # walk (rglob + 500x engine.analyze) even with the analysis cache
-        # warm. The same (symbol, max_depth) pair is asked for repeatedly
-        # by orchestrators, so cache the deep-copied response.
+        Per-symbol response cache — the tool does an expensive cross-file
+        walk + dep-graph traversal that orchestrators repeat. Cache key
+        is ``(symbol, max_depth)``; reset on project_root rebind.
+        """
         cache_key = (symbol, max_depth)
         cached = self._symbol_cache.get(cache_key)
-        if cached is not None:
-            result = copy.deepcopy(cached)
-            result["elapsed_ms"] = int((time.perf_counter() - started) * 1000)
-            result["from_cache"] = True
-            # H4 introspection on warm symbol-cache hit.
-            if self._dep_graph_built_at is not None:
-                result["cache_age_s"] = round(time.time() - self._dep_graph_built_at, 3)
-            return apply_toon_format_to_response(result, output_format)
+        if cached is None:
+            return None
+        result = copy.deepcopy(cached)
+        result["elapsed_ms"] = int((time.perf_counter() - started) * 1000)
+        result["from_cache"] = True
+        if self._dep_graph_built_at is not None:
+            result["cache_age_s"] = round(time.time() - self._dep_graph_built_at, 3)
+        return result
 
+    async def _collect_definitions_and_refs(
+        self, symbol: str
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """Find references, reclassify (H12), then run K3 grep fallback for missing defs."""
         ref_args = {"symbol": symbol, "output_format": "json"}
         refs_result = await execute_find_references(self.project_root, ref_args)
 
         definitions = refs_result.get("definitions", [])
         references = refs_result.get("references", [])
-        # H12 fix: ``execute_find_references`` classifies a hit as a
-        # definition only when ``element_type`` substring-matches
-        # {"definition", "declaration", "class", "struct"}. Tree-sitter
-        # element extractors return short canonical names — Python
-        # ``function``, ``method``, ``decorated_definition``; JS
-        # ``function``/``arrow_function``/``class``; Java
-        # ``method``/``class``/``interface``; Go ``function``/``method``.
-        # Anything labelled ``function``/``method``/``decorated_definition``
-        # therefore falls into ``references`` even when the hit is the
-        # actual ``def``/``class`` site. Re-classify here so callers see
-        # the def under ``definitions`` where the brief promises it.
-        # ``project_root`` + ``symbol`` enable the content-level check
-        # that reads the source line at each hit — required to avoid
-        # false-positive promotions on synthetic test fixtures.
+
+        # H12: tree-sitter element types are short canonical names (function /
+        # method / decorated_definition / class). ``execute_find_references``
+        # only promotes hits to "definition" when the type substring contains
+        # ``definition`` / ``declaration`` / ``class`` / ``struct``, so most
+        # actual def sites land in ``references``. Reclassify here.
         definitions, references = _reclassify_definition_like(
             definitions, references, str(self.project_root), symbol
         )
 
-        # K3 fix: ``execute_find_references`` caps the project scan at the
-        # first 500 source files (rglob order, no priority). On medium
-        # repos that drops the definition file for symbols whose owning
-        # file sorts past the 500th — e.g. ``BaseMCPTool`` in
-        # ``tree_sitter_analyzer/mcp/tools/base_tool.py`` is at rglob index
-        # 539 here. References to the symbol *are* found (they're in
-        # earlier files like importers / callers), but the def site itself
-        # never enters the scan, so ``definitions`` stays empty and
-        # downstream risk classification reports "Symbol not found".
-        #
-        # When defs are empty, run a focused text-grep fallback that scans
-        # ALL project source files (no 500 cap) for definition-keyword
-        # lines mentioning the symbol. Cheap because we only read files
-        # that match a fast first-pass substring check.
+        # K3: ``execute_find_references`` caps at 500 files. When defs are
+        # empty, run a text-grep fallback scanning ALL project source files
+        # so symbols whose owning file sorts past the 500th still get found.
         if not definitions:
-            fallback_defs = _find_definitions_via_grep(str(self.project_root), symbol)
-            if fallback_defs:
-                seen_def_keys = {
-                    (d.get("file", ""), d.get("start_line", 0)) for d in definitions
-                }
-                # Also dedupe against the references list — promoting a
-                # ref-as-def removes it from references.
-                ref_keys_to_drop: set[tuple[str, int]] = set()
-                for fd in fallback_defs:
-                    key = (fd["file"], fd["start_line"])
-                    if key in seen_def_keys:
-                        continue
-                    seen_def_keys.add(key)
-                    ref_keys_to_drop.add(key)
-                    definitions.append(fd)
-                if ref_keys_to_drop:
-                    references = [
-                        r
-                        for r in references
-                        if (r.get("file", ""), r.get("start_line", 0))
-                        not in ref_keys_to_drop
-                    ]
+            definitions, references = _apply_grep_fallback_defs(
+                definitions, references, str(self.project_root), symbol
+            )
+        return definitions, references
 
+    @staticmethod
+    def _collect_symbol_files(
+        definitions: list[dict[str, Any]],
+        references: list[dict[str, Any]],
+    ) -> set[str]:
+        """Union of ``file`` keys across definitions + references."""
         def_files = {d["file"] for d in definitions}
         ref_files = {r["file"] for r in references}
-        all_symbol_files = def_files | ref_files
+        return def_files | ref_files
 
-        # ``graph`` was already resolved above (just before the symbol
-        # cache lookup) — avoid the duplicate fingerprint scan.
+    @staticmethod
+    def _compute_blast_radius(
+        graph: Any,
+        all_symbol_files: set[str],
+    ) -> tuple[set[str], set[str]]:
+        """Forward + reverse blast radius from the dep graph (empty when graph absent)."""
+        downstream_files: set[str] = set()
+        upstream_files: set[str] = set()
+        if not graph:
+            return downstream_files, upstream_files
+        for f in all_symbol_files:
+            if f not in graph._nodes:
+                continue
+            br = BlastRadius(graph)
+            fwd = br.forward(f)
+            if fwd:
+                downstream_files.update(fwd)
+            rev = br.reverse(f)
+            if rev:
+                upstream_files.update(rev)
+        return downstream_files, upstream_files
 
-        downstream: dict[str, Any] = {}
-        upstream: dict[str, Any] = {}
-        if graph:
-            for f in all_symbol_files:
-                if f not in graph._nodes:
-                    continue
-                br = BlastRadius(graph)
-                fwd = br.forward(f)
-                if fwd:
-                    downstream[f] = sorted(fwd)
-                rev = br.reverse(f)
-                if rev:
-                    upstream[f] = sorted(rev)
-
-        all_downstream_files: set[str] = set()
-        for files in downstream.values():
-            all_downstream_files.update(files)
-
-        all_upstream_files: set[str] = set()
-        for files in upstream.values():
-            all_upstream_files.update(files)
-
-        risk = _assess_risk(
-            len(definitions), len(references), len(all_downstream_files)
-        )
-
-        test_files = sorted(
-            f for f in (all_downstream_files | all_symbol_files) if _is_test_file(f)
-        )
-
-        # G6: explicit truncation transparency. Lists were silently
-        # capped without an indicator — agents reading
-        # ``len(references)`` got a number that disagreed with
-        # ``reference_count``. Surface truncation flags + the real total
-        # so a caller can fan out a second tool to fetch the rest.
-        _DEF_LIMIT = 20
-        _REF_LIMIT = 30
-        _DOWNSTREAM_LIMIT = 50
-        _UPSTREAM_LIMIT = 20
-        _TEST_LIMIT = 20
-        sorted_downstream = sorted(all_downstream_files)
-        sorted_upstream = sorted(all_upstream_files)
-
+    @staticmethod
+    def _assemble_lineage_response(
+        *,
+        symbol: str,
+        definitions: list[dict[str, Any]],
+        references: list[dict[str, Any]],
+        all_symbol_files: set[str],
+        downstream_files: set[str],
+        upstream_files: set[str],
+        test_files: list[str],
+        risk: dict[str, Any],
+        summary_line: str,
+        verdict: str,
+        agent_summary: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Assemble the canonical lineage envelope with G6 truncation + r37u verdict."""
+        sorted_downstream = sorted(downstream_files)
+        sorted_upstream = sorted(upstream_files)
         references_truncated = len(references) > _REF_LIMIT
         downstream_truncated = len(sorted_downstream) > _DOWNSTREAM_LIMIT
-        truncations: list[str] = []
-        if references_truncated:
-            truncations.append("references")
-        if downstream_truncated:
-            truncations.append("downstream_files")
 
-        # One-line headline + next-step hint for LLM consumers.
-        summary_line = (
-            f"{symbol} defs={len(definitions)} refs={len(references)} "
-            f"downstream={len(all_downstream_files)} risk={risk['level']}"
-        )
-        if truncations:
-            # G6: surface the truncated-list signal on the headline so an
-            # agent scanning summary_line alone notices the partial view.
-            summary_line += f" truncated={'+'.join(truncations)}"
-        # Verdict mirrors trace_impact / safe_to_edit vocabulary so an agent
-        # can chain decisions across tools.
-        risk_to_verdict = {
-            "high": "UNSAFE",
-            "medium": "CAUTION",
-            "low": "SAFE",
-            "unknown": "n/a",
-        }
-        verdict = risk_to_verdict.get(risk["level"], "n/a")
-        if risk["level"] == "high":
-            next_step = (
-                "trace_impact and run listed test files before changing signature"
-            )
-        elif risk["level"] == "medium":
-            next_step = "review callers in listed files, then run downstream tests"
-        elif risk["level"] == "low":
-            next_step = "proceed with edit, run nearest test file"
+        if test_files:
+            hint_tail = "Run the listed test files before committing."
         else:
-            next_step = "verify symbol name — no definitions found"
+            hint_tail = "No test files detected."
 
-        agent_summary: dict[str, Any] = {
-            "summary_line": summary_line,
-            "next_step": next_step,
-            "verdict": verdict,
-        }
-        if truncations:
-            agent_summary["truncations"] = truncations
-
-        response: dict[str, Any] = {
+        return {
             "success": True,
             "symbol": symbol,
             "definitions": definitions[:_DEF_LIMIT],
             "definition_count": len(definitions),
             "references": references[:_REF_LIMIT],
             "reference_count": len(references),
-            # G6: explicit truncation flags + caps. Existing
-            # ``reference_count`` / ``downstream_file_count`` already
-            # carry the real totals; these fields make the partial-view
-            # state machine-readable without a length-vs-count compare.
             "references_truncated": references_truncated,
             "references_limit": _REF_LIMIT,
             "references_available": len(references),
             "files_containing_symbol": sorted(all_symbol_files),
             "downstream_files": sorted_downstream[:_DOWNSTREAM_LIMIT],
-            "downstream_file_count": len(all_downstream_files),
+            "downstream_file_count": len(downstream_files),
             "downstream_files_truncated": downstream_truncated,
             "downstream_files_limit": _DOWNSTREAM_LIMIT,
-            "downstream_files_available": len(all_downstream_files),
+            "downstream_files_available": len(downstream_files),
             "upstream_files": sorted_upstream[:_UPSTREAM_LIMIT],
-            "upstream_file_count": len(all_upstream_files),
+            "upstream_file_count": len(upstream_files),
             "test_files_to_run": test_files[:_TEST_LIMIT],
             "test_file_count": len(test_files),
             "risk": risk,
             "smart_workflow_hint": (
                 f"Symbol '{symbol}' has {risk['level']} change risk "
-                f"({len(references)} refs, {len(all_downstream_files)} downstream files). "
-                f"{'Run the listed test files before committing.' if test_files else 'No test files detected.'} "
+                f"({len(references)} refs, {len(downstream_files)} downstream files). "
+                f"{hint_tail} "
                 "Use analyze_change_impact after editing for git-diff level detail."
             ),
             "summary_line": summary_line,
-            # r37u (dogfood): mirror ``agent_summary.verdict`` to top-level
-            # so CLI callers see the same canonical envelope shape as MCP
-            # routed dispatch (matches the N4 pattern in parser_readiness /
-            # dependency_analysis / agent_skills). Without this, agents
-            # branching on ``result["verdict"]`` see ``None`` even when
-            # ``agent_summary.verdict`` is populated (CAUTION/UNSAFE/SAFE).
-            "verdict": verdict,
+            "verdict": verdict,  # r37u: top-level verdict mirror
             "agent_summary": agent_summary,
         }
 
-        # Stash a deep-copy so subsequent identical lookups skip the
-        # cross-file walk + dep-graph traversal. The cache is keyed on
-        # (symbol, max_depth) and reset on project_root rebind.
+    def _finalize_and_cache_response(
+        self,
+        response: dict[str, Any],
+        cache_key: tuple[str, int],
+        started: float,
+        output_format: str,
+    ) -> dict[str, Any]:
+        """Cache a deep copy, stamp elapsed/from_cache, apply TOON formatting."""
         self._symbol_cache[cache_key] = copy.deepcopy(response)
 
         response["elapsed_ms"] = int((time.perf_counter() - started) * 1000)
         response["from_cache"] = False
-        # H4 introspection.
         if self._dep_graph_built_at is not None:
             response["cache_age_s"] = round(time.time() - self._dep_graph_built_at, 3)
         if self._cache_invalidated_reason is not None:
             response["cache_invalidated_reason"] = self._cache_invalidated_reason
-
         return apply_toon_format_to_response(response, output_format)
 
 
@@ -714,46 +800,45 @@ def _find_definitions_via_grep(
 ) -> list[dict[str, Any]]:
     """Project-wide text scan for definition sites of ``symbol``.
 
-    Reads every source file (no 500-file cap), keeps only the ones that
-    contain the bare name, then inspects each line for a definition
-    keyword (``def``, ``class``, ``func``, ``fn``, …) immediately
-    followed by the symbol. Returns hits in the same shape as
-    ``execute_find_references`` definitions.
-
-    Two layers of filtering:
-
-    1. Substring pre-check on the whole file content — skip files that
-       never mention the bare name.
-    2. Per-line check: line must start with a definition keyword AND
-       contain the symbol as a whole word.
-
-    Robust to large repos because we never invoke tree-sitter — pure
-    text grep on already-filtered files.
+    r37be (dogfood): tool flagged this at 108 lines. Split into
+    bare-name normalisation + regex build + file walk + per-line scan.
+    Behaviour preserved: 2-layer substring/word filter, no tree-sitter.
     """
-    if not symbol:
-        return []
-    bare_name = symbol.split(".")[-1]
+    bare_name = _normalize_bare_symbol(symbol)
     if not bare_name:
         return []
-
     root = Path(project_root).resolve()
     if not root.is_dir():
         return []
 
-    # Whole-word boundary so ``BaseMCPTool`` doesn't match ``MyBaseMCPTool2``.
+    word_re, line_re = _build_grep_definition_regexes(bare_name)
+    hits: list[dict[str, Any]] = []
+    seen_keys: set[tuple[str, int]] = set()
+    for file_path in _iter_grep_candidate_files(root):
+        _scan_file_for_definitions(
+            file_path, root, bare_name, word_re, line_re, hits, seen_keys
+        )
+    return hits
+
+
+def _normalize_bare_symbol(symbol: str) -> str:
+    """Return the trailing component of ``a.b.c`` style symbols."""
+    if not symbol:
+        return ""
+    return symbol.split(".")[-1]
+
+
+def _build_grep_definition_regexes(
+    bare_name: str,
+) -> tuple[re.Pattern[str], re.Pattern[str]]:
+    """Return (whole-word file-pre-check, full-line definition match) regexes."""
     word_re = re.compile(r"\b" + re.escape(bare_name) + r"\b")
-    # Definition-keyword + symbol on the same line. We accept the symbol
-    # being followed by an open paren, colon, whitespace, less-than
-    # (generics), or end-of-line. The keyword must be at the start of the
-    # stripped line (Python ``def``/``class``, Go ``func``, Rust ``fn``,
-    # Java/C# method/class declarations after access modifiers).
     keyword_alternation = (
         r"(?:def|async\s+def|class|function|function\*|async\s+function|"
         r"func|fn|struct|interface|trait|enum|type|impl|namespace|module)"
     )
     line_re = re.compile(
         r"^\s*"
-        # Optional access modifiers / annotations before the keyword.
         r"(?:(?:public|private|protected|static|abstract|final|virtual|"
         r"override|sealed|unsafe|async|export|default)\s+)*"
         + keyword_alternation
@@ -761,10 +846,11 @@ def _find_definitions_via_grep(
         + re.escape(bare_name)
         + r"(?:\b|[\s\(:<])"
     )
+    return word_re, line_re
 
-    hits: list[dict[str, Any]] = []
-    seen_keys: set[tuple[str, int]] = set()
-    # Manual walk so we can prune excluded directories before stat-ing.
+
+def _iter_grep_candidate_files(root: Path) -> Iterator[Path]:
+    """Yield source files under ``root`` (manual scandir walk, excludes pruned)."""
     import os as _os
 
     stack: list[str] = [str(root)]
@@ -789,30 +875,40 @@ def _find_definitions_via_grep(
                     continue
                 if name[dot:].lower() not in _K3_FALLBACK_EXTS:
                     continue
-                try:
-                    text = Path(entry.path).read_text(
-                        encoding="utf-8", errors="replace"
-                    )
-                except OSError:
-                    continue
-                if not word_re.search(text):
-                    continue
-                rel = str(Path(entry.path).relative_to(root))
-                for i, line in enumerate(text.splitlines(), start=1):
-                    if not line_re.match(line):
-                        continue
-                    key = (rel, i)
-                    if key in seen_keys:
-                        continue
-                    seen_keys.add(key)
-                    hits.append(
-                        {
-                            "name": bare_name,
-                            "type": "definition",
-                            "file": rel,
-                            "start_line": i,
-                            "end_line": i,
-                            "role": "definition",
-                        }
-                    )
-    return hits
+                yield Path(entry.path)
+
+
+def _scan_file_for_definitions(
+    file_path: Path,
+    root: Path,
+    bare_name: str,
+    word_re: re.Pattern[str],
+    line_re: re.Pattern[str],
+    hits: list[dict[str, Any]],
+    seen_keys: set[tuple[str, int]],
+) -> None:
+    """Read ``file_path`` and append every matching definition line to ``hits``."""
+    try:
+        text = file_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return
+    if not word_re.search(text):
+        return
+    rel = str(file_path.relative_to(root))
+    for i, line in enumerate(text.splitlines(), start=1):
+        if not line_re.match(line):
+            continue
+        key = (rel, i)
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        hits.append(
+            {
+                "name": bare_name,
+                "type": "definition",
+                "file": rel,
+                "start_line": i,
+                "end_line": i,
+                "role": "definition",
+            }
+        )
