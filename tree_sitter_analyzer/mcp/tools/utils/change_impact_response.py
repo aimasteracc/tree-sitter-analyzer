@@ -37,16 +37,35 @@ class ChangeImpactResponseContext:
     agent_summary: dict[str, Any]
 
 
+def _risk_to_verdict(risk: str) -> str:
+    """Map change-impact risk_level to the canonical verdict vocabulary.
+
+    pain-01b: tsa-landing and downstream agent loops expect a verdict
+    field on every gate tool. Mapping (anti-bias: err high):
+      "high"    → "CAUTION"  (block — invasive change, needs review)
+      "medium"  → "REVIEW"   (warrants a careful test run)
+      "low"     → "INFO"     (safe edit, normal test cadence)
+      "none"    → "INFO"     (no changes detected)
+    """
+    if risk == "high":
+        return "CAUTION"
+    if risk == "medium":
+        return "REVIEW"
+    return "INFO"
+
+
 def build_no_changes_result(
     mode: str, scope_paths: list[str] | None = None
 ) -> dict[str, Any]:
     """Build a stable empty-diff response."""
     return {
         "success": True,
+        "verdict": "INFO",
         "mode": mode,
         "changed_files": [],
         "summary": "No changes detected",
         "agent_summary": {
+            "verdict": "INFO",
             "risk": "none",
             "scope": "scoped" if scope_paths else "workspace",
             "changed_count": 0,
@@ -62,14 +81,16 @@ def build_no_changes_result(
 def build_agent_summary_only_response(result: dict[str, Any]) -> dict[str, Any]:
     """Return a compact change-impact response for agent decision loops."""
     summary = result.get("agent_summary", {})
+    risk_level = result.get("risk_level", summary.get("risk", "none"))
     return {
         "success": result.get("success", False),
+        "verdict": result.get("verdict", _risk_to_verdict(risk_level)),
         "mode": result.get("mode", "diff"),
         "scope_paths": result.get("scope_paths", []),
         "scope_filtered": result.get("scope_filtered", False),
         "agent_summary_only": True,
         "agent_summary": summary,
-        "risk_level": result.get("risk_level", summary.get("risk", "none")),
+        "risk_level": risk_level,
         "changed_count": result.get("changed_count", summary.get("changed_count", 0)),
         "affected_count": result.get(
             "affected_count", summary.get("affected_count", 0)
@@ -98,6 +119,7 @@ def build_agent_summary(context: AgentSummaryContext) -> dict[str, Any]:
     verification = context.verification
     strategy = context.strategy
     summary: dict[str, Any] = {
+        "verdict": _risk_to_verdict(context.risk),
         "risk": context.risk,
         "scope": "scoped" if context.scope_paths else "workspace",
         "changed_count": len(context.changed_files),
@@ -193,6 +215,7 @@ def build_change_impact_response(
     strategy = context.strategy
     return {
         "success": True,
+        "verdict": _risk_to_verdict(context.risk),
         "mode": request.mode,
         "scope_paths": request.scope_paths or [],
         "scope_filtered": bool(request.scope_paths),
