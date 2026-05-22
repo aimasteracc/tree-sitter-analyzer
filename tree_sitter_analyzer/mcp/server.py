@@ -103,8 +103,11 @@ def _create_tool_registry(
     from .tools.analyze_code_structure_tool import AnalyzeCodeStructureTool
     from .tools.analyze_scale_tool import AnalyzeScaleTool
     from .tools.ast_cache_tool import ASTCacheTool
+    from .tools.batch_search_tool import BatchSearchTool
+    from .tools.build_project_index_tool import BuildProjectIndexTool
     from .tools.call_graph_tool import CodeGraphCallTool
     from .tools.change_impact_tool import ChangeImpactTool
+    from .tools.check_tools_tool import CheckToolsTool
     from .tools.code_patterns_tool import CodePatternsTool
     from .tools.dependency_analysis_tool import DependencyAnalysisTool
     from .tools.file_health_tool import FileHealthTool
@@ -132,6 +135,14 @@ def _create_tool_registry(
     # MCP — agents reading those descriptions would attempt to call tools
     # the server wouldn't recognise. Registering them honours the
     # description contract and the CLI-MCP parity rule.
+    #
+    # r37f4 (dogfood): 27 → 30 tools. The 3 remaining CLI-only tools
+    # (``batch_search`` / ``build_project_index`` / ``check_tools``) are
+    # genuine agent-utility surfaces — batch parallel ripgrep is faster than
+    # multiple ``search_content`` calls; ``build_project_index`` is what
+    # agents need when ``get_project_summary`` returns stale data; and
+    # ``check_tools`` is the canonical "are fd + rg installed?" probe.
+    # Hiding these behind CLI flags only made them invisible to MCP clients.
     tool_instances: list[tuple[str, Any]] = [
         ("check_code_scale", AnalyzeScaleTool(project_root)),
         ("analyze_code_structure", AnalyzeCodeStructureTool(project_root)),
@@ -141,11 +152,14 @@ def _create_tool_registry(
         ("list_files", ListFilesTool(project_root)),
         ("search_content", SearchContentTool(project_root)),
         ("find_and_grep", FindAndGrepTool(project_root)),
+        ("batch_search", BatchSearchTool(project_root)),
+        ("check_tools", CheckToolsTool(project_root)),
         ("list_agent_skills", AgentSkillsTool(project_root)),
         ("get_agent_workflow", AgentWorkflowTool(project_root)),
         ("advise_parser_readiness", ParserReadinessTool(project_root)),
         ("get_project_overview", ProjectOverviewTool(project_root)),
         ("get_project_summary", GetProjectSummaryTool(project_root)),
+        ("build_project_index", BuildProjectIndexTool(project_root)),
         ("check_project_health", ProjectHealthTool(project_root)),
         ("check_file_health", FileHealthTool(project_root)),
         ("analyze_dependencies", DependencyAnalysisTool(project_root)),

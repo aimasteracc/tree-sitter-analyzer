@@ -201,6 +201,12 @@ def test_registered_mcp_tools_have_cli_parity() -> None:
         "get_project_summary": ("main", "--overview"),
         "trace_impact": ("main", "--trace-impact"),
         "modification_guard": ("main", "--modification-guard"),
+        # r37f4 (dogfood): 3 CLI-only utility tools promoted to MCP. All
+        # three already had main-CLI flags; this just adds MCP exposure so
+        # the parity rule holds in both directions.
+        "batch_search": ("main", "--batch-search"),
+        "build_project_index": ("main", "--build-project-index"),
+        "check_tools": ("main", "--check-tools"),
     }
 
     tool_names = {name for name, _tool in _create_tool_registry(str(PROJECT_ROOT))[0]}

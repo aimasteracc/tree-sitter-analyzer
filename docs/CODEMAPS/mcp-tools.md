@@ -1,7 +1,7 @@
 <!-- Generated: 2026-05-22 -->
 # MCP Tools Codemap
 
-27 MCP tools registered in [`mcp/server.py:124`](../../tree_sitter_analyzer/mcp/server.py#L124).
+30 MCP tools registered in [`mcp/server.py:124`](../../tree_sitter_analyzer/mcp/server.py#L124).
 All tools default to **TOON output** (locked — see `CLAUDE.md`).
 
 ## Tool Registry
@@ -11,16 +11,19 @@ All tools default to **TOON output** (locked — see `CLAUDE.md`).
 | `check_code_scale` | `--check-scale` | Per-file metrics (LOC, complexity, classes/methods/imports counts) |
 | `analyze_code_structure` | `--table` / `--summary` | Full structural AST table |
 | `extract_code_section` | `--partial-read --start-line N --end-line M` | Token-efficient line range |
-| `get_code_outline` | (MCP-only; CLI: `--table compact`) | Structural navigation map (hierarchy, no method bodies) |
+| `get_code_outline` | `--table` / `--structure` | Structural navigation map (hierarchy, no method bodies) |
 | `query_code` | `--query-key methods --filter "public=true"` | tree-sitter query DSL |
 | `list_files` | `list-files` subcommand (fd) | Discovery |
 | `search_content` | `search-content` subcommand (ripgrep) | Regex search |
 | `find_and_grep` | `find-and-grep` subcommand (fd+rg pipeline) | Combined find+grep |
+| `batch_search` | `--batch-search` / `--batch-search-queries-json` | Multiple ripgrep searches in parallel (faster than sequential search_content) |
+| `check_tools` | `--check-tools` | Verify fd + ripgrep are installed (and report versions) |
 | `list_agent_skills` | `--list-skills` | Curated skill index for AI agents |
 | `get_agent_workflow` | `--smart-context` | SMART workflow (Set→Map→Analyze→Retrieve→Trace) |
 | `advise_parser_readiness` | `--parser-readiness` | Pre-flight check before parsing |
 | `get_project_overview` | `--project-overview` | One-screen project snapshot |
-| `get_project_summary` | (MCP-only) | Persistent architecture overview from disk-backed index |
+| `get_project_summary` | `--overview` (companion to `--project-overview`) | Persistent architecture overview from disk-backed index |
+| `build_project_index` | `--build-project-index` / `--build-project-index-roots` | Rebuild the persistent project index from scratch and save to disk |
 | `check_project_health` | `--project-health` | Health-score per file + grade distribution |
 | `check_file_health` | `--file-health` | One-file health score + actionable smells |
 | `analyze_dependencies` | `--dependencies` | Import graph + cycle detection |

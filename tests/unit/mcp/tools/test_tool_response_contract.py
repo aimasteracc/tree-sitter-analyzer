@@ -215,6 +215,12 @@ class TestExecuteAcrossAllTools:
             "get_project_summary": {},
             "trace_impact": {"symbol": "greet", "mode": "callers"},
             "modification_guard": {"file_path": sample_file, "symbol": "greet"},
+            # r37f4 (dogfood): 3 CLI-only utility tools promoted to MCP.
+            "batch_search": {
+                "queries": [{"query": "greet", "roots": [str(tiny_project)]}]
+            },
+            "build_project_index": {"roots": [str(tiny_project)]},
+            "check_tools": {},
         }
         skipped: list[str] = []
         for name, tool in registered_tools:
