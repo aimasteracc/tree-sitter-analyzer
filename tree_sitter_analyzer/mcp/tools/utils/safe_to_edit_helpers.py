@@ -98,6 +98,22 @@ def _collect_safe_to_edit_facts(context: SafeToEditContext) -> SafeToEditFacts:
     )
 
 
+def _safe_to_edit_verdict(risk: str) -> str:
+    """Map risk_level to canonical verdict vocabulary.
+
+    Anti-bias: when in doubt, err toward higher severity.
+
+    - safe → SAFE
+    - caution (needs prep work / refactor) → REVIEW
+    - dangerous (hard blocker) → CAUTION
+    """
+    if risk == "safe":
+        return "SAFE"
+    if risk == "dangerous":
+        return "CAUTION"
+    return "REVIEW"
+
+
 def _format_safe_to_edit_result(
     context: SafeToEditContext,
     facts: SafeToEditFacts,
@@ -113,11 +129,15 @@ def _format_safe_to_edit_result(
         project_root=context.project_root,
     )
     workflow = build_agent_workflow(workflow_context)
+    verdict = _safe_to_edit_verdict(facts.risk)
+    agent_summary = build_agent_summary(workflow_context, workflow)
+    agent_summary["verdict"] = verdict
     return {
         "success": True,
+        "verdict": verdict,
         "file_path": context.file_path,
         "risk_level": facts.risk,
-        "agent_summary": build_agent_summary(workflow_context, workflow),
+        "agent_summary": agent_summary,
         "risk_factors": facts.risk_factors,
         "health_grade": facts.health.grade,
         "health_score": facts.health.total,
