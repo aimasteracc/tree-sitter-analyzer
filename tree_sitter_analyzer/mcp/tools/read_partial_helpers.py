@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """Shared helpers for read_partial_tool — extracted schema and utility functions."""
 
+import json
 from pathlib import Path
 from typing import Any
+
+from ..utils.format_helper import format_for_file_output
 
 # JSON Schema: input validation for extract_code_section tool
 TOOL_SCHEMA: dict[str, Any] = {
@@ -451,3 +454,174 @@ def _batch_stop_condition(risk: str) -> str:
     if risk == "high":
         return "The batch completes without truncation or validation errors."
     return "All requested sections are available for the current task."
+
+
+# ---------------------------------------------------------------------------
+# r37dp (dogfood): Lifted pure formatters from ReadPartialTool to shrink
+# the class below the 500-line god_class threshold. These functions touch
+# no ``self`` state — they only convert primitive args + dict payloads.
+# ---------------------------------------------------------------------------
+
+
+def format_partial_content(
+    content: str,
+    content_format: str,
+    file_path: str,
+    start_line: int,
+    end_line: int | None,
+    start_column: int | None,
+    end_column: int | None,
+    lines_extracted: int,
+) -> Any:
+    """Format extracted content as JSON-lines dict or text header + body.
+
+    ``content_format="json"`` returns a structured ``{lines, metadata}``
+    dict (delegates to ``format_partial_content_as_json_lines``);
+    everything else returns the legacy ``--- Partial Read Result ---``
+    text envelope with metadata header followed by a JSON dump of the
+    range + content.
+    """
+    range_info = f"Line {start_line}"
+    if end_line:
+        range_info += f"-{end_line}"
+
+    result_data = {
+        "file_path": file_path,
+        "range": {
+            "start_line": start_line,
+            "end_line": end_line,
+            "start_column": start_column,
+            "end_column": end_column,
+        },
+        "content": content,
+        "content_length": len(content),
+    }
+
+    if content_format == "json":
+        return format_partial_content_as_json_lines(
+            content,
+            file_path,
+            start_line,
+            end_line,
+            start_column,
+            end_column,
+            lines_extracted,
+        )
+
+    json_output = json.dumps(result_data, indent=2, ensure_ascii=False)
+    return (
+        f"--- Partial Read Result ---\n"
+        f"File: {file_path}\n"
+        f"Range: {range_info}\n"
+        f"Characters read: {len(content)}\n"
+        f"{json_output}"
+    )
+
+
+def format_partial_content_as_json_lines(
+    content: str,
+    file_path: str,
+    start_line: int,
+    end_line: int | None,
+    start_column: int | None,
+    end_column: int | None,
+    lines_extracted: int,
+) -> dict[str, Any]:
+    """Format content as a JSON line array with range metadata.
+
+    Pads / truncates the line list to match ``lines_extracted`` when
+    ``end_line`` is provided — agents always see the same shape they
+    asked for, even on past-EOF reads.
+    """
+    lines = content.split("\n")
+    if end_line and len(lines) > lines_extracted:
+        lines = lines[:lines_extracted]
+    elif end_line and len(lines) < lines_extracted:
+        pad = lines_extracted - len(lines)
+        lines.extend([""] * pad)
+    return {
+        "lines": lines,
+        "metadata": {
+            "file_path": file_path,
+            "range": {
+                "start_line": start_line,
+                "end_line": end_line,
+                "start_column": start_column,
+                "end_column": end_column,
+            },
+            "content_length": len(content),
+            "lines_count": len(lines),
+        },
+    }
+
+
+def prepare_partial_save_content(
+    content_format: str,
+    content: str,
+    result: dict[str, Any],
+    file_path: str,
+    output_format: str,
+) -> str:
+    """Prepare extracted content for file output based on ``content_format``.
+
+    ``raw`` returns the body untouched. ``json`` wraps body + range
+    metadata and emits either a TOON blob (when ``output_format=='toon'``)
+    or pretty-printed JSON. Any other format falls back to the already-
+    rendered ``result['partial_content_result']`` string.
+    """
+    if content_format == "raw":
+        return content
+    if content_format == "json":
+        result_data = {
+            "file_path": file_path,
+            "range": result["range"],
+            "content": content,
+            "content_length": len(content),
+        }
+        if output_format == "toon":
+            content_to_save, _ = format_for_file_output(result_data, "toon")
+            return content_to_save
+        return json.dumps(result_data, indent=2, ensure_ascii=False)
+    return str(result.get("partial_content_result", content))
+
+
+def apply_partial_file_output(
+    *,
+    result: dict[str, Any],
+    file_path: str,
+    content: str,
+    content_format: str,
+    output_format: str,
+    output_file: str | None,
+    file_output_manager: Any,
+    logger: Any,
+) -> None:
+    """Persist extracted content to ``output_file`` when requested.
+
+    No-op when ``output_file`` is falsy. On success, mutates ``result``
+    with ``output_file_path`` + ``file_saved=True``. On failure, sets
+    ``file_save_error`` + ``file_saved=False`` and logs the exception.
+    Caller threads in its ``file_output_manager`` and ``logger`` so the
+    helper stays dependency-light (no module-level globals).
+    """
+    if not output_file:
+        return
+    try:
+        base_name = (
+            output_file.strip()
+            if output_file.strip()
+            else Path(file_path).stem + "_extract"
+        )
+        content_to_save = prepare_partial_save_content(
+            content_format, content, result, file_path, output_format
+        )
+        saved_file_path = file_output_manager.save_to_file(
+            content=content_to_save, base_name=base_name
+        )
+        result["output_file_path"] = saved_file_path
+        result["file_saved"] = True
+        logger.info(f"Extract output saved to: {saved_file_path}")
+    except Exception as e:
+        logger.error(f"Failed to save output to file: {e}")
+        result["file_save_error"] = str(e)
+        result["file_saved"] = False

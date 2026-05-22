@@ -6,7 +6,6 @@ This tool provides partial file reading functionality through the MCP protocol,
 allowing selective content extraction with line and column range support.
 """
 
-import json
 from pathlib import Path
 from typing import Any
 
@@ -14,11 +13,18 @@ from ...file_handler import read_file_partial
 from ...utils import setup_logger
 from ..utils.error_sanitizer import safe_error_message
 from ..utils.file_output_manager import FileOutputManager
-from ..utils.format_helper import apply_toon_format_to_response, format_for_file_output
+from ..utils.format_helper import apply_toon_format_to_response
 from .base_tool import BaseMCPTool
 from .batch_executor import execute_batch
 from .read_partial_helpers import TOOL_SCHEMA as _TOOL_SCHEMA
-from .read_partial_helpers import build_agent_summary_for_result, count_file_lines
+from .read_partial_helpers import (
+    apply_partial_file_output,
+    build_agent_summary_for_result,
+    count_file_lines,
+    format_partial_content,
+    format_partial_content_as_json_lines,
+    prepare_partial_save_content,
+)
 
 logger = setup_logger(__name__)
 
@@ -371,50 +377,23 @@ class ReadPartialTool(BaseMCPTool):
         end_column: int | None,
         lines_extracted: int,
     ) -> Any:
-        """Format extracted content as json or text with metadata header."""
-        # Build human-readable range description
-        range_info = f"Line {start_line}"
-        if end_line:
-            range_info += f"-{end_line}"
+        """Format extracted content as json or text with metadata header.
 
-        # Build structured result data with range and content
-        result_data = {
-            "file_path": file_path,
-            "range": {
-                "start_line": start_line,
-                "end_line": end_line,
-                "start_column": start_column,
-                "end_column": end_column,
-            },
-            "content": content,
-            "content_length": len(content),
-        }
-
-        # JSON format: return as line array with metadata
-        if content_format == "json":
-            return self._format_as_json_lines(
-                content,
-                file_path,
-                start_line,
-                end_line,
-                start_column,
-                end_column,
-                lines_extracted,
-            )
-
-        # Text format: return JSON dump with metadata header
-        json_output = json.dumps(result_data, indent=2, ensure_ascii=False)
-        # Build text result with header and content
-        return (
-            f"--- Partial Read Result ---\n"
-            f"File: {file_path}\n"
-            f"Range: {range_info}\n"
-            f"Characters read: {len(content)}\n"
-            f"{json_output}"
+        r37dp (dogfood): thin delegation to ``format_partial_content``
+        (lifted to ``read_partial_helpers``) so the class drops below the
+        500-line god_class threshold.
+        """
+        return format_partial_content(
+            content,
+            content_format,
+            file_path,
+            start_line,
+            end_line,
+            start_column,
+            end_column,
+            lines_extracted,
         )
 
-    # Format content as JSON line array with metadata
-    # Splits content into lines and pads/truncates to match requested range
     def _format_as_json_lines(
         self,
         content: str,
@@ -425,29 +404,17 @@ class ReadPartialTool(BaseMCPTool):
         end_column: int | None,
         lines_extracted: int,
     ) -> dict[str, Any]:
-        """Format content as a JSON line array with metadata."""
-        lines = content.split("\n")
-        if end_line and len(lines) > lines_extracted:
-            lines = lines[:lines_extracted]
-        elif end_line and len(lines) < lines_extracted:
-            pad = lines_extracted - len(lines)
-            lines.extend([""] * pad)
-        return {
-            "lines": lines,
-            "metadata": {
-                "file_path": file_path,
-                "range": {
-                    "start_line": start_line,
-                    "end_line": end_line,
-                    "start_column": start_column,
-                    "end_column": end_column,
-                },
-                "content_length": len(content),
-                "lines_count": len(lines),
-            },
-        }
+        """Format content as a JSON line array with metadata (delegates)."""
+        return format_partial_content_as_json_lines(
+            content,
+            file_path,
+            start_line,
+            end_line,
+            start_column,
+            end_column,
+            lines_extracted,
+        )
 
-    # Write extracted content to output file
     def _apply_file_output(
         self,
         result: dict[str, Any],
@@ -457,43 +424,18 @@ class ReadPartialTool(BaseMCPTool):
         output_format: str,
         output_file: str | None,
     ) -> None:
-        """Write extracted content to a file if output_file is specified."""
-        # Skip if no output file requested
-        if not output_file:
-            return
+        """Write extracted content to a file (delegates to module helper)."""
+        apply_partial_file_output(
+            result=result,
+            file_path=file_path,
+            content=content,
+            content_format=content_format,
+            output_format=output_format,
+            output_file=output_file,
+            file_output_manager=self.file_output_manager,
+            logger=logger,
+        )
 
-        try:
-            # Determine base name for the output file
-            base_name = (
-                output_file.strip()
-                if output_file.strip()
-                else Path(file_path).stem + "_extract"
-            )
-
-            # Prepare content in appropriate format for saving
-            content_to_save = self._prepare_save_content(
-                content_format,
-                content,
-                result,
-                file_path,
-                output_format,
-            )
-
-            # Save to file and record path in result
-            saved_file_path = self.file_output_manager.save_to_file(
-                content=content_to_save, base_name=base_name
-            )
-            result["output_file_path"] = saved_file_path
-            result["file_saved"] = True
-            logger.info(f"Extract output saved to: {saved_file_path}")
-
-        except Exception as e:
-            logger.error(f"Failed to save output to file: {e}")
-            result["file_save_error"] = str(e)
-            result["file_saved"] = False
-
-    # Prepare content for file output based on format
-    # Converts raw content to appropriate format (raw, toon, or json)
     def _prepare_save_content(
         self,
         content_format: str,
@@ -502,25 +444,10 @@ class ReadPartialTool(BaseMCPTool):
         file_path: str,
         output_format: str,
     ) -> str:
-        """Prepare content for saving to file based on format type."""
-        # Raw format: return content as-is
-        if content_format == "raw":
-            return content
-        # JSON format: structure with range metadata
-        if content_format == "json":
-            result_data = {
-                "file_path": file_path,
-                "range": result["range"],
-                "content": content,
-                "content_length": len(content),
-            }
-            # Use toon format for token efficiency
-            if output_format == "toon":
-                content_to_save, _ = format_for_file_output(result_data, "toon")
-                return content_to_save
-            return json.dumps(result_data, indent=2, ensure_ascii=False)
-        # Default: use the formatted result content
-        return str(result.get("partial_content_result", content))
+        """Prepare content for saving to file (delegates to module helper)."""
+        return prepare_partial_save_content(
+            content_format, content, result, file_path, output_format
+        )
 
     # Batch mode: delegate to batch_executor for multi-range extraction
     async def _execute_batch(self, arguments: dict[str, Any]) -> dict[str, Any]:
