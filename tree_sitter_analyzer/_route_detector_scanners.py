@@ -140,6 +140,40 @@ def _python_source_text(root: Any) -> str:
         return ""
 
 
+def _append_flask_routes(
+    routes: list[Any],
+    route_info_cls: type,
+    *,
+    methods: list[str],
+    url_pattern: str,
+    handler: str,
+    file_path: str,
+    line_number: int,
+) -> None:
+    """Append one ``route_info_cls`` entry per HTTP method for a Flask route.
+
+    Flask's ``@app.route(..., methods=[...])`` can list multiple methods
+    on a single decorator; we emit one route entry per method so the
+    detector's downstream dedupe and per-method filtering work as
+    expected. Method names are upper-cased to canonicalise GET/POST etc.
+
+    r37dv (dogfood): lifted from ``scan_flask_decorators`` to flatten
+    the for/append/dataclass-call from depth 6 to 4.
+    """
+    for method in methods:
+        routes.append(
+            route_info_cls(
+                http_method=method.upper(),
+                url_pattern=url_pattern,
+                handler_name=handler,
+                file_path=file_path,
+                line_number=line_number,
+                framework="flask",
+                language="python",
+            )
+        )
+
+
 def scan_flask_decorators(
     root: Any, file_path: str, _source: str, route_info_cls: type
 ) -> list[Any]:
@@ -157,22 +191,20 @@ def scan_flask_decorators(
             text,
         )
         if m:
+            # r37dv (dogfood): flatten nesting 6 → 4 via _append_flask_routes.
             url_pattern = m.group(1)
             methods_str = m.group(2)
             methods = parse_methods_list(methods_str) if methods_str else ["GET"]
             handler = function_name_after_decorator(node)
-            for method in methods:
-                routes.append(
-                    route_info_cls(
-                        http_method=method.upper(),
-                        url_pattern=url_pattern,
-                        handler_name=handler,
-                        file_path=file_path,
-                        line_number=node.start_point[0] + 1,
-                        framework="flask",
-                        language="python",
-                    )
-                )
+            _append_flask_routes(
+                routes,
+                route_info_cls,
+                methods=methods,
+                url_pattern=url_pattern,
+                handler=handler,
+                file_path=file_path,
+                line_number=node.start_point[0] + 1,
+            )
             continue
         # K1: ``@app.get('/x')`` / ``@app.post('/x')`` are the Flask 2.0+
         # shortcut decorators (also FastAPI). Only emit a flask route here
@@ -534,21 +566,23 @@ def scan_spring_annotations(
         simple_name = ann_name.rsplit(".", 1)[-1]
         http_method = _SPRING_ANNOTATION_MAP.get(simple_name)
         if not http_method:
-            if simple_name == "RequestMapping":
-                http_method, url_pattern = parse_request_mapping(node)
-                if url_pattern is None:
-                    continue
-                routes.append(
-                    route_info_cls(
-                        http_method=http_method,
-                        url_pattern=url_pattern,
-                        handler_name=method_after_annotation(node),
-                        file_path=file_path,
-                        line_number=node.start_point[0] + 1,
-                        framework="spring",
-                        language="java",
-                    )
+            # r37dv (dogfood): flatten nesting 6 → 4 via early-continue.
+            if simple_name != "RequestMapping":
+                continue
+            http_method, url_pattern = parse_request_mapping(node)
+            if url_pattern is None:
+                continue
+            routes.append(
+                route_info_cls(
+                    http_method=http_method,
+                    url_pattern=url_pattern,
+                    handler_name=method_after_annotation(node),
+                    file_path=file_path,
+                    line_number=node.start_point[0] + 1,
+                    framework="spring",
+                    language="java",
                 )
+            )
             continue
         url_pattern = extract_annotation_value(node) or ""
         routes.append(

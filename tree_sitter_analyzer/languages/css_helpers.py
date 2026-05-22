@@ -24,18 +24,22 @@ def parse_declaration(
     decl_node: Any,
     get_node_text: Callable[..., str],
 ) -> tuple[str, str]:
-    """Parse individual CSS declaration."""
+    """Parse individual CSS declaration.
+
+    r37dv (dogfood): flatten nesting 6 → 3 via early-continue per child.
+    """
     try:
         prop_name = ""
         prop_value = ""
 
         if hasattr(decl_node, "children"):
             for child in decl_node.children:
-                if hasattr(child, "type"):
-                    if child.type == "property_name":
-                        prop_name = get_node_text(child).strip()
-                    elif child.type in ("value", "values"):
-                        prop_value = get_node_text(child).strip()
+                if not hasattr(child, "type"):
+                    continue
+                if child.type == "property_name":
+                    prop_name = get_node_text(child).strip()
+                elif child.type in ("value", "values"):
+                    prop_value = get_node_text(child).strip()
 
         if not prop_name:
             decl_text = get_node_text(decl_node)
@@ -53,21 +57,25 @@ def extract_at_rule_name(
     node: Any,
     get_node_text: Callable[..., str],
 ) -> str:
-    """Extract at-rule name from CSS at-rule node."""
+    """Extract at-rule name from CSS at-rule node.
+
+    r37dv (dogfood): flatten nesting 6 → 3 via early-return chain.
+    """
     try:
         node_text = get_node_text(node)
-        if node_text.startswith("@"):
-            if "{" in node_text:
-                return node_text.split("{")[0].strip()
-            parts = node_text.split()
-            if parts:
-                if parts[0] in ("@media", "@keyframes", "@supports"):
-                    first_line = node_text.split("\n")[0].strip()
-                    if "{" in first_line:
-                        return first_line.split("{")[0].strip()
-                    return first_line
-                return parts[0]
-        return node_text[:50]
+        if not node_text.startswith("@"):
+            return node_text[:50]
+        if "{" in node_text:
+            return node_text.split("{")[0].strip()
+        parts = node_text.split()
+        if not parts:
+            return node_text[:50]
+        if parts[0] not in ("@media", "@keyframes", "@supports"):
+            return parts[0]
+        first_line = node_text.split("\n")[0].strip()
+        if "{" in first_line:
+            return first_line.split("{")[0].strip()
+        return first_line
     except Exception:
         return "unknown"
 
