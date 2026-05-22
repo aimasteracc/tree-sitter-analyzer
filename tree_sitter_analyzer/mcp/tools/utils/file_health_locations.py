@@ -4,14 +4,27 @@ from __future__ import annotations
 
 from typing import Any
 
+from .anti_patterns import python_docstring_line_set
 from .element_extractor import get_functions
 
 
 def deepest_nesting_location(lines: list[str]) -> tuple[int, int]:
-    """Return the deepest indentation-derived nesting depth and its line."""
+    """Return the deepest indentation-derived nesting depth and its line.
+
+    r37ck (dogfood): tool flagged ``health_scorer.py:321`` as nesting
+    depth 7 — but that line is just an indented continuation of an
+    ``__init__`` docstring. Multi-line docstring bodies were never
+    executable code; counting their leading whitespace as nesting was
+    the same docstring-blind class of bug r37as / r37au eliminated for
+    AP001 + eval_usage. Skip lines that fall inside a Python
+    triple-quoted string before measuring indentation.
+    """
+    docstring_lines = python_docstring_line_set(lines)
     max_indent = 0
     max_line = 0
     for line_number, line in enumerate(lines, start=1):
+        if line_number in docstring_lines:
+            continue
         stripped = line.rstrip()
         if not stripped or stripped.startswith("#"):
             continue
