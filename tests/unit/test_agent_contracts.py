@@ -214,6 +214,22 @@ def test_registered_mcp_tools_have_cli_parity() -> None:
         # Feature 3 (Constraint DSL): MCP tool ``check_constraints`` ships
         # with the CLI flag ``--check-constraints`` for CLI/MCP parity.
         "check_constraints": ("main", "--check-constraints"),
+        # Tools that already had CLI flags but were missing from this
+        # mapping table while the server.py registry was stale. Now that
+        # server.py delegates to the central registry, these come into
+        # scope automatically.
+        "codegraph_call_path": ("main", "--call-path"),
+        "codegraph_xref": ("main", "--codegraph-xref"),
+        "codegraph_sitemap": ("main", "--codegraph-sitemap"),
+        "codegraph_complexity_heatmap": ("main", "--codegraph-complexity-heatmap"),
+        "codegraph_visualize": ("main", "--codegraph-visualize"),
+        # MCP-only tools — registered in the MCP server but intentionally
+        # not exposed as CLI flags yet. Bookkept here so the registry-vs-
+        # mapping contract stays in sync; if/when CLI flags ship for them,
+        # update the second tuple element to the chosen flag.
+        "codegraph_autoindex": ("mcp_only", "—"),
+        "codegraph_full_index": ("mcp_only", "—"),
+        "codegraph_metrics": ("mcp_only", "—"),
     }
 
     tool_names = {name for name, _tool in _create_tool_registry(str(PROJECT_ROOT))[0]}

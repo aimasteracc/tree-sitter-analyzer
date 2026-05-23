@@ -244,6 +244,22 @@ class TestExecuteAcrossAllTools:
             "codegraph_class_hierarchy": {"mode": "summary"},
             "codegraph_dependency_matrix": {"mode": "summary"},
             "check_constraints": {"output_format": "json"},
+            # Pain pass 6: server.py registry consolidation surfaced 8
+            # tools that were in the central registry but missing from
+            # server.py's stale copy. They lack envelope-contract rows
+            # for the same reason — server.py never instantiated them so
+            # the contract sweep never saw them.
+            "codegraph_call_path": {
+                "mode": "forward",
+                "source_function": "greet",
+            },
+            "codegraph_xref": {"symbol": "greet"},
+            "codegraph_sitemap": {"mode": "module"},
+            "codegraph_complexity_heatmap": {"mode": "project"},
+            "codegraph_visualize": {"mode": "full"},
+            "codegraph_autoindex": {"mode": "status"},
+            "codegraph_full_index": {"mode": "stats"},
+            "codegraph_metrics": {"mode": "project"},
         }
         skipped: list[str] = []
         for name, tool in registered_tools:

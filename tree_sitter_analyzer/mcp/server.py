@@ -88,100 +88,27 @@ logger = setup_logger(__name__)
 def _create_tool_registry(
     project_root: str | None,
 ) -> tuple[list[tuple[str, Any]], dict[str, Any]]:
-    """Create the tool registry with all MCP tools.
+    """Thin wrapper around the canonical registry in ``_tool_registry.py``.
 
-    PERF-3: tool classes are imported here, not at module top level. A caller
-    that imports tree_sitter_analyzer.mcp.server but never builds a server
-    (e.g. tests that only touch _create_tool_registry's signature) pays
-    ~zero of the per-tool import cost.
+    Historical drift: this function used to maintain its own duplicate list
+    of tool registrations alongside ``mcp/_tool_registry.create_tool_registry``.
+    Over time the two lists drifted — server.py was missing 8 tools
+    (codegraph_autoindex, codegraph_call_path, codegraph_complexity_heatmap,
+    codegraph_full_index, codegraph_metrics, codegraph_sitemap,
+    codegraph_visualize, codegraph_xref) that exist in the central registry.
+
+    To prevent future drift, this function now delegates to the single
+    source of truth. PERF-3 (lazy tool-class imports) is preserved because
+    ``create_tool_registry`` inlines the same imports.
+
+    Existing callers (TreeSitterAnalyzerMCPServer.__init__, contract tests,
+    test fixtures) keep the same ``(list, dict)`` return shape they always
+    expected — they simply see the full 48-tool registry now instead of a
+    stale 40-tool subset.
     """
-    # Imports inlined so they are only paid when a registry is actually built.
-    # Keep this list alphabetised — the tuple order below is the public
-    # registration order, not the import order.
-    from .tools.agent_skills_tool import AgentSkillsTool
-    from .tools.agent_workflow_tool import AgentWorkflowTool
-    from .tools.analyze_code_structure_tool import AnalyzeCodeStructureTool
-    from .tools.analyze_scale_tool import AnalyzeScaleTool
-    from .tools.ast_cache_tool import ASTCacheTool
-    from .tools.ast_diff_tool import ASTDiffTool
-    from .tools.ast_path_tool import CodeGraphASTPathTool
-    from .tools.call_graph_tool import CodeGraphCallTool
-    from .tools.callees_tool import CodeGraphCalleesTool
-    from .tools.callers_tool import CodeGraphCallersTool
-    from .tools.change_impact_tool import ChangeImpactTool
-    from .tools.class_hierarchy_tool import ClassHierarchyTool
-    from .tools.code_patterns_tool import CodePatternsTool
-    from .tools.code_similarity_tool import CodeGraphSimilarityTool
-    from .tools.codegraph_impact_tool import CodeGraphImpactTool
-    from .tools.codegraph_navigate_tool import CodeGraphNavigateTool
-    from .tools.codegraph_overview_tool import CodeGraphOverviewTool
-    from .tools.codegraph_pr_review_tool import CodeGraphPRReviewTool
-    from .tools.constraint_check_tool import ConstraintCheckTool
-    from .tools.dead_code_tool import CodeGraphDeadCodeTool
-    from .tools.dependency_analysis_tool import DependencyAnalysisTool
-    from .tools.dependency_matrix_tool import CodeGraphDependencyMatrixTool
-    from .tools.file_health_tool import FileHealthTool
-    from .tools.find_and_grep_tool import FindAndGrepTool
-    from .tools.import_graph_tool import CodeGraphImportGraphTool
-    from .tools.list_files_tool import ListFilesTool
-    from .tools.parser_readiness_tool import ParserReadinessTool
-    from .tools.project_health_tool import ProjectHealthTool
-    from .tools.project_overview_tool import ProjectOverviewTool
-    from .tools.query_tool import QueryTool
-    from .tools.read_partial_tool import ReadPartialTool
-    from .tools.refactoring_suggestions_tool import RefactoringSuggestionsTool
-    from .tools.route_detector_tool import RouteDetectorTool
-    from .tools.safe_to_edit_tool import SafeToEditTool
-    from .tools.search_content_tool import SearchContentTool
-    from .tools.semantic_classify_tool import SemanticClassifyTool
-    from .tools.smart_context_tool import SmartContextTool
-    from .tools.symbol_lineage_tool import SymbolLineageTool
-    from .tools.symbol_resolve_tool import CodeGraphSymbolResolveTool
-    from .tools.symbol_search_tool import CodeGraphSymbolSearchTool
+    from ._tool_registry import create_tool_registry
 
-    tool_instances: list[tuple[str, Any]] = [
-        ("check_code_scale", AnalyzeScaleTool(project_root)),
-        ("analyze_code_structure", AnalyzeCodeStructureTool(project_root)),
-        ("extract_code_section", ReadPartialTool(project_root)),
-        ("query_code", QueryTool(project_root)),
-        ("list_files", ListFilesTool(project_root)),
-        ("search_content", SearchContentTool(project_root)),
-        ("find_and_grep", FindAndGrepTool(project_root)),
-        ("list_agent_skills", AgentSkillsTool(project_root)),
-        ("get_agent_workflow", AgentWorkflowTool(project_root)),
-        ("advise_parser_readiness", ParserReadinessTool(project_root)),
-        ("get_project_overview", ProjectOverviewTool(project_root)),
-        ("check_project_health", ProjectHealthTool(project_root)),
-        ("check_file_health", FileHealthTool(project_root)),
-        ("analyze_dependencies", DependencyAnalysisTool(project_root)),
-        ("ast_cache", ASTCacheTool(project_root)),
-        ("ast_diff", ASTDiffTool(project_root)),
-        ("codegraph_call_graph", CodeGraphCallTool(project_root)),
-        ("codegraph_callers", CodeGraphCallersTool(project_root)),
-        ("codegraph_callees", CodeGraphCalleesTool(project_root)),
-        ("codegraph_overview", CodeGraphOverviewTool(project_root)),
-        ("codegraph_navigate", CodeGraphNavigateTool(project_root)),
-        ("codegraph_pr_review", CodeGraphPRReviewTool(project_root)),
-        ("codegraph_symbol_search", CodeGraphSymbolSearchTool(project_root)),
-        ("codegraph_resolve", CodeGraphSymbolResolveTool(project_root)),
-        ("analyze_change_impact", ChangeImpactTool(project_root)),
-        ("refactoring_suggestions", RefactoringSuggestionsTool(project_root)),
-        ("safe_to_edit", SafeToEditTool(project_root)),
-        ("smart_context", SmartContextTool(project_root)),
-        ("symbol_lineage", SymbolLineageTool(project_root)),
-        ("code_patterns", CodePatternsTool(project_root)),
-        ("codegraph_ast_path", CodeGraphASTPathTool(project_root)),
-        ("codegraph_impact", CodeGraphImpactTool(project_root)),
-        ("semantic_classify", SemanticClassifyTool(project_root)),
-        ("detect_routes", RouteDetectorTool(project_root)),
-        ("codegraph_import_graph", CodeGraphImportGraphTool(project_root)),
-        ("codegraph_similarity", CodeGraphSimilarityTool(project_root)),
-        ("codegraph_dead_code", CodeGraphDeadCodeTool(project_root)),
-        ("codegraph_class_hierarchy", ClassHierarchyTool(project_root)),
-        ("codegraph_dependency_matrix", CodeGraphDependencyMatrixTool(project_root)),
-        ("check_constraints", ConstraintCheckTool(project_root)),
-    ]
-    return tool_instances, dict(tool_instances)
+    return create_tool_registry(project_root)
 
 
 class TreeSitterAnalyzerMCPServer:

@@ -223,7 +223,7 @@ class CodeGraphVisualizeTool(BaseMCPTool):
 
         response: dict[str, Any] = {
             "success": True,
-            "verdict": "OK",
+            "verdict": "INFO",
             "mermaid": mermaid,
             "stats": stats,
         }
