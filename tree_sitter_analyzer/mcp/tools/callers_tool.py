@@ -22,10 +22,12 @@ class CodeGraphCallersTool(BaseMCPTool):
 
     def __init__(self, project_root: str | None = None) -> None:
         self._call_graph: CallGraph | None = None
+        self._data_source: str = "unknown"
         super().__init__(project_root)
 
     def _on_project_root_changed(self, project_root: str | None) -> None:
         self._call_graph = None
+        self._data_source = "unknown"
 
     def _try_get_cache(self) -> Any:
         try:
@@ -49,8 +51,10 @@ class CodeGraphCallersTool(BaseMCPTool):
             cache = self._try_get_cache()
             if cache is not None:
                 self._call_graph = CachedCallGraph(self.project_root, cache=cache)
+                self._data_source = "cache"
             else:
                 self._call_graph = CallGraph(self.project_root)
+                self._data_source = "parse"
         return self._call_graph
 
     def get_tool_definition(self) -> dict[str, Any]:
@@ -107,6 +111,7 @@ class CodeGraphCallersTool(BaseMCPTool):
         result: dict[str, Any] = {
             "success": True,
             "verdict": "INFO" if callers else "NOT_FOUND",
+            "data_source": self._data_source,
             "function": func_name,
             "caller_count": len(callers),
             "callers": callers,

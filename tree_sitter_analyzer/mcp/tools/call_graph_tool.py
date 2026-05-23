@@ -9,7 +9,7 @@ CodeGraph parity: equivalent to codegraph_callers / codegraph_callees.
 
 from typing import Any
 
-from ...call_graph import CallGraph
+from ...call_graph import CachedCallGraph, CallGraph
 from ...utils import setup_logger
 from .base_tool import BaseMCPTool
 
@@ -17,20 +17,49 @@ logger = setup_logger(__name__)
 
 
 class CodeGraphCallTool(BaseMCPTool):
-    """MCP Tool for function-level call graph analysis."""
+    """MCP Tool for function-level call graph analysis.
+
+    Uses CachedCallGraph (SQLite-backed) when the AST cache has been
+    indexed, falling back to full CallGraph (re-parse) otherwise.
+    """
 
     def __init__(self, project_root: str | None = None) -> None:
         self._call_graph: CallGraph | None = None
+        self._data_source: str = "unknown"
         super().__init__(project_root)
 
     def _on_project_root_changed(self, project_root: str | None) -> None:
         self._call_graph = None
+        self._data_source = "unknown"
+
+    def _try_get_cache(self) -> Any:
+        try:
+            from ...ast_cache import ASTCache
+
+            if self.project_root is None:
+                return None
+            cache = ASTCache(self.project_root)
+            stats = cache.get_stats()
+            if stats.get("total_files", 0) > 0:
+                return cache
+            cache.close()
+        except Exception:  # nosec B110
+            pass
+        return None
 
     def _get_call_graph(self) -> CallGraph:
         if self._call_graph is None:
             if not self.project_root:
                 raise ValueError("Project root not set. Call set_project_path first.")
-            self._call_graph = CallGraph(self.project_root)
+            cache = self._try_get_cache()
+            if cache is not None:
+                self._call_graph = CachedCallGraph(
+                    self.project_root, cache=cache
+                )
+                self._data_source = "cache"
+            else:
+                self._call_graph = CallGraph(self.project_root)
+                self._data_source = "parse"
         return self._call_graph
 
     def get_tool_definition(self) -> dict[str, Any]:
@@ -114,6 +143,7 @@ class CodeGraphCallTool(BaseMCPTool):
                 "success": True,
                 "mode": "summary",
                 "verdict": verdict,
+                "data_source": self._data_source,
                 **summary,
             }
         elif mode == "all_functions":
@@ -122,6 +152,7 @@ class CodeGraphCallTool(BaseMCPTool):
                 "success": True,
                 "mode": "all_functions",
                 "verdict": "INFO" if funcs else "NOT_FOUND",
+                "data_source": self._data_source,
                 "count": len(funcs),
                 "functions": funcs,
             }
@@ -133,6 +164,7 @@ class CodeGraphCallTool(BaseMCPTool):
                 "success": True,
                 "mode": "callers",
                 "verdict": "INFO" if callers else "NOT_FOUND",
+                "data_source": self._data_source,
                 "function": func_name,
                 "caller_count": len(callers),
                 "callers": callers,
@@ -145,6 +177,7 @@ class CodeGraphCallTool(BaseMCPTool):
                 "success": True,
                 "mode": "callees",
                 "verdict": "INFO" if callees else "NOT_FOUND",
+                "data_source": self._data_source,
                 "function": func_name,
                 "callee_count": len(callees),
                 "callees": callees,
@@ -158,6 +191,7 @@ class CodeGraphCallTool(BaseMCPTool):
                 "success": True,
                 "mode": "chain",
                 "verdict": "INFO" if chain else "NOT_FOUND",
+                "data_source": self._data_source,
                 "function": func_name,
                 "depth": depth,
                 "edge_count": len(chain),
@@ -170,6 +204,7 @@ class CodeGraphCallTool(BaseMCPTool):
                 "success": True,
                 "mode": "file_impact",
                 "verdict": "INFO" if impact["function_count"] > 0 else "NOT_FOUND",
+                "data_source": self._data_source,
                 **impact,
             }
         elif mode == "functions_in_file":
@@ -179,6 +214,7 @@ class CodeGraphCallTool(BaseMCPTool):
                 "success": True,
                 "mode": "functions_in_file",
                 "verdict": "INFO" if funcs else "NOT_FOUND",
+                "data_source": self._data_source,
                 "file": file_path,
                 "function_count": len(funcs),
                 "functions": funcs,
