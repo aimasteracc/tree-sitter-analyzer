@@ -1,7 +1,7 @@
 <!-- Generated: 2026-05-22 -->
 # Languages Codemap
 
-17 language plugins under `tree_sitter_analyzer/languages/`.
+21 language plugins under `tree_sitter_analyzer/languages/` (16 single-file + 5 subdir packages).
 Each implements the `LanguagePlugin` interface (`tree_sitter_analyzer/plugins/base.py`).
 
 ## Supported Languages
@@ -80,3 +80,4 @@ class LanguagePlugin(ABC):
 - [`docs/new-language-support-checklist.md`](../new-language-support-checklist.md)
 - [`tree_sitter_analyzer/plugins/base.py`](../../tree_sitter_analyzer/plugins/base.py) — interface
 - [`tree_sitter_analyzer/plugins/registry.py`](../../tree_sitter_analyzer/plugins/registry.py) — language → plugin lookup
+- [`scripts/codemap-sync-check.sh`](../../scripts/codemap-sync-check.sh) — pre-commit gate that blocks new `languages/<lang>_plugin/` without a `languages.md` update

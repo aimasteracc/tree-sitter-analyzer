@@ -29,7 +29,8 @@ cli/commands/
 ├── find_and_grep_cli.py        ← fd + ripgrep subcommands
 ├── list_files_cli.py           ← `list-files` subcommand
 ├── search_content_cli.py       ← `search-content` subcommand
-└── mcp_commands.py             ← MCP-equivalent CLI flags (parity contract)
+├── mcp_commands.py             ← MCP-equivalent CLI flags (parity contract)
+└── codegraph_index_commands.py ← cache trio: autoindex / full-index / incremental-sync / metrics
 ```
 
 ## Flag → Tool Mapping
@@ -71,7 +72,26 @@ Categories of CLI surface:
 
 ### Cache & Index
 - `--ast-cache index|stats|lookup|invalidate` — AST cache ops
+- `--autoindex [--autoindex-mode status|warm|reset]` — transparent auto-index
+- `--full-index [--full-index-mode rebuild|stats|clear]` — one-shot complete index
+- `--incremental-sync [--incremental-sync-mode sync|changes|status]` — content-hash diff re-index (SHA-256)
+- `--codegraph-metrics` — aggregated cache/call-graph/complexity/health dashboard
 - `--parser-readiness` — pre-flight checks
+
+### CodeGraph parity (cross-file intelligence from pre-indexed AST cache)
+- `--callers SYMBOL` / `--callees SYMBOL` — bidirectional call tracking
+- `--call-path FROM TO` — BFS path between two functions
+- `--symbol-resolve` — go-to-definition / find-all-references
+- `--ast-path FILE:LINE` — "what is at file:line?"
+- `--codegraph-symbol-search QUERY` — FTS5 symbol search
+- `--dead-code` — transitive dead functions / unused imports
+- `--class-hierarchy` / `--dependency-matrix` / `--import-graph` — structural
+- `--codegraph-xref` — multi-dimension cross-reference
+- `--codegraph-complexity-heatmap` — cyclomatic complexity heatmap
+- `--codegraph-sitemap` — hierarchical project code map
+- `--codegraph-visualize` — Mermaid flowchart export
+- `--code-similarity` — AST-structural clone detection
+- `--pr-review` — AST diff + semantic classify + blast-radius PR review
 
 ### Info
 - `--show-supported-languages`
@@ -111,6 +131,7 @@ or `git diff --check` for non-code edits.
 
 ## See Also
 
-- [`docs/cli-reference.md`](../cli-reference.md) — Full CLI reference
+- [`docs/cli-reference.md`](../cli-reference.md) — Full CLI reference (226 unique flags total — this codemap is intentionally categorical, not exhaustive)
 - [`docs/CODEMAPS/mcp-tools.md`](./mcp-tools.md) — MCP-side counterpart
 - [`tests/unit/cli/test_mcp_commands.py`](../../tests/unit/cli/test_mcp_commands.py) — Parity contract tests
+- [`scripts/codemap-sync-check.sh`](../../scripts/codemap-sync-check.sh) — pre-commit gate that blocks `argument_parser_builder.py` changes without a `cli.md` update

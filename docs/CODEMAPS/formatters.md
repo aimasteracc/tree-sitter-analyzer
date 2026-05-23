@@ -9,8 +9,8 @@ Output formats supported by both CLI and MCP. Located in `tree_sitter_analyzer/f
 |---|---|---|---|
 | `toon` | `toon_formatter.py` | **MCP** | LLM agents — 73% smaller than JSON |
 | `json` | `json_formatter.py` | **CLI** | `jq` piping, programmatic ingestion |
-| `table` | `default_table_formatter.py` + `legacy_table_formatter.py` | `--table` flag | Terminal viewing with box-drawing chars |
-| `csv` | via `_legacy_table_formatter_csv.py` | `--table csv` | Spreadsheet ingestion |
+| `table` | `tree_sitter_analyzer/default_table_formatter.py` + `legacy_table_formatter.py` (top-level, not under `formatters/`) | `--table` flag | Terminal viewing with box-drawing chars |
+| `csv` | via `tree_sitter_analyzer/_legacy_table_formatter_csv.py` | `--table csv` | Spreadsheet ingestion |
 | `yaml` | `yaml_formatter.py` | explicit `--format yaml` | Human-readable structured |
 
 ## Why TOON for MCP, JSON for CLI?
@@ -80,7 +80,7 @@ major version bump (semver).
 
 ## Cache & File Output
 
-- `services/cache_service.py` — in-process LRU keyed by `(file_path, content_hash, format)`
+- `mcp/utils/search_cache.py` — LRU for fd/ripgrep results (in-process)
 - `mcp/utils/file_output_factory.py` — atomic write for large payloads
 - `TREE_SITTER_OUTPUT_PATH` env var sets the default output directory
 
@@ -90,3 +90,4 @@ major version bump (semver).
 - [`docs/format_specifications.md`](../format_specifications.md)
 - [`docs/format-testing-guide.md`](../format-testing-guide.md)
 - [`CLAUDE.md` § "Deliberate design decisions"](../../CLAUDE.md) — TOON default rationale
+- [`scripts/codemap-sync-check.sh`](../../scripts/codemap-sync-check.sh) — pre-commit gate that blocks new `formatters/*.py` without a `formatters.md` update
