@@ -92,6 +92,18 @@ def _call_graph_summary_line(result: dict[str, Any], mode: str, func: str) -> st
             f"depth={result.get('depth', 0)} "
             f"edge_count={result.get('edge_count', 0)}"
         )
+    if mode == "file_impact":
+        return (
+            f"call_graph file_impact file={result.get('file', '')} "
+            f"functions={result.get('function_count', 0)} "
+            f"upstream={result.get('upstream_count', 0)} "
+            f"downstream={result.get('downstream_count', 0)}"
+        )
+    if mode == "functions_in_file":
+        return (
+            f"call_graph functions_in_file file={result.get('file', '')} "
+            f"functions={result.get('function_count', 0)}"
+        )
     # Defensive — should not happen because execute validates mode.
     return f"call_graph mode={mode}"  # pragma: no cover
 
@@ -321,6 +333,8 @@ class CodeGraphCallTool(BaseMCPTool):
                         "chain",
                         "summary",
                         "all_functions",
+                        "file_impact",
+                        "functions_in_file",
                     ],
                     "description": "Query mode (default: summary)",
                     "default": "summary",
@@ -348,7 +362,16 @@ class CodeGraphCallTool(BaseMCPTool):
             "additionalProperties": False,
         }
 
-    _VALID_MODES = ("callers", "callees", "chain", "summary", "all_functions")
+    _VALID_MODES = (
+        "callers",
+        "callees",
+        "chain",
+        "summary",
+        "all_functions",
+        "file_impact",
+        "functions_in_file",
+    )
+    _FILE_PATH_MODES = frozenset({"file_impact", "functions_in_file"})
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         mode = arguments.get("mode", "summary")
@@ -359,6 +382,8 @@ class CodeGraphCallTool(BaseMCPTool):
             )
         if mode in ("callers", "callees", "chain") and "function_name" not in arguments:
             raise ValueError(f"function_name is required for mode '{mode}'")
+        if mode in self._FILE_PATH_MODES and "file_path" not in arguments:
+            raise ValueError(f"file_path is required for mode '{mode}'")
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -386,6 +411,10 @@ class CodeGraphCallTool(BaseMCPTool):
             result = self._build_callees_response(graph, arguments)
         elif mode == "chain":
             result = self._build_chain_response(graph, arguments)
+        elif mode == "file_impact":
+            result = self._build_file_impact_response(graph, arguments)
+        elif mode == "functions_in_file":
+            result = self._build_functions_in_file_response(graph, arguments)
         else:  # pragma: no cover - validate_arguments rejects unknown modes
             raise ValueError(
                 f"Invalid mode '{mode}'; expected one of: "
@@ -481,3 +510,31 @@ class CodeGraphCallTool(BaseMCPTool):
         if hint:
             result["hint"] = hint
         return result
+
+    @staticmethod
+    def _build_file_impact_response(
+        graph: Any, arguments: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Return upstream/downstream impact summary for a file.
+
+        Wraps :meth:`CallGraph.file_impact` and adds the standard MCP
+        envelope fields (``success`` / ``mode``).
+        """
+        file_path = arguments["file_path"]
+        impact = graph.file_impact(file_path)
+        return {"success": True, "mode": "file_impact", **impact}
+
+    @staticmethod
+    def _build_functions_in_file_response(
+        graph: Any, arguments: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Return all functions defined in the given file."""
+        file_path = arguments["file_path"]
+        funcs = graph.functions_in_file(file_path)
+        return {
+            "success": True,
+            "mode": "functions_in_file",
+            "file": file_path,
+            "function_count": len(funcs),
+            "functions": funcs,
+        }

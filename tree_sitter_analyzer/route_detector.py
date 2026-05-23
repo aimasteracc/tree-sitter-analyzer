@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from ._route_cache import RouteCache
+from ._route_detector_go import scan_go_routes
 from ._route_detector_scanners import (
     scan_django_urls,
     scan_express_routes,
@@ -65,6 +66,7 @@ _SOURCE_EXTENSIONS = {
     ".ts",
     ".tsx",
     ".java",
+    ".go",
 }
 
 _FRAMEWORK_FILES = {
@@ -281,6 +283,8 @@ class RouteDetector:
             return self._detect_js_routes(file_path, lang)
         elif lang == "java":
             return self._detect_java_routes(file_path)
+        elif lang == "go":
+            return self._detect_go_routes(file_path)
         return []
 
     def summary(self) -> dict[str, Any]:
@@ -404,6 +408,12 @@ class RouteDetector:
         if not tree:
             return []
         return scan_spring_annotations(tree.root_node, file_path, RouteInfo)
+
+    def _detect_go_routes(self, file_path: str) -> list[RouteInfo]:
+        tree = self._parse_tree(file_path, "go")
+        if not tree:
+            return []
+        return scan_go_routes(tree.root_node, file_path, RouteInfo)
 
     # Static helpers moved to tree_sitter_analyzer._route_detector_helpers
     # to keep this module under the project's 500-line file-size cap.

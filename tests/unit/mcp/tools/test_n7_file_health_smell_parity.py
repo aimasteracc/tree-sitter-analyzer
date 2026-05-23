@@ -33,8 +33,17 @@ from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool
 
 
 def _run(coro: Any) -> Any:
-    """Run an async coroutine in a fresh event loop."""
-    return asyncio.new_event_loop().run_until_complete(coro)
+    """Run an async coroutine in a fresh event loop.
+
+    Closes the loop after completion so Python 3.14's gc.collect at
+    session-finish doesn't surface "unclosed event loop" warnings via
+    pytest's unraisable-exception collector.
+    """
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
 
 
 @pytest.fixture

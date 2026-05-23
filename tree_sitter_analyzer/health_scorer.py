@@ -39,6 +39,13 @@ DIMENSION_WEIGHTS = {
 }
 
 PROJECT_HEALTH_SOURCE_EXTS = {
+    # Code-only. r34 Q4 narrowed this set to extensions that have a real
+    # language plugin in ``_EXT_TO_LANG`` so the scorer never falls back
+    # to ``language=None`` (which would grade docs/markup as if they were
+    # code and inflate the C-grade bucket). Markdown smell-detection is
+    # intentionally OFF here — see CLAUDE.md "Deliberate design
+    # decisions" §4. If you want to score markdown structure, build a
+    # separate ``markdown_health`` tool.
     ".py",
     ".java",
     ".js",
@@ -57,12 +64,6 @@ PROJECT_HEALTH_SOURCE_EXTS = {
     ".cc",
     ".cxx",
     ".hpp",
-    ".sql",
-    ".html",
-    ".css",
-    ".yaml",
-    ".yml",
-    ".md",
 }
 
 # Thresholds for scoring

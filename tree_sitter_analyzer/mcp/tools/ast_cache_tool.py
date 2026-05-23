@@ -14,6 +14,7 @@ import re
 from typing import Any
 
 from ...ast_cache import ASTCache
+from ...file_watcher import FileWatcherDaemon
 from ...incremental_sync import IncrementalSync
 from ...utils import setup_logger
 from .base_tool import BaseMCPTool, _canonicalize_verdict, mirror_summary_line
@@ -174,11 +175,21 @@ class ASTCacheTool(BaseMCPTool):
     def __init__(self, project_root: str | None = None) -> None:
         self._cache: ASTCache | None = None
         self._sync: IncrementalSync | None = None
+        self._watcher: FileWatcherDaemon | None = None
         super().__init__(project_root)
 
     def _on_project_root_changed(self, project_root: str | None) -> None:
         self._cache = None
         self._sync = None
+        # Stop any running watcher when project root changes — it was
+        # snapshotting a different tree and would emit confusing events.
+        if self._watcher is not None:
+            try:
+                if self._watcher.is_running():
+                    self._watcher.stop()
+            except Exception:  # pragma: no cover — defensive
+                logger.debug("watcher stop on project change failed", exc_info=True)
+        self._watcher = None
 
     def _get_cache(self) -> ASTCache:
         if self._cache is None:
@@ -203,7 +214,10 @@ class ASTCacheTool(BaseMCPTool):
                 "sync (incremental sync — detect changed/new/deleted files via content hash), "
                 "changes (preview changes without re-indexing), "
                 "stats (cache statistics), "
-                "invalidate (remove cached entry). "
+                "invalidate (remove cached entry), "
+                "watch_start (start background FileWatcherDaemon for auto-sync), "
+                "watch_stop (stop the background watcher and return final stats), "
+                "watch_status (report whether a watcher is running and its stats). "
                 "Note: ``fts_search`` is accepted as a deprecated alias for ``search`` and behaves identically. "
                 "No other tool provides persistent cross-session AST caching."
             ),
@@ -231,6 +245,9 @@ class ASTCacheTool(BaseMCPTool):
                         "changes",
                         "stats",
                         "invalidate",
+                        "watch_start",
+                        "watch_stop",
+                        "watch_status",
                     ],
                     "description": (
                         "Operation mode. ``fts_search`` is also accepted as a "
@@ -261,6 +278,23 @@ class ASTCacheTool(BaseMCPTool):
                     "type": "boolean",
                     "description": "Force full re-index (default: false)",
                 },
+                "poll_interval": {
+                    "type": "number",
+                    "description": (
+                        "watch_start: polling interval in seconds for the "
+                        "background FileWatcherDaemon (default: 5.0; floor 1.0)."
+                    ),
+                },
+                "backend": {
+                    "type": "string",
+                    "enum": ["poll", "watchdog"],
+                    "description": (
+                        "watch_start: file watcher backend. ``poll`` (default) "
+                        "uses pure stdlib polling; ``watchdog`` uses OS-native "
+                        "events when the optional ``watchdog`` package is "
+                        "installed and falls back to polling otherwise."
+                    ),
+                },
             },
             "required": ["mode"],
             "additionalProperties": False,
@@ -280,6 +314,9 @@ class ASTCacheTool(BaseMCPTool):
             "changes",
             "stats",
             "invalidate",
+            "watch_start",
+            "watch_stop",
+            "watch_status",
         }
         if mode not in valid_modes:
             raise ValueError(f"Invalid mode: {mode}. Must be one of {valid_modes}")
@@ -298,6 +335,18 @@ class ASTCacheTool(BaseMCPTool):
         """
         self.validate_arguments(arguments)
         mode = arguments.get("mode", "stats")
+
+        # Watch modes are dispatched before the cache is materialised so
+        # ``watch_status`` / ``watch_stop`` can answer "no watcher yet"
+        # without forcing a SQLite open. ``watch_start`` does need a
+        # cache, but it gets one via ``_get_cache()`` inside its handler.
+        if mode == "watch_start":
+            return self._handle_watch_start(arguments)
+        if mode == "watch_stop":
+            return self._handle_watch_stop()
+        if mode == "watch_status":
+            return self._handle_watch_status()
+
         cache = self._get_cache()
 
         if mode == "index":
@@ -518,6 +567,134 @@ class ASTCacheTool(BaseMCPTool):
         return _build_ast_cache_envelope(
             "invalidate",
             {"file": file_path, "invalidated": removed},
+            summary_line,
+            next_step,
+        )
+
+    def _handle_watch_start(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """``mode=watch_start``: spawn (or reuse) the FileWatcherDaemon.
+
+        Idempotent — if a watcher is already running, returns
+        ``status='already_running'`` with the same envelope shape so
+        callers can branch on ``status`` instead of error-handling.
+        """
+        # Already running? Don't double-start.
+        if self._watcher is not None and self._watcher.is_running():
+            poll_interval = float(self._watcher._poll_interval)
+            backend = str(self._watcher._backend)
+            summary_line = (
+                f"ast_cache watch_start status=already_running "
+                f"backend={backend} poll_interval={poll_interval}"
+            )
+            payload: dict[str, Any] = {
+                "status": "already_running",
+                "poll_interval": poll_interval,
+                "backend": backend,
+            }
+            return _build_ast_cache_envelope(
+                "watch_start",
+                payload,
+                summary_line,
+                "ast_cache mode=watch_status to check progress",
+            )
+
+        # Lazily build the cache + daemon. Tests always pass project_root,
+        # so _get_cache() won't raise; if it does, the ValueError surfaces
+        # to the caller as a typical input error.
+        cache = self._get_cache()
+        poll_interval = float(arguments.get("poll_interval", 5.0))
+        backend = str(arguments.get("backend", "poll"))
+        self._watcher = FileWatcherDaemon(
+            cache,
+            poll_interval=poll_interval,
+            backend=backend,
+        )
+        self._watcher.start()
+
+        # Read back the actual values the daemon enforced (poll_interval
+        # has a min of 1.0 inside the daemon, so echo what was applied).
+        applied_poll = float(self._watcher._poll_interval)
+        applied_backend = str(self._watcher._backend)
+        summary_line = (
+            f"ast_cache watch_start status=started "
+            f"backend={applied_backend} poll_interval={applied_poll}"
+        )
+        payload = {
+            "status": "started",
+            "poll_interval": applied_poll,
+            "backend": applied_backend,
+        }
+        return _build_ast_cache_envelope(
+            "watch_start",
+            payload,
+            summary_line,
+            "ast_cache mode=watch_status to inspect the daemon",
+        )
+
+    def _handle_watch_stop(self) -> dict[str, Any]:
+        """``mode=watch_stop``: stop the running watcher and return stats.
+
+        If no watcher was ever started (or one was already stopped),
+        return ``status='not_running'`` without raising. The envelope
+        still carries ``success=True`` so callers can treat stop as
+        idempotent.
+        """
+        if self._watcher is None or not self._watcher.is_running():
+            summary_line = "ast_cache watch_stop status=not_running"
+            return _build_ast_cache_envelope(
+                "watch_stop",
+                {"status": "not_running"},
+                summary_line,
+                "ast_cache mode=watch_start to begin watching",
+            )
+
+        # Snapshot stats BEFORE stopping so uptime_seconds is non-zero
+        # even when the daemon stops mid-poll-tick.
+        final_stats = self._watcher.get_stats()
+        self._watcher.stop()
+        summary_line = (
+            f"ast_cache watch_stop status=stopped "
+            f"uptime={final_stats.get('uptime_seconds', 0.0)}"
+        )
+        return _build_ast_cache_envelope(
+            "watch_stop",
+            {"status": "stopped", "final_stats": final_stats},
+            summary_line,
+            "ast_cache mode=stats to confirm cache state",
+        )
+
+    def _handle_watch_status(self) -> dict[str, Any]:
+        """``mode=watch_status``: report watcher liveness and stats.
+
+        Three states surfaced:
+          - never created → ``running=False, watcher_created=False``
+          - created but stopped → ``running=False, watcher_created=True``
+          - running → ``running=True, watcher_created=True`` + ``stats``
+        """
+        if self._watcher is None:
+            summary_line = "ast_cache watch_status running=false watcher_created=false"
+            return _build_ast_cache_envelope(
+                "watch_status",
+                {"running": False, "watcher_created": False},
+                summary_line,
+                "ast_cache mode=watch_start to begin watching",
+            )
+
+        running = self._watcher.is_running()
+        payload: dict[str, Any] = {
+            "running": running,
+            "watcher_created": True,
+        }
+        if running:
+            payload["stats"] = self._watcher.get_stats()
+            summary_line = "ast_cache watch_status running=true watcher_created=true"
+            next_step = "ast_cache mode=watch_stop to halt the watcher"
+        else:
+            summary_line = "ast_cache watch_status running=false watcher_created=true"
+            next_step = "ast_cache mode=watch_start to resume watching"
+        return _build_ast_cache_envelope(
+            "watch_status",
+            payload,
             summary_line,
             next_step,
         )

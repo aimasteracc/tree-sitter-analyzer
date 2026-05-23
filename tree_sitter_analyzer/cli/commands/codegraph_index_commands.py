@@ -29,9 +29,14 @@ def _project_root(args: Any) -> str:
 
 
 def _output_format(args: Any) -> str:
-    """Map argparse-visible output format to MCP tool format."""
-    fmt = getattr(args, "format", None) or getattr(args, "output_format", "json")
-    return "toon" if fmt in {"toon", "text"} else "json"
+    """Map argparse-visible output format to MCP tool format.
+
+    Delegates to :func:`tree_sitter_analyzer.cli.output_format.resolve_mcp_tool_format`
+    so the args→tool-format mapping has one source of truth (r37an).
+    """
+    from tree_sitter_analyzer.cli.output_format import resolve_mcp_tool_format
+
+    return resolve_mcp_tool_format(args)
 
 
 def _print(result: dict[str, Any], output_format: str) -> None:

@@ -256,7 +256,9 @@ class ReadPartialToolExecuteMixin:
             assert result["content_length"] == 0
             assert result["lines_extracted"] == 0
             assert result.get("out_of_range") is True
-            assert result["agent_summary"]["verdict"] == "N/A"
+            # Canonical verdict vocabulary (CLAUDE.md): out-of-range maps to
+            # NOT_FOUND, not the historical "N/A" placeholder.
+            assert result["agent_summary"]["verdict"] == "NOT_FOUND"
         finally:
             # Clean up
             if test_file.exists():

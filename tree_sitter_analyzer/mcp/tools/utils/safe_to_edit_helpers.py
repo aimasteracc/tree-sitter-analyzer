@@ -10,6 +10,11 @@ from typing import Any
 from ....health_scorer import HealthScorer
 from ....project_graph import DependencyGraph
 from ..file_health_tool import _build_signal
+from .constraint_violation_query import (
+    constraint_risk_factor,
+    verdict_from_violations,
+    violations_for_files,
+)
 from .safe_to_edit_risk import build_checklist, compute_risk
 from .test_discovery import find_test_files
 from .verification_command import build_test_command, detect_default_test_command
@@ -119,16 +124,32 @@ def _format_safe_to_edit_result(
     # the one-line human-readable next step distilled from the
     # workflow's first ``next_step``.
     risk = facts.risk
-    verdict = _risk_to_verdict(risk)
+    base_verdict = _risk_to_verdict(risk)
+    # Constraint violations promote the verdict: an error-severity
+    # violation referencing this file forces UNSAFE; warn-only forces
+    # CAUTION. The base_verdict (derived from risk_level) is the floor.
+    violations = violations_for_files(
+        context.project_root, [_relative_for_constraints(context)]
+    )
+    constraint_verdict = verdict_from_violations(violations)
+    verdict = _max_verdict(base_verdict, constraint_verdict)
+    risk_factors = list(facts.risk_factors)
+    if violations:
+        risk_factors.extend(constraint_risk_factor(row) for row in violations)
     recommendation = _format_recommendation(risk, facts, workflow)
+    summary = build_agent_summary(workflow_context, workflow)
+    # Promote agent_summary.verdict when constraint violations escalate
+    # beyond the risk-level-derived verdict.
+    if verdict != base_verdict:
+        summary["verdict"] = verdict
     return {
         "success": True,
         "file_path": context.file_path,
         "risk_level": risk,
         "verdict": verdict,
         "recommendation": recommendation,
-        "agent_summary": build_agent_summary(workflow_context, workflow),
-        "risk_factors": facts.risk_factors,
+        "agent_summary": summary,
+        "risk_factors": risk_factors,
         "health_grade": facts.health.grade,
         "health_score": facts.health.total,
         "health_signal": _build_signal(facts.health.dimensions),
@@ -140,6 +161,48 @@ def _format_safe_to_edit_result(
         "pre_edit_checklist": facts.pre_edit_checklist,
         "agent_workflow": workflow,
     }
+
+
+def _relative_for_constraints(context: SafeToEditContext) -> str:
+    """Return the project-relative path that constraint rows are keyed on.
+
+    Constraint rows store relative paths (e.g. ``tree_sitter_analyzer/...``).
+    On macOS, ``resolved_path`` may be ``/private/tmp/...`` while
+    ``project_root`` is ``/tmp/...`` due to the ``/var → /private/var``
+    symlink. Try the input ``file_path`` first (already relative), then
+    fall back to the strict ``to_relative`` for safety.
+    """
+    if not Path(context.file_path).is_absolute():
+        return context.file_path
+    # Both resolved through realpath to align symlinked tmp paths.
+    try:
+        root_real = Path(context.project_root).resolve()
+        resolved_real = Path(context.resolved_path).resolve()
+        return str(resolved_real.relative_to(root_real))
+    except (ValueError, OSError):
+        return to_relative(context.resolved_path, context.project_root)
+
+
+# Verdict severity order — higher index = more severe. Used to promote
+# the safe_to_edit verdict when constraint violations imply a stricter
+# answer than the risk-level-derived one.
+_VERDICT_SEVERITY: dict[str, int] = {
+    "SAFE": 0,
+    "INFO": 0,
+    "REVIEW": 1,
+    "CAUTION": 2,
+    "UNSAFE": 3,
+    "ERROR": 3,
+}
+
+
+def _max_verdict(base: str, override: str | None) -> str:
+    """Return whichever verdict is more severe, preferring the override on ties."""
+    if not override:
+        return base
+    base_rank = _VERDICT_SEVERITY.get(base, 0)
+    override_rank = _VERDICT_SEVERITY.get(override, 0)
+    return override if override_rank >= base_rank else base
 
 
 def _risk_to_verdict(risk: str) -> str:

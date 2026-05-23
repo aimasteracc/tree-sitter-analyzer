@@ -23,15 +23,26 @@ def find_long_blocks_heuristic(
         # lines inside triple-quoted strings are skipped wholesale.
         in_string = string_state.update(line)
         stripped = line.strip()
+        current_indent = len(line) - len(line.lstrip())
 
-        if not in_string and stripped.startswith(("def ", "async def ")):
+        # A def at a deeper indent than the current tracker is a NESTED
+        # def — keep counting it toward the outer block instead of
+        # resetting the tracker. Only treat dedented-or-same-level defs
+        # as block boundaries.
+        is_top_level_def = (
+            not in_string
+            and stripped.startswith(("def ", "async def "))
+            and (not tracker.active or current_indent <= tracker.def_indent)
+        )
+
+        if is_top_level_def:
             if tracker.active and tracker.block_lines > threshold:
                 results.append(tracker.snapshot())
             after_def = stripped.split("def ", 1)[-1] if "def " in stripped else ""
             tracker.start(
                 name=after_def.split("(")[0].strip() if after_def else f"block_{i}",
                 start=i,
-                indent=len(line) - len(line.lstrip()),
+                indent=current_indent,
             )
             continue
 
@@ -79,11 +90,23 @@ class _BlockTracker:
         self.block_lines += 1
 
     def ended_at(self, stripped: str, line: str) -> bool:
-        """Check if the current block has ended at this line."""
+        """Check if the current block has ended at this line.
+
+        The block ends when we see a sibling-or-shallower def/class/decorator
+        — i.e. a line at the same OR less indent than the def we are
+        tracking that opens a new top-level construct. Lines at deeper
+        indent (nested defs, body code) keep the tracker active. The
+        ``stripped`` argument is re-stripped defensively so callers may
+        pass either the pre-stripped form or the raw line.
+        """
+        # Defensive: callers in tests sometimes pass the raw line as both
+        # arguments. Always work from the canonical lstripped form so
+        # leading whitespace doesn't poison startswith() checks.
+        stripped = stripped.lstrip()
         if not stripped:
             return False
         current_indent = len(line) - len(line.lstrip())
-        if current_indent != self.def_indent:
+        if current_indent > self.def_indent:
             return False
         if not stripped.startswith(("def ", "async def ", "class ", "@")):
             return False

@@ -29,3 +29,20 @@ def wants_json_output(args: Any) -> bool:
     """
     fmt = getattr(args, "format", None) or getattr(args, "output_format", None)
     return fmt == "json"
+
+
+def resolve_mcp_tool_format(args: Any, default: str = "json") -> str:
+    """Return the MCP-tool output format (``json`` or ``toon``).
+
+    Same lookup chain as :func:`wants_json_output` but returns the
+    concrete tool-side format string. ``text`` and ``toon`` both map to
+    ``toon`` (TOON is the locked MCP default per CLAUDE.md); everything
+    else falls back to ``default`` (``"json"`` unless the caller opts
+    differently). Centralised so dispatchers in
+    ``cli/commands/*`` don't re-implement the args→tool-format mapping
+    inline — that's the r37an single-source-of-truth ratchet.
+    """
+    fmt = (
+        getattr(args, "format", None) or getattr(args, "output_format", None) or default
+    )
+    return "toon" if fmt in {"toon", "text"} else "json"

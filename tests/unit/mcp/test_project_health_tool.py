@@ -135,6 +135,9 @@ def test_project_health_execute_exposes_agent_backlog(monkeypatch, tmp_path) -> 
             assert project_root == str(tmp_path)
             return scores
 
+        def score_project_with_stats(self, project_root: str):
+            return self.score_project(project_root), {}
+
     monkeypatch.setattr(project_health_tool, "HealthScorer", FakeHealthScorer)
 
     tool = ProjectHealthTool(project_root=str(tmp_path))
@@ -171,6 +174,9 @@ def test_project_health_max_files_controls_agent_visible_lists(
         def score_project(self, project_root: str) -> list[SimpleNamespace]:
             assert project_root == str(tmp_path)
             return scores
+
+        def score_project_with_stats(self, project_root: str):
+            return self.score_project(project_root), {}
 
     monkeypatch.setattr(project_health_tool, "HealthScorer", FakeHealthScorer)
 

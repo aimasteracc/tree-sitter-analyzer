@@ -788,12 +788,39 @@ class CallGraph:
     def _resolve_targets(
         self, func_name: str, file_path: str | None = None
     ) -> list[FunctionRef]:
-        """Resolve a function name (and optional file) to FunctionRef(s)."""
+        """Resolve a function name (and optional file) to FunctionRef(s).
+
+        Accepts three shapes for ``func_name``:
+
+        - bare name ``foo`` — returns every ``FunctionRef`` named ``foo``
+        - qualified ``Class.method`` — returns only refs whose receiver
+          equals ``Class`` AND whose bare name is ``method``. Falls back
+          to the bare-name list when no receiver matches, so callers that
+          pass dotted names (e.g. ``utils.helper`` from JS) keep working.
+        - ``file:func`` via the explicit ``file_path`` argument.
+        """
         if file_path:
             qname = f"{file_path}:{func_name}"
             ref = self._func_by_qualified.get(qname)
             if ref:
                 return [ref]
+
+        # Qualified ``Class.method`` lookup: rsplit on the last dot and
+        # require an exact receiver match before falling back. We only
+        # treat the dotted form as qualified when neither half is empty
+        # so plain names (``.foo`` etc.) keep their literal lookup.
+        if "." in func_name:
+            receiver, _, suffix = func_name.rpartition(".")
+            if receiver and suffix:
+                bare_candidates = self._func_by_name.get(suffix, [])
+                receiver_matches = [
+                    c for c in bare_candidates if c.receiver == receiver
+                ]
+                if receiver_matches:
+                    if file_path:
+                        same = [c for c in receiver_matches if c.file_path == file_path]
+                        return same if same else receiver_matches
+                    return receiver_matches
 
         candidates = self._func_by_name.get(func_name, [])
         if file_path:

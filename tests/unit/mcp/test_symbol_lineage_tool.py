@@ -196,5 +196,7 @@ class TestR37uTopLevelVerdictMirror:
         assert result["success"] is True
         assert result["verdict"] is not None
         assert result["verdict"] == result["agent_summary"]["verdict"]
-        # 'unknown' risk maps to 'n/a' verdict per the standard mapping.
-        assert result["verdict"] == "n/a"
+        # 'unknown' risk maps to 'NOT_FOUND' verdict per the canonical
+        # vocabulary (CLAUDE.md). The historical "n/a" placeholder was
+        # non-canonical and caused agents to treat missing symbols as INFO.
+        assert result["verdict"] == "NOT_FOUND"

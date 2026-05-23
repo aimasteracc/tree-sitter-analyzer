@@ -59,18 +59,23 @@ def _skills_verdict(
     its decision surface. Map validation status to the canonical
     vocabulary, anti-bias toward higher severity.
 
-      skills_root missing          → CAUTION  (no skills installed)
-      blocking validation status   → CAUTION
-      caution-level gaps           → REVIEW
-      ready / no gaps              → INFO
+      skills_root missing / blocked → REVIEW  (inventory cannot be trusted
+                                              until the directory is created)
+      caution-level gaps            → REVIEW
+      ready / no gaps               → INFO
+
+    Both top-level and agent_summary verdicts must agree (envelope-
+    contract parity); ``_build_agent_summary`` already maps the
+    ``blocked`` validation status to ``REVIEW``, so this function does
+    the same.
     """
     if not root_path.exists():
-        return "CAUTION"
+        return "REVIEW"
     status = validation.get("status", "")
-    if status in ("blocking", "missing"):
-        return "CAUTION"
+    if status in ("blocking", "blocked", "missing"):
+        return "REVIEW"
     if validation.get("blocking_gap_count", 0) > 0:
-        return "CAUTION"
+        return "REVIEW"
     if status in ("caution", "warning") or validation.get("caution_gap_count", 0) > 0:
         return "REVIEW"
     return "INFO"

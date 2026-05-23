@@ -322,11 +322,14 @@ def _failure_envelope(message: str, output_format: str) -> dict[str, Any]:
 
 
 def _resolve_output_format(args: Any) -> str:
-    """Return ``json`` or ``toon`` based on argparse-visible format flags."""
-    fmt = (
-        getattr(args, "format", None) or getattr(args, "output_format", None) or "json"
-    )
-    return "toon" if fmt in {"toon", "text"} else "json"
+    """Return ``json`` or ``toon`` based on argparse-visible format flags.
+
+    Delegates to :func:`tree_sitter_analyzer.cli.output_format.resolve_mcp_tool_format`
+    so the args→tool-format mapping has one source of truth (r37an).
+    """
+    from tree_sitter_analyzer.cli.output_format import resolve_mcp_tool_format
+
+    return resolve_mcp_tool_format(args)
 
 
 def _print_result(result: dict[str, Any], output_format: str) -> None:

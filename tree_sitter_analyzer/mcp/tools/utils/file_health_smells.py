@@ -349,8 +349,15 @@ def _check_element_smells(
     line_count: int,
     analysis: Any,
 ) -> None:
-    """Detect god_class and long_method smells from tree-sitter elements."""
-    if not analysis:
+    """Detect god_class and long_method smells from tree-sitter elements.
+
+    Falls back to the heuristic line-based detector when ``analysis`` is
+    None or doesn't expose an ``elements`` iterable (e.g. a partial mock
+    or a parse that produced no structured elements). Keeping this
+    defensive lets callers pass any "analysis-like" object without
+    crashing the whole health report.
+    """
+    if not analysis or not hasattr(analysis, "elements"):
         _check_heuristic_long_methods(smells, lines)
         return
 

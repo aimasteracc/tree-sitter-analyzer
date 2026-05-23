@@ -96,6 +96,8 @@ def build_no_changes_result(
         "summary": "No changes detected",
         "summary_line": summary_line,
         "agent_summary": {
+            # Canonical verdict vocabulary (CLAUDE.md): no changes → INFO.
+            "verdict": "INFO",
             "summary_line": summary_line,
             "risk": "none",
             "scope": "scoped" if scope_paths else "workspace",
@@ -109,17 +111,33 @@ def build_no_changes_result(
     }
 
 
+def _change_impact_risk_to_verdict(risk: str) -> str:
+    """Map change-impact risk to canonical verdict vocabulary (CLAUDE.md).
+
+    high → CAUTION (large diff needs scrutiny), medium → REVIEW,
+    none → INFO, everything else → INFO.
+    """
+    risk_lower = (risk or "").lower()
+    if risk_lower in ("high", "dangerous"):
+        return "CAUTION"
+    if risk_lower in ("medium",):
+        return "REVIEW"
+    return "INFO"
+
+
 def build_agent_summary_only_response(result: dict[str, Any]) -> dict[str, Any]:
     """Return a compact change-impact response for agent decision loops."""
     summary = result.get("agent_summary", {})
+    risk = result.get("risk_level", summary.get("risk", "none"))
     return {
         "success": result.get("success", False),
+        "verdict": _change_impact_risk_to_verdict(risk),
         "mode": result.get("mode", "diff"),
         "scope_paths": result.get("scope_paths", []),
         "scope_filtered": result.get("scope_filtered", False),
         "agent_summary_only": True,
         "agent_summary": summary,
-        "risk_level": result.get("risk_level", summary.get("risk", "none")),
+        "risk_level": risk,
         "changed_count": result.get("changed_count", summary.get("changed_count", 0)),
         "affected_count": result.get(
             "affected_count", summary.get("affected_count", 0)

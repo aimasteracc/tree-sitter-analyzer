@@ -55,12 +55,17 @@ _DOWNSTREAM_LIMIT = 50
 _UPSTREAM_LIMIT = 20
 _TEST_LIMIT = 20
 
-# Risk level → verdict mapping (mirrors trace_impact / safe_to_edit vocab).
+# Risk level → verdict mapping (canonical vocab per CLAUDE.md).
+# Lineage is an informational analyser, not a modification guard, so
+# the "found and clean" path emits INFO (not SAFE which implies a
+# write-safety judgement). Missing symbols emit NOT_FOUND so agents
+# branching on ``verdict`` no longer treat None/"n/a" as INFO and
+# delete symbols that don't exist anywhere.
 _RISK_TO_VERDICT: dict[str, str] = {
-    "high": "UNSAFE",
-    "medium": "CAUTION",
-    "low": "SAFE",
-    "unknown": "n/a",
+    "high": "CAUTION",
+    "medium": "REVIEW",
+    "low": "INFO",
+    "unknown": "NOT_FOUND",
 }
 
 
@@ -124,7 +129,7 @@ def _build_truncations_and_summary_line(
 
 def _verdict_and_next_step(risk_level: str) -> tuple[str, str]:
     """Map a risk level to (verdict, next_step) per the lineage contract."""
-    verdict = _RISK_TO_VERDICT.get(risk_level, "n/a")
+    verdict = _RISK_TO_VERDICT.get(risk_level, "NOT_FOUND")
     if risk_level == "high":
         next_step = "trace_impact and run listed test files before changing signature"
     elif risk_level == "medium":

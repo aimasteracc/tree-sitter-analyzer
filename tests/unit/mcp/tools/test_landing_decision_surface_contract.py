@@ -104,7 +104,10 @@ class TestLandingDecisionSurfaceVerdict:
         tool = AgentWorkflowTool(str(tiny_project))
         result = _run(
             tool.execute(
-                {"file_path": str(tiny_project / "sample.py"), "output_format": "json"}
+                {
+                    "target_path": str(tiny_project / "sample.py"),
+                    "output_format": "json",
+                }
             )
         )
         _assert_canonical_verdict(result, "get_agent_workflow")

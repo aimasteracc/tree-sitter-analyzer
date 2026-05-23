@@ -154,10 +154,15 @@ class ProjectHealthTool(BaseMCPTool):
         # obeyed the previous ``30s–3min`` description timed out on
         # 4k-file repos; recording the truth lets the next caller plan.
         scan_start = time.monotonic()
-        all_scores = scorer.score_project(root)
+        all_scores, walk_stats = scorer.score_project_with_stats(root)
         actual_seconds = round(time.monotonic() - scan_start, 1)
         result = _build_project_health_result(
-            root, all_scores, min_grade, max_files, actual_seconds=actual_seconds
+            root,
+            all_scores,
+            min_grade,
+            max_files,
+            actual_seconds=actual_seconds,
+            walk_stats=walk_stats,
         )
 
         from ..utils.format_helper import apply_toon_format_to_response
@@ -229,6 +234,7 @@ def _build_project_health_result(
     min_grade: str,
     max_files: int,
     actual_seconds: float | None = None,
+    walk_stats: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build the JSON-ready project-health response.
 
@@ -243,39 +249,53 @@ def _build_project_health_result(
     from .base_tool import mirror_summary_line
 
     agg = _compute_project_health_aggregates(all_scores, min_grade, max_files)
-    return mirror_summary_line(
-        {
-            "success": True,
-            "project_root": root,
-            "total_files": len(all_scores),
-            "matching_file_count": len(agg.worst),
-            "detail_limit": max_files,
-            "detail_count": len(agg.files),
-            "hidden_detail_count": max(0, len(agg.worst) - len(agg.files)),
-            "grade_distribution": agg.grade_distribution,
-            "signal": _build_signal(agg.signal_dims),
-            "average_dimensions": agg.dim_avgs,
-            "coverage_status": _coverage_status(agg.dim_avgs),
-            "weakest_dimension": agg.weakest_dim,
-            "top_refactoring_targets": _top_refactoring_targets(
-                agg.worst, agg.visible_limit
-            ),
-            "agent_summary": _build_project_agent_summary(
-                root=root,
-                total_files=len(all_scores),
-                grade_distribution=agg.grade_distribution,
-                weakest_dim=agg.weakest_dim,
-                agent_backlog=agg.agent_backlog,
-                max_files=max_files,
-                actual_seconds=actual_seconds,
-            ),
-            "agent_backlog": agg.agent_backlog,
-            "files": agg.files,
-            "recommendation": _build_project_recommendation(
-                agg.grade_counts, agg.weakest_dim, len(all_scores)
-            ),
-        }
-    )
+    payload: dict[str, Any] = {
+        "success": True,
+        "project_root": root,
+        "total_files": len(all_scores),
+        "matching_file_count": len(agg.worst),
+        "detail_limit": max_files,
+        "detail_count": len(agg.files),
+        "hidden_detail_count": max(0, len(agg.worst) - len(agg.files)),
+        "grade_distribution": agg.grade_distribution,
+        "signal": _build_signal(agg.signal_dims),
+        "average_dimensions": agg.dim_avgs,
+        "coverage_status": _coverage_status(agg.dim_avgs),
+        "weakest_dimension": agg.weakest_dim,
+        "top_refactoring_targets": _top_refactoring_targets(
+            agg.worst, agg.visible_limit
+        ),
+        "agent_summary": _build_project_agent_summary(
+            root=root,
+            total_files=len(all_scores),
+            grade_distribution=agg.grade_distribution,
+            weakest_dim=agg.weakest_dim,
+            agent_backlog=agg.agent_backlog,
+            max_files=max_files,
+            actual_seconds=actual_seconds,
+        ),
+        "agent_backlog": agg.agent_backlog,
+        "files": agg.files,
+        "recommendation": _build_project_recommendation(
+            agg.grade_counts, agg.weakest_dim, len(all_scores)
+        ),
+    }
+    # Coverage-transparency fields (TRUST_BUT_VERIFY_2026-05-23 contract):
+    # surface how much of the project was actually scanned vs scored so
+    # an agent can answer "did you really look at my whole project?".
+    if walk_stats:
+        scanned = int(walk_stats.get("total_files_scanned", 0))
+        analyzed = int(walk_stats.get("total_files_scored", len(all_scores)))
+        payload["total_files_scanned"] = scanned
+        payload["total_files_analyzed"] = analyzed
+        payload["total_files_skipped"] = int(walk_stats.get("total_files_skipped", 0))
+        payload["skip_reasons"] = walk_stats.get(
+            "skip_reasons", {"excluded_dir": 0, "scoring_failed": 0}
+        )
+        payload["coverage_pct"] = (
+            round(100.0 * analyzed / scanned, 1) if scanned else 100.0
+        )
+    return mirror_summary_line(payload)
 
 
 def _normalize_max_files(value: Any) -> int:

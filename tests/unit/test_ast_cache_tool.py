@@ -74,6 +74,9 @@ class TestGetToolSchema:
         # incremental-sync workflow. ``fts_search`` was collapsed into
         # ``search`` (J1) — it remains accepted at the validate boundary
         # for back-compat but is no longer advertised in the schema enum.
+        # ``watch_start`` / ``watch_stop`` / ``watch_status`` were wired
+        # into the tool by the 2026-05-24 PL-A pass (FileWatcherDaemon
+        # backing).
         assert set(modes) == {
             "index",
             "lookup",
@@ -82,6 +85,9 @@ class TestGetToolSchema:
             "changes",
             "stats",
             "invalidate",
+            "watch_start",
+            "watch_stop",
+            "watch_status",
         }
 
 
