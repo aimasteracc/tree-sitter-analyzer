@@ -72,6 +72,9 @@ from tree_sitter_analyzer.mcp.tools.codegraph_pr_review_tool import (
 from tree_sitter_analyzer.mcp.tools.codegraph_sitemap_tool import (
     CodeGraphSitemapTool,  # noqa: F401
 )
+from tree_sitter_analyzer.mcp.tools.codegraph_status_tool import (
+    CodeGraphStatusTool,  # noqa: F401
+)
 from tree_sitter_analyzer.mcp.tools.codegraph_visualize_tool import (
     CodeGraphVisualizeTool,  # noqa: F401
 )
@@ -619,6 +622,18 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
             "output_format": output_format,
         },
     ),
+    # CodeGraph parity gap-closure (2026-05-24): codegraph_status is a thin
+    # facade returning index health in one call (was: 3-4 separate calls to
+    # ast_cache + auto_index + check_tools). Bare boolean flag.
+    McpCommandSpec(
+        flag_name="codegraph_status",
+        tool_attr="CodeGraphStatusTool",
+        label="Index health at-a-glance (CodeGraph parity)",
+        build_tool_args=lambda args, output_format: {
+            "include_lag": not bool(getattr(args, "codegraph_status_no_lag", False)),
+            "output_format": output_format,
+        },
+    ),
     McpCommandSpec(
         flag_name="ast_path",
         tool_attr="CodeGraphASTPathTool",
@@ -872,6 +887,7 @@ _TOOL_CLASS_NAMES: frozenset[str] = frozenset(
         "SemanticClassifyTool",
         "CodeGraphPRReviewTool",
         "CodeGraphNavigateTool",
+        "CodeGraphStatusTool",
         "CodeGraphImportGraphTool",
         # Pain pass 4: dead_code spec was added but the class wasn't in
         # this allowlist, so the contract test caught a registry/spec drift.

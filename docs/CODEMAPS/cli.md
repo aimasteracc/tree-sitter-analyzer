@@ -75,6 +75,7 @@ Categories of CLI surface:
 - `--autoindex [--autoindex-mode status|warm|reset]` — transparent auto-index
 - `--full-index [--full-index-mode rebuild|stats|clear]` — one-shot complete index
 - `--incremental-sync [--incremental-sync-mode sync|changes|status]` — content-hash diff re-index (SHA-256)
+- `--codegraph-status [--codegraph-status-no-lag]` — index health at-a-glance (CodeGraph parity)
 - `--codegraph-metrics` — aggregated cache/call-graph/complexity/health dashboard
 - `--parser-readiness` — pre-flight checks
 

@@ -41,7 +41,7 @@ All tools default to **TOON output** (locked — see `CLAUDE.md`).
 | `decision_journal` | `--decision-journal` | Persistent log of architectural decisions |
 | `semantic_classify` | `--semantic-classify` | Classify code changes (risk + category) |
 | **CodeGraph parity — symbol navigation** | | |
-| `codegraph_navigate` | `--codegraph-navigate` | Unified symbol navigation hub |
+| `codegraph_navigate` | `--codegraph-navigate` | PRIMARY symbol navigation hub (def + refs + hierarchy) |
 | `codegraph_symbol_search` | `--codegraph-symbol-search` | FTS5-powered symbol search over indexed project |
 | `codegraph_resolve` | `--symbol-resolve` | Go-to-definition / find-all-references |
 | `codegraph_ast_path` | `--ast-path` | "What is at file:line?" AST path/scope |
@@ -62,6 +62,7 @@ All tools default to **TOON output** (locked — see `CLAUDE.md`).
 | `codegraph_similarity` | `--code-similarity` | AST-structural clone detection |
 | `codegraph_visualize` | `--codegraph-visualize` | Export call graph as Mermaid flowchart |
 | **CodeGraph parity — cache/index** | | |
+| `codegraph_status` | `--codegraph-status` | INDEX HEALTH at-a-glance (indexed?, files, symbols, lag) |
 | `codegraph_autoindex` | `--autoindex` | Transparent AST cache auto-indexing |
 | `codegraph_full_index` | `--full-index` | One-shot complete project intelligence index |
 | `codegraph_incremental_sync` | `--incremental-sync` | Content-hash diff re-index (SHA-256 per file) |

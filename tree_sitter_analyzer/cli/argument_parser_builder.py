@@ -927,6 +927,18 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
         default=2,
         help="Max transitive depth for --codegraph-navigate hierarchy (default: 2)",
     )
+    # CodeGraph parity gap-closure (2026-05-24).
+    parser.add_argument(
+        "--codegraph-status",
+        action="store_true",
+        help="Index health at-a-glance: indexed yes/no, total files/symbols, "
+        "schema version, FTS5, cache lag (CodeGraph parity).",
+    )
+    parser.add_argument(
+        "--codegraph-status-no-lag",
+        action="store_true",
+        help="Skip lag computation in --codegraph-status (faster on huge repos)",
+    )
     # Pain pass 2: 3 new MCP tools (codegraph_impact, codegraph_pr_review,
     # semantic_classify) need CLI parity to satisfy the contract test.
     parser.add_argument(

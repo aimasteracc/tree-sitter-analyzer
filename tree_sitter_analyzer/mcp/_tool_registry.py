@@ -48,6 +48,7 @@ def create_tool_registry(
     from .tools.codegraph_overview_tool import CodeGraphOverviewTool
     from .tools.codegraph_pr_review_tool import CodeGraphPRReviewTool
     from .tools.codegraph_sitemap_tool import CodeGraphSitemapTool
+    from .tools.codegraph_status_tool import CodeGraphStatusTool
     from .tools.codegraph_visualize_tool import CodeGraphVisualizeTool
     from .tools.codegraph_xref_tool import CodeGraphXRefTool
     from .tools.complexity_heatmap_tool import CodeGraphComplexityHeatmapTool
@@ -105,6 +106,11 @@ def create_tool_registry(
         ("codegraph_resolve", CodeGraphSymbolResolveTool(project_root)),
         ("codegraph_impact", CodeGraphImpactTool(project_root)),
         ("codegraph_navigate", CodeGraphNavigateTool(project_root)),
+        # CodeGraph parity gap-closure (2026-05-24): codegraph_status is a
+        # single-call facade over ast_cache + auto_index + check_tools so
+        # agents can decide "is the index ready?" in one tool call instead
+        # of triangulating three.
+        ("codegraph_status", CodeGraphStatusTool(project_root)),
         # Pain pass 2: codegraph_overview was imported in server.py but
         # missing from the central registry, which broke the cli-mcp-parity
         # contract test. Re-register here so both code paths agree.
