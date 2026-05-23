@@ -317,6 +317,52 @@ def _find_parent_class(node: Any, source: str) -> str | None:
     return None
 
 
+def _extract_parent_classes(
+    node: Any, source: str, language: str
+) -> list[str]:
+    """Extract base class names from a class definition node.
+
+    Handles Python (argument_list in class_definition), Java
+    (extends/implements), C++ (base_class_clause), TypeScript/JavaScript
+    (class_heritage), Go (type_identifier in interface/struct embedding).
+    """
+    parents: list[str] = []
+    try:
+        if language == "python":
+            for child in node.children:
+                if child.type == "argument_list":
+                    for arg in child.children:
+                        if arg.type in ("identifier", "attribute", "type"):
+                            parents.append(_node_text(arg, source))
+        elif language in ("javascript", "typescript"):
+            for child in node.children:
+                if child.type == "class_heritage":
+                    for hc in child.children:
+                        if hc.type in ("identifier", "member_expression"):
+                            parents.append(_node_text(hc, source))
+        elif language == "java":
+            for child in node.children:
+                if child.type == "superclass":
+                    for sc in child.children:
+                        if sc.type == "type_identifier":
+                            parents.append(_node_text(sc, source))
+                elif child.type == "super_interfaces":
+                    for si in child.children:
+                        if si.type == "type_list":
+                            for tc in si.children:
+                                if tc.type == "type_identifier":
+                                    parents.append(_node_text(tc, source))
+        elif language in ("c", "cpp"):
+            for child in node.children:
+                if child.type == "base_class_clause":
+                    for bc in child.children:
+                        if bc.type in ("type_identifier", "qualified_identifier"):
+                            parents.append(_node_text(bc, source))
+    except Exception:  # nosec B110
+        pass
+    return parents
+
+
 def _walk_for_symbols(
     node: Any,
     source: str,
@@ -349,15 +395,17 @@ def _walk_for_symbols(
         symbols.append(sym)
     elif node_type in _CLASS_LIKE and name_node is not None:
         name = _node_text(name_node, source)
-        symbols.append(
-            {
-                "kind": "class",
-                "name": name,
-                "line": node.start_point[0] + 1,
-                "end_line": node.end_point[0] + 1,
-                "language": language,
-            }
-        )
+        parents = _extract_parent_classes(node, source, language)
+        cls_sym: dict[str, Any] = {
+            "kind": "class",
+            "name": name,
+            "line": node.start_point[0] + 1,
+            "end_line": node.end_point[0] + 1,
+            "language": language,
+        }
+        if parents:
+            cls_sym["parents"] = parents
+        symbols.append(cls_sym)
     elif node_type in _IMPORT_LIKE:
         symbols.append(
             {
@@ -768,6 +816,16 @@ class ASTCache:
         candidates: list[tuple[str, str]] = []  # (abs_path, language)
         already_cached: list[dict[str, Any]] = []
         stats: dict[str, Any] = {
+            # ``mode_used`` makes the incremental-vs-full distinction
+            # explicit in the response. Without this an agent that
+            # calls ``index_project()`` thinks it ran a full index, but
+            # only files with stale mtime / new content get re-indexed —
+            # files added since the last call are picked up here too
+            # (the walker re-enumerates), but files removed from disk
+            # stay in the DB until ``force=True`` clears them. The
+            # honest summary lets agents decide whether to retry with
+            # force. See TRUST_BUT_VERIFY_2026-05-23.md for context.
+            "mode_used": "full" if force else "incremental",
             "indexed": 0,
             "cached": 0,
             "errors": 0,
