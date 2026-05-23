@@ -26,6 +26,7 @@ allowed-tools:
   - mcp__tree-sitter-analyzer__codegraph_call_graph
   - mcp__tree-sitter-analyzer__codegraph_ast_path
   - mcp__tree-sitter-analyzer__codegraph_navigate
+  - mcp__tree-sitter-analyzer__codegraph_explore
   - mcp__tree-sitter-analyzer__codegraph_impact
   - mcp__tree-sitter-analyzer__codegraph_class_hierarchy
   - mcp__tree-sitter-analyzer__codegraph_dependency_matrix

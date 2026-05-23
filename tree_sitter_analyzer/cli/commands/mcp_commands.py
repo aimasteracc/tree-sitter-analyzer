@@ -57,6 +57,9 @@ from tree_sitter_analyzer.mcp.tools.code_patterns_tool import (
 from tree_sitter_analyzer.mcp.tools.code_similarity_tool import (
     CodeGraphSimilarityTool,  # noqa: F401
 )
+from tree_sitter_analyzer.mcp.tools.codegraph_explore_tool import (
+    CodeGraphExploreTool,  # noqa: F401
+)
 from tree_sitter_analyzer.mcp.tools.codegraph_impact_tool import (
     CodeGraphImpactTool,  # noqa: F401
 )
@@ -634,6 +637,23 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
             "output_format": output_format,
         },
     ),
+    # CodeGraph parity gap-closure (2026-05-24): codegraph_explore replaces
+    # ~8 chained codegraph_node / analyze_code_structure calls with one
+    # capped batch fetch. Value-bearing flag: --codegraph-explore "QUERY".
+    McpCommandSpec(
+        flag_name="codegraph_explore",
+        tool_attr="CodeGraphExploreTool",
+        label="Bulk-fetch N related symbols' source + relationship map",
+        build_tool_args=lambda args, output_format: {
+            "query": getattr(args, "codegraph_explore", "") or "",
+            "maxFiles": getattr(args, "codegraph_explore_max_files", 12),
+            "maxSymbols": getattr(args, "codegraph_explore_max_symbols", 20),
+            "includeCode": not bool(
+                getattr(args, "codegraph_explore_outline_only", False)
+            ),
+            "output_format": output_format,
+        },
+    ),
     McpCommandSpec(
         flag_name="ast_path",
         tool_attr="CodeGraphASTPathTool",
@@ -888,6 +908,7 @@ _TOOL_CLASS_NAMES: frozenset[str] = frozenset(
         "CodeGraphPRReviewTool",
         "CodeGraphNavigateTool",
         "CodeGraphStatusTool",
+        "CodeGraphExploreTool",
         "CodeGraphImportGraphTool",
         # Pain pass 4: dead_code spec was added but the class wasn't in
         # this allowlist, so the contract test caught a registry/spec drift.

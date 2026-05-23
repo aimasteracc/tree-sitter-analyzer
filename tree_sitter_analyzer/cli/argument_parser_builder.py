@@ -939,6 +939,30 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Skip lag computation in --codegraph-status (faster on huge repos)",
     )
+    parser.add_argument(
+        "--codegraph-explore",
+        metavar="QUERY",
+        help="Bulk-fetch N related symbols' source + relationship map in one call. "
+        "Query is space-separated symbol names + optional file hints "
+        "(e.g. 'CodeGraphNavigateTool execute call_graph_tool.py').",
+    )
+    parser.add_argument(
+        "--codegraph-explore-max-files",
+        type=int,
+        default=12,
+        help="Max distinct source files for --codegraph-explore (default: 12, cap 30)",
+    )
+    parser.add_argument(
+        "--codegraph-explore-max-symbols",
+        type=int,
+        default=20,
+        help="Max symbols to resolve for --codegraph-explore (default: 20, cap 50)",
+    )
+    parser.add_argument(
+        "--codegraph-explore-outline-only",
+        action="store_true",
+        help="Return symbol outline without source snippets for --codegraph-explore",
+    )
     # Pain pass 2: 3 new MCP tools (codegraph_impact, codegraph_pr_review,
     # semantic_classify) need CLI parity to satisfy the contract test.
     parser.add_argument(

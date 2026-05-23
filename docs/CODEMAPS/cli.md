@@ -85,6 +85,7 @@ Categories of CLI surface:
 - `--symbol-resolve` — go-to-definition / find-all-references
 - `--ast-path FILE:LINE` — "what is at file:line?"
 - `--codegraph-symbol-search QUERY` — FTS5 symbol search
+- `--codegraph-explore QUERY` — bulk-fetch N related symbols + relmap (CodeGraph parity)
 - `--dead-code` — transitive dead functions / unused imports
 - `--class-hierarchy` / `--dependency-matrix` / `--import-graph` — structural
 - `--codegraph-xref` — multi-dimension cross-reference

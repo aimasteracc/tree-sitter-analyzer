@@ -42,6 +42,7 @@ def create_tool_registry(
     from .tools.class_hierarchy_tool import ClassHierarchyTool
     from .tools.code_patterns_tool import CodePatternsTool
     from .tools.code_similarity_tool import CodeGraphSimilarityTool
+    from .tools.codegraph_explore_tool import CodeGraphExploreTool
     from .tools.codegraph_impact_tool import CodeGraphImpactTool
     from .tools.codegraph_metrics_tool import CodeGraphMetricsTool
     from .tools.codegraph_navigate_tool import CodeGraphNavigateTool
@@ -111,6 +112,11 @@ def create_tool_registry(
         # agents can decide "is the index ready?" in one tool call instead
         # of triangulating three.
         ("codegraph_status", CodeGraphStatusTool(project_root)),
+        # CodeGraph parity gap-closure (2026-05-24): codegraph_explore is a
+        # capped batch-fetch of N related symbols' source + relationship
+        # map — replaces ~8 chained codegraph_node / analyze_code_structure
+        # calls when surveying an unfamiliar area.
+        ("codegraph_explore", CodeGraphExploreTool(project_root)),
         # Pain pass 2: codegraph_overview was imported in server.py but
         # missing from the central registry, which broke the cli-mcp-parity
         # contract test. Re-register here so both code paths agree.
