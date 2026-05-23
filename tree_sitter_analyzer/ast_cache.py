@@ -1387,6 +1387,66 @@ class ASTCache:
         except sqlite3.OperationalError:
             return False
 
+    def get_cross_file_resolver(self) -> Any:
+        """Get (or build) the CrossFileResolver for import-aware resolution."""
+        resolver = getattr(self, "_cross_file_resolver", None)
+        if resolver is None:
+            from .cross_file_resolver import CrossFileResolver
+
+            resolver = CrossFileResolver(self)
+            self._cross_file_resolver = resolver
+        return resolver
+
+    def query_callers_enhanced(
+        self,
+        callee_name: str,
+        callee_file: str | None = None,
+        max_depth: int = 1,
+    ) -> list[dict[str, Any]]:
+        """Enhanced callers lookup with cross-file import resolution.
+
+        Like query_callers but fixes empty caller names by finding the
+        enclosing function, and adds callee_resolved_file for cross-file
+        calls resolved through import chains.
+        """
+        raw = self.query_callers(callee_name, callee_file, max_depth)
+        if not raw:
+            return raw
+        resolver = self.get_cross_file_resolver()
+        for entry in raw:
+            if not entry.get("caller_name"):
+                name, line = resolver.find_caller_function(
+                    entry.get("callee_line", 0), entry.get("caller_file", "")
+                )
+                if name:
+                    entry["caller_name"] = name
+                    entry["caller_line"] = line
+        return raw
+
+    def query_callees_enhanced(
+        self,
+        caller_name: str,
+        caller_file: str | None = None,
+        max_depth: int = 1,
+    ) -> list[dict[str, Any]]:
+        """Enhanced callees lookup with cross-file import resolution.
+
+        Like query_callees but adds callee_resolved_file showing where
+        the callee is actually defined (resolved through import chains).
+        """
+        raw = self.query_callees(caller_name, caller_file, max_depth)
+        if not raw:
+            return raw
+        resolver = self.get_cross_file_resolver()
+        for entry in raw:
+            callee_name = entry.get("callee_name", "")
+            source_file = entry.get("caller_file", "")
+            candidates = resolver.resolve_callee(callee_name, source_file)
+            if candidates:
+                entry["callee_resolved_file"] = candidates[0][0]
+                entry["confidence"] = candidates[0][1]
+        return raw
+
     def close(self) -> None:
         conn = getattr(self._local, "conn", None)
         if conn is not None:
