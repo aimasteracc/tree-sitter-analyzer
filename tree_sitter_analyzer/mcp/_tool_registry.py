@@ -36,6 +36,9 @@ def create_tool_registry(
     from .tools.codegraph_navigate_tool import CodeGraphNavigateTool
     from .tools.codegraph_overview_tool import CodeGraphOverviewTool
     from .tools.codegraph_pr_review_tool import CodeGraphPRReviewTool
+    from .tools.codegraph_sitemap_tool import CodeGraphSitemapTool
+    from .tools.codegraph_xref_tool import CodeGraphXRefTool
+    from .tools.complexity_heatmap_tool import CodeGraphComplexityHeatmapTool
     from .tools.dead_code_tool import CodeGraphDeadCodeTool
     from .tools.dependency_analysis_tool import DependencyAnalysisTool
     from .tools.file_health_tool import FileHealthTool
@@ -102,5 +105,8 @@ def create_tool_registry(
         # source-of-truth; see test_registered_mcp_tools_have_cli_parity.
         ("codegraph_import_graph", CodeGraphImportGraphTool(project_root)),
         ("codegraph_similarity", CodeGraphSimilarityTool(project_root)),
+        ("codegraph_sitemap", CodeGraphSitemapTool(project_root)),
+        ("codegraph_xref", CodeGraphXRefTool(project_root)),
+        ("codegraph_complexity_heatmap", CodeGraphComplexityHeatmapTool(project_root)),
     ]
     return tool_instances, dict(tool_instances)

@@ -238,6 +238,85 @@ def _extract_symbols(tree: Any, source_code: str, language: str) -> dict[str, An
     return {"symbols": symbols, "node_count": _count_nodes(root)}
 
 
+_COMPLEXITY_NODE_TYPES: dict[str, set[str]] = {
+    "python": {
+        "if_statement", "elif_clause", "for_statement", "while_statement",
+        "except_clause", "boolean_operator", "conditional_expression",
+        "list_comprehension", "set_comprehension", "dict_comprehension",
+        "generator_expression", "match_statement", "case_clause",
+    },
+    "javascript": {
+        "if_statement", "else_clause", "for_statement", "for_in_statement",
+        "for_of_statement", "while_statement", "do_statement",
+        "catch_clause", "ternary_expression", "switch_case",
+        "switch_default", "logical_expression", "conditional_expression",
+    },
+    "typescript": {
+        "if_statement", "else_clause", "for_statement", "for_in_statement",
+        "for_of_statement", "while_statement", "do_statement",
+        "catch_clause", "ternary_expression", "switch_case",
+        "switch_default", "logical_expression", "conditional_expression",
+    },
+    "java": {
+        "if_statement", "else_clause", "for_statement",
+        "enhanced_for_statement", "while_statement", "do_statement",
+        "catch_clause", "ternary_expression",
+        "switch_block_statement_group", "logical_expression",
+        "conditional_expression",
+    },
+    "go": {
+        "if_statement", "else_clause", "for_statement",
+        "expression_switch_case", "type_switch_case", "select_case",
+        "binary_expression",
+    },
+    "rust": {
+        "if_expression", "else_clause", "for_expression",
+        "while_expression", "loop_expression", "match_arm",
+        "binary_expression",
+    },
+    "c": {
+        "if_statement", "else_clause", "for_statement",
+        "while_statement", "do_statement", "switch_case",
+        "binary_expression", "conditional_expression",
+    },
+    "cpp": {
+        "if_statement", "else_clause", "for_statement",
+        "while_statement", "do_statement", "switch_case",
+        "binary_expression", "conditional_expression",
+        "range_based_for_statement", "catch_clause",
+    },
+}
+
+
+def _count_decision_points(node: Any, language: str) -> dict[str, int]:
+    lang = language.lower()
+    if lang in ("tsx", "jsx"):
+        lang = "typescript"
+    types = _COMPLEXITY_NODE_TYPES.get(lang)
+    if not types:
+        return {}
+    counts: dict[str, int] = {}
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        if current.type in types:
+            counts[current.type] = counts.get(current.type, 0) + 1
+        for child in current.children:
+            stack.append(child)
+    return counts
+
+
+def _find_parent_class(node: Any, source: str) -> str | None:
+    parent = node.parent
+    while parent:
+        if parent.type in _CLASS_LIKE:
+            name_node = parent.child_by_field_name("name")
+            if name_node:
+                return _node_text(name_node, source)
+        parent = parent.parent
+    return None
+
+
 def _walk_for_symbols(
     node: Any,
     source: str,
@@ -253,16 +332,21 @@ def _walk_for_symbols(
         name = _node_text(name_node, source)
         params_node = node.child_by_field_name("parameters")
         params = _node_text(params_node, source) if params_node else ""
-        symbols.append(
-            {
-                "kind": "function",
-                "name": name,
-                "line": node.start_point[0] + 1,
-                "end_line": node.end_point[0] + 1,
-                "params": params,
-                "language": language,
-            }
-        )
+        dp = _count_decision_points(node, language)
+        sym: dict[str, Any] = {
+            "kind": "function",
+            "name": name,
+            "line": node.start_point[0] + 1,
+            "end_line": node.end_point[0] + 1,
+            "params": params,
+            "language": language,
+        }
+        if dp:
+            sym["decision_points"] = dp
+        parent_cls = _find_parent_class(node, source)
+        if parent_cls:
+            sym["class"] = parent_cls
+        symbols.append(sym)
     elif node_type in _CLASS_LIKE and name_node is not None:
         name = _node_text(name_node, source)
         symbols.append(

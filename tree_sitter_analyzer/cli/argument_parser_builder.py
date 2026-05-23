@@ -788,6 +788,77 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
         help="Skip AST cache and do full project scan for --code-similarity",
     )
     parser.add_argument(
+        "--codegraph-sitemap",
+        action="store_true",
+        help="Generate hierarchical project code map: directory→file→class→function (CodeGraph parity)",
+    )
+    parser.add_argument(
+        "--codegraph-sitemap-mode",
+        choices=["full", "api", "module", "flat"],
+        default="full",
+        help="Mode for --codegraph-sitemap (default: full)",
+    )
+    parser.add_argument(
+        "--codegraph-sitemap-language",
+        help="Language filter for --codegraph-sitemap",
+    )
+    parser.add_argument(
+        "--codegraph-sitemap-directory",
+        help="Directory filter for --codegraph-sitemap (relative path)",
+    )
+    parser.add_argument(
+        "--codegraph-sitemap-max-files",
+        type=int,
+        default=200,
+        help="Max files for --codegraph-sitemap (default: 200)",
+    )
+    parser.add_argument(
+        "--codegraph-xref",
+        metavar="SYMBOL",
+        help="Instant cross-reference: definition + callers + callees + import deps "
+        "(CodeGraph parity). Requires ast_cache index.",
+    )
+    parser.add_argument(
+        "--codegraph-xref-mode",
+        choices=["symbol", "file"],
+        default="symbol",
+        help="Mode for --codegraph-xref: symbol or file (default: symbol)",
+    )
+    parser.add_argument(
+        "--codegraph-xref-file",
+        help="File path to disambiguate (symbol mode) or target (file mode)",
+    )
+    parser.add_argument(
+        "--codegraph-complexity-heatmap",
+        nargs="?",
+        const="project",
+        choices=["project", "file", "function"],
+        help="Cyclomatic complexity heatmap (CodeGraph parity). "
+        "project=full heatmap, file=per-file, function=specific function",
+    )
+    parser.add_argument(
+        "--codegraph-complexity-file",
+        help="File path for file/function mode (relative to project root)",
+    )
+    parser.add_argument(
+        "--codegraph-complexity-function",
+        help="Function name for function mode",
+    )
+    parser.add_argument(
+        "--codegraph-complexity-language",
+        help="Language filter for complexity heatmap",
+    )
+    parser.add_argument(
+        "--codegraph-complexity-directory",
+        help="Directory filter for complexity heatmap (relative path)",
+    )
+    parser.add_argument(
+        "--codegraph-complexity-max-files",
+        type=int,
+        default=200,
+        help="Max files to scan in project mode (default: 200)",
+    )
+    parser.add_argument(
         "--symbol-search-language",
         help="Language filter for --symbol-search",
     )

@@ -52,6 +52,15 @@ from tree_sitter_analyzer.mcp.tools.codegraph_overview_tool import (
 from tree_sitter_analyzer.mcp.tools.codegraph_pr_review_tool import (
     CodeGraphPRReviewTool,  # noqa: F401
 )
+from tree_sitter_analyzer.mcp.tools.codegraph_sitemap_tool import (
+    CodeGraphSitemapTool,  # noqa: F401
+)
+from tree_sitter_analyzer.mcp.tools.codegraph_xref_tool import (
+    CodeGraphXRefTool,  # noqa: F401
+)
+from tree_sitter_analyzer.mcp.tools.complexity_heatmap_tool import (
+    CodeGraphComplexityHeatmapTool,  # noqa: F401
+)
 from tree_sitter_analyzer.mcp.tools.dead_code_tool import (
     CodeGraphDeadCodeTool,  # noqa: F401
 )
@@ -475,6 +484,47 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
             "output_format": output_format,
         },
     ),
+    McpCommandSpec(
+        flag_name="codegraph_sitemap",
+        tool_attr="CodeGraphSitemapTool",
+        label="Hierarchical project code map: directory→file→class→function (CodeGraph parity)",
+        build_tool_args=lambda args, output_format: {
+            "mode": getattr(args, "codegraph_sitemap_mode", "full") or "full",
+            "language": getattr(args, "codegraph_sitemap_language", None),
+            "directory": getattr(args, "codegraph_sitemap_directory", None),
+            "max_files": getattr(args, "codegraph_sitemap_max_files", 200),
+            "output_format": output_format,
+        },
+    ),
+    McpCommandSpec(
+        flag_name="codegraph_xref",
+        tool_attr="CodeGraphXRefTool",
+        label="Instant cross-reference: definition + callers + callees + import deps (CodeGraph parity)",
+        build_tool_args=lambda args, output_format: {
+            "mode": getattr(args, "codegraph_xref_mode", "symbol") or "symbol",
+            "symbol": getattr(args, "codegraph_xref", ""),
+            "file_path": getattr(args, "codegraph_xref_file", None),
+            "include_callers": bool(getattr(args, "codegraph_xref_callers", True)),
+            "include_callees": bool(getattr(args, "codegraph_xref_callees", True)),
+            "include_imports": bool(getattr(args, "codegraph_xref_imports", True)),
+            "include_file_deps": bool(getattr(args, "codegraph_xref_file_deps", True)),
+            "output_format": output_format,
+        },
+    ),
+    McpCommandSpec(
+        flag_name="codegraph_complexity_heatmap",
+        tool_attr="CodeGraphComplexityHeatmapTool",
+        label="Cyclomatic complexity heatmap with risk bands (CodeGraph parity)",
+        build_tool_args=lambda args, output_format: {
+            "mode": getattr(args, "codegraph_complexity_heatmap", "project") or "project",
+            "file_path": getattr(args, "codegraph_complexity_file", None),
+            "function_name": getattr(args, "codegraph_complexity_function", None),
+            "language": getattr(args, "codegraph_complexity_language", None),
+            "directory": getattr(args, "codegraph_complexity_directory", None),
+            "max_files": getattr(args, "codegraph_complexity_max_files", 200),
+            "output_format": output_format,
+        },
+    ),
 )
 
 
@@ -542,6 +592,9 @@ _TOOL_CLASS_NAMES: frozenset[str] = frozenset(
         # this allowlist, so the contract test caught a registry/spec drift.
         "CodeGraphDeadCodeTool",
         "CodeGraphSimilarityTool",
+        "CodeGraphSitemapTool",
+        "CodeGraphXRefTool",
+        "CodeGraphComplexityHeatmapTool",
     }
 )
 
