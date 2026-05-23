@@ -39,6 +39,24 @@ if TYPE_CHECKING:
     pass
 
 
+#: Canonical verdict vocabulary used across every tsa-landing-eligible
+#: tool. Agents branching on verdict expect EXACTLY one of these strings —
+#: anything else (CLEAN, LOOKS_GOOD, READY, etc.) silently falls through
+#: to default-INFO behavior and turns into a real bug at the agent layer.
+CANONICAL_VERDICTS: frozenset[str] = frozenset(
+    {
+        "SAFE",
+        "CAUTION",
+        "REVIEW",
+        "UNSAFE",
+        "INFO",
+        "WARN",
+        "ERROR",
+        "NOT_FOUND",
+    }
+)
+
+
 class ToolResponse(TypedDict, total=False):
     """The shape every MCP tool response should follow.
 
@@ -49,6 +67,12 @@ class ToolResponse(TypedDict, total=False):
 
     success: bool
     """Whether the tool ran end-to-end without raising. Mandatory."""
+
+    verdict: str
+    """Canonical agent-facing verdict for branching. MUST be one of the
+    strings in :data:`CANONICAL_VERDICTS`. Optional today (the contract
+    test only requires it when the key is present and rejects non-canonical
+    values), but every landing-surface tool now sets it."""
 
     error: str
     """Human-readable failure description. MUST be present when
@@ -92,6 +116,19 @@ def validate_tool_response(payload: Any, tool_name: str = "<unknown>") -> None:
             f"{tool_name}: ToolResponse['error'] must be str, got "
             f"{type(payload['error']).__name__}"
         )
+    # When ``verdict`` is present it MUST be a canonical value. Tools that
+    # emit non-canonical strings (CLEAN, NEEDS_REVIEW, LOOKS_GOOD, READY,
+    # ...) cause silent agent miscoordination — pains #9, #93 in the UX log.
+    if "verdict" in payload:
+        verdict = payload["verdict"]
+        assert isinstance(verdict, str), (
+            f"{tool_name}: ToolResponse['verdict'] must be str, got "
+            f"{type(verdict).__name__}"
+        )
+        assert verdict in CANONICAL_VERDICTS, (
+            f"{tool_name}: ToolResponse['verdict']={verdict!r} is not in "
+            f"the canonical set {sorted(CANONICAL_VERDICTS)}"
+        )
 
 
-__all__ = ["ToolResponse", "validate_tool_response"]
+__all__ = ["CANONICAL_VERDICTS", "ToolResponse", "validate_tool_response"]

@@ -234,6 +234,9 @@ class TestExecuteAcrossAllTools:
                 "new_source": "a = 2",
                 "language": "python",
             },
+            # Pain pass 4: 2 more tools shipped without coverage rows.
+            "codegraph_import_graph": {"mode": "summary"},
+            "codegraph_dead_code": {"mode": "summary"},
         }
         skipped: list[str] = []
         for name, tool in registered_tools:

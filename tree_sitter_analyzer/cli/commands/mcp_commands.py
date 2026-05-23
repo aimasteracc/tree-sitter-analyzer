@@ -52,6 +52,9 @@ from tree_sitter_analyzer.mcp.tools.codegraph_pr_review_tool import (
 from tree_sitter_analyzer.mcp.tools.dependency_analysis_tool import (
     DependencyAnalysisTool,  # noqa: F401
 )
+from tree_sitter_analyzer.mcp.tools.dead_code_tool import (
+    CodeGraphDeadCodeTool,  # noqa: F401
+)
 from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool  # noqa: F401
 from tree_sitter_analyzer.mcp.tools.import_graph_tool import (
     CodeGraphImportGraphTool,  # noqa: F401
@@ -445,6 +448,17 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
             "output_format": output_format,
         },
     ),
+    McpCommandSpec(
+        flag_name="dead_code",
+        tool_attr="CodeGraphDeadCodeTool",
+        label="Dead code analysis: transitive dead functions, unused imports, unreferenced variables",
+        build_tool_args=lambda args, output_format: {
+            "mode": getattr(args, "dead_code_mode", "all") or "all",
+            "include_test_files": bool(getattr(args, "dead_code_include_tests", False)),
+            "max_dead": getattr(args, "dead_code_max", 50) or 50,
+            "output_format": output_format,
+        },
+    ),
 )
 
 
@@ -508,6 +522,9 @@ _TOOL_CLASS_NAMES: frozenset[str] = frozenset(
         "CodeGraphPRReviewTool",
         "CodeGraphNavigateTool",
         "CodeGraphImportGraphTool",
+        # Pain pass 4: dead_code spec was added but the class wasn't in
+        # this allowlist, so the contract test caught a registry/spec drift.
+        "CodeGraphDeadCodeTool",
     }
 )
 

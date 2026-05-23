@@ -114,6 +114,7 @@ def _create_tool_registry(
     from .tools.codegraph_navigate_tool import CodeGraphNavigateTool
     from .tools.codegraph_overview_tool import CodeGraphOverviewTool
     from .tools.codegraph_pr_review_tool import CodeGraphPRReviewTool
+    from .tools.dead_code_tool import CodeGraphDeadCodeTool
     from .tools.dependency_analysis_tool import DependencyAnalysisTool
     from .tools.file_health_tool import FileHealthTool
     from .tools.find_and_grep_tool import FindAndGrepTool
@@ -170,6 +171,7 @@ def _create_tool_registry(
         ("semantic_classify", SemanticClassifyTool(project_root)),
         ("detect_routes", RouteDetectorTool(project_root)),
         ("codegraph_import_graph", CodeGraphImportGraphTool(project_root)),
+        ("codegraph_dead_code", CodeGraphDeadCodeTool(project_root)),
     ]
     return tool_instances, dict(tool_instances)
 

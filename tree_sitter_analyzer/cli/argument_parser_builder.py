@@ -726,6 +726,29 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
         help="Max depth for --import-graph blast_radius (default: 10)",
     )
     parser.add_argument(
+        "--dead-code",
+        action="store_true",
+        help="Dead code analysis: transitive dead functions, unused imports, unreferenced variables",
+    )
+    parser.add_argument(
+        "--dead-code-mode",
+        choices=["all", "dead_functions", "unused_imports", "variables"],
+        default="all",
+        help="Mode for --dead-code (default: all)",
+    )
+    parser.add_argument(
+        "--dead-code-include-tests",
+        action="store_true",
+        default=False,
+        help="Include test files in dead code analysis",
+    )
+    parser.add_argument(
+        "--dead-code-max",
+        type=int,
+        default=50,
+        help="Max dead function candidates (default: 50)",
+    )
+    parser.add_argument(
         "--symbol-search",
         help="FTS5-powered instant symbol search (CodeGraph parity). "
         "Use exact name, * wildcards, or ~ fuzzy prefix",
