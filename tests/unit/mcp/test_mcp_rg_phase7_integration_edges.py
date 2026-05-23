@@ -172,9 +172,13 @@ async def test_rg_87_find_and_grep_hidden_no_ignore_passthrough(monkeypatch, tmp
 
     async def fake_run(cmd, input_data=None, timeout_ms=None):
         if cmd[0] == "fd":
+            # fd's -H means hidden — that flag is correctly named.
             assert "-H" in cmd and "-I" in cmd
             return 0, b"/a.txt\n", b""
-        assert "-H" in cmd and "-u" in cmd
+        # rg's -H means --with-filename (always on for multi-file output).
+        # To search hidden files use the LONG form --hidden. The old
+        # assertion pinned the bug as correct behavior — Pain #27.
+        assert "--hidden" in cmd and "-u" in cmd
         return 0, b"", b""
 
     monkeypatch.setattr(

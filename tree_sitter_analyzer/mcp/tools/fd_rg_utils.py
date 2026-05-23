@@ -146,8 +146,22 @@ def build_fd_command(
     absolute: bool,
     limit: int | None,
     roots: list[str],
+    # fd-native power flags added 2026-05-23 from RG_FD_GAP_AUDIT.md.
+    # All default to None / False so existing callers keep their
+    # behavior — agents that opt in get fd's full surface.
+    min_depth: int | None = None,
+    prune: bool = False,
+    threads: int | None = None,
+    strip_cwd_prefix: bool = False,
+    one_file_system: bool = False,
+    show_errors: bool = False,
 ) -> list[str]:
-    """Build an fd command with appropriate flags."""
+    """Build an fd command with appropriate flags.
+
+    The new ``min_depth`` / ``prune`` / ``threads`` / ``strip_cwd_prefix`` /
+    ``one_file_system`` / ``show_errors`` keyword args expose fd-native
+    features that were previously unreachable from the MCP surface.
+    """
     cmd: list[str] = ["fd", "--color", "never"]
     if glob:
         cmd.append("--glob")
@@ -163,6 +177,21 @@ def build_fd_command(
         cmd.append("-I")
     if depth is not None:
         cmd += ["-d", str(depth)]
+    if min_depth is not None:
+        cmd += ["--min-depth", str(min_depth)]
+    if prune:
+        # Stop descending into matched directories — turns "find every
+        # dist/ folder" into a single result per build root instead of
+        # the full traversal of dist/'s contents.
+        cmd.append("--prune")
+    if threads is not None and threads > 0:
+        cmd += ["-j", str(threads)]
+    if strip_cwd_prefix:
+        cmd.append("--strip-cwd-prefix")
+    if one_file_system:
+        cmd.append("--one-file-system")
+    if show_errors:
+        cmd.append("--show-errors")
     if types:
         for t in types:
             cmd += ["-t", str(t)]
@@ -230,12 +259,47 @@ def build_rg_command(
     roots: list[str] | None,
     files_from: str | None,
     count_only_matches: bool = False,
+    # rg-native power flags added 2026-05-23 after the capability audit
+    # (docs/internal/RG_FD_GAP_AUDIT.md). All default to off / None so
+    # existing callers keep their current behavior; agents that opt in
+    # get the full ripgrep surface without us having to translate.
+    file_types: list[str] | None = None,
+    exclude_types: list[str] | None = None,
+    files_with_matches: bool = False,
+    only_matching: bool = False,
+    context: int | None = None,
+    pcre2: bool = False,
+    max_depth: int | None = None,
+    sort: str | None = None,
+    invert_match: bool = False,
+    include_stats: bool = False,
 ) -> list[str]:
-    """Build ripgrep command with JSON output and options."""
+    """Build ripgrep command with JSON output and options.
+
+    Most flags map 1:1 onto rg's CLI; the new ``file_types`` /
+    ``files_with_matches`` / ``only_matching`` / ``context`` /
+    ``pcre2`` / ``max_depth`` / ``sort`` / ``invert_match`` /
+    ``include_stats`` keyword args expose rg-native features that were
+    previously unreachable from the MCP surface.
+
+    ``-l/--files-with-matches`` is mutually exclusive with the default
+    ``--json`` output (rg refuses to emit JSON when only listing files),
+    so when ``files_with_matches`` is set we drop the ``--json`` flag.
+    """
     if count_only_matches:
         cmd = ["rg", "--count-matches", "--no-heading", "--color", "never"]
+    elif files_with_matches:
+        # rg refuses --json with -l. Caller is signaling "I only need
+        # the file names" — that's a 10-100× output reduction for many
+        # agent workflows.
+        cmd = ["rg", "--files-with-matches", "--no-heading", "--color", "never"]
     else:
         cmd = ["rg", "--json", "--no-heading", "--color", "never"]
+
+    # Reproducibility — never let the user's ~/.ripgreprc rewrite agent
+    # results. (Cheap to set; no agent ever wants a personalized rg config
+    # to influence what the swarm sees.)
+    cmd.append("--no-config")
 
     if case == "smart":
         cmd.append("-S")
@@ -254,9 +318,30 @@ def build_rg_command(
     if follow_symlinks:
         cmd.append("-L")
     if hidden:
-        cmd.append("-H")
+        # Pain #27 (2026-05-23): the previous code did ``cmd.append("-H")``
+        # which rg interprets as ``--with-filename`` — that's already on
+        # by default for multi-file searches. The flag for "search hidden
+        # files" is the LONG form ``--hidden`` (or the short ``-.``).
+        # Every agent setting hidden=True before this fix got a silent
+        # no-op.
+        cmd.append("--hidden")
     if no_ignore:
         cmd.append("-u")
+    if pcre2:
+        # PCRE2 unlocks lookahead/lookbehind, named groups, backrefs.
+        # We pass -P explicitly; agents needing pure-Rust regex don't set this.
+        cmd.append("-P")
+    if invert_match:
+        cmd.append("-v")
+
+    # -t/-T for rg's built-in type presets (saves agents from writing
+    # multi-glob lists like ``-g '*.py' -g '*.pyi' -g '*.pyw'``).
+    if file_types:
+        for t in file_types:
+            cmd += ["-t", str(t)]
+    if exclude_types:
+        for t in exclude_types:
+            cmd += ["-T", str(t)]
 
     if include_globs:
         for g in include_globs:
@@ -268,10 +353,26 @@ def build_rg_command(
             else:
                 cmd += ["-g", g]
 
-    if context_before is not None:
-        cmd += ["-B", str(context_before)]
-    if context_after is not None:
-        cmd += ["-A", str(context_after)]
+    # Context: --context N sets BOTH sides; only emit when caller used
+    # the combined arg AND didn't override with explicit before/after.
+    if context is not None and context_before is None and context_after is None:
+        cmd += ["-C", str(context)]
+    else:
+        if context_before is not None:
+            cmd += ["-B", str(context_before)]
+        if context_after is not None:
+            cmd += ["-A", str(context_after)]
+
+    if only_matching:
+        cmd.append("-o")
+    if max_depth is not None:
+        cmd += ["--max-depth", str(max_depth)]
+    if sort:
+        # rg accepts: path, modified, accessed, created, none.
+        cmd += ["--sort", sort]
+    if include_stats:
+        cmd.append("--stats")
+
     if encoding:
         cmd += ["--encoding", encoding]
     if max_count is not None:

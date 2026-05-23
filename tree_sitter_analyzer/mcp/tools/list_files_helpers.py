@@ -96,6 +96,48 @@ TOOL_SCHEMA: dict[str, Any] = {
         "limit": {"type": "integer"},
         # Return only the count, not the file list
         "count_only": {"type": "boolean", "default": False},
+        # fd-native power flags (RG_FD_GAP_AUDIT.md Phase 3) — all default
+        # off so existing callers are unaffected; agents opt in.
+        "min_depth": {
+            "type": "integer",
+            "description": (
+                "Skip files above this depth (fd --min-depth N). "
+                "Inverse of 'depth'. Useful for 'show files at depth ≥ 2'."
+            ),
+        },
+        "prune": {
+            "type": "boolean",
+            "default": False,
+            "description": (
+                "Don't descend into matched directories (fd --prune). "
+                "E.g. find every dist/ folder without listing its contents."
+            ),
+        },
+        "threads": {
+            "type": "integer",
+            "description": "Worker threads (fd -j N). Default: auto.",
+        },
+        "strip_cwd_prefix": {
+            "type": "boolean",
+            "default": False,
+            "description": "Drop leading './' from paths (fd --strip-cwd-prefix).",
+        },
+        "one_file_system": {
+            "type": "boolean",
+            "default": False,
+            "description": (
+                "Stay on the same filesystem (fd --one-file-system). "
+                "Useful for symlink farms / mounted volumes in monorepos."
+            ),
+        },
+        "show_errors": {
+            "type": "boolean",
+            "default": False,
+            "description": (
+                "Report permission errors etc. (fd --show-errors). "
+                "Set to true when debugging 'why did we miss this file'."
+            ),
+        },
         # Token-efficient toon format by default
         "output_format": {
             "type": "string",
@@ -167,6 +209,14 @@ def _build_fd_command(
         absolute=True,
         limit=limit,
         roots=roots,
+        # fd-native power flags (RG_FD_GAP_AUDIT.md Phase 3). All default
+        # to off / None so existing callers keep their behavior.
+        min_depth=arguments.get("min_depth"),
+        prune=bool(arguments.get("prune", False)),
+        threads=arguments.get("threads"),
+        strip_cwd_prefix=bool(arguments.get("strip_cwd_prefix", False)),
+        one_file_system=bool(arguments.get("one_file_system", False)),
+        show_errors=bool(arguments.get("show_errors", False)),
     )
 
 
