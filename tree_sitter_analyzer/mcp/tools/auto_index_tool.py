@@ -23,6 +23,7 @@ from ..utils.auto_index_guard import (
     mark_dirty,
 )
 from ..utils.format_helper import apply_toon_format_to_response
+from ._response_builder import build_error, build_response
 from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
@@ -90,16 +91,15 @@ class CodeGraphAutoIndexTool(BaseMCPTool):
         elif mode == "reset":
             return self._reset(output_format)
 
-        return {"success": False, "error": f"Unknown mode: {mode}"}
+        return build_error(error=f"Unknown mode: {mode}")
 
     def _status(self, output_format: str) -> dict[str, Any]:
         if not self.project_root:
-            result: dict[str, Any] = {
-                "success": True,
-                "verdict": "WARN",
-                "indexed": False,
-                "reason": "project_root not set",
-            }
+            result = build_response(
+                verdict="WARN",
+                indexed=False,
+                reason="project_root not set",
+            )
             return apply_toon_format_to_response(result, output_format)
 
         indexed = is_indexed(self.project_root)
@@ -113,51 +113,54 @@ class CodeGraphAutoIndexTool(BaseMCPTool):
             except Exception:
                 pass
 
-        result = {
-            "success": True,
-            "verdict": "INFO",
-            "project_root": self.project_root,
-            "indexed": indexed,
-            "cache_stats": cache_stats,
-        }
+        result = build_response(
+            verdict="INFO",
+            project_root=self.project_root,
+            indexed=indexed,
+            cache_stats=cache_stats,
+        )
         return apply_toon_format_to_response(result, output_format)
 
     def _warm(self, max_files: int, output_format: str) -> dict[str, Any]:
+        # The two failure branches below historically returned a
+        # ``reason`` key instead of ``error``. We keep that shape to stay
+        # back-compatible with anyone branching on ``reason``; the
+        # envelope still passes through build_response so the verdict is
+        # validated. (Migrating to ``error`` would be a behaviour change
+        # — out of scope for the factory rollout.)
         if not self.project_root:
-            result: dict[str, Any] = {
-                "success": False,
-                "verdict": "ERROR",
-                "reason": "project_root not set",
-            }
+            result = build_response(
+                verdict="ERROR",
+                success=False,
+                reason="project_root not set",
+            )
             return apply_toon_format_to_response(result, output_format)
 
         cache = ensure_indexed(self.project_root, max_files=max_files)
         if cache is None:
-            result = {
-                "success": False,
-                "verdict": "ERROR",
-                "reason": "auto-index failed",
-            }
+            result = build_response(
+                verdict="ERROR",
+                success=False,
+                reason="auto-index failed",
+            )
             return apply_toon_format_to_response(result, output_format)
 
         stats = cache.get_stats()
-        result = {
-            "success": True,
-            "verdict": "INFO",
-            "project_root": self.project_root,
-            "total_files": stats.get("total_files", 0),
-            "total_symbols": stats.get("total_symbols", 0),
-            "fts5_available": stats.get("fts5_available", False),
-        }
+        result = build_response(
+            verdict="INFO",
+            project_root=self.project_root,
+            total_files=stats.get("total_files", 0),
+            total_symbols=stats.get("total_symbols", 0),
+            fts5_available=stats.get("fts5_available", False),
+        )
         return apply_toon_format_to_response(result, output_format)
 
     def _reset(self, output_format: str) -> dict[str, Any]:
         if self.project_root:
             mark_dirty(self.project_root)
-        result: dict[str, Any] = {
-            "success": True,
-            "verdict": "INFO",
-            "project_root": self.project_root,
-            "action": "reset",
-        }
+        result = build_response(
+            verdict="INFO",
+            project_root=self.project_root,
+            action="reset",
+        )
         return apply_toon_format_to_response(result, output_format)

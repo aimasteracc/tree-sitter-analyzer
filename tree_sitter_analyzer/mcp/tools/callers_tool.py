@@ -13,8 +13,13 @@ from typing import Any
 
 from ...call_graph import CachedCallGraph, CallGraph
 from ...utils import setup_logger
+from ._response_builder import build_response
 from .base_tool import BaseMCPTool
-from .callees_tool import classify_callee_resolution
+from .callees_tool import (
+    _STALE_CACHE_WARNING,
+    _is_stale_resolution,
+    classify_callee_resolution,
+)
 
 logger = setup_logger(__name__)
 
@@ -129,14 +134,18 @@ class CodeGraphCallersTool(BaseMCPTool):
             data_source = self._data_source
             self._enrich_callers_with_resolution(callers)
 
-        result: dict[str, Any] = {
-            "success": True,
-            "verdict": "INFO" if callers else "NOT_FOUND",
-            "data_source": data_source,
-            "function": func_name,
-            "caller_count": len(callers),
-            "callers": callers,
-        }
+        warnings_list: list[str] = []
+        if _is_stale_resolution(callers):
+            warnings_list.append(_STALE_CACHE_WARNING)
+
+        result = build_response(
+            verdict="INFO" if callers else "NOT_FOUND",
+            warnings=warnings_list or None,
+            data_source=data_source,
+            function=func_name,
+            caller_count=len(callers),
+            callers=callers,
+        )
 
         from ..utils.format_helper import apply_toon_format_to_response
 

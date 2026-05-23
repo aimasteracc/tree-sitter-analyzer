@@ -14,6 +14,7 @@ from typing import Any
 
 from ...call_graph import CachedCallGraph, CallGraph
 from ...utils import setup_logger
+from ._response_builder import build_response
 from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
@@ -90,6 +91,35 @@ _STDLIB_TOP_LEVELS = frozenset(
         "zlib",
     }
 )
+
+
+#: When at least 80% of edges have ``callee_resolution='unknown'`` we
+#: treat the cache as stale. The threshold is high enough that "normal"
+#: stdlib-heavy callees (which are also ``unknown`` for non-Python
+#: projects) do not trip it, but low enough to catch pre-Synapse caches
+#: where literally every edge is unresolved.
+_STALE_CACHE_UNKNOWN_RATIO = 0.8
+
+_STALE_CACHE_WARNING = (
+    "stale_cache: most edges have callee_resolution='unknown'. "
+    "Run `uv run tree-sitter-analyzer --ast-cache --ast-cache-mode force` "
+    "or rebuild with `--mode resolve` to populate Synapse resolution columns."
+)
+
+
+def _is_stale_resolution(entries: list[dict[str, Any]]) -> bool:
+    """Heuristic: ``True`` when ``≥80%`` of entries have unknown resolution.
+
+    This is the signal that the live AST cache pre-dates the Synapse
+    cross-file resolver migration. Users hitting this case see "the tool
+    is weak" instead of "your cache is stale" — the surfaced warning
+    routes them to ``--mode resolve``.
+    """
+    if not entries:
+        return False
+    unknown = sum(1 for e in entries if e.get("callee_resolution") == "unknown")
+    threshold = max(1, int(_STALE_CACHE_UNKNOWN_RATIO * len(entries)))
+    return unknown >= threshold
 
 
 def classify_callee_resolution(
@@ -241,14 +271,18 @@ class CodeGraphCalleesTool(BaseMCPTool):
                 self._enrich_graph_callees_with_activation(callees)
             self._enrich_callees_with_resolution(callees)
 
-        result: dict[str, Any] = {
-            "success": True,
-            "verdict": "INFO" if callees else "NOT_FOUND",
-            "data_source": data_source,
-            "function": func_name,
-            "callee_count": len(callees),
-            "callees": callees,
-        }
+        warnings_list: list[str] = []
+        if _is_stale_resolution(callees):
+            warnings_list.append(_STALE_CACHE_WARNING)
+
+        result = build_response(
+            verdict="INFO" if callees else "NOT_FOUND",
+            warnings=warnings_list or None,
+            data_source=data_source,
+            function=func_name,
+            callee_count=len(callees),
+            callees=callees,
+        )
 
         from ..utils.format_helper import apply_toon_format_to_response
 

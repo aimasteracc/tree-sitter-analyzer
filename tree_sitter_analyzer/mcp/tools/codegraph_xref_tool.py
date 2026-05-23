@@ -20,6 +20,7 @@ from typing import Any
 from ...utils import setup_logger
 from ...xref import XRefEngine
 from ..utils.format_helper import apply_toon_format_to_response
+from ._response_builder import build_response
 from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
@@ -129,12 +130,11 @@ class CodeGraphXRefTool(BaseMCPTool):
 
         if mode == "file":
             file_path = arguments.get("file_path", "")
-            result = engine.file_xref(file_path)
-            result["success"] = True
-            result["verdict"] = (
-                "INFO" if result.get("symbol_count", 0) > 0 else "NOT_FOUND"
-            )
-            result["mode"] = "file"
+            file_result = engine.file_xref(file_path)
+            verdict = "INFO" if file_result.get("symbol_count", 0) > 0 else "NOT_FOUND"
+            # build_response prepends success+verdict; remaining file_xref
+            # payload merges in via **kwargs preserving every existing key.
+            result = build_response(verdict=verdict, mode="file", **file_result)
         else:
             symbol = arguments.get("symbol", "")
             file_path = arguments.get("file_path")
@@ -151,12 +151,11 @@ class CodeGraphXRefTool(BaseMCPTool):
                 include_imports=include_imports,
                 include_file_deps=include_file_deps,
             )
-            result = xref_result.to_dict()
-            result["success"] = True
-            result["mode"] = "symbol"
+            xref_dict = xref_result.to_dict()
             has_data = bool(
                 xref_result.definitions or xref_result.callers or xref_result.callees
             )
-            result["verdict"] = "INFO" if has_data else "NOT_FOUND"
+            verdict = "INFO" if has_data else "NOT_FOUND"
+            result = build_response(verdict=verdict, mode="symbol", **xref_dict)
 
         return apply_toon_format_to_response(result, output_format)

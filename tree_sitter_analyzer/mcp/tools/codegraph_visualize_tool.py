@@ -25,6 +25,7 @@ from ...call_graph import CachedCallGraph, CallGraph
 from ...utils import setup_logger
 from ..utils.auto_index_guard import ensure_indexed
 from ..utils.format_helper import apply_toon_format_to_response
+from ._response_builder import build_error, build_response
 from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
@@ -198,11 +199,9 @@ class CodeGraphVisualizeTool(BaseMCPTool):
         cg = self._get_call_graph()
         if cg is None:
             return apply_toon_format_to_response(
-                {
-                    "success": False,
-                    "error": "No project root set or project has no source files.",
-                    "verdict": "ERROR",
-                },
+                build_error(
+                    error="No project root set or project has no source files.",
+                ),
                 output_format,
             )
 
@@ -221,17 +220,18 @@ class CodeGraphVisualizeTool(BaseMCPTool):
             "edge_count": len(edges),
         }
 
-        response: dict[str, Any] = {
-            "success": True,
-            "verdict": "INFO",
-            "mermaid": mermaid,
-            "stats": stats,
-        }
-
+        extra: dict[str, Any] = {}
         if mode == "function":
-            response["seed_function"] = function
+            extra["seed_function"] = function
         elif mode == "file":
-            response["file_path"] = file_path
+            extra["file_path"] = file_path
+
+        response = build_response(
+            verdict="INFO",
+            mermaid=mermaid,
+            stats=stats,
+            **extra,
+        )
 
         return apply_toon_format_to_response(response, output_format)
 

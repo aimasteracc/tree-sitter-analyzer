@@ -26,6 +26,7 @@ from typing import Any
 
 from ...utils import setup_logger
 from ..utils.format_helper import apply_toon_format_to_response
+from ._response_builder import build_response
 from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
@@ -123,22 +124,27 @@ class CodeGraphSitemapTool(BaseMCPTool):
         raw_files = self._load_indexed_files(cache, language, directory, max_files)
 
         if mode == "full":
-            result = self._build_full_map(raw_files)
+            payload = self._build_full_map(raw_files)
         elif mode == "api":
-            result = self._build_api_surface(raw_files)
+            payload = self._build_api_surface(raw_files)
         elif mode == "module":
-            result = self._build_module_metrics(raw_files)
+            payload = self._build_module_metrics(raw_files)
         else:
-            result = self._build_flat(raw_files)
+            payload = self._build_flat(raw_files)
 
         total_symbols = sum(f["symbol_count"] for f in raw_files)
-        result["success"] = True
-        result["verdict"] = "INFO" if raw_files else "NOT_FOUND"
-        result["file_count"] = len(raw_files)
-        result["total_symbols"] = total_symbols
-        result["mode"] = mode
+        extra: dict[str, Any] = {}
         if language:
-            result["language_filter"] = language
+            extra["language_filter"] = language
+
+        result = build_response(
+            verdict="INFO" if raw_files else "NOT_FOUND",
+            mode=mode,
+            file_count=len(raw_files),
+            total_symbols=total_symbols,
+            **payload,
+            **extra,
+        )
 
         return apply_toon_format_to_response(result, output_format)
 

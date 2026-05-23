@@ -26,6 +26,7 @@ from ...complexity_heatmap import (
 )
 from ...utils import setup_logger
 from ..utils.format_helper import apply_toon_format_to_response
+from ._response_builder import build_error, build_response
 from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
@@ -173,11 +174,8 @@ class CodeGraphComplexityHeatmapTool(BaseMCPTool):
         else:
             verdict = "INFO"
 
-        heatmap["success"] = True
-        heatmap["verdict"] = verdict
         heatmap["risk_bands"] = {k: f"{v[0]}-{v[1]}" for k, v in RISK_BANDS.items()}
-        heatmap["mode"] = "project"
-        return heatmap
+        return build_response(verdict=verdict, mode="project", **heatmap)
 
     def _execute_file(self, arguments: dict[str, Any]) -> dict[str, Any]:
         assert self.project_root is not None, "project_root required"
@@ -186,21 +184,18 @@ class CodeGraphComplexityHeatmapTool(BaseMCPTool):
             file_path = os.path.join(self.project_root, file_path)
 
         if not os.path.isfile(file_path):
-            return {
-                "success": False,
-                "verdict": "NOT_FOUND",
-                "error": f"File not found: {file_path}",
-            }
+            return build_error(
+                error=f"File not found: {file_path}", verdict="NOT_FOUND"
+            )
 
         from ...project_graph import _language_from_ext
 
         language = arguments.get("language") or _language_from_ext(file_path)
         if not language:
-            return {
-                "success": False,
-                "verdict": "NOT_FOUND",
-                "error": f"Unsupported language for: {file_path}",
-            }
+            return build_error(
+                error=f"Unsupported language for: {file_path}",
+                verdict="NOT_FOUND",
+            )
 
         functions = self._analyze_file_cached(file_path, language)
         rel_path = os.path.relpath(file_path, self.project_root)
@@ -212,17 +207,16 @@ class CodeGraphComplexityHeatmapTool(BaseMCPTool):
         has_high = any(f.complexity > 10 for f in functions)
         verdict = "REVIEW" if has_high else "INFO"
 
-        return {
-            "success": True,
-            "verdict": verdict,
-            "mode": "file",
-            "file": rel_path,
-            "language": language,
-            "function_count": len(functions),
-            "total_complexity": total_cc,
-            "average_complexity": avg_cc,
-            "max_complexity": max_cc,
-            "functions": [
+        return build_response(
+            verdict=verdict,
+            mode="file",
+            file=rel_path,
+            language=language,
+            function_count=len(functions),
+            total_complexity=total_cc,
+            average_complexity=avg_cc,
+            max_complexity=max_cc,
+            functions=[
                 {
                     "name": f.name,
                     "line": f.line,
@@ -234,7 +228,7 @@ class CodeGraphComplexityHeatmapTool(BaseMCPTool):
                 }
                 for f in sorted(functions, key=lambda x: x.complexity, reverse=True)
             ],
-        }
+        )
 
     def _execute_function(self, arguments: dict[str, Any]) -> dict[str, Any]:
         assert self.project_root is not None, "project_root required"
@@ -244,48 +238,46 @@ class CodeGraphComplexityHeatmapTool(BaseMCPTool):
             file_path = os.path.join(self.project_root, file_path)
 
         if not os.path.isfile(file_path):
-            return {
-                "success": False,
-                "verdict": "NOT_FOUND",
-                "error": f"File not found: {file_path}",
-            }
+            return build_error(
+                error=f"File not found: {file_path}", verdict="NOT_FOUND"
+            )
 
         from ...project_graph import _language_from_ext
 
         language = arguments.get("language") or _language_from_ext(file_path)
         if not language:
-            return {
-                "success": False,
-                "verdict": "NOT_FOUND",
-                "error": f"Unsupported language for: {file_path}",
-            }
+            return build_error(
+                error=f"Unsupported language for: {file_path}",
+                verdict="NOT_FOUND",
+            )
 
         functions = self._analyze_file_cached(file_path, language)
         matches = [f for f in functions if f.name == function_name]
 
         if not matches:
-            return {
-                "success": False,
-                "verdict": "NOT_FOUND",
-                "error": f"Function '{function_name}' not found in {os.path.relpath(file_path, self.project_root)}",
-                "available_functions": [f.name for f in functions],
-            }
+            return build_error(
+                error=(
+                    f"Function '{function_name}' not found in "
+                    f"{os.path.relpath(file_path, self.project_root)}"
+                ),
+                verdict="NOT_FOUND",
+                available_functions=[f.name for f in functions],
+            )
 
         f = max(matches, key=lambda x: x.complexity)
-        return {
-            "success": True,
-            "verdict": "REVIEW" if f.complexity > 10 else "INFO",
-            "mode": "function",
-            "file": os.path.relpath(file_path, self.project_root),
-            "language": language,
-            "name": f.name,
-            "line": f.line,
-            "end_line": f.end_line,
-            "complexity": f.complexity,
-            "risk": _risk_band(f.complexity),
-            "class": f.class_name,
-            "decision_points": f.decision_points,
-        }
+        return build_response(
+            verdict="REVIEW" if f.complexity > 10 else "INFO",
+            mode="function",
+            file=os.path.relpath(file_path, self.project_root),
+            language=language,
+            name=f.name,
+            line=f.line,
+            end_line=f.end_line,
+            complexity=f.complexity,
+            risk=_risk_band(f.complexity),
+            **{"class": f.class_name},
+            decision_points=f.decision_points,
+        )
 
     def _analyze_file_cached(self, file_path: str, language: str) -> list[Any]:
         cache = self._get_cache()

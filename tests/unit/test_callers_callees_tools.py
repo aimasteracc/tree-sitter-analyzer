@@ -38,7 +38,9 @@ class TestCodeGraphCallersTool:
 
     @pytest.mark.asyncio
     async def test_execute_returns_callers(self, callers_tool):
-        result = await callers_tool.execute({"function_name": "_walk_tree", "output_format": "json"})
+        result = await callers_tool.execute(
+            {"function_name": "_walk_tree", "output_format": "json"}
+        )
         assert result["success"] is True
         assert result["function"] == "_walk_tree"
         assert "callers" in result
@@ -47,16 +49,20 @@ class TestCodeGraphCallersTool:
 
     @pytest.mark.asyncio
     async def test_execute_with_file_path(self, callers_tool):
-        result = await callers_tool.execute({
-            "function_name": "_walk_tree",
-            "file_path": "tree_sitter_analyzer/call_graph.py",
-            "output_format": "json",
-        })
+        result = await callers_tool.execute(
+            {
+                "function_name": "_walk_tree",
+                "file_path": "tree_sitter_analyzer/call_graph.py",
+                "output_format": "json",
+            }
+        )
         assert result["success"] is True
 
     @pytest.mark.asyncio
     async def test_execute_toon_format(self, callers_tool):
-        result = await callers_tool.execute({"function_name": "main", "output_format": "toon"})
+        result = await callers_tool.execute(
+            {"function_name": "main", "output_format": "toon"}
+        )
         assert result["success"] is True
 
     def test_project_root_change_resets_cache(self, callers_tool):
@@ -89,7 +95,9 @@ class TestCodeGraphCalleesTool:
 
     @pytest.mark.asyncio
     async def test_execute_returns_callees(self, callees_tool):
-        result = await callees_tool.execute({"function_name": "build", "output_format": "json"})
+        result = await callees_tool.execute(
+            {"function_name": "build", "output_format": "json"}
+        )
         assert result["success"] is True
         assert result["function"] == "build"
         assert "callees" in result
@@ -98,16 +106,20 @@ class TestCodeGraphCalleesTool:
 
     @pytest.mark.asyncio
     async def test_execute_with_file_path(self, callees_tool):
-        result = await callees_tool.execute({
-            "function_name": "build",
-            "file_path": "tree_sitter_analyzer/call_graph.py",
-            "output_format": "json",
-        })
+        result = await callees_tool.execute(
+            {
+                "function_name": "build",
+                "file_path": "tree_sitter_analyzer/call_graph.py",
+                "output_format": "json",
+            }
+        )
         assert result["success"] is True
 
     @pytest.mark.asyncio
     async def test_execute_toon_format(self, callees_tool):
-        result = await callees_tool.execute({"function_name": "main", "output_format": "toon"})
+        result = await callees_tool.execute(
+            {"function_name": "main", "output_format": "toon"}
+        )
         assert result["success"] is True
 
     def test_project_root_change_resets_cache(self, callees_tool):
@@ -126,16 +138,85 @@ class TestCodeGraphCalleesTool:
 class TestCallerCalleeIntegration:
     @pytest.mark.asyncio
     async def test_unknown_function_returns_empty(self, callers_tool, callees_tool):
-        result = await callers_tool.execute({
-            "function_name": "zzz_nonexistent_function_xyz",
-            "output_format": "json",
-        })
+        result = await callers_tool.execute(
+            {
+                "function_name": "zzz_nonexistent_function_xyz",
+                "output_format": "json",
+            }
+        )
         assert result["success"]
         assert result["caller_count"] == 0
 
-        result2 = await callees_tool.execute({
-            "function_name": "zzz_nonexistent_function_xyz",
-            "output_format": "json",
-        })
+        result2 = await callees_tool.execute(
+            {
+                "function_name": "zzz_nonexistent_function_xyz",
+                "output_format": "json",
+            }
+        )
         assert result2["success"]
         assert result2["callee_count"] == 0
+
+
+class TestStaleCacheWarning:
+    """Stale-cache hint surfaces in callees/callers when ≥80% of edges
+    have ``callee_resolution='unknown'``. The detection helper is
+    deterministic (no live cache needed)."""
+
+    def test_helper_is_false_for_empty(self) -> None:
+        from tree_sitter_analyzer.mcp.tools.callees_tool import _is_stale_resolution
+
+        assert _is_stale_resolution([]) is False
+
+    def test_helper_is_true_when_all_unknown(self) -> None:
+        from tree_sitter_analyzer.mcp.tools.callees_tool import _is_stale_resolution
+
+        entries = [{"callee_resolution": "unknown"} for _ in range(10)]
+        assert _is_stale_resolution(entries) is True
+
+    def test_helper_is_false_when_majority_resolved(self) -> None:
+        from tree_sitter_analyzer.mcp.tools.callees_tool import _is_stale_resolution
+
+        # 30% unknown / 70% project → below the 80% threshold.
+        entries = [{"callee_resolution": "unknown"} for _ in range(3)] + [
+            {"callee_resolution": "project"} for _ in range(7)
+        ]
+        assert _is_stale_resolution(entries) is False
+
+    def test_helper_trips_at_exactly_80_percent(self) -> None:
+        from tree_sitter_analyzer.mcp.tools.callees_tool import _is_stale_resolution
+
+        # 8 unknown out of 10 = 80% → at threshold (inclusive).
+        entries = [{"callee_resolution": "unknown"} for _ in range(8)] + [
+            {"callee_resolution": "project"} for _ in range(2)
+        ]
+        assert _is_stale_resolution(entries) is True
+
+    def test_warning_message_recommends_resolve_mode(self) -> None:
+        from tree_sitter_analyzer.mcp.tools.callees_tool import _STALE_CACHE_WARNING
+
+        # The user-visible string must point at the right fix. Pinning
+        # the substring stops a future "minor wording cleanup" from
+        # dropping the actionable command.
+        assert "--mode resolve" in _STALE_CACHE_WARNING
+        assert "stale_cache" in _STALE_CACHE_WARNING
+
+    @pytest.mark.asyncio
+    async def test_callees_warning_omitted_when_callees_empty(
+        self, callees_tool
+    ) -> None:
+        # Empty callee list: nothing to be stale about, no warning.
+        result = await callees_tool.execute(
+            {"function_name": "zzz_nonexistent_function_xyz", "output_format": "json"}
+        )
+        assert result["callee_count"] == 0
+        assert "warnings" not in result
+
+    @pytest.mark.asyncio
+    async def test_callers_warning_omitted_when_callers_empty(
+        self, callers_tool
+    ) -> None:
+        result = await callers_tool.execute(
+            {"function_name": "zzz_nonexistent_function_xyz", "output_format": "json"}
+        )
+        assert result["caller_count"] == 0
+        assert "warnings" not in result

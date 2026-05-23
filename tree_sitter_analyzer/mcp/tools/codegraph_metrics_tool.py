@@ -26,6 +26,7 @@ from typing import Any
 
 from ...utils import setup_logger
 from ..utils.auto_index_guard import ensure_indexed
+from ._response_builder import build_response
 from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
@@ -117,38 +118,34 @@ class CodeGraphMetricsTool(BaseMCPTool):
         ]
         output_format = arguments.get("output_format", "toon")
 
-        result: dict[str, Any] = {
-            "success": True,
+        cache = self._get_cache()
+        payload: dict[str, Any] = {
             "project_root": self.project_root,
-            "verdict": "INFO",
+            "cache_indexed": cache is not None,
         }
 
-        cache = self._get_cache()
-        if cache is not None:
-            result["cache_indexed"] = True
-        else:
-            result["cache_indexed"] = False
-
         if "cache" in requested:
-            result["cache"] = self._collect_cache_metrics(cache)
+            payload["cache"] = self._collect_cache_metrics(cache)
 
         if "call_graph" in requested:
-            result["call_graph"] = self._collect_call_graph_metrics(cache)
+            payload["call_graph"] = self._collect_call_graph_metrics(cache)
 
         if "complexity" in requested:
-            result["complexity"] = self._collect_complexity_metrics(cache)
+            payload["complexity"] = self._collect_complexity_metrics(cache)
 
         if "routes" in requested:
-            result["routes"] = self._collect_route_metrics()
+            payload["routes"] = self._collect_route_metrics()
 
         if "health" in requested:
-            result["health"] = self._collect_health_metrics()
+            payload["health"] = self._collect_health_metrics()
 
-        suggestions = self._build_suggestions(result)
+        suggestions = self._build_suggestions(payload)
         if suggestions:
-            result["suggested_next_steps"] = suggestions
+            payload["suggested_next_steps"] = suggestions
 
-        result["sections_included"] = list(requested)
+        payload["sections_included"] = list(requested)
+
+        result = build_response(verdict="INFO", **payload)
 
         from ..utils.format_helper import apply_toon_format_to_response
 
