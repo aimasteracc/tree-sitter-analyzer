@@ -176,9 +176,7 @@ class ElementExtractor(ABC):
         # Default implementation returns empty list
         return []
 
-    def extract_exports(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Any]:
+    def extract_exports(self, tree: "tree_sitter.Tree", source_code: str) -> list[Any]:
         """
         Extract export statements from the syntax tree.
 

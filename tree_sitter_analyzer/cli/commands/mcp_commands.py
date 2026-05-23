@@ -2,7 +2,6 @@
 """MCP-equivalent CLI command handlers."""
 
 import asyncio
-import json
 import os
 from collections.abc import Callable, Mapping
 from typing import Any
@@ -20,6 +19,11 @@ from tree_sitter_analyzer.cli.commands.mcp_command_helpers import (
 # noqa codes keep refactor-cleaner / autoflake / ruff from stripping them.
 from tree_sitter_analyzer.mcp.tools.ast_cache_tool import ASTCacheTool  # noqa: F401
 from tree_sitter_analyzer.mcp.tools.ast_diff_tool import ASTDiffTool  # noqa: F401
+from tree_sitter_analyzer.mcp.tools.ast_path_tool import (
+    CodeGraphASTPathTool,  # noqa: F401
+)
+
+# consolidated-only tools ported during merge of feat/autonomous-dev
 from tree_sitter_analyzer.mcp.tools.batch_search_tool import (
     BatchSearchTool,  # noqa: F401
 )
@@ -29,14 +33,56 @@ from tree_sitter_analyzer.mcp.tools.build_project_index_tool import (
 from tree_sitter_analyzer.mcp.tools.call_graph_tool import (
     CodeGraphCallTool,  # noqa: F401
 )
+from tree_sitter_analyzer.mcp.tools.call_path_tool import (
+    CodeGraphCallPathTool,  # noqa: F401
+)
+from tree_sitter_analyzer.mcp.tools.callees_tool import (
+    CodeGraphCalleesTool,  # noqa: F401
+)
+from tree_sitter_analyzer.mcp.tools.callers_tool import (
+    CodeGraphCallersTool,  # noqa: F401
+)
 from tree_sitter_analyzer.mcp.tools.change_impact_tool import (
     ChangeImpactTool,  # noqa: F401
 )
 from tree_sitter_analyzer.mcp.tools.check_tools_tool import (
     CheckToolsTool,  # noqa: F401
 )
+from tree_sitter_analyzer.mcp.tools.class_hierarchy_tool import (
+    ClassHierarchyTool,  # noqa: F401
+)
 from tree_sitter_analyzer.mcp.tools.code_patterns_tool import (
     CodePatternsTool,  # noqa: F401
+)
+from tree_sitter_analyzer.mcp.tools.code_similarity_tool import (
+    CodeGraphSimilarityTool,  # noqa: F401
+)
+from tree_sitter_analyzer.mcp.tools.codegraph_impact_tool import (
+    CodeGraphImpactTool,  # noqa: F401
+)
+from tree_sitter_analyzer.mcp.tools.codegraph_navigate_tool import (
+    CodeGraphNavigateTool,  # noqa: F401
+)
+from tree_sitter_analyzer.mcp.tools.codegraph_overview_tool import (
+    CodeGraphOverviewTool,  # noqa: F401
+)
+from tree_sitter_analyzer.mcp.tools.codegraph_pr_review_tool import (
+    CodeGraphPRReviewTool,  # noqa: F401
+)
+from tree_sitter_analyzer.mcp.tools.codegraph_sitemap_tool import (
+    CodeGraphSitemapTool,  # noqa: F401
+)
+from tree_sitter_analyzer.mcp.tools.codegraph_visualize_tool import (
+    CodeGraphVisualizeTool,  # noqa: F401
+)
+from tree_sitter_analyzer.mcp.tools.codegraph_xref_tool import (
+    CodeGraphXRefTool,  # noqa: F401
+)
+from tree_sitter_analyzer.mcp.tools.complexity_heatmap_tool import (
+    CodeGraphComplexityHeatmapTool,  # noqa: F401
+)
+from tree_sitter_analyzer.mcp.tools.dead_code_tool import (
+    CodeGraphDeadCodeTool,  # noqa: F401
 )
 from tree_sitter_analyzer.mcp.tools.decision_journal_tool import (
     DecisionJournalTool,  # noqa: F401
@@ -44,7 +90,13 @@ from tree_sitter_analyzer.mcp.tools.decision_journal_tool import (
 from tree_sitter_analyzer.mcp.tools.dependency_analysis_tool import (
     DependencyAnalysisTool,  # noqa: F401
 )
+from tree_sitter_analyzer.mcp.tools.dependency_matrix_tool import (
+    CodeGraphDependencyMatrixTool,  # noqa: F401
+)
 from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool  # noqa: F401
+from tree_sitter_analyzer.mcp.tools.import_graph_tool import (
+    CodeGraphImportGraphTool,  # noqa: F401
+)
 from tree_sitter_analyzer.mcp.tools.modification_guard_tool import (
     ModificationGuardTool,  # noqa: F401
 )
@@ -66,11 +118,20 @@ from tree_sitter_analyzer.mcp.tools.route_detector_tool import (
 from tree_sitter_analyzer.mcp.tools.safe_to_edit_tool import (
     SafeToEditTool,  # noqa: F401
 )
+from tree_sitter_analyzer.mcp.tools.semantic_classify_tool import (
+    SemanticClassifyTool,  # noqa: F401
+)
 from tree_sitter_analyzer.mcp.tools.smart_context_tool import (
     SmartContextTool,  # noqa: F401
 )
 from tree_sitter_analyzer.mcp.tools.symbol_lineage_tool import (
     SymbolLineageTool,  # noqa: F401
+)
+from tree_sitter_analyzer.mcp.tools.symbol_resolve_tool import (
+    CodeGraphSymbolResolveTool,  # noqa: F401
+)
+from tree_sitter_analyzer.mcp.tools.symbol_search_tool import (
+    CodeGraphSymbolSearchTool,  # noqa: F401
 )
 from tree_sitter_analyzer.mcp.tools.trace_impact_tool import (
     TraceImpactTool,  # noqa: F401
@@ -91,21 +152,6 @@ def _dependency_mode_requires_file(args: Any) -> bool:
     )
 
 
-def _maybe_add_language(tool_args: dict[str, Any], args: Any) -> dict[str, Any]:
-    """Forward ``--language`` from CLI args into the MCP tool's args dict.
-
-    O8 (round-30 dogfood): the CLI used to drop ``--language`` for tools
-    like ``--refactor`` so the MCP-side mismatch gate never fired. This
-    helper copies the value across only when the user actually passed
-    one — keeping the auto-detect path untouched for callers that omit
-    the flag.
-    """
-    language = getattr(args, "language", None)
-    if isinstance(language, str) and language.strip():
-        tool_args["language"] = language
-    return tool_args
-
-
 def _build_dependency_tool_args(args: Any, output_format: str) -> dict[str, Any]:
     mode = _normalize_dependency_mode(getattr(args, "dependencies", None))
     tool_args = {
@@ -118,62 +164,19 @@ def _build_dependency_tool_args(args: Any, output_format: str) -> dict[str, Any]
 
 
 def _build_detect_routes_tool_args(args: Any, output_format: str) -> dict[str, Any]:
-    """Build tool args for --detect-routes, omitting empty optional keys.
-
-    M4 (round-26 dogfood): when the user passes a positional path to
-    ``--detect-routes``, the path used to be silently dropped. Now we
-    treat a positional path as an implicit ``--detect-routes-file`` only
-    when the path exists and is a regular file; otherwise we raise
-    ``ValueError`` so the dispatcher's error envelope fires.
-
-    r37ar (dogfood): split the 55-line monolith into a thin builder
-    plus the dedicated ``_validate_detect_routes_path`` helper.
-    """
-    mode = getattr(args, "detect_routes_mode", "summary") or "summary"
-    framework = getattr(args, "detect_routes_framework", "all") or "all"
+    """Build tool args for --detect-routes, omitting empty optional keys."""
     tool_args: dict[str, Any] = {
-        "mode": mode,
-        "framework": framework,
+        "mode": getattr(args, "detect_routes_mode", "summary") or "summary",
+        "framework": getattr(args, "detect_routes_framework", "all") or "all",
         "output_format": output_format,
     }
     url_pattern = getattr(args, "detect_routes_url", None)
     if url_pattern:
         tool_args["url_pattern"] = url_pattern
-
-    candidate = getattr(args, "detect_routes_file", None) or getattr(
-        args, "file_path", None
-    )
-    if candidate:
-        _validate_detect_routes_path(candidate)
-        tool_args["file_path"] = candidate
-        # Auto-promote to ``mode=file`` when the user supplied a file
-        # path but left ``--detect-routes-mode`` at the default. Keeps
-        # the experience consistent with ``--file-health <path>``.
-        if mode == "summary":
-            tool_args["mode"] = "file"
+    file_path = getattr(args, "detect_routes_file", None)
+    if file_path:
+        tool_args["file_path"] = file_path
     return tool_args
-
-
-def _validate_detect_routes_path(candidate: str) -> None:
-    """Raise ``ValueError`` when ``candidate`` isn't a usable regular file.
-
-    Extracted in r37ar (dogfood) from ``_build_detect_routes_tool_args``
-    so each function does one thing — the builder shapes the tool args,
-    this helper validates the path. M4-era error messages preserved
-    verbatim so existing tests keep passing.
-    """
-    import os as _os
-
-    if not _os.path.exists(candidate):
-        raise ValueError(f"file not found: {candidate}")
-    if _os.path.isdir(candidate):
-        raise ValueError(
-            f"path is a directory: {candidate} — use "
-            "--detect-routes-mode all for a project-wide scan, "
-            "or pass an individual file"
-        )
-    if not _os.path.isfile(candidate):
-        raise ValueError(f"not a regular file: {candidate}")
 
 
 def _build_parser_readiness_tool_args(args: Any, output_format: str) -> dict[str, Any]:
@@ -186,6 +189,9 @@ def _build_parser_readiness_tool_args(args: Any, output_format: str) -> dict[str
         ),
         "output_format": output_format,
     }
+
+
+# ---- builders ported from feat/consolidated during merge ----
 
 
 def _build_trace_impact_tool_args(args: Any, output_format: str) -> dict[str, Any]:
@@ -313,35 +319,6 @@ def _build_decision_journal_tool_args(args: Any, output_format: str) -> dict[str
     return tool_args
 
 
-def _build_ast_diff_tool_args(args: Any, output_format: str) -> dict[str, Any]:
-    """Build tool args for --ast-diff (r37fJ CLI-MCP parity).
-
-    Mirrors :class:`ASTDiffTool`'s schema across three modes. We forward
-    only the fields ASTDiffTool actually accepts so the contract test
-    matrix can drive the tool with realistic argument shapes.
-    """
-    mode = getattr(args, "ast_diff_mode", "file_revisions") or "file_revisions"
-    tool_args: dict[str, Any] = {"mode": mode, "output_format": output_format}
-    file_path = getattr(args, "ast_diff_file", None) or getattr(args, "file_path", None)
-    if file_path:
-        tool_args["file_path"] = file_path
-    if mode in ("file_revisions", "working_tree"):
-        tool_args["old_ref"] = getattr(args, "ast_diff_old_ref", "HEAD~1") or "HEAD~1"
-        if mode == "file_revisions":
-            tool_args["new_ref"] = getattr(args, "ast_diff_new_ref", "HEAD") or "HEAD"
-    if mode == "strings":
-        old_source = getattr(args, "ast_diff_old_source", None)
-        new_source = getattr(args, "ast_diff_new_source", None)
-        language = getattr(args, "ast_diff_language", None)
-        if old_source is not None:
-            tool_args["old_source"] = old_source
-        if new_source is not None:
-            tool_args["new_source"] = new_source
-        if language:
-            tool_args["language"] = language
-    return tool_args
-
-
 def _build_check_tools_tool_args(args: Any, output_format: str) -> dict[str, Any]:
     """Build tool args for --check-tools.
 
@@ -378,16 +355,10 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
         tool_attr="FileHealthTool",
         label="File health check",
         required_file_error="--file-health requires a file path",
-        # O3 (round-30 dogfood): forward ``--language`` so the tool's
-        # strict mismatch gate can refuse e.g. ``--file-health foo.py
-        # --language java``.
-        build_tool_args=lambda args, output_format: _maybe_add_language(
-            {
-                "file_path": args.file_path,
-                "output_format": output_format,
-            },
-            args,
-        ),
+        build_tool_args=lambda args, output_format: {
+            "file_path": args.file_path,
+            "output_format": output_format,
+        },
     ),
     McpCommandSpec(
         flag_name="project_health",
@@ -453,16 +424,10 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
         tool_attr="RefactoringSuggestionsTool",
         label="Refactoring suggestions",
         required_file_error="--refactor requires a file path",
-        # O8 (round-30 dogfood): forward ``--language`` so the tool's
-        # strict mismatch gate can refuse e.g. ``--refactor foo.py
-        # --language java`` instead of silently returning verdict=SAFE.
-        build_tool_args=lambda args, output_format: _maybe_add_language(
-            {
-                "file_path": args.file_path,
-                "output_format": output_format,
-            },
-            args,
-        ),
+        build_tool_args=lambda args, output_format: {
+            "file_path": args.file_path,
+            "output_format": output_format,
+        },
     ),
     McpCommandSpec(
         flag_name="smart_context",
@@ -478,14 +443,6 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
         flag_name="symbol_lineage",
         tool_attr="SymbolLineageTool",
         label="Symbol lineage and impact preview",
-        # M12: ``--symbol-lineage SYMBOL`` is a value-bearing flag —
-        # treat ``--symbol-lineage ""`` as selected (not "no command")
-        # so the dispatcher emits a canonical validation envelope
-        # instead of falling through to the file-analysis crash path.
-        value_arg_name="symbol_lineage",
-        required_value_error=(
-            "--symbol-lineage requires a non-empty symbol name (got empty string)"
-        ),
         build_tool_args=lambda args, output_format: {
             "symbol": getattr(args, "symbol_lineage", "") or "",
             "max_depth": getattr(args, "max_depth", 3),
@@ -508,15 +465,31 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
         flag_name="call_graph",
         tool_attr="CodeGraphCallTool",
         label="Function-level call graph (CodeGraph parity)",
-        # ``--call-graph <mode>`` uses ``nargs="?"`` with ``const="summary"``
-        # in argument_parser_builder.py. argparse stores the chosen mode
-        # in ``args.call_graph`` (no explicit ``dest=``), so the dispatcher
-        # must read ``call_graph`` — not ``call_graph_mode`` (G1).
         build_tool_args=lambda args, output_format: {
-            "mode": getattr(args, "call_graph", "summary") or "summary",
+            "mode": getattr(args, "call_graph_mode", "summary") or "summary",
             "function_name": getattr(args, "call_graph_function", None),
             "file_path": getattr(args, "call_graph_file", None),
             "depth": getattr(args, "call_graph_depth", 5),
+            "output_format": output_format,
+        },
+    ),
+    McpCommandSpec(
+        flag_name="callers",
+        tool_attr="CodeGraphCallersTool",
+        label="Find callers of a function (CodeGraph parity)",
+        build_tool_args=lambda args, output_format: {
+            "function_name": getattr(args, "callers", ""),
+            "file_path": getattr(args, "callers_file", None),
+            "output_format": output_format,
+        },
+    ),
+    McpCommandSpec(
+        flag_name="callees",
+        tool_attr="CodeGraphCalleesTool",
+        label="Find callees of a function (CodeGraph parity)",
+        build_tool_args=lambda args, output_format: {
+            "function_name": getattr(args, "callees", ""),
+            "file_path": getattr(args, "callees_file", None),
             "output_format": output_format,
         },
     ),
@@ -531,6 +504,8 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
             "language": getattr(args, "ast_cache_language", None),
             "max_files": getattr(args, "ast_cache_max_files", 5000),
             "force": bool(getattr(args, "ast_cache_force", False)),
+            "poll_interval": getattr(args, "watch_poll_interval", 5.0),
+            "backend": getattr(args, "watch_backend", "poll"),
         },
     ),
     McpCommandSpec(
@@ -540,6 +515,261 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
         build_tool_args=_build_detect_routes_tool_args,
     ),
     McpCommandSpec(
+        flag_name="ast_diff",
+        tool_attr="ASTDiffTool",
+        label="Structural AST diff (difftastic-level)",
+        build_tool_args=lambda args, output_format: {
+            "mode": getattr(args, "ast_diff_mode", "diff_files") or "diff_files",
+            "old_file": getattr(args, "ast_diff_old_file", None),
+            "new_file": getattr(args, "ast_diff_new_file", None),
+            "old_source": getattr(args, "ast_diff_old_source", None),
+            "new_source": getattr(args, "ast_diff_new_source", None),
+            "file_path": getattr(args, "ast_diff_file", None),
+            "old_ref": getattr(args, "ast_diff_old_ref", "HEAD~1"),
+            "new_ref": getattr(args, "ast_diff_new_ref", "HEAD"),
+            "language": getattr(args, "ast_diff_language", None),
+            "output_format": output_format,
+        },
+    ),
+    McpCommandSpec(
+        flag_name="symbol_search",
+        tool_attr="CodeGraphSymbolSearchTool",
+        label="FTS5-powered instant symbol search (CodeGraph parity)",
+        build_tool_args=lambda args, output_format: {
+            # Pain #21 (dogfood pass 3): same dest-name bug as #17. --symbol-search QUERY
+            # stores into args.symbol_search; reading symbol_search_query was always None
+            # so the tool always raised "query is required".
+            "query": getattr(args, "symbol_search", "") or "",
+            "language": getattr(args, "symbol_search_language", None),
+            "kind": getattr(args, "symbol_search_kind", "any") or "any",
+            "limit": getattr(args, "symbol_search_limit", 50),
+            "output_format": output_format,
+        },
+    ),
+    McpCommandSpec(
+        flag_name="call_path",
+        tool_attr="CodeGraphCallPathTool",
+        label="Find execution paths between two functions (CodeGraph parity)",
+        build_tool_args=lambda args, output_format: {
+            "source_function": getattr(args, "call_path_source", "") or "",
+            "target_function": getattr(args, "call_path_target", "") or "",
+            "source_file": getattr(args, "call_path_source_file", None),
+            "target_file": getattr(args, "call_path_target_file", None),
+            "max_depth": getattr(args, "call_path_max_depth", 10),
+            "max_paths": getattr(args, "call_path_max_paths", 5),
+            "direction": getattr(args, "call_path", "bidirectional") or "bidirectional",
+            "output_format": output_format,
+        },
+    ),
+    McpCommandSpec(
+        flag_name="codegraph_overview",
+        tool_attr="CodeGraphOverviewTool",
+        label="Project-wide call graph intelligence (CodeGraph parity)",
+        build_tool_args=lambda args, output_format: {
+            "max_entry_points": getattr(
+                args, "codegraph_overview_max_entry_points", 30
+            ),
+            "max_hubs": getattr(args, "codegraph_overview_max_hubs", 20),
+            "max_dead": getattr(args, "codegraph_overview_max_dead", 20),
+            "max_coupled_files": getattr(args, "codegraph_overview_max_coupled", 15),
+            "output_format": output_format,
+        },
+    ),
+    McpCommandSpec(
+        flag_name="symbol_resolve",
+        tool_attr="CodeGraphSymbolResolveTool",
+        label="Go-to-definition and find-all-references (CodeGraph parity)",
+        build_tool_args=lambda args, output_format: {
+            "symbol": getattr(args, "symbol_resolve", ""),
+            "mode": getattr(args, "symbol_resolve_mode", "resolve") or "resolve",
+            "output_format": output_format,
+        },
+    ),
+    McpCommandSpec(
+        flag_name="codegraph_impact",
+        tool_attr="CodeGraphImpactTool",
+        label="Function blast radius analysis (CodeGraph parity)",
+        build_tool_args=lambda args, output_format: {
+            "mode": getattr(args, "codegraph_impact_mode", "function_impact")
+            or "function_impact",
+            # Pain #17 (dogfood pass 3): --codegraph-impact FUNCTION argparse
+            # dest is ``codegraph_impact``, not ``codegraph_impact_function``.
+            # Reading the wrong attr meant function_name was always None and
+            # the tool always raised at CLI invocation.
+            "function_name": getattr(args, "codegraph_impact", None),
+            "function_names": getattr(args, "codegraph_impact_functions", None),
+            "file_path": getattr(args, "codegraph_impact_file", None),
+            "depth": getattr(args, "codegraph_impact_depth", 5),
+            "output_format": output_format,
+        },
+    ),
+    McpCommandSpec(
+        flag_name="codegraph_navigate",
+        tool_attr="CodeGraphNavigateTool",
+        label="Unified symbol navigation: go-to-def + references + call hierarchy",
+        build_tool_args=lambda args, output_format: {
+            "symbol": getattr(args, "codegraph_navigate", ""),
+            "mode": getattr(args, "codegraph_navigate_mode", "full") or "full",
+            "file_path": getattr(args, "codegraph_navigate_file", None),
+            "depth": getattr(args, "codegraph_navigate_depth", 2),
+            "output_format": output_format,
+        },
+    ),
+    McpCommandSpec(
+        flag_name="ast_path",
+        tool_attr="CodeGraphASTPathTool",
+        label="AST path/scope navigation (CodeGraph parity)",
+        required_file_error="--ast-path requires a file path",
+        build_tool_args=lambda args, output_format: {
+            "mode": getattr(args, "ast_path_mode", "scope") or "scope",
+            "file_path": args.file_path,
+            "line": getattr(args, "ast_path_line", None),
+            "max_depth": getattr(args, "ast_path_max_depth", 3),
+            "output_format": output_format,
+        },
+    ),
+    McpCommandSpec(
+        flag_name="semantic_classify",
+        tool_attr="SemanticClassifyTool",
+        label="Semantic change classification",
+        build_tool_args=lambda args, output_format: {
+            "mode": getattr(args, "semantic_classify_mode", "classify_file")
+            or "classify_file",
+            "file_path": getattr(args, "file_path", None),
+            "old_ref": getattr(args, "semantic_classify_old_ref", "HEAD~1"),
+            "new_ref": getattr(args, "semantic_classify_new_ref", "HEAD"),
+            "language": getattr(args, "semantic_classify_language", None),
+            "output_format": output_format,
+        },
+    ),
+    McpCommandSpec(
+        flag_name="pr_review",
+        tool_attr="CodeGraphPRReviewTool",
+        label="AI-powered PR review: AST diff + semantic + call graph",
+        build_tool_args=lambda args, output_format: {
+            "mode": getattr(args, "pr_review", "diff") or "diff",
+            "pr_url": getattr(args, "pr_review_url", "") or "",
+            "include_call_graph": True,
+            "output_format": output_format,
+        },
+    ),
+    McpCommandSpec(
+        flag_name="import_graph",
+        tool_attr="CodeGraphImportGraphTool",
+        label="File-level import dependency graph (CodeGraph parity)",
+        build_tool_args=lambda args, output_format: {
+            "mode": getattr(args, "import_graph_mode", "summary") or "summary",
+            "file_path": getattr(args, "import_graph_file", None)
+            or getattr(args, "file_path", None),
+            "max_depth": getattr(args, "import_graph_max_depth", 10),
+            "output_format": output_format,
+        },
+    ),
+    McpCommandSpec(
+        flag_name="dead_code",
+        tool_attr="CodeGraphDeadCodeTool",
+        label="Dead code analysis: transitive dead functions, unused imports, unreferenced variables",
+        build_tool_args=lambda args, output_format: {
+            "mode": getattr(args, "dead_code_mode", "all") or "all",
+            "include_test_files": bool(getattr(args, "dead_code_include_tests", False)),
+            "max_dead": getattr(args, "dead_code_max", 50) or 50,
+            "output_format": output_format,
+        },
+    ),
+    McpCommandSpec(
+        flag_name="code_similarity",
+        tool_attr="CodeGraphSimilarityTool",
+        label="AST-structural clone detection: finds duplicate and near-duplicate functions (CodeGraph parity)",
+        build_tool_args=lambda args, output_format: {
+            "mode": getattr(args, "code_similarity_mode", "all") or "all",
+            "min_lines": getattr(args, "code_similarity_min_lines", 5) or 5,
+            "min_group_size": getattr(args, "code_similarity_min_group", 2) or 2,
+            "max_groups": getattr(args, "code_similarity_max_groups", 20) or 20,
+            "use_cache": not bool(getattr(args, "code_similarity_no_cache", False)),
+            "output_format": output_format,
+        },
+    ),
+    McpCommandSpec(
+        flag_name="codegraph_sitemap",
+        tool_attr="CodeGraphSitemapTool",
+        label="Hierarchical project code map: directory→file→class→function (CodeGraph parity)",
+        build_tool_args=lambda args, output_format: {
+            "mode": getattr(args, "codegraph_sitemap_mode", "full") or "full",
+            "language": getattr(args, "codegraph_sitemap_language", None),
+            "directory": getattr(args, "codegraph_sitemap_directory", None),
+            "max_files": getattr(args, "codegraph_sitemap_max_files", 200),
+            "output_format": output_format,
+        },
+    ),
+    McpCommandSpec(
+        flag_name="codegraph_xref",
+        tool_attr="CodeGraphXRefTool",
+        label="Instant cross-reference: definition + callers + callees + import deps (CodeGraph parity)",
+        build_tool_args=lambda args, output_format: {
+            "mode": getattr(args, "codegraph_xref_mode", "symbol") or "symbol",
+            "symbol": getattr(args, "codegraph_xref", ""),
+            "file_path": getattr(args, "codegraph_xref_file", None),
+            "include_callers": bool(getattr(args, "codegraph_xref_callers", True)),
+            "include_callees": bool(getattr(args, "codegraph_xref_callees", True)),
+            "include_imports": bool(getattr(args, "codegraph_xref_imports", True)),
+            "include_file_deps": bool(getattr(args, "codegraph_xref_file_deps", True)),
+            "output_format": output_format,
+        },
+    ),
+    McpCommandSpec(
+        flag_name="codegraph_complexity_heatmap",
+        tool_attr="CodeGraphComplexityHeatmapTool",
+        label="Cyclomatic complexity heatmap with risk bands (CodeGraph parity)",
+        build_tool_args=lambda args, output_format: {
+            "mode": getattr(args, "codegraph_complexity_heatmap", "project")
+            or "project",
+            "file_path": getattr(args, "codegraph_complexity_file", None),
+            "function_name": getattr(args, "codegraph_complexity_function", None),
+            "language": getattr(args, "codegraph_complexity_language", None),
+            "directory": getattr(args, "codegraph_complexity_directory", None),
+            "max_files": getattr(args, "codegraph_complexity_max_files", 200),
+            "output_format": output_format,
+        },
+    ),
+    McpCommandSpec(
+        flag_name="class_hierarchy",
+        tool_attr="ClassHierarchyTool",
+        label="Class inheritance hierarchy analysis: subclasses, superclasses, impact (CodeGraph parity)",
+        build_tool_args=lambda args, output_format: {
+            "mode": getattr(args, "class_hierarchy_mode", "summary") or "summary",
+            "class_name": getattr(args, "class_hierarchy_class", None),
+            "max_depth": getattr(args, "class_hierarchy_depth", 10),
+            "output_format": output_format,
+        },
+    ),
+    McpCommandSpec(
+        flag_name="dependency_matrix",
+        tool_attr="CodeGraphDependencyMatrixTool",
+        label="Module coupling analysis: pairwise scores, hotspots, unstable modules (CodeGraph parity)",
+        build_tool_args=lambda args, output_format: {
+            "mode": getattr(args, "dependency_matrix_mode", "summary") or "summary",
+            "file_path": getattr(args, "dependency_matrix_file", None),
+            "top_k": getattr(args, "dependency_matrix_top_k", 10),
+            "threshold": getattr(args, "dependency_matrix_threshold", 0.7),
+            "output_format": output_format,
+        },
+    ),
+    McpCommandSpec(
+        flag_name="codegraph_visualize",
+        tool_attr="CodeGraphVisualizeTool",
+        label="Mermaid call graph visualization (CodeGraph parity)",
+        build_tool_args=lambda args, output_format: {
+            "mode": getattr(args, "codegraph_visualize_mode", "full") or "full",
+            "file_path": getattr(args, "codegraph_visualize_file", None),
+            "function": getattr(args, "codegraph_visualize_function", None),
+            "depth": getattr(args, "codegraph_visualize_depth", 3),
+            "max_edges": getattr(args, "codegraph_visualize_max_edges", 150),
+            "direction": getattr(args, "codegraph_visualize_direction", "TD") or "TD",
+            "output_format": output_format,
+        },
+    ),
+    # consolidated-only dispatchers ported during merge of feat/autonomous-dev
+    McpCommandSpec(
         flag_name="trace_impact",
         tool_attr="TraceImpactTool",
         label="Trace symbol impact (callers + usages across project)",
@@ -548,7 +778,7 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
     McpCommandSpec(
         flag_name="check_tools",
         tool_attr="CheckToolsTool",
-        label="Check fd / ripgrep availability",
+        label="Check whether fd and ripgrep are installed",
         build_tool_args=_build_check_tools_tool_args,
     ),
     McpCommandSpec(
@@ -560,261 +790,47 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
     McpCommandSpec(
         flag_name="modification_guard",
         tool_attr="ModificationGuardTool",
-        label="Pre-modification safety check (symbol-level)",
+        label="Pre-modification safety guard for a symbol",
         build_tool_args=_build_modification_guard_tool_args,
-    ),
-    McpCommandSpec(
-        flag_name="batch_search",
-        tool_attr="BatchSearchTool",
-        label="Run 2-10 ripgrep searches in parallel",
-        build_tool_args=_build_batch_search_tool_args,
-    ),
-    McpCommandSpec(
-        flag_name="ast_diff",
-        tool_attr="ASTDiffTool",
-        label="AST-level structured diff (functions/classes/imports)",
-        build_tool_args=_build_ast_diff_tool_args,
     ),
     McpCommandSpec(
         flag_name="decision_journal",
         tool_attr="DecisionJournalTool",
-        label="Persistent journal of architectural decisions",
+        label="Decision journal (record/get/search/supersede)",
         build_tool_args=_build_decision_journal_tool_args,
+    ),
+    McpCommandSpec(
+        flag_name="batch_search",
+        tool_attr="BatchSearchTool",
+        label="Batch ripgrep search (2-10 queries via JSON file)",
+        build_tool_args=_build_batch_search_tool_args,
     ),
 )
 
 
-def _classify_error_type(exc: BaseException) -> str:
-    """Classify an exception for the ``error_type`` envelope field.
-
-    J2: agents on the other end of ``--format json`` need a coarse
-    bucket so they can decide between "fix my input" vs "report a bug".
-    ``ValueError`` is by far the most common path-validation failure
-    (the security validator and path resolver both raise it), and
-    ``FileNotFoundError`` / generic ``OSError`` is the other half of the
-    validation surface. Anything else is treated as internal — agents
-    should surface those to a human.
-    """
-    if isinstance(exc, ValueError | FileNotFoundError | OSError):
-        return "validation"
-    return "internal"
-
-
-_SUMMARY_LINE_MAX_LEN = 80
-
-
-def _summary_line_reason(exc: BaseException) -> str:
-    """O6 (round-30 dogfood): the human-readable reason for a summary line.
-
-    Pre-O6 the envelope's ``summary_line`` rendered ``error — ValueError``
-    — the Python class name, not the actionable message. Agents that
-    only read the headline saw no signal about *what* failed. Now we
-    prefer ``str(exc)`` (the same text the ``error`` field exposes) and
-    fall back to the class name when the exception has no message.
-
-    The headline budget is small (~80 chars) so multi-sentence messages
-    are truncated with ``...``; the full message stays available on
-    the ``error`` field for callers that want the long form.
-    """
-    message = str(exc).strip()
-    if not message:
-        return type(exc).__name__
-    if len(message) > _SUMMARY_LINE_MAX_LEN:
-        return message[: _SUMMARY_LINE_MAX_LEN - 3].rstrip() + "..."
-    return message
-
-
-def _build_error_envelope(
-    flag_name: str,
-    label: str,
-    exc: BaseException,
-    echo_fields: Mapping[str, Any] | None = None,
-) -> dict[str, Any]:
-    """Construct a canonical error envelope for a failed MCP CLI command.
-
-    Mirrors the success-envelope shape (``success``, ``summary_line``,
-    ``agent_summary``) so a programmatic consumer can use the same
-    parser for success and failure cases.
-
-    ``echo_fields`` (N6): per-command identifier fields mirrored onto
-    the response root. Canonical envelope keys are never overwritten.
-    O6: ``summary_line`` embeds ``str(exc)`` instead of the exception
-    class name. r37ah: top-level ``verdict`` mirrors ``agent_summary``.
-
-    r37ar (dogfood): extracted ``_make_canonical_error_body`` so this
-    function stays under the long_method threshold and the canonical
-    envelope shape is reusable from other error paths.
-    """
-    err_type = _classify_error_type(exc)
-    message = str(exc) or type(exc).__name__
-    reason = _summary_line_reason(exc)
-    envelope = _make_canonical_error_body(
-        flag_name=flag_name,
-        label=label,
-        err_type=err_type,
-        message=message,
-        reason=reason,
-    )
-    if echo_fields:
-        for key, value in echo_fields.items():
-            if value is None or value == "":
-                continue
-            # Don't let echoes stomp on canonical envelope keys.
-            envelope.setdefault(key, value)
-    return envelope
-
-
-def _make_canonical_error_body(
-    *,
-    flag_name: str,
-    label: str,
-    err_type: str,
-    message: str,
-    reason: str,
-) -> dict[str, Any]:
-    """Build the canonical error-envelope body (success=False shape).
-
-    r37ar: extracted from ``_build_error_envelope`` so the canonical
-    error shape lives in one named function — same single-source-of-truth
-    pattern as r37am's ``wants_json_output`` and r37aq's ``output_toon``.
-    """
-    return {
-        "success": False,
-        "error_type": err_type,
-        "error": message,
-        "summary_line": f"{flag_name}: error — {reason}",
-        # r37ah: top-level verdict mirror keeps the CLI envelope gate
-        # green for MCP-bridged error responses.
-        "verdict": "ERROR",
-        "agent_summary": {
-            "verdict": "ERROR",
-            "summary_line": f"{flag_name}: error — {reason}",
-            "next_step": "Fix the input and retry.",
-            "label": label,
-        },
-    }
-
-
-def _collect_echo_fields(spec: McpCommandSpec, args: Any) -> dict[str, Any]:
-    """Collect identifier fields to echo into a failure envelope.
-
-    N6 (round-28 dogfood): the success path for ``--dependencies`` echoes
-    ``mode: <requested>`` so callers can branch on the requested analysis
-    mode. The validation-error path used to drop ``mode`` entirely,
-    leaving callers with no signal about what they requested. Mirror the
-    same field set onto the error envelope.
-
-    Other commands can grow their own echo fields here without touching
-    the envelope builder. Keep this conservative — only echo fields the
-    caller can directly use to retry.
-    """
-    echo: dict[str, Any] = {}
-    if spec.flag_name == "dependencies":
-        # Normalise via the same alias table the tool uses so a caller
-        # who requested ``mode=full`` and got a validation error still
-        # sees ``mode: summary`` in the response — matching what the
-        # success path echoes.
-        from tree_sitter_analyzer.mcp.tools.dependency_analysis_tool import (
-            DependencyAnalysisTool,
-        )
-
-        raw_mode = getattr(args, "dependencies", None) or "summary"
-        echo["mode"] = DependencyAnalysisTool._normalize_mode(raw_mode)
-    return echo
-
-
-def _emit_error_envelope(
-    flag_name: str,
-    label: str,
-    exc: BaseException,
-    output_format: str,
-    output_json_fn: Callable[[dict[str, Any]], None],
-    output_error_fn: Callable[[str], None],
-    echo_fields: Mapping[str, Any] | None = None,
-) -> int:
-    """Print a format-respecting error envelope and return exit code 1.
-
-    J2: when the user asked for ``--format json`` (or toon), an
-    unhandled error in the tool layer used to bypass the envelope and
-    drop a plain-text ``ERROR: ...`` line, leaving agents with no
-    parseable response. Now we honour the requested format: JSON when
-    ``output_format == 'json'``, TOON envelope (best-effort, falls
-    back to JSON on encoder failure) when ``output_format == 'toon'``,
-    and the original plain-text message in every other case.
-    """
-    # r37ar (dogfood): route TOON path through the canonical ``output_toon``
-    # helper (same channel as the success-path envelopes). JSON path stays
-    # compact-single-line because ``test_tool_response_contract.py`` parses
-    # stdout one line at a time looking for an envelope-start ``{`` — pretty
-    # output_json would break those agent-facing parsers. We swallow the
-    # AP003 hit on the two compact-json prints below with explicit noqa.
-    from tree_sitter_analyzer.output_manager import output_toon
-
-    envelope = _build_error_envelope(flag_name, label, exc, echo_fields)
-    if output_format == "json":
-        # noqa: T201 — agents parse line-by-line; pretty JSON would break them.
-        print(json.dumps(envelope, ensure_ascii=False))  # noqa: T201
-        return 1
-    if output_format == "toon":
-        try:
-            from tree_sitter_analyzer.formatters.toon_formatter import ToonFormatter
-
-            output_toon(ToonFormatter().format(envelope))
-        except Exception:  # noqa: BLE001 — degrade to JSON if TOON unavailable
-            print(json.dumps(envelope, ensure_ascii=False))  # noqa: T201
-        return 1
-    output_error_fn(f"{label} failed: {exc}")
-    return 1
-
-
 def _run_tool(
     args: Any,
-    spec: McpCommandSpec,
     tool_cls: Callable[..., Any],
-    tool_args: Mapping[str, Any] | None,
+    tool_args: Mapping[str, Any],
+    label: str,
     output_json_fn: Callable[[dict[str, Any]], None],
     output_error_fn: Callable[[str], None],
     output_format_fn: Callable[[], str],
 ) -> int:
-    """Helper: instantiate tool, run execute(), print output.
-
-    ``tool_args=None`` defers argument construction to inside the
-    ``try``/``except`` below so that a ``ValueError`` raised by the
-    spec's ``build_tool_args`` callback (e.g. M4 path-validation in
-    ``_build_detect_routes_tool_args``) is converted into a structured
-    error envelope rather than bubbling out as an uncaught traceback.
-    """
-    output_format = output_format_fn()
+    """Helper: instantiate tool, run execute(), print output."""
     try:
-        if tool_args is None:
-            tool_args = build_mcp_tool_args(args, spec, output_format)
         project_root = getattr(args, "project_root", None) or os.getcwd()
         tool = tool_cls(project_root=project_root)
         result: dict[str, Any] = asyncio.run(tool.execute(dict(tool_args)))
-        if output_format == "toon":
-            # r37aq (dogfood): shared output_toon helper (AP003-clean).
-            from tree_sitter_analyzer.output_manager import output_toon
-
-            output_toon(result.get("toon_content", ""))
+        fmt = output_format_fn()
+        if fmt == "toon":
+            print(result.get("toon_content", ""))
         else:
             output_json_fn(result)
         return 0 if result.get("success", False) else 1
     except Exception as e:
-        # J2: every ``except Exception`` in this module must respect the
-        # caller's requested format. The contract test
-        # ``TestJ2ErrorEnvelopeOnJsonFormat`` enforces this for both
-        # path-validation and tool-internal failures.
-        # N6: pass per-command echo fields (e.g. dependencies ``mode``)
-        # so the failure envelope mirrors the success-path identifier.
-        return _emit_error_envelope(
-            spec.flag_name,
-            spec.label,
-            e,
-            output_format,
-            output_json_fn,
-            output_error_fn,
-            echo_fields=_collect_echo_fields(spec, args),
-        )
+        output_error_fn(f"{label} failed: {e}")
+        return 1
 
 
 # ARCH-A2: declare which tool-class names this module exposes for the
@@ -838,14 +854,38 @@ _TOOL_CLASS_NAMES: frozenset[str] = frozenset(
         "SymbolLineageTool",
         "CodePatternsTool",
         "CodeGraphCallTool",
+        "CodeGraphCallersTool",
+        "CodeGraphCalleesTool",
+        "CodeGraphCallPathTool",
+        "CodeGraphOverviewTool",
         "ASTCacheTool",
         "ASTDiffTool",
-        "DecisionJournalTool",
         "RouteDetectorTool",
+        "CodeGraphSymbolSearchTool",
+        "CodeGraphSymbolResolveTool",
+        "CodeGraphImpactTool",
+        "CodeGraphASTPathTool",
+        "SemanticClassifyTool",
+        "CodeGraphPRReviewTool",
+        "CodeGraphNavigateTool",
+        "CodeGraphImportGraphTool",
+        # Pain pass 4: dead_code spec was added but the class wasn't in
+        # this allowlist, so the contract test caught a registry/spec drift.
+        "CodeGraphDeadCodeTool",
+        "CodeGraphSimilarityTool",
+        "CodeGraphSitemapTool",
+        "CodeGraphXRefTool",
+        "CodeGraphComplexityHeatmapTool",
+        "ClassHierarchyTool",
+        "CodeGraphDependencyMatrixTool",
+        "CodeGraphVisualizeTool",
+        "ConstraintCheckTool",
+        # consolidated-only tools ported during merge of feat/autonomous-dev
         "TraceImpactTool",
         "CheckToolsTool",
         "BuildProjectIndexTool",
         "ModificationGuardTool",
+        "DecisionJournalTool",
         "BatchSearchTool",
     }
 )
@@ -869,45 +909,6 @@ def _get_tool_class(tool_attr: str) -> Callable[..., Any]:
     return cls  # type: ignore[no-any-return]
 
 
-def _format_aware_error_sink(
-    flag_name: str,
-    label: str,
-    output_format: str,
-    output_json_fn: Callable[[dict[str, Any]], None],
-    output_error_fn: Callable[[str], None],
-    echo_fields: Mapping[str, Any] | None = None,
-) -> Callable[[str], None]:
-    """Return a ``output_error_fn`` that respects the requested format.
-
-    J2: ``validate_mcp_command_args`` reports pre-execution failures
-    (e.g. missing ``--file-path`` for ``--dependencies blast_radius``)
-    via the same plain-text sink. When the caller asked for JSON or
-    TOON, we wrap the sink so the failure surfaces as a structured
-    envelope instead of an unparseable ``ERROR: ...`` line.
-
-    N6 (round-28): ``echo_fields`` mirrors per-command identifiers
-    (e.g. dependencies ``mode``) onto the validation-error envelope so
-    callers see what they requested even when the request never reached
-    the tool.
-    """
-
-    def _sink(message: str) -> None:
-        if output_format in {"json", "toon"}:
-            _emit_error_envelope(
-                flag_name,
-                label,
-                ValueError(message),
-                output_format,
-                output_json_fn,
-                output_error_fn,
-                echo_fields=echo_fields,
-            )
-        else:
-            output_error_fn(message)
-
-    return _sink
-
-
 def handle_mcp_commands(
     args: Any,
     output_json_fn: Callable[[dict[str, Any]], None],
@@ -919,31 +920,15 @@ def handle_mcp_commands(
     if spec is None:
         return None
 
-    output_format = output_format_fn()
-    # N6: collect per-command echo fields once so both the pre-execution
-    # validator and the tool-execution exception path return identical
-    # context (e.g. ``mode: file_deps`` on a dependencies failure).
-    echo_fields = _collect_echo_fields(spec, args)
-    validate_sink = _format_aware_error_sink(
-        spec.flag_name,
-        spec.label,
-        output_format,
-        output_json_fn,
-        output_error_fn,
-        echo_fields=echo_fields,
-    )
-    if not validate_mcp_command_args(args, spec, validate_sink):
+    if not validate_mcp_command_args(args, spec, output_error_fn):
         return 1
 
-    # M4 (round-26): pass ``tool_args=None`` so any ``ValueError`` raised
-    # inside ``spec.build_tool_args`` (e.g. detect_routes path validation)
-    # is caught by the ``_run_tool`` error envelope rather than escaping
-    # as an uncaught traceback.
+    output_format = output_format_fn()
     return _run_tool(
         args,
-        spec,
         _get_tool_class(spec.tool_attr),
-        None,
+        build_mcp_tool_args(args, spec, output_format),
+        spec.label,
         output_json_fn,
         output_error_fn,
         output_format_fn,

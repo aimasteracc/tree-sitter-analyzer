@@ -48,6 +48,34 @@ SIDE_EFFECT_MARKERS = {
 ACTIONABILITY_PREVIEW_LIMIT = 3
 
 
+def _skills_verdict(
+    validation: dict[str, Any],
+    gaps: dict[str, Any],
+    root_path: Path,
+) -> str:
+    """Canonical verdict for the agent-skills envelope.
+
+    pain-01c: tsa-landing reads ``list_agent_skills.verdict`` as part of
+    its decision surface. Map validation status to the canonical
+    vocabulary, anti-bias toward higher severity.
+
+      skills_root missing          → CAUTION  (no skills installed)
+      blocking validation status   → CAUTION
+      caution-level gaps           → REVIEW
+      ready / no gaps              → INFO
+    """
+    if not root_path.exists():
+        return "CAUTION"
+    status = validation.get("status", "")
+    if status in ("blocking", "missing"):
+        return "CAUTION"
+    if validation.get("blocking_gap_count", 0) > 0:
+        return "CAUTION"
+    if status in ("caution", "warning") or validation.get("caution_gap_count", 0) > 0:
+        return "REVIEW"
+    return "INFO"
+
+
 def build_agent_skills_inventory(
     project_root: str,
     skills_root: str | None = None,
@@ -59,8 +87,12 @@ def build_agent_skills_inventory(
     gaps = _build_gaps(skills, root_path)
     validation = build_skill_validation(gaps)
 
+    agent_summary = _build_agent_summary(skills, gaps, validation)
+    verdict = _skills_verdict(validation, gaps, root_path)
+    agent_summary["verdict"] = verdict
     result = {
         "success": True,
+        "verdict": verdict,
         "inventory": "project agent skills",
         "project_root": str(project_path),
         "skills_root": _display_path(root_path, project_path),
@@ -69,7 +101,7 @@ def build_agent_skills_inventory(
         "skills": skills,
         "gaps": gaps,
         "validation": validation,
-        "agent_summary": _build_agent_summary(skills, gaps, validation),
+        "agent_summary": agent_summary,
     }
     # N5 (round-29 dogfood): the success path used to ship
     # ``summary_line=None`` at the top level and omit
@@ -77,17 +109,17 @@ def build_agent_skills_inventory(
     # test catches that drift — populate both surfaces here so direct
     # CLI callers, MCP-routed callers, and snapshot-test consumers all
     # see the canonical shape.
-    agent_summary = result["agent_summary"]
-    assert isinstance(agent_summary, dict)  # nosec B101 — built above
+    raw_agent_summary = result["agent_summary"]
+    assert isinstance(raw_agent_summary, dict)  # nosec B101 — built above
     summary_line = _build_summary_line(result)
     result["summary_line"] = summary_line
-    agent_summary["summary_line"] = summary_line
+    raw_agent_summary["summary_line"] = summary_line
     # Mirror verdict from the agent_summary surface (source of truth)
     # to the top-level envelope. The verdict was populated in
     # :func:`_build_agent_summary` based on ``validation.status``.
-    verdict = agent_summary.get("verdict")
-    if isinstance(verdict, str) and verdict:
-        result["verdict"] = verdict
+    verdict_value: Any = raw_agent_summary.get("verdict")
+    if isinstance(verdict_value, str) and verdict_value:
+        result["verdict"] = verdict_value
     result["toon_content"] = _build_toon_content(result)
     return result
 

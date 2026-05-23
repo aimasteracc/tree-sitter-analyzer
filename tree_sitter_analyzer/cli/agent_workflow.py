@@ -88,6 +88,10 @@ def build_agent_workflow_pack(
         # r37x (envelope ratchet): top-level verdict mirror (r37u contract).
         "verdict": agent_summary["verdict"],
     }
+    # Mirror verdict into agent_summary (M10 bidirectional pattern).
+    agent_summary_dict = result["agent_summary"]
+    if isinstance(agent_summary_dict, dict):
+        agent_summary_dict["verdict"] = result["verdict"]
     result["toon_content"] = _build_toon_content(result)
     return result
 

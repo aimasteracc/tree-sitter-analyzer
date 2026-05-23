@@ -148,7 +148,6 @@ class MockLanguagePlugin:
 
     # Analyze source code structure: analyze_file
     async def analyze_file(self, file_path: str, request: AnalysisRequest) -> Any:
-
         return AnalysisResult(
             file_path=file_path,
             line_count=10,

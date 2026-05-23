@@ -155,12 +155,22 @@ class TestToolSchemaIncludesPRUrl:
 
 
 class TestChangeImpactToolPRUrlValidation:
-    def test_validate_accepts_pr_mode(self):
-        tool = ChangeImpactTool(project_root="/tmp")
+    def test_validate_accepts_pr_mode(self, tmp_path):
+        # Perf note (2026-05-23): project_root="/tmp" used to scan the entire
+        # /tmp tree during dependency-graph construction (~22s on CI boxes
+        # with build artifacts in /tmp). Use the pytest tmp_path fixture
+        # for a clean empty directory — keeps the test contract (PR URL
+        # parses, mocked git wins) but in O(1) instead of O(/tmp).
+        tool = ChangeImpactTool(project_root=str(tmp_path))
         assert tool.validate_arguments({"mode": "pr", "pr_url": "https://github.com/o/r/pull/1"})
 
-    def test_validate_rejects_bad_mode(self):
-        tool = ChangeImpactTool(project_root="/tmp")
+    def test_validate_rejects_bad_mode(self, tmp_path):
+        # Perf note (2026-05-23): project_root="/tmp" used to scan the entire
+        # /tmp tree during dependency-graph construction (~22s on CI boxes
+        # with build artifacts in /tmp). Use the pytest tmp_path fixture
+        # for a clean empty directory — keeps the test contract (PR URL
+        # parses, mocked git wins) but in O(1) instead of O(/tmp).
+        tool = ChangeImpactTool(project_root=str(tmp_path))
         with pytest.raises(ValueError, match="mode must be"):
             tool.validate_arguments({"mode": "invalid"})
 
@@ -172,8 +182,13 @@ class TestChangeImpactToolPRUrlExecute:
         "tree_sitter_analyzer.mcp.tools.change_impact_tool.fetch_pr_changed_files",
         return_value=["src/a.py", "src/b.py"],
     )
-    def test_pr_url_analysis_returns_pr_metadata(self, mock_files, mock_stat, mock_gh):
-        tool = ChangeImpactTool(project_root="/tmp")
+    def test_pr_url_analysis_returns_pr_metadata(self, mock_files, mock_stat, mock_gh, tmp_path):
+        # Perf note (2026-05-23): project_root="/tmp" used to scan the entire
+        # /tmp tree during dependency-graph construction (~22s on CI boxes
+        # with build artifacts in /tmp). Use the pytest tmp_path fixture
+        # for a clean empty directory — keeps the test contract (PR URL
+        # parses, mocked git wins) but in O(1) instead of O(/tmp).
+        tool = ChangeImpactTool(project_root=str(tmp_path))
         result = asyncio.run(
             tool.execute({
                 "pr_url": "https://github.com/owner/repo/pull/42",
@@ -192,8 +207,13 @@ class TestChangeImpactToolPRUrlExecute:
         "tree_sitter_analyzer.mcp.tools.change_impact_tool.fetch_pr_changed_files",
         return_value=["src/a.py"],
     )
-    def test_pr_url_with_scope_filters_files(self, mock_files, mock_stat, mock_gh):
-        tool = ChangeImpactTool(project_root="/tmp")
+    def test_pr_url_with_scope_filters_files(self, mock_files, mock_stat, mock_gh, tmp_path):
+        # Perf note (2026-05-23): project_root="/tmp" used to scan the entire
+        # /tmp tree during dependency-graph construction (~22s on CI boxes
+        # with build artifacts in /tmp). Use the pytest tmp_path fixture
+        # for a clean empty directory — keeps the test contract (PR URL
+        # parses, mocked git wins) but in O(1) instead of O(/tmp).
+        tool = ChangeImpactTool(project_root=str(tmp_path))
         result = asyncio.run(
             tool.execute({
                 "pr_url": "https://github.com/owner/repo/pull/42",
@@ -204,8 +224,13 @@ class TestChangeImpactToolPRUrlExecute:
         )
         assert result["success"] is True
 
-    def test_pr_url_invalid_url(self):
-        tool = ChangeImpactTool(project_root="/tmp")
+    def test_pr_url_invalid_url(self, tmp_path):
+        # Perf note (2026-05-23): project_root="/tmp" used to scan the entire
+        # /tmp tree during dependency-graph construction (~22s on CI boxes
+        # with build artifacts in /tmp). Use the pytest tmp_path fixture
+        # for a clean empty directory — keeps the test contract (PR URL
+        # parses, mocked git wins) but in O(1) instead of O(/tmp).
+        tool = ChangeImpactTool(project_root=str(tmp_path))
         result = asyncio.run(
             tool.execute({
                 "pr_url": "not-a-url",
@@ -216,8 +241,13 @@ class TestChangeImpactToolPRUrlExecute:
         assert "Invalid GitHub PR URL" in result["error"]
 
     @patch("tree_sitter_analyzer.mcp.tools.change_impact_tool.check_gh_available", return_value=False)
-    def test_pr_url_gh_not_available(self, mock_gh):
-        tool = ChangeImpactTool(project_root="/tmp")
+    def test_pr_url_gh_not_available(self, mock_gh, tmp_path):
+        # Perf note (2026-05-23): project_root="/tmp" used to scan the entire
+        # /tmp tree during dependency-graph construction (~22s on CI boxes
+        # with build artifacts in /tmp). Use the pytest tmp_path fixture
+        # for a clean empty directory — keeps the test contract (PR URL
+        # parses, mocked git wins) but in O(1) instead of O(/tmp).
+        tool = ChangeImpactTool(project_root=str(tmp_path))
         result = asyncio.run(
             tool.execute({
                 "pr_url": "https://github.com/owner/repo/pull/42",
@@ -232,8 +262,13 @@ class TestChangeImpactToolPRUrlExecute:
         "tree_sitter_analyzer.mcp.tools.change_impact_tool.fetch_pr_changed_files",
         return_value=[],
     )
-    def test_pr_url_no_changes(self, mock_files, mock_gh):
-        tool = ChangeImpactTool(project_root="/tmp")
+    def test_pr_url_no_changes(self, mock_files, mock_gh, tmp_path):
+        # Perf note (2026-05-23): project_root="/tmp" used to scan the entire
+        # /tmp tree during dependency-graph construction (~22s on CI boxes
+        # with build artifacts in /tmp). Use the pytest tmp_path fixture
+        # for a clean empty directory — keeps the test contract (PR URL
+        # parses, mocked git wins) but in O(1) instead of O(/tmp).
+        tool = ChangeImpactTool(project_root=str(tmp_path))
         result = asyncio.run(
             tool.execute({
                 "pr_url": "https://github.com/owner/repo/pull/42",
@@ -249,8 +284,13 @@ class TestChangeImpactToolPRUrlExecute:
         "tree_sitter_analyzer.mcp.tools.change_impact_tool.fetch_pr_changed_files",
         return_value=["a.py"],
     )
-    def test_pr_url_agent_summary_only(self, mock_files, mock_stat, mock_gh):
-        tool = ChangeImpactTool(project_root="/tmp")
+    def test_pr_url_agent_summary_only(self, mock_files, mock_stat, mock_gh, tmp_path):
+        # Perf note (2026-05-23): project_root="/tmp" used to scan the entire
+        # /tmp tree during dependency-graph construction (~22s on CI boxes
+        # with build artifacts in /tmp). Use the pytest tmp_path fixture
+        # for a clean empty directory — keeps the test contract (PR URL
+        # parses, mocked git wins) but in O(1) instead of O(/tmp).
+        tool = ChangeImpactTool(project_root=str(tmp_path))
         result = asyncio.run(
             tool.execute({
                 "pr_url": "https://github.com/owner/repo/pull/42",

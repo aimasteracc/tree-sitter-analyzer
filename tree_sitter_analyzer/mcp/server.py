@@ -88,109 +88,27 @@ logger = setup_logger(__name__)
 def _create_tool_registry(
     project_root: str | None,
 ) -> tuple[list[tuple[str, Any]], dict[str, Any]]:
-    """Create the tool registry with all MCP tools.
+    """Thin wrapper around the canonical registry in ``_tool_registry.py``.
 
-    PERF-3: tool classes are imported here, not at module top level. A caller
-    that imports tree_sitter_analyzer.mcp.server but never builds a server
-    (e.g. tests that only touch _create_tool_registry's signature) pays
-    ~zero of the per-tool import cost.
+    Historical drift: this function used to maintain its own duplicate list
+    of tool registrations alongside ``mcp/_tool_registry.create_tool_registry``.
+    Over time the two lists drifted — server.py was missing 8 tools
+    (codegraph_autoindex, codegraph_call_path, codegraph_complexity_heatmap,
+    codegraph_full_index, codegraph_metrics, codegraph_sitemap,
+    codegraph_visualize, codegraph_xref) that exist in the central registry.
+
+    To prevent future drift, this function now delegates to the single
+    source of truth. PERF-3 (lazy tool-class imports) is preserved because
+    ``create_tool_registry`` inlines the same imports.
+
+    Existing callers (TreeSitterAnalyzerMCPServer.__init__, contract tests,
+    test fixtures) keep the same ``(list, dict)`` return shape they always
+    expected — they simply see the full 48-tool registry now instead of a
+    stale 40-tool subset.
     """
-    # Imports inlined so they are only paid when a registry is actually built.
-    # Keep this list alphabetised — the tuple order below is the public
-    # registration order, not the import order.
-    from .tools.agent_skills_tool import AgentSkillsTool
-    from .tools.agent_workflow_tool import AgentWorkflowTool
-    from .tools.analyze_code_structure_tool import AnalyzeCodeStructureTool
-    from .tools.analyze_scale_tool import AnalyzeScaleTool
-    from .tools.ast_cache_tool import ASTCacheTool
-    from .tools.ast_diff_tool import ASTDiffTool
-    from .tools.batch_search_tool import BatchSearchTool
-    from .tools.build_project_index_tool import BuildProjectIndexTool
-    from .tools.call_graph_tool import CodeGraphCallTool
-    from .tools.change_impact_tool import ChangeImpactTool
-    from .tools.check_tools_tool import CheckToolsTool
-    from .tools.code_patterns_tool import CodePatternsTool
-    from .tools.decision_journal_tool import DecisionJournalTool
-    from .tools.dependency_analysis_tool import DependencyAnalysisTool
-    from .tools.file_health_tool import FileHealthTool
-    from .tools.find_and_grep_tool import FindAndGrepTool
-    from .tools.get_code_outline_tool import GetCodeOutlineTool
-    from .tools.get_project_summary_tool import GetProjectSummaryTool
-    from .tools.list_files_tool import ListFilesTool
-    from .tools.modification_guard_tool import ModificationGuardTool
-    from .tools.parser_readiness_tool import ParserReadinessTool
-    from .tools.project_health_tool import ProjectHealthTool
-    from .tools.project_overview_tool import ProjectOverviewTool
-    from .tools.query_tool import QueryTool
-    from .tools.read_partial_tool import ReadPartialTool
-    from .tools.refactoring_suggestions_tool import RefactoringSuggestionsTool
-    from .tools.route_detector_tool import RouteDetectorTool
-    from .tools.safe_to_edit_tool import SafeToEditTool
-    from .tools.search_content_tool import SearchContentTool
-    from .tools.smart_context_tool import SmartContextTool
-    from .tools.symbol_lineage_tool import SymbolLineageTool
-    from .tools.trace_impact_tool import TraceImpactTool
+    from ._tool_registry import create_tool_registry
 
-    # r37f3 (dogfood): 23 → 27 tools. Earlier audit found 4 tools referenced
-    # in OTHER tools' descriptions (``get_code_outline`` / ``trace_impact`` /
-    # ``modification_guard`` / ``get_project_summary``) but NOT exposed via
-    # MCP — agents reading those descriptions would attempt to call tools
-    # the server wouldn't recognise. Registering them honours the
-    # description contract and the CLI-MCP parity rule.
-    #
-    # r37f4 (dogfood): 27 → 30 tools. The 3 remaining CLI-only tools
-    # (``batch_search`` / ``build_project_index`` / ``check_tools``) are
-    # genuine agent-utility surfaces — batch parallel ripgrep is faster than
-    # multiple ``search_content`` calls; ``build_project_index`` is what
-    # agents need when ``get_project_summary`` returns stale data; and
-    # ``check_tools`` is the canonical "are fd + rg installed?" probe.
-    # Hiding these behind CLI flags only made them invisible to MCP clients.
-    tool_instances: list[tuple[str, Any]] = [
-        ("check_code_scale", AnalyzeScaleTool(project_root)),
-        ("analyze_code_structure", AnalyzeCodeStructureTool(project_root)),
-        ("extract_code_section", ReadPartialTool(project_root)),
-        ("get_code_outline", GetCodeOutlineTool(project_root)),
-        ("query_code", QueryTool(project_root)),
-        ("list_files", ListFilesTool(project_root)),
-        ("search_content", SearchContentTool(project_root)),
-        ("find_and_grep", FindAndGrepTool(project_root)),
-        ("batch_search", BatchSearchTool(project_root)),
-        ("check_tools", CheckToolsTool(project_root)),
-        ("list_agent_skills", AgentSkillsTool(project_root)),
-        ("get_agent_workflow", AgentWorkflowTool(project_root)),
-        ("advise_parser_readiness", ParserReadinessTool(project_root)),
-        ("get_project_overview", ProjectOverviewTool(project_root)),
-        ("get_project_summary", GetProjectSummaryTool(project_root)),
-        ("build_project_index", BuildProjectIndexTool(project_root)),
-        ("check_project_health", ProjectHealthTool(project_root)),
-        ("check_file_health", FileHealthTool(project_root)),
-        ("analyze_dependencies", DependencyAnalysisTool(project_root)),
-        ("ast_cache", ASTCacheTool(project_root)),
-        ("codegraph_call_graph", CodeGraphCallTool(project_root)),
-        ("analyze_change_impact", ChangeImpactTool(project_root)),
-        ("trace_impact", TraceImpactTool(project_root)),
-        ("refactoring_suggestions", RefactoringSuggestionsTool(project_root)),
-        ("safe_to_edit", SafeToEditTool(project_root)),
-        ("modification_guard", ModificationGuardTool(project_root)),
-        ("smart_context", SmartContextTool(project_root)),
-        ("symbol_lineage", SymbolLineageTool(project_root)),
-        ("code_patterns", CodePatternsTool(project_root)),
-        ("detect_routes", RouteDetectorTool(project_root)),
-        # r37fJ (orphan finalization): AST-level structured diff. The
-        # only tool in the registry that compares two versions of a
-        # file at tree level — added → removed → modified functions,
-        # classes, imports, variables. Three modes: file_revisions
-        # (compare two git refs), working_tree (compare disk vs ref),
-        # strings (compare two source strings).
-        ("ast_diff", ASTDiffTool(project_root)),
-        # r37fG (unique moat): persistent journal of architectural
-        # decisions. The only registered tool that persists *reasoning*
-        # across sessions — agents tomorrow read what agents today
-        # decided so settled choices don't get re-litigated.
-        # Storage: <project_root>/.ast-cache/decision_journal.db.
-        ("decision_journal", DecisionJournalTool(project_root)),
-    ]
-    return tool_instances, dict(tool_instances)
+    return create_tool_registry(project_root)
 
 
 class TreeSitterAnalyzerMCPServer:

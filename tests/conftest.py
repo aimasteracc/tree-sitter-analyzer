@@ -33,6 +33,16 @@ hypothesis_settings.load_profile("tree_sitter_analyzer")
 
 def pytest_configure(config):
     """Configure pytest with custom markers and safety checks."""
+    # Suppress SQLite connection finalizer warnings that fire when gc.collect()
+    # in one xdist worker collects objects from other workers. These are benign
+    # resource cleanup events, not actual test failures.
+    # Must be added here (not pytest.ini) so the pytest.ini contract
+    # (filterwarnings[0] == "error") stays valid.
+    config.addinivalue_line(
+        "filterwarnings",
+        "ignore:Exception ignored while finalizing database connection"
+        ":pytest.PytestUnraisableExceptionWarning",
+    )
     config.addinivalue_line(
         "markers", "requires_ripgrep: mark test as requiring ripgrep (rg) command"
     )
@@ -41,6 +51,14 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "performance: mark test as performance test")
     config.addinivalue_line("markers", "regression: mark test as regression test")
     config.addinivalue_line("markers", "property: mark test as property-based test")
+    # Tests that legitimately need >SLOW_TEST_BUDGET_S of real wall time
+    # (file watcher polling, large-fixture parsers, etc.) must opt out
+    # explicitly. Without the marker the runtime gate below fails them.
+    config.addinivalue_line(
+        "markers",
+        "slow_ok: test legitimately exceeds SLOW_TEST_BUDGET_S; "
+        "opt-out of the unit-suite per-test perf budget (use sparingly)",
+    )
 
     # HARD BLOCK: detect duplicate --cov arguments that cause memory blowup.
     # Only count --cov and --cov= (NOT --cov-report, --cov-fail-under, etc.)
@@ -452,4 +470,75 @@ def verify_test_isolation():
             f"(allowed: {max_allowed_growth})",
             ResourceWarning,
             stacklevel=2,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Per-test runtime budget (regression prevention 2026-05-23)
+# ---------------------------------------------------------------------------
+#
+# Two real bugs cost us ~62s of unit-suite latency (91s → 29s) before
+# they were caught:
+#
+#   1. ``import_extractors._node_text`` accidentally encoded the full
+#      source-file UTF-8 buffer on every call (217k calls / 7.5s pure
+#      encoding overhead per run).
+#   2. Five tests used ``project_root="/tmp"`` or ``project_root=None``
+#      and silently triggered a full DependencyGraph + CallGraph build
+#      against the 1100-file repo via cwd fallback (each test 9-37s).
+#
+# Both classes of regression have the same fingerprint at the unit
+# layer: a single test crossing the 5-second mark. The hook below
+# fails any unit test that exceeds ``SLOW_TEST_BUDGET_S`` unless it
+# explicitly opts out via ``@pytest.mark.slow_ok`` — forcing the author
+# to either fix the perf or document why the cost is real.
+#
+# We deliberately fail the test (not just warn) so the regression
+# blocks CI. ``slow_ok`` is the escape hatch for known-slow tests
+# (file_watcher polling, real-process file_output, etc.).
+
+SLOW_TEST_BUDGET_S: float = 5.0
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_call(item):
+    """Enforce per-test wall-time budget for unit tests.
+
+    Skipped under integration / performance markers and when the test
+    is explicitly tagged ``slow_ok``. Integration tests have their own
+    looser thresholds; performance tests are timed elsewhere.
+    """
+    import time
+
+    opted_out = (
+        "slow_ok" in item.keywords
+        or "performance" in item.keywords
+        or "integration" in item.keywords
+    )
+    started = time.monotonic()
+    outcome = yield
+    elapsed = time.monotonic() - started
+
+    # Only enforce on unit tests (tests/unit/...). Other suites are
+    # allowed to take longer.
+    is_unit = "/tests/unit/" in str(item.fspath).replace("\\", "/")
+
+    if (
+        is_unit
+        and not opted_out
+        and outcome.excinfo is None  # don't double-fail on already-failing tests
+        and elapsed > SLOW_TEST_BUDGET_S
+    ):
+        pytest.fail(
+            f"Unit test exceeded per-test budget: {elapsed:.2f}s > "
+            f"{SLOW_TEST_BUDGET_S:.1f}s.\n"
+            f"Common causes (see tests/conftest.py for the full history):\n"
+            f"  • Accidentally scanning the whole repo "
+            f"(project_root='/tmp' or =None when cwd is the repo)\n"
+            f"  • Per-call O(file_size) work in a tight loop "
+            f"(e.g. source.encode() inside a node-text helper)\n"
+            f"  • Real subprocess / network / sleep without a mock\n"
+            f"Fix the perf, or — if the cost is real and documented — add "
+            f"@pytest.mark.slow_ok with a justifying comment.",
+            pytrace=False,
         )

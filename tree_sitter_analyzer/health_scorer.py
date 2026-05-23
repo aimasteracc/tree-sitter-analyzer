@@ -38,12 +38,6 @@ DIMENSION_WEIGHTS = {
     "git_hotspot": 10,
 }
 
-# Q4 (round-33 dogfood): keep PROJECT_HEALTH_SOURCE_EXTS narrowed to
-# extensions that map to a real language in ``_EXT_TO_LANG`` further down
-# this module. Markdown / YAML / HTML / CSS / SQL have no language plugin
-# wired into the scorer — including them inflates total_files by ~3x and
-# floods the C-grade bucket with golden-master docs that don't represent
-# the project's code health.
 PROJECT_HEALTH_SOURCE_EXTS = {
     ".py",
     ".java",
@@ -63,6 +57,12 @@ PROJECT_HEALTH_SOURCE_EXTS = {
     ".cc",
     ".cxx",
     ".hpp",
+    ".sql",
+    ".html",
+    ".css",
+    ".yaml",
+    ".yml",
+    ".md",
 }
 
 # Thresholds for scoring
@@ -81,10 +81,25 @@ STRUCTURE_DEPTH_MAX = 30  # Max AST depth for scoring
 HOTSPOT_COMMITS_LOW = 5  # ≤ 5 commits in 90 days → full score (stable)
 HOTSPOT_COMMITS_HIGH = 50  # ≥ 50 commits in 90 days → 0 score (volatile)
 
+# Per-language function-definition node types for per-function CC normalization
+FUNCTION_NODE_TYPES: dict[str, set[str]] = {
+    "python": {"function_definition"},
+    "javascript": {"function_declaration", "method_definition", "arrow_function"},
+    "typescript": {"function_declaration", "method_definition", "arrow_function"},
+    "java": {"method_declaration", "constructor_declaration"},
+    "go": {"function_declaration", "method_declaration"},
+    "c": {"function_definition"},
+    "cpp": {"function_definition"},
+    "rust": {"function_item"},
+    "ruby": {"method", "singleton_method"},
+}
+
+
 # Per-language decision node types for McCabe Cyclomatic Complexity
 # CC = 1 + count(decision_nodes)
 DECISION_NODE_TYPES: dict[str, set[str]] = {
     "python": {
+        # McCabe 1976 base set:
         "if_statement",
         "elif_clause",
         "for_statement",
@@ -93,6 +108,17 @@ DECISION_NODE_TYPES: dict[str, set[str]] = {
         "conditional_expression",
         "boolean_operator",
         "case_clause",
+        # Radon-aligned extras: assert / with / comprehensions are
+        # control-flow branches the agent should account for. Cross-tool
+        # comparison against radon on health_scorer.py showed we were
+        # undercounting by ~25% without these — see AGENT_UX_PAIN entry
+        # for the byte-offset and CC-undercount bugs caught the same way.
+        "assert_statement",
+        "with_statement",
+        "list_comprehension",
+        "set_comprehension",
+        "dictionary_comprehension",
+        "generator_expression",
     },
     "javascript": {
         "if_statement",
@@ -374,8 +400,10 @@ class HealthScorer:
     # skipped by the walker. ``fixtures`` and ``test_data`` are tested
     # sample trees; excluding them at the walker level keeps project_health
     # focused on the actual codebase. The exclusion is matched against the
-    # path *relative to the scanned root* so the existing test that scores
-    # ``tests/fixtures/project_graph/health_project`` directly still works.
+    # path *relative to the scanned root* (see ``_is_excluded``) so a
+    # unit test that explicitly scores a fixture sub-tree
+    # (e.g. ``score_project(tests/fixtures/project_graph/health_project)``)
+    # is not broken by the broader project-level filter.
     _EXCLUDE_DIRS = {
         "node_modules",
         ".git",
@@ -402,30 +430,6 @@ class HealthScorer:
         "test_data",
     }
 
-    def score_project(self, project_root: str) -> list[HealthScore]:
-        """
-        Score all source files in a project directory.
-
-        Args:
-            project_root: Root directory of the project
-
-        Returns:
-            List of HealthScore objects, sorted by total descending
-        """
-        root = Path(project_root)
-        results: list[HealthScore] = []
-        for ext in self.source_extensions:
-            for f in root.rglob(f"*{ext}"):
-                if self._is_excluded(f, root):
-                    continue
-                try:
-                    results.append(self.score_file(str(f)))
-                except Exception:  # nosec B112
-                    continue
-
-        results.sort(key=lambda r: r.total, reverse=True)
-        return results
-
     def _is_excluded(self, file_path: Path, root: Path) -> bool:
         """Return True when the file lives under an excluded directory.
 
@@ -442,71 +446,172 @@ class HealthScorer:
             rel_parts = file_path.parts
         return any(part in self._EXCLUDE_DIRS for part in rel_parts)
 
+    def score_project(
+        self,
+        project_root: str,
+        *,
+        use_cache: bool = True,
+    ) -> list[HealthScore]:
+        """Score all source files; returns just the score list.
+
+        This is the legacy API. Prefer ``score_project_with_stats``
+        when you need to surface coverage metrics (how many files were
+        scanned vs scored vs skipped, and why) — agents asking "did you
+        really index my whole project?" need those numbers, not the
+        list alone.
+        """
+        scores, _stats = self.score_project_with_stats(
+            project_root, use_cache=use_cache
+        )
+        return scores
+
+    def score_project_with_stats(
+        self,
+        project_root: str,
+        *,
+        use_cache: bool = True,
+    ) -> tuple[list[HealthScore], dict[str, Any]]:
+        """
+        Score all source files AND return walker coverage statistics.
+
+        Coverage stats let an agent answer "how many files did you
+        actually look at?" honestly — the difference between scanned
+        and scored files (excluded directories, parse failures) is the
+        kind of information that used to be silently dropped before
+        ``TRUST_BUT_VERIFY_2026-05-23.md``.
+
+        Args:
+            project_root: Root directory of the project
+            use_cache: When True (default), use the persistent
+                :class:`HealthScoreCache` so unchanged files reuse their
+                previous score. The first warm-up still scores every file;
+                subsequent runs are near-instant for unchanged files.
+
+        Returns:
+            Tuple of (scores, stats) where stats has shape::
+
+                {
+                    "total_files_scanned":   int,  # rglob hits, pre-filter
+                    "total_files_scored":    int,  # actually scored
+                    "total_files_skipped":   int,  # scanned but not scored
+                    "skip_reasons": {
+                        "excluded_dir":   int,  # in self._EXCLUDE_DIRS
+                        "scoring_failed": int,  # score_file raised
+                    },
+                }
+        """
+        # Import locally to avoid a circular import at module load time —
+        # _health_score_cache pulls in nothing heavy but keeps the import
+        # graph one-directional.
+        from ._health_score_cache import HealthScoreCache
+
+        root = Path(project_root)
+        cache = HealthScoreCache(str(root)) if use_cache else None
+        results: list[HealthScore] = []
+        scanned = 0
+        excluded_dir = 0
+        scoring_failed = 0
+        try:
+            for ext in self.source_extensions:
+                for f in root.rglob(f"*{ext}"):
+                    scanned += 1
+                    if self._is_excluded(f, root):
+                        excluded_dir += 1
+                        continue
+                    score = self._score_file_with_cache(str(f), cache)
+                    if score is None:
+                        scoring_failed += 1
+                        continue
+                    results.append(score)
+        finally:
+            if cache is not None:
+                cache.close()
+
+        results.sort(key=lambda r: r.total, reverse=True)
+        stats: dict[str, Any] = {
+            "total_files_scanned": scanned,
+            "total_files_scored": len(results),
+            "total_files_skipped": excluded_dir + scoring_failed,
+            "skip_reasons": {
+                "excluded_dir": excluded_dir,
+                "scoring_failed": scoring_failed,
+            },
+        }
+        return results, stats
+
+    def _score_file_with_cache(
+        self,
+        file_path: str,
+        cache: Any,
+    ) -> HealthScore | None:
+        """Look up a cached score, fall back to fresh scoring on miss/error.
+
+        Returns None when scoring raises; the outer loop just skips the
+        file (mirrors the original ``except Exception: continue`` flow).
+        """
+        if cache is not None:
+            cached = cache.lookup(file_path)
+            if cached is not None:
+                return HealthScore(
+                    file_path=cached["file_path"],
+                    total=cached["total"],
+                    dimensions=cached.get("dimensions", {}),
+                )
+
+        try:
+            score = self.score_file(file_path)
+        except Exception:  # nosec B112
+            return None
+        if cache is not None:
+            cache.store(score)
+        return score
+
     # ---- Dimension scoring helpers ----
 
     # Coverage uses instance state (self._coverage_cache), stays as method
     # All others are pure functions delegated to module-level
 
     def _load_coverage_data(self) -> dict[str, float]:
-        """Load coverage data from coverage.json in current or parent directories.
-
-        r37di (dogfood): flattened nesting 6 → 3 by extracting the
-        per-directory probe into ``_try_load_coverage_from_dir`` and
-        the dict-population step into ``_populate_coverage_cache``.
-        """
+        """Load coverage data from coverage.json in current or parent directories."""
         if self._coverage_cache is not None:
             return self._coverage_cache
 
-        cache: dict[str, float] = {}
-        self._coverage_cache = cache
-        search_paths = [Path.cwd(), *Path.cwd().parents[:3]]
+        self._coverage_cache = {}
+
+        search_paths = [Path.cwd()]
+        for parent in Path.cwd().parents[:3]:
+            search_paths.append(parent)
+
         for search_dir in search_paths:
-            if self._try_load_coverage_from_dir(search_dir, cache):
-                return cache
+            cov_file = search_dir / "coverage.json"
+            if cov_file.exists():
+                coverage_db = search_dir / ".coverage"
+                if _coverage_json_is_stale(cov_file, coverage_db):
+                    logger.info(
+                        "Ignoring stale coverage.json because .coverage is newer: "
+                        f"{cov_file}"
+                    )
+                    continue
+                try:
+                    data = json.loads(cov_file.read_text(encoding="utf-8"))
+                    files = data.get("files", {})
+                    for file_path, file_data in files.items():
+                        summary = file_data.get("summary", {})
+                        pct = summary.get("percent_covered", 0.0)
+                        self._coverage_cache[file_path] = float(pct)
+
+                    total = data.get("totals", {}).get("percent_covered", 0)
+                    logger.info(
+                        f"Loaded coverage data for {len(self._coverage_cache)} files "
+                        f"from {cov_file} (total: {total:.1f}%)"
+                    )
+                    return self._coverage_cache
+                except (json.JSONDecodeError, KeyError, TypeError) as e:
+                    logger.warning(f"Failed to parse coverage.json: {e}")
+                    continue
+
         logger.debug("No coverage.json found")
-        return cache
-
-    @staticmethod
-    def _try_load_coverage_from_dir(search_dir: Path, cache: dict[str, float]) -> bool:
-        """Probe ``search_dir`` for a fresh ``coverage.json``; populate cache.
-
-        Returns ``True`` when the cache is populated (caller stops walking
-        parents), ``False`` when no usable coverage.json was found. Stale
-        files (older than ``.coverage``) and parse errors both yield
-        ``False`` so the caller can keep looking.
-        """
-        cov_file = search_dir / "coverage.json"
-        if not cov_file.exists():
-            return False
-        coverage_db = search_dir / ".coverage"
-        if _coverage_json_is_stale(cov_file, coverage_db):
-            logger.info(
-                f"Ignoring stale coverage.json because .coverage is newer: {cov_file}"
-            )
-            return False
-        try:
-            data = json.loads(cov_file.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, KeyError, TypeError) as e:
-            logger.warning(f"Failed to parse coverage.json: {e}")
-            return False
-        HealthScorer._populate_coverage_cache(data, cov_file, cache)
-        return True
-
-    @staticmethod
-    def _populate_coverage_cache(
-        data: dict, cov_file: Path, cache: dict[str, float]
-    ) -> None:
-        """Fill ``cache`` from a parsed coverage.json payload (in place)."""
-        files = data.get("files", {})
-        for file_path, file_data in files.items():
-            summary = file_data.get("summary", {})
-            pct = summary.get("percent_covered", 0.0)
-            cache[file_path] = float(pct)
-        total = data.get("totals", {}).get("percent_covered", 0)
-        logger.info(
-            f"Loaded coverage data for {len(cache)} files "
-            f"from {cov_file} (total: {total:.1f}%)"
-        )
+        return self._coverage_cache
 
     def _score_coverage(self, file_path: str) -> float | None:
         """Score based on test coverage. Returns None if no coverage data available."""
@@ -566,7 +671,20 @@ def score_size(line_count: int) -> float:
 
 
 def score_complexity(file_path: str, source: str, language: str | None) -> float:
-    """Score based on McCabe Cyclomatic Complexity (CC = 1 + decision nodes)."""
+    """Score based on McCabe Cyclomatic Complexity.
+
+    For files with ≥3 functions, scores the **average CC per function**
+    against industry-standard thresholds (≤5 simple, 5-10 moderate,
+    10-15 complex). This stops penalizing well-factored modules that
+    contain many small functions — a file with 30 functions each at
+    CC=3 has a healthy 3.0 avg, even though the file-level total CC=91
+    looks "complex" under naive aggregation.
+
+    For files with <3 functions (utility scripts, single-function
+    modules), the original file-level CC against CC_IDEAL/CC_MODERATE/
+    CC_COMPLEX thresholds is preserved — those thresholds remain the
+    right call for "one function with many branches".
+    """
     try:
         if language is None:
             return 50.0
@@ -578,24 +696,47 @@ def score_complexity(file_path: str, source: str, language: str | None) -> float
             return 50.0
 
         decision_types = DECISION_NODE_TYPES.get(language, set())
+        function_types = FUNCTION_NODE_TYPES.get(language, set())
         cc = 1
+        n_funcs = 0
 
         def walk(node: Any, depth: int) -> None:
-            nonlocal cc
-            if hasattr(node, "type") and node.type in decision_types:
-                cc += 1
+            nonlocal cc, n_funcs
+            if hasattr(node, "type"):
+                if node.type in decision_types:
+                    cc += 1
+                if node.type in function_types:
+                    n_funcs += 1
             if hasattr(node, "children"):
                 for child in node.children:
                     walk(child, depth + 1)
 
         walk(result.tree.root_node, 0)
 
+        # Multi-function file: score the average CC per function
+        # against industry-standard thresholds. This is the right
+        # interpretation for any module with real structure.
+        if n_funcs >= 3:
+            avg_cc = cc / n_funcs
+            if avg_cc <= 5.0:
+                return 100.0
+            if avg_cc <= 10.0:
+                ratio = (avg_cc - 5.0) / 5.0
+                return max(30.0, 100.0 - 70.0 * ratio)
+            if avg_cc <= 15.0:
+                ratio = (avg_cc - 10.0) / 5.0
+                return max(5.0, 30.0 - 25.0 * ratio)
+            return 5.0
+
+        # Few-function file: stick with absolute CC thresholds — the
+        # original tuning was already correct for "one function with
+        # many branches" cases.
         if cc <= CC_IDEAL:
             return 100.0
-        elif cc <= CC_MODERATE:
+        if cc <= CC_MODERATE:
             ratio = (cc - CC_IDEAL) / (CC_MODERATE - CC_IDEAL)
             return max(30.0, 100.0 - 70.0 * ratio)
-        elif cc <= CC_COMPLEX:
+        if cc <= CC_COMPLEX:
             ratio = (cc - CC_MODERATE) / (CC_COMPLEX - CC_MODERATE)
             return max(5.0, 30.0 - 25.0 * ratio)
         return 5.0

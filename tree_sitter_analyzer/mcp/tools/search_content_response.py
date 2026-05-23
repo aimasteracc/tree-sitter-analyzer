@@ -52,7 +52,14 @@ def build_rg_args(
     max_count: int | None,
     no_ignore: bool,
 ) -> dict[str, Any]:
-    """Build shared ripgrep command keyword arguments."""
+    """Build shared ripgrep command keyword arguments.
+
+    The new ``file_types`` / ``exclude_types`` / ``files_with_matches`` /
+    ``only_matching`` / ``context`` / ``pcre2`` / ``max_depth`` / ``sort`` /
+    ``invert_match`` / ``include_stats`` agent inputs are passed through
+    here. ``build_rg_command`` defaults them to off when absent, so
+    omitting them keeps backward compat.
+    """
     return {
         "query": arguments["query"],
         "case": arguments.get("case", "smart"),
@@ -71,6 +78,17 @@ def build_rg_args(
         "max_count": max_count,
         "timeout_ms": arguments.get("timeout_ms"),
         "files_from": None,
+        # rg-native power flags (RG_FD_GAP_AUDIT.md Phase 1+2).
+        "file_types": arguments.get("file_types"),
+        "exclude_types": arguments.get("exclude_types"),
+        "files_with_matches": bool(arguments.get("files_with_matches", False)),
+        "only_matching": bool(arguments.get("only_matching", False)),
+        "context": arguments.get("context"),
+        "pcre2": bool(arguments.get("pcre2", False)),
+        "max_depth": arguments.get("max_depth"),
+        "sort": arguments.get("sort"),
+        "invert_match": bool(arguments.get("invert_match", False)),
+        "include_stats": bool(arguments.get("include_stats", False)),
     }
 
 
@@ -105,6 +123,12 @@ async def format_search_response(
             cache,
             fd_rg_utils,
             attach_toon,
+        )
+    if arguments.get("files_with_matches", False):
+        # rg -l output is plain text (one file path per line), NOT JSON.
+        # Bypass parse_rg_json_lines_to_matches which would return [].
+        return _respond_files_with_matches(
+            out, elapsed_ms, cache_key, arguments, cache, output_format, apply_toon
         )
 
     matches, truncated = _parse_limited_matches(arguments, out, fd_rg_utils)
@@ -292,6 +316,42 @@ def _format_match_response(
         real_total=real_total,
         total_count_known=total_count_known,
     )
+
+
+def _respond_files_with_matches(
+    out: bytes,
+    elapsed_ms: int,
+    cache_key: str | None,
+    arguments: dict[str, Any],
+    cache: Any,
+    output_format: str,
+    apply_toon: ToonApplier,
+) -> dict[str, Any]:
+    """Parse rg --files-with-matches plain-text output into a file list.
+
+    rg -l emits one file path per line. Much smaller than the full match
+    payload — for 'which files mention X' queries this is the right shape.
+    """
+    raw = out.decode("utf-8", errors="replace")
+    files = sorted({line.strip() for line in raw.splitlines() if line.strip()})
+    max_count = arguments.get("max_count")
+    truncated = False
+    if max_count is not None and len(files) > int(max_count):
+        files = files[: int(max_count)]
+        truncated = True
+
+    result: dict[str, Any] = {
+        "success": True,
+        "verdict": "INFO" if files else "NOT_FOUND",
+        "mode": "files_with_matches",
+        "count": len(files),
+        "files": files,
+        "truncated": truncated,
+        "elapsed_ms": elapsed_ms,
+    }
+    if cache is not None and cache_key:
+        cache.set(cache_key, result)
+    return apply_toon(result, output_format)
 
 
 def apply_limits(

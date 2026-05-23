@@ -2,19 +2,22 @@
 """
 AST Structured Diff — Tree-level code change understanding.
 
-Compares two versions of a file at the AST level, identifying added,
-removed, and modified structural elements (functions, classes, imports,
-variables). Unlike text-based diff, this understands that renaming a
-function or changing a parameter list is a *modification*, not a
-delete+add pair.
+Compares two versions of source code at the AST node level rather than
+text level, producing semantically meaningful diff results.
 
-Parity: difftastic-level semantic diff built on tree-sitter ASTs.
+Unlike text diffs (unified diff), AST diffs understand:
+- Function signature changes vs body changes
+- Renamed variables vs moved code
+- Added/removed parameters
+- Changed return types
+- Structural reordering
+
+Equivalent to difftastic-level structural diffing, integrated with
+tree-sitter-analyzer's multi-language support.
 """
 
-from __future__ import annotations
-
+import hashlib
 import logging
-import subprocess  # nosec B404 - used for safe git CLI calls only
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
@@ -26,100 +29,31 @@ logger = logging.getLogger(__name__)
 
 
 class DiffKind(str, Enum):
-    ADDED = "added"
-    REMOVED = "removed"
-    MODIFIED = "modified"
+    NODE_ADDED = "added"
+    NODE_REMOVED = "removed"
+    NODE_CHANGED = "changed"
+    NODE_MOVED = "moved"
+    NODE_RENAMED = "renamed"
+    SIGNATURE_CHANGED = "signature_changed"
+    BODY_CHANGED = "body_changed"
     UNCHANGED = "unchanged"
 
 
-class NodeType(str, Enum):
+class ASTNodeKind(str, Enum):
     FUNCTION = "function"
     CLASS = "class"
-    IMPORT = "import"
-    VARIABLE = "variable"
     METHOD = "method"
+    VARIABLE = "variable"
+    IMPORT = "import"
+    PARAMETER = "parameter"
+    DECORATOR = "decorator"
+    RETURN = "return"
+    EXPRESSION = "expression"
+    BLOCK = "block"
+    OTHER = "other"
 
 
-@dataclass(frozen=True, slots=True)
-class ASTNode:
-    node_type: NodeType
-    name: str
-    start_line: int
-    end_line: int
-    text: str
-    params: str = ""
-    parent_class: str | None = None
-
-    def identity_key(self) -> str:
-        if self.parent_class:
-            return f"{self.node_type.value}:{self.parent_class}.{self.name}"
-        return f"{self.node_type.value}:{self.name}"
-
-
-@dataclass
-class ASTDiffEntry:
-    kind: DiffKind
-    node_type: NodeType
-    name: str
-    start_line_old: int | None = None
-    end_line_old: int | None = None
-    start_line_new: int | None = None
-    end_line_new: int | None = None
-    text_old: str = ""
-    text_new: str = ""
-    parent_class: str | None = None
-    params_old: str = ""
-    params_new: str = ""
-
-    def to_dict(self) -> dict[str, Any]:
-        d: dict[str, Any] = {
-            "kind": self.kind.value,
-            "node_type": self.node_type.value,
-            "name": self.name,
-        }
-        if self.parent_class:
-            d["parent_class"] = self.parent_class
-        if self.start_line_old is not None:
-            d["start_line_old"] = self.start_line_old
-        if self.end_line_old is not None:
-            d["end_line_old"] = self.end_line_old
-        if self.start_line_new is not None:
-            d["start_line_new"] = self.start_line_new
-        if self.end_line_new is not None:
-            d["end_line_new"] = self.end_line_new
-        if self.kind == DiffKind.MODIFIED:
-            if self.params_old != self.params_new:
-                d["params_old"] = self.params_old
-                d["params_new"] = self.params_new
-        return d
-
-
-@dataclass
-class ASTDiffResult:
-    file_path: str
-    language: str
-    changes: list[ASTDiffEntry] = field(default_factory=list)
-    summary: dict[str, int] = field(default_factory=dict)
-    error: str | None = None
-
-    def to_dict(self) -> dict[str, Any]:
-        if self.error:
-            return {
-                "file_path": self.file_path,
-                "language": self.language,
-                "success": False,
-                "error": self.error,
-            }
-        return {
-            "file_path": self.file_path,
-            "language": self.language,
-            "success": True,
-            "summary": self.summary,
-            "changes": [c.to_dict() for c in self.changes],
-        }
-
-
-_FUNC_DEF_TYPES = frozenset(
+_FUNCTION_NODES = frozenset(
     {
         "function_definition",
         "function_declaration",
@@ -135,7 +69,7 @@ _FUNC_DEF_TYPES = frozenset(
     }
 )
 
-_CLASS_DEF_TYPES = frozenset(
+_CLASS_NODES = frozenset(
     {
         "class_definition",
         "class_declaration",
@@ -151,7 +85,7 @@ _CLASS_DEF_TYPES = frozenset(
     }
 )
 
-_IMPORT_TYPES = frozenset(
+_IMPORT_NODES = frozenset(
     {
         "import_statement",
         "import_from_statement",
@@ -164,259 +98,438 @@ _IMPORT_TYPES = frozenset(
     }
 )
 
-_VAR_DECL_TYPES = frozenset(
+_VARIABLE_NODES = frozenset(
     {
+        "variable_declarator",
+        "assignment_expression",
         "lexical_declaration",
         "variable_declaration",
         "const_declaration",
         "let_declaration",
-        "var_declaration",
+    }
+)
+
+_DECORATOR_NODES = frozenset(
+    {
+        "decorator",
+        "annotation",
+        "attribute_item",
+        "declaration_attribute",
+        "decorator_statement",
+    }
+)
+
+_PARAM_NODES = frozenset(
+    {
+        "parameters",
+        "parameter_list",
+        "argument_list",
+    }
+)
+
+_BLOCK_NODES = frozenset(
+    {
+        "block",
+        "statement_block",
+        "compound_statement",
+        "function_body",
+        "body",
     }
 )
 
 
-def _node_text(node: Any, source: str) -> str:
-    if node is None:
-        return ""
-    try:
-        return source[node.start_byte : node.end_byte]
-    except (IndexError, TypeError):
-        return ""
+@dataclass
+class ASTNodeInfo:
+    node_type: str
+    kind: ASTNodeKind
+    name: str
+    start_line: int
+    start_col: int
+    end_line: int
+    end_col: int
+    text_hash: str
+    text_preview: str
+    children: list["ASTNodeInfo"] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        d: dict[str, Any] = {
+            "type": self.node_type,
+            "kind": self.kind.value,
+            "name": self.name,
+            "line": self.start_line,
+            "end_line": self.end_line,
+            "text_hash": self.text_hash[:12],
+        }
+        if self.text_preview:
+            d["preview"] = self.text_preview
+        if self.children:
+            d["children"] = [c.to_dict() for c in self.children]
+        return d
 
 
-def _get_name(node: Any, source: str) -> str:
+@dataclass
+class ASTDiffHunk:
+    diff_kind: DiffKind
+    node_kind: ASTNodeKind
+    old_node: ASTNodeInfo | None
+    new_node: ASTNodeInfo | None
+    summary: str
+    details: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        d: dict[str, Any] = {
+            "kind": self.diff_kind.value,
+            "node_kind": self.node_kind.value,
+            "summary": self.summary,
+        }
+        if self.old_node:
+            d["old"] = self.old_node.to_dict()
+        if self.new_node:
+            d["new"] = self.new_node.to_dict()
+        if self.details:
+            d["details"] = self.details
+        return d
+
+
+@dataclass
+class ASTDiffResult:
+    old_file: str | None
+    new_file: str | None
+    language: str
+    hunks: list[ASTDiffHunk] = field(default_factory=list)
+    summary_stats: dict[str, int] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "old_file": self.old_file,
+            "new_file": self.new_file,
+            "language": self.language,
+            "hunks": [h.to_dict() for h in self.hunks],
+            "summary": self.summary_stats,
+        }
+
+
+def _classify_node(node_type: str) -> ASTNodeKind:
+    if node_type in _FUNCTION_NODES:
+        return ASTNodeKind.FUNCTION
+    if node_type in _CLASS_NODES:
+        return ASTNodeKind.CLASS
+    if node_type in _IMPORT_NODES:
+        return ASTNodeKind.IMPORT
+    if node_type in _VARIABLE_NODES:
+        return ASTNodeKind.VARIABLE
+    if node_type in _DECORATOR_NODES:
+        return ASTNodeKind.DECORATOR
+    if node_type in _PARAM_NODES:
+        return ASTNodeKind.PARAMETER
+    if node_type in _BLOCK_NODES:
+        return ASTNodeKind.BLOCK
+    return ASTNodeKind.OTHER
+
+
+def _node_name(node: Any, source: str) -> str:
     name_node = node.child_by_field_name("name")
     if name_node is not None:
-        return _node_text(name_node, source)
+        return source[name_node.start_byte : name_node.end_byte]
     for child in node.children:
-        if child.type in ("identifier", "property_identifier"):
-            text = child.text
-            return text.decode("utf-8") if isinstance(text, bytes) else str(text)
+        if child.type in ("identifier", "property_identifier", "field_identifier"):
+            return source[child.start_byte : child.end_byte]
     return ""
 
 
-def _get_params(node: Any, source: str) -> str:
-    params_node = node.child_by_field_name("parameters")
-    if params_node is not None:
-        return _node_text(params_node, source)
-    return ""
+def _text_hash(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest()
 
 
-def _find_parent_class(node: Any) -> str | None:
-    current = node.parent
-    while current is not None:
-        if current.type in _CLASS_DEF_TYPES:
-            for child in current.children:
-                if child.type in ("identifier", "type_identifier"):
-                    text = child.text
-                    return (
-                        text.decode("utf-8") if isinstance(text, bytes) else str(text)
-                    )
-        current = current.parent
+def _preview(text: str, max_len: int = 80) -> str:
+    text = text.replace("\n", " ").strip()
+    if len(text) > max_len:
+        return text[: max_len - 3] + "..."
+    return text
+
+
+def _extract_node_info(node: Any, source: str, depth: int = 0) -> ASTNodeInfo | None:
+    if node is None or depth > 30:
+        return None
+
+    node_type = node.type
+    kind = _classify_node(node_type)
+
+    text = source[node.start_byte : node.end_byte]
+    name = _node_name(node, source)
+
+    children: list[ASTNodeInfo] = []
+    for child in node.children:
+        child_info = _extract_node_info(child, source, depth + 1)
+        if child_info is not None:
+            children.append(child_info)
+
+    return ASTNodeInfo(
+        node_type=node_type,
+        kind=kind,
+        name=name,
+        start_line=node.start_point[0] + 1,
+        start_col=node.start_point[1],
+        end_line=node.end_point[0] + 1,
+        end_col=node.end_point[1],
+        text_hash=_text_hash(text),
+        text_preview=_preview(text),
+        children=children,
+    )
+
+
+def _extract_top_level_nodes(tree: Any, source: str) -> list[ASTNodeInfo]:
+    if tree is None:
+        return []
+    root = tree.root_node
+    result: list[ASTNodeInfo] = []
+    for child in root.children:
+        info = _extract_node_info(child, source)
+        if info is not None:
+            result.append(info)
+    return result
+
+
+def _match_nodes(
+    old_nodes: list[ASTNodeInfo],
+    new_nodes: list[ASTNodeInfo],
+) -> tuple[list[tuple[int, int]], list[int], list[int]]:
+    matched: list[tuple[int, int]] = []
+    old_matched: set[int] = set()
+    new_matched: set[int] = set()
+
+    name_map: dict[tuple[ASTNodeKind, str], list[int]] = {}
+    for i, n in enumerate(new_nodes):
+        key = (n.kind, n.name)
+        if n.name:
+            name_map.setdefault(key, []).append(i)
+
+    for oi, old_n in enumerate(old_nodes):
+        if not old_n.name:
+            continue
+        key = (old_n.kind, old_n.name)
+        candidates = name_map.get(key, [])
+        for ni in candidates:
+            if ni not in new_matched:
+                matched.append((oi, ni))
+                old_matched.add(oi)
+                new_matched.add(ni)
+                break
+
+    for oi, old_n in enumerate(old_nodes):
+        if oi in old_matched:
+            continue
+        if old_n.kind not in (
+            ASTNodeKind.FUNCTION,
+            ASTNodeKind.CLASS,
+            ASTNodeKind.METHOD,
+        ):
+            continue
+        best_ni = -1
+        best_score = -1
+        for ni, new_n in enumerate(new_nodes):
+            if ni in new_matched:
+                continue
+            if new_n.kind != old_n.kind:
+                continue
+            child_overlap = _child_name_overlap(old_n, new_n)
+            if child_overlap > best_score:
+                best_score = child_overlap
+                best_ni = ni
+        if best_ni >= 0 and best_score > 0:
+            matched.append((oi, best_ni))
+            old_matched.add(oi)
+            new_matched.add(best_ni)
+
+    old_unmatched = [i for i in range(len(old_nodes)) if i not in old_matched]
+    new_unmatched = [i for i in range(len(new_nodes)) if i not in new_matched]
+
+    return matched, old_unmatched, new_unmatched
+
+
+def _child_name_overlap(a: ASTNodeInfo, b: ASTNodeInfo) -> int:
+    a_names = {c.name for c in a.children if c.name}
+    b_names = {c.name for c in b.children if c.name}
+    return len(a_names & b_names)
+
+
+def _diff_matched_nodes(old_n: ASTNodeInfo, new_n: ASTNodeInfo) -> list[ASTDiffHunk]:
+    hunks: list[ASTDiffHunk] = []
+
+    if old_n.text_hash == new_n.text_hash:
+        return hunks
+
+    name_changed = old_n.name != new_n.name and old_n.name and new_n.name
+
+    sig_fields = _extract_signature(old_n)
+    new_sig = _extract_signature(new_n)
+    sig_changed = sig_fields != new_sig
+
+    body_changed = _body_hash_changed(old_n, new_n)
+
+    if name_changed:
+        hunks.append(
+            ASTDiffHunk(
+                diff_kind=DiffKind.NODE_RENAMED,
+                node_kind=old_n.kind,
+                old_node=old_n,
+                new_node=new_n,
+                summary=f"Renamed {old_n.kind.value}: '{old_n.name}' -> '{new_n.name}'",
+            )
+        )
+    elif sig_changed and body_changed:
+        hunks.append(
+            ASTDiffHunk(
+                diff_kind=DiffKind.SIGNATURE_CHANGED,
+                node_kind=old_n.kind,
+                old_node=old_n,
+                new_node=new_n,
+                summary=f"Signature + body changed for {old_n.kind.value} '{old_n.name}'",
+                details=_sig_diff(sig_fields, new_sig),
+            )
+        )
+    elif sig_changed:
+        hunks.append(
+            ASTDiffHunk(
+                diff_kind=DiffKind.SIGNATURE_CHANGED,
+                node_kind=old_n.kind,
+                old_node=old_n,
+                new_node=new_n,
+                summary=f"Signature changed for {old_n.kind.value} '{old_n.name}'",
+                details=_sig_diff(sig_fields, new_sig),
+            )
+        )
+    elif body_changed:
+        hunks.append(
+            ASTDiffHunk(
+                diff_kind=DiffKind.BODY_CHANGED,
+                node_kind=old_n.kind,
+                old_node=old_n,
+                new_node=new_n,
+                summary=f"Body changed in {old_n.kind.value} '{old_n.name}'",
+            )
+        )
+    else:
+        hunks.append(
+            ASTDiffHunk(
+                diff_kind=DiffKind.NODE_CHANGED,
+                node_kind=old_n.kind,
+                old_node=old_n,
+                new_node=new_n,
+                summary=f"{old_n.kind.value.title()} '{old_n.name}' changed",
+            )
+        )
+
+    child_hunks = _diff_children(old_n, new_n)
+    hunks.extend(child_hunks)
+
+    return hunks
+
+
+def _extract_signature(node: ASTNodeInfo) -> dict[str, Any]:
+    sig: dict[str, Any] = {"name": node.name}
+    for c in node.children:
+        if c.kind == ASTNodeKind.PARAMETER:
+            sig["params_hash"] = c.text_hash
+            sig["params_preview"] = c.text_preview
+            break
+        if c.kind == ASTNodeKind.DECORATOR:
+            sig.setdefault("decorators", []).append(c.text_hash)
+    return sig
+
+
+def _body_hash_changed(old_n: ASTNodeInfo, new_n: ASTNodeInfo) -> bool:
+    old_body = _get_body_hash(old_n)
+    new_body = _get_body_hash(new_n)
+    if old_body is None and new_body is None:
+        return old_n.text_hash != new_n.text_hash
+    return old_body != new_body
+
+
+def _get_body_hash(node: ASTNodeInfo) -> str | None:
+    for c in node.children:
+        if c.kind == ASTNodeKind.BLOCK:
+            return c.text_hash
     return None
 
 
-def extract_nodes(tree: Any, source: str, language: str) -> list[ASTNode]:
-    if tree is None:
-        return []
-    nodes: list[ASTNode] = []
-    _walk_for_nodes(tree.root_node, source, language, nodes, None)
-    return nodes
+def _sig_diff(old_sig: dict[str, Any], new_sig: dict[str, Any]) -> dict[str, Any]:
+    diff: dict[str, Any] = {}
+    if old_sig.get("params_hash") != new_sig.get("params_hash"):
+        diff["params_changed"] = True
+        if old_sig.get("params_preview"):
+            diff["old_params"] = old_sig["params_preview"]
+        if new_sig.get("params_preview"):
+            diff["new_params"] = new_sig["params_preview"]
+    old_decs = old_sig.get("decorators", [])
+    new_decs = new_sig.get("decorators", [])
+    if old_decs != new_decs:
+        diff["decorators_changed"] = True
+    return diff
 
 
-def _walk_for_nodes(
-    node: Any,
-    source: str,
-    language: str,
-    nodes: list[ASTNode],
-    parent_class: str | None,
-    depth: int = 0,
-) -> None:
-    if depth > 25 or not hasattr(node, "type"):
-        return
+def _diff_children(old_n: ASTNodeInfo, new_n: ASTNodeInfo) -> list[ASTDiffHunk]:
+    hunks: list[ASTDiffHunk] = []
+    matched, old_rem, new_rem = _match_nodes(old_n.children, new_n.children)
 
-    node_type = node.type
-    cls = _find_parent_class(node) or parent_class
+    for oi, ni in matched:
+        child_hunks = _diff_matched_nodes(old_n.children[oi], new_n.children[ni])
+        hunks.extend(child_hunks)
 
-    if node_type in _FUNC_DEF_TYPES:
-        name = _get_name(node, source)
-        if name:
-            ntype = NodeType.METHOD if cls else NodeType.FUNCTION
-            nodes.append(
-                ASTNode(
-                    node_type=ntype,
-                    name=name,
-                    start_line=node.start_point[0] + 1,
-                    end_line=node.end_point[0] + 1,
-                    text=_node_text(node, source),
-                    params=_get_params(node, source),
-                    parent_class=cls,
-                )
-            )
-        for child in node.children:
-            _walk_for_nodes(child, source, language, nodes, cls, depth + 1)
-        return
-
-    if node_type in _CLASS_DEF_TYPES:
-        name = _get_name(node, source)
-        if name:
-            nodes.append(
-                ASTNode(
-                    node_type=NodeType.CLASS,
-                    name=name,
-                    start_line=node.start_point[0] + 1,
-                    end_line=node.end_point[0] + 1,
-                    text=_node_text(node, source),
-                    parent_class=None,
-                )
-            )
-        for child in node.children:
-            _walk_for_nodes(child, source, language, nodes, name, depth + 1)
-        return
-
-    if node_type in _IMPORT_TYPES:
-        nodes.append(
-            ASTNode(
-                node_type=NodeType.IMPORT,
-                name=_node_text(node, source),
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1,
-                text=_node_text(node, source),
+    for oi in old_rem:
+        c = old_n.children[oi]
+        hunks.append(
+            ASTDiffHunk(
+                diff_kind=DiffKind.NODE_REMOVED,
+                node_kind=c.kind,
+                old_node=c,
+                new_node=None,
+                summary=f"Removed {c.kind.value} '{c.name or c.node_type}'",
             )
         )
-        for child in node.children:
-            _walk_for_nodes(child, source, language, nodes, cls, depth + 1)
-        return
 
-    if node_type in _VAR_DECL_TYPES:
-        for child in node.children:
-            if child.type in ("variable_declarator", "identifier"):
-                vn = child.child_by_field_name("name")
-                if vn is None:
-                    vn = child
-                name = _node_text(vn, source)
-                if name and not name.startswith("_"):
-                    nodes.append(
-                        ASTNode(
-                            node_type=NodeType.VARIABLE,
-                            name=name,
-                            start_line=node.start_point[0] + 1,
-                            end_line=node.end_point[0] + 1,
-                            text=_node_text(node, source),
-                            parent_class=cls,
-                        )
-                    )
-                break
+    for ni in new_rem:
+        c = new_n.children[ni]
+        hunks.append(
+            ASTDiffHunk(
+                diff_kind=DiffKind.NODE_ADDED,
+                node_kind=c.kind,
+                old_node=None,
+                new_node=c,
+                summary=f"Added {c.kind.value} '{c.name or c.node_type}'",
+            )
+        )
 
-    for child in node.children:
-        _walk_for_nodes(child, source, language, nodes, cls, depth + 1)
+    return hunks
 
 
-def _text_content_key(node: ASTNode) -> str:
-    if node.node_type == NodeType.IMPORT:
-        return node.text.strip()
-    parts = [node.name]
-    if node.params:
-        parts.append(node.params)
-    return "|".join(parts)
-
-
-def compute_diff(
-    old_nodes: list[ASTNode],
-    new_nodes: list[ASTNode],
-) -> list[ASTDiffEntry]:
-    changes: list[ASTDiffEntry] = []
-
-    old_by_key: dict[str, list[ASTNode]] = {}
-    for n in old_nodes:
-        old_by_key.setdefault(n.identity_key(), []).append(n)
-
-    new_by_key: dict[str, list[ASTNode]] = {}
-    for n in new_nodes:
-        new_by_key.setdefault(n.identity_key(), []).append(n)
-
-    matched_old: set[tuple[str, int]] = set()
-    matched_new: set[tuple[str, int]] = set()
-
-    for key, new_list in new_by_key.items():
-        old_list = old_by_key.get(key, [])
-        for ni, new_n in enumerate(new_list):
-            matched = False
-            for oi, old_n in enumerate(old_list):
-                if (key, oi) in matched_old:
-                    continue
-                content_key_old = _text_content_key(old_n)
-                content_key_new = _text_content_key(new_n)
-                if content_key_old == content_key_new:
-                    matched_old.add((key, oi))
-                    matched_new.add((key, ni))
-                    matched = True
-                    break
-                else:
-                    matched_old.add((key, oi))
-                    matched_new.add((key, ni))
-                    changes.append(
-                        ASTDiffEntry(
-                            kind=DiffKind.MODIFIED,
-                            node_type=new_n.node_type,
-                            name=new_n.name,
-                            start_line_old=old_n.start_line,
-                            end_line_old=old_n.end_line,
-                            start_line_new=new_n.start_line,
-                            end_line_new=new_n.end_line,
-                            text_old=old_n.text,
-                            text_new=new_n.text,
-                            parent_class=new_n.parent_class,
-                            params_old=old_n.params,
-                            params_new=new_n.params,
-                        )
-                    )
-                    matched = True
-                    break
-            if not matched and (key, ni) not in matched_new:
-                changes.append(
-                    ASTDiffEntry(
-                        kind=DiffKind.ADDED,
-                        node_type=new_n.node_type,
-                        name=new_n.name,
-                        start_line_new=new_n.start_line,
-                        end_line_new=new_n.end_line,
-                        text_new=new_n.text,
-                        parent_class=new_n.parent_class,
-                        params_new=new_n.params,
-                    )
-                )
-
-    for key, old_list in old_by_key.items():
-        for oi, old_n in enumerate(old_list):
-            if (key, oi) not in matched_old:
-                changes.append(
-                    ASTDiffEntry(
-                        kind=DiffKind.REMOVED,
-                        node_type=old_n.node_type,
-                        name=old_n.name,
-                        start_line_old=old_n.start_line,
-                        end_line_old=old_n.end_line,
-                        text_old=old_n.text,
-                        parent_class=old_n.parent_class,
-                        params_old=old_n.params,
-                    )
-                )
-
-    changes.sort(key=lambda c: c.start_line_new or c.start_line_old or 0)
-    return changes
-
-
-def _compute_summary(changes: list[ASTDiffEntry]) -> dict[str, int]:
-    s: dict[str, int] = {"added": 0, "removed": 0, "modified": 0, "unchanged": 0}
-    for c in changes:
-        k = c.kind.value
-        s[k] = s.get(k, 0) + 1
-    return s
+def _compute_stats(hunks: list[ASTDiffHunk]) -> dict[str, int]:
+    stats: dict[str, int] = {
+        "total_changes": len(hunks),
+        "added": 0,
+        "removed": 0,
+        "changed": 0,
+        "renamed": 0,
+        "signature_changed": 0,
+        "body_changed": 0,
+    }
+    for h in hunks:
+        k = h.diff_kind.value
+        if k in stats:
+            stats[k] += 1
+        else:
+            stats["changed"] += 1
+    return stats
 
 
 class ASTDiffer:
-    """Compare two versions of source code at the AST level."""
+    """
+    Structural AST diff engine.
+
+    Compares two versions of source code at the AST level, producing
+    semantically meaningful diff results that understand code structure
+    (function signatures, bodies, classes, imports, etc.).
+    """
 
     def __init__(self) -> None:
         self._parser = Parser()
@@ -426,121 +539,143 @@ class ASTDiffer:
         old_source: str,
         new_source: str,
         language: str,
-        file_path: str = "",
+        old_file: str | None = None,
+        new_file: str | None = None,
     ) -> ASTDiffResult:
-        old_result = self._parser.parse_code(old_source, language, filename=file_path)
-        new_result = self._parser.parse_code(new_source, language, filename=file_path)
+        old_result = self._parser.parse_code(old_source, language)
+        new_result = self._parser.parse_code(new_source, language)
 
         if not old_result.success and not new_result.success:
             return ASTDiffResult(
-                file_path=file_path,
+                old_file=old_file,
+                new_file=new_file,
                 language=language,
-                error="Both versions failed to parse",
-            )
-        if not old_result.success:
-            return ASTDiffResult(
-                file_path=file_path,
-                language=language,
-                error=f"Old version parse error: {old_result.error_message}",
-            )
-        if not new_result.success:
-            return ASTDiffResult(
-                file_path=file_path,
-                language=language,
-                error=f"New version parse error: {new_result.error_message}",
+                hunks=[
+                    ASTDiffHunk(
+                        diff_kind=DiffKind.NODE_CHANGED,
+                        node_kind=ASTNodeKind.OTHER,
+                        old_node=None,
+                        new_node=None,
+                        summary="Both sources failed to parse",
+                    )
+                ],
             )
 
-        old_nodes = extract_nodes(old_result.tree, old_source, language)
-        new_nodes = extract_nodes(new_result.tree, new_source, language)
-        changes = compute_diff(old_nodes, new_nodes)
-        summary = _compute_summary(changes)
-
-        return ASTDiffResult(
-            file_path=file_path,
-            language=language,
-            changes=changes,
-            summary=summary,
+        old_nodes = (
+            _extract_top_level_nodes(old_result.tree, old_source)
+            if old_result.success
+            else []
+        )
+        new_nodes = (
+            _extract_top_level_nodes(new_result.tree, new_source)
+            if new_result.success
+            else []
         )
 
-    def diff_file_revisions(
+        hunks = self._diff_node_lists(old_nodes, new_nodes)
+        stats = _compute_stats(hunks)
+
+        return ASTDiffResult(
+            old_file=old_file,
+            new_file=new_file,
+            language=language,
+            hunks=hunks,
+            summary_stats=stats,
+        )
+
+    def diff_files(
         self,
-        file_path: str,
-        old_ref: str = "HEAD~1",
-        new_ref: str = "HEAD",
+        old_path: str,
+        new_path: str,
+        language: str | None = None,
     ) -> ASTDiffResult:
-        language = _language_from_ext(file_path)
+        if language is None:
+            language = _language_from_ext(new_path)
+        if language is None:
+            language = _language_from_ext(old_path)
         if language is None:
             return ASTDiffResult(
-                file_path=file_path,
+                old_file=old_path,
+                new_file=new_path,
                 language="unknown",
-                error=f"Unsupported file type: {file_path}",
+                hunks=[
+                    ASTDiffHunk(
+                        diff_kind=DiffKind.NODE_CHANGED,
+                        node_kind=ASTNodeKind.OTHER,
+                        old_node=None,
+                        new_node=None,
+                        summary="Unsupported language",
+                    )
+                ],
             )
 
-        old_source = _git_show(file_path, old_ref)
-        new_source = _git_show(file_path, new_ref)
-
-        if old_source is None and new_source is None:
-            return ASTDiffResult(
-                file_path=file_path,
-                language=language,
-                error=f"Could not read file from git at {old_ref} or {new_ref}",
-            )
-
-        if old_source is None:
-            old_source = ""
-        if new_source is None:
-            new_source = ""
-
-        return self.diff_strings(old_source, new_source, language, file_path)
-
-    def diff_file_against_git(
-        self,
-        file_path: str,
-        ref: str = "HEAD",
-    ) -> ASTDiffResult:
-        language = _language_from_ext(file_path)
-        if language is None:
-            return ASTDiffResult(
-                file_path=file_path,
-                language="unknown",
-                error=f"Unsupported file type: {file_path}",
-            )
-
-        old_source = _git_show(file_path, ref)
-        if old_source is None:
+        try:
+            with open(old_path, encoding="utf-8", errors="replace") as f:
+                old_source = f.read()
+        except OSError:
             old_source = ""
 
         try:
-            with open(file_path, encoding="utf-8", errors="replace") as f:
+            with open(new_path, encoding="utf-8", errors="replace") as f:
                 new_source = f.read()
-        except OSError as e:
-            return ASTDiffResult(
-                file_path=file_path,
-                language=language,
-                error=f"Cannot read file: {e}",
+        except OSError:
+            new_source = ""
+
+        return self.diff_strings(
+            old_source,
+            new_source,
+            language,
+            old_file=old_path,
+            new_file=new_path,
+        )
+
+    def diff_string_pairs(
+        self,
+        pairs: list[tuple[str, str, str]],
+        language: str,
+    ) -> list[ASTDiffResult]:
+        results: list[ASTDiffResult] = []
+        for old_src, new_src, label in pairs:
+            result = self.diff_strings(
+                old_src, new_src, language, old_file=label, new_file=label
+            )
+            results.append(result)
+        return results
+
+    def _diff_node_lists(
+        self,
+        old_nodes: list[ASTNodeInfo],
+        new_nodes: list[ASTNodeInfo],
+    ) -> list[ASTDiffHunk]:
+        hunks: list[ASTDiffHunk] = []
+        matched, old_rem, new_rem = _match_nodes(old_nodes, new_nodes)
+
+        for oi, ni in matched:
+            child_hunks = _diff_matched_nodes(old_nodes[oi], new_nodes[ni])
+            hunks.extend(child_hunks)
+
+        for oi in old_rem:
+            n = old_nodes[oi]
+            hunks.append(
+                ASTDiffHunk(
+                    diff_kind=DiffKind.NODE_REMOVED,
+                    node_kind=n.kind,
+                    old_node=n,
+                    new_node=None,
+                    summary=f"Removed {n.kind.value} '{n.name or n.node_type}'",
+                )
             )
 
-        return self.diff_strings(old_source, new_source, language, file_path)
+        for ni in new_rem:
+            n = new_nodes[ni]
+            hunks.append(
+                ASTDiffHunk(
+                    diff_kind=DiffKind.NODE_ADDED,
+                    node_kind=n.kind,
+                    old_node=None,
+                    new_node=n,
+                    summary=f"Added {n.kind.value} '{n.name or n.node_type}'",
+                )
+            )
 
-
-def _git_show(file_path: str, ref: str) -> str | None:
-    try:
-        # ``git show <ref>:<path>`` — both args originate from the caller's
-        # CLI/MCP arguments which go through SecurityValidator path checks
-        # before we ever reach here. We always pass a fixed argv list (no
-        # shell), and the timeout caps any runaway.
-        # nosec: B603 trusted argv. B607 git-on-PATH is the convention for
-        # every dev tool in this repo; full-path lookup hard-codes a Linux
-        # /usr/bin/git that doesn't exist on macOS/Windows dev machines.
-        result = subprocess.run(  # nosec B603 B607
-            ["git", "show", f"{ref}:{file_path}"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-            check=False,
-        )
-        if result.returncode == 0:
-            return result.stdout
-        return None
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
-        return None
+        return hunks

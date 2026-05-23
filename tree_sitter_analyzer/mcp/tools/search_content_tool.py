@@ -20,6 +20,7 @@ from ..utils.format_helper import (
 from ..utils.gitignore_detector import get_default_detector
 from ..utils.search_cache import get_default_cache
 from . import fd_rg_utils
+from ._fts_fast_path import try_fts5_fast_path
 from .base_tool import BaseMCPTool
 from .search_content_helpers import TOOL_SCHEMA as _TOOL_SCHEMA
 from .search_content_helpers import (
@@ -35,6 +36,17 @@ from .search_content_response_modes import create_count_only_cache_key
 from .search_content_validation import validate_search_arguments
 
 logger = logging.getLogger(__name__)
+
+
+def _try_fts5_fast_path(
+    arguments: dict[str, Any],
+    project_root: str | None,
+    requested_format: str,
+) -> dict[str, Any] | int | None:
+    try:
+        return try_fts5_fast_path(arguments, project_root, requested_format)
+    except Exception:
+        return None
 
 
 class SearchContentTool(BaseMCPTool):
@@ -227,6 +239,13 @@ class SearchContentTool(BaseMCPTool):
         cached = self._check_cache(cache_key, arguments)
         if cached is not None:
             return cached
+
+        requested_format = determine_requested_format(arguments)
+        fts_result = _try_fts5_fast_path(arguments, self.project_root, requested_format)
+        if fts_result is not None:
+            if output_format == "toon" and isinstance(fts_result, dict):
+                return apply_toon_format_to_response(fts_result, output_format)
+            return fts_result
 
         no_ignore = self._resolve_no_ignore(arguments, roots)
         max_count = resolve_max_count(arguments, fd_rg_utils)

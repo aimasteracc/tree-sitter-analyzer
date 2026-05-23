@@ -115,6 +115,22 @@ class TestExecute:
         assert result["success"] is True
         assert result["risk"]["level"] == "unknown"
         assert result["definition_count"] == 0
+        # pain #3: missing symbol must surface NOT_FOUND, NOT None.
+        # Agents that branch on verdict were treating None as INFO and
+        # then "safely" deleting symbols that didn't exist anywhere.
+        assert result["verdict"] == "NOT_FOUND"
+
+    def test_verdict_present_when_symbol_found(self, tool, tmp_path):
+        """Found symbols must emit a canonical verdict (not None)."""
+        _write_py(
+            tmp_path,
+            "pkg/core.py",
+            "def my_func():\n    return 42\n",
+        )
+        result = asyncio.run(
+            tool.execute({"symbol": "my_func", "output_format": "json"})
+        )
+        assert result["verdict"] in ("INFO", "REVIEW", "CAUTION")
 
     def test_finds_symbol_returns_success(self, tool, tmp_path):
         _write_py(

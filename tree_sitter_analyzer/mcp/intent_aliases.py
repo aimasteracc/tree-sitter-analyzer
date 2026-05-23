@@ -17,7 +17,6 @@ Features:
 - Case-sensitive (大文字小文字を区別)
 """
 
-
 # Intent Alias マッピング: 意図ベースの名前 → 実装ベースの tool名
 INTENT_ALIASES: dict[str, str] = {
     # Search & Find 系

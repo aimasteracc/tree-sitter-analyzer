@@ -48,9 +48,7 @@ class PythonEdgeExtractor(EdgeExtractor):
         edges: list[tuple[str, str]] = []
 
         # from module import ClassName
-        for m in re.finditer(
-            r"from\s+([\w.]+)\s+import\s+([\w,\s]+)", source
-        ):
+        for m in re.finditer(r"from\s+([\w.]+)\s+import\s+([\w,\s]+)", source):
             module = m.group(1)
             if not _is_first_party(module):
                 continue
@@ -60,9 +58,7 @@ class PythonEdgeExtractor(EdgeExtractor):
                     edges.append((src_name, cls))
 
         # import module.ClassName
-        for m in re.finditer(
-            r"^import\s+([\w.]+\.(\w+))", source, re.M
-        ):
+        for m in re.finditer(r"^import\s+([\w.]+\.(\w+))", source, re.M):
             module = m.group(1)
             if _is_first_party(module):
                 edges.append((src_name, m.group(2)))

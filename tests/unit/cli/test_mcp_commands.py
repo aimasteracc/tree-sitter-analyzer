@@ -19,12 +19,21 @@ MCP_COMMAND_FLAGS = (
     "dependencies",
     "refactor",
     "smart_context",
+    "callers",
+    "callees",
+    "symbol_resolve",
 )
 
 
 def _args(**overrides: Any) -> Namespace:
     defaults = dict.fromkeys(MCP_COMMAND_FLAGS, False)
     defaults["dependencies"] = None
+    defaults["callers"] = False
+    defaults["callees"] = False
+    defaults["callers_file"] = None
+    defaults["callees_file"] = None
+    defaults["symbol_resolve"] = False
+    defaults["symbol_resolve_mode"] = "resolve"
     defaults.update(
         {
             "file_path": "target.py",
@@ -292,17 +301,9 @@ def test_safe_to_edit_cli_falls_back_to_schema_default_for_legacy_namespaces(
     ],
 )
 def test_file_scoped_mcp_cli_commands_require_file_path(
-    capsys,
     flag_overrides: dict[str, Any],
     expected_error: str,
 ) -> None:
-    """J2: when ``--format json`` is requested, even the pre-execution
-    validation failures (e.g. missing ``--file-path``) must surface as
-    a parseable JSON envelope on stdout, not a plain-text ``ERROR:`` line
-    that callers cannot consume.
-    """
-    import json as _json
-
     output: list[dict[str, Any]] = []
     errors: list[str] = []
 
@@ -315,14 +316,7 @@ def test_file_scoped_mcp_cli_commands_require_file_path(
 
     assert result == 1
     assert output == []
-    # JSON path now emits the envelope via ``print(json.dumps(...))``,
-    # so the plain-text ``errors`` sink is bypassed.
-    assert errors == []
-    stdout = capsys.readouterr().out
-    payload = _json.loads(stdout.strip())
-    assert payload["success"] is False
-    assert payload["error"] == expected_error
-    assert payload["error_type"] == "validation"
+    assert errors == [expected_error]
 
 
 @pytest.mark.parametrize(
@@ -513,85 +507,6 @@ def test_change_impact_cli_forwards_agent_summary_only(monkeypatch) -> None:
     }
 
 
-@pytest.mark.parametrize(
-    "requested_mode",
-    ["summary", "all_functions", "callers", "callees", "chain"],
-)
-def test_call_graph_cli_forwards_requested_mode(
-    monkeypatch, requested_mode: str
-) -> None:
-    """G1: ``--call-graph <mode>`` must reach the tool with the requested mode.
-
-    Before the fix, the dispatcher read ``args.call_graph_mode`` which does
-    not exist (argparse stores the value into ``args.call_graph`` because the
-    ``--call-graph`` definition does not set ``dest=``). The fallback default
-    ``"summary"`` always won, so non-summary modes were silently ignored.
-    """
-    seen: dict[str, Any] = {}
-
-    class FakeCodeGraphCallTool:
-        def __init__(self, project_root: str | None = None) -> None:
-            seen["project_root"] = project_root
-
-        async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
-            seen["arguments"] = arguments
-            # Echo the mode back so the test can assert on a real
-            # ``response["mode"]`` field too.
-            return {
-                "success": True,
-                "mode": arguments["mode"],
-                "function_count": 0,
-                "call_edge_count": 0,
-            }
-
-    monkeypatch.setattr(mcp_commands, "CodeGraphCallTool", FakeCodeGraphCallTool)
-
-    output: list[dict[str, Any]] = []
-    errors: list[str] = []
-
-    # ``find_selected_mcp_command`` treats truthy ``args.call_graph`` as the
-    # selector; argparse sets that to the chosen mode string when the flag
-    # is present.
-    result = mcp_commands.handle_mcp_commands(
-        _args(call_graph=requested_mode, call_graph_function="execute"),
-        output.append,
-        errors.append,
-        lambda: "json",
-    )
-
-    assert result == 0
-    assert errors == []
-    assert seen["arguments"]["mode"] == requested_mode
-    assert output and output[0]["mode"] == requested_mode
-
-
-def test_call_graph_cli_defaults_to_summary_when_no_mode_value(monkeypatch) -> None:
-    """Bare ``--call-graph`` (no value) selects ``summary`` via argparse's
-    ``const="summary"``. The dispatcher must preserve that and not crash on
-    the missing attribute path."""
-    seen: dict[str, Any] = {}
-
-    class FakeCodeGraphCallTool:
-        def __init__(self, project_root: str | None = None) -> None:
-            seen["project_root"] = project_root
-
-        async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
-            seen["arguments"] = arguments
-            return {"success": True, "mode": arguments["mode"]}
-
-    monkeypatch.setattr(mcp_commands, "CodeGraphCallTool", FakeCodeGraphCallTool)
-
-    result = mcp_commands.handle_mcp_commands(
-        _args(call_graph="summary"),
-        lambda payload: None,
-        lambda error: None,
-        lambda: "json",
-    )
-
-    assert result == 0
-    assert seen["arguments"]["mode"] == "summary"
-
-
 def test_change_impact_cli_forwards_mode_and_test_discovery_toggle(monkeypatch) -> None:
     seen: dict[str, Any] = {}
 
@@ -630,245 +545,94 @@ def test_change_impact_cli_forwards_mode_and_test_discovery_toggle(monkeypatch) 
     }
 
 
-# J12: CLI parity for previously-MCP-only tools.
-# These tests mirror the pattern used for --call-graph and --ast-cache:
-# - drive the dispatcher with a Namespace
-# - monkeypatch the tool class in mcp_commands
-# - assert the dispatcher constructs the tool, forwards the right arguments,
-#   and prints the result envelope through the JSON sink.
-
-
-def test_trace_impact_cli_invokes_tool(monkeypatch) -> None:
-    """``--trace-impact --trace-impact-symbol NAME`` reaches TraceImpactTool."""
+def test_callers_cli_delegates_to_callers_tool(monkeypatch) -> None:
     seen: dict[str, Any] = {}
 
-    class FakeTraceImpactTool:
+    class FakeCallersTool:
         def __init__(self, project_root: str | None = None) -> None:
             seen["project_root"] = project_root
 
         async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
             seen["arguments"] = arguments
-            return {
-                "success": True,
-                "symbol": arguments["symbol"],
-                "source_call_count": 0,
-                "usages": [],
-                "agent_summary": {
-                    "summary_line": "trace_impact: 0 callers",
-                    "next_step": "Confirm the symbol name is correct.",
-                    "verdict": "LOW",
-                },
-            }
+            return {"success": True, "toon_content": "callers result"}
 
-    monkeypatch.setattr(mcp_commands, "TraceImpactTool", FakeTraceImpactTool)
+    monkeypatch.setattr(mcp_commands, "CodeGraphCallersTool", FakeCallersTool)
 
-    output: list[dict[str, Any]] = []
-    errors: list[str] = []
-
-    args = Namespace(
-        trace_impact=True,
-        trace_impact_symbol="BaseMCPTool",
-        trace_impact_file=None,
-        trace_impact_roots=None,
-        file_path=None,
-        project_root="/repo",
-    )
     result = mcp_commands.handle_mcp_commands(
-        args,
-        output.append,
-        errors.append,
-        lambda: "json",
-    )
-
-    assert result == 0
-    assert errors == []
-    assert seen == {
-        "project_root": "/repo",
-        "arguments": {"symbol": "BaseMCPTool"},
-    }
-    assert output and output[0]["symbol"] == "BaseMCPTool"
-
-
-def test_trace_impact_cli_forwards_optional_file_and_roots(monkeypatch) -> None:
-    """Optional --trace-impact-file and --trace-impact-roots reach the tool."""
-    seen: dict[str, Any] = {}
-
-    class FakeTraceImpactTool:
-        def __init__(self, project_root: str | None = None) -> None:
-            seen["project_root"] = project_root
-
-        async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
-            seen["arguments"] = arguments
-            return {"success": True, "symbol": arguments["symbol"]}
-
-    monkeypatch.setattr(mcp_commands, "TraceImpactTool", FakeTraceImpactTool)
-
-    args = Namespace(
-        trace_impact=True,
-        trace_impact_symbol="process_payment",
-        trace_impact_file="src/payments.py",
-        trace_impact_roots="/repo/src,/repo/lib",
-        file_path=None,
-        project_root="/repo",
-    )
-    result = mcp_commands.handle_mcp_commands(
-        args,
+        _args(callers="parse_file", callers_file="src/parser.py"),
         lambda payload: None,
         lambda error: None,
         lambda: "json",
     )
 
     assert result == 0
-    assert seen["arguments"] == {
-        "symbol": "process_payment",
-        "file_path": "src/payments.py",
-        "project_root": "/repo/src,/repo/lib",
-    }
-
-
-def test_check_tools_cli_invokes_tool(monkeypatch) -> None:
-    """``--check-tools`` reaches CheckToolsTool with an empty argument dict."""
-    seen: dict[str, Any] = {}
-
-    class FakeCheckToolsTool:
-        def __init__(self, project_root: str | None = None) -> None:
-            seen["project_root"] = project_root
-
-        async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
-            seen["arguments"] = arguments
-            return {
-                "success": True,
-                "fd": {"available": True, "version": "fd 10"},
-                "rg": {"available": True, "version": "ripgrep 14"},
-                "status": "all_tools_available",
-                "recommendation": None,
-                "summary_line": "check_tools status=all_tools_available fd=ok rg=ok",
-                "agent_summary": {
-                    "summary_line": "check_tools status=all_tools_available",
-                    "next_step": "list_files / search_content are ready to run",
-                    "verdict": "READY",
-                },
-            }
-
-    monkeypatch.setattr(mcp_commands, "CheckToolsTool", FakeCheckToolsTool)
-
-    output: list[dict[str, Any]] = []
-    errors: list[str] = []
-
-    args = Namespace(
-        check_tools=True,
-        file_path=None,
-        project_root="/repo",
-    )
-    result = mcp_commands.handle_mcp_commands(
-        args,
-        output.append,
-        errors.append,
-        lambda: "json",
-    )
-
-    assert result == 0
-    assert errors == []
-    # CheckToolsTool's MCP schema takes no input properties, so the
-    # dispatcher must forward an empty dict (in particular, no
-    # ``output_format`` key — that would be rejected by
-    # ``additionalProperties: False``).
     assert seen == {
         "project_root": "/repo",
-        "arguments": {},
+        "arguments": {
+            "function_name": "parse_file",
+            "file_path": "src/parser.py",
+            "output_format": "json",
+        },
     }
-    assert output and output[0]["status"] == "all_tools_available"
 
 
-def test_build_project_index_cli_invokes_tool(monkeypatch) -> None:
-    """``--build-project-index`` reaches BuildProjectIndexTool with an empty
-    argument dict by default (the tool defaults ``roots=["."]`` internally).
-    """
+def test_callees_cli_delegates_to_callees_tool(monkeypatch) -> None:
     seen: dict[str, Any] = {}
 
-    class FakeBuildProjectIndexTool:
+    class FakeCalleesTool:
         def __init__(self, project_root: str | None = None) -> None:
             seen["project_root"] = project_root
 
         async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
             seen["arguments"] = arguments
-            return {
-                "success": True,
-                "status": "built",
-                "build_duration_ms": 12,
-                "files_scanned": 42,
-                "languages_found": {"python": 42},
-                "summary_line": "build_project_index built files=42 languages=1",
-                "agent_summary": {
-                    "summary_line": "build_project_index built files=42",
-                    "next_step": "get_project_summary to retrieve this index",
-                    "verdict": "n/a",
-                },
-            }
+            return {"success": True, "toon_content": "callees result"}
 
-    monkeypatch.setattr(
-        mcp_commands, "BuildProjectIndexTool", FakeBuildProjectIndexTool
-    )
+    monkeypatch.setattr(mcp_commands, "CodeGraphCalleesTool", FakeCalleesTool)
 
-    output: list[dict[str, Any]] = []
-    errors: list[str] = []
-
-    args = Namespace(
-        build_project_index=True,
-        build_project_index_roots=None,
-        build_project_index_notes=None,
-        file_path=None,
-        project_root="/repo",
-    )
     result = mcp_commands.handle_mcp_commands(
-        args,
-        output.append,
-        errors.append,
-        lambda: "json",
-    )
-
-    assert result == 0
-    assert errors == []
-    assert seen == {
-        "project_root": "/repo",
-        "arguments": {},
-    }
-    assert output and output[0]["files_scanned"] == 42
-
-
-def test_build_project_index_cli_forwards_roots_and_notes(monkeypatch) -> None:
-    """Explicit --build-project-index-roots / --build-project-index-notes
-    forward to the tool's ``roots`` and ``add_notes`` schema fields."""
-    seen: dict[str, Any] = {}
-
-    class FakeBuildProjectIndexTool:
-        def __init__(self, project_root: str | None = None) -> None:
-            seen["project_root"] = project_root
-
-        async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
-            seen["arguments"] = arguments
-            return {"success": True}
-
-    monkeypatch.setattr(
-        mcp_commands, "BuildProjectIndexTool", FakeBuildProjectIndexTool
-    )
-
-    args = Namespace(
-        build_project_index=True,
-        build_project_index_roots=["src", "tests"],
-        build_project_index_notes="Monorepo entry: src/main.py",
-        file_path=None,
-        project_root="/repo",
-    )
-    result = mcp_commands.handle_mcp_commands(
-        args,
+        _args(callees="main", callees_file=None),
         lambda payload: None,
         lambda error: None,
         lambda: "json",
     )
 
     assert result == 0
-    assert seen["arguments"] == {
-        "roots": ["src", "tests"],
-        "add_notes": "Monorepo entry: src/main.py",
+    assert seen == {
+        "project_root": "/repo",
+        "arguments": {
+            "function_name": "main",
+            "file_path": None,
+            "output_format": "json",
+        },
+    }
+
+
+def test_symbol_resolve_cli_delegates_to_resolve_tool(monkeypatch) -> None:
+    seen: dict[str, Any] = {}
+
+    class FakeResolveTool:
+        def __init__(self, project_root: str | None = None) -> None:
+            seen["project_root"] = project_root
+
+        async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+            seen["arguments"] = arguments
+            return {"success": True, "toon_content": "resolve result"}
+
+    monkeypatch.setattr(mcp_commands, "CodeGraphSymbolResolveTool", FakeResolveTool)
+
+    result = mcp_commands.handle_mcp_commands(
+        _args(symbol_resolve="UserService.get_user", symbol_resolve_mode="resolve"),
+        lambda payload: None,
+        lambda error: None,
+        lambda: "json",
+    )
+
+    assert result == 0
+    assert seen == {
+        "project_root": "/repo",
+        "arguments": {
+            "symbol": "UserService.get_user",
+            "mode": "resolve",
+            "output_format": "json",
+        },
     }

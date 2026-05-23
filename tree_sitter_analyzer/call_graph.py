@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from .core.parser import Parser, ParseResult
+from .import_extractors import walk_imports
 from .project_graph import _language_from_ext
 
 _EXCLUDE_DIRS = {
@@ -40,18 +41,11 @@ _EXCLUDE_DIRS = {
     ".claude",
 }
 
-# r37az: extracted from inline ``build()`` so the extension set is a
-# named module-level constant — easier to update + matches the existing
-# pattern of _EXCLUDE_DIRS being a module constant.
-_SUPPORTED_BUILD_EXTS = frozenset(
-    {".py", ".js", ".ts", ".jsx", ".tsx", ".java", ".go", ".c", ".cpp", ".cc", ".cxx"}
-)
-
 
 class FunctionRef:
     """A qualified reference to a function/method in the project."""
 
-    __slots__ = ("file_path", "name", "start_line", "language", "receiver")
+    __slots__ = ("file_path", "name", "start_line", "end_line", "language", "receiver")
 
     def __init__(
         self,
@@ -60,10 +54,12 @@ class FunctionRef:
         start_line: int,
         language: str,
         receiver: str | None = None,
+        end_line: int | None = None,
     ) -> None:
         self.file_path = file_path
         self.name = name
         self.start_line = start_line
+        self.end_line = end_line if end_line is not None else start_line
         self.language = language
         self.receiver = receiver
 
@@ -89,6 +85,7 @@ class FunctionRef:
             "file": self.file_path,
             "name": self.name,
             "line": self.start_line,
+            "end_line": self.end_line,
             "language": self.language,
         }
         if self.receiver:
@@ -187,114 +184,59 @@ def _extract_recursive(
         _extract_recursive(child, source, language, definitions, calls, enclosing_class)
 
 
-# r37az: per-language allowed identifier node types — extracted from the
-# big if/elif chain that drove the nesting-8 smell. Each language picks
-# the first child matching its type list; C/C++ also recurses into
-# ``function_declarator``.
-_FUNC_NAME_NODE_TYPES: dict[str, tuple[str, ...]] = {
-    "python": ("identifier",),
-    "javascript": ("identifier", "property_identifier"),
-    "typescript": ("identifier", "property_identifier"),
-    "java": ("identifier",),
-    "go": ("identifier",),
-    "c": ("identifier", "field_identifier", "destructor_name"),
-    "cpp": ("identifier", "field_identifier", "destructor_name"),
-}
-
-
 def _get_func_name(node: Any, language: str) -> str | None:
-    """Extract function name from a definition node.
-
-    r37az: replaced the 6-language if/elif chain (each branch a
-    near-identical ``for child in node.children: if child.type in (...):``
-    loop) with a dispatch table + the C/C++ ``function_declarator``
-    recursion in a single helper. Same per-language behaviour preserved.
-    """
-    accepted = _FUNC_NAME_NODE_TYPES.get(language)
-    if accepted is None:
-        return None
+    """Extract function name from a definition node."""
     try:
-        for child in node.children:
-            if child.type in accepted:
-                return _decode_node_text(child)
-            if language in ("c", "cpp") and child.type == "function_declarator":
-                name = _find_first_identifier(child)
-                if name is not None:
-                    return name
-    except Exception:  # nosec B110 - best-effort AST walk; missing field is non-fatal
+        if language == "python":
+            for child in node.children:
+                if child.type == "identifier":
+                    text = child.text
+                    return (
+                        text.decode("utf-8") if isinstance(text, bytes) else str(text)
+                    )
+        elif language in ("javascript", "typescript"):
+            for child in node.children:
+                if child.type in ("identifier", "property_identifier"):
+                    text = child.text
+                    return (
+                        text.decode("utf-8") if isinstance(text, bytes) else str(text)
+                    )
+        elif language == "java":
+            for child in node.children:
+                if child.type == "identifier":
+                    text = child.text
+                    return (
+                        text.decode("utf-8") if isinstance(text, bytes) else str(text)
+                    )
+        elif language == "go":
+            for child in node.children:
+                if child.type == "identifier":
+                    text = child.text
+                    return (
+                        text.decode("utf-8") if isinstance(text, bytes) else str(text)
+                    )
+        elif language in ("c", "cpp"):
+            for child in node.children:
+                if child.type in (
+                    "identifier",
+                    "field_identifier",
+                    "destructor_name",
+                ):
+                    text = child.text
+                    return (
+                        text.decode("utf-8") if isinstance(text, bytes) else str(text)
+                    )
+                if child.type == "function_declarator":
+                    for sub in child.children:
+                        if sub.type in ("identifier", "field_identifier"):
+                            text = sub.text
+                            return (
+                                text.decode("utf-8")
+                                if isinstance(text, bytes)
+                                else str(text)
+                            )
+    except Exception:  # nosec B110
         pass
-    return None
-
-
-def _decode_node_text(node: Any) -> str:
-    """Return ``node.text`` as a Python str, decoding bytes when needed."""
-    text = node.text
-    return text.decode("utf-8") if isinstance(text, bytes) else str(text)
-
-
-def _find_first_identifier(parent: Any) -> str | None:
-    """Find the first identifier/field_identifier child of ``parent``."""
-    for sub in parent.children:
-        if sub.type in ("identifier", "field_identifier"):
-            return _decode_node_text(sub)
-    return None
-
-
-def _extract_c_call_from_children(node: Any, source: str) -> dict[str, Any] | None:
-    """Fallback C/C++ call extraction when ``function`` field is absent.
-
-    Some tree-sitter-c parses macro-style invocations (``FOO(x)``)
-    without filling the ``function`` field. We then scan children for
-    the first ``identifier`` and treat that as the call target.
-    Returns ``None`` when no identifier child exists.
-    """
-    for child in node.children:
-        if child.type != "identifier":
-            continue
-        text = _node_text(child, source)
-        return {
-            "name": text,
-            "full_name": text,
-            "line": node.start_point[0] + 1,
-            "receiver": None,
-        }
-    return None
-
-
-def _extract_java_call(node: Any, source: str) -> dict[str, Any] | None:
-    """Extract call target info from a Java call/method-reference node.
-
-    r37df (dogfood): lifted from inline branch of ``_extract_call`` to
-    flatten its Java path from depth 6 to 3. Identifiers return as bare
-    names; ``field_access`` / ``method_reference`` split the rightmost
-    dotted segment so ``foo.bar.baz()`` yields receiver=``foo.bar`` and
-    name=``baz``. Returns ``None`` when no child shape matches — the
-    caller treats that as "no actionable call info".
-    """
-    for child in node.children:
-        if child.type == "identifier":
-            text = _node_text(child, source)
-            return {
-                "name": text,
-                "full_name": text,
-                "line": node.start_point[0] + 1,
-                "receiver": None,
-            }
-        if child.type not in ("field_access", "method_reference"):
-            continue
-        text = _node_text(child, source)
-        receiver: str | None = None
-        name = text
-        if "." in text:
-            parts = text.rsplit(".", 1)
-            receiver = parts[0]
-            name = parts[1]
-        return {
-            "name": name,
-            "full_name": text,
-            "line": node.start_point[0] + 1,
-            "receiver": receiver,
-        }
     return None
 
 
@@ -334,8 +276,30 @@ def _extract_call(node: Any, source: str, language: str) -> dict[str, Any] | Non
                 "receiver": receiver,
             }
         elif language == "java":
-            # r37df (dogfood): nesting 6 → 3 via _extract_java_call helper.
-            return _extract_java_call(node, source)
+            for child in node.children:
+                if child.type == "identifier":
+                    text = _node_text(child, source)
+                    return {
+                        "name": text,
+                        "full_name": text,
+                        "line": node.start_point[0] + 1,
+                        "receiver": None,
+                    }
+                if child.type in ("field_access", "method_reference"):
+                    text = _node_text(child, source)
+                    receiver = None
+                    name = text
+                    if "." in text:
+                        parts = text.rsplit(".", 1)
+                        receiver = parts[0]
+                        name = parts[1]
+                    return {
+                        "name": name,
+                        "full_name": text,
+                        "line": node.start_point[0] + 1,
+                        "receiver": receiver,
+                    }
+            return None
         elif language == "go":
             func_node = node.child_by_field_name("function")
             if func_node is None:
@@ -353,10 +317,18 @@ def _extract_call(node: Any, source: str, language: str) -> dict[str, Any] | Non
                 "receiver": receiver,
             }
         elif language in ("c", "cpp"):
-            # r37df (dogfood): nesting 6 → 3 via _extract_c_call_no_func helper.
             func_node = node.child_by_field_name("function")
             if func_node is None:
-                return _extract_c_call_from_children(node, source)
+                for child in node.children:
+                    if child.type == "identifier":
+                        text = _node_text(child, source)
+                        return {
+                            "name": text,
+                            "full_name": text,
+                            "line": node.start_point[0] + 1,
+                            "receiver": None,
+                        }
+                return None
             name = _node_text(func_node, source)
             return {
                 "name": name,
@@ -364,7 +336,7 @@ def _extract_call(node: Any, source: str, language: str) -> dict[str, Any] | Non
                 "line": node.start_point[0] + 1,
                 "receiver": None,
             }
-    except Exception:  # nosec B110 - best-effort AST walk; missing field is non-fatal
+    except Exception:  # nosec B110
         pass
     return None
 
@@ -372,89 +344,64 @@ def _extract_call(node: Any, source: str, language: str) -> dict[str, Any] | Non
 def _node_text(node: Any, source: str) -> str:
     """Extract text from a node given the full source string.
 
-    H2 fix: tree-sitter exposes ``start_byte``/``end_byte`` as UTF-8 BYTE
-    offsets, not character offsets. Indexing into ``source`` (a ``str``)
-    with byte offsets returns garbage when the file contains any multi-
-    byte characters (e.g. em-dashes ``—`` in comments). Symptom: callees
-    extracted from a source file with non-ASCII text would have their
-    ``name`` truncated/shifted, so ``_resolve_callee`` could not match
-    them against the function-name index — caller/callee edges were
-    silently dropped for any function indirectly downstream of such a
-    file. Prefer ``node.text`` (already bytes from tree-sitter) and fall
-    back to a byte-slice of the source only if ``node.text`` is missing.
+    Tree-sitter exposes start_byte/end_byte as UTF-8 *byte* offsets.
+    Slicing a Python str with byte indices produces correct results for
+    pure-ASCII but silently shifts after any multi-byte character.  The
+    same class of bug that was fixed in ast_cache._node_text.
+
+    Fix: prefer node.text (bytes view from tree-sitter, canonical
+    source-of-truth).  Fall back to byte-level slicing on the encoded
+    source so legacy callers still work.
     """
-    text = getattr(node, "text", None)
-    if isinstance(text, bytes):
-        return text.decode("utf-8", errors="replace")
-    if isinstance(text, str):
-        return text
+    if node is None:
+        return ""
+    text_attr = getattr(node, "text", None)
+    if isinstance(text_attr, bytes):
+        try:
+            return text_attr.decode("utf-8", errors="replace")
+        except UnicodeDecodeError:
+            return ""
+    if isinstance(text_attr, str):
+        return text_attr
     try:
-        start = node.start_byte
-        end = node.end_byte
-        return source.encode("utf-8")[start:end].decode("utf-8", errors="replace")
-    except Exception:
+        return source.encode("utf-8")[node.start_byte : node.end_byte].decode(
+            "utf-8", errors="replace"
+        )
+    except (IndexError, TypeError, UnicodeDecodeError):
         return ""
 
 
 def _find_parent_class_python(node: Any) -> str | None:
-    """Walk up from a function node to find the enclosing class.
-
-    r37df (dogfood): flattened nesting 6 → 3 via
-    ``_python_class_name`` helper. Walk stays a while-loop; the
-    identifier scan inside each ``class_definition`` is its own helper.
-    """
+    """Walk up from a function node to find enclosing class."""
     if node is None:
         return None
     current = node.parent
     while current is not None:
         if current.type == "class_definition":
-            name = _python_class_name(current)
-            if name is not None:
-                return name
+            for child in current.children:
+                if child.type == "identifier":
+                    text = child.text
+                    return (
+                        text.decode("utf-8") if isinstance(text, bytes) else str(text)
+                    )
         current = current.parent
     return None
 
 
-def _python_class_name(class_node: Any) -> str | None:
-    """Return the first ``identifier`` child's text from a Python class.
-
-    Decodes bytes to str when needed (tree-sitter returns ``bytes`` on
-    some bindings, ``str`` on others). Returns ``None`` if no identifier
-    is found — caller treats that as "anonymous / can't name".
-    """
-    for child in class_node.children:
-        if child.type != "identifier":
-            continue
-        text = child.text
-        return text.decode("utf-8") if isinstance(text, bytes) else str(text)
-    return None
-
-
 def _find_parent_class_java(node: Any) -> str | None:
-    """Walk up from a method node to find the enclosing class.
-
-    r37df (dogfood): flattened nesting 6 → 3 via ``_java_class_name``
-    helper (mirror of ``_python_class_name``).
-    """
+    """Walk up from a method node to find enclosing class."""
     if node is None:
         return None
     current = node.parent
     while current is not None:
         if current.type == "class_declaration":
-            name = _java_class_name(current)
-            if name is not None:
-                return name
+            for child in current.children:
+                if child.type == "identifier":
+                    text = child.text
+                    return (
+                        text.decode("utf-8") if isinstance(text, bytes) else str(text)
+                    )
         current = current.parent
-    return None
-
-
-def _java_class_name(class_node: Any) -> str | None:
-    """Return the first ``identifier`` child's text from a Java class."""
-    for child in class_node.children:
-        if child.type != "identifier":
-            continue
-        text = child.text
-        return text.decode("utf-8") if isinstance(text, bytes) else str(text)
     return None
 
 
@@ -475,176 +422,185 @@ class CallGraph:
         self._functions: list[FunctionRef] = []
         self._func_by_name: dict[str, list[FunctionRef]] = defaultdict(list)
         self._func_by_qualified: dict[str, FunctionRef] = {}
+        self._func_by_file: dict[str, list[FunctionRef]] = defaultdict(list)
         self._callees: dict[FunctionRef, list[FunctionRef]] = defaultdict(list)
         self._callers: dict[FunctionRef, list[FunctionRef]] = defaultdict(list)
         self._call_edges: list[tuple[FunctionRef, FunctionRef, int]] = []
         self._built = False
+        self._file_imports: dict[str, dict[str, str]] = {}
+        self._file_module_map: dict[str, str] = {}
+        self._imported_names: dict[str, dict[str, str]] = {}
+        self._module_to_file: dict[str, str] = {}
 
     def build(self) -> None:
-        """Scan the project and build the call graph.
-
-        Two-pass deterministic build (H3 fix preserved). r37az: the main
-        ``build`` body was 130 lines — refactored into
-        ``_discover_source_files`` + ``_register_definitions_pass`` +
-        ``_resolve_calls_pass``. Behaviour preserved, including the H3
-        determinism guarantee (file-order = sorted relative path; pass-1
-        completes before pass-2 starts).
-        """
+        """Scan the project and build the call graph."""
         if self._built:
             return
 
-        rel_to_abs = self._discover_source_files()
-        parser = Parser()
-        parsed = self._register_definitions_pass(parser, rel_to_abs)
-        self._resolve_calls_pass(parsed, rel_to_abs)
-        self._built = True
+        supported_exts = {
+            ".py",
+            ".js",
+            ".ts",
+            ".jsx",
+            ".tsx",
+            ".java",
+            ".go",
+            ".c",
+            ".cpp",
+            ".cc",
+            ".cxx",
+        }
 
-    def _discover_source_files(self) -> dict[str, str]:
-        """Pass 0: enumerate source files in deterministic relative-path order.
-
-        Returns an insertion-ordered ``{rel_path: abs_path}`` dict so both
-        passes traverse files identically across runs (no PYTHONHASHSEED
-        sensitivity, no filesystem-order dependency).
-        """
         all_files: list[Path] = []
-        for ext in _SUPPORTED_BUILD_EXTS:
+        for ext in supported_exts:
             for f in self.project_root.rglob(f"*{ext}"):
                 if not self._is_excluded(f):
                     all_files.append(f)
 
-        rel_to_abs_pairs: list[tuple[str, str]] = []
+        rel_to_abs: dict[str, str] = {}
         for f in all_files:
             try:
                 rel = str(f.relative_to(self.project_root))
-                rel_to_abs_pairs.append((rel, str(f)))
+                rel_to_abs[rel] = str(f)
             except ValueError:
                 continue
-        rel_to_abs_pairs.sort(key=lambda p: p[0])
 
-        # De-dup while preserving sorted order (defensive — _SUPPORTED_BUILD_EXTS
-        # is disjoint but rglob can still yield duplicates on case-insensitive FS).
-        seen_rel: set[str] = set()
-        rel_to_abs: dict[str, str] = {}
-        for rel, abs_path in rel_to_abs_pairs:
-            if rel in seen_rel:
-                continue
-            seen_rel.add(rel)
-            rel_to_abs[rel] = abs_path
-        return rel_to_abs
+        parser = Parser()
 
-    def _register_definitions_pass(
-        self,
-        parser: Parser,
-        rel_to_abs: dict[str, str],
-    ) -> dict[
-        str,
-        tuple[
-            str, Any, list[dict[str, Any]], list[dict[str, Any]], dict[str, FunctionRef]
-        ],
-    ]:
-        """Pass 1: parse every file, register every FunctionRef, return parsed cache.
-
-        Cache shape is ``{rel_path: (language, tree, definitions, calls, file_funcs)}``.
-        Files that fail to parse are skipped silently — pass 2 will skip them too.
-        """
-        parsed: dict[
-            str,
-            tuple[
-                str,
-                Any,
-                list[dict[str, Any]],
-                list[dict[str, Any]],
-                dict[str, FunctionRef],
-            ],
-        ] = {}
         for rel_path, abs_path in rel_to_abs.items():
             language = _language_from_ext(rel_path)
             if language is None:
                 continue
+
             result: ParseResult = parser.parse_file(abs_path, language)
             if not result.success or result.tree is None:
                 continue
 
-            definitions, calls = _walk_tree(
-                result.tree.root_node, result.source_code, language
-            )
-            file_funcs = self._register_file_definitions(
-                rel_path, language, definitions
-            )
-            parsed[rel_path] = (language, result.tree, definitions, calls, file_funcs)
-        return parsed
+            source = result.source_code
+            tree = result.tree
 
-    def _register_file_definitions(
-        self,
-        rel_path: str,
-        language: str,
-        definitions: list[dict[str, Any]],
-    ) -> dict[str, FunctionRef]:
-        """Append each definition to the global indices and return ``{name: ref}``."""
-        file_funcs: dict[str, FunctionRef] = {}
-        for defn in definitions:
-            ref = FunctionRef(
-                file_path=rel_path,
-                name=defn["name"],
-                start_line=defn["start_line"],
-                language=language,
-                receiver=defn.get("class"),
-            )
-            self._functions.append(ref)
-            self._func_by_name[defn["name"]].append(ref)
-            self._func_by_qualified[ref.qualified_name()] = ref
-            file_funcs[defn["name"]] = ref
-        return file_funcs
+            definitions, calls = _walk_tree(tree.root_node, source, language)
 
-    def _resolve_calls_pass(
-        self,
-        parsed: dict[
-            str,
-            tuple[
-                str,
-                Any,
-                list[dict[str, Any]],
-                list[dict[str, Any]],
-                dict[str, FunctionRef],
-            ],
-        ],
-        rel_to_abs: dict[str, str],
-    ) -> None:
-        """Pass 2: resolve every call against the now-complete definition index."""
-        for rel_path in rel_to_abs:  # already sorted insertion order
-            entry = parsed.get(rel_path)
-            if entry is None:
-                continue
-            _language, _tree, _definitions, calls, file_funcs = entry
+            imports: list[dict[str, Any]] = []
+            walk_imports(tree.root_node, source, language, imports)
+            self._collect_import_map(rel_path, imports, rel_to_abs)
+
+            file_funcs: dict[str, FunctionRef] = {}
+            for defn in definitions:
+                ref = FunctionRef(
+                    file_path=rel_path,
+                    name=defn["name"],
+                    start_line=defn["start_line"],
+                    language=language,
+                    receiver=defn.get("class"),
+                    end_line=defn.get("end_line", defn["start_line"]),
+                )
+                self._functions.append(ref)
+                self._func_by_name[defn["name"]].append(ref)
+                self._func_by_file[rel_path].append(ref)
+                qname = ref.qualified_name()
+                self._func_by_qualified[qname] = ref
+                file_funcs[defn["name"]] = ref
+
             for call in calls:
-                self._record_edges_for_call(call, rel_path, rel_to_abs, file_funcs)
+                caller_ref = self._find_enclosing_func(file_funcs, call["line"])
+                if caller_ref is None:
+                    continue
 
-    def _record_edges_for_call(
-        self,
-        call: dict[str, Any],
-        rel_path: str,
-        rel_to_abs: dict[str, str],
-        file_funcs: dict[str, FunctionRef],
-    ) -> None:
-        """Resolve a single call site and append every (caller, callee) edge."""
-        caller_ref = self._find_enclosing_func(file_funcs, call["line"])
-        if caller_ref is None:
-            return
-        for callee_ref in self._resolve_callee(call, rel_path, rel_to_abs):
-            self._callees[caller_ref].append(callee_ref)
-            self._callers[callee_ref].append(caller_ref)
-            self._call_edges.append((caller_ref, callee_ref, call["line"]))
+                callee_refs = self._resolve_callee(call, rel_path, rel_to_abs)
+
+                for callee_ref in callee_refs:
+                    self._callees[caller_ref].append(callee_ref)
+                    self._callers[callee_ref].append(caller_ref)
+                    self._call_edges.append((caller_ref, callee_ref, call["line"]))
+
+        self._build_module_to_file_map(rel_to_abs)
+        self._built = True
 
     def _is_excluded(self, path: Path) -> bool:
         return any(part in _EXCLUDE_DIRS for part in path.parts)
+
+    def _collect_import_map(
+        self,
+        rel_path: str,
+        imports: list[dict[str, Any]],
+        rel_to_abs: dict[str, str],
+    ) -> None:
+        name_to_source: dict[str, str] = {}
+        for imp in imports:
+            resolved = imp.get("resolved_path", "")
+            names = imp.get("names", [])
+            is_relative = imp.get("is_relative", False)
+            target_file = self._resolve_import_path(
+                rel_path, resolved, is_relative, rel_to_abs
+            )
+            if target_file:
+                for name in names:
+                    name_to_source[name] = target_file
+        if name_to_source:
+            self._imported_names[rel_path] = name_to_source
+
+    def _resolve_import_path(
+        self,
+        source_rel: str,
+        resolved_path: str,
+        is_relative: bool,
+        rel_to_abs: dict[str, str],
+    ) -> str:
+        if not resolved_path:
+            return ""
+        if is_relative:
+            source_dir = str(Path(source_rel).parent)
+            candidate = str(Path(source_dir) / resolved_path)
+            for ext in ("", ".py", ".js", ".ts", ".jsx", ".tsx"):
+                check = candidate + ext
+                if check in rel_to_abs:
+                    return check
+                idx_path = str(Path(candidate) / "__init__.py")
+                if idx_path in rel_to_abs:
+                    return idx_path
+        else:
+            candidate = resolved_path
+            for ext in ("", ".py", ".js", ".ts", ".jsx", ".tsx"):
+                check = candidate + ext
+                if check in rel_to_abs:
+                    return check
+                idx_path = str(Path(candidate) / "__init__.py")
+                if idx_path in rel_to_abs:
+                    return idx_path
+        return ""
+
+    def _build_module_to_file_map(self, rel_to_abs: dict[str, str]) -> None:
+        for rel_path in rel_to_abs:
+            p = Path(rel_path)
+            stem = p.stem
+            if stem == "__init__":
+                module_name = str(p.parent).replace("/", ".").replace("\\", ".")
+            else:
+                module_name = (
+                    str(p.with_suffix("")).replace("/", ".").replace("\\", ".")
+                )
+            self._module_to_file[module_name] = rel_path
 
     def _find_enclosing_func(
         self,
         file_funcs: dict[str, FunctionRef],
         call_line: int,
     ) -> FunctionRef | None:
-        """Find the function that contains the given line number."""
+        """Find the function that contains the given line number.
+
+        Uses both start_line and end_line for accurate range containment.
+        Falls back to closest start_line when end_line is unreliable.
+        """
         best: FunctionRef | None = None
+        for ref in file_funcs.values():
+            if ref.start_line <= call_line <= ref.end_line:
+                if best is None or (
+                    (ref.end_line - ref.start_line) < (best.end_line - best.start_line)
+                ):
+                    best = ref
+        if best is not None:
+            return best
         for ref in file_funcs.values():
             if ref.start_line <= call_line:
                 if best is None or ref.start_line > best.start_line:
@@ -657,14 +613,36 @@ class CallGraph:
         source_rel: str,
         rel_to_abs: dict[str, str],
     ) -> list[FunctionRef]:
-        """Resolve a call site to FunctionRef(s) in the project."""
         name = call["name"]
         results: list[FunctionRef] = []
+        seen: set[str] = set()
 
-        candidates = self._func_by_name.get(name, [])
-        if candidates:
-            same_file = [c for c in candidates if c.file_path == source_rel]
-            results.extend(same_file if same_file else candidates)
+        same_file = self._func_by_name.get(name, [])
+        local = [c for c in same_file if c.file_path == source_rel]
+        if local:
+            for c in local:
+                if c.qualified_name() not in seen:
+                    seen.add(c.qualified_name())
+                    results.append(c)
+            return results
+
+        imported_names = self._imported_names.get(source_rel, {})
+        target_file = imported_names.get(name)
+        if target_file:
+            candidates = self._func_by_name.get(name, [])
+            for c in candidates:
+                if c.file_path == target_file and c.qualified_name() not in seen:
+                    seen.add(c.qualified_name())
+                    results.append(c)
+            if results:
+                return results
+
+        if same_file:
+            for c in same_file:
+                if c.qualified_name() not in seen:
+                    seen.add(c.qualified_name())
+                    results.append(c)
+            return results
 
         return results
 
@@ -738,30 +716,65 @@ class CallGraph:
         visited: set[str] = set()
         queue: deque[tuple[FunctionRef, int]] = deque((t, 0) for t in targets)
 
-        # r37df (dogfood): nesting 6 → 4 via early-continue on visited edges.
         while queue:
             current, d = queue.popleft()
             if d >= depth:
                 continue
             for callee in self._callees.get(current, []):
                 key = f"{current.qualified_name()}->{callee.qualified_name()}"
-                if key in visited:
-                    continue
-                visited.add(key)
-                result.append(
-                    {
-                        "caller": current.to_dict(),
-                        "callee": callee.to_dict(),
-                        "depth": d + 1,
-                    }
-                )
-                queue.append((callee, d + 1))
+                if key not in visited:
+                    visited.add(key)
+                    result.append(
+                        {
+                            "caller": current.to_dict(),
+                            "callee": callee.to_dict(),
+                            "depth": d + 1,
+                        }
+                    )
+                    queue.append((callee, d + 1))
         return result
 
     def all_functions(self) -> list[dict[str, Any]]:
         """Return all discovered functions."""
         self.build()
         return [f.to_dict() for f in self._functions]
+
+    def functions_in_file(self, file_path: str) -> list[dict[str, Any]]:
+        """Return all functions defined in the given file."""
+        self.build()
+        return [f.to_dict() for f in self._func_by_file.get(file_path, [])]
+
+    def file_impact(self, file_path: str) -> dict[str, Any]:
+        """Analyze call-graph impact of changes to a file.
+
+        Returns functions defined in the file, their callers (who depends
+        on this file), and their callees (what this file depends on).
+        """
+        self.build()
+        funcs = self._func_by_file.get(file_path, [])
+        upstream: list[dict[str, Any]] = []
+        downstream: list[dict[str, Any]] = []
+        seen_up: set[str] = set()
+        seen_down: set[str] = set()
+        for func in funcs:
+            for caller in self._callers.get(func, []):
+                key = caller.qualified_name()
+                if key not in seen_up:
+                    seen_up.add(key)
+                    upstream.append(caller.to_dict())
+            for callee in self._callees.get(func, []):
+                key = callee.qualified_name()
+                if key not in seen_down:
+                    seen_down.add(key)
+                    downstream.append(callee.to_dict())
+        return {
+            "file": file_path,
+            "function_count": len(funcs),
+            "upstream_count": len(upstream),
+            "downstream_count": len(downstream),
+            "upstream": upstream,
+            "downstream": downstream,
+        }
 
     def summary(self) -> dict[str, Any]:
         """Return call graph summary statistics."""
@@ -775,44 +788,172 @@ class CallGraph:
     def _resolve_targets(
         self, func_name: str, file_path: str | None = None
     ) -> list[FunctionRef]:
-        """Resolve a function name (and optional file) to FunctionRef(s).
-
-        Accepts three forms:
-        - bare name (e.g. ``foo``) — returns all functions with that name.
-        - ``Class.method`` (e.g. ``BaseMCPTool.__init__``) — splits on the
-          last ``.``, looks up ``method``, and filters by ``receiver == Class``.
-          When the qualified form matches no definitions, falls back to the
-          bare name so partial qualifiers (e.g. a stale class prefix) still
-          yield results instead of a silent zero.
-        - file-qualified name via the explicit ``file_path`` argument.
-        """
+        """Resolve a function name (and optional file) to FunctionRef(s)."""
         if file_path:
             qname = f"{file_path}:{func_name}"
             ref = self._func_by_qualified.get(qname)
             if ref:
                 return [ref]
 
-        # Class.method form — split off the receiver prefix.
-        if (
-            "." in func_name
-            and ":" not in func_name
-            and "/" not in func_name
-            and "\\" not in func_name
-        ):
-            receiver, _, suffix = func_name.rpartition(".")
-            suffix_candidates = self._func_by_name.get(suffix, [])
-            qualified = [c for c in suffix_candidates if c.receiver == receiver]
-            if qualified:
-                if file_path:
-                    same = [c for c in qualified if c.file_path == file_path]
-                    return same if same else qualified
-                return qualified
-            # Receiver filter found nothing — fall back to bare suffix below.
-            candidates = suffix_candidates
-        else:
-            candidates = self._func_by_name.get(func_name, [])
-
+        candidates = self._func_by_name.get(func_name, [])
         if file_path:
             same = [c for c in candidates if c.file_path == file_path]
             return same if same else candidates
         return candidates
+
+
+class CachedCallGraph(CallGraph):
+    """
+    CallGraph built from pre-indexed AST cache (SQLite).
+
+    Instead of re-parsing every file, reads function definitions and call
+    edges from the ASTCache SQLite database. Falls back to full parse when
+    the cache is empty or unavailable.
+
+    CodeGraph parity: like CodeGraph's pre-indexed call graph, queries are
+    instant after initial indexing.
+    """
+
+    def __init__(
+        self,
+        project_root: str,
+        cache: Any | None = None,
+        fallback: bool = True,
+    ) -> None:
+        super().__init__(project_root)
+        self._cache = cache
+        self._fallback = fallback
+
+    def build(self) -> None:
+        if self._built:
+            return
+
+        if self._cache is not None:
+            self._build_from_cache()
+        if not self._built and self._fallback:
+            super().build()
+
+    def close(self) -> None:
+        if self._cache is not None and hasattr(self._cache, "close"):
+            self._cache.close()
+
+    def __del__(self) -> None:
+        self.close()
+
+    def _build_from_cache(self) -> None:
+        try:
+            if self._cache is None:
+                return
+            edges = self._cache.get_call_edges()
+            functions = self._cache.get_functions()
+            imports_raw = self._cache.get_imports()
+        except Exception:
+            return
+
+        if not functions and not edges:
+            return
+
+        rel_files: set[str] = set()
+        for func in functions:
+            ref = FunctionRef(
+                file_path=func["file"],
+                name=func["name"],
+                start_line=func["line"],
+                language=func["language"],
+                end_line=func.get("end_line", func["line"]),
+            )
+            self._functions.append(ref)
+            self._func_by_name[func["name"]].append(ref)
+            self._func_by_file[func["file"]].append(ref)
+            qname = ref.qualified_name()
+            self._func_by_qualified[qname] = ref
+            rel_files.add(func["file"])
+
+        module_to_file: dict[str, str] = {}
+        for rel in rel_files:
+            p = Path(rel)
+            stem = p.stem
+            if stem == "__init__":
+                mod = str(p.parent).replace("/", ".").replace("\\", ".")
+            else:
+                mod = str(p.with_suffix("")).replace("/", ".").replace("\\", ".")
+            module_to_file[mod] = rel
+
+        file_import_map: dict[str, dict[str, str]] = {}
+        for file_path, import_texts in imports_raw.items():
+            name_map: dict[str, str] = {}
+            for imp_text in import_texts:
+                parts = imp_text.split()
+                if len(parts) >= 4 and parts[0] == "from":
+                    mod_name = parts[1]
+                    imported_names = [n.strip(",") for n in parts[3:] if n != "import"]
+                    target_file = module_to_file.get(mod_name, "")
+                    if target_file:
+                        for name in imported_names:
+                            name_map[name] = target_file
+                elif len(parts) >= 2 and parts[0] == "import":
+                    mod_name = parts[1].split(".")[0]
+                    target_file = module_to_file.get(mod_name, "")
+                    if target_file:
+                        name_map[mod_name] = target_file
+            if name_map:
+                file_import_map[file_path] = name_map
+
+        for edge in edges:
+            caller_file = edge["caller_file"]
+            caller_candidates = self._func_by_name.get(edge["caller_name"], [])
+            caller_ref = None
+            for c in caller_candidates:
+                if c.file_path == caller_file:
+                    caller_ref = c
+                    break
+            if caller_ref is None and caller_candidates:
+                caller_ref = caller_candidates[0]
+            if caller_ref is None:
+                continue
+
+            callee_name = edge["callee_name"]
+            dot_parts = callee_name.rsplit(".", 1)
+            if len(dot_parts) == 2:
+                base_name = dot_parts[0]
+                callee_name = dot_parts[1]
+            else:
+                base_name = callee_name
+
+            callee_candidates = self._func_by_name.get(callee_name, [])
+            if not callee_candidates:
+                continue
+
+            resolved = self._resolve_callee_from_cache(
+                callee_name, base_name, caller_file, callee_candidates, file_import_map
+            )
+
+            for callee_ref in resolved:
+                self._callees[caller_ref].append(callee_ref)
+                self._callers[callee_ref].append(caller_ref)
+                self._call_edges.append(
+                    (caller_ref, callee_ref, edge.get("callee_line", 0))
+                )
+
+        self._built = True
+
+    def _resolve_callee_from_cache(
+        self,
+        callee_name: str,
+        base_name: str,
+        caller_file: str,
+        candidates: list[FunctionRef],
+        file_import_map: dict[str, dict[str, str]],
+    ) -> list[FunctionRef]:
+        same_file = [c for c in candidates if c.file_path == caller_file]
+        if same_file:
+            return same_file
+
+        imports = file_import_map.get(caller_file, {})
+        target_file = imports.get(base_name) or imports.get(callee_name)
+        if target_file:
+            imported = [c for c in candidates if c.file_path == target_file]
+            if imported:
+                return imported
+
+        return candidates[:1]

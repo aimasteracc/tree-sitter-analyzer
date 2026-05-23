@@ -204,9 +204,12 @@ class LanguageLoader:
             # Set language using the preferred method.
             # r37dg (dogfood): extracted the constructor-fallback branch
             # to ``_bind_parser_language`` so the main path stays flat.
-            parser = self._bind_parser_language(parser, tree_sitter_language, language)
-            if parser is None:
+            bound_parser = self._bind_parser_language(
+                parser, tree_sitter_language, language
+            )
+            if bound_parser is None:
                 return None
+            parser = bound_parser
 
             # Cache and return
             self._parser_cache[language] = parser

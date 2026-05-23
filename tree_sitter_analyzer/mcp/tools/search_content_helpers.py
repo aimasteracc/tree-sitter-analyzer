@@ -62,11 +62,25 @@ TOOL_SCHEMA: dict[str, Any] = {
             "description": "File encoding for ripgrep (e.g. 'utf-8', 'latin1')",
         },
         "follow_symlinks": {"type": "boolean", "default": False},
-        "hidden": {"type": "boolean", "default": False},
+        "hidden": {
+            "type": "boolean",
+            "default": False,
+            "description": (
+                "Search hidden files/directories (rg --hidden). Default: skip them. "
+                "(Previously this flag silently did nothing — see RG_FD_GAP_AUDIT.md.)"
+            ),
+        },
         "no_ignore": {"type": "boolean", "default": False},
         "max_filesize": {"type": "string"},
-        "context_before": {"type": "integer"},
-        "context_after": {"type": "integer"},
+        "context_before": {"type": "integer", "description": "rg -B N"},
+        "context_after": {"type": "integer", "description": "rg -A N"},
+        "context": {
+            "type": "integer",
+            "description": (
+                "Lines of context on BOTH sides (rg -C N). "
+                "Ignored if context_before or context_after is set."
+            ),
+        },
         "max_count": {"type": "integer"},
         "timeout_ms": {"type": "integer"},
         "count_only_matches": {"type": "boolean", "default": False},
@@ -79,6 +93,76 @@ TOOL_SCHEMA: dict[str, Any] = {
             "description": "Return only match count",
         },
         "enable_parallel": {"type": "boolean", "default": True},
+        # rg native power flags (RG_FD_GAP_AUDIT.md). All default to off
+        # so existing callers see identical behavior; agents opt in.
+        "file_types": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": (
+                "rg built-in type filters (-t TYPE). E.g. ['py','rs'] is "
+                "cleaner than -g '*.py' -g '*.rs'. Run `rg --type-list` "
+                "to see the 100+ built-in types."
+            ),
+        },
+        "exclude_types": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "rg type exclusions (-T TYPE). Inverse of file_types.",
+        },
+        "files_with_matches": {
+            "type": "boolean",
+            "default": False,
+            "description": (
+                "Return only filenames that contain a match (rg -l). "
+                "10-100× smaller output than full match content — "
+                "use when you only need 'which files mention X'."
+            ),
+        },
+        "only_matching": {
+            "type": "boolean",
+            "default": False,
+            "description": (
+                "Print only the matched substring (rg -o), one per line. "
+                "Useful for symbol/identifier extraction."
+            ),
+        },
+        "pcre2": {
+            "type": "boolean",
+            "default": False,
+            "description": (
+                "Use PCRE2 engine (rg -P) to enable lookahead/lookbehind, "
+                "named groups, backreferences, and atomic groups. Required for "
+                "regex like (?<!\\.)await\\b."
+            ),
+        },
+        "max_depth": {
+            "type": "integer",
+            "description": "Limit directory recursion depth (rg --max-depth N).",
+        },
+        "sort": {
+            "type": "string",
+            "enum": ["path", "modified", "accessed", "created", "none"],
+            "description": (
+                "Sort result order (rg --sort). 'path' gives deterministic "
+                "output — preferred for test stability and diff-friendly output."
+            ),
+        },
+        "invert_match": {
+            "type": "boolean",
+            "default": False,
+            "description": (
+                "Return lines that do NOT match the pattern (rg -v). "
+                "Pair with files_with_matches to find 'files without X'."
+            ),
+        },
+        "include_stats": {
+            "type": "boolean",
+            "default": False,
+            "description": (
+                "Append rg --stats summary (files searched, bytes scanned, "
+                "duration). Cheap diagnostic for 'did we actually scan what we expected'."
+            ),
+        },
         "output_format": {
             "type": "string",
             "enum": ["json", "toon"],

@@ -159,6 +159,12 @@ def apply_toon_format_to_response(
     so callers can still inspect ``success``/``error``/``file_path`` without
     parsing the TOON blob.
 
+    Also performs the verdict safety-net: if the tool returned a success
+    response without a ``verdict`` field, INFO is injected so agents
+    branching on verdict get a sane default rather than ``None``. Tools
+    that already set verdict are left alone. Pain pass 4: this catches
+    tools added by future contributors who forget the field.
+
     Args:
         result: Original result dictionary from MCP tool
         output_format: Output format ('json' or 'toon')
@@ -166,6 +172,16 @@ def apply_toon_format_to_response(
     Returns:
         Modified result dict with TOON content if requested, otherwise original
     """
+    # Verdict safety-net runs regardless of output_format so JSON callers
+    # also see the default. Only inject when success is True; failure
+    # responses are handled by the explicit ERROR branch in the validator.
+    if (
+        isinstance(result, dict)
+        and result.get("success") is True
+        and "verdict" not in result
+    ):
+        result = {**result, "verdict": "INFO"}
+
     if output_format != "toon":
         return result
 

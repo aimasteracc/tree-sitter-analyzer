@@ -1,0 +1,442 @@
+#!/usr/bin/env python3
+"""
+CodeGraph Impact MCP Tool — Function-level blast radius analysis.
+
+Standalone query tool that answers "what's the blast radius of changing function X?"
+Provides:
+- function_impact: Direct + transitive callers/callees, risk assessment for one function
+- blast_radius: Aggregate impact for a set of functions (or files), with propagation
+- risk_score: Quantified risk assessment (0-100) for modifying a function
+
+Unlike callers/callees tools (direct edges only), this provides transitive reachability,
+risk scoring, and multi-function blast radius aggregation.
+
+CodeGraph parity: equivalent to CodeGraph's impact analysis.
+"""
+
+from __future__ import annotations
+
+from collections import deque
+from typing import Any
+
+from ...call_graph import CachedCallGraph, CallGraph, FunctionRef
+from ...utils import setup_logger
+from .base_tool import BaseMCPTool
+
+logger = setup_logger(__name__)
+
+_MAX_TRANSITIVE = 200
+_MAX_DEPTH = 10
+
+
+def _compute_transitive_callers(
+    graph: CallGraph,
+    func_name: str,
+    file_path: str | None = None,
+    max_depth: int = _MAX_DEPTH,
+) -> list[dict[str, Any]]:
+    targets = graph._resolve_targets(func_name, file_path)
+    visited: set[str] = set()
+    result: list[dict[str, Any]] = []
+    queue: deque[tuple[FunctionRef, int]] = deque((t, 0) for t in targets)
+
+    while queue:
+        current, d = queue.popleft()
+        if d >= max_depth:
+            continue
+        for caller in graph._callers.get(current, []):
+            key = caller.qualified_name()
+            if key not in visited:
+                visited.add(key)
+                entry = caller.to_dict()
+                entry["distance"] = d + 1
+                result.append(entry)
+                queue.append((caller, d + 1))
+                if len(result) >= _MAX_TRANSITIVE:
+                    return result
+    return result
+
+
+def _compute_transitive_callees(
+    graph: CallGraph,
+    func_name: str,
+    file_path: str | None = None,
+    max_depth: int = _MAX_DEPTH,
+) -> list[dict[str, Any]]:
+    targets = graph._resolve_targets(func_name, file_path)
+    visited: set[str] = set()
+    result: list[dict[str, Any]] = []
+    queue: deque[tuple[FunctionRef, int]] = deque((t, 0) for t in targets)
+
+    while queue:
+        current, d = queue.popleft()
+        if d >= max_depth:
+            continue
+        for callee in graph._callees.get(current, []):
+            key = callee.qualified_name()
+            if key not in visited:
+                visited.add(key)
+                entry = callee.to_dict()
+                entry["distance"] = d + 1
+                result.append(entry)
+                queue.append((callee, d + 1))
+                if len(result) >= _MAX_TRANSITIVE:
+                    return result
+    return result
+
+
+def _compute_risk_score(
+    graph: CallGraph,
+    func_name: str,
+    file_path: str | None = None,
+) -> dict[str, Any]:
+    targets = graph._resolve_targets(func_name, file_path)
+    if not targets:
+        return {"score": 0, "level": "unknown", "factors": {}}
+
+    target = targets[0]
+    direct_callers = graph._callers.get(target, [])
+    direct_callees = graph._callees.get(target, [])
+    fan_in = len(direct_callers)
+    fan_out = len(direct_callees)
+    caller_files = {c.file_path for c in direct_callers}
+    callee_files = {c.file_path for c in direct_callees}
+    cross_file_callers = len(caller_files - {target.file_path})
+    cross_file_callees = len(callee_files - {target.file_path})
+
+    score = 0
+    factors: dict[str, Any] = {}
+
+    if fan_in >= 10:
+        score += 35
+    elif fan_in >= 5:
+        score += 20
+    elif fan_in >= 3:
+        score += 10
+    factors["fan_in"] = fan_in
+
+    if cross_file_callers >= 5:
+        score += 25
+    elif cross_file_callers >= 2:
+        score += 15
+    factors["cross_file_callers"] = cross_file_callers
+
+    if fan_out >= 10:
+        score += 20
+    elif fan_out >= 5:
+        score += 10
+    factors["fan_out"] = fan_out
+
+    if cross_file_callees >= 3:
+        score += 15
+    elif cross_file_callees >= 1:
+        score += 5
+    factors["cross_file_callees"] = cross_file_callees
+
+    chain = graph.call_chain(func_name, file_path, depth=5)
+    max_chain_depth = max((e["depth"] for e in chain), default=0)
+    if max_chain_depth >= 4:
+        score += 5
+    factors["max_chain_depth"] = max_chain_depth
+
+    score = min(score, 100)
+
+    if score >= 60:
+        level = "critical"
+    elif score >= 40:
+        level = "high"
+    elif score >= 20:
+        level = "medium"
+    else:
+        level = "low"
+
+    return {
+        "score": score,
+        "level": level,
+        "factors": factors,
+        "function": func_name,
+        "file": target.file_path,
+    }
+
+
+def _blast_radius_for_functions(
+    graph: CallGraph,
+    function_names: list[str],
+    file_path: str | None = None,
+    depth: int = 5,
+) -> dict[str, Any]:
+    all_affected: set[str] = set()
+    propagation_chains: list[dict[str, Any]] = []
+    files_at_risk: dict[str, set[str]] = {}
+
+    for func_name in function_names:
+        targets = graph._resolve_targets(func_name, file_path)
+        for target in targets:
+            start_key = target.qualified_name()
+            all_affected.add(start_key)
+
+            queue: deque[tuple[FunctionRef, int]] = deque([(target, 0)])
+            visited: set[str] = {start_key}
+
+            while queue:
+                current, d = queue.popleft()
+                if d >= depth:
+                    continue
+                for caller in graph._callers.get(current, []):
+                    key = caller.qualified_name()
+                    if key not in visited:
+                        visited.add(key)
+                        all_affected.add(key)
+                        files_at_risk.setdefault(caller.file_path, set()).add(
+                            caller.name
+                        )
+                        propagation_chains.append(
+                            {
+                                "from": current.to_dict(),
+                                "to": caller.to_dict(),
+                                "direction": "upstream",
+                                "depth": d + 1,
+                            }
+                        )
+                        queue.append((caller, d + 1))
+
+                for callee in graph._callees.get(current, []):
+                    key = callee.qualified_name()
+                    if key not in visited:
+                        visited.add(key)
+                        all_affected.add(key)
+                        files_at_risk.setdefault(callee.file_path, set()).add(
+                            callee.name
+                        )
+                        propagation_chains.append(
+                            {
+                                "from": current.to_dict(),
+                                "to": callee.to_dict(),
+                                "direction": "downstream",
+                                "depth": d + 1,
+                            }
+                        )
+                        queue.append((callee, d + 1))
+
+    return {
+        "seed_functions": function_names,
+        "total_affected_functions": len(all_affected),
+        "total_files_at_risk": len(files_at_risk),
+        "files_at_risk": {
+            f: sorted(funcs) for f, funcs in sorted(files_at_risk.items())
+        },
+        "propagation_chains": propagation_chains[:100],
+        "propagation_truncated": len(propagation_chains) > 100,
+    }
+
+
+class CodeGraphImpactTool(BaseMCPTool):
+    """MCP Tool for function-level blast radius analysis (CodeGraph parity)."""
+
+    def __init__(self, project_root: str | None = None) -> None:
+        self._call_graph: CallGraph | None = None
+        super().__init__(project_root)
+
+    def _on_project_root_changed(self, project_root: str | None) -> None:
+        self._call_graph = None
+
+    def _try_get_cache(self) -> Any:
+        try:
+            from ...ast_cache import ASTCache
+
+            if self.project_root is None:
+                return None
+            cache = ASTCache(self.project_root)
+            stats = cache.get_stats()
+            if stats.get("total_files", 0) > 0:
+                return cache
+            cache.close()
+        except Exception:  # nosec B110
+            pass
+        return None
+
+    def _get_call_graph(self) -> CallGraph:
+        if self._call_graph is None:
+            if not self.project_root:
+                raise ValueError("Project root not set. Call set_project_path first.")
+            cache = self._try_get_cache()
+            if cache is not None:
+                self._call_graph = CachedCallGraph(self.project_root, cache=cache)
+            else:
+                self._call_graph = CallGraph(self.project_root)
+        return self._call_graph
+
+    def get_tool_definition(self) -> dict[str, Any]:
+        return {
+            "name": "codegraph_impact",
+            "description": (
+                "Function-level blast radius analysis (CodeGraph parity). "
+                "Modes: "
+                "function_impact (transitive callers/callees + risk for one function), "
+                "blast_radius (aggregate impact for multiple functions), "
+                "risk_score (quantified 0-100 risk for modifying a function). "
+                "Unlike callers/callees (direct edges), provides transitive "
+                "reachability and risk scoring. "
+                "No other built-in tool provides blast radius analysis."
+            ),
+            "inputSchema": self.get_tool_schema(),
+        }
+
+    def get_tool_schema(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "mode": {
+                    "type": "string",
+                    "enum": ["function_impact", "blast_radius", "risk_score"],
+                    "description": (
+                        "Analysis mode: function_impact (transitive callers/callees), "
+                        "blast_radius (multi-function aggregate), "
+                        "risk_score (0-100 risk score)"
+                    ),
+                    "default": "function_impact",
+                },
+                "function_name": {
+                    "type": "string",
+                    "description": "Target function name (required for function_impact and risk_score)",
+                },
+                "function_names": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of function names for blast_radius mode",
+                },
+                "file_path": {
+                    "type": "string",
+                    "description": "Optional file path to disambiguate overloaded functions",
+                },
+                "depth": {
+                    "type": "integer",
+                    "description": "Max transitive depth (default: 5)",
+                    "default": 5,
+                },
+                "output_format": {
+                    "type": "string",
+                    "enum": ["json", "toon"],
+                    "description": "Output format: 'toon' (default, token-efficient) or 'json'",
+                    "default": "toon",
+                },
+            },
+            "required": ["mode"],
+            "additionalProperties": False,
+        }
+
+    def validate_arguments(self, arguments: dict[str, Any]) -> bool:
+        mode = arguments.get("mode", "function_impact")
+        if mode in ("function_impact", "risk_score") and not arguments.get(
+            "function_name"
+        ):
+            raise ValueError(f"function_name is required for mode '{mode}'")
+        if mode == "blast_radius" and not arguments.get("function_names"):
+            raise ValueError("function_names is required for blast_radius mode")
+        return True
+
+    async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        self.validate_arguments(arguments)
+
+        mode = arguments.get("mode", "function_impact")
+        func_name = arguments.get("function_name")
+        file_path = arguments.get("file_path")
+        depth = arguments.get("depth", 5)
+        output_format = arguments.get("output_format", "toon")
+
+        graph = self._get_call_graph()
+        graph.build()
+
+        if mode == "function_impact":
+            if not func_name:
+                raise ValueError("function_name required for function_impact mode")
+            result = self._function_impact(graph, func_name, file_path, depth)
+        elif mode == "blast_radius":
+            result = _blast_radius_for_functions(
+                graph, arguments["function_names"], file_path, depth
+            )
+        elif mode == "risk_score":
+            if not func_name:
+                raise ValueError("function_name required for risk_score mode")
+            result = _compute_risk_score(graph, func_name, file_path)
+        else:
+            raise ValueError(f"Unknown mode: {mode}")
+
+        # pain #10 (dogfood pass 2): codegraph_impact emitted no verdict.
+        # Map the embedded risk level (already computed by _compute_risk_score)
+        # to the canonical agent-facing vocabulary so the tsa-landing /
+        # safe-to-edit gates branch correctly.
+        verdict = _impact_verdict(result)
+        response: dict[str, Any] = {
+            "success": True,
+            "mode": mode,
+            "verdict": verdict,
+            **result,
+        }
+
+        from ..utils.format_helper import apply_toon_format_to_response
+
+        return apply_toon_format_to_response(response, output_format)
+
+    def _function_impact(
+        self,
+        graph: CallGraph,
+        func_name: str,
+        file_path: str | None,
+        depth: int,
+    ) -> dict[str, Any]:
+        direct_callers = graph.callers_of(func_name, file_path)
+        direct_callees = graph.callees_of(func_name, file_path)
+        transitive_callers = _compute_transitive_callers(
+            graph, func_name, file_path, max_depth=depth
+        )
+        transitive_callees = _compute_transitive_callees(
+            graph, func_name, file_path, max_depth=depth
+        )
+        risk = _compute_risk_score(graph, func_name, file_path)
+
+        caller_files = {c.get("file", "") for c in direct_callers}
+        callee_files = {c.get("file", "") for c in direct_callees}
+        targets = graph._resolve_targets(func_name, file_path)
+        self_file = targets[0].file_path if targets else ""
+        cross_file_callers = len(caller_files - {self_file})
+        cross_file_callees = len(callee_files - {self_file})
+
+        return {
+            "function": func_name,
+            "file": self_file,
+            "direct_callers": direct_callers,
+            "direct_callees": direct_callees,
+            "transitive_callers": transitive_callers,
+            "transitive_callees": transitive_callees,
+            "direct_caller_count": len(direct_callers),
+            "direct_callee_count": len(direct_callees),
+            "transitive_caller_count": len(transitive_callers),
+            "transitive_callee_count": len(transitive_callees),
+            "cross_file_caller_files": cross_file_callers,
+            "cross_file_callee_files": cross_file_callees,
+            "risk": risk,
+        }
+
+
+def _impact_verdict(result: dict[str, Any]) -> str:
+    """Map embedded risk level to canonical verdict.
+
+    The shape varies between modes — function_impact embeds a ``risk``
+    dict, risk_score IS the risk dict itself, blast_radius has its own
+    risk summary. We read whichever shape we got.
+    """
+    risk = result.get("risk", result)
+    level = risk.get("level") if isinstance(risk, dict) else None
+    if level == "unknown":
+        # _compute_risk_score returns unknown when the symbol isn't in the
+        # call graph at all — agents should treat this as NOT_FOUND so they
+        # don't act on stale assumptions.
+        return "NOT_FOUND"
+    if level == "high":
+        return "CAUTION"
+    if level == "medium":
+        return "REVIEW"
+    if level == "low":
+        return "INFO"
+    return "INFO"

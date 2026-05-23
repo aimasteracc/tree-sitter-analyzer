@@ -97,7 +97,7 @@ PYTHON_TEMPLATES = {
     "dictionary_comprehension": "{x: x*2 for x in range(10)}\n",
     "assert_statement": "assert True\n",
     "raise_statement": "raise ValueError('error')\n",
-    "pass_statement": "pass\n",
+    "pass_statement": "pass\n",  # nosec B105 — Python `pass` keyword fixture, not a password
     "break_statement": "while True:\n    break\n",
     "continue_statement": "for i in range(10):\n    continue\n",
     "global_statement": "global x\n",
@@ -324,7 +324,9 @@ def generate_corpus_by_category(language: str) -> dict[str, str]:
             code = generate_minimal_code_for_node_type(language, node_type)
             if code:
                 # 添加注释标记节点类型（使用正确的注释语法）
-                code_snippets.append(f"{comment_prefix} Node type: {node_type}\n{code}\n")
+                code_snippets.append(
+                    f"{comment_prefix} Node type: {node_type}\n{code}\n"
+                )
 
         if code_snippets:
             # 组合成一个文件

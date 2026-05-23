@@ -84,9 +84,7 @@ def sanitize_message(text: str, project_root: str | None = None) -> str:
     return _ABSOLUTE_PATH_RE.sub(_replace, text)
 
 
-def sanitize_exception(
-    exc: BaseException, project_root: str | None = None
-) -> str:
+def sanitize_exception(exc: BaseException, project_root: str | None = None) -> str:
     """Build a sanitised error string from an exception.
 
     Format: ``"<ExcClass>: <sanitised message>"``. The class name is kept

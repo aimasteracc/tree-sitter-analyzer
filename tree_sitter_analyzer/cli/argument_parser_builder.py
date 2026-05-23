@@ -270,6 +270,61 @@ def _add_mcp_equivalent_options(parser: argparse.ArgumentParser) -> None:
     _add_mcp_health_options(parser)
     _add_mcp_change_options(parser)
     _add_mcp_analysis_options(parser)
+    _add_mcp_constraints_options(parser)
+    # consolidated-only families (ported during merge of feat/autonomous-dev)
+    _add_trace_impact_options(parser)
+    _add_environment_probe_options(parser)
+    _add_modification_guard_options(parser)
+    _add_decision_journal_options(parser)
+    _add_batch_search_options(parser)
+
+
+def _add_mcp_constraints_options(parser: argparse.ArgumentParser) -> None:
+    """Add constraint-DSL flags (Feature 3 — check_constraints MCP parity)."""
+    parser.add_argument(
+        "--check-constraints",
+        action="store_true",
+        help=(
+            "Evaluate architectural-constraints.yml against the cached call "
+            "graph; returns violations + UNSAFE/CAUTION/SAFE verdict"
+        ),
+    )
+    parser.add_argument(
+        "--constraint-file",
+        metavar="PATH",
+        default=None,
+        help=(
+            "Path to a constraint YAML file (overrides default discovery of "
+            "architectural-constraints.yml under --project-root)"
+        ),
+    )
+    parser.add_argument(
+        "--no-constraints",
+        action="store_true",
+        default=False,
+        help=(
+            "Opt out of constraint auto-evaluation for tools that bundle it "
+            "(safe_to_edit, change_impact)"
+        ),
+    )
+    parser.add_argument(
+        "--severity-min",
+        choices=["error", "warn", "info"],
+        default="warn",
+        help=(
+            "Minimum severity to include for --check-constraints (default: "
+            "warn — suppresses info-level rules)"
+        ),
+    )
+    parser.add_argument(
+        "--constraint-path-filter",
+        default="",
+        metavar="GLOB",
+        help=(
+            "Optional fnmatch-style glob applied to caller_file for "
+            "--check-constraints (e.g. 'mcp/**')"
+        ),
+    )
 
 
 def _add_agent_skills_options(parser: argparse.ArgumentParser) -> None:
@@ -371,34 +426,7 @@ def _add_mcp_change_options(parser: argparse.ArgumentParser) -> None:
 
 
 def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
-    """Add dependency, refactor, and context MCP mirror flags.
-
-    r37ap (dogfood): the project's own ``--code-patterns`` tool flagged
-    this function as a 253-line ``long_method`` smell. Split into 13
-    small helpers grouped by MCP mirror surface — each one is now a
-    single-purpose ``parser.add_argument`` block that maps onto one
-    MCP tool family. The dispatcher below keeps the call order intact
-    so argparse-defined defaults / nargs are byte-equivalent.
-    """
-    _add_parser_readiness_options(parser)
-    _add_dependencies_option(parser)
-    _add_refactor_and_smart_context_options(parser)
-    _add_symbol_lineage_options(parser)
-    _add_code_patterns_option(parser)
-    _add_call_graph_options(parser)
-    _add_ast_cache_options(parser)
-    _add_min_grade_option(parser)
-    _add_detect_routes_options(parser)
-    _add_trace_impact_options(parser)
-    _add_environment_probe_options(parser)
-    _add_modification_guard_options(parser)
-    _add_batch_search_options(parser)
-    _add_ast_diff_options(parser)
-    _add_decision_journal_options(parser)
-
-
-def _add_parser_readiness_options(parser: argparse.ArgumentParser) -> None:
-    """``--parser-readiness`` family (parser/plugin readiness advisor)."""
+    """Add dependency, refactor, and context MCP mirror flags."""
     parser.add_argument(
         "--parser-readiness",
         action="store_true",
@@ -413,10 +441,6 @@ def _add_parser_readiness_options(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Include already supported languages in --parser-readiness output",
     )
-
-
-def _add_dependencies_option(parser: argparse.ArgumentParser) -> None:
-    """``--dependencies`` (dependency graph analysis)."""
     parser.add_argument(
         "--dependencies",
         nargs="?",
@@ -427,10 +451,6 @@ def _add_dependencies_option(parser: argparse.ArgumentParser) -> None:
             "(summary, file_deps, blast_radius, cycles; full aliases summary)"
         ),
     )
-
-
-def _add_refactor_and_smart_context_options(parser: argparse.ArgumentParser) -> None:
-    """``--refactor`` / ``--smart-context`` (file-level analysis MCP mirrors)."""
     parser.add_argument(
         "--refactor",
         action="store_true",
@@ -441,10 +461,6 @@ def _add_refactor_and_smart_context_options(parser: argparse.ArgumentParser) -> 
         action="store_true",
         help="One-call file profile: health, exports, structure, deps, edit risk",
     )
-
-
-def _add_symbol_lineage_options(parser: argparse.ArgumentParser) -> None:
-    """``--symbol-lineage`` family (definitions + callers + risk)."""
     parser.add_argument(
         "--symbol-lineage",
         metavar="SYMBOL",
@@ -456,19 +472,11 @@ def _add_symbol_lineage_options(parser: argparse.ArgumentParser) -> None:
         default=3,
         help="Max dependency graph depth for --symbol-lineage (1-5, default: 3)",
     )
-
-
-def _add_code_patterns_option(parser: argparse.ArgumentParser) -> None:
-    """``--code-patterns`` (anti-pattern / code smell / security smell detector)."""
     parser.add_argument(
         "--code-patterns",
         action="store_true",
         help="Detect anti-patterns, code smells, and security issues in a file",
     )
-
-
-def _add_call_graph_options(parser: argparse.ArgumentParser) -> None:
-    """``--call-graph`` family (function-level CodeGraph parity)."""
     parser.add_argument(
         "--call-graph",
         nargs="?",
@@ -490,10 +498,6 @@ def _add_call_graph_options(parser: argparse.ArgumentParser) -> None:
         default=5,
         help="Max depth for --call-graph chain mode (default: 5)",
     )
-
-
-def _add_ast_cache_options(parser: argparse.ArgumentParser) -> None:
-    """``--ast-cache`` family (persistent AST cache, CodeGraph parity)."""
     parser.add_argument(
         "--ast-cache",
         action="store_true",
@@ -501,7 +505,18 @@ def _add_ast_cache_options(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--ast-cache-mode",
-        choices=["index", "lookup", "search", "sync", "changes", "stats", "invalidate"],
+        choices=[
+            "index",
+            "lookup",
+            "search",
+            "sync",
+            "changes",
+            "watch_start",
+            "watch_stop",
+            "watch_status",
+            "stats",
+            "invalidate",
+        ],
         default="stats",
         help="AST cache operation mode (default: stats)",
     )
@@ -524,20 +539,90 @@ def _add_ast_cache_options(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Force full re-index with --ast-cache",
     )
-
-
-def _add_min_grade_option(parser: argparse.ArgumentParser) -> None:
-    """``--min-grade`` (filter for ``--project-health`` detail list)."""
+    parser.add_argument(
+        "--watch",
+        action="store_true",
+        help="Start background file watcher for auto-sync (shortcut for --ast-cache --ast-cache-mode watch_start)",
+    )
+    parser.add_argument(
+        "--watch-poll-interval",
+        type=float,
+        default=5.0,
+        help="Poll interval in seconds for --watch (default: 5.0)",
+    )
+    parser.add_argument(
+        "--watch-backend",
+        choices=["poll", "watchdog"],
+        default="poll",
+        help="File watcher backend for --watch (default: poll)",
+    )
+    # Feature 4 (Homeostasis) — health-grade watching daemon. Reuses the
+    # --watch infra but fires alerts when a file's grade drops or crosses
+    # below threshold instead of just re-indexing.
+    parser.add_argument(
+        "--watch-health",
+        action="store_true",
+        help="Start a daemon that watches health grades and alerts on degradation",
+    )
+    parser.add_argument(
+        "--threshold-grade",
+        choices=["A", "B", "C", "D", "F"],
+        default="C",
+        help="Alert threshold grade for --watch-health (default: C)",
+    )
+    parser.add_argument(
+        "--watch-interval",
+        type=int,
+        default=300,
+        help="Polling interval in seconds for --watch-health (default: 300)",
+    )
+    parser.add_argument(
+        "--watch-debounce",
+        type=float,
+        default=5.0,
+        help="Debounce window in seconds for --watch-health (default: 5)",
+    )
+    parser.add_argument(
+        "--notify-channel",
+        default="stdout",
+        help="Comma-separated alert channels: stdout|file|webhook (default: stdout)",
+    )
+    parser.add_argument(
+        "--notify-file",
+        type=str,
+        default=None,
+        help="JSONL log path when --notify-channel includes 'file'",
+    )
+    parser.add_argument(
+        "--notify-webhook",
+        type=str,
+        default=None,
+        help="Webhook URL when --notify-channel includes 'webhook' (post-MVP)",
+    )
+    parser.add_argument(
+        "--on-degradation",
+        type=str,
+        default=None,
+        help="Shell-command template fired on grade drop; tokens: {file} {grade} {previous_grade} {delta_score} {recommendation} {timestamp_iso}",
+    )
+    parser.add_argument(
+        "--watch-cooldown",
+        type=float,
+        default=120.0,
+        help="Per-file cooldown seconds between alerts for --watch-health (default: 120)",
+    )
+    parser.add_argument(
+        "--history-keep",
+        type=int,
+        default=50,
+        help="Number of history entries kept per file in health_score_history (default: 50)",
+    )
     parser.add_argument(
         "--min-grade",
         default="D",
         choices=["A", "B", "C", "D", "F"],
         help="Minimum grade for --project-health detail list (default: D)",
     )
-
-
-def _add_detect_routes_options(parser: argparse.ArgumentParser) -> None:
-    """``--detect-routes`` family (HTTP route detection across frameworks)."""
     parser.add_argument(
         "--detect-routes",
         action="store_true",
@@ -562,6 +647,481 @@ def _add_detect_routes_options(parser: argparse.ArgumentParser) -> None:
         choices=["flask", "django", "fastapi", "express", "spring", "all"],
         default="all",
         help="Framework filter for --detect-routes (default: all)",
+    )
+    parser.add_argument(
+        "--ast-diff",
+        action="store_true",
+        help="Structural AST diff — tree-level code change understanding",
+    )
+    parser.add_argument(
+        "--ast-diff-mode",
+        choices=["diff_files", "diff_strings", "diff_git"],
+        default="diff_files",
+        help="AST diff mode (default: diff_files)",
+    )
+    parser.add_argument(
+        "--ast-diff-old-file",
+        help="Path to old file version for --ast-diff diff_files mode",
+    )
+    parser.add_argument(
+        "--ast-diff-new-file",
+        help="Path to new file version for --ast-diff diff_files mode",
+    )
+    parser.add_argument(
+        "--ast-diff-old-source",
+        help="Old source code string for --ast-diff diff_strings mode",
+    )
+    parser.add_argument(
+        "--ast-diff-new-source",
+        help="New source code string for --ast-diff diff_strings mode",
+    )
+    parser.add_argument(
+        "--ast-diff-file",
+        help="File path for --ast-diff diff_git mode",
+    )
+    parser.add_argument(
+        "--ast-diff-old-ref",
+        default="HEAD~1",
+        help="Old git ref for --ast-diff diff_git mode (default: HEAD~1)",
+    )
+    parser.add_argument(
+        "--ast-diff-new-ref",
+        default="HEAD",
+        help="New git ref for --ast-diff diff_git mode (default: HEAD)",
+    )
+    parser.add_argument(
+        "--ast-diff-language",
+        help="Language override for --ast-diff (auto-detected from file extension if omitted)",
+    )
+    parser.add_argument(
+        "--ast-path",
+        action="store_true",
+        help="AST path/scope navigation — what is at line X? (CodeGraph parity)",
+    )
+    parser.add_argument(
+        "--ast-path-mode",
+        choices=["path", "scope", "outline", "siblings"],
+        default="scope",
+        help="AST path query mode (default: scope)",
+    )
+    parser.add_argument(
+        "--ast-path-line",
+        type=int,
+        help="Target line number for --ast-path path/scope/siblings modes",
+    )
+    parser.add_argument(
+        "--ast-path-depth",
+        type=int,
+        default=3,
+        help="Max outline depth for --ast-path outline mode (default: 3)",
+    )
+    parser.add_argument(
+        "--codegraph-overview",
+        action="store_true",
+        help="Project-wide call graph intelligence: entry points, dead code, hubs, coupling (CodeGraph parity)",
+    )
+    parser.add_argument(
+        "--codegraph-overview-max-entry-points",
+        type=int,
+        default=30,
+        help="Max entry points in --codegraph-overview output (default: 30)",
+    )
+    parser.add_argument(
+        "--codegraph-overview-max-hubs",
+        type=int,
+        default=20,
+        help="Max hub functions in --codegraph-overview output (default: 20)",
+    )
+    parser.add_argument(
+        "--codegraph-overview-max-dead",
+        type=int,
+        default=20,
+        help="Max dead code candidates in --codegraph-overview output (default: 20)",
+    )
+    parser.add_argument(
+        "--codegraph-overview-max-coupled",
+        type=int,
+        default=15,
+        help="Max coupled files in --codegraph-overview output (default: 15)",
+    )
+    parser.add_argument(
+        "--callers",
+        help="Find all functions that call the given function (CodeGraph parity). "
+        "Shorthand for --call-graph callers --call-graph-function",
+    )
+    parser.add_argument(
+        "--codegraph-navigate",
+        metavar="SYMBOL",
+        help="Unified symbol navigation: go-to-def + references + call hierarchy in one call",
+    )
+    parser.add_argument(
+        "--codegraph-navigate-mode",
+        choices=["definition", "references", "hierarchy", "full"],
+        default="full",
+        help="Mode for --codegraph-navigate (default: full)",
+    )
+    parser.add_argument(
+        "--codegraph-navigate-file",
+        help="File path to disambiguate for --codegraph-navigate",
+    )
+    parser.add_argument(
+        "--codegraph-navigate-depth",
+        type=int,
+        default=2,
+        help="Max transitive depth for --codegraph-navigate hierarchy (default: 2)",
+    )
+    # Pain pass 2: 3 new MCP tools (codegraph_impact, codegraph_pr_review,
+    # semantic_classify) need CLI parity to satisfy the contract test.
+    parser.add_argument(
+        "--codegraph-impact",
+        metavar="FUNCTION",
+        help="Function-level blast radius / risk score (CodeGraph parity).",
+    )
+    parser.add_argument(
+        "--codegraph-impact-mode",
+        choices=["function_impact", "blast_radius", "risk_score"],
+        default="function_impact",
+        help="Mode for --codegraph-impact (default: function_impact)",
+    )
+    parser.add_argument(
+        "--codegraph-impact-file",
+        help="File path to disambiguate for --codegraph-impact",
+    )
+    parser.add_argument(
+        "--codegraph-impact-depth",
+        type=int,
+        default=5,
+        help="Max transitive depth for --codegraph-impact (default: 5)",
+    )
+    parser.add_argument(
+        "--pr-review",
+        nargs="?",
+        const="diff",
+        choices=["diff", "staged", "branch"],
+        help="AI-powered PR review (AST diff + semantic classify + call graph).",
+    )
+    parser.add_argument(
+        "--semantic-classify",
+        nargs="?",
+        const="classify_file",
+        choices=["classify_file", "classify_string"],
+        help="Semantic change classification (api_change/refactor/feature/...).",
+    )
+    parser.add_argument(
+        "--callers-file",
+        help="File path to disambiguate overloaded functions for --callers",
+    )
+    parser.add_argument(
+        "--callees",
+        help="Find all functions called by the given function (CodeGraph parity). "
+        "Shorthand for --call-graph callees --call-graph-function",
+    )
+    parser.add_argument(
+        "--callees-file",
+        help="File path to disambiguate overloaded functions for --callees",
+    )
+    parser.add_argument(
+        "--call-path",
+        nargs="?",
+        const="bidirectional",
+        choices=["forward", "backward", "bidirectional"],
+        help="Find execution paths between two functions via BFS on call edges (CodeGraph parity). "
+        "Direction: forward, backward, or bidirectional (default)",
+    )
+    parser.add_argument(
+        "--call-path-source",
+        help="Source function name for --call-path (required)",
+    )
+    parser.add_argument(
+        "--call-path-target",
+        help="Target function name for --call-path (required)",
+    )
+    parser.add_argument(
+        "--call-path-source-file",
+        help="File path to disambiguate source function for --call-path",
+    )
+    parser.add_argument(
+        "--call-path-target-file",
+        help="File path to disambiguate target function for --call-path",
+    )
+    parser.add_argument(
+        "--call-path-max-depth",
+        type=int,
+        default=10,
+        help="Max BFS depth for --call-path (default: 10)",
+    )
+    parser.add_argument(
+        "--call-path-max-paths",
+        type=int,
+        default=5,
+        help="Max number of paths for --call-path (default: 5)",
+    )
+    parser.add_argument(
+        "--import-graph",
+        action="store_true",
+        help="File-level import dependency graph (CodeGraph parity)",
+    )
+    parser.add_argument(
+        "--import-graph-mode",
+        choices=["summary", "deps", "dependents", "blast_radius", "cycles", "coupling"],
+        default="summary",
+        help="Mode for --import-graph (default: summary)",
+    )
+    parser.add_argument(
+        "--import-graph-file",
+        help="File path for --import-graph deps/dependents/blast_radius modes",
+    )
+    parser.add_argument(
+        "--import-graph-max-depth",
+        type=int,
+        default=10,
+        help="Max depth for --import-graph blast_radius (default: 10)",
+    )
+    parser.add_argument(
+        "--dead-code",
+        action="store_true",
+        help="Dead code analysis: transitive dead functions, unused imports, unreferenced variables",
+    )
+    parser.add_argument(
+        "--dead-code-mode",
+        choices=["all", "dead_functions", "unused_imports", "variables"],
+        default="all",
+        help="Mode for --dead-code (default: all)",
+    )
+    parser.add_argument(
+        "--dead-code-include-tests",
+        action="store_true",
+        default=False,
+        help="Include test files in dead code analysis",
+    )
+    parser.add_argument(
+        "--dead-code-max",
+        type=int,
+        default=50,
+        help="Max dead function candidates (default: 50)",
+    )
+    parser.add_argument(
+        "--symbol-search",
+        help="FTS5-powered instant symbol search (CodeGraph parity). "
+        "Use exact name, * wildcards, or ~ fuzzy prefix",
+    )
+    parser.add_argument(
+        "--code-similarity",
+        action="store_true",
+        help="AST-structural clone detection: finds duplicate/near-duplicate functions (CodeGraph parity)",
+    )
+    parser.add_argument(
+        "--code-similarity-mode",
+        choices=["all", "structural", "textual"],
+        default="all",
+        help="Mode for --code-similarity (default: all)",
+    )
+    parser.add_argument(
+        "--code-similarity-min-lines",
+        type=int,
+        default=5,
+        help="Minimum function body lines for --code-similarity (default: 5)",
+    )
+    parser.add_argument(
+        "--code-similarity-min-group",
+        type=int,
+        default=2,
+        help="Minimum clone group size for --code-similarity (default: 2)",
+    )
+    parser.add_argument(
+        "--code-similarity-max-groups",
+        type=int,
+        default=20,
+        help="Max similarity groups for --code-similarity (default: 20)",
+    )
+    parser.add_argument(
+        "--code-similarity-no-cache",
+        action="store_true",
+        help="Skip AST cache and do full project scan for --code-similarity",
+    )
+    parser.add_argument(
+        "--codegraph-sitemap",
+        action="store_true",
+        help="Generate hierarchical project code map: directory→file→class→function (CodeGraph parity)",
+    )
+    parser.add_argument(
+        "--codegraph-sitemap-mode",
+        choices=["full", "api", "module", "flat"],
+        default="full",
+        help="Mode for --codegraph-sitemap (default: full)",
+    )
+    parser.add_argument(
+        "--codegraph-sitemap-language",
+        help="Language filter for --codegraph-sitemap",
+    )
+    parser.add_argument(
+        "--codegraph-sitemap-directory",
+        help="Directory filter for --codegraph-sitemap (relative path)",
+    )
+    parser.add_argument(
+        "--codegraph-sitemap-max-files",
+        type=int,
+        default=200,
+        help="Max files for --codegraph-sitemap (default: 200)",
+    )
+    parser.add_argument(
+        "--codegraph-xref",
+        metavar="SYMBOL",
+        help="Instant cross-reference: definition + callers + callees + import deps "
+        "(CodeGraph parity). Requires ast_cache index.",
+    )
+    parser.add_argument(
+        "--codegraph-xref-mode",
+        choices=["symbol", "file"],
+        default="symbol",
+        help="Mode for --codegraph-xref: symbol or file (default: symbol)",
+    )
+    parser.add_argument(
+        "--codegraph-xref-file",
+        help="File path to disambiguate (symbol mode) or target (file mode)",
+    )
+    parser.add_argument(
+        "--codegraph-complexity-heatmap",
+        nargs="?",
+        const="project",
+        choices=["project", "file", "function"],
+        help="Cyclomatic complexity heatmap (CodeGraph parity). "
+        "project=full heatmap, file=per-file, function=specific function",
+    )
+    parser.add_argument(
+        "--codegraph-complexity-file",
+        help="File path for file/function mode (relative to project root)",
+    )
+    parser.add_argument(
+        "--codegraph-complexity-function",
+        help="Function name for function mode",
+    )
+    parser.add_argument(
+        "--codegraph-complexity-language",
+        help="Language filter for complexity heatmap",
+    )
+    parser.add_argument(
+        "--codegraph-complexity-directory",
+        help="Directory filter for complexity heatmap (relative path)",
+    )
+    parser.add_argument(
+        "--codegraph-complexity-max-files",
+        type=int,
+        default=200,
+        help="Max files to scan in project mode (default: 200)",
+    )
+    parser.add_argument(
+        "--symbol-search-language",
+        help="Language filter for --symbol-search",
+    )
+    parser.add_argument(
+        "--symbol-search-kind",
+        choices=["function", "class", "variable", "import", "any"],
+        default="any",
+        help="Symbol kind filter for --symbol-search (default: any)",
+    )
+    parser.add_argument(
+        "--symbol-search-limit",
+        type=int,
+        default=50,
+        help="Max results for --symbol-search (default: 50)",
+    )
+    parser.add_argument(
+        "--symbol-resolve",
+        metavar="SYMBOL",
+        help="Go-to-definition: find where a symbol is defined (CodeGraph parity). "
+        "Supports dotted names like module.Class.method",
+    )
+    parser.add_argument(
+        "--symbol-resolve-mode",
+        choices=["resolve", "references"],
+        default="resolve",
+        help="Mode for --symbol-resolve: resolve=go-to-def, references=find-all-refs (default: resolve)",
+    )
+    parser.add_argument(
+        "--class-hierarchy",
+        action="store_true",
+        help="Class inheritance hierarchy analysis: subclasses, superclasses, impact (CodeGraph parity)",
+    )
+    parser.add_argument(
+        "--class-hierarchy-mode",
+        choices=["subclasses", "superclasses", "tree", "impact", "all", "summary"],
+        default="summary",
+        help="Mode for --class-hierarchy (default: summary)",
+    )
+    parser.add_argument(
+        "--class-hierarchy-class",
+        help="Target class name for --class-hierarchy subclasses/superclasses/tree/impact modes",
+    )
+    parser.add_argument(
+        "--class-hierarchy-depth",
+        type=int,
+        default=10,
+        help="Max traversal depth for --class-hierarchy subclasses mode (default: 10)",
+    )
+    parser.add_argument(
+        "--dependency-matrix",
+        action="store_true",
+        help="Module coupling analysis: pairwise dependency scores, hotspots, unstable modules (CodeGraph parity)",
+    )
+    parser.add_argument(
+        "--dependency-matrix-mode",
+        choices=["summary", "matrix", "hotspots", "file", "unstable"],
+        default="summary",
+        help="Mode for --dependency-matrix (default: summary)",
+    )
+    parser.add_argument(
+        "--dependency-matrix-file",
+        help="File path for --dependency-matrix file mode",
+    )
+    parser.add_argument(
+        "--dependency-matrix-top-k",
+        type=int,
+        default=10,
+        help="Top-K coupled pairs for --dependency-matrix hotspots mode (default: 10)",
+    )
+    parser.add_argument(
+        "--codegraph-visualize",
+        action="store_true",
+        help="Export call graph as Mermaid flowchart diagram (CodeGraph parity)",
+    )
+    parser.add_argument(
+        "--codegraph-visualize-mode",
+        choices=["full", "file", "function"],
+        default="full",
+        help="Mode for --codegraph-visualize (default: full)",
+    )
+    parser.add_argument(
+        "--codegraph-visualize-file",
+        help="File path for --codegraph-visualize mode=file",
+    )
+    parser.add_argument(
+        "--codegraph-visualize-function",
+        help="Seed function name for --codegraph-visualize mode=function",
+    )
+    parser.add_argument(
+        "--codegraph-visualize-depth",
+        type=int,
+        default=3,
+        help="Max transitive depth for --codegraph-visualize mode=function (default: 3)",
+    )
+    parser.add_argument(
+        "--codegraph-visualize-max-edges",
+        type=int,
+        default=150,
+        help="Max edges to render for --codegraph-visualize (default: 150)",
+    )
+    parser.add_argument(
+        "--codegraph-visualize-direction",
+        choices=["TD", "LR", "BT", "RL"],
+        default="TD",
+        help="Mermaid flowchart direction for --codegraph-visualize (default: TD)",
+    )
+    parser.add_argument(
+        "--dependency-matrix-threshold",
+        type=float,
+        default=0.7,
+        help="Instability threshold for --dependency-matrix unstable mode (default: 0.7)",
     )
 
 
@@ -668,77 +1228,6 @@ def _add_modification_guard_options(parser: argparse.ArgumentParser) -> None:
         help=(
             "Optional source file where the symbol is defined for "
             "--modification-guard (improves accuracy)"
-        ),
-    )
-
-
-def _add_ast_diff_options(parser: argparse.ArgumentParser) -> None:
-    """``--ast-diff`` family (r37fJ CLI-MCP parity for ASTDiffTool).
-
-    CLAUDE.md hard requirement — every MCP tool must have a CLI equivalent.
-    ASTDiffTool compares two versions of a file at the tree level. Three
-    modes: file_revisions (two git refs), working_tree (disk vs ref),
-    strings (two source strings). Each mode needs its own value-bearing
-    args, so we expose them as ``--ast-diff-*`` siblings.
-    """
-    parser.add_argument(
-        "--ast-diff",
-        action="store_true",
-        help=(
-            "AST-level structured diff between two versions of a file. "
-            "Returns added/removed/modified functions, classes, imports. "
-            "Defaults to mode=file_revisions comparing HEAD~1..HEAD; pair "
-            "with --ast-diff-file PATH, or --ast-diff-mode strings + "
-            "--ast-diff-old-source/--ast-diff-new-source/--ast-diff-language."
-        ),
-    )
-    parser.add_argument(
-        "--ast-diff-mode",
-        choices=["file_revisions", "working_tree", "strings"],
-        default="file_revisions",
-        help=(
-            "Diff mode for --ast-diff (default: file_revisions). "
-            "file_revisions: compare two git refs. "
-            "working_tree: compare disk vs a git ref. "
-            "strings: compare two source strings directly."
-        ),
-    )
-    parser.add_argument(
-        "--ast-diff-file",
-        metavar="PATH",
-        help=(
-            "File path to diff for --ast-diff "
-            "(required for mode=file_revisions and mode=working_tree)."
-        ),
-    )
-    parser.add_argument(
-        "--ast-diff-old-ref",
-        metavar="REF",
-        default="HEAD~1",
-        help="Old git ref for --ast-diff (default: HEAD~1).",
-    )
-    parser.add_argument(
-        "--ast-diff-new-ref",
-        metavar="REF",
-        default="HEAD",
-        help="New git ref for --ast-diff (default: HEAD).",
-    )
-    parser.add_argument(
-        "--ast-diff-old-source",
-        metavar="STR",
-        help="Old source string for --ast-diff (required for mode=strings).",
-    )
-    parser.add_argument(
-        "--ast-diff-new-source",
-        metavar="STR",
-        help="New source string for --ast-diff (required for mode=strings).",
-    )
-    parser.add_argument(
-        "--ast-diff-language",
-        metavar="LANG",
-        help=(
-            "Language identifier for --ast-diff (required for mode=strings; "
-            "e.g. 'python', 'javascript', 'go')."
         ),
     )
 

@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from ....project_graph import BlastRadius, DependencyGraph
+from .call_graph_impact import compute_call_graph_impact
 from .change_impact_response import (
     LARGE_DIRTY_DIFF_THRESHOLD,
     AgentSummaryContext,
@@ -24,12 +26,19 @@ from .change_impact_verification import (
     _build_verification_plan,
     _is_docs_only_change,
 )
+from .constraint_violation_query import (
+    constraint_risk_factor,
+    verdict_from_violations,
+    violations_for_files,
+)
 from .test_discovery_stems import related_stem_matches, related_test_stems_for_path
 from .verification_command import (
     DefaultTestCommand,
     build_test_command,
     detect_default_test_command,
 )
+
+logger = logging.getLogger(__name__)
 
 TESTS_TO_RUN_DISPLAY_LIMIT = 30
 FOCUSED_TEST_COMMAND_LIMIT = 20
@@ -274,6 +283,137 @@ def _append_large_dirty_hint(hint: str, changed_count: int) -> str:
     return hint
 
 
+def _ensure_ast_cache(
+    project_root: str | None,
+    changed_files: list[str],
+) -> Any | None:
+    """Return an open ASTCache, auto-indexing if the cache is empty or stale.
+
+    Returns None when project_root is None or indexing fails entirely.
+    The caller is responsible for calling cache.close() when done.
+    """
+    if not project_root or not changed_files:
+        return None
+    try:
+        from ....ast_cache import ASTCache
+
+        cache = ASTCache(project_root)
+        stats = cache.get_stats()
+        if stats.get("total_files", 0) == 0:
+            cache.index_project(max_files=2000)
+        else:
+            from ....incremental_sync import IncrementalSync
+
+            sync = IncrementalSync(cache)
+            changes = sync.get_changes()
+            if changes["new"] or changes["modified"] or changes["deleted"]:
+                sync.sync(max_files=2000)
+        return cache
+    except Exception:
+        logger.debug("AST cache auto-index failed", exc_info=True)
+        return None
+
+
+def _enrich_with_cache_symbols(
+    changed_files: list[str],
+    cache: Any,
+) -> list[dict[str, Any]]:
+    """Enrich changed files with symbol-level detail from the AST cache.
+
+    Returns a list of dicts, one per changed file that has indexed symbols,
+    with keys: file, symbols (list of {name, kind, line}), symbol_count.
+    """
+    if cache is None:
+        return []
+    conn = cache._get_conn()
+    enriched: list[dict[str, Any]] = []
+    for rel in changed_files:
+        try:
+            row = conn.execute(
+                "SELECT symbols_json FROM ast_index WHERE file_path = ?",
+                (rel,),
+            ).fetchone()
+        except Exception:
+            continue
+        if row is None:
+            continue
+        try:
+            import json
+
+            sym_data = json.loads(row["symbols_json"])
+        except Exception:
+            continue
+        symbols = sym_data.get("symbols", [])
+        if not symbols:
+            continue
+        enriched.append(
+            {
+                "file": rel,
+                "symbol_count": len(symbols),
+                "symbols": [
+                    {
+                        "name": s.get("name", s.get("text", "")),
+                        "kind": s.get("kind", "unknown"),
+                        "line": s.get("line", 0),
+                    }
+                    for s in symbols
+                    if s.get("name") or s.get("text")
+                ][:50],
+            }
+        )
+    return enriched
+
+
+def _find_affected_symbols(
+    affected_files: set[str],
+    cache: Any,
+) -> list[dict[str, Any]]:
+    """Look up top-level symbols in affected (dependent) files.
+
+    Returns a list of {file, name, kind} for each file that has symbols
+    indexed in the cache.  Limited to 200 entries to keep the response small.
+    """
+    if cache is None or not affected_files:
+        return []
+    conn = cache._get_conn()
+    results: list[dict[str, Any]] = []
+    for rel in sorted(affected_files):
+        try:
+            row = conn.execute(
+                "SELECT symbols_json FROM ast_index WHERE file_path = ?",
+                (rel,),
+            ).fetchone()
+        except Exception:
+            continue
+        if row is None:
+            continue
+        try:
+            import json
+
+            sym_data = json.loads(row["symbols_json"])
+        except Exception:
+            continue
+        for s in sym_data.get("symbols", []):
+            name = s.get("name") or s.get("text", "")
+            if name and s.get("kind") in (
+                "function",
+                "class",
+                "method",
+                "variable",
+            ):
+                results.append(
+                    {
+                        "file": rel,
+                        "name": name,
+                        "kind": s.get("kind", "unknown"),
+                        "line": s.get("line", 0),
+                    }
+                )
+                if len(results) >= 200:
+                    return results
+    return results
+
+
 def _build_change_impact_result(request: ChangeImpactRequest) -> dict[str, Any]:
     """Build the full change-impact response for changed files."""
     graph = _load_dependency_graph(request.project_root)
@@ -296,6 +436,16 @@ def _build_change_impact_result(request: ChangeImpactRequest) -> dict[str, Any]:
     )
     visible_tests = all_tests[:TESTS_TO_RUN_DISPLAY_LIMIT]
 
+    call_graph_data: dict[str, Any] | None = None
+    if request.project_root and request.changed_files:
+        cg_result = compute_call_graph_impact(
+            request.project_root, request.changed_files
+        )
+        if cg_result is not None:
+            call_graph_data = cg_result.to_dict()
+            if call_graph_data.get("high_risk_functions") and risk == "low":
+                risk = "medium"
+
     agent_summary = build_agent_summary(
         AgentSummaryContext(
             risk=risk,
@@ -308,7 +458,7 @@ def _build_change_impact_result(request: ChangeImpactRequest) -> dict[str, Any]:
         )
     )
 
-    return build_change_impact_response(
+    result = build_change_impact_response(
         ChangeImpactResponseContext(
             request=request,
             risk=risk,
@@ -323,7 +473,266 @@ def _build_change_impact_result(request: ChangeImpactRequest) -> dict[str, Any]:
         )
     )
 
+    if call_graph_data is not None:
+        result["call_graph_impact"] = call_graph_data
+
+    # Read temporal hot-zone risk BEFORE the auto-index re-runs — that
+    # path would call ``_write_activation_for_file`` for any modified
+    # source file and overwrite seeded rows. The verdict bump needs the
+    # CURRENT activation state, not the freshly-recomputed one.
+    result = _attach_hot_zone_risk(result, request)
+
+    cache = _ensure_ast_cache(request.project_root, request.changed_files)
+    try:
+        changed_symbols = _enrich_with_cache_symbols(request.changed_files, cache)
+        if changed_symbols:
+            result["changed_symbols"] = changed_symbols
+            total_syms = sum(f["symbol_count"] for f in changed_symbols)
+            result["changed_symbol_count"] = total_syms
+            for fi in file_impacts:
+                rel = fi.get("file", "")
+                for cs in changed_symbols:
+                    if cs["file"] == rel:
+                        fi["symbols"] = cs["symbols"][:10]
+                        fi["symbol_count"] = cs["symbol_count"]
+                        break
+        affected_symbols = _find_affected_symbols(affected, cache)
+        if affected_symbols:
+            result["affected_symbols"] = affected_symbols
+            result["affected_symbol_count"] = len(affected_symbols)
+    except Exception:
+        logger.debug("AST cache enrichment failed", exc_info=True)
+    finally:
+        if cache is not None:
+            try:
+                cache.close()
+            except Exception:
+                pass
+
+    return _attach_constraint_violations(result, request, affected)
+
+
+# Per Feature 2 spec — symbols modified >= this many times in 30 days are
+# flagged as hot zones, which forces verdict at least CAUTION.
+_HOT_ZONE_THRESHOLD = 5
+
+
+def _attach_hot_zone_risk(
+    result: dict[str, Any],
+    request: ChangeImpactRequest,
+) -> dict[str, Any]:
+    """Decorate the change-impact result with temporal hot-zone risk factors.
+
+    For each changed file we look up its symbols in
+    ``ast_symbol_activation``. Any symbol with ``mod_count_30d >=
+    _HOT_ZONE_THRESHOLD`` is treated as a "hot zone" — editing recently-
+    churning code is higher risk than a stable one-off change.
+
+    Two effects:
+      1. A risk_factors entry containing the substring ``hot zone`` is
+         appended (key is ``factor`` per existing schema; ``reason``
+         carries human-readable detail).
+      2. The verdict is promoted to ``CAUTION`` if it was looser (INFO /
+         REVIEW). Constraint violations may further escalate to UNSAFE
+         later via ``_attach_constraint_violations`` — that path wins.
+    """
+    if not request.changed_files or not request.project_root:
+        result.setdefault("risk_factors", result.get("risk_factors", []))
+        return result
+
+    hot_rows = _hot_zone_symbols_for_files(request.project_root, request.changed_files)
+    existing_factors = list(result.get("risk_factors", []) or [])
+    if not hot_rows:
+        result["risk_factors"] = existing_factors
+        return result
+
+    for row in hot_rows:
+        existing_factors.append(
+            {
+                "factor": "hot_zone",
+                "reason": (
+                    f"hot zone: {row['file_path']} "
+                    f"symbol_id={row['symbol_id']} "
+                    f"modified {row['mod_count_30d']} times in 30 days"
+                ),
+                "severity": "warn",
+                "mod_count_30d": int(row["mod_count_30d"]),
+                "file_path": row["file_path"],
+            }
+        )
+    result["risk_factors"] = existing_factors
+    # Bump verdict — CAUTION wins over INFO / REVIEW. UNSAFE may later
+    # win via constraint-violation escalation; we never downgrade.
+    current = result.get("verdict", "INFO")
+    if current not in ("CAUTION", "UNSAFE"):
+        result["verdict"] = "CAUTION"
+        summary = result.get("agent_summary")
+        if isinstance(summary, dict):
+            summary["verdict"] = "CAUTION"
+    return result
+
+
+def _hot_zone_symbols_for_files(
+    project_root: str,
+    changed_files: list[str],
+) -> list[dict[str, Any]]:
+    """Return per-symbol activation rows above the hot-zone threshold.
+
+    Reads ``ast_symbol_activation`` from the project's cache DB; returns
+    [] on missing table / missing DB so the gate tool keeps working on
+    fresh repos. Each row carries ``symbol_id``, ``file_path``, and
+    ``mod_count_30d``.
+    """
+    if not changed_files:
+        return []
+    db_path = Path(project_root) / ".ast-cache" / "index.db"
+    if not db_path.is_file():
+        return []
+
+    placeholders = ",".join(["?"] * len(changed_files))
+    # placeholders is constructed from `?` literals only — values flow through
+    # parameterized binds below, so the f-string is safe.
+    sql = (
+        "SELECT symbol_id, file_path, mod_count_30d "  # nosec B608
+        "FROM ast_symbol_activation "
+        f"WHERE file_path IN ({placeholders}) "
+        "AND mod_count_30d >= ? "
+        "ORDER BY mod_count_30d DESC"
+    )
+    import sqlite3
+
+    conn: sqlite3.Connection | None = None
+    try:
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(sql, [*changed_files, _HOT_ZONE_THRESHOLD]).fetchall()
+        return [dict(r) for r in rows]
+    except sqlite3.OperationalError as exc:
+        logger.debug("hot zone lookup failed: %s", exc)
+        return []
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:  # noqa: BLE001
+                pass
+
+
+def _attach_constraint_violations(
+    result: dict[str, Any],
+    request: ChangeImpactRequest,
+    affected: set[str],
+) -> dict[str, Any]:
+    """Decorate the change-impact result with persisted constraint violations.
+
+    Two effects (per Feature 3 spec):
+
+    1. Always add a ``constraint_violations`` field (possibly empty)
+       so agent callers can branch on its presence rather than catching
+       KeyError. Cheap to compute on a fresh repo: the lookup short-
+       circuits when the DB doesn't exist.
+
+    2. When error-severity violations touch the diff (caller_file or
+       callee_file is in changed_files OR the affected blast radius),
+       promote the verdict to UNSAFE. Warn-only → CAUTION. "Diff says
+       SAFE but constraints say UNSAFE" is the failure mode the spec
+       explicitly cannot ship.
+    """
+    candidate_files = set(request.changed_files) | set(affected or set())
+    if not candidate_files:
+        result.setdefault("constraint_violations", [])
+        return result
+
+    rows = violations_for_files(request.project_root, candidate_files)
+    cv_payload = [constraint_risk_factor(r) for r in rows]
+    result["constraint_violations"] = cv_payload
+
+    new_verdict = verdict_from_violations(rows)
+    if new_verdict is not None:
+        result["verdict"] = new_verdict
+        summary = result.get("agent_summary")
+        if isinstance(summary, dict):
+            summary["verdict"] = new_verdict
+    return result
+
 
 _build_no_changes_result = build_no_changes_result
 _build_agent_summary = build_agent_summary
 _build_change_impact_response = build_change_impact_response
+
+
+def _classify_changed_files(
+    changed_files: list[str],
+    project_root: str | None,
+) -> list[dict[str, Any]]:
+    """Run semantic_classify over a list of changed files; best-effort.
+
+    Used by change_impact to attach a per-file semantic_change summary when
+    callers opt in. Returns an empty list when:
+      - no files provided
+      - project_root is None (we need it to git-show old sources)
+      - any individual file fails to classify (we skip, don't raise)
+
+    Each result row mirrors the SemanticClassifyTool response shape so
+    downstream agents can branch on the same keys (dominant_category,
+    risk_level, change_count).
+    """
+    if not changed_files or not project_root:
+        return []
+
+    try:
+        from ....ast_diff import ASTDiffer
+        from ....project_graph import _language_from_ext
+        from ....semantic_change_classifier import SemanticChangeClassifier
+    except Exception:
+        # If any of the required modules can't be imported (e.g. in a
+        # bare-minimum install), degrade silently to "no semantic data".
+        return []
+
+    differ = ASTDiffer()
+    results: list[dict[str, Any]] = []
+    for file_path in changed_files:
+        language = _language_from_ext(file_path) or ""
+        if not language:
+            continue
+        try:
+            import subprocess  # nosec B404 - fixed git command
+
+            old_proc = subprocess.run(  # nosec B603,B607
+                ["git", "show", f"HEAD:{file_path}"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
+                cwd=project_root,
+            )
+            old_source = old_proc.stdout if old_proc.returncode == 0 else ""
+            new_path = Path(project_root) / file_path
+            new_source = (
+                new_path.read_text(encoding="utf-8", errors="replace")
+                if new_path.is_file()
+                else ""
+            )
+            diff = differ.diff_strings(
+                old_source=old_source,
+                new_source=new_source,
+                language=language,
+                old_file=file_path,
+                new_file=file_path,
+            )
+            classification = SemanticChangeClassifier(file_path=file_path).classify(
+                diff
+            )
+            class_dict = classification.to_dict()
+            results.append(
+                {
+                    "file": file_path,
+                    "language": language,
+                    "change_count": len(class_dict.get("classifications", [])),
+                    **class_dict,
+                }
+            )
+        except Exception:
+            # One bad file should not poison the whole batch.
+            continue
+    return results

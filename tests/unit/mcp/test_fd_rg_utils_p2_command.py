@@ -408,7 +408,13 @@ class TestBuildRgCommand:
             roots=["/path"],
             files_from=None,
         )
-        assert "-H" in cmd
+        # Pain #27 (2026-05-23): this test used to assert "-H" in cmd because
+        # the implementation passed -H for hidden=True. rg's actual semantic
+        # is -H = --with-filename (default on for multi-file). To search
+        # hidden files you need the LONG form --hidden. The old assertion
+        # was pinning the bug as correct behavior.
+        assert "--hidden" in cmd
+        assert "-H" not in cmd
 
     def test_build_with_no_ignore(self):
         """Test building with no ignore."""

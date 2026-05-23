@@ -340,6 +340,7 @@ def test_no_changes_result_keeps_agent_scope_signal():
     # M5 (round-26): the no-changes shortcut also populates ``summary_line``
     # at both surfaces so chained tools see a stable headline.
     assert result["agent_summary"] == {
+        "verdict": "INFO",
         "risk": "none",
         "scope": "scoped",
         "changed_count": 0,
@@ -388,6 +389,7 @@ def test_agent_summary_only_response_omits_noisy_details():
 
     assert result == {
         "success": True,
+        "verdict": "CAUTION",
         "mode": "diff",
         "scope_paths": [],
         "scope_filtered": False,

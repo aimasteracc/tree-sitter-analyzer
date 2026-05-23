@@ -404,3 +404,57 @@ class TestCodeGraphCallToolToonFormat:
     async def test_toon_format_summary(self, tool):
         result = await tool.execute({"mode": "summary"})
         assert isinstance(result, dict)
+
+
+class TestCodeGraphCallToolFileImpact:
+    def test_validate_file_impact_requires_file_path(self, tool):
+        with pytest.raises(ValueError, match="file_path is required"):
+            tool.validate_arguments({"mode": "file_impact"})
+
+    def test_validate_file_impact_with_file_path(self, tool):
+        assert tool.validate_arguments({"mode": "file_impact", "file_path": "main.py"})
+
+    @pytest.mark.asyncio
+    async def test_file_impact_mode(self, tool):
+        result = await tool.execute(
+            {
+                "mode": "file_impact",
+                "file_path": "main.py",
+                "output_format": "json",
+            }
+        )
+        assert result["success"] is True
+        assert result["mode"] == "file_impact"
+        assert "upstream" in result
+        assert "downstream" in result
+        assert "function_count" in result
+
+    @pytest.mark.asyncio
+    async def test_file_impact_nonexistent(self, tool):
+        result = await tool.execute(
+            {
+                "mode": "file_impact",
+                "file_path": "nonexistent.py",
+                "output_format": "json",
+            }
+        )
+        assert result["success"] is True
+        assert result["function_count"] == 0
+
+    def test_validate_functions_in_file_requires_file_path(self, tool):
+        with pytest.raises(ValueError, match="file_path is required"):
+            tool.validate_arguments({"mode": "functions_in_file"})
+
+    @pytest.mark.asyncio
+    async def test_functions_in_file_mode(self, tool):
+        result = await tool.execute(
+            {
+                "mode": "functions_in_file",
+                "file_path": "main.py",
+                "output_format": "json",
+            }
+        )
+        assert result["success"] is True
+        assert result["mode"] == "functions_in_file"
+        assert "functions" in result
+        assert result["file"] == "main.py"

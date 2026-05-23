@@ -190,25 +190,53 @@ def test_registered_mcp_tools_have_cli_parity() -> None:
         "symbol_lineage": ("main", "--symbol-lineage"),
         "code_patterns": ("main", "--code-patterns"),
         "codegraph_call_graph": ("main", "--call-graph"),
+        "codegraph_callers": ("main", "--call-graph"),
+        "codegraph_callees": ("main", "--call-graph"),
+        "codegraph_symbol_search": ("main", "--symbol-search"),
+        "codegraph_resolve": ("main", "--symbol-resolve"),
         "ast_cache": ("main", "--ast-cache"),
+        "ast_diff": ("main", "--ast-diff"),
+        "codegraph_ast_path": ("main", "--ast-path"),
+        "codegraph_overview": ("main", "--codegraph-overview"),
+        "codegraph_navigate": ("main", "--codegraph-navigate"),
+        "codegraph_impact": ("main", "--codegraph-impact"),
+        "codegraph_pr_review": ("main", "--pr-review"),
+        "semantic_classify": ("main", "--semantic-classify"),
         "detect_routes": ("main", "--detect-routes"),
-        # r37f3 (dogfood): 4 tools newly registered to MCP. Three are paired
-        # with existing CLI flags; ``get_project_summary`` and
-        # ``get_code_outline`` share entry points with the structural commands
-        # (--overview / --structure resp.) so the parity rule maps them onto
-        # the closest CLI surface area until dedicated flags ship.
-        "get_code_outline": ("main", "--structure"),
-        "get_project_summary": ("main", "--overview"),
+        "codegraph_import_graph": ("main", "--import-graph"),
+        "codegraph_dead_code": ("main", "--dead-code"),
+        "codegraph_similarity": ("main", "--code-similarity"),
+        # CodeGraph parity tools registered with codegraph_-prefixed names:
+        # their CLI flags use the unprefixed form (--class-hierarchy,
+        # --dependency-matrix) to keep the user-facing surface short.
+        "codegraph_class_hierarchy": ("main", "--class-hierarchy"),
+        "codegraph_dependency_matrix": ("main", "--dependency-matrix"),
+        # Feature 3 (Constraint DSL): MCP tool ``check_constraints`` ships
+        # with the CLI flag ``--check-constraints`` for CLI/MCP parity.
+        "check_constraints": ("main", "--check-constraints"),
+        # Tools that already had CLI flags but were missing from this
+        # mapping table while the server.py registry was stale. Now that
+        # server.py delegates to the central registry, these come into
+        # scope automatically.
+        "codegraph_call_path": ("main", "--call-path"),
+        "codegraph_xref": ("main", "--codegraph-xref"),
+        "codegraph_sitemap": ("main", "--codegraph-sitemap"),
+        "codegraph_complexity_heatmap": ("main", "--codegraph-complexity-heatmap"),
+        "codegraph_visualize": ("main", "--codegraph-visualize"),
+        # MCP-only tools — registered in the MCP server but intentionally
+        # not exposed as CLI flags yet. Bookkept here so the registry-vs-
+        # mapping contract stays in sync; if/when CLI flags ship for them,
+        # update the second tuple element to the chosen flag.
+        "codegraph_autoindex": ("mcp_only", "—"),
+        "codegraph_full_index": ("mcp_only", "—"),
+        "codegraph_metrics": ("mcp_only", "—"),
+        # consolidated-only tools ported during merge of feat/autonomous-dev
         "trace_impact": ("main", "--trace-impact"),
         "modification_guard": ("main", "--modification-guard"),
-        # r37f4 (dogfood): 3 CLI-only utility tools promoted to MCP. All
-        # three already had main-CLI flags; this just adds MCP exposure so
-        # the parity rule holds in both directions.
         "batch_search": ("main", "--batch-search"),
         "build_project_index": ("main", "--build-project-index"),
         "check_tools": ("main", "--check-tools"),
-        "ast_diff": ("main", "--ast-diff"),  # r37fJ
-        "decision_journal": ("main", "--decision-journal"),  # r37fG
+        "decision_journal": ("main", "--decision-journal"),
     }
 
     tool_names = {name for name, _tool in _create_tool_registry(str(PROJECT_ROOT))[0]}
@@ -229,6 +257,83 @@ def test_registered_mcp_tools_have_cli_parity() -> None:
 
     assert missing_main_flags == []
     assert missing_scripts == []
+
+
+def test_registered_mcp_tools_have_skill_parity() -> None:
+    """Every registered MCP tool must appear in at least one tsa-* skill's
+    ``allowed-tools`` list.
+
+    Skills sit on top of the MCP registry as progressive-disclosure
+    bundles: each skill loads only its own tool definitions on invocation,
+    cutting per-turn token cost vs. exposing all 48 tools every turn. If a
+    new MCP tool ships without being added to any skill, agents lose the
+    discovery + routing path for it. This test enforces the contract.
+
+    Mirrors ``test_registered_mcp_tools_have_cli_parity`` — same idea but
+    for the skill layer instead of the CLI layer.
+    """
+    skills_dir = PROJECT_ROOT / ".claude" / "skills"
+    if not skills_dir.exists():
+        # Skills are an optional layer. If the project hasn't shipped any
+        # skills yet, the contract degrades to "no requirement".
+        return
+
+    tool_re = re.compile(r"^\s*-\s*mcp__tree-sitter-analyzer__([a-z_]+)\s*$")
+    covered: set[str] = set()
+    skill_files = sorted(skills_dir.glob("tsa-*/SKILL.md"))
+    for skill_path in skill_files:
+        in_allowed = False
+        for line in skill_path.read_text(encoding="utf-8").splitlines():
+            stripped = line.rstrip()
+            if stripped.startswith("allowed-tools:"):
+                in_allowed = True
+                continue
+            if in_allowed:
+                # YAML frontmatter ends at the closing `---` or when a new
+                # top-level key starts (no leading space).
+                if stripped == "---":
+                    break
+                if stripped and not stripped.startswith((" ", "\t", "-")):
+                    in_allowed = False
+                    continue
+                match = tool_re.match(line)
+                if match:
+                    covered.add(match.group(1))
+
+    # Use the central registry (``_tool_registry.create_tool_registry``)
+    # as source of truth, not ``server._create_tool_registry`` which is
+    # known to be stale (see Pain pass 2 / pain #26 comments in the
+    # central registry). The skill layer must align with the *canonical*
+    # tool list, not the historical drift in ``server.py``.
+    from tree_sitter_analyzer.mcp._tool_registry import create_tool_registry
+
+    registered = {name for name, _tool in create_tool_registry(str(PROJECT_ROOT))[0]}
+
+    missing_skill_coverage = sorted(registered - covered)
+    typo_in_skill = sorted(covered - registered)
+
+    assert missing_skill_coverage == [], (
+        "These registered MCP tools have NO skill listing them in "
+        "allowed-tools. Add each to the most appropriate tsa-* skill "
+        f"under .claude/skills/: {missing_skill_coverage}"
+    )
+    assert typo_in_skill == [], (
+        "These tools appear in a skill's allowed-tools but are NOT "
+        "registered in the MCP server (likely typo or stale entry): "
+        f"{typo_in_skill}"
+    )
+    # Guard against the skill layer being silently empty if someone moves
+    # the directory: insist on at least the canonical landing skill.
+    assert (skills_dir / "tsa-landing" / "SKILL.md").exists(), (
+        "tsa-landing skill is missing — the cold-start landing skill is "
+        "the entry point every other skill builds on."
+    )
+    assert len(skill_files) >= 8, (
+        f"Expected at least 8 tsa-* skills, found {len(skill_files)}. The "
+        "10-skill design exists so each skill stays under 12 tools — "
+        "collapsing to fewer skills defeats the progressive-disclosure "
+        "token savings."
+    )
 
 
 def test_agent_docs_require_change_impact_verification_command() -> None:
@@ -279,29 +384,12 @@ PLUGINS_DIR = PROJECT_ROOT / "tree_sitter_analyzer" / "languages"
 
 
 def _discover_plugin_files() -> list[tuple[str, Path]]:
-    """Return [(language_name, path), ...] for all *live* plugin files.
-
-    When both ``<lang>_plugin.py`` and ``<lang>_plugin/`` exist
-    side-by-side, Python imports the package and the bare ``.py`` becomes
-    dead code. The package's ``plugin.py`` is the source of truth for the
-    loaded behaviour, so we skip the zombie wrapper when scanning for
-    contract violations.
-    """
-    # First pass: which package-form plugins are present?
-    package_langs: set[str] = set()
-    for p in PLUGINS_DIR.iterdir():
-        if p.is_dir() and p.name.endswith("_plugin"):
-            if (p / "plugin.py").exists():
-                package_langs.add(p.name)
-
+    """Return [(language_name, path), ...] for all plugin files."""
     result = []
     for p in sorted(PLUGINS_DIR.iterdir()):
         if p.name.startswith("_") or p.name.startswith(".") or p.name == "__init__.py":
             continue
         if p.is_file() and p.suffix == ".py" and p.name.endswith("_plugin.py"):
-            if p.stem in package_langs:
-                # Zombie wrapper — Python imports the package over this file.
-                continue
             result.append((p.stem.replace("_plugin", ""), p))
         elif p.is_dir() and p.name.endswith("_plugin"):
             plugin_py = p / "plugin.py"
@@ -398,22 +486,6 @@ def test_no_new_single_file_plugins_in_languages_root() -> None:
         "rust_plugin.py",
         "swift_plugin.py",
         "yaml_plugin.py",
-        # Post-consolidation grandfathered: true single-file plugins
-        # present on main before this contract was introduced. New
-        # languages still go through the package structure; refactor of
-        # these is tracked as a follow-up.
-        "bash_plugin.py",
-        "scala_plugin.py",
-        "json_plugin.py",
-        # Zombie wrapper files left from the package refactor: Python
-        # imports the matching ``<lang>_plugin/`` package over these
-        # files, so they are effectively dead code. Allowlisted here
-        # until the cleanup PR physically removes them.
-        "javascript_plugin.py",
-        "markdown_plugin.py",
-        "python_plugin.py",
-        "sql_plugin.py",
-        "typescript_plugin.py",
     }
     single_file_plugins = {
         p.name
@@ -434,8 +506,16 @@ def test_analyze_file_uses_create_extractor() -> None:
     ensures each analysis gets a fresh, isolated extractor instance.
     """
     violations = []
-    # Reuse the zombie-aware discovery so we only audit live plugin code.
-    plugin_paths = [path for _lang, path in _discover_plugin_files()]
+    plugin_paths = []
+    for p in sorted(PLUGINS_DIR.iterdir()):
+        if p.name.startswith("_") or p.name.startswith(".") or p.name == "__init__.py":
+            continue
+        if p.is_file() and p.suffix == ".py" and p.name.endswith("_plugin.py"):
+            plugin_paths.append(p)
+        elif p.is_dir() and p.name.endswith("_plugin"):
+            pp = p / "plugin.py"
+            if pp.exists():
+                plugin_paths.append(pp)
     for path in plugin_paths:
         source = path.read_text(encoding="utf-8")
         tree = ast.parse(source)

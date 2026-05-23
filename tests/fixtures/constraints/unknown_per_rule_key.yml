@@ -1,0 +1,16 @@
+# Forward-compatibility fixture for unknown per-rule keys.
+#
+# ``severityy:`` is a typo of ``severity:``. Per-rule unknown keys are
+# warn-and-skip (NOT fatal) so a newer constraints.yml that uses keys an
+# older analyzer hasn't learned yet still loads cleanly — the offending
+# rule is skipped but the rest of the file evaluates. The parser must
+# return zero Constraint instances here (or skip just the broken one) and
+# emit a warning log line naming the unknown key.
+version: 1
+constraints:
+  - id: typo-per-rule
+    severityy: error
+    rule: forbid
+    from: "src/**"
+    to: "vendor/**"
+    reason: "severity is misspelled; rule is skipped."

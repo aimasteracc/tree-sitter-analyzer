@@ -104,7 +104,6 @@ class TestIndexProject:
     def test_index_project_serial_and_parallel_agree(self, tmp_project):
         """PERF-4 correctness: parallel and serial paths must produce
         identical indexed counts and SQLite contents."""
-        import shutil
         from tree_sitter_analyzer.ast_cache import ASTCache
 
         db_serial = tmp_project / "ser.db"
@@ -319,3 +318,98 @@ class TestFtsSearch:
             cache.index_file(f)
             results = cache.fts_search("hello")
             assert len(results) >= 1
+
+
+class TestSQLNativeCallGraph:
+    """Tests for query_callers / query_callees SQL-native methods."""
+
+    @pytest.fixture
+    def call_project(self, tmp_path):
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "a.py").write_text(
+            "from src.b import bar\n\n"
+            "def foo():\n"
+            "    bar()\n"
+            "    baz()\n\n"
+            "def baz():\n"
+            "    pass\n"
+        )
+        (src / "b.py").write_text(
+            "def bar():\n"
+            "    pass\n"
+        )
+        return tmp_path
+
+    @pytest.fixture
+    def call_cache(self, call_project):
+        c = ASTCache(str(call_project))
+        c.index_project()
+        yield c
+        c.close()
+
+    def test_query_callees_finds_direct_calls(self, call_cache):
+        callees = call_cache.query_callees("foo")
+        callee_names = [e["callee_name"] for e in callees]
+        assert "bar" in callee_names
+
+    def test_query_callers_finds_caller(self, call_cache):
+        callers = call_cache.query_callers("bar")
+        caller_names = [e["caller_name"] for e in callers]
+        assert "foo" in caller_names
+
+    def test_query_callers_empty_for_unknown(self, call_cache):
+        callers = call_cache.query_callers("nonexistent_func_xyz")
+        assert callers == []
+
+    def test_query_callees_empty_for_leaf(self, call_cache):
+        callees = call_cache.query_callees("baz")
+        assert callees == []
+
+    def test_query_callees_with_file_filter(self, call_cache):
+        callees = call_cache.query_callees("foo", caller_file="src/a.py")
+        assert len(callees) > 0
+        for e in callees:
+            assert e["caller_file"] == "src/a.py"
+
+    def test_query_callers_with_file_filter(self, call_cache):
+        callers = call_cache.query_callers("bar", callee_file="src/a.py")
+        assert len(callers) > 0
+
+    def test_query_callers_transitive(self, call_cache):
+        callers = call_cache.query_callers("bar", max_depth=3)
+        assert len(callers) >= 1
+
+    def test_query_callees_transitive(self, call_cache):
+        callees = call_cache.query_callees("foo", max_depth=3)
+        assert len(callees) >= 1
+
+    def test_has_call_edges(self, call_cache):
+        assert call_cache.has_call_edges() is True
+
+    def test_has_call_edges_empty_cache(self, tmp_path):
+        c = ASTCache(str(tmp_path))
+        assert c.has_call_edges() is False
+        c.close()
+
+    def test_query_results_have_required_keys(self, call_cache):
+        callees = call_cache.query_callees("foo")
+        if callees:
+            e = callees[0]
+            assert "caller_name" in e
+            assert "caller_file" in e
+            assert "caller_line" in e
+            assert "callee_name" in e
+            assert "callee_file" in e
+            assert "callee_line" in e
+            assert "depth" in e
+
+    def test_depth_1_is_default(self, call_cache):
+        callees = call_cache.query_callees("foo", max_depth=1)
+        for e in callees:
+            assert e["depth"] == 1
+
+    def test_query_callers_returns_depth(self, call_cache):
+        callers = call_cache.query_callers("bar")
+        for e in callers:
+            assert e["depth"] >= 1
