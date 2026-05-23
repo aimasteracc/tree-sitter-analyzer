@@ -2,7 +2,7 @@
 
 ## 硬约束（不可违反）
 
-1. **分支**：所有 commit 必须在 `feat/autonomous-dev`。若 `git branch --show-current` 不是它，先 `git checkout feat/autonomous-dev`，再做其他任何事。
+1. **分支**：所有 commit 必须在 `feat/consolidated`。若 `git branch --show-current` 不是它，先 `git checkout feat/consolidated`，再做其他任何事。
 2. **不 push main**：永远不 push 到 main 分支，不创建 GitHub Release。
 3. **质量门禁**：每个 Sprint commit 前，`ruff check` + `pytest` 必须全过。
 4. **1-in-1-out**：新增 analyzer 必须合并或替换现有的。总 analyzer 数不增长。
@@ -11,8 +11,8 @@
 ## 启动协议（每个 Session 第一步）
 
 ```
-1. git branch --show-current  → 确认 feat/autonomous-dev
-2. git fetch origin && git pull --rebase origin feat/autonomous-dev
+1. git branch --show-current  → 确认 feat/consolidated
+2. git fetch origin && git pull --rebase origin feat/consolidated
 3. 检查 openspec/changes/ 中的待办任务
 4. memory_search(namespace="sprint-history") → 上次进度
 5. memory_search(namespace="wiki-inspiration") → 灵感
@@ -32,7 +32,7 @@
 步骤 4: 创建 OpenSpec change（proposal.md + tasks.md）
 步骤 5: TDD 实现（先写测试 → 实现 → 全过）
 步骤 6: ruff check + pytest 全过
-步骤 7: git add + commit + push origin feat/autonomous-dev
+步骤 7: git add + commit + push origin feat/consolidated
 步骤 8: memory_store 记录 Sprint 历史
 步骤 9: 回到步骤 1
 ```

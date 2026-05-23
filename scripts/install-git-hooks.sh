@@ -3,7 +3,7 @@
 #
 # Pain-05: the repo previously had NO local branch-guard hook. Server-side
 # protection in .github/workflows/branch-protection.yml only covers `main` and
-# can't stop a local `git push --force` from clobbering the autonomous-dev
+# can't stop a local `git push --force` from clobbering the feat/consolidated
 # branch where 24/7 dogfood work happens.
 #
 # Run once per clone:  ./scripts/install-git-hooks.sh
@@ -27,7 +27,6 @@ cat > "$HOOK_PATH" <<'HOOK'
 PROTECTED_BRANCHES=(
     "main"
     "master"
-    "feat/autonomous-dev"
     "feat/consolidated"
 )
 
@@ -79,5 +78,5 @@ chmod +x "$HOOK_PATH"
 echo "✓ Installed pre-push branch-guard hook at:"
 echo "  $HOOK_PATH"
 echo ""
-echo "Protected branches: main, master, feat/autonomous-dev, feat/consolidated"
+echo "Protected branches: main, master, feat/consolidated"
 echo "Override (escape hatch):  GUARD=OFF git push ..."

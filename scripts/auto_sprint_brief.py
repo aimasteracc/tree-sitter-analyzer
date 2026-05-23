@@ -88,7 +88,7 @@ diff <(jq '.summary' /tmp/pre.json) <(jq '.summary' /tmp/post.json) || true
 - One commit per logical change. Conventional Commits prefix (`fix(...)`,
   `feat(...)`, `perf(...)`, `test(...)`, `docs(...)`).
 - Body explains WHY, references the audit ID (e.g. `PERF-4`).
-- Open PR against `feat/autonomous-dev`. Title: `<conv-prefix>: <one line>`.
+- Open PR against `feat/consolidated`. Title: `<conv-prefix>: <one line>`.
 - Body includes: (a) before/after numbers if perf, (b) regression test
   reference, (c) any audit findings to mark as ✅ fixed.
 
