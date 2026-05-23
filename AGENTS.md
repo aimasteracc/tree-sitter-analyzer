@@ -7,9 +7,9 @@
 | Area | Codemap |
 |---|---|
 | High-level topology | [`docs/CODEMAPS/architecture.md`](docs/CODEMAPS/architecture.md) |
-| 23 MCP tools | [`docs/CODEMAPS/mcp-tools.md`](docs/CODEMAPS/mcp-tools.md) |
+| MCP tools (count in codemap) | [`docs/CODEMAPS/mcp-tools.md`](docs/CODEMAPS/mcp-tools.md) |
 | CLI flags / commands | [`docs/CODEMAPS/cli.md`](docs/CODEMAPS/cli.md) |
-| 17 language plugins | [`docs/CODEMAPS/languages.md`](docs/CODEMAPS/languages.md) |
+| Language plugins (count in codemap) | [`docs/CODEMAPS/languages.md`](docs/CODEMAPS/languages.md) |
 | Output formatters | [`docs/CODEMAPS/formatters.md`](docs/CODEMAPS/formatters.md) |
 | Security boundary | [`docs/CODEMAPS/security.md`](docs/CODEMAPS/security.md) |
 
@@ -32,3 +32,22 @@
 - MCP-equivalent CLI handler arguments, required file-path checks, and TOON output are guarded by `tests/unit/cli/test_mcp_commands.py`.
 - When adding or changing an MCP tool, update the CLI path in the same change and run a real CLI smoke test, for example `uv run python -m tree_sitter_analyzer <file> --smart-context --format json`.
 - This keeps MCP-only features from becoming invisible to users, CI, and future agents.
+
+## Codemap-sync mandate
+
+Any change touching one of these registries MUST update the corresponding `docs/CODEMAPS/*.md` in the **same commit**:
+
+| Registry file | Codemap |
+|---|---|
+| `tree_sitter_analyzer/mcp/_tool_registry.py` | `docs/CODEMAPS/mcp-tools.md` |
+| `tree_sitter_analyzer/cli/argument_parser_builder.py` | `docs/CODEMAPS/cli.md` |
+| `tree_sitter_analyzer/languages/<lang>_plugin/*` | `docs/CODEMAPS/languages.md` |
+| `tree_sitter_analyzer/formatters/*` | `docs/CODEMAPS/formatters.md` |
+
+Enforced by:
+- `scripts/codemap-sync-check.sh` (pre-commit hook + Claude PreToolUse soft-nag)
+- `test_registered_mcp_tools_have_codemap_parity` in `tests/unit/test_agent_contracts.py`
+
+Escape hatch for intentional rename/rebase: `SKIP_CODEMAP_SYNC=1 git commit ...`. The pytest test still runs in CI as the final safety net — bypass is local-only.
+
+Why: previously the codemap drifted from 23 → 27 → 30 → 55 tools across 4 months with manual catch-up commits in between. The agent contract is now self-enforcing.

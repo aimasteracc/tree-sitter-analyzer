@@ -258,6 +258,53 @@ def test_registered_mcp_tools_have_cli_parity() -> None:
     assert missing_scripts == []
 
 
+def test_registered_mcp_tools_have_codemap_parity() -> None:
+    """Every registered MCP tool must appear in `docs/CODEMAPS/mcp-tools.md`.
+
+    The codemap is the single source of truth for the agent landing
+    experience — if a tool is registered but absent from the codemap,
+    agents reading AGENTS.md → the codemap will be blind to it. A
+    pre-commit hook (`scripts/codemap-sync-check.sh`) catches this at
+    commit time; this test is the CI safety net for `SKIP_CODEMAP_SYNC=1`
+    bypasses and non-AI commits.
+
+    Mirrors `test_registered_mcp_tools_have_cli_parity` /
+    `_have_skill_parity` — same contract pattern, codemap layer.
+    """
+    codemap_path = PROJECT_ROOT / "docs" / "CODEMAPS" / "mcp-tools.md"
+    assert codemap_path.exists(), (
+        f"{codemap_path} is missing — the codemap is the single source "
+        "of truth for the agent landing experience."
+    )
+
+    # Parse codemap table rows: ``| `tool_name` | ... | ... |``
+    codemap_re = re.compile(r"^\|\s*`([a-z_]+)`\s*\|")
+    codemap_tools: set[str] = set()
+    for line in codemap_path.read_text(encoding="utf-8").splitlines():
+        m = codemap_re.match(line)
+        if m:
+            codemap_tools.add(m.group(1))
+
+    from tree_sitter_analyzer.mcp._tool_registry import create_tool_registry
+
+    registered = {name for name, _tool in create_tool_registry(str(PROJECT_ROOT))[0]}
+
+    missing_in_codemap = sorted(registered - codemap_tools)
+    stale_in_codemap = sorted(codemap_tools - registered)
+
+    assert missing_in_codemap == [], (
+        "These registered MCP tools have NO row in "
+        "docs/CODEMAPS/mcp-tools.md. Add each to the table (group by "
+        "category) and re-stage in the same commit: "
+        f"{missing_in_codemap}"
+    )
+    assert stale_in_codemap == [], (
+        "These codemap rows reference tools NOT in the MCP registry "
+        "(likely typo, removed tool, or pre-mature listing): "
+        f"{stale_in_codemap}"
+    )
+
+
 def test_registered_mcp_tools_have_skill_parity() -> None:
     """Every registered MCP tool must appear in at least one tsa-* skill's
     ``allowed-tools`` list.

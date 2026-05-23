@@ -197,6 +197,43 @@ Done. **Total verify time: ~38s** vs. ~5 min for `uv run pytest -q`.
 That's an **~8× reduction** on the verify step alone, and you still ran
 the tests the AST said were reachable from your edit.
 
+## Phase D — Doc Sync (gate before commit)
+
+If your edits touched any of these surfaces, the corresponding codemap MUST be updated in the SAME commit:
+
+| Surface touched (in `tree_sitter_analyzer/`) | Codemap to refresh |
+|---|---|
+| `mcp/_tool_registry.py` (tool added/removed) | `docs/CODEMAPS/mcp-tools.md` |
+| `cli/argument_parser_builder.py` (new flag/command) | `docs/CODEMAPS/cli.md` |
+| `languages/<lang>_plugin/` (new plugin) | `docs/CODEMAPS/languages.md` |
+| `formatters/` (new formatter) | `docs/CODEMAPS/formatters.md` |
+
+### Step D1 — Detect surface change
+
+```bash
+git diff --cached --name-only
+git diff --cached -- tree_sitter_analyzer/mcp/_tool_registry.py | grep -E '^\+.*\("(codegraph_|[a-z_]+",)'
+```
+
+### Step D2 — If a surface changed, run the codemap skill
+
+Invoke `/update-codemaps` — it scans the registries and regenerates the codemap section. Alternatively dispatch the global `doc-updater` agent for deeper sync (also touches README/AGENTS.md).
+
+### Step D3 — Verify with the hard gate
+
+`scripts/codemap-sync-check.sh` runs automatically as a pre-commit hook and BLOCKs the commit if a surface change is staged but its codemap isn't. To dry-run locally:
+
+```bash
+bash scripts/codemap-sync-check.sh
+echo "exit=$?"  # 0 = pass, 1 = block
+```
+
+Escape hatch (intentional rename without semantic change): `SKIP_CODEMAP_SYNC=1 git commit ...`. The pytest `test_registered_mcp_tools_have_codemap_parity` is the safety net that catches abuse in CI.
+
+### Why Phase D exists
+
+The hook (Phase D's hard gate) only catches what's staged at commit time. Phase D in this skill catches drift earlier — at edit-time the agent already knows which codemap to update, so the user never sees the commit-time block. The hook is the fallback for forgotten cases / non-AI commits.
+
 ## CLI equivalents (when MCP is unavailable)
 
 Run pre-edit (Phase A) in parallel:

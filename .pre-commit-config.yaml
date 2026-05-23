@@ -133,6 +133,16 @@ repos:
         files: ^\.github/workflows/.*\.yml$
         stages: [pre-commit]
 
+  - repo: local
+    hooks:
+      - id: tsa-codemap-sync
+        name: tsa-codemap-sync — block commits with registry change but no codemap update
+        entry: bash scripts/codemap-sync-check.sh
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+        always_run: true
+
 # Configuration
 default_stages: [pre-commit]
 fail_fast: false
