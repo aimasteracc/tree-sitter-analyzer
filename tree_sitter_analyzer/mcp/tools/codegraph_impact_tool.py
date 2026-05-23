@@ -270,14 +270,14 @@ class CodeGraphImpactTool(BaseMCPTool):
         return {
             "name": "codegraph_impact",
             "description": (
-                "Function-level blast radius analysis (CodeGraph parity). "
-                "Modes: "
-                "function_impact (transitive callers/callees + risk for one function), "
-                "blast_radius (aggregate impact for multiple functions), "
-                "risk_score (quantified 0-100 risk for modifying a function). "
-                "Unlike callers/callees (direct edges), provides transitive "
-                "reachability and risk scoring. "
-                "No other built-in tool provides blast radius analysis."
+                "PRIMARY for 'what would break if I change X' / 'how risky is "
+                "modifying X' — try this FIRST before tracing callers manually. "
+                "Function-level blast radius + transitive reachability + 0-100 "
+                "risk score (CodeGraph parity). "
+                "Modes: function_impact (one function), blast_radius "
+                "(aggregate over multiple), risk_score (quantified risk). "
+                "Use codegraph_callers/codegraph_callees only when you need the "
+                "DIRECT-edge view; this tool walks transitive paths."
             ),
             "inputSchema": self.get_tool_schema(),
             "annotations": {

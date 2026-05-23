@@ -70,9 +70,10 @@ class CodeGraphCallersTool(BaseMCPTool):
         return {
             "name": "codegraph_callers",
             "description": (
-                "Find all functions that call the given function (CodeGraph parity). "
-                "Returns caller function name, file, line, and language. "
-                "No other built-in tool provides reverse call lookup."
+                "PRIMARY for 'who calls FUNCTION X' — try this FIRST instead "
+                "of grepping for the function name. "
+                "Reverse call lookup over the indexed call graph (CodeGraph parity). "
+                "Returns caller function name, file, line, and language."
             ),
             "inputSchema": self.get_tool_schema(),
             "annotations": {

@@ -304,13 +304,15 @@ class CodeGraphCallTool(BaseMCPTool):
         return {
             "name": "codegraph_call_graph",
             "description": (
-                "Function-level call graph (CodeGraph parity). Modes: "
-                "callers (who calls X), callees (what does X call), "
-                "chain (transitive call chain), summary (stats), "
-                "all_functions (list all discovered functions). "
-                "No other built-in tool provides function-level call tracking. "
-                "First call on a project builds the full graph (2-5s on "
-                "medium repos); subsequent calls within the session are fast."
+                "[ADVANCED — prefer codegraph_callers / codegraph_callees / "
+                "codegraph_impact for the 90% case.] "
+                "Multi-mode call graph aggregator (CodeGraph parity). "
+                "Modes: callers, callees, chain (transitive), summary (stats), "
+                "all_functions (list every discovered function), "
+                "file_impact, functions_in_file. "
+                "Use only when you need a non-default mode (chain/summary/"
+                "all_functions/file_impact) — for who-calls-X or what-X-calls, "
+                "use the dedicated codegraph_callers / codegraph_callees tools."
             ),
             "inputSchema": self.get_tool_schema(),
             "annotations": {

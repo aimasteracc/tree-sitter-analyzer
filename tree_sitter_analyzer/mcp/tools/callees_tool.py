@@ -205,9 +205,10 @@ class CodeGraphCalleesTool(BaseMCPTool):
         return {
             "name": "codegraph_callees",
             "description": (
-                "Find all functions called by the given function (CodeGraph parity). "
-                "Returns callee function name, file, line, and language. "
-                "No other built-in tool provides forward call lookup."
+                "PRIMARY for 'what does FUNCTION X call' — try this FIRST "
+                "instead of reading X's body to enumerate its callees. "
+                "Forward call lookup over the indexed call graph (CodeGraph parity). "
+                "Returns callee function name, file, line, and language."
             ),
             "inputSchema": self.get_tool_schema(),
             "annotations": {

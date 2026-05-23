@@ -43,11 +43,13 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
         return {
             "name": "codegraph_symbol_search",
             "description": (
-                "Instant FTS5-powered symbol search across pre-indexed project (CodeGraph parity). "
+                "PRIMARY for 'where is X defined' or 'find symbol named X' — "
+                "try this FIRST before reading files, grepping, or chaining "
+                "navigate/resolve. Instant FTS5-powered symbol search across "
+                "the pre-indexed project (CodeGraph parity). "
                 "Finds classes, functions, methods, variables by name in microseconds. "
                 "Supports exact, wildcard (*), and fuzzy (~) matching. "
-                "Requires ast_cache index to be built first (run ast_cache mode=index). "
-                "No other tool provides indexed cross-file symbol lookup."
+                "Requires ast_cache index (run codegraph_autoindex mode=warm)."
             ),
             "inputSchema": self.get_tool_schema(),
             "annotations": {

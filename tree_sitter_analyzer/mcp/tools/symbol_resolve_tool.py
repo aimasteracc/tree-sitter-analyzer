@@ -74,11 +74,13 @@ class CodeGraphSymbolResolveTool(BaseMCPTool):
         return {
             "name": "codegraph_resolve",
             "description": (
-                "Go-to-definition and find-all-references (CodeGraph parity). "
-                "Resolves symbol names to definition locations using pre-indexed AST cache. "
-                "Supports qualified names (module.Class.method). "
-                "Requires ast_cache index to be built first (run ast_cache mode=index). "
-                "No other tool provides symbol definition resolution."
+                "[NICHE — prefer codegraph_navigate which combines this with "
+                "callers/callees in ONE call.] "
+                "Pure go-to-definition / find-all-references (CodeGraph parity). "
+                "Use only when you specifically want JUST the definition or "
+                "JUST the references, without the call hierarchy that "
+                "codegraph_navigate adds. Supports qualified names "
+                "(module.Class.method). Requires ast_cache index."
             ),
             "inputSchema": self.get_tool_schema(),
             "annotations": {
