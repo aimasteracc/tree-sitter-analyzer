@@ -90,9 +90,14 @@ class AgentWorkflowTool(BaseMCPTool):
 
 
 def _build_toon_response(result: dict[str, Any]) -> dict[str, Any]:
-    """Return a compact MCP response when callers request TOON output."""
+    """Return a compact MCP response when callers request TOON output.
+
+    Pain pass 4 (parallel to agent_skills): this stripped ``verdict`` so
+    TOON callers saw it as missing while JSON callers got the real value.
+    """
     return {
         "success": result["success"],
+        "verdict": result.get("verdict", "INFO"),
         "format": "toon",
         "workflow": result["workflow"],
         "workflow_mode": result["workflow_mode"],

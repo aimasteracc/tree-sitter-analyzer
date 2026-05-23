@@ -210,7 +210,12 @@ class AnalyzeScaleTool(BaseMCPTool):
                     f"{file_metrics['total_lines']} lines, "
                     f"~{file_metrics['estimated_tokens']} tokens"
                 )
-
+                # Pain pass 4: check_code_scale lacked verdict — REVIEW
+                # when the file is large (>800 lines is over the project
+                # cap and warrants attention), INFO otherwise. Agents can
+                # branch on it before deciding whether to call deeper tools.
+                lines = file_metrics.get("total_lines", 0) if isinstance(file_metrics, dict) else 0
+                result.setdefault("verdict", "REVIEW" if lines > 800 else "INFO")
                 return apply_toon_format_to_response(result, output_format)
         # Language detection with argument override
 

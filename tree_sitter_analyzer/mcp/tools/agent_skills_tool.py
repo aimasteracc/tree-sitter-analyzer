@@ -93,9 +93,16 @@ class AgentSkillsTool(BaseMCPTool):
 
 
 def _build_toon_response(result: dict[str, Any]) -> dict[str, Any]:
-    """Return a compact MCP response when callers request TOON output."""
+    """Return a compact MCP response when callers request TOON output.
+
+    Pain pass 4: this helper used to strip the ``verdict`` field that
+    ``build_agent_skills_inventory`` adds, so TOON callers saw
+    ``verdict: None`` while JSON callers saw the real value. The contract
+    test caught this at pass-4 audit time.
+    """
     return {
         "success": result["success"],
+        "verdict": result.get("verdict", "INFO"),
         "format": "toon",
         "inventory": result["inventory"],
         "skills_root": result["skills_root"],
