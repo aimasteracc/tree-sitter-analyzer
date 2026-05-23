@@ -32,10 +32,23 @@ from .utils import setup_logger
 logger = setup_logger(__name__)
 
 _EXCLUDE_DIRS = {
-    "node_modules", ".git", "__pycache__", ".venv", "venv",
-    ".tox", ".mypy_cache", ".pytest_cache", ".ruff_cache",
-    "dist", "build", "htmlcov", ".cache", ".eggs",
-    ".idea", ".vscode", ".claude",
+    "node_modules",
+    ".git",
+    "__pycache__",
+    ".venv",
+    "venv",
+    ".tox",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    "dist",
+    "build",
+    "htmlcov",
+    ".cache",
+    ".eggs",
+    ".idea",
+    ".vscode",
+    ".claude",
 }
 
 _KNOWN_ENTRY_PATTERNS = {
@@ -43,12 +56,8 @@ _KNOWN_ENTRY_PATTERNS = {
         r"^(main|__main__|setup|run|app|create_app|wsgi|asgi"
         r"|pytest_configure|unittest_main)$"
     ),
-    "javascript": re.compile(
-        r"^(main|start|bootstrap|run|handler|exports\.default)$"
-    ),
-    "typescript": re.compile(
-        r"^(main|start|bootstrap|run|handler)$"
-    ),
+    "javascript": re.compile(r"^(main|start|bootstrap|run|handler|exports\.default)$"),
+    "typescript": re.compile(r"^(main|start|bootstrap|run|handler)$"),
     "java": re.compile(r"^(main|init|destroy|doGet|doPost|service)$"),
     "go": re.compile(r"^(main|init|TestMain)$"),
     "c": re.compile(r"^(main|WinMain)$"),
@@ -221,8 +230,13 @@ def find_unused_imports(
             ext = p.suffix.lower()
             lang = _language_from_ext(ext)
             if lang and lang in (
-                "python", "javascript", "typescript", "go", "java",
-                "c", "cpp",
+                "python",
+                "javascript",
+                "typescript",
+                "go",
+                "java",
+                "c",
+                "cpp",
             ):
                 source_files.append((p, lang))
         if len(source_files) >= max_files:
@@ -241,7 +255,7 @@ def find_unused_imports(
         source = source_bytes.decode("utf-8", errors="replace")
 
         try:
-            result = parser.parse(source, language)
+            result = parser.parse_code(source, language)
         except Exception:
             continue
         if not result or not result.tree:
@@ -330,7 +344,7 @@ def find_unreferenced_variables(
             continue
 
         try:
-            result = parser.parse(source, language)
+            result = parser.parse_code(source, language)
         except Exception:
             continue
         if not result or not result.tree:
@@ -397,7 +411,9 @@ def _collect_function_body_identifiers(
         new_inside = inside_func or is_func
 
         if new_inside and ntype in (
-            "identifier", "property_identifier", "type_identifier",
+            "identifier",
+            "property_identifier",
+            "type_identifier",
         ):
             text = _node_text(n, source)
             if text:
@@ -448,9 +464,7 @@ def _extract_top_level_variables(
                         if name_node and name_node.type == "identifier":
                             text = _node_text(name_node, source)
                             if text and not text.startswith("_"):
-                                variables.append(
-                                    (text, child.start_point[0] + 1)
-                                )
+                                variables.append((text, child.start_point[0] + 1))
 
     return variables
 

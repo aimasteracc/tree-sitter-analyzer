@@ -57,7 +57,7 @@ def _render_mermaid(
         node_ids.add(dst_id)
 
     if not node_ids:
-        lines.append("    empty[\"No call edges found\"]")
+        lines.append('    empty["No call edges found"]')
         return "\n".join(lines)
 
     id_to_label: dict[str, str] = {}
@@ -97,6 +97,8 @@ class CodeGraphVisualizeTool(BaseMCPTool):
             return self._call_graph
         cache = ensure_indexed(self.project_root)
         if cache is not None:
+            # ensure_indexed only returns non-None when project_root was usable.
+            assert self.project_root is not None
             self._call_graph = CachedCallGraph(self.project_root, cache)
             return self._call_graph
         if self.project_root:
@@ -255,12 +257,14 @@ class CodeGraphVisualizeTool(BaseMCPTool):
                 )
                 if pair not in seen and len(seen) < max_edges:
                     seen.add(pair)
-                    edges.append((
-                        pair[0],
-                        _short_label(caller.name, caller.file_path),
-                        pair[1],
-                        _short_label(func.name, func.file_path),
-                    ))
+                    edges.append(
+                        (
+                            pair[0],
+                            _short_label(caller.name, caller.file_path),
+                            pair[1],
+                            _short_label(func.name, func.file_path),
+                        )
+                    )
         return edges
 
     def _edges_file(
@@ -282,19 +286,27 @@ class CodeGraphVisualizeTool(BaseMCPTool):
                 pair = (fid, cid)
                 if pair not in seen and len(seen) < max_edges:
                     seen.add(pair)
-                    edges.append((
-                        fid, flabel,
-                        cid, _short_label(callee.name, callee.file_path),
-                    ))
+                    edges.append(
+                        (
+                            fid,
+                            flabel,
+                            cid,
+                            _short_label(callee.name, callee.file_path),
+                        )
+                    )
             for caller in cg._callers.get(func, []):
                 cid = _safe_node_id(caller.name, caller.file_path)
                 pair = (cid, fid)
                 if pair not in seen and len(seen) < max_edges:
                     seen.add(pair)
-                    edges.append((
-                        cid, _short_label(caller.name, caller.file_path),
-                        fid, flabel,
-                    ))
+                    edges.append(
+                        (
+                            cid,
+                            _short_label(caller.name, caller.file_path),
+                            fid,
+                            flabel,
+                        )
+                    )
         return edges
 
     def _edges_function(
@@ -338,10 +350,14 @@ class CodeGraphVisualizeTool(BaseMCPTool):
                     pair = (cur_id, cid)
                     if pair not in seen_edges and len(seen_edges) < max_edges:
                         seen_edges.add(pair)
-                        edges.append((
-                            cur_id, cur_label,
-                            cid, _short_label(callee.name, callee.file_path),
-                        ))
+                        edges.append(
+                            (
+                                cur_id,
+                                cur_label,
+                                cid,
+                                _short_label(callee.name, callee.file_path),
+                            )
+                        )
                         queue.append((callee, d + 1))
 
                 for caller in cg._callers.get(current, []):
@@ -349,10 +365,14 @@ class CodeGraphVisualizeTool(BaseMCPTool):
                     pair = (cid, cur_id)
                     if pair not in seen_edges and len(seen_edges) < max_edges:
                         seen_edges.add(pair)
-                        edges.append((
-                            cid, _short_label(caller.name, caller.file_path),
-                            cur_id, cur_label,
-                        ))
+                        edges.append(
+                            (
+                                cid,
+                                _short_label(caller.name, caller.file_path),
+                                cur_id,
+                                cur_label,
+                            )
+                        )
                         if d + 1 < depth:
                             queue.append((caller, d + 1))
 

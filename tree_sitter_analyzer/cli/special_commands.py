@@ -35,6 +35,7 @@ def handle_special_commands(
         lambda: _handle_batch_partial_read(args, context),
         lambda: _handle_health_check(args, context),
         lambda: _handle_batch_metrics(args, context),
+        lambda: _handle_check_constraints(args, context),
         lambda: _handle_mcp_commands(args, context),
         lambda: _validate_partial_read_options(args, context.output_error),
         lambda: _handle_query_language_commands(args, context),
@@ -243,6 +244,31 @@ def _handle_batch_metrics(
         return 0 if result.get("success", False) else 1
     except Exception as exc:
         context.output_error(f"Batch metrics failed: {exc}")
+        return 1
+
+
+def _handle_check_constraints(
+    args: Any,
+    context: SpecialCommandContext,
+) -> int | None:
+    """Run the architectural-constraint DSL evaluator for ``--check-constraints``.
+
+    Lives here (rather than in the MCP_COMMAND_SPECS table) because the
+    CLI surface adds ``--constraint-file PATH`` for dry-running candidate
+    rule files — an override the MCP tool doesn't accept.
+    """
+    if not getattr(args, "check_constraints", False):
+        return None
+    try:
+        from .commands.constraint_check_command import (
+            get_default_project_root,
+            run_check_constraints,
+        )
+
+        project_root = get_default_project_root(args)
+        return run_check_constraints(args, project_root)
+    except Exception as exc:  # noqa: BLE001 — surface to user
+        context.output_error(f"Constraint check failed: {exc}")
         return 1
 
 

@@ -27,6 +27,7 @@ def create_tool_registry(
     from .tools.ast_diff_tool import ASTDiffTool
     from .tools.ast_path_tool import CodeGraphASTPathTool
     from .tools.call_graph_tool import CodeGraphCallTool
+    from .tools.call_path_tool import CodeGraphCallPathTool
     from .tools.callees_tool import CodeGraphCalleesTool
     from .tools.callers_tool import CodeGraphCallersTool
     from .tools.change_impact_tool import ChangeImpactTool
@@ -35,13 +36,13 @@ def create_tool_registry(
     from .tools.code_similarity_tool import CodeGraphSimilarityTool
     from .tools.codegraph_impact_tool import CodeGraphImpactTool
     from .tools.codegraph_navigate_tool import CodeGraphNavigateTool
-    from .tools.codegraph_visualize_tool import CodeGraphVisualizeTool
-    from .tools.constraint_check_tool import ConstraintCheckTool
     from .tools.codegraph_overview_tool import CodeGraphOverviewTool
     from .tools.codegraph_pr_review_tool import CodeGraphPRReviewTool
     from .tools.codegraph_sitemap_tool import CodeGraphSitemapTool
+    from .tools.codegraph_visualize_tool import CodeGraphVisualizeTool
     from .tools.codegraph_xref_tool import CodeGraphXRefTool
     from .tools.complexity_heatmap_tool import CodeGraphComplexityHeatmapTool
+    from .tools.constraint_check_tool import ConstraintCheckTool
     from .tools.dead_code_tool import CodeGraphDeadCodeTool
     from .tools.dependency_analysis_tool import DependencyAnalysisTool
     from .tools.dependency_matrix_tool import CodeGraphDependencyMatrixTool
@@ -84,6 +85,7 @@ def create_tool_registry(
         ("codegraph_call_graph", CodeGraphCallTool(project_root)),
         ("codegraph_callers", CodeGraphCallersTool(project_root)),
         ("codegraph_callees", CodeGraphCalleesTool(project_root)),
+        ("codegraph_call_path", CodeGraphCallPathTool(project_root)),
         ("codegraph_ast_path", CodeGraphASTPathTool(project_root)),
         ("codegraph_symbol_search", CodeGraphSymbolSearchTool(project_root)),
         ("codegraph_resolve", CodeGraphSymbolResolveTool(project_root)),

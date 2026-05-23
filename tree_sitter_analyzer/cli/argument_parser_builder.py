@@ -270,6 +270,55 @@ def _add_mcp_equivalent_options(parser: argparse.ArgumentParser) -> None:
     _add_mcp_health_options(parser)
     _add_mcp_change_options(parser)
     _add_mcp_analysis_options(parser)
+    _add_mcp_constraints_options(parser)
+
+
+def _add_mcp_constraints_options(parser: argparse.ArgumentParser) -> None:
+    """Add constraint-DSL flags (Feature 3 — check_constraints MCP parity)."""
+    parser.add_argument(
+        "--check-constraints",
+        action="store_true",
+        help=(
+            "Evaluate architectural-constraints.yml against the cached call "
+            "graph; returns violations + UNSAFE/CAUTION/SAFE verdict"
+        ),
+    )
+    parser.add_argument(
+        "--constraint-file",
+        metavar="PATH",
+        default=None,
+        help=(
+            "Path to a constraint YAML file (overrides default discovery of "
+            "architectural-constraints.yml under --project-root)"
+        ),
+    )
+    parser.add_argument(
+        "--no-constraints",
+        action="store_true",
+        default=False,
+        help=(
+            "Opt out of constraint auto-evaluation for tools that bundle it "
+            "(safe_to_edit, change_impact)"
+        ),
+    )
+    parser.add_argument(
+        "--severity-min",
+        choices=["error", "warn", "info"],
+        default="warn",
+        help=(
+            "Minimum severity to include for --check-constraints (default: "
+            "warn — suppresses info-level rules)"
+        ),
+    )
+    parser.add_argument(
+        "--constraint-path-filter",
+        default="",
+        metavar="GLOB",
+        help=(
+            "Optional fnmatch-style glob applied to caller_file for "
+            "--check-constraints (e.g. 'mcp/**')"
+        ),
+    )
 
 
 def _add_agent_skills_options(parser: argparse.ArgumentParser) -> None:
@@ -764,6 +813,42 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--callees-file",
         help="File path to disambiguate overloaded functions for --callees",
+    )
+    parser.add_argument(
+        "--call-path",
+        nargs="?",
+        const="bidirectional",
+        choices=["forward", "backward", "bidirectional"],
+        help="Find execution paths between two functions via BFS on call edges (CodeGraph parity). "
+        "Direction: forward, backward, or bidirectional (default)",
+    )
+    parser.add_argument(
+        "--call-path-source",
+        help="Source function name for --call-path (required)",
+    )
+    parser.add_argument(
+        "--call-path-target",
+        help="Target function name for --call-path (required)",
+    )
+    parser.add_argument(
+        "--call-path-source-file",
+        help="File path to disambiguate source function for --call-path",
+    )
+    parser.add_argument(
+        "--call-path-target-file",
+        help="File path to disambiguate target function for --call-path",
+    )
+    parser.add_argument(
+        "--call-path-max-depth",
+        type=int,
+        default=10,
+        help="Max BFS depth for --call-path (default: 10)",
+    )
+    parser.add_argument(
+        "--call-path-max-paths",
+        type=int,
+        default=5,
+        help="Max number of paths for --call-path (default: 5)",
     )
     parser.add_argument(
         "--import-graph",

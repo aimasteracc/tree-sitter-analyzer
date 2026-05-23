@@ -25,6 +25,9 @@ from tree_sitter_analyzer.mcp.tools.ast_path_tool import (
 from tree_sitter_analyzer.mcp.tools.call_graph_tool import (
     CodeGraphCallTool,  # noqa: F401
 )
+from tree_sitter_analyzer.mcp.tools.call_path_tool import (
+    CodeGraphCallPathTool,  # noqa: F401
+)
 from tree_sitter_analyzer.mcp.tools.callees_tool import (
     CodeGraphCalleesTool,  # noqa: F401
 )
@@ -366,6 +369,21 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
         },
     ),
     McpCommandSpec(
+        flag_name="call_path",
+        tool_attr="CodeGraphCallPathTool",
+        label="Find execution paths between two functions (CodeGraph parity)",
+        build_tool_args=lambda args, output_format: {
+            "source_function": getattr(args, "call_path_source", "") or "",
+            "target_function": getattr(args, "call_path_target", "") or "",
+            "source_file": getattr(args, "call_path_source_file", None),
+            "target_file": getattr(args, "call_path_target_file", None),
+            "max_depth": getattr(args, "call_path_max_depth", 10),
+            "max_paths": getattr(args, "call_path_max_paths", 5),
+            "direction": getattr(args, "call_path", "bidirectional") or "bidirectional",
+            "output_format": output_format,
+        },
+    ),
+    McpCommandSpec(
         flag_name="codegraph_overview",
         tool_attr="CodeGraphOverviewTool",
         label="Project-wide call graph intelligence (CodeGraph parity)",
@@ -525,7 +543,8 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
         tool_attr="CodeGraphComplexityHeatmapTool",
         label="Cyclomatic complexity heatmap with risk bands (CodeGraph parity)",
         build_tool_args=lambda args, output_format: {
-            "mode": getattr(args, "codegraph_complexity_heatmap", "project") or "project",
+            "mode": getattr(args, "codegraph_complexity_heatmap", "project")
+            or "project",
             "file_path": getattr(args, "codegraph_complexity_file", None),
             "function_name": getattr(args, "codegraph_complexity_function", None),
             "language": getattr(args, "codegraph_complexity_language", None),
@@ -554,6 +573,20 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
             "file_path": getattr(args, "dependency_matrix_file", None),
             "top_k": getattr(args, "dependency_matrix_top_k", 10),
             "threshold": getattr(args, "dependency_matrix_threshold", 0.7),
+            "output_format": output_format,
+        },
+    ),
+    McpCommandSpec(
+        flag_name="codegraph_visualize",
+        tool_attr="CodeGraphVisualizeTool",
+        label="Mermaid call graph visualization (CodeGraph parity)",
+        build_tool_args=lambda args, output_format: {
+            "mode": getattr(args, "codegraph_visualize_mode", "full") or "full",
+            "file_path": getattr(args, "codegraph_visualize_file", None),
+            "function": getattr(args, "codegraph_visualize_function", None),
+            "depth": getattr(args, "codegraph_visualize_depth", 3),
+            "max_edges": getattr(args, "codegraph_visualize_max_edges", 150),
+            "direction": getattr(args, "codegraph_visualize_direction", "TD") or "TD",
             "output_format": output_format,
         },
     ),
@@ -608,6 +641,7 @@ _TOOL_CLASS_NAMES: frozenset[str] = frozenset(
         "CodeGraphCallTool",
         "CodeGraphCallersTool",
         "CodeGraphCalleesTool",
+        "CodeGraphCallPathTool",
         "CodeGraphOverviewTool",
         "ASTCacheTool",
         "ASTDiffTool",
@@ -629,6 +663,8 @@ _TOOL_CLASS_NAMES: frozenset[str] = frozenset(
         "CodeGraphComplexityHeatmapTool",
         "ClassHierarchyTool",
         "CodeGraphDependencyMatrixTool",
+        "CodeGraphVisualizeTool",
+        "ConstraintCheckTool",
     }
 )
 

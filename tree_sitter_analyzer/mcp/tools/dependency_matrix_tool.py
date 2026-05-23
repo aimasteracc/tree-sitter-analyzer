@@ -127,9 +127,7 @@ class CodeGraphDependencyMatrixTool(BaseMCPTool):
                 "verdict": "INFO",
                 "mode": "matrix",
                 "module_count": len(dm_result.modules),
-                "coupling_pairs": [
-                    e.to_dict() for e in dm_result.coupling_pairs
-                ],
+                "coupling_pairs": [e.to_dict() for e in dm_result.coupling_pairs],
             }
 
         elif mode == "hotspots":
@@ -137,7 +135,9 @@ class CodeGraphDependencyMatrixTool(BaseMCPTool):
             hotspots = dm.most_coupled(top_k=top_k)
             result = {
                 "success": True,
-                "verdict": "CAUTION" if any(e.score >= 10 for e in hotspots) else "INFO",
+                "verdict": "CAUTION"
+                if any(e.score >= 10 for e in hotspots)
+                else "INFO",
                 "mode": "hotspots",
                 "top_k": top_k,
                 "hotspots": [e.to_dict() for e in hotspots],
@@ -150,20 +150,24 @@ class CodeGraphDependencyMatrixTool(BaseMCPTool):
             rel = resolved
             if not rel:
                 rel = file_path
-            related = []
+            related: list[dict[str, Any]] = []
             for entry in dm_result.coupling_pairs:
                 if entry.file_a == rel or entry.file_b == rel:
                     other = entry.file_b if entry.file_a == rel else entry.file_a
-                    related.append({
-                        "file": other,
-                        "import_count": entry.import_count,
-                        "call_count": entry.call_count,
-                        "coupling_score": entry.score,
-                    })
+                    related.append(
+                        {
+                            "file": other,
+                            "import_count": entry.import_count,
+                            "call_count": entry.call_count,
+                            "coupling_score": entry.score,
+                        }
+                    )
             related.sort(key=lambda x: x["coupling_score"], reverse=True)
             result = {
                 "success": True,
-                "verdict": "CAUTION" if any(r["coupling_score"] >= 10 for r in related) else "INFO",
+                "verdict": "CAUTION"
+                if any(r["coupling_score"] >= 10 for r in related)
+                else "INFO",
                 "mode": "file",
                 "file": file_path,
                 "coupled_module_count": len(related),
@@ -183,7 +187,11 @@ class CodeGraphDependencyMatrixTool(BaseMCPTool):
             }
 
         else:
-            result = {"success": False, "error": f"Unknown mode: {mode}", "verdict": "ERROR"}
+            result = {
+                "success": False,
+                "error": f"Unknown mode: {mode}",
+                "verdict": "ERROR",
+            }
 
         from ..utils.format_helper import apply_toon_format_to_response
 

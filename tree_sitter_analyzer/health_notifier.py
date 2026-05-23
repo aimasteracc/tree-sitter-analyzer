@@ -30,8 +30,9 @@ import logging
 import shlex
 import subprocess
 import sys
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Protocol, cast, runtime_checkable
 
 logger = logging.getLogger(__name__)
 
@@ -213,7 +214,9 @@ class StackedNotifier:
         # single iterable (StackedNotifier([a, b])) — CLI wiring uses
         # the list form.
         if len(notifiers) == 1 and not hasattr(notifiers[0], "dispatch"):
-            self._channels = list(notifiers[0])  # type: ignore[arg-type]
+            # Single iterable form: StackedNotifier([a, b]).
+            # `notifiers[0]` is typed `Notifier` but at runtime is an Iterable.
+            self._channels = list(cast(Iterable[Notifier], notifiers[0]))
         else:
             self._channels = list(notifiers)
 

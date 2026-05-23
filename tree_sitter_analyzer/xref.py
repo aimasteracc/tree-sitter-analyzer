@@ -246,7 +246,8 @@ class XRefEngine:
         syms = json.loads(row["symbols_json"])
         for sym in syms.get("symbols", []):
             if sym.get("name") == name and sym.get("line") == line:
-                return sym.get("params", "")
+                params = sym.get("params", "")
+                return params if isinstance(params, str) else ""
         return ""
 
     def _find_callers(
@@ -340,9 +341,7 @@ class XRefEngine:
         if not module_name:
             return []
 
-        rows = conn.execute(
-            "SELECT file_path, imports_json FROM ast_index"
-        ).fetchall()
+        rows = conn.execute("SELECT file_path, imports_json FROM ast_index").fetchall()
 
         results: list[dict[str, Any]] = []
         for row in rows:
@@ -350,7 +349,10 @@ class XRefEngine:
                 continue
             imports = json.loads(row["imports_json"])
             for imp in imports:
-                if module_name in imp or file_path.rstrip(".py").replace("/", ".") in imp:
+                if (
+                    module_name in imp
+                    or file_path.rstrip(".py").replace("/", ".") in imp
+                ):
                     results.append(
                         {
                             "file": row["file_path"],

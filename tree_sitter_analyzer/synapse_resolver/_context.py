@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from ._constants import BUILTINS_PY, STDLIB_NAMES_PY
 from ._imports import ImportEntry
@@ -54,7 +54,7 @@ class ResolverContext:
         if self.builtins or self.stdlib_modules:
             return
         if self.cache is None:
-            return
+            return  # type: ignore[unreachable]
         # Frozen dataclass: must assign via object.__setattr__ in post_init.
         built = build_resolver_context(self.cache)
         for attr in (
@@ -195,7 +195,7 @@ def _local_name_as_submodule(
 
 
 def _build_file_class_methods(
-    conn, line_idx: dict[tuple[str, str, int], int]
+    conn: Any, line_idx: dict[tuple[str, str, int], int]
 ) -> dict[str, dict[str, dict[str, int]]]:
     """Pull class→method maps from ``symbols_json``.
 

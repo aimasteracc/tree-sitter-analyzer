@@ -25,6 +25,10 @@ from ._route_detector_scanners import (
     scan_express_routes,
     scan_fastapi_decorators,
     scan_flask_decorators,
+    scan_go_echo,
+    scan_go_fiber,
+    scan_go_gin,
+    scan_go_net_http,
     scan_spring_annotations,
 )
 from .core.parser import Parser
@@ -59,7 +63,13 @@ _EXCLUDE_DIRS = {
 }
 
 _SOURCE_EXTENSIONS = {
-    ".py", ".js", ".jsx", ".ts", ".tsx", ".java",
+    ".py",
+    ".js",
+    ".jsx",
+    ".ts",
+    ".tsx",
+    ".java",
+    ".go",
 }
 
 _FRAMEWORK_FILES = {
@@ -77,6 +87,12 @@ _FRAMEWORK_FILES = {
     },
     "java": {
         "spring": {"org.springframework"},
+    },
+    "go": {
+        "net/http": {"net/http"},
+        "gin": {"github.com/gin-gonic/gin"},
+        "echo": {"github.com/labstack/echo"},
+        "fiber": {"github.com/gofiber/fiber"},
     },
 }
 
@@ -255,6 +271,8 @@ class RouteDetector:
             return self._detect_js_routes(file_path, lang)
         elif lang == "java":
             return self._detect_java_routes(file_path)
+        elif lang == "go":
+            return self._detect_go_routes(file_path)
         return []
 
     def summary(self) -> dict[str, Any]:
@@ -365,6 +383,18 @@ class RouteDetector:
         if not tree:
             return []
         return scan_spring_annotations(tree.root_node, file_path, RouteInfo)
+
+    def _detect_go_routes(self, file_path: str) -> list[RouteInfo]:
+        tree = self._parse_tree(file_path, "go")
+        if not tree:
+            return []
+        root = tree.root_node
+        routes: list[RouteInfo] = []
+        routes.extend(scan_go_net_http(root, file_path, RouteInfo))
+        routes.extend(scan_go_gin(root, file_path, RouteInfo))
+        routes.extend(scan_go_echo(root, file_path, RouteInfo))
+        routes.extend(scan_go_fiber(root, file_path, RouteInfo))
+        return routes
 
     # Static helpers moved to tree_sitter_analyzer._route_detector_helpers
     # to keep this module under the project's 500-line file-size cap.

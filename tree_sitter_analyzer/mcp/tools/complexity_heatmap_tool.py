@@ -144,6 +144,7 @@ class CodeGraphComplexityHeatmapTool(BaseMCPTool):
         return apply_toon_format_to_response(result, output_format)
 
     def _execute_project(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        assert self.project_root is not None, "project_root required"
         language = arguments.get("language")
         directory = arguments.get("directory")
         max_files = arguments.get("max_files", 200)
@@ -179,6 +180,7 @@ class CodeGraphComplexityHeatmapTool(BaseMCPTool):
         return heatmap
 
     def _execute_file(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        assert self.project_root is not None, "project_root required"
         file_path = arguments["file_path"]
         if not os.path.isabs(file_path):
             file_path = os.path.join(self.project_root, file_path)
@@ -235,6 +237,7 @@ class CodeGraphComplexityHeatmapTool(BaseMCPTool):
         }
 
     def _execute_function(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        assert self.project_root is not None, "project_root required"
         file_path = arguments["file_path"]
         function_name = arguments.get("function_name", "")
         if not os.path.isabs(file_path):
@@ -284,9 +287,7 @@ class CodeGraphComplexityHeatmapTool(BaseMCPTool):
             "decision_points": f.decision_points,
         }
 
-    def _analyze_file_cached(
-        self, file_path: str, language: str
-    ) -> list[Any]:
+    def _analyze_file_cached(self, file_path: str, language: str) -> list[Any]:
         cache = self._get_cache()
         if cache is not None:
             from ...complexity_heatmap import analyze_file_complexity_from_cache

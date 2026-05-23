@@ -309,6 +309,231 @@ def _method_from_args_node(args_node: Any) -> str:
     return "GET"
 
 
+# ---------------------------------------------------------------------------
+# Go — net/http, Gin, Echo, Fiber
+# ---------------------------------------------------------------------------
+
+_GO_HTTP_METHODS = {"GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"}
+
+
+def _go_extract_string_arg(call_node: Any) -> str | None:
+    """Extract the first interpreted_string literal from a Go call_expression."""
+    args_node = call_node.child_by_field_name("arguments")
+    if args_node is None:
+        return None
+    for child in args_node.children:
+        if child.type == "interpreted_string_literal":
+            text = child.text.decode()
+            if text.startswith('"') and text.endswith('"'):
+                return text[1:-1]
+    return None
+
+
+def _go_handler_name(call_node: Any) -> str:
+    """Extract the handler function name from a Go route registration call."""
+    args_node = call_node.child_by_field_name("arguments")
+    if args_node is None:
+        return "<unknown>"
+    children = [c for c in args_node.children if c.type not in (",", "(", ")")]
+    if len(children) >= 2:
+        second = children[1]
+        if second.type == "identifier":
+            return second.text.decode()
+        if second.type == "selector_expression":
+            return second.text.decode()
+        if second.type == "func_literal":
+            return "<anonymous>"
+        return second.text.decode()[:80]
+    return "<unknown>"
+
+
+def _go_method_from_call(call_node: Any) -> str | None:
+    """Extract HTTP method from a Go Gin/Echo/Fiber-style call like r.GET(...)."""
+    func = call_node.child_by_field_name("function")
+    if func is None:
+        return None
+    if func.type == "selector_expression":
+        method_node = func.child_by_field_name("field")
+        if method_node is not None:
+            method = method_node.text.decode().upper()
+            if method in _GO_HTTP_METHODS:
+                return method
+    return None
+
+
+def scan_go_net_http(root: Any, file_path: str, route_info_cls: type) -> list[Any]:
+    """Scan Go files for net/http stdlib route registrations.
+
+    Detects:
+      - http.HandleFunc("/path", handler)
+      - http.Handle("/path", handler)
+      - mux.HandleFunc("/path", handler)
+      - mux.Handle("/path", handler)
+      - http.HandlerFunc("/path")
+    """
+    routes: list[Any] = []
+    for node in walk(root):
+        if node.type != "call_expression":
+            continue
+        func = node.child_by_field_name("function")
+        if func is None:
+            continue
+        func_text = func.text.decode()
+        method = None
+        if func_text.endswith(".HandleFunc") or func_text.endswith(".Handle"):
+            name_part = func_text.rsplit(".", 1)[-1]
+            if name_part == "HandleFunc":
+                method = "GET"
+            elif name_part == "Handle":
+                method = "GET"
+        if method is None:
+            continue
+        url = _go_extract_string_arg(node)
+        if url is None or not url.startswith("/"):
+            continue
+        handler = _go_handler_name(node)
+        routes.append(
+            route_info_cls(
+                http_method=method,
+                url_pattern=url,
+                handler_name=handler,
+                file_path=file_path,
+                line_number=node.start_point[0] + 1,
+                framework="net/http",
+                language="go",
+            )
+        )
+    return routes
+
+
+def scan_go_gin(root: Any, file_path: str, route_info_cls: type) -> list[Any]:
+    """Scan Go files for Gin framework route registrations.
+
+    Detects: r.GET("/path", handler), r.POST("/path", handler), etc.
+    Also: router.GET(...), engine.GET(...), g.GET(...)
+    """
+    routes: list[Any] = []
+    for node in walk(root):
+        if node.type != "call_expression":
+            continue
+        http_method = _go_method_from_call(node)
+        if http_method is None:
+            continue
+        url = _go_extract_string_arg(node)
+        if url is None or not url.startswith("/"):
+            continue
+        handler = _go_handler_name(node)
+        routes.append(
+            route_info_cls(
+                http_method=http_method,
+                url_pattern=url,
+                handler_name=handler,
+                file_path=file_path,
+                line_number=node.start_point[0] + 1,
+                framework="gin",
+                language="go",
+            )
+        )
+    return routes
+
+
+def scan_go_echo(root: Any, file_path: str, route_info_cls: type) -> list[Any]:
+    """Scan Go files for Echo framework route registrations.
+
+    Detects: e.GET("/path", handler), e.POST("/path", handler), etc.
+    Also detects: e.Any(...), e.Match(methods, "/path", handler)
+    """
+    routes: list[Any] = []
+    for node in walk(root):
+        if node.type != "call_expression":
+            continue
+        func = node.child_by_field_name("function")
+        if func is None:
+            continue
+        if func.type != "selector_expression":
+            continue
+        method_node = func.child_by_field_name("field")
+        if method_node is None:
+            continue
+        method_name = method_node.text.decode()
+        http_method = None
+        if method_name.upper() in _GO_HTTP_METHODS:
+            http_method = method_name.upper()
+        elif method_name == "Any":
+            http_method = "ANY"
+        elif method_name == "Match":
+            http_method = "MATCH"
+        if http_method is None:
+            continue
+        url = _go_extract_string_arg(node)
+        if url is None or not url.startswith("/"):
+            continue
+        handler = _go_handler_name(node)
+        routes.append(
+            route_info_cls(
+                http_method=http_method,
+                url_pattern=url,
+                handler_name=handler,
+                file_path=file_path,
+                line_number=node.start_point[0] + 1,
+                framework="echo",
+                language="go",
+            )
+        )
+    return routes
+
+
+def scan_go_fiber(root: Any, file_path: str, route_info_cls: type) -> list[Any]:
+    """Scan Go files for Fiber framework route registrations.
+
+    Detects: app.Get("/path", handler), app.Post("/path", handler), etc.
+    Fiber uses Title-Case method names (Get, Post, Put, Delete, etc.).
+    """
+    routes: list[Any] = []
+    _fiber_method_map = {
+        "Get": "GET",
+        "Post": "POST",
+        "Put": "PUT",
+        "Delete": "DELETE",
+        "Patch": "PATCH",
+        "Head": "HEAD",
+        "Options": "OPTIONS",
+        "All": "ALL",
+        "Use": "USE",
+    }
+    for node in walk(root):
+        if node.type != "call_expression":
+            continue
+        func = node.child_by_field_name("function")
+        if func is None:
+            continue
+        if func.type != "selector_expression":
+            continue
+        method_node = func.child_by_field_name("field")
+        if method_node is None:
+            continue
+        go_method = method_node.text.decode()
+        http_method = _fiber_method_map.get(go_method)
+        if http_method is None:
+            continue
+        url = _go_extract_string_arg(node)
+        if url is None or not url.startswith("/"):
+            continue
+        handler = _go_handler_name(node)
+        routes.append(
+            route_info_cls(
+                http_method=http_method,
+                url_pattern=url,
+                handler_name=handler,
+                file_path=file_path,
+                line_number=node.start_point[0] + 1,
+                framework="fiber",
+                language="go",
+            )
+        )
+    return routes
+
+
 def parse_request_mapping(node: Any) -> tuple[str, str | None]:
     """Extract (http_method, url_pattern) from a Spring @RequestMapping.
 

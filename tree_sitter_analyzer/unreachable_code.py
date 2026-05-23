@@ -17,10 +17,8 @@ Uses Tree-sitter AST analysis for cross-language support.
 
 from __future__ import annotations
 
-import logging
 import os
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 from .call_graph import _FUNC_DEF_TYPES
@@ -31,10 +29,23 @@ from .utils import setup_logger
 logger = setup_logger(__name__)
 
 _EXCLUDE_DIRS = {
-    "node_modules", ".git", "__pycache__", ".venv", "venv",
-    ".tox", ".mypy_cache", ".pytest_cache", ".ruff_cache",
-    "dist", "build", "htmlcov", ".cache", ".eggs",
-    ".idea", ".vscode", ".claude",
+    "node_modules",
+    ".git",
+    "__pycache__",
+    ".venv",
+    "venv",
+    ".tox",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    "dist",
+    "build",
+    "htmlcov",
+    ".cache",
+    ".eggs",
+    ".idea",
+    ".vscode",
+    ".claude",
 }
 
 _TERMINAL_STATEMENT_TYPES: dict[str, set[str]] = {
@@ -57,10 +68,18 @@ _LOOP_BREAK_TYPES: dict[str, set[str]] = {
     "cpp": {"break_statement", "continue_statement"},
 }
 
-_TERMINAL_CALL_NAMES = frozenset({
-    "sys.exit", "os._exit", "exit", "quit",
-    "abort", "fatal", "die", "panic",
-})
+_TERMINAL_CALL_NAMES = frozenset(
+    {
+        "sys.exit",
+        "os._exit",
+        "exit",
+        "quit",
+        "abort",
+        "fatal",
+        "die",
+        "panic",
+    }
+)
 
 _BLOCK_TYPES: dict[str, str] = {
     "python": "block",
@@ -139,7 +158,7 @@ def _node_text(node: Any, source: str) -> str:
             return text.decode("utf-8")
         return str(text)
     except Exception:
-        return source[node.start_byte:node.end_byte]
+        return source[node.start_byte : node.end_byte]
 
 
 def _is_terminal_call(node: Any, source: str, language: str) -> bool:
@@ -222,21 +241,22 @@ def _analyze_block_unreachable(
             start_line = child.start_point[0] + 1
             end_line = child.end_point[0] + 1
             if start_line != end_line or child.type not in ("newline",):
-                results.append(UnreachableBlock(
-                    file_path=file_path,
-                    function_name=func_name,
-                    start_line=start_line,
-                    end_line=end_line,
-                    reason=f"code after {children[terminal_idx].type.replace('_', ' ')} on line {children[terminal_idx].start_point[0] + 1}",
-                    severity="warning",
-                ))
+                results.append(
+                    UnreachableBlock(
+                        file_path=file_path,
+                        function_name=func_name,
+                        start_line=start_line,
+                        end_line=end_line,
+                        reason=f"code after {children[terminal_idx].type.replace('_', ' ')} on line {children[terminal_idx].start_point[0] + 1}",
+                        severity="warning",
+                    )
+                )
             continue
 
         if _is_terminal_statement(child, source, language):
             found_terminal = True
             terminal_idx = i
-            if _analyze_child_nodes(child, source, language, func_name, file_path, results):
-                pass
+            _analyze_child_nodes(child, source, language, func_name, file_path, results)
             continue
 
         if language in _LOOP_BREAK_TYPES and child.type in _LOOP_BREAK_TYPES[language]:
@@ -246,11 +266,15 @@ def _analyze_block_unreachable(
 
         if_type = _IF_TYPES.get(language)
         if if_type and child.type == if_type:
-            _analyze_if_statement(child, source, language, func_name, file_path, results)
+            _analyze_if_statement(
+                child, source, language, func_name, file_path, results
+            )
 
         try_type = _TRY_TYPES.get(language)
         if try_type and child.type == try_type:
-            _analyze_try_statement(child, source, language, func_name, file_path, results)
+            _analyze_try_statement(
+                child, source, language, func_name, file_path, results
+            )
 
     return found_terminal
 
@@ -266,7 +290,9 @@ def _analyze_child_nodes(
     block_type = _BLOCK_TYPES.get(language)
     for child in getattr(node, "children", []):
         if block_type and child.type == block_type:
-            _analyze_block_unreachable(child, source, language, func_name, file_path, results)
+            _analyze_block_unreachable(
+                child, source, language, func_name, file_path, results
+            )
         else:
             _analyze_child_nodes(child, source, language, func_name, file_path, results)
 
@@ -300,14 +326,16 @@ def _analyze_if_statement(
         if consequence is not None:
             start_line = consequence.start_point[0] + 1
             end_line = consequence.end_point[0] + 1
-            results.append(UnreachableBlock(
-                file_path=file_path,
-                function_name=func_name,
-                start_line=start_line,
-                end_line=end_line,
-                reason=f"if-False branch is never executed (condition is always False on line {condition.start_point[0] + 1})",
-                severity="info",
-            ))
+            results.append(
+                UnreachableBlock(
+                    file_path=file_path,
+                    function_name=func_name,
+                    start_line=start_line,
+                    end_line=end_line,
+                    reason=f"if-False branch is never executed (condition is always False on line {condition.start_point[0] + 1})",
+                    severity="info",
+                )
+            )
     elif condition is not None and _is_true_literal(condition, source):
         if alternative is not None:
             alt_block = None
@@ -318,24 +346,32 @@ def _analyze_if_statement(
             if alt_block is not None:
                 start_line = alt_block.start_point[0] + 1
                 end_line = alt_block.end_point[0] + 1
-                results.append(UnreachableBlock(
-                    file_path=file_path,
-                    function_name=func_name,
-                    start_line=start_line,
-                    end_line=end_line,
-                    reason=f"else branch of if-True is never executed (condition is always True on line {condition.start_point[0] + 1})",
-                    severity="info",
-                ))
+                results.append(
+                    UnreachableBlock(
+                        file_path=file_path,
+                        function_name=func_name,
+                        start_line=start_line,
+                        end_line=end_line,
+                        reason=f"else branch of if-True is never executed (condition is always True on line {condition.start_point[0] + 1})",
+                        severity="info",
+                    )
+                )
 
     if consequence is not None:
-        _analyze_block_unreachable(consequence, source, language, func_name, file_path, results)
+        _analyze_block_unreachable(
+            consequence, source, language, func_name, file_path, results
+        )
     if alternative is not None:
         block_type_name = _BLOCK_TYPES.get(language, "block")
         for child in getattr(alternative, "children", []):
             if child.type == block_type_name:
-                _analyze_block_unreachable(child, source, language, func_name, file_path, results)
+                _analyze_block_unreachable(
+                    child, source, language, func_name, file_path, results
+                )
             elif child.type == _IF_TYPES.get(language, ""):
-                _analyze_if_statement(child, source, language, func_name, file_path, results)
+                _analyze_if_statement(
+                    child, source, language, func_name, file_path, results
+                )
 
 
 def _analyze_try_statement(
@@ -349,15 +385,21 @@ def _analyze_try_statement(
     block_type = _BLOCK_TYPES.get(language, "block")
     for child in getattr(node, "children", []):
         if child.type == block_type:
-            _analyze_block_unreachable(child, source, language, func_name, file_path, results)
+            _analyze_block_unreachable(
+                child, source, language, func_name, file_path, results
+            )
         elif child.type in ("except_clause", "catch_clause", "handler_clause"):
             for sub in getattr(child, "children", []):
                 if sub.type == block_type:
-                    _analyze_block_unreachable(sub, source, language, func_name, file_path, results)
+                    _analyze_block_unreachable(
+                        sub, source, language, func_name, file_path, results
+                    )
         elif child.type in ("finally_clause", "finally_block"):
             for sub in getattr(child, "children", []):
                 if sub.type == block_type:
-                    _analyze_block_unreachable(sub, source, language, func_name, file_path, results)
+                    _analyze_block_unreachable(
+                        sub, source, language, func_name, file_path, results
+                    )
 
 
 def analyze_file_unreachable(
@@ -388,7 +430,7 @@ def analyze_file_unreachable(
         )
 
     parser = Parser()
-    result = parser.parse_file(file_path)
+    result = parser.parse_file(file_path, language)
     if not result.success or result.tree is None:
         return UnreachableCodeResult(
             file_path=file_path,
@@ -414,11 +456,15 @@ def analyze_file_unreachable(
             body = node.child_by_field_name("body")
             if body is not None:
                 if body.type == block_type:
-                    _analyze_block_unreachable(body, source, language, func_name, file_path, results)
+                    _analyze_block_unreachable(
+                        body, source, language, func_name, file_path, results
+                    )
                 else:
                     for child in getattr(body, "children", []):
                         if child.type == block_type:
-                            _analyze_block_unreachable(child, source, language, func_name, file_path, results)
+                            _analyze_block_unreachable(
+                                child, source, language, func_name, file_path, results
+                            )
             return
         if node.type in _CLASS_DEF_TYPES_SET:
             for child in getattr(node, "children", []):
@@ -440,6 +486,7 @@ def analyze_file_unreachable(
 _CLASS_DEF_TYPES_SET: set[str] = set()
 try:
     from .call_graph import _CLASS_DEF_TYPES
+
     for _s in _CLASS_DEF_TYPES.values():
         _CLASS_DEF_TYPES_SET.update(_s)
 except Exception:
@@ -480,7 +527,9 @@ def analyze_project_unreachable(
     count = 0
 
     for dirpath, dirnames, filenames in os.walk(project_root):
-        dirnames[:] = [d for d in dirnames if d not in _EXCLUDE_DIRS and not d.startswith(".")]
+        dirnames[:] = [
+            d for d in dirnames if d not in _EXCLUDE_DIRS and not d.startswith(".")
+        ]
         for fname in sorted(filenames):
             if count >= max_files:
                 break

@@ -101,7 +101,9 @@ class CodeGraphMetricsTool(BaseMCPTool):
             valid = {"cache", "call_graph", "complexity", "routes", "health"}
             invalid = set(sections) - valid
             if invalid:
-                raise ValueError(f"Invalid sections: {invalid}. Must be subset of {valid}")
+                raise ValueError(
+                    f"Invalid sections: {invalid}. Must be subset of {valid}"
+                )
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -149,6 +151,7 @@ class CodeGraphMetricsTool(BaseMCPTool):
         result["sections_included"] = list(requested)
 
         from ..utils.format_helper import apply_toon_format_to_response
+
         return apply_toon_format_to_response(result, output_format)
 
     def _collect_cache_metrics(self, cache: Any) -> dict[str, Any]:
@@ -171,13 +174,28 @@ class CodeGraphMetricsTool(BaseMCPTool):
         try:
             from ...call_graph import CachedCallGraph, CallGraph
 
+            assert self.project_root is not None, "project_root required"
+            cg: CallGraph
             if cache is not None:
                 cg = CachedCallGraph(self.project_root, cache=cache)
             else:
                 cg = CallGraph(self.project_root)
+            cg.build()
 
-            functions = cg.get_all_functions()
-            call_edges = cg.get_all_edges()
+            # Use the public ``all_functions()`` API (returns list[dict]) and
+            # rebuild edges as (caller_name, callee_name) tuples from the
+            # internal ``_call_edges`` (no public accessor yet — see #TODO).
+            func_dicts = cg.all_functions()
+            functions: list[str] = [
+                f"{f.get('file_path', '')}::{f.get('name', '')}" for f in func_dicts
+            ]
+            call_edges: list[tuple[str, str]] = [
+                (
+                    f"{caller.file_path}::{caller.name}",
+                    f"{callee.file_path}::{callee.name}",
+                )
+                for caller, callee, _line in cg._call_edges
+            ]
 
             callers_map: dict[str, int] = {}
             callees_map: dict[str, int] = {}
@@ -189,9 +207,7 @@ class CodeGraphMetricsTool(BaseMCPTool):
 
             entry_points = [f for f in functions if f not in callers_map]
             dead = [
-                f
-                for f in functions
-                if f not in callers_map and f not in callees_map
+                f for f in functions if f not in callers_map and f not in callees_map
             ]
 
             top_hubs = sorted(callers_map.items(), key=lambda x: -x[1])[:10]
@@ -207,9 +223,7 @@ class CodeGraphMetricsTool(BaseMCPTool):
                 "total_call_edges": len(call_edges),
                 "entry_points": len(entry_points),
                 "dead_code_candidates": len(dead),
-                "top_hub_functions": [
-                    {"name": n, "callers": c} for n, c in top_hubs
-                ],
+                "top_hub_functions": [{"name": n, "callers": c} for n, c in top_hubs],
                 "files_with_functions": len(files),
                 "data_source": "ast_cache" if cache is not None else "on_demand",
             }
@@ -220,6 +234,7 @@ class CodeGraphMetricsTool(BaseMCPTool):
         try:
             from ...complexity_heatmap import analyze_project_heatmap
 
+            assert self.project_root is not None, "project_root required"
             heatmap = analyze_project_heatmap(
                 self.project_root,
                 max_files=200,
@@ -274,6 +289,7 @@ class CodeGraphMetricsTool(BaseMCPTool):
         try:
             from ...route_detector import RouteDetector
 
+            assert self.project_root is not None, "project_root required"
             detector = RouteDetector(self.project_root)
             summary = detector.summary()
             return {
@@ -290,7 +306,8 @@ class CodeGraphMetricsTool(BaseMCPTool):
         try:
             from ...health_scorer import HealthScorer
 
-            scorer = HealthScorer(self.project_root)
+            assert self.project_root is not None, "project_root required"
+            scorer = HealthScorer()
             scores = scorer.score_project(self.project_root)
             if not scores:
                 return {"status": "no_data"}
@@ -326,7 +343,9 @@ class CodeGraphMetricsTool(BaseMCPTool):
 
         cache_info = result.get("cache", {})
         if cache_info.get("status") == "empty":
-            suggestions.append("Run ast_cache mode=index to build the pre-indexed cache")
+            suggestions.append(
+                "Run ast_cache mode=index to build the pre-indexed cache"
+            )
             return suggestions
 
         cg_info = result.get("call_graph", {})
@@ -346,7 +365,10 @@ class CodeGraphMetricsTool(BaseMCPTool):
                 )
 
         route_info = result.get("routes", {})
-        if route_info.get("status") == "computed" and route_info.get("total_routes", 0) > 0:
+        if (
+            route_info.get("status") == "computed"
+            and route_info.get("total_routes", 0) > 0
+        ):
             suggestions.append(
                 f"{route_info['total_routes']} routes detected — use detect_routes for URL→Handler mapping"
             )

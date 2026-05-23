@@ -206,6 +206,14 @@ def test_registered_mcp_tools_have_cli_parity() -> None:
         "codegraph_import_graph": ("main", "--import-graph"),
         "codegraph_dead_code": ("main", "--dead-code"),
         "codegraph_similarity": ("main", "--code-similarity"),
+        # CodeGraph parity tools registered with codegraph_-prefixed names:
+        # their CLI flags use the unprefixed form (--class-hierarchy,
+        # --dependency-matrix) to keep the user-facing surface short.
+        "codegraph_class_hierarchy": ("main", "--class-hierarchy"),
+        "codegraph_dependency_matrix": ("main", "--dependency-matrix"),
+        # Feature 3 (Constraint DSL): MCP tool ``check_constraints`` ships
+        # with the CLI flag ``--check-constraints`` for CLI/MCP parity.
+        "check_constraints": ("main", "--check-constraints"),
     }
 
     tool_names = {name for name, _tool in _create_tool_registry(str(PROJECT_ROOT))[0]}

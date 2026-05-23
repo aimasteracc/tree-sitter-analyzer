@@ -31,10 +31,23 @@ from .utils import setup_logger
 logger = setup_logger(__name__)
 
 _EXCLUDE_DIRS = {
-    "node_modules", ".git", "__pycache__", ".venv", "venv",
-    ".tox", ".mypy_cache", ".pytest_cache", ".ruff_cache",
-    "dist", "build", "htmlcov", ".cache", ".eggs",
-    ".idea", ".vscode", ".claude",
+    "node_modules",
+    ".git",
+    "__pycache__",
+    ".venv",
+    "venv",
+    ".tox",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    "dist",
+    "build",
+    "htmlcov",
+    ".cache",
+    ".eggs",
+    ".idea",
+    ".vscode",
+    ".claude",
 }
 
 _FUNC_DEF_TYPES = frozenset(
@@ -93,7 +106,7 @@ class SimilarityGroup:
 @dataclass
 class SimilarityResult:
     groups: list[SimilarityGroup] = field(default_factory=list)
-    stats: dict[str, int] = field(default_factory=dict)
+    stats: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -164,8 +177,7 @@ def _extract_function_bodies(
 
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [
-            d for d in dirnames
-            if d not in _EXCLUDE_DIRS and not d.startswith(".")
+            d for d in dirnames if d not in _EXCLUDE_DIRS and not d.startswith(".")
         ]
         for fname in filenames:
             ext = os.path.splitext(fname)[1].lower()
@@ -219,13 +231,17 @@ def _extract_from_tree(
 
     if node.type in _FUNC_DEF_TYPES:
         name_node = node.child_by_field_name("name")
-        name = source[name_node.start_byte:name_node.end_byte] if name_node else "<anonymous>"
+        name = (
+            source[name_node.start_byte : name_node.end_byte]
+            if name_node
+            else "<anonymous>"
+        )
         start_line = node.start_point[0] + 1
         end_line = node.end_point[0] + 1
         line_count = end_line - start_line + 1
 
         if line_count >= min_lines:
-            body = source[node.start_byte:node.end_byte]
+            body = source[node.start_byte : node.end_byte]
             results.append((file_path, name, start_line, end_line, language, body))
 
     for child in getattr(node, "children", []):
@@ -409,7 +425,9 @@ def _extract_cached_functions(
         end_idx = min(len(source_lines), end_line)
         body = "".join(source_lines[start_idx:end_idx])
 
-        language = func.get("language", rows_by_file.get(file_rel, {}).get("language", ""))
+        language = func.get(
+            "language", rows_by_file.get(file_rel, {}).get("language", "")
+        )
         results.append((file_rel, func["name"], start_line, end_line, language, body))
 
     return results
@@ -434,7 +452,9 @@ def detect_structural_clones_cached(
     functions = _extract_cached_functions(cache, project_root, min_lines)
     if not functions:
         return detect_structural_clones(
-            project_root, min_lines=min_lines, min_group_size=min_group_size,
+            project_root,
+            min_lines=min_lines,
+            min_group_size=min_group_size,
             max_groups=max_groups,
         )
 
@@ -497,7 +517,9 @@ def detect_textual_clones_cached(
     functions = _extract_cached_functions(cache, project_root, min_lines)
     if not functions:
         return detect_textual_clones(
-            project_root, min_lines=min_lines, min_group_size=min_group_size,
+            project_root,
+            min_lines=min_lines,
+            min_group_size=min_group_size,
             max_groups=max_groups,
         )
 
@@ -579,30 +601,38 @@ def analyze_code_similarity(
     if mode in ("all", "structural"):
         if cache is not None:
             structural = detect_structural_clones_cached(
-                cache, project_root,
-                min_lines=min_lines, min_group_size=min_group_size,
+                cache,
+                project_root,
+                min_lines=min_lines,
+                min_group_size=min_group_size,
                 max_groups=max_groups,
             )
         else:
             structural = detect_structural_clones(
                 project_root,
-                min_lines=min_lines, min_group_size=min_group_size,
-                max_files=max_files, max_groups=max_groups,
+                min_lines=min_lines,
+                min_group_size=min_group_size,
+                max_files=max_files,
+                max_groups=max_groups,
             )
         all_groups.extend(structural)
 
     if mode in ("all", "textual"):
         if cache is not None:
             textual = detect_textual_clones_cached(
-                cache, project_root,
-                min_lines=min_lines, min_group_size=min_group_size,
+                cache,
+                project_root,
+                min_lines=min_lines,
+                min_group_size=min_group_size,
                 max_groups=max_groups,
             )
         else:
             textual = detect_textual_clones(
                 project_root,
-                min_lines=min_lines, min_group_size=min_group_size,
-                max_files=max_files, max_groups=max_groups,
+                min_lines=min_lines,
+                min_group_size=min_group_size,
+                max_files=max_files,
+                max_groups=max_groups,
             )
         seen_fps: set[str] = set()
         for g in textual:

@@ -100,12 +100,16 @@ def _parse_qualified_name(symbol: str) -> tuple[list[str], str]:
     return parts, parts[-1]
 
 
-def _build_import_map(cache: Any) -> dict[str, list[dict[str, Any]]]:
+def _build_import_map(cache: Any) -> dict[str, list[Any]]:
+    """Import entries may be `str` (module path) or `dict` (qualified import).
+
+    Caller code branches on `isinstance(imp, str)` to handle both shapes.
+    """
     conn = cache._get_conn()
     rows = conn.execute(
         "SELECT file_path, imports_json, language FROM ast_index"
     ).fetchall()
-    import_map: dict[str, list[dict[str, Any]]] = {}
+    import_map: dict[str, list[Any]] = {}
     for row in rows:
         imports = json.loads(row["imports_json"])
         if imports:
@@ -115,9 +119,7 @@ def _build_import_map(cache: Any) -> dict[str, list[dict[str, Any]]]:
 
 def _build_module_to_file_map(cache: Any) -> dict[str, str]:
     conn = cache._get_conn()
-    rows = conn.execute(
-        "SELECT file_path, language FROM ast_index"
-    ).fetchall()
+    rows = conn.execute("SELECT file_path, language FROM ast_index").fetchall()
     module_map: dict[str, str] = {}
     for row in rows:
         fp = row["file_path"]
@@ -152,7 +154,7 @@ class SymbolResolver:
 
     def __init__(self, cache: Any) -> None:
         self._cache = cache
-        self._import_map: dict[str, list[dict[str, Any]]] | None = None
+        self._import_map: dict[str, list[Any]] | None = None
         self._module_to_file: dict[str, str] | None = None
 
     def resolve(self, symbol: str) -> ResolveResult:
@@ -275,7 +277,10 @@ class SymbolResolver:
             return False
         symbols = json.loads(row["symbols_json"])
         for sym in symbols.get("symbols", []):
-            if sym.get("name") == location.name and sym.get("kind") in _DEFINITION_KINDS:
+            if (
+                sym.get("name") == location.name
+                and sym.get("kind") in _DEFINITION_KINDS
+            ):
                 for child in sym.get("children", []):
                     if child.get("name") == parent_name:
                         return True
@@ -322,7 +327,10 @@ class SymbolResolver:
                                     for d in defs:
                                         d.confidence = 0.8
                                     return defs
-                elif isinstance(imported_names, str) and imported_names.split(".")[-1] == name:
+                elif (
+                    isinstance(imported_names, str)
+                    and imported_names.split(".")[-1] == name
+                ):
                     source_module = imp.get("module", "")
                     if source_module and source_module in self._module_to_file:
                         source_file = self._module_to_file[source_module]
@@ -333,9 +341,7 @@ class SymbolResolver:
                             return defs
         return []
 
-    def _find_defs_in_file(
-        self, file_path: str, name: str
-    ) -> list[DefinitionLocation]:
+    def _find_defs_in_file(self, file_path: str, name: str) -> list[DefinitionLocation]:
         conn = self._cache._get_conn()
         rows = conn.execute(
             """SELECT name, kind, file_path, language, line, end_line
@@ -378,9 +384,7 @@ class SymbolResolver:
                         )
         return results
 
-    def _find_references(
-        self, symbol: str, short_name: str
-    ) -> list[ReferenceLocation]:
+    def _find_references(self, symbol: str, short_name: str) -> list[ReferenceLocation]:
         references: list[ReferenceLocation] = []
         seen: set[tuple[str, int]] = set()
         conn = self._cache._get_conn()
@@ -417,9 +421,7 @@ class SymbolResolver:
                 references.append(ref)
         return references
 
-    def _find_import_references(
-        self, name: str
-    ) -> list[ReferenceLocation]:
+    def _find_import_references(self, name: str) -> list[ReferenceLocation]:
         if self._import_map is None:
             self._import_map = _build_import_map(self._cache)
         refs: list[ReferenceLocation] = []

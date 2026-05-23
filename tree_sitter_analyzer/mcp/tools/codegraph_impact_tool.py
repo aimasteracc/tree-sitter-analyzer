@@ -348,12 +348,16 @@ class CodeGraphImpactTool(BaseMCPTool):
         graph.build()
 
         if mode == "function_impact":
+            if not func_name:
+                raise ValueError("function_name required for function_impact mode")
             result = self._function_impact(graph, func_name, file_path, depth)
         elif mode == "blast_radius":
             result = _blast_radius_for_functions(
                 graph, arguments["function_names"], file_path, depth
             )
         elif mode == "risk_score":
+            if not func_name:
+                raise ValueError("function_name required for risk_score mode")
             result = _compute_risk_score(graph, func_name, file_path)
         else:
             raise ValueError(f"Unknown mode: {mode}")

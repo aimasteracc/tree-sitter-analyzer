@@ -85,6 +85,7 @@ def _build_call_graph(project_root: str) -> CallGraph | None:
     try:
         cache = ASTCache(project_root)
         stats = cache.get_stats()
+        cg: CallGraph
         if stats.get("total_files", 0) > 0:
             cg = CachedCallGraph(project_root, cache=cache)
         else:

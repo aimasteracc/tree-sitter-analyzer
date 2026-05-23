@@ -64,9 +64,7 @@ class UnreachableCodeTool(BaseMCPTool):
                 },
                 "file_path": {
                     "type": "string",
-                    "description": (
-                        "File path to analyze (required for 'file' mode)"
-                    ),
+                    "description": ("File path to analyze (required for 'file' mode)"),
                 },
                 "include_test_files": {
                     "type": "boolean",
@@ -92,15 +90,16 @@ class UnreachableCodeTool(BaseMCPTool):
     def get_tool_name(self) -> str:
         return "unreachable_code"
 
-    def validate_arguments(self, arguments: dict[str, Any]) -> str | None:
+    def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         mode = arguments.get("mode", "file")
         if mode not in ("file", "project"):
-            return f"Invalid mode: {mode}. Must be 'file' or 'project'."
+            raise ValueError(f"Invalid mode: {mode}. Must be 'file' or 'project'.")
         if mode == "file" and not arguments.get("file_path"):
-            return "file_path is required for 'file' mode."
-        return None
+            raise ValueError("file_path is required for 'file' mode.")
+        return True
 
-    def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+    async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        self.validate_arguments(arguments)
         mode = arguments.get("mode", "file")
         output_format = arguments.get("output_format", "toon")
 
@@ -188,9 +187,7 @@ class UnreachableCodeTool(BaseMCPTool):
     ) -> dict[str, Any]:
         total_blocks = sum(len(r.unreachable_blocks) for r in results)
         total_functions = sum(r.functions_analyzed for r in results)
-        files_with_issues = sum(
-            1 for r in results if r.unreachable_blocks
-        )
+        files_with_issues = sum(1 for r in results if r.unreachable_blocks)
 
         if output_format == "toon":
             lines = []

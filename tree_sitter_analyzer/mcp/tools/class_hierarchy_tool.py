@@ -98,9 +98,7 @@ class ClassHierarchyTool(BaseMCPTool):
         mode = arguments.get("mode", "summary")
         if mode in ("subclasses", "superclasses", "tree", "impact"):
             if not arguments.get("class_name"):
-                raise ValueError(
-                    f"class_name is required for mode '{mode}'"
-                )
+                raise ValueError(f"class_name is required for mode '{mode}'")
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -114,6 +112,7 @@ class ClassHierarchyTool(BaseMCPTool):
         hierarchy = self._get_hierarchy()
         hierarchy.build()
 
+        result: Any
         if mode == "subclasses":
             result = hierarchy.subclasses_of(class_name, max_depth=max_depth)
             response: dict[str, Any] = {
@@ -149,8 +148,10 @@ class ClassHierarchyTool(BaseMCPTool):
                 "success": True,
                 "mode": "impact",
                 "verdict": (
-                    "CAUTION" if impact.risk_level in ("high", "critical")
-                    else "REVIEW" if impact.risk_level == "medium"
+                    "CAUTION"
+                    if impact.risk_level in ("high", "critical")
+                    else "REVIEW"
+                    if impact.risk_level == "medium"
                     else "INFO"
                 ),
                 **impact.to_dict(),

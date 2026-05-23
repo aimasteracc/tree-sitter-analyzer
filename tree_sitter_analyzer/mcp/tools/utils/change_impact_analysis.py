@@ -512,9 +512,9 @@ def _build_change_impact_result(request: ChangeImpactRequest) -> dict[str, Any]:
     return _attach_constraint_violations(result, request, affected)
 
 
+# Per Feature 2 spec — symbols modified >= this many times in 30 days are
+# flagged as hot zones, which forces verdict at least CAUTION.
 _HOT_ZONE_THRESHOLD = 5
-"""Per Feature 2 spec — symbols modified >= this many times in 30 days are
-flagged as hot zones, which forces verdict at least CAUTION."""
 
 
 def _attach_hot_zone_risk(
@@ -540,9 +540,7 @@ def _attach_hot_zone_risk(
         result.setdefault("risk_factors", result.get("risk_factors", []))
         return result
 
-    hot_rows = _hot_zone_symbols_for_files(
-        request.project_root, request.changed_files
-    )
+    hot_rows = _hot_zone_symbols_for_files(request.project_root, request.changed_files)
     existing_factors = list(result.get("risk_factors", []) or [])
     if not hot_rows:
         result["risk_factors"] = existing_factors
@@ -592,8 +590,10 @@ def _hot_zone_symbols_for_files(
         return []
 
     placeholders = ",".join(["?"] * len(changed_files))
+    # placeholders is constructed from `?` literals only — values flow through
+    # parameterized binds below, so the f-string is safe.
     sql = (
-        "SELECT symbol_id, file_path, mod_count_30d "
+        "SELECT symbol_id, file_path, mod_count_30d "  # nosec B608
         "FROM ast_symbol_activation "
         f"WHERE file_path IN ({placeholders}) "
         "AND mod_count_30d >= ? "
@@ -605,9 +605,7 @@ def _hot_zone_symbols_for_files(
     try:
         conn = sqlite3.connect(str(db_path))
         conn.row_factory = sqlite3.Row
-        rows = conn.execute(
-            sql, [*changed_files, _HOT_ZONE_THRESHOLD]
-        ).fetchall()
+        rows = conn.execute(sql, [*changed_files, _HOT_ZONE_THRESHOLD]).fetchall()
         return [dict(r) for r in rows]
     except sqlite3.OperationalError as exc:
         logger.debug("hot zone lookup failed: %s", exc)
@@ -683,9 +681,9 @@ def _classify_changed_files(
         return []
 
     try:
+        from ....ast_diff import ASTDiffer
         from ....project_graph import _language_from_ext
         from ....semantic_change_classifier import SemanticChangeClassifier
-        from ...ast_diff import ASTDiffer
     except Exception:
         # If any of the required modules can't be imported (e.g. in a
         # bare-minimum install), degrade silently to "no semantic data".
