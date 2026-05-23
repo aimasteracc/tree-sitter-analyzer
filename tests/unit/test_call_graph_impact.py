@@ -172,7 +172,12 @@ class TestChangeImpactIntegration:
                 assert "call_graph_impact" in result
                 assert result["call_graph_impact"]["functions_analyzed"] == 1
 
-    def test_build_result_without_call_graph(self):
+    def test_build_result_without_call_graph(self, tmp_path, monkeypatch):
+        # Perf note (2026-05-23): project_root=None used to fall back to "."
+        # (cwd) and scan the whole repo (~1100 files, ~9s). chdir to tmp_path
+        # so the cwd fallback hits an empty dir. The test contract (README-
+        # only change → no call_graph impact section) is preserved.
+        monkeypatch.chdir(tmp_path)
         from tree_sitter_analyzer.mcp.tools.utils.change_impact_analysis import (
             ChangeImpactRequest,
             _build_change_impact_result,

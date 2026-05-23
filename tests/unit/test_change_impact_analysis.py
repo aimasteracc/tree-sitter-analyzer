@@ -133,13 +133,25 @@ class TestBuildTestPlan:
 
 
 class TestLoadDependencyGraph:
-    def test_none_root(self):
-        # None falls back to "." — returns a graph, not None
+    # Perf note (2026-05-23): these two tests used to take ~21s combined
+    # because ``_load_dependency_graph(None)`` falls back to ``"."``
+    # (current working directory) — which is the full ~1100-file project
+    # tree when run from the repo root. We were testing "None is handled
+    # gracefully" but accidentally also exercising "scan 1100 files". Use
+    # ``tmp_path`` (empty dir) to keep the original contract — None /
+    # bogus paths return a graph not None — but in O(1).
+
+    def test_none_root_with_empty_cwd(self, tmp_path, monkeypatch):
+        # Run with cwd=tmp_path so the None-fallback hits an empty dir
+        # instead of scanning the entire repo. Preserves the test intent
+        # (None falls back to ".") while making it run in milliseconds.
+        monkeypatch.chdir(tmp_path)
         result = _load_dependency_graph(None)
         assert result is not None
 
     def test_nonexistent_root(self):
-        # DependencyGraph doesn't raise for nonexistent paths — returns a graph
+        # DependencyGraph doesn't raise for nonexistent paths — returns a graph.
+        # An obviously-bogus path scans nothing, so this is already fast.
         result = _load_dependency_graph("/nonexistent/path")
         assert result is not None
 
