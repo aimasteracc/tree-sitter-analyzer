@@ -35,6 +35,7 @@ def create_tool_registry(
     from .tools.code_similarity_tool import CodeGraphSimilarityTool
     from .tools.codegraph_impact_tool import CodeGraphImpactTool
     from .tools.codegraph_navigate_tool import CodeGraphNavigateTool
+    from .tools.constraint_check_tool import ConstraintCheckTool
     from .tools.codegraph_overview_tool import CodeGraphOverviewTool
     from .tools.codegraph_pr_review_tool import CodeGraphPRReviewTool
     from .tools.codegraph_sitemap_tool import CodeGraphSitemapTool
@@ -112,5 +113,6 @@ def create_tool_registry(
         ("codegraph_complexity_heatmap", CodeGraphComplexityHeatmapTool(project_root)),
         ("codegraph_class_hierarchy", ClassHierarchyTool(project_root)),
         ("codegraph_dependency_matrix", CodeGraphDependencyMatrixTool(project_root)),
+        ("check_constraints", ConstraintCheckTool(project_root)),
     ]
     return tool_instances, dict(tool_instances)

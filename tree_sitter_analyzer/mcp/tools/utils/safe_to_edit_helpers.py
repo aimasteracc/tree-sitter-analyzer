@@ -10,6 +10,11 @@ from typing import Any
 from ....health_scorer import HealthScorer
 from ....project_graph import DependencyGraph
 from ..file_health_tool import _build_signal
+from .constraint_violation_query import (
+    constraint_risk_factor,
+    verdict_from_violations,
+    violations_for_files,
+)
 from .safe_to_edit_risk import build_checklist, compute_risk
 from .test_discovery import find_test_files
 from .verification_command import build_test_command, detect_default_test_command
@@ -55,9 +60,54 @@ class SafeToEditFacts:
 
 
 def build_safe_to_edit_result(context: SafeToEditContext) -> dict[str, Any]:
-    """Build the MCP response payload for a safe-to-edit request."""
+    """Build the MCP response payload for a safe-to-edit request.
+
+    Post-processes the result with constraint-violation facts: if the
+    file being checked is the caller or callee of any persisted
+    violation, escalate the verdict (error -> UNSAFE, warn -> CAUTION)
+    and splice the violation context into ``risk_factors`` so the agent
+    sees *why* without a second MCP call.
+    """
     facts = _collect_safe_to_edit_facts(context)
-    return _format_safe_to_edit_result(context, facts)
+    result = _format_safe_to_edit_result(context, facts)
+    return _apply_constraint_violations(result, context, facts)
+
+
+def _apply_constraint_violations(
+    result: dict[str, Any],
+    context: SafeToEditContext,
+    facts: SafeToEditFacts,
+) -> dict[str, Any]:
+    """Escalate verdict + decorate risk_factors when constraints flag the file.
+
+    Cache-then-read: the violation rows are produced by
+    ``check_constraints`` / the change_impact auto-evaluation pass.
+    This function never re-evaluates; it only consumes what's persisted.
+    """
+    rel_path = to_relative(context.resolved_path, context.project_root)
+    candidate_paths = {context.file_path, rel_path}
+    if context.resolved_path:
+        candidate_paths.add(context.resolved_path)
+
+    violations = violations_for_files(context.project_root, candidate_paths)
+    if not violations:
+        return result
+
+    new_verdict = verdict_from_violations(violations)
+    if new_verdict is None:
+        return result
+
+    constraint_factors = [constraint_risk_factor(v) for v in violations]
+    merged_factors = list(result.get("risk_factors", [])) + constraint_factors
+    out = dict(result)
+    out["verdict"] = new_verdict
+    out["risk_factors"] = merged_factors
+    out["constraint_violations"] = constraint_factors
+    summary = dict(out.get("agent_summary", {}))
+    if summary:
+        summary["verdict"] = new_verdict
+        out["agent_summary"] = summary
+    return out
 
 
 def _collect_safe_to_edit_facts(context: SafeToEditContext) -> SafeToEditFacts:

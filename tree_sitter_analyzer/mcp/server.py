@@ -116,6 +116,7 @@ def _create_tool_registry(
     from .tools.codegraph_navigate_tool import CodeGraphNavigateTool
     from .tools.codegraph_overview_tool import CodeGraphOverviewTool
     from .tools.codegraph_pr_review_tool import CodeGraphPRReviewTool
+    from .tools.constraint_check_tool import ConstraintCheckTool
     from .tools.dead_code_tool import CodeGraphDeadCodeTool
     from .tools.dependency_analysis_tool import DependencyAnalysisTool
     from .tools.dependency_matrix_tool import CodeGraphDependencyMatrixTool
@@ -178,6 +179,7 @@ def _create_tool_registry(
         ("codegraph_dead_code", CodeGraphDeadCodeTool(project_root)),
         ("codegraph_class_hierarchy", ClassHierarchyTool(project_root)),
         ("codegraph_dependency_matrix", CodeGraphDependencyMatrixTool(project_root)),
+        ("check_constraints", ConstraintCheckTool(project_root)),
     ]
     return tool_instances, dict(tool_instances)
 

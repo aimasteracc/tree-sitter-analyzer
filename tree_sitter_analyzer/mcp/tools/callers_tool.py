@@ -89,6 +89,15 @@ class CodeGraphCallersTool(BaseMCPTool):
                     "description": "Output format: 'toon' (default, token-efficient) or 'json'",
                     "default": "toon",
                 },
+                "include_activation": {
+                    "type": "boolean",
+                    "description": (
+                        "When true, embed per-caller git modification "
+                        "frequency under the 'activation' key. Off by "
+                        "default to preserve token budget."
+                    ),
+                    "default": False,
+                },
             },
             "required": ["function_name"],
             "additionalProperties": False,
@@ -105,10 +114,13 @@ class CodeGraphCallersTool(BaseMCPTool):
         func_name = arguments["function_name"]
         file_path = arguments.get("file_path")
         output_format = arguments.get("output_format", "toon")
+        include_activation = bool(arguments.get("include_activation", False))
 
         cache = self._try_get_cache()
         if cache is not None and cache.has_call_edges():
-            callers = self._sql_native_callers(cache, func_name, file_path)
+            callers = self._sql_native_callers(
+                cache, func_name, file_path, include_activation
+            )
             data_source = "sql"
         else:
             graph = self._get_call_graph()
@@ -129,12 +141,24 @@ class CodeGraphCallersTool(BaseMCPTool):
         return apply_toon_format_to_response(result, output_format)
 
     def _sql_native_callers(
-        self, cache: Any, func_name: str, file_path: str | None
+        self,
+        cache: Any,
+        func_name: str,
+        file_path: str | None,
+        include_activation: bool = False,
     ) -> list[dict[str, Any]]:
-        """Use SQL-native callers query — O(k) instead of full graph build."""
+        """Use SQL-native callers query — O(k) instead of full graph build.
+
+        When ``include_activation`` is True, each entry gets an
+        ``activation`` sub-dict carrying ``mod_count_30d`` and
+        ``last_modified_at`` read from ``ast_symbol_activation``.
+        """
         raw = cache.query_callers(func_name, callee_file=file_path)
         results: list[dict[str, Any]] = []
         seen: set[str] = set()
+        activation_map: dict[tuple[str, int], dict[str, Any]] = {}
+        if include_activation:
+            activation_map = self._fetch_activation_map(cache)
         for edge in raw:
             key = f"{edge['caller_file']}:{edge['caller_name']}"
             if key in seen:
@@ -151,5 +175,42 @@ class CodeGraphCallersTool(BaseMCPTool):
             )
             if row_data:
                 entry["language"] = row_data.get("language", "")
+            if include_activation:
+                entry["activation"] = activation_map.get(
+                    (edge["caller_file"], edge["caller_line"]),
+                    {"mod_count_30d": 0, "last_modified_at": None},
+                )
             results.append(entry)
         return results
+
+    @staticmethod
+    def _fetch_activation_map(
+        cache: Any,
+    ) -> dict[tuple[str, int], dict[str, Any]]:
+        """Build a (file_path, line) -> activation map.
+
+        Returns an empty map when ``ast_symbol_activation`` doesn't exist
+        on a legacy cache — callers default to zero-counts in that case.
+        """
+        try:
+            conn = cache._get_conn()
+            rows = conn.execute(
+                "SELECT s.file_path, s.line, a.mod_count_30d, a.last_modified_at "
+                "FROM ast_symbol_activation a "
+                "JOIN ast_symbol_rows s ON s.id = a.symbol_id"
+            ).fetchall()
+        except Exception:
+            return {}
+        out: dict[tuple[str, int], dict[str, Any]] = {}
+        for row in rows:
+            file_path = row["file_path"] or ""
+            line = int(row["line"] or 0)
+            out[(file_path, line)] = {
+                "mod_count_30d": int(row["mod_count_30d"] or 0),
+                "last_modified_at": (
+                    int(row["last_modified_at"])
+                    if row["last_modified_at"] is not None
+                    else None
+                ),
+            }
+        return out

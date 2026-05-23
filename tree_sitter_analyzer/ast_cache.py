@@ -93,6 +93,66 @@ CREATE INDEX IF NOT EXISTS idx_ce_file_path
 """
 
 
+# Feature 2 (Temporal Activation) — per-symbol git modification frequency.
+# Populated as a side-effect of ``index_file`` via ``git_activation``.
+# Consumers: change-impact verdict bump, callees/callers ``include_activation``,
+# homeostasis health scoring (Phase 3b).
+#
+# One row per symbol_id; the (file_path) index lets re-index deletes scope
+# by file without touching ast_symbol_rows joins.
+_SCHEMA_V5_ACTIVATION = """
+CREATE TABLE IF NOT EXISTS ast_symbol_activation (
+    symbol_id INTEGER PRIMARY KEY,
+    file_path TEXT NOT NULL,
+    last_modified_commit TEXT,
+    last_modified_at INTEGER,
+    mod_count_30d INTEGER NOT NULL DEFAULT 0,
+    mod_count_90d INTEGER NOT NULL DEFAULT 0,
+    mod_count_all INTEGER NOT NULL DEFAULT 0,
+    computed_at INTEGER NOT NULL,
+    git_state TEXT NOT NULL DEFAULT 'tracked'
+);
+
+CREATE INDEX IF NOT EXISTS idx_act_file
+    ON ast_symbol_activation(file_path);
+
+CREATE INDEX IF NOT EXISTS idx_act_hot_30d
+    ON ast_symbol_activation(mod_count_30d DESC);
+
+CREATE INDEX IF NOT EXISTS idx_act_last_at
+    ON ast_symbol_activation(last_modified_at DESC);
+"""
+
+
+# Feature 3 (Inhibition / Constraint DSL) — persistent violation cache.
+# ``check_constraints`` writes detected violations here; ``safe_to_edit``
+# and ``analyze_change_impact`` read them on every gate-tool call.
+#
+# Composite primary key (rule_id, caller_file, caller_line, callee_name)
+# is intentionally tight: a single rule can fire from many lines, and a
+# single line can violate many rules, but the same (rule, line, callee)
+# combination should dedupe into one row across re-evaluations.
+_SCHEMA_V6_VIOLATIONS = """
+CREATE TABLE IF NOT EXISTS ast_constraint_violations (
+    rule_id      TEXT NOT NULL,
+    caller_file  TEXT NOT NULL,
+    caller_name  TEXT NOT NULL,
+    caller_line  INTEGER NOT NULL,
+    callee_name  TEXT NOT NULL,
+    callee_file  TEXT NOT NULL DEFAULT '',
+    severity     TEXT NOT NULL,
+    detected_at  INTEGER NOT NULL,
+    PRIMARY KEY (rule_id, caller_file, caller_line, callee_name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_cv_caller_file
+    ON ast_constraint_violations(caller_file);
+
+CREATE INDEX IF NOT EXISTS idx_cv_severity
+    ON ast_constraint_violations(severity);
+"""
+
+
 def _has_fts5(conn: sqlite3.Connection) -> bool:
     try:
         conn.execute(
@@ -643,6 +703,19 @@ class ASTCache:
             conn.commit()
         except sqlite3.OperationalError:
             pass
+        # Feature 2 (Temporal Activation) — V5 schema. Idempotent
+        # CREATE TABLE IF NOT EXISTS so the migration is safe to re-run.
+        try:
+            conn.executescript(_SCHEMA_V5_ACTIVATION)
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass
+        # Feature 3 (Constraint DSL) — V6 schema. Same idempotency.
+        try:
+            conn.executescript(_SCHEMA_V6_VIOLATIONS)
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass
         conn.commit()
 
     def index_file(self, file_path: str, language: str | None = None) -> dict[str, Any]:
@@ -723,6 +796,7 @@ class ASTCache:
             ),
         )
 
+        inserted_symbol_rows: list[dict[str, Any]] = []
         if self._fts5_available:
             conn.execute(
                 "DELETE FROM ast_symbol_rows WHERE file_path = ?",
@@ -748,6 +822,13 @@ class ASTCache:
                        VALUES (?, ?, ?, ?, ?)""",
                     (row_id, sym_name, sym_kind, rel_path, language),
                 )
+                inserted_symbol_rows.append(
+                    {
+                        "id": int(row_id) if row_id is not None else 0,
+                        "line": sym_line,
+                        "end_line": sym_end,
+                    }
+                )
 
         conn.execute(
             "DELETE FROM ast_call_edges WHERE file_path = ?",
@@ -772,6 +853,11 @@ class ASTCache:
                 ),
             )
 
+        # Feature 2 (Temporal Activation) — refresh per-symbol git heat
+        # rows for this file using the symbol_ids we just inserted.
+        # Honours TSA_INDEX_ACTIVATION=0 via the helper below.
+        self._write_activation_for_file(conn, rel_path, inserted_symbol_rows)
+
         conn.commit()
         return {
             "file": rel_path,
@@ -780,6 +866,82 @@ class ASTCache:
             "call_edges": len(call_edges),
             "content_hash": content_hash[:16],
         }
+
+    def _write_activation_for_file(
+        self,
+        conn: sqlite3.Connection,
+        rel_path: str,
+        inserted_symbol_rows: list[dict[str, Any]],
+    ) -> None:
+        """Refresh ``ast_symbol_activation`` rows for a single file.
+
+        Replaces all existing rows for ``rel_path`` with fresh
+        ``ActivationRow`` entries computed from git history. Skipped when
+        ``TSA_INDEX_ACTIVATION=0`` so callers can opt out without paying
+        the subprocess cost.
+
+        Never raises — git failures degrade to zero-row writes (or no
+        writes when the feature is disabled). The indexing pipeline
+        cannot afford to fail on git oddities.
+        """
+        if not inserted_symbol_rows:
+            # No symbols → clear any stale rows for this file in case a
+            # previous index pass had symbols here.
+            try:
+                conn.execute(
+                    "DELETE FROM ast_symbol_activation WHERE file_path = ?",
+                    (rel_path,),
+                )
+            except sqlite3.OperationalError:
+                pass
+            return
+        try:
+            from . import git_activation
+        except Exception as exc:  # pragma: no cover — import path defensive
+            logger.debug("git_activation import failed: %s", exc)
+            return
+        if git_activation._activation_disabled():
+            # Honour the kill switch BEFORE invoking subprocess. Tests
+            # patch ``ga.subprocess`` to detect any escape.
+            return
+        try:
+            rows = git_activation.compute_symbol_activation(
+                file_path=os.path.join(self.project_root, rel_path),
+                symbols=inserted_symbol_rows,
+                repo_root=self.project_root,
+            )
+        except Exception as exc:  # pragma: no cover — git_activation never raises
+            logger.debug("compute_symbol_activation failed for %s: %s", rel_path, exc)
+            return
+        try:
+            conn.execute(
+                "DELETE FROM ast_symbol_activation WHERE file_path = ?",
+                (rel_path,),
+            )
+            for r in rows:
+                conn.execute(
+                    """INSERT OR REPLACE INTO ast_symbol_activation (
+                        symbol_id, file_path,
+                        last_modified_commit, last_modified_at,
+                        mod_count_30d, mod_count_90d, mod_count_all,
+                        computed_at, git_state
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        int(r.symbol_id),
+                        rel_path,
+                        r.last_modified_commit,
+                        r.last_modified_at,
+                        int(r.mod_count_30d),
+                        int(r.mod_count_90d),
+                        int(r.mod_count_all),
+                        int(r.computed_at),
+                        r.git_state,
+                    ),
+                )
+        except sqlite3.OperationalError as exc:
+            # Table missing on legacy DB — degrade silently rather than
+            # failing the whole index pass.
+            logger.debug("activation write failed for %s: %s", rel_path, exc)
 
     def index_project(
         self,
@@ -933,6 +1095,12 @@ class ASTCache:
             raise
         stats["total_files"] = count
         stats["workers"] = workers
+        if stats["indexed"] > 0:
+            try:
+                bf = self.backfill_cross_file_edges()
+                stats["cross_file_backfill"] = bf
+            except Exception:
+                logger.debug("cross-file backfill failed", exc_info=True)
         return stats
 
     def _index_parallel(
@@ -952,7 +1120,12 @@ class ASTCache:
         return results
 
     def _insert_index_row(self, r: dict[str, Any], indexed_at: str) -> None:
-        """Write one worker result to SQLite (main table + optional FTS5)."""
+        """Write one worker result to SQLite (main table + optional FTS5).
+
+        Workers DO NOT run git themselves — only this writer thread does,
+        via ``_write_activation_for_file`` below. Subprocess in a worker
+        pool deadlocks against git's index lock and gains us nothing.
+        """
         conn = self._get_conn()
         rel_path = r["rel_path"]
         conn.execute(
@@ -973,6 +1146,7 @@ class ASTCache:
             ),
         )
         if not self._fts5_available:
+            # Without FTS5 we have no symbol_ids to attach activation to.
             return
         conn.execute(
             "DELETE FROM ast_symbol_rows WHERE file_path = ?",
@@ -982,6 +1156,7 @@ class ASTCache:
             "DELETE FROM ast_symbols_fts WHERE file_path = ?",
             (rel_path,),
         )
+        inserted_symbol_rows: list[dict[str, Any]] = []
         for sym_name, sym_kind, sym_line, sym_end in r["symbol_rows"]:
             row_id = conn.execute(
                 """INSERT INTO ast_symbol_rows
@@ -993,6 +1168,13 @@ class ASTCache:
                 """INSERT INTO ast_symbols_fts (rowid, name, kind, file_path, language)
                    VALUES (?, ?, ?, ?, ?)""",
                 (row_id, sym_name, sym_kind, rel_path, r["language"]),
+            )
+            inserted_symbol_rows.append(
+                {
+                    "id": int(row_id) if row_id is not None else 0,
+                    "line": sym_line,
+                    "end_line": sym_end,
+                }
             )
 
         conn.execute(
@@ -1018,6 +1200,11 @@ class ASTCache:
                     r["language"],
                 ),
             )
+
+        # Feature 2 (Temporal Activation): only this writer thread runs
+        # git. Workers stay focused on parse + extract; subprocess in a
+        # multiprocess pool would deadlock against git's index lock.
+        self._write_activation_for_file(conn, rel_path, inserted_symbol_rows)
 
     def lookup(self, file_path: str) -> dict[str, Any] | None:
         rel = os.path.relpath(os.path.abspath(file_path), self.project_root)
@@ -1276,15 +1463,23 @@ class ASTCache:
             if current_file:
                 rows = conn.execute(
                     "SELECT caller_name, caller_file, caller_line, "
-                    "callee_name, file_path, callee_line "
+                    "callee_name, file_path, callee_line, callee_resolved_file "
                     "FROM ast_call_edges "
-                    "WHERE callee_name = ? AND file_path = ?",
+                    "WHERE callee_name = ? AND callee_resolved_file = ?",
                     (current_name, current_file),
                 ).fetchall()
+                if not rows:
+                    rows = conn.execute(
+                        "SELECT caller_name, caller_file, caller_line, "
+                        "callee_name, file_path, callee_line, callee_resolved_file "
+                        "FROM ast_call_edges "
+                        "WHERE callee_name = ? AND file_path = ?",
+                        (current_name, current_file),
+                    ).fetchall()
             else:
                 rows = conn.execute(
                     "SELECT caller_name, caller_file, caller_line, "
-                    "callee_name, file_path, callee_line "
+                    "callee_name, file_path, callee_line, callee_resolved_file "
                     "FROM ast_call_edges WHERE callee_name = ?",
                     (current_name,),
                 ).fetchall()
@@ -1293,12 +1488,13 @@ class ASTCache:
                 if key in visited:
                     continue
                 visited.add(key)
+                callee_file_val = row["callee_resolved_file"] or row["file_path"]
                 entry: dict[str, Any] = {
                     "caller_name": row["caller_name"],
                     "caller_file": row["caller_file"],
                     "caller_line": row["caller_line"],
                     "callee_name": row["callee_name"],
-                    "callee_file": row["file_path"],
+                    "callee_file": callee_file_val,
                     "callee_line": row["callee_line"],
                     "depth": depth + 1,
                 }
@@ -1347,7 +1543,7 @@ class ASTCache:
             if current_file:
                 rows = conn.execute(
                     "SELECT caller_name, caller_file, caller_line, "
-                    "callee_name, callee_full, file_path, callee_line "
+                    "callee_name, callee_full, file_path, callee_line, callee_resolved_file "
                     "FROM ast_call_edges "
                     "WHERE caller_name = ? AND caller_file = ?",
                     (current_name, current_file),
@@ -1355,7 +1551,7 @@ class ASTCache:
             else:
                 rows = conn.execute(
                     "SELECT caller_name, caller_file, caller_line, "
-                    "callee_name, callee_full, file_path, callee_line "
+                    "callee_name, callee_full, file_path, callee_line, callee_resolved_file "
                     "FROM ast_call_edges WHERE caller_name = ?",
                     (current_name,),
                 ).fetchall()
@@ -1364,12 +1560,13 @@ class ASTCache:
                 if key in visited:
                     continue
                 visited.add(key)
+                callee_file_val = row["callee_resolved_file"] or row["file_path"]
                 entry: dict[str, Any] = {
                     "caller_name": row["caller_name"],
                     "caller_file": row["caller_file"],
                     "caller_line": row["caller_line"],
                     "callee_name": row["callee_name"],
-                    "callee_file": row["file_path"],
+                    "callee_file": callee_file_val,
                     "callee_line": row["callee_line"],
                     "depth": depth + 1,
                 }
@@ -1446,6 +1643,92 @@ class ASTCache:
                 entry["callee_resolved_file"] = candidates[0][0]
                 entry["confidence"] = candidates[0][1]
         return raw
+
+    def backfill_cross_file_edges(self) -> dict[str, Any]:
+        """Resolve cross-file call edges and persist callee_resolved_file.
+
+        Uses CrossFileResolver to re-resolve all call edges with import-aware
+        symbol resolution, then writes the resolved callee file back to the
+        ``ast_call_edges`` table. After backfill, cross-file callers/callees
+        queries return accurate results instead of bare names.
+
+        Returns dict with ``total``, ``resolved``, ``unchanged``, ``errors``.
+        """
+        from .cross_file_resolver import CrossFileResolver
+
+        resolver = CrossFileResolver(self)
+        resolver.build()
+        resolved_edges = resolver.resolve_call_edges()
+
+        conn = self._get_conn()
+        total = len(resolved_edges)
+        resolved = 0
+        unchanged = 0
+        errors = 0
+
+        try:
+            conn.execute("BEGIN")
+            for edge in resolved_edges:
+                callee_resolved = edge.callee_resolved_file
+                if not callee_resolved:
+                    unchanged += 1
+                    continue
+                try:
+                    cursor = conn.execute(
+                        "UPDATE ast_call_edges SET callee_resolved_file = ? "
+                        "WHERE caller_file = ? AND caller_line = ? "
+                        "AND callee_name = ? AND callee_line = ?",
+                        (
+                            callee_resolved,
+                            edge.caller_file,
+                            edge.caller_line,
+                            edge.callee_name,
+                            edge.callee_line,
+                        ),
+                    )
+                    if cursor.rowcount > 0:
+                        resolved += 1
+                    else:
+                        unchanged += 1
+                except Exception:
+                    errors += 1
+            conn.execute("COMMIT")
+        except Exception:
+            conn.execute("ROLLBACK")
+            raise
+
+        return {
+            "total": total,
+            "resolved": resolved,
+            "unchanged": unchanged,
+            "errors": errors,
+        }
+
+    def get_cross_file_stats(self) -> dict[str, Any]:
+        """Return cross-file edge resolution statistics."""
+        conn = self._get_conn()
+        try:
+            total = conn.execute(
+                "SELECT COUNT(*) as c FROM ast_call_edges"
+            ).fetchone()["c"]
+            resolved = conn.execute(
+                "SELECT COUNT(*) as c FROM ast_call_edges "
+                "WHERE callee_resolved_file != ''"
+            ).fetchone()["c"]
+            cross_file = conn.execute(
+                "SELECT COUNT(*) as c FROM ast_call_edges "
+                "WHERE callee_resolved_file != '' "
+                "AND callee_resolved_file != file_path"
+            ).fetchone()["c"]
+        except sqlite3.OperationalError:
+            return {"total": 0, "resolved": 0, "cross_file": 0, "pct": 0.0}
+        pct = (cross_file / total * 100) if total > 0 else 0.0
+        return {
+            "total": total,
+            "resolved": resolved,
+            "cross_file": cross_file,
+            "pct": round(pct, 2),
+        }
 
     def close(self) -> None:
         conn = getattr(self._local, "conn", None)

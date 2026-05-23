@@ -26,6 +26,11 @@ from .change_impact_verification import (
     _build_verification_plan,
     _is_docs_only_change,
 )
+from .constraint_violation_query import (
+    constraint_risk_factor,
+    verdict_from_violations,
+    violations_for_files,
+)
 from .test_discovery_stems import related_stem_matches, related_test_stems_for_path
 from .verification_command import (
     DefaultTestCommand,
@@ -471,6 +476,12 @@ def _build_change_impact_result(request: ChangeImpactRequest) -> dict[str, Any]:
     if call_graph_data is not None:
         result["call_graph_impact"] = call_graph_data
 
+    # Read temporal hot-zone risk BEFORE the auto-index re-runs — that
+    # path would call ``_write_activation_for_file`` for any modified
+    # source file and overwrite seeded rows. The verdict bump needs the
+    # CURRENT activation state, not the freshly-recomputed one.
+    result = _attach_hot_zone_risk(result, request)
+
     cache = _ensure_ast_cache(request.project_root, request.changed_files)
     try:
         changed_symbols = _enrich_with_cache_symbols(request.changed_files, cache)
@@ -498,6 +509,152 @@ def _build_change_impact_result(request: ChangeImpactRequest) -> dict[str, Any]:
             except Exception:
                 pass
 
+    return _attach_constraint_violations(result, request, affected)
+
+
+_HOT_ZONE_THRESHOLD = 5
+"""Per Feature 2 spec — symbols modified >= this many times in 30 days are
+flagged as hot zones, which forces verdict at least CAUTION."""
+
+
+def _attach_hot_zone_risk(
+    result: dict[str, Any],
+    request: ChangeImpactRequest,
+) -> dict[str, Any]:
+    """Decorate the change-impact result with temporal hot-zone risk factors.
+
+    For each changed file we look up its symbols in
+    ``ast_symbol_activation``. Any symbol with ``mod_count_30d >=
+    _HOT_ZONE_THRESHOLD`` is treated as a "hot zone" — editing recently-
+    churning code is higher risk than a stable one-off change.
+
+    Two effects:
+      1. A risk_factors entry containing the substring ``hot zone`` is
+         appended (key is ``factor`` per existing schema; ``reason``
+         carries human-readable detail).
+      2. The verdict is promoted to ``CAUTION`` if it was looser (INFO /
+         REVIEW). Constraint violations may further escalate to UNSAFE
+         later via ``_attach_constraint_violations`` — that path wins.
+    """
+    if not request.changed_files or not request.project_root:
+        result.setdefault("risk_factors", result.get("risk_factors", []))
+        return result
+
+    hot_rows = _hot_zone_symbols_for_files(
+        request.project_root, request.changed_files
+    )
+    existing_factors = list(result.get("risk_factors", []) or [])
+    if not hot_rows:
+        result["risk_factors"] = existing_factors
+        return result
+
+    for row in hot_rows:
+        existing_factors.append(
+            {
+                "factor": "hot_zone",
+                "reason": (
+                    f"hot zone: {row['file_path']} "
+                    f"symbol_id={row['symbol_id']} "
+                    f"modified {row['mod_count_30d']} times in 30 days"
+                ),
+                "severity": "warn",
+                "mod_count_30d": int(row["mod_count_30d"]),
+                "file_path": row["file_path"],
+            }
+        )
+    result["risk_factors"] = existing_factors
+    # Bump verdict — CAUTION wins over INFO / REVIEW. UNSAFE may later
+    # win via constraint-violation escalation; we never downgrade.
+    current = result.get("verdict", "INFO")
+    if current not in ("CAUTION", "UNSAFE"):
+        result["verdict"] = "CAUTION"
+        summary = result.get("agent_summary")
+        if isinstance(summary, dict):
+            summary["verdict"] = "CAUTION"
+    return result
+
+
+def _hot_zone_symbols_for_files(
+    project_root: str,
+    changed_files: list[str],
+) -> list[dict[str, Any]]:
+    """Return per-symbol activation rows above the hot-zone threshold.
+
+    Reads ``ast_symbol_activation`` from the project's cache DB; returns
+    [] on missing table / missing DB so the gate tool keeps working on
+    fresh repos. Each row carries ``symbol_id``, ``file_path``, and
+    ``mod_count_30d``.
+    """
+    if not changed_files:
+        return []
+    db_path = Path(project_root) / ".ast-cache" / "index.db"
+    if not db_path.is_file():
+        return []
+
+    placeholders = ",".join(["?"] * len(changed_files))
+    sql = (
+        "SELECT symbol_id, file_path, mod_count_30d "
+        "FROM ast_symbol_activation "
+        f"WHERE file_path IN ({placeholders}) "
+        "AND mod_count_30d >= ? "
+        "ORDER BY mod_count_30d DESC"
+    )
+    import sqlite3
+
+    conn: sqlite3.Connection | None = None
+    try:
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            sql, [*changed_files, _HOT_ZONE_THRESHOLD]
+        ).fetchall()
+        return [dict(r) for r in rows]
+    except sqlite3.OperationalError as exc:
+        logger.debug("hot zone lookup failed: %s", exc)
+        return []
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:  # noqa: BLE001
+                pass
+
+
+def _attach_constraint_violations(
+    result: dict[str, Any],
+    request: ChangeImpactRequest,
+    affected: set[str],
+) -> dict[str, Any]:
+    """Decorate the change-impact result with persisted constraint violations.
+
+    Two effects (per Feature 3 spec):
+
+    1. Always add a ``constraint_violations`` field (possibly empty)
+       so agent callers can branch on its presence rather than catching
+       KeyError. Cheap to compute on a fresh repo: the lookup short-
+       circuits when the DB doesn't exist.
+
+    2. When error-severity violations touch the diff (caller_file or
+       callee_file is in changed_files OR the affected blast radius),
+       promote the verdict to UNSAFE. Warn-only → CAUTION. "Diff says
+       SAFE but constraints say UNSAFE" is the failure mode the spec
+       explicitly cannot ship.
+    """
+    candidate_files = set(request.changed_files) | set(affected or set())
+    if not candidate_files:
+        result.setdefault("constraint_violations", [])
+        return result
+
+    rows = violations_for_files(request.project_root, candidate_files)
+    cv_payload = [constraint_risk_factor(r) for r in rows]
+    result["constraint_violations"] = cv_payload
+
+    new_verdict = verdict_from_violations(rows)
+    if new_verdict is not None:
+        result["verdict"] = new_verdict
+        summary = result.get("agent_summary")
+        if isinstance(summary, dict):
+            summary["verdict"] = new_verdict
     return result
 
 

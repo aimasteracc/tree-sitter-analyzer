@@ -89,6 +89,15 @@ class CodeGraphCalleesTool(BaseMCPTool):
                     "description": "Output format: 'toon' (default, token-efficient) or 'json'",
                     "default": "toon",
                 },
+                "include_activation": {
+                    "type": "boolean",
+                    "description": (
+                        "When true, embed per-callee git modification "
+                        "frequency under the 'activation' key. Off by "
+                        "default to preserve token budget."
+                    ),
+                    "default": False,
+                },
             },
             "required": ["function_name"],
             "additionalProperties": False,
@@ -105,15 +114,20 @@ class CodeGraphCalleesTool(BaseMCPTool):
         func_name = arguments["function_name"]
         file_path = arguments.get("file_path")
         output_format = arguments.get("output_format", "toon")
+        include_activation = bool(arguments.get("include_activation", False))
 
         cache = self._try_get_cache()
         if cache is not None and cache.has_call_edges():
-            callees = self._sql_native_callees(cache, func_name, file_path)
+            callees = self._sql_native_callees(
+                cache, func_name, file_path, include_activation
+            )
             data_source = "sql"
         else:
             graph = self._get_call_graph()
             callees = graph.callees_of(func_name, file_path)
             data_source = self._data_source
+            if include_activation:
+                self._enrich_graph_callees_with_activation(callees)
 
         result: dict[str, Any] = {
             "success": True,
@@ -129,12 +143,26 @@ class CodeGraphCalleesTool(BaseMCPTool):
         return apply_toon_format_to_response(result, output_format)
 
     def _sql_native_callees(
-        self, cache: Any, func_name: str, file_path: str | None
+        self,
+        cache: Any,
+        func_name: str,
+        file_path: str | None,
+        include_activation: bool = False,
     ) -> list[dict[str, Any]]:
-        """Use SQL-native callees query — O(k) instead of full graph build."""
+        """Use SQL-native callees query — O(k) instead of full graph build.
+
+        When ``include_activation`` is True, each entry gets an
+        ``activation`` sub-dict carrying ``mod_count_30d`` and
+        ``last_modified_at`` read from ``ast_symbol_activation``. The
+        lookup is keyed by ``(callee_file, callee_line)`` and falls back
+        to zero counts when no row is found.
+        """
         raw = cache.query_callees(func_name, caller_file=file_path)
         results: list[dict[str, Any]] = []
         seen: set[str] = set()
+        activation_map: dict[tuple[str, int], dict[str, Any]] = {}
+        if include_activation:
+            activation_map = self._fetch_activation_map(cache)
         for edge in raw:
             key = f"{edge['callee_name']}:{edge['callee_file']}"
             if key in seen:
@@ -151,5 +179,93 @@ class CodeGraphCalleesTool(BaseMCPTool):
             )
             if row_data:
                 entry["language"] = row_data.get("language", "")
+            if include_activation:
+                entry["activation"] = self._activation_for(
+                    activation_map,
+                    edge["callee_file"],
+                    edge["callee_line"],
+                )
             results.append(entry)
         return results
+
+    @staticmethod
+    def _fetch_activation_map(
+        cache: Any,
+    ) -> dict[tuple[str, int], dict[str, Any]]:
+        """Build a (file_path, line) -> {mod_count_30d, last_modified_at} map.
+
+        We JOIN with ``ast_symbol_rows`` to recover the source line for
+        each activation row — the activation table itself only carries
+        ``symbol_id`` and ``file_path``. Returns an empty map when the
+        cache is legacy / missing the table.
+        """
+        try:
+            conn = cache._get_conn()
+            rows = conn.execute(
+                "SELECT s.file_path, s.line, a.mod_count_30d, a.last_modified_at "
+                "FROM ast_symbol_activation a "
+                "JOIN ast_symbol_rows s ON s.id = a.symbol_id"
+            ).fetchall()
+        except Exception:
+            return {}
+        out: dict[tuple[str, int], dict[str, Any]] = {}
+        for row in rows:
+            file_path = row["file_path"] or ""
+            line = int(row["line"] or 0)
+            out[(file_path, line)] = {
+                "mod_count_30d": int(row["mod_count_30d"] or 0),
+                "last_modified_at": (
+                    int(row["last_modified_at"])
+                    if row["last_modified_at"] is not None
+                    else None
+                ),
+            }
+        return out
+
+    @staticmethod
+    def _activation_for(
+        activation_map: dict[tuple[str, int], dict[str, Any]],
+        file_path: str,
+        line: int,
+    ) -> dict[str, Any]:
+        """Return the activation entry for a callee, or zero-row defaults."""
+        return activation_map.get(
+            (file_path, line),
+            {"mod_count_30d": 0, "last_modified_at": None},
+        )
+
+    def _enrich_graph_callees_with_activation(
+        self, callees: list[dict[str, Any]]
+    ) -> None:
+        """Decorate graph-walk results with activation when SQL path missed.
+
+        Used when the cache is unavailable / has no call edges so the tool
+        falls back to a fresh CallGraph parse. We still try to attach
+        activation if the cache table happens to exist.
+        """
+        try:
+            from ...ast_cache import ASTCache
+        except Exception:
+            return
+        if not self.project_root:
+            return
+        try:
+            cache = ASTCache(self.project_root)
+        except Exception:
+            return
+        try:
+            activation_map = self._fetch_activation_map(cache)
+            for entry in callees:
+                entry.setdefault(
+                    "activation",
+                    self._activation_for(
+                        activation_map,
+                        entry.get("file", ""),
+                        int(entry.get("line", 0) or 0),
+                    ),
+                )
+        finally:
+            try:
+                cache.close()
+            except Exception:
+                pass
