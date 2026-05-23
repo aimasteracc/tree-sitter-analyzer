@@ -14,6 +14,7 @@ from typing import Any
 from ...call_graph import CachedCallGraph, CallGraph
 from ...utils import setup_logger
 from .base_tool import BaseMCPTool
+from .callees_tool import classify_callee_resolution
 
 logger = setup_logger(__name__)
 
@@ -126,6 +127,7 @@ class CodeGraphCallersTool(BaseMCPTool):
             graph = self._get_call_graph()
             callers = graph.callers_of(func_name, file_path)
             data_source = self._data_source
+            self._enrich_callers_with_resolution(callers)
 
         result: dict[str, Any] = {
             "success": True,
@@ -164,11 +166,18 @@ class CodeGraphCallersTool(BaseMCPTool):
             if key in seen:
                 continue
             seen.add(key)
+            callee_resolved = edge.get("callee_resolved_file", "")
+            caller_file_val = edge["caller_file"]
+            resolution, resolved_file = classify_callee_resolution(
+                func_name, callee_resolved, caller_file_val
+            )
             entry: dict[str, Any] = {
                 "name": edge["caller_name"],
                 "file": edge["caller_file"],
                 "line": edge["caller_line"],
                 "language": "",
+                "callee_resolution": resolution,
+                "callee_resolved_file": resolved_file,
             }
             row_data = cache.lookup(
                 os.path.join(cache.project_root, edge["caller_file"])
@@ -182,6 +191,20 @@ class CodeGraphCallersTool(BaseMCPTool):
                 )
             results.append(entry)
         return results
+
+    @staticmethod
+    def _enrich_callers_with_resolution(
+        callers: list[dict[str, Any]],
+    ) -> None:
+        """Add callee_resolution and callee_resolved_file to graph-fallback results."""
+        for entry in callers:
+            if "callee_resolution" not in entry or "callee_resolved_file" not in entry:
+                callee_file = entry.get("file", "")
+                resolution, resolved_file = classify_callee_resolution(
+                    "", callee_file, callee_file
+                )
+                entry.setdefault("callee_resolution", resolution)
+                entry.setdefault("callee_resolved_file", resolved_file)
 
     @staticmethod
     def _fetch_activation_map(

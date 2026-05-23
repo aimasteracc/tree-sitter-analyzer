@@ -1,0 +1,342 @@
+"""Build the project-wide resolver context — one DB pass per index run."""
+
+from __future__ import annotations
+
+import json
+import os
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
+from ._constants import BUILTINS_PY, STDLIB_NAMES_PY
+from ._imports import ImportEntry
+
+if TYPE_CHECKING:
+    from ..ast_cache import ASTCache
+
+
+@dataclass(frozen=True)
+class ResolverContext:
+    """Project-wide indices the resolver consults per call edge.
+
+    Two construction modes:
+
+    * ``ResolverContext(project_root=..., cache=...)`` — convenience form;
+      ``__post_init__`` auto-populates the maps from the cache on first
+      construction. This is what callers of the public API typically use.
+    * Pre-built form: pass all maps in directly (used by the hot index
+      path so the build is shared across thousands of edge resolutions).
+
+    All maps are caller-file-keyed where applicable.
+    """
+
+    project_root: str
+    cache: ASTCache
+    file_symbols: dict[str, list[tuple[str, str, int]]] = field(default_factory=dict)
+    name_to_source: dict[str, dict[str, str]] = field(default_factory=dict)
+    file_class_methods: dict[str, dict[str, dict[str, int]]] = field(
+        default_factory=dict
+    )
+    global_name_table: dict[str, list[tuple[str, int]]] = field(default_factory=dict)
+    import_alias_target: dict[str, dict[str, str]] = field(default_factory=dict)
+    imports_by_file: dict[str, list[ImportEntry]] = field(default_factory=dict)
+    builtins: dict[str, frozenset[str]] = field(default_factory=dict)
+    stdlib_modules: dict[str, frozenset[str]] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Auto-build the indices when only (project_root, cache) is given.
+
+        Detect the convenience case by checking whether the builtins map
+        is populated — the hot path always seeds it, the bare
+        ``ResolverContext(project_root=..., cache=...)`` call leaves the
+        default empty dict. Without this check the bootstrap below would
+        recurse via ``build_resolver_context`` -> ``ResolverContext(...)``.
+        """
+        if self.builtins or self.stdlib_modules:
+            return
+        if self.cache is None:
+            return
+        # Frozen dataclass: must assign via object.__setattr__ in post_init.
+        built = build_resolver_context(self.cache)
+        for attr in (
+            "file_symbols",
+            "name_to_source",
+            "file_class_methods",
+            "global_name_table",
+            "import_alias_target",
+            "imports_by_file",
+            "builtins",
+            "stdlib_modules",
+        ):
+            object.__setattr__(self, attr, getattr(built, attr))
+
+
+def is_enabled() -> bool:
+    """``TSA_SYNAPSE=0`` disables; anything else enables."""
+    val = os.environ.get("TSA_SYNAPSE")
+    if val is None:
+        return True
+    return val.strip().lower() not in ("0", "false", "no", "off", "")
+
+
+def _build_module_to_file(file_paths: list[str]) -> dict[str, str]:
+    """Map every indexed Python file to its module-dotted-name."""
+    out: dict[str, str] = {}
+    for fp in file_paths:
+        parts = fp.replace(os.sep, "/")
+        if parts.endswith("/__init__.py"):
+            mod = parts[: -len("/__init__.py")].replace("/", ".")
+            out[mod] = fp
+        elif parts.endswith(".py"):
+            mod = parts[:-3].replace("/", ".")
+            out[mod] = fp
+    return out
+
+
+def _resolve_relative_module(
+    module_path: str, caller_file: str, module_to_file: dict[str, str]
+) -> str:
+    """Resolve a relative ``.x.y`` import to a concrete file path."""
+    caller_dir = os.path.dirname(caller_file).replace(os.sep, "/")
+    leading_dots = 0
+    for ch in module_path:
+        if ch == ".":
+            leading_dots += 1
+        else:
+            break
+    rel = module_path[leading_dots:]
+    anchor = caller_dir
+    for _ in range(leading_dots - 1):
+        if "/" in anchor:
+            anchor = anchor.rsplit("/", 1)[0]
+        else:
+            anchor = ""
+    if not rel:
+        candidate = f"{anchor}/__init__.py" if anchor else "__init__.py"
+        if candidate in set(module_to_file.values()):
+            return candidate
+        return ""
+    base = f"{anchor}/{rel.replace('.', '/')}" if anchor else rel.replace(".", "/")
+    candidates = (f"{base}.py", f"{base}/__init__.py")
+    by_path = set(module_to_file.values())
+    for cand in candidates:
+        if cand in by_path:
+            return cand
+    return ""
+
+
+def _resolve_absolute_module(module_path: str, module_to_file: dict[str, str]) -> str:
+    if module_path in module_to_file:
+        return module_to_file[module_path]
+    parts = module_path.split(".")
+    for i in range(len(parts), 0, -1):
+        partial = ".".join(parts[:i])
+        if partial in module_to_file:
+            return module_to_file[partial]
+    return ""
+
+
+def _resolve_module_to_file(
+    module_path: str,
+    is_relative: bool,
+    caller_file: str,
+    module_to_file: dict[str, str],
+) -> str:
+    if is_relative:
+        return _resolve_relative_module(module_path, caller_file, module_to_file)
+    return _resolve_absolute_module(module_path, module_to_file)
+
+
+def _local_name_as_submodule(
+    local_name: str,
+    alias_of: str,
+    module_path: str,
+    caller_file: str,
+    module_to_file: dict[str, str],
+) -> str:
+    """For ``from <pkg> import <name>``, check if ``<name>`` is itself a
+    submodule. Returns target file path or ``""``.
+
+    Concrete cases:
+    * ``from . import b``        — local_name='b',  alias_of=''   → caller_dir/b.py
+    * ``from . import b as bb``  — local_name='bb', alias_of='b'  → caller_dir/b.py
+    * ``from .pkg import b``     — local_name='b',  alias_of=''   → caller_dir/pkg/b.py
+
+    The lookup module name is ``alias_of`` when present, else ``local_name``.
+    """
+    if not local_name:
+        return ""
+    lookup_name = alias_of or local_name
+    caller_dir = os.path.dirname(caller_file).replace(os.sep, "/")
+    leading_dots = 0
+    for ch in module_path:
+        if ch == ".":
+            leading_dots += 1
+        else:
+            break
+    anchor = caller_dir
+    for _ in range(max(leading_dots - 1, 0)):
+        if "/" in anchor:
+            anchor = anchor.rsplit("/", 1)[0]
+        else:
+            anchor = ""
+    rel = module_path[leading_dots:]
+    base = anchor
+    if rel:
+        base = f"{anchor}/{rel.replace('.', '/')}" if anchor else rel.replace(".", "/")
+    candidates = (
+        f"{base}/{lookup_name}.py" if base else f"{lookup_name}.py",
+        f"{base}/{lookup_name}/__init__.py" if base else f"{lookup_name}/__init__.py",
+    )
+    by_path = set(module_to_file.values())
+    for cand in candidates:
+        if cand in by_path:
+            return cand
+    return ""
+
+
+def _build_file_class_methods(
+    conn, line_idx: dict[tuple[str, str, int], int]
+) -> dict[str, dict[str, dict[str, int]]]:
+    """Pull class→method maps from ``symbols_json``.
+
+    ``ast_symbol_rows`` does not store the parent class. We pull it from
+    the per-file ``symbols_json`` blob (where ``class`` is captured), then
+    cross-reference back to the symbol id via (file, name, line).
+    """
+    out: dict[str, dict[str, dict[str, int]]] = {}
+    rows = conn.execute("SELECT file_path, symbols_json FROM ast_index").fetchall()
+    for row in rows:
+        fp = row["file_path"]
+        try:
+            symbols = json.loads(row["symbols_json"])
+        except (json.JSONDecodeError, TypeError):
+            continue
+        per_class: dict[str, dict[str, int]] = {}
+        for sym in symbols.get("symbols", []):
+            if sym.get("kind") != "function":
+                continue
+            cls_name = sym.get("class")
+            if not cls_name:
+                continue
+            method_name = sym.get("name", "")
+            method_line = sym.get("line", 0)
+            sym_id = line_idx.get((fp, method_name, method_line))
+            if sym_id is None:
+                continue
+            per_class.setdefault(cls_name, {})[method_name] = sym_id
+        if per_class:
+            out[fp] = per_class
+    return out
+
+
+def _build_import_maps(
+    imports_by_file: dict[str, list[ImportEntry]],
+    module_to_file: dict[str, str],
+) -> tuple[dict[str, dict[str, str]], dict[str, dict[str, str]]]:
+    """Derive (name_to_source, alias_target) from per-file import entries."""
+    name_to_source: dict[str, dict[str, str]] = {}
+    alias_target: dict[str, dict[str, str]] = {}
+    for caller_file, entries in imports_by_file.items():
+        name_map: dict[str, str] = {}
+        alias_map: dict[str, str] = {}
+        for entry in entries:
+            if entry.is_star:
+                continue
+            target = _resolve_module_to_file(
+                entry.module_path, entry.is_relative, caller_file, module_to_file
+            )
+            if entry.local_name:
+                # Is this a `from <pkg> import <submodule>`? If so the
+                # binding is a module alias, not a name binding. Use the
+                # original module name (``alias_of``) for the lookup so
+                # ``from . import b as bb`` correctly resolves ``bb`` to b.py.
+                submod = _local_name_as_submodule(
+                    entry.local_name,
+                    entry.alias_of,
+                    entry.module_path,
+                    caller_file,
+                    module_to_file,
+                )
+                if submod:
+                    alias_map[entry.local_name] = submod
+                elif target:
+                    name_map[entry.local_name] = target
+            # Bare ``import X`` and ``import a.b as c`` rows: register the
+            # binding as a module alias for ``c.foo()`` style calls.
+            if not entry.is_relative and entry.local_name and target:
+                alias_map.setdefault(entry.local_name, target)
+        if name_map:
+            name_to_source[caller_file] = name_map
+        if alias_map:
+            alias_target[caller_file] = alias_map
+    return name_to_source, alias_target
+
+
+def build_resolver_context(cache: ASTCache) -> ResolverContext:
+    """One DB pass; populates every map the resolver needs."""
+    conn = cache._get_conn()
+
+    file_symbols: dict[str, list[tuple[str, str, int]]] = {}
+    global_name_table: dict[str, list[tuple[str, int]]] = {}
+    line_idx: dict[tuple[str, str, int], int] = {}
+    try:
+        sym_rows = conn.execute(
+            "SELECT id, name, kind, file_path, line FROM ast_symbol_rows"
+        ).fetchall()
+    except Exception:  # nosec B110 — fts5/table-missing tolerance.
+        sym_rows = []
+    for row in sym_rows:
+        sid = row["id"]
+        name = row["name"]
+        kind = row["kind"]
+        fp = row["file_path"]
+        file_symbols.setdefault(fp, []).append((name, kind, sid))
+        if kind in ("function", "method", "class"):
+            global_name_table.setdefault(name, []).append((fp, sid))
+        line_idx[(fp, name, row["line"])] = sid
+
+    file_class_methods = _build_file_class_methods(conn, line_idx)
+
+    imports_by_file: dict[str, list[ImportEntry]] = {}
+    try:
+        imp_rows = conn.execute(
+            "SELECT file_path, language, module_path, local_name, "
+            "is_relative, is_star, alias_of, line FROM ast_imports"
+        ).fetchall()
+    except Exception:  # nosec B110
+        imp_rows = []
+    for r in imp_rows:
+        entry = ImportEntry(
+            file_path=r["file_path"],
+            language=r["language"],
+            module_path=r["module_path"],
+            local_name=r["local_name"],
+            is_relative=bool(r["is_relative"]),
+            is_star=bool(r["is_star"]),
+            alias_of=r["alias_of"],
+            line=r["line"],
+        )
+        imports_by_file.setdefault(entry.file_path, []).append(entry)
+
+    file_paths = [
+        r["file_path"]
+        for r in conn.execute("SELECT file_path FROM ast_index").fetchall()
+    ]
+    module_to_file = _build_module_to_file(file_paths)
+    name_to_source, alias_target = _build_import_maps(imports_by_file, module_to_file)
+
+    return ResolverContext(
+        project_root=cache.project_root,
+        cache=cache,
+        file_symbols=file_symbols,
+        name_to_source=name_to_source,
+        file_class_methods=file_class_methods,
+        global_name_table=global_name_table,
+        import_alias_target=alias_target,
+        imports_by_file=imports_by_file,
+        builtins={"python": BUILTINS_PY},
+        stdlib_modules={"python": STDLIB_NAMES_PY},
+    )
+
+
+__all__ = ["ResolverContext", "build_resolver_context", "is_enabled"]

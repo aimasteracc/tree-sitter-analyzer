@@ -194,9 +194,7 @@ def parse_log_hunks(git_log_output: str) -> list[Commit]:
             count_str = hunk_match.group("count")
             count = int(count_str) if count_str is not None else 1
             old_count_str = hunk_match.group("old_count")
-            old_count = (
-                int(old_count_str) if old_count_str is not None else 1
-            )
+            old_count = int(old_count_str) if old_count_str is not None else 1
             if count <= 0:
                 # Pure deletion ("@@ -5,1 +5,0 @@") — nothing was added to
                 # the new file, so this hunk cannot overlap a symbol range.
@@ -223,31 +221,15 @@ def compute_symbol_activation(
 ) -> list[ActivationRow]:
     """Compute one ``ActivationRow`` per symbol from git history.
 
-    Args:
-        file_path: repo-relative or absolute path to the source file. We
-            resolve it against ``repo_root`` (or the discovered enclosing
-            repo) before talking to git.
-        symbols: iterable of dicts shaped like ``ast_symbol_rows`` —
-            requires keys ``id``, ``line``, ``end_line``. Extra keys are
-            ignored; missing or non-int line numbers default to the
-            whole-file range so the symbol still gets a row.
-        now_ts: optional unix timestamp override; defaults to ``time.time()``.
-            Tests pass a fixed value when they need deterministic windowing.
-        repo_root: optional explicit repo root. Falls back to walking up
-            from ``file_path`` to find ``.git``.
+    ``symbols`` are dicts shaped like ``ast_symbol_rows``: keys ``id``,
+    ``line``, ``end_line``. ``now_ts`` is an optional unix timestamp
+    override for deterministic windowing in tests; ``repo_root`` skips
+    the .git walk if the caller knows it.
 
-    Returns:
-        One ``ActivationRow`` per symbol, in the same order as ``symbols``.
-        Never raises — git failures degrade to zero-count rows tagged with
-        the appropriate ``git_state``.
-
-    Behaviour matrix:
-        * ``TSA_INDEX_ACTIVATION=0`` → zero rows, NO subprocess.run calls.
-        * ``no_repo`` / ``untracked`` → zero counts, row exists.
-        * ``shallow`` → still walks the (truncated) history; window counts
-          may understate reality but the row is correct for what git knows.
-        * tracked, cold (no commits yet) → zero counts, ``git_state`` is
-          whatever ``detect_git_state`` returned ("tracked" usually).
+    Never raises — git failures degrade to zero-count rows with the
+    appropriate ``git_state``. ``TSA_INDEX_ACTIVATION=0`` short-circuits
+    BEFORE subprocess.run; other cold paths (no_repo / untracked /
+    shallow-but-cold) still emit a zero-count row per symbol.
     """
     sym_list = list(symbols)
     resolved_now = int(now_ts) if now_ts is not None else int(time.time())
@@ -284,9 +266,7 @@ def compute_symbol_activation(
     rows: list[ActivationRow] = []
     for sym in sym_list:
         sym_id, line_start, line_end = _normalize_symbol(sym)
-        attribution = _attribute_commits(
-            hunk_commits, line_start, line_end
-        )
+        attribution = _attribute_commits(hunk_commits, line_start, line_end)
         mod_30d = sum(1 for c in attribution if c.ts >= cutoff_30d)
         mod_90d = sum(1 for c in attribution if c.ts >= cutoff_90d)
         # mod_count_all = hunk-attributed commits inside the 90d window
@@ -371,69 +351,42 @@ def _rel_to_repo(repo_root: str, abs_path: str) -> str:
     return rel.replace(os.sep, "/")
 
 
-def _git_log_simple(repo_root: str, rel_path: str) -> list[Commit]:
-    """``git log --follow`` over a file's full history. Used for mod_count_all.
-
-    No hunks are requested (cheaper). Returns one ``Commit`` per entry with
-    an empty hunks list.
-    """
-    try:
-        proc = subprocess.run(
-            [
-                "git",
-                "-C",
-                repo_root,
-                "log",
-                "--follow",
-                "--no-merges",
-                "--pretty=format:" + _COMMIT_MARKER + " %H %at",
-                "--",
-                rel_path,
-            ],
-            capture_output=True,
-            text=True,
-            timeout=_DEFAULT_GIT_TIMEOUT,
-            check=False,
-        )
-    except (FileNotFoundError, subprocess.SubprocessError, OSError) as exc:
-        logger.debug("git log simple failed: %s", exc)
-        return []
-    if proc.returncode != 0:
-        return []
-    return parse_log_hunks(proc.stdout)
-
-
-def _git_log_hunks(
-    repo_root: str, rel_path: str, *, since_days: int
+def _run_git_log(
+    repo_root: str,
+    rel_path: str,
+    *,
+    with_hunks: bool,
+    since_days: int | None = None,
 ) -> str:
-    """``git log -p -U0`` constrained to the last ``since_days``. Returns raw."""
+    """Run ``git log --follow`` against a file; return raw stdout or ''."""
+    args = ["git", "-C", repo_root, "log", "--follow", "--no-merges"]
+    if with_hunks:
+        args += ["-p", "-U0"]
+    if since_days is not None:
+        args += [f"--since={since_days} days ago"]
+    args += ["--pretty=format:" + _COMMIT_MARKER + " %H %at", "--", rel_path]
     try:
         proc = subprocess.run(
-            [
-                "git",
-                "-C",
-                repo_root,
-                "log",
-                "--follow",
-                "--no-merges",
-                "-p",
-                "-U0",
-                f"--since={since_days} days ago",
-                "--pretty=format:" + _COMMIT_MARKER + " %H %at",
-                "--",
-                rel_path,
-            ],
+            args,
             capture_output=True,
             text=True,
             timeout=_DEFAULT_GIT_TIMEOUT,
             check=False,
         )
     except (FileNotFoundError, subprocess.SubprocessError, OSError) as exc:
-        logger.debug("git log hunks failed: %s", exc)
+        logger.debug("git log failed for %s: %s", rel_path, exc)
         return ""
-    if proc.returncode != 0:
-        return ""
-    return proc.stdout
+    return proc.stdout if proc.returncode == 0 else ""
+
+
+def _git_log_simple(repo_root: str, rel_path: str) -> list[Commit]:
+    """File-level history (no hunks). Cheap walk, used for ``mod_count_all``."""
+    return parse_log_hunks(_run_git_log(repo_root, rel_path, with_hunks=False))
+
+
+def _git_log_hunks(repo_root: str, rel_path: str, *, since_days: int) -> str:
+    """``git log -p -U0`` for the last ``since_days``. Raw output to parse."""
+    return _run_git_log(repo_root, rel_path, with_hunks=True, since_days=since_days)
 
 
 def _newest_commit(

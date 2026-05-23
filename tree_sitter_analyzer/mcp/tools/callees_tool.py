@@ -9,6 +9,7 @@ Simpler and more discoverable than the monolithic codegraph_call_graph tool.
 """
 
 import os
+import re
 from typing import Any
 
 from ...call_graph import CachedCallGraph, CallGraph
@@ -16,6 +17,116 @@ from ...utils import setup_logger
 from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
+
+_STDLIB_TOP_LEVELS = frozenset(
+    {
+        "abc",
+        "argparse",
+        "ast",
+        "asyncio",
+        "base64",
+        "bisect",
+        "calendar",
+        "collections",
+        "configparser",
+        "contextlib",
+        "copy",
+        "csv",
+        "datetime",
+        "decimal",
+        "difflib",
+        "email",
+        "enum",
+        "fileinput",
+        "fnmatch",
+        "fractions",
+        "functools",
+        "glob",
+        "gzip",
+        "hashlib",
+        "heapq",
+        "html",
+        "http",
+        "importlib",
+        "inspect",
+        "io",
+        "itertools",
+        "json",
+        "logging",
+        "math",
+        "multiprocessing",
+        "operator",
+        "os",
+        "pathlib",
+        "pickle",
+        "platform",
+        "pprint",
+        "queue",
+        "re",
+        "secrets",
+        "shutil",
+        "signal",
+        "socket",
+        "sqlite3",
+        "statistics",
+        "string",
+        "struct",
+        "subprocess",
+        "sys",
+        "tarfile",
+        "tempfile",
+        "textwrap",
+        "threading",
+        "time",
+        "traceback",
+        "typing",
+        "unittest",
+        "urllib",
+        "uuid",
+        "warnings",
+        "weakref",
+        "xml",
+        "zipfile",
+        "zlib",
+    }
+)
+
+
+def classify_callee_resolution(
+    callee_name: str,
+    callee_resolved_file: str,
+    caller_file: str,
+) -> tuple[str, str]:
+    """Classify callee resolution type and determine resolved file.
+
+    Returns (callee_resolution, callee_resolved_file):
+    - callee_resolution: one of 'local', 'project', 'stdlib', 'third_party', 'dynamic', 'unknown'
+    - callee_resolved_file: the file where the callee is defined (may be empty)
+    """
+    if not callee_name:
+        return "unknown", callee_resolved_file
+
+    dot_parts = callee_name.rsplit(".", 1)
+    base_name = dot_parts[0] if len(dot_parts) == 2 else callee_name
+
+    if callee_resolved_file:
+        if callee_resolved_file == caller_file:
+            return "local", callee_resolved_file
+        return "project", callee_resolved_file
+
+    if base_name in _STDLIB_TOP_LEVELS:
+        return "stdlib", ""
+    if callee_name.startswith("self.") or callee_name.startswith("cls."):
+        return "local", caller_file
+
+    if "." in callee_name:
+        top = callee_name.split(".")[0]
+        if top in _STDLIB_TOP_LEVELS:
+            return "stdlib", ""
+        if re.match(r"^[a-z_]+$", top) and top not in ("os", "sys"):
+            pass
+
+    return "unknown", callee_resolved_file
 
 
 class CodeGraphCalleesTool(BaseMCPTool):
@@ -128,6 +239,7 @@ class CodeGraphCalleesTool(BaseMCPTool):
             data_source = self._data_source
             if include_activation:
                 self._enrich_graph_callees_with_activation(callees)
+            self._enrich_callees_with_resolution(callees)
 
         result: dict[str, Any] = {
             "success": True,
@@ -164,28 +276,43 @@ class CodeGraphCalleesTool(BaseMCPTool):
         if include_activation:
             activation_map = self._fetch_activation_map(cache)
         for edge in raw:
-            key = f"{edge['callee_name']}:{edge['callee_file']}"
+            key = f"{edge['callee_name']}:{edge.get('callee_file', '')}"
             if key in seen:
                 continue
             seen.add(key)
+            callee_resolved = edge.get("callee_resolved_file", "")
+            callee_file_val = edge.get("callee_file", callee_resolved)
+            caller_file_val = edge.get("caller_file", "")
+            resolution, resolved_file = classify_callee_resolution(
+                edge["callee_name"], callee_resolved, caller_file_val
+            )
             entry: dict[str, Any] = {
                 "name": edge["callee_name"],
-                "file": edge["callee_file"],
+                "file": resolved_file or callee_file_val,
                 "line": edge["callee_line"],
                 "language": "",
+                "callee_resolution": resolution,
+                "callee_resolved_file": resolved_file,
             }
             row_data = cache.lookup(
-                os.path.join(cache.project_root, edge["callee_file"])
+                os.path.join(cache.project_root, resolved_file or callee_file_val)
             )
             if row_data:
                 entry["language"] = row_data.get("language", "")
             if include_activation:
                 entry["activation"] = self._activation_for(
                     activation_map,
-                    edge["callee_file"],
+                    resolved_file or callee_file_val,
                     edge["callee_line"],
                 )
             results.append(entry)
+        if not raw:
+            results = self._resolve_via_enhanced(
+                cache,
+                func_name,
+                file_path,
+                activation_map if include_activation else {},
+            )
         return results
 
     @staticmethod
@@ -233,6 +360,59 @@ class CodeGraphCalleesTool(BaseMCPTool):
             (file_path, line),
             {"mod_count_30d": 0, "last_modified_at": None},
         )
+
+    def _enrich_callees_with_resolution(self, callees: list[dict[str, Any]]) -> None:
+        """Add callee_resolution and callee_resolved_file to graph-fallback results."""
+        for entry in callees:
+            callee_file = entry.get("file", "")
+            callee_name = entry.get("name", "")
+            if "callee_resolution" not in entry or "callee_resolved_file" not in entry:
+                resolution, resolved_file = classify_callee_resolution(
+                    callee_name, callee_file, callee_file
+                )
+                entry.setdefault("callee_resolution", resolution)
+                entry.setdefault("callee_resolved_file", resolved_file)
+
+    def _resolve_via_enhanced(
+        self,
+        cache: Any,
+        func_name: str,
+        file_path: str | None,
+        activation_map: dict[tuple[str, int], dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Fallback to query_callees_enhanced for cross-file resolution."""
+        try:
+            enhanced = cache.query_callees_enhanced(func_name, caller_file=file_path)
+        except Exception:
+            return []
+        results: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for edge in enhanced:
+            callee_resolved = edge.get("callee_resolved_file", "")
+            key = f"{edge['callee_name']}:{callee_resolved}"
+            if key in seen:
+                continue
+            seen.add(key)
+            caller_file_val = edge.get("caller_file", "")
+            resolution, resolved_file = classify_callee_resolution(
+                edge["callee_name"], callee_resolved, caller_file_val
+            )
+            entry: dict[str, Any] = {
+                "name": edge["callee_name"],
+                "file": resolved_file or edge.get("callee_file", ""),
+                "line": edge["callee_line"],
+                "language": "",
+                "callee_resolution": resolution,
+                "callee_resolved_file": resolved_file,
+            }
+            if activation_map:
+                entry["activation"] = self._activation_for(
+                    activation_map,
+                    resolved_file or edge.get("callee_file", ""),
+                    edge["callee_line"],
+                )
+            results.append(entry)
+        return results
 
     def _enrich_graph_callees_with_activation(
         self, callees: list[dict[str, Any]]

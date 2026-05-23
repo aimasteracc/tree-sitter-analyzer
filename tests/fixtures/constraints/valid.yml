@@ -1,0 +1,29 @@
+# Valid architectural-constraints fixture.
+#
+# Exercises all three severities (error/warn/info) and the optional
+# ``exceptions:`` field. The parser must yield three Constraint instances
+# in this exact order and preserve every field.
+version: 1
+constraints:
+  - id: mcp-must-not-call-cli
+    severity: error
+    rule: forbid
+    from: "tree_sitter_analyzer/mcp/**"
+    to: "tree_sitter_analyzer/cli/**"
+    reason: "MCP layer must not depend on CLI; CLI is a presentation adapter."
+
+  - id: tests-should-not-import-private-helpers
+    severity: warn
+    rule: forbid
+    from: "tests/**"
+    to: "tree_sitter_analyzer/**/_*.py"
+    reason: "Private helpers are not part of the public test surface."
+    exceptions:
+      - "tests/fixtures/**"
+
+  - id: docs-should-not-touch-runtime
+    severity: info
+    rule: forbid
+    from: "docs/**"
+    to: "tree_sitter_analyzer/**"
+    reason: "Documentation code samples must stay illustrative."

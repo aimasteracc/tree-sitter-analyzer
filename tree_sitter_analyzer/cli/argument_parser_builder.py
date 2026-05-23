@@ -501,6 +501,67 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
         default="poll",
         help="File watcher backend for --watch (default: poll)",
     )
+    # Feature 4 (Homeostasis) — health-grade watching daemon. Reuses the
+    # --watch infra but fires alerts when a file's grade drops or crosses
+    # below threshold instead of just re-indexing.
+    parser.add_argument(
+        "--watch-health",
+        action="store_true",
+        help="Start a daemon that watches health grades and alerts on degradation",
+    )
+    parser.add_argument(
+        "--threshold-grade",
+        choices=["A", "B", "C", "D", "F"],
+        default="C",
+        help="Alert threshold grade for --watch-health (default: C)",
+    )
+    parser.add_argument(
+        "--watch-interval",
+        type=int,
+        default=300,
+        help="Polling interval in seconds for --watch-health (default: 300)",
+    )
+    parser.add_argument(
+        "--watch-debounce",
+        type=float,
+        default=5.0,
+        help="Debounce window in seconds for --watch-health (default: 5)",
+    )
+    parser.add_argument(
+        "--notify-channel",
+        default="stdout",
+        help="Comma-separated alert channels: stdout|file|webhook (default: stdout)",
+    )
+    parser.add_argument(
+        "--notify-file",
+        type=str,
+        default=None,
+        help="JSONL log path when --notify-channel includes 'file'",
+    )
+    parser.add_argument(
+        "--notify-webhook",
+        type=str,
+        default=None,
+        help="Webhook URL when --notify-channel includes 'webhook' (post-MVP)",
+    )
+    parser.add_argument(
+        "--on-degradation",
+        type=str,
+        default=None,
+        help="Shell-command template fired on grade drop; tokens: {file} {grade} {previous_grade} {delta_score} {recommendation} {timestamp_iso}",
+    )
+    parser.add_argument(
+        "--watch-cooldown",
+        type=float,
+        default=120.0,
+        help="Per-file cooldown seconds between alerts for --watch-health (default: 120)",
+    )
+    parser.add_argument(
+        "--history-keep",
+        type=int,
+        default=50,
+        help="Number of history entries kept per file in health_score_history (default: 50)",
+    )
     parser.add_argument(
         "--min-grade",
         default="D",
@@ -927,6 +988,43 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
         type=int,
         default=10,
         help="Top-K coupled pairs for --dependency-matrix hotspots mode (default: 10)",
+    )
+    parser.add_argument(
+        "--codegraph-visualize",
+        action="store_true",
+        help="Export call graph as Mermaid flowchart diagram (CodeGraph parity)",
+    )
+    parser.add_argument(
+        "--codegraph-visualize-mode",
+        choices=["full", "file", "function"],
+        default="full",
+        help="Mode for --codegraph-visualize (default: full)",
+    )
+    parser.add_argument(
+        "--codegraph-visualize-file",
+        help="File path for --codegraph-visualize mode=file",
+    )
+    parser.add_argument(
+        "--codegraph-visualize-function",
+        help="Seed function name for --codegraph-visualize mode=function",
+    )
+    parser.add_argument(
+        "--codegraph-visualize-depth",
+        type=int,
+        default=3,
+        help="Max transitive depth for --codegraph-visualize mode=function (default: 3)",
+    )
+    parser.add_argument(
+        "--codegraph-visualize-max-edges",
+        type=int,
+        default=150,
+        help="Max edges to render for --codegraph-visualize (default: 150)",
+    )
+    parser.add_argument(
+        "--codegraph-visualize-direction",
+        choices=["TD", "LR", "BT", "RL"],
+        default="TD",
+        help="Mermaid flowchart direction for --codegraph-visualize (default: TD)",
     )
     parser.add_argument(
         "--dependency-matrix-threshold",

@@ -58,6 +58,9 @@ from tree_sitter_analyzer.mcp.tools.codegraph_pr_review_tool import (
 from tree_sitter_analyzer.mcp.tools.codegraph_sitemap_tool import (
     CodeGraphSitemapTool,  # noqa: F401
 )
+from tree_sitter_analyzer.mcp.tools.codegraph_visualize_tool import (
+    CodeGraphVisualizeTool,  # noqa: F401
+)
 from tree_sitter_analyzer.mcp.tools.codegraph_xref_tool import (
     CodeGraphXRefTool,  # noqa: F401
 )

@@ -92,6 +92,50 @@ CREATE INDEX IF NOT EXISTS idx_ce_file_path
     ON ast_call_edges(file_path);
 """
 
+# Feature 1 (Synapse) — V4 schema additions.
+#
+# Adds three resolution columns to ``ast_call_edges`` plus a new
+# ``ast_imports`` table that records every imported name binding.
+#
+# The three new edge columns:
+#
+# * ``callee_symbol_id``    — points to the row in ``ast_symbol_rows`` the
+#   resolver believes is the called definition, or NULL when the callee
+#   isn't a project symbol (stdlib / builtin / unknown).
+# * ``callee_resolution``   — one of {local, project, stdlib, unknown}.
+#   Default ``'unknown'`` so legacy rows look identical to rows the
+#   resolver could not place.
+# * ``callee_resolved_file`` — relative path of the file containing the
+#   resolved definition, empty when ``resolution`` is stdlib / unknown.
+#
+# The ALTER statements live in ``_init_db`` (Python-side PRAGMA detection)
+# rather than a single executescript: ALTER lacks IF NOT EXISTS in SQLite,
+# so re-opening a DB that already has the columns would raise. The
+# imports table is plain CREATE TABLE IF NOT EXISTS, so the executescript
+# form is safe for it.
+_SCHEMA_V4_IMPORTS = """
+CREATE TABLE IF NOT EXISTS ast_imports (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    file_path   TEXT NOT NULL,
+    language    TEXT NOT NULL,
+    module_path TEXT NOT NULL,
+    local_name  TEXT NOT NULL DEFAULT '',
+    is_relative INTEGER NOT NULL DEFAULT 0,
+    is_star     INTEGER NOT NULL DEFAULT 0,
+    alias_of    TEXT NOT NULL DEFAULT '',
+    line        INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_imp_file
+    ON ast_imports(file_path);
+
+CREATE INDEX IF NOT EXISTS idx_imp_local
+    ON ast_imports(local_name);
+
+CREATE INDEX IF NOT EXISTS idx_imp_star
+    ON ast_imports(is_star);
+"""
+
 
 # Feature 2 (Temporal Activation) — per-symbol git modification frequency.
 # Populated as a side-effect of ``index_file`` via ``git_activation``.
@@ -300,50 +344,102 @@ def _extract_symbols(tree: Any, source_code: str, language: str) -> dict[str, An
 
 _COMPLEXITY_NODE_TYPES: dict[str, set[str]] = {
     "python": {
-        "if_statement", "elif_clause", "for_statement", "while_statement",
-        "except_clause", "boolean_operator", "conditional_expression",
-        "list_comprehension", "set_comprehension", "dict_comprehension",
-        "generator_expression", "match_statement", "case_clause",
+        "if_statement",
+        "elif_clause",
+        "for_statement",
+        "while_statement",
+        "except_clause",
+        "boolean_operator",
+        "conditional_expression",
+        "list_comprehension",
+        "set_comprehension",
+        "dict_comprehension",
+        "generator_expression",
+        "match_statement",
+        "case_clause",
     },
     "javascript": {
-        "if_statement", "else_clause", "for_statement", "for_in_statement",
-        "for_of_statement", "while_statement", "do_statement",
-        "catch_clause", "ternary_expression", "switch_case",
-        "switch_default", "logical_expression", "conditional_expression",
+        "if_statement",
+        "else_clause",
+        "for_statement",
+        "for_in_statement",
+        "for_of_statement",
+        "while_statement",
+        "do_statement",
+        "catch_clause",
+        "ternary_expression",
+        "switch_case",
+        "switch_default",
+        "logical_expression",
+        "conditional_expression",
     },
     "typescript": {
-        "if_statement", "else_clause", "for_statement", "for_in_statement",
-        "for_of_statement", "while_statement", "do_statement",
-        "catch_clause", "ternary_expression", "switch_case",
-        "switch_default", "logical_expression", "conditional_expression",
+        "if_statement",
+        "else_clause",
+        "for_statement",
+        "for_in_statement",
+        "for_of_statement",
+        "while_statement",
+        "do_statement",
+        "catch_clause",
+        "ternary_expression",
+        "switch_case",
+        "switch_default",
+        "logical_expression",
+        "conditional_expression",
     },
     "java": {
-        "if_statement", "else_clause", "for_statement",
-        "enhanced_for_statement", "while_statement", "do_statement",
-        "catch_clause", "ternary_expression",
-        "switch_block_statement_group", "logical_expression",
+        "if_statement",
+        "else_clause",
+        "for_statement",
+        "enhanced_for_statement",
+        "while_statement",
+        "do_statement",
+        "catch_clause",
+        "ternary_expression",
+        "switch_block_statement_group",
+        "logical_expression",
         "conditional_expression",
     },
     "go": {
-        "if_statement", "else_clause", "for_statement",
-        "expression_switch_case", "type_switch_case", "select_case",
+        "if_statement",
+        "else_clause",
+        "for_statement",
+        "expression_switch_case",
+        "type_switch_case",
+        "select_case",
         "binary_expression",
     },
     "rust": {
-        "if_expression", "else_clause", "for_expression",
-        "while_expression", "loop_expression", "match_arm",
+        "if_expression",
+        "else_clause",
+        "for_expression",
+        "while_expression",
+        "loop_expression",
+        "match_arm",
         "binary_expression",
     },
     "c": {
-        "if_statement", "else_clause", "for_statement",
-        "while_statement", "do_statement", "switch_case",
-        "binary_expression", "conditional_expression",
+        "if_statement",
+        "else_clause",
+        "for_statement",
+        "while_statement",
+        "do_statement",
+        "switch_case",
+        "binary_expression",
+        "conditional_expression",
     },
     "cpp": {
-        "if_statement", "else_clause", "for_statement",
-        "while_statement", "do_statement", "switch_case",
-        "binary_expression", "conditional_expression",
-        "range_based_for_statement", "catch_clause",
+        "if_statement",
+        "else_clause",
+        "for_statement",
+        "while_statement",
+        "do_statement",
+        "switch_case",
+        "binary_expression",
+        "conditional_expression",
+        "range_based_for_statement",
+        "catch_clause",
     },
 }
 
@@ -377,9 +473,7 @@ def _find_parent_class(node: Any, source: str) -> str | None:
     return None
 
 
-def _extract_parent_classes(
-    node: Any, source: str, language: str
-) -> list[str]:
+def _extract_parent_classes(node: Any, source: str, language: str) -> list[str]:
     """Extract base class names from a class definition node.
 
     Handles Python (argument_list in class_definition), Java
@@ -703,6 +797,51 @@ class ASTCache:
             conn.commit()
         except sqlite3.OperationalError:
             pass
+        # Feature 1 (Synapse) — V4 schema. ALTER TABLE has no
+        # IF NOT EXISTS form in SQLite, so we add the columns only when
+        # PRAGMA table_info confirms they are missing. Idempotent across
+        # repeated opens. Defaults match what a never-resolved row would
+        # look like, so the backfill path can detect "fresh" rows by
+        # ``callee_resolution = 'unknown' AND callee_resolved_file = ''``.
+        try:
+            edge_cols = {
+                r[1]
+                for r in conn.execute("PRAGMA table_info(ast_call_edges)").fetchall()
+            }
+            if "callee_symbol_id" not in edge_cols:
+                conn.execute(
+                    "ALTER TABLE ast_call_edges ADD COLUMN callee_symbol_id INTEGER"
+                )
+            if "callee_resolution" not in edge_cols:
+                conn.execute(
+                    "ALTER TABLE ast_call_edges "
+                    "ADD COLUMN callee_resolution TEXT NOT NULL "
+                    "DEFAULT 'unknown'"
+                )
+            if "callee_resolved_file" not in edge_cols:
+                conn.execute(
+                    "ALTER TABLE ast_call_edges "
+                    "ADD COLUMN callee_resolved_file TEXT NOT NULL "
+                    "DEFAULT ''"
+                )
+            conn.executescript(_SCHEMA_V4_IMPORTS)
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_ce_callee_symbol_id "
+                "ON ast_call_edges(callee_symbol_id)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_ce_callee_resolved "
+                "ON ast_call_edges(callee_resolved_file)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_ce_resolution "
+                "ON ast_call_edges(callee_resolution)"
+            )
+            conn.commit()
+        except sqlite3.OperationalError:
+            # Legacy DB with incompatible ast_call_edges shape — degrade
+            # silently rather than wedge open. Backfill will retry later.
+            pass
         # Feature 2 (Temporal Activation) — V5 schema. Idempotent
         # CREATE TABLE IF NOT EXISTS so the migration is safe to re-run.
         try:
@@ -853,10 +992,25 @@ class ASTCache:
                 ),
             )
 
+        # Feature 1 (Synapse) — replace ast_imports rows for this file.
+        # Done here (not in workers) because parse_imports is a small
+        # regex pass on text we already have; cheaper than shipping the
+        # structured entries through the worker IPC envelope.
+        self._write_imports_for_file(conn, rel_path, language, imports)
+
         # Feature 2 (Temporal Activation) — refresh per-symbol git heat
         # rows for this file using the symbol_ids we just inserted.
         # Honours TSA_INDEX_ACTIVATION=0 via the helper below.
         self._write_activation_for_file(conn, rel_path, inserted_symbol_rows)
+
+        # Feature 1 (Synapse) — resolve the call edges we just wrote.
+        # ``index_file`` is a single-file path so cross-file resolution
+        # is best-effort: it sees whatever already lives in
+        # ast_symbol_rows / ast_imports. ``index_project`` runs a final
+        # resolver pass after all files are indexed; this per-file pass
+        # is here so direct ``index_file`` callers still see local /
+        # stdlib resolution work without a separate backfill call.
+        self._resolve_call_edges_for_file(conn, rel_path)
 
         conn.commit()
         return {
@@ -943,12 +1097,215 @@ class ASTCache:
             # failing the whole index pass.
             logger.debug("activation write failed for %s: %s", rel_path, exc)
 
+    def _write_imports_for_file(
+        self,
+        conn: sqlite3.Connection,
+        rel_path: str,
+        language: str,
+        imports: list[str] | list[dict[str, Any]],
+    ) -> None:
+        """Refresh ``ast_imports`` rows for ``rel_path``.
+
+        ``imports`` is the list produced by ``_extract_imports`` — either
+        raw statement strings or structured dicts with a ``text`` field.
+        Parses via :func:`synapse_resolver.parse_imports` and writes one
+        row per bound name. Non-Python languages return empty in Phase 3a.
+        """
+        try:
+            from .synapse_resolver import parse_imports
+        except Exception as exc:  # pragma: no cover — defensive
+            logger.debug("synapse_resolver import failed: %s", exc)
+            return
+        try:
+            conn.execute("DELETE FROM ast_imports WHERE file_path = ?", (rel_path,))
+        except sqlite3.OperationalError:
+            # Table missing on legacy DB — skip.
+            return
+        for raw in imports or []:
+            if isinstance(raw, dict):
+                text = raw.get("text") or raw.get("statement") or ""
+                line = int(raw.get("line", 0) or 0)
+            else:
+                text = str(raw)
+                line = 0
+            if not text:
+                continue
+            for entry in parse_imports(text, language, rel_path, line):
+                try:
+                    conn.execute(
+                        """INSERT INTO ast_imports
+                           (file_path, language, module_path, local_name,
+                            is_relative, is_star, alias_of)
+                           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                        (
+                            rel_path,
+                            language,
+                            entry.module_path,
+                            entry.local_name,
+                            1 if entry.is_relative else 0,
+                            1 if entry.is_star else 0,
+                            entry.alias_of,
+                        ),
+                    )
+                except sqlite3.OperationalError as exc:
+                    logger.debug("ast_imports write failed for %s: %s", rel_path, exc)
+                    return
+
+    def _resolve_call_edges_for_file(
+        self,
+        conn: sqlite3.Connection,
+        rel_path: str,
+    ) -> None:
+        """Resolve every call edge for ``rel_path`` and persist the result.
+
+        Reads the ``ast_call_edges`` rows we just wrote with default
+        ``unknown`` resolution, builds a :class:`ResolverContext` from the
+        live cache state, and updates each row in-place with the three
+        Synapse columns (``callee_symbol_id``, ``callee_resolution``,
+        ``callee_resolved_file``). Skipped when ``TSA_SYNAPSE=0`` so the
+        index-time cost is opt-out.
+        """
+        try:
+            from .synapse_resolver import (
+                build_resolver_context,
+                is_enabled,
+                resolve_callee,
+            )
+        except Exception as exc:  # pragma: no cover — defensive
+            logger.debug("synapse_resolver import failed: %s", exc)
+            return
+        if not is_enabled():
+            return
+        try:
+            ctx = build_resolver_context(self)
+        except Exception as exc:  # pragma: no cover — defensive
+            logger.debug("build_resolver_context failed: %s", exc)
+            return
+        try:
+            rows = conn.execute(
+                """SELECT id, caller_name, caller_file, callee_name
+                   FROM ast_call_edges WHERE file_path = ?""",
+                (rel_path,),
+            ).fetchall()
+        except sqlite3.OperationalError as exc:
+            logger.debug("call_edge select failed for %s: %s", rel_path, exc)
+            return
+        for row in rows:
+            try:
+                resolved = resolve_callee(row["callee_name"], row["caller_file"], ctx)
+            except Exception as exc:  # pragma: no cover — defensive
+                logger.debug(
+                    "resolve_callee crashed on %s: %s", row["callee_name"], exc
+                )
+                continue
+            try:
+                conn.execute(
+                    """UPDATE ast_call_edges
+                       SET callee_symbol_id = ?,
+                           callee_resolution = ?,
+                           callee_resolved_file = ?
+                       WHERE id = ?""",
+                    (
+                        resolved.callee_symbol_id,
+                        resolved.resolution,
+                        resolved.resolved_file,
+                        row["id"],
+                    ),
+                )
+            except sqlite3.OperationalError as exc:
+                logger.debug("call_edge update failed for id=%s: %s", row["id"], exc)
+                return
+
+    def _run_synapse_backfill(self) -> dict[str, int] | None:
+        """Re-resolve every unresolved call edge in the cache.
+
+        Scans ``ast_call_edges`` for rows where ``callee_resolution =
+        'unknown'`` (or ``callee_resolved_file = ''``) and runs each
+        through the Synapse resolver.  Cheaper than a full re-index
+        because it reads existing ``ast_symbol_rows`` / ``ast_imports``
+        data — no tree-sitter, no IO, just SQL + in-memory maps.
+
+        Returns ``{total, resolved, unchanged, errors}`` or ``None``
+        when Synapse is disabled or no unresolved edges remain.
+        """
+        try:
+            from .synapse_resolver import (
+                build_resolver_context,
+                is_enabled,
+                resolve_callee,
+            )
+        except Exception as exc:
+            logger.debug("synapse_resolver import failed: %s", exc)
+            return None
+        if not is_enabled():
+            return None
+        conn = self._get_conn()
+        try:
+            rows = conn.execute(
+                "SELECT id, caller_name, caller_file, callee_name "
+                "FROM ast_call_edges "
+                "WHERE callee_resolution = 'unknown' "
+                "OR callee_resolved_file = ''"
+            ).fetchall()
+        except sqlite3.OperationalError as exc:
+            logger.debug("synapse backfill select failed: %s", exc)
+            return None
+        if not rows:
+            return None
+        try:
+            ctx = build_resolver_context(self)
+        except Exception as exc:
+            logger.debug("build_resolver_context failed in backfill: %s", exc)
+            return None
+        total = len(rows)
+        resolved = 0
+        unchanged = 0
+        errors = 0
+        for row in rows:
+            try:
+                result = resolve_callee(row["callee_name"], row["caller_file"], ctx)
+            except Exception as exc:
+                logger.debug("resolve_callee failed in backfill: %s", exc)
+                errors += 1
+                continue
+            if result.resolution == "unknown" and not result.resolved_file:
+                unchanged += 1
+                continue
+            try:
+                conn.execute(
+                    "UPDATE ast_call_edges "
+                    "SET callee_symbol_id = ?, callee_resolution = ?, "
+                    "    callee_resolved_file = ? "
+                    "WHERE id = ?",
+                    (
+                        result.callee_symbol_id,
+                        result.resolution,
+                        result.resolved_file,
+                        row["id"],
+                    ),
+                )
+                resolved += 1
+            except sqlite3.OperationalError as exc:
+                logger.debug("synapse backfill update failed: %s", exc)
+                errors += 1
+        try:
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass
+        return {
+            "total": total,
+            "resolved": resolved,
+            "unchanged": unchanged,
+            "errors": errors,
+        }
+
     def index_project(
         self,
         max_files: int = 5000,
         force: bool = False,
         *,
         workers: int | None = None,
+        resolve_only: bool = False,
     ) -> dict[str, Any]:
         """Index every source file under ``self.project_root``.
 
@@ -965,7 +1322,31 @@ class ASTCache:
           * ``0`` or ``1``: force serial path.
           * ``>=2``: use that many worker processes.
           Configurable per-call; overridden by ``TSA_INDEX_WORKERS`` env var.
+
+        ``resolve_only``:
+          When ``True`` skip parse + symbol insert entirely and only
+          refresh the Synapse resolution columns from data already in
+          ``ast_index`` / ``ast_symbol_rows`` / ``ast_imports``. This is
+          the cheap path agents call after a schema bump or policy
+          change — no tree-sitter, no IO, just a SQL pass.
         """
+        if resolve_only:
+            # Cheap path: re-run the resolver against the data already
+            # in the cache. No walk, no parse, no FTS5 rewrite. The
+            # integration test ``test_backfill_no_reparse`` asserts
+            # Parser.parse_file is never called from this branch.
+            updated = self._run_synapse_backfill()
+            return {
+                "mode_used": "resolve_only",
+                "resolve_only": True,
+                "indexed": 0,
+                "cached": 0,
+                "errors": 0,
+                "skipped": 0,
+                "files": [],
+                "synapse_backfill": updated,
+            }
+
         if force:
             conn = self._get_conn()
             conn.execute("DELETE FROM ast_index")
@@ -1101,6 +1482,16 @@ class ASTCache:
                 stats["cross_file_backfill"] = bf
             except Exception:
                 logger.debug("cross-file backfill failed", exc_info=True)
+            # Feature 1 (Synapse) — resolve every call edge now that all
+            # symbols + imports for the project are on disk. Runs even
+            # when ``stats["indexed"]`` is zero would be wasted work, so
+            # we gate it here. Disabled by ``TSA_SYNAPSE=0``.
+            try:
+                synapse = self._run_synapse_backfill()
+                if synapse is not None:
+                    stats["synapse_backfill"] = synapse
+            except Exception:
+                logger.debug("synapse backfill failed", exc_info=True)
         return stats
 
     def _index_parallel(
@@ -1201,10 +1592,20 @@ class ASTCache:
                 ),
             )
 
+        # Feature 1 (Synapse) — write imports rows for this file. Done
+        # on the writer thread so the worker IPC envelope stays small.
+        imports_list = json.loads(r.get("imports_json", "[]"))
+        self._write_imports_for_file(conn, rel_path, r["language"], imports_list)
+
         # Feature 2 (Temporal Activation): only this writer thread runs
         # git. Workers stay focused on parse + extract; subprocess in a
         # multiprocess pool would deadlock against git's index lock.
         self._write_activation_for_file(conn, rel_path, inserted_symbol_rows)
+
+        # NOTE: Synapse resolver pass is NOT run per-file in the parallel
+        # writer. The whole-project resolver pass at the end of
+        # ``index_project`` does it once with the full context, which is
+        # both correct (sees every file's symbols + imports) and cheap.
 
     def lookup(self, file_path: str) -> dict[str, Any] | None:
         rel = os.path.relpath(os.path.abspath(file_path), self.project_root)
@@ -1415,9 +1816,7 @@ class ASTCache:
         Used by CachedCallGraph for import-aware cross-file call resolution.
         """
         conn = self._get_conn()
-        rows = conn.execute(
-            "SELECT file_path, imports_json FROM ast_index"
-        ).fetchall()
+        rows = conn.execute("SELECT file_path, imports_json FROM ast_index").fetchall()
         result: dict[str, list[str]] = {}
         for row in rows:
             result[row["file_path"]] = json.loads(row["imports_json"])
@@ -1440,9 +1839,7 @@ class ASTCache:
         """
         conn = self._get_conn()
         try:
-            return self._bfs_callers(
-                conn, callee_name, callee_file, max_depth
-            )
+            return self._bfs_callers(conn, callee_name, callee_file, max_depth)
         except sqlite3.OperationalError:
             return []
 
@@ -1520,9 +1917,7 @@ class ASTCache:
         """
         conn = self._get_conn()
         try:
-            return self._bfs_callees(
-                conn, caller_name, caller_file, max_depth
-            )
+            return self._bfs_callees(conn, caller_name, caller_file, max_depth)
         except sqlite3.OperationalError:
             return []
 
@@ -1667,7 +2062,6 @@ class ASTCache:
         errors = 0
 
         try:
-            conn.execute("BEGIN")
             for edge in resolved_edges:
                 callee_resolved = edge.callee_resolved_file
                 if not callee_resolved:
@@ -1682,8 +2076,8 @@ class ASTCache:
                             callee_resolved,
                             edge.caller_file,
                             edge.caller_line,
-                            edge.callee_name,
-                            edge.callee_line,
+                            edge.caller_name,
+                            edge.caller_line,
                         ),
                     )
                     if cursor.rowcount > 0:
@@ -1692,9 +2086,9 @@ class ASTCache:
                         unchanged += 1
                 except Exception:
                     errors += 1
-            conn.execute("COMMIT")
+            conn.commit()
         except Exception:
-            conn.execute("ROLLBACK")
+            conn.rollback()
             raise
 
         return {
@@ -1708,9 +2102,9 @@ class ASTCache:
         """Return cross-file edge resolution statistics."""
         conn = self._get_conn()
         try:
-            total = conn.execute(
-                "SELECT COUNT(*) as c FROM ast_call_edges"
-            ).fetchone()["c"]
+            total = conn.execute("SELECT COUNT(*) as c FROM ast_call_edges").fetchone()[
+                "c"
+            ]
             resolved = conn.execute(
                 "SELECT COUNT(*) as c FROM ast_call_edges "
                 "WHERE callee_resolved_file != ''"

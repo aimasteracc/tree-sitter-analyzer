@@ -1,0 +1,14 @@
+# Unknown top-level key fixture.
+#
+# ``rulez:`` is a typo of ``constraints:``. Unknown top-level keys are
+# fatal — silently dropping them would mean a constraints file ships to
+# prod with zero enforced rules and no warning. The parser must raise
+# ConstraintParseError naming the offending key.
+version: 1
+rulez:
+  - id: typo-top-level
+    severity: error
+    rule: forbid
+    from: "src/**"
+    to: "vendor/**"
+    reason: "This rule never loads because the wrapper key is misspelled."

@@ -1,0 +1,40 @@
+# Architectural Constraints for tree-sitter-analyzer (Feature 3 dogfood).
+#
+# This file is auto-evaluated by every safe_to_edit and analyze_change_impact
+# call. Violations attached to a touched file escalate the verdict so an
+# agent's first read of either tool flags structurally forbidden edits.
+#
+# Severity vocabulary (per Coder-T3 spec):
+#   error → verdict UNSAFE (blocks the edit until resolved)
+#   warn  → verdict CAUTION (proceed with awareness)
+#   info  → no verdict change (advisory only)
+#
+# Rule type: only ``forbid`` is supported in MVP. ``from`` matches the
+# caller's source file; ``to`` matches the callee's resolved file. Both
+# use fnmatch-style globs with ``**`` for recursive descent.
+#
+# Keep this list minimal so the dogfood test surface stays low. New
+# rules should land with explicit test coverage to avoid surprise verdict
+# escalations on unrelated work.
+version: 1
+constraints:
+  - id: mcp-must-not-depend-on-cli
+    severity: error
+    rule: forbid
+    from: "tree_sitter_analyzer/mcp/**"
+    to: "tree_sitter_analyzer/cli/**"
+    reason: "MCP layer is a transport boundary; CLI commands belong to the CLI layer. Reverse import only."
+
+  - id: core-must-not-import-mcp
+    severity: error
+    rule: forbid
+    from: "tree_sitter_analyzer/core/**"
+    to: "tree_sitter_analyzer/mcp/**"
+    reason: "Core analysis primitives precede the MCP layer; MCP imports core, never the reverse."
+
+  - id: languages-isolated-from-mcp
+    severity: error
+    rule: forbid
+    from: "tree_sitter_analyzer/languages/**"
+    to: "tree_sitter_analyzer/mcp/**"
+    reason: "Language plugins must not know about MCP; they are consumed by it."
