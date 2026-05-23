@@ -56,6 +56,10 @@ repos:
     rev: 1.9.4
     hooks:
       - id: bandit
+        # pass_filenames defaults to true, so bandit only scans the files
+        # pre-commit hands it (staged files). Do NOT add a blanket
+        # `-r tree_sitter_analyzer` arg — that scans the whole tree and
+        # blocks commits on pre-existing untracked-file violations.
         exclude: ^tests/|^openspec/changes/archive/|^scripts/|^build_standalone\.py$|^check_quality\.py$|^run_regression_tests\.py$|^test_fixes\.py$|^upload_interactive\.py$|^upload_to_pypi\.py$|^examples/
         args: [--format, json, -c, pyproject.toml]
         additional_dependencies: ["bandit[toml]"]
@@ -65,7 +69,22 @@ repos:
     rev: v2.0.0
     hooks:
       - id: mypy
-        args: [--ignore-missing-imports, --no-error-summary, --show-error-codes, --explicit-package-bases]
+        # --follow-imports=silent: type-check imported modules silently —
+        #   errors only surface on the files pre-commit passes in (the
+        #   staged set). Without this, mypy walks the whole module tree
+        #   from any staged file and blocks commits on pre-existing
+        #   problems in unrelated untracked files (which forced a
+        #   --no-verify earlier this week).
+        # --no-incremental: skip mypy's per-file cache so stale cache
+        #   entries from a prior whole-tree run don't poison a scoped
+        #   per-file run.
+        args:
+          - --ignore-missing-imports
+          - --no-error-summary
+          - --show-error-codes
+          - --explicit-package-bases
+          - --follow-imports=silent
+          - --no-incremental
         exclude: ^(examples/|scripts/|compatibility_test/|collect_project_metrics\.py|test_emergency_fix\.py|debug_async_test\.py|run_regression_tests\.py|generate_golden_masters\.py|check_stability\.py|analyze_specific_sql\.py|upload_interactive\.py|regenerate_with_normalization\.py|llm_code_checker\.py|run_coverage\.py|analyze_coverage_json\.py|verify_workflow_structure\.py|validate_workflows\.py|profile_analysis\.py|upload_to_pypi\.py|check_quality\.py|test_fixes\.py|\.kiro/|openspec/)
         additional_dependencies: [
           types-psutil>=5.9.0,
