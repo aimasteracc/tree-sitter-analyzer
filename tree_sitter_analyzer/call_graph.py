@@ -342,16 +342,33 @@ def _extract_call(node: Any, source: str, language: str) -> dict[str, Any] | Non
 
 
 def _node_text(node: Any, source: str) -> str:
-    """Extract text from a node given the full source string."""
+    """Extract text from a node given the full source string.
+
+    Tree-sitter exposes start_byte/end_byte as UTF-8 *byte* offsets.
+    Slicing a Python str with byte indices produces correct results for
+    pure-ASCII but silently shifts after any multi-byte character.  The
+    same class of bug that was fixed in ast_cache._node_text.
+
+    Fix: prefer node.text (bytes view from tree-sitter, canonical
+    source-of-truth).  Fall back to byte-level slicing on the encoded
+    source so legacy callers still work.
+    """
+    if node is None:
+        return ""
+    text_attr = getattr(node, "text", None)
+    if isinstance(text_attr, bytes):
+        try:
+            return text_attr.decode("utf-8", errors="replace")
+        except UnicodeDecodeError:
+            return ""
+    if isinstance(text_attr, str):
+        return text_attr
     try:
-        start = node.start_byte
-        end = node.end_byte
-        return source[start:end]
-    except Exception:
-        text = node.text
-        if isinstance(text, bytes):
-            return text.decode("utf-8", errors="replace")
-        return str(text)
+        return source.encode("utf-8")[node.start_byte : node.end_byte].decode(
+            "utf-8", errors="replace"
+        )
+    except (IndexError, TypeError, UnicodeDecodeError):
+        return ""
 
 
 def _find_parent_class_python(node: Any) -> str | None:

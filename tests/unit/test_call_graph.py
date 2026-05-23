@@ -908,3 +908,55 @@ class TestFileImpact:
         assert impact["function_count"] == 0
         assert impact["upstream_count"] == 0
         assert impact["downstream_count"] == 0
+
+
+class TestNodeTextUtf8:
+    def test_node_text_multibyte_comment_before_func(self):
+        source = (
+            "# \u2264 max_value — compare values\n"
+            "def greet(name):\n"
+            "    return name\n"
+        )
+        root, src = _parse_source(source, "python")
+        func_node = None
+        for child in root.children:
+            if child.type == "function_definition":
+                func_node = child
+                break
+        assert func_node is not None
+        name_node = func_node.child_by_field_name("name")
+        assert name_node is not None
+        text = _node_text(name_node, src)
+        assert text == "greet", f"Expected 'greet' but got {text!r}"
+
+    def test_node_text_cjk_identifier(self):
+        source = (
+            "# \u30c6\u30b9\u30c8\u95a2\u6570\n"
+            "def process_data(items):\n"
+            "    return items\n"
+        )
+        root, src = _parse_source(source, "python")
+        func_node = None
+        for child in root.children:
+            if child.type == "function_definition":
+                func_node = child
+                break
+        assert func_node is not None
+        name_node = func_node.child_by_field_name("name")
+        assert name_node is not None
+        text = _node_text(name_node, src)
+        assert text == "process_data"
+
+    def test_extract_call_after_multibyte(self):
+        source = (
+            "# \u2264 check \u2713 done\n"
+            "def run():\n"
+            "    helper()\n"
+        )
+        root, src = _parse_source(source, "python")
+        definitions, calls = _walk_tree(root, src, "python")
+        assert len(calls) == 1
+        assert calls[0]["name"] == "helper"
+
+    def test_node_text_none_returns_empty(self):
+        assert _node_text(None, "source") == ""
