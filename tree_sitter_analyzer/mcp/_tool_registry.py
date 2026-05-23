@@ -60,6 +60,7 @@ def create_tool_registry(
     from .tools.find_and_grep_tool import FindAndGrepTool
     from .tools.full_index_tool import CodeGraphFullIndexTool
     from .tools.import_graph_tool import CodeGraphImportGraphTool
+    from .tools.incremental_sync_tool import CodeGraphIncrementalSyncTool
     from .tools.list_files_tool import ListFilesTool
     from .tools.modification_guard_tool import ModificationGuardTool
     from .tools.parser_readiness_tool import ParserReadinessTool
@@ -143,5 +144,6 @@ def create_tool_registry(
         ("codegraph_autoindex", CodeGraphAutoIndexTool(project_root)),
         ("codegraph_full_index", CodeGraphFullIndexTool(project_root)),
         ("codegraph_metrics", CodeGraphMetricsTool(project_root)),
+        ("codegraph_incremental_sync", CodeGraphIncrementalSyncTool(project_root)),
     ]
     return tool_instances, dict(tool_instances)

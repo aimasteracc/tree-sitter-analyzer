@@ -43,6 +43,7 @@ def handle_special_commands(
         lambda: _handle_autoindex(args, context),
         lambda: _handle_full_index(args, context),
         lambda: _handle_codegraph_metrics(args, context),
+        lambda: _handle_incremental_sync(args, context),
         lambda: _handle_mcp_commands(args, context),
         lambda: _validate_partial_read_options(args, context.output_error),
         lambda: _handle_query_language_commands(args, context),
@@ -398,6 +399,18 @@ def _handle_codegraph_metrics(
     from .commands.codegraph_index_commands import run_codegraph_metrics
 
     return run_codegraph_metrics(args, context.output_error)
+
+
+def _handle_incremental_sync(
+    args: Any,
+    context: SpecialCommandContext,
+) -> int | None:
+    """Dispatch ``--incremental-sync`` → ``codegraph_incremental_sync`` MCP tool."""
+    if not getattr(args, "incremental_sync", False):
+        return None
+    from .commands.codegraph_index_commands import run_incremental_sync
+
+    return run_incremental_sync(args, context.output_error)
 
 
 def _handle_clean_state(

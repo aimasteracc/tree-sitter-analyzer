@@ -19,6 +19,7 @@ allowed-tools:
   - mcp__tree-sitter-analyzer__ast_diff
   - mcp__tree-sitter-analyzer__codegraph_autoindex
   - mcp__tree-sitter-analyzer__codegraph_full_index
+  - mcp__tree-sitter-analyzer__codegraph_incremental_sync
   - mcp__tree-sitter-analyzer__advise_parser_readiness
   - mcp__tree-sitter-analyzer__build_project_index
   - Bash

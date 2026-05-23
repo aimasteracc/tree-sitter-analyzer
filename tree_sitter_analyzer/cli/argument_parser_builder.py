@@ -380,6 +380,27 @@ def _add_mcp_index_management_options(parser: argparse.ArgumentParser) -> None:
             "cache call_graph"
         ),
     )
+    parser.add_argument(
+        "--incremental-sync",
+        action="store_true",
+        help=(
+            "Incremental AST cache sync using content-hash comparison "
+            "(codegraph_incremental_sync). Only re-parses files whose "
+            "SHA-256 hash differs. Default mode 'sync'."
+        ),
+    )
+    parser.add_argument(
+        "--incremental-sync-mode",
+        choices=["sync", "changes", "status"],
+        default="sync",
+        help="Mode for --incremental-sync (default: sync)",
+    )
+    parser.add_argument(
+        "--incremental-sync-max-files",
+        type=int,
+        default=5000,
+        help="Max files for --incremental-sync (default: 5000)",
+    )
 
 
 def _add_clean_state_options(parser: argparse.ArgumentParser) -> None:

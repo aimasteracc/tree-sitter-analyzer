@@ -102,6 +102,34 @@ def run_full_index(args: Any, output_error: OutputErrorFn) -> int:
     return _exit_code_for(result)
 
 
+def run_incremental_sync(args: Any, output_error: OutputErrorFn) -> int:
+    """Dispatch ``--incremental-sync`` → ``codegraph_incremental_sync`` MCP tool."""
+    try:
+        from ...mcp.tools.incremental_sync_tool import CodeGraphIncrementalSyncTool
+    except Exception as exc:  # noqa: BLE001
+        output_error(f"--incremental-sync failed to import tool: {exc}")
+        return 1
+
+    output_format = _output_format(args)
+    tool = CodeGraphIncrementalSyncTool(project_root=_project_root(args))
+    try:
+        result = asyncio.run(
+            tool.execute(
+                {
+                    "mode": getattr(args, "incremental_sync_mode", "sync") or "sync",
+                    "max_files": int(getattr(args, "incremental_sync_max_files", 5000)),
+                    "output_format": output_format,
+                }
+            )
+        )
+    except Exception as exc:  # noqa: BLE001
+        output_error(f"--incremental-sync failed: {exc}")
+        return 1
+
+    _print(result, output_format)
+    return _exit_code_for(result)
+
+
 def run_codegraph_metrics(args: Any, output_error: OutputErrorFn) -> int:
     """Dispatch ``--codegraph-metrics`` → ``codegraph_metrics`` MCP tool."""
     try:

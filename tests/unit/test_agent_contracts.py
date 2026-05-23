@@ -228,6 +228,7 @@ def test_registered_mcp_tools_have_cli_parity() -> None:
         "codegraph_autoindex": ("main", "--autoindex"),
         "codegraph_full_index": ("main", "--full-index"),
         "codegraph_metrics": ("main", "--codegraph-metrics"),
+        "codegraph_incremental_sync": ("main", "--incremental-sync"),
         # consolidated-only tools ported during merge of feat/autonomous-dev
         "trace_impact": ("main", "--trace-impact"),
         "modification_guard": ("main", "--modification-guard"),
