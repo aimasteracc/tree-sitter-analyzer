@@ -197,6 +197,77 @@ CREATE INDEX IF NOT EXISTS idx_cv_severity
 """
 
 
+# Schema-version registry — the "did every migration block actually apply?"
+# self-check. Earlier this sprint a parallel agent edit clobbered V4's two
+# ALTER TABLE statements down to one, and nothing detected it until a
+# downstream test happened to query ``callee_resolution`` and got a
+# ``no such column`` error. The version table + ``_verify_schema_integrity``
+# below close that class of bug: each migration block records its version
+# after it applies, and ``_init_db`` raises ``SchemaIntegrityError`` if the
+# expected versions or columns are missing on completion.
+_SCHEMA_VERSIONS = """
+CREATE TABLE IF NOT EXISTS ast_schema_version (
+    version    INTEGER PRIMARY KEY,
+    applied_at INTEGER NOT NULL,
+    description TEXT NOT NULL
+);
+"""
+
+# Expected versions + the columns / tables they bring. Keep in sync with the
+# _SCHEMA_V* constants above. Update this when adding a new V*.
+_EXPECTED_SCHEMA_VERSIONS: list[tuple[int, str, dict[str, list[str]]]] = [
+    (
+        3,
+        "ast_call_edges + indices",
+        {
+            "tables": ["ast_call_edges"],
+            "ast_call_edges_columns": [
+                "caller_name",
+                "caller_file",
+                "caller_line",
+                "callee_name",
+                "callee_full",
+                "callee_line",
+                "file_path",
+                "language",
+            ],
+        },
+    ),
+    (
+        4,
+        "Synapse: callee_resolution + ast_imports",
+        {
+            "tables": ["ast_imports"],
+            "ast_call_edges_columns": [
+                "callee_symbol_id",
+                "callee_resolution",
+                "callee_resolved_file",
+            ],
+        },
+    ),
+    (
+        5,
+        "Temporal activation",
+        {
+            "tables": ["ast_symbol_activation"],
+        },
+    ),
+    (
+        6,
+        "Constraint violations",
+        {
+            "tables": ["ast_constraint_violations"],
+        },
+    ),
+]
+
+
+class SchemaIntegrityError(RuntimeError):
+    """Raised when ``_init_db`` cannot prove all expected schema versions
+    are present. Usually caused by a parallel-edit conflict that silently
+    dropped ALTER TABLE statements, or a corrupted cache file."""
+
+
 def _has_fts5(conn: sqlite3.Connection) -> bool:
     try:
         conn.execute(
@@ -784,6 +855,10 @@ class ASTCache:
     def _init_db(self) -> None:
         conn = self._get_conn()
         conn.executescript(_SCHEMA_V1)
+        # Create the version registry up-front so each migration block can
+        # stamp its row as it applies. Idempotent CREATE TABLE IF NOT EXISTS.
+        conn.executescript(_SCHEMA_VERSIONS)
+        conn.commit()
         if self._fts5_available is None:
             self._fts5_available = _has_fts5(conn)
         if self._fts5_available:
@@ -792,70 +867,242 @@ class ASTCache:
                 conn.commit()
             except sqlite3.OperationalError:
                 self._fts5_available = False
-        try:
-            conn.executescript(_SCHEMA_V3_CALL_EDGES)
-            conn.commit()
-        except sqlite3.OperationalError:
-            pass
+        # Snapshot which versions are already recorded. Each migration
+        # block consults this snapshot: if its version is recorded we
+        # skip the migration body (the version row is the source of
+        # truth for "this block already applied"). This lets the
+        # post-init self-check detect schema tampering: if the registry
+        # says v4 applied but the column is missing, somebody has
+        # corrupted the DB or a parallel-edit clobbered an ALTER
+        # statement, and the self-check raises rather than silently
+        # re-applying the migration and masking the problem.
+        applied_versions = self._already_applied_versions(conn)
+        if 3 not in applied_versions:
+            try:
+                conn.executescript(_SCHEMA_V3_CALL_EDGES)
+                self._record_schema_version(conn, 3, "ast_call_edges + indices")
+                conn.commit()
+            except sqlite3.OperationalError:
+                pass
         # Feature 1 (Synapse) — V4 schema. ALTER TABLE has no
         # IF NOT EXISTS form in SQLite, so we add the columns only when
-        # PRAGMA table_info confirms they are missing. Idempotent across
-        # repeated opens. Defaults match what a never-resolved row would
-        # look like, so the backfill path can detect "fresh" rows by
-        # ``callee_resolution = 'unknown' AND callee_resolved_file = ''``.
-        try:
-            edge_cols = {
-                r[1]
-                for r in conn.execute("PRAGMA table_info(ast_call_edges)").fetchall()
-            }
-            if "callee_symbol_id" not in edge_cols:
+        # PRAGMA table_info confirms they are missing. Defaults match
+        # what a never-resolved row would look like, so the backfill
+        # path can detect "fresh" rows by ``callee_resolution = 'unknown'
+        # AND callee_resolved_file = ''``.
+        #
+        # Migration runs only when v4 is not in the registry. Once
+        # recorded, this block is skipped and the self-check below is
+        # the only thing that touches the schema — that's how we catch
+        # tampering / silently-dropped ALTER statements.
+        if 4 not in applied_versions:
+            try:
+                edge_cols = {
+                    r[1]
+                    for r in conn.execute(
+                        "PRAGMA table_info(ast_call_edges)"
+                    ).fetchall()
+                }
+                if "callee_symbol_id" not in edge_cols:
+                    conn.execute(
+                        "ALTER TABLE ast_call_edges ADD COLUMN callee_symbol_id INTEGER"
+                    )
+                if "callee_resolution" not in edge_cols:
+                    conn.execute(
+                        "ALTER TABLE ast_call_edges "
+                        "ADD COLUMN callee_resolution TEXT NOT NULL "
+                        "DEFAULT 'unknown'"
+                    )
+                if "callee_resolved_file" not in edge_cols:
+                    conn.execute(
+                        "ALTER TABLE ast_call_edges "
+                        "ADD COLUMN callee_resolved_file TEXT NOT NULL "
+                        "DEFAULT ''"
+                    )
+                conn.executescript(_SCHEMA_V4_IMPORTS)
                 conn.execute(
-                    "ALTER TABLE ast_call_edges ADD COLUMN callee_symbol_id INTEGER"
+                    "CREATE INDEX IF NOT EXISTS idx_ce_callee_symbol_id "
+                    "ON ast_call_edges(callee_symbol_id)"
                 )
-            if "callee_resolution" not in edge_cols:
                 conn.execute(
-                    "ALTER TABLE ast_call_edges "
-                    "ADD COLUMN callee_resolution TEXT NOT NULL "
-                    "DEFAULT 'unknown'"
+                    "CREATE INDEX IF NOT EXISTS idx_ce_callee_resolved "
+                    "ON ast_call_edges(callee_resolved_file)"
                 )
-            if "callee_resolved_file" not in edge_cols:
                 conn.execute(
-                    "ALTER TABLE ast_call_edges "
-                    "ADD COLUMN callee_resolved_file TEXT NOT NULL "
-                    "DEFAULT ''"
+                    "CREATE INDEX IF NOT EXISTS idx_ce_resolution "
+                    "ON ast_call_edges(callee_resolution)"
                 )
-            conn.executescript(_SCHEMA_V4_IMPORTS)
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_ce_callee_symbol_id "
-                "ON ast_call_edges(callee_symbol_id)"
-            )
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_ce_callee_resolved "
-                "ON ast_call_edges(callee_resolved_file)"
-            )
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_ce_resolution "
-                "ON ast_call_edges(callee_resolution)"
-            )
-            conn.commit()
-        except sqlite3.OperationalError:
-            # Legacy DB with incompatible ast_call_edges shape — degrade
-            # silently rather than wedge open. Backfill will retry later.
-            pass
+                self._record_schema_version(
+                    conn, 4, "Synapse: callee_resolution + ast_imports"
+                )
+                conn.commit()
+            except sqlite3.OperationalError:
+                # Legacy DB with incompatible ast_call_edges shape —
+                # degrade silently rather than wedge open. The
+                # post-init self-check will fire if the legacy shape
+                # is missing columns we require.
+                pass
         # Feature 2 (Temporal Activation) — V5 schema. Idempotent
         # CREATE TABLE IF NOT EXISTS so the migration is safe to re-run.
-        try:
-            conn.executescript(_SCHEMA_V5_ACTIVATION)
-            conn.commit()
-        except sqlite3.OperationalError:
-            pass
+        if 5 not in applied_versions:
+            try:
+                conn.executescript(_SCHEMA_V5_ACTIVATION)
+                self._record_schema_version(conn, 5, "Temporal activation")
+                conn.commit()
+            except sqlite3.OperationalError:
+                pass
         # Feature 3 (Constraint DSL) — V6 schema. Same idempotency.
-        try:
-            conn.executescript(_SCHEMA_V6_VIOLATIONS)
-            conn.commit()
-        except sqlite3.OperationalError:
-            pass
+        if 6 not in applied_versions:
+            try:
+                conn.executescript(_SCHEMA_V6_VIOLATIONS)
+                self._record_schema_version(conn, 6, "Constraint violations")
+                conn.commit()
+            except sqlite3.OperationalError:
+                pass
         conn.commit()
+        # Post-init self-check — raise SchemaIntegrityError if any
+        # expected table / column is missing. Backfills the version
+        # registry for legacy DBs that pre-date this code.
+        self._verify_schema_integrity(conn)
+
+    @staticmethod
+    def _already_applied_versions(conn: sqlite3.Connection) -> set[int]:
+        """Return the set of schema versions already recorded in
+        ``ast_schema_version``. Empty when the table is fresh."""
+        try:
+            rows = conn.execute("SELECT version FROM ast_schema_version").fetchall()
+        except sqlite3.OperationalError:
+            return set()
+        return {int(r[0]) for r in rows}
+
+    @staticmethod
+    def _record_schema_version(
+        conn: sqlite3.Connection, version: int, description: str
+    ) -> None:
+        """Stamp a row in ``ast_schema_version`` after a migration block
+        applies. INSERT OR IGNORE so re-opens are idempotent."""
+        import time as _time
+
+        try:
+            conn.execute(
+                "INSERT OR IGNORE INTO ast_schema_version "
+                "(version, applied_at, description) VALUES (?, ?, ?)",
+                (version, int(_time.time()), description),
+            )
+        except sqlite3.OperationalError:
+            # Version table missing — degrade silently. The self-check
+            # will surface this as a SchemaIntegrityError downstream.
+            pass
+
+    def _verify_schema_integrity(self, conn: sqlite3.Connection) -> None:
+        """Walk ``_EXPECTED_SCHEMA_VERSIONS`` and prove every entry exists.
+
+        Two responsibilities:
+
+        1. **Recovery**: for fresh DBs created before the version table
+           shipped, INSERT OR IGNORE the version rows so the cache looks
+           healthy on the next open.
+        2. **Detection**: confirm every expected table + column exists via
+           ``PRAGMA table_info``. Collect ALL missing things first then
+           raise once — don't fail-fast on the first miss so the
+           remediation message lists every problem.
+
+        Raises ``SchemaIntegrityError`` with file path + missing-thing list
+        + remediation (``rm .ast-cache/index.db and re-index``) when the
+        schema is incomplete.
+        """
+        import time as _time
+
+        missing: list[str] = []
+        for version, description, expectations in _EXPECTED_SCHEMA_VERSIONS:
+            # Recovery: backfill the version row if it's absent but the
+            # tables/columns it gates DO exist. ``_check_expectations``
+            # decides whether the version's payload is actually present.
+            payload_ok = self._check_expectations(conn, expectations, missing)
+            try:
+                row = conn.execute(
+                    "SELECT version FROM ast_schema_version WHERE version = ?",
+                    (version,),
+                ).fetchone()
+            except sqlite3.OperationalError:
+                row = None
+            if row is None and payload_ok:
+                # Legacy DB: tables exist but the registry row never got
+                # written. Backfill so future opens look clean.
+                try:
+                    conn.execute(
+                        "INSERT OR IGNORE INTO ast_schema_version "
+                        "(version, applied_at, description) VALUES (?, ?, ?)",
+                        (version, int(_time.time()), description),
+                    )
+                    conn.commit()
+                except sqlite3.OperationalError:
+                    # If we can't even backfill, the version table itself
+                    # is missing — surface it as a missing payload.
+                    missing.append(
+                        f"ast_schema_version row for v{version} "
+                        f"({description}) could not be inserted"
+                    )
+        if missing:
+            remediation = (
+                f"Remove the cache DB at {self.db_path!r} and re-index "
+                "(e.g. ``rm -rf .ast-cache && uv run python -m "
+                "tree_sitter_analyzer --index``)."
+            )
+            raise SchemaIntegrityError(
+                "AST cache schema is incomplete. Missing: "
+                + "; ".join(missing)
+                + ". "
+                + remediation
+            )
+
+    @staticmethod
+    def _check_expectations(
+        conn: sqlite3.Connection,
+        expectations: dict[str, list[str]],
+        missing: list[str],
+    ) -> bool:
+        """Confirm every expected table + column from one version block
+        exists. Appends descriptive entries to ``missing`` for anything
+        absent. Returns ``True`` when every check passed."""
+        # ``expectations`` is keyed by either ``tables`` (a list of table
+        # names that must exist) or ``<table>_columns`` (a list of column
+        # names that must exist on ``<table>``). We iterate both.
+        all_ok = True
+        for table in expectations.get("tables", []):
+            cols = ASTCache._table_columns(conn, table)
+            if not cols:
+                missing.append(f"table {table!r}")
+                all_ok = False
+        for key, required_cols in expectations.items():
+            if key == "tables":
+                continue
+            if not key.endswith("_columns"):
+                continue
+            table = key[: -len("_columns")]
+            cols = ASTCache._table_columns(conn, table)
+            if not cols:
+                # The table itself is missing — already reported via the
+                # ``tables`` check if it was listed there. Add it now for
+                # the column-only case (table not declared in ``tables``).
+                if table not in expectations.get("tables", []):
+                    missing.append(f"table {table!r} (needed for columns)")
+                all_ok = False
+                continue
+            for col in required_cols:
+                if col not in cols:
+                    missing.append(f"column {table}.{col}")
+                    all_ok = False
+        return all_ok
+
+    @staticmethod
+    def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
+        """Return the column names of ``table``, or empty set when absent."""
+        try:
+            rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+        except sqlite3.OperationalError:
+            return set()
+        return {r[1] for r in rows}
 
     def index_file(self, file_path: str, language: str | None = None) -> dict[str, Any]:
         abs_path = os.path.abspath(file_path)
