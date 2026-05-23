@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -31,6 +32,8 @@ from .verification_command import (
     build_test_command,
     detect_default_test_command,
 )
+
+logger = logging.getLogger(__name__)
 
 TESTS_TO_RUN_DISPLAY_LIMIT = 30
 FOCUSED_TEST_COMMAND_LIMIT = 20
@@ -275,6 +278,137 @@ def _append_large_dirty_hint(hint: str, changed_count: int) -> str:
     return hint
 
 
+def _ensure_ast_cache(
+    project_root: str | None,
+    changed_files: list[str],
+) -> Any | None:
+    """Return an open ASTCache, auto-indexing if the cache is empty or stale.
+
+    Returns None when project_root is None or indexing fails entirely.
+    The caller is responsible for calling cache.close() when done.
+    """
+    if not project_root or not changed_files:
+        return None
+    try:
+        from ....ast_cache import ASTCache
+
+        cache = ASTCache(project_root)
+        stats = cache.get_stats()
+        if stats.get("total_files", 0) == 0:
+            cache.index_project(max_files=2000)
+        else:
+            from ....incremental_sync import IncrementalSync
+
+            sync = IncrementalSync(cache)
+            changes = sync.get_changes()
+            if changes["new"] or changes["modified"] or changes["deleted"]:
+                sync.sync(max_files=2000)
+        return cache
+    except Exception:
+        logger.debug("AST cache auto-index failed", exc_info=True)
+        return None
+
+
+def _enrich_with_cache_symbols(
+    changed_files: list[str],
+    cache: Any,
+) -> list[dict[str, Any]]:
+    """Enrich changed files with symbol-level detail from the AST cache.
+
+    Returns a list of dicts, one per changed file that has indexed symbols,
+    with keys: file, symbols (list of {name, kind, line}), symbol_count.
+    """
+    if cache is None:
+        return []
+    conn = cache._get_conn()
+    enriched: list[dict[str, Any]] = []
+    for rel in changed_files:
+        try:
+            row = conn.execute(
+                "SELECT symbols_json FROM ast_index WHERE file_path = ?",
+                (rel,),
+            ).fetchone()
+        except Exception:
+            continue
+        if row is None:
+            continue
+        try:
+            import json
+
+            sym_data = json.loads(row["symbols_json"])
+        except Exception:
+            continue
+        symbols = sym_data.get("symbols", [])
+        if not symbols:
+            continue
+        enriched.append(
+            {
+                "file": rel,
+                "symbol_count": len(symbols),
+                "symbols": [
+                    {
+                        "name": s.get("name", s.get("text", "")),
+                        "kind": s.get("kind", "unknown"),
+                        "line": s.get("line", 0),
+                    }
+                    for s in symbols
+                    if s.get("name") or s.get("text")
+                ][:50],
+            }
+        )
+    return enriched
+
+
+def _find_affected_symbols(
+    affected_files: set[str],
+    cache: Any,
+) -> list[dict[str, Any]]:
+    """Look up top-level symbols in affected (dependent) files.
+
+    Returns a list of {file, name, kind} for each file that has symbols
+    indexed in the cache.  Limited to 200 entries to keep the response small.
+    """
+    if cache is None or not affected_files:
+        return []
+    conn = cache._get_conn()
+    results: list[dict[str, Any]] = []
+    for rel in sorted(affected_files):
+        try:
+            row = conn.execute(
+                "SELECT symbols_json FROM ast_index WHERE file_path = ?",
+                (rel,),
+            ).fetchone()
+        except Exception:
+            continue
+        if row is None:
+            continue
+        try:
+            import json
+
+            sym_data = json.loads(row["symbols_json"])
+        except Exception:
+            continue
+        for s in sym_data.get("symbols", []):
+            name = s.get("name") or s.get("text", "")
+            if name and s.get("kind") in (
+                "function",
+                "class",
+                "method",
+                "variable",
+            ):
+                results.append(
+                    {
+                        "file": rel,
+                        "name": name,
+                        "kind": s.get("kind", "unknown"),
+                        "line": s.get("line", 0),
+                    }
+                )
+                if len(results) >= 200:
+                    return results
+    return results
+
+
 def _build_change_impact_result(request: ChangeImpactRequest) -> dict[str, Any]:
     """Build the full change-impact response for changed files."""
     graph = _load_dependency_graph(request.project_root)
@@ -336,6 +470,33 @@ def _build_change_impact_result(request: ChangeImpactRequest) -> dict[str, Any]:
 
     if call_graph_data is not None:
         result["call_graph_impact"] = call_graph_data
+
+    cache = _ensure_ast_cache(request.project_root, request.changed_files)
+    try:
+        changed_symbols = _enrich_with_cache_symbols(request.changed_files, cache)
+        if changed_symbols:
+            result["changed_symbols"] = changed_symbols
+            total_syms = sum(f["symbol_count"] for f in changed_symbols)
+            result["changed_symbol_count"] = total_syms
+            for fi in file_impacts:
+                rel = fi.get("file", "")
+                for cs in changed_symbols:
+                    if cs["file"] == rel:
+                        fi["symbols"] = cs["symbols"][:10]
+                        fi["symbol_count"] = cs["symbol_count"]
+                        break
+        affected_symbols = _find_affected_symbols(affected, cache)
+        if affected_symbols:
+            result["affected_symbols"] = affected_symbols
+            result["affected_symbol_count"] = len(affected_symbols)
+    except Exception:
+        logger.debug("AST cache enrichment failed", exc_info=True)
+    finally:
+        if cache is not None:
+            try:
+                cache.close()
+            except Exception:
+                pass
 
     return result
 

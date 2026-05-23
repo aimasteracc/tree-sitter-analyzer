@@ -163,3 +163,90 @@ class TestAppendLargeDirtyHint:
     def test_large_count_appends(self):
         result = _append_large_dirty_hint("hint", 999)
         assert len(result) > len("hint")
+
+
+class TestEnsureASTCache:
+    def test_returns_none_for_none_root(self):
+        from tree_sitter_analyzer.mcp.tools.utils.change_impact_analysis import (
+            _ensure_ast_cache,
+        )
+
+        assert _ensure_ast_cache(None, ["a.py"]) is None
+
+    def test_returns_none_for_empty_files(self):
+        from tree_sitter_analyzer.mcp.tools.utils.change_impact_analysis import (
+            _ensure_ast_cache,
+        )
+
+        assert _ensure_ast_cache("/tmp", []) is None
+
+    def test_auto_indexes_empty_cache(self, tmp_path):
+        from tree_sitter_analyzer.mcp.tools.utils.change_impact_analysis import (
+            _ensure_ast_cache,
+        )
+
+        src = tmp_path / "example.py"
+        src.write_text("def hello(): pass\n")
+        cache = _ensure_ast_cache(str(tmp_path), ["example.py"])
+        try:
+            assert cache is not None
+            stats = cache.get_stats()
+            assert stats["total_files"] >= 1
+        finally:
+            if cache is not None:
+                cache.close()
+
+
+class TestEnrichWithCacheSymbols:
+    def test_returns_empty_for_none_cache(self):
+        from tree_sitter_analyzer.mcp.tools.utils.change_impact_analysis import (
+            _enrich_with_cache_symbols,
+        )
+
+        assert _enrich_with_cache_symbols(["a.py"], None) == []
+
+    def test_enriches_changed_files(self, tmp_path):
+        from tree_sitter_analyzer.ast_cache import ASTCache
+        from tree_sitter_analyzer.mcp.tools.utils.change_impact_analysis import (
+            _enrich_with_cache_symbols,
+        )
+
+        src = tmp_path / "mod.py"
+        src.write_text("def foo(): pass\nclass Bar: pass\n")
+        cache = ASTCache(str(tmp_path))
+        cache.index_file(str(src))
+        try:
+            result = _enrich_with_cache_symbols(["mod.py"], cache)
+            assert len(result) == 1
+            assert result[0]["file"] == "mod.py"
+            assert result[0]["symbol_count"] >= 2
+            assert any(s["name"] == "foo" for s in result[0]["symbols"])
+            assert any(s["name"] == "Bar" for s in result[0]["symbols"])
+        finally:
+            cache.close()
+
+
+class TestFindAffectedSymbols:
+    def test_returns_empty_for_none_cache(self):
+        from tree_sitter_analyzer.mcp.tools.utils.change_impact_analysis import (
+            _find_affected_symbols,
+        )
+
+        assert _find_affected_symbols({"a.py"}, None) == []
+
+    def test_finds_symbols_in_affected_files(self, tmp_path):
+        from tree_sitter_analyzer.ast_cache import ASTCache
+        from tree_sitter_analyzer.mcp.tools.utils.change_impact_analysis import (
+            _find_affected_symbols,
+        )
+
+        dep = tmp_path / "dep.py"
+        dep.write_text("def helper(): pass\n")
+        cache = ASTCache(str(tmp_path))
+        cache.index_file(str(dep))
+        try:
+            result = _find_affected_symbols({"dep.py"}, cache)
+            assert len(result) >= 1
+            assert any(s["name"] == "helper" for s in result)
+        finally:
+            cache.close()
