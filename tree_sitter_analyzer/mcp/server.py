@@ -110,6 +110,7 @@ def _create_tool_registry(
     from .tools.callers_tool import CodeGraphCallersTool
     from .tools.change_impact_tool import ChangeImpactTool
     from .tools.code_patterns_tool import CodePatternsTool
+    from .tools.code_similarity_tool import CodeGraphSimilarityTool
     from .tools.codegraph_impact_tool import CodeGraphImpactTool
     from .tools.codegraph_navigate_tool import CodeGraphNavigateTool
     from .tools.codegraph_overview_tool import CodeGraphOverviewTool
@@ -171,6 +172,7 @@ def _create_tool_registry(
         ("semantic_classify", SemanticClassifyTool(project_root)),
         ("detect_routes", RouteDetectorTool(project_root)),
         ("codegraph_import_graph", CodeGraphImportGraphTool(project_root)),
+        ("codegraph_similarity", CodeGraphSimilarityTool(project_root)),
         ("codegraph_dead_code", CodeGraphDeadCodeTool(project_root)),
     ]
     return tool_instances, dict(tool_instances)

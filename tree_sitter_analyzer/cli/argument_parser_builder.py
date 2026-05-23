@@ -754,6 +754,40 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
         "Use exact name, * wildcards, or ~ fuzzy prefix",
     )
     parser.add_argument(
+        "--code-similarity",
+        action="store_true",
+        help="AST-structural clone detection: finds duplicate/near-duplicate functions (CodeGraph parity)",
+    )
+    parser.add_argument(
+        "--code-similarity-mode",
+        choices=["all", "structural", "textual"],
+        default="all",
+        help="Mode for --code-similarity (default: all)",
+    )
+    parser.add_argument(
+        "--code-similarity-min-lines",
+        type=int,
+        default=5,
+        help="Minimum function body lines for --code-similarity (default: 5)",
+    )
+    parser.add_argument(
+        "--code-similarity-min-group",
+        type=int,
+        default=2,
+        help="Minimum clone group size for --code-similarity (default: 2)",
+    )
+    parser.add_argument(
+        "--code-similarity-max-groups",
+        type=int,
+        default=20,
+        help="Max similarity groups for --code-similarity (default: 20)",
+    )
+    parser.add_argument(
+        "--code-similarity-no-cache",
+        action="store_true",
+        help="Skip AST cache and do full project scan for --code-similarity",
+    )
+    parser.add_argument(
         "--symbol-search-language",
         help="Language filter for --symbol-search",
     )

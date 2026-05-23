@@ -31,15 +31,16 @@ def create_tool_registry(
     from .tools.callers_tool import CodeGraphCallersTool
     from .tools.change_impact_tool import ChangeImpactTool
     from .tools.code_patterns_tool import CodePatternsTool
+    from .tools.code_similarity_tool import CodeGraphSimilarityTool
     from .tools.codegraph_impact_tool import CodeGraphImpactTool
     from .tools.codegraph_navigate_tool import CodeGraphNavigateTool
     from .tools.codegraph_overview_tool import CodeGraphOverviewTool
     from .tools.codegraph_pr_review_tool import CodeGraphPRReviewTool
     from .tools.dead_code_tool import CodeGraphDeadCodeTool
     from .tools.dependency_analysis_tool import DependencyAnalysisTool
-    from .tools.import_graph_tool import CodeGraphImportGraphTool
     from .tools.file_health_tool import FileHealthTool
     from .tools.find_and_grep_tool import FindAndGrepTool
+    from .tools.import_graph_tool import CodeGraphImportGraphTool
     from .tools.list_files_tool import ListFilesTool
     from .tools.parser_readiness_tool import ParserReadinessTool
     from .tools.project_health_tool import ProjectHealthTool
@@ -100,5 +101,6 @@ def create_tool_registry(
         # Same drift pattern as #12 — registry vs CLI specs need a single
         # source-of-truth; see test_registered_mcp_tools_have_cli_parity.
         ("codegraph_import_graph", CodeGraphImportGraphTool(project_root)),
+        ("codegraph_similarity", CodeGraphSimilarityTool(project_root)),
     ]
     return tool_instances, dict(tool_instances)

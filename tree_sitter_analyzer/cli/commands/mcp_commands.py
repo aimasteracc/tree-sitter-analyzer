@@ -37,6 +37,9 @@ from tree_sitter_analyzer.mcp.tools.change_impact_tool import (
 from tree_sitter_analyzer.mcp.tools.code_patterns_tool import (
     CodePatternsTool,  # noqa: F401
 )
+from tree_sitter_analyzer.mcp.tools.code_similarity_tool import (
+    CodeGraphSimilarityTool,  # noqa: F401
+)
 from tree_sitter_analyzer.mcp.tools.codegraph_impact_tool import (
     CodeGraphImpactTool,  # noqa: F401
 )
@@ -49,11 +52,11 @@ from tree_sitter_analyzer.mcp.tools.codegraph_overview_tool import (
 from tree_sitter_analyzer.mcp.tools.codegraph_pr_review_tool import (
     CodeGraphPRReviewTool,  # noqa: F401
 )
-from tree_sitter_analyzer.mcp.tools.dependency_analysis_tool import (
-    DependencyAnalysisTool,  # noqa: F401
-)
 from tree_sitter_analyzer.mcp.tools.dead_code_tool import (
     CodeGraphDeadCodeTool,  # noqa: F401
+)
+from tree_sitter_analyzer.mcp.tools.dependency_analysis_tool import (
+    DependencyAnalysisTool,  # noqa: F401
 )
 from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool  # noqa: F401
 from tree_sitter_analyzer.mcp.tools.import_graph_tool import (
@@ -459,6 +462,19 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
             "output_format": output_format,
         },
     ),
+    McpCommandSpec(
+        flag_name="code_similarity",
+        tool_attr="CodeGraphSimilarityTool",
+        label="AST-structural clone detection: finds duplicate and near-duplicate functions (CodeGraph parity)",
+        build_tool_args=lambda args, output_format: {
+            "mode": getattr(args, "code_similarity_mode", "all") or "all",
+            "min_lines": getattr(args, "code_similarity_min_lines", 5) or 5,
+            "min_group_size": getattr(args, "code_similarity_min_group", 2) or 2,
+            "max_groups": getattr(args, "code_similarity_max_groups", 20) or 20,
+            "use_cache": not bool(getattr(args, "code_similarity_no_cache", False)),
+            "output_format": output_format,
+        },
+    ),
 )
 
 
@@ -525,6 +541,7 @@ _TOOL_CLASS_NAMES: frozenset[str] = frozenset(
         # Pain pass 4: dead_code spec was added but the class wasn't in
         # this allowlist, so the contract test caught a registry/spec drift.
         "CodeGraphDeadCodeTool",
+        "CodeGraphSimilarityTool",
     }
 )
 
