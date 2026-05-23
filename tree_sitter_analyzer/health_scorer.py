@@ -423,8 +423,33 @@ class HealthScorer:
         *,
         use_cache: bool = True,
     ) -> list[HealthScore]:
+        """Score all source files; returns just the score list.
+
+        This is the legacy API. Prefer ``score_project_with_stats``
+        when you need to surface coverage metrics (how many files were
+        scanned vs scored vs skipped, and why) — agents asking "did you
+        really index my whole project?" need those numbers, not the
+        list alone.
         """
-        Score all source files in a project directory.
+        scores, _stats = self.score_project_with_stats(
+            project_root, use_cache=use_cache
+        )
+        return scores
+
+    def score_project_with_stats(
+        self,
+        project_root: str,
+        *,
+        use_cache: bool = True,
+    ) -> tuple[list[HealthScore], dict[str, Any]]:
+        """
+        Score all source files AND return walker coverage statistics.
+
+        Coverage stats let an agent answer "how many files did you
+        actually look at?" honestly — the difference between scanned
+        and scored files (excluded directories, parse failures) is the
+        kind of information that used to be silently dropped before
+        ``TRUST_BUT_VERIFY_2026-05-23.md``.
 
         Args:
             project_root: Root directory of the project
@@ -434,7 +459,17 @@ class HealthScorer:
                 subsequent runs are near-instant for unchanged files.
 
         Returns:
-            List of HealthScore objects, sorted by total descending
+            Tuple of (scores, stats) where stats has shape::
+
+                {
+                    "total_files_scanned":   int,  # rglob hits, pre-filter
+                    "total_files_scored":    int,  # actually scored
+                    "total_files_skipped":   int,  # scanned but not scored
+                    "skip_reasons": {
+                        "excluded_dir":   int,  # in self._EXCLUDE_DIRS
+                        "scoring_failed": int,  # score_file raised
+                    },
+                }
         """
         # Import locally to avoid a circular import at module load time —
         # _health_score_cache pulls in nothing heavy but keeps the import
@@ -444,20 +479,36 @@ class HealthScorer:
         root = Path(project_root)
         cache = HealthScoreCache(str(root)) if use_cache else None
         results: list[HealthScore] = []
+        scanned = 0
+        excluded_dir = 0
+        scoring_failed = 0
         try:
             for ext in self.source_extensions:
                 for f in root.rglob(f"*{ext}"):
+                    scanned += 1
                     if any(part in self._EXCLUDE_DIRS for part in f.parts):
+                        excluded_dir += 1
                         continue
                     score = self._score_file_with_cache(str(f), cache)
-                    if score is not None:
-                        results.append(score)
+                    if score is None:
+                        scoring_failed += 1
+                        continue
+                    results.append(score)
         finally:
             if cache is not None:
                 cache.close()
 
         results.sort(key=lambda r: r.total, reverse=True)
-        return results
+        stats: dict[str, Any] = {
+            "total_files_scanned": scanned,
+            "total_files_scored": len(results),
+            "total_files_skipped": excluded_dir + scoring_failed,
+            "skip_reasons": {
+                "excluded_dir": excluded_dir,
+                "scoring_failed": scoring_failed,
+            },
+        }
+        return results, stats
 
     def _score_file_with_cache(
         self,

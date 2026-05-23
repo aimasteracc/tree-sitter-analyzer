@@ -106,8 +106,21 @@ class ProjectHealthTool(BaseMCPTool):
         output_format = arguments.get("output_format", "toon")
 
         scorer = HealthScorer()
-        all_scores = scorer.score_project(root)
-        result = _build_project_health_result(root, all_scores, min_grade, max_files)
+        # Use the with_stats variant so we can surface coverage to the agent
+        # ("did you really scan my whole project?"). See
+        # docs/internal/TRUST_BUT_VERIFY_2026-05-23.md for context.
+        # Fall back to score_project() when callers monkeypatch HealthScorer
+        # with a fake that predates the with_stats API — keeps existing
+        # test fixtures working.
+        with_stats = getattr(scorer, "score_project_with_stats", None)
+        if callable(with_stats):
+            all_scores, scan_stats = with_stats(root)
+        else:
+            all_scores = scorer.score_project(root)
+            scan_stats = None
+        result = _build_project_health_result(
+            root, all_scores, min_grade, max_files, scan_stats=scan_stats
+        )
 
         from ..utils.format_helper import apply_toon_format_to_response
 
@@ -125,8 +138,16 @@ def _build_project_health_result(
     all_scores: list[Any],
     min_grade: str,
     max_files: int,
+    scan_stats: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Build the JSON-ready project-health response."""
+    """Build the JSON-ready project-health response.
+
+    ``scan_stats`` (optional, supplied by the tool) carries walker
+    coverage numbers so agents can answer the "did you really scan my
+    whole project?" question without us hiding the truth. See
+    ``docs/internal/TRUST_BUT_VERIFY_2026-05-23.md`` for the audit
+    that surfaced the missing field.
+    """
     grade_counts = Counter(score.grade for score in all_scores)
     grade_distribution = {grade: grade_counts.get(grade, 0) for grade in "ABCDF"}
     dim_avgs = _average_dimensions(all_scores)
@@ -137,11 +158,37 @@ def _build_project_health_result(
     agent_backlog = _build_agent_backlog(all_scores, limit=visible_limit)
     files = _file_details(worst, max_files)
 
+    # When the caller forgot to thread scan_stats through, fall back to
+    # a self-consistent stub built from what we DO know — len(all_scores)
+    # is the scored count, scanned/skipped are unknown without the walker
+    # telemetry, so we report 0 skips rather than fabricate.
+    if scan_stats is None:
+        scan_stats = {
+            "total_files_scanned": len(all_scores),
+            "total_files_scored": len(all_scores),
+            "total_files_skipped": 0,
+            "skip_reasons": {"excluded_dir": 0, "scoring_failed": 0},
+        }
+
+    coverage_pct = (
+        100.0 * scan_stats["total_files_scored"] / scan_stats["total_files_scanned"]
+        if scan_stats["total_files_scanned"]
+        else 100.0
+    )
+
     return {
         "success": True,
         "verdict": _project_health_verdict(grade_distribution),
         "project_root": root,
         "total_files": len(all_scores),
+        # Coverage transparency (see TRUST_BUT_VERIFY_2026-05-23.md) —
+        # agents can now print scanned/skipped/coverage_pct to answer
+        # "is the index really complete?" instead of guessing from total_files.
+        "total_files_scanned": scan_stats["total_files_scanned"],
+        "total_files_analyzed": scan_stats["total_files_scored"],
+        "total_files_skipped": scan_stats["total_files_skipped"],
+        "skip_reasons": scan_stats["skip_reasons"],
+        "coverage_pct": round(coverage_pct, 1),
         "matching_file_count": len(worst),
         "detail_limit": max_files,
         "detail_count": len(files),
