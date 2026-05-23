@@ -78,12 +78,15 @@ class CodeGraphNavigateTool(BaseMCPTool):
         return {
             "name": "codegraph_navigate",
             "description": (
-                "Unified symbol navigation hub (CodeGraph parity). "
-                "Combines go-to-definition, find-references, call hierarchy "
-                "(callers + callees) in a single call. Modes: "
-                "definition, references, hierarchy, full. "
-                "Replaces 3-4 separate tool calls for 'understand this symbol'. "
-                "Requires ast_cache index (run ast_cache mode=index)."
+                "PRIMARY ENTRY POINT for 'understand this symbol' questions — "
+                "try this FIRST before chaining codegraph_symbol_search / "
+                "codegraph_resolve / codegraph_callers / codegraph_callees. "
+                "Unified symbol navigation hub (CodeGraph parity): combines "
+                "go-to-definition, find-references, and call hierarchy "
+                "(callers + callees) in one call. "
+                "Modes: definition, references, hierarchy, full. "
+                "Replaces 3-4 separate tool invocations. "
+                "Requires ast_cache index (run codegraph_autoindex mode=warm)."
             ),
             "inputSchema": self.get_tool_schema(),
             "annotations": {
