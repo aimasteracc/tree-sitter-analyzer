@@ -51,8 +51,19 @@ class TestLanguageFromExt:
             assert _language_from_ext(f"foo{ext}") == "cpp"
 
     def test_unknown(self):
-        assert _language_from_ext("foo.rb") is None
+        # ``.rb`` is now mapped to "ruby" (lockstep with ast_cache._EXT_TO_LANG
+        # so RubyPlugin can actually index). Pick a genuinely unknown ext.
+        assert _language_from_ext("foo.unknownext") is None
         assert _language_from_ext("Makefile") is None
+
+    def test_newly_unlocked_plugins(self):
+        # These 5 plugins existed but couldn't be indexed because the ext
+        # map was missing entries. Pin the wiring.
+        assert _language_from_ext("foo.swift") == "swift"
+        assert _language_from_ext("foo.kt") == "kotlin"
+        assert _language_from_ext("foo.rb") == "ruby"
+        assert _language_from_ext("foo.php") == "php"
+        assert _language_from_ext("foo.cs") == "csharp"
 
     def test_case_insensitive(self):
         assert _language_from_ext("FOO.PY") == "python"

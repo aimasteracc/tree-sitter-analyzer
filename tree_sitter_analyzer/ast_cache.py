@@ -330,7 +330,7 @@ _EXT_TO_LANG: dict[str, str] = {
     ".php": "php",
     ".swift": "swift",
     ".kt": "kotlin",
-    ".cs": "c_sharp",
+    ".cs": "csharp",
 }
 
 

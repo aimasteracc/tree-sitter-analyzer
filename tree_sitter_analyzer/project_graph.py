@@ -22,7 +22,15 @@ from .import_extractors import (
 
 
 def _language_from_ext(file_path: str) -> str | None:
-    """Guess language from file extension."""
+    """Guess language from file extension.
+
+    Must stay in lockstep with ``ast_cache._EXT_TO_LANG`` — divergence
+    silently blocks indexing of any language present in one map but not
+    the other. The 5 entries below (swift / kotlin / ruby / php / csharp)
+    were missing for months even though their plugins + queries shipped;
+    files indexed via this map returned ``unsupported language`` and
+    never made it into the ``ast_index`` table. Fixed 2026-05-24.
+    """
     ext_map = {
         ".py": "python",
         ".js": "javascript",
@@ -39,6 +47,11 @@ def _language_from_ext(file_path: str) -> str | None:
         ".h": "c",
         ".hpp": "cpp",
         ".hxx": "cpp",
+        ".swift": "swift",
+        ".kt": "kotlin",
+        ".rb": "ruby",
+        ".php": "php",
+        ".cs": "csharp",
     }
     ext = Path(file_path).suffix.lower()
     return ext_map.get(ext)
