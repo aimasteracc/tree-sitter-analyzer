@@ -18,12 +18,25 @@
 | Python stdlib `ast` (**ORACLE**) | 2 | 21 | 10 | ✅ ground truth |
 | **tree-sitter-analyzer** (我们) | **2** | **21** | **10** | **✅ 100% 一致** |
 | wrale/mcp-server-tree-sitter | 2 | 21 | 14 | ⚠ imports 多算 4 |
-| CodeGraphContext (`cgc`) | **0** | **0** | **0** | 🚨 silent index fail |
+| **CodeGraphContext** (`cgc` 0.4.11) [^cgc-id] | **0** | **0** | **0** | 🚨 silent index fail |
 | grep-ast (Aider) | — | — | — | 🚨 Python 3.14 crash |
 
 **4 个工具里只有我们 100% 命中 oracle。**
 
 ---
+
+[^cgc-id]: **被测对象身份确认** —
+    PyPI 包: `codegraphcontext` v0.4.11
+    CLI 二进制: `cgc` / `codegraphcontext`
+    GitHub (PyPI bug-tracker URL): https://github.com/Shashankss1205/CodeGraphContext
+    简介: "MCP server that indexes local code into a graph database
+    to provide context to AI assistants"
+    底层用 Tree-sitter,可选后端: kuzudb / falkordb / Neo4j。
+    NOTE: "CodeGraph" 在 GitHub 上至少 7 个不同项目,**这里测的是
+    上面这个**,不是 `ChrisRoyse/CodeGraph` (Neo4j 那个) / `Jakedismo/codegraph-rust`
+    (Rust + SurrealDB) / `anvanster/codegraph` (16 语言) / `xnuinside/codegraph`
+    (Python 词法分析) / `zmrzyx/CodeGraph` / `Abhishek-Aditya-bs/CodeGraph` /
+    FalkorDB 的 `code-graph`,这些都没测。
 
 ## 真实发现 #1: CodeGraphContext kuzu 后端**静默失败**
 
