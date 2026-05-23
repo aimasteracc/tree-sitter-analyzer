@@ -187,7 +187,7 @@ class TestChangeImpactIntegration:
             mode="diff",
             changed_files=["README.md"],
             diff_stat="1 file changed",
-            project_root=None,
+            project_root=None,  # allowed: chdir(tmp_path)
             include_tests=False,
         )
         result = _build_change_impact_result(req)
