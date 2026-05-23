@@ -360,11 +360,40 @@ _VAR_DECL_LIKE = frozenset(
 
 
 def _node_text(node: Any, source: str) -> str:
+    """Extract the source text of a tree-sitter node.
+
+    🚨 BUG history: tree-sitter exposes ``start_byte`` / ``end_byte`` as
+    UTF-8 BYTE offsets. The old implementation sliced ``source`` (a
+    ``str``) using those byte values, which is correct for pure-ASCII
+    files but silently shifts by N chars after each multi-byte glyph.
+
+    On ``health_scorer.py`` (which contains ``≤``) every symbol name
+    indexed after byte 1536 was off by 2 characters — ``HealthScorer``
+    became ``stHealthScorer`` and ``score_project`` became ``health
+    score``. The whole ``--symbol-search`` FTS5 index was corrupted.
+
+    Fix: prefer ``node.text`` (returned as ``bytes`` by tree-sitter, the
+    canonical source-of-truth). Fall back to slicing the encoded source
+    so legacy callers still work when ``node.text`` is unavailable.
+    """
     if node is None:
         return ""
+    # Preferred path: tree-sitter's own bytes view of the node.
+    text_attr = getattr(node, "text", None)
+    if isinstance(text_attr, bytes):
+        try:
+            return text_attr.decode("utf-8", errors="replace")
+        except UnicodeDecodeError:
+            return ""
+    if isinstance(text_attr, str):
+        return text_attr
+    # Fallback: slice on bytes — must NOT slice the str because tree-sitter
+    # gives byte offsets.
     try:
-        return source[node.start_byte : node.end_byte]
-    except (IndexError, TypeError):
+        return source.encode("utf-8")[node.start_byte : node.end_byte].decode(
+            "utf-8", errors="replace"
+        )
+    except (IndexError, TypeError, UnicodeDecodeError):
         return ""
 
 
