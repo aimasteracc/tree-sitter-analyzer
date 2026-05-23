@@ -99,6 +99,7 @@ FUNCTION_NODE_TYPES: dict[str, set[str]] = {
 # CC = 1 + count(decision_nodes)
 DECISION_NODE_TYPES: dict[str, set[str]] = {
     "python": {
+        # McCabe 1976 base set:
         "if_statement",
         "elif_clause",
         "for_statement",
@@ -107,6 +108,17 @@ DECISION_NODE_TYPES: dict[str, set[str]] = {
         "conditional_expression",
         "boolean_operator",
         "case_clause",
+        # Radon-aligned extras: assert / with / comprehensions are
+        # control-flow branches the agent should account for. Cross-tool
+        # comparison against radon on health_scorer.py showed we were
+        # undercounting by ~25% without these — see AGENT_UX_PAIN entry
+        # for the byte-offset and CC-undercount bugs caught the same way.
+        "assert_statement",
+        "with_statement",
+        "list_comprehension",
+        "set_comprehension",
+        "dictionary_comprehension",
+        "generator_expression",
     },
     "javascript": {
         "if_statement",

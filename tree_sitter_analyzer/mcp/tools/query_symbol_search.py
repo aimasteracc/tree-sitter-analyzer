@@ -146,7 +146,14 @@ async def execute_symbol_search(
                 continue
             source_files.append(f)
 
-    max_files = 500
+    # Cross-tool comparison (us vs rg) caught this: cap was 500 but
+    # mid-sized projects routinely exceed that (this repo has 1307 .py
+    # files). Files past position 500 were silently skipped, returning
+    # ``definition_count=0`` for symbols that very clearly existed.
+    # Bump to a value that covers normal repos. For mega-projects the
+    # right answer is to switch to the AST cache index (O(1) SQL queries
+    # vs O(N) re-parses) — TODO follow-up.
+    max_files = 8000
     if len(source_files) > max_files:
         source_files = source_files[:max_files]
 
@@ -302,7 +309,14 @@ async def execute_find_references(
                 continue
             source_files.append(f)
 
-    max_files = 500
+    # Cross-tool comparison (us vs rg) caught this: cap was 500 but
+    # mid-sized projects routinely exceed that (this repo has 1307 .py
+    # files). Files past position 500 were silently skipped, returning
+    # ``definition_count=0`` for symbols that very clearly existed.
+    # Bump to a value that covers normal repos. For mega-projects the
+    # right answer is to switch to the AST cache index (O(1) SQL queries
+    # vs O(N) re-parses) — TODO follow-up.
+    max_files = 8000
     if len(source_files) > max_files:
         source_files = source_files[:max_files]
 
@@ -340,9 +354,28 @@ async def execute_find_references(
                 end = getattr(e, "end_line", 0)
 
                 if name == bare_name:
+                    # Cross-tool comparison caught this: Python functions
+                    # have ``element_type == 'function'`` which doesn't
+                    # contain ``definition``/``declaration``/``class``/
+                    # ``struct``, so EVERY Python function definition was
+                    # misclassified as a reference. This made
+                    # ``definition_count`` always 0 for Python — a silent
+                    # correctness regression in find_references /
+                    # symbol_lineage / safe_to_edit gates.
                     is_definition = any(
                         kw in etype.lower()
-                        for kw in ("definition", "declaration", "class", "struct")
+                        for kw in (
+                            "definition",
+                            "declaration",
+                            "class",
+                            "struct",
+                            "function",
+                            "method",
+                            "variable",
+                            "interface",
+                            "enum",
+                            "trait",
+                        )
                     )
                     if is_definition:
                         defs.append(
