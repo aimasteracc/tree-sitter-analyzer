@@ -1,6 +1,6 @@
 # Agent Tooling Gap Report
 
-Last updated: 2026-05-18 JST
+Last updated: 2026-05-23 JST
 
 ## Ingested Local Sources
 
@@ -63,5 +63,5 @@ The distinctive value is not "another chat coding tool." It is agent-grade code 
 2. Turn the repeatable demo script into recorded evidence. `examples/agent_workflow_comparison_demo.py` now compares full-file reading with SMART workflow focused context on `examples/BigService.java`, can emit asciinema v2 JSONL with `--format cast`, and has a checked-in sample at `docs/assets/agent-workflow-comparison.cast`; next convert or host the cast as richer README media.
 3. Turn `.agents/skills` into an inspectable project asset: `agent-skills` CLI plus `list_agent_skills` MCP inventory now list skills, read order, support files, scripts, context needs, side effects, completion guidance, and validation status with blocking/caution/optional gap counts. Current validation is ready; next add optional `AGENT-BRIEF.md` handoffs for the highest-value skills.
 4. Harden the parser-readiness advisor. `parser-readiness` CLI plus `advise_parser_readiness` MCP now compare declared parser dependencies, plugin entry points, loader mappings, tests, golden masters, and wiki-inspired parser-risk signals. For installed parsers, the advisor now reports package version, project and maintenance URLs, local binding ABI, semantic version, packaged `grammar.json`, and scanner-file signals before leaving online maintenance as a follow-up. The first closed-loop use of that advisor promoted Swift from a declared parser candidate into a local language plugin with loader, entry point, detector, tests, and full-format golden-master coverage.
-5. Use `check_project_health` output to open focused refactoring slices for the current F-grade files, starting with low-coverage Language Plugin extractors and `api.py`.
+5. ~~Use `check_project_health` output to open focused refactoring slices for the current F-grade files, starting with low-coverage Language Plugin extractors and `api.py`.~~ **DONE 2026-05-23** via `tsa-refactor-queue` skill: intersects `check_project_health` × `tsa-temporal` churn × `codegraph_dead_code` × `codegraph_callers` blast radius into a deterministic top-N queue (ranking: `(1 - health/100) × log(1 + churn) × (dead_ratio + 0.1)`). See `.claude/skills/tsa-refactor-queue/SKILL.md`.
 6. Decide a warning-as-error policy that is fast enough for daily agent work, then add it as a separate contract target.

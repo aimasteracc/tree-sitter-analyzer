@@ -1,5 +1,27 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- **`codegraph_incremental_sync` MCP tool** (+ CLI flag `--incremental-sync`): Content-hash diff re-indexer. Wraps the existing `IncrementalSync` engine — detects new/modified/deleted files via SHA-256, then only re-parses what changed. Three modes: `sync` (apply), `changes` (preview), `status` (file-count audit). CLI parity gate `test_registered_mcp_tools_have_cli_parity` enforces both ends.
+- **3 new `tsa-*` agent skills** (progressive-disclosure bundles over existing MCP tools):
+  - `tsa-refactor-queue` — intersects `check_project_health` × `tsa-temporal` churn × `codegraph_dead_code` × `codegraph_callers` blast radius into a top-N prioritised refactor queue. Ranking: `(1 - health/100) × log(1 + churn) × (dead_ratio + 0.1)`. Addresses gap-report "Next High-Value Work" #5.
+  - `tsa-pr-review` — wraps `codegraph_pr_review` + `analyze_change_impact` + `safe_to_edit` + `check_constraints` + `codegraph_callers`/`codegraph_callees` into one AST-level diff review that returns BLOCK/REVIEW/APPROVE with deterministic `verification_command`. Closes the "productized agent workflow" gap.
+  - `tsa-edit-then-verify` — codifies the CLAUDE.md-mandated `safe_to_edit → edit → file_health diff → change_impact → run verification_command` loop. Replaces gstack `/verify` (full ~5min pytest); scoped command typically 30-60s.
+- **`scripts/branch-guard.sh`** PreToolUse hook (opt-in via `BRANCH_GUARD_AUTOFIX=1`): warns when working tree drifts off canonical branch. Default is warn-only — forcing a branch behind the human's back surprises legitimate workflows.
+
+### Changed
+
+- **Tool registry now exports 55 MCP tools** (was 30 in v1.10.4, 48 in v1.12.0).
+- **Skill layer expanded to 13 `tsa-*` skills** (was 10).
+- **`scripts/install-git-hooks.sh` protected list**: removed `feat/autonomous-dev` (branch deleted), keeps `main`/`master`/`feat/consolidated`.
+- **`AUTONOMOUS.md` + `scripts/auto_sprint_brief.py`**: retargeted from `feat/autonomous-dev` (experimental fork, now merged + deleted) to `feat/consolidated` (canonical).
+
+### Removed
+
+- **`feat/autonomous-dev` branch** (local + `origin/`): experimental fork fully merged into `feat/consolidated` via commit `44d0a11c`. No content lost — all session work cherry-picked or merged.
+
 ## [1.12.0] - 2026-05-20
 
 ### Added (Autonomous-Dev Audit)
