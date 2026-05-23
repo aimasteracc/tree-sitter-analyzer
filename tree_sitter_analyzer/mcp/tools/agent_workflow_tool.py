@@ -42,6 +42,12 @@ class AgentWorkflowTool(BaseMCPTool):
                 "boundary verification. Use before opening a new autonomous queue item."
             ),
             "inputSchema": TOOL_SCHEMA,
+            "annotations": {
+                "readOnlyHint": True,
+                "destructiveHint": False,
+                "idempotentHint": True,
+                "openWorldHint": False,
+            },
         }
 
     def get_tool_schema(self) -> dict[str, Any]:

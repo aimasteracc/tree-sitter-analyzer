@@ -52,6 +52,12 @@ class ParserReadinessTool(BaseMCPTool):
                 "external scanner, and maintenance checks."
             ),
             "inputSchema": TOOL_SCHEMA,
+            "annotations": {
+                "readOnlyHint": True,
+                "destructiveHint": False,
+                "idempotentHint": True,
+                "openWorldHint": False,
+            },
         }
 
     def get_tool_schema(self) -> dict[str, Any]:

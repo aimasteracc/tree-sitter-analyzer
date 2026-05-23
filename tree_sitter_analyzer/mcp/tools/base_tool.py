@@ -563,6 +563,75 @@ class BaseMCPTool(ABC):
 
         return resolved
 
+    def get_output_schema(self) -> dict[str, Any]:
+        """Return the canonical ``outputSchema`` for the ToolResponse envelope.
+
+        PL-C: the MCP spec recommends every tool declare an
+        ``outputSchema`` so clients can validate the response shape and
+        decide whether to render it as a structured data table vs. plain
+        text. Currently 0/55 tools declare one — adding the canonical
+        envelope here means every subclass inherits the contract for
+        free, and tool-specific subclasses can override (or extend the
+        ``properties`` map) for richer payload schemas.
+
+        The shape mirrors what :func:`mirror_summary_line` and
+        :func:`_canonicalize_verdict` already enforce at runtime: every
+        successful response carries ``success`` + ``verdict`` at the top
+        level, plus an ``agent_summary`` sub-object with the same
+        ``verdict`` mirror plus a one-line ``summary_line`` and a
+        ``next_step`` hint. ``additionalProperties=True`` is deliberate —
+        each tool layers its own payload (e.g. ``classes``, ``methods``,
+        ``call_graph``) on top, and a strict schema would force every
+        sweep to update the base. The required-fields set stays minimal
+        (``success`` + ``verdict``) so validators don't reject otherwise
+        well-formed responses that happen to omit optional summary
+        fields.
+
+        Subclasses that want richer payload validation can override::
+
+            def get_output_schema(self) -> dict[str, Any]:
+                base = super().get_output_schema()
+                base["properties"]["classes"] = {"type": "array"}
+                return base
+
+        And add ``"outputSchema": self.get_output_schema()`` to their
+        ``get_tool_definition()`` return dict to surface it on the wire.
+        Done as opt-in for now so this change doesn't conflict with
+        PL-A's parallel tool-definition sweep — a future pass can wire
+        the auto-include once both lanes land.
+        """
+        return {
+            "type": "object",
+            "properties": {
+                "success": {"type": "boolean"},
+                "verdict": {
+                    "type": "string",
+                    "enum": sorted(_LEGAL_VERDICTS),
+                },
+                "error": {
+                    "type": "string",
+                    "description": "Set when success=false. Should include a recovery hint.",
+                },
+                "agent_summary": {
+                    "type": "object",
+                    "description": (
+                        "Token-lean summary for LLM agents: one-line "
+                        "summary_line + verdict + next_step."
+                    ),
+                    "properties": {
+                        "summary_line": {"type": "string"},
+                        "verdict": {
+                            "type": "string",
+                            "enum": sorted(_LEGAL_VERDICTS),
+                        },
+                        "next_step": {"type": "string"},
+                    },
+                },
+            },
+            "required": ["success", "verdict"],
+            "additionalProperties": True,
+        }
+
     @abstractmethod
     def get_tool_definition(self) -> Any:
         """

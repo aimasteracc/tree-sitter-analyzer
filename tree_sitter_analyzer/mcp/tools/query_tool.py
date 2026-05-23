@@ -81,6 +81,12 @@ class QueryTool(BaseMCPTool):
                 "- To search file names — use list_files"
             ),
             "inputSchema": _TOOL_SCHEMA,
+            "annotations": {
+                "readOnlyHint": True,
+                "destructiveHint": False,
+                "idempotentHint": True,
+                "openWorldHint": False,
+            },
         }
 
     # execute: implementation

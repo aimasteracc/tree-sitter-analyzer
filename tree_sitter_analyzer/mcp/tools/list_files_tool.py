@@ -62,6 +62,12 @@ class ListFilesTool(BaseMCPTool):
                 "- To get a semantic project map — use project_overview"
             ),
             "inputSchema": TOOL_SCHEMA,
+            "annotations": {
+                "readOnlyHint": True,
+                "destructiveHint": False,
+                "idempotentHint": True,
+                "openWorldHint": False,
+            },
         }
 
     def _validate_roots(self, roots: list[str]) -> list[str]:

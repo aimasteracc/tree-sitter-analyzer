@@ -327,11 +327,17 @@ def _summary_risk(
 
 
 def _summary_verdict(out_of_range: bool, partial_range: bool) -> str:
+    # PM-fix (post-PL-A audit): align with _LEGAL_VERDICTS frozenset in
+    # base_tool.py. Previously returned non-canonical "N/A" and "OK", which
+    # failed test_every_tool_response_honours_envelope:
+    #   N/A → NOT_FOUND (line range outside file)
+    #   OK  → INFO (informational extraction success)
+    #   WARN stays (already canonical).
     if out_of_range:
-        return "N/A"
+        return "NOT_FOUND"
     if partial_range:
         return "WARN"
-    return "OK"
+    return "INFO"
 
 
 def _summary_next_step(

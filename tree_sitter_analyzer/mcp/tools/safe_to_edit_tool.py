@@ -105,6 +105,12 @@ class SafeToEditTool(BaseMCPTool):
                 "- For symbol-level rename impact — use modification_guard"
             ),
             "inputSchema": self.get_tool_schema(),
+            "annotations": {
+                "readOnlyHint": True,
+                "destructiveHint": False,
+                "idempotentHint": True,
+                "openWorldHint": False,
+            },
         }
 
     # get_tool_schema: implementation

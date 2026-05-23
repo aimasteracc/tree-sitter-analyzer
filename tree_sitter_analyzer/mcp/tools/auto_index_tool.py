@@ -46,6 +46,13 @@ class CodeGraphAutoIndexTool(BaseMCPTool):
                 "No other tool manages auto-index lifecycle."
             ),
             "inputSchema": self.get_tool_schema(),
+            # destructive depending on mode (rebuild/warm/sync write the cache)
+            "annotations": {
+                "readOnlyHint": False,
+                "destructiveHint": True,
+                "idempotentHint": True,
+                "openWorldHint": False,
+            },
         }
 
     def get_tool_schema(self) -> dict[str, Any]:

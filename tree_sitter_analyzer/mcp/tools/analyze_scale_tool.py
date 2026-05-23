@@ -553,6 +553,12 @@ class AnalyzeScaleTool(BaseMCPTool):
                 "- To judge code quality / smells — use file_health"
             ),
             "inputSchema": self.get_tool_schema(),
+            "annotations": {
+                "readOnlyHint": True,
+                "destructiveHint": False,
+                "idempotentHint": True,
+                "openWorldHint": False,
+            },
         }
 
 

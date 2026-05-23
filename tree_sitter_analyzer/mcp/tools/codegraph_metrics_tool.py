@@ -63,6 +63,13 @@ class CodeGraphMetricsTool(BaseMCPTool):
                 "No other tool provides cross-domain aggregated metrics."
             ),
             "inputSchema": self.get_tool_schema(),
+            # PM-fix: codegraph_metrics READS cache stats only — Class A, not B.
+            "annotations": {
+                "readOnlyHint": True,
+                "destructiveHint": False,
+                "idempotentHint": True,
+                "openWorldHint": False,
+            },
         }
 
     def get_tool_schema(self) -> dict[str, Any]:

@@ -148,6 +148,12 @@ class CheckToolsTool(BaseMCPTool):
                 "properties": {},
                 "additionalProperties": False,
             },
+            "annotations": {
+                "readOnlyHint": True,
+                "destructiveHint": False,
+                "idempotentHint": True,
+                "openWorldHint": False,
+            },
         }
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:

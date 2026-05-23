@@ -66,6 +66,13 @@ class BuildProjectIndexTool(BaseMCPTool):
                 },
                 "additionalProperties": False,
             },
+            # destructive depending on mode (rebuild/warm/sync write the cache)
+            "annotations": {
+                "readOnlyHint": False,
+                "destructiveHint": True,
+                "idempotentHint": True,
+                "openWorldHint": False,
+            },
         }
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:

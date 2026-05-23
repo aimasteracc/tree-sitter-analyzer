@@ -280,6 +280,12 @@ class CodeGraphImpactTool(BaseMCPTool):
                 "No other built-in tool provides blast radius analysis."
             ),
             "inputSchema": self.get_tool_schema(),
+            "annotations": {
+                "readOnlyHint": True,
+                "destructiveHint": False,
+                "idempotentHint": True,
+                "openWorldHint": False,
+            },
         }
 
     def get_tool_schema(self) -> dict[str, Any]:

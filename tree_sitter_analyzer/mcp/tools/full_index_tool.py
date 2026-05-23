@@ -45,6 +45,13 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 "No other tool runs the complete indexing pipeline."
             ),
             "inputSchema": self.get_tool_schema(),
+            # destructive depending on mode (rebuild/warm/sync write the cache)
+            "annotations": {
+                "readOnlyHint": False,
+                "destructiveHint": True,
+                "idempotentHint": True,
+                "openWorldHint": False,
+            },
         }
 
     def get_tool_schema(self) -> dict[str, Any]:

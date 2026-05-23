@@ -129,6 +129,12 @@ class FileHealthTool(BaseMCPTool):
                 "ERROR / NOT_FOUND."
             ),
             "inputSchema": self.get_tool_schema(),
+            "annotations": {
+                "readOnlyHint": True,
+                "destructiveHint": False,
+                "idempotentHint": True,
+                "openWorldHint": False,
+            },
         }
 
     # JSON schema for input validation

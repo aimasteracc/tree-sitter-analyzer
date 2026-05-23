@@ -245,6 +245,12 @@ class SymbolLineageTool(BaseMCPTool):
                 "(5-15s per symbol on medium repos). Cache via project_index."
             ),
             "inputSchema": self.get_tool_schema(),
+            "annotations": {
+                "readOnlyHint": True,
+                "destructiveHint": False,
+                "idempotentHint": True,
+                "openWorldHint": False,
+            },
         }
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:

@@ -258,6 +258,70 @@ def test_registered_mcp_tools_have_cli_parity() -> None:
     assert missing_scripts == []
 
 
+def test_every_tool_declares_mcp_annotations() -> None:
+    """Every registered MCP tool MUST set `annotations` in its tool definition.
+
+    MCP spec defines 4 hints (readOnlyHint / destructiveHint / idempotentHint
+    / openWorldHint) so clients (Cursor, Cline, Claude Desktop) know whether
+    to show confirmation dialogs or treat the call as safe. Without these,
+    every read-only `check_*` invocation could pop a "are you sure?" prompt
+    — and worse, every destructive call could go through without warning.
+
+    This test enforces:
+      1. Every tool has an `annotations` key.
+      2. All 4 hints are present and boolean-typed.
+      3. The triple `readOnly=true` + `destructive=true` is impossible
+         (mutually exclusive — would mean both safe AND destructive).
+    """
+    from tree_sitter_analyzer.mcp._tool_registry import create_tool_registry
+
+    tools, _ = create_tool_registry(str(PROJECT_ROOT))
+    required_hints = {
+        "readOnlyHint",
+        "destructiveHint",
+        "idempotentHint",
+        "openWorldHint",
+    }
+
+    missing_annotations: list[str] = []
+    missing_hints: list[str] = []
+    contradictions: list[str] = []
+    non_bool_hints: list[str] = []
+
+    for name, tool in tools:
+        defn = tool.get_tool_definition()
+        ann = defn.get("annotations")
+        if ann is None:
+            missing_annotations.append(name)
+            continue
+        gaps = required_hints - set(ann)
+        if gaps:
+            missing_hints.append(f"{name}: missing {sorted(gaps)}")
+            continue
+        non_bool = [k for k in required_hints if not isinstance(ann[k], bool)]
+        if non_bool:
+            non_bool_hints.append(f"{name}: non-bool {non_bool}")
+            continue
+        if ann["readOnlyHint"] and ann["destructiveHint"]:
+            contradictions.append(name)
+
+    assert missing_annotations == [], (
+        "These tools have no `annotations` block in their definition. "
+        "Add readOnlyHint/destructiveHint/idempotentHint/openWorldHint "
+        f"per MCP spec: {missing_annotations}"
+    )
+    assert missing_hints == [], (
+        f"Tools with incomplete annotation hints: {missing_hints}"
+    )
+    assert non_bool_hints == [], (
+        f"Hints must be Python bools, not strings: {non_bool_hints}"
+    )
+    assert contradictions == [], (
+        "Tools cannot be both readOnly AND destructive — pick one. "
+        f"Offenders: {contradictions}"
+    )
+
+
 def test_registered_mcp_tools_have_codemap_parity() -> None:
     """Every registered MCP tool must appear in `docs/CODEMAPS/mcp-tools.md`.
 

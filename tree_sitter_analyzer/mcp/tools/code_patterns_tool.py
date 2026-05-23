@@ -98,6 +98,12 @@ class CodePatternsTool(BaseMCPTool):
                 "Use BEFORE editing to know what to fix."
             ),
             "inputSchema": self.get_tool_schema(),
+            "annotations": {
+                "readOnlyHint": True,
+                "destructiveHint": False,
+                "idempotentHint": True,
+                "openWorldHint": False,
+            },
         }
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:

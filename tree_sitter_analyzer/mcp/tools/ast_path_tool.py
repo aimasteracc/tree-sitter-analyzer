@@ -50,6 +50,12 @@ class CodeGraphASTPathTool(BaseMCPTool):
                 "No other built-in tool provides line-level AST scope navigation."
             ),
             "inputSchema": self.get_tool_schema(),
+            "annotations": {
+                "readOnlyHint": True,
+                "destructiveHint": False,
+                "idempotentHint": True,
+                "openWorldHint": False,
+            },
         }
 
     def get_tool_schema(self) -> dict[str, Any]:

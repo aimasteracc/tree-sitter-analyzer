@@ -260,6 +260,7 @@ class TestExecuteAcrossAllTools:
             "codegraph_autoindex": {"mode": "status"},
             "codegraph_full_index": {"mode": "stats"},
             "codegraph_metrics": {"mode": "project"},
+            "codegraph_incremental_sync": {"mode": "status"},
             # consolidated-only tools ported during merge of feat/autonomous-dev
             "trace_impact": {"symbol": "greet", "mode": "callers"},
             "modification_guard": {"file_path": sample_file, "symbol": "greet"},

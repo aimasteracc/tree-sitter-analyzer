@@ -98,6 +98,12 @@ class SearchContentTool(BaseMCPTool):
                 "- To run multiple searches in parallel — use batch_search"
             ),
             "inputSchema": _TOOL_SCHEMA,
+            "annotations": {
+                "readOnlyHint": True,
+                "destructiveHint": False,
+                "idempotentHint": True,
+                "openWorldHint": False,
+            },
         }
 
     # Determine which response mode based on argument flags

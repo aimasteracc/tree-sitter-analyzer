@@ -434,6 +434,12 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
                 "- To read implementation bodies — use partial_read"
             ),
             "inputSchema": _TOOL_SCHEMA,
+            "annotations": {
+                "readOnlyHint": True,
+                "destructiveHint": False,
+                "idempotentHint": True,
+                "openWorldHint": False,
+            },
         }
 
     # JSON schema for input validation

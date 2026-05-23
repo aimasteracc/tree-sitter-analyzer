@@ -19,16 +19,8 @@ from ...incremental_sync import IncrementalSync
 from ...utils import setup_logger
 from ..utils.auto_index_guard import ensure_indexed, is_indexed
 from ..utils.format_helper import apply_toon_format_to_response
+from ._response_builder import build_error, build_response
 from .base_tool import BaseMCPTool
-
-
-def _build_error(error: str) -> dict[str, Any]:
-    return {"success": False, "verdict": "ERROR", "error": error}
-
-
-def _build_response(verdict: str, **kwargs: Any) -> dict[str, Any]:
-    return {"success": True, "verdict": verdict, **kwargs}
-
 
 logger = setup_logger(__name__)
 
@@ -49,6 +41,13 @@ class CodeGraphIncrementalSyncTool(BaseMCPTool):
                 "No other tool provides incremental sync."
             ),
             "inputSchema": self.get_tool_schema(),
+            # destructive depending on mode (rebuild/warm/sync write the cache)
+            "annotations": {
+                "readOnlyHint": False,
+                "destructiveHint": True,
+                "idempotentHint": True,
+                "openWorldHint": False,
+            },
         }
 
     def get_tool_schema(self) -> dict[str, Any]:
@@ -88,7 +87,7 @@ class CodeGraphIncrementalSyncTool(BaseMCPTool):
         output_format = arguments.get("output_format", "toon")
 
         if not self.project_root:
-            result = _build_error(error="project_root not set")
+            result = build_error(error="project_root not set")
             return apply_toon_format_to_response(result, output_format)
 
         if mode == "sync":
@@ -98,7 +97,7 @@ class CodeGraphIncrementalSyncTool(BaseMCPTool):
         elif mode == "status":
             return self._status(output_format)
 
-        return _build_error(error=f"Unknown mode: {mode}")
+        return build_error(error=f"Unknown mode: {mode}")
 
     def _ensure_cache(self, output_format: str) -> Any | None:
         if not is_indexed(str(self.project_root)):
@@ -113,17 +112,17 @@ class CodeGraphIncrementalSyncTool(BaseMCPTool):
     def _sync(self, max_files: int, output_format: str) -> dict[str, Any]:
         cache = self._ensure_cache(output_format)
         if cache is None:
-            result = _build_error(error="Failed to initialize AST cache")
+            result = build_error(error="Failed to initialize AST cache")
             return apply_toon_format_to_response(result, output_format)
 
         sync = IncrementalSync(cache)
         try:
             sync_result = sync.sync(max_files=max_files)
         except Exception as exc:
-            result = _build_error(error=f"Sync failed: {exc}")
+            result = build_error(error=f"Sync failed: {exc}")
             return apply_toon_format_to_response(result, output_format)
 
-        result = _build_response(
+        result = build_response(
             verdict="INFO",
             project_root=self.project_root,
             mode="sync",
@@ -134,21 +133,21 @@ class CodeGraphIncrementalSyncTool(BaseMCPTool):
     def _changes(self, output_format: str) -> dict[str, Any]:
         cache = self._ensure_cache(output_format)
         if cache is None:
-            result = _build_error(error="Failed to initialize AST cache")
+            result = build_error(error="Failed to initialize AST cache")
             return apply_toon_format_to_response(result, output_format)
 
         sync = IncrementalSync(cache)
         try:
             changes = sync.get_changes()
         except Exception as exc:
-            result = _build_error(error=f"Change detection failed: {exc}")
+            result = build_error(error=f"Change detection failed: {exc}")
             return apply_toon_format_to_response(result, output_format)
 
         new_count = len(changes.get("new", []))
         modified_count = len(changes.get("modified", []))
         deleted_count = len(changes.get("deleted", []))
 
-        result = _build_response(
+        result = build_response(
             verdict="INFO",
             project_root=self.project_root,
             mode="changes",
@@ -181,7 +180,7 @@ class CodeGraphIncrementalSyncTool(BaseMCPTool):
 
         up_to_date = pending_changes == 0 if pending_changes >= 0 else None
 
-        result = _build_response(
+        result = build_response(
             verdict="INFO",
             project_root=self.project_root,
             mode="status",

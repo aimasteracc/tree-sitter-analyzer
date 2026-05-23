@@ -373,6 +373,12 @@ class ModificationGuardTool(BaseMCPTool):
                 # BaseMCPTool.__init_subclass__.
                 "additionalProperties": False,
             },
+            "annotations": {
+                "readOnlyHint": False,
+                "destructiveHint": False,
+                "idempotentHint": False,
+                "openWorldHint": False,
+            },
         }
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:

@@ -148,6 +148,12 @@ class ProjectOverviewTool(BaseMCPTool):
                 "- For dependency graph queries — use dependency_analysis"
             ),
             "inputSchema": TOOL_SCHEMA,
+            "annotations": {
+                "readOnlyHint": True,
+                "destructiveHint": False,
+                "idempotentHint": True,
+                "openWorldHint": False,
+            },
         }
 
     def get_tool_schema(self) -> dict[str, Any]:

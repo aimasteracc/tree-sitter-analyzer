@@ -301,6 +301,12 @@ class CodeGraphCallTool(BaseMCPTool):
                 "medium repos); subsequent calls within the session are fast."
             ),
             "inputSchema": self.get_tool_schema(),
+            "annotations": {
+                "readOnlyHint": True,
+                "destructiveHint": False,
+                "idempotentHint": True,
+                "openWorldHint": False,
+            },
         }
 
     def get_tool_schema(self) -> dict[str, Any]:

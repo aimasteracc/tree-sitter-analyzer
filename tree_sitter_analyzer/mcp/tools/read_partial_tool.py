@@ -571,6 +571,12 @@ class ReadPartialTool(BaseMCPTool):
                 " ``analyze_code_structure``"
             ),
             "inputSchema": self.get_tool_schema(),
+            "annotations": {
+                "readOnlyHint": True,
+                "destructiveHint": False,
+                "idempotentHint": True,
+                "openWorldHint": False,
+            },
         }
 
 

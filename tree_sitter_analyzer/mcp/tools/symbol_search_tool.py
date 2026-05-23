@@ -50,6 +50,12 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
                 "No other tool provides indexed cross-file symbol lookup."
             ),
             "inputSchema": self.get_tool_schema(),
+            "annotations": {
+                "readOnlyHint": True,
+                "destructiveHint": False,
+                "idempotentHint": True,
+                "openWorldHint": False,
+            },
         }
 
     def get_tool_schema(self) -> dict[str, Any]:

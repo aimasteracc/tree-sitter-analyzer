@@ -56,6 +56,12 @@ class ClassHierarchyTool(BaseMCPTool):
                 "No other tool provides type hierarchy analysis."
             ),
             "inputSchema": self.get_tool_schema(),
+            "annotations": {
+                "readOnlyHint": True,
+                "destructiveHint": False,
+                "idempotentHint": True,
+                "openWorldHint": False,
+            },
         }
 
     def get_tool_schema(self) -> dict[str, Any]:

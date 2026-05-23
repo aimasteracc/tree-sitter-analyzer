@@ -83,6 +83,12 @@ class FindAndGrepTool(FindAndGrepRespondMixin, BaseMCPTool):
                 "trace_impact"
             ),
             "inputSchema": _TOOL_SCHEMA,
+            "annotations": {
+                "readOnlyHint": True,
+                "destructiveHint": False,
+                "idempotentHint": True,
+                "openWorldHint": False,
+            },
         }
 
     def _validate_roots(self, roots: list[str]) -> list[str]:

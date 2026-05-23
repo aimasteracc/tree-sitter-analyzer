@@ -134,6 +134,12 @@ class DecisionJournalTool(BaseMCPTool):
                 "UNSAFE / INFO / WARN / ERROR / NOT_FOUND."
             ),
             "inputSchema": self.get_tool_schema(),
+            "annotations": {
+                "readOnlyHint": False,
+                "destructiveHint": False,
+                "idempotentHint": False,
+                "openWorldHint": False,
+            },
         }
 
     def get_tool_schema(self) -> dict[str, Any]:

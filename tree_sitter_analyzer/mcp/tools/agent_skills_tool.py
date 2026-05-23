@@ -61,6 +61,12 @@ class AgentSkillsTool(BaseMCPTool):
                 "the Skill tool, not via this MCP endpoint"
             ),
             "inputSchema": TOOL_SCHEMA,
+            "annotations": {
+                "readOnlyHint": True,
+                "destructiveHint": False,
+                "idempotentHint": True,
+                "openWorldHint": False,
+            },
         }
 
     def get_tool_schema(self) -> dict[str, Any]:

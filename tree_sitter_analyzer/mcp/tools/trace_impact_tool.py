@@ -679,6 +679,12 @@ class TraceImpactTool(BaseMCPTool):
             "name": "trace_impact",
             "description": _TRACE_IMPACT_DESCRIPTION,
             "inputSchema": _TRACE_IMPACT_INPUT_SCHEMA,
+            "annotations": {
+                "readOnlyHint": True,
+                "destructiveHint": False,
+                "idempotentHint": True,
+                "openWorldHint": False,
+            },
         }
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
