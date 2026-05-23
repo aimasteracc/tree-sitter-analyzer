@@ -1094,6 +1094,157 @@ class ASTCache:
             result[row["file_path"]] = json.loads(row["imports_json"])
         return result
 
+    def query_callers(
+        self,
+        callee_name: str,
+        callee_file: str | None = None,
+        max_depth: int = 1,
+    ) -> list[dict[str, Any]]:
+        """SQL-native callers lookup — instant O(k) query, no graph build.
+
+        Finds functions that call ``callee_name`` by querying the
+        ``ast_call_edges`` table directly.  Supports transitive lookups
+        via BFS when ``max_depth > 1``.
+
+        Returns list of dicts with keys: caller_name, caller_file,
+        caller_line, callee_name, callee_file, callee_line, depth.
+        """
+        conn = self._get_conn()
+        try:
+            return self._bfs_callers(
+                conn, callee_name, callee_file, max_depth
+            )
+        except sqlite3.OperationalError:
+            return []
+
+    def _bfs_callers(
+        self,
+        conn: sqlite3.Connection,
+        callee_name: str,
+        callee_file: str | None,
+        max_depth: int,
+    ) -> list[dict[str, Any]]:
+        visited: set[str] = set()
+        result: list[dict[str, Any]] = []
+        queue: list[tuple[str, str | None, int]] = [(callee_name, callee_file, 0)]
+        while queue:
+            current_name, current_file, depth = queue.pop(0)
+            if depth >= max_depth:
+                continue
+            if current_file:
+                rows = conn.execute(
+                    "SELECT caller_name, caller_file, caller_line, "
+                    "callee_name, file_path, callee_line "
+                    "FROM ast_call_edges "
+                    "WHERE callee_name = ? AND file_path = ?",
+                    (current_name, current_file),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT caller_name, caller_file, caller_line, "
+                    "callee_name, file_path, callee_line "
+                    "FROM ast_call_edges WHERE callee_name = ?",
+                    (current_name,),
+                ).fetchall()
+            for row in rows:
+                key = f"{row['caller_file']}:{row['caller_name']}:{row['caller_line']}"
+                if key in visited:
+                    continue
+                visited.add(key)
+                entry: dict[str, Any] = {
+                    "caller_name": row["caller_name"],
+                    "caller_file": row["caller_file"],
+                    "caller_line": row["caller_line"],
+                    "callee_name": row["callee_name"],
+                    "callee_file": row["file_path"],
+                    "callee_line": row["callee_line"],
+                    "depth": depth + 1,
+                }
+                result.append(entry)
+                if max_depth > 1:
+                    queue.append((row["caller_name"], row["caller_file"], depth + 1))
+        return result
+
+    def query_callees(
+        self,
+        caller_name: str,
+        caller_file: str | None = None,
+        max_depth: int = 1,
+    ) -> list[dict[str, Any]]:
+        """SQL-native callees lookup — instant O(k) query, no graph build.
+
+        Finds functions called by ``caller_name`` by querying the
+        ``ast_call_edges`` table directly.  Supports transitive lookups
+        via BFS when ``max_depth > 1``.
+
+        Returns list of dicts with keys: caller_name, caller_file,
+        caller_line, callee_name, callee_file, callee_line, depth.
+        """
+        conn = self._get_conn()
+        try:
+            return self._bfs_callees(
+                conn, caller_name, caller_file, max_depth
+            )
+        except sqlite3.OperationalError:
+            return []
+
+    def _bfs_callees(
+        self,
+        conn: sqlite3.Connection,
+        caller_name: str,
+        caller_file: str | None,
+        max_depth: int,
+    ) -> list[dict[str, Any]]:
+        visited: set[str] = set()
+        result: list[dict[str, Any]] = []
+        queue: list[tuple[str, str | None, int]] = [(caller_name, caller_file, 0)]
+        while queue:
+            current_name, current_file, depth = queue.pop(0)
+            if depth >= max_depth:
+                continue
+            if current_file:
+                rows = conn.execute(
+                    "SELECT caller_name, caller_file, caller_line, "
+                    "callee_name, callee_full, file_path, callee_line "
+                    "FROM ast_call_edges "
+                    "WHERE caller_name = ? AND caller_file = ?",
+                    (current_name, current_file),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT caller_name, caller_file, caller_line, "
+                    "callee_name, callee_full, file_path, callee_line "
+                    "FROM ast_call_edges WHERE caller_name = ?",
+                    (current_name,),
+                ).fetchall()
+            for row in rows:
+                key = f"{row['callee_name']}:{row['file_path']}:{row['callee_line']}"
+                if key in visited:
+                    continue
+                visited.add(key)
+                entry: dict[str, Any] = {
+                    "caller_name": row["caller_name"],
+                    "caller_file": row["caller_file"],
+                    "caller_line": row["caller_line"],
+                    "callee_name": row["callee_name"],
+                    "callee_file": row["file_path"],
+                    "callee_line": row["callee_line"],
+                    "depth": depth + 1,
+                }
+                result.append(entry)
+                if max_depth > 1:
+                    queue.append((row["callee_name"], None, depth + 1))
+        return result
+
+    def has_call_edges(self) -> bool:
+        """Check whether the cache contains any call edge data."""
+        conn = self._get_conn()
+        try:
+            row = conn.execute("SELECT COUNT(*) as c FROM ast_call_edges").fetchone()
+            return row["c"] > 0
+        except sqlite3.OperationalError:
+            return False
+
     def close(self) -> None:
         conn = getattr(self._local, "conn", None)
         if conn is not None:

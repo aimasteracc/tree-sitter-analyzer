@@ -8,6 +8,7 @@ CodeGraph parity: equivalent to codegraph_callers.
 Simpler and more discoverable than the monolithic codegraph_call_graph tool.
 """
 
+import os
 from typing import Any
 
 from ...call_graph import CachedCallGraph, CallGraph
@@ -36,6 +37,8 @@ class CodeGraphCallersTool(BaseMCPTool):
             if self.project_root is None:
                 return None
             cache = ASTCache(self.project_root)
+            if cache.has_call_edges():
+                return cache
             stats = cache.get_stats()
             if stats.get("total_files", 0) > 0:
                 return cache
@@ -102,16 +105,20 @@ class CodeGraphCallersTool(BaseMCPTool):
         func_name = arguments["function_name"]
         file_path = arguments.get("file_path")
         output_format = arguments.get("output_format", "toon")
-        graph = self._get_call_graph()
 
-        callers = graph.callers_of(func_name, file_path)
-        # Pain #19 (dogfood pass 3): callers_tool emitted no verdict.
-        # NOT_FOUND when no callers (symbol may not exist or is unused);
-        # INFO otherwise so downstream agents branch correctly.
+        cache = self._try_get_cache()
+        if cache is not None and cache.has_call_edges():
+            callers = self._sql_native_callers(cache, func_name, file_path)
+            data_source = "sql"
+        else:
+            graph = self._get_call_graph()
+            callers = graph.callers_of(func_name, file_path)
+            data_source = self._data_source
+
         result: dict[str, Any] = {
             "success": True,
             "verdict": "INFO" if callers else "NOT_FOUND",
-            "data_source": self._data_source,
+            "data_source": data_source,
             "function": func_name,
             "caller_count": len(callers),
             "callers": callers,
@@ -120,3 +127,29 @@ class CodeGraphCallersTool(BaseMCPTool):
         from ..utils.format_helper import apply_toon_format_to_response
 
         return apply_toon_format_to_response(result, output_format)
+
+    def _sql_native_callers(
+        self, cache: Any, func_name: str, file_path: str | None
+    ) -> list[dict[str, Any]]:
+        """Use SQL-native callers query — O(k) instead of full graph build."""
+        raw = cache.query_callers(func_name, callee_file=file_path)
+        results: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for edge in raw:
+            key = f"{edge['caller_file']}:{edge['caller_name']}"
+            if key in seen:
+                continue
+            seen.add(key)
+            entry: dict[str, Any] = {
+                "name": edge["caller_name"],
+                "file": edge["caller_file"],
+                "line": edge["caller_line"],
+                "language": "",
+            }
+            row_data = cache.lookup(
+                os.path.join(cache.project_root, edge["caller_file"])
+            )
+            if row_data:
+                entry["language"] = row_data.get("language", "")
+            results.append(entry)
+        return results

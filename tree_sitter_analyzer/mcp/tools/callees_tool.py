@@ -8,6 +8,7 @@ CodeGraph parity: equivalent to codegraph_callees.
 Simpler and more discoverable than the monolithic codegraph_call_graph tool.
 """
 
+import os
 from typing import Any
 
 from ...call_graph import CachedCallGraph, CallGraph
@@ -49,6 +50,8 @@ class CodeGraphCalleesTool(BaseMCPTool):
             if self.project_root is None:
                 return None
             cache = ASTCache(self.project_root)
+            if cache.has_call_edges():
+                return cache
             stats = cache.get_stats()
             if stats.get("total_files", 0) > 0:
                 return cache
@@ -102,16 +105,20 @@ class CodeGraphCalleesTool(BaseMCPTool):
         func_name = arguments["function_name"]
         file_path = arguments.get("file_path")
         output_format = arguments.get("output_format", "toon")
-        graph = self._get_call_graph()
 
-        callees = graph.callees_of(func_name, file_path)
-        # Pain #20 (dogfood pass 3): callees_tool emitted no verdict.
-        # NOT_FOUND when func has no outgoing calls (leaf or missing);
-        # INFO otherwise.
+        cache = self._try_get_cache()
+        if cache is not None and cache.has_call_edges():
+            callees = self._sql_native_callees(cache, func_name, file_path)
+            data_source = "sql"
+        else:
+            graph = self._get_call_graph()
+            callees = graph.callees_of(func_name, file_path)
+            data_source = self._data_source
+
         result: dict[str, Any] = {
             "success": True,
             "verdict": "INFO" if callees else "NOT_FOUND",
-            "data_source": self._data_source,
+            "data_source": data_source,
             "function": func_name,
             "callee_count": len(callees),
             "callees": callees,
@@ -120,3 +127,29 @@ class CodeGraphCalleesTool(BaseMCPTool):
         from ..utils.format_helper import apply_toon_format_to_response
 
         return apply_toon_format_to_response(result, output_format)
+
+    def _sql_native_callees(
+        self, cache: Any, func_name: str, file_path: str | None
+    ) -> list[dict[str, Any]]:
+        """Use SQL-native callees query — O(k) instead of full graph build."""
+        raw = cache.query_callees(func_name, caller_file=file_path)
+        results: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for edge in raw:
+            key = f"{edge['callee_name']}:{edge['callee_file']}"
+            if key in seen:
+                continue
+            seen.add(key)
+            entry: dict[str, Any] = {
+                "name": edge["callee_name"],
+                "file": edge["callee_file"],
+                "line": edge["callee_line"],
+                "language": "",
+            }
+            row_data = cache.lookup(
+                os.path.join(cache.project_root, edge["callee_file"])
+            )
+            if row_data:
+                entry["language"] = row_data.get("language", "")
+            results.append(entry)
+        return results
