@@ -7,29 +7,57 @@ import argparse
 from .. import __version__
 
 CLI_EPILOG = (
-    "Examples:\n"
-    "  tree-sitter-analyzer file.java --table=full         Markdown table of classes/methods\n"
-    "  tree-sitter-analyzer file.java --query-key class    Extract all class definitions\n"
-    "  tree-sitter-analyzer file.java --advanced            Full analysis with all elements\n"
+    "Examples:  (grouped by task)\n"
+    "\n"
+    "Cold-start  (1 call, full file picture — use these first):\n"
+    "  tree-sitter-analyzer file.py --smart-context         Killer 1-call: health, exports, structure, deps, edit risk\n"
+    "  tree-sitter-analyzer --overview                      Project portrait + health summary\n"
+    "  tree-sitter-analyzer agent-skills                    Project-local agent skill inventory\n"
+    "  tree-sitter-analyzer agent-workflow file.py          SMART workflow command pack\n"
+    "\n"
+    "Read code  (extract content from a single file):\n"
+    "  tree-sitter-analyzer file.java --table=full          Markdown table of classes/methods\n"
     "  tree-sitter-analyzer file.java --structure           Structure overview in JSON\n"
     "  tree-sitter-analyzer file.java --summary             Quick summary of classes/methods\n"
+    "  tree-sitter-analyzer file.java --advanced            Full analysis with all elements\n"
+    "  tree-sitter-analyzer file.java --query-key class     Extract all class definitions\n"
     "  tree-sitter-analyzer file.java --partial-read --start-line 10 --end-line 20\n"
+    "\n"
+    "Health  (per-file or project-wide grading):\n"
     "  tree-sitter-analyzer file.py --file-health           A-F health grade + signal + smells\n"
+    "  tree-sitter-analyzer file-health file.py             Agent-friendly alias for --file-health\n"
+    "  tree-sitter-analyzer --project-health                Score ALL project files\n"
+    "  tree-sitter-analyzer --watch-health                  Daemon: alert when health grades drop\n"
+    "\n"
+    "Edit safety  (risk + impact before/after a change):\n"
     "  tree-sitter-analyzer file.py --safe-to-edit --edit-type refactor\n"
     "  tree-sitter-analyzer file.py --refactor              Refactoring suggestions with plans\n"
-    "  tree-sitter-analyzer file.py --smart-context         One-call file profile\n"
-    "  tree-sitter-analyzer agent-skills                    Project-local agent skill inventory\n"
-    "  tree-sitter-analyzer agent-workflow file.py           SMART workflow command pack\n"
-    "  tree-sitter-analyzer parser-readiness swift           Parser/plugin readiness advisor\n"
-    "  tree-sitter-analyzer file-health file.py             Agent-friendly alias for --file-health\n"
-    "  tree-sitter-analyzer change-impact --change-impact-mode staged --agent-summary-only\n"
-    "  tree-sitter-analyzer --dependencies summary           Project dependency summary\n"
+    "  tree-sitter-analyzer --change-impact                 Git diff impact (trimmed surface by default)\n"
+    "  tree-sitter-analyzer --change-impact --change-impact-full   Full verbose envelope (~145 KB)\n"
+    "  tree-sitter-analyzer change-impact --change-impact-mode staged\n"
+    "\n"
+    "Graph & deps  (cross-file relationships):\n"
+    "  tree-sitter-analyzer --dependencies summary          Project dependency summary\n"
     "  tree-sitter-analyzer file.py --dependencies file_deps  File dependency graph\n"
-    "  tree-sitter-analyzer --change-impact                 Git diff impact analysis\n"
     "  tree-sitter-analyzer --detect-routes                 URL→handler routes (Flask/Django/FastAPI/Express/Spring)\n"
     "  tree-sitter-analyzer detect-routes --detect-routes-mode all\n"
-    "  tree-sitter-analyzer --project-health                Score ALL project files\n"
-    "  tree-sitter-analyzer --overview                      Project portrait + health summary\n"
+    "  tree-sitter-analyzer --codegraph-overview            Entry points, dead code, hubs, coupling\n"
+    "  tree-sitter-analyzer --codegraph-navigate SYMBOL     Go-to-def + refs + call hierarchy\n"
+    "\n"
+    "Architecture rules  (constraint DSL):\n"
+    "  tree-sitter-analyzer --check-constraints             Evaluate architectural-constraints.yml\n"
+    "  tree-sitter-analyzer --check-constraints --severity-min error\n"
+    "\n"
+    "Cache ops  (manage the pre-indexed AST cache):\n"
+    "  tree-sitter-analyzer --autoindex                     Idempotent cache status / warm\n"
+    "  tree-sitter-analyzer --autoindex --autoindex-mode warm\n"
+    "  tree-sitter-analyzer --full-index                    Force a fresh full re-index\n"
+    "  tree-sitter-analyzer --codegraph-metrics             Cross-domain project dashboard\n"
+    "  tree-sitter-analyzer --clean-state                   Remove ephemeral workspace state\n"
+    "  tree-sitter-analyzer --clean-state-dry-run           Preview what --clean-state would remove\n"
+    "\n"
+    "Discovery  (what does this CLI know?):\n"
+    "  tree-sitter-analyzer parser-readiness swift          Parser/plugin readiness advisor\n"
     "  tree-sitter-analyzer --list-queries                  Show available query keys\n"
     "  tree-sitter-analyzer --show-supported-languages      List supported languages\n"
 )
@@ -277,6 +305,99 @@ def _add_mcp_equivalent_options(parser: argparse.ArgumentParser) -> None:
     _add_modification_guard_options(parser)
     _add_decision_journal_options(parser)
     _add_batch_search_options(parser)
+    # PL-C sprint additions
+    _add_mcp_index_management_options(parser)
+    _add_clean_state_options(parser)
+
+
+def _add_mcp_index_management_options(parser: argparse.ArgumentParser) -> None:
+    """Add cache/index management flags (codegraph_autoindex / full_index / metrics).
+
+    These three tools used to be MCP-only — CLI agents had no way to reach
+    them without spawning the MCP server. The flags ship together because
+    they share the same auto-index plumbing.
+    """
+    parser.add_argument(
+        "--autoindex",
+        action="store_true",
+        help=(
+            "Transparent AST cache auto-indexing (codegraph_autoindex). "
+            "Default mode 'status' — also accepts 'warm' / 'reset' via "
+            "--autoindex-mode."
+        ),
+    )
+    parser.add_argument(
+        "--autoindex-mode",
+        choices=["status", "warm", "reset"],
+        default="status",
+        help="Mode for --autoindex (default: status)",
+    )
+    parser.add_argument(
+        "--autoindex-max-files",
+        type=int,
+        default=5000,
+        help="Max files to index when --autoindex-mode=warm (default: 5000)",
+    )
+    parser.add_argument(
+        "--full-index",
+        action="store_true",
+        help=(
+            "Force a complete project-wide AST re-index "
+            "(codegraph_full_index). Use after pulls, rebases, or large "
+            "refactors. Default mode 'rebuild'."
+        ),
+    )
+    parser.add_argument(
+        "--full-index-mode",
+        choices=["rebuild", "stats", "clear"],
+        default="rebuild",
+        help="Mode for --full-index (default: rebuild)",
+    )
+    parser.add_argument(
+        "--full-index-max-files",
+        type=int,
+        default=5000,
+        help="Max files for --full-index rebuild (default: 5000)",
+    )
+    parser.add_argument(
+        "--codegraph-metrics",
+        action="store_true",
+        help=(
+            "Aggregated project intelligence dashboard (codegraph_metrics). "
+            "Single-call: cache stats, call-graph metrics, complexity "
+            "bands, route counts, file-health distribution."
+        ),
+    )
+    parser.add_argument(
+        "--codegraph-metrics-sections",
+        nargs="+",
+        choices=["cache", "call_graph", "complexity", "routes", "health"],
+        default=None,
+        metavar="SECTION",
+        help=(
+            "Subset of metric sections for --codegraph-metrics "
+            "(default: all five). Example: --codegraph-metrics-sections "
+            "cache call_graph"
+        ),
+    )
+
+
+def _add_clean_state_options(parser: argparse.ArgumentParser) -> None:
+    """Add --clean-state subcommand and dry-run companion."""
+    parser.add_argument(
+        "--clean-state",
+        action="store_true",
+        help=(
+            "Remove ephemeral workspace state files: .ast-cache/, "
+            ".tree-sitter-cache/, ruvector.db, agentdb.rvf*, ':memory:'/, "
+            "tests/temp_cli_test_large/."
+        ),
+    )
+    parser.add_argument(
+        "--clean-state-dry-run",
+        action="store_true",
+        help=("Print what --clean-state would remove without touching the filesystem."),
+    )
 
 
 def _add_mcp_constraints_options(parser: argparse.ArgumentParser) -> None:
@@ -421,7 +542,22 @@ def _add_mcp_change_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--agent-summary-only",
         action="store_true",
-        help="For --change-impact, output only the compact agent decision surface",
+        default=True,
+        help=(
+            "For --change-impact, output only the compact agent decision "
+            "surface (now the DEFAULT — pass --change-impact-full to opt "
+            "out of trimming)."
+        ),
+    )
+    parser.add_argument(
+        "--change-impact-full",
+        action="store_true",
+        default=False,
+        help=(
+            "Emit the full 145KB --change-impact envelope (default since "
+            "v1.12: trimmed agent-summary). Use this when you genuinely "
+            "need verification_command, raw_files, raw_test_paths, etc."
+        ),
     )
 
 

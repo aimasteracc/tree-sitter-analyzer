@@ -36,6 +36,13 @@ def handle_special_commands(
         lambda: _handle_health_check(args, context),
         lambda: _handle_batch_metrics(args, context),
         lambda: _handle_check_constraints(args, context),
+        # --clean-state and --autoindex / --full-index / --codegraph-metrics
+        # run before _handle_mcp_commands so the named subcommands don't
+        # fall through to the dispatcher table.
+        lambda: _handle_clean_state(args, context),
+        lambda: _handle_autoindex(args, context),
+        lambda: _handle_full_index(args, context),
+        lambda: _handle_codegraph_metrics(args, context),
         lambda: _handle_mcp_commands(args, context),
         lambda: _validate_partial_read_options(args, context.output_error),
         lambda: _handle_query_language_commands(args, context),
@@ -355,6 +362,57 @@ def _handle_check_constraints(
     except Exception as exc:  # noqa: BLE001 — surface to user
         context.output_error(f"Constraint check failed: {exc}")
         return 1
+
+
+def _handle_autoindex(
+    args: Any,
+    context: SpecialCommandContext,
+) -> int | None:
+    """Dispatch ``--autoindex`` → ``codegraph_autoindex`` MCP tool."""
+    if not getattr(args, "autoindex", False):
+        return None
+    from .commands.codegraph_index_commands import run_autoindex
+
+    return run_autoindex(args, context.output_error)
+
+
+def _handle_full_index(
+    args: Any,
+    context: SpecialCommandContext,
+) -> int | None:
+    """Dispatch ``--full-index`` → ``codegraph_full_index`` MCP tool."""
+    if not getattr(args, "full_index", False):
+        return None
+    from .commands.codegraph_index_commands import run_full_index
+
+    return run_full_index(args, context.output_error)
+
+
+def _handle_codegraph_metrics(
+    args: Any,
+    context: SpecialCommandContext,
+) -> int | None:
+    """Dispatch ``--codegraph-metrics`` → ``codegraph_metrics`` MCP tool."""
+    if not getattr(args, "codegraph_metrics", False):
+        return None
+    from .commands.codegraph_index_commands import run_codegraph_metrics
+
+    return run_codegraph_metrics(args, context.output_error)
+
+
+def _handle_clean_state(
+    args: Any,
+    context: SpecialCommandContext,
+) -> int | None:
+    """Dispatch ``--clean-state`` / ``--clean-state-dry-run``."""
+    if not (
+        getattr(args, "clean_state", False)
+        or getattr(args, "clean_state_dry_run", False)
+    ):
+        return None
+    from .commands.clean_state_command import run_clean_state
+
+    return run_clean_state(args, context.output_error)
 
 
 def _handle_mcp_commands(

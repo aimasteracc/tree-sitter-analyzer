@@ -223,13 +223,11 @@ def test_registered_mcp_tools_have_cli_parity() -> None:
         "codegraph_sitemap": ("main", "--codegraph-sitemap"),
         "codegraph_complexity_heatmap": ("main", "--codegraph-complexity-heatmap"),
         "codegraph_visualize": ("main", "--codegraph-visualize"),
-        # MCP-only tools — registered in the MCP server but intentionally
-        # not exposed as CLI flags yet. Bookkept here so the registry-vs-
-        # mapping contract stays in sync; if/when CLI flags ship for them,
-        # update the second tuple element to the chosen flag.
-        "codegraph_autoindex": ("mcp_only", "—"),
-        "codegraph_full_index": ("mcp_only", "—"),
-        "codegraph_metrics": ("mcp_only", "—"),
+        # PL-C sprint: the cache-management trio now has real CLI flags
+        # (was ``mcp_only`` exemptions before).
+        "codegraph_autoindex": ("main", "--autoindex"),
+        "codegraph_full_index": ("main", "--full-index"),
+        "codegraph_metrics": ("main", "--codegraph-metrics"),
         # consolidated-only tools ported during merge of feat/autonomous-dev
         "trace_impact": ("main", "--trace-impact"),
         "modification_guard": ("main", "--modification-guard"),

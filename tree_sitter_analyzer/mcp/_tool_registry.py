@@ -138,8 +138,8 @@ def create_tool_registry(
         ("modification_guard", ModificationGuardTool(project_root)),
         ("decision_journal", DecisionJournalTool(project_root)),
         ("batch_search", BatchSearchTool(project_root)),
-        # autonomous-dev MCP-only tools (no CLI flag yet — bookkept in
-        # test_agent_contracts as ``mcp_only``)
+        # PL-C scope: cache-management trio gets first-class registration
+        # (and matching CLI flags) — no longer ``mcp_only`` in tool_to_cli.
         ("codegraph_autoindex", CodeGraphAutoIndexTool(project_root)),
         ("codegraph_full_index", CodeGraphFullIndexTool(project_root)),
         ("codegraph_metrics", CodeGraphMetricsTool(project_root)),

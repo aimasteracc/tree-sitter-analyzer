@@ -370,7 +370,7 @@ class TestAddPartialReadOptions:
     def test_partial_read_requests_json(self):
         parser = self._make_parser()
         _add_partial_read_options(parser)
-        args = parser.parse_args(['--partial-read-requests-json', '{"requests":[]}'])
+        args = parser.parse_args(["--partial-read-requests-json", '{"requests":[]}'])
         assert args.partial_read_requests_json == '{"requests":[]}'
 
     def test_partial_read_requests_file(self):
@@ -587,6 +587,26 @@ class TestAddMcpChangeOptions:
         args = parser.parse_args(["--agent-summary-only"])
         assert args.agent_summary_only is True
 
+    def test_agent_summary_only_default_is_true(self):
+        """v1.12 default flip: trimmed surface is the default."""
+        parser = self._make_parser()
+        _add_mcp_change_options(parser)
+        args = parser.parse_args([])
+        assert args.agent_summary_only is True
+
+    def test_change_impact_full_default_is_false(self):
+        """v1.12: --change-impact-full is the explicit opt-out."""
+        parser = self._make_parser()
+        _add_mcp_change_options(parser)
+        args = parser.parse_args([])
+        assert args.change_impact_full is False
+
+    def test_change_impact_full_can_be_set(self):
+        parser = self._make_parser()
+        _add_mcp_change_options(parser)
+        args = parser.parse_args(["--change-impact-full"])
+        assert args.change_impact_full is True
+
 
 class TestAddMcpAnalysisOptions:
     def _make_parser(self):
@@ -680,73 +700,111 @@ class TestAddMcpAnalysisOptions:
 class TestFullParserIntegration:
     def test_parse_common_combination(self):
         parser = create_argument_parser()
-        args = parser.parse_args([
-            "test.py", "--query-key", "class", "--output-format", "json",
-        ])
+        args = parser.parse_args(
+            [
+                "test.py",
+                "--query-key",
+                "class",
+                "--output-format",
+                "json",
+            ]
+        )
         assert args.file_path == "test.py"
         assert args.query_key == "class"
         assert args.output_format == "json"
 
     def test_parse_advanced_structure(self):
         parser = create_argument_parser()
-        args = parser.parse_args([
-            "test.java", "--advanced", "--structure",
-        ])
+        args = parser.parse_args(
+            [
+                "test.java",
+                "--advanced",
+                "--structure",
+            ]
+        )
         assert args.file_path == "test.java"
         assert args.advanced is True
         assert args.structure is True
 
     def test_parse_file_health(self):
         parser = create_argument_parser()
-        args = parser.parse_args([
-            "test.py", "--file-health",
-        ])
+        args = parser.parse_args(
+            [
+                "test.py",
+                "--file-health",
+            ]
+        )
         assert args.file_path == "test.py"
         assert args.file_health is True
 
     def test_parse_change_impact(self):
         parser = create_argument_parser()
-        args = parser.parse_args([
-            "--change-impact", "--change-impact-mode", "staged",
-        ])
+        args = parser.parse_args(
+            [
+                "--change-impact",
+                "--change-impact-mode",
+                "staged",
+            ]
+        )
         assert args.change_impact is True
         assert args.change_impact_mode == "staged"
 
     def test_parse_dependencies_blast_radius(self):
         parser = create_argument_parser()
-        args = parser.parse_args([
-            "test.py", "--dependencies", "blast_radius",
-        ])
+        args = parser.parse_args(
+            [
+                "test.py",
+                "--dependencies",
+                "blast_radius",
+            ]
+        )
         assert args.dependencies == "blast_radius"
 
     def test_parse_smart_context(self):
         parser = create_argument_parser()
-        args = parser.parse_args([
-            "test.py", "--smart-context",
-        ])
+        args = parser.parse_args(
+            [
+                "test.py",
+                "--smart-context",
+            ]
+        )
         assert args.smart_context is True
 
     def test_parse_refactor(self):
         parser = create_argument_parser()
-        args = parser.parse_args([
-            "test.py", "--refactor",
-        ])
+        args = parser.parse_args(
+            [
+                "test.py",
+                "--refactor",
+            ]
+        )
         assert args.refactor is True
 
     def test_parse_partial_read_range(self):
         parser = create_argument_parser()
-        args = parser.parse_args([
-            "test.py", "--partial-read", "--start-line", "10", "--end-line", "20",
-        ])
+        args = parser.parse_args(
+            [
+                "test.py",
+                "--partial-read",
+                "--start-line",
+                "10",
+                "--end-line",
+                "20",
+            ]
+        )
         assert args.partial_read is True
         assert args.start_line == 10
         assert args.end_line == 20
 
     def test_parse_project_health(self):
         parser = create_argument_parser()
-        args = parser.parse_args([
-            "--project-health", "--max-files", "100",
-        ])
+        args = parser.parse_args(
+            [
+                "--project-health",
+                "--max-files",
+                "100",
+            ]
+        )
         assert args.project_health is True
         assert args.max_files == 100
 
@@ -757,24 +815,38 @@ class TestFullParserIntegration:
 
     def test_parse_symbol_lineage_with_depth(self):
         parser = create_argument_parser()
-        args = parser.parse_args([
-            "test.py", "--symbol-lineage", "MyClass", "--max-depth", "5",
-        ])
+        args = parser.parse_args(
+            [
+                "test.py",
+                "--symbol-lineage",
+                "MyClass",
+                "--max-depth",
+                "5",
+            ]
+        )
         assert args.symbol_lineage == "MyClass"
         assert args.max_depth == 5
 
     def test_parse_code_patterns(self):
         parser = create_argument_parser()
-        args = parser.parse_args([
-            "test.py", "--code-patterns",
-        ])
+        args = parser.parse_args(
+            [
+                "test.py",
+                "--code-patterns",
+            ]
+        )
         assert args.code_patterns is True
 
     def test_parse_safe_to_edit(self):
         parser = create_argument_parser()
-        args = parser.parse_args([
-            "test.py", "--safe-to-edit", "--edit-type", "add_feature",
-        ])
+        args = parser.parse_args(
+            [
+                "test.py",
+                "--safe-to-edit",
+                "--edit-type",
+                "add_feature",
+            ]
+        )
         assert args.safe_to_edit is True
         assert args.edit_type == "add_feature"
 

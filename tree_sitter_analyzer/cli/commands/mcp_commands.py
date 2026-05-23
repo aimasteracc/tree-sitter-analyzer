@@ -394,13 +394,17 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
         flag_name="change_impact",
         tool_attr="ChangeImpactTool",
         label="Change impact analysis",
+        # agent_summary_only flipped to default-True in v1.12 (was 145 KB
+        # of JSON, agents had to add --agent-summary-only every time).
+        # ``--change-impact-full`` is the explicit opt-out; the older
+        # ``--agent-summary-only`` is still accepted but is now redundant.
         build_tool_args=lambda args, output_format: {
             "mode": getattr(args, "change_impact_mode", "diff") or "diff",
             "pr_url": getattr(args, "pr_url", "") or "",
             "include_tests": bool(getattr(args, "change_impact_include_tests", True)),
             "output_format": output_format,
             "scope_paths": getattr(args, "change_impact_scope", None) or [],
-            "agent_summary_only": bool(getattr(args, "agent_summary_only", False)),
+            "agent_summary_only": not bool(getattr(args, "change_impact_full", False)),
         },
     ),
     McpCommandSpec(

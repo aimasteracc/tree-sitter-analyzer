@@ -94,7 +94,10 @@ def _args(**overrides: Any) -> Namespace:
                 "include_tests": True,
                 "output_format": "json",
                 "scope_paths": [],
-                "agent_summary_only": False,
+                # v1.12: agent_summary_only is the new default; --change-
+                # impact-full opts out. Without --change-impact-full the
+                # dispatcher emits the trimmed surface.
+                "agent_summary_only": True,
             },
         ),
         (
@@ -425,7 +428,9 @@ def test_change_impact_cli_does_not_require_file_path(monkeypatch) -> None:
             "include_tests": True,
             "output_format": "json",
             "scope_paths": [],
-            "agent_summary_only": False,
+            # v1.12: default flip — agent_summary_only is now True unless
+            # --change-impact-full is passed.
+            "agent_summary_only": True,
         },
     }
 
@@ -468,7 +473,8 @@ def test_change_impact_cli_forwards_scope_paths(monkeypatch) -> None:
                 "tree_sitter_analyzer/mcp/tools",
                 "tests/unit/mcp",
             ],
-            "agent_summary_only": False,
+            # v1.12 default flip: trimmed surface unless --change-impact-full.
+            "agent_summary_only": True,
         },
     }
 
@@ -538,6 +544,47 @@ def test_change_impact_cli_forwards_mode_and_test_discovery_toggle(monkeypatch) 
             "mode": "staged",
             "pr_url": "",
             "include_tests": False,
+            "output_format": "json",
+            "scope_paths": [],
+            # v1.12 default flip: trimmed surface unless --change-impact-full.
+            "agent_summary_only": True,
+        },
+    }
+
+
+def test_change_impact_cli_forwards_change_impact_full(monkeypatch) -> None:
+    """``--change-impact-full`` flips agent_summary_only back to False.
+
+    Mirrors the v1.12 default-flip contract: by default the dispatcher
+    emits the trimmed agent surface; ``--change-impact-full`` is the
+    explicit opt-out for callers who genuinely need the 145 KB envelope.
+    """
+    seen: dict[str, Any] = {}
+
+    class FakeChangeImpactTool:
+        def __init__(self, project_root: str | None = None) -> None:
+            seen["project_root"] = project_root
+
+        async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+            seen["arguments"] = arguments
+            return {"success": True}
+
+    monkeypatch.setattr(mcp_commands, "ChangeImpactTool", FakeChangeImpactTool)
+
+    result = mcp_commands.handle_mcp_commands(
+        _args(change_impact=True, change_impact_full=True),
+        lambda payload: None,
+        lambda error: None,
+        lambda: "json",
+    )
+
+    assert result == 0
+    assert seen == {
+        "project_root": "/repo",
+        "arguments": {
+            "mode": "diff",
+            "pr_url": "",
+            "include_tests": True,
             "output_format": "json",
             "scope_paths": [],
             "agent_summary_only": False,
