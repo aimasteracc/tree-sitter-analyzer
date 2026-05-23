@@ -7,18 +7,17 @@
 # Behaviour:
 #   • Reads tool input from stdin (Claude Code passes JSON there); ignored
 #     because we don't need the tool args, just the current branch.
-#   • If the working tree is clean and no rebase/merge/cherry-pick is in
-#     progress, AUTO-FIXES drift by silently `git checkout`-ing back to
-#     the expected branch (default: feat/consolidated). Set
-#     BRANCH_GUARD_AUTOFIX=0 to fall through to warn-only mode.
-#   • Otherwise writes a WARNING to stderr explaining how to recover.
-#   • Exits 0 unconditionally — NEVER blocks tool execution. A blocking
-#     hook here would freeze every command when the user legitimately
-#     wants to be on `main` for something else.
+#   • Writes a WARNING to stderr when the current branch differs from the
+#     expected one (default: feat/consolidated).
+#   • Auto-switch is OPT-IN — set BRANCH_GUARD_AUTOFIX=1 to silently
+#     `git checkout` back when WT is clean. Default is warn-only because
+#     forcing a branch surprises humans who legitimately moved off the
+#     expected branch.
+#   • Exits 0 unconditionally — NEVER blocks tool execution.
 #
 # Environment overrides:
 #   BRANCH_GUARD_EXPECTED  — override the canonical branch (default: feat/consolidated)
-#   BRANCH_GUARD_AUTOFIX   — set to 0 to disable silent recovery (default: 1)
+#   BRANCH_GUARD_AUTOFIX   — set to 1 to enable silent recovery (default: 0, warn-only)
 #
 # Why this matters:
 #   • The Claude Code harness silently resets the working tree to the
@@ -52,11 +51,11 @@ EXPECTED_BRANCH="${BRANCH_GUARD_EXPECTED:-feat/consolidated}"
 CURRENT_BRANCH="$(git symbolic-ref --short HEAD 2>/dev/null || echo 'DETACHED')"
 
 if [ "$CURRENT_BRANCH" != "$EXPECTED_BRANCH" ]; then
-  # Auto-fix mode (default ON): silently switch back when the working tree is
-  # clean and no rebase/merge/cherry-pick is in flight. This catches the
-  # harness's session-restart drift before the agent runs commands against
-  # the wrong branch. Set BRANCH_GUARD_AUTOFIX=0 to disable.
-  if [ "${BRANCH_GUARD_AUTOFIX:-1}" = "1" ]; then
+  # Auto-switch mode (OPT-IN — default OFF): silently switch back when WT
+  # is clean and no rebase/merge/cherry-pick is in flight. Set
+  # BRANCH_GUARD_AUTOFIX=1 to enable. Disabled by default because forcing
+  # a branch behind the human's back surprises legitimate workflows.
+  if [ "${BRANCH_GUARD_AUTOFIX:-0}" = "1" ]; then
     # Treat runtime/cache artefacts as not-dirty — they get clobbered constantly.
     DIRTY="$(git status --porcelain 2>/dev/null \
       | grep -vE '^(\?\? |.M |.D | M | D )(\.ast-cache|\.claude-flow|\.swarm|\.tree-sitter-cache|ruvector\.db|agentdb\.rvf)' \
@@ -82,7 +81,7 @@ BRANCH-GUARD WARNING: working tree is on '${CURRENT_BRANCH}', not '${EXPECTED_BR
   • If the recovery checkout fails on unstaged changes, first reset runtime files:
       git checkout HEAD -- .claude-flow/ .swarm/ ruvector.db 2>/dev/null
   • Override expected branch:    BRANCH_GUARD_EXPECTED=main
-  • Disable auto-fix:            BRANCH_GUARD_AUTOFIX=0
+  • Enable auto-switch (opt-in): BRANCH_GUARD_AUTOFIX=1
 EOF
 fi
 
