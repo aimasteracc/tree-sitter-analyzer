@@ -886,3 +886,51 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
         default="resolve",
         help="Mode for --symbol-resolve: resolve=go-to-def, references=find-all-refs (default: resolve)",
     )
+    parser.add_argument(
+        "--class-hierarchy",
+        action="store_true",
+        help="Class inheritance hierarchy analysis: subclasses, superclasses, impact (CodeGraph parity)",
+    )
+    parser.add_argument(
+        "--class-hierarchy-mode",
+        choices=["subclasses", "superclasses", "tree", "impact", "all", "summary"],
+        default="summary",
+        help="Mode for --class-hierarchy (default: summary)",
+    )
+    parser.add_argument(
+        "--class-hierarchy-class",
+        help="Target class name for --class-hierarchy subclasses/superclasses/tree/impact modes",
+    )
+    parser.add_argument(
+        "--class-hierarchy-depth",
+        type=int,
+        default=10,
+        help="Max traversal depth for --class-hierarchy subclasses mode (default: 10)",
+    )
+    parser.add_argument(
+        "--dependency-matrix",
+        action="store_true",
+        help="Module coupling analysis: pairwise dependency scores, hotspots, unstable modules (CodeGraph parity)",
+    )
+    parser.add_argument(
+        "--dependency-matrix-mode",
+        choices=["summary", "matrix", "hotspots", "file", "unstable"],
+        default="summary",
+        help="Mode for --dependency-matrix (default: summary)",
+    )
+    parser.add_argument(
+        "--dependency-matrix-file",
+        help="File path for --dependency-matrix file mode",
+    )
+    parser.add_argument(
+        "--dependency-matrix-top-k",
+        type=int,
+        default=10,
+        help="Top-K coupled pairs for --dependency-matrix hotspots mode (default: 10)",
+    )
+    parser.add_argument(
+        "--dependency-matrix-threshold",
+        type=float,
+        default=0.7,
+        help="Instability threshold for --dependency-matrix unstable mode (default: 0.7)",
+    )

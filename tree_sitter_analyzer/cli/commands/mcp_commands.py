@@ -34,6 +34,9 @@ from tree_sitter_analyzer.mcp.tools.callers_tool import (
 from tree_sitter_analyzer.mcp.tools.change_impact_tool import (
     ChangeImpactTool,  # noqa: F401
 )
+from tree_sitter_analyzer.mcp.tools.class_hierarchy_tool import (
+    ClassHierarchyTool,  # noqa: F401
+)
 from tree_sitter_analyzer.mcp.tools.code_patterns_tool import (
     CodePatternsTool,  # noqa: F401
 )
@@ -66,6 +69,9 @@ from tree_sitter_analyzer.mcp.tools.dead_code_tool import (
 )
 from tree_sitter_analyzer.mcp.tools.dependency_analysis_tool import (
     DependencyAnalysisTool,  # noqa: F401
+)
+from tree_sitter_analyzer.mcp.tools.dependency_matrix_tool import (
+    CodeGraphDependencyMatrixTool,  # noqa: F401
 )
 from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool  # noqa: F401
 from tree_sitter_analyzer.mcp.tools.import_graph_tool import (
@@ -525,6 +531,29 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
             "output_format": output_format,
         },
     ),
+    McpCommandSpec(
+        flag_name="class_hierarchy",
+        tool_attr="ClassHierarchyTool",
+        label="Class inheritance hierarchy analysis: subclasses, superclasses, impact (CodeGraph parity)",
+        build_tool_args=lambda args, output_format: {
+            "mode": getattr(args, "class_hierarchy_mode", "summary") or "summary",
+            "class_name": getattr(args, "class_hierarchy_class", None),
+            "max_depth": getattr(args, "class_hierarchy_depth", 10),
+            "output_format": output_format,
+        },
+    ),
+    McpCommandSpec(
+        flag_name="dependency_matrix",
+        tool_attr="CodeGraphDependencyMatrixTool",
+        label="Module coupling analysis: pairwise scores, hotspots, unstable modules (CodeGraph parity)",
+        build_tool_args=lambda args, output_format: {
+            "mode": getattr(args, "dependency_matrix_mode", "summary") or "summary",
+            "file_path": getattr(args, "dependency_matrix_file", None),
+            "top_k": getattr(args, "dependency_matrix_top_k", 10),
+            "threshold": getattr(args, "dependency_matrix_threshold", 0.7),
+            "output_format": output_format,
+        },
+    ),
 )
 
 
@@ -595,6 +624,8 @@ _TOOL_CLASS_NAMES: frozenset[str] = frozenset(
         "CodeGraphSitemapTool",
         "CodeGraphXRefTool",
         "CodeGraphComplexityHeatmapTool",
+        "ClassHierarchyTool",
+        "CodeGraphDependencyMatrixTool",
     }
 )
 

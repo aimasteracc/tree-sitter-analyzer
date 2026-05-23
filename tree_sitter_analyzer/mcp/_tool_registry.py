@@ -30,6 +30,7 @@ def create_tool_registry(
     from .tools.callees_tool import CodeGraphCalleesTool
     from .tools.callers_tool import CodeGraphCallersTool
     from .tools.change_impact_tool import ChangeImpactTool
+    from .tools.class_hierarchy_tool import ClassHierarchyTool
     from .tools.code_patterns_tool import CodePatternsTool
     from .tools.code_similarity_tool import CodeGraphSimilarityTool
     from .tools.codegraph_impact_tool import CodeGraphImpactTool
@@ -41,6 +42,7 @@ def create_tool_registry(
     from .tools.complexity_heatmap_tool import CodeGraphComplexityHeatmapTool
     from .tools.dead_code_tool import CodeGraphDeadCodeTool
     from .tools.dependency_analysis_tool import DependencyAnalysisTool
+    from .tools.dependency_matrix_tool import CodeGraphDependencyMatrixTool
     from .tools.file_health_tool import FileHealthTool
     from .tools.find_and_grep_tool import FindAndGrepTool
     from .tools.import_graph_tool import CodeGraphImportGraphTool
@@ -108,5 +110,7 @@ def create_tool_registry(
         ("codegraph_sitemap", CodeGraphSitemapTool(project_root)),
         ("codegraph_xref", CodeGraphXRefTool(project_root)),
         ("codegraph_complexity_heatmap", CodeGraphComplexityHeatmapTool(project_root)),
+        ("codegraph_class_hierarchy", ClassHierarchyTool(project_root)),
+        ("codegraph_dependency_matrix", CodeGraphDependencyMatrixTool(project_root)),
     ]
     return tool_instances, dict(tool_instances)
