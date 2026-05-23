@@ -62,19 +62,15 @@ upstream parser-risk gaps already named.
 
 **How to do it**:
 
-Tell your AI assistant:
-```
-Please set the project root directory to: /path/to/your/project
-```
+The project root is configured at server startup. Use either:
 
-The AI will call the `set_project_path` MCP tool.
+- Environment variable: `TREE_SITTER_PROJECT_ROOT=/path/to/your/project`
+- CLI flag: `--project-root /path/to/your/project`
 
 **Why it matters**:
 - Enables security boundary protection
 - All subsequent operations are relative to this path
 - Prevents accidental access to files outside the project
-
-> 💡 **Tip**: You can also pre-set the project path via `TREE_SITTER_PROJECT_ROOT` environment variable in your MCP configuration.
 
 ### M - Map Target Files
 
@@ -315,7 +311,7 @@ For files > 500 lines:
 
 | Workflow Step | Primary MCP Tool | CLI Equivalent |
 |---------------|------------------|----------------|
-| Set | `set_project_path` | `TREE_SITTER_PROJECT_ROOT` or command path |
+| Set | `TREE_SITTER_PROJECT_ROOT` env var (server startup) | `--project-root /path` |
 | Map | `list_files`, `find_and_grep`, `advise_parser_readiness` | `list-files`, `find-and-grep`, `parser-readiness` |
 | Analyze | `analyze_code_structure`, `check_code_scale`, `check_file_health` | `--structure`, `--metrics-only`, `--file-health` |
 | Retrieve | `extract_code_section`, `query_code` | `--partial-read`, `--query-key` |

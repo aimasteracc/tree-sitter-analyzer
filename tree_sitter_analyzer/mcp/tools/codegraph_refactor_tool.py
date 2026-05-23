@@ -139,12 +139,16 @@ class CodeGraphRefactorTool(BaseMCPTool):
             project_root=self.project_root,
         )
 
-        response: dict[str, Any] = {
-            "success": True,
-            "verdict": "DRY_RUN"
-            if dry_run
-            else ("OK" if not result.errors else "ERROR"),
-        }
+        # PM-fix (post-mcp-builder audit): map non-canonical verdicts to
+        # _LEGAL_VERDICTS. "DRY_RUN" → INFO (informational preview),
+        # "OK" → INFO (rename succeeded), "ERROR" stays.
+        if result.errors:
+            verdict = "ERROR"
+        elif dry_run:
+            verdict = "INFO"  # preview-only, no state change
+        else:
+            verdict = "INFO"  # rename applied successfully
+        response: dict[str, Any] = {"success": True, "verdict": verdict}
         response.update(result.to_dict())
 
         if dry_run and result.sites:

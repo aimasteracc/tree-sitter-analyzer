@@ -17,6 +17,7 @@ from typing import Any
 from ...test_gap_analyzer import analyze_coverage_gaps
 from ...utils import setup_logger
 from ..utils.format_helper import apply_toon_format_to_response
+from ._response_builder import build_error, build_response
 from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
@@ -96,7 +97,7 @@ class CodeGraphTestGapTool(BaseMCPTool):
         self.validate_arguments(arguments)
 
         if not self.project_root:
-            return {"success": False, "error": "project_root is required"}
+            return build_error(error="project_root is required")
 
         mode = arguments.get("mode", "gaps")
         language_filter = arguments.get("language") or None
@@ -116,9 +117,14 @@ class CodeGraphTestGapTool(BaseMCPTool):
             )
         except Exception as exc:
             logger.error("test_gap analysis failed: %s", exc)
-            return {"success": False, "error": str(exc)}
+            return build_error(error=str(exc))
 
-        response = self._build_response(result, mode, target_file)
+        payload = self._build_response(result, mode, target_file)
+        # Verdict policy: WARN when gaps detected (project has untested code),
+        # SAFE when no gaps. result.gap_count is the canonical signal across
+        # all three modes (summary/gaps/file).
+        verdict = "WARN" if result.gap_count > 0 else "SAFE"
+        response = build_response(verdict=verdict, **payload)
         return apply_toon_format_to_response(response, output_format)
 
     def _build_response(
@@ -129,13 +135,14 @@ class CodeGraphTestGapTool(BaseMCPTool):
     ) -> dict[str, Any]:
         if mode == "summary":
             return {
-                "success": True,
                 "coverage_pct": result.coverage_pct,
                 "total_production_symbols": result.total_production_symbols,
                 "total_test_symbols": result.total_test_symbols,
                 "covered_count": result.covered_count,
                 "gap_count": result.gap_count,
-                "priority_distribution": result.summary.get("priority_distribution", {}),
+                "priority_distribution": result.summary.get(
+                    "priority_distribution", {}
+                ),
                 "worst_files": result.summary.get("worst_files", []),
                 "by_language": result.summary.get("by_language", {}),
                 "production_files": result.summary.get("production_files", 0),
@@ -152,10 +159,7 @@ class CodeGraphTestGapTool(BaseMCPTool):
 
         gaps = result.gaps
         if mode == "file" and target_file:
-            gaps = [
-                g for g in gaps
-                if target_file in g.symbol.file_path
-            ]
+            gaps = [g for g in gaps if target_file in g.symbol.file_path]
 
         gap_dicts = [
             {
@@ -178,7 +182,6 @@ class CodeGraphTestGapTool(BaseMCPTool):
         medium = sum(1 for g in gaps if g.priority == "medium")
 
         response: dict[str, Any] = {
-            "success": True,
             "coverage_pct": result.coverage_pct,
             "total_production_symbols": result.total_production_symbols,
             "covered_count": result.covered_count,
@@ -190,8 +193,9 @@ class CodeGraphTestGapTool(BaseMCPTool):
                 f"({result.covered_count}/{result.total_production_symbols}). "
                 f"{result.gap_count} total gaps: "
                 f"{critical} critical, {high} high, {medium} medium. "
-                f"Top gap: {gaps[0].symbol.name} ({gaps[0].priority})" if gaps else
-                f"Coverage: {result.coverage_pct}% "
+                f"Top gap: {gaps[0].symbol.name} ({gaps[0].priority})"
+                if gaps
+                else f"Coverage: {result.coverage_pct}% "
                 f"({result.covered_count}/{result.total_production_symbols}). No gaps."
             ),
         }
