@@ -1392,6 +1392,8 @@
       "checked_expression",
       "checked_statement",
       "class_declaration",
+      "collection_element",
+      "collection_expression",
       "comment",
       "compilation_unit",
       "conditional_access_expression",
@@ -1420,6 +1422,7 @@
       "event_declaration",
       "event_field_declaration",
       "explicit_interface_specifier",
+      "expression_element",
       "expression_statement",
       "extern_alias_directive",
       "field_declaration",
@@ -1511,6 +1514,7 @@
       "preproc_if",
       "preproc_if",
       "preproc_if",
+      "preproc_if_in_attribute_list",
       "preproc_line",
       "preproc_nullable",
       "preproc_pragma",
@@ -1540,6 +1544,7 @@
       "select_clause",
       "shebang_directive",
       "sizeof_expression",
+      "spread_element",
       "stackalloc_expression",
       "string_content",
       "string_literal",
@@ -1583,7 +1588,7 @@
       "with_initializer",
       "yield_statement"
     ],
-    "node_count": 229,
+    "node_count": 234,
     "package_version": "0.23.1"
   },
   "ruby": {
