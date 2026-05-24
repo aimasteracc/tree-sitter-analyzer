@@ -86,6 +86,8 @@ class QueryFilter:
             return self._match_name(result, filter_type, filter_value)
         elif filter_key == "params":
             return self._match_params(result, filter_type, filter_value)
+        elif filter_key == "visibility":
+            return self._match_visibility(result, filter_value)
         elif filter_key == "static":
             return self._match_modifier(result, "static", filter_value)
         elif filter_key == "public":
@@ -94,6 +96,12 @@ class QueryFilter:
             return self._match_modifier(result, "private", filter_value)
         elif filter_key == "protected":
             return self._match_modifier(result, "protected", filter_value)
+        elif filter_key == "async":
+            return self._match_modifier(result, "async", filter_value)
+        elif filter_key == "final":
+            return self._match_modifier(result, "final", filter_value)
+        elif filter_key == "abstract":
+            return self._match_modifier(result, "abstract", filter_value)
 
         return True
 
@@ -129,17 +137,30 @@ class QueryFilter:
     def _match_modifier(
         self, result: dict[str, Any], modifier: str, value: str
     ) -> bool:
-        """Match modifier"""
+        """Match modifier as a keyword in the declaration prefix"""
         content = result.get("content", "")
-        has_modifier = modifier in content
+        # Only check first line of the declaration to avoid matching
+        # identifiers like "abstractMethod" or "staticValue"
+        first_line = content.split("\n")[0]
+        # Match modifier as a standalone keyword before the return type/name
+        pattern = r"(?:^|\s)" + re.escape(modifier) + r"(?:\s|<)"
+        has_modifier = bool(re.search(pattern, first_line))
 
         return (value.lower() == "true") == has_modifier
 
+    def _match_visibility(self, result: dict[str, Any], value: str) -> bool:
+        """Match visibility modifier in content"""
+        content = result.get("content", "")
+        vis = value.lower()
+        if vis in ("public", "private", "protected"):
+            return vis in content
+        return True
+
     def _extract_method_name(self, content: str) -> str:
         """Extract method name from content"""
-        # Match method declaration patterns
         patterns = [
-            r"(?:public|private|protected)?\s*(?:static)?\s*\w+\s+(\w+)\s*\(",  # Java method
+            r"(?:public|private|protected)\s+(?:static\s+)?(?:final\s+)?(?:abstract\s+)?(?:synchronized\s+)?(?:[\w<>,\s\[\]]+)\s+(\w+)\s*\(",  # Java/C# method
+            r"(?:static\s+)?(?:final\s+)?(?:abstract\s+)?(?:[\w<>,\s\[\]]+)\s+(\w+)\s*\(",  # Java/C# method (no visibility)
             r"def\s+(\w+)\s*\(",  # Python method
             r"function\s+(\w+)\s*\(",  # JavaScript function
         ]
@@ -152,8 +173,7 @@ class QueryFilter:
         return "unknown"
 
     def _count_parameters(self, content: str) -> int:
-        """Count method parameters"""
-        # Find parameter list
+        """Count method parameters, handling nested generics/parens."""
         match = re.search(r"\(([^)]*)\)", content)
         if not match:
             return 0
@@ -162,10 +182,20 @@ class QueryFilter:
         if not params_str:
             return 0
 
-        # Simple parameter counting (by comma separation)
-        # Note: This is a simple implementation, doesn't handle generics etc.
-        params = [p.strip() for p in params_str.split(",") if p.strip()]
-        return len(params)
+        count = 0
+        depth = 0
+        for ch in params_str:
+            if ch in "(<":
+                depth += 1
+            elif ch in ")>":
+                depth -= 1
+            elif ch == "," and depth == 0:
+                count += 1
+
+        if params_str:
+            count += 1
+
+        return count
 
     def get_filter_help(self) -> str:
         """Get filter help information"""
@@ -187,11 +217,23 @@ Supported filter keys:
   static     - Whether it is a static method
              e.g.: static=true, static=false
 
+  visibility - Visibility modifier (checks content for the keyword)
+             e.g.: visibility=private, visibility=public, visibility=protected
+
   public     - Whether it is a public method
              e.g.: public=true, public=false
 
   private    - Whether it is a private method
              e.g.: private=true, private=false
+
+  async      - Whether it is async
+             e.g.: async=true, async=false
+
+  final      - Whether it is final
+             e.g.: final=true, final=false
+
+  abstract   - Whether it is abstract
+             e.g.: abstract=true, abstract=false
 
 Examples:
   --query-key methods --filter "name=main"

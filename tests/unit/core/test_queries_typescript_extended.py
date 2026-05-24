@@ -123,9 +123,9 @@ class TestTypeScriptExtendedQueries:
             assert "description" in query_data
             # Check for "property" or "properties" in description
             description_lower = query_data["description"].lower()
-            assert (
-                "propert" in description_lower
-            ), f"Description for {query_name} should contain 'property' or 'properties'"
+            assert "propert" in description_lower, (
+                f"Description for {query_name} should contain 'property' or 'properties'"
+            )
 
     def test_signature_queries(self):
         """Test signature-specific queries"""
@@ -144,20 +144,15 @@ class TestTypeScriptExtendedQueries:
             assert "description" in query_data
 
     def test_jsx_queries(self):
-        """Test JSX-specific queries"""
+        """Test that JSX queries are not in TypeScript grammar (TSX-only)"""
         jsx_queries = [
             "jsx_element",
             "jsx_self_closing",
             "jsx_fragment",
             "jsx_expression",
         ]
-
         for query_name in jsx_queries:
-            assert query_name in ts_queries.ALL_QUERIES
-            query_data = ts_queries.ALL_QUERIES[query_name]
-            assert "query" in query_data
-            assert "description" in query_data
-            assert "jsx" in query_data["description"].lower()
+            assert query_name not in ts_queries.ALL_QUERIES
 
     def test_expression_queries(self):
         """Test expression-specific queries"""
@@ -260,16 +255,16 @@ class TestTypeScriptExtendedQueries:
 
             # Skip parentheses check for imports query (known issue)
             if query_name != "imports":
-                assert query_string.count("(") == query_string.count(
-                    ")"
-                ), f"Unbalanced parentheses in {query_name} query"
+                assert query_string.count("(") == query_string.count(")"), (
+                    f"Unbalanced parentheses in {query_name} query"
+                )
 
-            assert query_string.count("[") == query_string.count(
-                "]"
-            ), f"Unbalanced brackets in {query_name} query"
-            assert query_string.count("{") == query_string.count(
-                "}"
-            ), f"Unbalanced braces in {query_name} query"
+            assert query_string.count("[") == query_string.count("]"), (
+                f"Unbalanced brackets in {query_name} query"
+            )
+            assert query_string.count("{") == query_string.count("}"), (
+                f"Unbalanced braces in {query_name} query"
+            )
 
     def test_capture_groups_present(self):
         """Test that queries contain capture groups"""
@@ -298,9 +293,9 @@ class TestTypeScriptExtendedQueries:
         ]
 
         for feature in core_features:
-            assert (
-                feature in all_queries_text
-            ), f"Core TypeScript feature '{feature}' not found in queries"
+            assert feature in all_queries_text, (
+                f"Core TypeScript feature '{feature}' not found in queries"
+            )
 
         # Advanced type system features
         advanced_features = [
@@ -313,9 +308,9 @@ class TestTypeScriptExtendedQueries:
         ]
 
         for feature in advanced_features:
-            assert (
-                feature in all_queries_text
-            ), f"Advanced TypeScript feature '{feature}' not found in queries"
+            assert feature in all_queries_text, (
+                f"Advanced TypeScript feature '{feature}' not found in queries"
+            )
 
     def test_alias_queries(self):
         """Test that alias queries work correctly"""
@@ -384,7 +379,7 @@ class TestTypeScriptExtendedQueries:
         all_queries = ts_queries.get_all_queries()
         assert len(all_queries) >= 80
         assert "union_type" in all_queries
-        assert "jsx_element" in all_queries
+        assert "as_expression" in all_queries
 
         # Test list_queries function (if exists)
         if hasattr(ts_queries, "list_queries"):
@@ -402,9 +397,9 @@ class TestTypeScriptQueryComparison:
         ts_count = len(ts_queries.ALL_QUERIES)
 
         # TypeScript should have significantly more queries due to type system
-        assert (
-            ts_count >= 80
-        ), f"TypeScript should have at least 80 queries, got {ts_count}"
+        assert ts_count >= 80, (
+            f"TypeScript should have at least 80 queries, got {ts_count}"
+        )
 
         # Check TypeScript-specific features not in JavaScript
         ts_specific = [
@@ -421,9 +416,9 @@ class TestTypeScriptQueryComparison:
             [q["query"] for q in ts_queries.ALL_QUERIES.values()]
         )
         for feature in ts_specific:
-            assert (
-                feature in all_queries_text
-            ), f"TypeScript-specific feature '{feature}' missing"
+            assert feature in all_queries_text, (
+                f"TypeScript-specific feature '{feature}' missing"
+            )
 
     def test_comprehensive_language_support(self):
         """Test that TypeScript queries provide comprehensive language support"""
@@ -432,16 +427,16 @@ class TestTypeScriptQueryComparison:
             "classes": ["class_declaration", "abstract_class"],
             "types": ["union_type", "intersection_type", "conditional_type"],
             "imports": ["import_statement", "type_import"],
-            "jsx": ["jsx_element", "jsx_self_closing"],
+            "jsx": [],  # JSX nodes only exist in TSX grammar, not TypeScript
             "expressions": ["as_expression", "optional_chain"],
             "modifiers": ["readonly_modifier", "static_modifier"],
         }
 
         for category, queries in categories.items():
             for query_name in queries:
-                assert (
-                    query_name in ts_queries.ALL_QUERIES
-                ), f"Missing {category} query: {query_name}"
+                assert query_name in ts_queries.ALL_QUERIES, (
+                    f"Missing {category} query: {query_name}"
+                )
 
 
 if __name__ == "__main__":

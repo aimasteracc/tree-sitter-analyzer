@@ -181,9 +181,7 @@ class TestDescribeDir:
     def test_falls_back_to_readme(self, tmp_path: Path) -> None:
         d = tmp_path / "spring-beans"
         d.mkdir()
-        (d / "README.md").write_text(
-            "# Spring Beans\n\nCore IoC container support.\n"
-        )
+        (d / "README.md").write_text("# Spring Beans\n\nCore IoC container support.\n")
         manager = ProjectIndexManager(project_root=str(tmp_path))
         desc = manager._describe_dir(d, "spring-beans")
         assert desc  # must not be empty
@@ -196,9 +194,7 @@ class TestDescribeDir:
         desc = manager._describe_dir(d, "scripts")
         assert desc  # convention table entry exists
 
-    def test_no_description_returns_empty_not_crashes(
-        self, tmp_path: Path
-    ) -> None:
+    def test_no_description_returns_empty_not_crashes(self, tmp_path: Path) -> None:
         d = tmp_path / "xyzzy"
         d.mkdir()
         manager = ProjectIndexManager(project_root=str(tmp_path))
@@ -214,9 +210,7 @@ class TestDescribeDir:
 class TestNoBugSilentDrop:
     """Regression: dirs with no description must still appear in summary.toon."""
 
-    def test_large_dir_without_description_appears(
-        self, tmp_path: Path
-    ) -> None:
+    def test_large_dir_without_description_appears(self, tmp_path: Path) -> None:
         """A dir with 1000 files but no __init__.py / README must appear."""
         big = tmp_path / "spring-framework"
         big.mkdir()
@@ -236,20 +230,14 @@ class TestNoBugSilentDrop:
     ) -> None:
         cache_dir = multi_module_project / ".tree-sitter-cache"
         cache_dir.mkdir(exist_ok=True)
-        manager = ProjectIndexManager(
-            project_root=str(multi_module_project)
-        )
+        manager = ProjectIndexManager(project_root=str(multi_module_project))
         index = manager.build(multi_module_project)
         toon = manager.render_toon(index)
 
         assert "spring-petclinic" in toon
 
-    def test_all_top_level_dirs_present(
-        self, multi_module_project: Path
-    ) -> None:
-        manager = ProjectIndexManager(
-            project_root=str(multi_module_project)
-        )
+    def test_all_top_level_dirs_present(self, multi_module_project: Path) -> None:
+        manager = ProjectIndexManager(project_root=str(multi_module_project))
         index = manager.build(multi_module_project)
         toon = manager.render_toon(index)
 
@@ -344,17 +332,17 @@ class TestPageRank:
         nodes = manager._compute_pagerank([], top_n=5)
         assert nodes == []
 
-    def test_exception_in_pagerank_returns_empty(
-        self, tmp_path: Path
-    ) -> None:
+    def test_exception_in_pagerank_returns_empty(self, tmp_path: Path) -> None:
         """If an unexpected error occurs, gracefully return empty list."""
         manager = ProjectIndexManager(project_root=str(tmp_path))
         # Pass malformed edges that will cause a TypeError internally
         bad_edges: list[tuple[str, str]] = [("A", "B")]
         # Monkey-patch to force an exception path
         original = manager._compute_pagerank
+
         def _raise(*args: object, **kwargs: object) -> list[dict[str, object]]:
             raise RuntimeError("forced error")
+
         manager._compute_pagerank = _raise  # type: ignore[method-assign]
         try:
             result = manager._compute_pagerank(bad_edges, top_n=5)  # type: ignore[call-arg]
@@ -431,9 +419,7 @@ class TestSummaryToonFormat:
 class TestIncrementalUpdate:
     """build_project_index only re-parses changed files."""
 
-    def test_unchanged_project_skips_reparse(
-        self, simple_project: Path
-    ) -> None:
+    def test_unchanged_project_skips_reparse(self, simple_project: Path) -> None:
         cache = simple_project / ".tree-sitter-cache"
         cache.mkdir(exist_ok=True)
         manager = ProjectIndexManager(project_root=str(simple_project))
@@ -449,9 +435,7 @@ class TestIncrementalUpdate:
         # updated_at should be same (cache hit)
         assert ts2 == ts1 or abs(ts2 - ts1) < 0.5
 
-    def test_changed_file_triggers_reparse(
-        self, simple_project: Path
-    ) -> None:
+    def test_changed_file_triggers_reparse(self, simple_project: Path) -> None:
         cache = simple_project / ".tree-sitter-cache"
         cache.mkdir(exist_ok=True)
         manager = ProjectIndexManager(project_root=str(simple_project))
@@ -460,9 +444,7 @@ class TestIncrementalUpdate:
 
         # Modify a file
         time.sleep(0.05)
-        (simple_project / "src" / "main.py").write_text(
-            "def main(): return 42\n"
-        )
+        (simple_project / "src" / "main.py").write_text("def main(): return 42\n")
 
         index2 = manager.build(simple_project)
         assert index2.updated_at > index1.updated_at
@@ -490,16 +472,12 @@ class TestGetProjectSummaryReadsToon:
         cache = simple_project / ".tree-sitter-cache"
         cache.mkdir(exist_ok=True)
         toon_path = cache / "summary.toon"
-        toon_path.write_text(
-            "project:  myproject\nscale:    5 files — python 100%\n"
-        )
+        toon_path.write_text("project:  myproject\nscale:    5 files — python 100%\n")
 
         tool = GetProjectSummaryTool(project_root=str(simple_project))
         import asyncio
 
-        result = asyncio.get_event_loop().run_until_complete(
-            tool.execute({"format": "toon"})
-        )
+        result = asyncio.run(tool.execute({"format": "toon"}))
         assert "myproject" in str(result)
 
     def test_builds_if_toon_missing(self, simple_project: Path) -> None:
@@ -510,9 +488,7 @@ class TestGetProjectSummaryReadsToon:
         tool = GetProjectSummaryTool(project_root=str(simple_project))
         import asyncio
 
-        result = asyncio.get_event_loop().run_until_complete(
-            tool.execute({"format": "toon"})
-        )
+        result = asyncio.run(tool.execute({"format": "toon"}))
         assert result is not None
         toon_path = cache / "summary.toon"
         assert toon_path.exists()
@@ -549,12 +525,12 @@ def java_project_with_noise(tmp_path: Path) -> Path:
     # Service — imports first-party + stdlib + third-party
     (src / "UserService.java").write_text(
         "package com.example;\n"
-        "import com.example.BeanFactory;\n"      # first-party → edge
-        "import java.util.List;\n"                # stdlib → SKIP
-        "import java.util.Map;\n"                 # stdlib → SKIP
-        "import javax.annotation.Nullable;\n"     # annotation → SKIP
-        "import org.junit.jupiter.api.Test;\n"    # test fw → SKIP
-        "import lombok.Data;\n"                   # annotation proc → SKIP
+        "import com.example.BeanFactory;\n"  # first-party → edge
+        "import java.util.List;\n"  # stdlib → SKIP
+        "import java.util.Map;\n"  # stdlib → SKIP
+        "import javax.annotation.Nullable;\n"  # annotation → SKIP
+        "import org.junit.jupiter.api.Test;\n"  # test fw → SKIP
+        "import lombok.Data;\n"  # annotation proc → SKIP
         "public class UserService implements BeanFactory {\n"
         "    public Object getBean(String name) { return null; }\n"
         "}\n"
@@ -563,9 +539,9 @@ def java_project_with_noise(tmp_path: Path) -> Path:
     # Controller — imports first-party only
     (src / "UserController.java").write_text(
         "package com.example;\n"
-        "import com.example.UserService;\n"       # first-party → edge
-        "import com.example.BeanFactory;\n"       # first-party → edge
-        "import java.util.Optional;\n"            # stdlib → SKIP
+        "import com.example.UserService;\n"  # first-party → edge
+        "import com.example.BeanFactory;\n"  # first-party → edge
+        "import java.util.Optional;\n"  # stdlib → SKIP
         "public class UserController {\n"
         "    private UserService service;\n"
         "}\n"
@@ -578,9 +554,7 @@ def java_project_with_noise(tmp_path: Path) -> Path:
 def gradle_project(tmp_path: Path) -> Path:
     """Java project with build.gradle instead of pom.xml."""
     (tmp_path / "build.gradle").write_text(
-        "plugins { id 'java' }\n"
-        "group = 'org.myorg'\n"
-        "version = '1.0'\n"
+        "plugins { id 'java' }\ngroup = 'org.myorg'\nversion = '1.0'\n"
     )
     src = tmp_path / "src" / "main" / "java" / "org" / "myorg"
     src.mkdir(parents=True)
@@ -590,10 +564,7 @@ def gradle_project(tmp_path: Path) -> Path:
         "import java.util.List;\n"
         "public class App {}\n"
     )
-    (src / "Config.java").write_text(
-        "package org.myorg;\n"
-        "public class Config {}\n"
-    )
+    (src / "Config.java").write_text("package org.myorg;\npublic class Config {}\n")
     return tmp_path
 
 
@@ -605,9 +576,7 @@ def gradle_project(tmp_path: Path) -> Path:
 class TestDetectJavaRootPackages:
     """Java root package detection via edge_extractors.java module."""
 
-    def test_reads_pom_groupid(
-        self, java_project_with_noise: Path
-    ) -> None:
+    def test_reads_pom_groupid(self, java_project_with_noise: Path) -> None:
         from tree_sitter_analyzer.mcp.utils.edge_extractors.java import (
             _detect_java_root_packages,
         )
@@ -658,13 +627,9 @@ class TestDetectJavaRootPackages:
 class TestFirstPartyFiltering:
     """Edges from stdlib/third-party imports are excluded; first-party kept."""
 
-    def test_stdlib_import_excluded(
-        self, java_project_with_noise: Path
-    ) -> None:
+    def test_stdlib_import_excluded(self, java_project_with_noise: Path) -> None:
         """java.util.List should NOT create an edge."""
-        manager = ProjectIndexManager(
-            project_root=str(java_project_with_noise)
-        )
+        manager = ProjectIndexManager(project_root=str(java_project_with_noise))
         src = java_project_with_noise / "src/main/java/com/example"
         f = src / "UserService.java"
         edges = manager._extract_edges_from_file(f)
@@ -673,13 +638,9 @@ class TestFirstPartyFiltering:
         assert "Map" not in targets
         assert "Optional" not in targets
 
-    def test_annotation_import_excluded(
-        self, java_project_with_noise: Path
-    ) -> None:
+    def test_annotation_import_excluded(self, java_project_with_noise: Path) -> None:
         """javax.annotation.Nullable should NOT create an edge."""
-        manager = ProjectIndexManager(
-            project_root=str(java_project_with_noise)
-        )
+        manager = ProjectIndexManager(project_root=str(java_project_with_noise))
         src = java_project_with_noise / "src/main/java/com/example"
         f = src / "UserService.java"
         edges = manager._extract_edges_from_file(f)
@@ -688,13 +649,9 @@ class TestFirstPartyFiltering:
         assert "Test" not in targets
         assert "Data" not in targets
 
-    def test_first_party_import_kept(
-        self, java_project_with_noise: Path
-    ) -> None:
+    def test_first_party_import_kept(self, java_project_with_noise: Path) -> None:
         """com.example.BeanFactory should create an edge."""
-        manager = ProjectIndexManager(
-            project_root=str(java_project_with_noise)
-        )
+        manager = ProjectIndexManager(project_root=str(java_project_with_noise))
         src = java_project_with_noise / "src/main/java/com/example"
         f = src / "UserService.java"
         edges = manager._extract_edges_from_file(f)
@@ -705,9 +662,7 @@ class TestFirstPartyFiltering:
         self, java_project_with_noise: Path
     ) -> None:
         """extends/implements edges are always kept (no package info)."""
-        manager = ProjectIndexManager(
-            project_root=str(java_project_with_noise)
-        )
+        manager = ProjectIndexManager(project_root=str(java_project_with_noise))
         src = java_project_with_noise / "src/main/java/com/example"
         f = src / "UserService.java"
         edges = manager._extract_edges_from_file(f)
@@ -718,9 +673,7 @@ class TestFirstPartyFiltering:
         self, java_project_with_noise: Path
     ) -> None:
         """Full pipeline: build → PageRank top nodes should be project classes only."""
-        manager = ProjectIndexManager(
-            project_root=str(java_project_with_noise)
-        )
+        manager = ProjectIndexManager(project_root=str(java_project_with_noise))
         src = java_project_with_noise / "src/main/java/com/example"
         edges: list[tuple[str, str]] = []
         for f in src.glob("*.java"):
@@ -746,10 +699,7 @@ class TestFirstPartyFiltering:
             "import myapp.Bar;\n"
             "public class Foo extends Bar {}\n"
         )
-        (src / "Bar.java").write_text(
-            "package myapp;\n"
-            "public class Bar {}\n"
-        )
+        (src / "Bar.java").write_text("package myapp;\npublic class Bar {}\n")
         manager = ProjectIndexManager(project_root=str(tmp_path))
         edges = manager._extract_edges_from_file(src / "Foo.java")
         targets = [dst for _, dst in edges]
@@ -757,9 +707,7 @@ class TestFirstPartyFiltering:
         assert "Bar" in targets
         assert "List" not in targets  # imports never create edges
 
-    def test_gradle_project_extends_kept(
-        self, gradle_project: Path
-    ) -> None:
+    def test_gradle_project_extends_kept(self, gradle_project: Path) -> None:
         """Gradle project: extends edges from first-party classes kept."""
         # Rewrite App.java to use extends instead of import-only
         src = gradle_project / "src/main/java/org/myorg"
@@ -769,9 +717,7 @@ class TestFirstPartyFiltering:
             "import java.util.List;\n"
             "public class App extends Config {}\n"
         )
-        manager = ProjectIndexManager(
-            project_root=str(gradle_project)
-        )
+        manager = ProjectIndexManager(project_root=str(gradle_project))
         edges = manager._extract_edges_from_file(src / "App.java")
         targets = [dst for _, dst in edges]
         assert "Config" in targets  # first-party extends
@@ -798,9 +744,7 @@ class TestBugfixes:
     def test_html_stripped_from_describe_dir(self, tmp_path: Path) -> None:
         d = tmp_path / "mymod"
         d.mkdir()
-        (d / "README.md").write_text(
-            '# <img src="badge.png"> MyModule\n'
-        )
+        (d / "README.md").write_text('# <img src="badge.png"> MyModule\n')
         manager = ProjectIndexManager(project_root=str(tmp_path))
         desc = manager._describe_dir(d, "mymod")
         assert "<img" not in desc

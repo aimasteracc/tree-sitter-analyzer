@@ -1,0 +1,168 @@
+"""C++ Function and Class model builders."""
+
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any
+
+from ..models import Class, Function
+from ..utils import log_debug, log_error
+
+
+@dataclass(frozen=True)
+class CppFunctionExtractionContext:
+    content_lines: list[str]
+    parse_function_signature: Callable[
+        [Any], tuple[str, str, list[str], list[str]] | None
+    ]
+    calculate_complexity: Callable[[Any], int]
+    is_global_scope: Callable[[Any], bool]
+    determine_visibility: Callable[..., str]
+    extract_comment_for_line: Callable[[int], str | None]
+
+
+@dataclass(frozen=True)
+class CppClassExtractionContext:
+    get_node_text: Callable[..., str]
+    content_lines: list[str]
+    current_namespace: str
+    extract_base_classes: Callable[[Any], list[str]]
+    extract_comment_for_line: Callable[[int], str | None]
+
+
+def extract_cpp_function(
+    node: Any,
+    context: CppFunctionExtractionContext | Callable[..., str],
+    *legacy_args: Any,
+) -> Function | None:
+    """Extract a C++ function definition."""
+    try:
+        ctx = _function_context(context, *legacy_args)
+        function_info = ctx.parse_function_signature(node)
+        if not function_info:
+            return None
+
+        name, return_type, parameters, modifiers = function_info
+        start_line = node.start_point[0] + 1
+        end_line = node.end_point[0] + 1
+        is_global = ctx.is_global_scope(node)
+        visibility = ctx.determine_visibility(modifiers, is_global=is_global, node=node)
+
+        return Function(
+            name=name,
+            start_line=start_line,
+            end_line=end_line,
+            raw_text=_source_slice(ctx.content_lines, start_line, end_line),
+            language="cpp",
+            parameters=parameters,
+            return_type=return_type or "void",
+            modifiers=modifiers,
+            is_static="static" in modifiers,
+            is_private="private" in modifiers,
+            is_public="public" in modifiers,
+            visibility=visibility,
+            docstring=ctx.extract_comment_for_line(start_line),
+            complexity_score=ctx.calculate_complexity(node),
+        )
+    except (AttributeError, ValueError, TypeError) as exc:
+        log_debug(f"Failed to extract function info: {exc}")
+        return None
+    except Exception as exc:
+        log_error(f"Unexpected error in function extraction: {exc}")
+        return None
+
+
+def extract_cpp_class(
+    node: Any,
+    context: CppClassExtractionContext | Callable[..., str],
+    *legacy_args: Any,
+) -> Class | None:
+    """Extract C++ class, struct, or union information."""
+    try:
+        ctx = _class_context(context, *legacy_args)
+        class_name, superclasses = _class_parts(
+            node, ctx.get_node_text, ctx.extract_base_classes
+        )
+        if not class_name:
+            return None
+
+        start_line = node.start_point[0] + 1
+        end_line = node.end_point[0] + 1
+        full_qualified_name = (
+            f"{ctx.current_namespace}::{class_name}"
+            if ctx.current_namespace
+            else class_name
+        )
+
+        return Class(
+            name=class_name,
+            start_line=start_line,
+            end_line=end_line,
+            raw_text=_source_slice(ctx.content_lines, start_line, end_line),
+            language="cpp",
+            class_type="class",
+            full_qualified_name=full_qualified_name,
+            package_name=ctx.current_namespace,
+            superclass=superclasses[0] if superclasses else None,
+            interfaces=superclasses[1:] if len(superclasses) > 1 else [],
+            modifiers=[],
+            docstring=ctx.extract_comment_for_line(start_line),
+        )
+    except Exception as exc:
+        log_debug(f"Failed to extract class info: {exc}")
+        return None
+
+
+def _function_context(
+    context: CppFunctionExtractionContext | Callable[..., str],
+    *legacy_args: Any,
+) -> CppFunctionExtractionContext:
+    if isinstance(context, CppFunctionExtractionContext):
+        return context
+    if len(legacy_args) != 7:
+        raise TypeError("Expected CppFunctionExtractionContext or legacy arguments")
+    return CppFunctionExtractionContext(
+        content_lines=legacy_args[0],
+        parse_function_signature=legacy_args[2],
+        calculate_complexity=legacy_args[3],
+        is_global_scope=legacy_args[4],
+        determine_visibility=legacy_args[5],
+        extract_comment_for_line=legacy_args[6],
+    )
+
+
+def _class_context(
+    context: CppClassExtractionContext | Callable[..., str],
+    *legacy_args: Any,
+) -> CppClassExtractionContext:
+    if isinstance(context, CppClassExtractionContext):
+        return context
+    if len(legacy_args) != 4:
+        raise TypeError("Expected CppClassExtractionContext or legacy arguments")
+    return CppClassExtractionContext(
+        get_node_text=context,
+        content_lines=legacy_args[0],
+        current_namespace=legacy_args[1],
+        extract_base_classes=legacy_args[2],
+        extract_comment_for_line=legacy_args[3],
+    )
+
+
+def _class_parts(
+    node: Any,
+    get_node_text: Callable[..., str],
+    extract_base_classes: Callable,
+) -> tuple[str | None, list[str]]:
+    class_name = None
+    superclasses: list[str] = []
+    for child in node.children:
+        if child.type == "type_identifier":
+            class_name = get_node_text(child)
+        elif child.type == "base_class_clause":
+            superclasses = extract_base_classes(child)
+    return class_name, superclasses
+
+
+def _source_slice(content_lines: list[str], start_line: int, end_line: int) -> str:
+    start_line_idx = max(0, start_line - 1)
+    end_line_idx = min(len(content_lines), end_line)
+    return "\n".join(content_lines[start_line_idx:end_line_idx])

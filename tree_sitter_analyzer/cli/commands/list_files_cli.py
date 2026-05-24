@@ -30,11 +30,15 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     # Output
+    # F2: ``--format`` is accepted as an alias for ``--output-format`` so that
+    # callers can use the same flag name across the main CLI and subcommands.
     parser.add_argument(
         "--output-format",
+        "--format",
+        dest="output_format",
         choices=["json", "text", "toon"],
         default="json",
-        help="Output format: 'json' (default), 'text', or 'toon' (50-70%% token reduction)",
+        help="Output format: 'json' (default), 'text', or 'toon' (50-70%% token reduction). Alias: --format",
     )
     parser.add_argument(
         "--quiet",
@@ -113,7 +117,13 @@ async def _run(args: argparse.Namespace) -> int:
     try:
         result = await tool.execute(payload)
         output_data(result, args.output_format)
-        return 0 if (isinstance(result, dict) and result.get("success", True)) else 0
+        # Honour ``success`` in the response envelope so ``set -e`` and CI
+        # steps see a non-zero exit when the tool reports failure.
+        # ``result.get("success", True)`` default-True keeps int/other
+        # non-dict shapes (e.g. count-only mode) at RC=0.
+        if isinstance(result, dict) and result.get("success", True) is False:
+            return 1
+        return 0
     except Exception as e:
         output_error(str(e))
         return 1

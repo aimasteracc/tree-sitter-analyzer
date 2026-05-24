@@ -101,7 +101,8 @@ def test_rg_13_hidden_and_no_ignore_flags(tmp_path):
         files_from=None,
         count_only_matches=False,
     )
-    assert "-H" in cmd
+    # Pain #27: hidden flag is --hidden (long form), not -H.
+    assert "--hidden" in cmd
     assert "-u" in cmd
 
 
@@ -440,7 +441,8 @@ def test_rg_24_globs_with_flags_combined(tmp_path):
         files_from=None,
         count_only_matches=False,
     )
-    assert "-L" in cmd and "-H" in cmd and "-u" in cmd
+    # Pain #27: hidden=True now produces --hidden (long form) instead of -H.
+    assert "-L" in cmd and "--hidden" in cmd and "-u" in cmd
     assert any(cmd[i] == "-g" and cmd[i + 1] == "*.py" for i in range(len(cmd) - 1))
     assert any(
         cmd[i] == "-g" and cmd[i + 1] == "!*_test.py" for i in range(len(cmd) - 1)

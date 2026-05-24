@@ -309,10 +309,13 @@ async def test_rg_36_context_lines_flags(monkeypatch, tmp_path):
 @pytest.mark.asyncio
 async def test_rg_37_validate_arguments_errors(tmp_path):
     tool = SearchContentTool(str(tmp_path))
+    # query missing (regardless of project_root) → ValueError
     with pytest.raises(ValueError):
         tool.validate_arguments({"roots": [str(tmp_path)]})
+    # roots missing AND no project_root → ValueError
+    no_root_tool = SearchContentTool(None)
     with pytest.raises(ValueError):
-        tool.validate_arguments({"query": "x"})
+        no_root_tool.validate_arguments({"query": "x"})
 
 
 @pytest.mark.unit

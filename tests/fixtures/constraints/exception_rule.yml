@@ -1,0 +1,15 @@
+# Exception-suppression fixture.
+#
+# The rule forbids mcp -> cli, but ``mcp/bridge.py`` is whitelisted via
+# exceptions: it acts as the legitimate seam between the two layers and
+# must not produce a violation.
+version: 1
+constraints:
+  - id: mcp-cli-with-bridge-exception
+    severity: error
+    rule: forbid
+    from: "mcp/**"
+    to: "cli/**"
+    reason: "MCP must not call CLI except through the documented bridge."
+    exceptions:
+      - "mcp/bridge.py"

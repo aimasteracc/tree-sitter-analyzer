@@ -15,9 +15,9 @@ Features:
 
 import hashlib
 import json
-import subprocess
+import subprocess  # nosec
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -70,8 +70,38 @@ class AnalysisSession:
 
         Raises:
             ValueError: 输入验证失败时抛出
+
+        r37el (dogfood): 76→~20 lines. Validation moved to
+        ``_validate_session_inputs``; UUID/timestamp build moved to
+        ``_make_session_id``; git-commit resolution moved to
+        ``_resolve_git_commit``.
         """
-        # 输入验证
+        self._validate_session_inputs(
+            input_files, output_format, token_count_before, token_count_after
+        )
+
+        self.session_id, self.timestamp = self._make_session_id()
+
+        # 基本信息
+        self.input_files = input_files
+        self.output_format = output_format
+        self.tools_used = tools_used or []
+        self.token_count_before = token_count_before
+        self.token_count_after = token_count_after
+
+        self.file_hashes = self._calculate_file_hashes(input_files)
+        self.git_commit: str | None = self._resolve_git_commit(
+            git_commit, auto_detect_git_commit
+        )
+
+    @staticmethod
+    def _validate_session_inputs(
+        input_files: list[str],
+        output_format: str,
+        token_count_before: int | None,
+        token_count_after: int | None,
+    ) -> None:
+        """Reject empty input list / unknown format / negative token counts."""
         if not input_files:
             raise ValueError("input_files cannot be empty")
 
@@ -84,39 +114,32 @@ class AnalysisSession:
 
         if token_count_before is not None and token_count_before < 0:
             raise ValueError("Token counts cannot be negative")
-
         if token_count_after is not None and token_count_after < 0:
             raise ValueError("Token counts cannot be negative")
 
-        # 生成 session ID: YYYYMMDD-HHMMSS-uuid4
-        now = datetime.utcnow()
+    @staticmethod
+    def _make_session_id() -> tuple[str, str]:
+        """Return ``(session_id, iso_timestamp)`` — UTC-stamped with UUID4 suffix.
+
+        Uses ``timezone.utc`` (cross-version-safe; ``datetime.UTC`` is 3.11+
+        only). The timestamp keeps the legacy ``...Z`` suffix that older
+        session readers expect.
+        """
+        now = datetime.now(timezone.utc)
         timestamp_part = now.strftime("%Y%m%d-%H%M%S")
-        uuid_part = str(uuid4())
-        self.session_id = f"{timestamp_part}-{uuid_part}"
+        session_id = f"{timestamp_part}-{uuid4()}"
+        iso_timestamp = now.replace(tzinfo=None).isoformat() + "Z"
+        return session_id, iso_timestamp
 
-        # ISO 8601 timestamp
-        self.timestamp = now.isoformat() + "Z"
-
-        # 基本信息
-        self.input_files = input_files
-        self.output_format = output_format
-        self.tools_used = tools_used or []
-        self.token_count_before = token_count_before
-        self.token_count_after = token_count_after
-
-        # 计算文件 hash
-        self.file_hashes = self._calculate_file_hashes(input_files)
-
-        # Git commit
-        self.git_commit: str | None
+    def _resolve_git_commit(
+        self, git_commit: str | None, auto_detect: bool
+    ) -> str | None:
+        """Pick the git commit string: explicit arg > auto-detect > None."""
         if git_commit:
-            # 手动提供的 git_commit 优先
-            self.git_commit = git_commit
-        elif auto_detect_git_commit:
-            # 自动检测 git commit
-            self.git_commit = self._detect_git_commit()
-        else:
-            self.git_commit = None
+            return git_commit
+        if auto_detect:
+            return self._detect_git_commit()
+        return None
 
     @property
     def token_savings_pct(self) -> float | None:
@@ -153,37 +176,42 @@ class AnalysisSession:
         Returns:
             {file_path: sha256_hash} 字典，文件不存在时 hash 为 None
         """
+        # r37do (dogfood): flattened nesting 6 → 3 by extracting the
+        # single-file hash logic into _hash_one_file (which returns the
+        # digest or None when the file can't be read).
         hashes: dict[str, str | None] = {}
         for file_path in file_paths:
-            path = Path(file_path)
-            if not path.exists():
-                hashes[file_path] = None
-                continue
-
-            try:
-                current_mtime = path.stat().st_mtime
-
-                # mtime キャッシュチェック
-                cached = _file_hash_cache.get(file_path)
-                if cached is not None:
-                    cached_mtime, cached_hash = cached
-                    if cached_mtime == current_mtime:
-                        hashes[file_path] = cached_hash
-                        continue
-
-                # キャッシュミス：SHA256 を計算してキャッシュに保存
-                sha256_hash = hashlib.sha256()
-                with open(path, "rb") as f:
-                    for chunk in iter(lambda: f.read(8192), b""):
-                        sha256_hash.update(chunk)
-                digest = sha256_hash.hexdigest()
-                _file_hash_cache[file_path] = (current_mtime, digest)
-                hashes[file_path] = digest
-
-            except Exception:
-                hashes[file_path] = None
-
+            hashes[file_path] = self._hash_one_file(file_path)
         return hashes
+
+    @staticmethod
+    def _hash_one_file(file_path: str) -> str | None:
+        """Return SHA256 digest of ``file_path``, using the mtime cache.
+
+        Cache hit fast-path: when ``_file_hash_cache`` carries a row
+        whose ``mtime`` matches the current ``st_mtime``, return the
+        stored digest without reading the file. Otherwise stream the
+        file in 8 KiB chunks, hash, and refresh the cache. ``None`` is
+        returned on missing files or read errors.
+        """
+        path = Path(file_path)
+        if not path.exists():
+            return None
+        try:
+            current_mtime = path.stat().st_mtime
+            cached = _file_hash_cache.get(file_path)
+            if cached is not None and cached[0] == current_mtime:
+                cached_digest: str | None = cached[1]
+                return cached_digest
+            sha256_hash = hashlib.sha256()
+            with open(path, "rb") as f:
+                for chunk in iter(lambda: f.read(8192), b""):
+                    sha256_hash.update(chunk)
+            digest = sha256_hash.hexdigest()
+            _file_hash_cache[file_path] = (current_mtime, digest)
+            return digest
+        except Exception:
+            return None
 
     def _detect_git_commit(self) -> str | None:
         """
@@ -202,7 +230,10 @@ class AnalysisSession:
                 return cached_hash
 
         try:
-            result = subprocess.run(
+            # ``git`` is resolved via $PATH (standard project tooling); the
+            # argument list is static and no shell expansion happens, so
+            # this is safe even without a fully-qualified executable path.
+            result = subprocess.run(  # nosec
                 ["git", "rev-parse", "HEAD"],
                 capture_output=True,
                 text=True,

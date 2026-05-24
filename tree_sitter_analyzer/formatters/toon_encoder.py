@@ -14,7 +14,13 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Any
 
-# Logger for TOON encoder
+from ._toon_encoder_string_helpers import escape_string, needs_quotes
+from ._toon_encoder_table_helpers import (
+    encode_array_table_lines,
+    encode_public_array_table,
+)
+from ._toon_encoder_task_helpers import build_task_handlers
+
 logger = logging.getLogger(__name__)
 
 
@@ -75,6 +81,49 @@ class _Task:
     is_inline: bool = False  # For inline list values
 
 
+# Threshold above which a flat ``list[str]`` renders as a single-column
+# TOON array-table instead of an inline ``[a,b,c]`` blob.
+#
+# Short lists (≤5) keep the inline form because they fit comfortably on one
+# line and the table header (`[N]{col}:`) would cost more tokens than it
+# saves. Long lists are switched to the table form so they don't collapse
+# into a long, hard-to-scan, easy-to-truncate inline value.
+#
+# Round-14b bug M9: with the inline form, downstream tooling truncated
+# ``downstream_files: [a,b,c,...,z]`` mid-content because it looked like
+# a single long string. The table form makes one item per line, which is
+# both more scannable and more truncation-friendly (truncates at row
+# boundaries, not mid-string).
+_FLAT_STR_LIST_THRESHOLD = 5
+
+
+_LIST_STR_COLUMN_NAMES = {
+    # Map common dict-key suffixes to the column label we use when the
+    # value is a flat ``list[str]`` rendered as a single-column array-table.
+    "files": "path",
+    "_files": "path",
+    "paths": "path",
+    "_paths": "path",
+    "modules": "module",
+    "imports": "import",
+}
+
+
+def _pick_list_str_column_name(key: str | None) -> str:
+    """Choose a single-column header for a flat ``list[str]`` value.
+
+    Uses the parent dict key to pick a semantic label (``path`` for
+    ``downstream_files``, ``import`` for ``imports``, etc.). Falls back
+    to ``item`` for unknown keys so the schema is always well-formed.
+    """
+    if not key:
+        return "item"
+    for suffix, column in _LIST_STR_COLUMN_NAMES.items():
+        if key.endswith(suffix):
+            return column
+    return "item"
+
+
 class ToonEncoder:
     """
     Low-level encoder for TOON format.
@@ -89,27 +138,7 @@ class ToonEncoder:
         - Detailed error logging
     """
 
-    # Maximum nesting depth to prevent memory exhaustion
     MAX_DEPTH = 100
-
-    # 紧凑数组格式常量 (Compact array format constants)
-    COMPACT_MAX_FIELDS = 5  # 最多保留 5 个字段
-    COMPACT_LIST_LIMIT = 3  # 列表最多显示 3 个元素
-    COMPACT_STRING_LIMIT = 20  # 普通字符串截断阈值
-    COMPACT_STRING_TRUNCATE = 17  # 普通字符串截断长度
-    COMPACT_DOCSTRING_LIMIT = 60  # Docstring 截断阈值
-    COMPACT_DOCSTRING_TRUNCATE = 57  # Docstring 截断长度
-    COMPACT_VALUE_DELIMITER = "|"  # 值分隔符
-
-    # 紧凑数组字段优先级 (Field priority for compact arrays)
-    # 优先选择语义理解最重要的字段
-    COMPACT_PRIORITY_KEYS = [
-        "name",        # 10/10 - 最重要：函数/类名称
-        "docstring",   # 9/10 - 语义理解关键
-        "parameters",  # 8/10 - 函数签名重要信息
-        "return_type", # 7/10 - 类型信息
-        "line_start",  # 3/10 - 位置信息（用于跳转）
-    ]
 
     def __init__(
         self,
@@ -133,8 +162,6 @@ class ToonEncoder:
         self.fallback_to_json = fallback_to_json
         self.max_depth = max_depth
         self.normalize_paths = normalize_paths
-        # 性能优化：缓存同构数组检测结果 (Performance: cache homogeneity checks)
-        self._homogeneity_cache: dict[int, bool] = {}
 
     def encode(self, data: Any, indent: int = 0) -> str:
         """
@@ -183,16 +210,10 @@ class ToonEncoder:
         Raises:
             ToonEncodeError: On circular reference or max depth exceeded
         """
-        # Track seen object IDs for circular reference detection
         seen_ids: set[int] = set()
-
-        # Output lines
         output: list[str] = []
-
-        # Task stack (LIFO)
         stack: list[_Task] = []
 
-        # Initialize with root task
         if isinstance(data, dict):
             stack.append(_Task(_TaskType.ENCODE_DICT_START, data, initial_indent))
         elif isinstance(data, list):
@@ -200,41 +221,18 @@ class ToonEncoder:
         else:
             return self.encode_value(data, seen_ids)
 
-        # Process tasks iteratively
+        task_handlers = build_task_handlers(_TaskType, self, stack, output, seen_ids)
+
         while stack:
             task = stack.pop()
 
-            # Check depth limit
             if task.indent > self.max_depth:
                 raise ToonEncodeError(
                     f"Maximum nesting depth ({self.max_depth}) exceeded",
                     data="<truncated>",
                 )
 
-            if task.task_type == _TaskType.ENCODE_DICT_START:
-                self._handle_dict_start(task, stack, output, seen_ids)
-
-            elif task.task_type == _TaskType.ENCODE_DICT_KEY:
-                self._handle_dict_key(task, stack, output, seen_ids)
-
-            elif task.task_type == _TaskType.ENCODE_LIST_START:
-                self._handle_list_start(task, stack, output, seen_ids)
-
-            elif task.task_type == _TaskType.ENCODE_LIST_ITEM:
-                self._handle_list_item(task, stack, output, seen_ids)
-
-            elif task.task_type == _TaskType.ENCODE_ARRAY_TABLE:
-                self._handle_array_table(task, output, seen_ids)
-
-            elif task.task_type == _TaskType.ENCODE_DICT_END:
-                # Remove from seen_ids
-                obj_id = id(task.data)
-                seen_ids.discard(obj_id)
-
-            elif task.task_type == _TaskType.ENCODE_LIST_END:
-                # Remove from seen_ids
-                obj_id = id(task.data)
-                seen_ids.discard(obj_id)
+            task_handlers[task.task_type](task)
 
         return "\n".join(output)
 
@@ -249,11 +247,14 @@ class ToonEncoder:
         data = task.data
         obj_id = id(data)
 
-        # Check for circular reference (优雅降级：返回占位符)
+        # Circular reference — degrade gracefully so the encoder still
+        # produces a valid (truncated) TOON string instead of raising and
+        # taking down the whole response. Callers that need the strict
+        # behavior can still see ``"[...]"`` in the output.
         if obj_id in seen_ids:
-            indent_str = " " * (task.indent * 2)
+            indent_str = "  " * task.indent
             output.append(f"{indent_str}[...]")
-            return  # 跳过后续处理
+            return
         seen_ids.add(obj_id)
 
         # Add end task first (will be processed last)
@@ -288,12 +289,29 @@ class ToonEncoder:
             # Nested dict
             output.append(f"{indent_str}{key}:")
             stack.append(_Task(_TaskType.ENCODE_DICT_START, value, indent + 1))
-        elif isinstance(value, list) and self._is_homogeneous_dict_array(value):
-            # Homogeneous array of dicts - use table format (使用增强的检测)
+        elif isinstance(value, list) and value and isinstance(value[0], dict):
+            # Homogeneous array of dicts - use table format
             output.append(f"{indent_str}{key}:")
             stack.append(_Task(_TaskType.ENCODE_ARRAY_TABLE, value, indent + 1))
+        elif (
+            isinstance(value, list)
+            and len(value) > _FLAT_STR_LIST_THRESHOLD
+            and all(isinstance(item, str) for item in value)
+        ):
+            # Long flat list[str] — render as single-column TOON array-table
+            # instead of an inline ``[a,b,c,...]`` blob. The inline form
+            # collapses into one long, hard-to-scan, easy-to-truncate value
+            # (round-14b M9). One item per line is both more scannable and
+            # truncation-friendly (truncates at row boundaries).
+            column = _pick_list_str_column_name(key)
+            output.append(f"{indent_str}{key}:")
+            child_indent_str = "  " * (indent + 1)
+            output.append(f"{child_indent_str}[{len(value)}]{{{column}}}:")
+            row_indent_str = "  " * (indent + 2)
+            for item in value:
+                output.append(f"{row_indent_str}{self.encode_value(item, seen_ids)}")
         elif isinstance(value, list):
-            # Simple list - encode inline
+            # Short list or non-string list - encode inline
             encoded_list = self._encode_simple_list(value, seen_ids)
             output.append(f"{indent_str}{key}: {encoded_list}")
         else:
@@ -313,17 +331,22 @@ class ToonEncoder:
             output.append("[]")
             return
 
-        # Check if homogeneous array of dicts (使用增强的检测)
-        if self._is_homogeneous_dict_array(items):
-            stack.append(_Task(_TaskType.ENCODE_ARRAY_TABLE, items, task.indent))
-            return
+        # Use the array-table format ONLY for *homogeneous* dict arrays
+        # (every item is a dict AND shares the same key set). A mixed-key
+        # list like ``[{"a": 1}, {"b": 2}]`` would silently drop entries
+        # under the table schema, so encode those inline instead.
+        if items and all(isinstance(item, dict) for item in items):
+            first_keys = tuple(items[0].keys())
+            if all(tuple(item.keys()) == first_keys for item in items):
+                stack.append(_Task(_TaskType.ENCODE_ARRAY_TABLE, items, task.indent))
+                return
 
         obj_id = id(items)
 
-        # Check for circular reference (优雅降级：返回占位符)
+        # Circular list — degrade gracefully (see _handle_dict_start).
         if obj_id in seen_ids:
             output.append("[...]")
-            return  # 跳过后续处理
+            return
         seen_ids.add(obj_id)
 
         # For simple lists, encode inline
@@ -368,162 +391,28 @@ class ToonEncoder:
 
         obj_id = id(items)
 
-        # Check for circular reference (优雅降级：返回占位符)
+        # Circular array-table — degrade gracefully (see _handle_dict_start).
         if obj_id in seen_ids:
             indent_str = "  " * indent
             output.append(f"{indent_str}[...]")
-            return  # 跳过后续处理
+            return
         seen_ids.add(obj_id)
 
         try:
-            # Infer schema from first item
             schema = list(items[0].keys())
             indent_str = "  " * indent
-
-            # Build schema string with tuple/list type annotations
-            schema_parts = []
-            for key in schema:
-                first_value = items[0].get(key)
-                # 检查是否是同构数组（优先级高于 tuple 检测）
-                if isinstance(first_value, list) and self._is_homogeneous_dict_array(first_value):
-                    # 同构数组，不需要在 schema 中标注
-                    schema_parts.append(key)
-                elif isinstance(first_value, tuple | list) and len(first_value) == 2:
-                    # Compact tuple format: field_name(a,b)
-                    schema_parts.append(f"{key}(a,b)")
-                elif isinstance(first_value, dict):
-                    # Compact dict format: field_name{keys}
-                    dict_keys = self.delimiter.join(first_value.keys())
-                    schema_parts.append(f"{key}{{{dict_keys}}}")
-                else:
-                    schema_parts.append(key)
-
-            schema_str = self.delimiter.join(schema_parts)
-            output.append(f"{indent_str}[{len(items)}]{{{schema_str}}}:")
-
-            # Rows
-            for item in items:
-                row_values = []
-                for key in schema:
-                    value = item.get(key, "")
-                    # 检查是否是同构数组（优先级高于 tuple 检测）
-                    if isinstance(value, list) and self._is_homogeneous_dict_array(value):
-                        # 同构数组：使用紧凑的单行 Array Table 格式
-                        compact = self._encode_compact_homogeneous_array(value, seen_ids)
-                        row_values.append(compact)
-                    elif isinstance(value, tuple | list) and len(value) == 2:
-                        # Compact tuple: (a,b)
-                        row_values.append(f"({value[0]},{value[1]})")
-                    elif isinstance(value, dict):
-                        # Compact dict: values only
-                        dict_values = self.delimiter.join(
-                            str(self.encode_value(v, seen_ids)) for v in value.values()
-                        )
-                        row_values.append(f"({dict_values})")
-                    elif isinstance(value, str):
-                        # 仅对"长内容"字段（docstring、description 等）进行截断
-                        # 结构化字段（name、type、visibility 等）保持完整
-                        if key in ("docstring", "description", "content", "comment", "body", "text", "message"):
-                            row_values.append(self._simplify_compact_value(value))
-                        else:
-                            row_values.append(self.encode_value(value, seen_ids))
-                    else:
-                        row_values.append(self.encode_value(value, seen_ids))
-                row = self.delimiter.join(row_values)
-                output.append(f"{indent_str}  {row}")
+            output.extend(
+                encode_array_table_lines(
+                    items,
+                    schema,
+                    self.delimiter,
+                    indent_str,
+                    self.encode_value,
+                    seen_ids,
+                )
+            )
         finally:
             seen_ids.discard(obj_id)
-
-    def _encode_compact_homogeneous_array(
-        self, items: list[dict[str, Any]], seen_ids: set[int]
-    ) -> str:
-        """
-        编码同构数组为紧凑的单行 Array Table 格式。
-
-        用于在 Array Table 单元格中显示嵌套的同构数组。
-
-        格式: [N]<k1,k2,...>(v1|v2|...,v1|v2|...,...)
-
-        Args:
-            items: 同构 dict 数组
-            seen_ids: 已见对象 ID 集合
-
-        Returns:
-            紧凑的单行字符串
-        """
-        if not items:
-            return "[]"
-
-        # 检测循环引用（防止栈溢出）
-        items_id = id(items)
-        if items_id in seen_ids:
-            return "[...]"
-
-        # 推断 schema（使用 _infer_schema 避免重复逻辑）
-        schema = self._infer_schema(items)
-
-        # 只保留关键字段（最多 COMPACT_MAX_FIELDS 个字段）
-        # 优先级：name (10/10), docstring (9/10), parameters (8/10), return_type (7/10), line_start (3/10)
-        selected_keys = []
-        for pk in self.COMPACT_PRIORITY_KEYS:
-            if pk in schema:
-                selected_keys.append(pk)
-                if len(selected_keys) >= self.COMPACT_MAX_FIELDS:
-                    break
-
-        # 如果没有优先字段，使用前 COMPACT_MAX_FIELDS 个
-        if not selected_keys:
-            selected_keys = schema[: self.COMPACT_MAX_FIELDS]
-
-        # 构建紧凑格式: [N]<k1,k2,...>(v1|v2|...,v1|v2|...,...)
-        parts = []
-        for item in items:
-            values = []
-            for key in selected_keys:
-                value = item.get(key, "")
-                # 简化值的表示（使用专门方法处理 docstring 和其他类型）
-                simplified = self._simplify_compact_value(value)
-                values.append(simplified)
-            parts.append(self.COMPACT_VALUE_DELIMITER.join(values))
-
-        keys_str = ",".join(selected_keys)
-        values_str = ",".join(f"({p})" for p in parts)
-
-        return f"[{len(items)}]<{keys_str}>({values_str})"
-
-    def _simplify_compact_value(self, value: Any) -> str:
-        """
-        简化值的表示用于紧凑数组格式。
-
-        对不同类型的值进行截断和简化：
-        - 列表：最多保留前 N 个元素
-        - Docstring：根据长度选择性截断（保留更多信息）
-        - 普通字符串：较短截断阈值
-        - 其他：转为字符串
-
-        Args:
-            value: 要简化的值
-
-        Returns:
-            简化后的字符串表示
-        """
-        if isinstance(value, list):
-            # 列表用逗号分隔，最多显示 COMPACT_LIST_LIMIT 个元素
-            return ",".join(str(v) for v in value[: self.COMPACT_LIST_LIMIT])
-        elif isinstance(value, str):
-            # 区分 docstring 和普通字符串
-            # Docstring 通常较长，允许更多字符
-            if "docstring" in str(type(value)).lower() or len(value) > self.COMPACT_DOCSTRING_LIMIT:
-                # Docstring：使用较大的截断阈值
-                if len(value) > self.COMPACT_DOCSTRING_LIMIT:
-                    return value[: self.COMPACT_DOCSTRING_TRUNCATE] + "..."
-            else:
-                # 普通字符串：使用较小的截断阈值
-                if len(value) > self.COMPACT_STRING_LIMIT:
-                    return value[: self.COMPACT_STRING_TRUNCATE] + "..."
-            return value
-        else:
-            return str(value)
 
     def _encode_simple_list(self, items: list[Any], seen_ids: set[int]) -> str:
         """
@@ -541,31 +430,25 @@ class ToonEncoder:
 
         encoded_items = []
         for item in items:
-            if isinstance(item, list):
-                obj_id = id(item)
-                if obj_id in seen_ids:
-                    # 优雅降级：添加占位符
-                    encoded_items.append("[...]")
-                else:
-                    seen_ids.add(obj_id)
-                    try:
-                        encoded_items.append(self._encode_simple_list(item, seen_ids))
-                    finally:
-                        seen_ids.discard(obj_id)
-            elif isinstance(item, dict):
-                obj_id = id(item)
-                if obj_id in seen_ids:
-                    # 优雅降级：添加占位符
-                    encoded_items.append("{...}")
-                else:
-                    # For dicts in simple lists, use JSON-like format
-                    seen_ids.add(obj_id)
-                    try:
-                        encoded_items.append(self._encode_inline_dict(item, seen_ids))
-                    finally:
-                        seen_ids.discard(obj_id)
-            else:
+            if not isinstance(item, list | dict):
                 encoded_items.append(self.encode_value(item, seen_ids))
+                continue
+
+            obj_id = id(item)
+            if obj_id in seen_ids:
+                # Degrade gracefully on nested cycles (see _handle_dict_start).
+                encoded_items.append("[...]")
+                continue
+
+            seen_ids.add(obj_id)
+            try:
+                if isinstance(item, list):
+                    encoded_item = self._encode_simple_list(item, seen_ids)
+                else:
+                    encoded_item = self._encode_inline_dict(item, seen_ids)
+                encoded_items.append(encoded_item)
+            finally:
+                seen_ids.discard(obj_id)
 
         return f"[{self.delimiter.join(encoded_items)}]"
 
@@ -585,32 +468,24 @@ class ToonEncoder:
 
         pairs = []
         for key, value in data.items():
-            if isinstance(value, dict):
-                obj_id = id(value)
-                if obj_id in seen_ids:
-                    pairs.append(f"{key}:<circular>")
-                else:
-                    seen_ids.add(obj_id)
-                    try:
-                        pairs.append(
-                            f"{key}:{self._encode_inline_dict(value, seen_ids)}"
-                        )
-                    finally:
-                        seen_ids.discard(obj_id)
-            elif isinstance(value, list):
-                obj_id = id(value)
-                if obj_id in seen_ids:
-                    pairs.append(f"{key}:<circular>")
-                else:
-                    seen_ids.add(obj_id)
-                    try:
-                        pairs.append(
-                            f"{key}:{self._encode_simple_list(value, seen_ids)}"
-                        )
-                    finally:
-                        seen_ids.discard(obj_id)
-            else:
+            if not isinstance(value, dict | list):
                 pairs.append(f"{key}:{self.encode_value(value, seen_ids)}")
+                continue
+
+            obj_id = id(value)
+            if obj_id in seen_ids:
+                pairs.append(f"{key}:<circular>")
+                continue
+
+            seen_ids.add(obj_id)
+            try:
+                if isinstance(value, dict):
+                    encoded_value = self._encode_inline_dict(value, seen_ids)
+                else:
+                    encoded_value = self._encode_simple_list(value, seen_ids)
+                pairs.append(f"{key}:{encoded_value}")
+            finally:
+                seen_ids.discard(obj_id)
 
         return "{" + self.delimiter.join(pairs) + "}"
 
@@ -643,24 +518,21 @@ class ToonEncoder:
         """
         if value is None:
             return "null"
-        elif isinstance(value, bool):
+        if isinstance(value, bool):
             return "true" if value else "false"
-        elif isinstance(value, int | float):
+        if isinstance(value, int | float):
             return str(value)
-        elif isinstance(value, str):
+        if isinstance(value, str):
             return self._encode_string(value)
-        elif isinstance(value, dict):
-            # Encode dict inline using TOON format
+        if isinstance(value, dict):
             if seen_ids is None:
                 seen_ids = set()
             return self._encode_inline_dict(value, seen_ids)
-        elif isinstance(value, list):
-            # Encode list inline using TOON format
+        if isinstance(value, list):
             if seen_ids is None:
                 seen_ids = set()
             return self._encode_simple_list(value, seen_ids)
-        else:
-            return str(value)
+        return str(value)
 
     def _encode_string(self, s: str) -> str:
         """
@@ -683,36 +555,7 @@ class ToonEncoder:
         if self.normalize_paths:
             s = self._normalize_path_string(s)
 
-        # Check if quoting is needed
-        needs_quotes = any(
-            c in s
-            for c in [
-                self.delimiter,
-                "\n",
-                "\r",
-                "\t",
-                "\\",
-                ":",
-                "{",
-                "}",
-                "[",
-                "]",
-                '"',
-            ]
-        )
-
-        if needs_quotes:
-            # Apply escape sequences (order matters: backslash first)
-            escaped = (
-                s.replace("\\", "\\\\")  # Backslash must be first
-                .replace('"', '\\"')  # Quote
-                .replace("\n", "\\n")  # Newline
-                .replace("\r", "\\r")  # Carriage return
-                .replace("\t", "\\t")
-            )  # Tab
-            return f'"{escaped}"'
-
-        return s
+        return escape_string(s) if needs_quotes(s, self.delimiter) else s
 
     def _normalize_path_string(self, s: str) -> str:
         """
@@ -829,134 +672,14 @@ class ToonEncoder:
         Returns:
             TOON-formatted table string
         """
-        if not items:
-            return "[]"
-
-        # Infer schema from first item if not provided
-        if schema is None:
-            schema = self._infer_schema(items)
-
-        lines = []
-        indent_str = "  " * indent
-
-        # Build schema string with tuple/list type annotations
-        schema_parts = []
-        for key in schema:
-            first_value = items[0].get(key) if items else None
-            if isinstance(first_value, tuple | list) and len(first_value) == 2:
-                schema_parts.append(f"{key}(a,b)")
-            elif isinstance(first_value, dict):
-                dict_keys = self.delimiter.join(first_value.keys())
-                schema_parts.append(f"{key}{{{dict_keys}}}")
-            else:
-                schema_parts.append(key)
-
-        schema_str = self.delimiter.join(schema_parts)
-        lines.append(f"{indent_str}[{len(items)}]{{{schema_str}}}:")
-
-        # Rows - use set() for seen_ids since this is a public API without tracking
-        seen_ids: set[int] = set()
-        for item in items:
-            row_values = []
-            for key in schema:
-                value = item.get(key, "")
-                if isinstance(value, tuple | list) and len(value) == 2:
-                    row_values.append(f"({value[0]},{value[1]})")
-                elif isinstance(value, dict):
-                    dict_values = self.delimiter.join(
-                        str(self.encode_value(v, seen_ids)) for v in value.values()
-                    )
-                    row_values.append(f"({dict_values})")
-                elif isinstance(value, str):
-                    # 仅对"长内容"字段（docstring、description 等）进行截断
-                    # 结构化字段（name、type、visibility 等）保持完整
-                    if key in ("docstring", "description", "content", "comment", "body", "text", "message"):
-                        row_values.append(self._simplify_compact_value(value))
-                    else:
-                        row_values.append(self.encode_value(value, seen_ids))
-                else:
-                    row_values.append(self.encode_value(value, seen_ids))
-            row = self.delimiter.join(row_values)
-            lines.append(f"{indent_str}  {row}")
-
-        return "\n".join(lines)
-
-    def _is_homogeneous_dict_array(
-        self, items: list[Any], min_similarity: float = 0.8
-    ) -> bool:
-        """
-        检测列表是否为同构 dict 数组（适合 Array Table 格式）。
-
-        同构数组的定义：
-        1. 所有元素都是 dict
-        2. 所有 dict 的 keys 至少有 min_similarity 相似度
-
-        Args:
-            items: 要检测的列表
-            min_similarity: 最小键相似度（默认 0.8 = 80%）
-
-        Returns:
-            True 如果是同构 dict 数组
-        """
-        if not items:
-            return False
-
-        # 性能优化：检查缓存
-        items_id = id(items)
-        if items_id in self._homogeneity_cache:
-            cached_result: bool = self._homogeneity_cache[items_id]
-            return cached_result
-
-        # 1. 检查所有元素都是 dict
-        if not all(isinstance(item, dict) for item in items):
-            self._homogeneity_cache[items_id] = False
-            return False
-
-        # 2. 检查 keys 的相似度
-        if len(items) == 1:
-            # 单个元素，肯定同构
-            self._homogeneity_cache[items_id] = True
-            return True
-
-        # 获取第一个 dict 的 keys 作为参考（防御恶意 .keys() 实现）
-        try:
-            first_keys = set(items[0].keys())
-        except (AttributeError, TypeError):
-            self._homogeneity_cache[items_id] = False
-            return False
-
-        if not first_keys:
-            # 空 dict，不适合 Array Table
-            self._homogeneity_cache[items_id] = False
-            return False
-
-        # 检查每个 dict 与第一个的 keys 相似度
-        for item in items[1:]:
-            try:
-                current_keys = set(item.keys())
-            except (AttributeError, TypeError):
-                # 恶意对象或非标准 dict
-                self._homogeneity_cache[items_id] = False
-                return False
-
-            if not current_keys:
-                # 空 dict
-                self._homogeneity_cache[items_id] = False
-                return False
-
-            # 计算 Jaccard 相似度：交集 / 并集
-            intersection = first_keys & current_keys
-            union = first_keys | current_keys
-            similarity = len(intersection) / len(union) if union else 0
-
-            if similarity < min_similarity:
-                # 相似度不足，不同构
-                self._homogeneity_cache[items_id] = False
-                return False
-
-        # 所有检查通过，是同构数组
-        self._homogeneity_cache[items_id] = True
-        return True
+        return encode_public_array_table(
+            items,
+            schema,
+            indent,
+            self.delimiter,
+            self.encode_value,
+            self._infer_schema,
+        )
 
     def _infer_schema(self, items: list[dict[str, Any]]) -> list[str]:
         """

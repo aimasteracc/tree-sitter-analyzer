@@ -13,6 +13,7 @@ Validated against:
 All tests in group A must FAIL before the predicate fix, then PASS after.
 All tests in group B must FAIL before new queries are added, then PASS after.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -24,11 +25,25 @@ PETCLINIC_BASE = Path("/workspaces/claude-source-run-version/spring-petclinic")
 SPRING_BASE = Path("/workspaces/claude-source-run-version/spring-framework")
 CAFFEINE_BASE = Path("/workspaces/claude-source-run-version/caffeine")
 
-OWNER_CONTROLLER = PETCLINIC_BASE / "src/main/java/org/springframework/samples/petclinic/owner/OwnerController.java"
-VET = PETCLINIC_BASE / "src/main/java/org/springframework/samples/petclinic/vet/Vet.java"
-OWNER = PETCLINIC_BASE / "src/main/java/org/springframework/samples/petclinic/owner/Owner.java"
-PROXY_CACHING = SPRING_BASE / "spring-context/src/main/java/org/springframework/cache/annotation/ProxyCachingConfiguration.java"
-BOUNDED_LOCAL_CACHE = CAFFEINE_BASE / "caffeine/src/main/java/com/github/benmanes/caffeine/cache/BoundedLocalCache.java"
+OWNER_CONTROLLER = (
+    PETCLINIC_BASE
+    / "src/main/java/org/springframework/samples/petclinic/owner/OwnerController.java"
+)
+VET = (
+    PETCLINIC_BASE / "src/main/java/org/springframework/samples/petclinic/vet/Vet.java"
+)
+OWNER = (
+    PETCLINIC_BASE
+    / "src/main/java/org/springframework/samples/petclinic/owner/Owner.java"
+)
+PROXY_CACHING = (
+    SPRING_BASE
+    / "spring-context/src/main/java/org/springframework/cache/annotation/ProxyCachingConfiguration.java"
+)
+BOUNDED_LOCAL_CACHE = (
+    CAFFEINE_BASE
+    / "caffeine/src/main/java/com/github/benmanes/caffeine/cache/BoundedLocalCache.java"
+)
 
 pytestmark_petclinic = pytest.mark.skipif(
     not PETCLINIC_BASE.exists(), reason="spring-petclinic not cloned"
@@ -44,34 +59,47 @@ pytestmark_caffeine = pytest.mark.skipif(
 @pytest.fixture(scope="module")
 def petclinic_server():
     from tree_sitter_analyzer.mcp.server import TreeSitterAnalyzerMCPServer
+
     return TreeSitterAnalyzerMCPServer(str(PETCLINIC_BASE))
 
 
 @pytest.fixture(scope="module")
 def spring_server():
     from tree_sitter_analyzer.mcp.server import TreeSitterAnalyzerMCPServer
+
     return TreeSitterAnalyzerMCPServer(str(SPRING_BASE))
 
 
 @pytest.fixture(scope="module")
 def caffeine_server():
     from tree_sitter_analyzer.mcp.server import TreeSitterAnalyzerMCPServer
+
     return TreeSitterAnalyzerMCPServer(str(CAFFEINE_BASE))
 
 
 def run(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
+    # ``asyncio.get_event_loop()`` is deprecated and raises on Python 3.14+
+    # when there's no running loop. ``asyncio.run`` provides a fresh loop.
+    return asyncio.run(coro)
 
 
 def query(server, file_path, query_key):
-    r = run(server.query_tool.execute({
-        "file_path": str(file_path),
-        "query_key": query_key,
-    }))
+    # Default response format is TOON which strips the ``results`` bulk-data
+    # field; the helper asserts on the list directly, so request JSON here.
+    r = run(
+        server.query_tool.execute(
+            {
+                "file_path": str(file_path),
+                "query_key": query_key,
+                "output_format": "json",
+            }
+        )
+    )
     return r.get("results", [])
 
 
 # ── Group A: #match? predicate fix (broken in tree-sitter 0.25) ──────────────
+
 
 @pytest.mark.skipif(not PETCLINIC_BASE.exists(), reason="spring-petclinic not cloned")
 class TestMatchPredicateFix:
@@ -118,7 +146,9 @@ class TestMatchPredicateFix:
         results = query(petclinic_server, OWNER_CONTROLLER, "spring_controller")
         # Each match returns multiple captures (spring_controller, annotation_name,
         # controller_name). Count only the top-level class captures.
-        class_captures = [r for r in results if r.get("capture_name") == "spring_controller"]
+        class_captures = [
+            r for r in results if r.get("capture_name") == "spring_controller"
+        ]
         assert len(class_captures) == 1, (
             f"OwnerController.java has exactly 1 @Controller class. "
             f"Got {len(class_captures)} class captures (total results: {len(results)})"
@@ -126,6 +156,7 @@ class TestMatchPredicateFix:
 
 
 # ── Group B: New query types ──────────────────────────────────────────────────
+
 
 @pytest.mark.skipif(not SPRING_BASE.exists(), reason="spring-framework not cloned")
 class TestSpringBeanQuery:
@@ -141,7 +172,7 @@ class TestSpringBeanQuery:
         )
         assert len(results) >= 3, (
             f"Expected ≥3 @Bean methods, got {len(results)}: "
-            f"{[r.get('content','')[:40] for r in results]}"
+            f"{[r.get('content', '')[:40] for r in results]}"
         )
 
     def test_spring_configuration_finds_proxy_caching(self, spring_server):
@@ -155,7 +186,10 @@ class TestSpringBeanQuery:
     def test_spring_transactional_finds_transactional_methods(self, spring_server):
         """spring_transactional query must find @Transactional annotated methods."""
         # spring-tx has many @Transactional examples
-        tx_file = SPRING_BASE / "spring-tx/src/main/java/org/springframework/transaction/annotation/AnnotationTransactionAttributeSource.java"
+        tx_file = (
+            SPRING_BASE
+            / "spring-tx/src/main/java/org/springframework/transaction/annotation/AnnotationTransactionAttributeSource.java"
+        )
         if not tx_file.exists():
             pytest.skip("Transaction file not found")
         results = query(spring_server, tx_file, "spring_transactional")
@@ -169,7 +203,10 @@ class TestJUnit5Queries:
 
     def test_junit5_test_finds_test_methods(self, petclinic_server):
         """junit5_test must find @Test annotated methods in test files."""
-        test_file = PETCLINIC_BASE / "src/test/java/org/springframework/samples/petclinic/owner/OwnerControllerTests.java"
+        test_file = (
+            PETCLINIC_BASE
+            / "src/test/java/org/springframework/samples/petclinic/owner/OwnerControllerTests.java"
+        )
         if not test_file.exists():
             pytest.skip("Test file not found")
         results = query(petclinic_server, test_file, "junit5_test")
@@ -207,15 +244,25 @@ public record Point(int x, int y) {
 """
         # Write temp file to test
         import tempfile
+
         with tempfile.NamedTemporaryFile(suffix=".java", delete=False) as f:
             f.write(src)
             tmp_path = f.name
 
         import asyncio
         import os
+
         server = TreeSitterAnalyzerMCPServer(os.path.dirname(tmp_path))
-        r = asyncio.get_event_loop().run_until_complete(
-            server.query_tool.execute({"file_path": tmp_path, "query_key": "record_declaration"})
+        # Default response format is TOON which strips ``results``; ask for
+        # JSON so we can assert on ``r["results"]`` directly.
+        r = asyncio.run(
+            server.query_tool.execute(
+                {
+                    "file_path": tmp_path,
+                    "query_key": "record_declaration",
+                    "output_format": "json",
+                }
+            )
         )
         os.unlink(tmp_path)
 

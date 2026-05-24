@@ -270,25 +270,25 @@ class TestYAMLErrorHandlingProperties:
                 result = await plugin.analyze_file(str(yaml_file), request)
 
                 # Property: Result must be returned (not None)
-                assert (
-                    result is not None
-                ), "Parser returned None instead of error result"
+                assert result is not None, (
+                    "Parser returned None instead of error result"
+                )
 
                 # Property: Result should indicate failure or handle gracefully
                 # Note: tree-sitter is very permissive and may parse invalid YAML
                 # The key property is that it doesn't crash
-                assert isinstance(
-                    result.success, bool
-                ), "Result must have success field"
+                assert isinstance(result.success, bool), (
+                    "Result must have success field"
+                )
 
                 # Property: If parsing fails, error message should be present
                 if not result.success:
-                    assert (
-                        result.error_message is not None
-                    ), "Failed result must have error message"
-                    assert (
-                        len(result.error_message) > 0
-                    ), "Error message must not be empty"
+                    assert result.error_message is not None, (
+                        "Failed result must have error message"
+                    )
+                    assert len(result.error_message) > 0, (
+                        "Error message must not be empty"
+                    )
 
             except Exception as e:
                 pytest.fail(
@@ -331,9 +331,9 @@ class TestYAMLErrorHandlingProperties:
 
                 # Property: Result must be returned
                 assert result is not None, "Parser returned None"
-                assert isinstance(
-                    result.success, bool
-                ), "Result must have success field"
+                assert isinstance(result.success, bool), (
+                    "Result must have success field"
+                )
 
                 # Property: Error handling must be graceful
                 if not result.success:
@@ -381,9 +381,9 @@ class TestYAMLErrorHandlingProperties:
 
                 # Property: Result must be returned
                 assert result is not None, "Parser returned None"
-                assert isinstance(
-                    result.success, bool
-                ), "Result must have success field"
+                assert isinstance(result.success, bool), (
+                    "Result must have success field"
+                )
 
                 # Property: Error handling must be graceful
                 if not result.success:
@@ -431,9 +431,9 @@ class TestYAMLErrorHandlingProperties:
 
                 # Property: Result must be returned
                 assert result is not None, "Parser returned None"
-                assert isinstance(
-                    result.success, bool
-                ), "Result must have success field"
+                assert isinstance(result.success, bool), (
+                    "Result must have success field"
+                )
 
                 # Property: Error handling must be graceful
                 if not result.success:
@@ -485,18 +485,18 @@ class TestYAMLErrorHandlingProperties:
                 result = await plugin.analyze_file(str(yaml_file), request)
 
                 # Property 1: Result must always be returned
-                assert (
-                    result is not None
-                ), "Parser must return a result object, not None"
+                assert result is not None, (
+                    "Parser must return a result object, not None"
+                )
 
                 # Property 2: Result must have required fields
                 assert hasattr(result, "success"), "Result must have 'success' field"
-                assert hasattr(
-                    result, "error_message"
-                ), "Result must have 'error_message' field"
-                assert hasattr(
-                    result, "file_path"
-                ), "Result must have 'file_path' field"
+                assert hasattr(result, "error_message"), (
+                    "Result must have 'error_message' field"
+                )
+                assert hasattr(result, "file_path"), (
+                    "Result must have 'file_path' field"
+                )
                 assert hasattr(result, "language"), "Result must have 'language' field"
                 assert hasattr(result, "elements"), "Result must have 'elements' field"
 
@@ -514,15 +514,15 @@ class TestYAMLErrorHandlingProperties:
 
                 # Property 6: If parsing fails, error message must be descriptive
                 if not result.success:
-                    assert (
-                        result.error_message is not None
-                    ), "Failed result must have error message"
-                    assert isinstance(
-                        result.error_message, str
-                    ), "Error message must be string"
-                    assert (
-                        len(result.error_message) > 0
-                    ), "Error message must not be empty"
+                    assert result.error_message is not None, (
+                        "Failed result must have error message"
+                    )
+                    assert isinstance(result.error_message, str), (
+                        "Error message must be string"
+                    )
+                    assert len(result.error_message) > 0, (
+                        "Error message must not be empty"
+                    )
 
                 # Property 7: Elements list must be valid (even if empty)
                 assert isinstance(result.elements, list), "Elements must be a list"
@@ -569,9 +569,9 @@ class TestYAMLErrorHandlingProperties:
 
                 # Property: Result must be returned
                 assert result is not None, "Parser returned None"
-                assert isinstance(
-                    result.success, bool
-                ), "Result must have success field"
+                assert isinstance(result.success, bool), (
+                    "Result must have success field"
+                )
 
             except Exception as e:
                 pytest.fail(
@@ -653,9 +653,9 @@ class TestYAMLErrorHandlingProperties:
                     for e in result.elements
                     if hasattr(e, "element_type") and e.element_type == "comment"
                 ]
-                assert (
-                    len(comment_elements) > 0
-                ), "Should extract comment elements from comments-only file"
+                assert len(comment_elements) > 0, (
+                    "Should extract comment elements from comments-only file"
+                )
 
             except Exception as e:
                 pytest.fail(f"Parser crashed on comments-only file: {e}")
@@ -709,9 +709,9 @@ class TestYAMLErrorHandlingProperties:
 
                 # Property: Result must be returned
                 assert result is not None, "Parser returned None"
-                assert isinstance(
-                    result.success, bool
-                ), "Result must have success field"
+                assert isinstance(result.success, bool), (
+                    "Result must have success field"
+                )
 
                 # Property: Parser may extract valid parts even if overall invalid
                 assert isinstance(result.elements, list), "Elements must be a list"

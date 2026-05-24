@@ -4,7 +4,7 @@
 Uses Hypothesis to verify CodeElement and AnalysisResult properties.
 """
 
-from hypothesis import HealthCheck, given, settings
+from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from tree_sitter_analyzer.models import (
@@ -19,13 +19,27 @@ from tree_sitter_analyzer.models import (
 valid_name_strategy = st.text(
     min_size=1,
     max_size=100,
-    alphabet=st.characters(min_codepoint=32, max_codepoint=126, exclude_characters="\n\r\t"),
+    alphabet=st.characters(
+        min_codepoint=32, max_codepoint=126, exclude_characters="\n\r\t"
+    ),
 )
 
 line_number_strategy = st.integers(min_value=1, max_value=100000)
 
 language_strategy = st.sampled_from(
-    ["python", "java", "javascript", "typescript", "go", "rust", "ruby", "php", "c", "cpp", "sql"]
+    [
+        "python",
+        "java",
+        "javascript",
+        "typescript",
+        "go",
+        "rust",
+        "ruby",
+        "php",
+        "c",
+        "cpp",
+        "sql",
+    ]
 )
 
 
@@ -38,8 +52,10 @@ class TestFunctionProperties:
         end_line=line_number_strategy,
         language=language_strategy,
     )
-    @settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow])
-    def test_function_creation(self, name: str, start_line: int, end_line: int, language: str) -> None:
+    @settings(max_examples=50)
+    def test_function_creation(
+        self, name: str, start_line: int, end_line: int, language: str
+    ) -> None:
         """Function should be created with valid parameters."""
         # Ensure end_line >= start_line
         end_line = max(start_line, end_line)
@@ -63,7 +79,9 @@ class TestFunctionProperties:
         end_line=line_number_strategy,
     )
     @settings(max_examples=30)
-    def test_function_line_span(self, name: str, start_line: int, end_line: int) -> None:
+    def test_function_line_span(
+        self, name: str, start_line: int, end_line: int
+    ) -> None:
         """Function line span should be non-negative."""
         end_line = max(start_line, end_line)
         func = Function(
@@ -104,7 +122,9 @@ class TestClassProperties:
         language=language_strategy,
     )
     @settings(max_examples=50)
-    def test_class_creation(self, name: str, start_line: int, end_line: int, language: str) -> None:
+    def test_class_creation(
+        self, name: str, start_line: int, end_line: int, language: str
+    ) -> None:
         """Class should be created with valid parameters."""
         end_line = max(start_line, end_line)
 
@@ -213,7 +233,11 @@ class TestAnalysisResultProperties:
     """Property tests for AnalysisResult model."""
 
     @given(
-        file_path=st.text(min_size=1, max_size=200, alphabet=st.characters(min_codepoint=32, max_codepoint=126)),
+        file_path=st.text(
+            min_size=1,
+            max_size=200,
+            alphabet=st.characters(min_codepoint=32, max_codepoint=126),
+        ),
         language=language_strategy,
     )
     @settings(max_examples=30)
@@ -330,8 +354,18 @@ class TestElementEqualityProperties:
     @settings(max_examples=30)
     def test_same_name_elements_can_differ(self, name: str, start_line: int) -> None:
         """Elements with same name but different lines are different."""
-        func1 = Function(name=name, start_line=start_line, end_line=start_line + 10, language="python")
-        func2 = Function(name=name, start_line=start_line + 100, end_line=start_line + 110, language="python")
+        func1 = Function(
+            name=name,
+            start_line=start_line,
+            end_line=start_line + 10,
+            language="python",
+        )
+        func2 = Function(
+            name=name,
+            start_line=start_line + 100,
+            end_line=start_line + 110,
+            language="python",
+        )
 
         # They have the same name
         assert func1.name == func2.name

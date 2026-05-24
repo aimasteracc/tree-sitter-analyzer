@@ -36,9 +36,7 @@ def main() -> None:
         if check_coverage_threshold(report.coverage_percentage, threshold=100.0):
             print("✓ Coverage meets 100% threshold")
         else:
-            print(
-                f"✗ Coverage below 100% threshold: {report.coverage_percentage:.1f}%"
-            )
+            print(f"✗ Coverage below 100% threshold: {report.coverage_percentage:.1f}%")
             print(f"  Need to cover {len(report.uncovered_types)} more node types")
 
     except Exception as e:
@@ -58,9 +56,7 @@ def main() -> None:
         if check_coverage_threshold(report.coverage_percentage, threshold=100.0):
             print("✓ Coverage meets 100% threshold")
         else:
-            print(
-                f"✗ Coverage below 100% threshold: {report.coverage_percentage:.1f}%"
-            )
+            print(f"✗ Coverage below 100% threshold: {report.coverage_percentage:.1f}%")
 
     except Exception as e:
         print(f"Error validating JavaScript coverage: {e}")

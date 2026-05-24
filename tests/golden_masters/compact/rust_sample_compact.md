@@ -3,14 +3,13 @@
 ## Info
 | Property | Value |
 |----------|-------|
-| Structs | 9 |
-| Functions | 9 |
+| Structs | 5 |
+| Functions | 8 |
 | Lines | 0 |
 
 ## Functions
 | Fn | Sig | V | A | L | Doc |
 |----|-----|---|---|---|-----|
-| display | (1)->String | public | - | 25-25 | - |
 | summary | (1)->String | public | - | 27-29 | - |
 | new | (3)->Self | public | - | 34-41 | - |
 | deactivate | (1) | public | - | 44-46 | - |

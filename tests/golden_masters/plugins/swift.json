@@ -1,0 +1,35 @@
+{
+  "counts_by_type": {
+    "Class": 3,
+    "Function": 4,
+    "Import": 1,
+    "Variable": 3
+  },
+  "element_total": 11,
+  "names_by_type": {
+    "Class": [
+      "Greeter",
+      "Greeting",
+      "GreetingService"
+    ],
+    "Function": [
+      "greet",
+      "init",
+      "welcome"
+    ],
+    "Import": [
+      "Foundation"
+    ],
+    "Variable": [
+      "count",
+      "greeting",
+      "prefix"
+    ]
+  },
+  "types": [
+    "Class",
+    "Function",
+    "Import",
+    "Variable"
+  ]
+}

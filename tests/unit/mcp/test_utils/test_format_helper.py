@@ -269,48 +269,46 @@ class TestApplyToonFormatToResponse:
         assert "toon_content" not in response
 
     def test_apply_toon_format_toon_with_results(self):
-        """Test apply_toon_format_to_response returns minimal TOON response without field duplication."""
+        """Redundant ``results`` payload is dropped; small metadata is kept
+        so callers can branch on ``metadata``/``success``/``error`` without
+        parsing the TOON blob."""
         result = {
             "results": [{"id": 1}, {"id": 2}],
             "metadata": {"total": 2},
         }
         response = apply_toon_format_to_response(result, "toon")
-        # Only format and toon_content should be present - no field duplication
         assert "results" not in response
-        assert "metadata" not in response  # Fixed: no duplication
-        assert "format" in response
+        assert response.get("metadata") == {"total": 2}
         assert response["format"] == "toon"
         assert "toon_content" in response
         assert isinstance(response["toon_content"], str)
 
     def test_apply_toon_format_toon_with_matches(self):
-        """Test apply_toon_format_to_response returns minimal TOON response."""
+        """``matches`` is bulk data and is removed; ``query`` is metadata and stays."""
         result = {
             "matches": [{"line": 1}, {"line": 2}],
             "query": "test",
         }
         response = apply_toon_format_to_response(result, "toon")
         assert "matches" not in response
-        assert "query" not in response  # Fixed: no duplication
-        assert "format" in response
+        assert response.get("query") == "test"
         assert response["format"] == "toon"
         assert "toon_content" in response
 
     def test_apply_toon_format_toon_with_content(self):
-        """Test apply_toon_format_to_response returns minimal TOON response."""
+        """``content`` is bulk data and is removed; ``file_path`` stays as metadata."""
         result = {
             "content": "file content here",
             "file_path": "/path/to/file.txt",
         }
         response = apply_toon_format_to_response(result, "toon")
         assert "content" not in response
-        assert "file_path" not in response  # Fixed: no duplication
-        assert "format" in response
+        assert response.get("file_path") == "/path/to/file.txt"
         assert response["format"] == "toon"
         assert "toon_content" in response
 
     def test_apply_toon_format_toon_with_multiple_redundant_fields(self):
-        """Test apply_toon_format_to_response returns minimal TOON response without ANY field duplication."""
+        """All known bulk-data fields are stripped, metadata fields stay."""
         result = {
             "results": [{"id": 1}],
             "matches": [{"line": 1}],
@@ -324,7 +322,7 @@ class TestApplyToonFormatToResponse:
             "status": "success",
         }
         response = apply_toon_format_to_response(result, "toon")
-        # ALL fields should be removed (no duplication) - only format and toon_content remain
+        # Bulk-data fields are removed
         assert "results" not in response
         assert "matches" not in response
         assert "content" not in response
@@ -333,16 +331,17 @@ class TestApplyToonFormatToResponse:
         assert "files" not in response
         assert "lines" not in response
         assert "table_output" not in response
-        assert "metadata" not in response  # Fixed: no duplication
-        assert "status" not in response  # Fixed: no duplication
-        # Only TOON-specific fields should be present
-        assert "format" in response
+        # Metadata is preserved so callers can branch on it
+        assert response.get("metadata") == {"count": 10}
+        assert response.get("status") == "success"
         assert response["format"] == "toon"
         assert "toon_content" in response
         assert isinstance(response["toon_content"], str)
 
     def test_apply_toon_format_toon_no_field_duplication(self):
-        """Test apply_toon_format_to_response eliminates ALL field duplication for maximum token savings."""
+        """Bulk-data field (``results``) is stripped; all other small
+        metadata fields are preserved so callers can read
+        ``status``/``error`` without parsing TOON."""
         result = {
             "results": [{"id": 1}],
             "query": "test",
@@ -354,17 +353,14 @@ class TestApplyToonFormatToResponse:
             "error": None,
         }
         response = apply_toon_format_to_response(result, "toon")
-        # NO fields should be duplicated - only format and toon_content
         assert "results" not in response
-        assert "query" not in response
-        assert "file_path" not in response
-        assert "language" not in response
-        assert "line_count" not in response
-        assert "duration_ms" not in response
-        assert "status" not in response
-        assert "error" not in response
-        # Only TOON-specific fields
-        assert "format" in response
+        assert response.get("query") == "test"
+        assert response.get("file_path") == "/path/to/file.txt"
+        assert response.get("language") == "python"
+        assert response.get("line_count") == 100
+        assert response.get("duration_ms") == 50
+        assert response.get("status") == "success"
+        assert response.get("error") is None
         assert response["format"] == "toon"
         assert "toon_content" in response
         assert isinstance(response["toon_content"], str)
@@ -471,10 +467,10 @@ class TestIntegration:
         toon_string = format_output(data, "toon")
         assert isinstance(toon_string, str)
 
-        # Step 2: Apply TOON format to response (no field duplication)
+        # Step 2: Apply TOON format — bulk data dropped, metadata kept
         toon_response = apply_toon_format_to_response(data, "toon")
         assert "results" not in toon_response
-        assert "metadata" not in toon_response  # Fixed: no duplication
+        assert toon_response.get("metadata") == {"total": 1}
         assert "toon_content" in toon_response
         assert "format" in toon_response
 
@@ -505,11 +501,11 @@ class TestIntegration:
             "status": "success",
         }
 
-        # apply_toon_format_to_response removes ALL fields (no duplication)
+        # apply_toon_format_to_response strips only bulk-data fields; metadata stays
         applied = apply_toon_format_to_response(data, "toon")
         assert "results" not in applied
-        assert "metadata" not in applied  # Fixed: no duplication
-        assert "status" not in applied  # Fixed: no duplication
+        assert applied.get("metadata") == {"total": 1}
+        assert applied.get("status") == "success"
         assert "format" in applied
         assert "toon_content" in applied
 

@@ -47,24 +47,37 @@ class FileOutputManagerFactory:
         # Normalize project root path
         normalized_root = cls._normalize_project_root(project_root)
 
-        # Double-checked locking pattern for thread safety
-        if normalized_root not in cls._instances:
-            with cls._lock:
-                if normalized_root not in cls._instances:
-                    logger.info(
-                        f"Creating new FileOutputManager instance for project root: {normalized_root}"
-                    )
-                    cls._instances[normalized_root] = FileOutputManager(normalized_root)
-                else:
-                    logger.debug(
-                        f"Using existing FileOutputManager instance for project root: {normalized_root}"
-                    )
-        else:
+        # r37dz (dogfood): flatten DCL nesting 6 → 3 via fast/slow path
+        # split + ``_create_or_get_instance`` helper.
+        if normalized_root in cls._instances:
             logger.debug(
                 f"Using existing FileOutputManager instance for project root: {normalized_root}"
             )
+            return cls._instances[normalized_root]
+        return cls._create_or_get_instance(normalized_root)
 
-        return cls._instances[normalized_root]
+    @classmethod
+    def _create_or_get_instance(cls, normalized_root: str) -> FileOutputManager:
+        """Slow-path: acquire the lock, double-check, and create if needed.
+
+        r37dz (dogfood): lifted from ``get_instance`` to flatten the
+        double-checked-locking nesting from depth 6 to 3. The outer
+        ``in _instances`` check stays in ``get_instance`` for the
+        lock-free fast path; this method handles the contention case.
+        """
+        with cls._lock:
+            existing = cls._instances.get(normalized_root)
+            if existing is not None:
+                logger.debug(
+                    f"Using existing FileOutputManager instance for project root: {normalized_root}"
+                )
+                return existing
+            logger.info(
+                f"Creating new FileOutputManager instance for project root: {normalized_root}"
+            )
+            instance = FileOutputManager(normalized_root)
+            cls._instances[normalized_root] = instance
+            return instance
 
     @classmethod
     def _normalize_project_root(cls, project_root: str | None) -> str:

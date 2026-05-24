@@ -8,6 +8,24 @@ from typing import Any
 from .base_formatter import BaseTableFormatter
 
 
+def _count_items_in_line_range(
+    items: list[dict[str, Any]], line_range: dict[str, Any]
+) -> int:
+    """Count items whose ``line_range.start`` falls inside ``line_range``.
+
+    r37dj (dogfood): extracted to flatten two repeated list-comprehensions
+    in ``_format_full_table`` (props + methods inside a class block).
+    """
+    cls_start = line_range.get("start", 0)
+    cls_end = line_range.get("end", 0)
+    count = 0
+    for item in items:
+        item_start = item.get("line_range", {}).get("start", 0)
+        if cls_start <= item_start <= cls_end:
+            count += 1
+    return count
+
+
 class KotlinTableFormatter(BaseTableFormatter):
     """Table formatter specialized for Kotlin"""
 
@@ -41,33 +59,20 @@ class KotlinTableFormatter(BaseTableFormatter):
             lines.append("| Name | Type | Visibility | Lines | Props | Methods |")
             lines.append("|------|------|------------|-------|-------|---------|")
 
+            # r37dj (dogfood): flattened nesting 6 → 3 via
+            # _count_items_in_line_range helper (shared by props + methods).
             for cls in classes:
                 name = str(cls.get("name", "Unknown"))
                 cls_type = str(cls.get("type", "class"))
                 visibility = str(cls.get("visibility", "public"))
                 line_range = cls.get("line_range", {})
                 lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
-
-                # Count props/methods within
-                class_props = len(
-                    [
-                        p
-                        for p in data.get("fields", [])
-                        if line_range.get("start", 0)
-                        <= p.get("line_range", {}).get("start", 0)
-                        <= line_range.get("end", 0)
-                    ]
+                class_props = _count_items_in_line_range(
+                    data.get("fields", []), line_range
                 )
-                class_methods = len(
-                    [
-                        m
-                        for m in data.get("methods", [])
-                        if line_range.get("start", 0)
-                        <= m.get("line_range", {}).get("start", 0)
-                        <= line_range.get("end", 0)
-                    ]
+                class_methods = _count_items_in_line_range(
+                    data.get("methods", []), line_range
                 )
-
                 lines.append(
                     f"| {name} | {cls_type} | {visibility} | {lines_str} | {class_props} | {class_methods} |"
                 )

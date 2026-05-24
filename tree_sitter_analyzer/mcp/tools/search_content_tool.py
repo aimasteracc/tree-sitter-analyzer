@@ -8,7 +8,6 @@ Search content in files under roots or an explicit file list using ripgrep --jso
 from __future__ import annotations
 
 import logging
-import time
 from pathlib import Path
 from typing import Any
 
@@ -17,218 +16,104 @@ from ..utils.file_output_manager import FileOutputManager
 from ..utils.format_helper import (
     apply_toon_format_to_response,
     attach_toon_content_to_response,
-    format_for_file_output,
 )
 from ..utils.gitignore_detector import get_default_detector
 from ..utils.search_cache import get_default_cache
 from . import fd_rg_utils
+from ._fts_fast_path import try_fts5_fast_path
 from .base_tool import BaseMCPTool
-from .output_format_validator import get_default_validator
+from .search_content_helpers import TOOL_SCHEMA as _TOOL_SCHEMA
+from .search_content_helpers import (
+    run_search,
+)
+from .search_content_response import (
+    build_rg_args,
+    determine_requested_format,
+    format_search_response,
+    resolve_max_count,
+)
+from .search_content_response_modes import create_count_only_cache_key
+from .search_content_validation import validate_search_arguments
 
 logger = logging.getLogger(__name__)
 
 
+def _try_fts5_fast_path(
+    arguments: dict[str, Any],
+    project_root: str | None,
+    requested_format: str,
+) -> dict[str, Any] | int | None:
+    try:
+        return try_fts5_fast_path(arguments, project_root, requested_format)
+    except Exception:
+        return None
+
+
 class SearchContentTool(BaseMCPTool):
-    """MCP tool that wraps ripgrep to search content with safety limits."""
+    """MCP tool that wraps ripgrep to search content with safety limits.
+
+    Supports total_only, count_only, summary, group_by_file, and normal modes.
+    Includes caching, parallel search, gitignore-aware no_ignore, and file output.
+    """
 
     def __init__(
         self, project_root: str | None = None, enable_cache: bool = True
     ) -> None:
-        """
-        Initialize the search content tool.
-
-        Args:
-            project_root: Optional project root directory
-            enable_cache: Whether to enable search result caching (default: True)
-        """
-        super().__init__(project_root)
+        """Initialize with optional project root and cache toggle."""
+        # Pre-declare attributes the hook will touch — super().__init__()
+        # invokes _on_project_root_changed before this body finishes.
         self.cache = get_default_cache() if enable_cache else None
+        self.file_output_manager: FileOutputManager | None = None
+        super().__init__(project_root)
+
+    def _on_project_root_changed(self, project_root: str | None) -> None:
         self.file_output_manager = FileOutputManager.get_managed_instance(project_root)
 
-    def set_project_path(self, project_path: str) -> None:
-        """
-        Update the project path for all components.
-
-        Args:
-            project_path: New project root directory
-        """
-        super().set_project_path(project_path)
-        self.file_output_manager = FileOutputManager.get_managed_instance(project_path)
-        logger.info(f"SearchContentTool project path updated to: {project_path}")
-
+    # MCP tool metadata - name, description, schema
     def get_tool_definition(self) -> dict[str, Any]:
+        """Return the MCP tool name, description, and input schema."""
         return {
             "name": "search_content",
             "description": (
-                "Search file contents for text patterns using ripgrep — find all occurrences of "
-                "function calls, variable references, string literals, or any regex pattern. "
-                "\n\n"
-                "ALWAYS use search_content for content search tasks. "
-                "NEVER invoke rg or grep as a Bash command — search_content has safety limits, "
-                "token optimization, and respects project boundaries. "
-                "\n\n"
+                "Project-wide content search using ``rg`` with token-saving "
+                "modes: ``total_only`` returns just a count (~10 tokens), "
+                "``count_only`` returns per-file counts, ``summary`` "
+                "returns grouped results, default returns full match lines. "
+                "Honors .gitignore by default. Strongly preferred over the "
+                "built-in Grep tool for any case where you want a structured "
+                "envelope (verdict, agent_summary, truncation flag) instead "
+                "of raw text output.\n\n"
                 "WHEN TO USE:\n"
-                "- Finding all usages of a string literal, config key, or error message\n"
-                "- Locating where a function is called before using trace_impact for symbol-level analysis\n"
-                "- Searching across specific file types (use include_globs=['*.py'])\n"
-                "- Text/regex pattern matching where you don't need syntax-level understanding\n"
+                "- Existence check ('does this codebase use X?') — "
+                "total_only saves ~99% tokens\n"
+                "- Counting matches — count_only for per-file numbers\n"
+                "- Structured search results that pipe into other tools\n"
+                "- Pattern search that respects .gitignore semantics\n"
                 "\n"
-                "WHEN NOT TO USE (use a different tool instead):\n"
-                "- Understanding code structure (classes, methods, fields) — use analyze_code_structure\n"
-                "- Extracting all functions matching a pattern by syntax — use query_code\n"
-                "- Large projects (> 1000 files) with both file type and content filters — "
-                "use find_and_grep (two-stage: filter files first, then search content)\n"
-                "- Tracing all callers of a specific symbol — use trace_impact (handles language "
-                "filtering and word-boundary matching automatically)\n"
-                "\n"
-                "TOKEN EFFICIENCY — start cheap, escalate only if needed:\n"
-                "1. total_only=true: ~10 tokens — just the match count\n"
-                "2. count_only_matches=true: ~50-200 tokens — counts per file\n"
-                "3. summary_only=true: ~500-2000 tokens — condensed overview\n"
-                "4. Full results: ~2000-50000+ tokens — use only when you need line content\n"
-                "\n"
-                "IMPORTANT: Only one output format flag (total_only, count_only_matches, "
-                "summary_only, group_by_file) can be true at a time — they are mutually exclusive."
+                "WHEN NOT TO USE:\n"
+                "- To find files by NAME — use list_files\n"
+                "- To restrict to files matching a glob first — use "
+                "find_and_grep (much cheaper on large trees)\n"
+                "- For symbol-level queries (class X) — use query\n"
+                "- To run multiple searches in parallel — use batch_search"
             ),
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "roots": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Directory paths to search in recursively. Alternative to 'files'. Example: ['.', 'src/', 'tests/']",
-                    },
-                    "files": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Specific file paths to search in. Alternative to 'roots'. Example: ['main.py', 'config.json']",
-                    },
-                    "query": {
-                        "type": "string",
-                        "description": "Text pattern to search for. Can be literal text or regex depending on settings. Example: 'function', 'class\\s+\\w+', 'TODO:'",
-                    },
-                    "case": {
-                        "type": "string",
-                        "enum": ["smart", "insensitive", "sensitive"],
-                        "default": "smart",
-                        "description": "Case sensitivity mode. 'smart'=case-insensitive unless uppercase letters present, 'insensitive'=always ignore case, 'sensitive'=exact case match",
-                    },
-                    "fixed_strings": {
-                        "type": "boolean",
-                        "default": False,
-                        "description": "Treat query as literal string instead of regex. True for exact text matching, False for regex patterns",
-                    },
-                    "word": {
-                        "type": "boolean",
-                        "default": False,
-                        "description": "Match whole words only. True finds 'test' but not 'testing', False finds both",
-                    },
-                    "multiline": {
-                        "type": "boolean",
-                        "default": False,
-                        "description": "Allow patterns to match across multiple lines. Useful for finding multi-line code blocks or comments",
-                    },
-                    "include_globs": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "File patterns to include in search. Example: ['*.py', '*.js'] to search only Python and JavaScript files",
-                    },
-                    "exclude_globs": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "File patterns to exclude from search. Example: ['*.log', '__pycache__/*'] to skip log files and cache directories",
-                    },
-                    "follow_symlinks": {
-                        "type": "boolean",
-                        "default": False,
-                        "description": "Follow symbolic links during search. False=safer, True=may cause infinite loops",
-                    },
-                    "hidden": {
-                        "type": "boolean",
-                        "default": False,
-                        "description": "Search in hidden files (starting with dot). False=skip .git, .env files, True=search all",
-                    },
-                    "no_ignore": {
-                        "type": "boolean",
-                        "default": False,
-                        "description": "Ignore .gitignore and similar ignore files. False=respect ignore rules, True=search all files",
-                    },
-                    "max_filesize": {
-                        "type": "string",
-                        "description": "Maximum file size to search. Format: '10M'=10MB, '500K'=500KB, '1G'=1GB. Prevents searching huge files",
-                    },
-                    "context_before": {
-                        "type": "integer",
-                        "description": "Number of lines to show before each match. Useful for understanding match context. Example: 3 shows 3 lines before",
-                    },
-                    "context_after": {
-                        "type": "integer",
-                        "description": "Number of lines to show after each match. Useful for understanding match context. Example: 3 shows 3 lines after",
-                    },
-                    "encoding": {
-                        "type": "string",
-                        "description": "Text encoding to assume for files. Default is auto-detect. Example: 'utf-8', 'latin1', 'ascii'",
-                    },
-                    "max_count": {
-                        "type": "integer",
-                        "description": "Maximum number of matches per file. Useful to prevent overwhelming output from files with many matches",
-                    },
-                    "timeout_ms": {
-                        "type": "integer",
-                        "description": "Search timeout in milliseconds. Prevents long-running searches. Example: 5000 for 5 second timeout",
-                    },
-                    "count_only_matches": {
-                        "type": "boolean",
-                        "default": False,
-                        "description": "⚡ EXCLUSIVE: Return only match counts per file (~50-200 tokens). RECOMMENDED for: File distribution analysis, understanding match spread across files. Cannot be combined with other output formats.",
-                    },
-                    "summary_only": {
-                        "type": "boolean",
-                        "default": False,
-                        "description": "⚡ EXCLUSIVE: Return condensed overview with top files and sample matches (~500-2000 tokens). RECOMMENDED for: Initial investigation, scope confirmation, pattern validation. Cannot be combined with other output formats.",
-                    },
-                    "optimize_paths": {
-                        "type": "boolean",
-                        "default": False,
-                        "description": "⚡ EXCLUSIVE: Optimize file paths by removing common prefixes (10-30% token reduction). RECOMMENDED for: Deep directory structures, large codebases. Cannot be combined with other output formats.",
-                    },
-                    "group_by_file": {
-                        "type": "boolean",
-                        "default": False,
-                        "description": "⚡ EXCLUSIVE: Group results by file, eliminating path duplication (~2000-10000 tokens). RECOMMENDED for: Context-aware review, analyzing matches within specific files. Cannot be combined with other output formats.",
-                    },
-                    "total_only": {
-                        "type": "boolean",
-                        "default": False,
-                        "description": "⚡ EXCLUSIVE: Return only total match count as single number (~10 tokens - MOST EFFICIENT). RECOMMENDED for: Count validation, filtering decisions, existence checks. Takes priority over all other formats. Cannot be combined with other output formats.",
-                    },
-                    "output_file": {
-                        "type": "string",
-                        "description": "Optional filename to save output to file (extension auto-detected based on content)",
-                    },
-                    "suppress_output": {
-                        "type": "boolean",
-                        "description": "When true and output_file is specified, suppress detailed output in response to save tokens",
-                        "default": False,
-                    },
-                    "enable_parallel": {
-                        "type": "boolean",
-                        "description": "Enable parallel processing for multiple root directories to improve performance. Default: True",
-                        "default": True,
-                    },
-                    "output_format": {
-                        "type": "string",
-                        "enum": ["json", "toon"],
-                        "description": "Output format: 'toon' (default, 50-70% token reduction) or 'json'",
-                        "default": "toon",
-                    },
-                },
-                "required": ["query"],
-                "additionalProperties": False,
+            "inputSchema": _TOOL_SCHEMA,
+            "annotations": {
+                "readOnlyHint": True,
+                "destructiveHint": False,
+                "idempotentHint": True,
+                "openWorldHint": False,
             },
         }
 
+    # Determine which response mode based on argument flags
+    def _determine_requested_format(self, arguments: dict[str, Any]) -> str:
+        """Determine which response mode based on argument flags."""
+        return determine_requested_format(arguments)
+
+    # Resolve and validate each root directory path
     def _validate_roots(self, roots: list[str]) -> list[str]:
+        """Resolve and validate each root directory path."""
         validated: list[str] = []
         for r in roots:
             try:
@@ -238,7 +123,9 @@ class SearchContentTool(BaseMCPTool):
                 raise ValueError(f"Invalid root '{r}': {e}") from e
         return validated
 
+    # Resolve and validate each file path in the list
     def _validate_files(self, files: list[str]) -> list[str]:
+        """Resolve and validate each file path in the list."""
         validated: list[str] = []
         for p in files:
             if not isinstance(p, str) or not p.strip():
@@ -252,696 +139,261 @@ class SearchContentTool(BaseMCPTool):
                 raise ValueError(f"Invalid file path '{p}': {e}") from e
         return validated
 
-    def validate_arguments(self, arguments: dict[str, Any]) -> bool:
-        # Normalize path aliases before validation
-        if "path" in arguments and "roots" not in arguments and "files" not in arguments:
-            path_val = arguments.pop("path")
-            arguments["roots"] = (
-                [path_val] if isinstance(path_val, str) else path_val
-            )
+    # L10: pre-validation hook so file-in-roots emits a canonical envelope
+    # instead of a triple-wrapped AnalysisError.
+    def _check_file_in_roots(self, arguments: dict[str, Any]) -> dict[str, Any] | None:
+        """Detect ``roots=['<file>.py']`` and return a canonical error envelope.
 
-        # Validate output format exclusion first
-        validator = get_default_validator()
-        validator.validate_output_format_exclusion(arguments)
+        Users naturally try a file path in ``roots`` because the tool name
+        implies it accepts files. The base path validator rejects them with
+        ``Invalid directory path: Path is not a directory: ...`` which then
+        gets wrapped twice by ``_validate_roots`` and ``handle_mcp_errors``,
+        producing an unhelpful ``AnalysisError: Operation failed: ...`` cascade.
 
-        if (
-            "query" not in arguments
-            or not isinstance(arguments["query"], str)
-            or not arguments["query"].strip()
-        ):
-            raise ValueError("query is required and must be a non-empty string")
-        if "roots" not in arguments and "files" not in arguments:
-            provided = [k for k in arguments if k not in ("query",)]
-            raise ValueError(
-                f"Either roots or files must be provided. Got keys: {provided}"
-            )
-        for key in [
-            "case",
-            "encoding",
-            "max_filesize",
-        ]:
-            if key in arguments and not isinstance(arguments[key], str):
-                raise ValueError(f"{key} must be a string")
-        for key in [
-            "fixed_strings",
-            "word",
-            "multiline",
-            "follow_symlinks",
-            "hidden",
-            "no_ignore",
-            "count_only_matches",
-            "summary_only",
-            "enable_parallel",
-        ]:
-            if key in arguments and not isinstance(arguments[key], bool):
-                raise ValueError(f"{key} must be a boolean")
-        for key in ["context_before", "context_after", "max_count", "timeout_ms"]:
-            if key in arguments and not isinstance(arguments[key], int):
-                raise ValueError(f"{key} must be an integer")
-        for key in ["include_globs", "exclude_globs"]:
-            if key in arguments:
-                v = arguments[key]
-                if not isinstance(v, list) or not all(isinstance(x, str) for x in v):
-                    raise ValueError(f"{key} must be an array of strings")
+        This pre-check intercepts the common case (any root that resolves to
+        an existing *file*) and returns a flat envelope that points the agent
+        at the ``files=`` parameter instead.
 
-        # Validate roots and files if provided
-        if "roots" in arguments:
-            self._validate_roots(arguments["roots"])
-        if "files" in arguments:
-            self._validate_files(arguments["files"])
-
-        return True
-
-    def _determine_requested_format(self, arguments: dict[str, Any]) -> str:
-        """Determine the requested output format based on arguments."""
-        if arguments.get("total_only", False):
-            return "total_only"
-        elif arguments.get("count_only_matches", False):
-            return "count_only"
-        elif arguments.get("summary_only", False):
-            return "summary"
-        elif arguments.get("group_by_file", False):
-            return "group_by_file"
-        else:
-            return "normal"
-
-    def _create_count_only_cache_key(
-        self, total_only_cache_key: str, arguments: dict[str, Any]
-    ) -> str | None:
+        Returns ``None`` when ``roots`` is absent or every entry is a directory
+        (or otherwise invalid — those still go through the normal validator
+        so non-file errors keep their existing behavior).
         """
-        Create a count_only_matches cache key from a total_only cache key.
-
-        This enables cross-format caching where total_only results can serve
-        future count_only_matches queries.
-        """
-        if not self.cache:
+        raw_roots = arguments.get("roots")
+        if not isinstance(raw_roots, list) or not raw_roots:
             return None
 
-        # Create modified arguments with count_only_matches instead of total_only
-        count_only_args = arguments.copy()
-        count_only_args.pop("total_only", None)
-        count_only_args["count_only_matches"] = True
+        file_roots: list[str] = []
+        for r in raw_roots:
+            if not isinstance(r, str) or not r.strip():
+                continue
+            # Resolve without raising — we only care about the file-vs-dir
+            # outcome, not security policy (the normal validator handles that).
+            try:
+                resolved = self.path_resolver.resolve(r)
+            except Exception:  # nosec B112 — fall through to normal validator
+                # Resolution failed — fall through to the normal validator
+                # so its error message describes the real problem.
+                continue
+            resolved_path = Path(resolved)
+            if resolved_path.exists() and resolved_path.is_file():
+                file_roots.append(r)
 
-        # Generate cache key for count_only_matches version
-        cache_params = {
-            k: v
-            for k, v in count_only_args.items()
-            if k not in ["query", "roots", "files"]
+        if not file_roots:
+            return None
+
+        first = file_roots[0]
+        summary_line = "search_content: roots must be directories"
+        next_step = f"retry with files=['{first}'] for single-file searches"
+        return {
+            "success": False,
+            "error": (
+                "Got file path in 'roots'; pass file paths via the 'files' "
+                "parameter instead."
+            ),
+            "error_type": "validation",
+            "agent_summary": {
+                "summary_line": summary_line,
+                "next_step": next_step,
+                "verdict": "ERROR",
+            },
+            "summary_line": summary_line,
+            "roots": raw_roots,
         }
 
-        roots = arguments.get("roots", [])
-        return self.cache.create_cache_key(
-            query=arguments["query"], roots=roots, **cache_params
+    # Input validation - fail fast with clear error messages
+    def validate_arguments(self, arguments: dict[str, Any]) -> bool:
+        """Validate query, roots/files, and all option types.
+
+        If neither ``roots`` nor ``files`` was provided but the tool has
+        a ``project_root`` configured, default ``roots`` to that root
+        so callers don't have to repeat the project path they already
+        configured at construction time.
+        """
+        if "roots" not in arguments and "files" not in arguments and self.project_root:
+            arguments["roots"] = [self.project_root]
+        return validate_search_arguments(
+            arguments,
+            self._validate_roots,
+            self._validate_files,
         )
 
     @handle_mcp_errors("search_content")
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any] | int:
-        # Check if rg command is available
+        """Execute ripgrep search with caching and parallel support."""
         if not fd_rg_utils.check_external_command("rg"):
             return {
                 "success": False,
-                "error": "rg (ripgrep) command not found. Please install ripgrep (https://github.com/BurntSushi/ripgrep) to use this tool.",
+                "error": "rg (ripgrep) command not found. Please install ripgrep.",
                 "count": 0,
                 "results": [],
             }
 
-        self.validate_arguments(arguments)
-        # NOTE: MCP tool responses are structured objects. When output_format="toon",
-        # we return {"format":"toon","toon_content":"..."} to reduce tokens while
-        # remaining JSON/protocol compatible.
-        output_format = arguments.get("output_format", "json")
+        # L10: detect file-as-root *before* validate_arguments raises a
+        # triple-wrapped ``AnalysisError("Operation failed: ... Path is not
+        # a directory: ...")``. The canonical envelope tells the agent
+        # exactly which parameter to use instead.
+        file_root_envelope = self._check_file_in_roots(arguments)
+        if file_root_envelope is not None:
+            return file_root_envelope
 
+        self.validate_arguments(arguments)
+        output_format = arguments.get("output_format", "toon")
+
+        roots, files = self._resolve_inputs(arguments)
+
+        cache_key = self._make_cache_key(arguments, roots)
+        cached = self._check_cache(cache_key, arguments)
+        if cached is not None:
+            return cached
+
+        requested_format = determine_requested_format(arguments)
+        fts_result = _try_fts5_fast_path(arguments, self.project_root, requested_format)
+        if fts_result is not None:
+            if output_format == "toon" and isinstance(fts_result, dict):
+                return apply_toon_format_to_response(fts_result, output_format)
+            return fts_result
+
+        no_ignore = self._resolve_no_ignore(arguments, roots)
+        max_count = resolve_max_count(arguments, fd_rg_utils)
+
+        # Build and execute ripgrep command
+        rg_args = build_rg_args(arguments, max_count, no_ignore)
+        rc, out, err, elapsed_ms = await self._run_search(
+            arguments, rg_args, roots, files, max_count, no_ignore
+        )
+
+        if rc not in (0, 1):
+            message = err.decode("utf-8", errors="replace").strip() or "ripgrep failed"
+            return {"success": False, "error": message, "returncode": rc}
+
+        return await format_search_response(
+            arguments,
+            output_format,
+            out,
+            elapsed_ms,
+            cache_key,
+            cache=self.cache,
+            file_output_manager=self.file_output_manager,
+            fd_rg_utils=fd_rg_utils,
+            attach_toon=attach_toon_content_to_response,
+            apply_toon=apply_toon_format_to_response,
+            rg_args=rg_args,
+            roots=roots,
+            files=files,
+        )
+
+    # Validate and resolve roots/files parameters
+    def _resolve_inputs(
+        self, arguments: dict[str, Any]
+    ) -> tuple[list[str] | None, list[str] | None]:
+        """Resolve and validate roots/files inputs."""
+        """Resolve and validate roots/files inputs."""
         roots = arguments.get("roots")
         files = arguments.get("files")
         if roots:
             roots = self._validate_roots(roots)
         if files:
             files = self._validate_files(files)
+        return roots, files
 
-        # Check cache if enabled (simplified for performance)
-        cache_key = None
-        if self.cache:
-            # Create simplified cache key for better performance
-            cache_params = {
-                k: v
-                for k, v in arguments.items()
-                if k
-                not in ["query", "roots", "files", "output_file", "suppress_output"]
-            }
-            cache_key = self.cache.create_cache_key(
-                query=arguments["query"], roots=roots or [], **cache_params
-            )
-
-            # Simple cache lookup without complex cross-format logic for performance
-            cached_result = self.cache.get(cache_key)
-            if cached_result is not None:
-                # Check if this is a total_only request
-                total_only_requested = arguments.get("total_only", False)
-
-                if total_only_requested:
-                    # For total_only mode, always return integer if possible
-                    if isinstance(cached_result, int):
-                        return cached_result
-                    elif (
-                        isinstance(cached_result, dict)
-                        and "total_matches" in cached_result
-                    ):
-                        total_matches = cached_result["total_matches"]
-                        return (
-                            int(total_matches)
-                            if isinstance(total_matches, int | float)
-                            else 0
-                        )
-                    elif isinstance(cached_result, dict) and "count" in cached_result:
-                        count = cached_result["count"]
-                        return int(count) if isinstance(count, int | float) else 0
-                    else:
-                        # Fallback: extract count from dict or return 0
-                        return 0
-                else:
-                    # For non-total_only modes, return dict format
-                    if isinstance(cached_result, dict):
-                        cached_result = cached_result.copy()
-                        cached_result["cache_hit"] = True
-                        return cached_result
-                    elif isinstance(cached_result, int):
-                        # Convert integer to dict format for non-total_only modes
-                        return {
-                            "success": True,
-                            "count": cached_result,
-                            "total_matches": cached_result,
-                            "cache_hit": True,
-                        }
-                    else:
-                        # For other types, convert to dict format
-                        return {
-                            "success": True,
-                            "cached_result": cached_result,
-                            "cache_hit": True,
-                        }
-
-        # Handle max_count parameter properly
-        # If user specifies max_count, use it directly (with reasonable upper limit)
-        # If not specified, use None to let ripgrep return all matches (subject to hard cap later)
-        max_count = arguments.get("max_count")
-        if max_count is not None:
-            # Clamp user-specified max_count to reasonable limits
-            # Use 1 as minimum default, but respect user's small values
-            max_count = fd_rg_utils.clamp_int(
-                max_count,
-                1,  # Minimum default value
-                fd_rg_utils.DEFAULT_RESULTS_LIMIT,  # Upper limit for safety
-            )
-        timeout_ms = arguments.get("timeout_ms")
-
-        # Note: --files-from is not supported in this ripgrep version
-        # For files mode, we'll search in the parent directories of the files
-        # and use glob patterns to restrict search to specific files
-        if files:
-            # Extract unique parent directories from file paths
-            parent_dirs = set()
-            file_globs = []
-            for file_path in files:
-                resolved = self.path_resolver.resolve(file_path)
-                parent_dir = str(Path(resolved).parent)
-                parent_dirs.add(parent_dir)
-
-                # Create glob pattern for this specific file
-                file_name = Path(resolved).name
-                # Escape special characters in filename for glob pattern
-                escaped_name = file_name.replace("[", "[[]").replace("]", "[]]")
-                file_globs.append(escaped_name)
-
-            # Use parent directories as roots for compatibility
-            roots = list(parent_dirs)
-
-            # Add file-specific glob patterns to include_globs
-            if not arguments.get("include_globs"):
-                arguments["include_globs"] = []
-            arguments["include_globs"].extend(file_globs)
-
-        # Check for count-only mode (total_only also requires count mode)
-        total_only = bool(arguments.get("total_only", False))
-        count_only_matches = (
-            bool(arguments.get("count_only_matches", False)) or total_only
-        )
-        summary_only = bool(arguments.get("summary_only", False))
-
-        # Smart .gitignore detection
+    # Smart gitignore detection for search accuracy
+    def _resolve_no_ignore(
+        self, arguments: dict[str, Any], roots: list[str] | None
+    ) -> bool:
+        """Determine no_ignore flag with smart gitignore detection."""
+        """Determine no_ignore flag with smart gitignore detection."""
         no_ignore = bool(arguments.get("no_ignore", False))
-        if not no_ignore and roots:  # Only for roots mode, not files mode
-            # Auto-detect if we should use --no-ignore
+        if not no_ignore and roots:
             detector = get_default_detector()
             original_roots = arguments.get("roots", [])
-            should_ignore = detector.should_use_no_ignore(
-                original_roots, self.project_root
-            )
-            if should_ignore:
-                no_ignore = True
-                # Log the auto-detection for debugging
-                # Logger already defined at module level
-                detection_info = detector.get_detection_info(
-                    original_roots, self.project_root
-                )
+            if detector.should_use_no_ignore(original_roots, self.project_root):
+                info = detector.get_detection_info(original_roots, self.project_root)
                 logger.info(
-                    f"Auto-enabled --no-ignore due to .gitignore interference: {detection_info['reason']}"
+                    f"Auto-enabled --no-ignore due to .gitignore interference: {info['reason']}"
                 )
+                no_ignore = True
+        return no_ignore
 
-        # Roots mode
-        # Determine if we should use parallel processing
-        use_parallel = (
-            roots is not None
-            and len(roots) > 1
-            and arguments.get("enable_parallel", True)
+    # Derive cache key from query parameters
+    def _make_cache_key(
+        self, arguments: dict[str, Any], roots: list[str] | None
+    ) -> str | None:
+        """Create a cache key from search arguments."""
+        """Create a cache key from arguments."""
+        if not self.cache:
+            return None
+        cache_params = {
+            k: v
+            for k, v in arguments.items()
+            if k not in ["query", "roots", "files", "output_file", "suppress_output"]
+        }
+        return self.cache.create_cache_key(
+            query=arguments["query"], roots=roots or [], **cache_params
         )
 
-        started = time.time()
+    # Return cached result if available for this query
+    def _check_cache(
+        self, cache_key: str | None, arguments: dict[str, Any]
+    ) -> dict[str, Any] | int | None:
+        """Return cached result if available, None otherwise."""
+        """Return cached result if available, None otherwise."""
+        if not self.cache or not cache_key:
+            return None
 
-        if use_parallel and roots is not None:
-            # Split roots for parallel processing
-            root_chunks = fd_rg_utils.split_roots_for_parallel_processing(
-                roots, max_chunks=4
-            )
+        cached_result = self.cache.get(cache_key)
+        if cached_result is None:
+            return None
 
-            # Build commands for each chunk
-            commands = []
-            for chunk in root_chunks:
-                cmd = fd_rg_utils.build_rg_command(
-                    query=arguments["query"],
-                    case=arguments.get("case", "smart"),
-                    fixed_strings=bool(arguments.get("fixed_strings", False)),
-                    word=bool(arguments.get("word", False)),
-                    multiline=bool(arguments.get("multiline", False)),
-                    include_globs=arguments.get("include_globs"),
-                    exclude_globs=arguments.get("exclude_globs"),
-                    follow_symlinks=bool(arguments.get("follow_symlinks", False)),
-                    hidden=bool(arguments.get("hidden", False)),
-                    no_ignore=no_ignore,
-                    max_filesize=arguments.get("max_filesize"),
-                    context_before=arguments.get("context_before"),
-                    context_after=arguments.get("context_after"),
-                    encoding=arguments.get("encoding"),
-                    max_count=max_count,
-                    timeout_ms=timeout_ms,
-                    roots=chunk,
-                    files_from=None,
-                    count_only_matches=count_only_matches,
-                )
-                commands.append(cmd)
-
-            # Execute commands in parallel
-            results = await fd_rg_utils.run_parallel_rg_searches(
-                commands, timeout_ms=timeout_ms, max_concurrent=4
-            )
-
-            # Merge results
-            rc, out, err = fd_rg_utils.merge_rg_results(results, count_only_matches)
-        else:
-            # Single command execution (original behavior)
-            cmd = fd_rg_utils.build_rg_command(
-                query=arguments["query"],
-                case=arguments.get("case", "smart"),
-                fixed_strings=bool(arguments.get("fixed_strings", False)),
-                word=bool(arguments.get("word", False)),
-                multiline=bool(arguments.get("multiline", False)),
-                include_globs=arguments.get("include_globs"),
-                exclude_globs=arguments.get("exclude_globs"),
-                follow_symlinks=bool(arguments.get("follow_symlinks", False)),
-                hidden=bool(arguments.get("hidden", False)),
-                no_ignore=no_ignore,
-                max_filesize=arguments.get("max_filesize"),
-                context_before=arguments.get("context_before"),
-                context_after=arguments.get("context_after"),
-                encoding=arguments.get("encoding"),
-                max_count=max_count,
-                timeout_ms=timeout_ms,
-                roots=roots,
-                files_from=None,
-                count_only_matches=count_only_matches,
-            )
-
-            rc, out, err = await fd_rg_utils.run_command_capture(
-                cmd, timeout_ms=timeout_ms
-            )
-
-        elapsed_ms = int((time.time() - started) * 1000)
-
-        if rc not in (0, 1):
-            message = err.decode("utf-8", errors="replace").strip() or "ripgrep failed"
-            return {"success": False, "error": message, "returncode": rc}
-
-        # Handle total-only mode (highest priority for count queries)
         total_only = arguments.get("total_only", False)
         if total_only:
-            # Parse count output and return only the total
-            file_counts = fd_rg_utils.parse_rg_count_output(out)
-            total_matches = file_counts.get("__total__", 0)
+            if isinstance(cached_result, int):
+                return cached_result
+            if isinstance(cached_result, dict):
+                if "total_matches" in cached_result:
+                    val = cached_result["total_matches"]
+                    return int(val) if isinstance(val, int | float) else 0
+                if "count" in cached_result:
+                    val = cached_result["count"]
+                    return int(val) if isinstance(val, int | float) else 0
+            return 0
 
-            # Cache the FULL count data for future cross-format optimization
-            # This allows count_only_matches queries to be served from this cache
-            if self.cache and cache_key:
-                # Cache both the simple total and the detailed count structure
-                self.cache.set(cache_key, total_matches)
-
-                # Also cache the equivalent count_only_matches result for cross-format optimization
-                count_only_cache_key = self._create_count_only_cache_key(
-                    cache_key, arguments
-                )
-                if count_only_cache_key:
-                    # Create a copy of file_counts without __total__ for the detailed result
-                    file_counts_copy = {
-                        k: v for k, v in file_counts.items() if k != "__total__"
-                    }
-                    detailed_count_result = {
-                        "success": True,
-                        "count_only": True,
-                        "total_matches": total_matches,
-                        "file_counts": file_counts_copy,  # Keep the file-level data (without __total__)
-                        "elapsed_ms": elapsed_ms,
-                        "derived_from_total_only": True,  # Mark as derived
-                    }
-                    self.cache.set(count_only_cache_key, detailed_count_result)
-                    logger.debug(
-                        "Cross-cached total_only result as count_only_matches for future optimization"
-                    )
-
-            return int(total_matches)
-
-        # Handle count-only mode
-        if count_only_matches:
-            file_counts = fd_rg_utils.parse_rg_count_output(out)
-            total_matches = file_counts.pop("__total__", 0)
-            result = {
+        if isinstance(cached_result, dict):
+            result = cached_result.copy()
+            result["cache_hit"] = True
+            return result
+        if isinstance(cached_result, int):
+            return {
                 "success": True,
-                "count_only": True,
-                "total_matches": total_matches,
-                "file_counts": file_counts,
-                "elapsed_ms": elapsed_ms,
+                "count": cached_result,
+                "total_matches": cached_result,
+                "cache_hit": True,
             }
+        return {"success": True, "cached_result": cached_result, "cache_hit": True}
 
-            # Cache the result
-            if self.cache and cache_key:
-                self.cache.set(cache_key, result)
+    # Execute ripgrep with parallel support
+    async def _run_search(
+        self,
+        arguments: dict[str, Any],
+        rg_args: dict[str, Any],
+        roots: list[str] | None,
+        files: list[str] | None,
+        max_count: int | None,
+        no_ignore: bool,
+    ) -> tuple[int, bytes, bytes, int]:
+        """Execute the ripgrep search (parallel or single)."""
+        return await run_search(
+            self.path_resolver,
+            arguments,
+            rg_args,
+            roots,
+            files,
+            max_count,
+            fd_rg_utils,
+        )
 
-            if output_format == "toon":
-                return attach_toon_content_to_response(result)
-            return result
-
-        # Handle normal mode
-        matches = fd_rg_utils.parse_rg_json_lines_to_matches(out)
-
-        # Apply user-specified max_count limit if provided
-        # Note: ripgrep's -m option limits matches per file, not total matches
-        # So we need to apply the total limit here in post-processing
-        user_max_count = arguments.get("max_count")
-        if user_max_count is not None and len(matches) > user_max_count:
-            matches = matches[:user_max_count]
-            truncated = True
-        else:
-            truncated = len(matches) >= fd_rg_utils.MAX_RESULTS_HARD_CAP
-            if truncated:
-                matches = matches[: fd_rg_utils.MAX_RESULTS_HARD_CAP]
-
-        # Apply path optimization if requested
-        optimize_paths = arguments.get("optimize_paths", False)
-        if optimize_paths and matches:
-            matches = fd_rg_utils.optimize_match_paths(matches)
-
-            # Return optimized results in proper format
-            result = {
-                "success": True,
-                "count": len(matches),
-                "truncated": truncated,
-                "elapsed_ms": elapsed_ms,
-                "results": matches,
-            }
-
-            # Handle output suppression and file output for optimized results
-            output_file = arguments.get("output_file")
-            suppress_output = arguments.get("suppress_output", False)
-
-            # Handle file output if requested
-            if output_file:
-                try:
-                    # Format content based on output_format
-                    formatted_content, _ = format_for_file_output(result, output_format)
-                    file_path = self.file_output_manager.save_to_file(
-                        content=formatted_content, base_name=output_file
-                    )
-
-                    # If suppress_output is True, return minimal response
-                    if suppress_output:
-                        minimal_result = {
-                            "success": result.get("success", True),
-                            "count": result.get("count", 0),
-                            "output_file": output_file,
-                            "file_saved": f"Results saved to {file_path}",
-                        }
-                        # Cache the full result, not the minimal one
-                        if self.cache and cache_key:
-                            self.cache.set(cache_key, result)
-                        if output_format == "toon":
-                            return attach_toon_content_to_response(minimal_result)
-                        return minimal_result
-                    else:
-                        # Include file info in full response
-                        result["output_file"] = output_file
-                        result["file_saved"] = f"Results saved to {file_path}"
-                except Exception as e:
-                    logger.error(f"Failed to save output to file: {e}")
-                    result["file_save_error"] = str(e)
-                    result["file_saved"] = False
-            elif suppress_output:
-                # If suppress_output is True but no output_file, remove detailed results
-                minimal_result = {
-                    "success": result.get("success", True),
-                    "count": result.get("count", 0),
-                    "elapsed_ms": result.get("elapsed_ms", 0),
-                }
-                # Cache the full result, not the minimal one
-                if self.cache and cache_key:
-                    self.cache.set(cache_key, result)
-                if output_format == "toon":
-                    return attach_toon_content_to_response(minimal_result)
-                return minimal_result
-
-            # Cache the result
-            if self.cache and cache_key:
-                self.cache.set(cache_key, result)
-
-            if output_format == "toon":
-                return attach_toon_content_to_response(result)
-            return result
-
-        # Apply file grouping if requested (takes priority over other formats)
-        group_by_file = arguments.get("group_by_file", False)
-        if group_by_file and matches:
-            result = fd_rg_utils.group_matches_by_file(matches)
-
-            # Handle output suppression and file output for grouped results
-            output_file = arguments.get("output_file")
-            suppress_output = arguments.get("suppress_output", False)
-
-            # Handle file output if requested
-            if output_file:
-                try:
-                    # Format content based on output_format
-                    formatted_content, _ = format_for_file_output(result, output_format)
-                    file_path = self.file_output_manager.save_to_file(
-                        content=formatted_content, base_name=output_file
-                    )
-
-                    # If suppress_output is True, return minimal response
-                    if suppress_output:
-                        minimal_result = {
-                            "success": result.get("success", True),
-                            "count": result.get("count", 0),
-                            "output_file": output_file,
-                            "file_saved": f"Results saved to {file_path}",
-                        }
-                        # Cache the full result, not the minimal one
-                        if self.cache and cache_key:
-                            self.cache.set(cache_key, result)
-                        if output_format == "toon":
-                            return attach_toon_content_to_response(minimal_result)
-                        return minimal_result
-                    else:
-                        # Include file info in full response
-                        result["output_file"] = output_file
-                        result["file_saved"] = f"Results saved to {file_path}"
-                except Exception as e:
-                    logger.error(f"Failed to save output to file: {e}")
-                    result["file_save_error"] = str(e)
-                    result["file_saved"] = False
-            elif suppress_output:
-                # If suppress_output is True but no output_file, remove detailed results
-                minimal_result = {
-                    "success": result.get("success", True),
-                    "count": result.get("count", 0),
-                    "summary": result.get("summary", {}),
-                    "meta": result.get("meta", {}),
-                }
-                # Cache the full result, not the minimal one
-                if self.cache and cache_key:
-                    self.cache.set(cache_key, result)
-                if output_format == "toon":
-                    return attach_toon_content_to_response(minimal_result)
-                return minimal_result
-
-            # Cache the result
-            if self.cache and cache_key:
-                self.cache.set(cache_key, result)
-
-            if output_format == "toon":
-                return attach_toon_content_to_response(result)
-            return result
-
-        # Handle summary mode
-        if summary_only:
-            summary = fd_rg_utils.summarize_search_results(matches)
-            result = {
-                "success": True,
-                "count": len(matches),
-                "truncated": truncated,
-                "elapsed_ms": elapsed_ms,
-                "summary": summary,
-            }
-
-            # Handle output suppression and file output for summary results
-            output_file = arguments.get("output_file")
-            suppress_output = arguments.get("suppress_output", False)
-            # Handle file output if requested
-            if output_file:
-                try:
-                    # Format content based on output_format
-                    formatted_content, _ = format_for_file_output(result, output_format)
-                    file_path = self.file_output_manager.save_to_file(
-                        content=formatted_content, base_name=output_file
-                    )
-
-                    # If suppress_output is True, return minimal response
-                    if suppress_output:
-                        minimal_result = {
-                            "success": result.get("success", True),
-                            "count": result.get("count", 0),
-                            "output_file": output_file,
-                            "file_saved": f"Results saved to {file_path}",
-                        }
-                        # Cache the full result, not the minimal one
-                        if self.cache and cache_key:
-                            self.cache.set(cache_key, result)
-                        if output_format == "toon":
-                            return attach_toon_content_to_response(minimal_result)
-                        return minimal_result
-                    else:
-                        # Include file info in full response
-                        result["output_file"] = output_file
-                        result["file_saved"] = f"Results saved to {file_path}"
-                except Exception as e:
-                    logger.error(f"Failed to save output to file: {e}")
-                    result["file_save_error"] = str(e)
-                    result["file_saved"] = False
-            elif suppress_output:
-                # If suppress_output is True but no output_file, remove detailed results
-                minimal_result = {
-                    "success": result.get("success", True),
-                    "count": result.get("count", 0),
-                    "summary": result.get("summary", {}),
-                    "elapsed_ms": result.get("elapsed_ms", 0),
-                }
-                # Cache the full result, not the minimal one
-                if self.cache and cache_key:
-                    self.cache.set(cache_key, result)
-                if output_format == "toon":
-                    return attach_toon_content_to_response(minimal_result)
-                return minimal_result
-
-            # Cache the result
-            if self.cache and cache_key:
-                self.cache.set(cache_key, result)
-
-            if output_format == "toon":
-                return attach_toon_content_to_response(result)
-            return result
-
-        result = {
-            "success": True,
-            "count": len(matches),
-            "truncated": truncated,
-            "elapsed_ms": elapsed_ms,
-        }
-
-        # Handle output suppression and file output
-        output_file = arguments.get("output_file")
-        suppress_output = arguments.get("suppress_output", False)
-        output_format = arguments.get("output_format", "json")
-
-        # Always add results to the base result for caching
-        result["results"] = matches
-
-        # Handle file output if requested
-        if output_file:
-            try:
-                # Create detailed output for file
-                file_content = {
-                    "success": True,
-                    "count": len(matches),
-                    "truncated": truncated,
-                    "elapsed_ms": elapsed_ms,
-                    "results": matches,
-                    "summary": fd_rg_utils.summarize_search_results(matches),
-                    "grouped_by_file": (
-                        fd_rg_utils.group_matches_by_file(matches)["files"]
-                        if matches
-                        else []
-                    ),
-                }
-
-                # Format content based on output_format
-                formatted_content, _ = format_for_file_output(
-                    file_content, output_format
-                )
-
-                # Save to file
-                saved_file_path = self.file_output_manager.save_to_file(
-                    content=formatted_content, base_name=output_file
-                )
-
-                result["output_file"] = output_file
-                result["output_file_path"] = saved_file_path
-                result["file_saved"] = True
-
-                logger.info(f"Search results saved to: {saved_file_path}")
-
-                # If suppress_output is True, return minimal response
-                if suppress_output:
-                    minimal_result = {
-                        "success": result.get("success", True),
-                        "count": result.get("count", 0),
-                        "output_file": output_file,
-                        "file_saved": f"Results saved to {saved_file_path}",
-                    }
-                    # Cache the full result, not the minimal one
-                    if self.cache and cache_key:
-                        self.cache.set(cache_key, result)
-                    return minimal_result
-
-            except Exception as e:
-                logger.error(f"Failed to save output to file: {e}")
-                result["file_save_error"] = str(e)
-                result["file_saved"] = False
-        elif suppress_output:
-            # If suppress_output is True but no output_file, remove results from response
-            result_copy = result.copy()
-            result_copy.pop("results", None)
-            # Cache the full result, not the minimal one
-            if self.cache and cache_key:
-                self.cache.set(cache_key, result)
-            return result_copy
-
-        # Cache the result
-        if self.cache and cache_key:
-            self.cache.set(cache_key, result)
-
-        # Apply TOON format to direct output if requested
-        return apply_toon_format_to_response(result, output_format)
+    # Derive count_only cache key from total_only key
+    def _create_count_only_cache_key(
+        self, total_only_cache_key: str, arguments: dict[str, Any]
+    ) -> str | None:
+        """Derive a count_only cache key from a total_only key for cross-mode caching."""
+        return create_count_only_cache_key(self.cache, arguments)

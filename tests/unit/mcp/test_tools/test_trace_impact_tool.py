@@ -147,10 +147,9 @@ class TestTraceImpactToolExecution:
                 json_output = b"""{"type":"match","data":{"path":{"text":"Service.java"},"line_number":10,"lines":{"text":"test"},"submatches":[]}}"""
                 mock_run.return_value = (0, json_output, b"")
 
-                result = await self.tool.execute({
-                    "symbol": "test",
-                    "file_path": "src/Service.java"
-                })
+                result = await self.tool.execute(
+                    {"symbol": "test", "file_path": "src/Service.java"}
+                )
 
                 assert result["success"] is True
                 assert result["language"] == "java"
@@ -173,10 +172,7 @@ class TestTraceImpactToolExecution:
         ) as mock_run:
             mock_run.return_value = (0, json_output, b"")
 
-            result = await self.tool.execute({
-                "symbol": "test",
-                "max_results": 50
-            })
+            result = await self.tool.execute({"symbol": "test", "max_results": 50})
 
             assert result["success"] is True
             # call_count must reflect the TRUE total (150), not the display cap.
@@ -221,10 +217,9 @@ class TestTraceImpactToolExecution:
         ) as mock_run:
             mock_run.return_value = (1, b"", b"")
 
-            result = await self.tool.execute({
-                "symbol": "test",
-                "project_root": "/root1,/root2,/root3"
-            })
+            result = await self.tool.execute(
+                {"symbol": "test", "project_root": "/root1,/root2,/root3"}
+            )
 
             assert result["success"] is True
             # Verify command was called (roots are passed to ripgrep)
@@ -262,3 +257,40 @@ class TestTraceImpactToolLanguageDetection:
         """Test getting extensions for unknown language"""
         extensions = self.tool._get_extensions_for_language("unknown")
         assert len(extensions) == 0
+
+
+class TestR37sImpactGuidanceGrammar:
+    """r37s dogfood: ``_get_impact_level`` emitted ``"3 caller(s) found"`` —
+    the ``(s)`` placeholder is for ambiguous plurality, but we KNOW the
+    count here. Renders proper English singular/plural.
+    """
+
+    def test_low_impact_single_caller_uses_singular(self):
+        from tree_sitter_analyzer.mcp.tools.trace_impact_tool import (
+            _get_impact_level,
+        )
+
+        info = _get_impact_level(1)
+        assert info["level"] == "low"
+        assert "1 caller found" in info["guidance"]
+        assert "caller(s)" not in info["guidance"]
+
+    def test_low_impact_multiple_callers_uses_plural(self):
+        from tree_sitter_analyzer.mcp.tools.trace_impact_tool import (
+            _get_impact_level,
+        )
+
+        info = _get_impact_level(3)
+        assert info["level"] == "low"
+        assert "3 callers found" in info["guidance"]
+        assert "caller(s)" not in info["guidance"]
+
+    def test_low_impact_five_callers_uses_plural(self):
+        """5 is still ``low`` per the existing bucket (count <= 5)."""
+        from tree_sitter_analyzer.mcp.tools.trace_impact_tool import (
+            _get_impact_level,
+        )
+
+        info = _get_impact_level(5)
+        assert info["level"] == "low"
+        assert "5 callers found" in info["guidance"]

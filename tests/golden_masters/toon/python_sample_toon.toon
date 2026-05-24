@@ -36,14 +36,16 @@ fields:
   [1]{name,type,line_range(a,b)}:
     email,,(19,19)
 imports:
-  [4]{name,is_static,is_wildcard,statement,line_range(a,b)}:
-    "ABC, abstractmethod",false,false,,(9,9)
-    dataclass,false,false,,(10,10)
-    aiohttp,false,false,,(83,83)
-    reduce,false,false,,(182,182)
+  [4]{name,module_name,statement,is_static,is_wildcard,line_range(a,b),imported_names(a,b),raw_text}:
+    "ABC, abstractmethod",abc,"from abc import ABC, abstractmethod",false,false,(9,9),(ABC,abstractmethod),"from abc import ABC, abstractmethod"
+    dataclass,dataclasses,from dataclasses import dataclass,false,false,(10,10),[dataclass],from dataclasses import dataclass
+    aiohttp,,import aiohttp,false,false,(83,83),[aiohttp],import aiohttp
+    reduce,functools,from functools import reduce,false,false,(182,182),[reduce],from functools import reduce
 statistics:
   class_count: 4
   method_count: 23
   field_count: 1
   import_count: 4
   total_lines: 256
+effective_table: toon
+requested_table: toon

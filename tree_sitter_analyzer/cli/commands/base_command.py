@@ -6,6 +6,7 @@ Abstract base class for all CLI commands implementing the Command Pattern.
 """
 
 import asyncio
+import json
 from abc import ABC, abstractmethod
 from argparse import Namespace
 from typing import Optional
@@ -52,18 +53,30 @@ class BaseCommand(ABC):
         )
         if not is_valid:
             output_error(f"Invalid file path: {error_msg}")
+            output_info("Use --project-root to set the project root directory.")
             return False
 
         from pathlib import Path
 
         if not Path(self.args.file_path).exists():
-            output_error("Invalid file path: file does not exist")
+            output_error(f"File not found: {self.args.file_path}")
+            output_info("Check the file path and try again.")
             return False
 
         return True
 
     def detect_language(self) -> str | None:
-        """Detect or validate the target language."""
+        """Detect or validate the target language.
+
+        Q2 (round-33 dogfood): the previous implementation silently rewrote
+        the target to ``"java"`` whenever language detection produced an
+        unsupported value, *and* it printed the "trying Java" diagnostic
+        to ``stdout`` — which broke ``json.load()`` on the CLI output for
+        any caller piping it. We now emit a canonical error envelope
+        instead (matches MCP ``UniversalAnalyzeTool.execute`` at
+        ``mcp/tools/universal_analyze_tool.py:226-227`` which raises
+        ``ValueError`` for unsupported languages).
+        """
         if hasattr(self.args, "language") and self.args.language:
             # Sanitize language input
             sanitized_language = self.security_validator.sanitize_input(
@@ -77,49 +90,90 @@ class BaseCommand(ABC):
         else:
             target_language = detect_language_from_file(self.args.file_path)
             if target_language == "unknown":
-                output_error(
-                    f"ERROR: Could not determine language for file '{self.args.file_path}'."
-                )
+                self._emit_unsupported_language_envelope(target_language)
                 return None
-            else:
-                if (not hasattr(self.args, "table") or not self.args.table) and (
-                    not hasattr(self.args, "quiet") or not self.args.quiet
-                ):
-                    # Language auto-detected - only show in verbose mode
-                    pass
 
-        # Language support validation
+        # Language support validation — no more silent Java fallback.
         if not is_language_supported(target_language):
-            if target_language != "java":
-                if (not hasattr(self.args, "table") or not self.args.table) and (
-                    not hasattr(self.args, "quiet") or not self.args.quiet
-                ):
-                    output_info(
-                        "INFO: Trying with Java analysis engine. May not work correctly."
-                    )
-                target_language = "java"  # Fallback
+            self._emit_unsupported_language_envelope(target_language)
+            return None
 
         return str(target_language) if target_language else None
 
+    def _emit_unsupported_language_envelope(self, detected_language: str) -> None:
+        """Emit a canonical error envelope for an unsupported language.
+
+        Matches the MCP ``ToolResponse`` shape: ``success=False``,
+        ``error_type='validation'``, top-level ``summary_line`` mirrored
+        in ``agent_summary``, and ``verdict='ERROR'``. JSON/TOON go to
+        stdout so callers can ``json.loads(stdout)``; text mode falls
+        back to ``output_error`` (stderr).
+        """
+        output_format = getattr(self.args, "output_format", "json")
+        file_path = getattr(self.args, "file_path", "") or ""
+
+        if detected_language == "unknown":
+            error_message = (
+                f"Could not detect language for file '{file_path}'. "
+                "Run --show-supported-languages to see what's available, "
+                "or pass --language explicitly."
+            )
+            summary_line = f"unknown language: {file_path}"
+        else:
+            error_message = (
+                f"Language '{detected_language}' is not supported. "
+                "Run --show-supported-languages to see what's available."
+            )
+            summary_line = f"unsupported language: {detected_language}"
+
+        envelope: dict[str, object] = {
+            "success": False,
+            "error_type": "validation",
+            "error": error_message,
+            "file_path": file_path,
+            "language": detected_language,
+            "summary_line": summary_line,
+            "agent_summary": {
+                "summary_line": summary_line,
+                "next_step": (
+                    "Use a supported language or omit --language to auto-detect."
+                ),
+                "verdict": "ERROR",
+            },
+        }
+
+        if output_format == "json":
+            # stdout is the machine-readable channel — keep it parseable.
+            print(json.dumps(envelope, ensure_ascii=False))
+            return
+
+        if output_format == "toon":
+            try:
+                from ...formatters.toon_formatter import ToonFormatter
+
+                use_tabs = getattr(self.args, "toon_use_tabs", False)
+                print(ToonFormatter(use_tabs=use_tabs).format(envelope))
+                return
+            except Exception:
+                # If TOON formatter unavailable, fall back to JSON so the
+                # caller still gets a parseable envelope.
+                print(json.dumps(envelope, ensure_ascii=False))
+                return
+
+        # Text mode — emit to stderr like every other error.
+        output_error(error_message)
+
     async def analyze_file(self, language: str) -> Optional["AnalysisResult"]:
-        """Perform file analysis using the unified analysis engine."""
+        """Perform file analysis using the unified analysis engine.
+
+        r37dy (dogfood): flatten partial-read precheck (depth 6) via
+        ``_try_partial_read_precheck`` helper. The helper returns
+        ``True`` when the precheck passes (or is disabled) and ``False``
+        when caller should bail with ``None``.
+        """
         try:
-            # Handle partial read if enabled
-            if hasattr(self.args, "partial_read") and self.args.partial_read:
-                try:
-                    partial_content = read_file_partial(
-                        self.args.file_path,
-                        start_line=self.args.start_line,
-                        end_line=getattr(self.args, "end_line", None),
-                        start_column=getattr(self.args, "start_column", None),
-                        end_column=getattr(self.args, "end_column", None),
-                    )
-                    if partial_content is None:
-                        output_error("Failed to read file partially")
-                        return None
-                except Exception as e:
-                    output_error(f"Failed to read file partially: {e}")
-                    return None
+            if not self._try_partial_read_precheck():
+                return None
 
             request = AnalysisRequest(
                 file_path=self.args.file_path,
@@ -143,6 +197,38 @@ class BaseCommand(ABC):
         except Exception as e:
             output_error(f"An error occurred during analysis: {e}")
             return None
+
+    def _try_partial_read_precheck(self) -> bool:
+        """Run the partial-read precheck when ``--partial-read`` was passed.
+
+        Returns ``True`` on the happy path (precheck disabled, or content
+        was successfully read). Returns ``False`` only when partial read
+        is enabled AND the read fails (caller should propagate ``None``
+        back to the caller). The actual partial content is *not*
+        captured here — ``analyze_file`` re-reads via the analysis
+        engine anyway; this precheck just sanity-checks the range so a
+        clearer error surfaces before the heavier pipeline runs.
+
+        r37dy (dogfood): lifted from ``analyze_file`` to flatten the
+        try/except-inside-if from depth 6 to 3.
+        """
+        if not hasattr(self.args, "partial_read") or not self.args.partial_read:
+            return True
+        try:
+            partial_content = read_file_partial(
+                self.args.file_path,
+                start_line=self.args.start_line,
+                end_line=getattr(self.args, "end_line", None),
+                start_column=getattr(self.args, "start_column", None),
+                end_column=getattr(self.args, "end_column", None),
+            )
+        except Exception as e:
+            output_error(f"Failed to read file partially: {e}")
+            return False
+        if partial_content is None:
+            output_error("Failed to read file partially")
+            return False
+        return True
 
     def execute(self) -> int:
         """

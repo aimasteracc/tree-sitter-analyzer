@@ -14,6 +14,19 @@ import pytest
 
 from tree_sitter_analyzer.mcp.tools.get_code_outline_tool import GetCodeOutlineTool
 
+
+def _payload_text(result: dict) -> str:
+    """Normalize v1.13.0+ direct-dict and legacy MCP-wrapped outputs."""
+    if "content" in result:
+        return result["content"][0]["text"]
+    fmt = result.get("format")
+    if fmt == "toon":
+        return result.get("toon_content") or ""
+    if fmt == "json":
+        return result.get("json_content") or json.dumps(result)
+    return result.get("toon_content") or json.dumps(result)
+
+
 # ---------------------------------------------------------------------------
 # 测试用代码片段
 # ---------------------------------------------------------------------------
@@ -108,11 +121,13 @@ class TestGetCodeOutlineToonIntegrationPython:
             )
 
             assert isinstance(result, dict)
-            assert "content" in result
-            assert len(result["content"]) == 1
-            assert result["content"][0]["type"] == "text"
-
-            toon_text = result["content"][0]["text"]
+            # v1.13.0+: tool returns {format, toon_content, ...} directly
+            # instead of MCP-protocol {content: [{type: text, text: ...}]}.
+            if "content" in result:
+                toon_text = _payload_text(result)
+            else:
+                toon_text = result.get("toon_content", "")
+            assert toon_text, f"no TOON payload in {list(result.keys())}"
             # 验证 TOON 格式关键字段
             assert "success:" in toon_text
             assert "outline:" in toon_text
@@ -137,7 +152,7 @@ class TestGetCodeOutlineToonIntegrationPython:
                 {"file_path": temp_path, "output_format": "toon"}
             )
 
-            toon_text = result["content"][0]["text"]
+            toon_text = _payload_text(result)
             # 应包含类名和方法名
             assert "Calculator" in toon_text
             assert "add" in toon_text or "subtract" in toon_text
@@ -159,7 +174,7 @@ class TestGetCodeOutlineToonIntegrationPython:
                 {"file_path": temp_path, "output_format": "json"}
             )
 
-            json_text = result["content"][0]["text"]
+            json_text = _payload_text(result)
             data = json.loads(json_text)
 
             assert data["success"] is True
@@ -192,7 +207,7 @@ class TestGetCodeOutlineToonIntegrationJava:
                 {"file_path": temp_path, "output_format": "toon"}
             )
 
-            toon_text = result["content"][0]["text"]
+            toon_text = _payload_text(result)
             assert "success:" in toon_text
             assert "outline:" in toon_text
             assert "language: java" in toon_text
@@ -214,7 +229,7 @@ class TestGetCodeOutlineToonIntegrationJava:
                 {"file_path": temp_path, "output_format": "toon"}
             )
 
-            toon_text = result["content"][0]["text"]
+            toon_text = _payload_text(result)
             assert "DataService" in toon_text
         finally:
             Path(temp_path).unlink(missing_ok=True)
@@ -231,9 +246,11 @@ class TestGetCodeOutlineToonIntegrationJava:
 
         try:
             # 显式指定 output_format="toon"
-            result = await tool.execute({"file_path": temp_path, "output_format": "toon"})
+            result = await tool.execute(
+                {"file_path": temp_path, "output_format": "toon"}
+            )
 
-            toon_text = result["content"][0]["text"]
+            toon_text = _payload_text(result)
             # TOON 格式应以 "success: true" 开头，而非 JSON 的 "{"
             assert not toon_text.strip().startswith("{")
             assert "success:" in toon_text
@@ -267,8 +284,8 @@ class TestGetCodeOutlineToonVsJsonComparison:
                 {"file_path": temp_path, "output_format": "json"}
             )
 
-            toon_len = len(toon_result["content"][0]["text"])
-            json_len = len(json_result["content"][0]["text"])
+            toon_len = len(_payload_text(toon_result))
+            json_len = len(_payload_text(json_result))
 
             # TOON 应明显比 JSON 短
             assert toon_len < json_len, (
@@ -295,8 +312,8 @@ class TestGetCodeOutlineToonVsJsonComparison:
                 {"file_path": temp_path, "output_format": "json"}
             )
 
-            toon_text = toon_result["content"][0]["text"]
-            json_text = json_result["content"][0]["text"]
+            toon_text = _payload_text(toon_result)
+            json_text = _payload_text(json_result)
 
             # 两种格式都应包含类名
             assert "DataService" in toon_text
@@ -324,11 +341,13 @@ class TestGetCodeOutlineToonVsJsonComparison:
                     {"file_path": temp_path, "output_format": fmt}
                 )
                 assert isinstance(result, dict), f"format={fmt}: result should be dict"
-                assert "content" in result, f"format={fmt}: result should have content key"
-                assert len(result["content"]) == 1, f"format={fmt}: content should have 1 item"
-                assert result["content"][0]["type"] == "text", f"format={fmt}: type should be text"
-                assert isinstance(result["content"][0]["text"], str), (
-                    f"format={fmt}: text should be str"
-                )
+                # v1.13.0+: tools return direct dicts; the MCP server boundary
+                # wraps them. Either is acceptable here.
+                if "content" in result:
+                    assert len(result["content"]) == 1
+                    assert result["content"][0]["type"] == "text"
+                payload = _payload_text(result)
+                assert isinstance(payload, str), f"format={fmt}: payload should be str"
+                assert payload, f"format={fmt}: payload should not be empty"
         finally:
             Path(temp_path).unlink(missing_ok=True)

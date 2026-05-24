@@ -16,9 +16,9 @@ class TestRecorderProperties:
 
         # Check that all fixtures are present in the profile
         for fixture in ALL_FIXTURES:
-            assert (
-                fixture.id in profile.behaviors
-            ), f"Fixture {fixture.id} missing from profile"
+            assert fixture.id in profile.behaviors, (
+                f"Fixture {fixture.id} missing from profile"
+            )
 
         assert len(profile.behaviors) == len(ALL_FIXTURES)
 

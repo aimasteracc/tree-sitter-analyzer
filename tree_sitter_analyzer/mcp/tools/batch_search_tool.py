@@ -9,8 +9,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..utils.error_handler import handle_mcp_errors
 from . import fd_rg_utils
-from .base_tool import BaseMCPTool
+from .base_tool import BaseMCPTool, mirror_summary_line
 
 _BATCH_MAX_MATCHES_PER_QUERY = 20
 
@@ -79,6 +80,12 @@ class BatchSearchTool(BaseMCPTool):
                 "required": ["queries"],
                 "additionalProperties": False,
             },
+            "annotations": {
+                "readOnlyHint": True,
+                "destructiveHint": False,
+                "idempotentHint": True,
+                "openWorldHint": False,
+            },
         }
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
@@ -86,15 +93,28 @@ class BatchSearchTool(BaseMCPTool):
         if not isinstance(queries, list):
             raise ValueError("queries must be an array")
         if len(queries) < 2:
+            # O1: phrase as "must be at least N queries" so the canonical
+            # ``_classify`` hint matches "must be" → ``error_type=validation``
+            # (the same bucket every other tool reaches for a parameter-
+            # shape failure). Pre-O1 the wording was "requires at least",
+            # which fell through to the generic ``internal`` bucket because
+            # ``required`` is not a substring of ``requires``. Keep the
+            # "at least 2 queries" token in the message so existing tests
+            # that match on that substring still pass.
             raise ValueError(
-                "batch_search requires at least 2 queries; use search_content for a single search"
+                "queries must be at least 2 queries; "
+                "use search_content for a single search"
             )
         if len(queries) > 10:
-            raise ValueError("batch_search supports at most 10 queries per batch")
+            raise ValueError("queries must be at most 10 queries per batch")
         for i, q in enumerate(queries):
             if not isinstance(q, dict):
                 raise ValueError(f"queries[{i}] must be an object")
-            if "pattern" not in q or not isinstance(q["pattern"], str) or not q["pattern"]:
+            if (
+                "pattern" not in q
+                or not isinstance(q["pattern"], str)
+                or not q["pattern"]
+            ):
                 raise ValueError(f"queries[{i}].pattern must be a non-empty string")
         return True
 
@@ -145,8 +165,19 @@ class BatchSearchTool(BaseMCPTool):
             files_from=None,
         )
 
+    @handle_mcp_errors("batch_search")
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        """Execute all queries in parallel and aggregate results."""
+        """Execute all queries in parallel and aggregate results.
+
+        O1 (round-30 dogfood): wrapped with ``@handle_mcp_errors`` so
+        validation failures (empty queries, malformed query missing
+        ``pattern``) raise ``AnalysisError`` instead of bare
+        ``ValueError``. The MCP server boundary then converts that
+        into the canonical ``{success: false, error_type: validation,
+        agent_summary.verdict='ERROR', summary_line}`` envelope —
+        matching every other search tool (``search_content``,
+        ``list_files``, ``find_and_grep``).
+        """
         self.validate_arguments(arguments)
 
         queries: list[dict[str, Any]] = arguments["queries"]
@@ -188,8 +219,32 @@ class BatchSearchTool(BaseMCPTool):
                 }
             )
 
-        return {
+        # H5: canonical envelope — ``success``, top-level
+        # ``summary_line`` (queries+matches), and ``agent_summary`` with
+        # the mirrored line + next_step + verdict ("n/a" — batch_search
+        # reports matches; it doesn't gate further analysis on its own).
+        truncated_count = sum(1 for q in query_results if q.get("truncated") is True)
+        summary_line = (
+            f"batch_search queries={len(queries)} "
+            f"total_matches={total_matches} truncated={truncated_count}"
+        )
+        next_step = (
+            "search_content per pattern for paging into match details"
+            if total_matches > 0
+            else "Refine patterns or broaden roots — no matches found"
+        )
+        response: dict[str, Any] = {
+            "success": True,
             "queries": query_results,
             "total_matches": total_matches,
             "execution_note": f"{len(queries)} searches executed in parallel",
+            "summary_line": summary_line,
+            # r37x (envelope ratchet): top-level verdict mirror (r37u contract).
+            "verdict": "n/a",
+            "agent_summary": {
+                "summary_line": summary_line,
+                "next_step": next_step,
+                "verdict": "n/a",
+            },
         }
+        return mirror_summary_line(response)

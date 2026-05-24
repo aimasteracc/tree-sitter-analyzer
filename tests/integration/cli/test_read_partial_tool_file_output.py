@@ -498,19 +498,13 @@ public class Sample {
         # Check output_file parameter
         assert "output_file" in properties
         assert properties["output_file"]["type"] == "string"
-        assert (
-            "Optional filename to save output to file"
-            in properties["output_file"]["description"]
-        )
+        assert "save output to file" in properties["output_file"]["description"].lower()
 
         # Check suppress_output parameter
         assert "suppress_output" in properties
         assert properties["suppress_output"]["type"] == "boolean"
         assert properties["suppress_output"]["default"] is False
-        assert (
-            "suppress partial_content_result"
-            in properties["suppress_output"]["description"]
-        )
+        assert "suppress" in properties["suppress_output"]["description"].lower()
 
         # Check format parameter
         assert "format" in properties

@@ -114,8 +114,7 @@ lam = lambda x, y: x + y
 x = 10
 del x
 ''',
-
-    "javascript": '''\
+    "javascript": """\
 import { foo, bar } from "./module.js";
 import DefaultExport from "./other.js";
 
@@ -207,9 +206,8 @@ const NamedExprClass = class MyClass {};
 
 export { regularFunction };
 export default arrowFunction;
-''',
-
-    "typescript": '''\
+""",
+    "typescript": """\
 import { Component, OnInit } from "@angular/core";
 
 interface User {
@@ -293,9 +291,8 @@ type Result<T, E = Error> = { ok: true; value: T } | { ok: false; error: E };
 
 export { AppComponent, Direction };
 export type { User, Status };
-''',
-
-    "java": '''\
+""",
+    "java": """\
 package com.example;
 
 import java.util.List;
@@ -380,9 +377,8 @@ interface WithConstants {
     int CONSTANT = 42;
     String NAME = "hello";
 }
-''',
-
-    "go": '''\
+""",
+    "go": """\
 package main
 
 import (
@@ -505,9 +501,8 @@ func main() {
         }
     }()
 }
-''',
-
-    "rust": '''\
+""",
+    "rust": """\
 #![allow(unused)]
 use std::collections::HashMap;
 use std::fmt;
@@ -587,9 +582,8 @@ mod tests {
         assert_eq!(my_macro!(2), 4);
     }
 }
-''',
-
-    "c": '''\
+""",
+    "c": """\
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -641,9 +635,8 @@ int main(int argc, char *argv[]) {
     process_array(nums, 3, NULL);
     return EXIT_SUCCESS;
 }
-''',
-
-    "cpp": '''\
+""",
+    "cpp": """\
 #include <iostream>
 #include <vector>
 #include <memory>
@@ -747,9 +740,8 @@ int main() {
     std::cout << lambda(4) << "\\n";
     return 0;
 }
-''',
-
-    "csharp": '''\
+""",
+    "csharp": """\
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -850,9 +842,8 @@ public class User
     public string? Email { get; set; }
     public override string ToString() => $"User({Id}, {Name})";
 }
-''',
-
-    "ruby": '''\
+""",
+    "ruby": """\
 require "json"
 require_relative "utils"
 
@@ -883,7 +874,7 @@ class Animal
   def internal_state; { name: @name }; end
 
   private
-  def secret; "shhh"; end
+  def secret; "shhh"; end  # pragma: allowlist secret
 end
 
 class Dog < Animal
@@ -913,9 +904,8 @@ ensure
 end
 
 ;
-''',
-
-    "php": '''\
+""",
+    "php": """\
 <?php
 declare(strict_types=1);
 namespace App\\Controllers;
@@ -984,9 +974,8 @@ enum Status: string {
 }
 
 $items = array_filter(array_map(fn($x) => $x * 2, range(1, 10)), fn($x) => $x > 10);
-''',
-
-    "kotlin": '''\
+""",
+    "kotlin": """\
 package com.example
 
 import kotlinx.coroutines.*
@@ -1045,9 +1034,8 @@ suspend fun main() {
         async { service.findAll() }.await()
     }
 }
-''',
-
-    "yaml": '''\
+""",
+    "yaml": """\
 ---
 name: my-application
 version: "1.0.0"
@@ -1094,9 +1082,8 @@ metadata:
   labels:
     app: myapp
     tier: backend
-''',
-
-    "sql": '''\
+""",
+    "sql": """\
 -- Create tables
 CREATE TABLE users (
     id          SERIAL PRIMARY KEY,
@@ -1160,7 +1147,7 @@ CREATE VIEW user_summary AS
 SELECT u.name, COUNT(o.id) AS orders FROM users u
 LEFT JOIN orders o ON o.user_id = u.id
 GROUP BY u.name;
-''',
+""",
 }
 
 # 额外的字节级 corpus（用于需要非 UTF-8 或特殊语法的场景）

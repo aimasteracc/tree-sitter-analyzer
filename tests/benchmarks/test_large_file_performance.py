@@ -137,9 +137,9 @@ class TestLargeFilePerformance:
 
         # Performance assertion: should still complete in reasonable time
         duration = end_time - start_time
-        assert (
-            duration < 30.0
-        ), f"Very large file analysis took too long: {duration:.2f}s"
+        assert duration < 30.0, (
+            f"Very large file analysis took too long: {duration:.2f}s"
+        )
 
     @pytest.mark.asyncio
     async def test_cache_performance_large_file(self):
@@ -173,9 +173,9 @@ class TestLargeFilePerformance:
         assert result2["success"] is True
 
         # Cache hit should be faster or equal to cache miss
-        assert (
-            duration2 <= duration1
-        ), "Cache hit should be faster or equal to cache miss"
+        assert duration2 <= duration1, (
+            "Cache hit should be faster or equal to cache miss"
+        )
 
     @pytest.mark.asyncio
     async def test_memory_usage_large_file(self):

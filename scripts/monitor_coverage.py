@@ -9,7 +9,7 @@ import argparse
 import json
 import subprocess
 import sys
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 
@@ -158,7 +158,7 @@ class CoverageMonitor:
 
         # 添加新数据点
         trend_data.append(
-            {"timestamp": datetime.utcnow().isoformat(), "coverage": coverage}
+            {"timestamp": datetime.now(UTC).isoformat(), "coverage": coverage}
         )
 
         # 保留最近100个数据点
@@ -198,7 +198,7 @@ class CoverageMonitor:
         report_lines = [
             "# 覆盖率报告",
             "",
-            f"生成时间: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}",
+            f"生成时间: {datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S UTC')}",
             "",
             "## 总体覆盖率",
             "",

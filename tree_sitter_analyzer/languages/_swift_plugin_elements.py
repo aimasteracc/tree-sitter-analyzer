@@ -1,0 +1,268 @@
+"""Swift model element builders."""
+
+from __future__ import annotations
+
+import re
+from typing import TYPE_CHECKING, Any
+
+from ..models import Class, Function, Import, Variable
+from ..utils import log_error
+from ._swift_plugin_nodes import (
+    base_element_fields,
+    binding_kind,
+    class_type,
+    inherited_types,
+    interfaces,
+    modifier_words,
+    named_child_text,
+    superclass,
+    type_annotation,
+    type_name,
+    variable_name,
+    visibility,
+)
+
+if TYPE_CHECKING:
+    import tree_sitter
+
+
+def extract_swift_function(extractor: Any, node: tree_sitter.Node) -> Function | None:
+    """Extract one Swift function-like declaration."""
+    try:
+        raw_text = extractor.get_node_text(node)
+        return _swift_function(
+            node,
+            raw_text,
+            _function_name(extractor, node),
+            modifier_words(node),
+        )
+    except Exception as e:
+        log_error(f"Error extracting Swift function: {e}")
+        return None
+
+
+def extract_swift_class(extractor: Any, node: tree_sitter.Node) -> Class | None:
+    """Extract one Swift type declaration."""
+    try:
+        raw_text = extractor.get_node_text(node)
+        declaration_kind = class_type(node)
+        return _swift_class(
+            node,
+            raw_text,
+            type_name(extractor, node),
+            declaration_kind,
+            modifier_words(node),
+        )
+    except Exception as e:
+        log_error(f"Error extracting Swift type declaration: {e}")
+        return None
+
+
+def extract_swift_variable(extractor: Any, node: tree_sitter.Node) -> Variable | None:
+    """Extract one Swift property declaration."""
+    try:
+        raw_text = extractor.get_node_text(node)
+        binding = binding_kind(node, raw_text)
+        return _swift_variable(
+            node,
+            raw_text,
+            variable_name(extractor, node),
+            type_annotation(extractor, node),
+            modifier_words(node),
+            binding,
+        )
+    except Exception as e:
+        log_error(f"Error extracting Swift variable: {e}")
+        return None
+
+
+def extract_swift_import(extractor: Any, node: tree_sitter.Node) -> Import | None:
+    """Extract one Swift import declaration."""
+    try:
+        raw_text = extractor.get_node_text(node)
+        module_path = _import_module_path(raw_text)
+        return Import(**_swift_import_fields(node, raw_text, module_path))
+    except Exception as e:
+        log_error(f"Error extracting Swift import: {e}")
+        return None
+
+
+def _function_name(extractor: Any, node: tree_sitter.Node) -> str:
+    if node.type == "init_declaration":
+        return "init"
+    return named_child_text(extractor, node, ("simple_identifier", "identifier"))
+
+
+def _swift_function(
+    node: tree_sitter.Node,
+    raw_text: str,
+    name: str,
+    modifiers: list[str],
+) -> Function:
+    found_visibility = visibility(modifiers)
+    fields = base_element_fields(node, raw_text, name)
+    fields.update(_swift_function_fields(node, raw_text, modifiers, found_visibility))
+    return Function(**fields)
+
+
+def _swift_function_fields(
+    node: tree_sitter.Node,
+    raw_text: str,
+    modifiers: list[str],
+    found_visibility: str,
+) -> dict[str, Any]:
+    return {
+        "parameters": _parameter_names(raw_text),
+        "return_type": _return_type(raw_text),
+        "modifiers": modifiers,
+        "visibility": found_visibility,
+        "is_constructor": node.type == "init_declaration",
+        **_swift_function_flags(modifiers, raw_text, found_visibility),
+    }
+
+
+def _swift_function_flags(
+    modifiers: list[str],
+    raw_text: str,
+    found_visibility: str,
+) -> dict[str, bool]:
+    modifier_set = set(modifiers)
+    return {
+        "is_async": "async" in modifiers or _has_word(raw_text, "async"),
+        "is_static": bool({"static", "class"} & modifier_set),
+        "is_private": bool({"private", "fileprivate"} & modifier_set),
+        "is_public": found_visibility in {"open", "public"},
+    }
+
+
+def _swift_class(
+    node: tree_sitter.Node,
+    raw_text: str,
+    name: str,
+    declaration_kind: str,
+    modifiers: list[str],
+) -> Class:
+    inherited = inherited_types(raw_text)
+    parent_type = superclass(declaration_kind, inherited)
+    fields = _swift_class_fields(
+        node,
+        raw_text,
+        name,
+        declaration_kind,
+        modifiers,
+        inherited,
+        parent_type,
+    )
+    return Class(**fields)
+
+
+def _swift_class_fields(
+    node: tree_sitter.Node,
+    raw_text: str,
+    name: str,
+    declaration_kind: str,
+    modifiers: list[str],
+    inherited: list[str],
+    parent_type: str | None,
+) -> dict[str, Any]:
+    return {
+        **base_element_fields(node, raw_text, name),
+        **_swift_type_fields(declaration_kind, modifiers, inherited, parent_type, name),
+    }
+
+
+def _swift_type_fields(
+    declaration_kind: str,
+    modifiers: list[str],
+    inherited: list[str],
+    parent_type: str | None,
+    name: str,
+) -> dict[str, Any]:
+    return {
+        "class_type": declaration_kind,
+        "full_qualified_name": name,
+        "superclass": parent_type,
+        "interfaces": interfaces(inherited, parent_type),
+        "modifiers": modifiers,
+        "visibility": visibility(modifiers),
+    }
+
+
+def _swift_variable(
+    node: tree_sitter.Node,
+    raw_text: str,
+    name: str,
+    annotation: str | None,
+    modifiers: list[str],
+    binding: str,
+) -> Variable:
+    is_constant = binding == "let"
+    fields = base_element_fields(node, raw_text, name)
+    fields.update(_swift_variable_fields(annotation, modifiers, is_constant))
+    return Variable(**fields)
+
+
+def _swift_variable_fields(
+    annotation: str | None,
+    modifiers: list[str],
+    is_constant: bool,
+) -> dict[str, Any]:
+    return {
+        "variable_type": annotation,
+        "modifiers": modifiers,
+        "is_constant": is_constant,
+        "is_static": bool({"static", "class"} & set(modifiers)),
+        "visibility": visibility(modifiers),
+        "is_final": is_constant,
+    }
+
+
+def _swift_import_fields(
+    node: tree_sitter.Node,
+    raw_text: str,
+    module_path: str,
+) -> dict[str, Any]:
+    fields = base_element_fields(node, raw_text, module_path)
+    fields.update(
+        {
+            "module_name": module_path,
+            "module_path": module_path,
+            "imported_names": [module_path] if module_path else [],
+            "import_statement": raw_text,
+            "line_number": node.start_point[0] + 1,
+        }
+    )
+    return fields
+
+
+def _parameter_names(raw_text: str) -> list[str]:
+    match = re.search(r"\(([^)]*)\)", raw_text, flags=re.DOTALL)
+    if not match:
+        return []
+    return [_parameter_name(part) for part in match.group(1).split(",") if part.strip()]
+
+
+def _parameter_name(parameter_text: str) -> str:
+    before_type = parameter_text.split(":", 1)[0].strip()
+    if not before_type:
+        return ""
+    tokens = before_type.split()
+    return tokens[-1].lstrip("_") or tokens[-1]
+
+
+def _return_type(raw_text: str) -> str | None:
+    match = re.search(r"->\s*([A-Za-z_][A-Za-z0-9_?.<>,\s]*)", raw_text)
+    if not match:
+        return None
+    return match.group(1).split("{", 1)[0].strip()
+
+
+def _import_module_path(raw_text: str) -> str:
+    text = raw_text.strip()
+    text = re.sub(r"^import\s+", "", text)
+    text = re.sub(r"^(class|struct|enum|protocol|func|var|typealias)\s+", "", text)
+    return text.strip()
+
+
+def _has_word(raw_text: str, word: str) -> bool:
+    return bool(re.search(rf"\b{re.escape(word)}\b", raw_text))

@@ -104,12 +104,12 @@ class TestMultiLanguageConsistency:
             content = readme_path.read_text(encoding="utf-8")
 
             # Check for links to other language versions
-            assert (
-                "README.md" in content or "English" in content
-            ), f"{lang_name} README should link to English version"
-            assert (
-                "README_ja.md" in content or "日本語" in content
-            ), f"{lang_name} README should link to Japanese version"
+            assert "README.md" in content or "English" in content, (
+                f"{lang_name} README should link to English version"
+            )
+            assert "README_ja.md" in content or "日本語" in content, (
+                f"{lang_name} README should link to Japanese version"
+            )
             assert (
                 "README_zh.md" in content or "中文" in content or "简体中文" in content
             ), f"{lang_name} README should link to Chinese version"

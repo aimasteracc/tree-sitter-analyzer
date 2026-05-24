@@ -566,12 +566,12 @@ class Class_{i}:
         # 必須引数が不足している場合
         with pytest.raises(AnalysisError) as excinfo:
             await tool.execute({})
-        assert "file_path is required" in str(excinfo.value)
+        assert "file_path or symbol is required" in str(excinfo.value)
 
         # file_pathが不足している場合
         with pytest.raises(AnalysisError) as excinfo:
             await tool.execute({"query_key": "function"})
-        assert "file_path is required" in str(excinfo.value)
+        assert "file_path or symbol is required" in str(excinfo.value)
 
     @pytest.mark.asyncio
     async def test_mcp_tool_output_file_feature(self, sample_code_file):

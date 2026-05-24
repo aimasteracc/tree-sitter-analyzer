@@ -1,0 +1,70 @@
+{
+  "counts_by_type": {
+    "Class": 9,
+    "Function": 18,
+    "Import": 5,
+    "Package": 1,
+    "Variable": 9
+  },
+  "element_total": 42,
+  "names_by_type": {
+    "Class": [
+      "Config",
+      "Handler",
+      "Middleware",
+      "ReadWriter",
+      "Reader",
+      "Service",
+      "Status",
+      "WorkerPool",
+      "Writer"
+    ],
+    "Function": [
+      "Chain",
+      "IsRunning",
+      "Name",
+      "NewService",
+      "NewWorkerPool",
+      "ProcessData",
+      "Shutdown",
+      "Start",
+      "Stop",
+      "Submit",
+      "WithRetry",
+      "WithTimeout",
+      "process",
+      "run",
+      "stop",
+      "tick",
+      "worker"
+    ],
+    "Import": [
+      "context",
+      "errors",
+      "fmt",
+      "sync",
+      "time"
+    ],
+    "Package": [
+      "sample"
+    ],
+    "Variable": [
+      "DefaultTimeout",
+      "ErrNotFound",
+      "MaxRetries",
+      "RetryInterval",
+      "StatusCompleted",
+      "StatusFailed",
+      "StatusPending",
+      "StatusRunning",
+      "lastErr"
+    ]
+  },
+  "types": [
+    "Class",
+    "Function",
+    "Import",
+    "Package",
+    "Variable"
+  ]
+}

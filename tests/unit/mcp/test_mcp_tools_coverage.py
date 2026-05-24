@@ -263,11 +263,13 @@ from pathlib import Path
 
     @pytest.mark.asyncio
     async def test_execute_with_threshold(self, analyze_scale_tool, temp_python_file):
-        """Test execute with line threshold."""
+        """Test execute on a small file (F5: ``threshold`` was a typo'd
+        parameter that the tool never read — schema strictness now
+        rejects it. The threshold lives inside the response, not the
+        request, so this test now just verifies the happy path."""
         result = await analyze_scale_tool.execute(
             {
                 "file_path": temp_python_file,
-                "threshold": 100,
             }
         )
         assert "success" in result or "file_path" in result
@@ -376,13 +378,15 @@ def standalone_function():
 
     @pytest.mark.asyncio
     async def test_execute_with_context(self, read_partial_tool, temp_python_file):
-        """Test execute with context lines."""
+        """Test execute with a line range. F5: ``context_lines`` was a
+        typo'd parameter that the tool never read — schema strictness
+        now rejects it. Context lines are computed inside the tool
+        based on ``start_line``/``end_line``, not a separate field."""
         result = await read_partial_tool.execute(
             {
                 "file_path": temp_python_file,
                 "start_line": 5,
                 "end_line": 8,
-                "context_lines": 2,
             }
         )
         assert "content" in result or "success" in result
@@ -544,13 +548,16 @@ class TestOutputManagerCoverage:
         assert captured.out == ""
 
     def test_info_not_quiet(self, capsys):
-        """Test info message when not quiet."""
+        """Test info message when not quiet — goes to stderr (Q2)."""
         from tree_sitter_analyzer.output_manager import OutputManager
 
         manager = OutputManager(quiet=False)
         manager.info("Test message")
         captured = capsys.readouterr()
-        assert "Test message" in captured.out
+        # Q2 (round-33): info must NOT pollute stdout — that's reserved
+        # for the JSON/TOON data payload.
+        assert captured.out == ""
+        assert "Test message" in captured.err
 
     def test_data_json(self, capsys):
         """Test data output in JSON format."""

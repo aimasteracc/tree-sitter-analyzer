@@ -54,25 +54,20 @@ class GitignoreDetector:
         if not project_root:
             return False
 
+        # r37e1 (dogfood): flatten nesting 6 → 4 via early-continue.
         try:
             project_path = Path(project_root).resolve()
-
-            # Check for .gitignore files that might interfere
-            gitignore_files = self._find_gitignore_files(project_path)
-
-            for gitignore_file in gitignore_files:
-                # Use the directory containing the .gitignore as the reference point
+            for gitignore_file in self._find_gitignore_files(project_path):
                 gitignore_dir = gitignore_file.parent
-                if self._has_interfering_patterns(
+                if not self._has_interfering_patterns(
                     gitignore_file, gitignore_dir, project_path
                 ):
-                    logger.debug(
-                        f"Found interfering .gitignore patterns in {gitignore_file}"
-                    )
-                    return True
-
+                    continue
+                logger.debug(
+                    f"Found interfering .gitignore patterns in {gitignore_file}"
+                )
+                return True
             return False
-
         except Exception as e:
             logger.warning(f"Error detecting .gitignore interference: {e}")
             return False
@@ -157,22 +152,18 @@ class GitignoreDetector:
         pattern = pattern.lstrip("/")
 
         # Check for broad directory exclusions that contain searchable files
+        # r37e1 (dogfood): flatten nesting 6 → 3 via early-return chain.
         if pattern.endswith("/*") or pattern.endswith("/"):
             dir_name = pattern.rstrip("/*")
-
-            # Check if the pattern affects the current search directory
             pattern_dir = gitignore_dir / dir_name
-
-            # If we're searching in a subdirectory that would be ignored by this pattern
-            if self._is_search_dir_affected_by_pattern(
+            search_affected = self._is_search_dir_affected_by_pattern(
                 current_search_dir, pattern_dir, gitignore_dir
-            ):
-                # For testing purposes, consider it interfering if the directory exists
-                if pattern_dir.exists() and pattern_dir.is_dir():
-                    logger.debug(
-                        f"Pattern '{pattern}' interferes with search - directory exists"
-                    )
-                    return True
+            )
+            if search_affected and pattern_dir.exists() and pattern_dir.is_dir():
+                logger.debug(
+                    f"Pattern '{pattern}' interferes with search - directory exists"
+                )
+                return True
 
         # Check for patterns that ignore entire source directories
         source_dirs = [
@@ -291,17 +282,19 @@ class GitignoreDetector:
             gitignore_files = self._find_gitignore_files(project_path)
             info["detected_gitignore_files"] = [str(f) for f in gitignore_files]
 
+            # r37e1: flatten nesting 6 → 3 via early-continue.
             for gitignore_file in gitignore_files:
                 gitignore_dir = gitignore_file.parent
                 patterns = self._get_interfering_patterns(
                     gitignore_file, gitignore_dir, project_path
                 )
-                if patterns:
-                    existing_patterns = info.get("interfering_patterns", [])
-                    if isinstance(existing_patterns, list):
-                        info["interfering_patterns"] = existing_patterns + patterns
-                    else:
-                        info["interfering_patterns"] = patterns
+                if not patterns:
+                    continue
+                existing_patterns = info.get("interfering_patterns", [])
+                if isinstance(existing_patterns, list):
+                    info["interfering_patterns"] = existing_patterns + patterns
+                else:
+                    info["interfering_patterns"] = patterns
 
             interfering_patterns = info.get("interfering_patterns", [])
             if interfering_patterns:
@@ -330,14 +323,13 @@ class GitignoreDetector:
             content, _ = read_file_safe(gitignore_file)
             lines = content.splitlines()
 
-            for line in lines:
-                line = line.strip()
-                if (
-                    line
-                    and not line.startswith("#")
-                    and self._is_interfering_pattern(
-                        line, gitignore_dir, current_search_dir
-                    )
+            # r37e1: flatten nesting 6 → 4 via early-continue.
+            for raw_line in lines:
+                line = raw_line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if self._is_interfering_pattern(
+                    line, gitignore_dir, current_search_dir
                 ):
                     interfering.append(line)
 

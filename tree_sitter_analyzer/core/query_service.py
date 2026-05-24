@@ -13,8 +13,14 @@ from typing import Any
 from ..encoding_utils import read_file_safe
 from ..plugins.manager import PluginManager
 from ..query_loader import query_loader
-from ..utils.tree_sitter_compat import TreeSitterQueryCompat, get_node_text_safe
+from ..utils.tree_sitter_compat import get_node_text_safe
+from ._query_service_helpers import (
+    fallback_query_captures,
+    plugin_category_captures,
+    plugin_strategy_captures,
+)
 from .parser import Parser
+from .query_executor import execute_ts_query, process_captures, resolve_query_string
 from .query_filter import QueryFilter
 
 logger = logging.getLogger(__name__)
@@ -22,6 +28,8 @@ logger = logging.getLogger(__name__)
 
 class QueryService:
     """Unified query service providing tree-sitter query functionality"""
+
+    _MAX_PARENT_CONTEXT_DEPTH = 64
 
     def __init__(self, project_root: str | None = None) -> None:
         """Initialize the query service"""
@@ -39,35 +47,12 @@ class QueryService:
         query_string: str | None = None,
         filter_expression: str | None = None,
     ) -> list[dict[str, Any]] | None:
-        """
-        Execute a query
-
-        Args:
-            file_path: Path to the file to analyze
-            language: Programming language
-            query_key: Predefined query key (e.g., 'methods', 'class')
-            query_string: Custom query string (e.g., '(method_declaration) @method')
-            filter_expression: Filter expression (e.g., 'name=main', 'name=~get*,public=true')
-
-        Returns:
-            List of query results, each containing capture_name, node_type, start_line, end_line, content
-
-        Raises:
-            ValueError: If neither query_key nor query_string is provided
-            FileNotFoundError: If file doesn't exist
-            Exception: If query execution fails
-        """
-        if not query_key and not query_string:
-            raise ValueError("Must provide either query_key or query_string")
-
-        if query_key and query_string:
-            raise ValueError("Cannot provide both query_key and query_string")
+        """Execute a query against a file."""
+        qs = resolve_query_string(language, query_key, query_string)
 
         try:
-            # Read file content
-            content, encoding = await self._read_file_async(file_path)
+            content, _encoding = await self._read_file_async(file_path)
 
-            # Parse file
             parse_result = self.parser.parse_code(content, language, file_path)
             if not parse_result or not parse_result.tree:
                 raise Exception("Failed to parse file")
@@ -77,53 +62,19 @@ class QueryService:
             if not language_obj:
                 raise Exception(f"Language object not available for {language}")
 
-            # Get query string
-            if query_key:
-                query_string = query_loader.get_query(language, query_key)
-                if not query_string:
-                    raise ValueError(
-                        f"Query '{query_key}' not found for language '{language}'"
-                    )
+            captures = execute_ts_query(
+                tree,
+                language_obj,
+                qs,
+                tree.root_node,
+                self._execute_plugin_query,
+                query_key,
+                language,
+                content,
+            )
 
-            # Execute tree-sitter query using modern API
-            try:
-                captures = TreeSitterQueryCompat.safe_execute_query(
-                    language_obj, query_string or "", tree.root_node, fallback_result=[]
-                )
+            results = process_captures(captures, content, self._create_result_dict)
 
-                # If captures is empty, use plugin fallback
-                if not captures:
-                    captures = self._execute_plugin_query(
-                        tree.root_node, query_key, language, content
-                    )
-
-            except Exception as e:
-                logger.debug(
-                    f"Tree-sitter query execution failed, using plugin fallback: {e}"
-                )
-                # If query creation or execution fails, use plugin fallback
-                captures = self._execute_plugin_query(
-                    tree.root_node, query_key, language, content
-                )
-
-            # Process capture results
-            results = []
-            if isinstance(captures, list):
-                # Handle list of tuples from modern API and plugin execution
-                for capture in captures:
-                    if isinstance(capture, tuple) and len(capture) == 2:
-                        node, name = capture
-                        results.append(self._create_result_dict(node, name, content))
-            # Note: This else block is unreachable due to the logic above, but kept for safety
-            # else:
-            #     # If captures is not in expected format, use plugin fallback
-            #     plugin_captures = self._execute_plugin_query(tree.root_node, query_key, language, content)
-            #     for capture in plugin_captures:
-            #         if isinstance(capture, tuple) and len(capture) == 2:
-            #             node, name = capture
-            #             results.append(self._create_result_dict(node, name, content))
-
-            # Apply filters
             if filter_expression and results:
                 results = self.filter.filter_results(results, filter_expression)
 
@@ -150,15 +101,166 @@ class QueryService:
         # Use safe text extraction with source code
         content = get_node_text_safe(node, source_code)
 
-        return {
+        start_line = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
+        end_line = node.end_point[0] + 1 if hasattr(node, "end_point") else 0
+
+        node_type = getattr(node, "type", "unknown")
+        if not isinstance(node_type, str):
+            node_type = "unknown"
+
+        result = {
             "capture_name": capture_name,
-            "node_type": node.type if hasattr(node, "type") else "unknown",
-            "start_line": (
-                node.start_point[0] + 1 if hasattr(node, "start_point") else 0
-            ),
-            "end_line": node.end_point[0] + 1 if hasattr(node, "end_point") else 0,
+            "node_type": node_type,
+            "start_line": start_line,
+            "end_line": end_line,
+            "line_span": end_line - start_line + 1,
             "content": content,
         }
+
+        name = self._extract_node_name(node)
+        if name:
+            result["name"] = name
+
+        # Add enclosing context (parent class/module name)
+        parent_name = self._extract_parent_context(node)
+        if parent_name:
+            result["parent"] = parent_name
+
+        return result
+
+    def _extract_node_name(self, node: Any) -> str | None:
+        """Extract a human-readable name from a tree-sitter node."""
+        child_by_field_name = getattr(node, "child_by_field_name", None)
+        if not callable(child_by_field_name):
+            return None
+
+        for field in ("name", "declarator"):
+            name_node = child_by_field_name(field)
+            text = self._extract_name_node_text(name_node)
+            if text:
+                return text
+
+        return None
+
+    def _extract_name_node_text(self, name_node: Any) -> str | None:
+        if name_node is None or not self._is_node_like(name_node):
+            return None
+
+        text = get_node_text_safe(name_node, "")
+        if not text or len(text) >= 200:
+            return None
+
+        declarator_text = self._extract_nested_declarator_name(name_node)
+        return declarator_text or text
+
+    def _extract_nested_declarator_name(self, name_node: Any) -> str | None:
+        name_node_type = getattr(name_node, "type", "")
+        if not (
+            isinstance(name_node_type, str) and name_node_type.endswith("_declarator")
+        ):
+            return None
+
+        nested_child = getattr(name_node, "child_by_field_name", None)
+        if not callable(nested_child):
+            return None
+
+        inner = nested_child("declarator") or nested_child("name")
+        if inner is None or not self._is_node_like(inner):
+            return None
+        return get_node_text_safe(inner, "")
+
+    # Node types that represent enclosing containers
+    _CONTAINER_TYPES = frozenset(
+        {
+            "class_declaration",
+            "class_definition",
+            "class",
+            "interface_declaration",
+            "interface_definition",
+            "interface",
+            "struct_declaration",
+            "struct_definition",
+            "struct",
+            "enum_declaration",
+            "enum_definition",
+            "enum",
+            "trait_declaration",
+            "trait",
+            "module_declaration",
+            "module_definition",
+            "module",
+            "namespace_definition",
+            "namespace",
+            "object_declaration",  # Kotlin
+        }
+    )
+
+    def _extract_parent_context(self, node: Any) -> str | None:
+        """Walk up the tree to find the enclosing class/struct/module name."""
+        current = getattr(node, "parent", None)
+        seen_ids: set[int] = set()
+        depth = 0
+        while (
+            current is not None
+            and depth < self._MAX_PARENT_CONTEXT_DEPTH
+            and id(current) not in seen_ids
+        ):
+            seen_ids.add(id(current))
+            depth += 1
+
+            if not self._is_node_like(current):
+                break
+
+            current_type = getattr(current, "type", None)
+            if not isinstance(current_type, str):
+                current = getattr(current, "parent", None)
+                continue
+
+            if current_type in self._CONTAINER_TYPES:
+                text = self._extract_container_name(current)
+                if text:
+                    return text
+
+            current = getattr(current, "parent", None)
+
+        return None
+
+    def _extract_container_name(self, node: Any) -> str | None:
+        child_by_field_name = getattr(node, "child_by_field_name", None)
+        if not callable(child_by_field_name):
+            return None
+
+        name_node = child_by_field_name("name")
+        if name_node is None:
+            return None
+
+        text = get_node_text_safe(name_node, "")
+        if text and len(text) < 200:
+            return text
+        return None
+
+    def _is_node_like(self, node: Any) -> bool:
+        """Return True for real tree-sitter nodes or explicitly configured test nodes."""
+        node_type = getattr(node, "type", None)
+        if isinstance(node_type, str):
+            return True
+
+        text = getattr(node, "text", None)
+        if isinstance(text, (bytes, str)):
+            return True
+
+        start_point = getattr(node, "start_point", None)
+        end_point = getattr(node, "end_point", None)
+        return self._is_point(start_point) and self._is_point(end_point)
+
+    @staticmethod
+    def _is_point(value: Any) -> bool:
+        """Return True for tree-sitter point tuples."""
+        return (
+            isinstance(value, tuple)
+            and len(value) == 2
+            and all(isinstance(part, int) for part in value)
+        )
 
     def get_available_queries(self, language: str) -> list[str]:
         """
@@ -203,76 +305,19 @@ class QueryService:
         Returns:
             List of (node, capture_name) tuples
         """
-        captures = []
-
         # Try to get plugin for the language
         plugin = self.plugin_manager.get_plugin(language)
         if not plugin:
             logger.warning(f"No plugin found for language: {language}")
             return self._fallback_query_execution(root_node, query_key)
 
-        # Use plugin's execute_query_strategy method
-        try:
-            # Create a mock tree object for plugin compatibility
-            class MockTree:
-                def __init__(self, root_node: Any) -> None:
-                    self.root_node = root_node
-
-            # Execute plugin query strategy
-            elements = plugin.execute_query_strategy(
-                source_code, query_key or "function"
-            )
-
-            # Convert elements to captures format
-            if elements:
-                for element in elements:
-                    if hasattr(element, "start_line") and hasattr(element, "end_line"):
-                        # Create a mock node for compatibility
-                        class MockNode:
-                            def __init__(self, element: Any) -> None:
-                                self.type = getattr(
-                                    element, "element_type", query_key or "unknown"
-                                )
-                                self.start_point = (
-                                    getattr(element, "start_line", 1) - 1,
-                                    0,
-                                )
-                                self.end_point = (
-                                    getattr(element, "end_line", 1) - 1,
-                                    0,
-                                )
-                                self.text = getattr(element, "raw_text", "").encode(
-                                    "utf-8"
-                                )
-
-                        mock_node = MockNode(element)
-                        captures.append((mock_node, query_key or "element"))
-
+        captures = plugin_strategy_captures(plugin, query_key, source_code)
+        if captures is not None:
             return captures
 
-        except Exception as e:
-            logger.debug(f"Plugin query strategy failed: {e}")
-
-        # Fallback: Use plugin's element categories for tree traversal
-        try:
-            element_categories = plugin.get_element_categories()
-            if element_categories and query_key and query_key in element_categories:
-                node_types = element_categories[query_key]
-
-                def walk_tree(node: Any) -> None:
-                    """Walk the tree and find matching nodes using plugin categories"""
-                    if node.type in node_types:
-                        captures.append((node, query_key))
-
-                    # Recursively process children
-                    for child in node.children:
-                        walk_tree(child)
-
-                walk_tree(root_node)
-                return captures
-
-        except Exception as e:
-            logger.debug(f"Plugin element categories failed: {e}")
+        captures = plugin_category_captures(plugin, root_node, query_key)
+        if captures is not None:
+            return captures
 
         # Final fallback
         return self._fallback_query_execution(root_node, query_key)
@@ -290,39 +335,7 @@ class QueryService:
         Returns:
             List of (node, capture_name) tuples
         """
-        captures = []
-
-        def walk_tree_basic(node: Any) -> None:
-            """Basic tree walking for unsupported languages"""
-            # Get node type safely
-            node_type = getattr(node, "type", "")
-            if not isinstance(node_type, str):
-                node_type = str(node_type)
-
-            # Generic node type matching (support both singular and plural forms)
-            if (
-                query_key in ("function", "functions")
-                and "function" in node_type
-                or query_key in ("class", "classes")
-                and "class" in node_type
-                or query_key in ("method", "methods")
-                and "method" in node_type
-                or query_key in ("variable", "variables")
-                and "variable" in node_type
-                or query_key in ("import", "imports")
-                and "import" in node_type
-                or query_key in ("header", "headers")
-                and "heading" in node_type
-            ):
-                captures.append((node, query_key))
-
-            # Recursively process children
-            children = getattr(node, "children", [])
-            for child in children:
-                walk_tree_basic(child)
-
-        walk_tree_basic(root_node)
-        return captures
+        return fallback_query_captures(root_node, query_key)
 
     async def _read_file_async(self, file_path: str) -> tuple[str, str]:
         """

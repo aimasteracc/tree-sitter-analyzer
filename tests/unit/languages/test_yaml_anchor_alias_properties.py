@@ -190,9 +190,9 @@ class TestYAMLAnchorAliasProperties:
         # Property: Anchors must be extracted
         anchors = [e for e in elements if e.element_type == "anchor"]
 
-        assert (
-            len(anchors) >= 1
-        ), f"Expected at least 1 anchor, got {len(anchors)}. Content:\n{yaml_content}"
+        assert len(anchors) >= 1, (
+            f"Expected at least 1 anchor, got {len(anchors)}. Content:\n{yaml_content}"
+        )
 
         # Property: Anchor must have correct name
         anchor_names = [a.anchor_name for a in anchors]
@@ -204,12 +204,12 @@ class TestYAMLAnchorAliasProperties:
 
         # Property: Anchor element must have anchor_name attribute
         for anchor in anchors:
-            assert (
-                anchor.anchor_name is not None
-            ), f"Anchor at line {anchor.start_line} must have anchor_name attribute"
-            assert (
-                len(anchor.anchor_name) > 0
-            ), f"Anchor name at line {anchor.start_line} must not be empty"
+            assert anchor.anchor_name is not None, (
+                f"Anchor at line {anchor.start_line} must have anchor_name attribute"
+            )
+            assert len(anchor.anchor_name) > 0, (
+                f"Anchor name at line {anchor.start_line} must not be empty"
+            )
 
         # Property: Anchor element_type must be "anchor"
         for anchor in anchors:
@@ -223,7 +223,9 @@ class TestYAMLAnchorAliasProperties:
             assert (
                 f"&{anchor.anchor_name}" in anchor.raw_text
                 or anchor.anchor_name in anchor.raw_text
-            ), f"Anchor name '{anchor.anchor_name}' should appear in raw_text '{anchor.raw_text}'"
+            ), (
+                f"Anchor name '{anchor.anchor_name}' should appear in raw_text '{anchor.raw_text}'"
+            )
 
     @settings(max_examples=100)
     @given(yaml_data=yaml_with_anchor_and_alias())
@@ -257,9 +259,9 @@ class TestYAMLAnchorAliasProperties:
         # Property: Aliases must be extracted
         aliases = [e for e in elements if e.element_type == "alias"]
 
-        assert (
-            len(aliases) >= 1
-        ), f"Expected at least 1 alias, got {len(aliases)}. Content:\n{yaml_content}"
+        assert len(aliases) >= 1, (
+            f"Expected at least 1 alias, got {len(aliases)}. Content:\n{yaml_content}"
+        )
 
         # Property: Alias must have correct target name
         alias_targets = [a.alias_target for a in aliases]
@@ -271,12 +273,12 @@ class TestYAMLAnchorAliasProperties:
 
         # Property: Alias element must have alias_target attribute
         for alias in aliases:
-            assert (
-                alias.alias_target is not None
-            ), f"Alias at line {alias.start_line} must have alias_target attribute"
-            assert (
-                len(alias.alias_target) > 0
-            ), f"Alias target at line {alias.start_line} must not be empty"
+            assert alias.alias_target is not None, (
+                f"Alias at line {alias.start_line} must have alias_target attribute"
+            )
+            assert len(alias.alias_target) > 0, (
+                f"Alias target at line {alias.start_line} must not be empty"
+            )
 
         # Property: Alias element_type must be "alias"
         for alias in aliases:
@@ -290,7 +292,9 @@ class TestYAMLAnchorAliasProperties:
             assert (
                 f"*{alias.alias_target}" in alias.raw_text
                 or alias.alias_target in alias.raw_text
-            ), f"Alias target '{alias.alias_target}' should appear in raw_text '{alias.raw_text}'"
+            ), (
+                f"Alias target '{alias.alias_target}' should appear in raw_text '{alias.raw_text}'"
+            )
 
     @settings(max_examples=100)
     @given(yaml_data=yaml_with_anchor_and_alias())
@@ -393,9 +397,9 @@ class TestYAMLAnchorAliasProperties:
 
         # Property: Anchor names should be unique
         anchor_name_list = [a.anchor_name for a in anchors]
-        assert len(anchor_name_list) == len(
-            set(anchor_name_list)
-        ), f"Duplicate anchor names found: {anchor_name_list}"
+        assert len(anchor_name_list) == len(set(anchor_name_list)), (
+            f"Duplicate anchor names found: {anchor_name_list}"
+        )
 
     @settings(max_examples=50)
     @given(yaml_data=yaml_with_multiple_anchors())
@@ -481,9 +485,9 @@ class TestYAMLAnchorAliasProperties:
         anchors = [e for e in elements if e.element_type == "anchor"]
 
         # Property: Anchor must be found
-        assert (
-            len(anchors) >= 1
-        ), f"Expected at least 1 anchor, got {len(anchors)}. Content:\n{yaml_content}"
+        assert len(anchors) >= 1, (
+            f"Expected at least 1 anchor, got {len(anchors)}. Content:\n{yaml_content}"
+        )
 
         # Property: Anchor name must match expected
         anchor_names = [a.anchor_name for a in anchors]
@@ -494,24 +498,24 @@ class TestYAMLAnchorAliasProperties:
 
         # Property: Anchor must have valid nesting_level
         for anchor in anchors:
-            assert hasattr(
-                anchor, "nesting_level"
-            ), f"Anchor at line {anchor.start_line} must have nesting_level attribute"
-            assert isinstance(
-                anchor.nesting_level, int
-            ), f"nesting_level must be int, got {type(anchor.nesting_level)}"
-            assert (
-                anchor.nesting_level >= 0
-            ), f"nesting_level must be non-negative, got {anchor.nesting_level}"
+            assert hasattr(anchor, "nesting_level"), (
+                f"Anchor at line {anchor.start_line} must have nesting_level attribute"
+            )
+            assert isinstance(anchor.nesting_level, int), (
+                f"nesting_level must be int, got {type(anchor.nesting_level)}"
+            )
+            assert anchor.nesting_level >= 0, (
+                f"nesting_level must be non-negative, got {anchor.nesting_level}"
+            )
 
         # Property: Anchor must have valid line numbers
         for anchor in anchors:
-            assert (
-                anchor.start_line > 0
-            ), f"Anchor start_line must be positive, got {anchor.start_line}"
-            assert (
-                anchor.end_line >= anchor.start_line
-            ), "Anchor end_line must be >= start_line"
+            assert anchor.start_line > 0, (
+                f"Anchor start_line must be positive, got {anchor.start_line}"
+            )
+            assert anchor.end_line >= anchor.start_line, (
+                "Anchor end_line must be >= start_line"
+            )
 
     @settings(max_examples=100)
     @given(
@@ -560,9 +564,9 @@ class TestYAMLAnchorAliasProperties:
         anchors = [e for e in elements if e.element_type == "anchor"]
 
         # Property: Exactly one anchor should be found
-        assert (
-            len(anchors) == 1
-        ), f"Expected exactly 1 anchor, got {len(anchors)}. Content: {yaml_content}"
+        assert len(anchors) == 1, (
+            f"Expected exactly 1 anchor, got {len(anchors)}. Content: {yaml_content}"
+        )
 
         # Property: Anchor name must match exactly (without &)
         extracted_anchor = anchors[0]
@@ -629,9 +633,9 @@ alias: *{anchor_name}
         aliases = [e for e in elements if e.element_type == "alias"]
 
         # Property: Exactly one alias should be found
-        assert (
-            len(aliases) == 1
-        ), f"Expected exactly 1 alias, got {len(aliases)}. Content: {yaml_content}"
+        assert len(aliases) == 1, (
+            f"Expected exactly 1 alias, got {len(aliases)}. Content: {yaml_content}"
+        )
 
         # Property: Alias target must match anchor name exactly (without *)
         extracted_alias = aliases[0]

@@ -239,9 +239,9 @@ public class UserService {
 
         # All formats should contain the same basic information
         for format_type, output in results.items():
-            assert (
-                "UserService" in output
-            ), f"Missing class name in {format_type} format"
+            assert "UserService" in output, (
+                f"Missing class name in {format_type} format"
+            )
             assert "findUserById" in output, f"Missing method in {format_type} format"
             assert "createUser" in output, f"Missing method in {format_type} format"
             assert "validateUser" in output, f"Missing method in {format_type} format"
@@ -433,12 +433,12 @@ class TestFormatConsistency:
                 ]
 
                 for content in essential_content:
-                    assert any(
-                        content in line for line in mcp_lines
-                    ), f"MCP missing: {content}"
-                    assert any(
-                        content in line for line in cli_lines
-                    ), f"CLI missing: {content}"
+                    assert any(content in line for line in mcp_lines), (
+                        f"MCP missing: {content}"
+                    )
+                    assert any(content in line for line in cli_lines), (
+                        f"CLI missing: {content}"
+                    )
             else:
                 pytest.skip(f"CLI execution failed: {cli_result.stderr}")
 
@@ -508,9 +508,9 @@ class TestRealImplementationValidation:
             output = formatter.format(elements)
 
             # Basic validation
-            assert (
-                output and output.strip()
-            ), f"{format_type} formatter produced empty output"
+            assert output and output.strip(), (
+                f"{format_type} formatter produced empty output"
+            )
             assert "TestClass" in output, f"{format_type} formatter missing class name"
 
             # Format-specific validation
@@ -518,9 +518,9 @@ class TestRealImplementationValidation:
                 assert "# " in output, "Full format should have main header"
                 assert "## " in output, "Full format should have section headers"
             elif format_type == "compact":
-                assert (
-                    "## Info" in output or "## Methods" in output
-                ), "Compact format should have info sections"
+                assert "## Info" in output or "## Methods" in output, (
+                    "Compact format should have info sections"
+                )
             elif format_type == "csv":
                 lines = output.strip().split("\n")
                 assert len(lines) >= 2, "CSV should have header and data rows"
@@ -542,15 +542,15 @@ class TestRealImplementationValidation:
         markdown_output = full_formatter.format(elements)
 
         validation_result = validate_format(markdown_output, "markdown")
-        assert (
-            validation_result.is_valid
-        ), f"Markdown validation failed: {validation_result.errors}"
+        assert validation_result.is_valid, (
+            f"Markdown validation failed: {validation_result.errors}"
+        )
 
         # Test CSV validation with real output
         csv_formatter = CsvFormatter()
         csv_output = csv_formatter.format(elements)
 
         csv_validation_result = validate_format(csv_output, "csv")
-        assert (
-            csv_validation_result.is_valid
-        ), f"CSV validation failed: {csv_validation_result.errors}"
+        assert csv_validation_result.is_valid, (
+            f"CSV validation failed: {csv_validation_result.errors}"
+        )

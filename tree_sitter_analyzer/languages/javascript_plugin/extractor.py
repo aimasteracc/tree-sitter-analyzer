@@ -1,0 +1,226 @@
+#!/usr/bin/env python3
+"""
+JavaScript Language Plugin
+
+Enhanced JavaScript-specific parsing and element extraction functionality.
+Provides comprehensive support for modern JavaScript features including ES6+,
+async/await, classes, modules, JSX, and framework-specific patterns.
+Equivalent to Java plugin capabilities for consistent language support.
+"""
+
+from typing import TYPE_CHECKING, Any, Optional
+
+if TYPE_CHECKING:
+    import tree_sitter
+
+try:
+    import tree_sitter
+
+    TREE_SITTER_AVAILABLE = True
+except ImportError:
+    TREE_SITTER_AVAILABLE = False
+
+from ...encoding_utils import extract_text_slice, safe_encode
+from ...models import Class, Variable
+from ...plugins.base import ElementExtractor
+from ...utils import log_debug
+from ._class_helpers import extract_class
+from ._function_mixin import JavaScriptFunctionExtractionMixin
+from ._import_export_mixin import JavaScriptImportExportMixin
+from ._public_extraction_mixin import JavaScriptPublicExtractionMixin
+from ._text_helpers import get_node_text_optimized
+from ._traversal_helpers import traverse_and_extract_iterative
+from ._utility_mixin import JavaScriptUtilityMixin
+from ._variable_helpers import parse_variable_declarator
+
+
+class JavaScriptElementExtractor(
+    JavaScriptPublicExtractionMixin,
+    JavaScriptImportExportMixin,
+    JavaScriptUtilityMixin,
+    JavaScriptFunctionExtractionMixin,
+    ElementExtractor,
+):
+    """Enhanced JavaScript-specific element extractor with comprehensive feature support"""
+
+    def __init__(self) -> None:
+        """Initialize the JavaScript element extractor."""
+        self.current_file: str = ""
+        self.source_code: str = ""
+        self.content_lines: list[str] = []
+        self.imports: list[str] = []
+        self.exports: list[dict[str, Any]] = []
+
+        # Performance optimization caches - use position-based keys for deterministic caching
+        self._node_text_cache: dict[tuple[int, int], str] = {}
+        self._processed_nodes: set[int] = set()
+        self._element_cache: dict[tuple[int, str], Any] = {}
+        self._file_encoding: str | None = None
+        self._jsdoc_cache: dict[int, str] = {}
+        self._complexity_cache: dict[int, int] = {}
+
+        # JavaScript-specific tracking
+        self.is_module: bool = False
+        self.is_jsx: bool = False
+        self.framework_type: str = ""  # react, vue, angular, etc.
+
+    def _reset_caches(self) -> None:
+        """Reset performance caches"""
+        self._node_text_cache.clear()
+        self._processed_nodes.clear()
+        self._element_cache.clear()
+        self._jsdoc_cache.clear()
+        self._complexity_cache.clear()
+
+    def _detect_file_characteristics(self) -> None:
+        """Detect JavaScript file characteristics"""
+        # Check if it's a module
+        self.is_module = "import " in self.source_code or "export " in self.source_code
+
+        # Check if it contains JSX
+        self.is_jsx = "</" in self.source_code and "jsx" in self.current_file.lower()
+
+        # Detect framework
+        if "react" in self.source_code.lower() or "jsx" in self.source_code:
+            self.framework_type = "react"
+        elif "vue" in self.source_code.lower():
+            self.framework_type = "vue"
+        elif "angular" in self.source_code.lower():
+            self.framework_type = "angular"
+
+    def _traverse_and_extract_iterative(
+        self,
+        root_node: Optional["tree_sitter.Node"],
+        extractors: dict[str, Any],
+        results: list[Any],
+        element_type: str,
+    ) -> None:
+        """Iterative node traversal and extraction with caching"""
+        traverse_and_extract_iterative(
+            root_node,
+            extractors,
+            results,
+            element_type,
+            self._processed_nodes,
+            self._element_cache,
+        )
+
+    def _get_node_text_optimized(self, node: "tree_sitter.Node") -> str:
+        """Get node text with optimized caching using position-based keys"""
+        return get_node_text_optimized(
+            node,
+            self.content_lines,
+            self._file_encoding,
+            self._node_text_cache,
+            extract_text_slice,
+            safe_encode,
+        )
+
+    def _extract_class_optimized(self, node: "tree_sitter.Node") -> Class | None:
+        """Extract class information with detailed metadata"""
+        return extract_class(
+            node,
+            self._get_node_text_optimized,
+            self._extract_jsdoc_for_line,
+            self._is_react_component,
+            self._is_exported_class,
+            self.framework_type,
+        )
+
+    def _extract_variable_optimized(self, node: "tree_sitter.Node") -> list[Variable]:
+        """Extract var declaration variables"""
+        return self._extract_variables_from_declaration(node, "var")
+
+    def _extract_lexical_variable_optimized(
+        self, node: "tree_sitter.Node"
+    ) -> list[Variable]:
+        """Extract let/const declaration variables"""
+        # Determine if it's let or const
+        node_text = self._get_node_text_optimized(node)
+        kind = "let" if node_text.strip().startswith("let") else "const"
+        return self._extract_variables_from_declaration(node, kind)
+
+    def _extract_property_optimized(self, node: "tree_sitter.Node") -> Variable | None:
+        """Extract class property definition"""
+        try:
+            start_line = node.start_point[0] + 1
+            end_line = node.end_point[0] + 1
+
+            # Extract property name
+            prop_name = None
+            prop_value = None
+            is_static = False
+
+            for child in node.children:
+                if child.type == "property_identifier":
+                    prop_name = self._get_node_text_optimized(child)
+                elif child.type in ["string", "number", "true", "false", "null"]:
+                    prop_value = self._get_node_text_optimized(child)
+
+            # Check if static (would be in parent modifiers)
+            parent = node.parent
+            if parent:
+                parent_text = self._get_node_text_optimized(parent)
+                is_static = "static" in parent_text
+
+            if not prop_name:
+                return None
+
+            # Find parent class (currently not used but may be needed for future enhancements)
+            # class_name = self._find_parent_class_name(node)
+
+            # Extract raw text
+            raw_text = self._get_node_text_optimized(node)
+
+            return Variable(
+                name=prop_name,
+                start_line=start_line,
+                end_line=end_line,
+                raw_text=raw_text,
+                language="javascript",
+                variable_type=self._infer_type_from_value(prop_value),
+                is_static=is_static,
+                is_constant=False,  # Class properties are not const
+                initializer=prop_value,
+            )
+        except Exception as e:
+            log_debug(f"Failed to extract property info: {e}")
+            return None
+
+    def _extract_variables_from_declaration(
+        self, node: "tree_sitter.Node", kind: str
+    ) -> list[Variable]:
+        """Extract variables from declaration node"""
+        variables: list[Variable] = []
+
+        try:
+            start_line = node.start_point[0] + 1
+            end_line = node.end_point[0] + 1
+
+            # Find variable declarators
+            for child in node.children:
+                if child.type == "variable_declarator":
+                    var_info = self._parse_variable_declarator(
+                        child, kind, start_line, end_line
+                    )
+                    if var_info:
+                        variables.append(var_info)
+
+        except Exception as e:
+            log_debug(f"Failed to extract variables from declaration: {e}")
+
+        return variables
+
+    def _parse_variable_declarator(
+        self, node: "tree_sitter.Node", kind: str, start_line: int, end_line: int
+    ) -> Variable | None:
+        """Parse individual variable declarator"""
+        return parse_variable_declarator(
+            node,
+            kind,
+            start_line,
+            end_line,
+            self._get_node_text_optimized,
+            self._infer_type_from_value,
+            self._extract_jsdoc_for_line,
+        )

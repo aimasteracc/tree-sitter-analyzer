@@ -7,6 +7,7 @@ mechanisms for the MCP server operations.
 """
 
 import asyncio
+import inspect
 import logging
 import traceback
 from collections.abc import Callable
@@ -473,6 +474,71 @@ class ErrorHandler:
         logger.info("Error history and statistics cleared")
 
 
+# Handle request or event: handle_mcp_errors
+def _build_error_context(
+    func: Callable[..., Any], args: tuple, kwargs: dict
+) -> dict[str, Any]:
+    """Build the standard error-context dict used by both wrappers."""
+    return {
+        "function": func.__name__,
+        "args": str(args)[:200],
+        "kwargs": str(kwargs)[:200],
+    }
+
+
+def _handle_runtime_error(
+    e: RuntimeError,
+    func: Callable[..., Any],
+    args: tuple,
+    kwargs: dict,
+    operation: str,
+) -> None:
+    """Handle ``RuntimeError`` in async wrapper.
+
+    Special-cases the "not fully initialized" message into a CONFIGURATION
+    MCPError. All other runtime errors get logged via the registered
+    handler. Always raises (caller re-raises via ``raise`` after).
+
+    r37e4 (dogfood): lifted out of ``handle_mcp_errors`` to flatten
+    nesting 6 → 3.
+    """
+    if "not fully initialized" in str(e):
+        logger.warning(f"Request received before initialization complete: {operation}")
+        raise MCPError(
+            "Server is still initializing. Please wait a moment and try again.",
+            category=ErrorCategory.CONFIGURATION,
+            severity=ErrorSeverity.LOW,
+        ) from e
+    error_handler = get_error_handler()
+    context = _build_error_context(func, args, kwargs)
+    error_handler.handle_error(e, context, operation)
+
+
+def _handle_and_rethrow_as_analysis_error(
+    e: Exception,
+    func: Callable[..., Any],
+    args: tuple,
+    kwargs: dict,
+    operation: str,
+) -> None:
+    """Log the error then wrap non-MCPError exceptions as ``AnalysisError``.
+
+    Returns normally for ``MCPError`` (the caller re-raises the
+    original). For all other exceptions, raises a fresh ``AnalysisError``
+    carrying the registered handler's message + severity.
+    """
+    error_handler = get_error_handler()
+    context = _build_error_context(func, args, kwargs)
+    error_info = error_handler.handle_error(e, context, operation)
+    if isinstance(e, MCPError):
+        return
+    raise AnalysisError(
+        f"Operation failed: {error_info['message']}",
+        operation=operation,
+        severity=ErrorSeverity(error_info["severity"]),
+    ) from e
+
+
 def handle_mcp_errors(
     operation: str = "unknown",
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
@@ -486,47 +552,18 @@ def handle_mcp_errors(
         Decorated function with error handling
     """
 
+    # r37e4 (dogfood): flatten nesting 6 → 3 by extracting the shared
+    # handle-and-rethrow steps into module-level helpers.
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(func)
         async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
             try:
                 return await func(*args, **kwargs)
             except RuntimeError as e:
-                # Handle initialization errors specifically
-                if "not fully initialized" in str(e):
-                    logger.warning(
-                        f"Request received before initialization complete: {operation}"
-                    )
-                    raise MCPError(
-                        "Server is still initializing. Please wait a moment and try again.",
-                        category=ErrorCategory.CONFIGURATION,
-                        severity=ErrorSeverity.LOW,
-                    ) from e
-                # Handle other runtime errors normally
-                error_handler = get_error_handler()
-                context = {
-                    "function": func.__name__,
-                    "args": str(args)[:200],  # Limit length
-                    "kwargs": str(kwargs)[:200],
-                }
-                error_info = error_handler.handle_error(e, context, operation)
+                _handle_runtime_error(e, func, args, kwargs, operation)
                 raise
             except Exception as e:
-                error_handler = get_error_handler()
-                context = {
-                    "function": func.__name__,
-                    "args": str(args)[:200],  # Limit length
-                    "kwargs": str(kwargs)[:200],
-                }
-                error_info = error_handler.handle_error(e, context, operation)
-
-                # Re-raise as MCPError if not already
-                if not isinstance(e, MCPError):
-                    raise AnalysisError(
-                        f"Operation failed: {error_info['message']}",
-                        operation=operation,
-                        severity=ErrorSeverity(error_info["severity"]),
-                    ) from e
+                _handle_and_rethrow_as_analysis_error(e, func, args, kwargs, operation)
                 raise
 
         @wraps(func)
@@ -534,23 +571,10 @@ def handle_mcp_errors(
             try:
                 return func(*args, **kwargs)
             except Exception as e:
-                error_handler = get_error_handler()
-                context = {
-                    "function": func.__name__,
-                    "args": str(args)[:200],
-                    "kwargs": str(kwargs)[:200],
-                }
-                error_info = error_handler.handle_error(e, context, operation)
-
-                if not isinstance(e, MCPError):
-                    raise AnalysisError(
-                        f"Operation failed: {error_info['message']}",
-                        operation=operation,
-                        severity=ErrorSeverity(error_info["severity"]),
-                    ) from e
+                _handle_and_rethrow_as_analysis_error(e, func, args, kwargs, operation)
                 raise
 
-        return async_wrapper if asyncio.iscoroutinefunction(func) else sync_wrapper
+        return async_wrapper if inspect.iscoroutinefunction(func) else sync_wrapper
 
     return decorator
 
@@ -559,6 +583,7 @@ def handle_mcp_errors(
 _error_handler = ErrorHandler()
 
 
+# Handle request or event: get_error_handler
 def get_error_handler() -> ErrorHandler:
     """
     Get the global error handler instance

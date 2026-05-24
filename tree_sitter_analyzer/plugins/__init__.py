@@ -29,6 +29,22 @@ __all__ = [
 ]
 
 
+def _safe_node_line_range(node: "tree_sitter.Node") -> tuple[int, int]:
+    """Return ``(start_line, end_line)`` from a tree-sitter node.
+
+    Defaults to ``(0, 0)`` if the node lacks ``start_point`` / ``end_point``
+    attributes (defensive against duck-typed mocks in tests). Lines are
+    1-indexed to match the rest of the project's symbol output.
+
+    r37dl (dogfood): extracted from three identical ternary-expression
+    blocks across ``_traverse_for_functions`` / ``_traverse_for_classes`` /
+    ``_traverse_for_variables`` so each method drops from depth 6 to 4.
+    """
+    start = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
+    end = node.end_point[0] + 1 if hasattr(node, "end_point") else 0
+    return start, end
+
+
 class ElementExtractor(ABC):
     """Abstract base class for language-specific element extractors"""
 
@@ -155,15 +171,18 @@ class DefaultExtractor(ElementExtractor):
     def _traverse_for_functions(
         self, node: "tree_sitter.Node", functions: list[ModelFunction], lines: list[str]
     ) -> None:
-        """Traverse tree to find function-like nodes"""
+        """Traverse tree to find function-like nodes.
+
+        r37dl (dogfood): flattened nesting 6 → 4 by using
+        ``_safe_node_line_range`` for the start/end line ternary.
+        """
         if hasattr(node, "type") and "function" in node.type.lower():
             try:
+                start_line, end_line = _safe_node_line_range(node)
                 func = ModelFunction(
                     name=self._extract_node_name(node) or "unknown",
-                    start_line=(
-                        node.start_point[0] + 1 if hasattr(node, "start_point") else 0
-                    ),
-                    end_line=node.end_point[0] + 1 if hasattr(node, "end_point") else 0,
+                    start_line=start_line,
+                    end_line=end_line,
                     raw_text="",
                     language="unknown",
                 )
@@ -178,15 +197,14 @@ class DefaultExtractor(ElementExtractor):
     def _traverse_for_classes(
         self, node: "tree_sitter.Node", classes: list[ModelClass], lines: list[str]
     ) -> None:
-        """Traverse tree to find class-like nodes"""
+        """Traverse tree to find class-like nodes."""
         if hasattr(node, "type") and "class" in node.type.lower():
             try:
+                start_line, end_line = _safe_node_line_range(node)
                 cls = ModelClass(
                     name=self._extract_node_name(node) or "unknown",
-                    start_line=(
-                        node.start_point[0] + 1 if hasattr(node, "start_point") else 0
-                    ),
-                    end_line=node.end_point[0] + 1 if hasattr(node, "end_point") else 0,
+                    start_line=start_line,
+                    end_line=end_line,
                     raw_text="",
                     language="unknown",
                 )
@@ -206,12 +224,11 @@ class DefaultExtractor(ElementExtractor):
             "variable" in node.type.lower() or "declaration" in node.type.lower()
         ):
             try:
+                start_line, end_line = _safe_node_line_range(node)
                 var = ModelVariable(
                     name=self._extract_node_name(node) or "unknown",
-                    start_line=(
-                        node.start_point[0] + 1 if hasattr(node, "start_point") else 0
-                    ),
-                    end_line=node.end_point[0] + 1 if hasattr(node, "end_point") else 0,
+                    start_line=start_line,
+                    end_line=end_line,
                     raw_text="",
                     language="unknown",
                 )
@@ -229,12 +246,11 @@ class DefaultExtractor(ElementExtractor):
         """Traverse tree to find import statements"""
         if hasattr(node, "type") and "import" in node.type.lower():
             try:
+                start_line, end_line = _safe_node_line_range(node)
                 imp = ModelImport(
                     name=self._extract_node_name(node) or "unknown",
-                    start_line=(
-                        node.start_point[0] + 1 if hasattr(node, "start_point") else 0
-                    ),
-                    end_line=node.end_point[0] + 1 if hasattr(node, "end_point") else 0,
+                    start_line=start_line,
+                    end_line=end_line,
                     raw_text="",
                     language="unknown",
                 )
@@ -247,14 +263,19 @@ class DefaultExtractor(ElementExtractor):
                 self._traverse_for_imports(child, imports, lines)
 
     def _extract_node_name(self, node: "tree_sitter.Node") -> str | None:
-        """Extract name from a tree-sitter node"""
+        """Extract name from a tree-sitter node.
+
+        r37dl (dogfood): flattened nesting 6 → 4 by short-circuiting on
+        missing ``children`` attribute up front.
+        """
         try:
-            # Look for identifier children
-            if hasattr(node, "children"):
-                for child in node.children:
-                    if hasattr(child, "type") and child.type == "identifier":
-                        # This would need actual text extraction in real implementation
-                        return f"element_{child.start_point[0]}_{child.start_point[1]}"
+            if not hasattr(node, "children"):
+                return None
+            for child in node.children:
+                if not hasattr(child, "type") or child.type != "identifier":
+                    continue
+                # This would need actual text extraction in real implementation
+                return f"element_{child.start_point[0]}_{child.start_point[1]}"
             return None
         except Exception:
             return None

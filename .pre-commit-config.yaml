@@ -12,7 +12,7 @@ repos:
 
   # Python linting and code quality
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.8.4
+    rev: v0.15.12
     hooks:
       - id: ruff
         args: [--fix, --exit-non-zero-on-fix]
@@ -20,7 +20,7 @@ repos:
 
   # Basic file checks
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+    rev: v6.0.0
     hooks:
       - id: trailing-whitespace
         exclude: \.md$
@@ -43,7 +43,7 @@ repos:
       - id: debug-statements
       - id: name-tests-test
         args: [--pytest-test-first]
-        exclude: ^tests/integration/formatters/(cross_version_compatibility|format_monitor|generate_compatibility_report|update_baselines|validate_golden_masters|format_assertions|integration_tests|format_contract_tests|comprehensive_test_suite|enhanced_assertions|cross_component_tests|schema_validation|specification_compliance_tests|performance_tests|generate_regression_report|golden_master|end_to_end_tests)\.py$|^tests/integration/workflows/validate_.*\.py$|^tests/fixtures/.*\.py$
+        exclude: ^tests/.*/_.*\.py$|^tests/integration/formatters/(cross_version_compatibility|format_monitor|generate_compatibility_report|update_baselines|validate_golden_masters|format_assertions|integration_tests|format_contract_tests|comprehensive_test_suite|enhanced_assertions|cross_component_tests|schema_validation|specification_compliance_tests|performance_tests|performance_tests_helpers|performance_tests_tests|generate_regression_report|golden_master|end_to_end_tests)\.py$|^tests/integration/workflows/validate_.*\.py$|^tests/fixtures/.*\.py$
 
   # Security checks
   - repo: https://github.com/Yelp/detect-secrets
@@ -53,18 +53,38 @@ repos:
         args: ['--baseline', '.secrets.baseline']
         exclude: package.lock
   - repo: https://github.com/PyCQA/bandit
-    rev: 1.7.10
+    rev: 1.9.4
     hooks:
       - id: bandit
+        # pass_filenames defaults to true, so bandit only scans the files
+        # pre-commit hands it (staged files). Do NOT add a blanket
+        # `-r tree_sitter_analyzer` arg — that scans the whole tree and
+        # blocks commits on pre-existing untracked-file violations.
         exclude: ^tests/|^openspec/changes/archive/|^scripts/|^build_standalone\.py$|^check_quality\.py$|^run_regression_tests\.py$|^test_fixes\.py$|^upload_interactive\.py$|^upload_to_pypi\.py$|^examples/
-        args: [--format, json]
+        args: [--format, json, -c, pyproject.toml]
+        additional_dependencies: ["bandit[toml]"]
 
   # Type checking
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.13.0
+    rev: v2.0.0
     hooks:
       - id: mypy
-        args: [--ignore-missing-imports, --no-error-summary, --show-error-codes, --explicit-package-bases]
+        # --follow-imports=silent: type-check imported modules silently —
+        #   errors only surface on the files pre-commit passes in (the
+        #   staged set). Without this, mypy walks the whole module tree
+        #   from any staged file and blocks commits on pre-existing
+        #   problems in unrelated untracked files (which forced a
+        #   --no-verify earlier this week).
+        # --no-incremental: skip mypy's per-file cache so stale cache
+        #   entries from a prior whole-tree run don't poison a scoped
+        #   per-file run.
+        args:
+          - --ignore-missing-imports
+          - --no-error-summary
+          - --show-error-codes
+          - --explicit-package-bases
+          - --follow-imports=silent
+          - --no-incremental
         exclude: ^(examples/|scripts/|compatibility_test/|collect_project_metrics\.py|test_emergency_fix\.py|debug_async_test\.py|run_regression_tests\.py|generate_golden_masters\.py|check_stability\.py|analyze_specific_sql\.py|upload_interactive\.py|regenerate_with_normalization\.py|llm_code_checker\.py|run_coverage\.py|analyze_coverage_json\.py|verify_workflow_structure\.py|validate_workflows\.py|profile_analysis\.py|upload_to_pypi\.py|check_quality\.py|test_fixes\.py|\.kiro/|openspec/)
         additional_dependencies: [
           types-psutil>=5.9.0,
@@ -85,7 +105,7 @@ repos:
 
   # Python modernization
   - repo: https://github.com/asottile/pyupgrade
-    rev: v3.19.0
+    rev: v3.21.2
     hooks:
       - id: pyupgrade
         args: [--py310-plus]
@@ -112,6 +132,16 @@ repos:
         pass_filenames: false
         files: ^\.github/workflows/.*\.yml$
         stages: [pre-commit]
+
+  - repo: local
+    hooks:
+      - id: tsa-codemap-sync
+        name: tsa-codemap-sync — block commits with registry change but no codemap update
+        entry: bash scripts/codemap-sync-check.sh
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+        always_run: true
 
 # Configuration
 default_stages: [pre-commit]

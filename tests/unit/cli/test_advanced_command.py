@@ -390,3 +390,79 @@ class TestAdvancedCommandOutputTextAnalysis:
             assert any("Total Complexity: 0" in call for call in output_calls)
             assert any("Average Complexity: 0.00" in call for call in output_calls)
             assert any("Max Complexity: 0" in call for call in output_calls)
+
+
+class TestR37yCanonicalEnvelope:
+    """r37y (dogfood): CLI ``--advanced`` JSON output was missing
+    ``summary_line``, ``agent_summary``, and ``verdict`` entirely.
+    Every other CLI/MCP surface emits them. This test pins the contract.
+    """
+
+    def test_full_analysis_emits_canonical_envelope(
+        self, command, mock_analysis_result
+    ):
+        """``--advanced --format json`` must include summary_line + verdict + agent_summary."""
+        command.args = MagicMock()
+        command.args.statistics = False
+        command.args.output_format = "json"
+
+        captured: dict[str, object] = {}
+        with patch(
+            "tree_sitter_analyzer.cli.commands.advanced_command.output_json",
+            side_effect=lambda d: captured.update(d),
+        ):
+            command._output_full_analysis(mock_analysis_result)
+
+        assert captured.get("verdict") == "INFO"
+        assert isinstance(captured.get("summary_line"), str)
+        assert captured["summary_line"]  # non-empty
+        agent_summary = captured.get("agent_summary")
+        assert isinstance(agent_summary, dict)
+        assert agent_summary["verdict"] == "INFO"
+        assert agent_summary["summary_line"] == captured["summary_line"]
+        # File path should appear in headline so agents can grep for it.
+        assert mock_analysis_result.file_path in captured["summary_line"]
+
+    def test_statistics_emits_canonical_envelope(self, command, mock_analysis_result):
+        """``--advanced --statistics --format json`` also exposes envelope."""
+        command.args = MagicMock()
+        command.args.statistics = True
+        command.args.output_format = "json"
+
+        captured: dict[str, object] = {}
+        with patch(
+            "tree_sitter_analyzer.cli.commands.advanced_command.output_json",
+            side_effect=lambda d: captured.update(d),
+        ):
+            command._output_statistics(mock_analysis_result)
+
+        assert captured.get("verdict") == "INFO"
+        assert isinstance(captured.get("summary_line"), str)
+        assert captured["summary_line"]
+        assert captured.get("agent_summary", {}).get("verdict") == "INFO"
+        # mode=stats appears so callers can distinguish stats vs full mode.
+        assert "mode=stats" in captured["summary_line"]
+
+    def test_full_mode_label_differs_from_stats(self, command, mock_analysis_result):
+        """summary_line carries mode= label to distinguish dispatch paths."""
+        command.args = MagicMock()
+        command.args.output_format = "json"
+        command.args.statistics = False
+
+        full_captured: dict[str, object] = {}
+        with patch(
+            "tree_sitter_analyzer.cli.commands.advanced_command.output_json",
+            side_effect=lambda d: full_captured.update(d),
+        ):
+            command._output_full_analysis(mock_analysis_result)
+
+        command.args.statistics = True
+        stats_captured: dict[str, object] = {}
+        with patch(
+            "tree_sitter_analyzer.cli.commands.advanced_command.output_json",
+            side_effect=lambda d: stats_captured.update(d),
+        ):
+            command._output_statistics(mock_analysis_result)
+
+        assert "mode=full" in full_captured["summary_line"]
+        assert "mode=stats" in stats_captured["summary_line"]

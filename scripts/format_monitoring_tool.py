@@ -15,7 +15,7 @@ import sqlite3
 import sys
 import tempfile
 import time
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -128,7 +128,7 @@ class FormatMonitoringDatabase:
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
-                datetime.utcnow().isoformat(),
+                datetime.now(UTC).isoformat(),
                 file_path,
                 format_type,
                 language,
@@ -163,7 +163,7 @@ class FormatMonitoringDatabase:
             VALUES (?, ?, ?, ?, ?, ?)
         """,
             (
-                datetime.utcnow().isoformat(),
+                datetime.now(UTC).isoformat(),
                 file_path,
                 format_type,
                 regression_type,
@@ -190,7 +190,7 @@ class FormatMonitoringDatabase:
             VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
             (
-                datetime.utcnow().isoformat(),
+                datetime.now(UTC).isoformat(),
                 file_path,
                 format_type,
                 metrics.get("processing_time_ms", 0),
@@ -216,7 +216,7 @@ class FormatMonitoringDatabase:
             VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
             (
-                datetime.utcnow().isoformat(),
+                datetime.now(UTC).isoformat(),
                 format_type,
                 metrics.get("compliance_score", 0.0),
                 metrics.get("schema_validity", False),
@@ -234,7 +234,7 @@ class FormatMonitoringDatabase:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
-        since_date = (datetime.utcnow() - timedelta(days=days)).isoformat()
+        since_date = (datetime.now(UTC) - timedelta(days=days)).isoformat()
 
         cursor.execute(
             """
@@ -256,7 +256,7 @@ class FormatMonitoringDatabase:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
-        since_date = (datetime.utcnow() - timedelta(days=days)).isoformat()
+        since_date = (datetime.now(UTC) - timedelta(days=days)).isoformat()
 
         cursor.execute(
             """
@@ -520,7 +520,7 @@ class FormatMonitor:
         output_path = Path(output_dir)
         output_path.mkdir(exist_ok=True)
 
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
 
         # Generate different report types
         reports = {
@@ -557,7 +557,7 @@ class FormatMonitor:
         performance_trends = self.db.get_performance_trends(30)
 
         return {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "summary": {
                 "active_regressions": len(recent_regressions),
                 "monitored_formats": ["full", "compact", "csv"],
@@ -596,7 +596,7 @@ class FormatMonitor:
             by_type[reg_type].append(regression)
 
         return {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "total_regressions": len(regressions),
             "by_severity": {k: len(v) for k, v in by_severity.items()},
             "by_type": {k: len(v) for k, v in by_type.items()},
@@ -608,7 +608,7 @@ class FormatMonitor:
         trends = self.db.get_performance_trends(30)
 
         return {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "performance_trends": trends,
             "recommendations": self._generate_performance_recommendations(trends),
         }
@@ -617,7 +617,7 @@ class FormatMonitor:
         """Generate quality trends report"""
         # This would query quality metrics from database
         return {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "quality_trends": {
                 "full": {"compliance_score": 0.95, "trend": "stable"},
                 "compact": {"compliance_score": 0.92, "trend": "improving"},
@@ -663,7 +663,7 @@ class FormatMonitor:
 <body>
     <div class="header">
         <h1>Format Monitoring Dashboard</h1>
-        <p>Generated: {datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")} UTC</p>
+        <p>Generated: {datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")} UTC</p>
     </div>
 
     <div class="section">

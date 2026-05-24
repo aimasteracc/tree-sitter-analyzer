@@ -99,134 +99,157 @@ def read_file_partial(
     start_column: int | None = None,
     end_column: int | None = None,
 ) -> str | None:
-    """
-    Read partial file content by line/column range using streaming for memory efficiency.
+    """Read partial file content by line/column range using streaming for memory efficiency.
 
     Performance: Uses streaming approach for 150x speedup on large files.
     Only loads requested lines into memory instead of entire file.
 
-    Args:
-        file_path: Path to file
-        start_line: Start line (1-based)
-        end_line: End line (1-based, None means EOF)
-        start_column: Start column (0-based, optional)
-        end_column: End column (0-based, optional)
-
-    Returns:
-        Selected content string, or None on error
+    r37aw (dogfood): the tool flagged this function at 135 lines / nesting
+    depth 7. Refactored into 4 helpers that each do one thing — validation,
+    streaming line slice, column clipping, and logging. Behaviour preserved.
     """
-    # Check file existence
-    file_obj = Path(file_path)
-    if not file_obj.exists():
-        log_error(f"File does not exist: {file_path}")
-        return None
-
-    # Parameter validation
-    if start_line < 1:
-        log_error(f"Invalid start_line: {start_line}. Line numbers start from 1.")
-        return None
-
-    if end_line is not None and end_line < start_line:
-        log_error(f"Invalid range: end_line ({end_line}) < start_line ({start_line})")
+    if not _read_file_partial_validate(file_path, start_line, end_line):
         return None
 
     try:
-        # Use streaming approach for memory efficiency
-        with read_file_safe_streaming(file_path) as f:
-            # Convert to 0-based indexing
-            start_idx = start_line - 1
-            end_idx = end_line - 1 if end_line is not None else None
+        selected_lines = _slice_streaming_lines(file_path, start_line, end_line)
+        if selected_lines is None:
+            # Past-EOF / empty-file case — handled below as empty result.
+            return ""
 
-            # Use itertools.islice for efficient line selection
-            if end_idx is not None:
-                # Read specific range
-                selected_lines_iter = itertools.islice(f, start_idx, end_idx + 1)
-            else:
-                # Read from start_line to end of file
-                selected_lines_iter = itertools.islice(f, start_idx, None)
-
-            # Convert iterator to list for processing
-            selected_lines = list(selected_lines_iter)
-
-            # Check if we got any lines
-            if not selected_lines:
-                # Check if start_line is beyond file length by counting lines
-                with read_file_safe_streaming(file_path) as f_count:
-                    total_lines = sum(1 for _ in f_count)
-
-                if start_idx >= total_lines:
-                    log_warning(
-                        f"start_line ({start_line}) exceeds file length ({total_lines})"
-                    )
-                    return ""
-                else:
-                    # File might be empty or other issue
-                    return ""
-
-        # Handle column range if specified
         if start_column is not None or end_column is not None:
-            processed_lines = []
-            for i, line in enumerate(selected_lines):
-                # Strip newline for processing
-                line_content = line.rstrip("\r\n")
-
-                if i == 0 and start_column is not None:
-                    # First line: apply start_column
-                    line_content = (
-                        line_content[start_column:]
-                        if start_column < len(line_content)
-                        else ""
-                    )
-
-                if i == len(selected_lines) - 1 and end_column is not None:
-                    # Last line: apply end_column
-                    if i == 0 and start_column is not None:
-                        # Single line: apply both start and end columns
-                        col_end = (
-                            end_column - start_column
-                            if end_column >= start_column
-                            else 0
-                        )
-                        line_content = line_content[:col_end] if col_end > 0 else ""
-                    else:
-                        line_content = (
-                            line_content[:end_column]
-                            if end_column < len(line_content)
-                            else line_content
-                        )
-
-                # Preserve original newline (except last line)
-                if i < len(selected_lines) - 1:
-                    # Detect original newline char of the line
-                    original_line = selected_lines[i]
-                    if original_line.endswith("\r\n"):
-                        line_content += "\r\n"
-                    elif original_line.endswith("\n"):
-                        line_content += "\n"
-                    elif original_line.endswith("\r"):
-                        line_content += "\r"
-
-                processed_lines.append(line_content)
-
-            result = "".join(processed_lines)
+            result = _apply_column_range(selected_lines, start_column, end_column)
         else:
-            # No column range: join lines directly
             result = "".join(selected_lines)
 
-        # Calculate end line for logging
-        actual_end_line = end_line or (start_line + len(selected_lines) - 1)
-
-        log_info(
-            f"Successfully read partial file {file_path}: "
-            f"lines {start_line}-{actual_end_line}"
-            f"{f', columns {start_column}-{end_column}' if start_column is not None or end_column is not None else ''}"
+        _log_partial_read_success(
+            file_path, start_line, end_line, start_column, end_column, selected_lines
         )
-
         return result
 
     except Exception as e:
         log_error(f"Failed to read partial file {file_path}: {e}")
         return None
+
+
+def _read_file_partial_validate(
+    file_path: str, start_line: int, end_line: int | None
+) -> bool:
+    """Return False (after logging) when the caller's args are unusable."""
+    if not Path(file_path).exists():
+        log_error(f"File does not exist: {file_path}")
+        return False
+    if start_line < 1:
+        log_error(f"Invalid start_line: {start_line}. Line numbers start from 1.")
+        return False
+    if end_line is not None and end_line < start_line:
+        log_error(f"Invalid range: end_line ({end_line}) < start_line ({start_line})")
+        return False
+    return True
+
+
+def _slice_streaming_lines(
+    file_path: str, start_line: int, end_line: int | None
+) -> list[str] | None:
+    """Stream-read just the requested 1-indexed line range.
+
+    Returns ``None`` when ``start_line`` is past EOF (caller treats that
+    as empty-string result). Returns an empty list for an empty file in
+    range — also empty-string result.
+    """
+    with read_file_safe_streaming(file_path) as f:
+        start_idx = start_line - 1
+        end_idx = end_line - 1 if end_line is not None else None
+        if end_idx is not None:
+            selected_iter = itertools.islice(f, start_idx, end_idx + 1)
+        else:
+            selected_iter = itertools.islice(f, start_idx, None)
+        selected_lines = list(selected_iter)
+
+    if selected_lines:
+        return selected_lines
+
+    # No lines came back — distinguish past-EOF from empty in-range.
+    with read_file_safe_streaming(file_path) as f_count:
+        total_lines = sum(1 for _ in f_count)
+    if (start_line - 1) >= total_lines:
+        log_warning(f"start_line ({start_line}) exceeds file length ({total_lines})")
+    return None
+
+
+def _apply_column_range(
+    selected_lines: list[str],
+    start_column: int | None,
+    end_column: int | None,
+) -> str:
+    """Clip each line by ``start_column`` / ``end_column`` and rejoin."""
+    last_idx = len(selected_lines) - 1
+    processed_lines: list[str] = []
+    for i, line in enumerate(selected_lines):
+        line_content = line.rstrip("\r\n")
+        if i == 0 and start_column is not None:
+            line_content = (
+                line_content[start_column:] if start_column < len(line_content) else ""
+            )
+        if i == last_idx and end_column is not None:
+            line_content = _clip_end_column(
+                line_content,
+                start_column if i == 0 else None,
+                end_column,
+            )
+
+        if i < last_idx:
+            line_content += _trailing_newline(selected_lines[i])
+        processed_lines.append(line_content)
+    return "".join(processed_lines)
+
+
+def _clip_end_column(
+    line_content: str,
+    start_column: int | None,
+    end_column: int,
+) -> str:
+    """Apply ``end_column`` to the final (possibly only) line of the slice."""
+    if start_column is not None:
+        # Single-line slice: both columns clip the same line.
+        col_end = end_column - start_column if end_column >= start_column else 0
+        return line_content[:col_end] if col_end > 0 else ""
+    if end_column < len(line_content):
+        return line_content[:end_column]
+    return line_content
+
+
+def _trailing_newline(original_line: str) -> str:
+    """Return the original newline characters (handles \\r\\n / \\n / \\r)."""
+    if original_line.endswith("\r\n"):
+        return "\r\n"
+    if original_line.endswith("\n"):
+        return "\n"
+    if original_line.endswith("\r"):
+        return "\r"
+    return ""
+
+
+def _log_partial_read_success(
+    file_path: str,
+    start_line: int,
+    end_line: int | None,
+    start_column: int | None,
+    end_column: int | None,
+    selected_lines: list[str],
+) -> None:
+    """Emit the success log line shared by both column-range and full-line paths."""
+    actual_end_line = end_line or (start_line + len(selected_lines) - 1)
+    column_note = (
+        f", columns {start_column}-{end_column}"
+        if start_column is not None or end_column is not None
+        else ""
+    )
+    log_info(
+        f"Successfully read partial file {file_path}: "
+        f"lines {start_line}-{actual_end_line}"
+        f"{column_note}"
+    )
 
 
 def read_file_lines_range(

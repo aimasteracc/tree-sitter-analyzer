@@ -27,6 +27,7 @@ class IFormatter(ABC):
 
     @staticmethod
     @abstractmethod
+    # Format data for output: get_format_name
     def get_format_name() -> str:
         """
         Return the format name this formatter supports.
@@ -37,6 +38,7 @@ class IFormatter(ABC):
         pass
 
     @abstractmethod
+    # Format data for output: format
     def format(self, elements: list[CodeElement]) -> str:
         """
         Format a list of CodeElements into a string representation.
@@ -59,6 +61,7 @@ class IStructureFormatter(ABC):
     """
 
     @abstractmethod
+    # Format data for output: format_structure
     def format_structure(self, structure_data: dict[str, Any]) -> str:
         """
         Format structure data dictionary into a string representation.
@@ -89,6 +92,7 @@ class FormatterRegistry:
     _default_language_formatter: type[Any] | None = None
 
     @classmethod
+    # Format data for output: register_formatter
     def register_formatter(cls, formatter_class: type[IFormatter]) -> None:
         """
         Register a formatter class in the registry.
@@ -113,6 +117,7 @@ class FormatterRegistry:
         logger.debug(f"Registered formatter for format: {format_name}")
 
     @classmethod
+    # Format data for output: get_formatter
     def get_formatter(cls, format_name: str) -> IFormatter:
         """
         Get a formatter instance for the specified format.
@@ -137,6 +142,7 @@ class FormatterRegistry:
         return formatter_class()
 
     @classmethod
+    # Format data for output: get_available_formats
     def get_available_formats(cls) -> list[str]:
         """
         Get list of all available format names.
@@ -147,6 +153,7 @@ class FormatterRegistry:
         return list(cls._formatters.keys())
 
     @classmethod
+    # Format data for output: is_format_supported
     def is_format_supported(cls, format_name: str) -> bool:
         """
         Check if a format is supported.
@@ -160,6 +167,7 @@ class FormatterRegistry:
         return format_name in cls._formatters
 
     @classmethod
+    # Format data for output: unregister_formatter
     def unregister_formatter(cls, format_name: str) -> bool:
         """
         Unregister a formatter for the specified format.
@@ -189,6 +197,7 @@ class FormatterRegistry:
         logger.debug("Cleared all registered formatters")
 
     @classmethod
+    # Format data for output: register_language_formatter
     def register_language_formatter(
         cls,
         language: str,
@@ -219,6 +228,7 @@ class FormatterRegistry:
         )
 
     @classmethod
+    # Format data for output: set_default_language_formatter
     def set_default_language_formatter(cls, formatter_class: type[Any]) -> None:
         """
         Set the default formatter class for languages without specific formatters.
@@ -230,6 +240,7 @@ class FormatterRegistry:
         logger.debug(f"Set default language formatter: {formatter_class.__name__}")
 
     @classmethod
+    # Format data for output: get_formatter_for_language
     def get_formatter_for_language(
         cls,
         language: str,
@@ -285,6 +296,7 @@ class FormatterRegistry:
         )
 
     @classmethod
+    # Format data for output: _create_formatter_instance
     def _create_formatter_instance(
         cls,
         formatter_class: type[Any],
@@ -344,9 +356,11 @@ class JsonFormatter(IFormatter):
     """JSON formatter for CodeElement lists"""
 
     @staticmethod
+    # Format data for output: get_format_name
     def get_format_name() -> str:
         return "json"
 
+    # Format data for output: format
     def format(self, elements: list[CodeElement]) -> str:
         """Format elements as JSON"""
         import json
@@ -386,9 +400,11 @@ class CsvFormatter(IFormatter):
     """CSV formatter for CodeElement lists"""
 
     @staticmethod
+    # Format data for output: get_format_name
     def get_format_name() -> str:
         return "csv"
 
+    # Format data for output: format
     def format(self, elements: list[CodeElement]) -> str:
         """Format elements as CSV"""
         import csv
@@ -433,13 +449,40 @@ class CsvFormatter(IFormatter):
         return csv_content.rstrip("\n")
 
 
+def _append_full_element_lines(lines: list[str], element: CodeElement) -> None:
+    """Append the per-element block lines used by ``FullFormatter.format``.
+
+    r37cl (dogfood): tool flagged ``FullFormatter.format`` at nesting
+    depth 7 (L498). The per-element ``hasattr`` chain (visibility →
+    parameters → return_type) moves here so the outer formatter body
+    stays flat.
+    """
+    lines.append(f"  {element.name}")
+    lines.append(f"    Lines: {element.start_line}-{element.end_line}")
+    lines.append(f"    Language: {element.language}")
+
+    if hasattr(element, "visibility"):
+        lines.append(f"    Visibility: {getattr(element, 'visibility', 'unknown')}")
+    if hasattr(element, "parameters"):
+        params = getattr(element, "parameters", [])
+        if params:
+            lines.append(f"    Parameters: {', '.join(str(p) for p in params)}")
+    if hasattr(element, "return_type"):
+        ret_type = getattr(element, "return_type", None)
+        if ret_type:
+            lines.append(f"    Return Type: {ret_type}")
+    lines.append("")
+
+
 class FullFormatter(IFormatter):
     """Full table formatter for CodeElement lists"""
 
     @staticmethod
+    # Format data for output: get_format_name
     def get_format_name() -> str:
         return "full"
 
+    # Format data for output: format
     def format(self, elements: list[CodeElement]) -> str:
         """Format elements as full table"""
         if not elements:
@@ -463,29 +506,9 @@ class FullFormatter(IFormatter):
         for element_type, group_elements in element_groups.items():
             lines.append(f"{element_type.upper()}S ({len(group_elements)})")
             lines.append("-" * 40)
-
             for element in group_elements:
-                lines.append(f"  {element.name}")
-                lines.append(f"    Lines: {element.start_line}-{element.end_line}")
-                lines.append(f"    Language: {element.language}")
-
-                if hasattr(element, "visibility"):
-                    lines.append(
-                        f"    Visibility: {getattr(element, 'visibility', 'unknown')}"
-                    )
-                if hasattr(element, "parameters"):
-                    params = getattr(element, "parameters", [])
-                    if params:
-                        lines.append(
-                            f"    Parameters: {', '.join(str(p) for p in params)}"
-                        )
-                if hasattr(element, "return_type"):
-                    ret_type = getattr(element, "return_type", None)
-                    if ret_type:
-                        lines.append(f"    Return Type: {ret_type}")
-
-                lines.append("")
-
+                # r37cl (dogfood): extracted to flatten nesting 7 → 3.
+                _append_full_element_lines(lines, element)
             lines.append("")
 
         return "\n".join(lines)
@@ -495,9 +518,11 @@ class CompactFormatter(IFormatter):
     """Compact formatter for CodeElement lists"""
 
     @staticmethod
+    # Format data for output: get_format_name
     def get_format_name() -> str:
         return "compact"
 
+    # Format data for output: format
     def format(self, elements: list[CodeElement]) -> str:
         """Format elements in compact format"""
         if not elements:
@@ -540,11 +565,12 @@ def register_builtin_formatters() -> None:
     _register_language_formatters_safe()
 
 
+# Format data for output: _register_language_formatters_safe
 def _register_language_formatters_safe() -> None:
     """Register language-specific formatters safely to avoid circular imports"""
     try:
         # Import language-specific formatters
-        from ..legacy_table_formatter import LegacyTableFormatter
+        from ..default_table_formatter import DefaultTableFormatter
         from .cpp_formatter import CppTableFormatter
         from .csharp_formatter import CSharpTableFormatter
         from .css_formatter import CSSFormatter
@@ -563,8 +589,8 @@ def _register_language_formatters_safe() -> None:
         from .typescript_formatter import TypeScriptTableFormatter
         from .yaml_formatter import YAMLFormatter
 
-        # Set LegacyTableFormatter as default for unsupported languages
-        FormatterRegistry.set_default_language_formatter(LegacyTableFormatter)
+        # Set DefaultTableFormatter as default for unsupported languages
+        FormatterRegistry.set_default_language_formatter(DefaultTableFormatter)
 
         # Language to formatter mapping
         language_formatters = {

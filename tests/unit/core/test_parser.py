@@ -240,6 +240,12 @@ class TestParserValidation:
 class TestParserCache:
     """Tests for Parser caching functionality."""
 
+    # The cache is class-level and shared across Parser instances. Under
+    # pytest-xdist's load-balancer, other tests in the same worker may have
+    # left entries behind. Reset before every test in this class.
+    def setup_method(self, method) -> None:  # type: ignore[no-untyped-def]
+        Parser.cache_clear()
+
     def test_cache_is_lru_cache(self) -> None:
         """Test that Parser cache is LRUCache."""
         from cachetools import LRUCache
@@ -247,14 +253,72 @@ class TestParserCache:
         assert isinstance(Parser._cache, LRUCache)
 
     def test_cache_maxsize(self) -> None:
-        """Test that cache has maxsize set."""
-        assert Parser._cache.maxsize == 100
+        """PERF-2: cache must be sized for medium projects (>=1000) by default.
+        Configurable via TSA_PARSER_CACHE_SIZE; default raised from 100 to
+        2000 in the PERF-2 audit pass."""
+        assert Parser._cache.maxsize >= 1000
 
     def test_cache_shared_across_instances(self) -> None:
         """Test that cache is shared across Parser instances."""
         parser1 = Parser()
         parser2 = Parser()
         assert parser1._cache is parser2._cache
+
+    def test_cache_info_exposes_counters(self, tmp_path) -> None:
+        """PERF-2: cache_info() exposes hits/misses/stat_hits for diagnostics."""
+        Parser.cache_clear()
+        info = Parser.cache_info()
+        assert info["size"] == 0
+        assert info["hits"] == 0
+        assert info["misses"] == 0
+
+        src = tmp_path / "hello.py"
+        src.write_text("def f(): return 1\n", encoding="utf-8")
+        parser = Parser()
+        parser.parse_file(str(src), "python")
+        parser.parse_file(str(src), "python")
+        info = Parser.cache_info()
+        assert info["size"] == 1
+        assert info["misses"] == 1
+        assert info["hits"] == 1
+        assert info["stat_hits"] >= 1, "warm pass should take the stat fast path"
+
+    def test_cache_clear_resets_state(self, tmp_path) -> None:
+        src = tmp_path / "a.py"
+        src.write_text("x = 1\n", encoding="utf-8")
+        Parser().parse_file(str(src), "python")
+        assert Parser.cache_info()["size"] == 1
+        Parser.cache_clear()
+        assert Parser.cache_info() == {
+            "size": 0,
+            "maxsize": Parser._cache.maxsize,
+            "hits": 0,
+            "misses": 0,
+            "stat_hits": 0,
+            "stat_cache_size": 0,
+        }
+
+    def test_cache_invalidates_on_mtime_change(self, tmp_path) -> None:
+        """PERF-2: stat fast-path must not return a stale tree after the file
+        is edited. The cache_key is rebuilt because mtime_ns changes."""
+        import time as _time
+
+        src = tmp_path / "v.py"
+        src.write_text("x = 1\n", encoding="utf-8")
+        Parser.cache_clear()
+        parser = Parser()
+        r1 = parser.parse_file(str(src), "python")
+        assert r1.success
+        # Sleep just long enough to make mtime_ns differ on all platforms.
+        _time.sleep(0.01)
+        src.write_text("x = 1\ny = 2\n", encoding="utf-8")
+        r2 = parser.parse_file(str(src), "python")
+        assert r2.success
+        # The new tree must reflect the new source.
+        assert "y = 2" in r2.source_code
+        info = Parser.cache_info()
+        # Two distinct keys, so misses must be >=2.
+        assert info["misses"] >= 2
 
 
 class TestParserEdgeCases:

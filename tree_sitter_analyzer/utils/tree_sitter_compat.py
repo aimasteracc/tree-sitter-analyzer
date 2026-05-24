@@ -7,40 +7,18 @@ Supports tree-sitter 0.20+ with query.matches() method only.
 """
 
 import logging
-import re
 from typing import Any
 
+from ._tree_sitter_compat_helpers import (
+    execute_legacy_api,
+    execute_modern_api,
+    execute_newest_api,
+    execute_old_api,
+    execute_query_compat,
+    get_node_text_compat,
+)
+
 logger = logging.getLogger(__name__)
-
-
-def _parse_match_predicates(query_string: str) -> list[tuple[str, str]]:
-    """Extract (#match? @capture "pattern") predicates from a query string.
-
-    tree-sitter-python 0.25+ QueryCursor.matches() does NOT apply custom predicates
-    like #match? automatically. We must parse them from the query source and filter
-    manually after the raw match pass.
-
-    Returns list of (capture_name, regex_pattern) tuples.
-    """
-    # Matches: (#match? @capture_name "pattern")
-    return re.findall(r'\(#match\?\s+@(\w+)\s+"([^"]+)"\)', query_string)
-
-
-def _apply_match_predicates(
-    predicates: list[tuple[str, str]],
-    captures_dict: dict[str, list[Any]],
-) -> bool:
-    """Return True if all #match? predicates pass for the given capture dict."""
-    for capture_name, pattern in predicates:
-        nodes = captures_dict.get(capture_name, [])
-        if not nodes:
-            return False
-        for node in nodes:
-            raw = node.text
-            text = raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else str(raw)
-            if not re.search(pattern, text):
-                return False
-    return True
 
 
 class TreeSitterQueryCompat:
@@ -68,133 +46,27 @@ class TreeSitterQueryCompat:
         Raises:
             Exception: If query execution fails
         """
-        try:
-            import tree_sitter
-
-            query = tree_sitter.Query(language, query_string)
-
-            # Try newest API first (tree-sitter 0.25+) with QueryCursor
-            if hasattr(tree_sitter, "QueryCursor"):
-                logger.debug("Using newest tree-sitter API (QueryCursor)")
-                # Pass query_string so we can manually apply #match? predicates.
-                # QueryCursor.matches() does NOT apply custom predicates automatically.
-                predicates = _parse_match_predicates(query_string)
-                return TreeSitterQueryCompat._execute_newest_api(
-                    query, root_node, predicates
-                )
-            # Try modern API (tree-sitter 0.20+)
-            elif hasattr(query, "matches"):
-                logger.debug("Using modern tree-sitter API (matches)")
-                return TreeSitterQueryCompat._execute_modern_api(query, root_node)
-            # Fall back to legacy API (tree-sitter < 0.20)
-            elif hasattr(query, "captures"):
-                logger.debug("Using legacy tree-sitter API (captures)")
-                return TreeSitterQueryCompat._execute_legacy_api(query, root_node)
-            # Try very old API with different method signature
-            else:
-                logger.debug("Using very old tree-sitter API (direct query)")
-                return TreeSitterQueryCompat._execute_old_api(query, root_node)
-
-        except Exception as e:
-            logger.error(f"Tree-sitter query execution failed: {e}")
-            # Return empty result instead of raising to prevent complete failure
-            logger.debug("Returning empty result due to query execution failure")
-            return []
+        return execute_query_compat(language, query_string, root_node)
 
     @staticmethod
-    def _execute_newest_api(
-        query: Any,
-        root_node: Any,
-        match_predicates: list[tuple[str, str]] | None = None,
-    ) -> list[tuple[Any, str]]:
-        """Execute query using newest API (tree-sitter 0.25+) with QueryCursor.
-
-        Args:
-            match_predicates: List of (#match? capture pattern) tuples parsed from
-                the query string. QueryCursor does not apply these automatically;
-                we filter matches manually here.
-        """
-        captures: list[tuple[Any, str]] = []
-        predicates = match_predicates or []
-        try:
-            import tree_sitter
-
-            cursor = tree_sitter.QueryCursor(query)
-
-            # Execute query and get raw matches (predicates NOT applied)
-            matches = cursor.matches(root_node)
-            # matches is a list of tuples: (pattern_index, captures_dict)
-            for _pattern_index, captures_dict in matches:
-                # Manually apply #match? predicates that QueryCursor skips
-                if predicates and not _apply_match_predicates(predicates, captures_dict):
-                    continue  # This match doesn't satisfy the predicate — skip it
-
-                # captures_dict is {capture_name: [node1, node2, ...]}
-                for capture_name, nodes in captures_dict.items():
-                    for node in nodes:
-                        captures.append((node, capture_name))
-
-        except Exception as e:
-            logger.error(f"Newest API execution failed: {e}")
-            # Don't raise, just return empty result
-
-        return captures
+    def _execute_newest_api(query: Any, root_node: Any) -> list[tuple[Any, str]]:
+        """Execute query using newest API (tree-sitter 0.25+) with QueryCursor"""
+        return execute_newest_api(query, root_node)
 
     @staticmethod
     def _execute_modern_api(query: Any, root_node: Any) -> list[tuple[Any, str]]:
         """Execute query using modern API (tree-sitter 0.20+)"""
-        captures = []
-        try:
-            matches = query.matches(root_node)
-            for match in matches:
-                for capture in match.captures:
-                    capture_name = query.capture_names[capture.index]
-                    captures.append((capture.node, capture_name))
-        except Exception as e:
-            logger.error(f"Modern API execution failed: {e}")
-            raise
-        return captures
+        return execute_modern_api(query, root_node)
 
     @staticmethod
     def _execute_legacy_api(query: Any, root_node: Any) -> list[tuple[Any, str]]:
         """Execute query using legacy API (tree-sitter < 0.20)"""
-        captures = []
-        try:
-            # Use the legacy captures method
-            query_captures = query.captures(root_node)
-            for node, capture_name in query_captures:
-                captures.append((node, capture_name))
-        except Exception as e:
-            logger.error(f"Legacy API execution failed: {e}")
-            raise
-        return captures
+        return execute_legacy_api(query, root_node)
 
     @staticmethod
     def _execute_old_api(query: Any, root_node: Any) -> list[tuple[Any, str]]:
         """Execute query using very old API (tree-sitter < 0.19)"""
-        captures = []
-        try:
-            # Try different old API patterns
-            if callable(query):
-                # Some very old versions had callable queries
-                query_result = query(root_node)
-                if isinstance(query_result, list):
-                    for item in query_result:
-                        if isinstance(item, tuple) and len(item) >= 2:
-                            captures.append((item[0], str(item[1])))
-                        elif hasattr(item, "node") and hasattr(item, "name"):
-                            captures.append((item.node, item.name))
-            else:
-                # If no known API is available, return empty result
-                logger.warning(
-                    "No compatible tree-sitter query API found, returning empty result"
-                )
-
-        except Exception as e:
-            logger.error(f"Old API execution failed: {e}")
-            # Don't raise, just return empty result
-
-        return captures
+        return execute_old_api(query, root_node)
 
     @staticmethod
     def safe_execute_query(
@@ -257,53 +129,7 @@ def get_node_text_safe(node: Any, source_code: str, encoding: str = "utf-8") -> 
         Node text or empty string if extraction fails
     """
     try:
-        # Try byte-based extraction first
-        if hasattr(node, "start_byte") and hasattr(node, "end_byte"):
-            start_byte = node.start_byte
-            end_byte = node.end_byte
-            source_bytes = source_code.encode(encoding)
-            if start_byte <= end_byte <= len(source_bytes):
-                return source_bytes[start_byte:end_byte].decode(
-                    encoding, errors="replace"
-                )
-
-        # Fall back to node.text if available
-        if hasattr(node, "text") and node.text:
-            if isinstance(node.text, bytes):
-                return node.text.decode(encoding, errors="replace")
-            else:
-                return str(node.text)
-
-        # Fall back to point-based extraction
-        if hasattr(node, "start_point") and hasattr(node, "end_point"):
-            start_point = node.start_point
-            end_point = node.end_point
-            lines = source_code.split("\n")
-
-            if start_point[0] < len(lines) and end_point[0] < len(lines):
-                if start_point[0] == end_point[0]:
-                    # Single line
-                    line = lines[start_point[0]]
-                    start_col = max(0, min(start_point[1], len(line)))
-                    end_col = max(start_col, min(end_point[1], len(line)))
-                    return str(line[start_col:end_col])
-                else:
-                    # Multiple lines
-                    result_lines = []
-                    for i in range(start_point[0], min(end_point[0] + 1, len(lines))):
-                        line = lines[i]
-                        if i == start_point[0]:
-                            start_col = max(0, min(start_point[1], len(line)))
-                            result_lines.append(line[start_col:])
-                        elif i == end_point[0]:
-                            end_col = max(0, min(end_point[1], len(line)))
-                            result_lines.append(line[:end_col])
-                        else:
-                            result_lines.append(line)
-                    return "\n".join(result_lines)
-
-        return ""
-
+        return get_node_text_compat(node, source_code, encoding)
     except Exception as e:
         logger.debug(f"Node text extraction failed: {e}")
         return ""
@@ -361,13 +187,9 @@ def count_nodes_iterative(root_node: Any) -> int:
         node = stack.pop()
         count += 1
 
-        # Add children to stack
-        if hasattr(node, "children"):
-            try:
-                # Optimized: add children in reverse if we cared about order,
-                # but for counting it doesn't matter.
-                stack.extend(node.children)
-            except (TypeError, AttributeError):
-                # Handle cases where children might not be iterable
-                pass
+        # Add real tree-sitter child lists to the stack. Mock objects can synthesize
+        # async attributes here, which creates unawaited coroutine warnings.
+        children = getattr(node, "children", None)
+        if isinstance(children, (list, tuple)):
+            stack.extend(children)
     return count

@@ -32,6 +32,7 @@ def test_supported_languages():
     assert "javascript" in supported
     assert "python" in supported
     assert "typescript" in supported
+    assert "swift" in supported
 
 
 def test_is_language_available_known_languages():
@@ -56,7 +57,7 @@ def test_is_language_available_unknown_language():
 def test_create_parser_safely_with_available_language():
     """Test parser creation for available languages"""
     # Try to create a parser for each language
-    for lang in ["java", "javascript", "python", "typescript"]:
+    for lang in ["java", "javascript", "python", "typescript", "swift"]:
         parser = create_parser_safely(lang)
         # Parser could be None if library is not installed, but should not raise exception
         assert parser is None or hasattr(parser, "parse")

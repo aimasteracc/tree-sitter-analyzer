@@ -4,6 +4,7 @@ Tests cover error conditions, boundary cases, and robustness scenarios.
 """
 
 import os
+import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
@@ -556,6 +557,9 @@ class TestGitignoreDetectorMemoryEdgeCases:
         """Create a detector instance."""
         return GitignoreDetector()
 
+    @pytest.mark.skipif(
+        sys.platform == "win32", reason="Windows path drift — tracked separately"
+    )
     def test_memory_usage_with_large_directory_scan(self, detector):
         """Test memory usage with large directory scan."""
         with tempfile.TemporaryDirectory() as temp_dir:

@@ -103,9 +103,14 @@ class FileOutputManager:
             logger.info(f"Using project root as output path: {self._output_path}")
             return
 
-        # Priority 3: Current working directory as fallback
+        # Priority 3: Current working directory as fallback.
+        # This is reached when the manager is constructed for tools that may
+        # never actually write a file (e.g. ``ReadPartialTool``); demoting
+        # this to DEBUG removes ~4 noisy WARNING lines per tool construction
+        # that confused agents during dogfooding. The output path is still
+        # logged — just at a level you can ignore unless debugging.
         self._output_path = str(Path.cwd())
-        logger.warning(f"Using current directory as output path: {self._output_path}")
+        logger.debug("Using current directory as output path: %s", self._output_path)
 
     def get_output_path(self) -> str:
         """
@@ -311,6 +316,23 @@ class FileOutputManager:
                 )
             generated_filename = self.generate_output_filename(base_name, content)
             output_file = output_path / generated_filename
+
+        # SEC-1: reject paths that escape the configured output directory.
+        # An MCP-supplied filename like "../../etc/cron.d/x" would otherwise
+        # let an agent plant files anywhere it can write. We resolve both
+        # ends and require output_file to be inside output_path.
+        try:
+            output_root_resolved = output_path.resolve()
+            output_file_resolved = output_file.resolve()
+            output_file_resolved.relative_to(output_root_resolved)
+        except (OSError, ValueError) as exc:
+            raise ValueError(
+                f"Refusing to write outside the output directory: "
+                f"{output_file} is not under {output_path} ({exc})"
+            ) from None
+        # From here on, use the resolved path so any later relativisation
+        # (e.g. logging) does not include traversal segments.
+        output_file = output_file_resolved
 
         # Ensure output directory exists
         output_file.parent.mkdir(parents=True, exist_ok=True)

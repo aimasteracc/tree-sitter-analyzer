@@ -92,7 +92,9 @@ class JSONFormatter(BaseFormatter):
                 val = p.get("value") or ""
                 children = p.get("child_count")
                 if children is not None:
-                    display = f"({children} {'props' if vtype == 'object' else 'items'})"
+                    display = (
+                        f"({children} {'props' if vtype == 'object' else 'items'})"
+                    )
                 elif val:
                     trimmed = val[:40] + "…" if len(val) > 40 else val
                     display = f"`{trimmed}`"
@@ -135,7 +137,9 @@ class JSONFormatter(BaseFormatter):
             "total_properties": len(props),
             "max_nesting_depth": max_depth,
             "value_type_distribution": vtype_counts,
-            "properties_per_level": {str(k): v for k, v in sorted(level_counts.items())},
+            "properties_per_level": {
+                str(k): v for k, v in sorted(level_counts.items())
+            },
         }
         return self._format_json_output("JSON Advanced Analysis", result)
 

@@ -653,3 +653,110 @@ class TestToonEncoderSpecialCharacters:
         result = encoder.encode('test: value\nwith\t"quotes"')
         assert result.startswith('"')
         assert result.endswith('"')
+
+
+class TestToonEncoderLongFlatStringList:
+    """Regression — M9: long flat ``list[str]`` rendering.
+
+    Round-14b found that ``safe_to_edit(output_format='toon')`` rendered
+    ``downstream_files: [a,b,c,...]`` as a single long inline blob that
+    downstream tooling truncated mid-content. The encoder now switches
+    to a single-column TOON array-table once the list exceeds the
+    threshold (5 items).
+    """
+
+    def test_long_path_list_renders_as_array_table(self):
+        encoder = ToonEncoder()
+        data = {
+            "downstream_files": [
+                "start_mcp_server.py",
+                "tests/test_a.py",
+                "tests/test_b.py",
+                "tests/test_c.py",
+                "tests/test_d.py",
+                "tests/test_e.py",
+                "tests/test_f.py",
+            ],
+        }
+        result = encoder.encode(data)
+        lines = result.split("\n")
+        # Header is on its own line, followed by the array-table marker.
+        assert "downstream_files:" in lines
+        assert "  [7]{path}:" in lines
+        # Each path lives on its own line — one item per line.
+        assert "    start_mcp_server.py" in lines
+        assert "    tests/test_a.py" in lines
+        assert "    tests/test_f.py" in lines
+        # Inline form should NOT appear.
+        assert "downstream_files: [" not in result
+
+    def test_short_path_list_stays_inline(self):
+        # Lists at or below the threshold (5) keep the inline form to
+        # avoid the table-header overhead on values that fit on one line.
+        encoder = ToonEncoder()
+        data = {"tags": ["urgent", "review", "docs"]}
+        result = encoder.encode(data)
+        assert "tags: [urgent,review,docs]" in result.split("\n")
+
+    def test_threshold_boundary_inclusive_at_five(self):
+        encoder = ToonEncoder()
+        data = {"paths": ["a.py", "b.py", "c.py", "d.py", "e.py"]}
+        result = encoder.encode(data)
+        # Exactly 5 items — still inline.
+        assert "paths: [a.py,b.py,c.py,d.py,e.py]" in result.split("\n")
+
+    def test_threshold_boundary_table_at_six(self):
+        encoder = ToonEncoder()
+        data = {"paths": ["a.py", "b.py", "c.py", "d.py", "e.py", "f.py"]}
+        result = encoder.encode(data)
+        lines = result.split("\n")
+        assert "paths:" in lines
+        assert "  [6]{path}:" in lines
+
+    def test_mixed_list_str_and_dict_unchanged(self):
+        # list[dict] keeps its existing array-table behavior (sanity check
+        # the M9 change didn't reroute mixed-type list rendering).
+        encoder = ToonEncoder()
+        data = {
+            "risk_factors": [
+                {"factor": "size", "detail": "large", "severity": "med"},
+                {"factor": "churn", "detail": "50%", "severity": "low"},
+            ],
+        }
+        result = encoder.encode(data)
+        lines = result.split("\n")
+        assert "risk_factors:" in lines
+        assert "  [2]{factor,detail,severity}:" in lines
+        assert "    size,large,med" in lines
+
+    def test_non_string_list_falls_back_to_inline(self):
+        # Long list of ints stays inline — the table rule is gated on
+        # all items being strings.
+        encoder = ToonEncoder()
+        data = {"counts": [1, 2, 3, 4, 5, 6, 7, 8]}
+        result = encoder.encode(data)
+        assert "counts: [1,2,3,4,5,6,7,8]" in result.split("\n")
+
+    def test_column_name_picked_from_key_suffix(self):
+        encoder = ToonEncoder()
+        # paths/files keys → "path" column
+        for key in ("downstream_files", "paths", "test_paths"):
+            data = {key: [f"item_{i}" for i in range(7)]}
+            result = encoder.encode(data)
+            assert "  [7]{path}:" in result.split("\n"), (
+                f"Expected 'path' column for key={key}, got:\n{result}"
+            )
+
+    def test_column_name_falls_back_to_item(self):
+        encoder = ToonEncoder()
+        # Unknown suffix → "item" fallback
+        data = {"misc_things": [f"x_{i}" for i in range(7)]}
+        result = encoder.encode(data)
+        assert "  [7]{item}:" in result.split("\n")
+
+    def test_empty_string_list_stays_empty(self):
+        encoder = ToonEncoder()
+        # Empty list — no rendering change regardless of threshold.
+        data = {"paths": []}
+        result = encoder.encode(data)
+        assert "paths: []" in result.split("\n")

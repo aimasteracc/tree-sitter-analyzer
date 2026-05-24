@@ -1,0 +1,56 @@
+{
+  "counts_by_type": {
+    "Class": 5,
+    "Function": 21,
+    "Variable": 9
+  },
+  "element_total": 35,
+  "names_by_type": {
+    "Class": [
+      "App\\Models\\AdminUser",
+      "App\\Models\\Loggable",
+      "App\\Models\\User",
+      "App\\Models\\UserRepositoryInterface",
+      "App\\Models\\UserStatus"
+    ],
+    "Function": [
+      "AdminUser::__construct",
+      "AdminUser::grantPermission",
+      "AdminUser::hasPermission",
+      "App\\Models\\createUser",
+      "App\\Models\\hashPassword",
+      "Loggable::getLogs",
+      "Loggable::log",
+      "User::__construct",
+      "User::__get",
+      "User::__set",
+      "User::authenticate",
+      "User::findByEmail",
+      "User::getId",
+      "User::getInstanceCount",
+      "User::getUsername",
+      "User::setId",
+      "User::updateProfile",
+      "UserRepositoryInterface::delete",
+      "UserRepositoryInterface::find",
+      "UserRepositoryInterface::save",
+      "label"
+    ],
+    "Variable": [
+      "AdminUser::permissions",
+      "Loggable::logs",
+      "User::createdAt",
+      "User::email",
+      "User::id",
+      "User::instanceCount",
+      "User::lastLoginAt",
+      "User::passwordHash",
+      "User::username"
+    ]
+  },
+  "types": [
+    "Class",
+    "Function",
+    "Variable"
+  ]
+}

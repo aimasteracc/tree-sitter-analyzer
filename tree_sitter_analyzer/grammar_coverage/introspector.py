@@ -65,6 +65,63 @@ STRUCTURAL_PATTERNS = (
 )
 
 
+def _validate_language(language: str) -> str:
+    """Validate ``language`` against ``LANGUAGE_MODULE_MAP``; return module name."""
+    if language not in LANGUAGE_MODULE_MAP:
+        supported = ", ".join(sorted(LANGUAGE_MODULE_MAP.keys()))
+        raise ValueError(f"Unsupported language: {language}. Supported: {supported}")
+    return LANGUAGE_MODULE_MAP[language]
+
+
+def _import_ts_module(module_name: str) -> object:
+    """Dynamically import the tree-sitter language module; raise ImportError if missing."""
+    import importlib
+
+    try:
+        return importlib.import_module(module_name)
+    except ImportError as e:
+        log_error(f"Failed to import {module_name}: {e}")
+        raise ImportError(
+            f"Language module {module_name} not installed. "
+            f"Install with: pip install {module_name}"
+        ) from e
+
+
+def _get_language_capsule(ts_module: object, language: str, module_name: str) -> object:
+    """Probe the module for a known language-getter function and return its capsule.
+
+    Tries ``language_{lang}()`` → ``language()`` → ``language_{lang}_only()`` in
+    order (different tree-sitter language modules use different conventions).
+    """
+    possible_function_names = [
+        f"language_{language}",  # tree_sitter_php.language_php()
+        "language",  # 标准命名
+        f"language_{language}_only",  # tree_sitter_php.language_php_only()
+    ]
+    for func_name in possible_function_names:
+        if hasattr(ts_module, func_name):
+            language_func = getattr(ts_module, func_name)
+            log_debug(f"Using {func_name}() for {language}")
+            return language_func()
+
+    available_attrs = [attr for attr in dir(ts_module) if "language" in attr.lower()]
+    raise AttributeError(
+        f"{module_name} has no standard language function. Available: {available_attrs}"
+    )
+
+
+def _collect_named_node_types(lang_obj: object) -> list[str]:
+    """Walk ``lang_obj.node_kind_count`` and return sorted named node types."""
+    node_kind_count = lang_obj.node_kind_count  # type: ignore[attr-defined]
+    named_types: list[str] = []
+    for i in range(node_kind_count):
+        if lang_obj.node_kind_is_named(i):  # type: ignore[attr-defined]
+            node_type = lang_obj.node_kind_for_id(i)  # type: ignore[attr-defined]
+            if node_type:  # 过滤 None 值（理论上不应出现）
+                named_types.append(node_type)
+    return sorted(named_types)
+
+
 def get_all_node_types(language: str) -> list[str]:
     """获取指定语言的所有命名节点类型。
 
@@ -79,71 +136,21 @@ def get_all_node_types(language: str) -> list[str]:
     Raises:
         ImportError: 如果 tree-sitter 或对应语言的模块未安装
         ValueError: 如果语言不受支持
-    """
-    import importlib
 
+    r37e8 (dogfood): 82 lines → ~12 lines of orchestration. Per-phase helpers
+    (``_validate_language`` / ``_import_ts_module`` / ``_get_language_capsule``
+    / ``_collect_named_node_types``) own the individual steps.
+    """
     import tree_sitter
 
-    # 验证语言是否受支持
-    if language not in LANGUAGE_MODULE_MAP:
-        supported = ", ".join(sorted(LANGUAGE_MODULE_MAP.keys()))
-        raise ValueError(
-            f"Unsupported language: {language}. Supported: {supported}"
-        )
-
-    module_name = LANGUAGE_MODULE_MAP[language]
-
+    module_name = _validate_language(language)
+    ts_module = _import_ts_module(module_name)
     try:
-        # 动态导入 tree-sitter 语言模块
-        ts_module = importlib.import_module(module_name)
-    except ImportError as e:
-        log_error(f"Failed to import {module_name}: {e}")
-        raise ImportError(
-            f"Language module {module_name} not installed. "
-            f"Install with: pip install {module_name}"
-        ) from e
-
-    try:
-        # 获取 Language 对象
-        # 尝试多种可能的函数名称（不同语言模块有不同的命名约定）
-        language_capsule = None
-
-        # 尝试顺序：language_{lang}() > language() > language_{lang}_only()
-        possible_function_names = [
-            f"language_{language}",  # tree_sitter_php.language_php()
-            "language",  # 标准命名
-            f"language_{language}_only",  # tree_sitter_php.language_php_only()
-        ]
-
-        for func_name in possible_function_names:
-            if hasattr(ts_module, func_name):
-                language_func = getattr(ts_module, func_name)
-                language_capsule = language_func()
-                log_debug(f"Using {func_name}() for {language}")
-                break
-
-        if language_capsule is None:
-            available_attrs = [attr for attr in dir(ts_module) if "language" in attr.lower()]
-            raise AttributeError(
-                f"{module_name} has no standard language function. "
-                f"Available: {available_attrs}"
-            )
-
+        language_capsule = _get_language_capsule(ts_module, language, module_name)
         lang_obj = tree_sitter.Language(language_capsule)
-
-        # 使用 tree-sitter API 提取所有命名节点类型
-        node_kind_count = lang_obj.node_kind_count
-        named_types: list[str] = []
-
-        for i in range(node_kind_count):
-            if lang_obj.node_kind_is_named(i):
-                node_type = lang_obj.node_kind_for_id(i)
-                if node_type:  # 过滤 None 值（理论上不应出现）
-                    named_types.append(node_type)
-
+        named_types = _collect_named_node_types(lang_obj)
         log_debug(f"Extracted {len(named_types)} named node types for {language}")
-        return sorted(named_types)
-
+        return named_types
     except Exception as e:
         log_error(f"Failed to extract node types for {language}: {e}")
         raise
@@ -183,9 +190,7 @@ def auto_detect_extractable_types(node_types: list[str]) -> list[str]:
         is_extractable = matches_suffix or matches_exact
 
         # 排除结构性模式
-        is_structural = any(
-            pattern in node_type for pattern in STRUCTURAL_PATTERNS
-        )
+        is_structural = any(pattern in node_type for pattern in STRUCTURAL_PATTERNS)
 
         if is_extractable and not is_structural:
             extractable.append(node_type)
@@ -212,9 +217,7 @@ def get_structural_types(node_types: list[str]) -> list[str]:
 
     for node_type in node_types:
         # 检查是否匹配结构性模式
-        is_structural = any(
-            pattern in node_type for pattern in STRUCTURAL_PATTERNS
-        )
+        is_structural = any(pattern in node_type for pattern in STRUCTURAL_PATTERNS)
 
         # 排除可提取后缀
         is_extractable = any(

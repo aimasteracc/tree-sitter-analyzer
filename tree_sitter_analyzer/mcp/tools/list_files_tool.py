@@ -8,188 +8,82 @@ Safely list files/directories based on name patterns and constraints, using fd.
 from __future__ import annotations
 
 import logging
-import os
 import time
-from pathlib import Path
-from typing import Any, TypedDict
+from typing import Any
 
 from ..utils.error_handler import handle_mcp_errors
-from ..utils.file_output_manager import FileOutputManager
-from ..utils.format_helper import apply_toon_format_to_response, format_for_file_output
 from ..utils.gitignore_detector import get_default_detector
 from . import fd_rg_utils
 from .base_tool import BaseMCPTool
+from .list_files_helpers import (
+    TOOL_SCHEMA,
+    CountResponseContext,
+    DetailedResponseContext,
+    _build_agent_summary,
+    _build_fd_command,
+    _decode_lines,
+    _missing_fd_response,
+    _resolve_effective_types,
+    _respond_detailed,
+)
+from .list_files_helpers import (
+    _respond_count_only as _build_count_only_response,
+)
 
 logger = logging.getLogger(__name__)
 
+# Time budget (ms) for the follow-up unbounded fd pass that resolves the real
+# total file count when the user-supplied limit truncated the first pass.
+_RECOUNT_BUDGET_MS = 500
 
-class ListFilesArguments(TypedDict, total=False):
-    """Arguments for list_files tool"""
-
-    roots: list[str]
-    pattern: str
-    glob: bool
-    types: list[str]
-    extensions: list[str]
-    exclude: list[str]
-    depth: int
-    follow_symlinks: bool
-    hidden: bool
-    no_ignore: bool
-    size: list[str]
-    changed_within: str
-    changed_before: str
-    full_path_match: bool
-    absolute: bool
-    limit: int
-    count_only: bool
-    output_file: str
-    suppress_output: bool
-    output_format: str
+__all__ = ["ListFilesTool", "_build_agent_summary"]
 
 
 class ListFilesTool(BaseMCPTool):
     """MCP tool that wraps fd to list files with safety limits."""
 
     def get_tool_definition(self) -> dict[str, Any]:
+        """Return the MCP tool name, description, and input schema."""
         return {
             "name": "list_files",
             "description": (
-                "Discover which files exist in a project — the starting point for codebase "
-                "exploration. Supports glob patterns, file type filters, size constraints, "
-                "and time-based filters (recently modified files). "
-                "\n\n"
+                "fd-based file listing. Discover directory structure before deeper "
+                "analysis. Honors .gitignore by default and respects file-type "
+                "categories (.py, .ts, etc.) via the ``types`` parameter.\n\n"
                 "WHEN TO USE:\n"
-                "- At the start of working with an unfamiliar codebase — map the structure first\n"
-                "- Finding files modified recently (changed_within='1d') to understand active areas\n"
-                "- Locating files by extension, size range, or directory depth\n"
-                "- Filtering for executable files, symlinks, or empty files (types parameter)\n"
-                "- Getting a file count before deciding how to approach a large project\n"
+                "- Mapping a new codebase before any other analysis\n"
+                "- Filtering files by extension (e.g. only .py + .pyi)\n"
+                "- Counting how many source files a project has via count_only=true\n"
+                "- Producing a quick structural overview\n"
                 "\n"
                 "WHEN NOT TO USE:\n"
-                "- When you need to search file contents — use search_content or find_and_grep\n"
-                "- When you already know the file path — use check_code_scale or Read directly\n"
-                "\n"
-                "ADVANTAGE over built-in Glob: list_files supports filters that built-in tools "
-                "lack — file size ranges (size=['<10K', '>1K']), modification time "
-                "(changed_within='7d', changed_before='2024-01-01'), file types "
-                "('x'=executable, 'e'=empty, 'l'=symlink), and directory depth limits. "
-                "\n\n"
-                "IMPORTANT: This is a discovery tool, not a search tool. Use it to find files, "
-                "then use other tools to understand their contents."
+                "- To search file CONTENT — use search_content or find_and_grep\n"
+                "- To analyse a single file's structure — use get_code_outline\n"
+                "- To get a semantic project map — use project_overview"
             ),
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "roots": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Directory paths to search in. Must be within project boundaries for security. Example: ['.', 'src/', '/path/to/dir']",
-                    },
-                    "pattern": {
-                        "type": "string",
-                        "description": "Search pattern for file/directory names. Use with 'glob' for shell patterns or regex. Example: '*.py', 'test_*', 'main.js'",
-                    },
-                    "glob": {
-                        "type": "boolean",
-                        "default": False,
-                        "description": "Treat pattern as glob (shell wildcard) instead of regex. True for '*.py', False for '.*\\.py$'",
-                    },
-                    "types": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "File types to include. Values: 'f'=files, 'd'=directories, 'l'=symlinks, 'x'=executable, 'e'=empty. Example: ['f'] for files only",
-                    },
-                    "extensions": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "File extensions to include (without dots). Example: ['py', 'js', 'md'] for Python, JavaScript, and Markdown files",
-                    },
-                    "exclude": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Patterns to exclude from results. Example: ['*.tmp', '__pycache__', 'node_modules'] to skip temporary and cache files",
-                    },
-                    "depth": {
-                        "type": "integer",
-                        "description": "Maximum directory depth to search. 1=current level only, 2=one level deep, etc. Useful to avoid deep recursion",
-                    },
-                    "follow_symlinks": {
-                        "type": "boolean",
-                        "default": False,
-                        "description": "Follow symbolic links during search. False=skip symlinks (safer), True=follow them (may cause loops)",
-                    },
-                    "hidden": {
-                        "type": "boolean",
-                        "default": False,
-                        "description": "Include hidden files/directories (starting with dot). False=skip .git, .env, True=include all",
-                    },
-                    "no_ignore": {
-                        "type": "boolean",
-                        "default": False,
-                        "description": "Ignore .gitignore and similar files. False=respect ignore files, True=search everything",
-                    },
-                    "size": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "File size filters. Format: '+10M'=larger than 10MB, '-1K'=smaller than 1KB, '100B'=exactly 100 bytes. Units: B, K, M, G",
-                    },
-                    "changed_within": {
-                        "type": "string",
-                        "description": "Files modified within timeframe. Format: '1d'=1 day, '2h'=2 hours, '30m'=30 minutes, '1w'=1 week",
-                    },
-                    "changed_before": {
-                        "type": "string",
-                        "description": "Files modified before timeframe. Same format as changed_within. Useful for finding old files",
-                    },
-                    "full_path_match": {
-                        "type": "boolean",
-                        "default": False,
-                        "description": "Match pattern against full path instead of just filename. True for 'src/main.py', False for 'main.py'",
-                    },
-                    "absolute": {
-                        "type": "boolean",
-                        "default": True,
-                        "description": "Return absolute paths. True='/full/path/file.py', False='./file.py'. Absolute paths are more reliable",
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "description": "Maximum number of results to return. Default 2000, max 10000. Use to prevent overwhelming output",
-                    },
-                    "count_only": {
-                        "type": "boolean",
-                        "default": False,
-                        "description": "Return only the total count of matching files instead of file details. Useful for quick statistics",
-                    },
-                    "output_file": {
-                        "type": "string",
-                        "description": "Optional filename to save output to file (extension auto-detected based on content)",
-                    },
-                    "suppress_output": {
-                        "type": "boolean",
-                        "description": "When true and output_file is specified, suppress detailed output in response to save tokens",
-                        "default": False,
-                    },
-                    "output_format": {
-                        "type": "string",
-                        "enum": ["json", "toon"],
-                        "description": "Output format: 'toon' (default, 50-70% token reduction) or 'json'",
-                        "default": "toon",
-                    },
-                },
-                "required": ["roots"],
-                "additionalProperties": False,
+            "inputSchema": TOOL_SCHEMA,
+            "annotations": {
+                "readOnlyHint": True,
+                "destructiveHint": False,
+                "idempotentHint": True,
+                "openWorldHint": False,
             },
         }
 
     def _validate_roots(self, roots: list[str]) -> list[str]:
+        """Resolve and validate each root directory path.
+
+        Empty lists are rejected by ``validate_arguments`` (O7) before they
+        reach this method — when they do reach here, the explicit-empty
+        case has already been caught and this guard handles defensive
+        callers that hit the method directly.
+        """
         if not roots or not isinstance(roots, list):
             raise ValueError("roots must be a non-empty array of strings")
         validated: list[str] = []
         for r in roots:
             if not isinstance(r, str) or not r.strip():
                 raise ValueError("root entries must be non-empty strings")
-            # Resolve and validate using unified logic
             try:
                 resolved = self.resolve_and_validate_directory_path(r)
                 validated.append(resolved)
@@ -198,17 +92,33 @@ class ListFilesTool(BaseMCPTool):
         return validated
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
+        """Validate roots and all option types.
+
+        ``roots`` is optional: when the key is **missing** entirely the
+        tool falls back to ``self.project_root`` so callers don't have
+        to repeat the project path they already configured on the tool
+        instance.
+
+        An **explicit empty value** (``roots=[]``, ``roots=None``, or
+        ``roots=""``) is treated as a user error per O7 — silently
+        rewriting it to ``[project_root]`` masked typos and made the
+        downstream ``_validate_roots`` check unreachable.
+        """
         if "roots" not in arguments:
-            raise ValueError("roots is required")
+            if not self.project_root:
+                raise ValueError(
+                    "roots is required when the tool has no project_root configured"
+                )
+            arguments["roots"] = [self.project_root]
+        elif arguments["roots"] in (None, [], ""):
+            raise ValueError(
+                "roots must be a non-empty array of strings "
+                "(or omit the key to scan project_root)"
+            )
         roots = arguments["roots"]
         if not isinstance(roots, list):
             raise ValueError("roots must be an array")
-        # Basic type checks for optional fields
-        for key in [
-            "pattern",
-            "changed_within",
-            "changed_before",
-        ]:
+        for key in ["pattern", "changed_within", "changed_before"]:
             if key in arguments and not isinstance(arguments[key], str):
                 raise ValueError(f"{key} must be a string")
         for key in [
@@ -235,17 +145,12 @@ class ListFilesTool(BaseMCPTool):
 
     @handle_mcp_errors("list_files")
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        # Check if fd command is available
+        """Execute fd-based file listing with safety limits."""
         if not fd_rg_utils.check_external_command("fd"):
-            return {
-                "success": False,
-                "error": "fd command not found. Please install fd (https://github.com/sharkdp/fd) to use this tool.",
-                "count": 0,
-                "results": [],
-            }
+            return _missing_fd_response()
 
         self.validate_arguments(arguments)
-        roots = self._validate_roots(arguments["roots"])  # normalized absolutes
+        roots = self._validate_roots(arguments["roots"])
 
         limit = fd_rg_utils.clamp_int(
             arguments.get("limit"),
@@ -253,52 +158,11 @@ class ListFilesTool(BaseMCPTool):
             fd_rg_utils.MAX_RESULTS_HARD_CAP,
         )
 
-        # Performance optimization:
-        # If extensions are specified and types are not, we can safely restrict to files.
-        # This avoids expensive per-result is_dir() stats in Python.
-        effective_types = arguments.get("types")
-        if effective_types is None and arguments.get("extensions"):
-            effective_types = ["f"]
+        effective_types = _resolve_effective_types(arguments)
+        no_ignore = self._resolve_no_ignore(arguments)
 
-        # Smart .gitignore detection
-        no_ignore = bool(arguments.get("no_ignore", False))
-        if not no_ignore:
-            # Auto-detect if we should use --no-ignore
-            detector = get_default_detector()
-            original_roots = arguments.get("roots", [])
-            should_ignore = detector.should_use_no_ignore(
-                original_roots, self.project_root
-            )
-            if should_ignore:
-                no_ignore = True
-                # Log the auto-detection for debugging
-                detection_info = detector.get_detection_info(
-                    original_roots, self.project_root
-                )
-                logger.info(
-                    f"Auto-enabled --no-ignore due to .gitignore interference: {detection_info['reason']}"
-                )
+        cmd = _build_fd_command(arguments, roots, limit, effective_types, no_ignore)
 
-        cmd = fd_rg_utils.build_fd_command(
-            pattern=arguments.get("pattern"),
-            glob=bool(arguments.get("glob", False)),
-            types=effective_types,
-            extensions=arguments.get("extensions"),
-            exclude=arguments.get("exclude"),
-            depth=arguments.get("depth"),
-            follow_symlinks=bool(arguments.get("follow_symlinks", False)),
-            hidden=bool(arguments.get("hidden", False)),
-            no_ignore=no_ignore,  # Use the potentially auto-detected value
-            size=arguments.get("size"),
-            changed_within=arguments.get("changed_within"),
-            changed_before=arguments.get("changed_before"),
-            full_path_match=bool(arguments.get("full_path_match", False)),
-            absolute=True,  # unify output to absolute paths
-            limit=limit,
-            roots=roots,
-        )
-
-        # Use fd default path format (one per line). We'll determine is_dir and ext via Path
         started = time.time()
         rc, out, err = await fd_rg_utils.run_command_capture(cmd)
         elapsed_ms = int((time.time() - started) * 1000)
@@ -307,178 +171,132 @@ class ListFilesTool(BaseMCPTool):
             message = err.decode("utf-8", errors="replace").strip() or "fd failed"
             return {"success": False, "error": message, "returncode": rc}
 
-        lines = [
-            line.strip()
-            for line in out.decode("utf-8", errors="replace").splitlines()
-            if line.strip()
-        ]
+        lines = _decode_lines(out)
 
-        # Check if count_only mode is requested
+        # H3 fix: fd's --max-results truncates server-side, so a response
+        # with len(lines)==limit could mean "exactly limit files exist" OR
+        # "many more exist, we just stopped early." Run a follow-up fd pass
+        # without --max-results to learn the truth. Budget: 500ms.
+        real_total, total_count_known = await self._resolve_real_total(
+            lines, limit, arguments, roots, effective_types, no_ignore
+        )
+
         if arguments.get("count_only", False):
-            total_count = len(lines)
-            # Apply hard cap for counting as well
-            if total_count > fd_rg_utils.MAX_RESULTS_HARD_CAP:
-                total_count = fd_rg_utils.MAX_RESULTS_HARD_CAP
-                truncated = True
-            else:
-                truncated = False
+            return self._respond_count_only(
+                lines,
+                elapsed_ms,
+                arguments,
+                limit,
+                real_total=real_total,
+                total_count_known=total_count_known,
+            )
 
-            result = {
-                "success": True,
-                "count_only": True,
-                "total_count": total_count,
-                "truncated": truncated,
-                "elapsed_ms": elapsed_ms,
-            }
+        return _respond_detailed(
+            DetailedResponseContext(
+                lines=lines,
+                elapsed_ms=elapsed_ms,
+                arguments=arguments,
+                limit=limit,
+                no_ignore=no_ignore,
+                effective_types=effective_types,
+                project_root=self.project_root,
+            ),
+            real_total=real_total,
+            total_count_known=total_count_known,
+        )
 
-            # Handle file output for count_only mode
-            output_file = arguments.get("output_file")
-            suppress_output = arguments.get("suppress_output", False)
-            output_format = arguments.get("output_format", "json")
+    async def _resolve_real_total(
+        self,
+        lines: list[str],
+        limit: int,
+        arguments: dict[str, Any],
+        roots: list[str],
+        effective_types: list[str] | None,
+        no_ignore: bool,
+    ) -> tuple[int, bool]:
+        """Recount without --max-results when fd may have truncated.
 
-            if output_file:
-                file_manager = FileOutputManager(self.project_root)
-                file_content = {
-                    "count_only": True,
-                    "total_count": total_count,
-                    "truncated": truncated,
-                    "elapsed_ms": elapsed_ms,
-                    "query_info": {
-                        "roots": arguments.get("roots", []),
-                        "pattern": arguments.get("pattern"),
-                        "glob": arguments.get("glob", False),
-                        "types": arguments.get("types"),
-                        "extensions": arguments.get("extensions"),
-                        "exclude": arguments.get("exclude"),
-                        "limit": limit,
-                    },
-                }
+        Returns ``(real_total, total_count_known)``.
 
-                try:
-                    # Format content based on output_format
-                    formatted_content, _ = format_for_file_output(
-                        file_content, output_format
-                    )
-                    saved_path = file_manager.save_to_file(
-                        content=formatted_content, base_name=output_file
-                    )
-                    result["output_file"] = saved_path  # type: ignore[assignment]
+        - Not truncated: ``(len(lines), True)`` — first pass already complete.
+        - Truncated and recount within budget: ``(real_count, True)``.
+        - Truncated and recount over budget or failed: ``(len(lines), False)``.
+        """
+        # Heuristic: if fd returned strictly fewer lines than the cap, there's
+        # nothing more to find — the first pass was exhaustive.
+        if len(lines) < limit:
+            return len(lines), True
 
-                    if suppress_output:
-                        # Return minimal response to save tokens
-                        return {
-                            "success": True,
-                            "count_only": True,
-                            "total_count": total_count,
-                            "output_file": saved_path,
-                            "message": f"Count results saved to {saved_path}",
-                        }
-                except Exception as e:
-                    logger.warning(f"Failed to save output file: {e}")
-                    result["output_file_error"] = str(e)  # type: ignore[assignment]
+        try:
+            unbounded_cmd = _build_fd_command(
+                arguments,
+                roots,
+                fd_rg_utils.MAX_RESULTS_HARD_CAP,
+                effective_types,
+                no_ignore,
+            )
+            started = time.perf_counter()
+            rc, out, _err = await fd_rg_utils.run_command_capture(
+                unbounded_cmd,
+                timeout_ms=_RECOUNT_BUDGET_MS,
+            )
+            recount_ms = int((time.perf_counter() - started) * 1000)
 
-            # Apply TOON format to direct output if requested
-            return apply_toon_format_to_response(result, output_format)
+            if rc != 0:
+                logger.debug("list_files recount rc=%s in %sms", rc, recount_ms)
+                return len(lines), False
 
-        # Truncate defensively even if fd didn't
-        truncated = False
-        if len(lines) > fd_rg_utils.MAX_RESULTS_HARD_CAP:
-            lines = lines[: fd_rg_utils.MAX_RESULTS_HARD_CAP]
-            truncated = True
+            if recount_ms > _RECOUNT_BUDGET_MS:
+                return len(lines), False
 
-        results: list[dict[str, Any]] = []
-        types_only_files = effective_types == ["f"]
-        for p in lines:
-            try:
-                # fd already returned absolute paths (-a). Avoid Path.resolve() per entry.
-                path_str = p
-                path_obj = Path(path_str)
-                ext = path_obj.suffix[1:] if path_obj.suffix else None
+            recount_lines = _decode_lines(out)
+            real_total = len(recount_lines)
+            if real_total < len(lines):
+                # Defensive: should not happen, but trust the visible lines.
+                return len(lines), False
+            return real_total, True
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("list_files recount raised %s; using estimate", exc)
+            return len(lines), False
 
-                # When fd is restricted to files, we can avoid an extra stat for is_dir.
-                is_dir = False if types_only_files else path_obj.is_dir()
-                size_bytes = None
-                mtime = None
-                try:
-                    if not is_dir:
-                        st = os.stat(path_str)
-                        size_bytes = st.st_size
-                        mtime = int(st.st_mtime)
-                except (OSError, ValueError):  # nosec B110
-                    pass
-                results.append(
-                    {
-                        "path": path_str,
-                        "is_dir": is_dir,
-                        "size_bytes": size_bytes,
-                        "mtime": mtime,
-                        "ext": ext,
-                    }
-                )
-            except (OSError, ValueError):  # nosec B112
-                continue
+    def _resolve_no_ignore(self, arguments: dict[str, Any]) -> bool:
+        """Determine no_ignore flag with smart gitignore detection."""
+        no_ignore = bool(arguments.get("no_ignore", False))
+        if no_ignore:
+            return no_ignore
 
-        final_result: dict[str, Any] = {
-            "success": True,
-            "count": len(results),
-            "truncated": truncated,
-            "elapsed_ms": elapsed_ms,
-            "results": results,
-        }
+        detector = get_default_detector()
+        original_roots = arguments.get("roots", [])
+        should_ignore = detector.should_use_no_ignore(original_roots, self.project_root)
+        if should_ignore:
+            detection_info = detector.get_detection_info(
+                original_roots, self.project_root
+            )
+            logger.info(
+                f"Auto-enabled --no-ignore due to .gitignore interference: {detection_info['reason']}"
+            )
+            return True
+        return False
 
-        # Handle file output for detailed results
-        output_file = arguments.get("output_file")
-        suppress_output = arguments.get("suppress_output", False)
-        output_format = arguments.get("output_format", "json")
-
-        if output_file:
-            file_manager = FileOutputManager(self.project_root)
-            file_content = {
-                "count": len(results),
-                "truncated": truncated,
-                "elapsed_ms": elapsed_ms,
-                "results": results,
-                "query_info": {
-                    "roots": arguments.get("roots", []),
-                    "pattern": arguments.get("pattern"),
-                    "glob": arguments.get("glob", False),
-                    "types": arguments.get("types"),
-                    "extensions": arguments.get("extensions"),
-                    "exclude": arguments.get("exclude"),
-                    "depth": arguments.get("depth"),
-                    "follow_symlinks": arguments.get("follow_symlinks", False),
-                    "hidden": arguments.get("hidden", False),
-                    "no_ignore": no_ignore,
-                    "size": arguments.get("size"),
-                    "changed_within": arguments.get("changed_within"),
-                    "changed_before": arguments.get("changed_before"),
-                    "full_path_match": arguments.get("full_path_match", False),
-                    "absolute": arguments.get("absolute", True),
-                    "limit": limit,
-                },
-            }
-
-            try:
-                # Format content based on output_format
-                formatted_content, _ = format_for_file_output(
-                    file_content, output_format
-                )
-                saved_path = file_manager.save_to_file(
-                    content=formatted_content, base_name=output_file
-                )
-                final_result["output_file"] = saved_path
-
-                if suppress_output:
-                    # Return minimal response to save tokens
-                    return {
-                        "success": True,
-                        "count": len(results),
-                        "output_file": saved_path,
-                        "message": f"File list results saved to {saved_path}",
-                    }
-            except Exception as e:
-                logger.warning(f"Failed to save output file: {e}")
-                final_result["output_file_error"] = str(e)
-
-        # Apply TOON format to direct output if requested
-        return apply_toon_format_to_response(final_result, output_format)
+    def _respond_count_only(
+        self,
+        lines: list[str],
+        elapsed_ms: int,
+        arguments: dict[str, Any],
+        limit: int,
+        *,
+        real_total: int | None = None,
+        total_count_known: bool = True,
+    ) -> dict[str, Any]:
+        """Return count-only response through the shared response helper."""
+        return _build_count_only_response(
+            CountResponseContext(
+                lines=lines,
+                elapsed_ms=elapsed_ms,
+                arguments=arguments,
+                limit=limit,
+                project_root=self.project_root,
+            ),
+            real_total=real_total,
+            total_count_known=total_count_known,
+        )

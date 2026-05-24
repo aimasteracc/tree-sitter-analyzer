@@ -13,7 +13,7 @@ import logging
 import shutil
 import sqlite3
 import sys
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -131,7 +131,7 @@ class FormatChangeDatabase:
             VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
             (
-                datetime.utcnow().isoformat(),
+                datetime.now(UTC).isoformat(),
                 requester,
                 format_type,
                 change_type,
@@ -163,7 +163,7 @@ class FormatChangeDatabase:
             (
                 change_request_id,
                 approver,
-                datetime.utcnow().isoformat(),
+                datetime.now(UTC).isoformat(),
                 status,
                 comments,
             ),
@@ -192,7 +192,7 @@ class FormatChangeDatabase:
             (
                 status,
                 reviewer,
-                datetime.utcnow().isoformat(),
+                datetime.now(UTC).isoformat(),
                 comments,
                 change_request_id,
             ),
@@ -234,7 +234,7 @@ class FormatChangeDatabase:
             (
                 format_type,
                 version,
-                datetime.utcnow().isoformat(),
+                datetime.now(UTC).isoformat(),
                 change_request_id,
                 specification_hash,
                 golden_master_hash,
@@ -510,7 +510,7 @@ class FormatChangeManager:
 
         # Calculate specification hash (simplified - would hash actual spec file)
         spec_hash = hashlib.md5(
-            f"{format_type}_{new_version}_{datetime.utcnow()}".encode()
+            f"{format_type}_{new_version}_{datetime.now(UTC)}".encode()
         ).hexdigest()
 
         # Create new format version
@@ -530,7 +530,7 @@ class FormatChangeManager:
         backup_dir = Path("format_backups")
         backup_dir.mkdir(exist_ok=True)
 
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         backup_path = backup_dir / f"{format_type}_backup_{timestamp}_v{new_version}"
         backup_path.mkdir(exist_ok=True)
 
@@ -630,7 +630,7 @@ class FormatChangeManager:
             format_histories[format_type] = self.db.get_format_versions(format_type)
 
         report = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "summary": {
                 "pending_requests": len(pending_requests),
                 "total_formats": len(format_histories),

@@ -176,75 +176,102 @@ def _load_expected_json(expected_path: Path) -> dict[str, Any]:
         return data
 
 
+# r37cm (dogfood): file-root node types — they span the whole file and
+# would mask real top-level declarations. Skip when matching elements.
+_ROOT_NODE_TYPES = frozenset(
+    {
+        "module",
+        "program",
+        "source_file",
+        "translation_unit",
+        "chunk",
+        "document",
+    }
+)
+
+
+def _build_ast_line_index(
+    root: Any,
+    max_depth: int,
+    max_nodes: int,
+) -> dict[tuple[int, int], list[tuple[str, tuple[str, ...]]]]:
+    """Recursively walk an AST, building a ``(start_line, end_line)`` → list index.
+
+    r37cm: extracted from ``_get_covered_node_types_from_plugin`` to drop
+    the 174-line method to ~60. Depth + node-count caps protect against
+    pathological inputs (MAX_DEPTH=100 stack overflow, MAX_NODES=100k
+    memory ceiling).
+    """
+    line_index: dict[tuple[int, int], list[tuple[str, tuple[str, ...]]]] = {}
+    node_count = [0]
+
+    def walk(node: Any, parent_path: tuple[str, ...], depth: int) -> None:
+        if depth > max_depth:
+            return
+        node_count[0] += 1
+        if node_count[0] > max_nodes:
+            return
+        if not node.is_named:
+            for child in node.children:
+                walk(child, parent_path, depth + 1)
+            return
+        key = (node.start_point[0], node.end_point[0])
+        line_index.setdefault(key, []).append((node.type, parent_path))
+        new_parent_path = parent_path + (node.type,)
+        for child in node.children:
+            walk(child, new_parent_path, depth + 1)
+
+    walk(root, (), 0)
+    return line_index
+
+
+def _match_elements_to_paths(
+    elements: Any,
+    line_index: dict[tuple[int, int], list[tuple[str, tuple[str, ...]]]],
+) -> set[tuple[str, tuple[str, ...]]]:
+    """Match plugin elements against the line index → covered (type, path) set.
+
+    For each element line range, take the first non-root node type (the
+    outermost semantic node) to avoid the single-line inflation bug
+    where ``class Foo: pass`` would mark class_definition + identifier
+    + block + pass_statement as all covered.
+    """
+    covered: set[tuple[str, tuple[str, ...]]] = set()
+    for element in elements:
+        if not (hasattr(element, "start_line") and hasattr(element, "end_line")):
+            continue
+        key = (element.start_line - 1, element.end_line - 1)
+        for node_type, parent_path in line_index.get(key, []):
+            if node_type not in _ROOT_NODE_TYPES:
+                covered.add((node_type, parent_path))
+                break
+    return covered
+
+
 async def _get_covered_node_types_from_plugin(
     corpus_path: Path, language: str
 ) -> set[str]:
+    """Return the set of AST node types the plugin actually extracted.
+
+    Phase 1 (2026-03) — exact node-identity matching: walk the corpus
+    AST, build a (start_line, end_line) → list[(node_type, parent_path)]
+    index, then match each plugin element to its outermost non-root node
+    type. r37cm (dogfood): docstring trimmed and the inner ``build_ast_map``
+    closure plus matching loop moved to ``_build_ast_line_index`` +
+    ``_match_elements_to_paths`` module helpers — drops the function
+    from 174 lines to ~40 while keeping MECE semantics (mutually-
+    exclusive type+path pairs, collectively-exhaustive traversal under
+    MAX_DEPTH=100 / MAX_NODES=100000 caps).
     """
-    通过运行插件提取，收集被覆盖的节点类型（Phase 1: 精确节点身份匹配）
-
-    **新架构（2026-03）消除 False Positives**：
-
-    旧方法（已修复）：
-        位置重叠判断 → 嵌套节点被误判为已覆盖
-        例如：提取 @decorator 节点 → function_definition 在其范围内 → 错误标记 function 为"已覆盖"
-
-    新方法（当前）：
-        精确节点身份匹配 → 只有真正提取的节点才标记为已覆盖
-        (node_type, start_byte, end_byte, parent_path, file_path) 完全一致才匹配
-
-    算法流程：
-        1. 解析 corpus 文件 → 构建完整 AST 节点身份映射
-           节点身份 = (type, start_byte, end_byte, parent_path_tuple, file_path)
-
-        2. 运行插件提取 → 获取 AnalysisResult.elements（行号 + type）
-           将行号转换为字节偏移（精确匹配所需）
-
-        3. 精确匹配 → 只有字节范围完全一致的节点才标记为"已覆盖"
-           covered_paths = {(node_type, parent_path) for matched nodes}
-
-        4. 返回去重的 node_type 集合（向后兼容）
-
-    MECE 保证：
-        - Mutually Exclusive: 每个节点有唯一的 (type, parent_path) → 不会重复计数
-        - Collectively Exhaustive: 遍历整个 AST → 不会遗漏任何节点
-
-    防御措施：
-        - 深度限制: 100 层（防止栈溢出）
-        - 内存断路器: 100,000 节点上限（防止内存耗尽）
-        - 错误处理: 捕获异常并返回空集（不中断流程）
-
-    Args:
-        corpus_path: corpus 文件路径
-        language: 语言名称
-
-    Returns:
-        被插件覆盖的节点类型集合（去重后的 node_type）
-
-    示例：
-        >>> covered = await _get_covered_node_types_from_plugin(Path("corpus_python.py"), "python")
-        >>> print(covered)
-        {'function_definition', 'class_definition', 'if_statement', ...}
-    """
-
     from ..core.request import AnalysisRequest
     from ..plugins.manager import PluginManager
 
-    # NodeIdentity = (node_type, start_line, end_line, parent_path_tuple, file_path)
-    # Phase 1 修订（2026-04）：从字节偏移改为行号匹配，解决缩进代码误判问题。
-    # 原字节匹配问题：line_to_byte_start 返回行首字节，而 AST 节点起始字节在缩进之后，
-    # 两者永远不等，导致所有缩进节点（方法、字段等）均无法被标记为已覆盖。
-    # 行号匹配保持 MECE：(start_line, end_line, parent_path) 三元组仍可唯一标识节点，
-    # 同时正确处理 decorated_definition vs inner function_definition 等嵌套情况。
-
-    covered_syntactic_paths: set[tuple[str, tuple[str, ...]]] = set()
-    MAX_DEPTH = 100  # 防止极端嵌套导致栈溢出
+    MAX_DEPTH = 100  # 防止栈溢出
     MAX_NODES = 100000  # 内存断路器
 
     try:
-        # 1. 获取插件并运行提取
         plugin_manager = PluginManager()
         plugin = plugin_manager.get_plugin(language)
-
         if not plugin:
             raise ImportError(f"No plugin available for language: {language}")
 
@@ -254,13 +281,10 @@ async def _get_covered_node_types_from_plugin(
             include_complexity=False,
             include_details=True,
         )
-
         result = await plugin.analyze_file(str(corpus_path), request)
-
         if not result or not hasattr(result, "elements") or not result.elements:
             return set()
 
-        # 2. 解析文件获取完整 AST（使用 language_loader）
         from ..language_loader import loader
 
         parser = loader.create_parser_safely(language)
@@ -270,74 +294,11 @@ async def _get_covered_node_types_from_plugin(
         source_code = corpus_path.read_text(encoding="utf-8")
         tree = parser.parse(source_code.encode("utf-8"))
 
-        # 3. 构建 AST 节点行号索引（O(N) 构建，O(1) 查询）
-        # key: (start_line_0based, end_line_0based) → list of (node_type, parent_path)
-        # 替换原来的 identity dict：匹配只需要行号，不需要遍历全部节点。
-        line_index: dict[tuple[int, int], list[tuple[str, tuple[str, ...]]]] = {}
-        node_count = 0
-
-        def build_ast_map(
-            node: Any, parent_path: tuple[str, ...], depth: int
-        ) -> None:
-            nonlocal node_count
-
-            if depth > MAX_DEPTH:
-                return
-
-            node_count += 1
-            if node_count > MAX_NODES:
-                return
-
-            if not node.is_named:
-                for child in node.children:
-                    build_ast_map(child, parent_path, depth + 1)
-                return
-
-            key = (node.start_point[0], node.end_point[0])
-            line_index.setdefault(key, []).append((node.type, parent_path))
-
-            new_parent_path = parent_path + (node.type,)
-            for child in node.children:
-                build_ast_map(child, new_parent_path, depth + 1)
-
-        build_ast_map(tree.root_node, (), 0)
-
-        # 文件根节点类型——它们跨越整个文件，会掩盖真实的顶层声明。
-        # 遇到这些类型时跳过，取下一个候选项。
-        _ROOT_NODE_TYPES = frozenset(
-            {
-                "module",
-                "program",
-                "source_file",
-                "translation_unit",
-                "chunk",
-                "document",
-            }
-        )
-
-        # 4. 用行号匹配：element 的 1-based 行号 → 0-based → O(1) 查询索引
-        # 原来是 O(N×M) 双重循环，现在是 O(M) 单次遍历。
-        #
-        # 单行构造膨胀修复：跳过根节点后，只取第一个条目（最外层语义节点）。
-        # build_ast_map 以 DFS 顺序插入：父节点先于子节点。
-        # 例如 `class Foo: pass`（行 0-0）：
-        #   line_index[(0,0)] = [class_definition, identifier, block, pass_statement]
-        # 取第一个非根节点 → 只有 class_definition 被标记为已覆盖，而不是全部 4 个。
-        for element in result.elements:
-            if not (hasattr(element, "start_line") and hasattr(element, "end_line")):
-                continue
-
-            key = (element.start_line - 1, element.end_line - 1)
-            for node_type, parent_path in line_index.get(key, []):
-                if node_type not in _ROOT_NODE_TYPES:
-                    covered_syntactic_paths.add((node_type, parent_path))
-                    break
-
-        # 5. 返回去重后的 node_type 集合（向后兼容）
-        covered_types: set[str] = {node_type for node_type, _ in covered_syntactic_paths}
+        line_index = _build_ast_line_index(tree.root_node, MAX_DEPTH, MAX_NODES)
+        covered_syntactic_paths = _match_elements_to_paths(result.elements, line_index)
+        return {node_type for node_type, _ in covered_syntactic_paths}
 
     except Exception as e:
-        # 记录错误但不中断流程，返回空集
         import sys
         import traceback
 
@@ -346,10 +307,7 @@ async def _get_covered_node_types_from_plugin(
             file=sys.stderr,
         )
         traceback.print_exc(file=sys.stderr)
-
         return set()
-
-    return covered_types
 
 
 async def validate_plugin_coverage(language: str) -> CoverageReport:
@@ -505,4 +463,6 @@ def check_coverage_threshold(
 # Synchronous wrappers for testing convenience
 def validate_plugin_coverage_sync(language: str) -> CoverageReport:
     """同步版本的 validate_plugin_coverage（用于测试）"""
-    return anyio.run(validate_plugin_coverage, language)
+    # anyio.run() returns Any per its stub; cast back to the real return type.
+    result: CoverageReport = anyio.run(validate_plugin_coverage, language)
+    return result

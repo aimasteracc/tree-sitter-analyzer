@@ -49,7 +49,7 @@ class SemanticComparator:
     def compare_tool_responses(
         actual: dict[str, Any] | list[Any],
         expected: dict[str, Any] | list[Any],
-        ignore_fields: set[str] | None = None
+        ignore_fields: set[str] | None = None,
     ) -> tuple[bool, str]:
         """
         比较两个工具响应是否语义等价
@@ -64,19 +64,29 @@ class SemanticComparator:
         """
         if ignore_fields is None:
             ignore_fields = {
-                'timestamp', 'analysis_time', 'version',
-                'elapsed_ms', 'cache_hit'  # 忽略时间和缓存字段（每次调用都不同）
+                "timestamp",
+                "analysis_time",
+                "version",
+                "elapsed_ms",
+                "cache_hit",
+                "fd_elapsed_ms",
+                "rg_elapsed_ms",
             }
 
         # 0. 如果响应是列表（如 get_code_outline 返回 [{"type": "text", "text": "..."}]）
         if isinstance(actual, list) and isinstance(expected, list):
             if len(actual) != len(expected):
-                return False, f"列表长度不匹配: actual={len(actual)}, expected={len(expected)}"
+                return (
+                    False,
+                    f"列表长度不匹配: actual={len(actual)}, expected={len(expected)}",
+                )
 
             # 逐个比较列表元素
             for i, (a, e) in enumerate(zip(actual, expected, strict=False)):
                 if isinstance(a, dict) and isinstance(e, dict):
-                    matches, diff = SemanticComparator.compare_tool_responses(a, e, ignore_fields)
+                    matches, diff = SemanticComparator.compare_tool_responses(
+                        a, e, ignore_fields
+                    )
                     if not matches:
                         return False, f"列表索引 {i} 不匹配: {diff}"
                 elif a != e:
@@ -86,24 +96,36 @@ class SemanticComparator:
 
         # 如果一个是列表一个是字典，类型不匹配
         if isinstance(actual, list) != isinstance(expected, list):
-            return False, f"响应类型不匹配: actual={type(actual).__name__}, expected={type(expected).__name__}"
+            return (
+                False,
+                f"响应类型不匹配: actual={type(actual).__name__}, expected={type(expected).__name__}",
+            )
 
         # 1. 检查 success 字段
-        if actual.get('success') != expected.get('success'):
-            return False, f"success 字段不匹配: actual={actual.get('success')}, expected={expected.get('success')}"
+        if actual.get("success") != expected.get("success"):
+            return (
+                False,
+                f"success 字段不匹配: actual={actual.get('success')}, expected={expected.get('success')}",
+            )
 
         # 2. 检查 count 字段（如果存在）
-        if 'count' in expected:
-            if actual.get('count') != expected.get('count'):
-                return False, f"count 字段不匹配: actual={actual.get('count')}, expected={expected.get('count')}"
+        if "count" in expected:
+            if actual.get("count") != expected.get("count"):
+                return (
+                    False,
+                    f"count 字段不匹配: actual={actual.get('count')}, expected={expected.get('count')}",
+                )
 
         # 3. 检查 results 字段（如果存在）
-        if 'results' in expected:
-            actual_results = actual.get('results', [])
-            expected_results = expected.get('results', [])
+        if "results" in expected:
+            actual_results = actual.get("results", [])
+            expected_results = expected.get("results", [])
 
             if len(actual_results) != len(expected_results):
-                return False, f"results 长度不匹配: actual={len(actual_results)}, expected={len(expected_results)}"
+                return (
+                    False,
+                    f"results 长度不匹配: actual={len(actual_results)}, expected={len(expected_results)}",
+                )
 
             # 对于结果列表，我们检查集合等价性（顺序可以不同）
             # 但首先需要将结果标准化为可比较的形式
@@ -126,7 +148,7 @@ class SemanticComparator:
             return False, f"多余字段: {extra_keys}"
 
         # 5. 递归比较其他字段（除了 success, count, results 已经比较过）
-        for key in expected_keys - {'success', 'count', 'results'}:
+        for key in expected_keys - {"success", "count", "results"}:
             actual_val = actual[key]
             expected_val = expected[key]
 
@@ -137,15 +159,16 @@ class SemanticComparator:
                 if not matches:
                     return False, f"字段 {key} 不匹配: {diff}"
             elif actual_val != expected_val:
-                return False, f"字段 {key} 不匹配: actual={actual_val}, expected={expected_val}"
+                return (
+                    False,
+                    f"字段 {key} 不匹配: actual={actual_val}, expected={expected_val}",
+                )
 
         return True, "语义匹配"
 
     @staticmethod
     def _compare_result_sets(
-        actual: list[Any],
-        expected: list[Any],
-        ignore_fields: set[str]
+        actual: list[Any], expected: list[Any], ignore_fields: set[str]
     ) -> tuple[bool, str]:
         """
         比较结果集合（集合语义，忽略顺序）
@@ -193,17 +216,21 @@ class GoldenMasterMCPTester:
         self.golden_dir = golden_dir
         self.golden_dir.mkdir(parents=True, exist_ok=True)
 
-    def save_golden_master(self, tool_name: str, test_case: str, response: dict[str, Any]) -> Path:
+    def save_golden_master(
+        self, tool_name: str, test_case: str, response: dict[str, Any]
+    ) -> Path:
         """保存 golden master 基线"""
         filename = f"{tool_name}_{test_case}.json"
         filepath = self.golden_dir / filename
 
-        with filepath.open('w', encoding='utf-8') as f:
+        with filepath.open("w", encoding="utf-8") as f:
             json.dump(response, f, indent=2, ensure_ascii=False)
 
         return filepath
 
-    def load_golden_master(self, tool_name: str, test_case: str) -> dict[str, Any] | None:
+    def load_golden_master(
+        self, tool_name: str, test_case: str
+    ) -> dict[str, Any] | None:
         """加载 golden master 基线"""
         filename = f"{tool_name}_{test_case}.json"
         filepath = self.golden_dir / filename
@@ -211,7 +238,7 @@ class GoldenMasterMCPTester:
         if not filepath.exists():
             return None
 
-        with filepath.open('r', encoding='utf-8') as f:
+        with filepath.open("r", encoding="utf-8") as f:
             return json.load(f)
 
     def assert_matches_golden_master(
@@ -219,7 +246,7 @@ class GoldenMasterMCPTester:
         tool_name: str,
         test_case: str,
         actual_response: dict[str, Any],
-        update_golden: bool = False
+        update_golden: bool = False,
     ) -> None:
         """
         断言响应与 golden master 匹配
@@ -283,7 +310,7 @@ class ExampleClass:
     def method(self):
         pass
 '''
-        test_file.write_text(content, encoding='utf-8')
+        test_file.write_text(content, encoding="utf-8")
         yield test_file
 
 
@@ -305,8 +332,8 @@ class TestIntentAliasInvariance:
             arguments={
                 "roots": [str(temp_test_file.parent)],
                 "query": "example_function",
-                "output_format": "json"
-            }
+                "output_format": "json",
+            },
         )
 
         # 使用原始名称调用
@@ -315,8 +342,8 @@ class TestIntentAliasInvariance:
             arguments={
                 "roots": [str(temp_test_file.parent)],
                 "query": "example_function",
-                "output_format": "json"
-            }
+                "output_format": "json",
+            },
         )
 
         # 必须完全相同（语义上）
@@ -341,8 +368,8 @@ class TestIntentAliasInvariance:
                 "roots": [str(temp_test_file.parent)],
                 "pattern": "*.py",
                 "glob": True,
-                "output_format": "json"
-            }
+                "output_format": "json",
+            },
         )
 
         result_original = await mcp_server.call_tool(
@@ -351,8 +378,8 @@ class TestIntentAliasInvariance:
                 "roots": [str(temp_test_file.parent)],
                 "pattern": "*.py",
                 "glob": True,
-                "output_format": "json"
-            }
+                "output_format": "json",
+            },
         )
 
         matches, diff = SemanticComparator.compare_tool_responses(
@@ -373,8 +400,8 @@ class TestIntentAliasInvariance:
             arguments={
                 "file_path": str(temp_test_file),
                 "language": "python",
-                "output_format": "json"
-            }
+                "output_format": "json",
+            },
         )
 
         result_original = await mcp_server.call_tool(
@@ -382,8 +409,8 @@ class TestIntentAliasInvariance:
             arguments={
                 "file_path": str(temp_test_file),
                 "language": "python",
-                "output_format": "json"
-            }
+                "output_format": "json",
+            },
         )
 
         matches, diff = SemanticComparator.compare_tool_responses(
@@ -404,8 +431,8 @@ class TestIntentAliasInvariance:
             arguments={
                 "file_path": str(temp_test_file),
                 "language": "python",
-                "output_format": "toon"
-            }
+                "output_format": "toon",
+            },
         )
 
         result_original = await mcp_server.call_tool(
@@ -413,8 +440,8 @@ class TestIntentAliasInvariance:
             arguments={
                 "file_path": str(temp_test_file),
                 "language": "python",
-                "output_format": "toon"
-            }
+                "output_format": "toon",
+            },
         )
 
         matches, diff = SemanticComparator.compare_tool_responses(
@@ -436,8 +463,8 @@ class TestIntentAliasInvariance:
                 "roots": [str(temp_test_file.parent)],
                 "pattern": "*.py",
                 "query": "example",  # find_and_grep 使用 "query" 参数，不是 "search_pattern"
-                "output_format": "json"
-            }
+                "output_format": "json",
+            },
         )
 
         result_original = await mcp_server.call_tool(
@@ -446,8 +473,8 @@ class TestIntentAliasInvariance:
                 "roots": [str(temp_test_file.parent)],
                 "pattern": "*.py",
                 "query": "example",  # find_and_grep 使用 "query" 参数，不是 "search_pattern"
-                "output_format": "json"
-            }
+                "output_format": "json",
+            },
         )
 
         matches, diff = SemanticComparator.compare_tool_responses(
@@ -468,8 +495,8 @@ class TestIntentAliasInvariance:
             arguments={
                 "roots": [str(temp_test_file.parent)],
                 "query": "example_function",
-                "output_format": "json"
-            }
+                "output_format": "json",
+            },
         )
 
         result_alias2 = await mcp_server.call_tool(
@@ -477,8 +504,8 @@ class TestIntentAliasInvariance:
             arguments={
                 "roots": [str(temp_test_file.parent)],
                 "query": "example_function",
-                "output_format": "json"
-            }
+                "output_format": "json",
+            },
         )
 
         result_original = await mcp_server.call_tool(
@@ -486,8 +513,8 @@ class TestIntentAliasInvariance:
             arguments={
                 "roots": [str(temp_test_file.parent)],
                 "query": "example_function",
-                "output_format": "json"
-            }
+                "output_format": "json",
+            },
         )
 
         # 两个 alias 都应该和原始工具返回相同结果
@@ -519,28 +546,39 @@ class TestIncompleteModificationDetection:
     """
 
     @pytest.mark.asyncio
-    async def test_tool_response_structure_consistency(self, mcp_server, temp_test_file):
+    async def test_tool_response_structure_consistency(
+        self, mcp_server, temp_test_file
+    ):
         """所有工具必须返回一致的响应结构"""
         # 定义期望的响应结构
-        required_fields = {'success'}
+        required_fields = {"success"}
 
         tools_to_test = [
-            ("search_content", {
-                "roots": [str(temp_test_file.parent)],
-                "query": "example",
-                "output_format": "json"
-            }),
-            ("list_files", {
-                "roots": [str(temp_test_file.parent)],
-                "pattern": "*.py",
-                "glob": True,
-                "output_format": "json"
-            }),
-            ("analyze_code_structure", {
-                "file_path": str(temp_test_file),
-                "language": "python",
-                "output_format": "json"
-            })
+            (
+                "search_content",
+                {
+                    "roots": [str(temp_test_file.parent)],
+                    "query": "example",
+                    "output_format": "json",
+                },
+            ),
+            (
+                "list_files",
+                {
+                    "roots": [str(temp_test_file.parent)],
+                    "pattern": "*.py",
+                    "glob": True,
+                    "output_format": "json",
+                },
+            ),
+            (
+                "analyze_code_structure",
+                {
+                    "file_path": str(temp_test_file),
+                    "language": "python",
+                    "output_format": "json",
+                },
+            ),
         ]
 
         for tool_name, args in tools_to_test:
@@ -554,17 +592,24 @@ class TestIncompleteModificationDetection:
             )
 
             # 检查 success 字段类型
-            assert isinstance(result['success'], bool), (
+            assert isinstance(result["success"], bool), (
                 f"工具 {tool_name} 的 success 字段类型错误: "
                 f"expected=bool, actual={type(result['success'])}"
             )
 
             # 如果成功，检查是否有 results 或其他数据字段
-            if result['success']:
+            if result["success"]:
                 has_data = any(
                     key in result
-                    for key in ['results', 'count', 'data', 'structure', 'outline',
-                                'table_output', 'metadata']  # analyze_code_structure 返回这些字段
+                    for key in [
+                        "results",
+                        "count",
+                        "data",
+                        "structure",
+                        "outline",
+                        "table_output",
+                        "metadata",
+                    ]  # analyze_code_structure 返回这些字段
                 )
                 assert has_data, (
                     f"工具 {tool_name} 成功但没有返回数据字段\n"

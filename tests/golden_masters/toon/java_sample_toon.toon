@@ -50,12 +50,14 @@ fields:
     finalField,,(80,80)
     description,,(167,167)
 imports:
-  [2]{name,is_static,is_wildcard,statement,line_range(a,b)}:
-    java.util.List,false,false,import java.util.List;,(3,3)
-    java.util.ArrayList,false,false,import java.util.ArrayList;,(4,4)
+  [2]{name,module_name,statement,is_static,is_wildcard,line_range(a,b),imported_names,raw_text}:
+    java.util.List,java.util.List,import java.util.List;,false,false,(3,3),[],import java.util.List;
+    java.util.ArrayList,java.util.ArrayList,import java.util.ArrayList;,false,false,(4,4),[],import java.util.ArrayList;
 statistics:
   class_count: 8
   method_count: 26
   field_count: 6
   import_count: 2
-  total_lines: 179
+  total_lines: 178
+effective_table: toon
+requested_table: toon

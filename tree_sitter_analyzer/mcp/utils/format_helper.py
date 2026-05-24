@@ -153,18 +153,35 @@ def apply_toon_format_to_response(
     """
     Apply TOON format to MCP tool response if requested.
 
-    When output_format is 'toon', formats the result as TOON text without
-    duplicating any fields. All data is contained in toon_content only,
-    maximizing token savings by eliminating field duplication.
+    When output_format is 'toon', formats the result as TOON and removes
+    redundant data fields (results, matches, content, etc.) to maximize
+    token savings. Only metadata fields are preserved alongside toon_content
+    so callers can still inspect ``success``/``error``/``file_path`` without
+    parsing the TOON blob.
+
+    Also performs the verdict safety-net: if the tool returned a success
+    response without a ``verdict`` field, INFO is injected so agents
+    branching on verdict get a sane default rather than ``None``. Tools
+    that already set verdict are left alone. Pain pass 4: this catches
+    tools added by future contributors who forget the field.
 
     Args:
         result: Original result dictionary from MCP tool
         output_format: Output format ('json' or 'toon')
 
     Returns:
-        Minimal response with only format marker and toon_content if TOON requested,
-        otherwise original result
+        Modified result dict with TOON content if requested, otherwise original
     """
+    # Verdict safety-net runs regardless of output_format so JSON callers
+    # also see the default. Only inject when success is True; failure
+    # responses are handled by the explicit ERROR branch in the validator.
+    if (
+        isinstance(result, dict)
+        and result.get("success") is True
+        and "verdict" not in result
+    ):
+        result = {**result, "verdict": "INFO"}
+
     if output_format != "toon":
         return result
 
@@ -172,13 +189,45 @@ def apply_toon_format_to_response(
         # Format the full result as TOON
         toon_content = format_as_toon(result)
 
-        # Return minimal response with only TOON content
-        # DO NOT copy any fields from result - they're already in toon_content
-        # Copying fields creates duplication and wastes tokens
+        # Drop only the redundant *data* fields — these are already present in
+        # toon_content and would duplicate tokens. Metadata fields (success,
+        # error, file_path, agent_summary, ...) stay so callers can branch on
+        # status without parsing the TOON payload.
+        redundant_fields = {
+            "results",  # Search/query results
+            "matches",  # Search matches
+            "content",  # File content
+            "partial_content_result",  # Partial read results
+            "analysis_result",  # Code analysis results
+            "data",  # Generic data field
+            "items",  # List items
+            "files",  # File listings
+            "table_output",  # Formatted table output
+        }
+        # O4 (round-30): ``lines`` is treated as bulk *content* only when
+        # it is actually a list/array (e.g. raw line content from
+        # ``extract_code_section``). When a tool emits ``lines`` as a
+        # scalar alias for ``line_count`` (N9 added this for file_health),
+        # the field is metadata, not duplicated content — keep it so
+        # JSON↔TOON callers see the same dict shape.
+        conditionally_redundant_list_fields = {"lines"}
+
         toon_response: dict[str, Any] = {
             "format": "toon",
             "toon_content": toon_content,
         }
+
+        # Preserve metadata, but never stomp the format/toon_content keys.
+        for key, value in result.items():
+            if key in redundant_fields:
+                continue
+            if key in conditionally_redundant_list_fields and isinstance(value, list):
+                # Only strip when the field is genuinely an array of
+                # content; scalar aliases (int/str) pass through.
+                continue
+            if key in {"format", "toon_content"}:
+                continue
+            toon_response[key] = value
 
         return toon_response
 

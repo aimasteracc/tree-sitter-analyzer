@@ -60,7 +60,7 @@ JAVASCRIPT_QUERIES: dict[str, str] = {
         body: (class_body) @body) @class_declaration
     """,
     "class_expression": """
-    (class_expression
+    (class_declaration
         name: (identifier)? @class_name
         (class_heritage)? @superclass
         body: (class_body) @body) @class_expression
@@ -150,8 +150,7 @@ JAVASCRIPT_QUERIES: dict[str, str] = {
     "import_default": """
     (import_statement
         (import_clause
-            (import_default_specifier
-                (identifier) @default_name))
+            (identifier) @default_name)
         source: (string) @source) @import_default
     """,
     "import_named": """
@@ -207,8 +206,8 @@ JAVASCRIPT_QUERIES: dict[str, str] = {
             value: (_) @value)*) @object_literal
     """,
     "property_definition": """
-    (property_definition
-        property: (_) @property_name
+    (pair
+        key: (property_identifier) @property_name
         value: (_)? @value) @property_definition
     """,
     "computed_property": """
@@ -245,7 +244,7 @@ JAVASCRIPT_QUERIES: dict[str, str] = {
         body: (_) @body) @for_in_statement
     """,
     "for_of_statement": """
-    (for_of_statement
+    (for_in_statement
         left: (_) @variable
         right: (_) @iterable
         body: (_) @body) @for_of_statement
@@ -262,7 +261,7 @@ JAVASCRIPT_QUERIES: dict[str, str] = {
     """,
     "switch_statement": """
     (switch_statement
-        discriminant: (_) @discriminant
+        value: (parenthesized_expression) @discriminant
         body: (switch_body) @body) @switch_statement
     """,
     "case_clause": """
@@ -291,32 +290,27 @@ JAVASCRIPT_QUERIES: dict[str, str] = {
         body: (statement_block) @finally_body) @finally_clause
     """,
     "throw_statement": """
-    (throw_statement
-        argument: (_) @thrown_expression) @throw_statement
+    (throw_statement) @throw_statement
     """,
     # --- Modern JavaScript Features ---
     "template_literal": """
-    (template_literal) @template_literal
+    (template_string) @template_literal
     """,
     "template_substitution": """
-    (template_substitution
-        expression: (_) @substitution_expr) @template_substitution
+    (template_substitution) @template_substitution
     """,
     "spread_element": """
-    (spread_element
-        argument: (_) @spread_argument) @spread_element
+    (spread_element) @spread_element
     """,
     "rest_parameter": """
-    (rest_parameter
-        pattern: (identifier) @rest_name) @rest_parameter
+    (rest_pattern
+        (identifier) @rest_name) @rest_parameter
     """,
     "await_expression": """
-    (await_expression
-        argument: (_) @awaited_expression) @await_expression
+    (await_expression) @await_expression
     """,
     "yield_expression": """
-    (yield_expression
-        argument: (_)? @yielded_value) @yield_expression
+    (yield_expression) @yield_expression
     """,
     # --- JSX (React) ---
     "jsx_element": """
@@ -330,12 +324,11 @@ JAVASCRIPT_QUERIES: dict[str, str] = {
     """,
     "jsx_attribute": """
     (jsx_attribute
-        name: (property_identifier) @attribute_name
-        value: (_)? @attribute_value) @jsx_attribute
+        (property_identifier) @attribute_name
+        (_)? @attribute_value) @jsx_attribute
     """,
     "jsx_expression": """
-    (jsx_expression
-        expression: (_) @jsx_expression_content) @jsx_expression
+    (jsx_expression) @jsx_expression
     """,
     # --- Comments and Documentation ---
     "comment": """
@@ -343,7 +336,7 @@ JAVASCRIPT_QUERIES: dict[str, str] = {
     """,
     "jsdoc_comment": """
     (comment) @jsdoc_comment
-    (#match? @jsdoc_comment "^/\\*\\*")
+    (#match? @jsdoc_comment "^/\\\\*\\\\*")
     """,
     "line_comment": """
     (comment) @line_comment
@@ -351,7 +344,7 @@ JAVASCRIPT_QUERIES: dict[str, str] = {
     """,
     "block_comment": """
     (comment) @block_comment
-    (#match? @block_comment "^/\\*(?!\\*)")
+    (#match? @block_comment "^/\\\\*")
     """,
     # --- Framework-specific Patterns ---
     "react_component": """
@@ -360,7 +353,7 @@ JAVASCRIPT_QUERIES: dict[str, str] = {
         (#match? @component_name "^[A-Z]")
         body: (statement_block
             (return_statement
-                argument: (jsx_element)))) @react_component
+                (jsx_element)))) @react_component
     """,
     "react_hook": """
     (call_expression
@@ -400,7 +393,7 @@ JAVASCRIPT_QUERIES: dict[str, str] = {
     (function_expression
         body: (statement_block
             (return_statement
-                argument: (function_expression)))) @closure
+                (function_expression)))) @closure
     """,
     "callback_function": """
     (call_expression
@@ -571,8 +564,7 @@ IMPORTS = """
 
 (import_statement
     (import_clause
-        (import_default_specifier
-            (identifier) @import.default))) @import.default
+        (identifier) @import.default)) @import.default
 
 (import_statement
     (import_clause
@@ -597,8 +589,8 @@ OBJECTS = """
         key: (_) @property.key
         value: (_) @property.value)) @object.literal
 
-(property_definition
-    property: (_) @property.name
+(pair
+    key: (property_identifier) @property.name
     value: (_)? @property.value) @property.definition
 """
 

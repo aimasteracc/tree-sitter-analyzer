@@ -38,7 +38,7 @@ def safe_preview(text: str | None, max_length: int = 50) -> str:
         return ""
 
     # Flatten multi-line text to single line
-    single_line = text.replace('\n', ' ').replace('\r', '').strip()
+    single_line = text.replace("\n", " ").replace("\r", "").strip()
 
     # If under limit, return as-is
     if len(single_line) <= max_length:
@@ -46,4 +46,4 @@ def safe_preview(text: str | None, max_length: int = 50) -> str:
 
     # Truncate with "..." suffix
     # Reserve 3 chars for "..."
-    return single_line[:max_length - 3] + "..."
+    return single_line[: max_length - 3] + "..."

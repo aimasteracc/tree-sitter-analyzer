@@ -44,6 +44,9 @@ async def test_read_partial_batch_json_structure() -> None:
         )
 
         assert res["success"] is True
+        assert res["agent_summary"]["mode"] == "batch"
+        assert res["agent_summary"]["risk"] == "low"
+        assert res["agent_summary"]["suggested_tool"] == "query_code"
         assert "results" in res
         assert len(res["results"]) == 2
         a0 = res["results"][0]

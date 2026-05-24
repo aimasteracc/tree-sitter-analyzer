@@ -48,8 +48,8 @@ class SnapshotDiff:
     """两个快照之间的差异."""
 
     language: str
-    added: list[str]       # 当前 grammar 有、快照没有 → 新语法
-    removed: list[str]     # 快照有、当前 grammar 没有 → 已废弃语法
+    added: list[str]  # 当前 grammar 有、快照没有 → 新语法
+    removed: list[str]  # 快照有、当前 grammar 没有 → 已废弃语法
     unchanged: int
 
     @property
@@ -64,11 +64,13 @@ class SnapshotDiff:
 def _get_package_version(language: str) -> str:
     """获取 tree-sitter 语言包版本号."""
     from ..language_loader import LanguageLoader
+
     module_name = LanguageLoader.LANGUAGE_MODULES.get(language, "")
     if not module_name:
         return "unknown"
     try:
         import importlib.metadata
+
         return importlib.metadata.version(module_name.replace("_", "-"))
     except Exception:
         try:
@@ -149,11 +151,15 @@ def load_snapshot(
     result: dict[str, LanguageSnapshot] = {}
     for lang, entry in data.items():
         if not isinstance(entry, dict):
-            log_warning(f"Skipping malformed snapshot entry for '{lang}': expected dict")
+            log_warning(
+                f"Skipping malformed snapshot entry for '{lang}': expected dict"
+            )
             continue
         node_types = entry.get("node_types", [])
         if not isinstance(node_types, list):
-            log_warning(f"Skipping '{lang}': node_types must be a list, got {type(node_types).__name__}")
+            log_warning(
+                f"Skipping '{lang}': node_types must be a list, got {type(node_types).__name__}"
+            )
             continue
         node_count = entry.get("node_count", len(node_types))
         if not isinstance(node_count, int):
@@ -256,12 +262,17 @@ def check_snapshot(
             )
 
         if diff.removed:
-            print(f"\n  ⚠️   {lang}: {len(diff.removed)} node type(s) removed from grammar:")
+            print(
+                f"\n  ⚠️   {lang}: {len(diff.removed)} node type(s) removed from grammar:"
+            )
             for nt in diff.removed:
                 print(f"       - {nt}")
 
     if has_new and fail_on_new:
-        print("\nCI FAILED: New grammar nodes require corpus + plugin updates.", file=sys.stderr)
+        print(
+            "\nCI FAILED: New grammar nodes require corpus + plugin updates.",
+            file=sys.stderr,
+        )
         return 1
 
     if verbose and not has_new:
@@ -285,8 +296,12 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="Grammar snapshot tool")
-    parser.add_argument("--update", action="store_true", help="Generate/update snapshot")
-    parser.add_argument("--check", action="store_true", help="Check vs baseline (CI mode)")
+    parser.add_argument(
+        "--update", action="store_true", help="Generate/update snapshot"
+    )
+    parser.add_argument(
+        "--check", action="store_true", help="Check vs baseline (CI mode)"
+    )
     parser.add_argument("--path", help="Snapshot file path")
     parser.add_argument("--language", help="Single language to process")
     args = parser.parse_args()

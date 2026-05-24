@@ -1,0 +1,12 @@
+# Malformed YAML: unclosed flow sequence on the ``to:`` value.
+# The loader must surface a ConstraintParseError that mentions the
+# offending line so an agent can self-correct without re-reading the
+# whole document.
+version: 1
+constraints:
+  - id: broken-rule
+    severity: error
+    rule: forbid
+    from: "src/**"
+    to: ["unclosed_sequence
+    reason: "Missing closing bracket on the sequence above."

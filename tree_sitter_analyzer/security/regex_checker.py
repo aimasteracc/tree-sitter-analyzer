@@ -11,6 +11,15 @@ import time
 
 from ..utils import log_debug, log_warning
 
+# r37bg: backtracking-prone test strings extracted from
+# ``_check_performance`` so the timing helper iterates a named constant.
+_REGEX_BACKTRACKING_PROBES: tuple[str, ...] = (
+    "a" * 100,  # Long string of same character
+    "ab" * 50,  # Alternating pattern
+    "x" * 50 + "y",  # Long string with different ending
+    "a" * 30 + "b" * 30 + "c" * 30,  # Mixed long string
+)
+
 
 class RegexSafetyChecker:
     """
@@ -119,17 +128,18 @@ class RegexSafetyChecker:
         Returns:
             Description of dangerous pattern found, or None if safe
         """
+        # r37dh (dogfood): flattened nesting 6 → 4 via early-continue
+        # when ``re.search`` doesn't match.
         for dangerous_pattern in self.DANGEROUS_PATTERNS:
             try:
-                if re.search(dangerous_pattern, pattern):
-                    log_warning(
-                        f"Dangerous pattern detected: {dangerous_pattern} in {pattern}"
-                    )
-                    return dangerous_pattern
+                match = re.search(dangerous_pattern, pattern)
             except re.error:
                 # If the dangerous pattern itself is invalid, skip it
                 continue
-
+            if match is None:
+                continue
+            log_warning(f"Dangerous pattern detected: {dangerous_pattern} in {pattern}")
+            return dangerous_pattern
         return None
 
     def _check_compilation(self, pattern: str) -> str | None:
@@ -150,51 +160,47 @@ class RegexSafetyChecker:
             return str(e)
 
     def _check_performance(self, pattern: str) -> str | None:
-        """
-        Check pattern performance with test strings.
+        """Check pattern performance with test strings.
 
-        Args:
-            pattern: Pattern to test
-
-        Returns:
-            Error message if performance is poor, None if acceptable
+        r37bg (dogfood): tool flagged this at nesting depth 7 (L185). The
+        per-test-string timing logic moved into ``_time_pattern_on``.
+        Returns the first slow / errored test as a message, else ``None``.
         """
         try:
             compiled_pattern = re.compile(pattern)
-
-            # Test strings that might cause backtracking
-            test_strings = [
-                "a" * 100,  # Long string of same character
-                "ab" * 50,  # Alternating pattern
-                "x" * 50 + "y",  # Long string with different ending
-                "a" * 30 + "b" * 30 + "c" * 30,  # Mixed long string
-            ]
-
-            for test_string in test_strings:
-                start_time = time.time()
-
-                try:
-                    # Test both search and match operations
-                    compiled_pattern.search(test_string)
-                    compiled_pattern.match(test_string)
-
-                    execution_time = time.time() - start_time
-
-                    if execution_time > self.MAX_EXECUTION_TIME:
-                        log_warning(
-                            f"Regex performance issue: {execution_time:.3f}s > {self.MAX_EXECUTION_TIME}s"
-                        )
-                        return f"Pattern execution too slow: {execution_time:.3f}s"
-
-                except Exception as e:
-                    log_warning(f"Regex execution error: {e}")
-                    return f"Pattern execution error: {str(e)}"
-
+            for test_string in _REGEX_BACKTRACKING_PROBES:
+                error = self._time_pattern_on(compiled_pattern, test_string)
+                if error is not None:
+                    return error
             return None
-
         except Exception as e:
             log_warning(f"Performance check error: {e}")
             return f"Performance check failed: {str(e)}"
+
+    def _time_pattern_on(
+        self, compiled_pattern: re.Pattern[str], test_string: str
+    ) -> str | None:
+        """Run search+match on ``test_string``, return error message or ``None``.
+
+        r37bg: extracted so the nested try inside the for loop reads as
+        a flat helper. Slow execution (over ``MAX_EXECUTION_TIME``) and
+        exception paths both return a message string.
+        """
+        start_time = time.time()
+        try:
+            compiled_pattern.search(test_string)
+            compiled_pattern.match(test_string)
+            execution_time = time.time() - start_time
+            if execution_time > self.MAX_EXECUTION_TIME:
+                log_warning(
+                    f"Regex performance issue: {execution_time:.3f}s > "
+                    f"{self.MAX_EXECUTION_TIME}s"
+                )
+                return f"Pattern execution too slow: {execution_time:.3f}s"
+            return None
+        except Exception as e:
+            log_warning(f"Regex execution error: {e}")
+            return f"Pattern execution error: {str(e)}"
 
     def analyze_complexity(self, pattern: str) -> dict:
         """

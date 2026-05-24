@@ -5,6 +5,7 @@ Comprehensive tests for tree_sitter_analyzer.cli.commands.summary_command module
 This module provides comprehensive test coverage for the SummaryCommand class.
 """
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -555,12 +556,9 @@ class TestEdgeCases:
         """Test handling large number of elements."""
         command.args.summary = "methods"
 
-        # Create 1000 mock elements
         mock_elements = []
         for i in range(1000):
-            mock_element = MagicMock()
-            mock_element.name = f"method_{i}"
-            mock_elements.append(mock_element)
+            mock_elements.append(SimpleNamespace(name=f"method_{i}"))
 
         mock_result = MagicMock(spec=AnalysisResult)
         mock_result.elements = mock_elements

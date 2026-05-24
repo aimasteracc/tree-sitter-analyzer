@@ -1,0 +1,54 @@
+{
+  "counts_by_type": {
+    "Class": 4,
+    "Function": 19,
+    "Import": 3,
+    "Variable": 3
+  },
+  "element_total": 29,
+  "names_by_type": {
+    "Class": [
+      "IUserRepository",
+      "User",
+      "UserRole",
+      "UserSettings"
+    ],
+    "Function": [
+      "Add",
+      "CreatedAt",
+      "Delete",
+      "DisplayName",
+      "Email",
+      "EmailNotifications",
+      "GetAll",
+      "GetById",
+      "Id",
+      "IsValid",
+      "Name",
+      "PhoneNumber",
+      "SmsNotifications",
+      "Theme",
+      "ToString",
+      "Update",
+      "UpdateEmail",
+      "User",
+      "UserSettings"
+    ],
+    "Import": [
+      "System",
+      "System.Collections.Generic",
+      "System.Linq"
+    ],
+    "Variable": [
+      "MaxNameLength",
+      "_createdBy",
+      "_id"
+    ]
+  },
+  "types": [
+    "Class",
+    "Function",
+    "Import",
+    "Variable"
+  ]
+}

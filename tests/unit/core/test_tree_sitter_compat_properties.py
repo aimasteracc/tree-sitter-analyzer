@@ -116,23 +116,23 @@ class TestTreeSitterVersionCompatibilityProperties:
 
             # Property: Each item should be a tuple of (node, capture_name)
             for item in results:
-                assert isinstance(
-                    item, tuple
-                ), f"Each item should be a tuple, got {type(item)}"
-                assert (
-                    len(item) == 2
-                ), f"Each tuple should have 2 elements, got {len(item)}"
+                assert isinstance(item, tuple), (
+                    f"Each item should be a tuple, got {type(item)}"
+                )
+                assert len(item) == 2, (
+                    f"Each tuple should have 2 elements, got {len(item)}"
+                )
                 node, capture_name = item
-                assert isinstance(
-                    capture_name, str
-                ), f"Capture name should be a string, got {type(capture_name)}"
+                assert isinstance(capture_name, str), (
+                    f"Capture name should be a string, got {type(capture_name)}"
+                )
 
             # Property: All capture names should be in the result
             result_capture_names = [item[1] for item in results]
             for name in capture_name_list:
-                assert (
-                    name in result_capture_names
-                ), f"Capture name '{name}' should be in results"
+                assert name in result_capture_names, (
+                    f"Capture name '{name}' should be in results"
+                )
 
     @settings(max_examples=20, deadline=5000)
     @given(
@@ -191,21 +191,21 @@ class TestTreeSitterVersionCompatibilityProperties:
 
             # Property: Each item should be a tuple of (node, capture_name)
             for item in results:
-                assert isinstance(
-                    item, tuple
-                ), f"Each item should be a tuple, got {type(item)}"
-                assert (
-                    len(item) == 2
-                ), f"Each tuple should have 2 elements, got {len(item)}"
+                assert isinstance(item, tuple), (
+                    f"Each item should be a tuple, got {type(item)}"
+                )
+                assert len(item) == 2, (
+                    f"Each tuple should have 2 elements, got {len(item)}"
+                )
                 node, capture_name = item
-                assert isinstance(
-                    capture_name, str
-                ), f"Capture name should be a string, got {type(capture_name)}"
+                assert isinstance(capture_name, str), (
+                    f"Capture name should be a string, got {type(capture_name)}"
+                )
 
             # Property: Number of results should match number of captures
-            assert len(results) == len(
-                capture_name_list
-            ), f"Expected {len(capture_name_list)} results, got {len(results)}"
+            assert len(results) == len(capture_name_list), (
+                f"Expected {len(capture_name_list)} results, got {len(results)}"
+            )
 
     @settings(max_examples=20, deadline=5000)
     @given(
@@ -259,21 +259,21 @@ class TestTreeSitterVersionCompatibilityProperties:
 
             # Property: Each item should be a tuple of (node, capture_name)
             for item in results:
-                assert isinstance(
-                    item, tuple
-                ), f"Each item should be a tuple, got {type(item)}"
-                assert (
-                    len(item) == 2
-                ), f"Each tuple should have 2 elements, got {len(item)}"
+                assert isinstance(item, tuple), (
+                    f"Each item should be a tuple, got {type(item)}"
+                )
+                assert len(item) == 2, (
+                    f"Each tuple should have 2 elements, got {len(item)}"
+                )
                 node, capture_name = item
-                assert isinstance(
-                    capture_name, str
-                ), f"Capture name should be a string, got {type(capture_name)}"
+                assert isinstance(capture_name, str), (
+                    f"Capture name should be a string, got {type(capture_name)}"
+                )
 
             # Property: Number of results should match number of captures
-            assert len(results) == len(
-                capture_name_list
-            ), f"Expected {len(capture_name_list)} results, got {len(results)}"
+            assert len(results) == len(capture_name_list), (
+                f"Expected {len(capture_name_list)} results, got {len(results)}"
+            )
 
     @settings(max_examples=20, deadline=5000)
     @given(
@@ -340,12 +340,12 @@ class TestTreeSitterVersionCompatibilityProperties:
         result_bytes = get_node_text_safe(mock_node_bytes, "ignored_source")
 
         # Property: Result should be a string
-        assert isinstance(
-            result_bytes, str
-        ), f"Result should be a string, got {type(result_bytes)}"
-        assert (
-            result_bytes == source_code
-        ), f"Expected '{source_code}', got '{result_bytes}'"
+        assert isinstance(result_bytes, str), (
+            f"Result should be a string, got {type(result_bytes)}"
+        )
+        assert result_bytes == source_code, (
+            f"Expected '{source_code}', got '{result_bytes}'"
+        )
 
         # Test with string text attribute
         mock_node_str = MagicMock()
@@ -355,17 +355,17 @@ class TestTreeSitterVersionCompatibilityProperties:
         result_str = get_node_text_safe(mock_node_str, "ignored_source")
 
         # Property: Result should be a string
-        assert isinstance(
-            result_str, str
-        ), f"Result should be a string, got {type(result_str)}"
-        assert (
-            result_str == source_code
-        ), f"Expected '{source_code}', got '{result_str}'"
+        assert isinstance(result_str, str), (
+            f"Result should be a string, got {type(result_str)}"
+        )
+        assert result_str == source_code, (
+            f"Expected '{source_code}', got '{result_str}'"
+        )
 
         # Property: Both methods should return the same result
-        assert (
-            result_bytes == result_str
-        ), f"Bytes and string text attributes should return same result: '{result_bytes}' vs '{result_str}'"
+        assert result_bytes == result_str, (
+            f"Bytes and string text attributes should return same result: '{result_bytes}' vs '{result_str}'"
+        )
 
     @settings(max_examples=20, deadline=5000)
     @given(
@@ -407,9 +407,9 @@ class TestTreeSitterVersionCompatibilityProperties:
             assert result == fallback_result, f"Expected fallback result, got {result}"
 
             # Property: Result should be a list
-            assert isinstance(
-                result, list
-            ), f"Result should be a list, got {type(result)}"
+            assert isinstance(result, list), (
+                f"Result should be a list, got {type(result)}"
+            )
 
     @settings(max_examples=20, deadline=5000)
     @given(
@@ -522,9 +522,9 @@ class TestTreeSitterVersionCompatibilityProperties:
         assert isinstance(result_legacy, list), "Legacy API result should be a list"
 
         # Property: Modern and legacy should have same number of results
-        assert (
-            len(result_modern) == len(result_legacy)
-        ), f"Modern ({len(result_modern)}) and legacy ({len(result_legacy)}) should have same count"
+        assert len(result_modern) == len(result_legacy), (
+            f"Modern ({len(result_modern)}) and legacy ({len(result_legacy)}) should have same count"
+        )
 
         # Property: All results should have consistent tuple format
         for result_list, api_name in [
@@ -532,16 +532,16 @@ class TestTreeSitterVersionCompatibilityProperties:
             (result_legacy, "legacy"),
         ]:
             for item in result_list:
-                assert isinstance(
-                    item, tuple
-                ), f"{api_name} API: Each item should be a tuple"
-                assert (
-                    len(item) == 2
-                ), f"{api_name} API: Each tuple should have 2 elements"
+                assert isinstance(item, tuple), (
+                    f"{api_name} API: Each item should be a tuple"
+                )
+                assert len(item) == 2, (
+                    f"{api_name} API: Each tuple should have 2 elements"
+                )
                 node, capture_name = item
-                assert isinstance(
-                    capture_name, str
-                ), f"{api_name} API: Capture name should be string"
+                assert isinstance(capture_name, str), (
+                    f"{api_name} API: Capture name should be string"
+                )
 
 
 class TestTreeSitterCompatEdgeCases:
@@ -639,6 +639,6 @@ class TestTreeSitterCompatEdgeCases:
 
             # Property: Result should be an empty list on error
             assert result == [], f"Expected empty list on error, got {result}"
-            assert isinstance(
-                result, list
-            ), f"Result should be a list, got {type(result)}"
+            assert isinstance(result, list), (
+                f"Result should be a list, got {type(result)}"
+            )

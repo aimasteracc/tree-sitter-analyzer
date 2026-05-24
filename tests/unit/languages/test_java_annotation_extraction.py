@@ -9,6 +9,7 @@ Bug history (all fixed 2026-04-09):
   Bug3:   analyze_code_structure_tool hardcoded annotations=[]
   Bug4:   field_declaration missing from container_node_types
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -18,8 +19,13 @@ import pytest
 
 # Spring-petclinic paths — tests skip gracefully if project not cloned
 PETCLINIC_BASE = Path("/workspaces/claude-source-run-version/spring-petclinic")
-OWNER_CONTROLLER = PETCLINIC_BASE / "src/main/java/org/springframework/samples/petclinic/owner/OwnerController.java"
-VET = PETCLINIC_BASE / "src/main/java/org/springframework/samples/petclinic/vet/Vet.java"
+OWNER_CONTROLLER = (
+    PETCLINIC_BASE
+    / "src/main/java/org/springframework/samples/petclinic/owner/OwnerController.java"
+)
+VET = (
+    PETCLINIC_BASE / "src/main/java/org/springframework/samples/petclinic/vet/Vet.java"
+)
 
 pytestmark = pytest.mark.skipif(
     not PETCLINIC_BASE.exists(),
@@ -31,17 +37,19 @@ pytestmark = pytest.mark.skipif(
 def mcp_server():
     """MCP server pointed at spring-petclinic."""
     from tree_sitter_analyzer.mcp.server import TreeSitterAnalyzerMCPServer
+
     return TreeSitterAnalyzerMCPServer(str(PETCLINIC_BASE))
 
 
 def call(coro):
     """Run async coroutine synchronously."""
-    return asyncio.get_event_loop().run_until_complete(coro)
+    return asyncio.run(coro)
 
 
 # ---------------------------------------------------------------------------
 # Bug 1+2: Annotation extraction order + _reset_caches source-data clearing
 # ---------------------------------------------------------------------------
+
 
 class TestAnnotationExtractionOrder:
     """extract_annotations() must run before extract_functions/extract_classes
@@ -106,8 +114,7 @@ public class FooController {
         elements = plugin.extract_elements(tree, src)
 
         methods_with_annotations = [
-            m for m in elements.get("functions", [])
-            if m.annotations
+            m for m in elements.get("functions", []) if m.annotations
         ]
         assert len(methods_with_annotations) >= 2, (
             "Methods with @GetMapping and @PostMapping must have annotations "
@@ -139,18 +146,26 @@ public class FooController {
 # Bug 3: analyze_code_structure_tool hardcoded annotations=[]
 # ---------------------------------------------------------------------------
 
+
 class TestMCPToolAnnotationOutput:
     """MCP analyze_code_structure must surface annotations from model objects."""
 
     def test_owner_controller_class_has_controller_annotation(self, mcp_server):
         """OwnerController class must have @Controller in output."""
-        r = call(mcp_server.call_tool("analyze_code_structure", {
-            "file_path": str(OWNER_CONTROLLER),
-        }))
+        r = call(
+            mcp_server.call_tool(
+                "analyze_code_structure",
+                {
+                    "file_path": str(OWNER_CONTROLLER),
+                },
+            )
+        )
         classes = r.get("elements", {}).get("classes", [])
         assert classes, "Should extract at least one class"
 
-        owner_ctrl = next((c for c in classes if c.get("name") == "OwnerController"), None)
+        owner_ctrl = next(
+            (c for c in classes if c.get("name") == "OwnerController"), None
+        )
         assert owner_ctrl is not None
 
         ann_names = [a.get("name") for a in owner_ctrl.get("annotations", [])]
@@ -161,9 +176,14 @@ class TestMCPToolAnnotationOutput:
 
     def test_owner_controller_methods_have_mapping_annotations(self, mcp_server):
         """Methods with @GetMapping/@PostMapping must have those annotations in output."""
-        r = call(mcp_server.call_tool("analyze_code_structure", {
-            "file_path": str(OWNER_CONTROLLER),
-        }))
+        r = call(
+            mcp_server.call_tool(
+                "analyze_code_structure",
+                {
+                    "file_path": str(OWNER_CONTROLLER),
+                },
+            )
+        )
         methods = r.get("elements", {}).get("methods", [])
 
         annotated_methods = {
@@ -186,9 +206,14 @@ class TestMCPToolAnnotationOutput:
 
     def test_model_attribute_method_has_annotation(self, mcp_server):
         """findOwner() with @ModelAttribute must have that annotation."""
-        r = call(mcp_server.call_tool("analyze_code_structure", {
-            "file_path": str(OWNER_CONTROLLER),
-        }))
+        r = call(
+            mcp_server.call_tool(
+                "analyze_code_structure",
+                {
+                    "file_path": str(OWNER_CONTROLLER),
+                },
+            )
+        )
         methods = r.get("elements", {}).get("methods", [])
         find_owner = next((m for m in methods if m.get("name") == "findOwner"), None)
         assert find_owner is not None
@@ -203,14 +228,20 @@ class TestMCPToolAnnotationOutput:
 # Bug 4: field_declaration missing from container_node_types
 # ---------------------------------------------------------------------------
 
+
 class TestFieldAnnotationExtraction:
     """Field-level annotations must be extracted (field_declaration in containers)."""
 
     def test_vet_specialties_has_manytomany_annotation(self, mcp_server):
         """Vet.specialties field must have @ManyToMany annotation."""
-        r = call(mcp_server.call_tool("analyze_code_structure", {
-            "file_path": str(VET),
-        }))
+        r = call(
+            mcp_server.call_tool(
+                "analyze_code_structure",
+                {
+                    "file_path": str(VET),
+                },
+            )
+        )
         fields = r.get("elements", {}).get("fields", [])
         specialties = next((f for f in fields if f.get("name") == "specialties"), None)
         assert specialties is not None, "Should find specialties field"
@@ -224,9 +255,14 @@ class TestFieldAnnotationExtraction:
 
     def test_vet_specialties_has_jointable_annotation(self, mcp_server):
         """Vet.specialties field must have @JoinTable annotation."""
-        r = call(mcp_server.call_tool("analyze_code_structure", {
-            "file_path": str(VET),
-        }))
+        r = call(
+            mcp_server.call_tool(
+                "analyze_code_structure",
+                {
+                    "file_path": str(VET),
+                },
+            )
+        )
         fields = r.get("elements", {}).get("fields", [])
         specialties = next((f for f in fields if f.get("name") == "specialties"), None)
         assert specialties is not None
@@ -238,15 +274,24 @@ class TestFieldAnnotationExtraction:
 
     def test_annotation_text_includes_parameters(self, mcp_server):
         """Annotation text must include parameters, not just name."""
-        r = call(mcp_server.call_tool("analyze_code_structure", {
-            "file_path": str(VET),
-        }))
+        r = call(
+            mcp_server.call_tool(
+                "analyze_code_structure",
+                {
+                    "file_path": str(VET),
+                },
+            )
+        )
         fields = r.get("elements", {}).get("fields", [])
         specialties = next((f for f in fields if f.get("name") == "specialties"), None)
         assert specialties is not None
 
         many_to_many = next(
-            (a for a in specialties.get("annotations", []) if a.get("name") == "ManyToMany"),
+            (
+                a
+                for a in specialties.get("annotations", [])
+                if a.get("name") == "ManyToMany"
+            ),
             None,
         )
         assert many_to_many is not None

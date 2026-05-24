@@ -12,13 +12,205 @@ import json
 import logging
 import os
 import re
-import subprocess
+import subprocess  # nosec
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
 logger = logging.getLogger(__name__)
+
+# Path segments that should be excluded from the language-distribution
+# count. They contain valid source files (fixtures, golden masters,
+# internal audit docs, generated reports) but those files are NOT part
+# of the project's "actual source mix" — counting them inflates
+# secondary languages and misleads the headline number.
+_LANGUAGE_COUNT_EXCLUDED_SEGMENTS: frozenset[str] = frozenset(
+    {
+        "tests/golden_masters",
+        "tests/fixtures",
+        "tests/test_data",
+        "tests/golden",
+        "docs/internal",
+        "compatibility_test/results",
+        "corpus",
+        "examples",
+        ".tree-sitter-cache",
+        ".ast-cache",
+        # Build artefacts + dev-tooling caches (see project_overview_tool
+        # for the same rationale — keep these two lists in sync).
+        "comprehensive_test_results",
+        "openspec",
+        ".claude",
+        ".agents",
+        ".swarm",
+        ".kiro",
+        ".roo",
+        ".autonomous-runtime",
+        ".claude-flow",
+    }
+)
+
+
+def _is_language_count_excluded(filepath: str) -> bool:
+    """True if ``filepath`` should not influence language_distribution.
+
+    Uses simple substring match against ``_LANGUAGE_COUNT_EXCLUDED_SEGMENTS``
+    so it's both fast and platform-agnostic (works for ``/`` and ``\\``).
+    """
+    normalized = filepath.replace("\\", "/")
+    return any(seg in normalized for seg in _LANGUAGE_COUNT_EXCLUDED_SEGMENTS)
+
+
+def _clean_readme_line(line: str) -> str:
+    """Strip markdown formatting and HTML tags from a README line.
+
+    r37ct: lifted from a nested closure to flatten ``_extract_readme_excerpt``.
+    """
+    s = re.sub(r"<[^>]+>", "", line)
+    s = re.sub(r"\*\*|(?<!\*)\*(?!\*)|`", "", s)
+    s = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", s)
+    return s.strip()
+
+
+def _is_readme_noise_line(line: str) -> bool:
+    """Return True for README lines that are not useful descriptions.
+
+    Noise categories: empty, heading, badge/shield, image, language-navigation
+    tables (``|``-heavy), and code fence markers.
+    """
+    s = line.strip()
+    if not s:
+        return True
+    if s.startswith("#"):
+        return True
+    # Badge / shield lines
+    if "shields.io" in s or s.startswith("[!["):
+        return True
+    # Image lines
+    if s.startswith("!["):
+        return True
+    # Language-navigation lines (many pipe characters)
+    if s.count("|") >= 2:
+        return True
+    # Code fence lines
+    if s.startswith("```") or s.startswith("~~~"):
+        return True
+    return False
+
+
+def _excerpt_from_blockquotes(text: str) -> str:
+    """First non-noise blockquote line in ``text``, cleaned and truncated.
+
+    Returns empty string when no blockquote yields a useful line.
+    """
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith(">"):
+            continue
+        inner = stripped.lstrip(">").strip()
+        if not inner or _is_readme_noise_line(inner):
+            continue
+        cleaned = _clean_readme_line(inner)
+        if cleaned:
+            return cleaned[:200]
+    return ""
+
+
+def _excerpt_from_paragraphs(text: str) -> str:
+    """First non-noise non-blockquote line in ``text``, cleaned and truncated.
+
+    Used as the fallback when ``_excerpt_from_blockquotes`` finds nothing.
+    """
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith(">"):
+            continue
+        if _is_readme_noise_line(stripped):
+            continue
+        cleaned = _clean_readme_line(stripped)
+        if cleaned:
+            return cleaned[:200]
+    return ""
+
+
+def _read_directory_readme_title(readme_path: Path) -> str:
+    """Return the first meaningful line from a directory's README.md.
+
+    Used by ``_describe_dir`` as the second-tier source for directory
+    descriptions (after ``__init__.py`` docstring). Returns the heading
+    text when the file starts with ``#`` headings, otherwise the first
+    non-badge non-empty line. Empty string when the file is missing /
+    unreadable / contains only noise.
+
+    r37ct (dogfood): lifted out of ``_describe_dir`` to flatten nesting 7 → 2.
+    """
+    if not readme_path.is_file():
+        return ""
+    try:
+        text = readme_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("#"):
+            # Extract title from heading, strip HTML
+            title = re.sub(r"<[^>]+>", "", stripped.lstrip("#")).strip()
+            if title:
+                return title[:80]
+            continue
+        if stripped.startswith("[![") or "shields.io" in stripped:
+            continue
+        return re.sub(r"<[^>]+>", "", stripped).strip()[:80]
+    return ""
+
+
+# Names that look like classes to the AST-based edge extractor but are
+# actually Python typing / stdlib helpers — they should never surface
+# as "critical architectural nodes". TYPE_CHECKING is the worst case:
+# every type-annotated module imports it, so PageRank ranks it #3 on
+# any large project, where it conveys zero architectural meaning.
+_PAGERANK_STDLIB_BLOCKLIST: frozenset[str] = frozenset(
+    {
+        # typing
+        "TYPE_CHECKING",
+        "Any",
+        "Optional",
+        "Union",
+        "Literal",
+        "ClassVar",
+        "Final",
+        "Annotated",
+        "Generic",
+        "Protocol",
+        "TypeVar",
+        "TypedDict",
+        "NamedTuple",
+        "Iterator",
+        "Iterable",
+        "Sequence",
+        "Mapping",
+        "Callable",
+        "Awaitable",
+        "AsyncIterator",
+        "Coroutine",
+        # common stdlib namespaces masquerading as classes
+        "Path",
+        "Exception",
+        "ValueError",
+        "TypeError",
+        "RuntimeError",
+        "OSError",
+        # tree-sitter internal node types that aren't user classes
+        "Node",
+        "Tree",
+        "Parser",
+        "Language",
+        "Query",
+    }
+)
 
 # Map file extensions to canonical language names
 _EXT_TO_LANGUAGE: dict[str, str] = {
@@ -260,9 +452,7 @@ class ProjectIndexManager:
                 readme_excerpt=str(data.get("readme_excerpt", "")),
                 module_descriptions=dict(data.get("module_descriptions", {})),
                 critical_nodes=list(data.get("critical_nodes", [])),
-                module_dependency_order=list(
-                    data.get("module_dependency_order", [])
-                ),
+                module_dependency_order=list(data.get("module_dependency_order", [])),
             )
         except (KeyError, TypeError, ValueError) as err:
             logger.warning("Malformed project index data: %s", err)
@@ -270,6 +460,12 @@ class ProjectIndexManager:
 
     def save(self, index: ProjectIndex) -> None:
         """Persist index to disk, creating the cache directory if needed."""
+        # M13: every ``.tree-sitter-cache/`` write goes through the
+        # allowlist so an orphan source file (``fresh_dog.py`` and
+        # friends) can never land here again.
+        from tree_sitter_analyzer.mcp.utils.cache_paths import assert_cache_path
+
+        assert_cache_path(self._cache_path, self.project_root)
         self._cache_path.parent.mkdir(parents=True, exist_ok=True)
         try:
             with self._cache_path.open("w", encoding="utf-8") as fh:
@@ -298,72 +494,140 @@ class ProjectIndexManager:
             roots: directory to scan (Path), list of root dirs, or None for
                    project_root.
             force_refresh: if True, always rebuild even if cache is fresh.
-        """
-        # Normalise roots
-        if isinstance(roots, Path):
-            scan_roots: list[str] = [str(roots)]
-        elif roots is None:
-            scan_roots = [self.project_root]
-        else:
-            scan_roots = list(roots)
 
-        # --- Incremental check ---
+        r37cv (dogfood): 113 lines → ~25 lines of phase dispatch.
+        Sub-helpers: ``_normalize_scan_roots``, ``_try_load_fresh_cache``,
+        ``_compute_language_distribution``, ``_collect_root_key_files``,
+        ``_collect_critical_nodes``, ``_assemble_project_index``,
+        ``_persist_project_index``.
+        """
+        scan_roots = self._normalize_scan_roots(roots)
         if not force_refresh:
-            existing = self.load()
-            if existing is not None:
-                current_hashes = self._compute_file_hashes(scan_roots)
-                saved_hashes = self._load_file_hashes()
-                if current_hashes == saved_hashes:
-                    return existing  # nothing changed
+            cached = self._try_load_fresh_cache(scan_roots)
+            if cached is not None:
+                return cached
 
         now = time.time()
-        all_files: list[str] = self._list_files(scan_roots)
+        all_files = self._list_files(scan_roots)
+        lang_dist = self._compute_language_distribution(all_files)
 
-        # Derive language distribution from extensions
+        root_path = Path(self.project_root)
+        key_files = self._collect_root_key_files(root_path)
+        entry_points = self._find_entry_points(root_path)
+        top_level = self._build_top_level_structure(root_path, all_files)
+
+        readme_excerpt = self._extract_readme_excerpt(root_path)
+        top_dirs = [item["name"] for item in top_level]
+        module_descriptions = self._extract_module_descriptions(root_path, top_dirs)
+        critical_nodes = self._collect_critical_nodes(all_files)
+
+        index = self._assemble_project_index(
+            now=now,
+            all_files=all_files,
+            lang_dist=lang_dist,
+            top_level=top_level,
+            key_files=key_files,
+            entry_points=entry_points,
+            readme_excerpt=readme_excerpt,
+            module_descriptions=module_descriptions,
+            critical_nodes=critical_nodes,
+        )
+        self._persist_project_index(index, scan_roots, critical_nodes)
+        return index
+
+    def _normalize_scan_roots(self, roots: Path | list[str] | None) -> list[str]:
+        """Return ``roots`` as a list[str], defaulting to ``[project_root]``."""
+        if isinstance(roots, Path):
+            return [str(roots)]
+        if roots is None:
+            return [self.project_root]
+        return list(roots)
+
+    def _try_load_fresh_cache(self, scan_roots: list[str]) -> ProjectIndex | None:
+        """Return the cached index if file hashes are unchanged, else None."""
+        existing = self.load()
+        if existing is None:
+            return None
+        current_hashes = self._compute_file_hashes(scan_roots)
+        saved_hashes = self._load_file_hashes()
+        if current_hashes != saved_hashes:
+            return None
+        return existing
+
+    @staticmethod
+    def _compute_language_distribution(all_files: list[str]) -> dict[str, int]:
+        """Derive ``{language: count}`` from file extensions.
+
+        Excludes fixture/golden/internal-doc paths so the language mix
+        reflects the project's *real* source mix. Without this filter,
+        a Python project ships ``markdown=2945`` because internal audit
+        notes + golden masters drown out the actual ``python=1347``.
+        """
         lang_dist: dict[str, int] = {}
         for filepath in all_files:
+            if _is_language_count_excluded(filepath):
+                continue
             ext = Path(filepath).suffix.lower()
             lang = _EXT_TO_LANGUAGE.get(ext)
             if lang:
                 lang_dist[lang] = lang_dist.get(lang, 0) + 1
             else:
                 lang_dist["other"] = lang_dist.get("other", 0) + 1
+        return lang_dist
 
-        root_path = Path(self.project_root)
+    @staticmethod
+    def _collect_root_key_files(root_path: Path) -> list[str]:
+        """Return key files (LICENSE/README/etc.) living at project root.
 
-        # Identify key files (must live at project root, case-insensitive match)
-        root_entries = {e.name.lower(): e.name for e in root_path.iterdir() if e.is_file()}
-        key_files: list[str] = [
+        Uses a case-insensitive match against ``_KEY_FILE_NAMES`` so
+        ``Readme.md`` and ``LICENSE.txt`` are both detected.
+        """
+        root_entries = {
+            e.name.lower(): e.name for e in root_path.iterdir() if e.is_file()
+        }
+        return [
             root_entries[name]
             for name in sorted(root_entries)
             if name in _KEY_FILE_NAMES
         ]
 
-        # Identify entry points (search only a few levels deep for performance)
-        entry_points: list[str] = self._find_entry_points(root_path)
+    def _collect_critical_nodes(self, all_files: list[str]) -> list[dict[str, Any]]:
+        """Run PageRank over the call graph; skip test paths.
 
-        # Build top-level directory structure (depth 1 dirs only, count files)
-        top_level = self._build_top_level_structure(root_path, all_files)
-
-        # Extract semantic information
-        readme_excerpt = self._extract_readme_excerpt(root_path)
-        top_dirs = [item["name"] for item in top_level]
-        module_descriptions = self._extract_module_descriptions(root_path, top_dirs)
-
-        # PageRank over call graph (best-effort; skipped if networkx missing)
-        # Skip test files — test base classes (ESTestCase, etc.) pollute rankings
-        _test_path_markers = {"/test/", "/tests/", "/testFixtures/", "/testing/"}
+        Test base classes (``ESTestCase`` etc.) inflate inbound refs without
+        signalling architecture, so files under ``/test/`` / ``/tests/`` /
+        ``/testFixtures/`` / ``/testing/`` are excluded from edge extraction.
+        """
+        test_path_markers = {"/test/", "/tests/", "/testFixtures/", "/testing/"}
         edges: list[tuple[str, str]] = []
         for fp in all_files:
-            if any(marker in fp for marker in _test_path_markers):
+            if any(marker in fp for marker in test_path_markers):
                 continue
             edges.extend(self._extract_edges_from_file(Path(fp)))
-        critical_nodes = self._compute_pagerank(edges, top_n=10)
+        return self._compute_pagerank(edges, top_n=10)
 
+    def _assemble_project_index(
+        self,
+        *,
+        now: float,
+        all_files: list[str],
+        lang_dist: dict[str, int],
+        top_level: list[dict[str, Any]],
+        key_files: list[str],
+        entry_points: list[str],
+        readme_excerpt: str,
+        module_descriptions: dict[str, str],
+        critical_nodes: list[dict[str, Any]],
+    ) -> ProjectIndex:
+        """Construct a ``ProjectIndex`` dataclass, preserving ``created_at``.
+
+        If a prior index is on disk we keep its ``created_at`` and
+        ``custom_notes``; otherwise we stamp both with the current run's
+        timestamp / empty notes.
+        """
         existing_idx = self.load()
         created_at = existing_idx.created_at if existing_idx else now
-
-        index = ProjectIndex(
+        return ProjectIndex(
             project_root=self.project_root,
             created_at=created_at,
             updated_at=now,
@@ -379,15 +643,19 @@ class ProjectIndexManager:
             critical_nodes=critical_nodes,
         )
 
-        # Persist index + derived artifacts
+    def _persist_project_index(
+        self,
+        index: ProjectIndex,
+        scan_roots: list[str],
+        critical_nodes: list[dict[str, Any]],
+    ) -> None:
+        """Persist index + derived artifacts (hashes, TOON snapshot, nodes)."""
         self.save(index)
         hashes = self._compute_file_hashes(scan_roots)
         self._save_file_hashes(hashes)
         toon = self.render_toon(index)
         self._save_toon(toon)
         self._save_critical_nodes(critical_nodes)
-
-        return index
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -399,9 +667,11 @@ class ProjectIndexManager:
         abs_roots = [str(Path(r).resolve()) for r in roots]
 
         # Try fd first — run from project_root so fd returns relative paths,
-        # then convert them to absolute.
+        # then convert them to absolute. ``fd`` resolved via $PATH is the
+        # standard tooling entrypoint; argument list is static (no shell
+        # expansion), so bandit's B603/B607 are false positives here.
         try:
-            result = subprocess.run(
+            result = subprocess.run(  # nosec
                 ["fd", "--type", "f", "--color", "never", "--absolute-path", "."]
                 + abs_roots,
                 capture_output=True,
@@ -446,19 +716,13 @@ class ProjectIndexManager:
             if candidate.is_file():
                 found.append(entry_name)
 
-        # Also check one level of sub-directories (src/, pkg/, cmd/, etc.)
+        # r37e3 (dogfood): subdir scan抽到 _scan_subdir_entry_points,
+        # flatten nesting 6 → 3.
         try:
             for subdir in root_path.iterdir():
                 if not subdir.is_dir() or subdir.name.startswith("."):
                     continue
-                for entry_name_raw in _ENTRY_POINT_NAMES:
-                    # Only bare filenames (no path separator) for sub-dir check
-                    if "/" in entry_name_raw:
-                        continue
-                    candidate2 = subdir / entry_name_raw
-                    if candidate2.is_file():
-                        rel = str(candidate2.relative_to(root_path))
-                        found.append(rel)
+                found.extend(self._scan_subdir_entry_points(root_path, subdir))
         except OSError:
             pass
 
@@ -496,6 +760,28 @@ class ProjectIndexManager:
         }
     )
 
+    @staticmethod
+    def _scan_subdir_entry_points(root_path: Path, subdir: Path) -> list[str]:
+        """Return relative paths of entry-point files in ``subdir``.
+
+        Looks for each bare-filename entry from ``_ENTRY_POINT_NAMES``
+        (skip names with ``/`` — they target the root, not subdirs) and
+        returns the path relative to ``root_path``. Empty list when no
+        candidates are found.
+
+        r37e3 (dogfood): lifted from ``_find_entry_points`` to flatten
+        the for-for-if chain from depth 6 to 3.
+        """
+        results: list[str] = []
+        for entry_name_raw in _ENTRY_POINT_NAMES:
+            if "/" in entry_name_raw:
+                continue
+            candidate = subdir / entry_name_raw
+            if not candidate.is_file():
+                continue
+            results.append(str(candidate.relative_to(root_path)))
+        return results
+
     def _build_top_level_structure(
         self, root_path: Path, all_files: list[str]
     ) -> list[dict[str, Any]]:
@@ -506,6 +792,7 @@ class ProjectIndexManager:
 
         abs_root = root_path.resolve()
 
+        # r37ct: flattened nesting 7 → 3 via early-continue gates.
         for filepath in all_files:
             fp = Path(filepath)
             abs_fp = fp.resolve() if not fp.is_absolute() else fp
@@ -515,38 +802,53 @@ class ProjectIndexManager:
                 continue  # skip files outside the project root
 
             parts = rel_path.parts
-            if len(parts) >= 2:
-                top_dir = parts[0]
-                if top_dir in self._ARTIFACT_DIRS or top_dir.startswith("."):
-                    continue
-                dir_counts[top_dir] = dir_counts.get(top_dir, 0) + 1
-                # Collect depth-2 breakdown
-                if len(parts) >= 3:
-                    sub_dir = parts[1]
-                    if sub_dir not in self._ARTIFACT_DIRS and not sub_dir.startswith("."):
-                        sub_counts.setdefault(top_dir, {})
-                        sub_counts[top_dir][sub_dir] = (
-                            sub_counts[top_dir].get(sub_dir, 0) + 1
-                        )
+            if len(parts) < 2:
+                continue
+            top_dir = parts[0]
+            if top_dir in self._ARTIFACT_DIRS or top_dir.startswith("."):
+                continue
+            dir_counts[top_dir] = dir_counts.get(top_dir, 0) + 1
+            # Collect depth-2 breakdown
+            if len(parts) < 3:
+                continue
+            sub_dir = parts[1]
+            if sub_dir in self._ARTIFACT_DIRS or sub_dir.startswith("."):
+                continue
+            sub_counts.setdefault(top_dir, {})
+            sub_counts[top_dir][sub_dir] = sub_counts[top_dir].get(sub_dir, 0) + 1
 
-        # Sort by file count descending; only include dirs that actually have files
+        # r37e3 (dogfood): flatten subdirectory list-comp nesting 6 → 3
+        # by lifting per-dir entry construction to _build_dir_entry.
         structure: list[dict[str, Any]] = []
         for name, count in sorted(dir_counts.items(), key=lambda kv: (-kv[1], kv[0])):
-            entry: dict[str, Any] = {
-                "name": name,
-                "type": "directory",
-                "file_count": count,
-            }
-            # Attach sub-directory breakdown if it exists
-            if name in sub_counts:
-                entry["subdirectories"] = [
-                    {"name": sname, "file_count": scount}
-                    for sname, scount in sorted(
-                        sub_counts[name].items(), key=lambda kv: (-kv[1], kv[0])
-                    )
-                ]
-            structure.append(entry)
+            structure.append(self._build_dir_entry(name, count, sub_counts))
         return structure
+
+    @staticmethod
+    def _build_dir_entry(
+        name: str,
+        count: int,
+        sub_counts: dict[str, dict[str, int]],
+    ) -> dict[str, Any]:
+        """Build a single ``top_level_structure[i]`` dict for ``name``.
+
+        Adds the ``subdirectories`` field only when ``sub_counts[name]``
+        exists, sorted by descending file count (ties broken
+        alphabetically) so the output is deterministic.
+        """
+        entry: dict[str, Any] = {
+            "name": name,
+            "type": "directory",
+            "file_count": count,
+        }
+        if name in sub_counts:
+            entry["subdirectories"] = [
+                {"name": sname, "file_count": scount}
+                for sname, scount in sorted(
+                    sub_counts[name].items(), key=lambda kv: (-kv[1], kv[0])
+                )
+            ]
+        return entry
 
     @staticmethod
     def _extract_readme_excerpt(root_path: Path) -> str:
@@ -554,63 +856,25 @@ class ProjectIndexManager:
 
         Prefers blockquote lines (``> ...``), then falls back to the first
         non-heading non-badge paragraph.
+
+        r37ct (dogfood): flattened nesting 8 → 3 by extracting per-pass
+        helpers ``_excerpt_from_blockquotes`` / ``_excerpt_from_paragraphs``
+        and lifting ``_clean`` / ``_is_noise`` to module-level functions.
         """
         for candidate in ("README.md", "README.rst", "README.txt", "README"):
             readme = root_path / candidate
-            if readme.is_file():
-                try:
-                    text = readme.read_text(encoding="utf-8", errors="replace")
-                except OSError:
-                    continue
-
-                def _clean(line: str) -> str:
-                    """Strip markdown formatting and HTML tags from a line."""
-                    s = re.sub(r"<[^>]+>", "", line)
-                    s = re.sub(r"\*\*|(?<!\*)\*(?!\*)|`", "", s)
-                    s = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", s)
-                    return s.strip()
-
-                def _is_noise(line: str) -> bool:
-                    """Return True for lines that are not useful descriptions."""
-                    s = line.strip()
-                    if not s:
-                        return True
-                    if s.startswith("#"):
-                        return True
-                    # Badge / shield lines
-                    if "shields.io" in s or s.startswith("[!["):
-                        return True
-                    # Image lines
-                    if s.startswith("!["):
-                        return True
-                    # Language-navigation lines (many pipe characters)
-                    if s.count("|") >= 2:
-                        return True
-                    # Code fence lines
-                    if s.startswith("```") or s.startswith("~~~"):
-                        return True
-                    return False
-
-                # First pass: prefer blockquote lines
-                for line in text.splitlines():
-                    stripped = line.strip()
-                    if stripped.startswith(">"):
-                        inner = stripped.lstrip(">").strip()
-                        if inner and not _is_noise(inner):
-                            cleaned = _clean(inner)
-                            if cleaned:
-                                return cleaned[:200]
-
-                # Second pass: first non-noise non-blockquote paragraph line
-                for line in text.splitlines():
-                    stripped = line.strip()
-                    if stripped.startswith(">"):
-                        continue
-                    if _is_noise(stripped):
-                        continue
-                    cleaned = _clean(stripped)
-                    if cleaned:
-                        return cleaned[:200]
+            if not readme.is_file():
+                continue
+            try:
+                text = readme.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            excerpt = _excerpt_from_blockquotes(text)
+            if excerpt:
+                return excerpt
+            excerpt = _excerpt_from_paragraphs(text)
+            if excerpt:
+                return excerpt
         return ""
 
     @staticmethod
@@ -655,34 +919,26 @@ class ProjectIndexManager:
             return doc[:80]
 
         # 2. README.md first non-heading non-empty line
-        readme = dir_path / "README.md"
-        if readme.is_file():
-            try:
-                for line in readme.read_text(
-                    encoding="utf-8", errors="replace"
-                ).splitlines():
-                    stripped = line.strip()
-                    if not stripped:
-                        continue
-                    if stripped.startswith("#"):
-                        # Extract title from heading, strip HTML
-                        title = re.sub(r"<[^>]+>", "", stripped.lstrip("#")).strip()
-                        if title:
-                            return title[:80]
-                        continue
-                    if stripped.startswith("[![") or "shields.io" in stripped:
-                        continue
-                    return re.sub(r"<[^>]+>", "", stripped).strip()[:80]
-            except OSError:
-                pass
+        # r37ct: extracted to helper to flatten nesting 7 → 2.
+        readme_excerpt = _read_directory_readme_title(dir_path / "README.md")
+        if readme_excerpt:
+            return readme_excerpt
 
         # 3. Convention table
         return _DIR_CONVENTIONS.get(dir_name.lower(), "")
 
     # Build infrastructure directory names — always classified as "core"
     _BUILD_DIR_NAMES: frozenset[str] = frozenset(
-        {"buildsrc", "gradle", ".github", "build", "scripts",
-         ".circleci", ".gitlab", ".husky"}
+        {
+            "buildsrc",
+            "gradle",
+            ".github",
+            "build",
+            "scripts",
+            ".circleci",
+            ".gitlab",
+            ".husky",
+        }
     )
 
     def _classify_dir(self, path: Path) -> Literal["core", "context", "tooling"]:
@@ -703,9 +959,7 @@ class ProjectIndexManager:
             return "tooling"
         # 3. Independent project
         has_readme = (path / "README.md").exists()
-        has_build = any(
-            (path / fname).exists() for fname in self._BUILD_FILE_NAMES
-        )
+        has_build = any((path / fname).exists() for fname in self._BUILD_FILE_NAMES)
         if has_readme and has_build:
             return "context"
         return "core"
@@ -714,9 +968,7 @@ class ProjectIndexManager:
     # Edge extraction & PageRank
     # ------------------------------------------------------------------
 
-    def _extract_edges_from_file(
-        self, path: Path
-    ) -> list[tuple[str, str]]:
+    def _extract_edges_from_file(self, path: Path) -> list[tuple[str, str]]:
         """Extract edges via language-specific extractor (plugin registry).
 
         Each language's logic lives in edge_extractors/<lang>.py.
@@ -750,63 +1002,107 @@ class ProjectIndexManager:
         Returns [] gracefully if the edge list is empty.
 
         Each returned dict has: name, pagerank (float), inbound_refs (int).
+
+        r37ee (dogfood): 78 lines → ~20 of dispatch. ``_pagerank_build_graph``
+        builds the adjacency lists; ``_pagerank_iterate`` runs the power
+        iteration to convergence; ``_pagerank_top_n_rows`` filters and
+        formats the top-``top_n`` result rows.
         """
         if not edges:
             return []
 
         try:
-            # Build adjacency: out-edges per node
-            out_edges: dict[str, set[str]] = {}
-            inbound: dict[str, int] = {}
-            nodes: set[str] = set()
-
-            for src, dst in edges:
-                nodes.add(src)
-                nodes.add(dst)
-                out_edges.setdefault(src, set()).add(dst)
-                inbound[dst] = inbound.get(dst, 0) + 1
-
-            if not nodes:
+            out_edges, inbound, node_list = self._pagerank_build_graph(edges)
+            if not node_list:
                 return []
-
-            n = len(nodes)
-            node_list = sorted(nodes)
-            scores: dict[str, float] = dict.fromkeys(node_list, 1.0 / n)
-            dangling = {nd for nd in node_list if nd not in out_edges}
-
-            for _ in range(max_iter):
-                new_scores: dict[str, float] = {}
-                # Dangling nodes distribute their score uniformly
-                dangling_sum = alpha * sum(scores[nd] for nd in dangling) / n
-
-                for nd in node_list:
-                    new_scores[nd] = (1.0 - alpha) / n + dangling_sum
-
-                for src, dsts in out_edges.items():
-                    contrib = alpha * scores[src] / len(dsts)
-                    for dst in dsts:
-                        new_scores[dst] = new_scores.get(dst, 0.0) + contrib
-
-                # Convergence check
-                err = sum(
-                    abs(new_scores[nd] - scores[nd]) for nd in node_list
-                )
-                scores = new_scores
-                if err < 1.0e-6 * n:
-                    break
-
-            top = sorted(scores.items(), key=lambda kv: -kv[1])[:top_n]
-            return [
-                {
-                    "name": name,
-                    "pagerank": round(score, 4),
-                    "inbound_refs": inbound.get(name, 0),
-                }
-                for name, score in top
-            ]
+            scores = self._pagerank_iterate(out_edges, node_list, alpha, max_iter)
+            return self._pagerank_top_n_rows(scores, inbound, top_n)
         except Exception as exc:  # noqa: BLE001
             logger.debug("PageRank computation failed: %s", exc)
             return []
+
+    @staticmethod
+    def _pagerank_build_graph(
+        edges: list[tuple[str, str]],
+    ) -> tuple[dict[str, set[str]], dict[str, int], list[str]]:
+        """Build the adjacency lists used by ``_compute_pagerank``.
+
+        Returns ``(out_edges, inbound, sorted_nodes)`` where ``out_edges`` maps
+        a source node to its set of destinations, ``inbound`` maps a
+        destination node to its in-degree, and ``sorted_nodes`` is the
+        deterministic order used as the iteration basis.
+        """
+        out_edges: dict[str, set[str]] = {}
+        inbound: dict[str, int] = {}
+        nodes: set[str] = set()
+        for src, dst in edges:
+            nodes.add(src)
+            nodes.add(dst)
+            out_edges.setdefault(src, set()).add(dst)
+            inbound[dst] = inbound.get(dst, 0) + 1
+        return out_edges, inbound, sorted(nodes)
+
+    def _pagerank_iterate(
+        self,
+        out_edges: dict[str, set[str]],
+        node_list: list[str],
+        alpha: float,
+        max_iter: int,
+    ) -> dict[str, float]:
+        """Run power iteration until convergence (or ``max_iter``).
+
+        r37e3 (dogfood): inner power-iteration step已抽到 ``_pagerank_step``
+        so the outer loop stays at ≤3 nesting; this method now only owns
+        the convergence-detection bookkeeping.
+        """
+        n = len(node_list)
+        scores: dict[str, float] = dict.fromkeys(node_list, 1.0 / n)
+        dangling = {nd for nd in node_list if nd not in out_edges}
+        for _ in range(max_iter):
+            new_scores = self._pagerank_step(
+                scores, node_list, out_edges, dangling, alpha, n
+            )
+            err = sum(abs(new_scores[nd] - scores[nd]) for nd in node_list)
+            scores = new_scores
+            if err < 1.0e-6 * n:
+                break
+        return scores
+
+    @staticmethod
+    def _pagerank_top_n_rows(
+        scores: dict[str, float],
+        inbound: dict[str, int],
+        top_n: int,
+    ) -> list[dict[str, Any]]:
+        """Filter stdlib blocklist + take ``top_n`` highest-score rows.
+
+        Filter Python stdlib / typing helpers that look like classes
+        in the edge extraction but are not real architectural nodes.
+        ``TYPE_CHECKING`` is the worst offender — it surfaces as a
+        high-degree node because every type-annotated module imports
+        it, but renaming it is meaningless. ``Any``, ``Optional``,
+        ``ClassVar`` etc. land in the same bucket.
+
+        The returned rows include ``rank`` (1-based, matches the
+        ``architecture_rank`` field on the modification_guard summary
+        line) and ``symbol`` (alias for ``name``).
+        """
+        filtered = [
+            (name, score)
+            for name, score in sorted(scores.items(), key=lambda kv: -kv[1])
+            if name not in _PAGERANK_STDLIB_BLOCKLIST
+        ]
+        top = filtered[:top_n]
+        return [
+            {
+                "rank": idx,
+                "name": name,
+                "symbol": name,
+                "pagerank": round(score, 4),
+                "inbound_refs": inbound.get(name, 0),
+            }
+            for idx, (name, score) in enumerate(top, 1)
+        ]
 
     # ------------------------------------------------------------------
     # TOON rendering
@@ -815,6 +1111,64 @@ class ProjectIndexManager:
     _NON_CODE_LANGUAGES: frozenset[str] = frozenset(
         {"other", "markdown", "json", "yaml", "toml", "xml", "rst", "latex"}
     )
+
+    _TOON_DIR_COL: int = 26
+
+    def _scan_subdir_descriptions(
+        self,
+        top_name: str,
+        top_path: Path,
+        descriptions: dict[str, str],
+    ) -> None:
+        """Populate ``descriptions`` with ``top/sub`` → ``desc`` mappings.
+
+        Skips dot-prefixed and artifact directories so the description
+        map only carries user-facing structural names. Mutates
+        ``descriptions`` in place to match the original side-effecting
+        loop.
+
+        r37e3 (dogfood): lifted from ``_extract_module_descriptions`` to
+        flatten the for-if-if chain (depth 6) into a single-pass scan.
+        """
+        for sub in sorted(top_path.iterdir()):
+            if not sub.is_dir():
+                continue
+            if sub.name in self._ARTIFACT_DIRS or sub.name.startswith("."):
+                continue
+            sub_desc = self._describe_dir(sub, sub.name)
+            if sub_desc:
+                descriptions[f"{top_name}/{sub.name}"] = sub_desc
+
+    @staticmethod
+    def _pagerank_step(
+        scores: dict[str, float],
+        node_list: list[str],
+        out_edges: dict[str, Any],
+        dangling: set[str],
+        alpha: float,
+        n: int,
+    ) -> dict[str, float]:
+        """Run one power-iteration step of PageRank.
+
+        Returns the next ``new_scores`` dict. Dangling nodes distribute
+        their probability uniformly across all nodes (PageRank random-
+        teleportation handling). Edge contributions are added on top of
+        the base ``(1 - alpha) / n + dangling_sum`` floor.
+
+        r37e3 (dogfood): lifted from ``_compute_pagerank`` so the outer
+        max_iter loop stays at depth 3 instead of 6 (method → with →
+        for-iter → for-node + for-src + for-dst).
+        """
+        new_scores: dict[str, float] = {}
+        dangling_sum = alpha * sum(scores[nd] for nd in dangling) / n
+        base = (1.0 - alpha) / n + dangling_sum
+        for nd in node_list:
+            new_scores[nd] = base
+        for src, dsts in out_edges.items():
+            contrib = alpha * scores[src] / len(dsts)
+            for dst in dsts:
+                new_scores[dst] = new_scores.get(dst, 0.0) + contrib
+        return new_scores
 
     def render_toon(self, index: ProjectIndex) -> str:
         """Render the project index as TOON-format text.
@@ -837,26 +1191,52 @@ class ProjectIndexManager:
               <dir>/   <description>
 
             notes:    <custom_notes>
-        """
-        lines: list[str] = []
-        root_path = Path(index.project_root)
-        project_name = root_path.resolve().name or root_path.name
 
+        r37cu (dogfood): split 123-line long_method into focused section
+        helpers. ``render_toon`` is now ~25 lines of section dispatch;
+        each ``_render_toon_*`` helper owns one section's formatting.
+        """
+        root_path = Path(index.project_root)
+        lines: list[str] = []
+        self._render_toon_header(lines, root_path, index)
+        self._render_toon_critical(lines, index)
+        self._render_toon_scale(lines, index)
+        self._render_toon_entry(lines, index)
+        core_dirs, context_dirs, tooling_dirs = self._classify_top_level_dirs(
+            root_path, index.top_level_structure
+        )
+        self._render_toon_core(lines, core_dirs, index)
+        self._render_toon_context(lines, context_dirs)
+        self._render_toon_tooling(lines, tooling_dirs, index)
+        if index.custom_notes:
+            lines.append(f"\nnotes:    {index.custom_notes}")
+        return "\n".join(lines)
+
+    @staticmethod
+    def _render_toon_header(
+        lines: list[str], root_path: Path, index: ProjectIndex
+    ) -> None:
+        """Emit ``project:`` / ``what:`` lines."""
+        project_name = root_path.resolve().name or root_path.name
         lines.append(f"project:  {project_name}")
         if index.readme_excerpt:
             lines.append(f"what:     {index.readme_excerpt}")
 
-        # --- critical section ---
-        if index.critical_nodes:
-            lines.append("")
-            lines.append("critical:")
-            for node in index.critical_nodes[:7]:
-                name = node.get("name", "")
-                pr = float(node.get("pagerank", 0))
-                refs = int(node.get("inbound_refs", 0))
-                lines.append(f"  {name:<28}  {pr:.2f}  ({refs} refs)")
+    @staticmethod
+    def _render_toon_critical(lines: list[str], index: ProjectIndex) -> None:
+        """Emit the ``critical:`` section (top-7 PageRank nodes)."""
+        if not index.critical_nodes:
+            return
+        lines.append("")
+        lines.append("critical:")
+        for node in index.critical_nodes[:7]:
+            name = node.get("name", "")
+            pr = float(node.get("pagerank", 0))
+            refs = int(node.get("inbound_refs", 0))
+            lines.append(f"  {name:<28}  {pr:.2f}  ({refs} refs)")
 
-        # --- scale ---
+    def _render_toon_scale(self, lines: list[str], index: ProjectIndex) -> None:
+        """Emit the ``scale:`` line — total files + top-2 language shares."""
         total = max(index.file_count, 1)
         code_langs = [
             (k, v)
@@ -864,95 +1244,109 @@ class ProjectIndexManager:
             if k not in self._NON_CODE_LANGUAGES and v >= 1
         ]
         code_langs.sort(key=lambda kv: -kv[1])
-        if code_langs:
-            lang_str = "  ".join(
-                f"{k} {round(v * 100 / total)}%" for k, v in code_langs[:2]
-            )
-            lines.append(f"\nscale:    {index.file_count:,} files — {lang_str}")
+        if not code_langs:
+            return
+        lang_str = "  ".join(
+            f"{k} {round(v * 100 / total)}%" for k, v in code_langs[:2]
+        )
+        lines.append(f"\nscale:    {index.file_count:,} files — {lang_str}")
 
-        # --- entry ---
-        if index.entry_points:
-            ep = Path(index.entry_points[0]).name
-            lines.append(f"entry:    {ep}")
+    @staticmethod
+    def _render_toon_entry(lines: list[str], index: ProjectIndex) -> None:
+        """Emit the ``entry:`` line from the first entry point."""
+        if not index.entry_points:
+            return
+        ep = Path(index.entry_points[0]).name
+        lines.append(f"entry:    {ep}")
 
-        # --- structure: classify dirs ---
+    def _classify_top_level_dirs(
+        self, root_path: Path, structure: list[dict[str, Any]]
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+        """Partition top-level dirs into (core, context, tooling) buckets."""
         core_dirs: list[dict[str, Any]] = []
         context_dirs: list[dict[str, Any]] = []
         tooling_dirs: list[dict[str, Any]] = []
-
-        for item in index.top_level_structure:
+        for item in structure:
             name = item["name"]
             dir_path = root_path / name
             if dir_path.is_dir():
                 cls_ = self._classify_dir(dir_path)
             else:
                 cls_ = "core"
-
             if cls_ == "context":
                 context_dirs.append(item)
             elif cls_ == "tooling":
                 tooling_dirs.append(item)
             else:
                 core_dirs.append(item)
+        return core_dirs, context_dirs, tooling_dirs
 
-        DIR_COL = 26
+    def _render_toon_core(
+        self,
+        lines: list[str],
+        core_dirs: list[dict[str, Any]],
+        index: ProjectIndex,
+    ) -> None:
+        """Emit ``core:`` section with first-7 dirs + first-4 subdirs each."""
+        if not core_dirs:
+            return
+        lines.append("")
+        lines.append("core:")
+        for item in core_dirs[:7]:
+            name = item["name"]
+            self._append_dir_line(lines, name, index.module_descriptions.get(name, ""))
+            for sub in item.get("subdirectories", [])[:4]:
+                sname = sub["name"]
+                rel = f"{name}/{sname}"
+                sdesc = index.module_descriptions.get(rel, "")
+                if not sdesc:
+                    continue
+                sub_label = sname + "/"
+                pad2 = max(1, self._TOON_DIR_COL - 2 - len(sub_label))
+                lines.append(f"    {sub_label}{' ' * pad2}  {sdesc}")
 
-        if core_dirs:
-            lines.append("")
-            lines.append("core:")
-            for item in core_dirs[:7]:
-                name = item["name"]
-                dir_label = name + "/"
-                desc = index.module_descriptions.get(name, "")
-                padding = max(1, DIR_COL - len(dir_label))
-                desc_str = f"  {desc}" if desc else ""
-                lines.append(
-                    f"  {dir_label}{' ' * padding}{desc_str}".rstrip()
-                )
-                for sub in item.get("subdirectories", [])[:4]:
-                    sname = sub["name"]
-                    rel = f"{name}/{sname}"
-                    sdesc = index.module_descriptions.get(rel, "")
-                    if sdesc:
-                        sub_label = sname + "/"
-                        pad2 = max(1, DIR_COL - 2 - len(sub_label))
-                        lines.append(
-                            f"    {sub_label}{' ' * pad2}  {sdesc}"
-                        )
+    @staticmethod
+    def _render_toon_context(
+        lines: list[str], context_dirs: list[dict[str, Any]]
+    ) -> None:
+        """Emit ``context:`` section with file counts only (no descriptions)."""
+        if not context_dirs:
+            return
+        lines.append("")
+        lines.append("context:  (reference projects)")
+        for item in context_dirs[:6]:
+            name = item["name"]
+            count = item.get("file_count", 0)
+            lines.append(f"  {name}/  ({count:,} files)")
 
-        if context_dirs:
-            lines.append("")
-            lines.append("context:  (reference projects)")
-            for item in context_dirs[:6]:
-                name = item["name"]
-                count = item.get("file_count", 0)
-                lines.append(f"  {name}/  ({count:,} files)")
+    def _render_toon_tooling(
+        self,
+        lines: list[str],
+        tooling_dirs: list[dict[str, Any]],
+        index: ProjectIndex,
+    ) -> None:
+        """Emit ``tooling:`` section with first-3 dirs and descriptions."""
+        if not tooling_dirs:
+            return
+        lines.append("")
+        lines.append("tooling:")
+        for item in tooling_dirs[:3]:
+            name = item["name"]
+            self._append_dir_line(lines, name, index.module_descriptions.get(name, ""))
 
-        if tooling_dirs:
-            lines.append("")
-            lines.append("tooling:")
-            for item in tooling_dirs[:3]:
-                name = item["name"]
-                desc = index.module_descriptions.get(name, "")
-                dir_label = name + "/"
-                padding = max(1, DIR_COL - len(dir_label))
-                desc_str = f"  {desc}" if desc else ""
-                lines.append(
-                    f"  {dir_label}{' ' * padding}{desc_str}".rstrip()
-                )
-
-        if index.custom_notes:
-            lines.append(f"\nnotes:    {index.custom_notes}")
-
-        return "\n".join(lines)
+    @classmethod
+    def _append_dir_line(cls, lines: list[str], name: str, desc: str) -> None:
+        """Append one ``<name>/  <desc>`` line to the TOON output."""
+        dir_label = name + "/"
+        padding = max(1, cls._TOON_DIR_COL - len(dir_label))
+        desc_str = f"  {desc}" if desc else ""
+        lines.append(f"  {dir_label}{' ' * padding}{desc_str}".rstrip())
 
     # ------------------------------------------------------------------
     # Incremental update helpers
     # ------------------------------------------------------------------
 
-    def _compute_file_hashes(
-        self, roots: list[str]
-    ) -> dict[str, list[float]]:
+    def _compute_file_hashes(self, roots: list[str]) -> dict[str, list[float]]:
         """Return {filepath: [mtime, size]} for all files under roots.
 
         Uses stat() only — no file content read — so it's fast even on
@@ -979,7 +1373,10 @@ class ProjectIndexManager:
             return {}
 
     def _save_file_hashes(self, hashes: dict[str, list[float]]) -> None:
+        from tree_sitter_analyzer.mcp.utils.cache_paths import assert_cache_path
+
         hashes_path = Path(self.project_root) / self.HASHES_FILE
+        assert_cache_path(hashes_path, self.project_root)
         hashes_path.parent.mkdir(parents=True, exist_ok=True)
         try:
             with hashes_path.open("w", encoding="utf-8") as fh:
@@ -988,17 +1385,21 @@ class ProjectIndexManager:
             logger.warning("Could not save file hashes: %s", err)
 
     def _save_toon(self, toon: str) -> None:
+        from tree_sitter_analyzer.mcp.utils.cache_paths import assert_cache_path
+
         toon_path = Path(self.project_root) / self.TOON_FILE
+        assert_cache_path(toon_path, self.project_root)
         toon_path.parent.mkdir(parents=True, exist_ok=True)
         try:
             toon_path.write_text(toon, encoding="utf-8")
         except OSError as err:
             logger.warning("Could not save summary.toon: %s", err)
 
-    def _save_critical_nodes(
-        self, nodes: list[dict[str, Any]]
-    ) -> None:
+    def _save_critical_nodes(self, nodes: list[dict[str, Any]]) -> None:
+        from tree_sitter_analyzer.mcp.utils.cache_paths import assert_cache_path
+
         path = Path(self.project_root) / self.CRITICAL_FILE
+        assert_cache_path(path, self.project_root)
         path.parent.mkdir(parents=True, exist_ok=True)
         try:
             with path.open("w", encoding="utf-8") as fh:
@@ -1024,17 +1425,9 @@ class ProjectIndexManager:
             if desc:
                 descriptions[top_name] = desc
 
-            # Depth-2
+            # r37e3 (dogfood): nesting 6 → 3 via _scan_subdir_descriptions.
             try:
-                for sub in sorted(top_path.iterdir()):
-                    if not sub.is_dir():
-                        continue
-                    if sub.name in self._ARTIFACT_DIRS or sub.name.startswith("."):
-                        continue
-                    rel = f"{top_name}/{sub.name}"
-                    sub_desc = self._describe_dir(sub, sub.name)
-                    if sub_desc:
-                        descriptions[rel] = sub_desc
+                self._scan_subdir_descriptions(top_name, top_path, descriptions)
             except OSError:
                 pass
 
