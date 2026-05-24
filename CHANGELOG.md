@@ -1,5 +1,46 @@
 # Changelog
 
+## [1.13.1] - 2026-05-24
+
+CI infrastructure patch — same wheel as 1.13.0 for end-users, but the
+source distribution carries two important repository-level fixes.
+
+### Fixed
+
+- **`.github/workflows/auto-sprint-execute.yml` no longer fails on every push to `main`**.
+  PR #133 introduced an invalid `run: |` literal scalar (multi-line
+  `git commit -m` continuations returned to column 0, breaking the
+  indent). GitHub Actions parsed the file on every push and
+  synthesized a startup_failure run even though the workflow only
+  declares `on: workflow_dispatch`. The block now uses multiple `-m`
+  flags + a printf-built `$PR_BODY` so it stays inside the literal
+  scalar's 10-space indent. The action ref `anthropics/claude-code-base-action@v1`
+  (which doesn't exist) is pinned to `@beta` (the only published tag).
+  *(PR #138)*
+
+### Added
+
+- **GitFlow Branching Mandate** — three-layer enforcement so every
+  branch operation conforms to `GITFLOW.md`:
+  - `AGENTS.md § GitFlow Branching Mandate` — the head→base matrix,
+    the MUST-NEVER list (including the new "don't use `hotfix/*` for
+    non-release fixes — it auto-triggers PyPI publish" caveat
+    learned the hard way), and the full release flow.
+  - `.github/workflows/gitflow-guard.yml` — CI fails any PR whose
+    head→base pair violates the matrix (e.g. `feature/* → main`).
+    Bot PRs (`dependabot/*`, `renovate/*`, `github-actions/*`) are
+    allow-listed so automation keeps working.
+  - `test_gitflow_documentation_is_present` in
+    `tests/unit/test_agent_contracts.py` — guards against the docs
+    or workflow being silently weakened.
+  *(PR #137)*
+
+### Changed
+
+- `pyproject.toml` `[project].version` and `[tool.mcp].server_version`
+  bumped to `1.13.1` (already matched 1.13.0 after the v1.13.0
+  release; this is the routine patch bump for the new release cycle).
+
 ## [1.13.0] - 2026-05-24
 
 CodeGraph parity + benchmark + 5-language unblock release. TSA now
