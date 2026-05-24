@@ -629,6 +629,9 @@ line-length = 88
 target-version = "py310"
 exclude = [
     "corpus/",  # Test corpus files - demonstration code, not production
+    # Fixture files are deliberate sample code for testing extractors —
+    # their import order, dead names, etc. are part of the test surface.
+    "tests/fixtures/",
 ]
 
 [tool.ruff.lint]
