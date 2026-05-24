@@ -629,10 +629,8 @@ def _register_language_formatters_safe() -> None:
             "sql": SQLFormatterWrapper,
         }
 
-        # Register each language with all advertised table formats.
-        # CLI accepts --table json, and many language formatters already
-        # implement it via format_table(..., table_type="json").
-        format_types = ["full", "compact", "csv", "json"]
+        # Register each language with all format types
+        format_types = ["full", "compact", "csv"]
         for lang, formatter_class in language_formatters.items():
             for fmt in format_types:
                 FormatterRegistry.register_language_formatter(
