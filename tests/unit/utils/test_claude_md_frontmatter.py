@@ -7,11 +7,12 @@ The parser is the shared building block for two downstream proposals:
 * **P5 (``intentional_design`` frontmatter)** uses ``intentional_design``
   rules to drive ``safe_to_edit`` verdict overrides.
 
-The PRD vocabulary for verdicts is locked at
-``{SAFE, CAUTION, UNSAFE, ERROR, NOTE}`` — note the absence of ``REFUSE``
-(PRD §0 errata F5). The parser must coerce anything outside this set to
-``NOTE`` and emit a warning so legacy rule files do not silently bypass
-the override path.
+The verdict vocabulary aligns with ``base_tool._LEGAL_VERDICTS`` —
+``{SAFE, CAUTION, REVIEW, UNSAFE, INFO, WARN, ERROR, NOT_FOUND}``. Note
+the absence of ``REFUSE`` (PRD §0 errata F5). The parser must coerce
+anything outside this set to ``INFO`` (rank-0 passthrough in
+``_VERDICT_SEVERITY``) and emit a warning so legacy rule files do not
+silently bypass the override path.
 """
 
 from __future__ import annotations
@@ -161,7 +162,7 @@ class TestParseIntentionalDesign:
         assert spec.match_file("tree_sitter_analyzer/mcp/tools/foo.py")
         assert not spec.match_file("tree_sitter_analyzer/mcp/server.py")
 
-    def test_missing_action_defaults_to_note(self) -> None:
+    def test_missing_action_defaults_to_info(self) -> None:
         data = {
             "intentional_design": [
                 {
@@ -172,16 +173,18 @@ class TestParseIntentionalDesign:
             ]
         }
         rule = parse_intentional_design(data)[0]
-        assert rule.action == "NOTE"
+        assert rule.action == "INFO"
 
-    def test_invalid_action_coerced_to_note_with_warning(
+    def test_invalid_action_coerced_to_info_with_warning(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
         # F5 fix from PRD §0 errata: REFUSE is NOT a valid TSA verdict
-        # (vocab is SAFE/CAUTION/UNSAFE/ERROR/NOTE). A legacy rule using
-        # REFUSE must be coerced to NOTE and surface a warning so the
-        # author can update the spec — silently downgrading is the
-        # failure mode we want to avoid.
+        # (vocab is SAFE/CAUTION/REVIEW/UNSAFE/INFO/WARN/ERROR/NOT_FOUND,
+        # matching base_tool._LEGAL_VERDICTS). A legacy rule using
+        # REFUSE must be coerced to INFO (rank-0 neutral passthrough in
+        # safe_to_edit_helpers._VERDICT_SEVERITY) and surface a warning
+        # so the author can update the spec — silently downgrading is
+        # the failure mode we want to avoid.
         data = {
             "intentional_design": [
                 {
@@ -194,7 +197,7 @@ class TestParseIntentionalDesign:
         }
         with caplog.at_level(logging.WARNING):
             rule = parse_intentional_design(data)[0]
-        assert rule.action == "NOTE"
+        assert rule.action == "INFO"
         assert any(
             "REFUSE" in record.message or "action" in record.message.lower()
             for record in caplog.records
@@ -291,10 +294,13 @@ class TestParseIntentionalDesign:
                 {"id": "ok", "files": ["a.py"], "note": "n"},
             ]
         }
-        # ``files`` empty hits the ``entry.get(k) in (None, "")`` early-skip
-        # via the missing-field check (an empty list is falsy in the
-        # required-field heuristic). Either way, only the valid rule
-        # survives.
+        # ``files: []`` is caught by the second guard
+        # (``not isinstance(raw_globs, list) or not raw_globs``) — an
+        # empty list passes ``entry.get(k) in (None, "")`` (the
+        # required-field check) but fails the dedicated
+        # non-empty-list guard immediately after. Net effect: the
+        # ``empty_files`` rule is skipped with a WARNING and only
+        # ``ok`` survives.
         with caplog.at_level(logging.WARNING):
             rules = parse_intentional_design(data)
         assert {r.id for r in rules} == {"ok"}

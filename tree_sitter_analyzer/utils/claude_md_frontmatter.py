@@ -40,10 +40,13 @@ import yaml
 logger = logging.getLogger(__name__)
 
 
-# The verdict vocabulary is shared with ``safe_to_edit_helpers._VERDICT_SEVERITY``.
-# Kept as a frozenset so callers can validate without importing the helper module.
+# The verdict vocabulary mirrors ``base_tool._LEGAL_VERDICTS`` — the
+# canonical wire-format set every MCP tool must emit. Kept as a frozenset
+# so callers can validate without importing ``base_tool``. Keep in sync if
+# ``_LEGAL_VERDICTS`` ever evolves (``test_tool_response_contract`` enforces
+# the wire side; this constant is the rule-author side).
 VALID_VERDICT_ACTIONS: frozenset[str] = frozenset(
-    {"SAFE", "CAUTION", "UNSAFE", "ERROR", "NOTE"}
+    {"SAFE", "CAUTION", "REVIEW", "UNSAFE", "INFO", "WARN", "ERROR", "NOT_FOUND"}
 )
 
 _FRONTMATTER_RE = re.compile(
@@ -167,8 +170,8 @@ def parse_intentional_design(data: dict[str, Any]) -> list[IntentionalDesignRule
 
     Required fields per entry: ``id``, ``files``, ``note``.
     Optional fields: ``symbols`` (default empty tuple),
-    ``action_when_touched`` (default ``NOTE``; invalid values coerced to
-    ``NOTE`` with a warning per PRD §0 F5).
+    ``action_when_touched`` (default ``INFO``; invalid values coerced to
+    ``INFO`` with a warning per PRD §0 F5).
     """
 
     raw_entries = data.get("intentional_design")
@@ -255,25 +258,28 @@ def parse_intentional_design(data: dict[str, Any]) -> list[IntentionalDesignRule
 def _normalise_action(raw: Any, rule_id: str) -> str:
     """Coerce a raw ``action_when_touched`` value to a known verdict.
 
-    F5 reminder: the architect's original spec accepted ``REFUSE``. That is
-    NOT a TSA verdict (the vocab is ``{SAFE, CAUTION, UNSAFE, ERROR,
-    NOTE}``), and silently dropping unknown values would let a rule
-    targeting ``REFUSE`` bypass the override path entirely. We coerce
-    instead, surfacing the mistake to the rule author via WARNING.
+    F5 reminder (PRD §0 errata): the architect's original spec accepted
+    ``REFUSE``. That token is NOT in TSA's canonical verdict set (see
+    ``VALID_VERDICT_ACTIONS``), and silently dropping unknown values
+    would let a rule targeting ``REFUSE`` bypass the override path
+    entirely. We coerce instead to ``INFO`` — rank-0 in
+    ``safe_to_edit_helpers._VERDICT_SEVERITY`` so it is neutral inside
+    ``_max_verdict`` — and surface the mistake to the rule author via
+    WARNING so the source can be updated.
     """
 
     if raw is None:
-        return "NOTE"
+        return "INFO"
     normalised = str(raw).upper()
     if normalised not in VALID_VERDICT_ACTIONS:
         logger.warning(
             "intentional_design[%s] action_when_touched=%r is not in %s; "
-            "coercing to NOTE (see PRD §0 errata F5)",
+            "coercing to INFO (see PRD §0 errata F5)",
             rule_id,
             raw,
             sorted(VALID_VERDICT_ACTIONS),
         )
-        return "NOTE"
+        return "INFO"
     return normalised
 
 
