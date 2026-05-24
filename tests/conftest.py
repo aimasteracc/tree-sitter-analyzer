@@ -222,6 +222,12 @@ def cleanup_asyncio_tasks():
     """
     Clean up asyncio tasks after each test to prevent 'NoneType' object has no attribute '_PENDING'
     error on Python 3.10 during shutdown.
+
+    Python 3.12 deprecates ``asyncio.get_event_loop()`` when there is no
+    running loop and no policy-bound loop. Use the running-loop probe
+    (``get_running_loop``) and fall back silently when no loop is bound —
+    the cleanup is only meaningful when an in-flight loop actually
+    exists.
     """
     yield
 
@@ -229,9 +235,19 @@ def cleanup_asyncio_tasks():
     import contextlib
 
     try:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
     except RuntimeError:
-        return
+        try:
+            # Fall back to the policy-bound loop; ``get_event_loop_policy``
+            # is stable across 3.10–3.13. ``_get_loop()`` returns None if
+            # no loop is bound, so we don't trip the deprecation warning
+            # ``asyncio.get_event_loop()`` emits on 3.12+.
+            policy = asyncio.get_event_loop_policy()
+            loop = policy._local._loop  # type: ignore[attr-defined]
+        except Exception:
+            return
+        if loop is None:
+            return
 
     if loop.is_closed() or loop.is_running():
         return
