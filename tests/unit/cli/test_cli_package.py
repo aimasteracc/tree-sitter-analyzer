@@ -119,3 +119,8 @@ def test_cli_import_error_fallback() -> None:
             if mod.startswith("tree_sitter_analyzer.cli"):
                 del sys.modules[mod]
         sys.modules.update(cli_mods_snapshot)
+        # Force a fresh import so subsequent tests see real exports
+        # instead of the None-fallback state this test leaves behind
+        # when the snapshot is empty (xdist loadfile order).
+        if "tree_sitter_analyzer.cli" not in sys.modules:
+            importlib.import_module("tree_sitter_analyzer.cli")

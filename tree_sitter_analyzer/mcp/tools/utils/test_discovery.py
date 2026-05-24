@@ -184,10 +184,16 @@ def _format_pattern(pattern: str, stem: str) -> str:
 
 
 def _add_result(results: list[str], candidate: Path, root: Path) -> None:
-    """Add a test file to results if not already present."""
+    """Add a test file to results if not already present.
+
+    Returned paths use forward slashes on every platform so callers
+    (agent prompts, MCP envelopes, tests) get a stable shape regardless
+    of host OS.
+    """
     try:
         rel = str(candidate.relative_to(root))
     except ValueError:
         rel = str(candidate)
+    rel = rel.replace("\\", "/")
     if rel not in results:
         results.append(rel)

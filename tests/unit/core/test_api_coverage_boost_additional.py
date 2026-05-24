@@ -12,6 +12,7 @@ Targets uncovered branches in:
 """
 
 import os
+import sys
 import tempfile
 from unittest.mock import MagicMock, patch
 
@@ -254,6 +255,11 @@ class TestValidateFileAdditional:
         finally:
             os.unlink(tmp)
 
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="chmod 0o000 has no effect on Windows; file remains readable "
+        "and the test cannot verify the unreadable branch.",
+    )
     def test_unreadable_file(self) -> None:
         """Lines 482-484: validate_file with unreadable file."""
         with tempfile.NamedTemporaryFile(suffix=".py", mode="w", delete=False) as f:

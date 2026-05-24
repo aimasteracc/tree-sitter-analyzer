@@ -317,3 +317,4 @@ See **[`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md)** for the development guide
 * 💖 [Sponsor](https://github.com/sponsors/aimasteracc) — supports continued MCP / Skills development.
 * Lead sponsor: **[@o93](https://github.com/o93)**.
 * MIT licensed — see [LICENSE](LICENSE).
+* Release history: [CHANGELOG.md](CHANGELOG.md).

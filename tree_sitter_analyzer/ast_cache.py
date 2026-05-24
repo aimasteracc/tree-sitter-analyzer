@@ -331,7 +331,7 @@ def _worker_index_file(args: tuple[str, str, str]) -> dict[str, Any]:
     that cannot be pickled. The worker discards them after extraction.
     """
     abs_path, project_root, language = args
-    rel_path = os.path.relpath(abs_path, project_root)
+    rel_path = os.path.relpath(abs_path, project_root).replace("\\", "/")
     try:
         stat = os.stat(abs_path)
         with open(abs_path, encoding="utf-8", errors="replace") as f:
@@ -1089,7 +1089,7 @@ class ASTCache:
 
     def index_file(self, file_path: str, language: str | None = None) -> dict[str, Any]:
         abs_path = os.path.abspath(file_path)
-        rel_path = os.path.relpath(abs_path, self.project_root)
+        rel_path = os.path.relpath(abs_path, self.project_root).replace("\\", "/")
         if language is None:
             language = _language_from_ext(abs_path)
         if language is None:
@@ -1615,7 +1615,7 @@ class ASTCache:
             if lang is None:
                 stats["skipped"] += 1
                 continue
-            rel_path = os.path.relpath(abs_path, self.project_root)
+            rel_path = os.path.relpath(abs_path, self.project_root).replace("\\", "/")
             try:
                 stat = os.stat(abs_path)
             except OSError as e:
@@ -1838,7 +1838,13 @@ class ASTCache:
         # both correct (sees every file's symbols + imports) and cheap.
 
     def lookup(self, file_path: str) -> dict[str, Any] | None:
-        rel = os.path.relpath(os.path.abspath(file_path), self.project_root)
+        try:
+            rel = os.path.relpath(
+                os.path.abspath(file_path), self.project_root
+            ).replace("\\", "/")
+        except ValueError:
+            # Windows: path on a different drive than project_root.
+            return None
         conn = self._get_conn()
         row = conn.execute(
             "SELECT * FROM ast_index WHERE file_path = ?",
@@ -1970,7 +1976,13 @@ class ASTCache:
         return stats
 
     def invalidate(self, file_path: str) -> bool:
-        rel = os.path.relpath(os.path.abspath(file_path), self.project_root)
+        try:
+            rel = os.path.relpath(
+                os.path.abspath(file_path), self.project_root
+            ).replace("\\", "/")
+        except ValueError:
+            # Windows: path on a different drive than project_root.
+            return False
         conn = self._get_conn()
         if self._fts5_available:
             conn.execute("DELETE FROM ast_symbols_fts WHERE file_path = ?", (rel,))
@@ -2070,6 +2082,10 @@ class ASTCache:
         caller_line, callee_name, callee_file, callee_line, depth.
         """
         conn = self._get_conn()
+        # Normalise Windows backslash paths so callers can pass
+        # ``src/a.py`` regardless of host OS.
+        if callee_file:
+            callee_file = callee_file.replace("\\", "/")
         try:
             return self._bfs_callers(conn, callee_name, callee_file, max_depth)
         except sqlite3.OperationalError:
@@ -2148,6 +2164,8 @@ class ASTCache:
         caller_line, callee_name, callee_file, callee_line, depth.
         """
         conn = self._get_conn()
+        if caller_file:
+            caller_file = caller_file.replace("\\", "/")
         try:
             return self._bfs_callees(conn, caller_name, caller_file, max_depth)
         except sqlite3.OperationalError:

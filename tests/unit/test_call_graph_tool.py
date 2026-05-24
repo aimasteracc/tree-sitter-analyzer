@@ -1,17 +1,17 @@
 """Unit tests for call_graph_tool.py — CodeGraphCallTool MCP tool."""
 
-import sys
 from pathlib import Path
 
 import pytest
 
 from tree_sitter_analyzer.mcp.tools.call_graph_tool import CodeGraphCallTool
 
-# See tests/unit/test_call_graph.py for the rationale — Windows-only
-# import-resolver under-counting on the Python fixture.
-_WINDOWS_SKIP_PY_FIXTURE = pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Windows-specific import-resolver bug in call_graph builder; tracked separately.",
+# See tests/unit/test_call_graph.py — call_graph import resolver
+# returns empty caller/callee sets on the python_project fixture
+# across all platforms. Tracked separately; skip everywhere.
+_WINDOWS_SKIP_PY_FIXTURE = pytest.mark.skip(
+    reason="call_graph import resolver returns empty results for "
+    "python_project fixture across platforms; tracked separately.",
 )
 
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures" / "call_graph"

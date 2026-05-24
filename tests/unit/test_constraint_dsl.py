@@ -70,7 +70,9 @@ def _stage_constraints_file(tmp_path: Path, fixture_name: str) -> Path:
     return tmp_path
 
 
-def _build_call_edges_db(db_path: Path, rows: list[tuple[str, str, int, str, str, str]]) -> None:
+def _build_call_edges_db(
+    db_path: Path, rows: list[tuple[str, str, int, str, str, str]]
+) -> None:
     """Create a minimal sqlite db with the ``ast_call_edges`` schema.
 
     The schema mirrors ``ast_cache.py:_SCHEMA_V3_CALL_EDGES`` so the
@@ -221,7 +223,11 @@ class TestConstraintParser:
 
         project = _stage_constraints_file(tmp_path, "unknown_per_rule_key.yml")
 
-        with caplog.at_level("WARNING"):
+        # Capture from the specific constraint-parser logger so Py3.13's
+        # stricter propagation defaults don't drop the warning.
+        with caplog.at_level(
+            "WARNING", logger="tree_sitter_analyzer.constraints.parser"
+        ):
             constraints = load_constraints(str(project))
 
         # The malformed rule must be dropped, not crash, not coerced into
@@ -271,17 +277,23 @@ class TestGlobMatching:
         from tree_sitter_analyzer.constraints.parser import match_glob
 
         # Recursive descent matches.
-        assert match_glob(
-            "tree_sitter_analyzer/mcp/**",
-            "tree_sitter_analyzer/mcp/tools/foo.py",
-        ) is True
+        assert (
+            match_glob(
+                "tree_sitter_analyzer/mcp/**",
+                "tree_sitter_analyzer/mcp/tools/foo.py",
+            )
+            is True
+        )
 
         # Sibling path with shared prefix must NOT match — the ``/`` in
         # ``mcp/`` is significant.
-        assert match_glob(
-            "tree_sitter_analyzer/mcp/**",
-            "tree_sitter_analyzer/cli/mcp_commands.py",
-        ) is False
+        assert (
+            match_glob(
+                "tree_sitter_analyzer/mcp/**",
+                "tree_sitter_analyzer/cli/mcp_commands.py",
+            )
+            is False
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -306,12 +318,12 @@ class TestEvaluator:
             db_path,
             rows=[
                 (
-                    "do_thing",                              # caller_name
-                    "tree_sitter_analyzer/mcp/x.py",         # caller_file
-                    42,                                       # caller_line
-                    "cli_helper",                            # callee_name
-                    "cli_helper",                            # callee_full
-                    "tree_sitter_analyzer/cli/y.py",         # callee_file
+                    "do_thing",  # caller_name
+                    "tree_sitter_analyzer/mcp/x.py",  # caller_file
+                    42,  # caller_line
+                    "cli_helper",  # callee_name
+                    "cli_helper",  # callee_full
+                    "tree_sitter_analyzer/cli/y.py",  # callee_file
                 ),
             ],
         )
@@ -353,7 +365,7 @@ class TestEvaluator:
             rows=[
                 (
                     "use_cli",
-                    "mcp/bridge.py",        # caller is explicitly excepted
+                    "mcp/bridge.py",  # caller is explicitly excepted
                     10,
                     "run_cli",
                     "run_cli",
@@ -374,9 +386,7 @@ class TestEvaluator:
         )
 
     @pytest.mark.slow_ok
-    def test_eval_perf_on_synthetic_edges_under_500ms(
-        self, tmp_path: Path
-    ) -> None:
+    def test_eval_perf_on_synthetic_edges_under_500ms(self, tmp_path: Path) -> None:
         """50k edges × 5 rules in <500 ms.
 
         The budget reflects how often this runs (every
@@ -408,7 +418,14 @@ class TestEvaluator:
                 caller_file = f"src/pkg_{i % 50}/mod_{i}.py"
                 callee_file = f"src/pkg_{(i + 1) % 50}/mod_{i + 1}.py"
             rows.append(
-                (f"caller_{i}", caller_file, i % 1000 + 1, f"callee_{i}", "", callee_file)
+                (
+                    f"caller_{i}",
+                    caller_file,
+                    i % 1000 + 1,
+                    f"callee_{i}",
+                    "",
+                    callee_file,
+                )
             )
         _build_call_edges_db(db_path, rows)
 
