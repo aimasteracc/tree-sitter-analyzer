@@ -17,7 +17,7 @@
 
 - The default full-suite command is `uv run pytest -q`.
 - Do not run the full suite serially. Project pytest config enables xdist with `--numprocesses=auto --dist=loadfile`.
-- The full suite must finish in under 5 minutes. The config enforces `--session-timeout=300` and `--timeout=180`.
+- The full suite must finish in under 5 minutes. The config enforces `--session-timeout=600` and `--timeout=180`. (Bumped from 300 in v1.13.1 — see `docs/POSTMORTEM_v1.13.md` § 9.)
 - After edits, run `uv run python -m tree_sitter_analyzer --change-impact --format json` and follow its `verification_command`.
 - If `test_required` is `false`, do not run tests just to look busy; run the reported non-test verification such as `git diff --check`.
 - For targeted code feedback, prefer `verification_command`/`test_command`; `pytest_required` and `pytest_command` are retained for pytest-specific compatibility.
@@ -105,6 +105,8 @@ These are failure modes the project has *already paid for* during the v1.13.0 / 
 
 7. **Release-prep PRs >30 commits: prefer rebase-merge over squash.** Squashing a large consolidation PR makes `git bisect` useless on main for every bug it introduced. Use squash only for short feature PRs. (Postmortem § 10.)
 
+8. **Never lower `--maxfail` or `--session-timeout` in pytest config.** v1.13 release CI repeatedly capped failures at 10 while the actual count was ~85, forcing multi-hour debug cycles. `--maxfail=200` + `--session-timeout=600` are the locked floors; `test_default_pytest_runtime_contract_is_locked` enforces them. (Postmortem § 9.)
+
 These rules are guarded by tests in `tests/unit/test_agent_contracts.py`:
 
 - `test_postmortem_v1_13_doc_exists`
@@ -114,5 +116,7 @@ These rules are guarded by tests in `tests/unit/test_agent_contracts.py`:
 - `test_no_powershell_blocks_contain_non_ascii`
 - `test_skips_have_tracking_references`
 - `test_python_version_floor_is_consistent`
+- `test_default_pytest_runtime_contract_is_locked` (also guards rule 8)
+- `test_readme_mcp_tool_count_matches_registry`
 
 Why these are at the bottom of AGENTS.md: they're the rules an agent is most likely to *forget* on a fast cycle, and the cost of forgetting each was measured in CI hours during v1.13. Keep them visible.

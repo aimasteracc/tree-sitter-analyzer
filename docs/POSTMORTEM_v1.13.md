@@ -18,7 +18,7 @@ Every entry follows: **Symptom → Root cause → Why generic defenses didn't ca
 
 **Defense**:
 - Agent discipline rule in `AGENTS.md` § Anti-Patterns: any new `pytest.skip*` MUST include an issue or commit reference in the `reason=` string.
-- `tests/unit/test_agent_contracts.py::test_skips_have_tracking_reference` enforces it for the `tests/` tree.
+- `tests/unit/test_agent_contracts.py::test_skips_have_tracking_references` enforces it for the `tests/` tree.
 
 ---
 
@@ -72,7 +72,7 @@ Every entry follows: **Symptom → Root cause → Why generic defenses didn't ca
 **Why generic defenses didn't catch it**: every Linux/macOS run worked fine (bash handles UTF-8 natively), so reviewers never saw the failure mode locally. The bug only surfaced when the Windows job ran in CI.
 
 **Defense** (this PR):
-- `scripts/check_ps_ascii.sh` — pre-commit hook that fails the commit if any `shell: powershell` `run:` block in `.github/**/*.yml` contains a non-ASCII byte. Use `pwsh` (PowerShell Core, UTF-8 by default) if you really need Unicode.
+- `scripts/check_ps_ascii.py` — pre-commit hook that fails the commit if any `shell: powershell` `run:` block in `.github/**/*.yml` contains a non-ASCII byte. Use `pwsh` (PowerShell Core, UTF-8 by default) if you really need Unicode.
 - Inline `NOTE:` comment header in the affected block so the next agent doesn't re-introduce emoji.
 
 ---
@@ -150,11 +150,11 @@ Every entry follows: **Symptom → Root cause → Why generic defenses didn't ca
 
 | Failure mode | Automatic check | Agent rule |
 |---|---|---|
-| 1. Skip without tracking | `test_skips_have_tracking_reference` | `AGENTS.md § Anti-Patterns` |
+| 1. Skip without tracking | `test_skips_have_tracking_references` | `AGENTS.md § Anti-Patterns` |
 | 2. Wrong branch name → wrong automation | `gitflow-guard.yml` + `test_gitflow_documentation_is_present` | `AGENTS.md § GitFlow Branching Mandate` |
 | 3. YAML block scalar parser bug | `actionlint` pre-commit + `check-yaml` | — |
 | 4. Dead action ref | `actionlint` pre-commit | — |
-| 5. Non-ASCII in Windows PowerShell | `scripts/check_ps_ascii.sh` pre-commit | `AGENTS.md § Anti-Patterns` |
+| 5. Non-ASCII in Windows PowerShell | `scripts/check_ps_ascii.py` pre-commit | `AGENTS.md § Anti-Patterns` |
 | 6. Snapshot regen on wrong platform | — | `AGENTS.md § Anti-Patterns` |
 | 7. 3.11+ stdlib used on 3.10 floor | ruff target-version + mypy python_version | `AGENTS.md § Anti-Patterns` |
 | 8. develop rotted behind main | `test_develop_not_far_behind_main` (CI-only) | `AGENTS.md § Anti-Patterns` |

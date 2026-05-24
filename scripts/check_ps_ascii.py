@@ -26,9 +26,14 @@ import re
 import sys
 
 ASCII_HI = re.compile(r"[^\x00-\x7F]")
-SHELL_PS_RE = re.compile(r"^(\s*)shell:\s*powershell\s*$")
-SHELL_OTHER_RE = re.compile(r"^(\s*)shell:\s+(?!powershell\s*$)")
-RUN_BLOCK_RE = re.compile(r"^(\s*)run:\s*[|>][-+]?\s*$")
+# Allow optional inline YAML comment after the value
+# (`shell: powershell  # comment` is legal YAML).
+SHELL_PS_RE = re.compile(r"^(\s*)shell:\s*powershell\s*(#.*)?$")
+SHELL_OTHER_RE = re.compile(r"^(\s*)shell:\s+(?!powershell\s*(#.*)?$)")
+RUN_BLOCK_RE = re.compile(r"^(\s*)run:\s*[|>][-+]?\s*(#.*)?$")
+# Known gap: `run: *some_anchor` (YAML alias expansion) is not scanned.
+# Aliases are rare in GitHub Actions YAML; if you introduce one,
+# inline the script instead so this scanner can see it.
 
 
 def indent(line: str) -> int:
