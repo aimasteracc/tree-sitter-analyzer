@@ -590,6 +590,7 @@ class TestAnalysisEnginePerformanceExtendedTestMixin:
             successful_results = [r for r in results if isinstance(r, AnalysisResult)]
             assert len(successful_results) >= 0  # At least some should succeed
 
+    @pytest.mark.slow  # exceeds conftest 5s per-test budget on Windows CI
     @pytest.mark.asyncio
     async def test_memory_usage_with_repeated_analysis(self, engine_perf):
         """Test memory usage with repeated analysis."""
