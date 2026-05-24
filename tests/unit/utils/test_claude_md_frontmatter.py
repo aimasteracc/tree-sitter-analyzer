@@ -32,6 +32,8 @@ from tree_sitter_analyzer.utils.claude_md_frontmatter import (
     parse_intentional_design,
 )
 
+_MODULE_LOGGER = "tree_sitter_analyzer.utils.claude_md_frontmatter"
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -92,7 +94,7 @@ class TestLoadFrontmatter:
             tmp_path,
             "---\nintentional_design:\n  - id: rule_one\n    files: [unclosed\n---\n",
         )
-        with caplog.at_level(logging.WARNING):
+        with caplog.at_level(logging.WARNING, logger=_MODULE_LOGGER):
             data = load_frontmatter(tmp_path)
         assert data == {}
         assert any("frontmatter" in record.message.lower() for record in caplog.records)
@@ -107,7 +109,7 @@ class TestLoadFrontmatter:
         # A top-level YAML list (rather than mapping) is malformed for our
         # purposes — sections are named, so the root must be a dict.
         _write_claude_md(tmp_path, "---\n- not\n- a\n- mapping\n---\n")
-        with caplog.at_level(logging.WARNING):
+        with caplog.at_level(logging.WARNING, logger=_MODULE_LOGGER):
             assert load_frontmatter(tmp_path) == {}
         assert any("mapping" in record.message for record in caplog.records)
 
@@ -195,7 +197,7 @@ class TestParseIntentionalDesign:
                 }
             ]
         }
-        with caplog.at_level(logging.WARNING):
+        with caplog.at_level(logging.WARNING, logger=_MODULE_LOGGER):
             rule = parse_intentional_design(data)[0]
         assert rule.action == "INFO"
         assert any(
@@ -228,7 +230,7 @@ class TestParseIntentionalDesign:
                 {"id": "no_note", "files": ["c.py"]},  # missing note
             ]
         }
-        with caplog.at_level(logging.WARNING):
+        with caplog.at_level(logging.WARNING, logger=_MODULE_LOGGER):
             rules = parse_intentional_design(data)
         assert len(rules) == 1
         assert rules[0].id == "good"
@@ -262,7 +264,7 @@ class TestParseIntentionalDesign:
         # dict instead of a list), don't crash — log and degrade to empty.
         # An *empty* dict {} is intentionally treated as "no rules" without
         # a warning because that's how YAML often degenerates.
-        with caplog.at_level(logging.WARNING):
+        with caplog.at_level(logging.WARNING, logger=_MODULE_LOGGER):
             assert parse_intentional_design({"intentional_design": {"a": 1}}) == []
         assert any("list" in record.message.lower() for record in caplog.records)
 
@@ -273,7 +275,7 @@ class TestParseIntentionalDesign:
                 {"id": "ok", "files": ["a.py"], "note": "n"},
             ]
         }
-        with caplog.at_level(logging.WARNING):
+        with caplog.at_level(logging.WARNING, logger=_MODULE_LOGGER):
             rules = parse_intentional_design(data)
         assert len(rules) == 1
         assert rules[0].id == "ok"
@@ -301,7 +303,7 @@ class TestParseIntentionalDesign:
         # non-empty-list guard immediately after. Net effect: the
         # ``empty_files`` rule is skipped with a WARNING and only
         # ``ok`` survives.
-        with caplog.at_level(logging.WARNING):
+        with caplog.at_level(logging.WARNING, logger=_MODULE_LOGGER):
             rules = parse_intentional_design(data)
         assert {r.id for r in rules} == {"ok"}
 
@@ -354,7 +356,7 @@ class TestParseFixtureAllowlist:
                 {"note": "no path"},
             ]
         }
-        with caplog.at_level(logging.WARNING):
+        with caplog.at_level(logging.WARNING, logger=_MODULE_LOGGER):
             entries = parse_fixture_allowlist(data)
         assert len(entries) == 1
         assert entries[0].path == "good.py"
@@ -372,13 +374,13 @@ class TestParseFixtureAllowlist:
             entry.path = "mutated"  # type: ignore[misc]
 
     def test_section_is_not_list_warns(self, caplog: pytest.LogCaptureFixture) -> None:
-        with caplog.at_level(logging.WARNING):
+        with caplog.at_level(logging.WARNING, logger=_MODULE_LOGGER):
             assert parse_fixture_allowlist({"fixture_allowlist": "oops"}) == []
         assert any("list" in record.message.lower() for record in caplog.records)
 
     def test_entry_is_not_dict_skipped(self, caplog: pytest.LogCaptureFixture) -> None:
         data = {"fixture_allowlist": ["just-a-string", {"path": "ok.py"}]}
-        with caplog.at_level(logging.WARNING):
+        with caplog.at_level(logging.WARNING, logger=_MODULE_LOGGER):
             entries = parse_fixture_allowlist(data)
         assert len(entries) == 1
         assert entries[0].path == "ok.py"
