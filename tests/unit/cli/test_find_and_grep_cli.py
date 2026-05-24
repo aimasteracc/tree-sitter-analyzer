@@ -30,9 +30,17 @@ def _base_args() -> argparse.Namespace:
 
     Mirrors what ``_build_parser`` would produce so the test stays close
     to real CLI input.
+
+    Uses the cwd as the root so that even if a sibling test leaks an
+    import that bypasses our FindAndGrepTool patch (e.g. xdist worker
+    holding a stale reference on macOS), the real _validate_roots path
+    won't raise "Invalid root" because cwd always exists. This stops
+    the test from being silently order-dependent.
     """
+    import os
+
     return argparse.Namespace(
-        roots=["root1"],
+        roots=[os.getcwd()],
         query="test",
         output_format="json",
         quiet=False,

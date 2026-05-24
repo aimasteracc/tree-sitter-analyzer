@@ -26,9 +26,15 @@ from tree_sitter_analyzer.cli.commands.list_files_cli import _run
 
 
 def _base_args() -> argparse.Namespace:
-    """Build a minimal but complete Namespace for ``_run``."""
+    """Build a minimal but complete Namespace for ``_run``.
+
+    cwd as root for resilience against patch-leak on xdist workers
+    (see test_find_and_grep_cli for the full rationale).
+    """
+    import os
+
     return argparse.Namespace(
-        roots=["root1"],
+        roots=[os.getcwd()],
         output_format="json",
         quiet=False,
         project_root=None,
