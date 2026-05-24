@@ -32,9 +32,7 @@ class TestValidateBatchTopLevel:
 
     def test_rejects_file_path_with_requests(self):
         with pytest.raises(ValueError, match="mutually exclusive"):
-            _validate_batch_top_level(
-                {"requests": [], "file_path": "a.py"}
-            )
+            _validate_batch_top_level({"requests": [], "file_path": "a.py"})
 
     def test_rejects_start_line_with_requests(self):
         with pytest.raises(ValueError, match="mutually exclusive"):
@@ -58,9 +56,7 @@ class TestValidateBatchTopLevel:
 
     def test_rejects_suppress_output_with_requests(self):
         with pytest.raises(ValueError, match="not supported"):
-            _validate_batch_top_level(
-                {"requests": [], "suppress_output": True}
-            )
+            _validate_batch_top_level({"requests": [], "suppress_output": True})
 
     def test_rejects_non_list_requests(self):
         with pytest.raises(ValueError, match="must be a list"):
@@ -290,7 +286,15 @@ class TestResolveFile:
         tool = self._make_tool(str(tmp_path / "a.py"))
         f = tmp_path / "a.py"
         f.write_text("ok")
-        with patch("pathlib.Path.stat", side_effect=OSError("boom")):
+        # ``Path.exists()`` calls ``Path.stat()`` internally on CPython
+        # 3.10/3.11/3.12 — patching ``pathlib.Path.stat`` alone makes
+        # ``exists()`` raise OSError BEFORE the code under test reaches
+        # the size-check stat call. Mock ``exists()`` to keep returning
+        # True so the OSError surfaces from the right call site.
+        with (
+            patch("pathlib.Path.exists", return_value=True),
+            patch("pathlib.Path.stat", side_effect=OSError("boom")),
+        ):
             with pytest.raises(ValueError, match="Could not stat"):
                 _resolve_file(tool, "a.py", fail_fast=True)
 
@@ -298,7 +302,10 @@ class TestResolveFile:
         tool = self._make_tool(str(tmp_path / "a.py"))
         f = tmp_path / "a.py"
         f.write_text("ok")
-        with patch("pathlib.Path.stat", side_effect=OSError("boom")):
+        with (
+            patch("pathlib.Path.exists", return_value=True),
+            patch("pathlib.Path.stat", side_effect=OSError("boom")),
+        ):
             resolved, err = _resolve_file(tool, "a.py", fail_fast=False)
             assert resolved is None
             assert err is not None
