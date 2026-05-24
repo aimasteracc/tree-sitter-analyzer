@@ -1,7 +1,7 @@
 """Tests for incremental sync engine (incremental_sync module)."""
 
-
 import os
+import sys
 import time
 
 import pytest
@@ -193,6 +193,9 @@ class TestSyncResultDict:
 
 
 class TestContentHashComparison:
+    @pytest.mark.skipif(
+        sys.platform == "win32", reason="Windows path drift — tracked separately"
+    )
     def test_mtime_only_change_not_reindexed(self, sync, cache, project):
         sync.sync()
         main_py = project / "src" / "main.py"

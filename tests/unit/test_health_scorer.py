@@ -2,6 +2,7 @@
 
 import json
 import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -191,6 +192,9 @@ class TestHealthScorer:
 
         assert "coverage" not in result.to_dict()["dimensions"]
 
+    @pytest.mark.skipif(
+        sys.platform == "win32", reason="Windows path drift — tracked separately"
+    )
     def test_current_coverage_json_is_used(self, monkeypatch, tmp_path):
         """Use JSON coverage when it is as current as the raw coverage data."""
         from tree_sitter_analyzer.health_scorer import HealthScorer

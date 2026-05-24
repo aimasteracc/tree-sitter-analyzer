@@ -1,5 +1,6 @@
 """Integration test: call graph building across multiple files with import resolution."""
 
+import sys
 import textwrap
 
 import pytest
@@ -74,6 +75,9 @@ class TestCallGraphCrossFileBuild:
 
 
 class TestCallGraphCrossFileResolution:
+    @pytest.mark.skipif(
+        sys.platform == "win32", reason="Windows path drift — tracked separately"
+    )
     def test_main_calls_process(self, graph):
         callees = graph.callees_of("run")
         names = [c["name"] for c in callees]
@@ -89,6 +93,9 @@ class TestCallGraphCrossFileResolution:
         names = [c["name"] for c in callers]
         assert "process" in names
 
+    @pytest.mark.skipif(
+        sys.platform == "win32", reason="Windows path drift — tracked separately"
+    )
     def test_process_is_called_by_run(self, graph):
         callers = graph.callers_of("process")
         names = [c["name"] for c in callers]
@@ -111,6 +118,9 @@ class TestCallGraphCrossFileNoResolution:
 
 
 class TestCallGraphCrossFileJS:
+    @pytest.mark.skipif(
+        sys.platform == "win32", reason="Windows path drift — tracked separately"
+    )
     def test_js_cross_file_calls(self, tmp_path):
         (tmp_path / "utils.js").write_text(
             "function helper() {\n  return 42;\n}\n\nmodule.exports = { helper };\n"

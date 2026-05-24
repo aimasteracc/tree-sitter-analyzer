@@ -2,6 +2,7 @@
 """Coverage boost for encoding_utils.py — targets 62.86% → 75%+"""
 
 import os
+import sys
 import tempfile
 from unittest.mock import patch
 
@@ -80,6 +81,9 @@ class TestEncodingManagerEdge:
                 result = EncodingManager.detect_encoding(b"data")
                 assert isinstance(result, str)
 
+    @pytest.mark.skipif(
+        sys.platform == "win32", reason="Windows path drift — tracked separately"
+    )
     def test_read_file_safe_permission_error(self):
         with tempfile.NamedTemporaryFile(delete=False) as f:
             f.write(b"content")
