@@ -7,7 +7,10 @@ import configparser
 import re
 from pathlib import Path
 
-import tomllib
+try:
+    import tomllib  # Python 3.11+ stdlib
+except ImportError:  # Python 3.10 — fall back to the tomli back-port
+    import tomli as tomllib
 from hypothesis import settings as hypothesis_settings
 
 from tree_sitter_analyzer.cli_main import create_argument_parser
