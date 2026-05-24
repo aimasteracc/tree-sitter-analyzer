@@ -174,6 +174,7 @@ def test_registered_mcp_tools_have_cli_parity() -> None:
     tool_to_cli = {
         "check_code_scale": ("main", "--metrics-only"),
         "analyze_code_structure": ("main", "--structure"),
+        "get_code_outline": ("main", "--outline"),
         "extract_code_section": ("main", "--partial-read"),
         "query_code": ("main", "--query-key"),
         "list_files": ("script", "list-files"),

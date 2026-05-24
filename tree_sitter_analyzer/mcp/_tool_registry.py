@@ -61,6 +61,7 @@ def create_tool_registry(
     from .tools.file_health_tool import FileHealthTool
     from .tools.find_and_grep_tool import FindAndGrepTool
     from .tools.full_index_tool import CodeGraphFullIndexTool
+    from .tools.get_code_outline_tool import GetCodeOutlineTool
     from .tools.import_graph_tool import CodeGraphImportGraphTool
     from .tools.incremental_sync_tool import CodeGraphIncrementalSyncTool
     from .tools.list_files_tool import ListFilesTool
@@ -84,6 +85,13 @@ def create_tool_registry(
     tool_instances: list[tuple[str, Any]] = [
         ("check_code_scale", AnalyzeScaleTool(project_root)),
         ("analyze_code_structure", AnalyzeCodeStructureTool(project_root)),
+        # Restore registration: ``get_code_outline`` is referenced as a
+        # "next-step" by many tools (file_health, analyze_scale, query,
+        # list_files, project_overview, get_project_summary) AND is the
+        # canonical target of the ``navigate_structure`` intent alias.
+        # Dropping it from this registry left every "next step: use
+        # get_code_outline" recommendation pointing at a non-tool.
+        ("get_code_outline", GetCodeOutlineTool(project_root)),
         ("extract_code_section", ReadPartialTool(project_root)),
         ("query_code", QueryTool(project_root)),
         ("list_files", ListFilesTool(project_root)),

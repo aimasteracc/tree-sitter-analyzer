@@ -100,6 +100,9 @@ from tree_sitter_analyzer.mcp.tools.dependency_matrix_tool import (
     CodeGraphDependencyMatrixTool,  # noqa: F401
 )
 from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool  # noqa: F401
+from tree_sitter_analyzer.mcp.tools.get_code_outline_tool import (
+    GetCodeOutlineTool,  # noqa: F401
+)
 from tree_sitter_analyzer.mcp.tools.import_graph_tool import (
     CodeGraphImportGraphTool,  # noqa: F401
 )
@@ -436,6 +439,18 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
         required_file_error="--refactor requires a file path",
         build_tool_args=lambda args, output_format: {
             "file_path": args.file_path,
+            "output_format": output_format,
+        },
+    ),
+    McpCommandSpec(
+        flag_name="outline",
+        tool_attr="GetCodeOutlineTool",
+        label="Code outline",
+        required_file_error="--outline requires a file path",
+        build_tool_args=lambda args, output_format: {
+            "file_path": args.file_path,
+            "include_fields": getattr(args, "outline_include_fields", False),
+            "include_imports": getattr(args, "outline_include_imports", False),
             "output_format": output_format,
         },
     ),
@@ -940,6 +955,7 @@ def _run_tool(
 _TOOL_CLASS_NAMES: frozenset[str] = frozenset(
     {
         "FileHealthTool",
+        "GetCodeOutlineTool",
         "ParserReadinessTool",
         "ProjectHealthTool",
         "ProjectOverviewTool",

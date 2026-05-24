@@ -60,6 +60,7 @@ Categories of CLI surface:
 ### Code Quality
 - `--code-patterns` — smell detection
 - `--refactor` — concrete refactor recipes
+- `--outline` — hierarchical outline (package → class → method, no bodies)
 - `--safe-to-edit` — edit risk verdict
 - `--file-health` — per-file score
 - `--symbol-lineage NAME` — symbol history

@@ -1,7 +1,7 @@
 <!-- Generated: 2026-05-22 -->
 # MCP Tools Codemap
 
-55 MCP tools registered in [`mcp/_tool_registry.py`](../../tree_sitter_analyzer/mcp/_tool_registry.py).
+58 MCP tools registered in [`mcp/_tool_registry.py`](../../tree_sitter_analyzer/mcp/_tool_registry.py).
 All tools default to **TOON output** (locked — see `CLAUDE.md`).
 
 ## Tool Registry
@@ -10,6 +10,7 @@ All tools default to **TOON output** (locked — see `CLAUDE.md`).
 |---|---|---|
 | `check_code_scale` | `--check-scale` | Per-file metrics (LOC, complexity, classes/methods/imports counts) |
 | `analyze_code_structure` | `--table` / `--summary` | Full structural AST table |
+| `get_code_outline` | `--outline` | Hierarchical outline (package → class → method) without method bodies |
 | `extract_code_section` | `--partial-read --start-line N --end-line M` | Token-efficient line range |
 | `query_code` | `--query-key methods --filter "public=true"` | tree-sitter query DSL |
 | `list_files` | `list-files` subcommand (fd) | Discovery |

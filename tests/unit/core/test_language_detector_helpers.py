@@ -1,10 +1,7 @@
 """Tests for _language_detector_helpers.py — static config builders and path/cache helpers."""
 
 import os
-import sys
 import tempfile
-
-import pytest
 
 from tree_sitter_analyzer._language_detector_helpers import (
     build_content_pattern_weights,
@@ -143,10 +140,6 @@ class TestBuildContentPatternWeights:
         assert build_content_pattern_weights() == build_content_pattern_weights()
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Windows path drift — tracked separately",
-)
 class TestNormalizeDetectionPath:
     def test_absolute_path_unchanged_no_root(self) -> None:
         result = normalize_detection_path("/abs/path/to/file.py", None)

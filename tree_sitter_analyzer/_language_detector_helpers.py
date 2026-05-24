@@ -141,8 +141,10 @@ def normalize_detection_path(file_path: str, project_root: str | None) -> str:
     try:
         path = Path(file_path).expanduser()
         if project_root and not path.is_absolute():
-            return str((Path(project_root).expanduser() / path).resolve())
-        return str(path.resolve())
+            return str((Path(project_root).expanduser() / path).resolve()).replace(
+                "\\", "/"
+            )
+        return str(path.resolve()).replace("\\", "/")
     except Exception:
         return file_path
 

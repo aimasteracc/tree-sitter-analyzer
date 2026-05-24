@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """SearchContentTool caching and output tests — cache hits, summary, suppress output."""
 
-import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -28,10 +27,6 @@ def sample_project_structure(tmp_path: Path):
     return tmp_path
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Windows path drift — tracked separately",
-)
 class TestCacheHitBranches:
     """Tests for execute() cache-hit branches (lines 382-416)."""
 

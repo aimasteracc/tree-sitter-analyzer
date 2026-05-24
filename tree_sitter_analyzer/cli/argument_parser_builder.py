@@ -614,6 +614,14 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
         help="Refactoring suggestions: extraction plans with line ranges",
     )
     parser.add_argument(
+        "--outline",
+        action="store_true",
+        help=(
+            "Hierarchical outline (package → class → method) without "
+            "method bodies — the navigation-first view of a file."
+        ),
+    )
+    parser.add_argument(
         "--smart-context",
         action="store_true",
         help="One-call file profile: health, exports, structure, deps, edit risk",

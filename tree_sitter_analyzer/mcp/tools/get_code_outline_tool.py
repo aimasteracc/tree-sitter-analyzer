@@ -434,6 +434,14 @@ class GetCodeOutlineTool(BaseMCPTool):
                 "complexity). Use outline for navigation, use analyze_code_structure for deep analysis."
             ),
             "inputSchema": self.get_tool_schema(),
+            # MCP annotations: outline is a pure read of the parser cache —
+            # safe, idempotent, no side effects, no network calls.
+            "annotations": {
+                "readOnlyHint": True,
+                "destructiveHint": False,
+                "idempotentHint": True,
+                "openWorldHint": False,
+            },
         }
 
 

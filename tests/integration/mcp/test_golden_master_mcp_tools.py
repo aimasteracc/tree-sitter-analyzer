@@ -421,11 +421,6 @@ class TestIntentAliasInvariance:
             f"Intent alias 'extract_structure' 与原始工具 'analyze_code_structure' 返回不同结果:\n{diff}"
         )
 
-    @pytest.mark.skip(
-        reason="get_code_outline is not in the canonical _create_tool_registry "
-        "in v1.13.0+; navigate_structure alias has no resolvable target. "
-        "Restore once get_code_outline ships as a real MCP tool."
-    )
     @pytest.mark.asyncio
     async def test_navigate_structure_get_code_outline_invariance(
         self, mcp_server, temp_test_file

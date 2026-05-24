@@ -17,6 +17,7 @@ description: |
   views (200-1000 tokens).
 allowed-tools:
   - mcp__tree-sitter-analyzer__analyze_code_structure
+  - mcp__tree-sitter-analyzer__get_code_outline
   - mcp__tree-sitter-analyzer__query_code
   - mcp__tree-sitter-analyzer__code_patterns
   - mcp__tree-sitter-analyzer__semantic_classify

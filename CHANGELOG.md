@@ -101,6 +101,20 @@ beats CodeGraph on the median of the 6-repo head-to-head benchmark
   ``from __future__ import annotations`` — Python 3.10 no longer
   raises NameError on TYPE_CHECKING-only types in async signatures.
 
+### Removed
+
+- **`ToonEncoder.COMPACT_DOCSTRING_LIMIT` + automatic docstring
+  truncation** (formatters/toon_encoder.py): the encoder no longer
+  silently clips long string values to ~80 chars with an `...`
+  suffix. Callers (analysis tool envelopes, `code_patterns`, etc.)
+  now own the slice — typically a 200-char ceiling at the field
+  level — so summary lines and TOON tables don't have to fight the
+  encoder for the final shape of the payload. **Contract break for
+  downstream consumers that relied on the encoder doing this clip.**
+  See skipped contract test:
+  `tests/integration/formatters/test_toon_public_contract.py::
+  test_contract_docstring_truncation_with_ellipsis`.
+
 ### Benchmark (head-to-head vs CodeGraph)
 
 | Repo | Lang | Baseline | CodeGraph | TSA |

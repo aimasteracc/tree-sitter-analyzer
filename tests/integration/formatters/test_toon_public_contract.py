@@ -167,9 +167,13 @@ class TestToonEncoderPublicContract:
         # assert "visibility" not in output.lower()  # 可能被截断
 
     @pytest.mark.skip(
-        reason="ToonEncoder removed automatic docstring truncation in "
-        "v1.13.0 (callers now slice docstrings themselves). The contract "
-        "this test asserted no longer applies."
+        reason="ToonEncoder.COMPACT_DOCSTRING_LIMIT + automatic docstring "
+        "truncation were removed in v1.13.0 — see `### Removed` in "
+        "CHANGELOG.md under [1.13.0]. Callers (tool envelopes, "
+        "code_patterns, ...) now own the slice (typically 200-char ceiling "
+        "at the field level). Skip stays in place until either the "
+        "encoder-side clip is reintroduced or the assertion is rewritten "
+        "against a caller-side truncation path."
     )
     def test_contract_docstring_truncation_with_ellipsis(self):
         """契约：超长 docstring 被截断并添加 ... 标记"""
