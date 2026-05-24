@@ -33,17 +33,9 @@ from tree_sitter_analyzer.cli.commands.search_content_cli import _run
 
 
 def _base_args() -> argparse.Namespace:
-    """Build a minimal but complete Namespace for ``_run``.
-
-    Uses cwd as root for the same reason as test_find_and_grep_cli:
-    keeps the test resilient against patch-leak from sibling tests
-    on xdist workers — if SearchContentTool's patch ever doesn't
-    apply, the real _validate_roots won't fail because cwd exists.
-    """
-    import os
-
+    """Build a minimal but complete Namespace for ``_run``."""
     return argparse.Namespace(
-        roots=[os.getcwd()],
+        roots=["root1"],
         files=None,
         query="test",
         output_format="json",
