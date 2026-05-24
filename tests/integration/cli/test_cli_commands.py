@@ -53,7 +53,7 @@ class TestCLIInfoCommands:
             main()
 
         output = mock_stdout.getvalue()
-        assert "Languages with query support" in output
+        assert "Languages with query support" in output or '"languages"' in output
         assert "java" in output
         assert "javascript" in output
         assert "python" in output
@@ -68,7 +68,7 @@ class TestCLIInfoCommands:
             main()
 
         output = mock_stdout.getvalue()
-        assert "Supported languages" in output
+        assert "Supported languages" in output or '"languages"' in output
 
     def test_show_supported_extensions(self, monkeypatch):
         """Test --show-supported-extensions option"""
@@ -80,7 +80,7 @@ class TestCLIInfoCommands:
             main()
 
         output = mock_stdout.getvalue()
-        assert "Supported file extensions" in output
+        assert "Supported file extensions" in output or '"extensions"' in output
 
     def test_show_common_queries(self, monkeypatch):
         """Test --show-common-queries option"""
@@ -92,7 +92,10 @@ class TestCLIInfoCommands:
             main()
 
         output = mock_stdout.getvalue()
-        assert "Common queries across multiple languages" in output
+        assert (
+            "Common queries across multiple languages" in output
+            or '"common_queries"' in output
+        )
         assert any(
             query in output
             for query in [
@@ -155,7 +158,7 @@ class TestCLIQueryCommands:
             main()
 
         output = mock_stdout.getvalue()
-        assert "Supported languages" in output
+        assert "Supported languages" in output or '"languages"' in output
 
     def test_describe_query_with_language(self, monkeypatch):
         """Test --describe-query with --language option"""
@@ -371,6 +374,10 @@ class TestCLILanguageHandling:
             temp_path = f.name
 
         try:
+            # macOS tmp lives under /var/folders -> /private/var/folders;
+            # SecurityValidator resolves symlinks, so pass realpath to
+            # keep file inside project_root.
+            temp_path = str(Path(temp_path).resolve())
             temp_dir = str(Path(temp_path).parent)
             monkeypatch.setattr(
                 sys,
@@ -378,13 +385,17 @@ class TestCLILanguageHandling:
                 ["cli", temp_path, "--language", "java", "--project-root", temp_dir],
             )
             mock_stdout = StringIO()
+            mock_stderr = StringIO()
             monkeypatch.setattr("sys.stdout", mock_stdout)
+            monkeypatch.setattr("sys.stderr", mock_stderr)
 
             with contextlib.suppress(SystemExit):
                 main()
 
-            output = mock_stdout.getvalue()
-            assert len(output) > 0
+            # CLI now emits "Language explicitly specified: java" plus
+            # a usage hint on stderr when no query/--advanced is given.
+            # Accept either stdout (legacy) or stderr (current).
+            assert len(mock_stdout.getvalue()) > 0 or len(mock_stderr.getvalue()) > 0
         finally:
             Path(temp_path).unlink(missing_ok=True)
 

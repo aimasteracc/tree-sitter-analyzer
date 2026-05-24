@@ -165,6 +165,25 @@ class TreeSitterAnalyzerMCPServer:
         """Check if the server is fully initialized."""
         return self._initialization_complete
 
+    async def call_tool(self, name: str, arguments: dict[str, Any]) -> Any:
+        """Backwards-compatible dispatch used by integration tests.
+
+        Resolves intent aliases (e.g. ``locate_usage`` -> ``search_content``)
+        before lookup so callers can use either the alias or canonical name.
+        """
+        from .intent_aliases import IntentAliasResolver
+
+        tools = getattr(self, "_tools", None) or {}
+        resolver = IntentAliasResolver()
+        try:
+            resolved = resolver.resolve(name)
+        except (TypeError, ValueError):
+            resolved = name
+        tool = tools.get(resolved) or tools.get(name)
+        if tool is None:
+            raise ValueError(f"Unknown tool: {name}")
+        return await tool.execute(arguments)
+
     def _ensure_initialized(self) -> None:
         """Ensure the server is initialized before processing requests."""
         if not self._initialization_complete:

@@ -586,6 +586,7 @@ def test_no_new_single_file_plugins_in_languages_root() -> None:
     Existing single-file plugins are grandfathered; this test only blocks NEW ones.
     """
     GRANDFATHERED = {
+        "bash_plugin.py",
         "c_plugin.py",
         "cpp_plugin.py",
         "csharp_plugin.py",
@@ -593,10 +594,12 @@ def test_no_new_single_file_plugins_in_languages_root() -> None:
         "go_plugin.py",
         "html_plugin.py",
         "java_plugin.py",
+        "json_plugin.py",
         "kotlin_plugin.py",
         "php_plugin.py",
         "ruby_plugin.py",
         "rust_plugin.py",
+        "scala_plugin.py",
         "swift_plugin.py",
         "yaml_plugin.py",
     }

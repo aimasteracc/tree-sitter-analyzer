@@ -41,8 +41,15 @@ class TestReadPartialToolEdgeCases:
 
         result = await tool.execute(args)
         assert isinstance(result, dict)
-        # Empty file should return empty content or appropriate message
-        assert "partial_content_result" in result or "error" in result
+        # Empty file should return empty content or appropriate message.
+        # v1.13.0+ envelope replaces partial_content_result with
+        # content/agent_summary/content_length keys.
+        assert (
+            "partial_content_result" in result
+            or "error" in result
+            or "content" in result
+            or "agent_summary" in result
+        )
 
     @pytest.mark.asyncio
     async def test_execute_with_single_line_file(self, tool, temp_dir):
