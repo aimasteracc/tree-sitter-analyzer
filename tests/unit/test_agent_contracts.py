@@ -62,7 +62,10 @@ def _assert_pytest_runtime_contract(
         "--numprocesses=auto",
         "--dist=loadfile",
         "--timeout=180",
-        "--session-timeout=300",
+        # 600s ceiling: the suite passes in ~5 min on CI but the
+        # old 300s budget left zero headroom and caused intermittent
+        # session-timeout kills on slower runners.
+        "--session-timeout=600",
         "--benchmark-disable",
     }
 

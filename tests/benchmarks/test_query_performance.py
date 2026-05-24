@@ -213,12 +213,6 @@ class MyClass:
         duration = end_time - start_time
         assert duration < 5.0, f"JSON format query took too long: {duration:.2f}s"
 
-    @pytest.mark.skip(
-        reason="query_code tool no longer accepts max_count param; "
-        "tracked separately — re-enable once the limiter is "
-        "re-introduced or the test is rewritten to call a paginating "
-        "tool that exposes the limit through its schema."
-    )
     @pytest.mark.asyncio
     async def test_query_with_max_count_performance(self):
         """Test performance of query with max_count limit."""

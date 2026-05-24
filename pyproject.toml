@@ -566,7 +566,7 @@ addopts = [
     "--numprocesses=auto",
     "--dist=loadfile",
     "--timeout=180",
-    "--session-timeout=300",
+    "--session-timeout=600",
     "--benchmark-disable",
 ]
 markers = [

@@ -74,6 +74,16 @@ TOOL_SCHEMA: dict[str, Any] = {
             "default": False,
             "description": "If true with output_file, suppress detailed output and return metadata only",
         },
+        # Cap result count — implementation lives in _apply_max_count_cap.
+        # Declared here so additionalProperties=False does not reject it.
+        "max_count": {
+            "type": "integer",
+            "minimum": 1,
+            "description": (
+                "Cap result count. Returns first N matches plus "
+                "truncated=true / total_count metadata."
+            ),
+        },
     },
     # F5: refuse unknown keys with did-you-mean. Enforced centrally by
     # BaseMCPTool.__init_subclass__ — declared here for completeness.
