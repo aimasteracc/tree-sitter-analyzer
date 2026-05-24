@@ -119,7 +119,7 @@ class IncrementalSync:
         for abs_path in _walk_source_files(self._cache.project_root):
             if count >= max_files:
                 break
-            rel = os.path.relpath(abs_path, self._cache.project_root)
+            rel = os.path.relpath(abs_path, self._cache.project_root).replace("\\", "/")
             try:
                 stat = os.stat(abs_path)
                 disk_files[rel] = {
@@ -258,7 +258,7 @@ class IncrementalSync:
 
         disk_files: dict[str, dict[str, Any]] = {}
         for abs_path in _walk_source_files(self._cache.project_root):
-            rel = os.path.relpath(abs_path, self._cache.project_root)
+            rel = os.path.relpath(abs_path, self._cache.project_root).replace("\\", "/")
             try:
                 stat = os.stat(abs_path)
                 disk_files[rel] = {

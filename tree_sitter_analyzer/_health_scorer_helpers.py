@@ -55,7 +55,7 @@ def calculate_git_hotspot(
         return None
 
     try:
-        pathspec = str(path.relative_to(repo_root))
+        pathspec = str(path.relative_to(repo_root)).replace("\\", "/")
     except ValueError:
         return None
 

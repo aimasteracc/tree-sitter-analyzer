@@ -79,12 +79,6 @@ def test_cli_import_error_fallback() -> None:
     import importlib
     import sys
 
-    cli_mods_snapshot = {
-        m: sys.modules[m]
-        for m in list(sys.modules)
-        if m.startswith("tree_sitter_analyzer.cli")
-    }
-
     block_list = {
         "tree_sitter_analyzer.cli_main",
         "tree_sitter_analyzer.core.analysis_engine",
@@ -115,12 +109,18 @@ def test_cli_import_error_fallback() -> None:
         )
     finally:
         sys.meta_path.remove(finder)
+        # Drop every module this test may have polluted (cli + the
+        # blocked imports themselves) and force a fresh import. The
+        # earlier "restore from snapshot" approach was unreliable
+        # because the snapshot was often empty on xdist workers and
+        # because `cli_main` could be cached in a None-resolved state.
+        polluted = (
+            "tree_sitter_analyzer.cli",
+            "tree_sitter_analyzer.cli_main",
+            "tree_sitter_analyzer.core.analysis_engine",
+            "tree_sitter_analyzer.query_loader",
+        )
         for mod in list(sys.modules):
-            if mod.startswith("tree_sitter_analyzer.cli"):
+            if mod.startswith("tree_sitter_analyzer.cli") or mod in polluted:
                 del sys.modules[mod]
-        sys.modules.update(cli_mods_snapshot)
-        # Force a fresh import so subsequent tests see real exports
-        # instead of the None-fallback state this test leaves behind
-        # when the snapshot is empty (xdist loadfile order).
-        if "tree_sitter_analyzer.cli" not in sys.modules:
-            importlib.import_module("tree_sitter_analyzer.cli")
+        importlib.import_module("tree_sitter_analyzer.cli")

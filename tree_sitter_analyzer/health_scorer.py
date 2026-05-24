@@ -818,7 +818,7 @@ def score_dependencies(file_path: str) -> float:
         project_root = find_project_root(path)
 
         graph = DependencyGraph(str(project_root))
-        rel = str(path.relative_to(project_root))
+        rel = str(path.relative_to(project_root)).replace("\\", "/")
 
         fan_out = len(graph.dependencies_of(rel))
         fan_in = len(graph.dependents_of(rel))

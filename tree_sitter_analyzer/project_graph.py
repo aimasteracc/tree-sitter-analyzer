@@ -76,7 +76,7 @@ def _resolve_relative_import(module_path: str, current_file_rel: str) -> str | N
     module_file = module_rest.replace(".", "/") + ".py"
 
     resolved = target_dir / module_file
-    return str(resolved)
+    return str(resolved).replace("\\", "/")
 
 
 def _relative_init_candidate(module_path: str, current_file_rel: str) -> str | None:
@@ -107,7 +107,7 @@ def _relative_init_candidate(module_path: str, current_file_rel: str) -> str | N
         candidate = target_dir / "__init__.py"
     else:
         candidate = target_dir / module_rest.replace(".", "/") / "__init__.py"
-    return str(candidate)
+    return str(candidate).replace("\\", "/")
 
 
 def _relative_anchor_init(module_path: str, current_file_rel: str) -> str | None:
@@ -426,7 +426,7 @@ class DependencyGraph:
         rel_to_abs: dict[str, str] = {}
         for f in all_files:
             try:
-                rel = str(f.relative_to(self.project_root))
+                rel = str(f.relative_to(self.project_root)).replace("\\", "/")
                 rel_to_abs[rel] = str(f)
                 self._nodes.add(rel)
             except ValueError:
