@@ -42,7 +42,7 @@ class TestPerformanceMetrics:
     """Tests for PerformanceMetrics dataclass."""
 
     def test_metrics_creation(self):
-        from datetime import UTC, datetime
+        from datetime import datetime, timezone
 
         metrics = PerformanceMetrics(
             test_name="test",
@@ -54,7 +54,7 @@ class TestPerformanceMetrics:
             file_size_bytes=1024,
             element_count=5,
             format_type="full",
-            timestamp=datetime.now(UTC).isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
             success=True,
         )
         assert metrics.test_name == "test"
@@ -63,7 +63,7 @@ class TestPerformanceMetrics:
         assert metrics.error_message is None
 
     def test_metrics_with_error(self):
-        from datetime import UTC, datetime
+        from datetime import datetime, timezone
 
         metrics = PerformanceMetrics(
             test_name="fail",
@@ -75,7 +75,7 @@ class TestPerformanceMetrics:
             file_size_bytes=0,
             element_count=0,
             format_type="full",
-            timestamp=datetime.now(UTC).isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
             success=False,
             error_message="boom",
         )
@@ -106,7 +106,5 @@ class TestPerformanceTesterHelpers:
 
     def test_calculate_scalability_factor_linear(self):
         tester = PerformanceTester()
-        factor = tester._calculate_scalability_factor(
-            [100, 200, 400], [1.0, 2.0, 4.0]
-        )
+        factor = tester._calculate_scalability_factor([100, 200, 400], [1.0, 2.0, 4.0])
         assert abs(factor - 1.0) < 0.1

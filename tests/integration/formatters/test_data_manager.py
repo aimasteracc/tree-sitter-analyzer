@@ -13,7 +13,7 @@ import sqlite3
 import string
 from contextlib import closing
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -199,7 +199,7 @@ class FormatTestDataGenerator:
             complexity_level=complexity,
             file_size_bytes=len(source_code.encode()),
             element_counts=element_counts,
-            created_timestamp=datetime.now(UTC).isoformat(),
+            created_timestamp=datetime.now(timezone.utc).isoformat(),
             version="1.0.0",
             tags=[language, complexity, "generated"],
             source_hash=source_hash,
@@ -352,7 +352,7 @@ class FormatTestDataRepository:
             (test_data_id, usage_timestamp, test_type, result)
             VALUES (?, ?, ?, ?)
         """,
-            (test_data_id, datetime.now(UTC).isoformat(), test_type, result),
+            (test_data_id, datetime.now(timezone.utc).isoformat(), test_type, result),
         )
 
         conn.commit()

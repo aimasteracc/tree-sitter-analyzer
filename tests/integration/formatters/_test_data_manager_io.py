@@ -2,7 +2,7 @@
 
 import json
 from dataclasses import asdict
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -128,7 +128,7 @@ def _write_export_manifest(
     with open(manifest_file, "w", encoding="utf-8") as f:
         json.dump(
             {
-                "export_timestamp": datetime.now(UTC).isoformat(),
+                "export_timestamp": datetime.now(timezone.utc).isoformat(),
                 "exported_count": exported_count,
                 "filters_applied": filters or {},
                 "test_data_ids": [m.id for m in test_data_list],

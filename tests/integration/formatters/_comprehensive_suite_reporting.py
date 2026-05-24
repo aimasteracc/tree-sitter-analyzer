@@ -1,7 +1,7 @@
 """Result persistence and report generation for comprehensive formatter suite."""
 
 import json
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -28,7 +28,7 @@ async def save_comprehensive_results(
     """Save comprehensive test results."""
     results_file = (
         results_dir
-        / f"comprehensive_results_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}.json"
+        / f"comprehensive_results_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.json"
     )
 
     with open(results_file, "w") as output_file:
@@ -44,7 +44,8 @@ async def generate_summary_report(
 ) -> None:
     """Generate summary report."""
     report_file = (
-        results_dir / f"summary_report_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}.md"
+        results_dir
+        / f"summary_report_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.md"
     )
 
     report_content = "\n".join(_summary_report_lines(config, results))

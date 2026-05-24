@@ -1,7 +1,7 @@
 """Models and result helpers for the comprehensive formatter test suite."""
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 
 
@@ -84,7 +84,7 @@ def finalize_test_suite_results(
     start_time: datetime,
 ) -> None:
     """Populate final timing and success-rate metrics."""
-    end_time = datetime.now(UTC)
+    end_time = datetime.now(timezone.utc)
     results.execution_time_seconds = (end_time - start_time).total_seconds()
 
     if results.total_tests > 0:

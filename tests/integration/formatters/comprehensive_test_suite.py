@@ -5,7 +5,7 @@ Main test suite that integrates all format testing components.
 Provides unified interface for running all format validation tests.
 """
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -102,7 +102,7 @@ class ComprehensiveFormatTestSuite(
         test_data_sources: list[dict[str, Any]] | None = None,
     ) -> TestSuiteResults:
         """Run comprehensive format testing suite"""
-        start_time = datetime.now(UTC)
+        start_time = datetime.now(timezone.utc)
 
         print("🚀 Starting Comprehensive Format Testing Suite")
         print(f"Configuration: {self.config}")

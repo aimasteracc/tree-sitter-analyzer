@@ -43,7 +43,7 @@ repos:
       - id: debug-statements
       - id: name-tests-test
         args: [--pytest-test-first]
-        exclude: ^tests/.*/_.*\.py$|^tests/integration/formatters/(cross_version_compatibility|format_monitor|generate_compatibility_report|update_baselines|validate_golden_masters|format_assertions|integration_tests|format_contract_tests|comprehensive_test_suite|enhanced_assertions|cross_component_tests|schema_validation|specification_compliance_tests|performance_tests|generate_regression_report|golden_master|end_to_end_tests)\.py$|^tests/integration/workflows/validate_.*\.py$|^tests/fixtures/.*\.py$
+        exclude: ^tests/.*/_.*\.py$|^tests/integration/formatters/(cross_version_compatibility|format_monitor|generate_compatibility_report|update_baselines|validate_golden_masters|format_assertions|integration_tests|format_contract_tests|comprehensive_test_suite|enhanced_assertions|cross_component_tests|schema_validation|specification_compliance_tests|performance_tests|performance_tests_helpers|performance_tests_tests|generate_regression_report|golden_master|end_to_end_tests)\.py$|^tests/integration/workflows/validate_.*\.py$|^tests/fixtures/.*\.py$
 
   # Security checks
   - repo: https://github.com/Yelp/detect-secrets
