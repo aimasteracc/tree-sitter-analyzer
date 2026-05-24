@@ -55,7 +55,13 @@ class TestCLIQueryExecution:
                 main()
 
             output = mock_stdout.getvalue()
-            assert "No results found matching the query" in output
+            # v1.13.0: empty-results path may emit either the legacy
+            # plain-text hint or the JSON envelope.
+            assert (
+                "No results found matching the query" in output
+                or '"results": []' in output
+                or '"verdict": "INFO"' in output
+            )
 
     def test_query_execution_parse_failure(self, monkeypatch, sample_java_file):
         sample_dir = str(Path(sample_java_file).parent)

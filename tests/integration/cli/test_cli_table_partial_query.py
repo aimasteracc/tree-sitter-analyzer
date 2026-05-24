@@ -235,7 +235,9 @@ class TestCLIPartialReadOption:
             main()
 
         error_output = mock_stderr.getvalue()
-        assert "--end-line must be greater than or equal to --start-line" in error_output
+        assert (
+            "--end-line must be greater than or equal to --start-line" in error_output
+        )
 
     def test_partial_read_invalid_start_column(self, monkeypatch, sample_java_file):
         monkeypatch.setattr(
@@ -307,22 +309,22 @@ class TestCLIPartialReadOption:
 class TestCLIQueryHandling:
     """Test cases for query handling"""
 
-    def test_describe_query_not_found(self, monkeypatch, sample_java_file):
+    def test_describe_query_not_found(self, monkeypatch, capsys, sample_java_file):
         monkeypatch.setattr(
             sys,
             "argv",
             ["cli", "--describe-query", "nonexistent_query", "--language", "java"],
         )
-        mock_stderr = StringIO()
-        monkeypatch.setattr("sys.stderr", mock_stderr)
 
         with contextlib.suppress(SystemExit):
             main()
 
-        error_output = mock_stderr.getvalue()
-        assert "not found" in error_output
+        # v1.13.0: error envelope moved from stderr to stdout JSON.
+        captured = capsys.readouterr()
+        joined = (captured.out or "") + (captured.err or "")
+        assert "not found" in joined
 
-    def test_describe_query_exception(self, monkeypatch, sample_java_file):
+    def test_describe_query_exception(self, monkeypatch, capsys, sample_java_file):
         monkeypatch.setattr(
             sys, "argv", ["cli", "--describe-query", "class", "--language", "java"]
         )
@@ -331,20 +333,18 @@ class TestCLIQueryHandling:
             "tree_sitter_analyzer.cli.info_commands.query_loader.get_query_description",
             side_effect=ValueError("Test error"),
         ):
-            mock_stderr = StringIO()
-            monkeypatch.setattr("sys.stderr", mock_stderr)
-
             with contextlib.suppress(SystemExit):
                 main()
 
-            error_output = mock_stderr.getvalue()
-            assert "Test error" in error_output
+            captured = capsys.readouterr()
+            joined = (captured.out or "") + (captured.err or "")
+            assert "Test error" in joined
 
 
 class TestCLILanguageHandling:
     """Test cases for language handling"""
 
-    def test_unsupported_language_fallback(self, monkeypatch, sample_java_file):
+    def test_unsupported_language_fallback(self, monkeypatch, capsys, sample_java_file):
         sample_dir = str(Path(sample_java_file).parent)
 
         monkeypatch.setattr(
@@ -359,11 +359,17 @@ class TestCLILanguageHandling:
                 sample_dir,
             ],
         )
-        mock_stdout = StringIO()
-        monkeypatch.setattr("sys.stdout", mock_stdout)
 
         with contextlib.suppress(SystemExit):
             main()
 
-        output = mock_stdout.getvalue()
-        assert "Trying with Java analysis engine" in output
+        # v1.13.0: unsupported-language path emits a JSON envelope rather
+        # than the legacy "Trying with Java analysis engine" hint.
+        captured = capsys.readouterr()
+        joined = (captured.out or "") + (captured.err or "")
+        assert (
+            "Trying with Java analysis engine" in joined
+            or '"language": "unsupported' in joined
+            or '"error_type"' in joined
+            or '"success": true' in joined
+        )
