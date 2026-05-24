@@ -467,6 +467,19 @@ class CallGraph:
 
         parser = Parser()
 
+        # Two-pass build so cross-file call resolution doesn't depend on
+        # filesystem iteration order. Pass 1 indexes every file's defs into
+        # ``self._func_by_name`` / ``_func_by_qualified``; Pass 2 then walks
+        # the saved calls and resolves them against a now-complete index.
+        # Previously the def-add and call-resolve ran in the same loop body,
+        # so file A calling into file B would silently drop the edge when A
+        # was iterated first — macOS APFS happens to iterate ``main.py``
+        # last in test fixtures so it passed there, while Linux ext4 +
+        # Windows hit the trap. Tracked across PR #133.
+        per_file: list[
+            tuple[str, str, str, dict[str, FunctionRef], list[dict[str, Any]]]
+        ] = []
+
         for rel_path, abs_path in rel_to_abs.items():
             language = _language_from_ext(rel_path)
             if language is None:
@@ -502,6 +515,10 @@ class CallGraph:
                 self._func_by_qualified[qname] = ref
                 file_funcs[defn["name"]] = ref
 
+            per_file.append((rel_path, abs_path, language, file_funcs, calls))
+
+        # Pass 2: resolve calls against the fully-populated index.
+        for rel_path, _abs_path, _language, file_funcs, calls in per_file:
             for call in calls:
                 caller_ref = self._find_enclosing_func(file_funcs, call["line"])
                 if caller_ref is None:

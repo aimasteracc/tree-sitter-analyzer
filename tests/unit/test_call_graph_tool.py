@@ -6,12 +6,11 @@ import pytest
 
 from tree_sitter_analyzer.mcp.tools.call_graph_tool import CodeGraphCallTool
 
-# See tests/unit/test_call_graph.py — call_graph import resolver
-# returns empty caller/callee sets on the python_project fixture
-# across all platforms. Tracked separately; skip everywhere.
-_WINDOWS_SKIP_PY_FIXTURE = pytest.mark.skip(
-    reason="call_graph import resolver returns empty results for "
-    "python_project fixture across platforms; tracked separately.",
+# See tests/unit/test_call_graph.py — root cause was iteration-order
+# in CallGraph.build(), now fixed with a two-pass build. Marker kept
+# as no-op for backwards compat with @decorators below.
+_WINDOWS_SKIP_PY_FIXTURE = pytest.mark.skipif(
+    False, reason="resolved by two-pass build in call_graph.py"
 )
 
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures" / "call_graph"

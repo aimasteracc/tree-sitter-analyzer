@@ -18,15 +18,17 @@ from tree_sitter_analyzer.call_graph import (
 )
 from tree_sitter_analyzer.core.parser import Parser
 
-# The import resolver in CachedCallGraph currently returns empty
-# caller/callee sets for the python_project fixture across ALL CI
-# platforms (Linux + macOS + Windows). Originally suspected Windows-only
-# but the failures reproduce on all three OSes. Tracked separately —
-# skip everywhere to keep the matrix green while the underlying fix
-# is in-flight. (Name kept for backwards compat with @decorators below.)
-_WINDOWS_SKIP_PY_FIXTURE = pytest.mark.skip(
-    reason="call_graph import resolver returns empty results for "
-    "python_project fixture across platforms; tracked separately.",
+# Historical: this marker first gated three call_graph cross-file
+# resolution tests as Windows-only. Then we discovered Linux CI fails
+# too and broadened the skip to all platforms. The real root cause was
+# an iteration-order bug in ``CallGraph.build()`` — def-add and call-
+# resolve happened in the same loop, so cross-file edges silently
+# dropped whenever the calling file was iterated before its callees.
+# The fix is now in place (two-pass build); leaving the alias as a
+# no-op marker so existing @_WINDOWS_SKIP_PY_FIXTURE decorators below
+# stay syntactically valid but become inert.
+_WINDOWS_SKIP_PY_FIXTURE = pytest.mark.skipif(
+    False, reason="resolved by two-pass build in call_graph.py"
 )
 
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures" / "call_graph"
