@@ -49,19 +49,41 @@ runs:
       if: inputs.os == 'windows-latest'
       run: |
         Write-Host "Installing fd and ripgrep on Windows..."
-        choco install fd ripgrep -y
+        # NOTE: keep this block ASCII-only. The runner's `powershell`
+        # (Windows PowerShell 5.1) reads the inline script as cp1252,
+        # so UTF-8 emoji from this YAML get mojibake'd into
+        # `Write-Host "<garbage>"` and trip
+        # TerminatorExpectedAtEndOfString. Switching to `pwsh`
+        # (PowerShell Core, UTF-8 by default) is the long-term fix,
+        # but Windows runners ship `powershell` first.
+        #
+        # Install each package separately - `choco install fd ripgrep -y`
+        # has been observed to silently skip fd while reporting
+        # "1/1 packages" (likely ripgrep being pre-installed on the
+        # runner image and consuming the slot). Separate calls also
+        # surface per-package failure exit codes.
+        choco install fd -y --no-progress
+        if ($LASTEXITCODE -ne 0) { Write-Host "::error::choco install fd failed"; exit 1 }
+        choco install ripgrep -y --no-progress
+        if ($LASTEXITCODE -ne 0) { Write-Host "::error::choco install ripgrep failed"; exit 1 }
+
+        # Refresh PATH inside this PowerShell session so the just-installed
+        # binaries are visible to fd --version / rg --version. Chocolatey
+        # writes to the Machine PATH but the current session inherits a
+        # snapshot taken at startup.
+        $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
 
         # Verify installation
         Write-Host "Verifying installation..."
         fd --version
         if ($LASTEXITCODE -ne 0) {
-          Write-Host "❌ fd installation failed"
+          Write-Host "::error::fd not found after install - PATH refresh failed"
           exit 1
         }
         rg --version
         if ($LASTEXITCODE -ne 0) {
-          Write-Host "❌ ripgrep installation failed"
+          Write-Host "::error::ripgrep not found after install - PATH refresh failed"
           exit 1
         }
-        Write-Host "✅ System dependencies installed successfully on Windows"
+        Write-Host "[OK] System dependencies installed successfully on Windows"
       shell: powershell
