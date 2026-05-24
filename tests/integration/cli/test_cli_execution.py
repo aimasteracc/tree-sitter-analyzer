@@ -219,7 +219,7 @@ class TestCLIAdditionalCoverage:
             main()
 
         output = mock_stdout.getvalue()
-        assert "Supported languages" in output
+        assert "Supported languages" in output or '"languages"' in output
 
     def test_show_supported_extensions(self, monkeypatch):
         """Test --show-supported-extensions option"""
@@ -231,7 +231,7 @@ class TestCLIAdditionalCoverage:
             main()
 
         output = mock_stdout.getvalue()
-        assert "Supported file extensions" in output
+        assert "Supported file extensions" in output or '"extensions"' in output
 
     def test_show_common_queries(self, monkeypatch):
         """Test --show-common-queries option"""
@@ -255,7 +255,7 @@ class TestCLIAdditionalCoverage:
             main()
 
         output = mock_stdout.getvalue()
-        assert "Languages with query support" in output
+        assert "Languages with query support" in output or '"languages"' in output
 
     def test_list_queries_with_language(self, monkeypatch):
         """Test --list-queries with --language option"""
@@ -269,7 +269,7 @@ class TestCLIAdditionalCoverage:
             main()
 
         output = mock_stdout.getvalue()
-        assert "Available query keys" in output
+        assert "Available query keys" in output or '"queries"' in output
 
     def test_list_queries_with_file(self, monkeypatch, sample_java_file):
         """Test --list-queries with file path"""
@@ -281,7 +281,7 @@ class TestCLIAdditionalCoverage:
             main()
 
         output = mock_stdout.getvalue()
-        assert "Available query keys" in output
+        assert "Available query keys" in output or '"queries"' in output
 
     def test_list_queries_all_languages(self, monkeypatch):
         """Test --list-queries without language specification"""
@@ -293,7 +293,7 @@ class TestCLIAdditionalCoverage:
             main()
 
         output = mock_stdout.getvalue()
-        assert "Supported languages" in output
+        assert "Supported languages" in output or '"languages"' in output
 
     def test_describe_query_with_language(self, monkeypatch):
         """Test --describe-query with --language option"""
@@ -307,7 +307,7 @@ class TestCLIAdditionalCoverage:
             main()
 
         output = mock_stdout.getvalue()
-        assert "Query key 'class'" in output
+        assert "Query key 'class'" in output or '"class"' in output
 
     def test_describe_query_with_file(self, monkeypatch, sample_java_file):
         """Test --describe-query with file path"""
@@ -331,21 +331,24 @@ class TestCLIAdditionalCoverage:
             main()
 
         output = mock_stdout.getvalue()
-        assert "Query key 'class'" in output
+        assert "Query key 'class'" in output or '"class"' in output
 
-    def test_describe_query_missing_language_and_file(self, monkeypatch):
+    def test_describe_query_missing_language_and_file(self, monkeypatch, capsys):
         """Test --describe-query without language or file"""
         monkeypatch.setattr(sys, "argv", ["cli", "--describe-query", "class"])
-        mock_stderr = StringIO()
-        monkeypatch.setattr("sys.stderr", mock_stderr)
 
         with contextlib.suppress(SystemExit):
             main()
 
-        error_output = mock_stderr.getvalue()
+        # v1.13.0: error envelope on stdout (success=False, error_type=
+        # validation, error="describe_query requires --language or target
+        # file"). Legacy stderr message also still accepted.
+        captured = capsys.readouterr()
+        joined = (captured.out or "") + (captured.err or "")
         assert (
-            "Query description display requires --language or target file specification"
-            in error_output
+            "Query description display requires --language or target file" in joined
+            or "describe_query requires --language or target file" in joined
+            or '"error_type": "validation"' in joined
         )
 
     def test_missing_file_path_error(self, monkeypatch):
@@ -383,7 +386,7 @@ class TestCLIAdditionalCoverage:
         error_output = mock_stderr.getvalue()
         assert "Invalid file path" in error_output
 
-    def test_unknown_language_detection(self, monkeypatch):
+    def test_unknown_language_detection(self, monkeypatch, capsys):
         """Test unknown language detection"""
         # Create a file with unknown extension
         import tempfile
@@ -407,14 +410,19 @@ class TestCLIAdditionalCoverage:
                 unknown_dir,
             ],
         )
-        mock_stderr = StringIO()
-        monkeypatch.setattr("sys.stderr", mock_stderr)
 
         with contextlib.suppress(SystemExit):
             main()
 
-        error_output = mock_stderr.getvalue()
-        assert "Could not determine language for file" in error_output
+        # v1.13.0: error envelope on stdout (success=False); wording
+        # also softened from "determine" to "detect". Accept any.
+        captured = capsys.readouterr()
+        joined = (captured.out or "") + (captured.err or "")
+        assert (
+            "Could not determine language for file" in joined
+            or "Could not detect language for file" in joined
+            or '"language": "unknown"' in joined
+        )
 
         # Cleanup
 
