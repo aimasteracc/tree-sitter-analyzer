@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """SQL Language Plugin — wrapper class and query definitions."""
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -170,8 +172,8 @@ class SQLPlugin(LanguagePlugin):
         return result
 
     async def analyze_file(
-        self, file_path: str, request: "AnalysisRequest"
-    ) -> "AnalysisResult":
+        self, file_path: str, request: AnalysisRequest
+    ) -> AnalysisResult:
         """
         Analyze SQL file and return structured results.
 

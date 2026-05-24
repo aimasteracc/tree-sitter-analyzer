@@ -5,6 +5,8 @@ Rust Language Plugin
 Provides Rust-specific parsing and element extraction functionality.
 """
 
+from __future__ import annotations
+
 import re
 from typing import TYPE_CHECKING, Any
 
@@ -20,7 +22,7 @@ from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error
 
 
-def _rust_function_is_async(node: "tree_sitter.Node") -> bool:
+def _rust_function_is_async(node: tree_sitter.Node) -> bool:
     """Return ``True`` when ``node`` carries an ``async`` modifier.
 
     r37bz (dogfood): extracted from ``_extract_function`` to flatten its
@@ -52,7 +54,7 @@ class RustElementExtractor(ElementExtractor):
         self.modules: list[dict[str, Any]] = []
 
     def extract_functions(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[Function]:
         """Extract Rust function declarations"""
         self.source_code = source_code
@@ -71,9 +73,7 @@ class RustElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(functions)} Rust functions")
         return functions
 
-    def extract_classes(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Class]:
+    def extract_classes(self, tree: tree_sitter.Tree, source_code: str) -> list[Class]:
         """Extract Rust struct, enum, trait, and impl definitions"""
         self.source_code = source_code
         self.content_lines = source_code.split("\n")
@@ -108,7 +108,7 @@ class RustElementExtractor(ElementExtractor):
         return classes
 
     def extract_variables(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[Variable]:
         """Extract Rust struct fields"""
         self.source_code = source_code
@@ -131,9 +131,7 @@ class RustElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(variables)} Rust fields")
         return variables
 
-    def extract_imports(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Import]:
+    def extract_imports(self, tree: tree_sitter.Tree, source_code: str) -> list[Import]:
         """Extract Rust use declarations"""
         self.source_code = source_code
         self.content_lines = source_code.split("\n")
@@ -155,7 +153,7 @@ class RustElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(imports)} Rust imports")
         return imports
 
-    def _extract_import(self, node: "tree_sitter.Node") -> Import | None:
+    def _extract_import(self, node: tree_sitter.Node) -> Import | None:
         """Extract import statement (use declaration)"""
         try:
             raw_text = self._get_node_text(node)
@@ -193,7 +191,7 @@ class RustElementExtractor(ElementExtractor):
 
     def _traverse_and_extract(
         self,
-        node: "tree_sitter.Node",
+        node: tree_sitter.Node,
         extractors: dict[str, Any],
         results: list[Any],
     ) -> None:
@@ -206,7 +204,7 @@ class RustElementExtractor(ElementExtractor):
         for child in node.children:
             self._traverse_and_extract(child, extractors, results)
 
-    def _extract_modules(self, node: "tree_sitter.Node") -> None:
+    def _extract_modules(self, node: tree_sitter.Node) -> None:
         """Extract module information"""
         if node.type == "mod_item":
             self._extract_module(node)
@@ -214,7 +212,7 @@ class RustElementExtractor(ElementExtractor):
         for child in node.children:
             self._extract_modules(child)
 
-    def _extract_module(self, node: "tree_sitter.Node") -> None:
+    def _extract_module(self, node: tree_sitter.Node) -> None:
         """Extract single module"""
         try:
             name_node = node.child_by_field_name("name")
@@ -235,7 +233,7 @@ class RustElementExtractor(ElementExtractor):
         except Exception as e:
             log_error(f"Error extracting module: {e}")
 
-    def _extract_function(self, node: "tree_sitter.Node") -> Function | None:
+    def _extract_function(self, node: tree_sitter.Node) -> Function | None:
         """Extract function information"""
         try:
             name_node = node.child_by_field_name("name")
@@ -294,21 +292,19 @@ class RustElementExtractor(ElementExtractor):
             log_error(f"Error extracting Rust function: {e}")
             return None
 
-    def _extract_struct(self, node: "tree_sitter.Node") -> Class | None:
+    def _extract_struct(self, node: tree_sitter.Node) -> Class | None:
         """Extract struct information"""
         return self._extract_type_def(node, "struct")
 
-    def _extract_enum(self, node: "tree_sitter.Node") -> Class | None:
+    def _extract_enum(self, node: tree_sitter.Node) -> Class | None:
         """Extract enum information"""
         return self._extract_type_def(node, "enum")
 
-    def _extract_trait(self, node: "tree_sitter.Node") -> Class | None:
+    def _extract_trait(self, node: tree_sitter.Node) -> Class | None:
         """Extract trait information"""
         return self._extract_type_def(node, "trait")
 
-    def _extract_type_def(
-        self, node: "tree_sitter.Node", type_name: str
-    ) -> Class | None:
+    def _extract_type_def(self, node: tree_sitter.Node, type_name: str) -> Class | None:
         """Generic type definition extractor"""
         try:
             name_node = node.child_by_field_name("name")
@@ -346,7 +342,7 @@ class RustElementExtractor(ElementExtractor):
             log_error(f"Error extracting Rust {type_name}: {e}")
             return None
 
-    def _extract_impl(self, node: "tree_sitter.Node") -> None:
+    def _extract_impl(self, node: tree_sitter.Node) -> None:
         """Extract impl block information"""
         try:
             trait_node = node.child_by_field_name("trait")
@@ -369,7 +365,7 @@ class RustElementExtractor(ElementExtractor):
         except Exception as e:
             log_error(f"Error extracting impl block: {e}")
 
-    def _extract_field(self, node: "tree_sitter.Node") -> Variable | None:
+    def _extract_field(self, node: tree_sitter.Node) -> Variable | None:
         """Extract struct field"""
         try:
             name_node = node.child_by_field_name("name")
@@ -402,7 +398,7 @@ class RustElementExtractor(ElementExtractor):
             return None
 
     def _extract_rust_parameters(
-        self, params_node: "tree_sitter.Node | None"
+        self, params_node: tree_sitter.Node | None
     ) -> list[str]:
         """Return parameter texts from a Rust function ``parameters`` node.
 
@@ -425,14 +421,14 @@ class RustElementExtractor(ElementExtractor):
                 parameters.append("self")
         return parameters
 
-    def _extract_visibility(self, node: "tree_sitter.Node") -> str:
+    def _extract_visibility(self, node: tree_sitter.Node) -> str:
         """Extract visibility modifier"""
         for child in node.children:
             if child.type == "visibility_modifier":
                 return self._get_node_text(child)
         return "private"  # Default in Rust
 
-    def _extract_docstring(self, node: "tree_sitter.Node") -> str | None:
+    def _extract_docstring(self, node: tree_sitter.Node) -> str | None:
         """Extract doc comments (/// or /** ... */)"""
         # In tree-sitter-rust, doc comments are often 'line_comment' or 'block_comment'
         # preceding the item, or attributes.
@@ -466,7 +462,7 @@ class RustElementExtractor(ElementExtractor):
 
         return None
 
-    def _extract_derives(self, node: "tree_sitter.Node") -> list[str]:
+    def _extract_derives(self, node: tree_sitter.Node) -> list[str]:
         """Extract derived traits from attributes.
 
         r37ds (dogfood): flattened nesting 6 → 3 via early-continue gates.
@@ -486,7 +482,7 @@ class RustElementExtractor(ElementExtractor):
             derives.extend([t.strip() for t in traits if t.strip()])
         return derives
 
-    def _get_node_text(self, node: "tree_sitter.Node") -> str:
+    def _get_node_text(self, node: tree_sitter.Node) -> str:
         """Get node text with caching using position-based keys"""
         cache_key = (node.start_byte, node.end_byte)
         if cache_key in self._node_text_cache:
@@ -528,8 +524,8 @@ class RustPlugin(LanguagePlugin):
         return RustElementExtractor()
 
     async def analyze_file(
-        self, file_path: str, request: "AnalysisRequest"
-    ) -> "AnalysisResult":
+        self, file_path: str, request: AnalysisRequest
+    ) -> AnalysisResult:
         """Analyze Rust code and return structured results."""
 
         from ..models import AnalysisResult

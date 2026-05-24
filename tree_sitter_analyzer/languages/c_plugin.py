@@ -7,6 +7,8 @@ Supports standard C constructs including functions, structs, unions,
 enums, and preprocessor directives.
 """
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -105,7 +107,7 @@ class CElementExtractor(ElementExtractor):
 
     # Extract elements from AST: extract_functions
     def extract_functions(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[Function]:
         """Extract C function definitions with comprehensive details"""
         self.source_code = source_code
@@ -128,9 +130,7 @@ class CElementExtractor(ElementExtractor):
         return functions
 
     # Extract elements from AST: extract_classes
-    def extract_classes(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Class]:
+    def extract_classes(self, tree: tree_sitter.Tree, source_code: str) -> list[Class]:
         """Extract C struct/union/enum definitions as 'classes'"""
         self.source_code = source_code
         self.content_lines = source_code.split("\n")
@@ -154,7 +154,7 @@ class CElementExtractor(ElementExtractor):
 
     # Extract elements from AST: extract_variables
     def extract_variables(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[Variable]:
         """Extract C variable/field declarations"""
         self.source_code = source_code
@@ -178,9 +178,7 @@ class CElementExtractor(ElementExtractor):
         return variables
 
     # Extract elements from AST: extract_imports
-    def extract_imports(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Import]:
+    def extract_imports(self, tree: tree_sitter.Tree, source_code: str) -> list[Import]:
         """Extract C include directives"""
         self.source_code = source_code
         self.content_lines = source_code.split("\n")
@@ -199,7 +197,7 @@ class CElementExtractor(ElementExtractor):
     # Extract elements from AST: _traverse_and_extract_iterative
     def _traverse_and_extract_iterative(
         self,
-        root_node: "tree_sitter.Node | None",
+        root_node: tree_sitter.Node | None,
         extractors: dict[str, Any],
         results: list[Any],
         element_type: str,
@@ -214,7 +212,7 @@ class CElementExtractor(ElementExtractor):
             self._element_cache,
         )
 
-    def _get_node_text_optimized(self, node: "tree_sitter.Node") -> str:
+    def _get_node_text_optimized(self, node: tree_sitter.Node) -> str:
         """Get node text with optimized caching using position-based keys"""
         # Use position-based cache key for deterministic behavior
         cache_key = (node.start_byte, node.end_byte)
@@ -251,7 +249,7 @@ class CElementExtractor(ElementExtractor):
                 return ""
 
     # Extract elements from AST: _extract_function_optimized
-    def _extract_function_optimized(self, node: "tree_sitter.Node") -> Function | None:
+    def _extract_function_optimized(self, node: tree_sitter.Node) -> Function | None:
         """Extract function information optimized"""
         return _extract_func_standalone(
             node,
@@ -264,7 +262,7 @@ class CElementExtractor(ElementExtractor):
 
     # Parse input into structured data: _parse_function_signature
     def _parse_function_signature(
-        self, node: "tree_sitter.Node"
+        self, node: tree_sitter.Node
     ) -> tuple[str, str, list[str], list[str]] | None:
         """Parse C function signature"""
         return _parse_sig_standalone(
@@ -272,19 +270,19 @@ class CElementExtractor(ElementExtractor):
         )
 
     # Extract elements from AST: _extract_parameters
-    def _extract_parameters(self, params_node: "tree_sitter.Node") -> list[str]:
+    def _extract_parameters(self, params_node: tree_sitter.Node) -> list[str]:
         """Extract function parameters"""
         return _extract_params_standalone(params_node, self._get_node_text_optimized)
 
     # Extract elements from AST: _extract_struct_optimized
-    def _extract_struct_optimized(self, node: "tree_sitter.Node") -> Class | None:
+    def _extract_struct_optimized(self, node: tree_sitter.Node) -> Class | None:
         """Extract struct information optimized"""
         return _extract_struct_standalone(
             node, self._get_node_text_optimized, self.content_lines
         )
 
     # Extract elements from AST: _extract_union_optimized
-    def _extract_union_optimized(self, node: "tree_sitter.Node") -> Class | None:
+    def _extract_union_optimized(self, node: tree_sitter.Node) -> Class | None:
         """Extract union information optimized"""
         result = self._extract_struct_optimized(node)
         if result:
@@ -297,25 +295,25 @@ class CElementExtractor(ElementExtractor):
         return result
 
     # Extract elements from AST: _extract_enum_optimized
-    def _extract_enum_optimized(self, node: "tree_sitter.Node") -> Class | None:
+    def _extract_enum_optimized(self, node: tree_sitter.Node) -> Class | None:
         """Extract enum information optimized"""
         return _extract_enum_standalone(
             node, self._get_node_text_optimized, self.content_lines
         )
 
     # Extract elements from AST: _extract_field_optimized
-    def _extract_field_optimized(self, node: "tree_sitter.Node") -> list[Variable]:
+    def _extract_field_optimized(self, node: tree_sitter.Node) -> list[Variable]:
         """Extract field declaration"""
         return _extract_field_standalone(node, self._get_node_text_optimized)
 
     # Extract elements from AST: _extract_variable_declaration
-    def _extract_variable_declaration(self, node: "tree_sitter.Node") -> list[Variable]:
+    def _extract_variable_declaration(self, node: tree_sitter.Node) -> list[Variable]:
         """Extract variable declarations (not struct members)"""
         return _extract_var_decl_standalone(node, self._get_node_text_optimized)
 
     # Extract elements from AST: _extract_include_info
     def _extract_include_info(
-        self, node: "tree_sitter.Node", source_code: str
+        self, node: tree_sitter.Node, source_code: str
     ) -> Import | None:
         """Extract include directive information"""
         from .c_helpers import _extract_include_info as _impl
@@ -330,16 +328,16 @@ class CElementExtractor(ElementExtractor):
         return _extract_includes_fallback(source_code)
 
     # Extract elements from AST: _extract_macro_definition
-    def _extract_macro_definition(self, node: "tree_sitter.Node") -> list[Variable]:
+    def _extract_macro_definition(self, node: tree_sitter.Node) -> list[Variable]:
         """Extract macro definitions as constants"""
         return _extract_macro_def_standalone(node, self._get_node_text_optimized)
 
     # Extract elements from AST: _extract_macro_function
-    def _extract_macro_function(self, node: "tree_sitter.Node") -> Function | None:
+    def _extract_macro_function(self, node: tree_sitter.Node) -> Function | None:
         """Extract macro function definition"""
         return _extract_macro_func_standalone(node, self._get_node_text_optimized)
 
-    def _calculate_complexity_optimized(self, node: "tree_sitter.Node") -> int:
+    def _calculate_complexity_optimized(self, node: tree_sitter.Node) -> int:
         """Calculate cyclomatic complexity"""
         return _calc_complexity_standalone(node)
 
@@ -402,8 +400,8 @@ class CPlugin(LanguagePlugin):
 
     # Analyze source code structure: analyze_file
     async def analyze_file(
-        self, file_path: str, request: "AnalysisRequest"
-    ) -> "AnalysisResult":
+        self, file_path: str, request: AnalysisRequest
+    ) -> AnalysisResult:
         """Analyze C code and return structured results."""
         from ..models import AnalysisResult
 

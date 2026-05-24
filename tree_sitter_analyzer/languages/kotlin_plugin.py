@@ -5,6 +5,8 @@ Kotlin Language Plugin
 Provides Kotlin-specific parsing and element extraction functionality.
 """
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -43,7 +45,7 @@ class KotlinElementExtractor(ElementExtractor):
         self._node_text_cache: dict[tuple[int, int], str] = {}
 
     def extract_functions(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[Function]:
         """Extract Kotlin function declarations"""
         self.source_code = source_code
@@ -61,9 +63,7 @@ class KotlinElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(functions)} Kotlin functions")
         return functions
 
-    def extract_classes(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Class]:
+    def extract_classes(self, tree: tree_sitter.Tree, source_code: str) -> list[Class]:
         """Extract Kotlin class declarations"""
         self.source_code = source_code
         self.content_lines = source_code.split("\n")
@@ -89,7 +89,7 @@ class KotlinElementExtractor(ElementExtractor):
         return classes
 
     def extract_variables(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[Variable]:
         """Extract Kotlin properties"""
         self.source_code = source_code
@@ -111,9 +111,7 @@ class KotlinElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(variables)} Kotlin properties")
         return variables
 
-    def extract_imports(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Import]:
+    def extract_imports(self, tree: tree_sitter.Tree, source_code: str) -> list[Import]:
         """Extract Kotlin imports"""
         self.source_code = source_code
         self.content_lines = source_code.split("\n")
@@ -135,7 +133,7 @@ class KotlinElementExtractor(ElementExtractor):
         return imports
 
     def extract_packages(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[Package]:
         """Extract Kotlin package"""
         self.source_code = source_code
@@ -164,8 +162,8 @@ class KotlinElementExtractor(ElementExtractor):
 
     @staticmethod
     def _find_package_header_node(
-        root_node: "tree_sitter.Node",
-    ) -> "tree_sitter.Node | None":
+        root_node: tree_sitter.Node,
+    ) -> tree_sitter.Node | None:
         """Return the first ``package_header`` child or ``None``.
 
         Kotlin's tree-sitter grammar puts the package declaration as a
@@ -187,7 +185,7 @@ class KotlinElementExtractor(ElementExtractor):
 
     def _traverse_and_extract(
         self,
-        node: "tree_sitter.Node",
+        node: tree_sitter.Node,
         extractors: dict[str, Any],
         results: list[Any],
     ) -> None:
@@ -200,7 +198,7 @@ class KotlinElementExtractor(ElementExtractor):
         for child in node.children:
             self._traverse_and_extract(child, extractors, results)
 
-    def _extract_package(self, node: "tree_sitter.Node") -> None:
+    def _extract_package(self, node: tree_sitter.Node) -> None:
         """Extract package declaration.
 
         r37ds (dogfood): flattened nesting 6 → 3 by extracting the
@@ -215,7 +213,7 @@ class KotlinElementExtractor(ElementExtractor):
                 return
 
     def _kotlin_package_name_from_header(
-        self, package_header: "tree_sitter.Node"
+        self, package_header: tree_sitter.Node
     ) -> str | None:
         """Return the package name string from a ``package_header`` node.
 
@@ -230,35 +228,35 @@ class KotlinElementExtractor(ElementExtractor):
                 return self._get_node_text(grandchild)
         return None
 
-    def _extract_function(self, node: "tree_sitter.Node") -> Function | None:
+    def _extract_function(self, node: tree_sitter.Node) -> Function | None:
         """Extract function information"""
         return _extract_func_standalone(node, self._get_node_text, self.current_package)
 
-    def _extract_class(self, node: "tree_sitter.Node") -> Class | None:
+    def _extract_class(self, node: tree_sitter.Node) -> Class | None:
         """Extract class declaration"""
         return self._extract_class_or_object(node, "class")
 
-    def _extract_object(self, node: "tree_sitter.Node") -> Class | None:
+    def _extract_object(self, node: tree_sitter.Node) -> Class | None:
         """Extract object declaration"""
         return self._extract_class_or_object(node, "object")
 
     def _extract_class_or_object(
-        self, node: "tree_sitter.Node", kind: str
+        self, node: tree_sitter.Node, kind: str
     ) -> Class | None:
         """Generic extraction for class/object/interface"""
         return _extract_class_standalone(
             node, kind, self._get_node_text, self.current_package
         )
 
-    def _extract_property(self, node: "tree_sitter.Node") -> Variable | None:
+    def _extract_property(self, node: tree_sitter.Node) -> Variable | None:
         """Extract property declaration"""
         return _extract_prop_standalone(node, self._get_node_text)
 
-    def _extract_import(self, node: "tree_sitter.Node") -> Import | None:
+    def _extract_import(self, node: tree_sitter.Node) -> Import | None:
         """Extract import header"""
         return _extract_import_standalone(node, self._get_node_text)
 
-    def _get_node_text(self, node: "tree_sitter.Node") -> str:
+    def _get_node_text(self, node: tree_sitter.Node) -> str:
         """Get node text with caching using position-based keys"""
         cache_key = (node.start_byte, node.end_byte)
         if cache_key in self._node_text_cache:
@@ -275,7 +273,7 @@ class KotlinElementExtractor(ElementExtractor):
         except Exception:
             return ""
 
-    def _extract_docstring(self, node: "tree_sitter.Node") -> str | None:
+    def _extract_docstring(self, node: tree_sitter.Node) -> str | None:
         """Extract KDoc"""
         # Similar to Rust/Java logic
         return None
@@ -305,8 +303,8 @@ class KotlinPlugin(LanguagePlugin):
         return KotlinElementExtractor()
 
     async def analyze_file(
-        self, file_path: str, request: "AnalysisRequest"
-    ) -> "AnalysisResult":
+        self, file_path: str, request: AnalysisRequest
+    ) -> AnalysisResult:
         from ..models import AnalysisResult
 
         try:

@@ -1,6 +1,5 @@
 """Unit tests for _api_result_helpers — result shaping and error responses."""
 
-import pytest
 from unittest.mock import MagicMock
 
 from tree_sitter_analyzer._api_result_helpers import (
@@ -91,9 +90,7 @@ class TestElementToDict:
         method = _make_elem(
             name="bar", cls_name="Function", is_method=True, start_line=3, end_line=5
         )
-        cls = _make_elem(
-            name="MyClass", cls_name="Class", start_line=1, end_line=10
-        )
+        cls = _make_elem(name="MyClass", cls_name="Class", start_line=1, end_line=10)
         result = element_to_dict(method, all_elements=[method, cls])
         assert result["class_name"] == "MyClass"
 
@@ -213,7 +210,9 @@ class TestFileAnalysisError:
     """Tests for file_analysis_error."""
 
     def test_basic_error(self):
-        result = file_analysis_error("/missing.py", "python", FileNotFoundError("not found"))
+        result = file_analysis_error(
+            "/missing.py", "python", FileNotFoundError("not found")
+        )
         assert result["success"] is False
         assert "not found" in result["error"]
         assert result["file_info"]["exists"] is False

@@ -313,7 +313,7 @@ def test_cli_args_flow_into_runner_config(tmp_path: Path) -> None:
     This is a contract test: prevents future drift between argparse and runner
     constructor."""
     parser = _create_parser()
-    out = tmp_path / "events.jsonl"
+    tmp_path / "events.jsonl"
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "x.py").write_text("pass\n")
 

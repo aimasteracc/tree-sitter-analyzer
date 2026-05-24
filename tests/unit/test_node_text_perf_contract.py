@@ -34,7 +34,6 @@ from pathlib import Path
 
 import pytest
 
-
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -143,7 +142,7 @@ def test_node_text_throughput_is_O1_per_call() -> None:
 
     # 5000 calls in < 1.0s = < 200µs each. With the bug it was ~1.5 ms each.
     assert elapsed < 1.0, (
-        f"_node_text micro-bench took {elapsed*1000:.0f}ms for {iterations} "
+        f"_node_text micro-bench took {elapsed * 1000:.0f}ms for {iterations} "
         f"calls (budget: 1000ms). Per-call cost has regressed — check for "
         f"an O(file_size) operation inside the helper (e.g. a stray "
         f"source.encode() call)."

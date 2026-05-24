@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """TypeScript Language Plugin — wrapper class and query definitions."""
 
-from typing import TYPE_CHECKING, Any, Optional
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -53,7 +55,7 @@ class TypeScriptPlugin(LanguagePlugin):
     def get_extractor(self) -> ElementExtractor:
         return self._extractor
 
-    def get_tree_sitter_language(self) -> Optional["tree_sitter.Language"]:
+    def get_tree_sitter_language(self) -> tree_sitter.Language | None:
         """Load and return TypeScript tree-sitter language"""
         if not TREE_SITTER_AVAILABLE:
             return None
@@ -171,7 +173,7 @@ class TypeScriptPlugin(LanguagePlugin):
             elements.extend(variables)
             elements.extend(imports)
 
-            def count_nodes(node: "tree_sitter.Node") -> int:
+            def count_nodes(node: tree_sitter.Node) -> int:
                 count = 1
                 for child in node.children:
                     count += count_nodes(child)
@@ -195,7 +197,7 @@ class TypeScriptPlugin(LanguagePlugin):
             )
 
     def extract_elements(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> dict[str, list[Any]]:
         extractor = self.create_extractor()
         functions: list[Any] = []

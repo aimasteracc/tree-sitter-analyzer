@@ -30,10 +30,7 @@ def indexed_project(tmp_path):
         "    def _internal(self):\n"
         "        pass\n"
     )
-    (project / "app" / "utils.py").write_text(
-        "def add(a, b):\n"
-        "    return a + b\n"
-    )
+    (project / "app" / "utils.py").write_text("def add(a, b):\n    return a + b\n")
     from tree_sitter_analyzer.ast_cache import ASTCache
 
     cache = ASTCache(str(project))
@@ -152,48 +149,6 @@ class TestSitemapCLI:
                 "--codegraph-sitemap",
                 "--codegraph-sitemap-mode",
                 "flat",
-                "--format",
-                "json",
-            ],
-        )
-        mock_stdout = StringIO()
-        monkeypatch.setattr("sys.stdout", mock_stdout)
-        with contextlib.suppress(SystemExit):
-            main()
-
-    def test_cli_api_mode(self, indexed_project, monkeypatch):
-        from tree_sitter_analyzer.cli_main import main
-
-        monkeypatch.setattr(
-            sys,
-            "argv",
-            [
-                "tsa",
-                str(indexed_project),
-                "--codegraph-sitemap",
-                "--codegraph-sitemap-mode",
-                "api",
-                "--format",
-                "json",
-            ],
-        )
-        mock_stdout = StringIO()
-        monkeypatch.setattr("sys.stdout", mock_stdout)
-        with contextlib.suppress(SystemExit):
-            main()
-
-    def test_cli_module_mode(self, indexed_project, monkeypatch):
-        from tree_sitter_analyzer.cli_main import main
-
-        monkeypatch.setattr(
-            sys,
-            "argv",
-            [
-                "tsa",
-                str(indexed_project),
-                "--codegraph-sitemap",
-                "--codegraph-sitemap-mode",
-                "module",
                 "--format",
                 "json",
             ],

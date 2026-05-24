@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """JavaScript Language Plugin — wrapper class and query definitions."""
 
-from typing import TYPE_CHECKING, Any, Optional
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
 
 import anyio
 
@@ -60,7 +62,7 @@ class JavaScriptPlugin(LanguagePlugin):
     def get_extractor(self) -> ElementExtractor:
         return self._extractor
 
-    def get_tree_sitter_language(self) -> Optional["tree_sitter.Language"]:
+    def get_tree_sitter_language(self) -> tree_sitter.Language | None:
         """Load and return JavaScript tree-sitter language"""
         if self._language is None:
             self._language = loader.load_language("javascript")
@@ -264,7 +266,7 @@ class JavaScriptPlugin(LanguagePlugin):
                 error_message=str(e),
             )
 
-    def extract_elements(self, tree: "tree_sitter.Tree", source_code: str) -> dict:
+    def extract_elements(self, tree: tree_sitter.Tree, source_code: str) -> dict:
         """Extract elements from source code using tree-sitter AST"""
         try:
             if tree is None or not hasattr(tree, "root_node") or tree.root_node is None:

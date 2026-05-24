@@ -7,6 +7,8 @@ Provides comprehensive support for YAML elements including mappings, sequences,
 scalars, anchors, aliases, and comments.
 """
 
+from __future__ import annotations
+
 import logging
 import threading
 from typing import TYPE_CHECKING, Any
@@ -99,35 +101,31 @@ class YAMLElementExtractor(ElementExtractor):
 
     # Extract elements from AST: extract_functions
     def extract_functions(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[Function]:
         """YAML doesn't have functions, return empty list."""
         return []
 
     # Extract elements from AST: extract_classes
-    def extract_classes(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Class]:
+    def extract_classes(self, tree: tree_sitter.Tree, source_code: str) -> list[Class]:
         """YAML doesn't have classes, return empty list."""
         return []
 
     # Extract elements from AST: extract_variables
     def extract_variables(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[Variable]:
         """YAML doesn't have variables, return empty list."""
         return []
 
     # Extract elements from AST: extract_imports
-    def extract_imports(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Import]:
+    def extract_imports(self, tree: tree_sitter.Tree, source_code: str) -> list[Import]:
         """YAML doesn't have imports, return empty list."""
         return []
 
     # Extract elements from AST: extract_yaml_elements
     def extract_yaml_elements(
-        self, tree: "tree_sitter.Tree | None", source_code: str
+        self, tree: tree_sitter.Tree | None, source_code: str
     ) -> list[YAMLElement]:
         """Extract all YAML elements from the parsed tree.
 
@@ -167,12 +165,12 @@ class YAMLElementExtractor(ElementExtractor):
 
     # Extract elements from AST: extract_elements
     def extract_elements(
-        self, tree: "tree_sitter.Tree | None", source_code: str
+        self, tree: tree_sitter.Tree | None, source_code: str
     ) -> dict[str, list[Any]]:
         elements = self.extract_yaml_elements(tree, source_code)
         return {"elements": elements}
 
-    def _get_node_text(self, node: "tree_sitter.Node") -> str:
+    def _get_node_text(self, node: tree_sitter.Node) -> str:
         """Get text content from a tree-sitter node."""
         try:
             if hasattr(node, "start_byte") and hasattr(node, "end_byte"):
@@ -184,19 +182,19 @@ class YAMLElementExtractor(ElementExtractor):
             log_debug(f"Failed to extract node text: {e}")
             return ""
 
-    def _calculate_nesting_level(self, node: "tree_sitter.Node") -> int:
+    def _calculate_nesting_level(self, node: tree_sitter.Node) -> int:
         """Calculate AST-based logical nesting level."""
         return _calc_nesting_standalone(node)
 
-    def _get_document_index(self, node: "tree_sitter.Node") -> int:
+    def _get_document_index(self, node: tree_sitter.Node) -> int:
         """Get document index for a node."""
         return _get_doc_idx_standalone(node)
 
-    def _traverse_nodes(self, node: "tree_sitter.Node") -> "list[tree_sitter.Node]":
+    def _traverse_nodes(self, node: tree_sitter.Node) -> list[tree_sitter.Node]:
         """Traverse all nodes in the tree."""
         return _traverse_standalone(node)
 
-    def _count_document_children(self, document_node: "tree_sitter.Node") -> int:
+    def _count_document_children(self, document_node: tree_sitter.Node) -> int:
         """Count meaningful children in a document (top-level mappings).
 
         This counts the number of top-level key-value pairs in the document,
@@ -206,7 +204,7 @@ class YAMLElementExtractor(ElementExtractor):
 
     # Extract elements from AST: _extract_documents
     def _extract_documents(
-        self, root_node: "tree_sitter.Node", elements: list[YAMLElement]
+        self, root_node: tree_sitter.Node, elements: list[YAMLElement]
     ) -> None:
         """Extract YAML documents."""
         document_nodes = _iter_document_nodes_standalone(
@@ -222,7 +220,7 @@ class YAMLElementExtractor(ElementExtractor):
 
     # Extract elements from AST: _extract_mappings
     def _extract_mappings(
-        self, root_node: "tree_sitter.Node", elements: list[YAMLElement]
+        self, root_node: tree_sitter.Node, elements: list[YAMLElement]
     ) -> None:
         """Extract YAML mappings (key-value pairs)."""
         mapping_nodes = _iter_mapping_nodes_standalone(self._traverse_nodes(root_node))
@@ -237,7 +235,7 @@ class YAMLElementExtractor(ElementExtractor):
 
     # Extract elements from AST: _extract_value_info
     def _extract_value_info(
-        self, node: "tree_sitter.Node | None"
+        self, node: tree_sitter.Node | None
     ) -> tuple[str | None, str | None, int | None]:
         """Extract value information from a node."""
         return _extract_value_standalone(node, self._get_node_text)
@@ -250,7 +248,7 @@ class YAMLElementExtractor(ElementExtractor):
 
     # Extract elements from AST: _extract_sequences
     def _extract_sequences(
-        self, root_node: "tree_sitter.Node", elements: list[YAMLElement]
+        self, root_node: tree_sitter.Node, elements: list[YAMLElement]
     ) -> None:
         """Extract YAML sequences (lists)."""
         sequence_nodes = _iter_sequence_nodes_standalone(
@@ -267,7 +265,7 @@ class YAMLElementExtractor(ElementExtractor):
 
     # Extract elements from AST: _extract_anchors
     def _extract_anchors(
-        self, root_node: "tree_sitter.Node", elements: list[YAMLElement]
+        self, root_node: tree_sitter.Node, elements: list[YAMLElement]
     ) -> None:
         """Extract YAML anchors (&name)."""
         anchor_nodes = _iter_nodes_by_type_standalone(
@@ -285,7 +283,7 @@ class YAMLElementExtractor(ElementExtractor):
 
     # Extract elements from AST: _extract_aliases
     def _extract_aliases(
-        self, root_node: "tree_sitter.Node", elements: list[YAMLElement]
+        self, root_node: tree_sitter.Node, elements: list[YAMLElement]
     ) -> None:
         """Extract YAML aliases (*name)."""
         alias_nodes = _iter_nodes_by_type_standalone(
@@ -303,7 +301,7 @@ class YAMLElementExtractor(ElementExtractor):
 
     # Extract elements from AST: _extract_comments
     def _extract_comments(
-        self, root_node: "tree_sitter.Node", elements: list[YAMLElement]
+        self, root_node: tree_sitter.Node, elements: list[YAMLElement]
     ) -> None:
         """Extract YAML comments."""
         comment_nodes = _iter_nodes_by_type_standalone(
@@ -336,7 +334,7 @@ class YAMLPlugin(LanguagePlugin):
         return [".yaml", ".yml"]
 
     # Extract elements from AST: create_extractor
-    def create_extractor(self) -> "YAMLElementExtractor":
+    def create_extractor(self) -> YAMLElementExtractor:
         """Create and return a YAML element extractor."""
         return YAMLElementExtractor()
 
@@ -393,8 +391,8 @@ class YAMLPlugin(LanguagePlugin):
 
     # Analyze source code structure: analyze_file
     async def analyze_file(
-        self, file_path: str, request: "AnalysisRequest"
-    ) -> "AnalysisResult":
+        self, file_path: str, request: AnalysisRequest
+    ) -> AnalysisResult:
         """Analyze YAML file using tree-sitter-yaml parser.
 
         Args:

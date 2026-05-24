@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Markdown Language Plugin — wrapper class and query definitions."""
 
-from typing import TYPE_CHECKING, Any, Optional
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -138,7 +140,7 @@ class MarkdownPlugin(LanguagePlugin):
         return "markdown"
 
     def extract_functions(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[CodeElement]:
         """Extract functions from the tree (legacy compatibility)"""
         extractor = self.get_extractor()
@@ -155,7 +157,7 @@ class MarkdownPlugin(LanguagePlugin):
         ]
 
     def extract_classes(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[CodeElement]:
         """Extract classes from the tree (legacy compatibility)"""
         extractor = self.get_extractor()
@@ -172,7 +174,7 @@ class MarkdownPlugin(LanguagePlugin):
         ]
 
     def extract_variables(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[CodeElement]:
         """Extract variables from the tree (legacy compatibility)"""
         extractor = self.get_extractor()
@@ -189,7 +191,7 @@ class MarkdownPlugin(LanguagePlugin):
         ]
 
     def extract_imports(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[CodeElement]:
         """Extract imports from the tree (legacy compatibility)"""
         extractor = self.get_extractor()
@@ -205,7 +207,7 @@ class MarkdownPlugin(LanguagePlugin):
             for i in imports
         ]
 
-    def get_tree_sitter_language(self) -> Optional["tree_sitter.Language"]:
+    def get_tree_sitter_language(self) -> tree_sitter.Language | None:
         """Get the Tree-sitter language object for Markdown"""
         if self._language_cache is None:
             try:
@@ -304,6 +306,18 @@ class MarkdownPlugin(LanguagePlugin):
             return precheck_error
 
         language = self.get_tree_sitter_language()
+        if language is None:
+            # _check_markdown_runtime above should have caught this, but
+            # narrow for mypy + defence-in-depth.
+            return AnalysisResult(
+                file_path=file_path,
+                language="markdown",
+                elements=[],
+                line_count=0,
+                source_code="",
+                node_count=0,
+                query_results={},
+            )
         try:
             from ...encoding_utils import read_file_safe
 
@@ -359,7 +373,7 @@ class MarkdownPlugin(LanguagePlugin):
     @staticmethod
     def _collect_markdown_elements(
         extractor: Any,
-        tree: "tree_sitter.Tree",
+        tree: tree_sitter.Tree,
         source_code: str,
     ) -> list[CodeElement]:
         """Run every markdown-specific extractor and concatenate results.
@@ -387,7 +401,7 @@ class MarkdownPlugin(LanguagePlugin):
         elements.extend(extractor.extract_footnotes(tree, source_code))
         return elements
 
-    def execute_query(self, tree: "tree_sitter.Tree", query_name: str) -> dict:
+    def execute_query(self, tree: tree_sitter.Tree, query_name: str) -> dict:
         """Execute a specific query on the tree"""
         try:
             language = self.get_tree_sitter_language()
@@ -417,7 +431,7 @@ class MarkdownPlugin(LanguagePlugin):
             return {"error": str(e)}
 
     def extract_elements(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> dict[str, list[Any]]:
         extractor = self.create_extractor()
         elements: list[Any] = []
@@ -480,7 +494,7 @@ class MarkdownPlugin(LanguagePlugin):
         return {k: list(v) for k, v in _MARKDOWN_ELEMENT_CATEGORIES.items()}
 
 
-def _count_markdown_nodes(node: "tree_sitter.Node") -> int:
+def _count_markdown_nodes(node: tree_sitter.Node) -> int:
     """Return the total number of AST nodes under ``node`` (inclusive).
 
     r37da (dogfood): lifted from a closure inside ``analyze_file`` so the

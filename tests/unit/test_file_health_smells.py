@@ -3,13 +3,10 @@
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import patch
 
 import pytest
 
 from tree_sitter_analyzer.mcp.tools.utils.file_health_smells import (
-    COMMENT_DELIMITERS,
-    TECH_DEBT_MARKERS,
     _check_deep_nesting,
     _check_element_smells,
     _check_god_class,
@@ -21,10 +18,10 @@ from tree_sitter_analyzer.mcp.tools.utils.file_health_smells import (
     detect_code_smells,
 )
 
-
 # ---------------------------------------------------------------------------
 # detect_code_smells
 # ---------------------------------------------------------------------------
+
 
 class TestDetectCodeSmells:
     def test_returns_list(self, tmp_path) -> None:
@@ -43,7 +40,9 @@ class TestDetectCodeSmells:
         """Small, well-structured file should produce minimal smells."""
         f = tmp_path / "clean.py"
         f.write_text("def hello():\n    return 'world'\n")
-        result = detect_code_smells(str(f), {"structure": 80, "complexity": 90, "dependencies": 85}, None)
+        result = detect_code_smells(
+            str(f), {"structure": 80, "complexity": 90, "dependencies": 85}, None
+        )
         # May still have info-level smells but no critical ones
         critical = [s for s in result if s.get("severity") == "critical"]
         assert len(critical) == 0
@@ -52,6 +51,7 @@ class TestDetectCodeSmells:
 # ---------------------------------------------------------------------------
 # _check_oversized_file
 # ---------------------------------------------------------------------------
+
 
 class TestCheckOversizedFile:
     def test_small_file_no_smell(self) -> None:
@@ -82,6 +82,7 @@ class TestCheckOversizedFile:
 # _check_deep_nesting
 # ---------------------------------------------------------------------------
 
+
 class TestCheckDeepNesting:
     def test_shallow_code_no_smell(self) -> None:
         smells: list[dict[str, Any]] = []
@@ -99,6 +100,7 @@ class TestCheckDeepNesting:
 # _check_god_class
 # ---------------------------------------------------------------------------
 
+
 class TestCheckGodClass:
     def test_no_class_no_smell(self) -> None:
         smells: list[dict[str, Any]] = []
@@ -107,7 +109,10 @@ class TestCheckGodClass:
 
     def test_multiple_classes_no_smell(self) -> None:
         smells: list[dict[str, Any]] = []
-        classes = [{"name": "A", "line": 1, "end_line": 50}, {"name": "B", "line": 51, "end_line": 100}]
+        classes = [
+            {"name": "A", "line": 1, "end_line": 50},
+            {"name": "B", "line": 51, "end_line": 100},
+        ]
         _check_god_class(smells, 100, classes)
         assert len(smells) == 0
 
@@ -129,6 +134,7 @@ class TestCheckGodClass:
 # ---------------------------------------------------------------------------
 # _check_long_functions
 # ---------------------------------------------------------------------------
+
 
 class TestCheckLongFunctions:
     def test_short_function_no_smell(self) -> None:
@@ -155,22 +161,29 @@ class TestCheckLongFunctions:
 # _has_technical_debt_marker / _comment_text
 # ---------------------------------------------------------------------------
 
+
 class TestTechnicalDebtDetection:
-    @pytest.mark.parametrize("line", [
-        "# TODO: fix this",
-        "// FIXME broken",
-        "/* HACK: workaround */",
-        "# XXX temporary",
-    ])
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "# TODO: fix this",
+            "// FIXME broken",
+            "/* HACK: workaround */",
+            "# XXX temporary",
+        ],
+    )
     def test_detects_markers(self, line: str) -> None:
         assert _has_technical_debt_marker(line) is True
 
-    @pytest.mark.parametrize("line", [
-        "#!shebang",
-        "# type: ignore",
-        "x = 'TODO in a string'",
-        "print('no markers here')",
-    ])
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "#!shebang",
+            "# type: ignore",
+            "x = 'TODO in a string'",
+            "print('no markers here')",
+        ],
+    )
     def test_ignores_non_markers(self, line: str) -> None:
         assert _has_technical_debt_marker(line) is False
 
@@ -198,6 +211,7 @@ class TestCheckTechnicalDebt:
 # ---------------------------------------------------------------------------
 # _check_element_smells
 # ---------------------------------------------------------------------------
+
 
 class TestCheckElementSmells:
     def test_no_analysis_uses_heuristic(self) -> None:

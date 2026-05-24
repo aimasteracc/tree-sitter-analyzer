@@ -6,7 +6,9 @@ Provides PHP-specific parsing and element extraction functionality.
 Supports extraction of classes, interfaces, traits, enums, methods, functions, properties, and use statements.
 """
 
-from typing import TYPE_CHECKING, Any, Optional
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -99,7 +101,7 @@ class PHPElementExtractor(ElementExtractor):
         self._attribute_cache.clear()
         self.current_namespace = ""
 
-    def _get_node_text_optimized(self, node: "tree_sitter.Node") -> str:
+    def _get_node_text_optimized(self, node: tree_sitter.Node) -> str:
         """
         Get text content of a node with caching for performance.
 
@@ -121,7 +123,7 @@ class PHPElementExtractor(ElementExtractor):
         self._node_text_cache[cache_key] = text
         return text
 
-    def _extract_namespace(self, node: "tree_sitter.Node") -> None:
+    def _extract_namespace(self, node: tree_sitter.Node) -> None:
         """
         Extract namespace from the AST and set current_namespace.
 
@@ -144,7 +146,7 @@ class PHPElementExtractor(ElementExtractor):
             elif child.child_count > 0:
                 self._extract_namespace(child)
 
-    def _extract_modifiers(self, node: "tree_sitter.Node") -> list[str]:
+    def _extract_modifiers(self, node: tree_sitter.Node) -> list[str]:
         """Extract modifiers from a declaration node."""
         return _extract_mods_standalone(node, self._get_node_text_optimized)
 
@@ -152,15 +154,13 @@ class PHPElementExtractor(ElementExtractor):
         """Determine visibility from modifiers."""
         return _determine_vis_standalone(modifiers)
 
-    def _extract_attributes(self, node: "tree_sitter.Node") -> list[dict[str, Any]]:
+    def _extract_attributes(self, node: tree_sitter.Node) -> list[dict[str, Any]]:
         """Extract PHP 8+ attributes from a node."""
         return _extract_attrs_standalone(
             node, self._get_node_text_optimized, self._attribute_cache
         )
 
-    def extract_classes(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Class]:
+    def extract_classes(self, tree: tree_sitter.Tree, source_code: str) -> list[Class]:
         """
         Extract PHP classes, interfaces, traits, and enums.
 
@@ -200,7 +200,7 @@ class PHPElementExtractor(ElementExtractor):
 
         return classes
 
-    def _extract_class_element(self, node: "tree_sitter.Node") -> Class | None:
+    def _extract_class_element(self, node: tree_sitter.Node) -> Class | None:
         """Extract a single class, interface, trait, or enum element."""
         return _extract_class_standalone(
             node,
@@ -211,7 +211,7 @@ class PHPElementExtractor(ElementExtractor):
         )
 
     def extract_functions(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[Function]:
         """
         Extract PHP methods and functions.
@@ -261,7 +261,7 @@ class PHPElementExtractor(ElementExtractor):
         return functions
 
     def _extract_method_element(
-        self, node: "tree_sitter.Node", parent_class: str
+        self, node: tree_sitter.Node, parent_class: str
     ) -> Function | None:
         """Extract a method element."""
         return _extract_method_standalone(
@@ -272,7 +272,7 @@ class PHPElementExtractor(ElementExtractor):
             self._extract_attributes,
         )
 
-    def _extract_function_element(self, node: "tree_sitter.Node") -> Function | None:
+    def _extract_function_element(self, node: tree_sitter.Node) -> Function | None:
         """Extract a function element."""
         return _extract_func_standalone(
             node,
@@ -281,7 +281,7 @@ class PHPElementExtractor(ElementExtractor):
         )
 
     def extract_variables(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[Variable]:
         """
         Extract PHP properties and constants.
@@ -329,7 +329,7 @@ class PHPElementExtractor(ElementExtractor):
         return variables
 
     def _extract_property_elements(
-        self, node: "tree_sitter.Node", parent_class: str
+        self, node: tree_sitter.Node, parent_class: str
     ) -> list[Variable]:
         """Extract property elements from a property declaration."""
         return _extract_prop_standalone(
@@ -340,7 +340,7 @@ class PHPElementExtractor(ElementExtractor):
         )
 
     def _extract_constant_elements(
-        self, node: "tree_sitter.Node", parent_class: str
+        self, node: tree_sitter.Node, parent_class: str
     ) -> list[Variable]:
         """Extract constant elements from a const declaration."""
         return _extract_const_standalone(
@@ -350,9 +350,7 @@ class PHPElementExtractor(ElementExtractor):
             self._extract_modifiers,
         )
 
-    def extract_imports(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Import]:
+    def extract_imports(self, tree: tree_sitter.Tree, source_code: str) -> list[Import]:
         """
         Extract PHP use statements.
 
@@ -384,7 +382,7 @@ class PHPElementExtractor(ElementExtractor):
 
         return imports
 
-    def _extract_use_statement(self, node: "tree_sitter.Node") -> list[Import]:
+    def _extract_use_statement(self, node: tree_sitter.Node) -> list[Import]:
         """Extract use statement elements."""
         return _extract_use_standalone(node, self._get_node_text_optimized)
 
@@ -397,7 +395,7 @@ class PHPPlugin(LanguagePlugin):
     Supports modern PHP features including PHP 8+ attributes, enums, and typed properties.
     """
 
-    _language_instance: Optional["tree_sitter.Language"] = None
+    _language_instance: tree_sitter.Language | None = None
 
     def get_language_name(self) -> str:
         """
@@ -417,7 +415,7 @@ class PHPPlugin(LanguagePlugin):
         """
         return [".php"]
 
-    def get_tree_sitter_language(self) -> "tree_sitter.Language":
+    def get_tree_sitter_language(self) -> tree_sitter.Language:
         """
         Get the tree-sitter language instance for PHP.
 
@@ -456,8 +454,8 @@ class PHPPlugin(LanguagePlugin):
         return PHPElementExtractor()
 
     async def analyze_file(
-        self, file_path: str, request: "AnalysisRequest"
-    ) -> "AnalysisResult":
+        self, file_path: str, request: AnalysisRequest
+    ) -> AnalysisResult:
         """
         Analyze a PHP file.
 
@@ -507,7 +505,7 @@ class PHPPlugin(LanguagePlugin):
                 node_count=0,
             )
 
-    def _count_nodes(self, node: "tree_sitter.Node") -> int:
+    def _count_nodes(self, node: tree_sitter.Node) -> int:
         """
         Count total nodes in the AST.
 

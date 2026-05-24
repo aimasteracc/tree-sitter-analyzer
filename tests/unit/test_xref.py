@@ -1,10 +1,5 @@
 """Tests for xref.py — AST-cache-backed cross-reference engine."""
 
-import json
-import os
-import sqlite3
-import tempfile
-
 import pytest
 
 from tree_sitter_analyzer.ast_cache import ASTCache
@@ -44,21 +39,36 @@ class TestXRefEngineSymbol:
     def test_xref_callers(self, indexed_project):
         _, cache = indexed_project
         engine = XRefEngine(cache)
-        result = engine.xref("alpha", include_callees=False, include_imports=False, include_file_deps=False)
+        result = engine.xref(
+            "alpha",
+            include_callees=False,
+            include_imports=False,
+            include_file_deps=False,
+        )
         caller_names = [c["name"] for c in result.callers]
         assert "delta" in caller_names or "epsilon" in caller_names
 
     def test_xref_callees(self, indexed_project):
         _, cache = indexed_project
         engine = XRefEngine(cache)
-        result = engine.xref("alpha", include_callers=False, include_imports=False, include_file_deps=False)
+        result = engine.xref(
+            "alpha",
+            include_callers=False,
+            include_imports=False,
+            include_file_deps=False,
+        )
         callee_names = [c["name"] for c in result.callees]
         assert "beta" in callee_names or "gamma" in callee_names
 
     def test_xref_import_dependents(self, indexed_project):
         _, cache = indexed_project
         engine = XRefEngine(cache)
-        result = engine.xref("alpha", include_callers=False, include_callees=False, include_file_deps=False)
+        result = engine.xref(
+            "alpha",
+            include_callers=False,
+            include_callees=False,
+            include_file_deps=False,
+        )
         dep_files = [d["file"] for d in result.import_dependents]
         assert any("c.py" in f for f in dep_files)
 

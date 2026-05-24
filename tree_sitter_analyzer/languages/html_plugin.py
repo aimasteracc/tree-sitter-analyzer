@@ -7,6 +7,8 @@ Provides HTML-specific analysis capabilities including element extraction,
 attribute parsing, and document structure analysis.
 """
 
+from __future__ import annotations
+
 import logging
 from typing import TYPE_CHECKING, Any
 
@@ -159,24 +161,24 @@ class HtmlElementExtractor(ElementExtractor):
             ],
         }
 
-    def extract_functions(self, tree: "tree_sitter.Tree", source_code: str) -> list:
+    def extract_functions(self, tree: tree_sitter.Tree, source_code: str) -> list:
         """HTML doesn't have functions, return empty list"""
         return []
 
-    def extract_classes(self, tree: "tree_sitter.Tree", source_code: str) -> list:
+    def extract_classes(self, tree: tree_sitter.Tree, source_code: str) -> list:
         """HTML doesn't have classes in the traditional sense, return empty list"""
         return []
 
-    def extract_variables(self, tree: "tree_sitter.Tree", source_code: str) -> list:
+    def extract_variables(self, tree: tree_sitter.Tree, source_code: str) -> list:
         """HTML doesn't have variables, return empty list"""
         return []
 
-    def extract_imports(self, tree: "tree_sitter.Tree", source_code: str) -> list:
+    def extract_imports(self, tree: tree_sitter.Tree, source_code: str) -> list:
         """HTML doesn't have imports, return empty list"""
         return []
 
     def extract_html_elements(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[MarkupElement]:
         """Extract HTML elements using tree-sitter-html parser"""
         elements: list[MarkupElement] = []
@@ -193,7 +195,7 @@ class HtmlElementExtractor(ElementExtractor):
 
     def _traverse_for_html_elements(
         self,
-        node: "tree_sitter.Node",
+        node: tree_sitter.Node,
         elements: list[MarkupElement],
         source_code: str,
         parent: MarkupElement | None,
@@ -215,7 +217,7 @@ class HtmlElementExtractor(ElementExtractor):
 
     def _try_create_html_element(
         self,
-        node: "tree_sitter.Node",
+        node: tree_sitter.Node,
         elements: list[MarkupElement],
         source_code: str,
         parent: MarkupElement | None,
@@ -255,7 +257,7 @@ class HtmlElementExtractor(ElementExtractor):
 
     def _create_markup_element(
         self,
-        node: "tree_sitter.Node",
+        node: tree_sitter.Node,
         source_code: str,
         parent: MarkupElement | None,
     ) -> MarkupElement | None:
@@ -271,7 +273,7 @@ class HtmlElementExtractor(ElementExtractor):
         """Classify HTML element based on tag name"""
         return _classify_standalone(tag_name, self.element_categories)
 
-    def _extract_tag_name(self, node: "tree_sitter.Node", source_code: str) -> str:
+    def _extract_tag_name(self, node: tree_sitter.Node, source_code: str) -> str:
         """Extract tag name from HTML element node"""
         from .html_helpers import extract_html_tag_name
 
@@ -280,7 +282,7 @@ class HtmlElementExtractor(ElementExtractor):
         )
 
     def _extract_attributes(
-        self, node: "tree_sitter.Node", source_code: str
+        self, node: tree_sitter.Node, source_code: str
     ) -> dict[str, str]:
         """Extract attributes from HTML element node"""
         from .html_helpers import extract_html_attributes
@@ -290,7 +292,7 @@ class HtmlElementExtractor(ElementExtractor):
         )
 
     def _parse_attribute(
-        self, attr_node: "tree_sitter.Node", source_code: str
+        self, attr_node: tree_sitter.Node, source_code: str
     ) -> tuple[str, str]:
         """Parse individual attribute node"""
         from .html_helpers import parse_attribute
@@ -299,7 +301,7 @@ class HtmlElementExtractor(ElementExtractor):
             attr_node, lambda n: self._extract_node_text(n, source_code)
         )
 
-    def _extract_node_text(self, node: "tree_sitter.Node", source_code: str) -> str:
+    def _extract_node_text(self, node: tree_sitter.Node, source_code: str) -> str:
         """Extract text content from a tree-sitter node"""
         try:
             if hasattr(node, "start_byte") and hasattr(node, "end_byte"):
@@ -364,8 +366,8 @@ class HtmlPlugin(LanguagePlugin):
         }
 
     async def analyze_file(
-        self, file_path: str, request: "AnalysisRequest"
-    ) -> "AnalysisResult":
+        self, file_path: str, request: AnalysisRequest
+    ) -> AnalysisResult:
         """Analyze HTML file using tree-sitter-html parser.
 
         r37er (dogfood): 91 → ~15 lines. Tree-sitter parse path moved to
@@ -390,9 +392,7 @@ class HtmlPlugin(LanguagePlugin):
             log_error(f"Failed to analyze HTML file {file_path}: {e}")
             return _html_error_result(file_path, e)
 
-    def _analyze_with_tree_sitter(
-        self, file_path: str, content: str
-    ) -> "AnalysisResult":
+    def _analyze_with_tree_sitter(self, file_path: str, content: str) -> AnalysisResult:
         """Parse via ``tree-sitter-html``; may raise ``ImportError`` if missing."""
         import tree_sitter
         import tree_sitter_html as ts_html

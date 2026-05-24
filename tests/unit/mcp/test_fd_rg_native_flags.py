@@ -24,46 +24,45 @@ import pytest
 
 from tree_sitter_analyzer.mcp.tools import fd_rg_utils
 
+_BASE_RG_KW: dict = {
+    "query": "x",
+    "case": None,
+    "fixed_strings": False,
+    "word": False,
+    "multiline": False,
+    "include_globs": None,
+    "exclude_globs": None,
+    "follow_symlinks": False,
+    "hidden": False,
+    "no_ignore": False,
+    "max_filesize": None,
+    "context_before": None,
+    "context_after": None,
+    "encoding": None,
+    "max_count": None,
+    "timeout_ms": None,
+    "roots": None,
+    "files_from": None,
+}
 
-_BASE_RG_KW: dict = dict(
-    query="x",
-    case=None,
-    fixed_strings=False,
-    word=False,
-    multiline=False,
-    include_globs=None,
-    exclude_globs=None,
-    follow_symlinks=False,
-    hidden=False,
-    no_ignore=False,
-    max_filesize=None,
-    context_before=None,
-    context_after=None,
-    encoding=None,
-    max_count=None,
-    timeout_ms=None,
-    roots=None,
-    files_from=None,
-)
-
-_BASE_FD_KW: dict = dict(
-    pattern=None,
-    glob=False,
-    types=None,
-    extensions=None,
-    exclude=None,
-    depth=None,
-    follow_symlinks=False,
-    hidden=False,
-    no_ignore=False,
-    size=None,
-    changed_within=None,
-    changed_before=None,
-    full_path_match=False,
-    absolute=False,
-    limit=None,
-    roots=["."],
-)
+_BASE_FD_KW: dict = {
+    "pattern": None,
+    "glob": False,
+    "types": None,
+    "extensions": None,
+    "exclude": None,
+    "depth": None,
+    "follow_symlinks": False,
+    "hidden": False,
+    "no_ignore": False,
+    "size": None,
+    "changed_within": None,
+    "changed_before": None,
+    "full_path_match": False,
+    "absolute": False,
+    "limit": None,
+    "roots": ["."],
+}
 
 
 class TestRgHiddenBug:
@@ -87,26 +86,20 @@ class TestRgNewFlags:
     """Each new keyword propagates to the right ripgrep CLI token."""
 
     def test_file_types(self):
-        cmd = fd_rg_utils.build_rg_command(
-            **_BASE_RG_KW, file_types=["py", "rs"]
-        )
+        cmd = fd_rg_utils.build_rg_command(**_BASE_RG_KW, file_types=["py", "rs"])
         # Two distinct -t pairs.
         assert cmd.count("-t") == 2
         py_idx = cmd.index("-t")
         assert cmd[py_idx + 1] == "py"
 
     def test_exclude_types(self):
-        cmd = fd_rg_utils.build_rg_command(
-            **_BASE_RG_KW, exclude_types=["test"]
-        )
+        cmd = fd_rg_utils.build_rg_command(**_BASE_RG_KW, exclude_types=["test"])
         idx = cmd.index("-T")
         assert cmd[idx + 1] == "test"
 
     def test_files_with_matches_drops_json(self):
         # rg refuses --json with -l; we must drop the JSON flag.
-        cmd = fd_rg_utils.build_rg_command(
-            **_BASE_RG_KW, files_with_matches=True
-        )
+        cmd = fd_rg_utils.build_rg_command(**_BASE_RG_KW, files_with_matches=True)
         assert "--files-with-matches" in cmd
         assert "--json" not in cmd
 
@@ -141,7 +134,9 @@ class TestRgNewFlags:
         idx = cmd.index("--max-depth")
         assert cmd[idx + 1] == "5"
 
-    @pytest.mark.parametrize("sort_val", ["path", "modified", "accessed", "created", "none"])
+    @pytest.mark.parametrize(
+        "sort_val", ["path", "modified", "accessed", "created", "none"]
+    )
     def test_sort(self, sort_val):
         cmd = fd_rg_utils.build_rg_command(**_BASE_RG_KW, sort=sort_val)
         idx = cmd.index("--sort")
@@ -205,8 +200,16 @@ class TestBackwardCompat:
         assert "--json" in cmd  # still default
         # None of the new flags should leak into the output.
         for new in [
-            "-t", "-T", "--files-with-matches", "-o", "-C",
-            "-P", "--max-depth", "--sort", "-v", "--stats",
+            "-t",
+            "-T",
+            "--files-with-matches",
+            "-o",
+            "-C",
+            "-P",
+            "--max-depth",
+            "--sort",
+            "-v",
+            "--stats",
         ]:
             assert new not in cmd, f"unexpected {new} when not requested"
 
@@ -214,7 +217,11 @@ class TestBackwardCompat:
         cmd = fd_rg_utils.build_fd_command(**_BASE_FD_KW)
         assert cmd[0] == "fd"
         for new in [
-            "--min-depth", "--prune", "-j", "--strip-cwd-prefix",
-            "--one-file-system", "--show-errors",
+            "--min-depth",
+            "--prune",
+            "-j",
+            "--strip-cwd-prefix",
+            "--one-file-system",
+            "--show-errors",
         ]:
             assert new not in cmd, f"unexpected {new} when not requested"

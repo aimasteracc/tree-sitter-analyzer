@@ -2,17 +2,15 @@
 
 from __future__ import annotations
 
-import pytest
-
 from tree_sitter_analyzer.mcp.tools.utils.file_health_blocks import (
     _BlockTracker,
     find_long_blocks_heuristic,
 )
 
-
 # ---------------------------------------------------------------------------
 # _BlockTracker
 # ---------------------------------------------------------------------------
+
 
 class TestBlockTracker:
     def test_initial_state(self) -> None:
@@ -76,6 +74,7 @@ class TestBlockTracker:
 # find_long_blocks_heuristic
 # ---------------------------------------------------------------------------
 
+
 class TestFindLongBlocksHeuristic:
     def test_empty_lines_no_blocks(self) -> None:
         result = find_long_blocks_heuristic([])
@@ -96,8 +95,10 @@ class TestFindLongBlocksHeuristic:
 
     def test_multiple_functions_tracks_each(self) -> None:
         lines = (
-            ["def short():"] + ["    pass"] * 5
-            + ["def long_fn():"] + ["    x = 1"] * 60
+            ["def short():"]
+            + ["    pass"] * 5
+            + ["def long_fn():"]
+            + ["    x = 1"] * 60
         )
         result = find_long_blocks_heuristic(lines, threshold=50)
         assert len(result) == 1
@@ -111,8 +112,10 @@ class TestFindLongBlocksHeuristic:
 
     def test_results_sorted_by_length_descending(self) -> None:
         lines = (
-            ["def medium_fn():"] + ["    pass"] * 55
-            + ["def huge_fn():"] + ["    pass"] * 80
+            ["def medium_fn():"]
+            + ["    pass"] * 55
+            + ["def huge_fn():"]
+            + ["    pass"] * 80
         )
         result = find_long_blocks_heuristic(lines, threshold=50)
         if len(result) >= 2:

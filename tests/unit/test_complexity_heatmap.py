@@ -12,8 +12,7 @@ def complex_project(tmp_path):
     project = tmp_path / "proj"
     project.mkdir()
     (project / "simple.py").write_text(
-        "def add(a, b):\n    return a + b\n\n"
-        "def sub(a, b):\n    return a - b\n"
+        "def add(a, b):\n    return a + b\n\ndef sub(a, b):\n    return a - b\n"
     )
     (project / "complex.py").write_text(
         "def deeply_nested(x, y, z):\n"
@@ -77,18 +76,14 @@ class TestComplexityEngine:
     def test_analyze_simple_file(self, complex_project):
         from tree_sitter_analyzer.complexity_heatmap import analyze_file_complexity
 
-        funcs = analyze_file_complexity(
-            str(complex_project / "simple.py"), "python"
-        )
+        funcs = analyze_file_complexity(str(complex_project / "simple.py"), "python")
         assert len(funcs) == 2
         assert all(f.complexity == 1 for f in funcs)
 
     def test_analyze_complex_file(self, complex_project):
         from tree_sitter_analyzer.complexity_heatmap import analyze_file_complexity
 
-        funcs = analyze_file_complexity(
-            str(complex_project / "complex.py"), "python"
-        )
+        funcs = analyze_file_complexity(str(complex_project / "complex.py"), "python")
         assert len(funcs) >= 3
         nested = [f for f in funcs if f.name == "deeply_nested"]
         assert len(nested) == 1
@@ -97,9 +92,7 @@ class TestComplexityEngine:
     def test_class_method_detection(self, complex_project):
         from tree_sitter_analyzer.complexity_heatmap import analyze_file_complexity
 
-        funcs = analyze_file_complexity(
-            str(complex_project / "complex.py"), "python"
-        )
+        funcs = analyze_file_complexity(str(complex_project / "complex.py"), "python")
         process = [f for f in funcs if f.name == "process"]
         assert len(process) == 1
         assert process[0].class_name == "DataProcessor"
@@ -108,17 +101,13 @@ class TestComplexityEngine:
     def test_empty_file(self, complex_project):
         from tree_sitter_analyzer.complexity_heatmap import analyze_file_complexity
 
-        funcs = analyze_file_complexity(
-            str(complex_project / "empty.py"), "python"
-        )
+        funcs = analyze_file_complexity(str(complex_project / "empty.py"), "python")
         assert funcs == []
 
     def test_javascript_complexity(self, complex_project):
         from tree_sitter_analyzer.complexity_heatmap import analyze_file_complexity
 
-        funcs = analyze_file_complexity(
-            str(complex_project / "mixed.js"), "javascript"
-        )
+        funcs = analyze_file_complexity(str(complex_project / "mixed.js"), "javascript")
         assert len(funcs) >= 1
         fetch = [f for f in funcs if f.name == "fetchData"]
         assert len(fetch) == 1
@@ -162,17 +151,13 @@ class TestComplexityEngine:
     def test_project_heatmap_directory_filter(self, complex_project):
         from tree_sitter_analyzer.complexity_heatmap import analyze_project_heatmap
 
-        heatmap = analyze_project_heatmap(
-            str(complex_project), directory_filter="."
-        )
+        heatmap = analyze_project_heatmap(str(complex_project), directory_filter=".")
         assert heatmap["total_files_analyzed"] >= 1
 
     def test_decision_points_populated(self, complex_project):
         from tree_sitter_analyzer.complexity_heatmap import analyze_file_complexity
 
-        funcs = analyze_file_complexity(
-            str(complex_project / "complex.py"), "python"
-        )
+        funcs = analyze_file_complexity(str(complex_project / "complex.py"), "python")
         nested = [f for f in funcs if f.name == "deeply_nested"]
         assert nested[0].decision_points
         assert "if_statement" in nested[0].decision_points
@@ -214,9 +199,7 @@ class TestCacheBackedComplexity:
         from tree_sitter_analyzer.complexity_heatmap import analyze_project_heatmap
 
         cache = ASTCache(str(indexed_complex_project))
-        heatmap = analyze_project_heatmap(
-            str(indexed_complex_project), cache=cache
-        )
+        heatmap = analyze_project_heatmap(str(indexed_complex_project), cache=cache)
         assert heatmap["total_files_analyzed"] >= 2
         assert heatmap["total_functions"] >= 3
         cache.close()
@@ -233,9 +216,7 @@ class TestComplexityHeatmapTool:
     @pytest.mark.asyncio
     async def test_project_mode(self, complex_project):
         tool = self._make_tool(complex_project)
-        result = await tool.execute(
-            {"mode": "project", "output_format": "json"}
-        )
+        result = await tool.execute({"mode": "project", "output_format": "json"})
         assert result["success"] is True
         assert result["mode"] == "project"
         assert result["total_functions"] >= 3
@@ -308,9 +289,7 @@ class TestComplexityHeatmapTool:
     @pytest.mark.asyncio
     async def test_project_with_cache(self, indexed_complex_project):
         tool = self._make_tool(indexed_complex_project)
-        result = await tool.execute(
-            {"mode": "project", "output_format": "json"}
-        )
+        result = await tool.execute({"mode": "project", "output_format": "json"})
         assert result["success"] is True
         if result.get("data_source") == "ast_cache":
             assert "file_heatmaps" in result
@@ -346,8 +325,6 @@ class TestComplexityHeatmapTool:
 
 class TestComplexityCLI:
     def test_cli_project_mode(self, indexed_complex_project, monkeypatch):
-        import sys
-        from io import StringIO
 
         from tree_sitter_analyzer.cli_main import main
 
@@ -370,8 +347,6 @@ class TestComplexityCLI:
             pass
 
     def test_cli_file_mode(self, complex_project, monkeypatch):
-        import sys
-        from io import StringIO
 
         from tree_sitter_analyzer.cli_main import main
 
@@ -395,8 +370,6 @@ class TestComplexityCLI:
             main()
 
     def test_cli_function_mode(self, complex_project, monkeypatch):
-        import sys
-        from io import StringIO
 
         from tree_sitter_analyzer.cli_main import main
 

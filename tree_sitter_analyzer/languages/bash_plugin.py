@@ -7,8 +7,10 @@ Provides support for Bash shell script features including functions,
 variable assignments, control flow structures, and command pipelines.
 """
 
+from __future__ import annotations
+
 from collections.abc import Iterator
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 import anyio
 
@@ -78,8 +80,8 @@ _BASH_CONTAINER_NODE_TYPES: frozenset[str] = frozenset(
 
 
 def _push_bash_children(
-    node_stack: list[tuple["tree_sitter.Node", int]],
-    current_node: "tree_sitter.Node",
+    node_stack: list[tuple[tree_sitter.Node, int]],
+    current_node: tree_sitter.Node,
     depth: int,
 ) -> None:
     """Append ``current_node.children`` to ``node_stack`` in reversed order.
@@ -119,7 +121,7 @@ class BashElementExtractor(ElementExtractor):
         self._file_encoding: str | None = None
 
     def extract_functions(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[Function]:
         """Extract Bash function definitions"""
         self.source_code = source_code or ""
@@ -146,7 +148,7 @@ class BashElementExtractor(ElementExtractor):
         return functions
 
     def extract_expressions(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[Expression]:
         """Extract Bash expressions (control flow, arrays, redirects, etc.)"""
         self.source_code = source_code or ""
@@ -200,17 +202,15 @@ class BashElementExtractor(ElementExtractor):
 
         return expressions
 
-    def extract_classes(self, tree: "tree_sitter.Tree", source_code: str) -> list[Any]:
+    def extract_classes(self, tree: tree_sitter.Tree, source_code: str) -> list[Any]:
         """Bash does not have classes"""
         return []
 
-    def extract_variables(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Any]:
+    def extract_variables(self, tree: tree_sitter.Tree, source_code: str) -> list[Any]:
         """Bash variable extraction not implemented in this phase"""
         return []
 
-    def extract_imports(self, tree: "tree_sitter.Tree", source_code: str) -> list[Any]:
+    def extract_imports(self, tree: tree_sitter.Tree, source_code: str) -> list[Any]:
         """Bash does not have traditional imports (source statements are handled separately)"""
         return []
 
@@ -221,7 +221,7 @@ class BashElementExtractor(ElementExtractor):
 
     def _traverse_and_extract_iterative(
         self,
-        root_node: Optional["tree_sitter.Node"],
+        root_node: tree_sitter.Node | None,
         extractors: dict[str, Any],
         results: list[Any],
         element_type: str,
@@ -297,7 +297,7 @@ class BashElementExtractor(ElementExtractor):
 
     def _try_extract_bash_node(
         self,
-        current_node: "tree_sitter.Node",
+        current_node: tree_sitter.Node,
         node_type: str,
         extractors: dict[str, Any],
         results: list[Any],
@@ -323,7 +323,7 @@ class BashElementExtractor(ElementExtractor):
         if element:
             results.append(element)
 
-    def _get_node_text_optimized(self, node: "tree_sitter.Node") -> str:
+    def _get_node_text_optimized(self, node: tree_sitter.Node) -> str:
         """Get node text with optimized caching"""
         cache_key = (node.start_byte, node.end_byte)
 
@@ -370,7 +370,7 @@ class BashElementExtractor(ElementExtractor):
             log_error(f"Fallback text extraction also failed: {fallback_error}")
             return ""
 
-    def _extract_function(self, node: "tree_sitter.Node") -> Function | None:
+    def _extract_function(self, node: tree_sitter.Node) -> Function | None:
         """Extract Bash function information"""
         try:
             start_line = node.start_point[0] + 1
@@ -397,7 +397,7 @@ class BashElementExtractor(ElementExtractor):
             log_error(f"Failed to extract Bash function info: {e}")
             return None
 
-    def _extract_function_name(self, node: "tree_sitter.Node") -> str | None:
+    def _extract_function_name(self, node: tree_sitter.Node) -> str | None:
         """Extract function name from function_definition node"""
         try:
             # In tree-sitter-bash, function_definition has a "name" field
@@ -409,7 +409,7 @@ class BashElementExtractor(ElementExtractor):
             return None
         return None
 
-    def _extract_control_flow(self, node: "tree_sitter.Node") -> Expression | None:
+    def _extract_control_flow(self, node: tree_sitter.Node) -> Expression | None:
         """Extract control flow statements (while, for, case, if branches)"""
         try:
             start_line = node.start_point[0] + 1
@@ -442,7 +442,7 @@ class BashElementExtractor(ElementExtractor):
             log_error(f"Failed to extract control flow: {e}")
             return None
 
-    def _extract_subshell(self, node: "tree_sitter.Node") -> Expression | None:
+    def _extract_subshell(self, node: tree_sitter.Node) -> Expression | None:
         """Extract subshell expressions"""
         try:
             start_line = node.start_point[0] + 1
@@ -463,7 +463,7 @@ class BashElementExtractor(ElementExtractor):
             log_error(f"Failed to extract subshell: {e}")
             return None
 
-    def _extract_array(self, node: "tree_sitter.Node") -> Expression | None:
+    def _extract_array(self, node: tree_sitter.Node) -> Expression | None:
         """Extract array expressions"""
         try:
             start_line = node.start_point[0] + 1
@@ -484,7 +484,7 @@ class BashElementExtractor(ElementExtractor):
             log_error(f"Failed to extract array: {e}")
             return None
 
-    def _extract_subscript(self, node: "tree_sitter.Node") -> Expression | None:
+    def _extract_subscript(self, node: tree_sitter.Node) -> Expression | None:
         """Extract subscript/array indexing expressions"""
         try:
             start_line = node.start_point[0] + 1
@@ -505,7 +505,7 @@ class BashElementExtractor(ElementExtractor):
             log_error(f"Failed to extract subscript: {e}")
             return None
 
-    def _extract_list(self, node: "tree_sitter.Node") -> Expression | None:
+    def _extract_list(self, node: tree_sitter.Node) -> Expression | None:
         """Extract list expressions (command lists with && or ||)"""
         try:
             start_line = node.start_point[0] + 1
@@ -526,7 +526,7 @@ class BashElementExtractor(ElementExtractor):
             log_error(f"Failed to extract list: {e}")
             return None
 
-    def _extract_redirect(self, node: "tree_sitter.Node") -> Expression | None:
+    def _extract_redirect(self, node: tree_sitter.Node) -> Expression | None:
         """Extract redirection expressions"""
         try:
             start_line = node.start_point[0] + 1
@@ -557,7 +557,7 @@ class BashElementExtractor(ElementExtractor):
             return None
 
     def _extract_process_substitution(
-        self, node: "tree_sitter.Node"
+        self, node: tree_sitter.Node
     ) -> Expression | None:
         """Extract process substitution expressions"""
         try:
@@ -579,7 +579,7 @@ class BashElementExtractor(ElementExtractor):
             log_error(f"Failed to extract process substitution: {e}")
             return None
 
-    def _extract_comment(self, node: "tree_sitter.Node") -> Expression | None:
+    def _extract_comment(self, node: tree_sitter.Node) -> Expression | None:
         """Extract comment nodes"""
         try:
             start_line = node.start_point[0] + 1
@@ -600,7 +600,7 @@ class BashElementExtractor(ElementExtractor):
             log_error(f"Failed to extract comment: {e}")
             return None
 
-    def _extract_string_pattern(self, node: "tree_sitter.Node") -> Expression | None:
+    def _extract_string_pattern(self, node: tree_sitter.Node) -> Expression | None:
         """Extract string and pattern expressions"""
         try:
             start_line = node.start_point[0] + 1
@@ -669,27 +669,25 @@ class BashPlugin(LanguagePlugin):
         return "bash"
 
     def extract_functions(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[Function]:
         """Extract functions from the tree"""
         extractor = self.get_extractor()
         return extractor.extract_functions(tree, source_code)
 
-    def extract_classes(self, tree: "tree_sitter.Tree", source_code: str) -> list[Any]:
+    def extract_classes(self, tree: tree_sitter.Tree, source_code: str) -> list[Any]:
         """Extract classes from the tree (Bash has no classes)"""
         return []
 
-    def extract_variables(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Any]:
+    def extract_variables(self, tree: tree_sitter.Tree, source_code: str) -> list[Any]:
         """Extract variables from the tree"""
         return []
 
-    def extract_imports(self, tree: "tree_sitter.Tree", source_code: str) -> list[Any]:
+    def extract_imports(self, tree: tree_sitter.Tree, source_code: str) -> list[Any]:
         """Extract imports from the tree"""
         return []
 
-    def get_tree_sitter_language(self) -> Optional["tree_sitter.Language"]:
+    def get_tree_sitter_language(self) -> tree_sitter.Language | None:
         """Get the Tree-sitter language object for Bash"""
         if self._language_cache is None:
             try:
@@ -744,8 +742,8 @@ class BashPlugin(LanguagePlugin):
         }
 
     async def analyze_file(
-        self, file_path: str, request: "AnalysisRequest"
-    ) -> "AnalysisResult":
+        self, file_path: str, request: AnalysisRequest
+    ) -> AnalysisResult:
         """Analyze a Bash file and return the analysis results"""
         if not TREE_SITTER_AVAILABLE:
             return AnalysisResult(

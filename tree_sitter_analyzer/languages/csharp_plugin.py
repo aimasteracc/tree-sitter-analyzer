@@ -6,8 +6,10 @@ Provides C#-specific parsing and element extraction functionality.
 Supports extraction of classes, interfaces, records, methods, properties, fields, and using directives.
 """
 
+from __future__ import annotations
+
 from collections.abc import Iterator
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -67,7 +69,7 @@ from .csharp_helpers import (
 )
 
 
-def _traverse_nodes(root_node: "tree_sitter.Node") -> Iterator["tree_sitter.Node"]:
+def _traverse_nodes(root_node: tree_sitter.Node) -> Iterator[tree_sitter.Node]:
     stack = [root_node]
     while stack:
         node = stack.pop()
@@ -120,7 +122,7 @@ class CSharpElementExtractor(ElementExtractor):
         self._attribute_cache.clear()
         self.current_namespace = ""
 
-    def _get_node_text_optimized(self, node: "tree_sitter.Node") -> str:
+    def _get_node_text_optimized(self, node: tree_sitter.Node) -> str:
         """
         Get text content of a node with caching for performance.
 
@@ -142,7 +144,7 @@ class CSharpElementExtractor(ElementExtractor):
         self._node_text_cache[cache_key] = text
         return text
 
-    def _extract_namespace(self, node: "tree_sitter.Node") -> None:
+    def _extract_namespace(self, node: tree_sitter.Node) -> None:
         """
         Extract namespace from the AST and set current_namespace.
 
@@ -165,7 +167,7 @@ class CSharpElementExtractor(ElementExtractor):
             elif child.child_count > 0:
                 self._extract_namespace(child)
 
-    def _extract_modifiers(self, node: "tree_sitter.Node") -> list[str]:
+    def _extract_modifiers(self, node: tree_sitter.Node) -> list[str]:
         """Extract modifiers from a declaration node."""
         return _extract_mods_standalone(node, self._get_node_text_optimized)
 
@@ -173,29 +175,27 @@ class CSharpElementExtractor(ElementExtractor):
         """Determine visibility from modifiers."""
         return _determine_vis_standalone(modifiers)
 
-    def _extract_attributes(self, node: "tree_sitter.Node") -> list[dict[str, Any]]:
+    def _extract_attributes(self, node: tree_sitter.Node) -> list[dict[str, Any]]:
         """Extract attributes (annotations) from a node."""
         return _extract_attrs_standalone(
             node, self._get_node_text_optimized, self._attribute_cache
         )
 
-    def _extract_type_name(self, type_node: Optional["tree_sitter.Node"]) -> str:
+    def _extract_type_name(self, type_node: tree_sitter.Node | None) -> str:
         """Extract type name from a type node."""
         return _extract_type_standalone(type_node, self._get_node_text_optimized)
 
-    def _extract_parameters(
-        self, params_node: Optional["tree_sitter.Node"]
-    ) -> list[str]:
+    def _extract_parameters(self, params_node: tree_sitter.Node | None) -> list[str]:
         """Extract method parameters."""
         return _extract_params_standalone(params_node, self._get_node_text_optimized)
 
     def _traverse_iterative(
-        self, root_node: "tree_sitter.Node"
-    ) -> Iterator["tree_sitter.Node"]:
+        self, root_node: tree_sitter.Node
+    ) -> Iterator[tree_sitter.Node]:
         yield from _traverse_nodes(root_node)
 
     def extract_classes(
-        self, tree: "tree_sitter.Tree | None", source_code: str
+        self, tree: tree_sitter.Tree | None, source_code: str
     ) -> list[Class]:
         """
         Extract classes, interfaces, records, enums, and structs.
@@ -237,7 +237,7 @@ class CSharpElementExtractor(ElementExtractor):
 
         return classes
 
-    def _extract_class_declaration(self, node: "tree_sitter.Node") -> Class | None:
+    def _extract_class_declaration(self, node: tree_sitter.Node) -> Class | None:
         """Extract a single class declaration."""
         return _extract_class_standalone(
             node,
@@ -248,7 +248,7 @@ class CSharpElementExtractor(ElementExtractor):
         )
 
     def extract_functions(
-        self, tree: "tree_sitter.Tree | None", source_code: str
+        self, tree: tree_sitter.Tree | None, source_code: str
     ) -> list[Function]:
         """
         Extract methods, constructors, and properties.
@@ -292,7 +292,7 @@ class CSharpElementExtractor(ElementExtractor):
 
         return functions
 
-    def _extract_method(self, node: "tree_sitter.Node") -> Function | None:
+    def _extract_method(self, node: tree_sitter.Node) -> Function | None:
         """Extract a method declaration."""
         return _extract_method_standalone(
             node,
@@ -304,7 +304,7 @@ class CSharpElementExtractor(ElementExtractor):
             self._calculate_complexity,
         )
 
-    def _extract_constructor(self, node: "tree_sitter.Node") -> Function | None:
+    def _extract_constructor(self, node: tree_sitter.Node) -> Function | None:
         """Extract a constructor declaration."""
         return _extract_ctor_standalone(
             node,
@@ -314,7 +314,7 @@ class CSharpElementExtractor(ElementExtractor):
             self._extract_parameters,
         )
 
-    def _extract_property(self, node: "tree_sitter.Node") -> Function | None:
+    def _extract_property(self, node: tree_sitter.Node) -> Function | None:
         """Extract a property declaration."""
         return _extract_prop_standalone(
             node,
@@ -324,12 +324,12 @@ class CSharpElementExtractor(ElementExtractor):
             self._extract_type_name,
         )
 
-    def _calculate_complexity(self, node: "tree_sitter.Node") -> int:
+    def _calculate_complexity(self, node: tree_sitter.Node) -> int:
         """Calculate cyclomatic complexity of a method."""
         return _calc_complexity_standalone(node, self._traverse_iterative)
 
     def extract_variables(
-        self, tree: "tree_sitter.Tree | None", source_code: str
+        self, tree: tree_sitter.Tree | None, source_code: str
     ) -> list[Variable]:
         """
         Extract fields, constants, and events.
@@ -364,7 +364,7 @@ class CSharpElementExtractor(ElementExtractor):
 
         return variables
 
-    def _extract_field(self, node: "tree_sitter.Node") -> list[Variable]:
+    def _extract_field(self, node: tree_sitter.Node) -> list[Variable]:
         """Extract field declarations."""
         return _extract_field_standalone(
             node,
@@ -374,7 +374,7 @@ class CSharpElementExtractor(ElementExtractor):
             self._extract_type_name,
         )
 
-    def _extract_event(self, node: "tree_sitter.Node") -> list[Variable]:
+    def _extract_event(self, node: tree_sitter.Node) -> list[Variable]:
         """Extract event field declarations."""
         return _extract_event_standalone(
             node,
@@ -385,7 +385,7 @@ class CSharpElementExtractor(ElementExtractor):
         )
 
     def extract_imports(
-        self, tree: "tree_sitter.Tree | None", source_code: str
+        self, tree: tree_sitter.Tree | None, source_code: str
     ) -> list[Import]:
         """
         Extract using directives.
@@ -417,7 +417,7 @@ class CSharpElementExtractor(ElementExtractor):
 
         return imports
 
-    def _extract_using_directive(self, node: "tree_sitter.Node") -> Import | None:
+    def _extract_using_directive(self, node: tree_sitter.Node) -> Import | None:
         """Extract a using directive."""
         return _extract_using_standalone(node, self._get_node_text_optimized)
 
@@ -555,8 +555,8 @@ class CSharpPlugin(LanguagePlugin):
             return None
 
     async def analyze_file(
-        self, file_path: str, request: "AnalysisRequest"
-    ) -> "AnalysisResult":
+        self, file_path: str, request: AnalysisRequest
+    ) -> AnalysisResult:
         """
         Analyze a C# file and extract all elements.
 

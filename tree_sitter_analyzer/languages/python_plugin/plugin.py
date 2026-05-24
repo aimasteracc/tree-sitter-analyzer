@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Python Language Plugin — wrapper class and query definitions."""
 
-from typing import TYPE_CHECKING, Any, Optional
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
 
 import anyio
 
@@ -54,30 +56,26 @@ class PythonPlugin(LanguagePlugin):
         return "python"
 
     def extract_functions(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[Function]:
         extractor = self.get_extractor()
         return extractor.extract_functions(tree, source_code)
 
-    def extract_classes(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Class]:
+    def extract_classes(self, tree: tree_sitter.Tree, source_code: str) -> list[Class]:
         extractor = self.get_extractor()
         return extractor.extract_classes(tree, source_code)
 
     def extract_variables(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[Variable]:
         extractor = self.get_extractor()
         return extractor.extract_variables(tree, source_code)
 
-    def extract_imports(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Import]:
+    def extract_imports(self, tree: tree_sitter.Tree, source_code: str) -> list[Import]:
         extractor = self.get_extractor()
         return extractor.extract_imports(tree, source_code)
 
-    def get_tree_sitter_language(self) -> Optional["tree_sitter.Language"]:
+    def get_tree_sitter_language(self) -> tree_sitter.Language | None:
         if self._language_cache is None:
             try:
                 import tree_sitter
@@ -295,7 +293,7 @@ class PythonPlugin(LanguagePlugin):
             )
 
     # Main entry point - dispatches to handler: execute_query
-    def execute_query(self, tree: "tree_sitter.Tree", query_name: str) -> dict:
+    def execute_query(self, tree: tree_sitter.Tree, query_name: str) -> dict:
         try:
             language = self.get_tree_sitter_language()
             if not language:
@@ -318,7 +316,7 @@ class PythonPlugin(LanguagePlugin):
 
     # Extract elements from AST: extract_elements
     def extract_elements(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> dict[str, list[Any]]:
         extractor = self.get_extractor()
         functions: list[Any] = []

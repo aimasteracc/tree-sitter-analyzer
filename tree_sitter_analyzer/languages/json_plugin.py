@@ -7,6 +7,8 @@ Provides comprehensive support for JSON elements including objects, arrays,
 pairs, strings, numbers, booleans, and null values.
 """
 
+from __future__ import annotations
+
 import logging
 import threading
 from typing import TYPE_CHECKING, Any
@@ -100,31 +102,27 @@ class JSONElementExtractor(ElementExtractor):
         self._node_text_cache: dict[tuple[int, int], str] = {}
 
     def extract_functions(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[Function]:
         """JSON doesn't have functions, return empty list."""
         return []
 
-    def extract_classes(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Class]:
+    def extract_classes(self, tree: tree_sitter.Tree, source_code: str) -> list[Class]:
         """JSON doesn't have classes, return empty list."""
         return []
 
     def extract_variables(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[Variable]:
         """JSON doesn't have variables, return empty list."""
         return []
 
-    def extract_imports(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Import]:
+    def extract_imports(self, tree: tree_sitter.Tree, source_code: str) -> list[Import]:
         """JSON doesn't have imports, return empty list."""
         return []
 
     def extract_json_elements(
-        self, tree: "tree_sitter.Tree | None", source_code: str
+        self, tree: tree_sitter.Tree | None, source_code: str
     ) -> list[JSONElement]:
         """Extract all JSON elements from the parsed tree.
 
@@ -154,7 +152,7 @@ class JSONElementExtractor(ElementExtractor):
         return elements
 
     def extract_elements(
-        self, tree: "tree_sitter.Tree | None", source_code: str
+        self, tree: tree_sitter.Tree | None, source_code: str
     ) -> dict[str, list[Any]]:
         """Return JSON elements grouped under the ``json_elements`` key.
 
@@ -165,7 +163,7 @@ class JSONElementExtractor(ElementExtractor):
         """
         return {"json_elements": list(self.extract_json_elements(tree, source_code))}
 
-    def _get_node_text(self, node: "tree_sitter.Node") -> str:
+    def _get_node_text(self, node: tree_sitter.Node) -> str:
         """Get text content from a tree-sitter node."""
         try:
             if hasattr(node, "start_byte") and hasattr(node, "end_byte"):
@@ -183,7 +181,7 @@ class JSONElementExtractor(ElementExtractor):
             log_debug(f"Failed to extract node text: {e}")
             return ""
 
-    def _calculate_nesting_level(self, node: "tree_sitter.Node") -> int:
+    def _calculate_nesting_level(self, node: tree_sitter.Node) -> int:
         """Calculate AST-based logical nesting level."""
         level = 0
         current = node.parent
@@ -195,7 +193,7 @@ class JSONElementExtractor(ElementExtractor):
                 break
         return level
 
-    def _traverse_nodes(self, node: "tree_sitter.Node") -> "list[tree_sitter.Node]":
+    def _traverse_nodes(self, node: tree_sitter.Node) -> list[tree_sitter.Node]:
         """Traverse all nodes in the tree."""
         nodes = [node]
         for child in node.children:
@@ -203,7 +201,7 @@ class JSONElementExtractor(ElementExtractor):
         return nodes
 
     def _extract_elements_by_type(
-        self, root_node: "tree_sitter.Node", elements: list[JSONElement]
+        self, root_node: tree_sitter.Node, elements: list[JSONElement]
     ) -> None:
         """Extract all JSON elements by traversing the tree."""
         for node in self._traverse_nodes(root_node):
@@ -228,7 +226,7 @@ class JSONElementExtractor(ElementExtractor):
                 self._extract_null(node, elements)
 
     def _extract_object(
-        self, node: "tree_sitter.Node", elements: list[JSONElement]
+        self, node: tree_sitter.Node, elements: list[JSONElement]
     ) -> None:
         """Extract JSON object."""
         try:
@@ -256,7 +254,7 @@ class JSONElementExtractor(ElementExtractor):
             pass
 
     def _extract_array(
-        self, node: "tree_sitter.Node", elements: list[JSONElement]
+        self, node: tree_sitter.Node, elements: list[JSONElement]
     ) -> None:
         """Extract JSON array."""
         try:
@@ -286,7 +284,7 @@ class JSONElementExtractor(ElementExtractor):
             pass
 
     def _extract_pair(
-        self, node: "tree_sitter.Node", elements: list[JSONElement]
+        self, node: tree_sitter.Node, elements: list[JSONElement]
     ) -> None:
         """Extract JSON key-value pair."""
         try:
@@ -343,7 +341,7 @@ class JSONElementExtractor(ElementExtractor):
             pass
 
     def _extract_string(
-        self, node: "tree_sitter.Node", elements: list[JSONElement]
+        self, node: tree_sitter.Node, elements: list[JSONElement]
     ) -> None:
         """Extract JSON string."""
         try:
@@ -379,7 +377,7 @@ class JSONElementExtractor(ElementExtractor):
             pass
 
     def _extract_number(
-        self, node: "tree_sitter.Node", elements: list[JSONElement]
+        self, node: tree_sitter.Node, elements: list[JSONElement]
     ) -> None:
         """Extract JSON number."""
         try:
@@ -405,7 +403,7 @@ class JSONElementExtractor(ElementExtractor):
             pass
 
     def _extract_boolean(
-        self, node: "tree_sitter.Node", elements: list[JSONElement], bool_value: bool
+        self, node: tree_sitter.Node, elements: list[JSONElement], bool_value: bool
     ) -> None:
         """Extract JSON boolean."""
         try:
@@ -431,7 +429,7 @@ class JSONElementExtractor(ElementExtractor):
             pass
 
     def _extract_null(
-        self, node: "tree_sitter.Node", elements: list[JSONElement]
+        self, node: tree_sitter.Node, elements: list[JSONElement]
     ) -> None:
         """Extract JSON null."""
         try:
@@ -456,7 +454,7 @@ class JSONElementExtractor(ElementExtractor):
             pass
 
     def _extract_value_info(
-        self, node: "tree_sitter.Node | None"
+        self, node: tree_sitter.Node | None
     ) -> tuple[str | None, str | None]:
         """Extract value information from a node.
 
@@ -507,7 +505,7 @@ class JSONPlugin(LanguagePlugin):
         """Return supported file extensions."""
         return [".json"]
 
-    def create_extractor(self) -> "JSONElementExtractor":
+    def create_extractor(self) -> JSONElementExtractor:
         """Create and return a JSON element extractor."""
         return JSONElementExtractor()
 
@@ -554,8 +552,8 @@ class JSONPlugin(LanguagePlugin):
         }
 
     async def analyze_file(
-        self, file_path: str, request: "AnalysisRequest"
-    ) -> "AnalysisResult":
+        self, file_path: str, request: AnalysisRequest
+    ) -> AnalysisResult:
         """Analyze JSON file using tree-sitter-json parser.
 
         Args:

@@ -6,6 +6,8 @@ Provides Java-specific parsing and element extraction functionality.
 Migrated from AdvancedAnalyzer implementation for future independence.
 """
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, Any
 
 import anyio
@@ -94,7 +96,7 @@ class JavaElementExtractor(ElementExtractor):
 
     # Extract elements from AST: extract_annotations
     def extract_annotations(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[dict[str, Any]]:
         """Extract Java annotations using AdvancedAnalyzer implementation"""
         self.source_code = source_code
@@ -121,7 +123,7 @@ class JavaElementExtractor(ElementExtractor):
 
     # Extract elements from AST: extract_functions
     def extract_functions(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[Function]:
         """Extract Java method definitions using AdvancedAnalyzer implementation"""
         self.source_code = source_code
@@ -144,9 +146,7 @@ class JavaElementExtractor(ElementExtractor):
         return functions
 
     # Extract elements from AST: extract_classes
-    def extract_classes(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Class]:
+    def extract_classes(self, tree: tree_sitter.Tree, source_code: str) -> list[Class]:
         """Extract Java class definitions using AdvancedAnalyzer implementation"""
         self.source_code = source_code
         self.content_lines = source_code.split("\n")
@@ -176,7 +176,7 @@ class JavaElementExtractor(ElementExtractor):
 
     # Extract elements from AST: extract_variables
     def extract_variables(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[Variable]:
         """Extract Java field definitions using AdvancedAnalyzer implementation"""
         self.source_code = source_code
@@ -201,9 +201,7 @@ class JavaElementExtractor(ElementExtractor):
         return variables
 
     # Extract elements from AST: extract_imports
-    def extract_imports(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Import]:
+    def extract_imports(self, tree: tree_sitter.Tree, source_code: str) -> list[Import]:
         """Extract Java import statements with enhanced robustness"""
         self.source_code = source_code
         self.content_lines = source_code.split("\n")
@@ -224,7 +222,7 @@ class JavaElementExtractor(ElementExtractor):
 
     # Extract elements from AST: extract_packages
     def extract_packages(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[Package]:
         """Extract Java package declarations"""
         self.source_code = source_code
@@ -249,7 +247,7 @@ class JavaElementExtractor(ElementExtractor):
     # Extract elements from AST: _traverse_and_extract_iterative
     def _traverse_and_extract_iterative(
         self,
-        root_node: "tree_sitter.Node | None",
+        root_node: tree_sitter.Node | None,
         extractors: dict[str, Any],
         results: list[Any],
         element_type: str,
@@ -266,7 +264,7 @@ class JavaElementExtractor(ElementExtractor):
 
     # Process data through pipeline: _process_field_batch
     def _process_field_batch(
-        self, batch: list["tree_sitter.Node"], extractors: dict, results: list[Any]
+        self, batch: list[tree_sitter.Node], extractors: dict, results: list[Any]
     ) -> None:
         """Process field nodes with caching — delegated to helper."""
         from .java_helpers import _process_field_batch
@@ -275,7 +273,7 @@ class JavaElementExtractor(ElementExtractor):
             batch, extractors, results, self._processed_nodes, self._element_cache
         )
 
-    def _get_node_text_optimized(self, node: "tree_sitter.Node") -> str:
+    def _get_node_text_optimized(self, node: tree_sitter.Node) -> str:
         """Get node text with optimized caching using position-based keys"""
         # Use position-based cache key for deterministic behavior
         cache_key = (node.start_byte, node.end_byte)
@@ -325,7 +323,7 @@ class JavaElementExtractor(ElementExtractor):
                 return ""
 
     # Extract elements from AST: _extract_class_optimized
-    def _extract_class_optimized(self, node: "tree_sitter.Node") -> Class | None:
+    def _extract_class_optimized(self, node: tree_sitter.Node) -> Class | None:
         """Extract class information optimized"""
         return _extract_class_standalone(
             node,
@@ -340,7 +338,7 @@ class JavaElementExtractor(ElementExtractor):
         )
 
     # Extract elements from AST: _extract_method_optimized
-    def _extract_method_optimized(self, node: "tree_sitter.Node") -> Function | None:
+    def _extract_method_optimized(self, node: tree_sitter.Node) -> Function | None:
         """Extract method information optimized"""
         return _extract_method_standalone(
             node,
@@ -354,7 +352,7 @@ class JavaElementExtractor(ElementExtractor):
         )
 
     # Extract elements from AST: _extract_field_optimized
-    def _extract_field_optimized(self, node: "tree_sitter.Node") -> list[Variable]:
+    def _extract_field_optimized(self, node: tree_sitter.Node) -> list[Variable]:
         """Extract field information optimized"""
         return _extract_field_standalone(
             node,
@@ -368,25 +366,25 @@ class JavaElementExtractor(ElementExtractor):
 
     # Parse input into structured data: _parse_method_signature_optimized
     def _parse_method_signature_optimized(
-        self, node: "tree_sitter.Node"
+        self, node: tree_sitter.Node
     ) -> tuple[str, str, list[str], list[str], list[str]] | None:
         """Parse method signature optimized (from AdvancedAnalyzer)"""
         return _parse_method_sig_standalone(node, self._get_node_text_optimized)
 
     # Parse input into structured data: _parse_field_declaration_optimized
     def _parse_field_declaration_optimized(
-        self, node: "tree_sitter.Node"
+        self, node: tree_sitter.Node
     ) -> tuple[str, list[str], list[str]] | None:
         """Parse field declaration optimized (from AdvancedAnalyzer)"""
         return _parse_field_standalone(node, self._get_node_text_optimized)
 
     # Extract elements from AST: _extract_modifiers_optimized
-    def _extract_modifiers_optimized(self, node: "tree_sitter.Node") -> list[str]:
+    def _extract_modifiers_optimized(self, node: tree_sitter.Node) -> list[str]:
         """Extract modifiers efficiently (from AdvancedAnalyzer)"""
         return _extract_mods_standalone(node, self._get_node_text_optimized)
 
     # Extract elements from AST: _extract_package_info
-    def _extract_package_info(self, node: "tree_sitter.Node") -> None:
+    def _extract_package_info(self, node: tree_sitter.Node) -> None:
         """Extract package information"""
         from .java_helpers import _extract_package_name
 
@@ -395,14 +393,14 @@ class JavaElementExtractor(ElementExtractor):
             self.current_package = pkg
 
     # Extract elements from AST: _extract_package_element
-    def _extract_package_element(self, node: "tree_sitter.Node") -> Package | None:
+    def _extract_package_element(self, node: tree_sitter.Node) -> Package | None:
         """Extract package element for inclusion in results"""
         from .java_helpers import _extract_package_element as _standalone
 
         return _standalone(node, self._get_node_text_optimized)
 
     # Extract elements from AST: _extract_package_from_tree
-    def _extract_package_from_tree(self, tree: "tree_sitter.Tree") -> None:
+    def _extract_package_from_tree(self, tree: tree_sitter.Tree) -> None:
         """Extract package information from tree when needed"""
         if tree and tree.root_node:
             for child in tree.root_node.children:
@@ -412,7 +410,7 @@ class JavaElementExtractor(ElementExtractor):
 
     # Extract elements from AST: _extract_import_info
     def _extract_import_info(
-        self, node: "tree_sitter.Node", source_code: str
+        self, node: tree_sitter.Node, source_code: str
     ) -> Import | None:
         """Extract import information from import declaration node"""
         from .java_helpers import _extract_import_info as _standalone
@@ -421,7 +419,7 @@ class JavaElementExtractor(ElementExtractor):
 
     # Extract elements from AST: _extract_annotation_optimized
     def _extract_annotation_optimized(
-        self, node: "tree_sitter.Node"
+        self, node: tree_sitter.Node
     ) -> dict[str, Any] | None:
         """Extract annotation information optimized"""
         return _extract_annotation_standalone(node, self._get_node_text_optimized)
@@ -445,16 +443,16 @@ class JavaElementExtractor(ElementExtractor):
         self._annotation_cache[line] = annotations
         return annotations
 
-    def _is_nested_class(self, node: "tree_sitter.Node") -> bool:
+    def _is_nested_class(self, node: tree_sitter.Node) -> bool:
         """Check if this is a nested class"""
         return _is_nested_standalone(node)
 
     # Search for patterns or elements: _find_parent_class
-    def _find_parent_class(self, node: "tree_sitter.Node") -> str | None:
+    def _find_parent_class(self, node: tree_sitter.Node) -> str | None:
         """Find parent class name for nested classes"""
         return _find_parent_class_standalone(node, self._get_node_text_optimized)
 
-    def _calculate_complexity_optimized(self, node: "tree_sitter.Node") -> int:
+    def _calculate_complexity_optimized(self, node: tree_sitter.Node) -> int:
         """Calculate cyclomatic complexity optimized"""
         return _calc_complexity_standalone(node)
 
@@ -464,7 +462,7 @@ class JavaElementExtractor(ElementExtractor):
         return _extract_javadoc_standalone(line, self.content_lines)
 
     # Extract elements from AST: _extract_class_name
-    def _extract_class_name(self, node: "tree_sitter.Node") -> str | None:
+    def _extract_class_name(self, node: tree_sitter.Node) -> str | None:
         """Extract class name from a class declaration node."""
         return _extract_class_name_standalone(node, self._get_node_text_optimized)
 
@@ -497,8 +495,8 @@ class JavaPlugin(LanguagePlugin):
 
     # Analyze source code structure: analyze_file
     async def analyze_file(
-        self, file_path: str, request: "AnalysisRequest"
-    ) -> "AnalysisResult":
+        self, file_path: str, request: AnalysisRequest
+    ) -> AnalysisResult:
         """Analyze Java code and return structured results."""
 
         from ..models import AnalysisResult

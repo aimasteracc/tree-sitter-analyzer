@@ -5,22 +5,14 @@ from __future__ import annotations
 import pytest
 
 from tree_sitter_analyzer.dead_code_analyzer import (
-    DeadCodeResult,
-    DeadFunction,
-    UnreferencedVariable,
-    UnusedImport,
     _is_known_entry,
     _is_test_file,
-    analyze_dead_code,
-    find_transitive_dead_code,
-    find_unused_imports,
-    find_unreferenced_variables,
 )
-
 
 # ---------------------------------------------------------------------------
 # _is_test_file
 # ---------------------------------------------------------------------------
+
 
 class TestIsTestFile:
     def test_prefixed_test_file(self) -> None:
@@ -45,6 +37,7 @@ class TestIsTestFile:
 # ---------------------------------------------------------------------------
 # _is_known_entry
 # ---------------------------------------------------------------------------
+
 
 class TestIsKnownEntry:
     def test_python_main(self) -> None:
@@ -72,6 +65,7 @@ class TestIsKnownEntry:
 # ---------------------------------------------------------------------------
 # find_transitive_dead_code
 # ---------------------------------------------------------------------------
+
 
 class TestFindTransitiveDeadCode:
     """Test transitive dead-code detection via a mock CallGraph."""
@@ -107,6 +101,7 @@ class TestFindTransitiveDeadCode:
 # find_unused_imports
 # ---------------------------------------------------------------------------
 
+
 class TestFindUnusedImports:
     def test_detects_unused_import(self, tmp_path) -> None:
         """A file importing `os` but never referencing it should report unused."""
@@ -124,7 +119,9 @@ class TestFindUnusedImports:
     def test_multiple_unused_names(self, tmp_path) -> None:
         """`from x import a, b, c` where only a is used should flag b, c."""
         py = tmp_path / "c.py"
-        py.write_text("from os.path import join, exists, isfile\n\ndef f():\n    return join('a')\n")
+        py.write_text(
+            "from os.path import join, exists, isfile\n\ndef f():\n    return join('a')\n"
+        )
         pass
 
     def test_unreadable_file_returns_empty(self, tmp_path) -> None:
@@ -135,6 +132,7 @@ class TestFindUnusedImports:
 # ---------------------------------------------------------------------------
 # find_unreferenced_variables
 # ---------------------------------------------------------------------------
+
 
 class TestFindUnreferencedVariables:
     def test_detects_unreferenced_assignment(self, tmp_path) -> None:
@@ -153,6 +151,7 @@ class TestFindUnreferencedVariables:
 # ---------------------------------------------------------------------------
 # analyze_dead_code (top-level)
 # ---------------------------------------------------------------------------
+
 
 class TestAnalyzeDeadCode:
     def test_returns_dead_code_result(self, tmp_path) -> None:
@@ -175,6 +174,7 @@ class TestAnalyzeDeadCode:
 # ---------------------------------------------------------------------------
 # Error handling
 # ---------------------------------------------------------------------------
+
 
 class TestDeadCodeErrorHandling:
     def test_nonexistent_directory_returns_empty(self) -> None:

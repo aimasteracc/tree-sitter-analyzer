@@ -5,6 +5,8 @@ Scala Language Plugin
 Provides Scala-specific parsing and element extraction functionality.
 """
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -29,7 +31,7 @@ _SCALA_ELEMENT_KEYS: tuple[str, ...] = (
 )
 
 
-def _scala_empty_result(file_path: str, file_content: str) -> "AnalysisResult":
+def _scala_empty_result(file_path: str, file_content: str) -> AnalysisResult:
     """Build an empty ``AnalysisResult`` when the tree-sitter language is missing."""
     from ..models import AnalysisResult
 
@@ -44,7 +46,7 @@ def _scala_empty_result(file_path: str, file_content: str) -> "AnalysisResult":
     )
 
 
-def _scala_error_result(file_path: str, exc: Exception) -> "AnalysisResult":
+def _scala_error_result(file_path: str, exc: Exception) -> AnalysisResult:
     """Build the failure-path ``AnalysisResult`` used by the ``except`` arm."""
     from ..models import AnalysisResult
 
@@ -127,7 +129,7 @@ class ScalaElementExtractor(ElementExtractor):
         self._node_text_cache: dict[tuple[int, int], str] = {}
 
     def extract_functions(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[Function]:
         """Extract Scala function definitions and declarations"""
         self.source_code = source_code
@@ -150,9 +152,7 @@ class ScalaElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(functions)} Scala functions")
         return functions
 
-    def extract_classes(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Class]:
+    def extract_classes(self, tree: tree_sitter.Tree, source_code: str) -> list[Class]:
         """Extract Scala class, object, and trait definitions"""
         self.source_code = source_code
         self.content_lines = source_code.split("\n")
@@ -179,7 +179,7 @@ class ScalaElementExtractor(ElementExtractor):
         return classes
 
     def extract_variables(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[Variable]:
         """Extract Scala val and var definitions"""
         self.source_code = source_code
@@ -202,9 +202,7 @@ class ScalaElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(variables)} Scala val/var definitions")
         return variables
 
-    def extract_imports(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Import]:
+    def extract_imports(self, tree: tree_sitter.Tree, source_code: str) -> list[Import]:
         """Extract Scala imports"""
         self.source_code = source_code
         self.content_lines = source_code.split("\n")
@@ -226,7 +224,7 @@ class ScalaElementExtractor(ElementExtractor):
         return imports
 
     def extract_packages(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[Package]:
         """Extract Scala package"""
         self.source_code = source_code
@@ -255,8 +253,8 @@ class ScalaElementExtractor(ElementExtractor):
 
     @staticmethod
     def _find_package_clause_node(
-        root_node: "tree_sitter.Node",
-    ) -> "tree_sitter.Node | None":
+        root_node: tree_sitter.Node,
+    ) -> tree_sitter.Node | None:
         """Return the first ``package_clause`` child or ``None``."""
         for child in root_node.children:
             if child.type == "package_clause":
@@ -264,7 +262,7 @@ class ScalaElementExtractor(ElementExtractor):
         return None
 
     def extract_comments(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[Expression]:
         """Extract Scala block comments"""
         self.source_code = source_code
@@ -283,7 +281,7 @@ class ScalaElementExtractor(ElementExtractor):
         return comments
 
     def extract_annotations(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[Expression]:
         """Extract Scala annotations"""
         self.source_code = source_code
@@ -309,7 +307,7 @@ class ScalaElementExtractor(ElementExtractor):
 
     def _traverse_and_extract(
         self,
-        node: "tree_sitter.Node",
+        node: tree_sitter.Node,
         extractors: dict[str, Any],
         results: list[Any],
     ) -> None:
@@ -323,7 +321,7 @@ class ScalaElementExtractor(ElementExtractor):
                     results.append(element)
             stack.extend(reversed(current.children))
 
-    def _extract_package(self, node: "tree_sitter.Node") -> None:
+    def _extract_package(self, node: tree_sitter.Node) -> None:
         """Extract package declaration from package_clause.
 
         r37dw (dogfood): flatten nesting 6 → 3 via
@@ -338,7 +336,7 @@ class ScalaElementExtractor(ElementExtractor):
                 return
 
     def _scala_package_name_from_clause(
-        self, package_clause: "tree_sitter.Node"
+        self, package_clause: tree_sitter.Node
     ) -> str | None:
         """Return the package name string from a ``package_clause`` node.
 
@@ -354,17 +352,15 @@ class ScalaElementExtractor(ElementExtractor):
                 return self._get_node_text(grandchild)
         return None
 
-    def _extract_function(self, node: "tree_sitter.Node") -> Function | None:
+    def _extract_function(self, node: tree_sitter.Node) -> Function | None:
         """Extract function definition (with body)"""
         return self._extract_function_common(node)
 
-    def _extract_function_declaration(
-        self, node: "tree_sitter.Node"
-    ) -> Function | None:
+    def _extract_function_declaration(self, node: tree_sitter.Node) -> Function | None:
         """Extract function declaration (abstract, without body)"""
         return self._extract_function_common(node)
 
-    def _extract_function_common(self, node: "tree_sitter.Node") -> Function | None:
+    def _extract_function_common(self, node: tree_sitter.Node) -> Function | None:
         """Common extraction logic for Scala functions.
 
         r37dw (dogfood): flatten name-fallback (depth 6) + return-type
@@ -401,7 +397,7 @@ class ScalaElementExtractor(ElementExtractor):
             log_error(f"Error extracting Scala function: {e}")
             return None
 
-    def _scala_class_like_name(self, node: "tree_sitter.Node") -> str:
+    def _scala_class_like_name(self, node: tree_sitter.Node) -> str:
         """Return class/object/trait name, falling back to identifier scan."""
         name_node = node.child_by_field_name("name")
         if name_node:
@@ -411,7 +407,7 @@ class ScalaElementExtractor(ElementExtractor):
                 return self._get_node_text(child)
         return "anonymous"
 
-    def _scala_function_name(self, node: "tree_sitter.Node") -> str:
+    def _scala_function_name(self, node: tree_sitter.Node) -> str:
         """Return the function name, falling back to the first identifier child.
 
         r37dw (dogfood): lifted from ``_extract_function_common`` to
@@ -425,7 +421,7 @@ class ScalaElementExtractor(ElementExtractor):
                 return self._get_node_text(child)
         return "anonymous"
 
-    def _scala_return_type(self, node: "tree_sitter.Node") -> str:
+    def _scala_return_type(self, node: tree_sitter.Node) -> str:
         """Return the type annotation after a ``:`` child, default ``Unit``.
 
         For variable declarations use ``_scala_type_after_colon(node, "Inferred")``
@@ -433,7 +429,7 @@ class ScalaElementExtractor(ElementExtractor):
         """
         return self._scala_type_after_colon(node, "Unit")
 
-    def _scala_type_after_colon(self, node: "tree_sitter.Node", default: str) -> str:
+    def _scala_type_after_colon(self, node: tree_sitter.Node, default: str) -> str:
         """Scan ``node.children`` for ``:`` and return the next sibling text.
 
         Returns ``default`` when no ``:`` child exists or it's the last
@@ -448,7 +444,7 @@ class ScalaElementExtractor(ElementExtractor):
                 return default
         return default
 
-    def _scala_visibility(self, node: "tree_sitter.Node") -> str:
+    def _scala_visibility(self, node: tree_sitter.Node) -> str:
         """Return ``private`` / ``protected`` / ``public`` from a modifiers child.
 
         Scans for the first ``modifiers`` child and checks its text for
@@ -466,7 +462,7 @@ class ScalaElementExtractor(ElementExtractor):
             return "public"
         return "public"
 
-    def _extract_parameters(self, param_node: "tree_sitter.Node") -> list[str]:
+    def _extract_parameters(self, param_node: tree_sitter.Node) -> list[str]:
         """Extract parameters from a parameter clause.
 
         r37dw (dogfood): flatten nesting 6 → 3 via _scala_parameter_pair
@@ -484,7 +480,7 @@ class ScalaElementExtractor(ElementExtractor):
         return parameters
 
     def _scala_parameter_pair(
-        self, parameter_node: "tree_sitter.Node"
+        self, parameter_node: tree_sitter.Node
     ) -> tuple[str, str]:
         """Return ``(name, type)`` from a Scala ``parameter`` / ``class_parameter``.
 
@@ -502,19 +498,19 @@ class ScalaElementExtractor(ElementExtractor):
                 param_type = self._get_node_text(grandchild)
         return param_name, param_type
 
-    def _extract_class(self, node: "tree_sitter.Node") -> Class | None:
+    def _extract_class(self, node: tree_sitter.Node) -> Class | None:
         """Extract class definition"""
         return self._extract_class_like(node, "class")
 
-    def _extract_object(self, node: "tree_sitter.Node") -> Class | None:
+    def _extract_object(self, node: tree_sitter.Node) -> Class | None:
         """Extract object definition (Scala singleton)"""
         return self._extract_class_like(node, "object")
 
-    def _extract_trait(self, node: "tree_sitter.Node") -> Class | None:
+    def _extract_trait(self, node: tree_sitter.Node) -> Class | None:
         """Extract trait definition (Scala interface/mixin)"""
         return self._extract_class_like(node, "trait")
 
-    def _extract_class_like(self, node: "tree_sitter.Node", kind: str) -> Class | None:
+    def _extract_class_like(self, node: tree_sitter.Node, kind: str) -> Class | None:
         """Generic extraction for class/object/trait.
 
         r37dw (dogfood): name-fallback抽到 _scala_class_like_name.
@@ -548,16 +544,16 @@ class ScalaElementExtractor(ElementExtractor):
             log_error(f"Error extracting Scala {kind}: {e}")
             return None
 
-    def _extract_val(self, node: "tree_sitter.Node") -> Variable | None:
+    def _extract_val(self, node: tree_sitter.Node) -> Variable | None:
         """Extract val definition (immutable)"""
         return self._extract_variable(node, is_val=True)
 
-    def _extract_var(self, node: "tree_sitter.Node") -> Variable | None:
+    def _extract_var(self, node: tree_sitter.Node) -> Variable | None:
         """Extract var definition (mutable)"""
         return self._extract_variable(node, is_val=False)
 
     def _extract_variable(
-        self, node: "tree_sitter.Node", is_val: bool = True
+        self, node: tree_sitter.Node, is_val: bool = True
     ) -> Variable | None:
         """Common extraction logic for val/var"""
         try:
@@ -594,7 +590,7 @@ class ScalaElementExtractor(ElementExtractor):
             log_error(f"Error extracting Scala variable: {e}")
             return None
 
-    def _extract_scala_variable_name(self, node: "tree_sitter.Node") -> str:
+    def _extract_scala_variable_name(self, node: tree_sitter.Node) -> str:
         """Scala val/var binds a name either as a direct ``identifier`` child
         or as the first identifier inside a ``pattern_list``.
 
@@ -612,7 +608,7 @@ class ScalaElementExtractor(ElementExtractor):
                     return inner
         return "unknown"
 
-    def _first_identifier_in(self, node: "tree_sitter.Node") -> str | None:
+    def _first_identifier_in(self, node: tree_sitter.Node) -> str | None:
         """Return the first ``identifier`` child's text or ``None``."""
         for grandchild in node.children:
             if grandchild.type == "identifier":
@@ -620,8 +616,8 @@ class ScalaElementExtractor(ElementExtractor):
         return None
 
     def _last_nearby_block_comment(
-        self, node: "tree_sitter.Node"
-    ) -> "tree_sitter.Node | None":
+        self, node: tree_sitter.Node
+    ) -> tree_sitter.Node | None:
         """Return the last ``block_comment`` sibling within 2 lines of ``node``.
 
         Walks left-to-right through ``node.parent.children`` up to (but
@@ -631,6 +627,8 @@ class ScalaElementExtractor(ElementExtractor):
         (Scaladoc must be adjacent for the binding to be unambiguous).
         """
         last_close: tree_sitter.Node | None = None
+        if node.parent is None:
+            return None
         for sibling in node.parent.children:
             if sibling == node:
                 break
@@ -639,7 +637,7 @@ class ScalaElementExtractor(ElementExtractor):
                     last_close = sibling
         return last_close
 
-    def _extract_import(self, node: "tree_sitter.Node") -> Import | None:
+    def _extract_import(self, node: tree_sitter.Node) -> Import | None:
         """Extract import declaration"""
         try:
             raw_text = self._get_node_text(node)
@@ -667,7 +665,7 @@ class ScalaElementExtractor(ElementExtractor):
             log_error(f"Error extracting Scala import: {e}")
             return None
 
-    def _extract_comment(self, node: "tree_sitter.Node") -> Expression | None:
+    def _extract_comment(self, node: tree_sitter.Node) -> Expression | None:
         """Extract Scala block comment"""
         try:
             raw_text = self._get_node_text(node)
@@ -690,7 +688,7 @@ class ScalaElementExtractor(ElementExtractor):
             log_error(f"Error extracting Scala comment: {e}")
             return None
 
-    def _extract_annotation(self, node: "tree_sitter.Node") -> Expression | None:
+    def _extract_annotation(self, node: tree_sitter.Node) -> Expression | None:
         """Extract Scala annotation"""
         try:
             raw_text = self._get_node_text(node)
@@ -726,7 +724,7 @@ class ScalaElementExtractor(ElementExtractor):
             log_error(f"Error extracting Scala annotation: {e}")
             return None
 
-    def _get_node_text(self, node: "tree_sitter.Node") -> str:
+    def _get_node_text(self, node: tree_sitter.Node) -> str:
         """Get node text with caching using position-based keys"""
         cache_key = (node.start_byte, node.end_byte)
         if cache_key in self._node_text_cache:
@@ -743,7 +741,7 @@ class ScalaElementExtractor(ElementExtractor):
         except Exception:
             return ""
 
-    def _extract_docstring(self, node: "tree_sitter.Node") -> str | None:
+    def _extract_docstring(self, node: tree_sitter.Node) -> str | None:
         """Extract Scaladoc comments (/** ... */)"""
         # Scala uses /** ... */ for documentation comments
         # Look for block_comment nodes that immediately precede this node
@@ -795,8 +793,8 @@ class ScalaPlugin(LanguagePlugin):
         return ScalaElementExtractor()
 
     async def analyze_file(
-        self, file_path: str, request: "AnalysisRequest"
-    ) -> "AnalysisResult":
+        self, file_path: str, request: AnalysisRequest
+    ) -> AnalysisResult:
         """Analyze Scala code and return structured results.
 
         r37ed (dogfood): 85 lines → ~15 of orchestration. Per-phase helpers
@@ -830,7 +828,7 @@ class ScalaPlugin(LanguagePlugin):
         file_content: str,
         tree: Any,
         elements_dict: dict[str, list[Any]],
-    ) -> "AnalysisResult":
+    ) -> AnalysisResult:
         """Build the success-path ``AnalysisResult`` from parsed tree + elements."""
         from ..models import AnalysisResult
 

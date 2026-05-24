@@ -6,7 +6,9 @@ Provides Ruby-specific parsing and element extraction functionality.
 Supports extraction of classes, modules, methods, constants, variables, and require statements.
 """
 
-from typing import TYPE_CHECKING, Any, Optional
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -75,7 +77,7 @@ class RubyElementExtractor(ElementExtractor):
         self._element_cache.clear()
         self.current_module = ""
 
-    def _get_node_text_optimized(self, node: "tree_sitter.Node") -> str:
+    def _get_node_text_optimized(self, node: tree_sitter.Node) -> str:
         """
         Get text content of a node with caching for performance.
 
@@ -97,7 +99,7 @@ class RubyElementExtractor(ElementExtractor):
         self._node_text_cache[cache_key] = text
         return text
 
-    def _determine_visibility(self, node: "tree_sitter.Node") -> str:
+    def _determine_visibility(self, node: tree_sitter.Node) -> str:
         """
         Determine visibility of a method.
 
@@ -114,9 +116,7 @@ class RubyElementExtractor(ElementExtractor):
         # For now, default to public
         return "public"
 
-    def extract_classes(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Class]:
+    def extract_classes(self, tree: tree_sitter.Tree, source_code: str) -> list[Class]:
         """
         Extract Ruby classes and modules.
 
@@ -150,7 +150,7 @@ class RubyElementExtractor(ElementExtractor):
 
         return classes
 
-    def _extract_class_element(self, node: "tree_sitter.Node") -> Class | None:
+    def _extract_class_element(self, node: tree_sitter.Node) -> Class | None:
         """
         Extract a single class or module element.
 
@@ -195,7 +195,7 @@ class RubyElementExtractor(ElementExtractor):
             log_error(f"Error extracting class element: {e}")
             return None
 
-    def _find_ruby_superclass(self, class_node: "tree_sitter.Node") -> str | None:
+    def _find_ruby_superclass(self, class_node: tree_sitter.Node) -> str | None:
         """Find the superclass token under a Ruby ``class`` node.
 
         r37cb (dogfood): extracted from ``_extract_class_element`` to drop
@@ -214,7 +214,7 @@ class RubyElementExtractor(ElementExtractor):
         return None
 
     def extract_functions(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[Function]:
         """
         Extract Ruby methods.
@@ -264,7 +264,7 @@ class RubyElementExtractor(ElementExtractor):
         return functions
 
     def _find_ruby_class_name(
-        self, class_or_module_node: "tree_sitter.Node"
+        self, class_or_module_node: tree_sitter.Node
     ) -> str | None:
         """Return the first ``constant``/``scope_resolution`` child's text.
 
@@ -280,7 +280,7 @@ class RubyElementExtractor(ElementExtractor):
         return None
 
     def _extract_method_element(
-        self, node: "tree_sitter.Node", parent_class: str
+        self, node: tree_sitter.Node, parent_class: str
     ) -> Function | None:
         """
         Extract a method element.
@@ -332,7 +332,7 @@ class RubyElementExtractor(ElementExtractor):
     )
 
     def _extract_ruby_parameters(
-        self, params_node: "tree_sitter.Node | None"
+        self, params_node: tree_sitter.Node | None
     ) -> list[str]:
         """Return a list of parameter texts from a Ruby ``parameters`` node.
 
@@ -351,7 +351,7 @@ class RubyElementExtractor(ElementExtractor):
         return parameters
 
     def _extract_singleton_method_element(
-        self, node: "tree_sitter.Node", parent_class: str
+        self, node: tree_sitter.Node, parent_class: str
     ) -> Function | None:
         """
         Extract a singleton (class) method element.
@@ -395,7 +395,7 @@ class RubyElementExtractor(ElementExtractor):
             return None
 
     def _extract_attr_methods(
-        self, node: "tree_sitter.Node", parent_class: str
+        self, node: tree_sitter.Node, parent_class: str
     ) -> list[Function]:
         """Extract attr_accessor, attr_reader, attr_writer methods."""
         return _extract_attrs_standalone(
@@ -403,7 +403,7 @@ class RubyElementExtractor(ElementExtractor):
         )
 
     def extract_variables(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[Variable]:
         """
         Extract Ruby constants and variables.
@@ -445,7 +445,7 @@ class RubyElementExtractor(ElementExtractor):
         return variables
 
     def _extract_assignment_variable(
-        self, node: "tree_sitter.Node", parent_class: str
+        self, node: tree_sitter.Node, parent_class: str
     ) -> Variable | None:
         """
         Extract variable from assignment.
@@ -492,9 +492,7 @@ class RubyElementExtractor(ElementExtractor):
             log_error(f"Error extracting variable: {e}")
             return None
 
-    def extract_imports(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Import]:
+    def extract_imports(self, tree: tree_sitter.Tree, source_code: str) -> list[Import]:
         """
         Extract Ruby require statements.
 
@@ -527,7 +525,7 @@ class RubyElementExtractor(ElementExtractor):
 
         return imports
 
-    def _extract_require_statement(self, node: "tree_sitter.Node") -> Import | None:
+    def _extract_require_statement(self, node: tree_sitter.Node) -> Import | None:
         """Extract require statement."""
         return _extract_require_standalone(node, self._get_node_text_optimized)
 
@@ -540,7 +538,7 @@ class RubyPlugin(LanguagePlugin):
     Supports modern Ruby features including Ruby 3+ syntax.
     """
 
-    _language_instance: Optional["tree_sitter.Language"] = None
+    _language_instance: tree_sitter.Language | None = None
 
     def get_language_name(self) -> str:
         """
@@ -560,7 +558,7 @@ class RubyPlugin(LanguagePlugin):
         """
         return [".rb"]
 
-    def get_tree_sitter_language(self) -> "tree_sitter.Language":
+    def get_tree_sitter_language(self) -> tree_sitter.Language:
         """
         Get the tree-sitter language instance for Ruby.
 
@@ -599,8 +597,8 @@ class RubyPlugin(LanguagePlugin):
         return RubyElementExtractor()
 
     async def analyze_file(
-        self, file_path: str, request: "AnalysisRequest"
-    ) -> "AnalysisResult":
+        self, file_path: str, request: AnalysisRequest
+    ) -> AnalysisResult:
         """
         Analyze a Ruby file.
 
@@ -650,7 +648,7 @@ class RubyPlugin(LanguagePlugin):
                 node_count=0,
             )
 
-    def _count_nodes(self, node: "tree_sitter.Node") -> int:
+    def _count_nodes(self, node: tree_sitter.Node) -> int:
         """
         Count total nodes in the AST.
 
