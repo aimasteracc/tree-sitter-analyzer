@@ -151,6 +151,7 @@ def test_project_graph_alias_resolves_via_canonical() -> None:
     "ext, expected",
     [
         (".swift", "swift"),
+        (".swiftinterface", "swift"),  # issue #131
         (".kt", "kotlin"),
         (".rb", "ruby"),
         (".php", "php"),
@@ -165,6 +166,33 @@ def test_long_broken_extensions_stay_wired(ext: str, expected: str) -> None:
         f"months until the 2026-05-24 benchmark surfaced it (Alamofire "
         f"indexed 10/98 files, all of them JS noise from docs/)."
     )
+
+
+def test_swiftinterface_resolves_in_all_known_ext_maps() -> None:
+    """``.swiftinterface`` must map to swift across every ext-resolver.
+
+    Issue #131 added module-interface support. ``_lang_extension_map``
+    is the SSoT for indexer wiring, but a handful of bespoke maps in
+    ``file_handler`` / ``language_detector`` / detector helpers /
+    health_scorer / mcp tools have their own copies (intentional —
+    they cover different code paths). All of them must agree, or a
+    file resolves as swift in one path and ``unknown`` in another.
+    """
+    from tree_sitter_analyzer._lang_extension_map import language_from_ext
+    from tree_sitter_analyzer.file_handler import detect_language_from_extension
+    from tree_sitter_analyzer.language_detector import LanguageDetector
+
+    sample = "Foundation.swiftinterface"
+
+    # 1. Indexer SSoT
+    assert language_from_ext(sample) == "swift"
+
+    # 2. CLI single-file path (file_handler)
+    assert detect_language_from_extension(sample) == "swift"
+
+    # 3. Generic language detector (used by some MCP tools)
+    detector = LanguageDetector()
+    assert detector.detect_from_extension(sample) == "swift"
 
 
 # -- meta: the helper itself works --------------------------------------

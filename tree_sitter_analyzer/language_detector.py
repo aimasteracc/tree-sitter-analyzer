@@ -58,6 +58,7 @@ class LanguageDetector:
         ".kt": "kotlin",
         ".kts": "kotlin",
         ".swift": "swift",
+        ".swiftinterface": "swift",
         ".cs": "csharp",
         ".vb": "vbnet",
         ".fs": "fsharp",

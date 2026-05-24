@@ -77,8 +77,11 @@ class TestSwiftPluginBasics:
 
     def test_plugin_metadata(self, plugin: SwiftPlugin) -> None:
         assert plugin.get_language_name() == "swift"
-        assert plugin.get_file_extensions() == [".swift"]
+        # ``.swiftinterface`` is module-interface emitted by
+        # ``swiftc -emit-module-interface`` — issue #131.
+        assert plugin.get_file_extensions() == [".swift", ".swiftinterface"]
         assert plugin.supports_file("Sources/App.swift")
+        assert plugin.supports_file("SDK/Foundation.swiftinterface")
         assert not plugin.supports_file("Sources/App.kt")
 
     def test_create_extractor(self, plugin: SwiftPlugin) -> None:

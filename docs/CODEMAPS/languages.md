@@ -1,4 +1,4 @@
-<!-- Generated: 2026-05-22 -->
+<!-- Generated: 2026-05-24 -->
 # Languages Codemap
 
 21 language plugins under `tree_sitter_analyzer/languages/` (16 single-file + 5 subdir packages).
@@ -19,7 +19,7 @@ Each implements the `LanguagePlugin` interface (`tree_sitter_analyzer/plugins/ba
 | Rust | `rust_plugin.py` | inline | traits, impl, macros, derive |
 | Kotlin | `kotlin_plugin.py` | `kotlin_helpers.py` | data classes, coroutines |
 | Scala | `scala_plugin.py` | inline | objects/traits, scaladoc |
-| Swift | `swift_plugin.py` | `_swift_plugin_*.py` ×3 | classes, structs, protocols |
+| Swift | `swift_plugin.py` | `_swift_plugin_*.py` ×3 | classes, structs, protocols; `.swift` + `.swiftinterface` (issue #131) |
 | Ruby | `ruby_plugin.py` | `ruby_helpers.py` | Rails patterns, metaprogramming |
 | PHP | `php_plugin.py` | `php_helpers.py` | PHP 8+ attributes, traits |
 | HTML | `html_plugin.py` | `html_helpers.py` | DOM elements with role classification |

@@ -58,6 +58,12 @@ EXT_TO_LANG: dict[str, str] = {
     ".rb": "ruby",
     ".rs": "rust",
     ".swift": "swift",
+    # .swiftinterface — module-interface files emitted by
+    # `swiftc -emit-module-interface`. Syntactically a subset of Swift,
+    # parsed by tree-sitter-swift without modification. Useful for SDK
+    # analysis (Apple ships SwiftUI / Foundation / etc. as .swiftinterface
+    # in the toolchain). Issue #131.
+    ".swiftinterface": "swift",
     ".ts": "typescript",
     ".tsx": "typescript",
     # NOTE: ``.css / .html / .md / .sql / .yaml / .yml`` have plugins

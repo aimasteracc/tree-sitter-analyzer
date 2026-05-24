@@ -30,6 +30,7 @@ def build_extension_confidence_map() -> dict[str, tuple[str, float]]:
         ".php": ("php", 0.9),
         ".rb": ("ruby", 0.9),
         ".swift": ("swift", 0.9),
+        ".swiftinterface": ("swift", 0.9),
         ".kt": ("kotlin", 0.9),
         ".kts": ("kotlin", 0.9),
         ".scala": ("scala", 0.9),
