@@ -69,6 +69,7 @@ Why: previously the codemap drifted from 23 → 27 → 30 → 55 tools across 4 
 - Cut a `feature/*` from `main` — it must come from `develop`
 - Force-push or delete `main`, `develop`, or any released tag (`v*`)
 - Skip the `develop` merge-back after a release or hotfix is published
+- **Use `hotfix/*` for non-release fixes.** Pushing to `hotfix/*` auto-triggers `hotfix-automation.yml` → PyPI publish with a version bump. Reserve `hotfix/*` for "production is broken, needs a same-day patch release". For a generic bug fix, CI YAML repair, workflow tweak, etc., use `fix/*` · `ci/*` · `chore/*` against `develop`.
 
 **Release flow (every detail in [`GITFLOW.md`](GITFLOW.md)):**
 1. `release/v<X.Y.Z>` cut from `develop`
