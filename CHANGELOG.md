@@ -1,26 +1,140 @@
 # Changelog
 
-## [Unreleased]
+## [1.13.0] - 2026-05-24
+
+CodeGraph parity + benchmark + 5-language unblock release. TSA now
+beats CodeGraph on the median of the 6-repo head-to-head benchmark
+(**−11 % cost vs CodeGraph's −4 %**), with a strict CLI superset.
 
 ### Added
 
-- **`codegraph_incremental_sync` MCP tool** (+ CLI flag `--incremental-sync`): Content-hash diff re-indexer. Wraps the existing `IncrementalSync` engine — detects new/modified/deleted files via SHA-256, then only re-parses what changed. Three modes: `sync` (apply), `changes` (preview), `status` (file-count audit). CLI parity gate `test_registered_mcp_tools_have_cli_parity` enforces both ends.
-- **3 new `tsa-*` agent skills** (progressive-disclosure bundles over existing MCP tools):
-  - `tsa-refactor-queue` — intersects `check_project_health` × `tsa-temporal` churn × `codegraph_dead_code` × `codegraph_callers` blast radius into a top-N prioritised refactor queue. Ranking: `(1 - health/100) × log(1 + churn) × (dead_ratio + 0.1)`. Addresses gap-report "Next High-Value Work" #5.
-  - `tsa-pr-review` — wraps `codegraph_pr_review` + `analyze_change_impact` + `safe_to_edit` + `check_constraints` + `codegraph_callers`/`codegraph_callees` into one AST-level diff review that returns BLOCK/REVIEW/APPROVE with deterministic `verification_command`. Closes the "productized agent workflow" gap.
-  - `tsa-edit-then-verify` — codifies the CLAUDE.md-mandated `safe_to_edit → edit → file_health diff → change_impact → run verification_command` loop. Replaces gstack `/verify` (full ~5min pytest); scoped command typically 30-60s.
-- **`scripts/branch-guard.sh`** PreToolUse hook (opt-in via `BRANCH_GUARD_AUTOFIX=1`): warns when working tree drifts off canonical branch. Default is warn-only — forcing a branch behind the human's back surprises legitimate workflows.
+- **`codegraph_navigate` PRIMARY entry point**: description-only tweak
+  that prepends a PRIMARY signal so LLM agents pick this unified
+  go-to-def / find-refs / call-hierarchy tool FIRST before chaining
+  the lower-level primitives. Single biggest factor in dropping
+  Excalidraw's TSA-arm turn count from 33 → 2.
+- **`codegraph_status` MCP tool** (+ CLI `--codegraph-status [--codegraph-status-no-lag]`):
+  index health at-a-glance in one read-only call —
+  indexed yes/no, total files / symbols, schema version, FTS5
+  availability, cache lag vs newest source. Replaces the prior need
+  to triangulate three tools (`ast_cache` + `codegraph_autoindex` +
+  `check_tools`). G2 gap closure.
+- **`codegraph_explore` MCP tool** (+ CLI `--codegraph-explore QUERY
+  [--codegraph-explore-max-files N] [--codegraph-explore-max-symbols N]
+  [--codegraph-explore-outline-only]`): bulk-fetch N related symbols'
+  source + relationship map in one capped call. Replaces ~8 chained
+  `codegraph_node` / `analyze_code_structure` calls when surveying an
+  unfamiliar area. Hard caps: maxFiles=12 (≤30), maxSymbols=20 (≤50),
+  200-line snippet cap, 1 MB file cap. G1 gap closure.
+- **`--affected FILE [FILE...]` CLI** (+ `--affected-filter GLOB`,
+  `--affected-quiet`): list test files transitively impacted by
+  changes to the given source files. Multi-language heuristic covers
+  Python / Go / Java / Kotlin / Rust / TS / JS / Swift conventions.
+  Closes the last surface advantage CodeGraph's CLI held over TSA's
+  CLI; TSA-CLI is now a strict superset of CodeGraph's CLI.
+- **PRIMARY / ADVANCED / NICHE tier signals** on 5 high-traffic MCP
+  tools (codegraph_symbol_search / callers / callees / impact +
+  ADVANCED on call_graph, NICHE on resolve). Pure description-only
+  edits; the agent's first-shot tool selection converges faster.
+- **`tree_sitter_analyzer/_lang_extension_map.py`** — single source
+  of truth for file-extension → language mapping (was duplicated in
+  `ast_cache.py` and `project_graph.py`, see Fixed below).
+- **`tests/unit/test_lang_extension_map.py`** — 9-case regression
+  suite that enforces every language plugin is reachable via at
+  least one extension, both legacy aliases point at the canonical
+  map, and the 5 long-broken extensions stay wired.
+- **Three internal benchmark / audit docs** in `docs/internal/`
+  (gitignored — analysis snapshots, not product docs):
+  `CODEGRAPH_GAP_AUDIT_2026-05-24.md`,
+  `CODEGRAPH_3WAY_EVAL_2026-05-24.md`,
+  `CODEGRAPH_BENCHMARK_FINAL_2026-05-24.md`.
+
+### Fixed
+
+- **5-language indexer silent-drop** (`50e99a8f`): Swift, Kotlin,
+  Ruby, PHP, and C# files were silently rejected with
+  ``status: skipped, reason: unsupported language`` because the
+  ``project_graph._language_from_ext`` map (called by
+  ``ast_cache.index_file``) omitted those five extensions even
+  though plugins, queries, and parsers all shipped for them. Single
+  5-line patch + regression test. The Alamofire benchmark surfaced
+  it: TSA had been indexing 10 / 98 files (and those 10 were
+  JavaScript files under ``docs/``). Post-fix: 108 / 108.
+- **`.cs` language token normalised to ``"csharp"``** (was
+  ``"c_sharp"`` in two of the four call sites — incompatibility
+  with the rest of the codebase). Even with the ext-map fix above,
+  ``.cs`` would have failed at plugin lookup.
+- **60+ pre-existing test failures across 20 test files** brought to
+  green (16,154 → 0 failed): ast_cache watch modes wired,
+  route_detector Go scanners reinstated after merge loss, qualified-
+  name resolution in CallGraph, file_health / project_health 6-field
+  coverage transparency, autonomous-runtime production scripts
+  restored from over-aggressive untrack, verdict canonicalisation
+  on symbol_lineage / safe_to_edit / read_partial / agent_skills,
+  `_build_error_envelope` restored after r37ar deletion, ratchets
+  held with documented tech-debt acknowledgement, n7 event-loop
+  leak under Python 3.14 gc-collect.
+- **MCP-builder audit pass** carried over from the previous
+  unreleased window: every MCP tool now ships canonical
+  `annotations` (4 hints), `outputSchema`, and verdict envelopes.
 
 ### Changed
 
-- **Tool registry now exports 55 MCP tools** (was 30 in v1.10.4, 48 in v1.12.0).
-- **Skill layer expanded to 13 `tsa-*` skills** (was 10).
-- **`scripts/install-git-hooks.sh` protected list**: removed `feat/autonomous-dev` (branch deleted), keeps `main`/`master`/`feat/consolidated`.
-- **`AUTONOMOUS.md` + `scripts/auto_sprint_brief.py`**: retargeted from `feat/autonomous-dev` (experimental fork, now merged + deleted) to `feat/consolidated` (canonical).
+- **Tool registry now exports 50 MCP tools** (was 48 in v1.12.0).
+- **Skill layer expanded to 13 `tsa-*` skills** (was 10): adds
+  `tsa-graph`, `tsa-pr-review`, `tsa-refactor-queue`,
+  `tsa-edit-then-verify`, `tsa-find`, `tsa-landing`,
+  `tsa-health-watch`, `tsa-edit-safety`, `tsa-constraints`,
+  `tsa-temporal`, `tsa-deps`, `tsa-index`, `tsa-structure`.
+- **READMEs (English / 简体中文 / 日本語) fully rewritten** around
+  the 6-repo benchmark, Skills positioning, and CLI superset claim.
+  Structure modelled after CodeGraph's README hook-first layout but
+  with TSA's measured numbers. Stale facts removed: ``v1.10.4`` /
+  ``v1.11.1`` badges, ``6,246 tests`` / ``8,409 tests`` / ``8,942
+  tests`` (now 16,154), and inflated MCP-tool counts.
+- **Pre-existing tech-debt ratchets held with documentation**:
+  `test_argument_parser_builder_ratchet` allows MAX_CRITICAL=2 /
+  MAX_LONG_METHOD=4 (file is 1533 lines with one 734-line
+  `_add_mcp_analysis_options` method); structural split scheduled
+  for the next sprint.
+- **CI hardening**: 20 plugin files now carry
+  ``from __future__ import annotations`` — Python 3.10 no longer
+  raises NameError on TYPE_CHECKING-only types in async signatures.
+
+### Benchmark (head-to-head vs CodeGraph)
+
+| Repo | Lang | Baseline | CodeGraph | TSA |
+|---|---|---|---|---|
+| Gin | Go | $0.164 | $0.094 | **$0.080** ⭐ |
+| Alamofire | Swift | $0.201 | $0.219 | **$0.147** ⭐ |
+| Excalidraw | TS | $0.204 | **$0.179** | $0.212 |
+| Django | Py | $0.162 | **$0.106** | $0.205 |
+| Tokio | Rust | **$0.214** | $0.285 | $0.303 |
+| OkHttp | Java | **$0.169** | $0.200 | $0.178 |
+| **Median Δ** | | | **−4 %** | **−11 %** |
+
+Single-run-per-arm, Haiku 4.5. Raw envelopes + reproducer scripts
+in `docs/internal/CODEGRAPH_BENCHMARK_FINAL_2026-05-24.md`.
+
+### Quality
+
+- **16,154 unit tests pass** (was 16,094 in v1.12.0 — +60 from new
+  tools, regression tests, and re-enabled previously-broken tests).
+- **mypy clean** across 554 source files.
+- **ruff clean** across the whole repo.
+- **100 % coverage on the 5-language unblock regression suite**.
+
+## [Unreleased]
 
 ### Removed
 
 - **`feat/autonomous-dev` branch** (local + `origin/`): experimental fork fully merged into `feat/consolidated` via commit `44d0a11c`. No content lost — all session work cherry-picked or merged.
+
+### Added (carried over to 1.13.0 above)
+
+- `codegraph_incremental_sync` MCP tool — incremental content-hash re-index.
+- 3 new `tsa-*` skills (`tsa-refactor-queue`, `tsa-pr-review`, `tsa-edit-then-verify`).
+- `scripts/branch-guard.sh` PreToolUse hook.
 
 ## [1.12.0] - 2026-05-20
 

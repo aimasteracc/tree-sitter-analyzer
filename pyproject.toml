@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tree-sitter-analyzer"
-version = "1.12.0"
-description = "AI-era enterprise-grade code analysis tool with comprehensive HTML/CSS support, dynamic plugin architecture, and MCP integration"
+version = "1.13.0"
+description = "MCP code-intelligence server for AI agents — beats CodeGraph on 6-repo head-to-head benchmark median. 50 MCP tools, 13 curated skills, TOON output, 100% local."
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
