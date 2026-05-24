@@ -963,6 +963,29 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Return symbol outline without source snippets for --codegraph-explore",
     )
+    # --affected: CodeGraph CLI parity (the last CLI surface they had
+    # over us). Takes one or more changed files, returns the union of
+    # test files transitively affected.
+    parser.add_argument(
+        "--affected",
+        metavar="FILE",
+        nargs="+",
+        help="List test files transitively affected by changes to FILE(s). "
+        "Multi-language test-path heuristic (Python / Go / Java / Rust / "
+        "TS / Swift / Kotlin). Use --affected-filter to override.",
+    )
+    parser.add_argument(
+        "--affected-filter",
+        metavar="GLOB",
+        help="Custom glob for test files (overrides the multi-language "
+        "heuristic). Example: 'tests/e2e/*.spec.ts'.",
+    )
+    parser.add_argument(
+        "--affected-quiet",
+        action="store_true",
+        help="Emit test file paths only (one per line), no envelope. "
+        "Matches CodeGraph's --quiet behaviour for shell-pipeline use.",
+    )
     # Pain pass 2: 3 new MCP tools (codegraph_impact, codegraph_pr_review,
     # semantic_classify) need CLI parity to satisfy the contract test.
     parser.add_argument(

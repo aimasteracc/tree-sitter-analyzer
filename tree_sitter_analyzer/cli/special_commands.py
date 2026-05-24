@@ -44,6 +44,7 @@ def handle_special_commands(
         lambda: _handle_full_index(args, context),
         lambda: _handle_codegraph_metrics(args, context),
         lambda: _handle_incremental_sync(args, context),
+        lambda: _handle_affected(args, context),
         lambda: _handle_mcp_commands(args, context),
         lambda: _validate_partial_read_options(args, context.output_error),
         lambda: _handle_query_language_commands(args, context),
@@ -426,6 +427,18 @@ def _handle_clean_state(
     from .commands.clean_state_command import run_clean_state
 
     return run_clean_state(args, context.output_error)
+
+
+def _handle_affected(
+    args: Any,
+    context: SpecialCommandContext,
+) -> int | None:
+    """Dispatch ``--affected FILE [FILE...]`` (CodeGraph CLI parity)."""
+    if not getattr(args, "affected", None):
+        return None
+    from .commands.affected_command import run_affected
+
+    return run_affected(args, context.output_error)
 
 
 def _handle_mcp_commands(
