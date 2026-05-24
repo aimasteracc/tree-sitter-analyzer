@@ -310,28 +310,11 @@ _EXCLUDE_DIRS = frozenset(
     }
 )
 
-_EXT_TO_LANG: dict[str, str] = {
-    ".py": "python",
-    ".js": "javascript",
-    ".ts": "typescript",
-    ".jsx": "javascript",
-    ".tsx": "typescript",
-    ".java": "java",
-    ".go": "go",
-    ".c": "c",
-    ".cpp": "cpp",
-    ".cc": "cpp",
-    ".cxx": "cpp",
-    ".h": "c",
-    ".hpp": "cpp",
-    ".hxx": "cpp",
-    ".rs": "rust",
-    ".rb": "ruby",
-    ".php": "php",
-    ".swift": "swift",
-    ".kt": "kotlin",
-    ".cs": "csharp",
-}
+# Single source of truth — see _lang_extension_map.py for history of why
+# duplication here was a bug (Swift/Kotlin/Ruby/PHP/C# silently dropped
+# for months because two diverged copies existed). Keep this alias for
+# back-compat with internal call sites that still reference _EXT_TO_LANG.
+from ._lang_extension_map import EXT_TO_LANG as _EXT_TO_LANG  # noqa: E402
 
 
 def _worker_index_file(args: tuple[str, str, str]) -> dict[str, Any]:

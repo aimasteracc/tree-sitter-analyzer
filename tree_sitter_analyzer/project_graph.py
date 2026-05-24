@@ -24,37 +24,15 @@ from .import_extractors import (
 def _language_from_ext(file_path: str) -> str | None:
     """Guess language from file extension.
 
-    Must stay in lockstep with ``ast_cache._EXT_TO_LANG`` — divergence
-    silently blocks indexing of any language present in one map but not
-    the other. The 5 entries below (swift / kotlin / ruby / php / csharp)
-    were missing for months even though their plugins + queries shipped;
-    files indexed via this map returned ``unsupported language`` and
-    never made it into the ``ast_index`` table. Fixed 2026-05-24.
+    Thin re-export of :func:`tree_sitter_analyzer._lang_extension_map.language_from_ext`
+    — see that module for the canonical ext→language mapping and the
+    history of why duplicating this dict in two files was a multi-month
+    silent bug (Swift/Kotlin/Ruby/PHP/C# silently dropped — fixed
+    2026-05-24).
     """
-    ext_map = {
-        ".py": "python",
-        ".js": "javascript",
-        ".ts": "typescript",
-        ".jsx": "javascript",
-        ".tsx": "typescript",
-        ".java": "java",
-        ".go": "go",
-        ".rs": "rust",
-        ".c": "c",
-        ".cpp": "cpp",
-        ".cc": "cpp",
-        ".cxx": "cpp",
-        ".h": "c",
-        ".hpp": "cpp",
-        ".hxx": "cpp",
-        ".swift": "swift",
-        ".kt": "kotlin",
-        ".rb": "ruby",
-        ".php": "php",
-        ".cs": "csharp",
-    }
-    ext = Path(file_path).suffix.lower()
-    return ext_map.get(ext)
+    from ._lang_extension_map import language_from_ext
+
+    return language_from_ext(file_path)
 
 
 def _resolve_relative_import(module_path: str, current_file_rel: str) -> str | None:
