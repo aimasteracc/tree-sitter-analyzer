@@ -922,14 +922,18 @@ def test_no_powershell_blocks_contain_non_ascii() -> None:
     # The script's main() scans relative to cwd; chdir into the repo root.
     import os
 
+    # Stash cwd OUTSIDE the chdir so we always have something to restore,
+    # then put the chdir inside the try so any failure between chdir and
+    # restore-cwd still runs the finally. Without this, an exception
+    # raised by exec_module / glob / scan_file would leak the changed
+    # cwd to the xdist worker and corrupt every subsequent test.
     cwd = os.getcwd()
-    os.chdir(PROJECT_ROOT)
+    offenders: list[str] = []
     try:
+        os.chdir(PROJECT_ROOT)
         spec.loader.exec_module(module)
-        # Re-implement the scan inline so we get the violation list back.
         import glob
 
-        offenders: list[str] = []
         yaml_paths = sorted(
             set(
                 glob.glob(".github/workflows/*.yml")
@@ -1062,3 +1066,127 @@ def test_python_version_floor_is_consistent() -> None:
             f"[project].requires-python implies {floor!r}. "
             "See docs/POSTMORTEM_v1.13.md sec 7."
         )
+
+
+def test_readme_counts_match_registry() -> None:
+    """README headline numbers must match the actual registry counts.
+
+    The v1.13.1 audit found ``README.md`` claiming "50 MCP tools" while
+    the registry actually exposed 58, and "248 CLI flags" while the
+    parser exposed 237. The ``tsa-codemap-sync`` hook guards
+    ``docs/CODEMAPS/*.md`` but not prose docs, so drift accumulated
+    silently across three locales (en/ja/zh).
+
+    This contract closes that gap. For each headline number in any
+    ``README*.md``, assert it matches the live count derived from
+    source. If you change the registry, run the suite — the test will
+    tell you which README lines need a refresh, and which number.
+    """
+    from tree_sitter_analyzer.cli_main import create_argument_parser
+
+    # ---- Authoritative counts ---------------------------------------
+    tool_count = len(_create_tool_registry(str(PROJECT_ROOT))[0])
+
+    parser = create_argument_parser()
+    long_flags = {
+        s for a in parser._actions for s in a.option_strings if s.startswith("--")
+    }
+    flag_count = len(long_flags)
+
+    # ---- README claims to verify ------------------------------------
+    # Each entry: (file, regex that captures the integer, expected_value, human label).
+    # The regex must contain a single group `(\d+)` over the number.
+    claims = [
+        # MCP tool counts — appear at top, in skill section, and in
+        # "All N tools" sentence. Each locale has 3 mentions.
+        (
+            "README.md",
+            re.compile(r"(\d+) MCP tools"),
+            tool_count,
+            "MCP tool count (en headline)",
+        ),
+        (
+            "README.md",
+            re.compile(r"triage (\d+) tools"),
+            tool_count,
+            "MCP tool count (en skills paragraph)",
+        ),
+        (
+            "README.md",
+            re.compile(r"All (\d+) tools read"),
+            tool_count,
+            "MCP tool count (en cache section)",
+        ),
+        (
+            "README_ja.md",
+            re.compile(r"(\d+) MCP ツール"),
+            tool_count,
+            "MCP tool count (ja headline)",
+        ),
+        (
+            "README_ja.md",
+            re.compile(r"(\d+) 個のツール"),
+            tool_count,
+            "MCP tool count (ja skills paragraph)",
+        ),
+        (
+            "README_zh.md",
+            re.compile(r"(\d+) 个 MCP 工具"),
+            tool_count,
+            "MCP tool count (zh headline)",
+        ),
+        (
+            "README_zh.md",
+            re.compile(r"(\d+) 个工具间"),
+            tool_count,
+            "MCP tool count (zh skills paragraph)",
+        ),
+        (
+            "README_zh.md",
+            re.compile(r"所有 (\d+) 个工具"),
+            tool_count,
+            "MCP tool count (zh cache section)",
+        ),
+        # CLI flag counts — section headers
+        (
+            "README.md",
+            re.compile(r"### (\d+) CLI flags"),
+            flag_count,
+            "CLI flag count (en section)",
+        ),
+        (
+            "README_ja.md",
+            re.compile(r"### (\d+) の CLI フラグ"),
+            flag_count,
+            "CLI flag count (ja section)",
+        ),
+        (
+            "README_zh.md",
+            re.compile(r"### (\d+) 个 CLI flag"),
+            flag_count,
+            "CLI flag count (zh section)",
+        ),
+    ]
+
+    failures: list[str] = []
+    for filename, pattern, expected, label in claims:
+        path = PROJECT_ROOT / filename
+        text = path.read_text(encoding="utf-8")
+        match = pattern.search(text)
+        if match is None:
+            failures.append(
+                f"{filename}: {label} — pattern {pattern.pattern!r} did not match. "
+                "Did the README copy change? Update the regex in this test "
+                "OR restore the original wording."
+            )
+            continue
+        found = int(match.group(1))
+        if found != expected:
+            failures.append(
+                f"{filename}: {label} — README says {found}, registry says "
+                f"{expected}. Either update the README number to {expected}, "
+                "or, if this README claim is intentionally rounded, drop the "
+                "specific number and update this test."
+            )
+
+    assert failures == [], "README ↔ registry drift:\n  " + "\n  ".join(failures)
