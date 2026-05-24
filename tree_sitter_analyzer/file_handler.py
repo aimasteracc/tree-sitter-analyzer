@@ -59,6 +59,7 @@ def detect_language_from_extension(file_path: str) -> str:
         ".kt": "kotlin",
         ".scala": "scala",
         ".swift": "swift",
+        ".swiftinterface": "swift",
     }
 
     return extension_map.get(extension, "unknown")

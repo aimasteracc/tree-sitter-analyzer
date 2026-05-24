@@ -1,5 +1,82 @@
 # Changelog
 
+## [1.14.0] - 2026-05-24
+
+Quality + consistency release. Adds Swift module-interface support
+(closes #131) and lands the full v1.13 postmortem defense kit. Every
+drift this cycle introduced now has a contract test that catches it
+at commit time instead of in production CI. Net change for end users:
+one new file extension and a more honest README; no behavioural
+breakage.
+
+### Added
+
+- **`.swiftinterface` support in the Swift plugin**. `.swiftinterface`
+  is the module-interface format emitted by `swiftc -emit-module-interface`
+  — Apple ships SwiftUI / Foundation / etc. as `.swiftinterface` in
+  the toolchain. Wired into all 4 extension-resolution paths
+  (`_lang_extension_map`, `file_handler`, `language_detector`,
+  detector helpers) so the file is detected as swift regardless of
+  which entry point sees it. *(PR #143, closes #131)*
+- **`tests/unit/test_lang_extension_map.py::test_swiftinterface_resolves_in_all_known_ext_maps`**
+  — asserts consistent resolution across the indexer SSoT,
+  `file_handler`, and `LanguageDetector`. Catches map-drift before it
+  becomes a silent-skip bug like the 2026-05-24 Alamofire incident.
+
+### Added (release hygiene — postmortem defense kit)
+
+- **`docs/POSTMORTEM_v1.13.md`** — full retrospective on 10 incidents
+  hit during the v1.13.0 / v1.13.1 release lifecycle. Each entry
+  lists symptom, root cause, why generic defenses missed it, and the
+  new automated check.
+- **`AGENTS.md § Anti-Patterns (from v1.13 postmortem)`** — 8 standing
+  agent rules, each citing its postmortem section. Includes:
+  no-skip-without-tracking, YAML/actionlint enforcement, Windows
+  PowerShell ASCII-only, Linux-only grammar snapshot regen, 3.11+
+  stdlib floor check, develop-not-behind-main, rebase-over-squash
+  for big PRs, and `--maxfail` / `--session-timeout` floors.
+- **`scripts/check_ps_ascii.py` + `tsa-ps-ascii` pre-commit hook** —
+  blocks non-ASCII bytes inside `shell: powershell` `run:` blocks.
+  Windows PowerShell 5.1 reads inline scripts as cp1252 and crashes
+  with `TerminatorExpectedAtEndOfString` on UTF-8 emoji.
+- **`rhysd/actionlint` pre-commit hook** — validates
+  `.github/workflows/*.yml` for both YAML syntax and Actions
+  specifics (dead `uses:` refs, bad expression syntax). Catches the
+  failure class behind PR #138's auto-sprint startup_failure storm.
+- **7 new contract tests** in `tests/unit/test_agent_contracts.py`
+  guarding each rule + the README ↔ registry parity. Notable:
+  `test_skips_have_tracking_references` (ratchet at 291 — new
+  untracked skips must drop the budget first) and
+  `test_readme_counts_match_registry` (drives the numbers shown in
+  README.md / README_ja.md / README_zh.md off the actual registries).
+
+### Fixed
+
+- **README ↔ registry drift across 3 locales**. `README.md`,
+  `README_ja.md`, and `README_zh.md` claimed "50 MCP tools" — actual
+  count is 58. Same files claimed "248 CLI flags" — actual long-flag
+  count is 237. Fixed 9 occurrences and added a contract test that
+  catches recurrence at commit time. *(PR #142)*
+- **`AGENTS.md` `--session-timeout` mention** out of sync with
+  pytest config (was 300, config bumped to 600 in v1.13.1).
+- **`docs/POSTMORTEM_v1.13.md`** path/name typos that pointed at
+  non-existent `scripts/check_ps_ascii.sh` and singular
+  `test_skips_have_tracking_reference`.
+- **`scripts/check_ps_ascii.py`** regex now accepts trailing YAML
+  comments (`shell: powershell  # note`) which it previously
+  silently bypassed.
+- **`test_no_powershell_blocks_contain_non_ascii`** cwd-leak under
+  xdist (moved `os.chdir` inside the `try` block).
+
+### Changed
+
+- `pyproject.toml` `[project].version` and `[tool.mcp].server_version`
+  bumped to `1.14.0`.
+- `pyproject.toml` `[project].description` corrected: "50 MCP tools"
+  → "58 MCP tools".
+- `docs/CODEMAPS/languages.md` Swift row now lists both `.swift` and
+  `.swiftinterface` (issue #131); generation date bumped to 2026-05-24.
+
 ## [1.13.1] - 2026-05-24
 
 CI infrastructure patch — same wheel as 1.13.0 for end-users, but the
