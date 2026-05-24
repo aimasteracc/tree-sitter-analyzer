@@ -46,15 +46,17 @@ fields:
     StatusFailed,,(40,40)
     lastErr,,(281,281)
 imports:
-  [5]{name,is_static,is_wildcard,statement,line_range(a,b)}:
-    context,false,false,"\"context\"",(13,13)
-    errors,false,false,"\"errors\"",(14,14)
-    fmt,false,false,"\"fmt\"",(15,15)
-    sync,false,false,"\"sync\"",(16,16)
-    time,false,false,"\"time\"",(17,17)
+  [5]{name,module_name,statement,is_static,is_wildcard,line_range(a,b),imported_names,raw_text}:
+    context,context,"\"context\"",false,false,(13,13),[],"\"context\""
+    errors,errors,"\"errors\"",false,false,(14,14),[],"\"errors\""
+    fmt,fmt,"\"fmt\"",false,false,(15,15),[],"\"fmt\""
+    sync,sync,"\"sync\"",false,false,(16,16),[],"\"sync\""
+    time,time,"\"time\"",false,false,(17,17),[],"\"time\""
 statistics:
   class_count: 9
   method_count: 18
   field_count: 9
   import_count: 5
-  total_lines: 294
+  total_lines: 293
+effective_table: toon
+requested_table: toon

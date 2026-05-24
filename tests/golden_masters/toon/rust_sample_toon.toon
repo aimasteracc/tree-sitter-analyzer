@@ -27,11 +27,13 @@ fields:
     item,,(68,68)
     name,,(78,78)
 imports:
-  [1]{name,is_static,is_wildcard,statement,line_range(a,b)}:
-    "use std::collections::HashMap;",false,false,"use std::collections::HashMap;",(3,3)
+  [1]{name,module_name,statement,is_static,is_wildcard,line_range(a,b),imported_names,raw_text}:
+    "use std::collections::HashMap;",,"use std::collections::HashMap;",false,false,(3,3),[],"use std::collections::HashMap;"
 statistics:
   class_count: 5
   method_count: 8
   field_count: 6
   import_count: 1
-  total_lines: 94
+  total_lines: 93
+effective_table: toon
+requested_table: toon

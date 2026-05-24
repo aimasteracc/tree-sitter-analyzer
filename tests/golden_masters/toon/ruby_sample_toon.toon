@@ -71,13 +71,15 @@ fields:
     log_action,,(200,202)
     user,,(218,218)
 imports:
-  [3]{name,is_static,is_wildcard,statement,line_range(a,b)}:
-    date,false,false,,(1,1)
-    json,false,false,,(2,2)
-    concerns/timestampable,false,false,,(3,3)
+  [3]{name,module_name,statement,is_static,is_wildcard,line_range(a,b),imported_names,raw_text}:
+    date,,import date,false,false,(1,1),[],import date
+    json,,import json,false,false,(2,2),[],import json
+    concerns/timestampable,,import concerns/timestampable,false,false,(3,3),[],import concerns/timestampable
 statistics:
   class_count: 5
   method_count: 33
   field_count: 25
   import_count: 3
   total_lines: 0
+effective_table: toon
+requested_table: toon

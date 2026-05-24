@@ -40,13 +40,15 @@ fields:
     CONSTANT_VALUE,,(65,65)
     external_value,,(66,66)
 imports:
-  [3]{name,is_static,is_wildcard,statement,line_range(a,b)}:
-    stdio.h,false,false,"#include <stdio.h>\n",(7,7)
-    stdlib.h,false,false,"#include <stdlib.h>\n",(8,8)
-    local_header.h,false,false,"#include \"local_header.h\"\n",(9,9)
+  [3]{name,module_name,statement,is_static,is_wildcard,line_range(a,b),imported_names,raw_text}:
+    stdio.h,stdio.h,"#include <stdio.h>\n",false,false,(7,7),[],"#include <stdio.h>\n"
+    stdlib.h,stdlib.h,"#include <stdlib.h>\n",false,false,(8,8),[],"#include <stdlib.h>\n"
+    local_header.h,local_header.h,"#include \"local_header.h\"\n",false,false,(9,9),[],"#include \"local_header.h\"\n"
 statistics:
   class_count: 6
   method_count: 11
   field_count: 15
   import_count: 3
-  total_lines: 162
+  total_lines: 161
+effective_table: toon
+requested_table: toon

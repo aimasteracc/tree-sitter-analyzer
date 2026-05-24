@@ -27,3 +27,5 @@ statistics:
   field_count: 4
   import_count: 0
   total_lines: 47
+effective_table: toon
+requested_table: toon
