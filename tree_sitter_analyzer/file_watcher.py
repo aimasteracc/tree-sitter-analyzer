@@ -173,7 +173,11 @@ class FileWatcherDaemon:
 
     def _run_watchdog(self) -> None:
         try:
-            from watchdog.observers import Observer
+            # watchdog is an OPTIONAL dep — its stubs aren't shipped on
+            # PyPI; the polling fallback below covers the no-watchdog case.
+            from watchdog.observers import (
+                Observer,  # noqa: PLC0415 # type: ignore[import-not-found,unused-ignore]
+            )
         except ImportError:
             logger.warning("watchdog not installed, falling back to polling")
             self._run_polling()

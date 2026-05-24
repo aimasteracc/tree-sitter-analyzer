@@ -12,11 +12,9 @@ Our benchmark: Run the SAME queries through our MCP tools, measure:
 Test target: tree-sitter-analyzer's own codebase (~425 files, 92K lines)
 """
 
-import json
 import time
-import statistics
-from pathlib import Path
 from dataclasses import dataclass, field
+from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent
 
@@ -45,8 +43,13 @@ BENCHMARK_QUERIES = [
         "id": "call-chain",
         "query": "How does a CLI command get executed end-to-end?",
         "expected_symbols": [
-            "cli_main", "main", "CLICommandFactory", "BaseCommand",
-            "execute", "AnalysisEngine", "analyze",
+            "cli_main",
+            "main",
+            "CLICommandFactory",
+            "BaseCommand",
+            "execute",
+            "AnalysisEngine",
+            "analyze",
         ],
         "codegraph_baseline": {"tool_calls": 3, "time_s": 17, "tokens": 57000},
     },
@@ -54,8 +57,12 @@ BENCHMARK_QUERIES = [
         "id": "plugin-system",
         "query": "How does the language plugin system work?",
         "expected_symbols": [
-            "PluginManager", "LanguagePlugin", "PythonPlugin",
-            "JavaPlugin", "create_extractor", "extract_elements",
+            "PluginManager",
+            "LanguagePlugin",
+            "PythonPlugin",
+            "JavaPlugin",
+            "create_extractor",
+            "extract_elements",
         ],
         "codegraph_baseline": {"tool_calls": 3, "time_s": 22, "tokens": 55000},
     },
@@ -63,9 +70,12 @@ BENCHMARK_QUERIES = [
         "id": "mcp-tools",
         "query": "How are MCP tools registered and dispatched?",
         "expected_symbols": [
-            "TreeSitterAnalyzerMCPServer", "_create_tool_registry",
-            "handle_call_tool", "analyze_code_structure",
-            "change_impact", "smart_context",
+            "TreeSitterAnalyzerMCPServer",
+            "_create_tool_registry",
+            "handle_call_tool",
+            "analyze_code_structure",
+            "change_impact",
+            "smart_context",
         ],
         "codegraph_baseline": {"tool_calls": 3, "time_s": 19, "tokens": 40000},
     },
@@ -73,8 +83,12 @@ BENCHMARK_QUERIES = [
         "id": "formatter-chain",
         "query": "How does a formatter produce output from extracted elements?",
         "expected_symbols": [
-            "FormatterRegistry", "JavaTableFormatter", "format_table",
-            "format_full", "format_compact", "format_summary",
+            "FormatterRegistry",
+            "JavaTableFormatter",
+            "format_table",
+            "format_full",
+            "format_compact",
+            "format_summary",
         ],
         "codegraph_baseline": {"tool_calls": 3, "time_s": 17, "tokens": 52000},
     },
@@ -82,8 +96,12 @@ BENCHMARK_QUERIES = [
         "id": "dependency-graph",
         "query": "How does the dependency graph build and traverse?",
         "expected_symbols": [
-            "DependencyGraph", "build_graph", "ImportExtractor",
-            "BlastRadius", "forward", "analyze_dependencies",
+            "DependencyGraph",
+            "build_graph",
+            "ImportExtractor",
+            "BlastRadius",
+            "forward",
+            "analyze_dependencies",
         ],
         "codegraph_baseline": {"tool_calls": 3, "time_s": 22, "tokens": 57000},
     },
@@ -139,6 +157,7 @@ def run_synthetic_benchmark():
         # Time our analysis pipeline
         try:
             from tree_sitter_analyzer.core.engine import AnalysisEngine
+
             engine = AnalysisEngine(project_root=str(PROJECT_ROOT))
             t0 = time.perf_counter()
             for py_file in list(PROJECT_ROOT.glob("tree_sitter_analyzer/**/*.py"))[:5]:
@@ -147,17 +166,19 @@ def run_synthetic_benchmark():
         except Exception:
             analysis_time = 0.0
 
-        elapsed = time.perf_counter() - start
+        time.perf_counter() - start
 
-        results.append({
-            "id": bq["id"],
-            "query": bq["query"],
-            "codegraph_tool_calls": bq["codegraph_baseline"]["tool_calls"],
-            "our_tool_calls_with_tools": our_tool_calls_with_us,
-            "our_tool_calls_without_tools": our_tool_calls_without_us,
-            "analysis_5files_time_s": round(analysis_time, 2),
-            "expected_symbols": bq["expected_symbols"],
-        })
+        results.append(
+            {
+                "id": bq["id"],
+                "query": bq["query"],
+                "codegraph_tool_calls": bq["codegraph_baseline"]["tool_calls"],
+                "our_tool_calls_with_tools": our_tool_calls_with_us,
+                "our_tool_calls_without_tools": our_tool_calls_without_us,
+                "analysis_5files_time_s": round(analysis_time, 2),
+                "expected_symbols": bq["expected_symbols"],
+            }
+        )
 
     return results
 
@@ -165,21 +186,51 @@ def run_synthetic_benchmark():
 def run_capability_comparison():
     """Compare feature parity between CodeGraph and tree-sitter-analyzer."""
     return [
-        ComparisonRow("Pre-indexed knowledge graph", "SQLite + FTS5", "None (re-parse each time)", "WEAK"),
-        ComparisonRow("Call graph (callers/callees)", "Yes - bidirectional", "find_references (1-direction)", "WEAK"),
-        ComparisonRow("Impact analysis", "codegraph_impact", "BlastRadius + change_impact", "STRONG"),
-        ComparisonRow("Health scoring (A-F)", "No", "Yes - 5 dimensions", "OUR ADVANTAGE"),
+        ComparisonRow(
+            "Pre-indexed knowledge graph",
+            "SQLite + FTS5",
+            "None (re-parse each time)",
+            "WEAK",
+        ),
+        ComparisonRow(
+            "Call graph (callers/callees)",
+            "Yes - bidirectional",
+            "find_references (1-direction)",
+            "WEAK",
+        ),
+        ComparisonRow(
+            "Impact analysis",
+            "codegraph_impact",
+            "BlastRadius + change_impact",
+            "STRONG",
+        ),
+        ComparisonRow(
+            "Health scoring (A-F)", "No", "Yes - 5 dimensions", "OUR ADVANTAGE"
+        ),
         ComparisonRow("Safe-to-edit risk", "No", "Yes - unique", "OUR ADVANTAGE"),
         ComparisonRow("Security scanning", "No", "Yes - 6 languages", "OUR ADVANTAGE"),
-        ComparisonRow("TOON format (token save)", "No", "Yes - 60% compression", "OUR ADVANTAGE"),
+        ComparisonRow(
+            "TOON format (token save)", "No", "Yes - 60% compression", "OUR ADVANTAGE"
+        ),
         ComparisonRow("Symbol search", "FTS5 full-text", "grep wrapper", "WEAK"),
         ComparisonRow("File watching / sync", "FSEvents + debounce", "None", "WEAK"),
         ComparisonRow("Framework route detection", "13 frameworks", "None", "WEAK"),
         ComparisonRow("Languages supported", "19+", "17", "SIMILAR"),
-        ComparisonRow("Refactoring suggestions", "No", "Yes - with line numbers", "OUR ADVANTAGE"),
-        ComparisonRow("Git diff integration", "No", "change_impact + BlastRadius", "OUR ADVANTAGE"),
-        ComparisonRow("Anti-pattern detection", "No", "code_patterns tool", "OUR ADVANTAGE"),
-        ComparisonRow("Context for AI agents", "1-3 calls, 0 file reads", "3-5 calls, some file reads", "NEEDS WORK"),
+        ComparisonRow(
+            "Refactoring suggestions", "No", "Yes - with line numbers", "OUR ADVANTAGE"
+        ),
+        ComparisonRow(
+            "Git diff integration", "No", "change_impact + BlastRadius", "OUR ADVANTAGE"
+        ),
+        ComparisonRow(
+            "Anti-pattern detection", "No", "code_patterns tool", "OUR ADVANTAGE"
+        ),
+        ComparisonRow(
+            "Context for AI agents",
+            "1-3 calls, 0 file reads",
+            "3-5 calls, some file reads",
+            "NEEDS WORK",
+        ),
     ]
 
 
@@ -200,14 +251,16 @@ def generate_report():
     weaknesses = [c for c in comparisons if "WEAK" in c.delta]
     similar = [c for c in comparisons if "SIMILAR" in c.delta or "NEEDS" in c.delta]
 
-    print(f"\nSummary: {len(strengths)} advantages, {len(weaknesses)} gaps, {len(similar)} needs work")
+    print(
+        f"\nSummary: {len(strengths)} advantages, {len(weaknesses)} gaps, {len(similar)} needs work"
+    )
 
     print("\n## 2. Synthetic Performance Benchmark\n")
     bench = run_synthetic_benchmark()
     for b in bench:
         cg_calls = b["codegraph_tool_calls"]
         our_calls = b["our_tool_calls_with_tools"]
-        reduction = (1 - our_calls / (cg_calls * 10)) * 100 if cg_calls * 10 > 0 else 0
+        (1 - our_calls / (cg_calls * 10)) * 100 if cg_calls * 10 > 0 else 0
         print(f"  [{b['id']}]")
         print(f"    Without any tool: ~{cg_calls * 10} calls (grep/glob/read)")
         print(f"    With CodeGraph:   {cg_calls} calls")

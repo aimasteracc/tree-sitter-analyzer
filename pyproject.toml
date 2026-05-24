@@ -413,10 +413,14 @@ module = [
 ]
 ignore_errors = true
 
-# Handle missing stubs for tree-sitter packages
+# Handle missing stubs for tree-sitter packages + optional watchdog dep
 [[tool.mypy.overrides]]
 module = [
     "tree_sitter.*",
+    # ``watchdog`` is an optional dep (file_watcher's polling fallback
+    # covers the no-watchdog case). Its PyPI dist ships no stubs and we
+    # don't want to require types-watchdog just for one optional path.
+    "watchdog.*",
     # All 21 tree-sitter language modules (for 17 languages + aliases)
     "tree_sitter_bash.*",
     "tree_sitter_c.*",
@@ -479,6 +483,7 @@ module = [
     "tree_sitter_analyzer.formatters._typescript_formatter_helpers",
     "tree_sitter_analyzer.formatters.sql_formatters",
     "tree_sitter_analyzer.incremental_sync",
+    "tree_sitter_analyzer.language_loader",
     "tree_sitter_analyzer.languages._cpp_plugin_template_helpers",
     "tree_sitter_analyzer.languages._go_common_helpers",
     "tree_sitter_analyzer.languages._go_type_helpers",

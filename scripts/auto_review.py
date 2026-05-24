@@ -32,7 +32,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -113,7 +112,9 @@ def _shellify(cmd: str) -> list[str]:
 
 
 def collect_backlog(max_items: int) -> list[WorkItem]:
-    health = _run_tool(["--project-health", "--min-grade", "D", "--max-files", str(max_items)])
+    health = _run_tool(
+        ["--project-health", "--min-grade", "D", "--max-files", str(max_items)]
+    )
     if not health.get("success"):
         raise RuntimeError(f"project-health failed: {health}")
     items: list[WorkItem] = []

@@ -24,22 +24,34 @@ Our test targets (matching languages we support):
 """
 
 import json
-import os
 import subprocess
-import time
 import sys
+import tempfile
+import time
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from dataclasses import dataclass, field, asdict
-from typing import Optional
 
-BENCH_DIR = Path("/var/folders/pt/cwqcdr3n137gxzjfss7lhfq00000gn/T/opencode/benchmark_projects")
+# tempdir-style path; "cwqcdr3n…" looks like base64 entropy to
+# detect-secrets but is just a macOS-generated tempdir component.
+# pragma: allowlist secret
+BENCH_DIR = Path(tempfile.gettempdir()) / "tsa-benchmark-projects"
 BENCH_DIR.mkdir(parents=True, exist_ok=True)
 
 CODEGRAPH_BASELINES = {
     "vscode-ts": {"tool_calls": 3, "tokens_k": 56.6, "time_s": 17, "file_reads": 0},
     "excalidraw-ts": {"tool_calls": 3, "tokens_k": 57.1, "time_s": 29, "file_reads": 0},
-    "claude-code-py": {"tool_calls": 3, "tokens_k": 67.1, "time_s": 39, "file_reads": 0},
-    "claude-code-jv": {"tool_calls": 1, "tokens_k": 40.8, "time_s": 19, "file_reads": 0},
+    "claude-code-py": {
+        "tool_calls": 3,
+        "tokens_k": 67.1,
+        "time_s": 39,
+        "file_reads": 0,
+    },
+    "claude-code-jv": {
+        "tool_calls": 1,
+        "tokens_k": 40.8,
+        "time_s": 19,
+        "file_reads": 0,
+    },
     "alamofire-sw": {"tool_calls": 3, "tokens_k": 57.3, "time_s": 22, "file_reads": 0},
     "swiftc-sw": {"tool_calls": 6, "tokens_k": 77.4, "time_s": 35, "file_reads": 0},
 }
@@ -49,32 +61,60 @@ OUR_PROJECTS = {
         "url": "https://github.com/pallets/flask.git",
         "language": "python",
         "query": "How does a Flask request flow from URL routing to response?",
-        "expected_symbols": ["Flask", "route", "dispatch_request", "full_dispatch_request",
-                            "make_response", "Request", "Response"],
+        "expected_symbols": [
+            "Flask",
+            "route",
+            "dispatch_request",
+            "full_dispatch_request",
+            "make_response",
+            "Request",
+            "Response",
+        ],
         "comparable_cg": "claude-code-py",
     },
     "requests-py": {
         "url": "https://github.com/psf/requests.git",
         "language": "python",
         "query": "How does an HTTP request get prepared, sent, and response parsed?",
-        "expected_symbols": ["Session", "request", "Request", "PreparedRequest",
-                            "send", "HTTPAdapter", "Response"],
+        "expected_symbols": [
+            "Session",
+            "request",
+            "Request",
+            "PreparedRequest",
+            "send",
+            "HTTPAdapter",
+            "Response",
+        ],
         "comparable_cg": "claude-code-py",
     },
     "gson-java": {
         "url": "https://github.com/google/gson.git",
         "language": "java",
         "query": "How does Gson serialize and deserialize Java objects?",
-        "expected_symbols": ["Gson", "toJson", "fromJson", "TypeAdapter",
-                            "JsonWriter", "JsonReader", "JsonElement"],
+        "expected_symbols": [
+            "Gson",
+            "toJson",
+            "fromJson",
+            "TypeAdapter",
+            "JsonWriter",
+            "JsonReader",
+            "JsonElement",
+        ],
         "comparable_cg": "claude-code-jv",
     },
     "express-ts": {
         "url": "https://github.com/expressjs/express.git",
         "language": "javascript",
         "query": "How does Express route an incoming request to a handler?",
-        "expected_symbols": ["createApplication", "Router", "handle",
-                            "Layer", "Route", "dispatch", "next"],
+        "expected_symbols": [
+            "createApplication",
+            "Router",
+            "handle",
+            "Layer",
+            "Route",
+            "dispatch",
+            "next",
+        ],
         "comparable_cg": "vscode-ts",
     },
 }
@@ -107,19 +147,29 @@ def clone_project(name: str, url: str) -> Path:
         print(f"  [{name}] Already cloned")
         return target
     print(f"  [{name}] Cloning {url}...")
-    subprocess.run(["git", "clone", "--depth", "1", url, str(target)],
-                   capture_output=True, check=True)
+    subprocess.run(
+        ["git", "clone", "--depth", "1", url, str(target)],
+        capture_output=True,
+        check=True,
+    )
     return target
 
 
 def count_source_files(project_dir: Path, language: str) -> int:
     ext_map = {
-        "python": ".py", "java": ".java", "javascript": ".js",
-        "typescript": ".ts", "go": ".go", "rust": ".rs",
+        "python": ".py",
+        "java": ".java",
+        "javascript": ".js",
+        "typescript": ".ts",
+        "go": ".go",
+        "rust": ".rs",
     }
     ext = ext_map.get(language, ".py")
-    return sum(1 for f in project_dir.rglob(f"*{ext}")
-               if "node_modules" not in str(f) and ".git" not in str(f))
+    return sum(
+        1
+        for f in project_dir.rglob(f"*{ext}")
+        if "node_modules" not in str(f) and ".git" not in str(f)
+    )
 
 
 def run_analysis(project_dir: Path, language: str, query_symbols: list[str]) -> dict:
@@ -136,13 +186,18 @@ def run_analysis(project_dir: Path, language: str, query_symbols: list[str]) -> 
         total_time = 0.0
 
         ext_map = {
-            "python": ".py", "java": ".java", "javascript": ".js",
-            "typescript": ".ts", "go": ".go", "rust": ".rs",
+            "python": ".py",
+            "java": ".java",
+            "javascript": ".js",
+            "typescript": ".ts",
+            "go": ".go",
+            "rust": ".rs",
         }
         ext = ext_map.get(language, ".py")
 
         source_files = [
-            f for f in project_dir.rglob(f"*{ext}")
+            f
+            for f in project_dir.rglob(f"*{ext}")
             if "node_modules" not in str(f) and ".git" not in str(f)
         ][:50]
 
@@ -169,9 +224,9 @@ def run_analysis(project_dir: Path, language: str, query_symbols: list[str]) -> 
             try:
                 result = await engine.analyze_file(str(f), language)
                 analyzed += 1
-                elements = getattr(result, 'elements', []) or []
+                elements = getattr(result, "elements", []) or []
                 for el in elements:
-                    name = getattr(el, 'name', '')
+                    name = getattr(el, "name", "")
                     if name and name in query_symbols:
                         found.append(name)
             except Exception:
@@ -193,66 +248,6 @@ def run_analysis(project_dir: Path, language: str, query_symbols: list[str]) -> 
         }
 
     return asyncio.run(_analyze())
-    ext = ext_map.get(language, ".py")
-
-    source_files = [
-        f for f in project_dir.rglob(f"*{ext}")
-        if "node_modules" not in str(f) and ".git" not in str(f)
-    ][:50]
-
-    print(f"    Analyzing {len(source_files)} files...")
-
-    engine = AnalysisEngine(project_root=str(project_dir))
-
-    t0 = time.perf_counter()
-
-    # Simulate what an agent does:
-    # Tool call 1: project overview / health
-    tool_calls += 1
-    try:
-        health = engine.get_project_health()
-    except Exception:
-        pass
-
-    # Tool call 2: search for key symbols
-    tool_calls += 1
-
-    # Tool call 3: analyze most relevant files
-    tool_calls += 1
-    analyzed = 0
-    for f in source_files[:10]:
-        try:
-            result = engine.analyze_file(str(f), language)
-            analyzed += 1
-            if isinstance(result, dict):
-                for func in result.get("functions", []):
-                    if isinstance(func, dict):
-                        name = func.get("name", "")
-                        if name and name in query_symbols:
-                            found.append(name)
-                for cls in result.get("classes", []):
-                    if isinstance(cls, dict):
-                        name = cls.get("name", "")
-                        if name and name in query_symbols:
-                            found.append(name)
-        except Exception:
-            file_reads += 1
-
-    # If not all symbols found, agent needs more calls
-    missing = set(query_symbols) - set(found)
-    if missing:
-        tool_calls += 2
-        file_reads += 3
-
-    total_time = time.perf_counter() - t0
-
-    return {
-        "tool_calls": tool_calls,
-        "file_reads": file_reads,
-        "time_s": round(total_time, 2),
-        "found_symbols": list(set(found)),
-        "files_analyzed": analyzed,
-    }
 
 
 def main():
@@ -270,10 +265,14 @@ def main():
         file_count = count_source_files(project_dir, config["language"])
         print(f"   Source files: {file_count}")
 
-        analysis = run_analysis(project_dir, config["language"], config["expected_symbols"])
+        analysis = run_analysis(
+            project_dir, config["language"], config["expected_symbols"]
+        )
 
         cg = CODEGRAPH_BASELINES.get(config["comparable_cg"], {})
-        recall = len(set(analysis["found_symbols"]) & set(config["expected_symbols"])) / max(len(config["expected_symbols"]), 1)
+        recall = len(
+            set(analysis["found_symbols"]) & set(config["expected_symbols"])
+        ) / max(len(config["expected_symbols"]), 1)
 
         run = BenchmarkRun(
             project=name,
@@ -296,16 +295,20 @@ def main():
     print("\n" + "=" * 90)
     print("COMPARISON TABLE")
     print("=" * 90)
-    print(f"\n{'Project':<20} {'Lang':<6} {'Files':<7} {'Our Calls':<11} {'CG Calls':<10} "
-          f"{'Our Time':<10} {'CG Time':<9} {'Our Reads':<10} {'CG Reads':<9} {'Recall':<8}")
+    print(
+        f"\n{'Project':<20} {'Lang':<6} {'Files':<7} {'Our Calls':<11} {'CG Calls':<10} "
+        f"{'Our Time':<10} {'CG Time':<9} {'Our Reads':<10} {'CG Reads':<9} {'Recall':<8}"
+    )
     print("-" * 100)
 
     for r in results:
-        print(f"{r.project:<20} {r.language:<6} {r.index_files:<7} "
-              f"{r.tool_calls_needed:<11} {r.cg_tool_calls:<10} "
-              f"{r.analysis_time_s:<10} {r.cg_time_s:<9} "
-              f"{r.file_reads_needed:<10} {r.cg_file_reads:<9} "
-              f"{r.recall:<8}")
+        print(
+            f"{r.project:<20} {r.language:<6} {r.index_files:<7} "
+            f"{r.tool_calls_needed:<11} {r.cg_tool_calls:<10} "
+            f"{r.analysis_time_s:<10} {r.cg_time_s:<9} "
+            f"{r.file_reads_needed:<10} {r.cg_file_reads:<9} "
+            f"{r.recall:<8}"
+        )
 
     print("\n" + "=" * 90)
     print("GAP ANALYSIS")
@@ -316,13 +319,17 @@ def main():
     avg_our_reads = sum(r.file_reads_needed for r in results) / len(results)
     avg_recall = sum(r.recall for r in results) / len(results)
 
-    print(f"\n  Average tool calls — Us: {avg_our_calls:.1f}, CodeGraph: {avg_cg_calls:.1f}")
+    print(
+        f"\n  Average tool calls — Us: {avg_our_calls:.1f}, CodeGraph: {avg_cg_calls:.1f}"
+    )
     print(f"  Average file reads — Us: {avg_our_reads:.1f}, CodeGraph: 0")
     print(f"  Average recall — Us: {avg_recall:.0%}")
-    print(f"\n  Key gaps:")
-    print(f"    - File reads: CodeGraph=0, Us={avg_our_reads:.1f} (we make agents read files)")
-    print(f"    - Pre-indexing: CodeGraph indexes once, we parse on every call")
-    print(f"    - Call graph: CodeGraph traces callers/callees, we only find_references")
+    print("\n  Key gaps:")
+    print(
+        f"    - File reads: CodeGraph=0, Us={avg_our_reads:.1f} (we make agents read files)"
+    )
+    print("    - Pre-indexing: CodeGraph indexes once, we parse on every call")
+    print("    - Call graph: CodeGraph traces callers/callees, we only find_references")
 
     report_path = Path(__file__).parent.parent / "scripts" / "benchmark_results.json"
     with open(report_path, "w") as f:
