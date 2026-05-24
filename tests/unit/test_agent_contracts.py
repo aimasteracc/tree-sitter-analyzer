@@ -89,6 +89,50 @@ def test_pytest_runtime_dependencies_are_declared() -> None:
     assert "pytest-timeout>=2.4.0" in dev_dependencies
 
 
+def test_gitflow_documentation_is_present() -> None:
+    """The GitFlow mandate must remain documented + machine-enforced.
+
+    Three artifacts are required so the rule survives both casual edits
+    and CI bypass attempts:
+      1. ``GITFLOW.md`` at repo root — the source of truth.
+      2. ``AGENTS.md`` references it from the "GitFlow Branching Mandate"
+         section so any agent reading AGENTS.md sees the rule.
+      3. ``.github/workflows/gitflow-guard.yml`` enforces head→base
+         naming on every PR — the CI safety net.
+
+    If you intentionally restructure how GitFlow is documented, update
+    this test in the same commit and explain why in the PR description.
+    """
+    gitflow_md = PROJECT_ROOT / "GITFLOW.md"
+    agents_md = PROJECT_ROOT / "AGENTS.md"
+    guard_yml = PROJECT_ROOT / ".github" / "workflows" / "gitflow-guard.yml"
+
+    assert gitflow_md.exists(), "GITFLOW.md must exist at repo root"
+    assert agents_md.exists(), "AGENTS.md must exist at repo root"
+    assert guard_yml.exists(), (
+        ".github/workflows/gitflow-guard.yml must exist — the CI "
+        "enforcement layer for the GitFlow branching mandate"
+    )
+
+    agents_text = agents_md.read_text(encoding="utf-8")
+    assert "GitFlow Branching Mandate" in agents_text, (
+        "AGENTS.md must contain a 'GitFlow Branching Mandate' section "
+        "linking to GITFLOW.md"
+    )
+    assert "GITFLOW.md" in agents_text, (
+        "AGENTS.md's GitFlow section must link to GITFLOW.md by name"
+    )
+
+    guard_text = guard_yml.read_text(encoding="utf-8")
+    # The guard must check both main and develop as protected bases,
+    # otherwise an agent could open a stray PR against either branch.
+    for required_check in ("main", "develop", "release/v", "hotfix/"):
+        assert required_check in guard_text, (
+            f"gitflow-guard.yml must reference {required_check!r} in its "
+            "validation logic — see AGENTS.md 'GitFlow Branching Mandate'"
+        )
+
+
 def test_agent_facing_docs_do_not_recommend_bare_pytest() -> None:
     """Agent docs should route pytest through uv for consistent environments."""
     bare_pytest_command = re.compile(r"^(?:\$\s+)?pytest(?:\s|$)")

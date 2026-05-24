@@ -51,3 +51,36 @@ Enforced by:
 Escape hatch for intentional rename/rebase: `SKIP_CODEMAP_SYNC=1 git commit ...`. The pytest test still runs in CI as the final safety net — bypass is local-only.
 
 Why: previously the codemap drifted from 23 → 27 → 30 → 55 tools across 4 months with manual catch-up commits in between. The agent contract is now self-enforcing.
+
+## GitFlow Branching Mandate
+
+**Hard requirement.** Every branch operation MUST follow [`GITFLOW.md`](GITFLOW.md) ([中文](GITFLOW_zh.md) / [日本語](GITFLOW_ja.md)). The matrix below is the full surface — anything else is a violation.
+
+| Operation | Branch name | Cut from | Target (via PR) |
+|---|---|---|---|
+| Feature | `feature/<name>` | `develop` | `develop` |
+| Release prep | `release/v<X.Y.Z>` | `develop` | `main` **and back into** `develop` |
+| Production hotfix | `hotfix/<name>` | `main` | `main` **and back into** `develop` |
+| Chore / docs / test (non-release) | `chore/<name>` · `docs/<name>` · `test/<name>` · `fix/<name>` | `develop` | `develop` |
+
+**Agents MUST NEVER:**
+- Push directly to `main` or `develop` — open a PR from a properly-named branch instead
+- Open a PR targeting `main` from anything other than `release/v*` or `hotfix/*`
+- Cut a `feature/*` from `main` — it must come from `develop`
+- Force-push or delete `main`, `develop`, or any released tag (`v*`)
+- Skip the `develop` merge-back after a release or hotfix is published
+- **Use `hotfix/*` for non-release fixes.** Pushing to `hotfix/*` auto-triggers `hotfix-automation.yml` → PyPI publish with a version bump. Reserve `hotfix/*` for "production is broken, needs a same-day patch release". For a generic bug fix, CI YAML repair, workflow tweak, etc., use `fix/*` · `ci/*` · `chore/*` against `develop`.
+
+**Release flow (every detail in [`GITFLOW.md`](GITFLOW.md)):**
+1. `release/v<X.Y.Z>` cut from `develop`
+2. Push triggers `.github/workflows/release-automation.yml` → test → build → publish to PyPI
+3. After PyPI is live: PR `release/v*` → `main`, tag `v<X.Y.Z>` on main, GitHub Release
+4. Merge `release/v*` → `develop` to bring back release-prep commits (version bumps, CHANGELOG)
+5. Delete `release/v<X.Y.Z>` from origin
+
+**Enforcement layers:**
+- `.github/workflows/gitflow-guard.yml` — CI fails on a PR whose head→base pair violates the matrix
+- GitHub branch protection on `main` (PR + status checks required, no force-push)
+- `test_gitflow_documentation_is_present` in `tests/unit/test_agent_contracts.py` — guards against `GITFLOW.md` being deleted or `AGENTS.md` losing the link
+
+Escape hatch: none. If GITFLOW.md itself needs to change, that's a PR like any other — argue the case in the description and update the matrix + tests in the same commit.
