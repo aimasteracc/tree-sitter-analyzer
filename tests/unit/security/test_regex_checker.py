@@ -564,7 +564,19 @@ class TestMissingCoverage:
     def test_check_performance_slow_execution(self):
         """Lines 184-187: execution exceeds MAX_EXECUTION_TIME."""
         checker = RegexSafetyChecker()
-        with patch("time.time", side_effect=[0.0, 2.0]):
+        # Python 3.12+ stdlib paths call ``time.time()`` more than twice
+        # internally (logging timestamps, GC). The original 2-element
+        # side_effect raised StopIteration. Use a stateful clock that
+        # returns 0.0 on the very first call (the captured start_time)
+        # and 2.0 thereafter so elapsed > MAX_EXECUTION_TIME regardless
+        # of how many internal time() calls happen between.
+        call_count = {"n": 0}
+
+        def fake_time() -> float:
+            call_count["n"] += 1
+            return 0.0 if call_count["n"] == 1 else 2.0
+
+        with patch("time.time", side_effect=fake_time):
             is_slow = checker._check_performance(r"test")
             assert is_slow is not None
             assert "too slow" in is_slow

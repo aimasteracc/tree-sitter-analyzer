@@ -59,10 +59,10 @@ class TestBuildPrecisePlans:
 
         mock_analysis = MagicMock()
         mock_analysis.elements = []
-        suggestions = [
-            {"name": "long_function", "line_range": {"start": 99}}
-        ]
-        build_precise_plans("f.py", "def foo():\n    pass\n", mock_analysis, suggestions)
+        suggestions = [{"name": "long_function", "line_range": {"start": 99}}]
+        build_precise_plans(
+            "f.py", "def foo():\n    pass\n", mock_analysis, suggestions
+        )
         assert "precise_plan" not in suggestions[0]
 
     def test_skips_non_long_function_suggestions(self):
@@ -80,7 +80,9 @@ class TestBuildPlanForFunc:
     def test_returns_none_for_no_blocks(self):
         lines = ["def tiny():", "    pass"]
         func = {"line": 1, "end_line": 2, "name": "tiny"}
-        assert _build_plan_for_func("f.py", lines, func, "def tiny():\n    pass") is None
+        assert (
+            _build_plan_for_func("f.py", lines, func, "def tiny():\n    pass") is None
+        )
 
     def test_returns_plan_for_extractable_function(self):
         source = (
@@ -148,7 +150,12 @@ class TestBuildExtractionTargets:
         assert targets[0]["hint"] == "loop"
 
     def test_limits_to_three_targets(self):
-        blocks = [(1, 5, "loop"), (6, 10, "conditional"), (11, 15, "computation"), (16, 20, "result_building")]
+        blocks = [
+            (1, 5, "loop"),
+            (6, 10, "conditional"),
+            (11, 15, "computation"),
+            (16, 20, "result_building"),
+        ]
         lines = ["line"] * 25
         targets = _build_extraction_targets(blocks, lines, "f", set(), ".py")
         assert len(targets) == 3
@@ -194,19 +201,24 @@ class TestHelperModulePath:
         assert result == "_foo_helpers.py"
 
     def test_nested_dir(self):
+        # ``_helper_module_path`` uses ``os.path`` join semantics, so the
+        # separator follows the host OS. Normalise both sides to POSIX
+        # forward slashes for a portable comparison.
         result = _helper_module_path("pkg/foo.py", "_foo_helpers")
-        assert result == "pkg/_foo_helpers.py"
+        assert result.replace("\\", "/") == "pkg/_foo_helpers.py"
 
     def test_deep_nested(self):
         result = _helper_module_path("a/b/c/foo.py", "_foo_helpers")
-        assert result == "a/b/c/_foo_helpers.py"
+        assert result.replace("\\", "/") == "a/b/c/_foo_helpers.py"
 
 
 class TestHelperImportStatement:
     def test_without_init(self, tmp_path):
         f = tmp_path / "module.py"
         f.write_text("x = 1")
-        result = _helper_import_statement(str(f), "_module_helpers", "helper_a, helper_b")
+        result = _helper_import_statement(
+            str(f), "_module_helpers", "helper_a, helper_b"
+        )
         assert result == "from _module_helpers import helper_a, helper_b"
 
     def test_with_init(self, tmp_path):
@@ -454,5 +466,3 @@ class TestIsBlockContinuation:
 
     def test_unrelated_line(self):
         assert _is_block_continuation("x = 1", "resource") is False
-
-

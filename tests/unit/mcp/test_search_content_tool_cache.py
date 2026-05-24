@@ -6,6 +6,7 @@ This module tests SearchContentTool class which provides
 content search capabilities using ripgrep.
 """
 
+import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -14,6 +15,12 @@ import pytest
 from tree_sitter_analyzer.mcp.tools.search_content_tool import (
     SearchContentTool,
 )
+
+# Use the OS-native tempdir instead of hard-coding ``/tmp`` so the
+# cache-hit branch tests work on Windows runners where the system
+# temporary directory is ``D:\Users\...\AppData\Local\Temp\...``
+# and the SecurityValidator rejects ``/tmp`` as missing.
+_TMPDIR = tempfile.gettempdir()
 
 
 @pytest.fixture
@@ -46,7 +53,7 @@ class TestCacheHitBranches:
         tool.cache = MagicMock()
         tool.cache.get.return_value = 42
         tool.cache.create_cache_key.return_value = "k1"
-        arguments = {"query": "test", "roots": ["/tmp"], "total_only": True}
+        arguments = {"query": "test", "roots": [_TMPDIR], "total_only": True}
         result = await tool.execute(arguments)
         assert result == 42
 
@@ -55,7 +62,7 @@ class TestCacheHitBranches:
         tool.cache = MagicMock()
         tool.cache.get.return_value = {"total_matches": 7, "success": True}
         tool.cache.create_cache_key.return_value = "k1"
-        arguments = {"query": "test", "roots": ["/tmp"], "total_only": True}
+        arguments = {"query": "test", "roots": [_TMPDIR], "total_only": True}
         result = await tool.execute(arguments)
         assert result == 7
 
@@ -64,7 +71,7 @@ class TestCacheHitBranches:
         tool.cache = MagicMock()
         tool.cache.get.return_value = {"count": 3, "success": True}
         tool.cache.create_cache_key.return_value = "k1"
-        arguments = {"query": "test", "roots": ["/tmp"], "total_only": True}
+        arguments = {"query": "test", "roots": [_TMPDIR], "total_only": True}
         result = await tool.execute(arguments)
         assert result == 3
 
@@ -73,7 +80,7 @@ class TestCacheHitBranches:
         tool.cache = MagicMock()
         tool.cache.get.return_value = {"success": True}
         tool.cache.create_cache_key.return_value = "k1"
-        arguments = {"query": "test", "roots": ["/tmp"], "total_only": True}
+        arguments = {"query": "test", "roots": [_TMPDIR], "total_only": True}
         result = await tool.execute(arguments)
         assert result == 0
 
@@ -82,7 +89,7 @@ class TestCacheHitBranches:
         tool.cache = MagicMock()
         tool.cache.get.return_value = {"success": True, "count": 5}
         tool.cache.create_cache_key.return_value = "k1"
-        arguments = {"query": "test", "roots": ["/tmp"]}
+        arguments = {"query": "test", "roots": [_TMPDIR]}
         result = await tool.execute(arguments)
         assert result["cache_hit"] is True
         assert result["count"] == 5
@@ -92,7 +99,7 @@ class TestCacheHitBranches:
         tool.cache = MagicMock()
         tool.cache.get.return_value = 10
         tool.cache.create_cache_key.return_value = "k1"
-        arguments = {"query": "test", "roots": ["/tmp"]}
+        arguments = {"query": "test", "roots": [_TMPDIR]}
         result = await tool.execute(arguments)
         assert result["cache_hit"] is True
         assert result["count"] == 10
@@ -103,7 +110,7 @@ class TestCacheHitBranches:
         tool.cache = MagicMock()
         tool.cache.get.return_value = "some_string"
         tool.cache.create_cache_key.return_value = "k1"
-        arguments = {"query": "test", "roots": ["/tmp"]}
+        arguments = {"query": "test", "roots": [_TMPDIR]}
         result = await tool.execute(arguments)
         assert result["cache_hit"] is True
         assert result["cached_result"] == "some_string"
