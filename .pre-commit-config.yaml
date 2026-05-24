@@ -143,6 +143,30 @@ repos:
         stages: [pre-commit]
         always_run: true
 
+  # Defense against incidents catalogued in docs/POSTMORTEM_v1.13.md.
+  - repo: local
+    hooks:
+      - id: tsa-ps-ascii
+        name: "tsa-ps-ascii — block non-ASCII in `shell: powershell` run blocks"
+        entry: uv run python scripts/check_ps_ascii.py
+        language: system
+        pass_filenames: false
+        files: ^\.github/(workflows|actions)/.*\.ya?ml$
+        stages: [pre-commit]
+
+  # actionlint — validates `.github/workflows/*.yml` for GitHub Actions
+  # specifics: dead `uses:` refs, bad expression syntax, mis-typed
+  # inputs. Catches the failure class behind PR #138 (auto-sprint
+  # `@v1` ref to a non-existent action tag).
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.7
+    hooks:
+      - id: actionlint
+        # actionlint speaks YAML + GH-Actions schema. We pin the
+        # version so a downstream actionlint release can't suddenly
+        # break the wheel of every contributor.
+        files: ^\.github/workflows/.*\.ya?ml$
+
 # Configuration
 default_stages: [pre-commit]
 fail_fast: false

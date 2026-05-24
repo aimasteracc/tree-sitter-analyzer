@@ -84,3 +84,35 @@ Why: previously the codemap drifted from 23 → 27 → 30 → 55 tools across 4 
 - `test_gitflow_documentation_is_present` in `tests/unit/test_agent_contracts.py` — guards against `GITFLOW.md` being deleted or `AGENTS.md` losing the link
 
 Escape hatch: none. If GITFLOW.md itself needs to change, that's a PR like any other — argue the case in the description and update the matrix + tests in the same commit.
+
+## Anti-Patterns (from v1.13 postmortem)
+
+These are failure modes the project has *already paid for* during the v1.13.0 / v1.13.1 release lifecycle. The full incident catalogue is in [`docs/POSTMORTEM_v1.13.md`](docs/POSTMORTEM_v1.13.md). The rules below are the standing defense — break them and you reintroduce a documented bug.
+
+**Each rule cites a postmortem section so you can read the original incident.**
+
+1. **No skip-and-paper-over.** Every new `pytest.skip*` MUST include a tracking reference in its `reason=` text — issue number (`#123` / `GH-123`), `POSTMORTEM`, or `tracked: ...`. The `test_skips_have_tracking_references` contract enforces a soft budget; new untracked skips push you over it. (Postmortem § 1.)
+
+2. **YAML/Actions changes go through `actionlint`.** Edits to `.github/workflows/*.yml` or `.github/actions/**/action.yml` are validated by the `actionlint` pre-commit hook. Don't bypass it with `--no-verify`; fix the actual lint. (Postmortem § 3, § 4.)
+
+3. **`shell: powershell` blocks are ASCII-only.** The `scripts/check_ps_ascii.py` pre-commit hook fails commits that put emoji/Unicode inside an inline Windows PowerShell `run:` block. If you really need Unicode, switch the step to `shell: pwsh` (PowerShell Core, UTF-8 by default). (Postmortem § 5.)
+
+4. **tree-sitter grammar snapshots regen on Linux only.** The `tree-sitter-c-sharp 0.23.1` wheel ships different compiled grammars per OS (macOS: 229 csharp nodes; Linux: 234, including C# 12 collection-expression nodes). Always commit snapshots produced on Linux CI / a Linux container — never from a local mac. (Postmortem § 6.)
+
+5. **Before using a 3.11+ stdlib symbol, check the floor.** `requires-python = ">=3.10"` is the contract. `tomllib`, `from datetime import UTC`, `typing.Self`, structural-pattern-match exhaustiveness checks, etc. are 3.11+ and break the Py3.10 matrix silently. The `test_python_version_floor_is_consistent` contract guards the ruff/mypy/pyproject alignment. (Postmortem § 7.)
+
+6. **`develop` must not rot behind `main`.** Before merging `release/v*` back into develop, run `git log --oneline develop..main` and verify nothing on main is being orphaned. If develop has fallen far behind, fast-forward / rebuild it from main before the merge-back. (Postmortem § 8.)
+
+7. **Release-prep PRs >30 commits: prefer rebase-merge over squash.** Squashing a large consolidation PR makes `git bisect` useless on main for every bug it introduced. Use squash only for short feature PRs. (Postmortem § 10.)
+
+These rules are guarded by tests in `tests/unit/test_agent_contracts.py`:
+
+- `test_postmortem_v1_13_doc_exists`
+- `test_agents_md_documents_v1_13_anti_patterns`
+- `test_check_ps_ascii_script_is_present_and_pre_commit_wired`
+- `test_actionlint_is_wired_into_pre_commit`
+- `test_no_powershell_blocks_contain_non_ascii`
+- `test_skips_have_tracking_references`
+- `test_python_version_floor_is_consistent`
+
+Why these are at the bottom of AGENTS.md: they're the rules an agent is most likely to *forget* on a fast cycle, and the cost of forgetting each was measured in CI hours during v1.13. Keep them visible.

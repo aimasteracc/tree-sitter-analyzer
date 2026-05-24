@@ -53,9 +53,11 @@ runs:
         # (Windows PowerShell 5.1) reads the inline script as cp1252,
         # so UTF-8 emoji from this YAML get mojibake'd into
         # `Write-Host "<garbage>"` and trip
-        # TerminatorExpectedAtEndOfString. Switching to `pwsh`
+        # TerminatorExpectedAtEndOfString. scripts/check_ps_ascii.py
+        # enforces this at pre-commit time. See
+        # docs/POSTMORTEM_v1.13.md sec 5. Switching to `shell: pwsh`
         # (PowerShell Core, UTF-8 by default) is the long-term fix,
-        # but Windows runners ship `powershell` first.
+        # but the default Windows runner shell is `powershell`.
         #
         # Install each package separately - `choco install fd ripgrep -y`
         # has been observed to silently skip fd while reporting
