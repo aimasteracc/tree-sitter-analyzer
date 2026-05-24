@@ -182,6 +182,7 @@ class TestExecuteAcrossAllTools:
         per_tool_args: dict[str, dict] = {
             "check_code_scale": {"file_path": sample_file},
             "analyze_code_structure": {"file_path": sample_file, "format_type": "json"},
+            "get_code_outline": {"file_path": sample_file},
             "extract_code_section": {
                 "file_path": sample_file,
                 "start_line": 1,

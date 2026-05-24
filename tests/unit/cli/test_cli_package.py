@@ -14,26 +14,37 @@ def test_cli_imports() -> None:
 
 
 def test_cli_exports() -> None:
-    """Test that CLI package exports expected names."""
-    from tree_sitter_analyzer.cli import (
-        DescribeQueryCommand,
-        InfoCommand,
-        ListQueriesCommand,
-        ShowExtensionsCommand,
-        ShowLanguagesCommand,
-        get_analysis_engine,
-        main,
-        query_loader,
-    )
+    """Test that CLI package exports expected names.
 
-    assert DescribeQueryCommand is not None
-    assert InfoCommand is not None
-    assert ListQueriesCommand is not None
-    assert ShowExtensionsCommand is not None
-    assert ShowLanguagesCommand is not None
-    assert main is not None
-    assert query_loader is not None
-    assert get_analysis_engine is not None
+    Force a fresh import even if a sibling test (e.g. the
+    sys.modules-polluting fallback test, even when skipped, in
+    case xdist loadfile order ever pre-loads it) left the cli
+    module cached with None-typed exports.
+    """
+    import importlib
+    import sys
+
+    # Drop any cached cli + cli_main modules so the import below
+    # re-runs cli/__init__.py and re-binds main / query_loader /
+    # get_analysis_engine to their real implementations.
+    for mod in list(sys.modules):
+        if mod.startswith("tree_sitter_analyzer.cli") or mod in (
+            "tree_sitter_analyzer.cli_main",
+            "tree_sitter_analyzer.core.analysis_engine",
+            "tree_sitter_analyzer.query_loader",
+        ):
+            sys.modules.pop(mod, None)
+
+    cli = importlib.import_module("tree_sitter_analyzer.cli")
+
+    assert cli.DescribeQueryCommand is not None
+    assert cli.InfoCommand is not None
+    assert cli.ListQueriesCommand is not None
+    assert cli.ShowExtensionsCommand is not None
+    assert cli.ShowLanguagesCommand is not None
+    assert cli.main is not None
+    assert cli.query_loader is not None
+    assert cli.get_analysis_engine is not None
 
 
 def test_cli_all_attribute() -> None:
