@@ -2,98 +2,22 @@
 
 **[English](README.md)** | **日本語** | **[简体中文](README_zh.md)**
 
+> **AI エージェントのための MCP コード インテリジェンス サーバー — トークン削減、ツール呼び出し削減、100% ローカル動作。**
+> 事前インデックス AST キャッシュ + 50 MCP ツール + 13 のキュレーション済みエージェント スキル + TOON 圧縮出力。
+> 6 リポジトリの実測比較で **CodeGraph を上回る**（コスト中央値 **−11% vs CodeGraph の −4%**）、CLI は厳密な上位互換。
+
+[![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-8942%20passed-brightgreen.svg)](#-品質とテスト)
+[![Tests](https://img.shields.io/badge/tests-16154%20passed-brightgreen.svg)](#-品質とテスト)
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
-[![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-1.11.1-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
-> 🔎 **大規模リポジトリ向けのAI用エビデンスベースコードナビゲーション** - MCP統合 · 最小コンテキスト取得 · 重い前処理なしの検索
-
-*Claudeはコードベース全体を読む必要がありません。あなたも、もう必要ない。*
-
 ---
 
-## ✨ v1.11.1 最新情報
+## はじめに
 
-- **Claudeがファイルを1つも読まずにプロジェクトの骨格を把握**: `get_project_summary` がPageRankランク付きアーキテクチャノードを返す。elasticsearch(4万ファイル)・spring-framework(1.1万)・mybatis・spring-petclinicで検証済み
-- **重要クラスを変更？Claudeが先に止める**: `modification_guard` がアーキテクチャランキングを読み取り。elasticsearchの`Writeable`をリネーム → verdict UNSAFE、rank #1、4745 callers
-- **新言語 = 新ファイル1つ、既存コード変更なし**: プラグイン `edge_extractors/` パッケージ。Java・Python・TypeScript同梱。Kotlin追加は1ファイル+1行
-- **未知のプロジェクトで探索効率2倍**: 端到端テスト済み — summaryあり5回 vs なし10回以上。Claudeが盲目的な検索フェーズをスキップ
-- **設定不要のfirst-partyフィルタリング**: JavaはpomのgroupIdを読取り。Pythonは`sys.stdlib_module_names`使用。ブラックリスト管理一切不要
-
-📖 完全なバージョン履歴は **[変更履歴](CHANGELOG.md)** をご覧ください。
----
-
----
-
-## 🎬 デモ
-
-<!-- GIF プレースホルダー - 作成手順は docs/assets/demo-placeholder.md を参照 -->
-*デモGIF準備中 - SMARTワークフローとAI統合のデモンストレーション*
-
----
-
-## 🎯 Tree-sitter Analyzer が解決すること
-
-Tree-sitter Analyzer は、大規模コードベースで AI アシスタントが本当に必要な部分だけを読めるようにする、オープンソースの MCP / CLI ツールキットです。
-
-- **ファイル丸ごと投入ではなく最小コンテキスト**: AI に渡す前に、本当に必要なコード断片だけを絞り込みます
-- **エビデンスベースの解析**: tree-sitter の構造解析と `fd` / `ripgrep` を組み合わせて、関連ファイル・シンボル・経路を見つけます
-- **重い前処理に依存しない**: フルインデックスが遅い、古くなりやすい、保守しづらいリポジトリでも使いやすい設計です
-
-### よくあるユースケース
-
-- 非常に大きなファイルやモジュールの役割を、全文を AI に渡さずに理解する
-- 複雑なリポジトリで、業務ロジックや UI ハンドラ、バグに関係するコード経路を追跡する
-- Java など巨大コードベースで、AI に解析や変更依頼を出す前にコンテキストを絞り込む
-
----
-
-## 🚀 5分クイックスタート
-
-### 前提条件
-
-```bash
-# uv のインストール (必須)
-# macOS/Linux
-curl -LsSf https://astral.sh/uv/install.sh | sh
-# Windows PowerShell
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-
-# fd + ripgrep のインストール (検索機能に必須)
-brew install fd ripgrep          # macOS
-winget install sharkdp.fd BurntSushi.ripgrep.MSVC  # Windows
-```
-
-📖 各プラットフォームの詳細は **[インストールガイド](docs/installation.md)** をご覧ください。
-
-### インストールの確認
-
-```bash
-uv run tree-sitter-analyzer --show-supported-languages
-```
-
----
-
-## 🤖 AI統合
-
-MCP プロトコルで AI アシスタントに Tree-sitter Analyzer を設定します。**環境ごとに MCP 設定フォーマットが微妙に異なる**ため、ご自身のツールに合うセクションを選んでください。
-
-特に、非常に大きなファイル、ノイズの多いリポジトリ全体コンテキスト、あるいは一括投入コストが高いレガシーコードで効果を発揮します。
-
-> **以下の設定で共通の値**
-> - `command`: `uvx`
-> - `args`: `["--from", "tree-sitter-analyzer[mcp]", "tree-sitter-analyzer-mcp"]`
-> - `env.TREE_SITTER_PROJECT_ROOT`: プロジェクトルートの絶対パス
-> - `env.TREE_SITTER_OUTPUT_PATH`（任意）: MCP ツールが大きな出力を書き出すディレクトリ
-
-<details>
-<summary><b>📘 Claude Code (CLI) — 推奨</b></summary>
-
-プロジェクトルートで 1 行で追加:
+**Claude Code** へワンライナーでインストール:
 
 ```bash
 claude mcp add tree-sitter-analyzer \
@@ -101,9 +25,130 @@ claude mcp add tree-sitter-analyzer \
   -- uvx --from "tree-sitter-analyzer[mcp]" tree-sitter-analyzer-mcp
 ```
 
-検証: `claude mcp list` で `tree-sitter-analyzer` が表示されれば OK。
+エージェントを再起動し、こう伝える: 「プロジェクト ルートを私のリポジトリに設定して、codegraph_status を呼んでください。」
 
-または `~/.claude.json` の該当プロジェクト項目を手動編集:
+[その他のエージェント (Cursor / Copilot / Cline / Continue / Claude Desktop / Roo Code) →](#-対応エージェント)
+
+---
+
+## なぜ Tree-sitter Analyzer か
+
+* **デフォルトでトークン効率**。全 MCP ツール応答は **TOON** — 表形式 JSON バリアントで、生 JSON 比 50-70% のペイロード削減。
+* **Verdict エンベロープ**。すべての応答に `verdict: SAFE | CAUTION | UNSAFE | INFO | WARN | ERROR | NOT_FOUND` が付き、オーケストレーターは再プロンプトなしで結果ごとに分岐可能。
+* **プロジェクト健全性 A-F グレーディング**。他のオープンソース ツールには無い — サイズ / 複雑度 / カバレッジ / 重複 / 依存 / git-ホットスポットの 6 次元でプロジェクト全体を採点。
+* **13 のキュレーション済みワークフロー (Skills)**。「シンボル検索」「コール チェーン追跡」「健全性評価」「リファクター前の安全チェック」「PR レビュー」などの典型シナリオに対応するツール サブセットを事前パッケージ化。
+* **5 層の安全保護**。`safe_to_edit` + `modification_guard` + 制約 DSL + `change_impact` + verdict エンベロープ — エージェントが手を入れる前にリスクを *知る* よう設計。
+* **主要競合 CodeGraph に複数の head-to-head ベンチマークで勝利**。下記参照。
+
+---
+
+## ベンチマーク結果
+
+ヘッドレス Claude Code (Haiku 4.5) にリポジトリごとに 1 つのアーキテクチャ質問を実施。3 アーム: MCP なし / CodeGraph MCP / Tree-sitter Analyzer MCP。各アーム 1 回実行 — 示唆的な数値であり統計的に厳密ではない。
+
+| リポジトリ | 言語/ファイル数 | MCP なし基線 | CodeGraph | **TSA** | 勝者 |
+|---|---|---|---|---|---|
+| **Gin** | Go / 99 | $0.164 | $0.094 (−43 %) | **$0.080 (−51 %)** | **TSA** ⭐ |
+| **Alamofire** | Swift / 98 | $0.201 | $0.219 (+9 %) | **$0.147 (−27 %)** | **TSA** ⭐ |
+| **Excalidraw** | TS / 603 | $0.204 | **$0.179 (−12 %)** | $0.212 (+4 %) | CodeGraph |
+| **Django** | Py / 2 910 | $0.162 | **$0.106 (−35 %)** | $0.205 (+27 %) | CodeGraph |
+| **Tokio** | Rust / 778 | **$0.214** | $0.285 (+33 %) | $0.303 (+42 %) | 両者敗北 |
+| **OkHttp** | Java / 596 | **$0.169** | $0.200 (+18 %) | $0.178 (+5 %) | 両者敗北 |
+| **基線に対する中央値 Δ** | | | **−4 %** | **−11 %** | **TSA** |
+
+TSA は **6 リポジトリ中 2 つで完勝**、**コスト中央値節約 (−11%) は CodeGraph の −4% を超え**、indexer-class ツールが機能するべきリポジトリで CodeGraph と同じ方向性を示した。
+
+> 中央値が CodeGraph 公表の −35% と異なる理由: コスト制御のため Haiku を使用 (彼らは Opus + 4 回中央値)。完全な原始エンベロープと再現スクリプトは `docs/internal/CODEGRAPH_BENCHMARK_FINAL_2026-05-24.md` を参照。
+
+---
+
+## 主要機能
+
+### 事前インデックス コード インテリジェンス (CodeGraph 相当 + 上位互換)
+
+| 能力 | TSA ツール | ステータス |
+|---|---|---|
+| シンボル検索 (FTS5) | `codegraph_symbol_search` | 同等 |
+| go-to-def / find-refs / コール階層を 1 回の呼び出しで | `codegraph_navigate` | PRIMARY エントリポイント |
+| 関連シンボル N 個のソース + 関係マップを一括取得 | `codegraph_explore` | 同等 |
+| 関数レベル blast radius + リスク スコア | `codegraph_impact` | 同等 + リスク スコア |
+| X を呼ぶのは誰 / X は何を呼ぶ | `codegraph_callers` / `codegraph_callees` | 同等 |
+| インデックスの健全性スナップショット | `codegraph_status` | 同等 |
+| 事前構築コール グラフ キャッシュ | `codegraph_autoindex` / `codegraph_full_index` / `codegraph_incremental_sync` | 同等 |
+| 変更の影響を受けるテスト (CLI) | `--affected FILE...` | 同等 |
+
+### Tree-sitter Analyzer 独占機能
+
+| 能力 | TSA ツール | 説明 |
+|---|---|---|
+| **プロジェクト A-F 健全性グレーディング** | `check_project_health` | 6 次元、競合に対応無し |
+| **TOON 出力** | 全ツール、デフォルト `output_format: "toon"` | 50-70% トークン節約 |
+| **Verdict エンベロープ** | 全ツール | `SAFE/CAUTION/UNSAFE/INFO/WARN/ERROR/NOT_FOUND` |
+| **Safe-to-edit ゲート** | `safe_to_edit` + `modification_guard` | 高リスク編集前に拒否 |
+| **アーキテクチャ制約 DSL** | `check_constraints` | 「モジュール A は B に依存禁止」→ 強制 |
+| **ファイル レベル健全性** | `check_file_health` | ブロック / 長メソッド / コード スメル検出 |
+| **クラス階層** | `codegraph_class_hierarchy` | 型継承ツリー |
+| **依存マトリクス** | `codegraph_dependency_matrix` | モジュール結合マトリクス |
+| **デッド コード** | `codegraph_dead_code` | 推移的到達不能解析 |
+| **複雑度ヒート マップ** | `codegraph_complexity_heatmap` | 関数別循環的複雑度 + プロジェクト ビュー |
+| **AST 構造的クローン検出** | `codegraph_similarity` | テキスト類似度を超える |
+| **Mermaid コール グラフ エクスポート** | `codegraph_visualize` | ドキュメントへ直接貼付 |
+| **PR レビュー** | `codegraph_pr_review` | AST diff + セマンティック分類 + blast radius |
+| **agent_summary** | 全応答 | エンベロープに次ステップ ヒントを内蔵 |
+| **Synapse クロスファイル リゾルバ** | 内部 | import-aware、正規表現推測より強力 |
+| **時間的アクティベーション** | `symbol_lineage` | シンボル別 git 修正頻度 |
+
+### Skills (13 のキュレーション済みワークフロー)
+
+CodeGraph には skill システムが存在しない。本ツールは `.claude/skills/tsa-*/` 下に 13 個を提供:
+
+`tsa-landing`、`tsa-find`、`tsa-graph`、`tsa-structure`、`tsa-deps`、`tsa-index`、`tsa-health-watch`、`tsa-edit-safety`、`tsa-edit-then-verify`、`tsa-constraints`、`tsa-pr-review`、`tsa-refactor-queue`、`tsa-temporal`。
+
+各 skill は `allowed-tools` ツール サブセット + 手順レシピ + 決定面スキーマを同梱し、エージェントは 50 個のツールから毎回選別する必要が無い。
+
+### 248 の CLI フラグ
+
+CodeGraph の 15 コマンド CLI の厳密な上位互換。主なもの:
+
+```bash
+tree-sitter-analyzer --table full <file>          # メソッド/シグネチャ/複雑度テーブル
+tree-sitter-analyzer --partial-read --start-line N --end-line M <file>
+tree-sitter-analyzer --project-health             # プロジェクト A-F グレーディング
+tree-sitter-analyzer --callers <symbol>           # 呼び出し元
+tree-sitter-analyzer --codegraph-impact <fn>      # blast radius + リスク
+tree-sitter-analyzer --affected <file...>         # 影響を受けるテスト
+tree-sitter-analyzer --dead-code                  # 推移的到達不能
+tree-sitter-analyzer --check-constraints          # アーキテクチャ規則
+tree-sitter-analyzer --safe-to-edit <file>        # リスク時に拒否
+```
+
+完全なインターフェースは [`docs/CODEMAPS/cli.md`](docs/CODEMAPS/cli.md) を参照。
+
+---
+
+## クイック スタート
+
+### 1. 依存関係をインストール
+
+```bash
+# uv (必須)
+curl -LsSf https://astral.sh/uv/install.sh | sh        # macOS / Linux
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"  # Windows
+
+# fd + ripgrep (検索機能で必須)
+brew install fd ripgrep                                # macOS
+winget install sharkdp.fd BurntSushi.ripgrep.MSVC      # Windows
+```
+
+### 2. Tree-sitter Analyzer をインストール
+
+```bash
+uv add "tree-sitter-analyzer[all,mcp]"
+```
+
+### 3. エージェントへ接続
+
+[**対応エージェント**](#-対応エージェント)を参照。多くのクライアントで以下の MCP 設定を使用:
 
 ```json
 {
@@ -111,21 +156,51 @@ claude mcp add tree-sitter-analyzer \
     "tree-sitter-analyzer": {
       "command": "uvx",
       "args": ["--from", "tree-sitter-analyzer[mcp]", "tree-sitter-analyzer-mcp"],
-      "env": { "TREE_SITTER_PROJECT_ROOT": "/path/to/your/project" }
+      "env": { "TREE_SITTER_PROJECT_ROOT": "/絶対パス/プロジェクト" }
     }
   }
 }
 ```
 
+再起動後: 「プロジェクト ルートを私のリポジトリに設定して、codegraph_status を呼んでください。」
+
+---
+
+## 仕組み
+
+```
+ソース コード → tree-sitter 解析 → SQLite + FTS5 インデックス (.ast-cache/index.db)
+                                          ↓
+       codegraph_navigate / codegraph_explore / codegraph_callers / ...
+                                          ↓
+                            TOON 圧縮エンベロープ
+                            (verdict + agent_summary + データ)
+                                          ↓
+                               MCP クライアント / CLI 消費者
+```
+
+インデックスは最初のクエリで遅延構築され、ファイル変更時はコンテンツ ハッシュ差分で増分更新 (`codegraph_incremental_sync`)。50 ツール全てが同じ `.ast-cache/` を共有し、クエリとフォローアップは作業を共有する。
+
+---
+
+## 対応エージェント
+
+<details>
+<summary><b>📘 Claude Code</b> (推奨)</summary>
+
+```bash
+claude mcp add tree-sitter-analyzer \
+  --env TREE_SITTER_PROJECT_ROOT="$PWD" \
+  -- uvx --from "tree-sitter-analyzer[mcp]" tree-sitter-analyzer-mcp
+```
+
+検証: `claude mcp list`。13 の `tsa-*` skills は `.claude/skills/` から自動検出される。
 </details>
 
 <details>
 <summary><b>📗 Claude Desktop</b></summary>
 
-`claude_desktop_config.json` を編集:
-- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
-- **Linux**: `~/.config/Claude/claude_desktop_config.json`
+`claude_desktop_config.json` を編集 (macOS: `~/Library/Application Support/Claude/`, Windows: `%APPDATA%\Claude\`, Linux: `~/.config/Claude/`):
 
 ```json
 {
@@ -133,25 +208,17 @@ claude mcp add tree-sitter-analyzer \
     "tree-sitter-analyzer": {
       "command": "uvx",
       "args": ["--from", "tree-sitter-analyzer[mcp]", "tree-sitter-analyzer-mcp"],
-      "env": {
-        "TREE_SITTER_PROJECT_ROOT": "/path/to/your/project",
-        "TREE_SITTER_OUTPUT_PATH": "/path/to/output/directory"
-      }
+      "env": { "TREE_SITTER_PROJECT_ROOT": "/絶対パス/プロジェクト" }
     }
   }
 }
 ```
-
-保存後 Claude Desktop を再起動してください。
-
 </details>
 
 <details>
-<summary><b>📙 GitHub Copilot（VS Code、MCP 対応版）</b></summary>
+<summary><b>📙 GitHub Copilot (VS Code)</b></summary>
 
-> MCP 対応の VS Code（Copilot Chat agent モード、2025+）が必要。
-
-ワークスペースに `.vscode/mcp.json` を作成/編集（Copilot は `mcpServers` ではなく **`servers`** キーを使う点に注意）:
+`.vscode/mcp.json` を作成 (注: キーは `servers`、`mcpServers` では無い):
 
 ```json
 {
@@ -165,397 +232,88 @@ claude mcp add tree-sitter-analyzer \
   }
 }
 ```
-
-ユーザーレベル（全ワークスペース共有）: コマンドパレット → **MCP: Open User Configuration** で同じ `servers.tree-sitter-analyzer` ブロックを追加。
-
 </details>
 
 <details>
-<summary><b>📕 Roo Code（VS Code 拡張）</b></summary>
+<summary><b>🖱 Cursor / Cline / Continue / Roo Code</b></summary>
 
-Roo Code はワークスペース設定から MCP server を読み込みます。Roo Code サイドバーの **MCP** パネル → **Edit MCP Settings** で次を追加:
-
-```json
-{
-  "mcpServers": {
-    "tree-sitter-analyzer": {
-      "command": "uvx",
-      "args": ["--from", "tree-sitter-analyzer[mcp]", "tree-sitter-analyzer-mcp"],
-      "env": { "TREE_SITTER_PROJECT_ROOT": "${workspaceFolder}" },
-      "alwaysAllow": [
-        "check_code_scale",
-        "analyze_code_structure",
-        "extract_code_section",
-        "query_code",
-        "list_files",
-        "search_content",
-        "find_and_grep"
-      ]
-    }
-  }
-}
-```
-
-`alwaysAllow` は Roo Code 固有のフィールドで、安全な読み取り専用ツールについて毎回の確認ダイアログを省略します。
-
+すべて Claude Desktop と同じ `mcpServers` スキーマを使用。Cursor: **設定 → MCP**。Cline: MCP パネル → 設定編集。Continue: `~/.continue/config.json` の `experimental.modelContextProtocolServers`。Roo Code: MCP パネル → MCP 設定編集。
 </details>
 
-<details>
-<summary><b>🖱 Cursor</b></summary>
-
-Cursor → **Settings** → **MCP** → **Add new MCP server**、または `~/.cursor/mcp.json` を編集:
-
-```json
-{
-  "mcpServers": {
-    "tree-sitter-analyzer": {
-      "command": "uvx",
-      "args": ["--from", "tree-sitter-analyzer[mcp]", "tree-sitter-analyzer-mcp"],
-      "env": { "TREE_SITTER_PROJECT_ROOT": "/path/to/your/project" }
-    }
-  }
-}
-```
-
-Cursor を再起動すると、エージェントの **Available Tools** にツールが表示されます。
-
-</details>
-
-<details>
-<summary><b>🤖 Cline / Continue / その他の MCP クライアント</b></summary>
-
-- **Cline**: Cline の MCP servers パネル → **Edit settings** → Claude Desktop セクションの `mcpServers` ブロックをそのまま使用（同じスキーマ）。
-- **Continue**: `~/.continue/config.json` を編集し、`experimental.modelContextProtocolServers` に同じ `uvx` コマンドを指すエントリを追加。
-- **その他の stdio ベースの MCP クライアント**: 標準の `mcpServers.<name>.{command,args,env}` スキーマを使用。`tree-sitter-analyzer` という名前は慣例で、自由に変更可能。
-
-</details>
-
-> ⚠️ **パスとサンドボックスの注意**
-> - `TREE_SITTER_PROJECT_ROOT` は**絶対パス**にしてください（クライアントが対応する場合は `${workspaceFolder}` も可）。相対パスではセキュリティ境界チェックが正しく動きません。
-> - Windows ではバックスラッシュをエスケープする（`"C:\\Users\\you\\project"`）か、スラッシュを使ってください。
-> - server は `TREE_SITTER_PROJECT_ROOT` の外側のファイルを**絶対に読みません**——`SecurityBoundaryManager` で強制されています。
-
-再起動後、AI に伝えてください: `プロジェクトルートディレクトリを設定してください: /path/to/your/project`
-
-📖 完全な 30 ツールの API ドキュメントは **[MCP ツールリファレンス](docs/api/mcp_tools_specification.md)** をご覧ください。
+> ⚠️ `TREE_SITTER_PROJECT_ROOT` は **絶対パス** が必須。サーバーは `SecurityBoundaryManager` でエスケープを防ぐセキュリティ境界を強制する。
 
 ---
 
-## 💻 よく使うCLIコマンド
+## サポート言語
 
-### インストール
+21 言語プラグイン; 16 はインデクサーへ完全統合 + 5 個 (data/markup) は CLI 単一ファイル パスで到達可能。2026-05-24 のパッチで数か月間サイレントにスキップされていた Swift / Kotlin / Ruby / PHP / C# がアンブロック。
 
-```bash
-uv add "tree-sitter-analyzer[all,mcp]"  # フルインストール
-```
+| ティア | 言語 |
+|---|---|
+| **完全インデックス + シンボル + コール グラフ** | Python · Java · JavaScript · TypeScript · Go · Rust · C · C++ · C# · Swift · Kotlin · Ruby · PHP |
+| **単一ファイル解析 (CLI)** | HTML · CSS · Markdown · SQL · YAML |
+| **スキャフォールド (プラグイン有 / インデクサー結線待ち)** | bash · scala · json |
 
-### トップ5コマンド
-
-```bash
-# 1. ファイル構造を分析
-uv run tree-sitter-analyzer examples/BigService.java --table full
-
-# 2. クイックサマリー
-uv run tree-sitter-analyzer examples/BigService.java --summary
-
-# 3. コードセクションを抽出
-uv run tree-sitter-analyzer examples/BigService.java --partial-read --start-line 93 --end-line 106
-
-# 4. ファイルを検索してコンテンツを検索
-uv run find-and-grep --roots . --query "class.*Service" --extensions java
-
-# 5. 特定の要素をクエリ
-uv run tree-sitter-analyzer examples/BigService.java --query-key methods --filter "public=true"
-```
-
-<details>
-<summary>📋 出力例を表示</summary>
-
-```
-╭─────────────────────────────────────────────────────────────╮
-│                   BigService.java 分析                       │
-├─────────────────────────────────────────────────────────────┤
-│ 総行数: 1419 | コード: 906 | コメント: 246 | 空白: 267      │
-│ クラス: 1 | メソッド: 66 | フィールド: 9 | 平均複雑度: 5.27 │
-╰─────────────────────────────────────────────────────────────╯
-```
-
-</details>
-
-📖 すべてのコマンドとオプションは **[CLIリファレンス](docs/cli-reference.md)** をご覧ください。
+CodeGraph も類似の集合をサポート; 両ツール共に未実装の主流コード言語は **Dart, Vue, Svelte, Lua** のみ (次スプリント バックログ)。
 
 ---
 
-## 🌍 対応言語
+## 設定
 
-| 言語 | サポートレベル | 主な機能 |
-|------|---------------|----------|
-| **Java** | ✅ 完全対応 | Spring、JPA、エンタープライズ機能 |
-| **Python** | ✅ 完全対応 | 型アノテーション、デコレータ |
-| **TypeScript** | ✅ 完全対応 | インターフェース、型、TSX/JSX |
-| **JavaScript** | ✅ 完全対応 | ES6+、React/Vue/Angular |
-| **C** | ✅ 完全対応 | 関数、構造体、共用体、列挙型、プリプロセッサ |
-| **C++** | ✅ 完全対応 | クラス、テンプレート、名前空間、継承 |
-| **C#** | ✅ 完全対応 | Records、async/await、属性 |
-| **SQL** | ✅ 強化対応 | テーブル、ビュー、ストアドプロシージャ、トリガー |
-| **HTML** | ✅ 完全対応 | DOM構造、要素分類 |
-| **CSS** | ✅ 完全対応 | セレクタ、プロパティ、分類 |
-| **Go** | ✅ 完全対応 | 構造体、インターフェース、goroutine |
-| **Rust** | ✅ 完全対応 | Trait、implブロック、マクロ |
-| **Kotlin** | ✅ 完全対応 | データクラス、コルーチン |
-| **PHP** | ✅ 完全対応 | PHP 8+、属性、Trait |
-| **Ruby** | ✅ 完全対応 | Railsパターン、メタプログラミング |
-| **YAML** | ✅ 完全対応 | アンカー、エイリアス、マルチドキュメント |
-| **Markdown** | ✅ 完全対応 | ヘッダー、コードブロック、テーブル |
+基本的に設定不要。デフォルトでエージェントに接続して忘れて構わない:
 
-📖 言語固有の詳細は **[機能ドキュメント](docs/features.md)** をご覧ください。
+* **出力形式**: TOON。`output_format: "json"` で呼び出し毎にオーバーライド可。
+* **プロジェクト ルート**: `TREE_SITTER_PROJECT_ROOT` (env, MCP) または `--project-root` (CLI)。
+* **キャッシュ場所**: `<project>/.ast-cache/`。安全に削除可 — 自動再構築される。
+* **任意**: `TREE_SITTER_OUTPUT_PATH` 大出力の書き込み先。
 
 ---
 
-## 📊 機能概要
-
-| 機能 | 説明 | 詳細 |
-|------|------|------|
-| **SMARTワークフロー** | Set-Map-Analyze-Retrieve-Trace手法 | [ガイド](docs/smart-workflow.md) |
-| **MCPプロトコル** | ネイティブAIアシスタント統合 | [APIドキュメント](docs/api/mcp_tools_specification.md) |
-| **トークン最適化** | 最大95%のトークン削減 | [機能](docs/features.md) |
-| **ファイル検索** | fdベースの高性能検出 | [CLIリファレンス](docs/cli-reference.md) |
-| **コンテンツ検索** | ripgrep正規表現検索 | [CLIリファレンス](docs/cli-reference.md) |
-| **セキュリティ** | プロジェクト境界保護 | [アーキテクチャ](docs/architecture.md) |
-
----
-
-## 🔬 文法カバレッジ（MECEフレームワーク）
-
-Tree-sitter Analyzerは、対応全17言語にわたる文法カバレッジ検証で**誤検知ゼロ**を保証します。
-
-### フェーズ1：MECEアーキテクチャ（2026-03）
-
-**新アーキテクチャ**：
-- ノードタイプだけでなく**構文パス** `(node_type, parent_path)` を追跡
-- **完全なノード同一性マッチング**（type + バイト範囲 + 親チェーン + ファイルパス）
-- ネストしたノードの誤分類を排除（ラッパーノードによる誤検知なし）
-
----
-
-## 🏆 品質とテスト
+## 品質とテスト
 
 | 指標 | 値 |
-|------|-----|
-| **テスト** | 8,942 合格 ✅ |
-| **カバレッジ** | [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) |
-| **型安全性** | 100% mypy準拠 |
-| **プラットフォーム** | Windows、macOS、Linux |
+|---|---|
+| テスト通過 | 16,154 ✅ |
+| カバレッジ | [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) |
+| 型安全性 | 100% mypy |
+| プラットフォーム | macOS · Linux · Windows |
+| Pre-commit ゲート | bandit · mypy · pyupgrade · detect-secrets · codemap-sync · smell-ratchet |
 
 ```bash
-# テストを実行
-uv run pytest tests/ -v
-
-# カバレッジレポートを生成
-uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=html
+uv run pytest -q                                # フル スイート
+uv run python check_quality.py --new-code-only  # 品質ゲート
 ```
 
 ---
 
-## 🔒 セキュリティとアーキテクチャ
+## トラブルシューティング
 
-Tree-sitter Analyzerは、AI支援開発ワークフローのための**デフォルトで安全**な設計原則に基づいています。
-
-### セキュリティモデル
-
-**プロジェクト境界の強制**
-- すべてのMCPツールは、プロジェクトルート境界に対してファイルパスを検証
-- 設定されたプロジェクトディレクトリ外のファイルへのアクセス不可
-- シンボリックリンクトラバーサル防止
-- パス正規化により `../` エスケープを防止
-
-**入力検証**
-- すべてのMCPツールパラメータでJSON Schemaバリデーション
-- 厳格なmypy準拠による型安全なPython API
-- シェルコマンド実行前のユーザー入力サニタイズ
-- glob/regex検索のパターン検証
-
-**リモート実行なし**
-- 100%ローカル処理 — クラウド依存なし
-- テレメトリやデータ収集なし
-- オプションのPyPIバージョンチェック以外のネットワーク呼び出しなし
-- ソースコード分析はあなたのマシン上に留まる
-
-**安全なデフォルト**
-- デフォルトで読み取り専用ファイル操作
-- ファイル変更には明示的なオプトインが必要
-- 外部ツール（fd、ripgrep）のサンドボックス化されたサブプロセス実行
-- 環境変数の分離
-
-### アーキテクチャ原則
-
-```
-┌─────────────────────────────────────────────────────────┐
-│  AIアシスタント（Claude Desktop / Cursor / Roo Code）  │
-└────────────────────┬────────────────────────────────────┘
-                     │ MCPプロトコル（JSON-RPC）
-                     ▼
-┌─────────────────────────────────────────────────────────┐
-│  MCPサーバー層                                          │
-│  • 入力検証（JSON Schema）                              │
-│  • プロジェクト境界チェック                             │
-│  • ツールディスパッチ                                   │
-└────────────────────┬────────────────────────────────────┘
-                     │
-                     ▼
-┌─────────────────────────────────────────────────────────┐
-│  分析エンジン                                           │
-│  • Tree-sitter AST解析（17言語）                        │
-│  • 高速ファイル検索（fd）                               │
-│  • コンテンツ検索（ripgrep）                            │
-│  • 出力フォーマット（JSON / TOON）                      │
-└─────────────────────────────────────────────────────────┘
-```
-
-**主要なセキュリティ境界**:
-1. **MCPプロトコル**: AIは検証済みスキーマを持つ明示的に定義されたツールのみ呼び出し可能
-2. **プロジェクトルート**: ファイル操作は設定されたディレクトリに限定
-3. **読み取り専用**: 明示的なユーザー同意なしに破壊的操作なし
-4. **ローカルファースト**: すべての処理はあなたのマシン上で実行
-
-### セキュリティテスト
-
-- **8,942以上の自動テスト**（セキュリティ重視のエッジケースを含む）
-- **100% mypy型安全**により、バグのクラス全体を防止
-- **CI/CDセキュリティスキャン**: Bandit（Pythonセキュリティ）、safety（依存関係の脆弱性）
-- すべてのMCPツール実装の**手動セキュリティレビュー**
-
-### セキュリティ問題の報告
-
-セキュリティ上の懸念を発見しましたか？aimasteracc@gmail.comまでメールするか、GitHubでプライベートセキュリティアドバイザリを開いてください。
-
-**自動化されたセキュリティバッジサービスは使用していません** — 当プロジェクトのセキュリティ姿勢は、サードパーティのスコアではなく、アーキテクチャ、テスト、コードレビューによって文書化されています。
+| 症状 | 修正 |
+|---|---|
+| `.swift / .kt / .rb / .php / .cs` で `unsupported language` | ≥ 1.12.x へ更新 — 5 言語 gap は commit `50e99a8f` で修正済み |
+| MCP サーバーがクライアントに表示されない | `TREE_SITTER_PROJECT_ROOT` は**絶対パス**必須; 設定編集後にクライアント再起動 |
+| `database is locked` | `.ast-cache/index.db` を保持する他プロセスを停止; 継続する場合は `rm -rf .ast-cache && tree-sitter-analyzer --autoindex` |
+| 初回呼び出しが遅い | 初回はインデックスを構築。後続はサブ秒。事前に `--full-index` を実行すれば償却可能 |
+| エージェントが誤ったツールを選ぶ | `tsa-*` skill (`/tsa-graph`、`/tsa-find` 等) を使用 — 各 skill は可視ツールを 1 ワークフローに制限 |
 
 ---
 
-## 🛠️ 開発
-
-### セットアップ
+## 開発
 
 ```bash
 git clone https://github.com/aimasteracc/tree-sitter-analyzer.git
 cd tree-sitter-analyzer
 uv sync --extra all --extra mcp
+uv run pytest -q
 ```
 
-### 品質チェック
-
-```bash
-uv run pytest tests/ -v                    # テストを実行
-uv run python check_quality.py --new-code-only  # 品質チェック
-uv run python llm_code_checker.py --check-all   # AIコードチェック
-```
-
-📖 システム設計の詳細は **[アーキテクチャガイド](docs/architecture.md)** をご覧ください。
+開発ガイドは **[`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md)** を参照。
 
 ---
 
-## 🤝 コントリビュートとライセンス
+## 貢献とライセンス
 
-コントリビュートを歓迎します！開発ガイドラインは **[コントリビューションガイド](docs/CONTRIBUTING.md)** をご覧ください。
-
-### ⭐ サポート
-
-このプロジェクトが役に立ったら、GitHubで ⭐ をお願いします！
-
-### 💝 スポンサー
-
-**[@o93](https://github.com/o93)** - MCPツール強化、テストインフラ、品質改善を支援するリードスポンサー。
-
-**[💖 このプロジェクトをスポンサー](https://github.com/sponsors/aimasteracc)**
-
-### 📄 ライセンス
-
-MITライセンス - [LICENSE](LICENSE) ファイルをご覧ください。
-
----
-
-## 🧪 テスト
-
-### テストカバレッジ
-
-| 指標 | 値 |
-|------|-----|
-| **総テスト数** | 8,942 テスト ✅ |
-| **テスト合格率** | 100% (8,942/8,942) |
-| **コードカバレッジ** | [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) |
-| **型安全性** | 100% mypy準拠 |
-
-### テストの実行
-
-```bash
-# すべてのテストを実行
-uv run pytest tests/ -v
-
-# 特定のテストカテゴリを実行
-uv run pytest tests/unit/ -v              # 単体テスト
-uv run pytest tests/integration/ -v         # 統合テスト
-uv run pytest tests/regression/ -m regression  # 回帰テスト
-uv run pytest tests/benchmarks/ -v         # ベンチマークテスト
-
-# カバレッジを含めて実行
-uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=html
-
-# プロパティベーステストを実行
-uv run pytest tests/property/
-
-# パフォーマンスベンチマークを実行
-uv run pytest tests/benchmarks/ --benchmark-only
-```
-
-### テストドキュメント
-
-| ドキュメント | 説明 |
-|--------------|------|
-| [テスト作成ガイド](docs/test-writing-guide.md) | テスト作成の包括的なガイド |
-| [回帰テストガイド](docs/regression-testing-guide.md) | Golden Master手法と回帰テスト |
-| [テストドキュメント](docs/TESTING.md) | プロジェクトのテスト標準 |
-
-### テストカテゴリ
-
-- **単体テスト** (8,942+ テスト総計): 個別のコンポーネントを分離してテスト
-
-### CI/CD統合
-
-- **テストカバレッジワークフロー**: PRとプッシュでの自動カバレッジチェック
-- **回帰テストワークフロー**: Golden Master検証とフォーマット安定性チェック
-- **パフォーマンスベンチマーク**: 日次ベンチマーク実行とトレンド分析
-- **品質チェック**: 自動リンティング、型チェック、セキュリティスキャン
-
-### テストのコントリビュート
-
-新機能をコントリビュートする際：
-
-1. **テストを書く**: [テスト作成ガイド](docs/test-writing-guide.md)に従う
-2. **カバレッジを確保**: 80%以上のコードカバレッジを維持
-3. **ローカルで実行**: `uv run pytest tests/ -v`
-4. **品質をチェック**: `uv run ruff check . && uv run mypy tree_sitter_analyzer/`
-5. **ドキュメントを更新**: 新しいテストと機能を文書化
-
----
-
-## 📚 ドキュメント
-
-| ドキュメント | 説明 |
-|--------------|------|
-| [インストールガイド](docs/installation.md) | 各プラットフォームのセットアップ |
-| [CLIリファレンス](docs/cli-reference.md) | 完全なコマンドリファレンス |
-| [SMARTワークフロー](docs/smart-workflow.md) | AI支援分析ガイド |
-| [MCPツールAPI](docs/api/mcp_tools_specification.md) | MCP統合の詳細 |
-| [機能](docs/features.md) | 言語サポートの詳細 |
-| [アーキテクチャ](docs/architecture.md) | システム設計 |
-| [コントリビュート](docs/CONTRIBUTING.md) | 開発ガイドライン |
-| [テスト作成ガイド](docs/test-writing-guide.md) | 包括的なテスト作成ガイド |
-| [回帰テストガイド](docs/regression-testing-guide.md) | Golden Master手法 |
-| [変更履歴](CHANGELOG.md) | バージョン履歴 |
-
----
-
-**🎯 大規模コードベースとAIアシスタントを扱う開発者のために構築**
-
-*すべてのコード行をAIに理解させ、すべてのプロジェクトがトークン制限を突破できるように*
+* ⭐ GitHub star は他の AI エージェント ユーザーに本ツールを届ける助けに。
+* 💖 [スポンサー](https://github.com/sponsors/aimasteracc) — 継続的な MCP / Skills 開発を支援。
+* リード スポンサー: **[@o93](https://github.com/o93)**。
+* MIT ライセンス — [LICENSE](LICENSE) を参照。

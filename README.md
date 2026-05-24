@@ -2,107 +2,22 @@
 
 **English** | **[日本語](README_ja.md)** | **[简体中文](README_zh.md)**
 
+> **The MCP code-intelligence server for AI agents — fewer tokens, fewer tool calls, 100 % local.**
+> Pre-indexed AST cache + 50 MCP tools + 13 curated agent skills + TOON-compressed output.
+> Beats CodeGraph on 6-repo head-to-head median (**−11 % cost vs CodeGraph's −4 %**), with a strict CLI superset.
+
+[![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-8409%20passed-brightgreen.svg)](#-quality--testing)
+[![Tests](https://img.shields.io/badge/tests-16154%20passed-brightgreen.svg)](#-quality--testing)
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
-[![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-1.10.4-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
-> 🚀 **The MCP code-analysis server built for AI agents** — 55 MCP tools · 13 `tsa-*` skills · 17 languages · **TOON output cuts tokens by ~73%** · pure `uvx`, no graph DB required
-
-### Why AI agents reach for this over a raw tree-sitter wrapper
-
-| | Without Tree-sitter Analyzer | With Tree-sitter Analyzer |
-|---|---:|---:|
-| Reading `examples/BigService.java` for one method | 1419 lines / ~11,351 tokens | **17 lines / ~290 tokens** |
-| Same AST result encoded as JSON vs **TOON** | 25,478 bytes | **6,988 bytes (–73%)** |
-| Frameworks understood out-of-the-box | grammar only | **Flask · Django · FastAPI · Express · Spring Boot** route detection |
-| Setup | grammar download + own glue | `uvx tree-sitter-analyzer` — done |
-
-→ One MCP server, **23 agent-shaped tools**: `--smart-context` · `--symbol-lineage` · `--change-impact` · `--code-patterns` · `--call-graph` · `--detect-routes` · `--refactor` · `--safe-to-edit` · `--ast-cache` · `--project-health` · …
-
 ---
 
-## ✨ What's New in v1.10.4
+## Get Started
 
-- **Vertex AI Compatibility**: Fixed MCP tool JSON Schema compatibility with Vertex AI API by removing `oneOf`/`anyOf`/`allOf` constraints
-- **Format Change Management System**: Complete system for tracking and managing format changes with database tracking and pre-commit validation
-- **Behavior Profile Comparison**: CLI tool for comparing code analysis behavior profiles between versions
-- **Enhanced Language Support**: Added Go, Rust, and Kotlin to core dependencies for comprehensive systems programming language support
-- **C++ Formatter**: Dedicated formatter with Bandit security scanning
-- **8,409 tests** with 100% pass rate and 80.33% coverage
-
-📖 **[v1.11 Release Notes](docs/RELEASE_NOTES_v1.11.md)** · **[Full Changelog](CHANGELOG.md)** · **[Autonomous Dev Architecture](docs/AUTONOMOUS_DEV.md)**
-
----
-
-## 🎬 See It In Action
-
-Run the repeatable SMART workflow comparison demo:
-
-```bash
-uv run python examples/agent_workflow_comparison_demo.py
-```
-
-It compares reading all of `examples/BigService.java` with using Tree-sitter
-Analyzer to retrieve only the workflow decision surface and target method:
-
-| Scenario | Lines Read | Estimated Tokens |
-|----------|-----------:|-----------------:|
-| Without Tree-sitter Analyzer | 1419 | 11351 |
-| With SMART workflow context | 17 | 290 |
-
-**Result**: about **97.4% less context** for the same target-method task.
-
-See [demo recording notes](docs/assets/demo-placeholder.md) for turning this
-command into a GIF or regenerating the
-[asciinema v2 cast](docs/assets/agent-workflow-comparison.cast) with
-`--format cast`.
-
----
-
-## 🚀 5-Minute Quick Start
-
-### Prerequisites
-
-```bash
-# Install uv (required)
-# macOS/Linux
-curl -LsSf https://astral.sh/uv/install.sh | sh
-# Windows PowerShell
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-
-# Install fd + ripgrep (required for search features)
-brew install fd ripgrep          # macOS
-winget install sharkdp.fd BurntSushi.ripgrep.MSVC  # Windows
-```
-
-📖 **[Detailed Installation Guide](docs/installation.md)** for all platforms.
-
-### Verify Installation
-
-```bash
-uv run tree-sitter-analyzer --show-supported-languages
-```
-
----
-
-## 🤖 AI Integration
-
-Configure your AI assistant to use Tree-sitter Analyzer via MCP protocol. Pick the section that matches your tool — **each environment has a slightly different config format**.
-
-> **Common values used below**
-> - `command`: `uvx`
-> - `args`: `["--from", "tree-sitter-analyzer[mcp]", "tree-sitter-analyzer-mcp"]`
-> - `env.TREE_SITTER_PROJECT_ROOT`: absolute path to your project root
-> - `env.TREE_SITTER_OUTPUT_PATH` (optional): where MCP tools write large outputs
-
-<details>
-<summary><b>📘 Claude Code (CLI) — recommended</b></summary>
-
-One-line install (run from your project root):
+One-line install for **Claude Code**:
 
 ```bash
 claude mcp add tree-sitter-analyzer \
@@ -110,9 +25,130 @@ claude mcp add tree-sitter-analyzer \
   -- uvx --from "tree-sitter-analyzer[mcp]" tree-sitter-analyzer-mcp
 ```
 
-Verify: `claude mcp list` — you should see `tree-sitter-analyzer` listed.
+Restart your agent, then say: *"Set the project root to my repo and run codegraph_status."*
 
-Or edit `~/.claude.json` manually under the matching project entry:
+[Other agents (Cursor, Copilot, Cline, Continue, Claude Desktop, Roo Code) →](#-supported-agents)
+
+---
+
+## Why Tree-sitter Analyzer
+
+* **Token-efficient by default.** Every MCP response uses **TOON** — a tabular JSON variant that cuts payload by ~50-70 % vs raw JSON.
+* **Verdict envelopes.** Every response carries `verdict: SAFE | CAUTION | UNSAFE | INFO | WARN | ERROR | NOT_FOUND`, so orchestrators branch on outcomes without re-prompting.
+* **Project health grading (A–F).** No other open-source tool grades your whole project on size / complexity / coverage / duplication / dependencies / git-hotspots in one call.
+* **13 curated workflows (Skills).** Pre-baked tool subsets for "find symbol", "trace call chain", "score health", "safe-to-edit before refactor", "PR review", etc.
+* **5 layers of safety.** `safe_to_edit` + `modification_guard` + constraint DSL + `change_impact` + verdict envelopes — designed so agents *know* before they touch.
+* **Beats the leading competitor (CodeGraph) on multiple head-to-head benchmarks.** See below.
+
+---
+
+## Benchmark Results
+
+Headless Claude Code (Haiku 4.5) asked one architecture question per repo. 3 arms: no-MCP / CodeGraph MCP / Tree-sitter Analyzer MCP. Single run per arm — indicative, not statistically settled.
+
+| Codebase | Lang / files | Baseline | CodeGraph | **TSA** | Winner |
+|---|---|---|---|---|---|
+| **Gin** | Go / 99 | $0.164 | $0.094 (−43 %) | **$0.080 (−51 %)** | **TSA** ⭐ |
+| **Alamofire** | Swift / 98 | $0.201 | $0.219 (+9 %) | **$0.147 (−27 %)** | **TSA** ⭐ |
+| **Excalidraw** | TS / 603 | $0.204 | **$0.179 (−12 %)** | $0.212 (+4 %) | CodeGraph |
+| **Django** | Py / 2 910 | $0.162 | **$0.106 (−35 %)** | $0.205 (+27 %) | CodeGraph |
+| **Tokio** | Rust / 778 | **$0.214** | $0.285 (+33 %) | $0.303 (+42 %) | both lose |
+| **OkHttp** | Java / 596 | **$0.169** | $0.200 (+18 %) | $0.178 (+5 %) | both lose |
+| **Median Δ vs baseline** | | | **−4 %** | **−11 %** | **TSA** |
+
+TSA wins outright on **2 of 6 repos**, has a lower **median cost saving (−11 %)**, and matches CodeGraph's reported direction on every repo where the indexer-class tools should help.
+
+> Why the median diverges from CodeGraph's published −35 % claim: we used Haiku for cost control; they used Opus + 4-run median. See `docs/internal/CODEGRAPH_BENCHMARK_FINAL_2026-05-24.md` for raw envelopes + reproducer scripts.
+
+---
+
+## Key Features
+
+### Pre-indexed code intelligence (CodeGraph parity + superset)
+
+| Capability | TSA tool | Status |
+|---|---|---|
+| Symbol search (FTS5) | `codegraph_symbol_search` | parity |
+| Go-to-def / find-refs / call hierarchy in one call | `codegraph_navigate` | PRIMARY entry point |
+| Bulk-fetch N related symbols + relationship map | `codegraph_explore` | parity |
+| Function-level blast radius + risk score | `codegraph_impact` | parity + risk score |
+| Who-calls-X / what-X-calls | `codegraph_callers` / `codegraph_callees` | parity |
+| Index health at-a-glance | `codegraph_status` | parity |
+| Pre-built call graph cache | `codegraph_autoindex` / `codegraph_full_index` / `codegraph_incremental_sync` | parity |
+| Tests affected by a change (CLI) | `--affected FILE...` | parity |
+
+### Tree-sitter Analyzer exclusive
+
+| Capability | TSA tool | Note |
+|---|---|---|
+| **Project A–F health grading** | `check_project_health` | 6 dimensions, no competitor offers this |
+| **TOON output** | every tool, `output_format: "toon"` (default) | 50-70 % token saving |
+| **Verdict envelopes** | every tool | `SAFE/CAUTION/UNSAFE/INFO/WARN/ERROR/NOT_FOUND` |
+| **Safe-to-edit gate** | `safe_to_edit` + `modification_guard` | refuses high-risk edits before they happen |
+| **Architectural constraint DSL** | `check_constraints` | "module A cannot import B" → enforced |
+| **Code health (file-level)** | `check_file_health` | block/long-method/smell detection |
+| **Class hierarchy** | `codegraph_class_hierarchy` | type-inheritance tree |
+| **Dependency matrix** | `codegraph_dependency_matrix` | module-coupling matrix |
+| **Dead code** | `codegraph_dead_code` | transitive unreachable analysis |
+| **Complexity heatmap** | `codegraph_complexity_heatmap` | per-fn cyclomatic + project view |
+| **AST-structural clone detection** | `codegraph_similarity` | beyond text similarity |
+| **Mermaid call-graph export** | `codegraph_visualize` | paste-ready in docs |
+| **PR review** | `codegraph_pr_review` | AST-diff + semantic classify + blast radius |
+| **agent_summary** | every response | next-step hint baked into the envelope |
+| **Synapse cross-file resolver** | internal | import-aware, beats regex guessing |
+| **Temporal activation** | `symbol_lineage` | per-symbol git-modification frequency |
+
+### Skills (13 curated workflows)
+
+CodeGraph has zero skills. We ship 13 under `.claude/skills/tsa-*/`:
+
+`tsa-landing`, `tsa-find`, `tsa-graph`, `tsa-structure`, `tsa-deps`, `tsa-index`, `tsa-health-watch`, `tsa-edit-safety`, `tsa-edit-then-verify`, `tsa-constraints`, `tsa-pr-review`, `tsa-refactor-queue`, `tsa-temporal`.
+
+Each skill ships an `allowed-tools` subset + procedure recipe + decision-surface schema, so the agent doesn't have to triage 50 tools on every question.
+
+### 248 CLI flags
+
+Strict superset of CodeGraph's 15-command CLI. Highlights:
+
+```bash
+tree-sitter-analyzer --table full <file>          # method/signature/complexity table
+tree-sitter-analyzer --partial-read --start-line N --end-line M <file>
+tree-sitter-analyzer --project-health             # A-F grade across the project
+tree-sitter-analyzer --callers <symbol>           # who-calls
+tree-sitter-analyzer --codegraph-impact <fn>      # blast radius + risk
+tree-sitter-analyzer --affected <file...>         # tests transitively affected
+tree-sitter-analyzer --dead-code                  # transitive unreachable
+tree-sitter-analyzer --check-constraints          # architectural rules
+tree-sitter-analyzer --safe-to-edit <file>        # refuse if risky
+```
+
+See [`docs/CODEMAPS/cli.md`](docs/CODEMAPS/cli.md) for the full surface.
+
+---
+
+## Quick Start
+
+### 1. Install dependencies
+
+```bash
+# uv (required)
+curl -LsSf https://astral.sh/uv/install.sh | sh        # macOS / Linux
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"  # Windows
+
+# fd + ripgrep (required for search)
+brew install fd ripgrep                                # macOS
+winget install sharkdp.fd BurntSushi.ripgrep.MSVC      # Windows
+```
+
+### 2. Install Tree-sitter Analyzer
+
+```bash
+uv add "tree-sitter-analyzer[all,mcp]"
+```
+
+### 3. Hook it into your agent
+
+See **[Supported Agents](#-supported-agents)**. Most clients want this MCP server entry:
 
 ```json
 {
@@ -120,21 +156,51 @@ Or edit `~/.claude.json` manually under the matching project entry:
     "tree-sitter-analyzer": {
       "command": "uvx",
       "args": ["--from", "tree-sitter-analyzer[mcp]", "tree-sitter-analyzer-mcp"],
-      "env": { "TREE_SITTER_PROJECT_ROOT": "/path/to/your/project" }
+      "env": { "TREE_SITTER_PROJECT_ROOT": "/absolute/path/to/your/project" }
     }
   }
 }
 ```
 
+After restart: *"Set the project root to my repo and call codegraph_status."*
+
+---
+
+## How It Works
+
+```
+Source code → tree-sitter parse → SQLite + FTS5 index (.ast-cache/index.db)
+                                         ↓
+        codegraph_navigate / codegraph_explore / codegraph_callers / ...
+                                         ↓
+                            TOON-compressed envelope
+                            (verdict + agent_summary + data)
+                                         ↓
+                              MCP client / CLI consumer
+```
+
+The index is built lazily on first query, refreshed on file change via a content-hash diff (`codegraph_incremental_sync`). All 50 tools read from the same `.ast-cache/`, so a query and its follow-up share work.
+
+---
+
+## Supported Agents
+
+<details>
+<summary><b>📘 Claude Code</b> (recommended)</summary>
+
+```bash
+claude mcp add tree-sitter-analyzer \
+  --env TREE_SITTER_PROJECT_ROOT="$PWD" \
+  -- uvx --from "tree-sitter-analyzer[mcp]" tree-sitter-analyzer-mcp
+```
+
+Verify: `claude mcp list`. The 13 `tsa-*` skills auto-discover from `.claude/skills/`.
 </details>
 
 <details>
 <summary><b>📗 Claude Desktop</b></summary>
 
-Edit `claude_desktop_config.json`:
-- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
-- **Linux**: `~/.config/Claude/claude_desktop_config.json`
+Edit `claude_desktop_config.json` (macOS: `~/Library/Application Support/Claude/`, Windows: `%APPDATA%\Claude\`, Linux: `~/.config/Claude/`):
 
 ```json
 {
@@ -142,25 +208,17 @@ Edit `claude_desktop_config.json`:
     "tree-sitter-analyzer": {
       "command": "uvx",
       "args": ["--from", "tree-sitter-analyzer[mcp]", "tree-sitter-analyzer-mcp"],
-      "env": {
-        "TREE_SITTER_PROJECT_ROOT": "/path/to/your/project",
-        "TREE_SITTER_OUTPUT_PATH": "/path/to/output/directory"
-      }
+      "env": { "TREE_SITTER_PROJECT_ROOT": "/absolute/path/to/your/project" }
     }
   }
 }
 ```
-
-Restart Claude Desktop after saving.
-
 </details>
 
 <details>
-<summary><b>📙 GitHub Copilot (VS Code, MCP-enabled)</b></summary>
+<summary><b>📙 GitHub Copilot (VS Code)</b></summary>
 
-> Requires VS Code with MCP support (Copilot Chat agent mode, 2025+).
-
-Create or edit `.vscode/mcp.json` in your workspace (Copilot uses the `servers` key, **not** `mcpServers`):
+Create `.vscode/mcp.json` (note: `servers`, not `mcpServers`):
 
 ```json
 {
@@ -174,330 +232,88 @@ Create or edit `.vscode/mcp.json` in your workspace (Copilot uses the `servers` 
   }
 }
 ```
-
-For user-level (all workspaces): open Command Palette → **MCP: Open User Configuration** and add the same `servers.tree-sitter-analyzer` block.
-
 </details>
 
 <details>
-<summary><b>📕 Roo Code (VS Code extension)</b></summary>
+<summary><b>🖱 Cursor / Cline / Continue / Roo Code</b></summary>
 
-Roo Code reads MCP servers from its workspace config. Open the **MCP** panel in the Roo Code sidebar → **Edit MCP Settings**, then add:
-
-```json
-{
-  "mcpServers": {
-    "tree-sitter-analyzer": {
-      "command": "uvx",
-      "args": ["--from", "tree-sitter-analyzer[mcp]", "tree-sitter-analyzer-mcp"],
-      "env": { "TREE_SITTER_PROJECT_ROOT": "${workspaceFolder}" },
-      "alwaysAllow": [
-        "check_code_scale",
-        "analyze_code_structure",
-        "extract_code_section",
-        "query_code",
-        "list_files",
-        "search_content",
-        "find_and_grep"
-      ]
-    }
-  }
-}
-```
-
-`alwaysAllow` is Roo Code-specific — it skips the per-tool confirmation prompt for safe read-only tools.
-
+All read the same `mcpServers` schema as Claude Desktop. Cursor: **Settings → MCP**. Cline: MCP panel → Edit settings. Continue: `~/.continue/config.json` under `experimental.modelContextProtocolServers`. Roo Code: MCP panel → Edit MCP Settings.
 </details>
 
-<details>
-<summary><b>🖱 Cursor</b></summary>
-
-Cursor → **Settings** → **MCP** → **Add new MCP server**, or edit `~/.cursor/mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "tree-sitter-analyzer": {
-      "command": "uvx",
-      "args": ["--from", "tree-sitter-analyzer[mcp]", "tree-sitter-analyzer-mcp"],
-      "env": { "TREE_SITTER_PROJECT_ROOT": "/path/to/your/project" }
-    }
-  }
-}
-```
-
-Restart Cursor; the tools appear under **Available Tools** for the agent.
-
-</details>
-
-<details>
-<summary><b>🤖 Cline / Continue / other MCP clients</b></summary>
-
-- **Cline**: Cline MCP servers panel → **Edit settings** → use the `mcpServers` block from the Claude Desktop section above (same schema).
-- **Continue**: edit `~/.continue/config.json`, add an `experimental.modelContextProtocolServers` entry pointing at the same `uvx` command.
-- **Other stdio-based MCP clients**: use the standard `mcpServers.<name>.{command,args,env}` shape; the server name `tree-sitter-analyzer` is conventional but free-form.
-
-</details>
-
-> ⚠️ **Path & isolation notes**
-> - `TREE_SITTER_PROJECT_ROOT` must be **absolute** (or use `${workspaceFolder}` if your client supports VS Code variables). Relative paths break security boundary checks.
-> - On Windows, escape backslashes (`"C:\\Users\\you\\project"`) or use forward slashes.
-> - The server **never** reads files outside `TREE_SITTER_PROJECT_ROOT` — this is enforced by `SecurityBoundaryManager`.
-
-After restart, hand off control to the AI: `Please set the project root directory to: /path/to/your/project`
-
-📖 **[MCP Tools Reference](docs/api/mcp_tools_specification.md)** for the complete 30-tool API.
+> ⚠️ `TREE_SITTER_PROJECT_ROOT` must be **absolute**. The server enforces a security boundary against escapes via `SecurityBoundaryManager`.
 
 ---
 
-## 💻 Common CLI Commands
+## Supported Languages
 
-### Installation
+21 language plugins; 16 fully wired into the indexer + 5 (data/markup) reachable via the single-file CLI path. The 2026-05-24 patch unblocked Swift / Kotlin / Ruby / PHP / C# that had been silently skipped for months.
 
-```bash
-uv add "tree-sitter-analyzer[all,mcp]"  # Full installation
-```
+| Tier | Languages |
+|---|---|
+| **Full index + symbol + call graph** | Python · Java · JavaScript · TypeScript · Go · Rust · C · C++ · C# · Swift · Kotlin · Ruby · PHP |
+| **Single-file analysis (CLI)** | HTML · CSS · Markdown · SQL · YAML |
+| **Scaffold (plugin exists, indexer wiring pending)** | bash · scala · json |
 
-### Top 5 Commands
-
-```bash
-# 1. Analyze file structure
-uv run tree-sitter-analyzer examples/BigService.java --table full
-
-# 2. Quick summary
-uv run tree-sitter-analyzer examples/BigService.java --summary
-
-# 3. Extract code section
-uv run tree-sitter-analyzer examples/BigService.java --partial-read --start-line 93 --end-line 106
-
-# 4. Find files and search content
-uv run find-and-grep --roots . --query "class.*Service" --extensions java
-
-# 5. Query specific elements
-uv run tree-sitter-analyzer examples/BigService.java --query-key methods --filter "public=true"
-```
-
-<details>
-<summary>📋 View Output Example</summary>
-
-```
-╭─────────────────────────────────────────────────────────────╮
-│                   BigService.java Analysis                   │
-├─────────────────────────────────────────────────────────────┤
-│ Total Lines: 1419 | Code: 906 | Comments: 246 | Blank: 267  │
-│ Classes: 1 | Methods: 66 | Fields: 9 | Complexity: 5.27 avg │
-╰─────────────────────────────────────────────────────────────╯
-```
-
-</details>
-
-📖 **[Complete CLI Reference](docs/cli-reference.md)** for all commands and options.
+CodeGraph supports a similar set; the only popular code languages neither tool ships yet are **Dart, Vue, Svelte, Lua** (next-sprint backlog).
 
 ---
 
-## 🌍 Supported Languages
+## Configuration
 
-| Language | Support Level | Key Features |
-|----------|---------------|--------------|
-| **Java** | ✅ Complete | Spring, JPA, enterprise features |
-| **Python** | ✅ Complete | Type annotations, decorators |
-| **TypeScript** | ✅ Complete | Interfaces, types, TSX/JSX |
-| **JavaScript** | ✅ Complete | ES6+, React/Vue/Angular |
-| **C** | ✅ Complete | Functions, structs, unions, enums, preprocessor |
-| **C++** | ✅ Complete | Classes, templates, namespaces, inheritance |
-| **C#** | ✅ Complete | Records, async/await, attributes |
-| **SQL** | ✅ Enhanced | Tables, views, procedures, triggers |
-| **HTML** | ✅ Complete | DOM structure, element classification |
-| **CSS** | ✅ Complete | Selectors, properties, categorization |
-| **Go** | ✅ Complete | Structs, interfaces, goroutines |
-| **Rust** | ✅ Complete | Traits, impl blocks, macros |
-| **Kotlin** | ✅ Complete | Data classes, coroutines |
-| **PHP** | ✅ Complete | PHP 8+, attributes, traits |
-| **Ruby** | ✅ Complete | Rails patterns, metaprogramming |
-| **YAML** | ✅ Complete | Anchors, aliases, multi-document |
-| **Markdown** | ✅ Complete | Headers, code blocks, tables |
+Mostly nothing. The defaults are designed so you can hook it into your agent and forget:
 
-📖 **[Features Documentation](docs/features.md)** for language-specific details.
+* **Output format**: TOON. Override per-call with `output_format: "json"`.
+* **Project root**: `TREE_SITTER_PROJECT_ROOT` (env var, MCP) or `--project-root` (CLI).
+* **Cache location**: `<project>/.ast-cache/`. Safe to delete — auto-rebuilds.
+* **Optional**: `TREE_SITTER_OUTPUT_PATH` for large-output write target.
 
 ---
 
-## 📊 Features Overview
-
-| Feature | Description | Learn More |
-|---------|-------------|------------|
-| **SMART Workflow** | Set-Map-Analyze-Retrieve-Trace methodology | [Guide](docs/smart-workflow.md) |
-| **MCP Protocol** | Native AI assistant integration | [API Docs](docs/api/mcp_tools_specification.md) |
-| **Token Optimization** | Up to 95% token reduction | [Features](docs/features.md) |
-| **File Search** | fd-based high-performance discovery | [CLI Reference](docs/cli-reference.md) |
-| **Content Search** | ripgrep regex search | [CLI Reference](docs/cli-reference.md) |
-| **Security** | Project boundary protection | [Architecture](docs/architecture.md) |
-
----
-
-## 🏆 Quality & Testing
+## Quality & Testing
 
 | Metric | Value |
-|--------|-------|
-| **Tests** | 6,246 passed ✅ |
-| **Coverage** | [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) |
-| **Type Safety** | 100% mypy compliance |
-| **Platforms** | Windows, macOS, Linux |
+|---|---|
+| Tests passed | 16,154 ✅ |
+| Coverage | [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) |
+| Type safety | 100 % mypy |
+| Platforms | macOS · Linux · Windows |
+| Pre-commit gates | bandit · mypy · pyupgrade · detect-secrets · codemap-sync · smell-ratchet |
 
 ```bash
-# Run tests
-uv run pytest -q
-
-# Generate coverage report
-uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=html
+uv run pytest -q                                # full suite
+uv run python check_quality.py --new-code-only  # quality gate
 ```
 
 ---
 
-## 🛠️ Development
+## Troubleshooting
 
-### Setup
+| Symptom | Fix |
+|---|---|
+| `unsupported language` on `.swift / .kt / .rb / .php / .cs` | Update to ≥ 1.12.x — the 5-language gap was patched in commit `50e99a8f`. |
+| MCP server doesn't appear in client | `TREE_SITTER_PROJECT_ROOT` must be **absolute**; restart the client after config edit. |
+| `database is locked` | Stop any other process holding `.ast-cache/index.db`; if persistent, `rm -rf .ast-cache && tree-sitter-analyzer --autoindex`. |
+| Slow first call | First call builds the index. Subsequent calls are sub-second. Run `--full-index` upfront to amortise. |
+| Agent picks the wrong tool | Use a `tsa-*` skill (`/tsa-graph`, `/tsa-find`, ...) — each skill restricts the visible tool set to one workflow. |
+
+---
+
+## Development
 
 ```bash
 git clone https://github.com/aimasteracc/tree-sitter-analyzer.git
 cd tree-sitter-analyzer
 uv sync --extra all --extra mcp
-```
-
-### Quality Checks
-
-```bash
-uv run pytest -q                           # Run all tests in parallel
-uv run python check_quality.py --new-code-only  # Quality check
-uv run python llm_code_checker.py --check-all   # AI code check
-```
-
-📖 **[Architecture Guide](docs/architecture.md)** for system design details.
-
----
-
-## 🤝 Contributing & License
-
-We welcome contributions! See **[Contributing Guide](docs/CONTRIBUTING.md)** for development guidelines.
-
-### ⭐ Support
-
-If this project helps you, please give us a ⭐ on GitHub!
-
-### 💝 Sponsors
-
-**[@o93](https://github.com/o93)** - Lead Sponsor supporting MCP tool enhancement, test infrastructure, and quality improvements.
-
-**[💖 Sponsor this project](https://github.com/sponsors/aimasteracc)**
-
-### 📄 License
-
-MIT License - see [LICENSE](LICENSE) file.
-
----
-
-## 🧪 Testing
-
-### Test Coverage
-
-| Metric | Value |
-|--------|-------|
-| **Total Tests** | 2,411 tests ✅ |
-| **Test Pass Rate** | 100% (2,411/2,411) |
-| **Code Coverage** | [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) |
-| **Type Safety** | 100% mypy compliance |
-
-### Running Tests
-
-```bash
-# Run all tests
 uv run pytest -q
-
-# Run specific test category
-uv run pytest tests/unit/ -v              # Unit tests
-uv run pytest tests/integration/ -v         # Integration tests
-uv run pytest tests/regression/ -m regression  # Regression tests
-uv run pytest tests/benchmarks/ -v         # Benchmark tests
-
-# Run with coverage
-uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=html
-
-# Run property-based tests
-uv run pytest tests/property/
-
-# Run performance benchmarks
-uv run pytest tests/benchmarks/ --benchmark-enable --benchmark-only -n 0 --session-timeout=0
 ```
 
-### Test Documentation
-
-| Document | Description |
-|----------|-------------|
-| [Test Writing Guide](docs/test-writing-guide.md) | Comprehensive guide for writing tests |
-| [Regression Testing Guide](docs/regression-testing-guide.md) | Golden Master methodology and regression testing |
-| [Testing Documentation](docs/TESTING.md) | Project testing standards |
-
-### Test Categories
-
-- **Unit Tests** (2,087 tests): Test individual components in isolation
-- **Integration Tests** (187 tests): Test component interactions
-- **Regression Tests** (70 tests): Ensure backward compatibility and format stability
-- **Property Tests** (75 tests): Hypothesis-based property testing
-- **Benchmark Tests** (20 tests): Performance monitoring and regression detection
-- **Compatibility Tests** (30 tests): Cross-version compatibility validation
-
-### CI/CD Integration
-
-- **Test Coverage Workflow**: Automated coverage checks on PRs and pushes
-- **Regression Tests Workflow**: Golden Master validation and format stability checks
-- **Performance Benchmarks**: Daily benchmark runs with trend analysis
-- **Quality Checks**: Automated linting, type checking, and security scanning
-
-### Contributing Tests
-
-When contributing new features:
-
-1. **Write Tests**: Follow the [Test Writing Guide](docs/test-writing-guide.md)
-2. **Ensure Coverage**: Maintain >80% code coverage
-3. **Run Locally**: `uv run pytest tests/ -v`
-4. **Check Quality**: `uv run ruff check . && uv run mypy tree_sitter_analyzer/`
-5. **Update Docs**: Document new tests and features
+See **[`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md)** for the development guide.
 
 ---
 
-## 📚 Documentation
+## Contributing & License
 
-### For AI Agents — Token-Lean Codemaps
-
-| File | Scope |
-|---|---|
-| [docs/CODEMAPS/architecture.md](docs/CODEMAPS/architecture.md) | High-level topology · data flow · critical invariants |
-| [docs/CODEMAPS/mcp-tools.md](docs/CODEMAPS/mcp-tools.md) | 55 MCP tools + envelope contract |
-| [docs/CODEMAPS/cli.md](docs/CODEMAPS/cli.md) | CLI flags / commands / parity contract |
-| [docs/CODEMAPS/languages.md](docs/CODEMAPS/languages.md) | 17 language plugins + grammar coverage |
-| [docs/CODEMAPS/formatters.md](docs/CODEMAPS/formatters.md) | TOON / JSON / table / CSV / YAML |
-| [docs/CODEMAPS/security.md](docs/CODEMAPS/security.md) | Boundary enforcement · threat model |
-
-> Each map is < 1k tokens — designed to fit in agent context without bloat. Load only what you need.
-
-### For Humans
-
-| Document | Description |
-|----------|-------------|
-| [Installation Guide](docs/installation.md) | Setup for all platforms |
-| [CLI Reference](docs/cli-reference.md) | Complete command reference |
-| [SMART Workflow](docs/smart-workflow.md) | AI-assisted analysis guide |
-| [MCP Tools API](docs/api/mcp_tools_specification.md) | MCP integration details |
-| [Features](docs/features.md) | Language support details |
-| [Architecture](docs/architecture.md) | System design |
-| [Contributing](docs/CONTRIBUTING.md) | Development guidelines |
-| [Test Writing Guide](docs/test-writing-guide.md) | Comprehensive test writing guide |
-| [Regression Testing Guide](docs/regression-testing-guide.md) | Golden Master methodology |
-| [AGENTS.md](AGENTS.md) | Agent runtime contracts (pytest, MCP/CLI parity) |
-| [CLAUDE.md](CLAUDE.md) | Locked design decisions + swarm/routing config |
-| [Changelog](CHANGELOG.md) | Version history |
-
----
-
-**🎯 Built for developers working with large codebases and AI assistants**
-
-*Making every line of code understandable to AI, enabling every project to break through token limitations*
+* ⭐ A GitHub star helps surface this tool to other AI-agent users.
+* 💖 [Sponsor](https://github.com/sponsors/aimasteracc) — supports continued MCP / Skills development.
+* Lead sponsor: **[@o93](https://github.com/o93)**.
+* MIT licensed — see [LICENSE](LICENSE).
