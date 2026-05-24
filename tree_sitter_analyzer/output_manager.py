@@ -9,7 +9,35 @@ import json
 import sys
 from typing import Any
 
-from .utils import log_error, log_warning
+from .utils import log_warning
+
+
+class _JsonFormatter:
+    """JSON formatter — pretty-prints non-string data, passes strings through.
+
+    r37dc (dogfood): lifted from a closure inside ``_init_formatters``.
+    """
+
+    def format(self, data: Any) -> str:
+        if isinstance(data, str):
+            return data
+        return json.dumps(data, indent=2, ensure_ascii=False)
+
+
+class _YamlFormatter:
+    """YAML formatter — defers the ``yaml`` import to ``format()``.
+
+    Registered only when ``import yaml`` succeeds (probed at registry
+    construction time); the deferred import inside ``format`` keeps the
+    class body importable even on Python builds without PyYAML.
+    """
+
+    def format(self, data: Any) -> str:
+        if isinstance(data, str):
+            return data
+        import yaml
+
+        return str(yaml.dump(data, default_flow_style=False, allow_unicode=True))
 
 
 class OutputManager:
@@ -38,51 +66,30 @@ class OutputManager:
         Returns:
             Dictionary mapping format names to formatter instances
         """
-        formatters: dict[str, Any] = {}
-
-        # JSON formatter (built-in)
-        class JsonFormatter:
-            """Simple JSON formatter implementing the Formatter protocol."""
-
-            def format(self, data: Any) -> str:
-                if isinstance(data, str):
-                    return data
-                return json.dumps(data, indent=2, ensure_ascii=False)
-
-        formatters["json"] = JsonFormatter()
-
-        # TOON formatter (if available)
+        # r37dc (dogfood): flattened nesting 6 → 3 by lifting the inner
+        # ``YamlFormatter`` class to module scope. Its body referenced
+        # ``yaml`` lazily already, so deferring the import to ``format()``
+        # keeps the original "yaml is optional" behaviour while letting
+        # the class be defined unconditionally.
+        formatters: dict[str, Any] = {"json": _JsonFormatter()}
         try:
             from .formatters.toon_formatter import ToonFormatter
 
             formatters["toon"] = ToonFormatter()
         except ImportError:
             pass
-
-        # YAML formatter (if available)
         try:
-            import yaml
+            import yaml as _yaml_probe  # noqa: F401
 
-            class YamlFormatter:
-                """YAML formatter implementing the Formatter protocol."""
-
-                def format(self, data: Any) -> str:
-                    if isinstance(data, str):
-                        return data
-                    return str(
-                        yaml.dump(data, default_flow_style=False, allow_unicode=True)
-                    )
-
-            formatters["yaml"] = YamlFormatter()
+            formatters["yaml"] = _YamlFormatter()
         except ImportError:
             pass
-
         return formatters
 
     def info(self, message: str) -> None:
-        """Output informational message to user"""
+        """Output informational message to user (stderr — keeps stdout clean for JSON/TOON)."""
         if not self.quiet:
-            print(message)
+            print(message, file=sys.stderr)
 
     def warning(self, message: str) -> None:
         """Output warning message"""
@@ -93,12 +100,11 @@ class OutputManager:
     def error(self, message: str) -> None:
         """Output error message"""
         print(f"ERROR: {message}", file=sys.stderr)
-        log_error(message)
 
     def success(self, message: str) -> None:
-        """Output success message"""
+        """Output success message (stderr — diagnostic, not machine-readable data)."""
         if not self.quiet:
-            print(f"✓ {message}")
+            print(f"✓ {message}", file=sys.stderr)
 
     def output_info(self, message: str) -> None:
         """Output info message (alias for info)"""
@@ -317,6 +323,25 @@ def output_success(message: str) -> None:
 def output_json(data: Any) -> None:
     """Output JSON data using the global output manager"""
     _output_manager.output_json(data)
+
+
+def output_toon(toon_content: str) -> None:
+    """Emit a pre-rendered TOON payload to stdout.
+
+    r37aq (dogfood): the project's own ``--code-patterns`` flagged
+    inline ``print(result.get("toon_content", ""))`` in two CLI modules
+    as ``AP003`` (use logging instead of ``print``). The right fix is
+    not ``logging`` (TOON is the user-facing data channel, not a log),
+    but a named canonical helper so:
+
+    * Both ``cli/commands/mcp_commands.py`` and
+      ``cli/special_commands.py`` route through one function.
+    * Future toon-channel changes (e.g. line-ending normalization,
+      ``--output-file`` redirection) live in one place.
+    * AP003 stops firing at those call sites — the helper is the
+      canonical TOON output path.
+    """
+    print(toon_content)  # noqa: T201 — canonical TOON output channel
 
 
 def output_list(items: str | list[Any], title: str | None = None) -> None:

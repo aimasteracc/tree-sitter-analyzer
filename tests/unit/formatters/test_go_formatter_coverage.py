@@ -551,3 +551,217 @@ class TestGoTableFormatterFormatTypeInit:
         """Test creating formatter with default format type."""
         formatter = GoTableFormatter()
         assert formatter.format_type == "full"
+
+
+class TestGoTableFormatterMethods:
+    """Test methods with is_method flag for ## Methods section."""
+
+    def test_methods_with_is_method_flag(self):
+        """Test that methods with is_method=True appear in Methods section."""
+        formatter = GoTableFormatter("full")
+        data = {
+            "file_path": "methods.go",
+            "packages": [{"name": "pkg"}],
+            "classes": [
+                {
+                    "name": "Server",
+                    "type": "struct",
+                    "line_range": {"start": 1, "end": 10},
+                }
+            ],
+            "methods": [
+                {
+                    "name": "Start",
+                    "return_type": "error",
+                    "parameters": ["addr string"],
+                    "line_range": {"start": 12, "end": 20},
+                    "is_method": True,
+                    "receiver_type": "*Server",
+                },
+                {
+                    "name": "Handle",
+                    "return_type": "",
+                    "parameters": [],
+                    "line_range": {"start": 22, "end": 30},
+                    "is_method": True,
+                    "receiver_type": "Server",
+                },
+            ],
+            "fields": [],
+            "imports": [],
+            "statistics": {},
+        }
+        result = formatter.format_structure(data)
+        assert "## Methods" in result
+        assert "Start" in result
+        assert "Handle" in result
+
+    def test_mixed_funcs_and_methods(self):
+        """Test package with both functions and methods."""
+        formatter = GoTableFormatter("full")
+        data = {
+            "file_path": "mixed.go",
+            "packages": [{"name": "pkg"}],
+            "classes": [],
+            "methods": [
+                {
+                    "name": "NewServer",
+                    "return_type": "*Server",
+                    "parameters": [],
+                    "line_range": {"start": 5, "end": 10},
+                    "is_method": False,
+                },
+                {
+                    "name": "Listen",
+                    "return_type": "error",
+                    "parameters": [],
+                    "line_range": {"start": 12, "end": 18},
+                    "is_method": True,
+                    "receiver_type": "*Server",
+                },
+            ],
+            "fields": [],
+            "imports": [],
+            "statistics": {},
+        }
+        result = formatter.format_structure(data)
+        assert "## Functions" in result
+        assert "## Methods" in result
+
+
+class TestGoTableFormatterSignatures:
+    """Test signature formatting helpers."""
+
+    def test_create_go_signature_string_params(self):
+        """Test _create_go_signature with string params (not list)."""
+        formatter = GoTableFormatter("full")
+        func = {"parameters": "x int", "return_type": "int"}
+        result = formatter._create_go_signature(func)
+        assert "x int" in result
+        assert "int" in result
+
+    def test_create_go_signature_no_return(self):
+        """Test _create_go_signature with no return type."""
+        formatter = GoTableFormatter("full")
+        func = {"parameters": ["a int"], "return_type": ""}
+        result = formatter._create_go_signature(func)
+        assert result.startswith("(")
+        assert ")" in result
+
+    def test_shorten_go_type_pointer(self):
+        """Test _shorten_go_type with pointer type."""
+        formatter = GoTableFormatter("full")
+        assert formatter._shorten_go_type("*int") == "*i"
+        assert formatter._shorten_go_type("*CustomType") == "*Cus"
+
+    def test_shorten_go_type_slice(self):
+        """Test _shorten_go_type with slice type."""
+        formatter = GoTableFormatter("full")
+        assert formatter._shorten_go_type("[]string") == "[]s"
+        assert formatter._shorten_go_type("[]CustomItem") == "[]Cus"
+
+    def test_shorten_go_type_basic(self):
+        """Test _shorten_go_type with basic types."""
+        formatter = GoTableFormatter("full")
+        assert formatter._shorten_go_type("string") == "s"
+        assert formatter._shorten_go_type("error") == "err"
+        assert formatter._shorten_go_type("float64") == "f64"
+
+    def test_shorten_go_type_long_custom(self):
+        """Test _shorten_go_type truncates long custom types."""
+        formatter = GoTableFormatter("full")
+        result = formatter._shorten_go_type("VeryLongCustomTypeName")
+        assert len(result) == 5
+
+    def test_shorten_go_type_short_custom(self):
+        """Test _shorten_go_type keeps short custom types as-is."""
+        formatter = GoTableFormatter("full")
+        assert formatter._shorten_go_type("Foo") == "Foo"
+
+    def test_shorten_go_type_empty(self):
+        """Test _shorten_go_type with empty string."""
+        formatter = GoTableFormatter("full")
+        assert formatter._shorten_go_type("") == "-"
+
+
+class TestGoTableFormatterPackageName:
+    """Test _get_package_name variants."""
+
+    def test_get_package_name_dict(self):
+        """Test _get_package_name with package dict."""
+        formatter = GoTableFormatter("full")
+        data = {"package": {"name": "mypkg"}}
+        assert formatter._get_package_name(data) == "mypkg"
+
+
+class TestGoTableFormatterFormatMethods:
+    """Test format_table, format_summary, format_advanced."""
+
+    def _base_data(self):
+        return {
+            "file_path": "test.go",
+            "packages": [{"name": "pkg"}],
+            "classes": [],
+            "methods": [],
+            "fields": [],
+            "imports": [],
+            "statistics": {},
+        }
+
+    def test_format_table_json(self):
+        """Test format_table with json type."""
+        formatter = GoTableFormatter("full")
+        data = self._base_data()
+        result = formatter.format_table(data, table_type="json")
+        assert "pkg" in result
+
+    def test_format_table_full(self):
+        """Test format_table with full type."""
+        formatter = GoTableFormatter("full")
+        data = self._base_data()
+        result = formatter.format_table(data, table_type="full")
+        assert "Package Info" in result
+
+    def test_format_summary(self):
+        """Test format_summary returns compact table."""
+        formatter = GoTableFormatter("full")
+        data = self._base_data()
+        result = formatter.format_summary(data)
+        assert "Info" in result
+
+    def test_format_advanced_json(self):
+        """Test format_advanced with json output."""
+        formatter = GoTableFormatter("full")
+        data = self._base_data()
+        result = formatter.format_advanced(data, output_format="json")
+        assert "pkg" in result
+
+    def test_format_advanced_csv(self):
+        """Test format_advanced with csv output."""
+        formatter = GoTableFormatter("full")
+        data = self._base_data()
+        result = formatter.format_advanced(data, output_format="csv")
+        assert "Type" in result
+
+    def test_format_advanced_full(self):
+        """Test format_advanced with full output."""
+        formatter = GoTableFormatter("full")
+        data = self._base_data()
+        result = formatter.format_advanced(data, output_format="full")
+        assert "Package Info" in result
+
+    def test_format_json_serialization_error(self):
+        """Test _format_json handles serialization errors."""
+        formatter = GoTableFormatter("full")
+        result = formatter._format_json({"key": object()})
+        assert "JSON serialization error" in result or "pkg" in result
+
+    def test_format_json_valid_data(self):
+        """Test _format_json with valid data."""
+        formatter = GoTableFormatter("full")
+        import json
+
+        data = {"name": "test", "value": 42}
+        result = formatter._format_json(data)
+        parsed = json.loads(result)
+        assert parsed["name"] == "test"

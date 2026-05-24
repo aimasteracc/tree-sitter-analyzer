@@ -436,17 +436,17 @@ public class TestService {
             )
 
             # Both should succeed
-            assert (
-                "error" not in mcp_result
-            ), f"MCP failed for {format_type}: {mcp_result.get('error')}"
-            assert (
-                "error" not in api_result
-            ), f"API failed for {format_type}: {api_result.get('error')}"
+            assert "error" not in mcp_result, (
+                f"MCP failed for {format_type}: {mcp_result.get('error')}"
+            )
+            assert "error" not in api_result, (
+                f"API failed for {format_type}: {api_result.get('error')}"
+            )
 
             # Outputs should be identical
-            assert (
-                mcp_result["table_output"] == api_result["table_output"]
-            ), f"MCP and API outputs differ for {format_type}"
+            assert mcp_result["table_output"] == api_result["table_output"], (
+                f"MCP and API outputs differ for {format_type}"
+            )
 
             # Format types should match
             assert mcp_result["format_type"] == api_result["format_type"] == format_type
@@ -467,23 +467,23 @@ public class TestService {
             consistency_report = validation_result["consistency_report"]
 
             # Should have at least MCP and API working
-            assert (
-                len(consistency_report["successful_interfaces"]) >= 2
-            ), f"Too few successful interfaces for {format_type}: {consistency_report['successful_interfaces']}"
+            assert len(consistency_report["successful_interfaces"]) >= 2, (
+                f"Too few successful interfaces for {format_type}: {consistency_report['successful_interfaces']}"
+            )
 
             # All successful interfaces should produce consistent output
             if consistency_report["successful_interfaces"]:
-                assert consistency_report[
-                    "consistent"
-                ], f"Inconsistent output for {format_type}: {consistency_report.get('differences', {})}"
+                assert consistency_report["consistent"], (
+                    f"Inconsistent output for {format_type}: {consistency_report.get('differences', {})}"
+                )
 
             # All outputs should be format-compliant
             for interface, compliance in consistency_report[
                 "format_compliance"
             ].items():
-                assert compliance[
-                    "valid"
-                ], f"Format compliance failed for {interface} in {format_type}: {compliance['errors']}"
+                assert compliance["valid"], (
+                    f"Format compliance failed for {interface} in {format_type}: {compliance['errors']}"
+                )
 
     @pytest.mark.asyncio
     async def test_metadata_consistency(self, test_file, validator):
@@ -541,12 +541,12 @@ public class TestService {
                 cli_validation = validate_format(cli_output, schema_type)
                 mcp_validation = validate_format(mcp_output, schema_type)
 
-                assert (
-                    cli_validation.is_valid
-                ), f"CLI output not format-compliant: {cli_validation.errors}"
-                assert (
-                    mcp_validation.is_valid
-                ), f"MCP output not format-compliant: {mcp_validation.errors}"
+                assert cli_validation.is_valid, (
+                    f"CLI output not format-compliant: {cli_validation.errors}"
+                )
+                assert mcp_validation.is_valid, (
+                    f"MCP output not format-compliant: {mcp_validation.errors}"
+                )
         else:
             pytest.skip("CLI interface not available or failed")
 
@@ -578,12 +578,12 @@ public class TestService {
             validation_direct = validate_format(direct_output, "markdown")
             validation_mcp = validate_format(mcp_output, "markdown")
 
-            assert (
-                validation_direct.is_valid
-            ), f"Direct output not format-compliant: {validation_direct.errors}"
-            assert (
-                validation_mcp.is_valid
-            ), f"MCP output not format-compliant: {validation_mcp.errors}"
+            assert validation_direct.is_valid, (
+                f"Direct output not format-compliant: {validation_direct.errors}"
+            )
+            assert validation_mcp.is_valid, (
+                f"MCP output not format-compliant: {validation_mcp.errors}"
+            )
         else:
             pytest.fail(f"Direct library usage failed: {direct_result['error']}")
 
@@ -598,26 +598,26 @@ public class TestService {
         )
 
         # Verify baseline consistency
-        assert baseline_results["consistency_report"][
-            "consistent"
-        ], "Baseline results are not consistent across interfaces"
+        assert baseline_results["consistency_report"]["consistent"], (
+            "Baseline results are not consistent across interfaces"
+        )
 
         # This test validates that our cross-component validation
         # would detect regressions if they occurred
         successful_interfaces = baseline_results["consistency_report"][
             "successful_interfaces"
         ]
-        assert (
-            len(successful_interfaces) >= 2
-        ), "Need at least 2 successful interfaces to detect regressions"
+        assert len(successful_interfaces) >= 2, (
+            "Need at least 2 successful interfaces to detect regressions"
+        )
 
         # Verify all outputs are format-compliant
         for interface, compliance in baseline_results["consistency_report"][
             "format_compliance"
         ].items():
-            assert compliance[
-                "valid"
-            ], f"Baseline format compliance failed for {interface}: {compliance['errors']}"
+            assert compliance["valid"], (
+                f"Baseline format compliance failed for {interface}: {compliance['errors']}"
+            )
 
 
 class TestFormatContractValidation:
@@ -661,21 +661,21 @@ class TestFormatContractValidation:
                 lines = output.split("\n")
 
                 # Check minimum lines
-                assert (
-                    len(lines) >= contract["min_lines"]
-                ), f"{interface} {format_type} output too short: {len(lines)} < {contract['min_lines']}"
+                assert len(lines) >= contract["min_lines"], (
+                    f"{interface} {format_type} output too short: {len(lines)} < {contract['min_lines']}"
+                )
 
                 # Check required sections
                 for section in contract["required_sections"]:
-                    assert (
-                        section in output
-                    ), f"{interface} {format_type} missing required section: {section}"
+                    assert section in output, (
+                        f"{interface} {format_type} missing required section: {section}"
+                    )
 
                 # Check table markers
                 for marker in contract["table_markers"]:
-                    assert (
-                        marker in output
-                    ), f"{interface} {format_type} missing table marker: {marker}"
+                    assert marker in output, (
+                        f"{interface} {format_type} missing table marker: {marker}"
+                    )
 
     @pytest.mark.asyncio
     async def test_error_handling_consistency(self, validator):

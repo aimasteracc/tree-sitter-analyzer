@@ -133,9 +133,9 @@ class TestMCPRequestResponseConsistency:
 
         # All results should have same structure
         keys_list = [set(r.keys()) for r in results]
-        assert all(
-            k == keys_list[0] for k in keys_list
-        ), "Response structure should be consistent"
+        assert all(k == keys_list[0] for k in keys_list), (
+            "Response structure should be consistent"
+        )
 
 
 class TestMCPProtocolCompliance:

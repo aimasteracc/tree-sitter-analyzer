@@ -192,6 +192,14 @@ class TestResolveAndValidateFilePath:
         mock_cache.get_security_validation.assert_called()
         mock_cache.get_resolved_path.assert_called()
 
+    def test_resolve_path_with_special_characters(self, tmp_path):
+        resolved_tmp = str(tmp_path.resolve())
+        tool = ConcreteMCPTool(project_root=resolved_tmp)
+        test_file = tmp_path / "test file.txt"
+        test_file.write_text("content")
+        result = tool.resolve_and_validate_file_path(str(test_file))
+        assert "test file.txt" in result or "test file.txt" in Path(result).name
+
     @patch("tree_sitter_analyzer.mcp.tools.base_tool.get_shared_cache")
     def test_resolve_caches_validation(self, mock_get_cache):
         """Test that validation result is cached"""
@@ -262,6 +270,12 @@ class TestResolveAndValidateDirectoryPath:
         with pytest.raises(ValueError, match="Invalid directory path"):
             tool.resolve_and_validate_directory_path("nonexistent_dir")
 
+    def test_resolve_root_directory(self, tmp_path):
+        resolved_tmp = str(tmp_path.resolve())
+        tool = ConcreteMCPTool(project_root=resolved_tmp)
+        result = tool.resolve_and_validate_directory_path(str(tmp_path))
+        assert _normalize_path(result) == _normalize_path(str(tmp_path))
+
     def test_validate_directory_outside_project(self, tmp_path):
         """Test that directory outside project raises ValueError"""
         tool = ConcreteMCPTool(project_root=str(tmp_path))
@@ -320,6 +334,11 @@ class TestMCPToolProtocol:
         tool = ConcreteMCPTool()
         assert tool.validate_arguments({"file_path": "test"}) is True
         assert tool.validate_arguments({}) is False
+
+    def test_mcp_tool_get_tool_definition_returns_dict(self):
+        tool = ConcreteMCPTool()
+        definition = tool.get_tool_definition()
+        assert isinstance(definition, dict)
 
     def test_mcp_tool_execute_raises_not_implemented(self):
         """Test that default execute raises NotImplementedError"""
@@ -397,3 +416,12 @@ class TestBaseToolIntegration:
             # Cache should be cleared
             # This is tested via mock in TestSetProjectPath
             assert tool.project_root == new_dir
+
+    def test_set_project_path_reinitializes(self, tmp_path):
+        tool = ConcreteMCPTool(project_root=str(tmp_path))
+        test_file = tmp_path / "test.txt"
+        test_file.write_text("content")
+        with tempfile.TemporaryDirectory() as new_dir:
+            tool.set_project_path(new_dir)
+            assert tool.security_validator is not None
+            assert tool.path_resolver is not None

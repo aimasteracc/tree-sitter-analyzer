@@ -14,10 +14,35 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 import pytest  # noqa: E402
+from hypothesis import settings as hypothesis_settings  # noqa: E402
+
+# TEST-P3 root-cause fix: under pytest-xdist's load balancer, multiple
+# worker processes share the on-disk Hypothesis example database
+# (.hypothesis/examples), which produces flaky failures on text-generative
+# `@given` tests (notably test_invalid_query_name and
+# test_property_1_analysis_result_to_json_roundtrip) when shrinking races
+# across workers. Setting database=None makes example generation purely
+# in-process and removes the contention entirely. The trade-off — losing
+# cross-run shrink replay — is acceptable in CI; local debuggers can opt
+# back in via HYPOTHESIS_DATABASE=… if needed.
+hypothesis_settings.register_profile(
+    "tree_sitter_analyzer", deadline=None, database=None
+)
+hypothesis_settings.load_profile("tree_sitter_analyzer")
 
 
 def pytest_configure(config):
-    """Configure pytest with custom markers."""
+    """Configure pytest with custom markers and safety checks."""
+    # Suppress SQLite connection finalizer warnings that fire when gc.collect()
+    # in one xdist worker collects objects from other workers. These are benign
+    # resource cleanup events, not actual test failures.
+    # Must be added here (not pytest.ini) so the pytest.ini contract
+    # (filterwarnings[0] == "error") stays valid.
+    config.addinivalue_line(
+        "filterwarnings",
+        "ignore:Exception ignored while finalizing database connection"
+        ":pytest.PytestUnraisableExceptionWarning",
+    )
     config.addinivalue_line(
         "markers", "requires_ripgrep: mark test as requiring ripgrep (rg) command"
     )
@@ -26,6 +51,30 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "performance: mark test as performance test")
     config.addinivalue_line("markers", "regression: mark test as regression test")
     config.addinivalue_line("markers", "property: mark test as property-based test")
+    # Tests that legitimately need >SLOW_TEST_BUDGET_S of real wall time
+    # (file watcher polling, large-fixture parsers, etc.) must opt out
+    # explicitly. Without the marker the runtime gate below fails them.
+    config.addinivalue_line(
+        "markers",
+        "slow_ok: test legitimately exceeds SLOW_TEST_BUDGET_S; "
+        "opt-out of the unit-suite per-test perf budget (use sparingly)",
+    )
+
+    # HARD BLOCK: detect duplicate --cov arguments that cause memory blowup.
+    # Only count --cov and --cov= (NOT --cov-report, --cov-fail-under, etc.)
+    import re
+
+    cli_cov_count = 0
+    for arg in config.invocation_params.args:
+        arg_str = str(arg)
+        if re.match(r"^--cov(=|$)", arg_str):
+            cli_cov_count += 1
+    if cli_cov_count > 1:
+        raise SystemExit(
+            "FATAL: --cov specified multiple times on the command line. "
+            "This causes double coverage tracking and can exhaust system memory. "
+            "Use --cov exactly once. Example: uv run pytest --cov=tree_sitter_analyzer --cov-report=json"
+        )
 
 
 def pytest_collection_modifyitems(config, items):
@@ -139,45 +188,84 @@ def pytest_sessionfinish(session, exitstatus):
     gc.collect()
 
 
+def pytest_terminal_summary(terminalreporter, exitstatus, config):
+    """Warn if memory usage is dangerously high at end of session."""
+    try:
+        import os
+
+        import psutil
+
+        process = psutil.Process(os.getpid())
+        rss_gb = process.memory_info().rss / (1024**3)
+        system_total_gb = psutil.virtual_memory().total / (1024**3)
+        usage_pct = process.memory_info().rss / psutil.virtual_memory().total * 100
+
+        if rss_gb > 2.0:
+            terminalreporter.write_sep(
+                "!",
+                f"MEMORY WARNING: pytest RSS = {rss_gb:.1f} GB "
+                f"({usage_pct:.0f}% of {system_total_gb:.0f} GB system RAM). "
+                f"Consider running fewer tests or using -x.",
+            )
+        if rss_gb > 4.0:
+            terminalreporter.write_sep(
+                "!",
+                f"MEMORY CRITICAL: pytest RSS = {rss_gb:.1f} GB! "
+                f"This can crash the system. Reduce test batch size.",
+            )
+    except ImportError:
+        pass
+
+
 @pytest.fixture(autouse=True)
-async def cleanup_asyncio_tasks():
+def cleanup_asyncio_tasks():
     """
     Clean up asyncio tasks after each test to prevent 'NoneType' object has no attribute '_PENDING'
     error on Python 3.10 during shutdown.
+
+    Python 3.12 deprecates ``asyncio.get_event_loop()`` when there is no
+    running loop and no policy-bound loop. Use the running-loop probe
+    (``get_running_loop``) and fall back silently when no loop is bound —
+    the cleanup is only meaningful when an in-flight loop actually
+    exists.
     """
     yield
 
-    # Get all tasks
     import asyncio
+    import contextlib
 
     try:
-        # Get running loop if possible
         loop = asyncio.get_running_loop()
     except RuntimeError:
-        # No event loop running
+        try:
+            # Fall back to the policy-bound loop; ``get_event_loop_policy``
+            # is stable across 3.10–3.13. ``_get_loop()`` returns None if
+            # no loop is bound, so we don't trip the deprecation warning
+            # ``asyncio.get_event_loop()`` emits on 3.12+.
+            policy = asyncio.get_event_loop_policy()
+            loop = policy._local._loop  # type: ignore[attr-defined]
+        except Exception:
+            return
+        if loop is None:
+            return
+
+    if loop.is_closed() or loop.is_running():
         return
 
-    tasks = asyncio.all_tasks(loop)
-
-    # Cancel all tasks except current one
-    current_task = asyncio.current_task(loop)
-    tasks = [t for t in tasks if t is not current_task]
+    tasks = [task for task in asyncio.all_tasks(loop) if not task.done()]
 
     if not tasks:
         return
 
-    # Cancel tasks
     for task in tasks:
         task.cancel()
 
-    # Wait for tasks to complete
-    # We use a timeout to avoid hanging if a task ignores cancellation
-    try:
-        await asyncio.wait_for(
-            asyncio.gather(*tasks, return_exceptions=True), timeout=2.0
+    with contextlib.suppress(asyncio.TimeoutError):
+        loop.run_until_complete(
+            asyncio.wait_for(
+                asyncio.gather(*tasks, return_exceptions=True), timeout=2.0
+            )
         )
-    except asyncio.TimeoutError:
-        pass
 
 
 def _reset_all_singletons():
@@ -277,12 +365,12 @@ def reset_global_singletons():
     _reset_all_singletons()
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture(scope="session", autouse=True)
 def cleanup_test_databases():
-    """Clean up test databases after each test."""
+    """Clean up test databases once per session instead of per-test."""
     yield
 
-    # Clean up any test databases
+    import glob
     import os
     import tempfile
 
@@ -297,15 +385,10 @@ def cleanup_test_databases():
     ]
 
     for pattern in test_db_patterns:
-        import glob
-
-        db_files = glob.glob(os.path.join(temp_dir, pattern))
-        for db_file in db_files:
+        for db_file in glob.glob(os.path.join(temp_dir, pattern)):
             try:
-                if os.path.exists(db_file):
-                    os.remove(db_file)
+                os.remove(db_file)
             except (OSError, PermissionError):
-                # Ignore permission errors or file not found
                 pass
 
 
@@ -403,4 +486,75 @@ def verify_test_isolation():
             f"(allowed: {max_allowed_growth})",
             ResourceWarning,
             stacklevel=2,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Per-test runtime budget (regression prevention 2026-05-23)
+# ---------------------------------------------------------------------------
+#
+# Two real bugs cost us ~62s of unit-suite latency (91s → 29s) before
+# they were caught:
+#
+#   1. ``import_extractors._node_text`` accidentally encoded the full
+#      source-file UTF-8 buffer on every call (217k calls / 7.5s pure
+#      encoding overhead per run).
+#   2. Five tests used ``project_root="/tmp"`` or ``project_root=None``
+#      and silently triggered a full DependencyGraph + CallGraph build
+#      against the 1100-file repo via cwd fallback (each test 9-37s).
+#
+# Both classes of regression have the same fingerprint at the unit
+# layer: a single test crossing the 5-second mark. The hook below
+# fails any unit test that exceeds ``SLOW_TEST_BUDGET_S`` unless it
+# explicitly opts out via ``@pytest.mark.slow_ok`` — forcing the author
+# to either fix the perf or document why the cost is real.
+#
+# We deliberately fail the test (not just warn) so the regression
+# blocks CI. ``slow_ok`` is the escape hatch for known-slow tests
+# (file_watcher polling, real-process file_output, etc.).
+
+SLOW_TEST_BUDGET_S: float = 5.0
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_call(item):
+    """Enforce per-test wall-time budget for unit tests.
+
+    Skipped under integration / performance markers and when the test
+    is explicitly tagged ``slow_ok``. Integration tests have their own
+    looser thresholds; performance tests are timed elsewhere.
+    """
+    import time
+
+    opted_out = (
+        "slow_ok" in item.keywords
+        or "performance" in item.keywords
+        or "integration" in item.keywords
+    )
+    started = time.monotonic()
+    outcome = yield
+    elapsed = time.monotonic() - started
+
+    # Only enforce on unit tests (tests/unit/...). Other suites are
+    # allowed to take longer.
+    is_unit = "/tests/unit/" in str(item.fspath).replace("\\", "/")
+
+    if (
+        is_unit
+        and not opted_out
+        and outcome.excinfo is None  # don't double-fail on already-failing tests
+        and elapsed > SLOW_TEST_BUDGET_S
+    ):
+        pytest.fail(
+            f"Unit test exceeded per-test budget: {elapsed:.2f}s > "
+            f"{SLOW_TEST_BUDGET_S:.1f}s.\n"
+            f"Common causes (see tests/conftest.py for the full history):\n"
+            f"  • Accidentally scanning the whole repo "
+            f"(project_root='/tmp' or =None when cwd is the repo)\n"
+            f"  • Per-call O(file_size) work in a tight loop "
+            f"(e.g. source.encode() inside a node-text helper)\n"
+            f"  • Real subprocess / network / sleep without a mock\n"
+            f"Fix the perf, or — if the cost is real and documented — add "
+            f"@pytest.mark.slow_ok with a justifying comment.",
+            pytrace=False,
         )

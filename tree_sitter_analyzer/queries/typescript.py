@@ -94,20 +94,12 @@ IMPORTS = """
 
 (import_statement
     (import_clause
-        (import_default_specifier
-            (identifier) @import.default))) @import.default
+        (identifier) @import.default)) @import.default
 
 (import_statement
     (import_clause
         (namespace_import
             (identifier) @import.namespace))) @import.namespace
-
-(type_import
-    (import_clause
-        (named_imports
-            (import_specifier
-                name: (identifier) @import.type.name
-                alias: (identifier)? @import.type.alias)))) @import.type
 """
 
 EXPORTS = """
@@ -142,8 +134,8 @@ GENERICS = """
 (type_parameters
     (type_parameter
         name: (type_identifier) @generic.name
-        constraint: (type_annotation)? @generic.constraint
-        default: (type_annotation)? @generic.default)) @generic.parameter
+        (constraint)? @generic.constraint
+        (default_type)? @generic.default)) @generic.parameter
 """
 
 # Property signatures and method signatures
@@ -521,24 +513,21 @@ ALL_QUERIES["template_literal_type"] = {
 
 ALL_QUERIES["keyof_type"] = {
     "query": """
-(keyof_type_operator
-    argument: (_) @keyof.argument) @keyof.type
+(index_type_query) @keyof.type
 """,
     "description": "Search keyof type operators",
 }
 
 ALL_QUERIES["typeof_type"] = {
     "query": """
-(typeof_type
-    argument: (_) @typeof.argument) @typeof.type
+(type_query) @typeof.type
 """,
     "description": "Search typeof type operators",
 }
 
 ALL_QUERIES["infer_type"] = {
     "query": """
-(infer_type
-    name: (type_identifier) @infer.name) @infer.type
+(infer_type) @infer.type
 """,
     "description": "Search infer types in conditional types",
 }
@@ -591,18 +580,14 @@ ALL_QUERIES["literal_type"] = {
 
 ALL_QUERIES["predicate_type"] = {
     "query": """
-(type_predicate
-    parameter_name: (identifier) @predicate.param
-    type: (_) @predicate.type) @predicate.signature
+(type_predicate) @predicate.signature
 """,
     "description": "Search predicate type signatures",
 }
 
 ALL_QUERIES["asserts_type"] = {
     "query": """
-(asserts
-    parameter_name: (identifier) @asserts.param
-    type: (_)? @asserts.type) @asserts.signature
+(asserts) @asserts.signature
 """,
     "description": "Search asserts type signatures",
 }
@@ -628,38 +613,8 @@ ALL_QUERIES["abstract_method"] = {
     "description": "Search abstract methods",
 }
 
-# Add more TypeScript-specific queries
-ALL_QUERIES["jsx_element"] = {
-    "query": """
-(jsx_element
-    open_tag: (jsx_opening_element
-        name: (_) @jsx.tag_name) @jsx.open_tag
-    close_tag: (jsx_closing_element)? @jsx.close_tag) @jsx.element
-""",
-    "description": "Search JSX elements",
-}
-
-ALL_QUERIES["jsx_self_closing"] = {
-    "query": """
-(jsx_self_closing_element
-    name: (_) @jsx.tag_name) @jsx.self_closing
-""",
-    "description": "Search jsx self closing elements",
-}
-
-ALL_QUERIES["jsx_fragment"] = {
-    "query": """
-(jsx_fragment) @jsx.fragment
-""",
-    "description": "Search JSX fragments",
-}
-
-ALL_QUERIES["jsx_expression"] = {
-    "query": """
-(jsx_expression) @jsx.expression
-""",
-    "description": "Search JSX expressions",
-}
+# Note: JSX nodes only exist in TSX grammar, not in TypeScript grammar.
+# Use JavaScript or TSX-specific parsers for JSX queries.
 
 ALL_QUERIES["as_expression"] = {
     "query": """
@@ -670,26 +625,21 @@ ALL_QUERIES["as_expression"] = {
 
 ALL_QUERIES["type_assertion"] = {
     "query": """
-(type_assertion
-    type: (_) @assertion.type
-    expression: (_) @assertion.expression) @type.assertion
+(type_assertion) @type.assertion
 """,
     "description": "Search angle bracket type assertions",
 }
 
 ALL_QUERIES["satisfies_expression"] = {
     "query": """
-(satisfies_expression
-    expression: (_) @satisfies.expression
-    type: (_) @satisfies.type) @satisfies.assertion
+(satisfies_expression) @satisfies.assertion
 """,
     "description": "Search satisfies expression type checks",
 }
 
 ALL_QUERIES["non_null_expression"] = {
     "query": """
-(non_null_expression
-    expression: (_) @non_null.expression) @non_null.assertion
+(non_null_expression) @non_null.assertion
 """,
     "description": "Search non null expression assertions (!)",
 }
@@ -792,9 +742,9 @@ ALL_QUERIES["module_declaration"] = {
 
 ALL_QUERIES["global_declaration"] = {
     "query": """
-(module
-    "global" @global.keyword
-    body: (_) @global.body) @global.declaration
+(ambient_declaration
+    "declare" @declare.keyword
+    "global" @global.keyword) @global.declaration
 """,
     "description": "Search global declarations",
 }

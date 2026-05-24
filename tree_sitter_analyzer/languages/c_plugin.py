@@ -7,19 +7,84 @@ Supports standard C constructs including functions, structs, unions,
 enums, and preprocessor directives.
 """
 
-import re
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     import tree_sitter
 
-    from ..core.request import AnalysisRequest
+    from ..core.analysis_engine import AnalysisRequest
     from ..models import AnalysisResult
 
 from ..encoding_utils import extract_text_slice, safe_encode
-from ..models import Class, Expression, Function, Import, Variable
+from ..models import Class, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
-from ..utils import log_debug, log_error, log_warning
+from ..utils import log_debug, log_error
+from .c_helpers import (
+    c_traverse_and_extract as _traverse_standalone,
+)
+from .c_helpers import (
+    calculate_complexity as _calc_complexity_standalone,
+)
+from .c_helpers import (
+    extract_c_function as _extract_func_standalone,
+)
+from .c_helpers import (
+    extract_c_imports as _extract_imports_standalone,
+)
+from .c_helpers import (
+    extract_comment_for_line as _extract_comment_standalone,
+)
+from .c_helpers import (
+    extract_enum_definition as _extract_enum_standalone,
+)
+from .c_helpers import (
+    extract_field_declaration as _extract_field_standalone,
+)
+from .c_helpers import (
+    extract_macro_definition as _extract_macro_def_standalone,
+)
+from .c_helpers import (
+    extract_macro_function as _extract_macro_func_standalone,
+)
+from .c_helpers import (
+    extract_parameters as _extract_params_standalone,
+)
+from .c_helpers import (
+    extract_struct_definition as _extract_struct_standalone,
+)
+from .c_helpers import (
+    extract_variable_declaration as _extract_var_decl_standalone,
+)
+from .c_helpers import (
+    parse_function_signature as _parse_sig_standalone,
+)
+
+
+def _c_extract_multiline_text(
+    content_lines: list[str],
+    start_point: tuple[int, int],
+    end_point: tuple[int, int],
+) -> str:
+    """Slice multi-line node text from ``content_lines``.
+
+    r37cf (dogfood): extracted from ``CElementExtractor._get_node_text_optimized``
+    fallback branch to flatten its 8-deep nesting. Same first/last/interior
+    line column handling as the bash plugin helper (r37ce).
+    """
+    lines: list[str] = []
+    for i in range(start_point[0], end_point[0] + 1):
+        if i >= len(content_lines):
+            continue
+        line = content_lines[i]
+        if i == start_point[0]:
+            lines.append(line[start_point[1] :])
+        elif i == end_point[0]:
+            lines.append(line[: end_point[1]])
+        else:
+            lines.append(line)
+    return "\n".join(lines)
 
 
 class CElementExtractor(ElementExtractor):
@@ -40,8 +105,9 @@ class CElementExtractor(ElementExtractor):
         self._comment_cache: dict[int, str] = {}
         self._complexity_cache: dict[int, int] = {}
 
+    # Extract elements from AST: extract_functions
     def extract_functions(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[Function]:
         """Extract C function definitions with comprehensive details"""
         self.source_code = source_code
@@ -63,9 +129,8 @@ class CElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(functions)} C functions")
         return functions
 
-    def extract_classes(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Class]:
+    # Extract elements from AST: extract_classes
+    def extract_classes(self, tree: tree_sitter.Tree, source_code: str) -> list[Class]:
         """Extract C struct/union/enum definitions as 'classes'"""
         self.source_code = source_code
         self.content_lines = source_code.split("\n")
@@ -87,8 +152,9 @@ class CElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(classes)} C structs/unions/enums")
         return classes
 
+    # Extract elements from AST: extract_variables
     def extract_variables(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[Variable]:
         """Extract C variable/field declarations"""
         self.source_code = source_code
@@ -111,60 +177,14 @@ class CElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(variables)} C variables/fields")
         return variables
 
-    def extract_imports(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Import]:
+    # Extract elements from AST: extract_imports
+    def extract_imports(self, tree: tree_sitter.Tree, source_code: str) -> list[Import]:
         """Extract C include directives"""
         self.source_code = source_code
         self.content_lines = source_code.split("\n")
-
-        imports: list[Import] = []
-
-        # Extract preprocessor includes
-        for child in tree.root_node.children:
-            if child.type == "preproc_include":
-                import_info = self._extract_include_info(child, source_code)
-                if import_info:
-                    imports.append(import_info)
-
-        # Fallback: use regex if tree-sitter doesn't catch all includes
-        if not imports and "#include" in source_code:
-            log_debug("No includes found via tree-sitter, trying regex fallback")
-            fallback_imports = self._extract_includes_fallback(source_code)
-            imports.extend(fallback_imports)
-
-        log_debug(f"Extracted {len(imports)} C includes")
-        return imports
-
-    def extract_expressions(
-        self, tree: "tree_sitter.Tree | None", source_code: str
-    ) -> list[Expression]:
-        """Extract C preprocessor conditional expressions"""
-        if tree is None or tree.root_node is None:
-            return []
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
-        self._reset_caches()
-
-        expressions: list[Expression] = []
-
-        # Extract preprocessor conditionals and related expressions
-        extractors = {
-            "preproc_if": self._extract_preproc_conditional,
-            "preproc_ifdef": self._extract_preproc_conditional,
-            "preproc_elif": self._extract_preproc_conditional,
-            "preproc_else": self._extract_preproc_conditional,
-            "preproc_defined": self._extract_preproc_defined,
-            "preproc_directive": self._extract_preproc_directive,
-            "parenthesized_declarator": self._extract_parenthesized_declarator,
-        }
-
-        self._traverse_and_extract_iterative(
-            tree.root_node, extractors, expressions, "expression"
+        return _extract_imports_standalone(
+            tree, source_code, self._get_node_text_optimized
         )
-
-        log_debug(f"Extracted {len(expressions)} C preprocessor expressions")
-        return expressions
 
     def _reset_caches(self) -> None:
         """Reset performance caches"""
@@ -174,94 +194,25 @@ class CElementExtractor(ElementExtractor):
         self._comment_cache.clear()
         self._complexity_cache.clear()
 
+    # Extract elements from AST: _traverse_and_extract_iterative
     def _traverse_and_extract_iterative(
         self,
-        root_node: "tree_sitter.Node | None",
+        root_node: tree_sitter.Node | None,
         extractors: dict[str, Any],
         results: list[Any],
         element_type: str,
     ) -> None:
         """Iterative node traversal and extraction with caching"""
-        if root_node is None:
-            return
+        _traverse_standalone(
+            root_node,
+            extractors,
+            results,
+            element_type,
+            self._processed_nodes,
+            self._element_cache,
+        )
 
-        target_node_types = set(extractors.keys())
-        container_node_types = {
-            "translation_unit",
-            "compound_statement",
-            "struct_specifier",
-            "union_specifier",
-            "field_declaration_list",
-            "declaration_list",
-            "type_definition",  # For typedef structs
-            "preproc_if",
-            "preproc_ifdef",
-            "preproc_elif",
-            "preproc_else",
-            "preproc_call",  # Contains preproc_directive
-            "function_declarator",  # For parenthesized_declarator
-            "pointer_declarator",  # For parenthesized_declarator
-        }
-
-        node_stack = [(root_node, 0)]
-        processed_nodes = 0
-        max_depth = 50
-
-        while node_stack:
-            current_node, depth = node_stack.pop()
-
-            if depth > max_depth:
-                log_warning(f"Maximum traversal depth ({max_depth}) exceeded")
-                continue
-
-            processed_nodes += 1
-            node_type = current_node.type
-
-            # Early termination for irrelevant nodes
-            if (
-                depth > 0
-                and node_type not in target_node_types
-                and node_type not in container_node_types
-            ):
-                continue
-
-            # Process target nodes
-            if node_type in target_node_types:
-                node_id = id(current_node)
-
-                if node_id in self._processed_nodes:
-                    continue
-
-                cache_key = (node_id, element_type)
-                if cache_key in self._element_cache:
-                    element = self._element_cache[cache_key]
-                    if element:
-                        if isinstance(element, list):
-                            results.extend(element)
-                        else:
-                            results.append(element)
-                    self._processed_nodes.add(node_id)
-                    continue
-
-                # Extract and cache
-                extractor = extractors[node_type]
-                element = extractor(current_node)
-                self._element_cache[cache_key] = element
-                if element:
-                    if isinstance(element, list):
-                        results.extend(element)
-                    else:
-                        results.append(element)
-                self._processed_nodes.add(node_id)
-
-            # Add children to stack (reversed for correct DFS traversal)
-            if current_node.children:
-                for child in reversed(current_node.children):
-                    node_stack.append((child, depth + 1))
-
-        log_debug(f"Iterative traversal processed {processed_nodes} nodes")
-
-    def _get_node_text_optimized(self, node: "tree_sitter.Node") -> str:
+    def _get_node_text_optimized(self, node: tree_sitter.Node) -> str:
         """Get node text with optimized caching using position-based keys"""
         # Use position-based cache key for deterministic behavior
         cache_key = (node.start_byte, node.end_byte)
@@ -288,728 +239,139 @@ class CElementExtractor(ElementExtractor):
 
                 if start_point[0] == end_point[0]:
                     line = self.content_lines[start_point[0]]
-                    result: str = line[start_point[1] : end_point[1]]
-                    return result
-                else:
-                    lines = []
-                    for i in range(start_point[0], end_point[0] + 1):
-                        if i < len(self.content_lines):
-                            line = self.content_lines[i]
-                            if i == start_point[0]:
-                                lines.append(line[start_point[1] :])
-                            elif i == end_point[0]:
-                                lines.append(line[: end_point[1]])
-                            else:
-                                lines.append(line)
-                    return "\n".join(lines)
+                    return str(line[start_point[1] : end_point[1]])
+                # r37cf (dogfood): extracted to drop nesting from 8 to ≤3.
+                return _c_extract_multiline_text(
+                    self.content_lines, start_point, end_point
+                )
             except Exception as fallback_error:
                 log_error(f"Fallback text extraction also failed: {fallback_error}")
                 return ""
 
-    def _extract_function_optimized(self, node: "tree_sitter.Node") -> Function | None:
+    # Extract elements from AST: _extract_function_optimized
+    def _extract_function_optimized(self, node: tree_sitter.Node) -> Function | None:
         """Extract function information optimized"""
-        try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
+        return _extract_func_standalone(
+            node,
+            self._get_node_text_optimized,
+            self.content_lines,
+            self._parse_function_signature,
+            self._calculate_complexity_optimized,
+            self._extract_comment_for_line,
+        )
 
-            # Extract function details
-            function_info = self._parse_function_signature(node)
-            if not function_info:
-                return None
-
-            name, return_type, parameters, modifiers = function_info
-
-            # Extract raw text
-            start_line_idx = max(0, start_line - 1)
-            end_line_idx = min(len(self.content_lines), end_line)
-            raw_text = "\n".join(self.content_lines[start_line_idx:end_line_idx])
-
-            # Calculate complexity
-            complexity_score = self._calculate_complexity_optimized(node)
-
-            # Extract comments/documentation
-            docstring = self._extract_comment_for_line(start_line)
-
-            return Function(
-                name=name,
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
-                language="c",
-                parameters=parameters,
-                return_type=return_type or "int",
-                modifiers=modifiers,
-                is_static="static" in modifiers,
-                visibility="public",  # C functions are effectively public
-                docstring=docstring,
-                complexity_score=complexity_score,
-            )
-        except (AttributeError, ValueError, TypeError) as e:
-            log_debug(f"Failed to extract function info: {e}")
-            return None
-        except Exception as e:
-            log_error(f"Unexpected error in function extraction: {e}")
-            return None
-
+    # Parse input into structured data: _parse_function_signature
     def _parse_function_signature(
-        self, node: "tree_sitter.Node"
+        self, node: tree_sitter.Node
     ) -> tuple[str, str, list[str], list[str]] | None:
         """Parse C function signature"""
-        try:
-            name = None
-            return_type = "int"
-            parameters: list[str] = []
-            modifiers: list[str] = []
+        return _parse_sig_standalone(
+            node, self._get_node_text_optimized, self._extract_parameters
+        )
 
-            def find_function_declarator(n: "tree_sitter.Node") -> None:
-                """Recursively find function_declarator in pointer_declarator"""
-                nonlocal name, parameters
-                for child in n.children:
-                    if child.type == "function_declarator":
-                        for grandchild in child.children:
-                            if grandchild.type == "identifier":
-                                name = self._get_node_text_optimized(grandchild)
-                            elif grandchild.type == "parameter_list":
-                                parameters = self._extract_parameters(grandchild)
-                    elif child.type == "pointer_declarator":
-                        find_function_declarator(child)
-
-            for child in node.children:
-                if child.type == "function_declarator":
-                    for grandchild in child.children:
-                        if grandchild.type == "identifier":
-                            name = self._get_node_text_optimized(grandchild)
-                        elif grandchild.type == "parameter_list":
-                            parameters = self._extract_parameters(grandchild)
-                elif child.type == "pointer_declarator":
-                    # Handle pointer return types (e.g., int* func())
-                    find_function_declarator(child)
-                    # Mark return type as pointer
-                    if return_type and "*" not in return_type:
-                        return_type = return_type + "*"
-                elif child.type in [
-                    "primitive_type",
-                    "type_identifier",
-                    "sized_type_specifier",
-                ]:
-                    return_type = self._get_node_text_optimized(child)
-                elif child.type == "storage_class_specifier":
-                    mod = self._get_node_text_optimized(child)
-                    if mod:
-                        modifiers.append(mod)
-                elif child.type == "type_qualifier":
-                    mod = self._get_node_text_optimized(child)
-                    if mod:
-                        modifiers.append(mod)
-
-            if not name:
-                return None
-
-            return name, return_type, parameters, modifiers
-        except Exception:
-            return None
-
-    def _extract_parameters(self, params_node: "tree_sitter.Node") -> list[str]:
+    # Extract elements from AST: _extract_parameters
+    def _extract_parameters(self, params_node: tree_sitter.Node) -> list[str]:
         """Extract function parameters"""
-        parameters: list[str] = []
+        return _extract_params_standalone(params_node, self._get_node_text_optimized)
 
-        for child in params_node.children:
-            if child.type == "parameter_declaration":
-                param_text = self._get_node_text_optimized(child)
-                parameters.append(param_text)
-            elif child.type == "variadic_parameter":
-                parameters.append("...")
-
-        return parameters
-
-    def _extract_struct_optimized(self, node: "tree_sitter.Node") -> Class | None:
+    # Extract elements from AST: _extract_struct_optimized
+    def _extract_struct_optimized(self, node: tree_sitter.Node) -> Class | None:
         """Extract struct information optimized"""
-        try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
+        return _extract_struct_standalone(
+            node, self._get_node_text_optimized, self.content_lines
+        )
 
-            struct_name = None
-
-            # Look for name in struct_specifier children first (named struct)
-            for child in node.children:
-                if child.type == "type_identifier":
-                    struct_name = self._get_node_text_optimized(child)
-
-            # If anonymous, check if parent is type_definition for typedef name
-            if (
-                not struct_name
-                and node.parent
-                and node.parent.type == "type_definition"
-            ):
-                for sibling in node.parent.children:
-                    if sibling.type == "type_identifier":
-                        struct_name = self._get_node_text_optimized(sibling)
-                        # Use the typedef position for the start/end lines
-                        start_line = node.parent.start_point[0] + 1
-                        end_line = node.parent.end_point[0] + 1
-                        break
-
-            if not struct_name:
-                # Truly anonymous struct
-                struct_name = f"anonymous_struct_{start_line}"
-
-            # Extract raw text
-            start_line_idx = max(0, start_line - 1)
-            end_line_idx = min(len(self.content_lines), end_line)
-            raw_text = "\n".join(self.content_lines[start_line_idx:end_line_idx])
-
-            # Extract comments/documentation
-            docstring = self._extract_comment_for_line(start_line)
-
-            return Class(
-                name=struct_name,
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
-                language="c",
-                class_type="struct",
-                full_qualified_name=struct_name,
-                docstring=docstring,
-            )
-        except Exception as e:
-            log_debug(f"Failed to extract struct info: {e}")
-            return None
-
-    def _extract_union_optimized(self, node: "tree_sitter.Node") -> Class | None:
+    # Extract elements from AST: _extract_union_optimized
+    def _extract_union_optimized(self, node: tree_sitter.Node) -> Class | None:
         """Extract union information optimized"""
-        try:
-            result = self._extract_struct_optimized(node)
-            if result:
-                result.class_type = "union"
-                if result.name.startswith("anonymous_struct_"):
-                    result.name = result.name.replace(
-                        "anonymous_struct_", "anonymous_union_"
-                    )
-                    result.full_qualified_name = result.name
-            return result
-        except Exception as e:
-            log_debug(f"Failed to extract union info: {e}")
-            return None
+        result = self._extract_struct_optimized(node)
+        if result:
+            result.class_type = "union"
+            if result.name.startswith("anonymous_struct_"):
+                result.name = result.name.replace(
+                    "anonymous_struct_", "anonymous_union_"
+                )
+                result.full_qualified_name = result.name
+        return result
 
-    def _extract_enum_optimized(self, node: "tree_sitter.Node") -> Class | None:
+    # Extract elements from AST: _extract_enum_optimized
+    def _extract_enum_optimized(self, node: tree_sitter.Node) -> Class | None:
         """Extract enum information optimized"""
-        try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
+        return _extract_enum_standalone(
+            node, self._get_node_text_optimized, self.content_lines
+        )
 
-            enum_name = None
-
-            # Look for name in enum_specifier children first (named enum)
-            for child in node.children:
-                if child.type == "type_identifier":
-                    enum_name = self._get_node_text_optimized(child)
-
-            # If anonymous, check if parent is type_definition for typedef name
-            if not enum_name and node.parent and node.parent.type == "type_definition":
-                for sibling in node.parent.children:
-                    if sibling.type == "type_identifier":
-                        enum_name = self._get_node_text_optimized(sibling)
-                        # Use the typedef position for the start/end lines
-                        start_line = node.parent.start_point[0] + 1
-                        end_line = node.parent.end_point[0] + 1
-                        break
-
-            if not enum_name:
-                # Truly anonymous enum
-                enum_name = f"anonymous_enum_{start_line}"
-
-            # Extract raw text
-            start_line_idx = max(0, start_line - 1)
-            end_line_idx = min(len(self.content_lines), end_line)
-            raw_text = "\n".join(self.content_lines[start_line_idx:end_line_idx])
-
-            # Extract comments/documentation
-            docstring = self._extract_comment_for_line(start_line)
-
-            return Class(
-                name=enum_name,
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
-                language="c",
-                class_type="enum",
-                full_qualified_name=enum_name,
-                docstring=docstring,
-            )
-        except Exception as e:
-            log_debug(f"Failed to extract enum info: {e}")
-            return None
-
-    def _extract_field_optimized(self, node: "tree_sitter.Node") -> list[Variable]:
+    # Extract elements from AST: _extract_field_optimized
+    def _extract_field_optimized(self, node: tree_sitter.Node) -> list[Variable]:
         """Extract field declaration"""
-        fields: list[Variable] = []
+        return _extract_field_standalone(node, self._get_node_text_optimized)
 
-        try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-
-            field_type = None
-            field_names: list[str] = []
-            modifiers: list[str] = []
-
-            for child in node.children:
-                if child.type in [
-                    "primitive_type",
-                    "type_identifier",
-                    "sized_type_specifier",
-                    "struct_specifier",
-                    "union_specifier",
-                    "enum_specifier",
-                ]:
-                    field_type = self._get_node_text_optimized(child)
-                elif child.type == "type_qualifier":
-                    mod = self._get_node_text_optimized(child)
-                    if mod:
-                        modifiers.append(mod)
-                elif child.type == "field_identifier":
-                    field_names.append(self._get_node_text_optimized(child))
-                elif child.type == "array_declarator":
-                    # Handle array fields (e.g. char name[50])
-                    for grandchild in child.children:
-                        if grandchild.type == "field_identifier":
-                            field_names.append(
-                                self._get_node_text_optimized(grandchild)
-                            )
-                    # Append [] to type to indicate array
-                    field_type = field_type + "[]" if field_type else "[]"
-                elif child.type == "field_declaration_list":
-                    # Nested struct/union, skip
-                    pass
-                elif child.type == "init_declarator":
-                    for grandchild in child.children:
-                        if grandchild.type == "field_identifier":
-                            field_names.append(
-                                self._get_node_text_optimized(grandchild)
-                            )
-                        elif grandchild.type == "identifier":
-                            field_names.append(
-                                self._get_node_text_optimized(grandchild)
-                            )
-                elif child.type == "pointer_declarator":
-                    # Handle pointer fields
-                    for grandchild in child.children:
-                        if grandchild.type == "field_identifier":
-                            field_names.append(
-                                self._get_node_text_optimized(grandchild)
-                            )
-                            field_type = field_type + "*" if field_type else "*"
-
-            if not field_type or not field_names:
-                return fields
-
-            raw_text = self._get_node_text_optimized(node)
-
-            # In C, struct/union fields are always public (no access control)
-            visibility = "public"
-
-            for field_name in field_names:
-                field = Variable(
-                    name=field_name,
-                    start_line=start_line,
-                    end_line=end_line,
-                    raw_text=raw_text,
-                    language="c",
-                    variable_type=field_type,
-                    modifiers=modifiers,
-                    is_constant="const" in modifiers,
-                    visibility=visibility,
-                )
-                fields.append(field)
-
-        except Exception as e:
-            log_debug(f"Failed to extract field info: {e}")
-
-        return fields
-
-    def _extract_variable_declaration(self, node: "tree_sitter.Node") -> list[Variable]:
+    # Extract elements from AST: _extract_variable_declaration
+    def _extract_variable_declaration(self, node: tree_sitter.Node) -> list[Variable]:
         """Extract variable declarations (not struct members)"""
-        # Skip if parent is a struct/union body
-        if node.parent and node.parent.type == "field_declaration_list":
-            return []
+        return _extract_var_decl_standalone(node, self._get_node_text_optimized)
 
-        variables: list[Variable] = []
-
-        try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-
-            var_type = None
-            var_names: list[str] = []
-            modifiers: list[str] = []
-
-            for child in node.children:
-                if child.type in [
-                    "primitive_type",
-                    "type_identifier",
-                    "sized_type_specifier",
-                    "struct_specifier",
-                    "union_specifier",
-                    "enum_specifier",
-                ]:
-                    var_type = self._get_node_text_optimized(child)
-                elif child.type == "storage_class_specifier":
-                    mod = self._get_node_text_optimized(child)
-                    if mod:
-                        modifiers.append(mod)
-                elif child.type == "type_qualifier":
-                    mod = self._get_node_text_optimized(child)
-                    if mod:
-                        modifiers.append(mod)
-                elif child.type == "identifier":
-                    var_names.append(self._get_node_text_optimized(child))
-                elif child.type == "init_declarator":
-                    for grandchild in child.children:
-                        if grandchild.type == "identifier":
-                            var_names.append(self._get_node_text_optimized(grandchild))
-                elif child.type == "pointer_declarator":
-                    # Handle pointer declarations
-                    for grandchild in child.children:
-                        if grandchild.type == "identifier":
-                            var_names.append(self._get_node_text_optimized(grandchild))
-                            var_type = var_type + "*" if var_type else "*"
-
-            if not var_type or not var_names:
-                return variables
-
-            raw_text = self._get_node_text_optimized(node)
-
-            # C global variables visibility:
-            # - static = private (internal linkage)
-            # - non-static = public (external linkage)
-            visibility = "private" if "static" in modifiers else "public"
-
-            for var_name in var_names:
-                variable = Variable(
-                    name=var_name,
-                    start_line=start_line,
-                    end_line=end_line,
-                    raw_text=raw_text,
-                    language="c",
-                    variable_type=var_type,
-                    modifiers=modifiers,
-                    is_static="static" in modifiers,
-                    is_constant="const" in modifiers,
-                    visibility=visibility,
-                )
-                variables.append(variable)
-
-        except Exception as e:
-            log_debug(f"Failed to extract variable declaration: {e}")
-
-        return variables
-
+    # Extract elements from AST: _extract_include_info
     def _extract_include_info(
-        self, node: "tree_sitter.Node", source_code: str
+        self, node: tree_sitter.Node, source_code: str
     ) -> Import | None:
         """Extract include directive information"""
-        try:
-            include_text = self._get_node_text_optimized(node)
-            line_num = node.start_point[0] + 1
+        from .c_helpers import _extract_include_info as _impl
 
-            # Determine if it's a system include (<...>) or local include ("...")
-            is_system = "<" in include_text
+        return _impl(node, self._get_node_text_optimized)
 
-            # Extract the included file path
-            if is_system:
-                match = re.search(r"<([^>]+)>", include_text)
-            else:
-                match = re.search(r'"([^"]+)"', include_text)
-
-            if match:
-                include_path = match.group(1)
-
-                return Import(
-                    name=include_path,
-                    start_line=line_num,
-                    end_line=line_num,
-                    raw_text=include_text,
-                    language="c",
-                    module_name=include_path,
-                    import_statement=include_text,
-                )
-
-        except Exception as e:
-            log_debug(f"Failed to extract include info: {e}")
-
-        return None
-
+    # Extract elements from AST: _extract_includes_fallback
     def _extract_includes_fallback(self, source_code: str) -> list[Import]:
         """Fallback include extraction using regex"""
-        imports: list[Import] = []
-        lines = source_code.split("\n")
+        from .c_helpers import _extract_includes_fallback
 
-        for line_num, line in enumerate(lines, 1):
-            line = line.strip()
-            if line.startswith("#include"):
-                # System include
-                system_match = re.search(r"#include\s*<([^>]+)>", line)
-                if system_match:
-                    include_path = system_match.group(1)
-                    imports.append(
-                        Import(
-                            name=include_path,
-                            start_line=line_num,
-                            end_line=line_num,
-                            raw_text=line,
-                            language="c",
-                            module_name=include_path,
-                            import_statement=line,
-                        )
-                    )
-                else:
-                    # Local include
-                    local_match = re.search(r'#include\s*"([^"]+)"', line)
-                    if local_match:
-                        include_path = local_match.group(1)
-                        imports.append(
-                            Import(
-                                name=include_path,
-                                start_line=line_num,
-                                end_line=line_num,
-                                raw_text=line,
-                                language="c",
-                                module_name=include_path,
-                                import_statement=line,
-                            )
-                        )
+        return _extract_includes_fallback(source_code)
 
-        return imports
-
-    def _extract_macro_definition(self, node: "tree_sitter.Node") -> list[Variable]:
+    # Extract elements from AST: _extract_macro_definition
+    def _extract_macro_definition(self, node: tree_sitter.Node) -> list[Variable]:
         """Extract macro definitions as constants"""
-        variables: list[Variable] = []
-        try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
+        return _extract_macro_def_standalone(node, self._get_node_text_optimized)
 
-            name = None
-
-            for child in node.children:
-                if child.type == "identifier":
-                    name = self._get_node_text_optimized(child)
-                    break
-
-            if name:
-                raw_text = self._get_node_text_optimized(node)
-                var = Variable(
-                    name=name,
-                    start_line=start_line,
-                    end_line=end_line,
-                    raw_text=raw_text,
-                    language="c",
-                    variable_type="macro",
-                    modifiers=["const", "macro"],
-                    is_constant=True,
-                    visibility="public",
-                )
-                variables.append(var)
-        except Exception as e:
-            log_debug(f"Failed to extract macro: {e}")
-
-        return variables
-
-    def _extract_macro_function(self, node: "tree_sitter.Node") -> Function | None:
+    # Extract elements from AST: _extract_macro_function
+    def _extract_macro_function(self, node: tree_sitter.Node) -> Function | None:
         """Extract macro function definition"""
-        try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
+        return _extract_macro_func_standalone(node, self._get_node_text_optimized)
 
-            name = None
-            params: list[str] = []
-
-            for child in node.children:
-                if child.type == "identifier":
-                    name = self._get_node_text_optimized(child)
-                elif child.type == "preproc_params":
-                    for grandchild in child.children:
-                        if grandchild.type == "identifier":
-                            params.append(self._get_node_text_optimized(grandchild))
-                        elif grandchild.type == "variadic_parameter":  # Handle ...
-                            params.append("...")
-
-            if name:
-                return Function(
-                    name=name,
-                    start_line=start_line,
-                    end_line=end_line,
-                    raw_text=self._get_node_text_optimized(node),
-                    language="c",
-                    parameters=params,
-                    return_type="macro",
-                    modifiers=["macro"],
-                    visibility="public",
-                    complexity_score=1,
-                )
-        except Exception as e:
-            log_debug(f"Failed to extract macro function: {e}")
-            return None
-        return None
-
-    def _calculate_complexity_optimized(self, node: "tree_sitter.Node") -> int:
+    def _calculate_complexity_optimized(self, node: tree_sitter.Node) -> int:
         """Calculate cyclomatic complexity"""
-        complexity = 1  # Base complexity
+        return _calc_complexity_standalone(node)
 
-        decision_nodes = [
-            "if_statement",
-            "while_statement",
-            "for_statement",
-            "switch_statement",
-            "case_statement",
-            "conditional_expression",
-            "do_statement",
-        ]
-
-        def count_decisions(n: "tree_sitter.Node") -> int:
-            count = 0
-            if hasattr(n, "type") and n.type in decision_nodes:
-                count += 1
-            if hasattr(n, "children"):
-                try:
-                    for child in n.children:
-                        count += count_decisions(child)
-                except (TypeError, AttributeError):
-                    pass
-            return count
-
-        complexity += count_decisions(node)
-        return complexity
-
+    # Extract elements from AST: _extract_comment_for_line
     def _extract_comment_for_line(self, line: int) -> str | None:
         """Extract comment (documentation) for a specific line"""
-        try:
-            # Look for comment immediately before the line
-            for i in range(max(0, line - 5), line):
-                if i < len(self.content_lines):
-                    line_content = self.content_lines[i].strip()
-                    # Check for Doxygen-style comments
-                    if line_content.startswith("/**"):
-                        comment_lines = []
-                        for j in range(i, min(len(self.content_lines), line)):
-                            doc_line = self.content_lines[j].strip()
-                            comment_lines.append(doc_line)
-                            if doc_line.endswith("*/"):
-                                break
-                        return "\n".join(comment_lines)
-                    # Check for /* ... */ style comments
-                    elif line_content.startswith("/*"):
-                        comment_lines = []
-                        for j in range(i, min(len(self.content_lines), line)):
-                            doc_line = self.content_lines[j].strip()
-                            comment_lines.append(doc_line)
-                            if doc_line.endswith("*/"):
-                                break
-                        return "\n".join(comment_lines)
+        return _extract_comment_standalone(line, self.content_lines)
 
-        except Exception as e:
-            log_debug(f"Failed to extract comment: {e}")
 
-        return None
+def _bind_c_parser_language(language: Any) -> Any:
+    """Create a ``tree_sitter.Parser`` bound to ``language``.
 
-    def _extract_preproc_conditional(
-        self, node: "tree_sitter.Node"
-    ) -> Expression | None:
-        """Extract preprocessor conditional directives (if/ifdef/elif/else)"""
-        try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
+    Returns the parser instance on success or an error message string
+    when the constructor-fallback path itself raises. Mirror of
+    ``language_loader._bind_parser_language`` — local copy lets c_plugin
+    keep its log_error import + custom error message format.
 
-            raw_text = self._get_node_text_optimized(node)
+    r37ds (dogfood): lifted from ``analyze_file`` to flatten the
+    try/except inside an if/elif/else branch from depth 6 to 3.
+    """
+    import tree_sitter
 
-            # Get first line as preview (the directive line)
-            preview = raw_text.split("\n")[0] if raw_text else ""
-
-            # Determine the expression kind
-            expression_kind = node.type.replace("preproc_", "")
-
-            # Extract name from the conditional (if available)
-            name = preview.strip()
-
-            return Expression(
-                name=name,
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
-                language="c",
-                node_type=node.type,
-                expression_kind=expression_kind,
-                preview=preview,
-            )
-        except Exception as e:
-            log_debug(f"Failed to extract preprocessor conditional: {e}")
-            return None
-
-    def _extract_preproc_defined(self, node: "tree_sitter.Node") -> Expression | None:
-        """Extract preprocessor defined() expressions"""
-        try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-
-            raw_text = self._get_node_text_optimized(node)
-
-            return Expression(
-                name=raw_text,
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
-                language="c",
-                node_type=node.type,
-                expression_kind="defined",
-                preview=raw_text,
-            )
-        except Exception as e:
-            log_debug(f"Failed to extract preproc_defined: {e}")
-            return None
-
-    def _extract_preproc_directive(self, node: "tree_sitter.Node") -> Expression | None:
-        """Extract generic preprocessor directives (like #undef)"""
-        try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-
-            raw_text = self._get_node_text_optimized(node)
-
-            return Expression(
-                name=raw_text,
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
-                language="c",
-                node_type=node.type,
-                expression_kind="directive",
-                preview=raw_text,
-            )
-        except Exception as e:
-            log_debug(f"Failed to extract preproc_directive: {e}")
-            return None
-
-    def _extract_parenthesized_declarator(
-        self, node: "tree_sitter.Node"
-    ) -> Expression | None:
-        """Extract parenthesized declarators (function pointers in declarations)"""
-        try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-
-            raw_text = self._get_node_text_optimized(node)
-
-            return Expression(
-                name=raw_text,
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
-                language="c",
-                node_type=node.type,
-                expression_kind="parenthesized_declarator",
-                preview=raw_text,
-            )
-        except Exception as e:
-            log_debug(f"Failed to extract parenthesized_declarator: {e}")
-            return None
+    parser = tree_sitter.Parser()
+    if hasattr(parser, "set_language"):
+        parser.set_language(language)
+        return parser
+    if hasattr(parser, "language"):
+        parser.language = language
+        return parser
+    try:
+        return tree_sitter.Parser(language)
+    except Exception as e:
+        log_error(f"Failed to create parser with language: {e}")
+        return str(e)
 
 
 class CPlugin(LanguagePlugin):
@@ -1031,13 +393,15 @@ class CPlugin(LanguagePlugin):
         """Get supported file extensions."""
         return [".c", ".h"]
 
+    # Extract elements from AST: create_extractor
     def create_extractor(self) -> ElementExtractor:
         """Create a new element extractor instance."""
         return CElementExtractor()
 
+    # Analyze source code structure: analyze_file
     async def analyze_file(
-        self, file_path: str, request: "AnalysisRequest"
-    ) -> "AnalysisResult":
+        self, file_path: str, request: AnalysisRequest
+    ) -> AnalysisResult:
         """Analyze C code and return structured results."""
         from ..models import AnalysisResult
 
@@ -1051,44 +415,38 @@ class CPlugin(LanguagePlugin):
                 return AnalysisResult(
                     file_path=file_path,
                     language="c",
-                    line_count=len(file_content.split("\n")),
+                    line_count=len(file_content.splitlines()),
                     elements=[],
                     source_code=file_content,
                 )
 
-            import tree_sitter
-
-            parser = tree_sitter.Parser()
-
-            if hasattr(parser, "set_language"):
-                parser.set_language(language)
-            elif hasattr(parser, "language"):
-                parser.language = language
-            else:
-                try:
-                    parser = tree_sitter.Parser(language)
-                except Exception as e:
-                    log_error(f"Failed to create parser with language: {e}")
-                    return AnalysisResult(
-                        file_path=file_path,
-                        language="c",
-                        line_count=len(file_content.split("\n")),
-                        elements=[],
-                        source_code=file_content,
-                        error_message=f"Parser creation failed: {e}",
-                        success=False,
-                    )
+            # r37ds (dogfood): flatten parser-language binding via helper.
+            parser_or_error = _bind_c_parser_language(language)
+            if isinstance(parser_or_error, str):
+                return AnalysisResult(
+                    file_path=file_path,
+                    language="c",
+                    line_count=len(file_content.splitlines()),
+                    elements=[],
+                    source_code=file_content,
+                    error_message=f"Parser creation failed: {parser_or_error}",
+                    success=False,
+                )
+            parser = parser_or_error
 
             tree = parser.parse(file_content.encode("utf-8"))
 
-            elements_dict = self.extract_elements(tree, file_content)
-
-            all_elements = []
-            all_elements.extend(elements_dict.get("functions", []))
-            all_elements.extend(elements_dict.get("classes", []))
-            all_elements.extend(elements_dict.get("variables", []))
-            all_elements.extend(elements_dict.get("imports", []))
-            all_elements.extend(elements_dict.get("expressions", []))
+            extractor = self.create_extractor()
+            # ARCH-A3: standardised on ElementExtractor.set_file_encoding so
+            # this propagation is part of the documented public surface,
+            # not a copy-paste setattr trick. KI-R5 originally fixed the
+            # silent-encoding-loss bug with a raw setattr.
+            extractor.set_file_encoding(detected_encoding)
+            all_elements: list[Any] = []
+            all_elements.extend(extractor.extract_functions(tree, file_content))
+            all_elements.extend(extractor.extract_classes(tree, file_content))
+            all_elements.extend(extractor.extract_variables(tree, file_content))
+            all_elements.extend(extractor.extract_imports(tree, file_content))
 
             node_count = (
                 self._count_tree_nodes(tree.root_node) if tree and tree.root_node else 0
@@ -1097,7 +455,7 @@ class CPlugin(LanguagePlugin):
             return AnalysisResult(
                 file_path=file_path,
                 language="c",
-                line_count=len(file_content.split("\n")),
+                line_count=len(file_content.splitlines()),
                 elements=all_elements,
                 node_count=node_count,
                 source_code=file_content,
@@ -1156,6 +514,7 @@ class CPlugin(LanguagePlugin):
             log_error(f"Failed to load tree-sitter language for C: {e}")
             return None
 
+    # Extract elements from AST: extract_elements
     def extract_elements(self, tree: Any | None, source_code: str) -> dict[str, Any]:
         """Extract all elements from C code."""
         if tree is None:
@@ -1164,7 +523,6 @@ class CPlugin(LanguagePlugin):
                 "classes": [],
                 "variables": [],
                 "imports": [],
-                "expressions": [],
             }
 
         try:
@@ -1174,7 +532,6 @@ class CPlugin(LanguagePlugin):
                 "classes": extractor.extract_classes(tree, source_code),
                 "variables": extractor.extract_variables(tree, source_code),
                 "imports": extractor.extract_imports(tree, source_code),
-                "expressions": extractor.extract_expressions(tree, source_code),
             }
         except Exception as e:
             log_error(f"Error extracting elements: {e}")
@@ -1183,5 +540,4 @@ class CPlugin(LanguagePlugin):
                 "classes": [],
                 "variables": [],
                 "imports": [],
-                "expressions": [],
             }

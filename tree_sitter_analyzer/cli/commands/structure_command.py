@@ -5,7 +5,7 @@ Structure Command
 Handles structure analysis functionality with appropriate Japanese output.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from ...constants import (
     ELEMENT_TYPE_CLASS,
@@ -43,7 +43,8 @@ class StructureCommand(BaseCommand):
 
     def _output_structure_analysis(self, analysis_result: "AnalysisResult") -> None:
         """Output structure analysis results with appropriate header."""
-        output_section("Structure Analysis Results")
+        if self.args.output_format not in ("json", "toon"):
+            output_section("Structure Analysis Results")
 
         # Convert to legacy structure format expected by tests
         structure_dict = self._convert_to_legacy_format(analysis_result)
@@ -58,10 +59,98 @@ class StructureCommand(BaseCommand):
             self._output_text_format(structure_dict)
 
     def _convert_to_legacy_format(self, analysis_result: "AnalysisResult") -> dict:
-        """Convert AnalysisResult to legacy structure format expected by tests."""
-        import time
+        """Convert AnalysisResult to legacy structure format expected by tests.
 
-        # Extract elements by type
+        r37d6 (dogfood): 131 lines → ~20 lines of phase dispatch. Phase
+        helpers (``_partition_structure_elements``, ``_legacy_package_block``,
+        ``_legacy_statistics_block``, ``_attach_structure_envelope``) own
+        the per-section work. Output dict keys + tuple shapes are preserved.
+
+        r37dy (dogfood): per-element row builders抽到 static helpers so
+        the assembly dict drops from depth 6 to 3.
+        """
+        classes, methods, fields, imports, packages = (
+            self._partition_structure_elements(analysis_result)
+        )
+        legacy_dict: dict[str, Any] = {
+            "file_path": analysis_result.file_path,
+            "language": analysis_result.language,
+            "package": self._legacy_package_block(packages),
+            "classes": [self._legacy_class_row(c) for c in classes],
+            "methods": [self._legacy_method_row(m) for m in methods],
+            "fields": [self._legacy_field_row(f) for f in fields],
+            "imports": [self._legacy_import_row(i) for i in imports],
+            "annotations": [],
+            "statistics": self._legacy_statistics_block(
+                analysis_result, classes, methods, fields, imports
+            ),
+            "analysis_metadata": self._legacy_metadata_block(analysis_result),
+        }
+        self._attach_structure_envelope(
+            legacy_dict,
+            analysis_result,
+            classes=classes,
+            methods=methods,
+            fields=fields,
+            imports=imports,
+        )
+        return legacy_dict
+
+    @staticmethod
+    def _legacy_class_row(c: Any) -> dict[str, Any]:
+        """Return the legacy ``classes[]`` dict row for one class element."""
+        return {
+            "name": getattr(c, "name", "unknown"),
+            "visibility": getattr(c, "visibility", ""),
+            "line_range": (
+                getattr(c, "start_line", 0),
+                getattr(c, "end_line", 0),
+            ),
+        }
+
+    @staticmethod
+    def _legacy_method_row(m: Any) -> dict[str, Any]:
+        """Return the legacy ``methods[]`` dict row for one method element."""
+        return {
+            "name": getattr(m, "name", "unknown"),
+            "visibility": getattr(m, "visibility", ""),
+            "line_range": (
+                getattr(m, "start_line", 0),
+                getattr(m, "end_line", 0),
+            ),
+        }
+
+    @staticmethod
+    def _legacy_field_row(f: Any) -> dict[str, Any]:
+        """Return the legacy ``fields[]`` dict row for one field element."""
+        return {
+            "name": getattr(f, "name", "unknown"),
+            "type": getattr(f, "type_annotation", ""),
+            "line_range": (
+                getattr(f, "start_line", 0),
+                getattr(f, "end_line", 0),
+            ),
+        }
+
+    @staticmethod
+    def _legacy_import_row(i: Any) -> dict[str, Any]:
+        """Return the legacy ``imports[]`` dict row for one import element."""
+        return {
+            "name": getattr(i, "name", "unknown"),
+            "is_static": getattr(i, "is_static", False),
+            "is_wildcard": getattr(i, "is_wildcard", False),
+            "statement": getattr(i, "import_statement", ""),
+            "line_range": (
+                getattr(i, "start_line", 0),
+                getattr(i, "end_line", 0),
+            ),
+        }
+
+    @staticmethod
+    def _partition_structure_elements(
+        analysis_result: "AnalysisResult",
+    ) -> tuple[list[Any], list[Any], list[Any], list[Any], list[Any]]:
+        """Bucket elements into (classes, methods, fields, imports, packages)."""
         classes = [
             e
             for e in analysis_result.elements
@@ -87,83 +176,86 @@ class StructureCommand(BaseCommand):
             for e in analysis_result.elements
             if is_element_of_type(e, ELEMENT_TYPE_PACKAGE)
         ]
+        return classes, methods, fields, imports, packages
+
+    @staticmethod
+    def _legacy_package_block(packages: list[Any]) -> dict[str, Any] | None:
+        """Return the package dict (name + line_range tuple) or ``None``."""
+        if not packages:
+            return None
+        return {
+            "name": packages[0].name,
+            "line_range": (
+                packages[0].start_line,
+                packages[0].end_line,
+            ),
+        }
+
+    @staticmethod
+    def _legacy_statistics_block(
+        analysis_result: "AnalysisResult",
+        classes: list[Any],
+        methods: list[Any],
+        fields: list[Any],
+        imports: list[Any],
+    ) -> dict[str, Any]:
+        """Return the legacy ``statistics`` dict."""
+        return {
+            "class_count": len(classes),
+            "method_count": len(methods),
+            "field_count": len(fields),
+            "import_count": len(imports),
+            "total_lines": analysis_result.line_count,
+            "annotation_count": 0,
+        }
+
+    @staticmethod
+    def _legacy_metadata_block(
+        analysis_result: "AnalysisResult",
+    ) -> dict[str, Any]:
+        """Return the legacy ``analysis_metadata`` dict (incl. timestamp)."""
+        import time
 
         return {
-            "file_path": analysis_result.file_path,
+            "analysis_time": getattr(analysis_result, "analysis_time", 0.0),
             "language": analysis_result.language,
-            "package": (
-                {
-                    "name": packages[0].name,
-                    "line_range": (
-                        packages[0].start_line,
-                        packages[0].end_line,
-                    ),
-                }
-                if packages
-                else None
+            "file_path": analysis_result.file_path,
+            "analyzer_version": "2.0.0",
+            "timestamp": time.time(),
+        }
+
+    @staticmethod
+    def _attach_structure_envelope(
+        legacy_dict: dict[str, Any],
+        analysis_result: "AnalysisResult",
+        *,
+        classes: list[Any],
+        methods: list[Any],
+        fields: list[Any],
+        imports: list[Any],
+    ) -> None:
+        """Attach the r37aa canonical envelope (success / summary_line /
+        verdict / agent_summary). Third CLI surface (after ``--advanced``
+        r37y and ``--summary`` r37z) that was emitting ``=None`` for the
+        envelope fields — agents reading the response shape couldn't tell
+        the call succeeded vs. silently failed.
+        """
+        summary_line = (
+            f"{analysis_result.file_path} ({analysis_result.language}) structure: "
+            f"classes={len(classes)} methods={len(methods)} "
+            f"fields={len(fields)} imports={len(imports)} "
+            f"lines={analysis_result.line_count}"
+        )
+        legacy_dict["success"] = True
+        legacy_dict["summary_line"] = summary_line
+        legacy_dict["verdict"] = "INFO"
+        legacy_dict["agent_summary"] = {
+            "summary_line": summary_line,
+            "next_step": (
+                "Use --table for a Markdown breakdown, or extract_code_section "
+                "(MCP) to read specific elements by line range."
             ),
-            "classes": [
-                {
-                    "name": getattr(c, "name", "unknown"),
-                    "visibility": getattr(c, "visibility", ""),
-                    "line_range": (
-                        getattr(c, "start_line", 0),
-                        getattr(c, "end_line", 0),
-                    ),
-                }
-                for c in classes
-            ],
-            "methods": [
-                {
-                    "name": getattr(m, "name", "unknown"),
-                    "visibility": getattr(m, "visibility", ""),
-                    "line_range": (
-                        getattr(m, "start_line", 0),
-                        getattr(m, "end_line", 0),
-                    ),
-                }
-                for m in methods
-            ],
-            "fields": [
-                {
-                    "name": getattr(f, "name", "unknown"),
-                    "type": getattr(f, "type_annotation", ""),
-                    "line_range": (
-                        getattr(f, "start_line", 0),
-                        getattr(f, "end_line", 0),
-                    ),
-                }
-                for f in fields
-            ],
-            "imports": [
-                {
-                    "name": getattr(i, "name", "unknown"),
-                    "is_static": getattr(i, "is_static", False),
-                    "is_wildcard": getattr(i, "is_wildcard", False),
-                    "statement": getattr(i, "import_statement", ""),
-                    "line_range": (
-                        getattr(i, "start_line", 0),
-                        getattr(i, "end_line", 0),
-                    ),
-                }
-                for i in imports
-            ],
-            "annotations": [],
-            "statistics": {
-                "class_count": len(classes),
-                "method_count": len(methods),
-                "field_count": len(fields),
-                "import_count": len(imports),
-                "total_lines": analysis_result.line_count,
-                "annotation_count": 0,
-            },
-            "analysis_metadata": {
-                "analysis_time": getattr(analysis_result, "analysis_time", 0.0),
-                "language": analysis_result.language,
-                "file_path": analysis_result.file_path,
-                "analyzer_version": "2.0.0",
-                "timestamp": time.time(),
-            },
+            "verdict": "INFO",
         }
 
     def _output_text_format(self, structure_dict: dict) -> None:

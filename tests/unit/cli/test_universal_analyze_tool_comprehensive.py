@@ -137,7 +137,11 @@ class TestArgumentValidation:
     def test_validate_arguments_invalid_analysis_type(self):
         """Test validation fails with invalid analysis_type"""
         tool = UniversalAnalyzeTool()
-        args = {"file_path": "test.py", "analysis_type": "invalid", "output_format": "json"}
+        args = {
+            "file_path": "test.py",
+            "analysis_type": "invalid",
+            "output_format": "json",
+        }
 
         with pytest.raises(ValueError, match="analysis_type must be one of"):
             tool.validate_arguments(args)
@@ -153,7 +157,11 @@ class TestArgumentValidation:
     def test_validate_arguments_invalid_include_queries_type(self):
         """Test validation fails with non-boolean include_queries"""
         tool = UniversalAnalyzeTool()
-        args = {"file_path": "test.py", "include_queries": "true", "output_format": "json"}
+        args = {
+            "file_path": "test.py",
+            "include_queries": "true",
+            "output_format": "json",
+        }
 
         with pytest.raises(ValueError, match="include_queries must be a boolean"):
             tool.validate_arguments(args)
@@ -195,15 +203,26 @@ class TestExecution:
 
     @pytest.mark.asyncio
     async def test_execute_unsupported_language(self, tmp_path):
-        """Test execution fails with unsupported language"""
+        """O3 (round-30 dogfood): an explicit ``language`` override that
+        doesn't match the file extension now trips the strict mismatch
+        gate FIRST, returning a validation envelope instead of falling
+        through to the "language not supported" path. This is the
+        canonical behaviour — silent acceptance of bad overrides was
+        the original bug class."""
         test_file = tmp_path / "test.py"
         test_file.write_text("print('hello')")
 
         tool = UniversalAnalyzeTool(str(tmp_path))
-        args = {"file_path": str(test_file), "language": "unsupported_lang", "output_format": "json"}
+        args = {
+            "file_path": str(test_file),
+            "language": "unsupported_lang",
+            "output_format": "json",
+        }
 
-        with pytest.raises(AnalysisError, match="not supported"):
-            await tool.execute(args)
+        result = await tool.execute(args)
+        assert result.get("success") is False
+        assert result.get("error_type") == "validation"
+        assert "doesn't match" in (result.get("error") or "")
 
     @pytest.mark.asyncio
     async def test_execute_invalid_analysis_type(self, tmp_path):
@@ -212,7 +231,11 @@ class TestExecution:
         test_file.write_text("print('hello')")
 
         tool = UniversalAnalyzeTool(str(tmp_path))
-        args = {"file_path": str(test_file), "analysis_type": "invalid_type", "output_format": "json"}
+        args = {
+            "file_path": str(test_file),
+            "analysis_type": "invalid_type",
+            "output_format": "json",
+        }
 
         with pytest.raises(AnalysisError, match="Invalid analysis_type"):
             await tool.execute(args)
@@ -248,7 +271,11 @@ class TestExecution:
         with patch.object(
             tool.analysis_engine, "analyze", AsyncMock(return_value=mock_result)
         ):
-            args = {"file_path": str(test_file), "analysis_type": "basic", "output_format": "json"}
+            args = {
+                "file_path": str(test_file),
+                "analysis_type": "basic",
+                "output_format": "json",
+            }
             result = await tool.execute(args)
 
             assert "file_path" in result
@@ -287,7 +314,11 @@ class TestExecution:
         with patch.object(
             tool.analysis_engine, "analyze", AsyncMock(return_value=mock_result)
         ):
-            args = {"file_path": str(test_file), "analysis_type": "detailed", "output_format": "json"}
+            args = {
+                "file_path": str(test_file),
+                "analysis_type": "detailed",
+                "output_format": "json",
+            }
             result = await tool.execute(args)
 
             assert result["analysis_type"] == "detailed"
@@ -402,7 +433,11 @@ class TestExecution:
         with patch.object(
             tool.analysis_engine, "analyze", AsyncMock(return_value=mock_result)
         ):
-            args = {"file_path": str(test_file), "analysis_type": "structure", "output_format": "json"}
+            args = {
+                "file_path": str(test_file),
+                "analysis_type": "structure",
+                "output_format": "json",
+            }
             result = await tool.execute(args)
 
             assert result["analysis_type"] == "structure"
@@ -438,7 +473,11 @@ class TestExecution:
         with patch.object(
             tool.analysis_engine, "analyze", AsyncMock(return_value=mock_result)
         ):
-            args = {"file_path": str(test_file), "analysis_type": "metrics", "output_format": "json"}
+            args = {
+                "file_path": str(test_file),
+                "analysis_type": "metrics",
+                "output_format": "json",
+            }
             result = await tool.execute(args)
 
             assert result["analysis_type"] == "metrics"

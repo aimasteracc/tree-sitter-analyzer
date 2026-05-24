@@ -341,9 +341,9 @@ class TestYAMLParsingConsistencyProperties:
             sequences1 = [e for e in result1.elements if e.element_type == "sequence"]
             sequences2 = [e for e in result2.elements if e.element_type == "sequence"]
 
-            assert len(sequences1) == len(
-                sequences2
-            ), f"Sequence count mismatch: {len(sequences1)} vs {len(sequences2)}"
+            assert len(sequences1) == len(sequences2), (
+                f"Sequence count mismatch: {len(sequences1)} vs {len(sequences2)}"
+            )
 
             # Property: Sequence child counts must be consistent
             for seq1, seq2 in zip(sequences1, sequences2, strict=False):
@@ -393,18 +393,18 @@ class TestYAMLParsingConsistencyProperties:
             nesting1 = [e.nesting_level for e in result1.elements]
             nesting2 = [e.nesting_level for e in result2.elements]
 
-            assert (
-                nesting1 == nesting2
-            ), f"Nesting levels mismatch.\nParse 1: {nesting1}\nParse 2: {nesting2}"
+            assert nesting1 == nesting2, (
+                f"Nesting levels mismatch.\nParse 1: {nesting1}\nParse 2: {nesting2}"
+            )
 
             # Property: Element hierarchy must be consistent
             for e1, e2 in zip(result1.elements, result2.elements, strict=False):
-                assert (
-                    e1.element_type == e2.element_type
-                ), f"Element type mismatch at line {e1.start_line}"
-                assert (
-                    e1.nesting_level == e2.nesting_level
-                ), f"Nesting level mismatch at line {e1.start_line}"
+                assert e1.element_type == e2.element_type, (
+                    f"Element type mismatch at line {e1.start_line}"
+                )
+                assert e1.nesting_level == e2.nesting_level, (
+                    f"Nesting level mismatch at line {e1.start_line}"
+                )
 
     @pytest.mark.asyncio
     @settings(
@@ -447,15 +447,15 @@ class TestYAMLParsingConsistencyProperties:
             comments1 = [e for e in result1.elements if e.element_type == "comment"]
             comments2 = [e for e in result2.elements if e.element_type == "comment"]
 
-            assert len(comments1) == len(
-                comments2
-            ), f"Comment count mismatch: {len(comments1)} vs {len(comments2)}"
+            assert len(comments1) == len(comments2), (
+                f"Comment count mismatch: {len(comments1)} vs {len(comments2)}"
+            )
 
             # Property: Comment content must be consistent
             for c1, c2 in zip(comments1, comments2, strict=False):
-                assert (
-                    c1.raw_text == c2.raw_text
-                ), f"Comment text mismatch at line {c1.start_line}"
+                assert c1.raw_text == c2.raw_text, (
+                    f"Comment text mismatch at line {c1.start_line}"
+                )
 
     @pytest.mark.asyncio
     @settings(
@@ -507,9 +507,9 @@ class TestYAMLParsingConsistencyProperties:
             documents1 = [e for e in result1.elements if e.element_type == "document"]
             documents2 = [e for e in result2.elements if e.element_type == "document"]
 
-            assert len(documents1) == len(
-                documents2
-            ), f"Document count mismatch: {len(documents1)} vs {len(documents2)}"
+            assert len(documents1) == len(documents2), (
+                f"Document count mismatch: {len(documents1)} vs {len(documents2)}"
+            )
 
     @pytest.mark.asyncio
     @settings(
@@ -567,21 +567,21 @@ class TestYAMLParsingConsistencyProperties:
                 for j, (ref_elem, test_elem) in enumerate(
                     zip(reference.elements, result.elements, strict=False)
                 ):
-                    assert (
-                        ref_elem.element_type == test_elem.element_type
-                    ), f"Parse {i}, element {j}: type mismatch"
-                    assert (
-                        ref_elem.name == test_elem.name
-                    ), f"Parse {i}, element {j}: name mismatch"
-                    assert (
-                        ref_elem.start_line == test_elem.start_line
-                    ), f"Parse {i}, element {j}: start_line mismatch"
-                    assert (
-                        ref_elem.end_line == test_elem.end_line
-                    ), f"Parse {i}, element {j}: end_line mismatch"
-                    assert (
-                        ref_elem.nesting_level == test_elem.nesting_level
-                    ), f"Parse {i}, element {j}: nesting_level mismatch"
+                    assert ref_elem.element_type == test_elem.element_type, (
+                        f"Parse {i}, element {j}: type mismatch"
+                    )
+                    assert ref_elem.name == test_elem.name, (
+                        f"Parse {i}, element {j}: name mismatch"
+                    )
+                    assert ref_elem.start_line == test_elem.start_line, (
+                        f"Parse {i}, element {j}: start_line mismatch"
+                    )
+                    assert ref_elem.end_line == test_elem.end_line, (
+                        f"Parse {i}, element {j}: end_line mismatch"
+                    )
+                    assert ref_elem.nesting_level == test_elem.nesting_level, (
+                        f"Parse {i}, element {j}: nesting_level mismatch"
+                    )
 
     @pytest.mark.asyncio
     @settings(

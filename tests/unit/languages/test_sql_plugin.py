@@ -12,6 +12,18 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from tests.unit.languages._test_sql_plugin_helpers import (
+    assert_analysis_with_missing_language,
+    assert_analysis_with_tree_sitter_disabled,
+    assert_end_to_end_sql_analysis_and_formatting,
+    assert_product_columns,
+    assert_sample_database_result,
+    assert_specific_sql_constructs,
+    assert_table_metadata,
+    assert_view_dependencies,
+    extract_sql_elements,
+    parse_sql,
+)
 from tree_sitter_analyzer.languages.sql_plugin import SQLElementExtractor, SQLPlugin
 from tree_sitter_analyzer.plugins.base import ElementExtractor, LanguagePlugin
 
@@ -151,90 +163,12 @@ class TestSQLPlugin:
     @pytest.mark.asyncio
     async def test_analyze_file_missing_tree_sitter(self, plugin: SQLPlugin) -> None:
         """Test analyze_file when tree-sitter is not available"""
-        # Save original value
-        original_value = getattr(
-            __import__(
-                "tree_sitter_analyzer.languages.sql_plugin",
-                fromlist=["TREE_SITTER_AVAILABLE"],
-            ),
-            "TREE_SITTER_AVAILABLE",
-            True,
-        )
-
-        # Patch both sql_plugin and language_loader
-        import tree_sitter_analyzer.language_loader as language_loader_module
-        import tree_sitter_analyzer.languages.sql_plugin as sql_plugin_module
-
-        with (
-            patch.object(sql_plugin_module, "TREE_SITTER_AVAILABLE", False),
-            patch.object(language_loader_module, "TREE_SITTER_AVAILABLE", False),
-        ):
-            with tempfile.NamedTemporaryFile(
-                mode="w", suffix=".sql", delete=False
-            ) as f:
-                f.write("CREATE TABLE test (id INT);")
-                temp_path = f.name
-
-            try:
-                from tree_sitter_analyzer.core.analysis_engine import AnalysisRequest
-
-                request = AnalysisRequest(file_path=temp_path)
-                result = await plugin.analyze_file(temp_path, request)
-
-                assert result is not None
-                assert result.language == "sql"
-                # If tree-sitter is missing, it might fall back to regex or fail
-                # The original test expected failure, but if Parser handles it gracefully (e.g. by returning empty tree),
-                # then success might be True but with empty elements or regex-extracted elements.
-                # However, if we want to enforce failure when tree-sitter is missing:
-                if result.success:
-                    # If it succeeds without tree-sitter, it must be using regex fallback
-                    pass
-                else:
-                    assert any(
-                        msg in result.error_message
-                        for msg in ["not available", "Failed", "Unsupported"]
-                    )
-            finally:
-                os.unlink(temp_path)
-                # Restore original value
-                sql_plugin_module.TREE_SITTER_AVAILABLE = original_value
+        await assert_analysis_with_tree_sitter_disabled(plugin)
 
     @pytest.mark.asyncio
     async def test_analyze_file_missing_language(self, plugin: SQLPlugin) -> None:
         """Test analyze_file when tree-sitter-sql is not available"""
-        with patch(
-            "tree_sitter_analyzer.languages.sql_plugin.TREE_SITTER_AVAILABLE", True
-        ):
-            # Patch LanguageLoader to simulate missing language
-            with patch(
-                "tree_sitter_analyzer.language_loader.LanguageLoader.load_language",
-                return_value=None,
-            ):
-                with tempfile.NamedTemporaryFile(
-                    mode="w", suffix=".sql", delete=False
-                ) as f:
-                    f.write("CREATE TABLE test (id INT);")
-                    temp_path = f.name
-
-                try:
-                    from tree_sitter_analyzer.core.analysis_engine import (
-                        AnalysisRequest,
-                    )
-
-                    request = AnalysisRequest(file_path=temp_path)
-                    result = await plugin.analyze_file(temp_path, request)
-
-                    assert result is not None
-                    assert result.language == "sql"
-                    # Similar to above, check if it fails or falls back
-                    if not result.success:
-                        assert any(
-                            msg in result.error_message
-                            for msg in ["not available", "Failed", "Unsupported"]
-                        )
-                finally:
-                    os.unlink(temp_path)
+        await assert_analysis_with_missing_language(plugin)
 
     def test_extract_elements_empty_tree(self, plugin: SQLPlugin) -> None:
         """Test extract_elements with None tree"""
@@ -348,157 +282,14 @@ CREATE TABLE users (
         assert result is not None
         assert result.language == "sql"
 
-        if result.success:
-            # Check that we extracted the expected elements
-            elements_by_type = {
-                "classes": [],
-                "functions": [],
-                "variables": [],
-                "imports": [],
-            }
-
-            for element in result.elements:
-                element_type = type(element).__name__.lower()
-                if element_type == "class":
-                    elements_by_type["classes"].append(element)
-                elif element_type == "function":
-                    elements_by_type["functions"].append(element)
-                elif element_type == "variable":
-                    elements_by_type["variables"].append(element)
-                elif element_type == "import":
-                    elements_by_type["imports"].append(element)
-
-            # Expected tables and views (classes)
-            expected_tables = {"users", "orders", "products"}
-            expected_views = {"active_users", "order_summary"}
-            expected_classes = expected_tables | expected_views
-
-            actual_classes = {cls.name for cls in elements_by_type["classes"]}
-            assert expected_classes.issubset(
-                actual_classes
-            ), f"Missing classes: {expected_classes - actual_classes}"
-
-            # Expected procedures, functions, and triggers (functions)
-            expected_procedures = {"get_user_orders", "update_product_stock"}
-            expected_functions = {"calculate_order_total", "is_user_active"}
-            expected_triggers = {"update_order_total", "log_user_changes"}
-            expected_all_functions = (
-                expected_procedures | expected_functions | expected_triggers
-            )
-
-            actual_functions = {func.name for func in elements_by_type["functions"]}
-            # At least some of these should be extracted
-            assert (
-                len(actual_functions & expected_all_functions) > 0
-            ), f"No expected functions found. Got: {actual_functions}"
-
-            # Expected indexes (variables)
-            expected_indexes = {
-                "idx_users_email",
-                "idx_users_status",
-                "idx_orders_user_id",
-                "idx_orders_date",
-                "idx_products_category",
-                "idx_products_name",
-                "idx_orders_user_date",
-            }
-
-            actual_indexes = {var.name for var in elements_by_type["variables"]}
-            # At least some indexes should be extracted
-            assert (
-                len(actual_indexes & expected_indexes) > 0
-            ), f"No expected indexes found. Got: {actual_indexes}"
+        assert_sample_database_result(result)
 
     def test_extract_specific_sql_constructs(self, plugin: SQLPlugin) -> None:
         """Test extraction of specific SQL constructs"""
-        import tree_sitter_sql
-        from tree_sitter import Language, Parser
-
-        # Set up parser
-        language = Language(tree_sitter_sql.language())
-        parser = Parser()
-        if hasattr(parser, "set_language"):
-            parser.set_language(language)
-        elif hasattr(parser, "language"):
-            parser.language = language
-        else:
-            parser = Parser(language)
-
-        # Test cases for different SQL constructs
-        test_cases = [
-            {
-                "name": "CREATE TABLE",
-                "sql": "CREATE TABLE test_table (id INT PRIMARY KEY, name VARCHAR(100));",
-                "expected_classes": {"test_table"},
-                "expected_functions": set(),
-                "expected_variables": set(),
-            },
-            {
-                "name": "CREATE VIEW",
-                "sql": "CREATE VIEW test_view AS SELECT id, name FROM test_table;",
-                "expected_classes": {"test_view"},
-                "expected_functions": set(),
-                "expected_variables": set(),
-            },
-            {
-                "name": "CREATE INDEX",
-                "sql": "CREATE INDEX idx_test ON test_table(name);",
-                "expected_classes": set(),
-                "expected_functions": set(),
-                "expected_variables": {"idx_test"},
-            },
-            {
-                "name": "CREATE FUNCTION",
-                "sql": """CREATE FUNCTION calculate_test(order_id_param INT)
-RETURNS DECIMAL(10, 2)
-READS SQL DATA
-DETERMINISTIC
-BEGIN
-    DECLARE total DECIMAL(10, 2);
-    SELECT COALESCE(SUM(price * quantity), 0) INTO total
-    FROM order_items
-    WHERE order_id = order_id_param;
-    RETURN total;
-END;""",
-                "expected_classes": set(),
-                "expected_functions": {"calculate_test"},
-                "expected_variables": set(),
-            },
-        ]
-
-        for test_case in test_cases:
-            tree = parser.parse(test_case["sql"].encode("utf-8"))
-            elements = plugin.extract_elements(tree, test_case["sql"])
-
-            actual_classes = {cls.name for cls in elements["classes"]}
-            actual_functions = {func.name for func in elements["functions"]}
-            actual_variables = {var.name for var in elements["variables"]}
-
-            assert (
-                actual_classes == test_case["expected_classes"]
-            ), f"{test_case['name']}: Expected classes {test_case['expected_classes']}, got {actual_classes}"
-            assert (
-                actual_functions == test_case["expected_functions"]
-            ), f"{test_case['name']}: Expected functions {test_case['expected_functions']}, got {actual_functions}"
-            assert (
-                actual_variables == test_case["expected_variables"]
-            ), f"{test_case['name']}: Expected variables {test_case['expected_variables']}, got {actual_variables}"
+        assert_specific_sql_constructs(plugin)
 
     def test_extract_multiple_indexes(self, plugin: SQLPlugin) -> None:
         """Test extraction of multiple INDEX statements"""
-        import tree_sitter_sql
-        from tree_sitter import Language, Parser
-
-        # Set up parser
-        language = Language(tree_sitter_sql.language())
-        parser = Parser()
-        if hasattr(parser, "set_language"):
-            parser.set_language(language)
-        elif hasattr(parser, "language"):
-            parser.language = language
-        else:
-            parser = Parser(language)
-
         # Multiple INDEX statements
         sql_content = """
         CREATE INDEX idx_users_email ON users(email);
@@ -507,7 +298,7 @@ END;""",
         CREATE INDEX idx_orders_date ON orders(order_date);
         """
 
-        tree = parser.parse(sql_content.encode("utf-8"))
+        tree = parse_sql(sql_content)
         elements = plugin.extract_elements(tree, sql_content)
 
         expected_indexes = {
@@ -518,9 +309,9 @@ END;""",
         }
         actual_indexes = {var.name for var in elements["variables"]}
 
-        assert (
-            actual_indexes == expected_indexes
-        ), f"Expected indexes {expected_indexes}, got {actual_indexes}"
+        assert actual_indexes == expected_indexes, (
+            f"Expected indexes {expected_indexes}, got {actual_indexes}"
+        )
 
 
 class TestSQLEnhancedElementExtraction:
@@ -537,19 +328,6 @@ class TestSQLEnhancedElementExtraction:
     )
     def test_extract_sql_elements_with_metadata(self, plugin: SQLPlugin) -> None:
         """Test extraction of SQL elements with enhanced metadata"""
-        import tree_sitter_sql
-        from tree_sitter import Language, Parser
-
-        # Set up parser
-        language = Language(tree_sitter_sql.language())
-        parser = Parser()
-        if hasattr(parser, "set_language"):
-            parser.set_language(language)
-        elif hasattr(parser, "language"):
-            parser.language = language
-        else:
-            parser = Parser(language)
-
         # Test SQL with comprehensive elements
         sql_content = """
         CREATE TABLE users (
@@ -565,22 +343,7 @@ class TestSQLEnhancedElementExtraction:
         CREATE INDEX idx_user_email ON users(email);
         """
 
-        tree = parser.parse(sql_content.encode("utf-8"))
-
-        # Test enhanced SQL element extraction
-        extractor = plugin.extractor
-        sql_elements = extractor.extract_sql_elements(tree, sql_content)
-
-        # Verify we got SQL-specific elements
-        assert len(sql_elements) > 0
-
-        # Check for table with metadata
-        tables = [elem for elem in sql_elements if hasattr(elem, "columns")]
-        if tables:
-            table = tables[0]
-            assert hasattr(table, "sql_element_type")
-            assert hasattr(table, "columns")
-            assert hasattr(table, "constraints")
+        assert_table_metadata(extract_sql_elements(plugin, sql_content))
 
     @pytest.mark.skipif(
         not TREE_SITTER_SQL_AVAILABLE,
@@ -588,19 +351,6 @@ class TestSQLEnhancedElementExtraction:
     )
     def test_sql_table_column_extraction(self, plugin: SQLPlugin) -> None:
         """Test extraction of table columns with metadata"""
-        import tree_sitter_sql
-        from tree_sitter import Language, Parser
-
-        # Set up parser
-        language = Language(tree_sitter_sql.language())
-        parser = Parser()
-        if hasattr(parser, "set_language"):
-            parser.set_language(language)
-        elif hasattr(parser, "language"):
-            parser.language = language
-        else:
-            parser = Parser(language)
-
         # Test table with detailed column definitions
         sql_content = """
         CREATE TABLE products (
@@ -612,28 +362,7 @@ class TestSQLEnhancedElementExtraction:
         );
         """
 
-        tree = parser.parse(sql_content.encode("utf-8"))
-        extractor = plugin.extractor
-        sql_elements = extractor.extract_sql_elements(tree, sql_content)
-
-        # Find the table element
-        tables = [
-            elem
-            for elem in sql_elements
-            if hasattr(elem, "columns") and elem.name == "products"
-        ]
-        if tables:
-            table = tables[0]
-            # Verify column extraction
-            assert len(table.columns) > 0
-
-            # Check for specific columns
-            column_names = [col.name for col in table.columns]
-            expected_columns = {"id", "name", "price", "category_id", "created_at"}
-            actual_columns = set(column_names)
-
-            # At least some columns should be extracted
-            assert len(actual_columns & expected_columns) > 0
+        assert_product_columns(extract_sql_elements(plugin, sql_content))
 
     @pytest.mark.skipif(
         not TREE_SITTER_SQL_AVAILABLE,
@@ -641,19 +370,6 @@ class TestSQLEnhancedElementExtraction:
     )
     def test_sql_view_source_extraction(self, plugin: SQLPlugin) -> None:
         """Test extraction of view source tables"""
-        import tree_sitter_sql
-        from tree_sitter import Language, Parser
-
-        # Set up parser
-        language = Language(tree_sitter_sql.language())
-        parser = Parser()
-        if hasattr(parser, "set_language"):
-            parser.set_language(language)
-        elif hasattr(parser, "language"):
-            parser.language = language
-        else:
-            parser = Parser(language)
-
         # Test view with source table references
         sql_content = """
         CREATE VIEW user_orders AS
@@ -663,21 +379,7 @@ class TestSQLEnhancedElementExtraction:
         WHERE o.status = 'completed';
         """
 
-        tree = parser.parse(sql_content.encode("utf-8"))
-        extractor = plugin.extractor
-        sql_elements = extractor.extract_sql_elements(tree, sql_content)
-
-        # Find the view element
-        views = [
-            elem
-            for elem in sql_elements
-            if hasattr(elem, "source_tables") and elem.name == "user_orders"
-        ]
-        if views:
-            view = views[0]
-            # Verify source table extraction
-            assert hasattr(view, "source_tables")
-            assert hasattr(view, "dependencies")
+        assert_view_dependencies(extract_sql_elements(plugin, sql_content))
 
 
 class TestSQLFormatterIntegration:
@@ -694,20 +396,7 @@ class TestSQLFormatterIntegration:
     )
     def test_sql_formatter_integration(self, plugin: SQLPlugin) -> None:
         """Test integration between SQL plugin and formatters"""
-        import tree_sitter_sql
-        from tree_sitter import Language, Parser
-
         from tree_sitter_analyzer.formatters.sql_formatters import SQLFullFormatter
-
-        # Set up parser
-        language = Language(tree_sitter_sql.language())
-        parser = Parser()
-        if hasattr(parser, "set_language"):
-            parser.set_language(language)
-        elif hasattr(parser, "language"):
-            parser.language = language
-        else:
-            parser = Parser(language)
 
         # Test SQL content
         sql_content = """
@@ -722,9 +411,7 @@ class TestSQLFormatterIntegration:
         CREATE INDEX idx_test_name ON test_table(name);
         """
 
-        tree = parser.parse(sql_content.encode("utf-8"))
-        extractor = plugin.extractor
-        sql_elements = extractor.extract_sql_elements(tree, sql_content)
+        sql_elements = extract_sql_elements(plugin, sql_content)
 
         if sql_elements:
             # Test SQL formatter with extracted elements
@@ -748,20 +435,7 @@ class TestSQLFormatterIntegration:
     )
     def test_sql_compact_formatter_integration(self, plugin: SQLPlugin) -> None:
         """Test integration with compact formatter"""
-        import tree_sitter_sql
-        from tree_sitter import Language, Parser
-
         from tree_sitter_analyzer.formatters.sql_formatters import SQLCompactFormatter
-
-        # Set up parser
-        language = Language(tree_sitter_sql.language())
-        parser = Parser()
-        if hasattr(parser, "set_language"):
-            parser.set_language(language)
-        elif hasattr(parser, "language"):
-            parser.language = language
-        else:
-            parser = Parser(language)
 
         # Test SQL content
         sql_content = """
@@ -771,9 +445,7 @@ class TestSQLFormatterIntegration:
         );
         """
 
-        tree = parser.parse(sql_content.encode("utf-8"))
-        extractor = plugin.extractor
-        sql_elements = extractor.extract_sql_elements(tree, sql_content)
+        sql_elements = extract_sql_elements(plugin, sql_content)
 
         if sql_elements:
             # Test compact formatter
@@ -790,20 +462,7 @@ class TestSQLFormatterIntegration:
     )
     def test_sql_csv_formatter_integration(self, plugin: SQLPlugin) -> None:
         """Test integration with CSV formatter"""
-        import tree_sitter_sql
-        from tree_sitter import Language, Parser
-
         from tree_sitter_analyzer.formatters.sql_formatters import SQLCSVFormatter
-
-        # Set up parser
-        language = Language(tree_sitter_sql.language())
-        parser = Parser()
-        if hasattr(parser, "set_language"):
-            parser.set_language(language)
-        elif hasattr(parser, "language"):
-            parser.language = language
-        else:
-            parser = Parser(language)
 
         # Test SQL content
         sql_content = """
@@ -814,9 +473,7 @@ class TestSQLFormatterIntegration:
         );
         """
 
-        tree = parser.parse(sql_content.encode("utf-8"))
-        extractor = plugin.extractor
-        sql_elements = extractor.extract_sql_elements(tree, sql_content)
+        sql_elements = extract_sql_elements(plugin, sql_content)
 
         if sql_elements:
             # Test CSV formatter
@@ -833,104 +490,4 @@ class TestSQLFormatterIntegration:
         self, plugin: SQLPlugin
     ) -> None:
         """Test complete end-to-end SQL analysis and formatting"""
-        import os
-        import tempfile
-
-        # Create a comprehensive SQL test file
-        sql_content = """
-        -- Sample database schema
-        CREATE TABLE customers (
-            id INTEGER PRIMARY KEY,
-            name VARCHAR(100) NOT NULL,
-            email VARCHAR(255) UNIQUE,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-
-        CREATE VIEW active_customers AS
-        SELECT * FROM customers WHERE active = 1;
-
-        CREATE INDEX idx_customer_email ON customers(email);
-
-        CREATE FUNCTION get_customer_count()
-        RETURNS INTEGER
-        BEGIN
-            DECLARE count_val INTEGER;
-            SELECT COUNT(*) INTO count_val FROM customers;
-            RETURN count_val;
-        END;
-        """
-
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".sql", delete=False) as f:
-            f.write(sql_content)
-            temp_path = f.name
-
-        try:
-            from tree_sitter_analyzer.core.analysis_engine import AnalysisRequest
-
-            # Analyze the file
-            request = AnalysisRequest(file_path=temp_path)
-            result = await plugin.analyze_file(temp_path, request)
-
-            assert result is not None
-            assert result.language == "sql"
-
-            if result.success and len(result.elements) > 0:
-                # Test that we can format the results
-                from tree_sitter_analyzer.formatters.sql_formatters import (
-                    SQLCompactFormatter,
-                    SQLCSVFormatter,
-                    SQLFullFormatter,
-                )
-
-                # Convert elements to SQL elements for formatting
-                extractor = plugin.extractor
-                if hasattr(extractor, "extract_sql_elements"):
-                    # Re-parse to get SQL elements with metadata
-                    language = plugin.get_tree_sitter_language()
-                    if language:
-                        import tree_sitter
-
-                        parser = tree_sitter.Parser()
-                        if hasattr(parser, "set_language"):
-                            parser.set_language(language)
-                        elif hasattr(parser, "language"):
-                            parser.language = language
-                        else:
-                            parser = tree_sitter.Parser(language)
-
-                        tree = parser.parse(sql_content.encode("utf-8"))
-                        sql_elements = extractor.extract_sql_elements(tree, sql_content)
-
-                        if sql_elements:
-                            # Test all formatters
-                            formatters = [
-                                SQLFullFormatter(),
-                                SQLCompactFormatter(),
-                                SQLCSVFormatter(),
-                            ]
-
-                            for formatter in formatters:
-                                formatted_result = formatter.format_elements(
-                                    sql_elements, temp_path
-                                )
-                                assert isinstance(formatted_result, str)
-                                assert len(formatted_result) > 0
-
-                                # Verify SQL-specific terminology
-                                if isinstance(formatter, SQLFullFormatter):
-                                    assert (
-                                        "Database Schema Overview" in formatted_result
-                                    )
-                                elif isinstance(formatter, SQLCompactFormatter):
-                                    assert (
-                                        "| Element | Type | Lines | Details |"
-                                        in formatted_result
-                                    )
-                                elif isinstance(formatter, SQLCSVFormatter):
-                                    assert (
-                                        "Element,Type,Lines,Columns_Parameters,Dependencies"
-                                        in formatted_result
-                                    )
-
-        finally:
-            os.unlink(temp_path)
+        await assert_end_to_end_sql_analysis_and_formatting(plugin)

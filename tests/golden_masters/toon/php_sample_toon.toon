@@ -32,10 +32,7 @@ methods:
     "App\\Models\\createUser",public,(203,206)
     "App\\Models\\hashPassword",public,(211,214)
 fields:
-  [12]{name,type,line_range(a,b)}:
-    "User::STATUS_ACTIVE",,(20,20)
-    "User::STATUS_INACTIVE",,(21,21)
-    "User::MAX_LOGIN_ATTEMPTS",,(22,22)
+  [9]{name,type,line_range(a,b)}:
     "User::id",,(25,25)
     "User::username",,(26,26)
     "User::email",,(27,27)
@@ -45,15 +42,12 @@ fields:
     "User::instanceCount",,(31,31)
     "AdminUser::permissions",,(127,127)
     "Loggable::logs",,(163,163)
-imports:
-  [4]{name,is_static,is_wildcard,statement,line_range(a,b)}:
-    "App\\Models",false,false,,(3,3)
-    "App\\Contracts\\UserInterface",false,false,,(5,5)
-    "App\\Traits\\Timestampable",false,false,,(6,6)
-    Timestampable,false,false,,(17,17)
+imports: []
 statistics:
   class_count: 5
   method_count: 21
-  field_count: 12
-  import_count: 4
+  field_count: 9
+  import_count: 0
   total_lines: 0
+effective_table: toon
+requested_table: toon

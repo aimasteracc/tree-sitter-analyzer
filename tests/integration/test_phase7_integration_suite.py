@@ -11,6 +11,7 @@ Phase 7の全統合テストを管理・実行するメインスイート:
 
 import asyncio
 import json
+import os
 import time
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,28 @@ from typing import Any
 import pytest
 
 # 統合テストモジュールのインポート
+DEFAULT_PHASE7_SUITE_SIMULATION_SECONDS = 0.01
+
+
+def _simulation_step_seconds() -> float:
+    """Return the per-case simulation delay for summary-style integration checks."""
+    try:
+        value = float(
+            os.environ.get(
+                "TSA_PHASE7_SUITE_SIMULATION_SECONDS",
+                DEFAULT_PHASE7_SUITE_SIMULATION_SECONDS,
+            )
+        )
+    except (TypeError, ValueError):
+        return DEFAULT_PHASE7_SUITE_SIMULATION_SECONDS
+    return max(0.0, value)
+
+
+async def _simulate_integration_step() -> None:
+    """Yield to the event loop without making default tests wait on wall-clock time."""
+    delay = _simulation_step_seconds()
+    if delay:
+        await asyncio.sleep(delay)
 
 
 class IntegrationTestReporter:
@@ -263,13 +286,15 @@ class TestPhase7IntegrationSuite:
             try:
                 # 実際のテスト実行をシミュレート
                 # 本来はTestPhase7EndToEndのメソッドを呼び出す
-                await asyncio.sleep(0.1)  # シミュレーション
+                await _simulate_integration_step()
                 success = True
                 duration = time.time() - start_time
 
                 integration_reporter.add_test_result(
                     "end_to_end", test_case, success, duration
                 )
+                assert success is True
+                assert duration >= 0
                 print(f"  ✅ {test_case}: {duration:.2f}s")
 
             except Exception as e:
@@ -278,6 +303,9 @@ class TestPhase7IntegrationSuite:
                     "end_to_end", test_case, False, duration, {"error": str(e)}
                 )
                 print(f"  ❌ {test_case}: {duration:.2f}s - {e}")
+
+        assert len(integration_reporter.test_results) >= len(test_cases)
+        assert integration_reporter.start_time is not None
 
     @pytest.mark.asyncio
     async def test_performance_integration(self, integration_reporter):
@@ -298,13 +326,14 @@ class TestPhase7IntegrationSuite:
             start_time = time.time()
             try:
                 # パフォーマンステスト実行をシミュレート
-                await asyncio.sleep(0.2)  # シミュレーション
+                await _simulate_integration_step()
                 success = True
                 duration = time.time() - start_time
 
                 integration_reporter.add_test_result(
                     "performance", test_case, success, duration
                 )
+                assert success is True
                 print(f"  ✅ {test_case}: {duration:.2f}s")
 
             except Exception as e:
@@ -313,6 +342,8 @@ class TestPhase7IntegrationSuite:
                     "performance", test_case, False, duration, {"error": str(e)}
                 )
                 print(f"  ❌ {test_case}: {duration:.2f}s - {e}")
+
+        assert integration_reporter.start_time is not None
 
     @pytest.mark.asyncio
     async def test_security_integration(self, integration_reporter):
@@ -335,13 +366,14 @@ class TestPhase7IntegrationSuite:
             start_time = time.time()
             try:
                 # セキュリティテスト実行をシミュレート
-                await asyncio.sleep(0.15)  # シミュレーション
+                await _simulate_integration_step()
                 success = True
                 duration = time.time() - start_time
 
                 integration_reporter.add_test_result(
                     "security", test_case, success, duration
                 )
+                assert success is True
                 print(f"  ✅ {test_case}: {duration:.2f}s")
 
             except Exception as e:
@@ -370,13 +402,14 @@ class TestPhase7IntegrationSuite:
 
             for check in compatibility_checks:
                 # 互換性チェック実行
-                await asyncio.sleep(0.05)
+                await _simulate_integration_step()
                 print(f"    ✓ {check}")
 
             duration = time.time() - start_time
             integration_reporter.add_test_result(
                 "compatibility", "integration_compatibility", True, duration
             )
+            assert duration >= 0
             print(f"  ✅ Integration compatibility verified: {duration:.2f}s")
 
         except Exception as e:
@@ -410,13 +443,14 @@ class TestPhase7IntegrationSuite:
 
             for requirement in enterprise_requirements:
                 # 要件チェック実行
-                await asyncio.sleep(0.1)
+                await _simulate_integration_step()
                 print(f"    ✓ {requirement}")
 
             duration = time.time() - start_time
             integration_reporter.add_test_result(
                 "enterprise", "enterprise_readiness", True, duration
             )
+            assert len(enterprise_requirements) > 0
             print(f"  ✅ Enterprise readiness validated: {duration:.2f}s")
 
         except Exception as e:

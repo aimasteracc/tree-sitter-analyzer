@@ -16,6 +16,46 @@ from tree_sitter_analyzer.platform_compat.profiles import (
 logger = logging.getLogger(__name__)
 
 
+_RECORDER_DEFINITION_TYPES: frozenset[str] = frozenset(
+    {
+        "create_table_statement",
+        "create_view_statement",
+        "create_procedure_statement",
+        "create_function_statement",
+        "create_trigger_statement",
+        "create_index_statement",
+    }
+)
+
+
+def _inspect_node_for_recorder(
+    node: Any,
+    attributes: set[str],
+    element_count: int,
+    has_error: bool,
+) -> tuple[int, bool]:
+    """Apply per-node accounting for the BehaviorRecorder cursor walk.
+
+    Bumps ``element_count`` when the node looks like a top-level SQL
+    definition; sets ``has_error`` for ``ERROR`` nodes; adds the column
+    name to ``attributes`` for ``column_definition`` nodes (the set is
+    mutated in place to keep the signature flat). Returns the updated
+    ``(element_count, has_error)`` pair.
+
+    r37dx (dogfood): extracted from ``BehaviorRecorder.record`` so the
+    main cursor-walk loop drops from depth 6 to 3.
+    """
+    if node.type == "ERROR":
+        has_error = True
+    if node.type in _RECORDER_DEFINITION_TYPES:
+        element_count += 1
+    if node.type == "column_definition":
+        name_node = node.child_by_field_name("name")
+        if name_node is not None:
+            attributes.add(f"col:{name_node.text.decode('utf8')}")
+    return element_count, has_error
+
+
 class BehaviorRecorder:
     """Records SQL parsing behavior on the current platform."""
 
@@ -80,43 +120,20 @@ class BehaviorRecorder:
             Dict containing analysis results.
         """
         element_count = 0
-        attributes = set()
+        attributes: set[str] = set()
         has_error = False
 
         # Traverse the tree
         cursor = node.walk()
         visited_children = False
 
+        # r37dx (dogfood): node inspection抽到 _inspect_node_for_recorder
+        # to flatten the cursor-walk loop from depth 6 to 3.
         while True:
             if not visited_children:
-                # Process current node
-                if cursor.node.type == "ERROR":
-                    has_error = True
-
-                # Count "interesting" elements (top-level statements usually)
-                # This is a simplification; we might want to count specific types
-                # based on the fixture expectation.
-                # For now, let's count nodes that look like definitions.
-                if cursor.node.type in {
-                    "create_table_statement",
-                    "create_view_statement",
-                    "create_procedure_statement",
-                    "create_function_statement",
-                    "create_trigger_statement",
-                    "create_index_statement",
-                }:
-                    element_count += 1
-
-                # Collect attributes (field names)
-                if cursor.node.type == "column_definition":
-                    # Try to find column name
-                    name_node = cursor.node.child_by_field_name("name")
-                    if name_node:
-                        attributes.add(f"col:{name_node.text.decode('utf8')}")
-
-                # Check for specific attributes we care about
-                # e.g. if it's a function, does it have parameters?
-
+                element_count, has_error = _inspect_node_for_recorder(
+                    cursor.node, attributes, element_count, has_error
+                )
                 if cursor.goto_first_child():
                     continue
 

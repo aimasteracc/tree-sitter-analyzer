@@ -28,39 +28,36 @@ class LanguageLoader:
 
     # 対応言語とモジュールのマッピング（最適化：frozendict使用を検討）
     LANGUAGE_MODULES = {
-        "bash": "tree_sitter_bash",
-        "c": "tree_sitter_c",
-        "cpp": "tree_sitter_cpp",
-        "csharp": "tree_sitter_c_sharp",
-        "cs": "tree_sitter_c_sharp",  # C# alias
-        "css": "tree_sitter_css",
-        "go": "tree_sitter_go",
-        "html": "tree_sitter_html",
         "java": "tree_sitter_java",
         "javascript": "tree_sitter_javascript",
-        "json": "tree_sitter_json",
-        "kotlin": "tree_sitter_kotlin",
-        "markdown": "tree_sitter_markdown",
-        "php": "tree_sitter_php",
-        "python": "tree_sitter_python",
-        "ruby": "tree_sitter_ruby",
-        "rust": "tree_sitter_rust",
-        "scala": "tree_sitter_scala",
-        "sql": "tree_sitter_sql",
-        "swift": "tree_sitter_swift",
-        "tsx": "tree_sitter_typescript",
         "typescript": "tree_sitter_typescript",
+        "tsx": "tree_sitter_typescript",
+        "python": "tree_sitter_python",
+        "c": "tree_sitter_c",
+        "cpp": "tree_sitter_cpp",
+        "rust": "tree_sitter_rust",
+        "go": "tree_sitter_go",
+        "markdown": "tree_sitter_markdown",
+        "sql": "tree_sitter_sql",
+        "csharp": "tree_sitter_c_sharp",
+        "cs": "tree_sitter_c_sharp",  # C# alias
+        # Web languages
+        "html": "tree_sitter_html",
+        "css": "tree_sitter_css",
         "yaml": "tree_sitter_yaml",
         "yml": "tree_sitter_yaml",  # YAML alias
-        "jsonc": "tree_sitter_json",  # JSON with comments alias
-        "json5": "tree_sitter_json",  # JSON5 alias
+        # Additional languages
+        "php": "tree_sitter_php",
+        "ruby": "tree_sitter_ruby",
+        "kotlin": "tree_sitter_kotlin",
+        "swift": "tree_sitter_swift",
     }
 
     # TypeScript特別処理（TypeScriptとTSX）
     TYPESCRIPT_DIALECTS = {"typescript": "typescript", "tsx": "tsx"}
 
     @property
-    def SUPPORTED_LANGUAGES(self) -> list[str]:
+    def SUPPORTED_LANGUAGES(self) -> list:
         """サポートされている言語のリストを取得するプロパティ"""
         return list(self.LANGUAGE_MODULES.keys())
 
@@ -204,20 +201,15 @@ class LanguageLoader:
                 )
                 return None
 
-            # Set language using the preferred method
-            if hasattr(parser, "set_language"):
-                parser.set_language(tree_sitter_language)
-            elif hasattr(parser, "language"):
-                parser.language = tree_sitter_language
-            else:
-                # Try constructor approach as last resort
-                try:
-                    parser = tree_sitter.Parser(tree_sitter_language)
-                except Exception as e:
-                    log_warning(
-                        f"Failed to create parser with language constructor for {language}: {e}"
-                    )
-                    return None
+            # Set language using the preferred method.
+            # r37dg (dogfood): extracted the constructor-fallback branch
+            # to ``_bind_parser_language`` so the main path stays flat.
+            bound_parser = self._bind_parser_language(
+                parser, tree_sitter_language, language
+            )
+            if bound_parser is None:
+                return None
+            parser = bound_parser
 
             # Cache and return
             self._parser_cache[language] = parser
@@ -230,7 +222,38 @@ class LanguageLoader:
         """Create a parser for the specified language (alias for create_parser_safely)"""
         return self.create_parser_safely(language)
 
-    def get_supported_languages(self) -> list[str]:
+    @staticmethod
+    def _bind_parser_language(
+        parser: Any, tree_sitter_language: Any, language: str
+    ) -> Any | None:
+        """Set the language on ``parser`` using whichever API the build exposes.
+
+        Tree-sitter's Python bindings have shifted across releases:
+        - older builds expose ``Parser.set_language(Language)``
+        - mid-era builds expose a writable ``parser.language`` attribute
+        - newer builds construct via ``Parser(Language)`` directly
+        We probe in that order and fall back to the constructor form
+        only if neither attribute is present. Returns ``None`` when the
+        constructor fallback itself raises.
+
+        r37dg (dogfood): hoisted out of ``create_parser_safely`` to flatten
+        nesting 6 → 3 by removing the try/except inside the else branch.
+        """
+        if hasattr(parser, "set_language"):
+            parser.set_language(tree_sitter_language)
+            return parser
+        if hasattr(parser, "language"):
+            parser.language = tree_sitter_language
+            return parser
+        try:
+            return tree_sitter.Parser(tree_sitter_language)
+        except Exception as e:
+            log_warning(
+                f"Failed to create parser with language constructor for {language}: {e}"
+            )
+            return None
+
+    def get_supported_languages(self) -> list:
         """
         サポートされている言語のリストを取得（最適化：結果キャッシュ）
 

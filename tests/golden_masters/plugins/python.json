@@ -1,0 +1,53 @@
+{
+  "counts_by_type": {
+    "Class": 4,
+    "Function": 23,
+    "Import": 4,
+    "Variable": 1
+  },
+  "element_total": 32,
+  "names_by_type": {
+    "Class": [
+      "Animal",
+      "Cat",
+      "Dog",
+      "Person"
+    ],
+    "Function": [
+      "__init__",
+      "__post_init__",
+      "calculate_statistics",
+      "context_manager_example",
+      "decorated_function",
+      "decorator_example",
+      "describe",
+      "exception_handling_example",
+      "fetch",
+      "fetch_data",
+      "fibonacci_generator",
+      "greet",
+      "lambda_and_higher_order_functions",
+      "list_comprehension_examples",
+      "main",
+      "make_sound",
+      "process_animals",
+      "purr",
+      "wrapper"
+    ],
+    "Import": [
+      "ABC, abstractmethod",
+      "aiohttp",
+      "dataclass",
+      "reduce"
+    ],
+    "Variable": [
+      "email"
+    ]
+  },
+  "types": [
+    "Class",
+    "Function",
+    "Import",
+    "Variable"
+  ]
+}

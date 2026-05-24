@@ -16,6 +16,10 @@ from tree_sitter_analyzer.languages.markdown_plugin import (
     MarkdownElementExtractor,
     MarkdownPlugin,
 )
+from tree_sitter_analyzer.languages.markdown_plugin.link_image_extractor import (
+    parse_image_components,
+    parse_link_components,
+)
 from tree_sitter_analyzer.models import AnalysisResult
 
 
@@ -115,7 +119,9 @@ class TestMarkdownElementExtractor:
         result = self.extractor.extract_imports(None, "[ref]: url")
         assert result == []
 
-    @patch("tree_sitter_analyzer.languages.markdown_plugin.log_debug")
+    @patch(
+        "tree_sitter_analyzer.languages.markdown_plugin.private_extraction.log_debug"
+    )
     def test_extract_headers_with_exception(self, mock_log):
         """Test header extraction with exception handling"""
         self.mock_root_node.children = [Mock()]
@@ -160,7 +166,7 @@ class TestMarkdownElementExtractor:
 
         # Mock byte extraction to fail
         with patch(
-            "tree_sitter_analyzer.languages.markdown_plugin.extract_text_slice",
+            "tree_sitter_analyzer.languages.markdown_plugin.node_text.extract_text_slice",
             side_effect=Exception("Byte error"),
         ):
             result = self.extractor._get_node_text_optimized(mock_node)
@@ -177,7 +183,7 @@ class TestMarkdownElementExtractor:
         self.extractor.content_lines = ["Line 1", "Line 2", "Line 3"]
 
         with patch(
-            "tree_sitter_analyzer.languages.markdown_plugin.extract_text_slice",
+            "tree_sitter_analyzer.languages.markdown_plugin.node_text.extract_text_slice",
             side_effect=Exception("Byte error"),
         ):
             result = self.extractor._get_node_text_optimized(mock_node)
@@ -197,7 +203,7 @@ class TestMarkdownElementExtractor:
         self.extractor.content_lines = ["Hello"]
 
         with patch(
-            "tree_sitter_analyzer.languages.markdown_plugin.extract_text_slice",
+            "tree_sitter_analyzer.languages.markdown_plugin.node_text.extract_text_slice",
             side_effect=Exception("Byte error"),
         ):
             result = self.extractor._get_node_text_optimized(mock_node)
@@ -205,48 +211,42 @@ class TestMarkdownElementExtractor:
 
     def test_parse_link_components_valid(self):
         """Test parsing valid link components"""
-        text, url, title = self.extractor._parse_link_components(
-            '[Text](http://example.com "Title")'
-        )
+        text, url, title = parse_link_components('[Text](http://example.com "Title")')
         assert text == "Text"
         assert url == "http://example.com"
         assert title == "Title"
 
     def test_parse_link_components_no_title(self):
         """Test parsing link components without title"""
-        text, url, title = self.extractor._parse_link_components(
-            "[Text](http://example.com)"
-        )
+        text, url, title = parse_link_components("[Text](http://example.com)")
         assert text == "Text"
         assert url == "http://example.com"
         assert title == ""
 
     def test_parse_link_components_invalid(self):
         """Test parsing invalid link components"""
-        text, url, title = self.extractor._parse_link_components("Invalid link")
+        text, url, title = parse_link_components("Invalid link")
         assert text == ""
         assert url == ""
         assert title == ""
 
     def test_parse_image_components_valid(self):
         """Test parsing valid image components"""
-        alt, url, title = self.extractor._parse_image_components(
-            '![Alt](image.jpg "Title")'
-        )
+        alt, url, title = parse_image_components('![Alt](image.jpg "Title")')
         assert alt == "Alt"
         assert url == "image.jpg"
         assert title == "Title"
 
     def test_parse_image_components_no_title(self):
         """Test parsing image components without title"""
-        alt, url, title = self.extractor._parse_image_components("![Alt](image.jpg)")
+        alt, url, title = parse_image_components("![Alt](image.jpg)")
         assert alt == "Alt"
         assert url == "image.jpg"
         assert title == ""
 
     def test_parse_image_components_invalid(self):
         """Test parsing invalid image components"""
-        alt, url, title = self.extractor._parse_image_components("Invalid image")
+        alt, url, title = parse_image_components("Invalid image")
         assert alt == ""
         assert url == ""
         assert title == ""
@@ -358,7 +358,8 @@ class TestMarkdownPlugin:
         assert "supported_queries" in info
 
     @patch(
-        "tree_sitter_analyzer.languages.markdown_plugin.TREE_SITTER_AVAILABLE", False
+        "tree_sitter_analyzer.languages.markdown_plugin.plugin.TREE_SITTER_AVAILABLE",
+        False,
     )
     @pytest.mark.asyncio
     async def test_analyze_file_no_tree_sitter(self):
@@ -370,7 +371,10 @@ class TestMarkdownPlugin:
         assert result.success is False
         assert "Tree-sitter library not available" in result.error_message
 
-    @patch("tree_sitter_analyzer.languages.markdown_plugin.TREE_SITTER_AVAILABLE", True)
+    @patch(
+        "tree_sitter_analyzer.languages.markdown_plugin.plugin.TREE_SITTER_AVAILABLE",
+        True,
+    )
     def test_get_tree_sitter_language_import_error(self):
         """Test get_tree_sitter_language with import error"""
         # Clear cache first
@@ -383,7 +387,10 @@ class TestMarkdownPlugin:
             language = self.plugin.get_tree_sitter_language()
             assert language is None
 
-    @patch("tree_sitter_analyzer.languages.markdown_plugin.TREE_SITTER_AVAILABLE", True)
+    @patch(
+        "tree_sitter_analyzer.languages.markdown_plugin.plugin.TREE_SITTER_AVAILABLE",
+        True,
+    )
     def test_get_tree_sitter_language_general_error(self):
         """Test get_tree_sitter_language with general error"""
         # Clear cache first
@@ -402,7 +409,10 @@ class TestMarkdownPlugin:
             language = self.plugin.get_tree_sitter_language()
             assert language is None
 
-    @patch("tree_sitter_analyzer.languages.markdown_plugin.TREE_SITTER_AVAILABLE", True)
+    @patch(
+        "tree_sitter_analyzer.languages.markdown_plugin.plugin.TREE_SITTER_AVAILABLE",
+        True,
+    )
     def test_get_tree_sitter_language_success(self):
         """Test successful get_tree_sitter_language"""
         # Clear cache first
@@ -468,7 +478,7 @@ class TestMarkdownPlugin:
                 return_value="test query",
             ):
                 with patch(
-                    "tree_sitter_analyzer.languages.markdown_plugin.tree_sitter.Query"
+                    "tree_sitter_analyzer.languages.markdown_plugin.extractor.tree_sitter.Query"
                 ) as mock_query_class:
                     mock_query_instance = Mock()
                     mock_query_class.return_value = mock_query_instance
@@ -509,9 +519,11 @@ class TestMarkdownPlugin:
 
         # extract_elements uses create_extractor(), not get_extractor()
         with patch.object(self.plugin, "create_extractor", return_value=mock_extractor):
-            elements = self.plugin.extract_elements(mock_tree, "test content")
+            result = self.plugin.extract_elements(mock_tree, "test content")
 
-            assert len(elements) == 12  # All extraction methods called
+            assert isinstance(result, dict)
+            assert "elements" in result
+            assert len(result["elements"]) == 12  # All extraction methods called
             mock_extractor.extract_headers.assert_called_once()
             mock_extractor.extract_code_blocks.assert_called_once()
             mock_extractor.extract_links.assert_called_once()
@@ -533,8 +545,9 @@ class TestMarkdownPlugin:
 
         # extract_elements uses create_extractor(), not get_extractor()
         with patch.object(self.plugin, "create_extractor", return_value=mock_extractor):
-            elements = self.plugin.extract_elements(mock_tree, "test content")
-            assert elements == []
+            result = self.plugin.extract_elements(mock_tree, "test content")
+            assert isinstance(result, dict)
+            assert result.get("elements", []) == []
 
     def test_legacy_compatibility_methods(self):
         """Test legacy compatibility methods"""
@@ -588,8 +601,11 @@ class TestMarkdownPluginIntegration:
 
     @pytest.mark.asyncio
     @patch("tree_sitter_analyzer.encoding_utils.read_file_safe")
-    @patch("tree_sitter_analyzer.languages.markdown_plugin.tree_sitter")
-    async def test_analyze_file_success(self, mock_ts, mock_read_file_safe):
+    @patch("tree_sitter_analyzer.languages.markdown_plugin.plugin.tree_sitter")
+    @patch("tree_sitter_analyzer.languages.markdown_plugin.extractor.tree_sitter")
+    async def test_analyze_file_success(
+        self, mock_ts, mock_ts_plugin, mock_read_file_safe
+    ):
         """Test successful analyze_file"""
         # Setup mocks
         mock_read_file_safe.return_value = ("# Test Header\n\nContent", "utf-8")
@@ -689,7 +705,7 @@ class TestMarkdownPluginEdgeCases:
         mock_node.end_byte = 50000
 
         with patch(
-            "tree_sitter_analyzer.languages.markdown_plugin.extract_text_slice",
+            "tree_sitter_analyzer.languages.markdown_plugin.node_text.extract_text_slice",
             side_effect=Exception("Too long"),
         ):
             result = self.extractor._get_node_text_optimized(mock_node)
@@ -707,7 +723,7 @@ class TestMarkdownPluginEdgeCases:
         mock_node.end_point = (0, 6)
 
         with patch(
-            "tree_sitter_analyzer.languages.markdown_plugin.extract_text_slice",
+            "tree_sitter_analyzer.languages.markdown_plugin.node_text.extract_text_slice",
             side_effect=Exception("Unicode error"),
         ):
             result = self.extractor._get_node_text_optimized(mock_node)

@@ -1,0 +1,764 @@
+# Helper functions for code scale analysis
+"""Extracted helper functions for AnalyzeScaleTool — keeps the main tool under 800 lines."""
+
+from typing import Any
+
+from ...constants import (
+    ELEMENT_TYPE_CLASS,
+    ELEMENT_TYPE_FUNCTION,
+    ELEMENT_TYPE_IMPORT,
+    ELEMENT_TYPE_VARIABLE,
+    is_element_of_type,
+)
+from ...utils import setup_logger
+from .base_tool import format_summary_line
+
+logger = setup_logger(__name__)
+
+
+# Tree-sitter element extraction for structure view
+# Converts unified analysis engine results into LLM-consumable dicts
+def extract_structural_overview(analysis_result: Any) -> dict[str, Any]:
+    """Extract structural overview with position information for LLM guidance.
+
+    r37bd (dogfood): tool flagged this at 112 lines. Split into 4
+    per-element-type extractors that each return a list of dicts.
+    Behaviour preserved (complexity_score >= 8 hotspot threshold,
+    same shape for each element category).
+    """
+    elements = analysis_result.elements
+    overview: dict[str, Any] = {
+        "classes": _extract_class_infos(elements),
+        "methods": [],  # filled below alongside complexity_hotspots
+        "fields": _extract_field_infos(elements),
+        "imports": _extract_import_infos(elements),
+        "complexity_hotspots": [],
+    }
+    overview["methods"], overview["complexity_hotspots"] = _extract_method_infos(
+        elements
+    )
+    return overview
+
+
+def _extract_class_infos(elements: list[Any]) -> list[dict[str, Any]]:
+    """Class element → dict with position + inheritance + annotations."""
+    classes = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_CLASS)]
+    return [
+        {
+            "name": cls.name,
+            "type": cls.class_type,
+            "start_line": cls.start_line,
+            "end_line": cls.end_line,
+            "line_span": cls.end_line - cls.start_line + 1,
+            "visibility": cls.visibility,
+            "extends": cls.extends_class,
+            "implements": cls.implements_interfaces,
+            "annotations": [ann.name for ann in cls.annotations],
+        }
+        for cls in classes
+    ]
+
+
+def _extract_method_infos(
+    elements: list[Any],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Method element → (method_infos, complexity_hotspots) with threshold ≥8."""
+    method_infos: list[dict[str, Any]] = []
+    hotspots: list[dict[str, Any]] = []
+    for method in (e for e in elements if is_element_of_type(e, ELEMENT_TYPE_FUNCTION)):
+        method_infos.append(
+            {
+                "name": method.name,
+                "start_line": method.start_line,
+                "end_line": method.end_line,
+                "line_span": method.end_line - method.start_line + 1,
+                "visibility": method.visibility,
+                "return_type": method.return_type,
+                "parameter_count": len(method.parameters),
+                "complexity": method.complexity_score,
+                "is_constructor": method.is_constructor,
+                "is_static": method.is_static,
+                "annotations": [ann.name for ann in method.annotations],
+            }
+        )
+        if method.complexity_score >= _COMPLEXITY_HOTSPOT_THRESHOLD:
+            hotspots.append(
+                {
+                    "type": "method",
+                    "name": method.name,
+                    "complexity": method.complexity_score,
+                    "start_line": method.start_line,
+                    "end_line": method.end_line,
+                }
+            )
+    return method_infos, hotspots
+
+
+def _extract_field_infos(elements: list[Any]) -> list[dict[str, Any]]:
+    """Field element → dict with type + modifiers + position."""
+    fields = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_VARIABLE)]
+    return [
+        {
+            "name": field.name,
+            "type": field.field_type,
+            "start_line": field.start_line,
+            "end_line": field.end_line,
+            "visibility": field.visibility,
+            "is_static": field.is_static,
+            "is_final": field.is_final,
+            "annotations": [ann.name for ann in field.annotations],
+        }
+        for field in fields
+    ]
+
+
+def _extract_import_infos(elements: list[Any]) -> list[dict[str, Any]]:
+    """Import element → dict with statement + static/wildcard flags."""
+    imports = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_IMPORT)]
+    return [
+        {
+            "name": imp.imported_name,
+            "statement": imp.import_statement,
+            "line": imp.line_number,
+            "is_static": imp.is_static,
+            "is_wildcard": imp.is_wildcard,
+        }
+        for imp in imports
+    ]
+
+
+# r37bd: complexity threshold for hotspot reporting — extracted from the
+# inline ``>= 8`` literal so tests can pin it as a single source of truth.
+_COMPLEXITY_HOTSPOT_THRESHOLD = 8
+
+
+# Universal extraction for non-Java/Python languages using tree-sitter
+def extract_structural_overview_universal(
+    analysis_result: Any,
+) -> dict[str, Any]:
+    """Extract structural overview from universal analysis result (non-Java languages)."""
+    # Initialize empty overview containers
+    overview: dict[str, Any] = {
+        "classes": [],
+        "methods": [],
+        "fields": [],
+        "imports": [],
+        "complexity_hotspots": [],
+    }
+    # Extract structural overview from tree-sitter elements
+
+    # Guard against empty or invalid analysis results
+    if not analysis_result or not hasattr(analysis_result, "elements"):
+        return overview
+
+    # Classify each element by its type and extract metadata
+    for e in analysis_result.elements:
+        etype = getattr(e, "element_type", "")
+        name = getattr(e, "name", "unnamed")
+        start_line = getattr(e, "start_line", 0)
+        end_line = getattr(e, "end_line", 0)
+
+        if etype == "class":
+            # Build class entry with line span
+            overview["classes"].append(
+                {
+                    "name": name,
+                    "type": etype,
+                    "start_line": start_line,
+                    "end_line": end_line,
+                    "line_span": end_line - start_line + 1,
+                }
+            )
+        elif etype in ("function", "method"):
+            # Build method entry with complexity tracking
+            method_info = {
+                "name": name,
+                "start_line": start_line,
+                "end_line": end_line,
+                "line_span": end_line - start_line + 1,
+                "complexity": getattr(e, "complexity_score", 0),
+            }
+            overview["methods"].append(method_info)
+            complexity = getattr(e, "complexity_score", 0)
+            # Flag methods with high complexity as hotspots
+            if complexity and complexity >= 8:
+                overview["complexity_hotspots"].append(
+                    {
+                        "type": "method",
+                        "name": name,
+                        "complexity": complexity,
+                        "start_line": start_line,
+                        "end_line": end_line,
+                    }
+                )
+        elif etype == "variable":
+            # Build field entry with position info
+            overview["fields"].append(
+                {
+                    "name": name,
+                    "start_line": start_line,
+                    "end_line": end_line,
+                }
+            )
+        elif etype == "import":
+            # Build import entry (simplified for non-Java files)
+            overview["imports"].append(
+                # Extract structural overview for non-Python files
+                {
+                    "name": name,
+                    "line": start_line,
+                }
+            )
+
+    return overview
+
+
+# AI-oriented suggestions based on file analysis
+# r37bd: per-language tree-sitter query priorities — extracted from the
+# 65-line inline dict that drove a chunk of the long_method smell. New
+# languages add a single dict entry; the guidance generator stays small.
+_LANG_QUERIES: dict[str, list[str]] = {
+    "java": ["methods", "classes", "imports", "spring_service", "jpa_entity"],
+    "python": ["functions", "classes", "imports", "decorator", "async_patterns"],
+    "javascript": ["functions", "classes", "imports", "export", "react_component"],
+    "typescript": ["functions", "interfaces", "type_aliases", "enums", "decorators"],
+    "go": ["function", "struct", "interface", "goroutine", "channel_send"],
+    "rust": ["fn", "struct", "enum", "trait", "impl"],
+    "c": ["function", "struct", "enum", "include", "typedef"],
+    "cpp": ["class", "function", "namespace", "template", "include"],
+    "kotlin": [
+        "function",
+        "class",
+        "data_class",
+        "object",
+        "annotation",
+        "companion_object",
+        "sealed_class",
+        "suspend_function",
+        "extension_function",
+        "when_expression",
+    ],
+    "csharp": ["class", "method", "property", "interface", "attribute"],
+    "ruby": [
+        "methods",
+        "classes",
+        "imports",
+        "attr",
+        "mixin",
+        "inheritance",
+        "block",
+        "rescue",
+        "yield",
+    ],
+    "php": [
+        "methods",
+        "classes",
+        "imports",
+        "namespace",
+        "interface",
+        "trait",
+        "enum",
+        "closure",
+        "inheritance",
+    ],
+    "sql": ["functions", "table", "view", "trigger"],
+    "html": ["element", "attribute", "form"],
+    "css": ["selector", "property", "at_rule"],
+    "yaml": ["key", "document", "anchor"],
+    "markdown": ["headers", "code_blocks", "tables"],
+}
+
+_PRIORITY_QUERIES = frozenset(
+    {
+        "classes",
+        "methods",
+        "functions",
+        "imports",
+        "variables",
+        "interface",
+        "trait",
+        "namespace",
+        "decorator",
+    }
+)
+
+_REQUIRED_OVERVIEW_FIELDS = (
+    "complexity_hotspots",
+    "classes",
+    "methods",
+    "fields",
+    "imports",
+)
+
+
+def generate_llm_guidance(
+    file_metrics: dict[str, Any], structural_overview: dict[str, Any]
+) -> dict[str, Any]:
+    """Generate guidance for LLM on how to efficiently analyze this file.
+
+    r37bd (dogfood): tool flagged this at 226 lines. Split into 6 phases
+    + 3 module-level data tables. Behaviour preserved (size thresholds
+    100/500/1500, complexity_hotspot recommendation, dependency/health
+    workflow tail).
+    """
+    total_lines = file_metrics["total_lines"]
+    language = file_metrics.get("language", "")
+
+    _ensure_required_overview_fields(structural_overview)
+
+    guidance = _empty_guidance()
+    _classify_size(guidance, total_lines)
+    _recommend_tools(guidance, total_lines, structural_overview)
+    _assess_complexity(guidance, structural_overview)
+    _identify_key_areas(guidance, structural_overview)
+    guidance["suggested_queries"] = _LANG_QUERIES.get(language, [])
+    guidance["workflow_steps"] = _build_workflow_steps(guidance, structural_overview)
+    _attach_available_queries(guidance, language)
+    return guidance
+
+
+def _empty_guidance() -> dict[str, Any]:
+    """The skeleton guidance dict — 7 named fields, all empty/zero."""
+    return {
+        "analysis_strategy": "",
+        "recommended_tools": [],
+        "key_areas": [],
+        "complexity_assessment": "",
+        "size_category": "",
+        "suggested_queries": [],
+        "workflow_steps": [],
+    }
+
+
+def _ensure_required_overview_fields(structural_overview: dict[str, Any]) -> None:
+    """Fill in missing keys so downstream lookups never KeyError."""
+    for field in _REQUIRED_OVERVIEW_FIELDS:
+        if field not in structural_overview:
+            structural_overview[field] = []
+
+
+def _classify_size(guidance: dict[str, Any], total_lines: int) -> None:
+    """Pick a size_category + matching analysis_strategy from total_lines."""
+    if total_lines < 100:
+        guidance["size_category"] = "small"
+        guidance["analysis_strategy"] = (
+            "This is a small file that can be analyzed in full detail."
+        )
+    elif total_lines < 500:
+        guidance["size_category"] = "medium"
+        guidance["analysis_strategy"] = (
+            "This is a medium-sized file. Consider focusing on key classes and methods."
+        )
+    elif total_lines < 1500:
+        guidance["size_category"] = "large"
+        guidance["analysis_strategy"] = (
+            "This is a large file. Use targeted analysis with extract_code_section."
+        )
+    else:
+        guidance["size_category"] = "very_large"
+        guidance["analysis_strategy"] = (
+            "This is a very large file. Strongly recommend using structural "
+            "analysis first, then targeted deep-dives."
+        )
+
+
+def _recommend_tools(
+    guidance: dict[str, Any],
+    total_lines: int,
+    structural_overview: dict[str, Any],
+) -> None:
+    """Append tool recommendations based on size + presence of hotspots."""
+    if total_lines > 200:
+        guidance["recommended_tools"].append("extract_code_section")
+        guidance["recommended_tools"].append("query_code")
+    if len(structural_overview["complexity_hotspots"]) > 0:
+        guidance["recommended_tools"].append("analyze_code_structure")
+
+
+def _assess_complexity(
+    guidance: dict[str, Any], structural_overview: dict[str, Any]
+) -> None:
+    """Set complexity_assessment based on hotspot count."""
+    hotspots = structural_overview["complexity_hotspots"]
+    if len(hotspots) > 0:
+        guidance["complexity_assessment"] = f"Found {len(hotspots)} complexity hotspots"
+    else:
+        guidance["complexity_assessment"] = (
+            "No significant complexity hotspots detected"
+        )
+
+
+def _identify_key_areas(
+    guidance: dict[str, Any], structural_overview: dict[str, Any]
+) -> None:
+    """Note structural characteristics worth surfacing to the agent."""
+    if len(structural_overview["classes"]) > 1:
+        guidance["key_areas"].append(
+            "Multiple classes - consider analyzing class relationships"
+        )
+    if len(structural_overview["methods"]) > 20:
+        guidance["key_areas"].append(
+            "Many methods - focus on public interfaces and high-complexity methods"
+        )
+    if len(structural_overview["imports"]) > 10:
+        guidance["key_areas"].append("Many imports - consider dependency analysis")
+
+
+def _build_workflow_steps(
+    guidance: dict[str, Any], structural_overview: dict[str, Any]
+) -> list[str]:
+    """Compose the ordered workflow_steps list — size-dependent middle, fixed tail."""
+    steps = ["check_code_scale (done)"]
+    if guidance["size_category"] in ("large", "very_large"):
+        steps.extend(_large_file_steps(structural_overview))
+    else:
+        steps.extend(_small_or_medium_steps(structural_overview))
+
+    if len(structural_overview.get("imports", [])) > 5:
+        steps.append("analyze_dependencies mode=blast_radius to assess change impact")
+    steps.append("check_file_health to see if this file needs refactoring")
+    return steps
+
+
+def _large_file_steps(structural_overview: dict[str, Any]) -> list[str]:
+    """Targeted-analysis steps for files ≥500 lines."""
+    steps = [
+        "analyze_code_structure with format=compact for overview",
+        "query_code with specific query keys to find target elements",
+    ]
+    hotspots = structural_overview.get("complexity_hotspots", [])
+    if hotspots:
+        top = hotspots[0]
+        name = top.get("name", "hotspot")
+        start = top.get("start_line", "")
+        end = top.get("end_line", "")
+        steps.append(
+            f"extract_code_section for '{name}' (L{start}-{end}) - complexity hotspot"
+        )
+    else:
+        steps.append("extract_code_section for targeted line ranges")
+    return steps
+
+
+def _small_or_medium_steps(structural_overview: dict[str, Any]) -> list[str]:
+    """Full-analysis steps for files <500 lines."""
+    steps = [
+        "analyze_code_structure for full structure table",
+        "query_code for specific elements if needed",
+    ]
+    notable = structural_overview.get("methods", [])
+    long_methods = [
+        m for m in notable if m.get("complexity", 0) >= _COMPLEXITY_HOTSPOT_THRESHOLD
+    ]
+    if long_methods:
+        top = long_methods[0]
+        start = top.get("start_line", "")
+        end = top.get("end_line", "")
+        steps.append(
+            f"extract_code_section for '{top.get('name', 'method')}' "
+            f"(L{start}-{end}) - high complexity"
+        )
+    return steps
+
+
+def _attach_available_queries(guidance: dict[str, Any], language: str) -> None:
+    """Look up tree-sitter queries for ``language`` and cap to 15 entries."""
+    from ...query_loader import get_query_loader
+
+    loader = get_query_loader()
+    all_queries = loader.list_queries_for_language(language)
+    if not all_queries:
+        return
+    priority = [q for q in all_queries if q in _PRIORITY_QUERIES]
+    rest = sorted(q for q in all_queries if q not in priority)[: 15 - len(priority)]
+    guidance["available_queries"] = sorted(priority) + rest
+
+
+# validate_scale_arguments: implementation
+# Input validation for batch and single-file analysis modes
+def validate_scale_arguments(arguments: dict[str, Any]) -> bool:
+    """Validate file_path and option arguments for analyze scale tool."""
+    # Issue 1: ``mode`` is dispatched on ``file_paths`` presence — accepting
+    # arbitrary ``mode=`` values silently drops them. Echo back a clear
+    # error pointing at the right dispatch contract instead of "passed
+    # but ignored". Accept the canonical values for forward-compat.
+    if "mode" in arguments and arguments["mode"] is not None:
+        mode_value = arguments["mode"]
+        if mode_value not in ("single", "batch", "batch_metrics"):
+            raise ValueError(
+                f"mode={mode_value!r} not supported. AnalyzeScale dispatches "
+                "on file_paths presence: pass file_paths=[...] for batch, "
+                "file_path='...' for single."
+            )
+
+    # Batch mode: file_paths array with metrics_only flag
+    if "file_paths" in arguments and arguments["file_paths"] is not None:
+        if "file_path" in arguments:
+            raise ValueError("file_paths is mutually exclusive with file_path")
+        file_paths = arguments["file_paths"]
+        if not isinstance(file_paths, list) or not file_paths:
+            raise ValueError("file_paths must be a non-empty list")
+        if not isinstance(arguments.get("metrics_only", False), bool):
+            raise ValueError("metrics_only must be a boolean")
+        if arguments.get("metrics_only", False) is not True:
+            raise ValueError(
+                "metrics_only must be true when using file_paths batch mode"
+            )
+        return True
+
+    # Single file mode: file_path string required
+    if "file_path" not in arguments:
+        raise ValueError("Required field 'file_path' is missing")
+
+    if "file_path" in arguments:
+        fp = arguments["file_path"]
+        if not isinstance(fp, str):
+            raise ValueError("file_path must be a string")
+        if not fp.strip():
+            raise ValueError("file_path cannot be empty")
+
+    for key in ("language",):
+        if key in arguments and not isinstance(arguments[key], str):
+            raise ValueError(f"{key} must be a string")
+
+    for key in (
+        "include_complexity",
+        "include_details",
+        "include_guidance",
+    ):
+        if key in arguments and not isinstance(arguments[key], bool):
+            raise ValueError(f"{key} must be a boolean")
+
+    return True
+
+
+# create_json_file_analysis: extracted from AnalyzeScaleTool
+# Produces analysis result for non-source files (JSON, YAML, TOML)
+def create_json_file_analysis(
+    file_path: str,
+    file_metrics: dict[str, Any],
+    include_guidance: bool,
+    output_format: str = "toon",
+) -> dict[str, Any]:
+    """Create analysis for non-source files (JSON, YAML, etc.)."""
+    from ..utils.format_helper import apply_toon_format_to_response as _apply_toon
+
+    total_lines = file_metrics["total_lines"]
+    # J5 (round-22): single-space join via helper.
+    summary_line = format_summary_line(
+        file_path,
+        "json",
+        f"{total_lines} lines",
+        "classes=0",
+        "methods=0",
+        "fields=0",
+        "(data file)",
+    )
+    result: dict[str, Any] = {
+        "success": True,
+        # Issue 2: echo dispatch mode + output_format on JSON-file path too.
+        # F12: keep ``format`` as a back-compat alias of ``output_format`` so
+        # JSON callers see the same key the TOON envelope already exposes.
+        "mode": "single",
+        "output_format": output_format,
+        "format": output_format,
+        "file_path": file_path,
+        "language": "json",
+        "file_size_bytes": file_metrics["file_size_bytes"],
+        "total_lines": total_lines,
+        "non_empty_lines": total_lines - file_metrics["blank_lines"],
+        "estimated_tokens": file_metrics["estimated_tokens"],
+        "complexity_metrics": {
+            "total_elements": 0,
+            "max_depth": 0,
+            "avg_complexity": 0.0,
+        },
+        "structural_overview": {"classes": [], "methods": [], "fields": []},
+        "scale_category": (
+            "small"
+            if total_lines < 100
+            else "medium"
+            if total_lines < 1000
+            else "large"
+        ),
+        "analysis_recommendations": {
+            "suitable_for_full_analysis": total_lines < 1000,
+            "recommended_approach": "JSON files are configuration/data files - structural analysis not applicable",
+            "token_efficiency_notes": "JSON files can be read directly without tree-sitter parsing",  # nosec
+        },
+        # One-line headline + next-step hint for LLM consumers.
+        "summary_line": summary_line,
+        "agent_summary": {
+            "summary_line": summary_line,
+            "next_step": "read_partial to inspect file content directly",
+            # M9: analyze_scale is a measurement tool — emit ``INFO`` so
+            # chained agents see a consistent ``verdict`` key across every
+            # tool in the suite, even for the data-file fast path.
+            "verdict": "INFO",
+        },
+    }
+
+    if include_guidance:
+        # Add LLM-specific guidance for non-source files
+        result["llm_analysis_guidance"] = {
+            "file_characteristics": "JSON configuration/data file",
+            "recommended_workflow": "Direct file reading for content analysis",
+            "token_optimization": "Use simple file reading tools for JSON content",  # nosec
+            "analysis_focus": "Data structure and configuration values",
+        }
+
+    return _apply_toon(result, output_format)
+
+
+# Assemble metrics, structure, and guidance into result
+# Aggregates file metrics with element counts and structural overview
+def build_analysis_result(
+    file_path: str,
+    language: str,
+    file_metrics: dict[str, Any],
+    analysis_result: Any,
+    structural_overview: dict[str, Any],
+    count_elements_fn: Any,
+) -> dict[str, Any]:
+    """Build the main analysis result dict."""
+    elements = analysis_result.elements if analysis_result else []
+    class_count = count_elements_fn(elements, ELEMENT_TYPE_CLASS, "class")
+    method_count = count_elements_fn(elements, ELEMENT_TYPE_FUNCTION, "function")
+    field_count = count_elements_fn(elements, ELEMENT_TYPE_VARIABLE, "variable")
+    import_count = count_elements_fn(elements, ELEMENT_TYPE_IMPORT, "import")
+    total_lines = file_metrics.get("total_lines") if file_metrics else None
+    # Build a one-line headline an LLM (or grep) can parse.
+    # J5 (round-22): single-space join via helper.
+    line_total = total_lines if total_lines is not None else 0
+    summary_line = format_summary_line(
+        file_path,
+        language,
+        f"{line_total} lines",
+        f"classes={class_count}",
+        f"methods={method_count}",
+        f"fields={field_count}",
+    )
+    # Suggest the next step — mirrors the workflow hint in
+    # ``generate_llm_guidance`` but kept self-contained so it survives
+    # ``include_guidance=False``.
+    if total_lines and total_lines >= 500:
+        next_step = "analyze_code_structure format=compact then extract_code_section for hotspots"
+    else:
+        next_step = "analyze_code_structure for full structure table"
+    # M9 (round-26 dogfood): analyze_scale missed K12's verdict
+    # normalization sweep — every other tool (code_patterns, safe_to_edit,
+    # trace_impact, route_detector, build_project_index, ast_cache,
+    # call_graph) exposes ``agent_summary.verdict`` so chained agents can
+    # branch on a single key. analyze_scale is a pure measurement tool
+    # (no safe/unsafe judgement), so the canonical placeholder is
+    # ``"INFO"`` — the response describes the file rather than ruling on
+    # it.
+    agent_summary: dict[str, Any] = {
+        "summary_line": summary_line,
+        "next_step": next_step,
+        "verdict": "INFO",
+    }
+    # Build result with metrics, element summary, and structural overview
+    return {
+        "success": True,
+        "file_path": file_path,
+        "language": language,
+        "file_metrics": file_metrics,
+        # Determine if file needs structural review
+        "summary": {
+            "classes": class_count,
+            "methods": method_count,
+            "fields": field_count,
+            "imports": import_count,
+            "annotations": len(
+                getattr(analysis_result, "annotations", []) if analysis_result else []
+            ),
+            "package": (
+                analysis_result.package.name
+                if analysis_result and analysis_result.package
+                else None
+            ),
+        },
+        "structural_overview": structural_overview,
+        # Top-level count aliases — match the field names used by
+        # ``get_code_outline`` / ``file_health`` so callers reading any
+        # tool's output find the same vocabulary. ``line_count`` is
+        # hoisted from ``file_metrics`` for the same reason.
+        "class_count": class_count,
+        "method_count": method_count,
+        "field_count": field_count,
+        "import_count": import_count,
+        "line_count": total_lines,
+        # Top-level summary_line (mirror of agent_summary.summary_line) for
+        # cross-tool consistency with modification_guard / safe_to_edit.
+        "summary_line": summary_line,
+        # r37x (envelope ratchet): top-level verdict mirror (r37u contract).
+        "verdict": agent_summary["verdict"],
+        "agent_summary": agent_summary,
+    }
+
+
+# Per-element detailed breakdown with full metadata
+def build_detailed_analysis(analysis_result: Any, file_path: str) -> dict[str, Any]:
+    """Build the detailed_analysis dict for include_details=True."""
+    # Extract elements from analysis result
+    elements = analysis_result.elements if analysis_result else []
+    return {
+        "statistics": (analysis_result.get_statistics() if analysis_result else {}),
+        "classes": [
+            {
+                "name": cls.name,
+                "type": getattr(cls, "class_type", "unknown"),
+                "visibility": getattr(cls, "visibility", "unknown"),
+                "extends": getattr(cls, "extends_class", None),
+                "implements": getattr(cls, "implements_interfaces", []),
+                "annotations": [
+                    getattr(ann, "name", str(ann))
+                    for ann in getattr(cls, "annotations", [])
+                ],
+                "lines": f"{cls.start_line}-{cls.end_line}",
+            }
+            for cls in [
+                e for e in elements if is_element_of_type(e, ELEMENT_TYPE_CLASS)
+            ]
+        ],
+        # Format scale rating as human-readable label
+        "methods": [
+            {
+                "name": method.name,
+                "file_path": getattr(method, "file_path", file_path),
+                "visibility": getattr(method, "visibility", "unknown"),
+                "return_type": getattr(method, "return_type", "unknown"),
+                "parameters": len(getattr(method, "parameters", [])),
+                "annotations": [
+                    getattr(ann, "name", str(ann))
+                    for ann in getattr(method, "annotations", [])
+                ],
+                "is_constructor": getattr(method, "is_constructor", False),
+                "is_static": getattr(method, "is_static", False),
+                "complexity": getattr(method, "complexity_score", 0),
+                "lines": f"{method.start_line}-{method.end_line}",
+            }
+            for method in [
+                e for e in elements if is_element_of_type(e, ELEMENT_TYPE_FUNCTION)
+            ]
+        ],
+        "fields": [
+            {
+                "name": field.name,
+                "type": getattr(field, "field_type", "unknown"),
+                "file_path": getattr(field, "file_path", file_path),
+                "visibility": getattr(field, "visibility", "unknown"),
+                "is_static": getattr(field, "is_static", False),
+                "is_final": getattr(field, "is_final", False),
+                "annotations": [
+                    getattr(ann, "name", str(ann))
+                    for ann in getattr(field, "annotations", [])
+                ],
+                "lines": f"{field.start_line}-{field.end_line}",
+            }
+            for field in [
+                e for e in elements if is_element_of_type(e, ELEMENT_TYPE_VARIABLE)
+            ]
+        ],
+    }

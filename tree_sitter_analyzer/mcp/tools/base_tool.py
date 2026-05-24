@@ -6,16 +6,277 @@ This module defines the base class that all MCP tools should inherit from
 to ensure consistent behavior and project path management.
 """
 
+import functools
+import inspect
 from abc import ABC, abstractmethod
 from typing import Any
 
 from ...security import SecurityValidator
 from ...utils import setup_logger
 from ..utils.path_resolver import PathResolver
+from ..utils.schema_strictness import enforce_strict_params
 from ..utils.shared_cache import get_shared_cache
 
 # Set up logging
 logger = setup_logger(__name__)
+
+# Sentinel attribute name marking a function that has already been wrapped
+# by ``__init_subclass__`` so a deeper subclass doesn't double-wrap it.
+_F5_WRAPPED_ATTR = "_f5_strict_params_wrapped"
+
+# F1 (round-37f7): canonical verdict vocabulary shared across every MCP
+# tool + CLI surface. Must stay in sync with
+# ``_N_VERDICT_VOCABULARY`` in
+# ``tests/unit/mcp/tools/test_tool_response_contract.py``. The values
+# are the only strings any tool may stamp into ``result["verdict"]``
+# or ``result["agent_summary"]["verdict"]``.
+#
+# Why a frozenset and not an Enum: tools already pass plain strings on
+# the wire (JSON has no enum); callers (CLI, hive-mind workers, Cursor,
+# Cline) branch on string equality. Keeping it a flat frozenset means
+# membership checks stay O(1) and there's no double-source-of-truth.
+_LEGAL_VERDICTS: frozenset[str] = frozenset(
+    {
+        "SAFE",
+        "CAUTION",
+        "REVIEW",
+        "UNSAFE",
+        "INFO",
+        "WARN",
+        "ERROR",
+        "NOT_FOUND",
+    }
+)
+
+# F1: normalisation table for the historical drift values. Keys are
+# lowercased input; values are the canonical replacement.
+_VERDICT_ALIASES: dict[str, str] = {
+    "": "INFO",
+    "n/a": "INFO",
+    "na": "INFO",
+    "success": "INFO",
+    "clean": "SAFE",
+    "ok": "SAFE",
+    "warning": "WARN",
+}
+
+
+def _canonicalize_verdict(value: str | None) -> str:
+    """Return a verdict guaranteed to belong to ``_LEGAL_VERDICTS``.
+
+    F1 (round-37f7): a prior dogfood audit found at least five MCP
+    tools emitting verdict values outside the canonical vocabulary —
+    ``"n/a"`` (agent_workflow / call_graph / ast_cache),
+    ``"CLEAN"`` (change_impact no-changes path), and various
+    case-shifted spellings (``"warning"``, ``"ok"``). Downstream
+    consumers — Claude Code, Cursor, Cline, the queue-ledger CLI —
+    branch on the string, so drift becomes silent miscoordination.
+
+    Behaviour:
+        - ``None`` / empty / ``"success"`` / ``"n/a"`` / ``"na"`` → ``"INFO"``
+        - ``"CLEAN"`` / ``"clean"`` / ``"ok"`` → ``"SAFE"``
+        - ``"warning"`` → ``"WARN"``
+        - Any value already in :data:`_LEGAL_VERDICTS` → returned
+          unchanged (case-preserved).
+        - Anything else → ``"INFO"`` with a logged warning. The
+          fallback is deliberate: silent rejection (raising) would
+          break tools mid-flight; silent acceptance (returning the bad
+          value) would re-introduce the bug class. Logging gives ops a
+          breadcrumb without taking the response surface down.
+
+    The function never raises — it always returns a string that lives
+    in :data:`_LEGAL_VERDICTS`. Callers can ``assert result in
+    _LEGAL_VERDICTS`` for static analysis without a ``try/except``.
+    """
+    if value is None:
+        return "INFO"
+    # Defensive runtime check: the signature says ``str | None`` but
+    # callers (CLI bridges, hive-mind workers, third-party tooling)
+    # have historically passed integers / booleans by accident. We
+    # refuse to raise — silent fallback to INFO + a logged warning is
+    # the kindest behaviour for chained agent decision loops. Cast to
+    # ``object`` so mypy treats the ``isinstance`` branch as
+    # potentially-reachable runtime defence rather than dead code.
+    raw_value: object = value
+    if not isinstance(raw_value, str):
+        logger.warning(
+            "F1: _canonicalize_verdict received non-string %r — falling back to INFO",
+            raw_value,
+        )
+        return "INFO"
+    # Case-preserved fast path for already-legal values. We check
+    # before lowercasing so "SAFE" stays "SAFE"; there's no
+    # lowercase legal value, so any case-shifted form falls through
+    # to the alias table below.
+    if value in _LEGAL_VERDICTS:
+        return value
+    alias = _VERDICT_ALIASES.get(value.lower().strip())
+    if alias is not None:
+        return alias
+    logger.warning(
+        "F1: _canonicalize_verdict received unknown verdict %r — falling back to INFO. "
+        "Legal vocabulary: %s",
+        value,
+        sorted(_LEGAL_VERDICTS),
+    )
+    return "INFO"
+
+
+def mirror_summary_line(result: dict[str, Any]) -> dict[str, Any]:
+    """Mirror ``agent_summary.summary_line`` to the top-level envelope.
+
+    Finding 6: round-16b dogfood showed seven tools shipping
+    ``summary_line=None`` at the top level even though their nested
+    ``agent_summary`` carried a useful one-liner. The MCP server dispatch
+    layer mirrors it centrally (:func:`ensure_canonical_success_envelope`),
+    but direct ``await tool.execute(args)`` callers (tests, CLI bridges)
+    bypass that path — so each tool layered helper mirrors at the response
+    builder too.
+
+    M10 (round-26): also mirror ``verdict`` in both directions whenever
+    exactly one surface is populated. The central dispatcher does this
+    too, but direct callers (tests, hive-mind workers, anything that
+    bypasses server.py) still need the symmetric envelope so they can
+    branch on ``verdict`` at either surface.
+
+    Idempotent: tools that already set ``summary_line`` / ``verdict``
+    keep their value.
+    """
+    agent_summary = result.get("agent_summary")
+    if not isinstance(agent_summary, dict):
+        return result
+    sl = agent_summary.get("summary_line")
+    if isinstance(sl, str) and sl and "summary_line" not in result:
+        result["summary_line"] = sl
+
+    # M10: bidirectional verdict mirror — see ``_mirror_verdict`` in
+    # ``error_recovery.py`` for the canonical behaviour table. Kept in
+    # sync here so direct callers see the same shape as MCP-routed
+    # callers.
+    top_value = result.get("verdict")
+    agent_value = agent_summary.get("verdict")
+    top_is_real = isinstance(top_value, str) and top_value and top_value != "n/a"
+    agent_is_real = (
+        isinstance(agent_value, str) and agent_value and agent_value != "n/a"
+    )
+    if top_is_real and not agent_is_real:
+        agent_summary["verdict"] = top_value
+    elif agent_is_real and not top_is_real:
+        result["verdict"] = agent_value
+    return result
+
+
+def format_summary_line(*parts: Any) -> str:
+    """Join non-empty segments with single spaces into a clean summary line.
+
+    J5 (round-22 dogfood): four tools (universal_analyze_tool,
+    analyze_scale_helpers ×2, analyze_code_structure_tool) shipped
+    ``summary_line`` with a hard-coded ``"... lines  "`` (trailing double
+    space). Pol1 only fixed ``code_patterns_tool``. This helper closes
+    the door on the regression class entirely — future builders pass
+    parts as positional args, get a guaranteed-clean single-space join,
+    no matter how the parts are stitched. Empty/whitespace-only segments
+    are dropped so optional pieces don't reintroduce double spaces.
+
+    Examples:
+        >>> format_summary_line("foo.py", "python", "42 lines",
+        ...                      "classes=1", "methods=2")
+        'foo.py python 42 lines classes=1 methods=2'
+        >>> format_summary_line("foo.py", "", "42 lines", None)
+        'foo.py 42 lines'
+    """
+    cleaned = [str(p).strip() for p in parts if p is not None and str(p).strip()]
+    return " ".join(cleaned)
+
+
+def detect_language_mismatch(
+    file_path: str,
+    explicit_language: str | None,
+    *,
+    project_root: str | None = None,
+) -> str | None:
+    """Return a warning message if explicit ``language`` disagrees with the file extension.
+
+    O3 / O8 (round-30 dogfood): tools that accept an explicit ``language``
+    parameter previously analysed e.g. ``foo.py`` as ``java`` whenever the
+    caller passed ``language='java'`` — every downstream analyser returned
+    zero classes/methods/fields and the tool happily emitted
+    ``success=true`` with a clean ``SAFE`` verdict. Agents passing the
+    wrong language tag had no signal that something went wrong.
+
+    Returns ``None`` when there is no mismatch to flag:
+
+    * ``explicit_language`` is ``None`` / empty (no override)
+    * ``explicit_language`` matches the detected language (case-insensitive)
+    * the file extension is unknown — we can't compare, so trust the caller
+
+    Otherwise returns a warning string suitable for surfacing in an error
+    envelope. Comparison is case-insensitive (``Python`` matches
+    ``python``). Detector failures fall back to "no warning" because we
+    can't be sure of the mismatch; the underlying analyser will still
+    raise on truly unsupported input.
+    """
+    if not explicit_language or not isinstance(explicit_language, str):
+        return None
+    if not file_path or not isinstance(file_path, str):
+        return None
+
+    # Local import: avoid a top-level cycle (base_tool is imported by every
+    # tool module, including ones loaded before ``language_detector``).
+    try:
+        from ...language_detector import detect_language_from_file
+    except Exception:  # nosec B110 — detector import failure means no warning
+        return None
+
+    try:
+        detected = detect_language_from_file(file_path, project_root=project_root)
+    except Exception:  # nosec B110 — detector failure means no warning
+        return None
+    if not detected or detected.lower() == "unknown":
+        return None
+    if detected.lower() == explicit_language.lower():
+        return None
+    return (
+        f"language={explicit_language!r} doesn't match detected language "
+        f"{detected!r} from extension. Analysis may be wrong."
+    )
+
+
+def language_mismatch_error_response(
+    *,
+    tool_name: str,
+    file_path: str,
+    warning: str,
+) -> dict[str, Any]:
+    """Canonical strict error envelope for the language-mismatch gate.
+
+    Shared so every tool that opts into the gate emits a byte-identical
+    shape. Cross-tool agents branching on ``error_type=='validation'``
+    can recover the same way regardless of which tool tripped the gate.
+
+    Why strict (Option A): silent acceptance was the original bug class.
+    Returning ``success=False`` forces the caller to make a deliberate
+    choice — either omit ``language`` to auto-detect, or fix the
+    mismatch. The envelope still carries ``agent_summary`` so the
+    response shape stays uniform with other validation failures.
+    """
+    summary_line = f"{tool_name}: {warning}"
+    next_step = (
+        f"Use the correct --language for {file_path!r} or omit it to auto-detect."
+    )
+    return {
+        "success": False,
+        "error_type": "validation",
+        "error": warning,
+        "file_path": file_path,
+        "summary_line": summary_line,
+        "language_mismatch_warning": warning,
+        "agent_summary": {
+            "verdict": "ERROR",
+            "summary_line": summary_line,
+            "next_step": next_step,
+        },
+    }
 
 
 class BaseMCPTool(ABC):
@@ -26,35 +287,204 @@ class BaseMCPTool(ABC):
     security validation, and path resolution.
     """
 
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        """F5: wrap every subclass's ``execute`` with strict-parameter check.
+
+        We do this once per subclass — the wrapper inspects the tool's
+        own ``inputSchema`` (via :meth:`get_tool_definition`) and rejects
+        unknown top-level parameters with a did-you-mean hint. Direct
+        ``await tool.execute(args)`` callers (tests, CLI bridges) and
+        the MCP dispatcher both flow through this guard.
+
+        Idempotent: if a subclass inherits ``execute`` from a parent that
+        was already wrapped, we don't wrap again. If a subclass redefines
+        ``execute``, the new definition is wrapped fresh.
+        """
+        super().__init_subclass__(**kwargs)
+        cls_execute = cls.__dict__.get("execute")
+        if cls_execute is None or not callable(cls_execute):
+            return
+        if getattr(cls_execute, _F5_WRAPPED_ATTR, False):
+            return
+        if not inspect.iscoroutinefunction(cls_execute):
+            # Non-async execute means the subclass deviates from the
+            # protocol. Leave it alone — the central dispatcher fallback
+            # still catches MCP-routed calls.
+            return
+
+        @functools.wraps(cls_execute)
+        async def _wrapped(
+            self: BaseMCPTool, arguments: dict[str, Any]
+        ) -> dict[str, Any]:
+            self._guard_strict_parameters(arguments)
+            return await cls_execute(self, arguments)  # type: ignore[no-any-return]
+
+        setattr(_wrapped, _F5_WRAPPED_ATTR, True)
+        cls.execute = _wrapped  # type: ignore[method-assign]
+
+    def _guard_strict_parameters(self, arguments: dict[str, Any]) -> None:
+        """Refuse unknown top-level parameters using the tool's own schema.
+
+        Subclasses normally never call this directly — the
+        ``__init_subclass__`` wrapper calls it before delegating to the
+        subclass's ``execute``. Exposed as a method so tests and the
+        legacy dispatcher can reuse the same code path.
+        """
+        try:
+            definition = self.get_tool_definition()
+        except Exception:  # noqa: BLE001 — definition errors are out of scope
+            return
+        if not isinstance(definition, dict):
+            return
+        schema = definition.get("inputSchema")
+        tool_name = definition.get("name") or self.__class__.__name__
+        enforce_strict_params(tool_name, schema, arguments)
+
     def __init__(self, project_root: str | None = None) -> None:
         """
         Initialize the base MCP tool.
 
+        ARCH-A4: ``__init__`` now funnels through the same machinery as
+        ``set_project_path`` so the two paths can't drift apart. Subclasses
+        that need to reset lazy caches on a rebind should override
+        :meth:`_on_project_root_changed` (the hook), NOT
+        :meth:`set_project_path` itself. The hook is also called from
+        ``__init__`` so constructor-built tools and re-bound tools see the
+        same lifecycle.
+
         Args:
             project_root: Optional project root directory
         """
-        self.project_root = project_root
-        self.security_validator = SecurityValidator(project_root)
-        self.path_resolver = PathResolver(project_root)
-        logger.debug(
-            f"{self.__class__.__name__} initialized with project root: {project_root}"
-        )
+        # Wire core attributes via the same helper used by rebinds.
+        self._apply_project_root(project_root, _is_init=True)
+
+    @property
+    def project_root(self) -> str | None:
+        """The current project root for this tool.
+
+        J4: exposed as a property so direct attribute assignment
+        (``tool.project_root = "..."``) takes the same code path as
+        ``__init__`` / :meth:`set_project_path`. Setting this attribute
+        rewires the security validator + path resolver and fires
+        :meth:`_on_project_root_changed` so subclasses (e.g.
+        AnalyzeScaleTool) refresh their analysis engine instead of
+        pointing at a stale one whose validator rejects the resolved
+        absolute paths.
+        """
+        return self._project_root
+
+    @project_root.setter
+    def project_root(self, value: str | None) -> None:
+        """Setter that funnels through :meth:`_apply_project_root`.
+
+        We always treat a re-assignment as a rebind: the security
+        validator / path resolver are recreated and any
+        ``_on_project_root_changed`` hook is invoked. The very first
+        write (from ``_apply_project_root`` during ``__init__``) goes
+        through directly via :meth:`_apply_project_root` itself to avoid
+        recursion — see the ``_project_root_initialized`` guard.
+        """
+        if getattr(self, "_project_root_initialized", False):
+            # Subsequent assignment after construction → treat as rebind.
+            self._apply_project_root(value, _is_init=False)
+        else:
+            # First touch (raw attribute write from ``_apply_project_root``).
+            self._project_root = value
 
     def set_project_path(self, project_path: str) -> None:
         """
         Update the project path for all components.
 
+        Final-by-convention: subclasses must not override this method.
+        Override :meth:`_on_project_root_changed` instead so the hook
+        order (apply attributes → clear shared cache → notify subclass)
+        is preserved.
+
         Args:
             project_path: New project root directory
         """
-        self.project_root = project_path
-        self.security_validator = SecurityValidator(project_path)
-        self.path_resolver = PathResolver(project_path)
-        # Invalidate shared caches when the project root changes to avoid cross-project pollution.
-        get_shared_cache().clear()
-        logger.info(
-            f"{self.__class__.__name__} project path updated to: {project_path}"
-        )
+        self._apply_project_root(project_path, _is_init=False)
+
+    def _apply_project_root(self, project_root: str | None, *, _is_init: bool) -> None:
+        """Single internal entry point for both constructor and rebind paths."""
+        # Assigning to ``self.project_root`` after the init flag is set
+        # would re-enter via the property setter and recurse — write the
+        # underlying slot directly. The init flag is set after the first
+        # write so the property setter knows when to dispatch back here.
+        self._project_root = project_root
+        if _is_init:
+            self._project_root_initialized = True
+        self.security_validator = SecurityValidator(project_root)
+        self.path_resolver = PathResolver(project_root)
+        # Invalidate shared caches on rebind only — at __init__ there is
+        # nothing to invalidate, and clearing here would interfere with
+        # other tools sharing the same cache during server bootstrap.
+        if not _is_init:
+            get_shared_cache().clear()
+        # Notify subclasses so they can reset their own lazy state.
+        try:
+            self._on_project_root_changed(project_root)
+        except Exception as exc:  # noqa: BLE001 — log + keep going
+            logger.warning(
+                f"{self.__class__.__name__}._on_project_root_changed raised: {exc}"
+            )
+        if _is_init:
+            logger.debug(
+                f"{self.__class__.__name__} initialized with project root: {project_root}"
+            )
+        else:
+            logger.info(
+                f"{self.__class__.__name__} project path updated to: {project_root}"
+            )
+
+    def _on_project_root_changed(self, project_root: str | None) -> None:
+        """Hook for subclasses to reset lazy caches when project_root rebinds.
+
+        Default is a no-op. Subclasses (e.g. RouteDetectorTool,
+        CodeGraphCallTool, ASTCacheTool) override this to null out
+        their cached helpers — they no longer need to override
+        :meth:`set_project_path` itself. The hook fires from both
+        ``__init__`` and ``set_project_path``, so a subclass that
+        needs to lazy-init via the hook can rely on it running exactly
+        once per binding.
+        """
+        del project_root  # unused at base level — subclass hook
+
+    @staticmethod
+    def _normalize_file_path(raw: str) -> str:
+        """Strip leading ``./`` and normalize separators for consistent echo.
+
+        K12 fix (round-24 dogfood): tools were echoing the raw ``file_path``
+        argument back to the caller. Same logical path with and without a
+        ``./`` prefix produced byte-different ``file_path`` strings, which
+        confused downstream dedup/caching/display layers (e.g. the
+        ``content_hash`` was identical but ``file_path`` was not).
+
+        Normalization rules — minimal and reversible:
+        - Convert backslash separators to forward slash (Windows compat).
+        - Collapse one or more leading ``./`` segments.
+        - Preserve ``../`` semantics (those carry real path info).
+        - Leave absolute paths and bare filenames untouched after the
+          backslash conversion above.
+
+        Examples:
+            >>> BaseMCPTool._normalize_file_path("tree_sitter_analyzer/x.py")
+            'tree_sitter_analyzer/x.py'
+            >>> BaseMCPTool._normalize_file_path("./tree_sitter_analyzer/x.py")
+            'tree_sitter_analyzer/x.py'
+            >>> BaseMCPTool._normalize_file_path("././tree_sitter_analyzer/x.py")
+            'tree_sitter_analyzer/x.py'
+            >>> BaseMCPTool._normalize_file_path("../sibling.py")
+            '../sibling.py'
+            >>> BaseMCPTool._normalize_file_path("a\\\\b.py")
+            'a/b.py'
+        """
+        if not isinstance(raw, str) or not raw:
+            return raw
+        normalized = raw.replace("\\", "/")
+        while normalized.startswith("./"):
+            normalized = normalized[2:]
+        return normalized
 
     def resolve_and_validate_file_path(self, file_path: str) -> str:
         """
@@ -132,6 +562,75 @@ class BaseMCPTool(ABC):
             raise ValueError(f"Invalid directory path: {error_msg}")
 
         return resolved
+
+    def get_output_schema(self) -> dict[str, Any]:
+        """Return the canonical ``outputSchema`` for the ToolResponse envelope.
+
+        PL-C: the MCP spec recommends every tool declare an
+        ``outputSchema`` so clients can validate the response shape and
+        decide whether to render it as a structured data table vs. plain
+        text. Currently 0/55 tools declare one — adding the canonical
+        envelope here means every subclass inherits the contract for
+        free, and tool-specific subclasses can override (or extend the
+        ``properties`` map) for richer payload schemas.
+
+        The shape mirrors what :func:`mirror_summary_line` and
+        :func:`_canonicalize_verdict` already enforce at runtime: every
+        successful response carries ``success`` + ``verdict`` at the top
+        level, plus an ``agent_summary`` sub-object with the same
+        ``verdict`` mirror plus a one-line ``summary_line`` and a
+        ``next_step`` hint. ``additionalProperties=True`` is deliberate —
+        each tool layers its own payload (e.g. ``classes``, ``methods``,
+        ``call_graph``) on top, and a strict schema would force every
+        sweep to update the base. The required-fields set stays minimal
+        (``success`` + ``verdict``) so validators don't reject otherwise
+        well-formed responses that happen to omit optional summary
+        fields.
+
+        Subclasses that want richer payload validation can override::
+
+            def get_output_schema(self) -> dict[str, Any]:
+                base = super().get_output_schema()
+                base["properties"]["classes"] = {"type": "array"}
+                return base
+
+        And add ``"outputSchema": self.get_output_schema()`` to their
+        ``get_tool_definition()`` return dict to surface it on the wire.
+        Done as opt-in for now so this change doesn't conflict with
+        PL-A's parallel tool-definition sweep — a future pass can wire
+        the auto-include once both lanes land.
+        """
+        return {
+            "type": "object",
+            "properties": {
+                "success": {"type": "boolean"},
+                "verdict": {
+                    "type": "string",
+                    "enum": sorted(_LEGAL_VERDICTS),
+                },
+                "error": {
+                    "type": "string",
+                    "description": "Set when success=false. Should include a recovery hint.",
+                },
+                "agent_summary": {
+                    "type": "object",
+                    "description": (
+                        "Token-lean summary for LLM agents: one-line "
+                        "summary_line + verdict + next_step."
+                    ),
+                    "properties": {
+                        "summary_line": {"type": "string"},
+                        "verdict": {
+                            "type": "string",
+                            "enum": sorted(_LEGAL_VERDICTS),
+                        },
+                        "next_step": {"type": "string"},
+                    },
+                },
+            },
+            "required": ["success", "verdict"],
+            "additionalProperties": True,
+        }
 
     @abstractmethod
     def get_tool_definition(self) -> Any:

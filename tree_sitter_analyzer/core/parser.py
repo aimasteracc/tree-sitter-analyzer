@@ -22,6 +22,65 @@ from ..language_loader import get_loader
 logger = logging.getLogger(__name__)
 
 
+def _collect_error_nodes(node: Any, errors: list[dict[str, Any]]) -> None:
+    """Recursively walk a tree-sitter node, appending ERROR nodes to ``errors``.
+
+    r37ax: extracted from ``get_parse_errors`` to drop nesting depth from
+    8 to 4. The previous version inlined dict construction, a ternary for
+    ``text`` decode, and the recursive walk all inside ``get_parse_errors``.
+    """
+    if hasattr(node, "type") and node.type == "ERROR":
+        errors.append(_error_node_payload(node))
+    if hasattr(node, "children"):
+        for child in node.children:
+            _collect_error_nodes(child, errors)
+
+
+def _error_node_payload(node: Any) -> dict[str, Any]:
+    """Build the canonical ``{type, start_point, end_point, text}`` dict."""
+    text = ""
+    if node.text:
+        text = node.text.decode("utf-8", errors="replace")
+    return {
+        "type": "ERROR",
+        "start_point": node.start_point,
+        "end_point": node.end_point,
+        "text": text,
+    }
+
+
+def _failed_parse(language: str, file_path: str, error_message: str) -> "ParseResult":
+    """Return a ParseResult representing a failed parse — keeps callers terse.
+
+    r37ax (dogfood): five identical 7-line ParseResult literals appeared
+    inside parse_file's exception handlers. Consolidating them dropped the
+    method from 113 lines to ~30 and let the function body read as a
+    linear pipeline. Forward reference to ``ParseResult`` is fine because
+    the function is only called at runtime, after the class is defined.
+    """
+    return ParseResult(
+        tree=None,
+        source_code="",
+        language=language,
+        file_path=file_path,
+        success=False,
+        error_message=error_message,
+    )
+
+
+# PERF-2: parser cache sizing
+#   - LRU(100) was the original default, which thrashes on any project with
+#     >100 source files (the analyzer's own repo has ~1280).
+#   - Tree objects are tree-sitter C objects and cannot be pickled, so we
+#     cannot persist them across processes — the cache stays in-memory only.
+#   - The new default (2000) covers the common medium-project case
+#     (Django/Flask app: ~3000 files, but only the actively-scanned subset
+#     ends up in cache). Each cached entry holds a Tree (~10-50 KB) so the
+#     memory ceiling is ~100 MB on the worst case — acceptable for an AI
+#     analysis daemon, configurable via TSA_PARSER_CACHE_SIZE.
+_PARSER_CACHE_SIZE = int(os.environ.get("TSA_PARSER_CACHE_SIZE", "2000"))
+
+
 class ParseResult(NamedTuple):
     """
     Result of parsing operation containing tree and metadata.
@@ -51,8 +110,17 @@ class Parser:
     using Tree-sitter parsers with proper error handling and encoding support.
     """
 
-    # Class-level cache to share across all Parser instances
-    _cache: LRUCache = LRUCache(maxsize=100)
+    # Class-level cache shared across all Parser instances. Sized for medium
+    # projects.
+    _cache: LRUCache = LRUCache(maxsize=_PARSER_CACHE_SIZE)
+    # Stat-only fast path: maps file_path → (mtime_ns, size, language,
+    # cache_key) so a hot warm pass can skip the SHA-256 entirely when
+    # mtime+size are unchanged. Falls back to the SHA-256 path on any miss.
+    _stat_cache: dict[str, tuple[int, int, str, str]] = {}
+    # Hit/miss counters — used by tests and by `cache_info()`.
+    _hits = 0
+    _misses = 0
+    _stat_hits = 0
 
     def __init__(self) -> None:
         """Initialize the Parser with language loader."""
@@ -60,94 +128,124 @@ class Parser:
         self._encoding_manager = EncodingManager()
         logger.info("Parser initialized successfully")
 
+    @classmethod
+    def cache_info(cls) -> dict[str, Any]:
+        """Return cache occupancy and hit/miss counters for diagnostics."""
+        return {
+            "size": len(cls._cache),
+            "maxsize": cls._cache.maxsize,
+            "hits": cls._hits,
+            "misses": cls._misses,
+            "stat_hits": cls._stat_hits,
+            "stat_cache_size": len(cls._stat_cache),
+        }
+
+    @classmethod
+    def cache_clear(cls) -> None:
+        """Clear the parser cache. Used by tests and by tooling that knows
+        files on disk have changed in ways the mtime-based fast path
+        cannot detect."""
+        cls._cache.clear()
+        cls._stat_cache.clear()
+        cls._hits = 0
+        cls._misses = 0
+        cls._stat_hits = 0
+
     def parse_file(self, file_path: str | Path, language: str) -> ParseResult:
-        """
-        Parse a source code file.
+        """Parse a source code file.
 
-        Args:
-            file_path: Path to the file to parse
-            language: Programming language for parsing
-
-        Returns:
-            ParseResult containing the parsed tree and metadata
+        r37ax (dogfood): tool flagged this at 113 lines / nesting depth 8.
+        Split into 4 named phases — existence check, cache lookup, file
+        read with encoding fallback, parse-and-store. Behaviour preserved.
         """
         file_path_str = str(file_path)
+        path_obj = Path(file_path_str)
+        if not path_obj.exists():
+            return _failed_parse(
+                language, file_path_str, f"File not found: {file_path_str}"
+            )
 
         try:
-            # Check if file exists
-            path_obj = Path(file_path_str)
-            if not path_obj.exists():
-                return ParseResult(
-                    tree=None,
-                    source_code="",
-                    language=language,
-                    file_path=file_path_str,
-                    success=False,
-                    error_message=f"File not found: {file_path_str}",
-                )
+            cache_key, cached = self._cache_lookup(file_path_str, language)
+            if cached is not None:
+                return cached
 
-            # Check cache first using file metadata for versioning
-            cache_key = None
-            try:
-                stat = os.stat(file_path_str)
-                # Key: path + mtime + size + language
-                key_string = (
-                    f"{file_path_str}:{stat.st_mtime}:{stat.st_size}:{language}"
-                )
-                cache_key = hashlib.sha256(key_string.encode("utf-8")).hexdigest()
+            read_outcome = self._read_source_code(path_obj, language)
+            if isinstance(read_outcome, ParseResult):
+                return read_outcome
+            source_code = read_outcome
 
-                cached = Parser._cache.get(cache_key)
-                if cached:
-                    logger.debug(f"Parser cache hit for {file_path_str}")
-                    return cached  # type: ignore[no-any-return]
-            except (OSError, TypeError) as e:
-                logger.debug(f"Could not check parser cache for {file_path_str}: {e}")
-
-            # Read file content with encoding detection
-            try:
-                source_code, detected_encoding = self._encoding_manager.read_file_safe(
-                    path_obj
-                )
-                logger.debug(
-                    f"Read file {file_path_str} with encoding {detected_encoding}"
-                )
-            except PermissionError as e:
-                return ParseResult(
-                    tree=None,
-                    source_code="",
-                    language=language,
-                    file_path=file_path_str,
-                    success=False,
-                    error_message=f"Permission denied: {str(e)}",
-                )
-            except Exception as e:
-                return ParseResult(
-                    tree=None,
-                    source_code="",
-                    language=language,
-                    file_path=file_path_str,
-                    success=False,
-                    error_message=f"Error reading file: {str(e)}",
-                )
-
-            # Parse the code
             result = self.parse_code(source_code, language, filename=file_path_str)
-
-            # Save to cache if successful
             if result.success and cache_key:
                 Parser._cache[cache_key] = result
-
             return result
 
         except Exception as e:
             logger.error(f"Unexpected error parsing file {file_path_str}: {e}")
-            return ParseResult(
-                tree=None,
-                source_code="",
-                language=language,
-                file_path=file_path_str,
-                success=False,
-                error_message=f"Unexpected error: {str(e)}",
+            return _failed_parse(language, file_path_str, f"Unexpected error: {str(e)}")
+
+    def _cache_lookup(
+        self, file_path_str: str, language: str
+    ) -> tuple[str | None, ParseResult | None]:
+        """Return ``(cache_key, cached_result_or_None)`` for the cache layer.
+
+        Bumps ``_hits`` / ``_misses`` / ``_stat_hits`` as a side effect.
+        Returns ``(None, None)`` on stat errors so the caller still proceeds.
+        """
+        try:
+            stat = os.stat(file_path_str)
+            mtime_ns = int(stat.st_mtime_ns)
+            size = int(stat.st_size)
+        except (OSError, TypeError) as e:
+            logger.debug(f"Could not check parser cache for {file_path_str}: {e}")
+            return (None, None)
+
+        cache_key = self._lookup_or_record_stat_key(
+            file_path_str, mtime_ns, size, language
+        )
+        cached = Parser._cache.get(cache_key)
+        if cached is not None:
+            Parser._hits += 1
+            logger.debug(f"Parser cache hit for {file_path_str}")
+            return (cache_key, cached)
+        Parser._misses += 1
+        return (cache_key, None)
+
+    def _lookup_or_record_stat_key(
+        self, file_path_str: str, mtime_ns: int, size: int, language: str
+    ) -> str:
+        """Return the cache key, reusing a prior stat hit when possible."""
+        stat_entry = Parser._stat_cache.get(file_path_str)
+        if (
+            stat_entry is not None
+            and stat_entry[0] == mtime_ns
+            and stat_entry[1] == size
+            and stat_entry[2] == language
+        ):
+            Parser._stat_hits += 1
+            return str(stat_entry[3])
+
+        key_string = f"{file_path_str}:{mtime_ns}:{size}:{language}"
+        cache_key = hashlib.sha256(key_string.encode("utf-8")).hexdigest()
+        Parser._stat_cache[file_path_str] = (mtime_ns, size, language, cache_key)
+        return cache_key
+
+    def _read_source_code(self, path_obj: Path, language: str) -> str | ParseResult:
+        """Read the file via the encoding manager, returning either source or a failed ParseResult."""
+        file_path_str = str(path_obj)
+        try:
+            source_code, detected_encoding = self._encoding_manager.read_file_safe(
+                path_obj
+            )
+            logger.debug(f"Read file {file_path_str} with encoding {detected_encoding}")
+            return source_code
+        except PermissionError as e:
+            return _failed_parse(
+                language, file_path_str, f"Permission denied: {str(e)}"
+            )
+        except Exception as e:
+            return _failed_parse(
+                language, file_path_str, f"Error reading file: {str(e)}"
             )
 
     def parse_code(
@@ -273,36 +371,12 @@ class Parser:
         Returns:
             List of error information dictionaries
         """
-        errors = []
-
+        errors: list[dict[str, Any]] = []
         try:
-
-            def find_error_nodes(node: Any) -> None:
-                """Recursively find error nodes in the tree."""
-                if hasattr(node, "type") and node.type == "ERROR":
-                    errors.append(
-                        {
-                            "type": "ERROR",
-                            "start_point": node.start_point,
-                            "end_point": node.end_point,
-                            "text": (
-                                node.text.decode("utf-8", errors="replace")
-                                if node.text
-                                else ""
-                            ),
-                        }
-                    )
-
-                if hasattr(node, "children"):
-                    for child in node.children:
-                        find_error_nodes(child)
-
             if tree and tree.root_node:
-                find_error_nodes(tree.root_node)
-
+                _collect_error_nodes(tree.root_node, errors)
         except Exception as e:
             logger.error(f"Error extracting parse errors: {e}")
-
         return errors
 
 

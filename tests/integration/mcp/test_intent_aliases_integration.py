@@ -54,7 +54,7 @@ class ExampleClass:
     def method(self):
         pass
 '''
-            test_file.write_text(content, encoding='utf-8')
+            test_file.write_text(content, encoding="utf-8")
             yield test_file
             # Cleanup automatic via TemporaryDirectory context manager
 
@@ -70,7 +70,7 @@ class ExampleClass:
                 "roots": [str(temp_python_file.parent)],
                 "query": "example_function",
                 "output_format": "json",
-            }
+            },
         )
 
         # Should succeed and return results in tool's native format
@@ -83,9 +83,7 @@ class ExampleClass:
         assert found, f"Should find 'example_function' in results: {result['results']}"
 
     @pytest.mark.asyncio
-    async def test_map_structure_alias_calls_list_files(
-        self, server, temp_python_file
-    ):
+    async def test_map_structure_alias_calls_list_files(self, server, temp_python_file):
         """map_structure alias 应该调用 list_files 工具并返回正确格式"""
         result = await server.call_tool(
             "map_structure",
@@ -94,7 +92,7 @@ class ExampleClass:
                 "pattern": "*.py",
                 "glob": True,
                 "output_format": "json",
-            }
+            },
         )
 
         # Should succeed and return results in tool's native format
@@ -116,7 +114,7 @@ class ExampleClass:
                 "file_path": str(temp_python_file),
                 "language": "python",
                 "output_format": "json",
-            }
+            },
         )
 
         # Should succeed and return structure info in tool's native format
@@ -128,9 +126,7 @@ class ExampleClass:
         assert "ExampleClass" in result_str
 
     @pytest.mark.asyncio
-    async def test_original_tool_name_still_works(
-        self, server, temp_python_file
-    ):
+    async def test_original_tool_name_still_works(self, server, temp_python_file):
         """原始工具名应该仍然有效（向后兼容）"""
         # Call with original name
         result_original = await server.call_tool(
@@ -139,7 +135,7 @@ class ExampleClass:
                 "roots": [str(temp_python_file.parent)],
                 "query": "example_function",
                 "output_format": "json",
-            }
+            },
         )
 
         # Call with alias
@@ -149,7 +145,7 @@ class ExampleClass:
                 "roots": [str(temp_python_file.parent)],
                 "query": "example_function",
                 "output_format": "json",
-            }
+            },
         )
 
         # Results should be identical (both return same tool's response)
@@ -166,23 +162,15 @@ class TestIntentAliasErrorHandling:
     async def test_unknown_alias_raises_error(self, server):
         """未知的 alias 应该返回错误"""
         with pytest.raises(ValueError, match="Unknown tool"):
-            await server.call_tool(
-                "invalid_alias_name",
-                arguments={}
-            )
+            await server.call_tool("invalid_alias_name", arguments={})
 
     @pytest.mark.asyncio
-    async def test_alias_with_invalid_params_raises_error(
-        self, server
-    ):
+    async def test_alias_with_invalid_params_raises_error(self, server):
         """Alias + 无效参数应该返回错误"""
-        with pytest.raises(AnalysisError):
-            await server.call_tool(
-                "locate_usage",
-                arguments={
-                    "invalid_param": "value"
-                }
-            )
+        # Schema validation now raises ValueError before AnalysisError
+        # is ever constructed; accept either form.
+        with pytest.raises((AnalysisError, ValueError)):
+            await server.call_tool("locate_usage", arguments={"invalid_param": "value"})
 
 
 class TestMultipleAliasesForSameTool:
@@ -202,9 +190,7 @@ class TestMultipleAliasesForSameTool:
             yield tmpdir_path
 
     @pytest.mark.asyncio
-    async def test_map_structure_and_discover_files_same_result(
-        self, server, temp_dir
-    ):
+    async def test_map_structure_and_discover_files_same_result(self, server, temp_dir):
         """map_structure 和 discover_files 应该返回相同结果"""
         # Call with first alias
         result1 = await server.call_tool(
@@ -213,8 +199,8 @@ class TestMultipleAliasesForSameTool:
                 "roots": [str(temp_dir)],
                 "pattern": "*.py",
                 "glob": True,
-                "output_format": "json"
-            }
+                "output_format": "json",
+            },
         )
 
         # Call with second alias
@@ -224,8 +210,8 @@ class TestMultipleAliasesForSameTool:
                 "roots": [str(temp_dir)],
                 "pattern": "*.py",
                 "glob": True,
-                "output_format": "json"
-            }
+                "output_format": "json",
+            },
         )
 
         # Results should be identical (both map to same tool)
@@ -234,9 +220,7 @@ class TestMultipleAliasesForSameTool:
         assert result1["results"] == result2["results"]
 
     @pytest.mark.asyncio
-    async def test_locate_usage_and_find_usage_same_result(
-        self, server, temp_dir
-    ):
+    async def test_locate_usage_and_find_usage_same_result(self, server, temp_dir):
         """locate_usage 和 find_usage 应该返回相同结果"""
         # Create a test file with searchable content
         test_file = temp_dir / "test.py"
@@ -248,8 +232,8 @@ class TestMultipleAliasesForSameTool:
             arguments={
                 "roots": [str(temp_dir)],
                 "query": "search_target",
-                "output_format": "json"
-            }
+                "output_format": "json",
+            },
         )
 
         # Call with second alias
@@ -258,8 +242,8 @@ class TestMultipleAliasesForSameTool:
             arguments={
                 "roots": [str(temp_dir)],
                 "query": "search_target",
-                "output_format": "json"
-            }
+                "output_format": "json",
+            },
         )
 
         # Results should be identical (both map to same tool)
@@ -281,12 +265,8 @@ class TestAliasWithAllToolParameters:
             (tmpdir_path / "app.py").write_text(
                 "def target(): pass\nclass TargetClass: pass"
             )
-            (tmpdir_path / "utils.py").write_text(
-                "def helper(): pass"
-            )
-            (tmpdir_path / "test.py").write_text(
-                "import target\ntarget()"
-            )
+            (tmpdir_path / "utils.py").write_text("def helper(): pass")
+            (tmpdir_path / "test.py").write_text("import target\ntarget()")
 
             yield tmpdir_path
 
@@ -303,7 +283,7 @@ class TestAliasWithAllToolParameters:
                 "include_globs": ["*.py"],
                 "case": "sensitive",
                 "output_format": "json",
-            }
+            },
         )
 
         # Should succeed and respect all parameters
@@ -324,10 +304,10 @@ class TestAliasWithAllToolParameters:
                 "roots": [str(temp_dir_with_files)],
                 "pattern": "*.py",
                 "glob": True,
-                "max_depth": 1,
+                # list_files no longer accepts max_depth — only min_depth.
                 "exclude": ["test*.py"],
                 "output_format": "json",
-            }
+            },
         )
 
         # Should succeed and respect all parameters

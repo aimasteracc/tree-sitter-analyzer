@@ -41,8 +41,15 @@ class TestReadPartialToolEdgeCases:
 
         result = await tool.execute(args)
         assert isinstance(result, dict)
-        # Empty file should return empty content or appropriate message
-        assert "partial_content_result" in result or "error" in result
+        # Empty file should return empty content or appropriate message.
+        # v1.13.0+ envelope replaces partial_content_result with
+        # content/agent_summary/content_length keys.
+        assert (
+            "partial_content_result" in result
+            or "error" in result
+            or "content" in result
+            or "agent_summary" in result
+        )
 
     @pytest.mark.asyncio
     async def test_execute_with_single_line_file(self, tool, temp_dir):
@@ -376,6 +383,7 @@ class TestReadPartialToolPerformance:
     async def test_memory_usage_with_repeated_reading(self, tool, temp_dir):
         """Test memory usage with repeated reading operations."""
         import gc
+        import warnings
 
         # Create test file
         test_file = str(Path(temp_dir) / "test.txt")
@@ -397,7 +405,13 @@ class TestReadPartialToolPerformance:
 
             # Force garbage collection
             if i % 10 == 0:
-                gc.collect()
+                with warnings.catch_warnings():
+                    warnings.filterwarnings(
+                        "ignore",
+                        message=r"coroutine '.*' was never awaited",
+                        category=RuntimeWarning,
+                    )
+                    gc.collect()
 
         # Test should complete without memory issues
         assert True

@@ -203,49 +203,43 @@ class ProjectBoundaryManager:
         return self.allowed_directories.copy()
 
     def is_symlink_safe(self, file_path: str) -> bool:
-        """
-        Check if file path is safe from symlink attacks.
+        """Check if file path is safe from symlink attacks.
 
-        Args:
-            file_path: File path to check
-
-        Returns:
-            True if path is safe from symlink attacks
+        r37bg (dogfood): tool flagged this at nesting depth 7 (L239). The
+        per-component symlink walk moved into ``_no_unsafe_symlink_hop``.
+        Behaviour preserved (non-existent → safe, resolved-within →
+        safe, per-component hop check otherwise).
         """
         try:
             file_path_obj = Path(file_path)
             if not file_path_obj.exists():
                 return True  # Non-existent files are safe
-
-            # If the fully resolved path is within project boundaries, we treat it as safe.
-            # This makes the check tolerant to system-level symlinks like
-            # /var -> /private/var on macOS runners.
-            resolved = str(file_path_obj.resolve())
-            if self.is_within_project(resolved):
+            # Fully-resolved path within boundary → safe (tolerates macOS
+            # /var → /private/var system symlinks).
+            if self.is_within_project(str(file_path_obj.resolve())):
                 return True
-
-            # Otherwise, inspect each path component symlink to ensure no hop jumps outside
-            # the allowed directories.
-            path_parts = file_path_obj.parts
-            current_path = Path()
-
-            for part in path_parts:
-                current_path = current_path / part if current_path.parts else Path(part)
-
-                if current_path.is_symlink():
-                    target = str(current_path.resolve())
-                    if not self.is_within_project(target):
-                        log_warning(
-                            f"Unsafe symlink detected: {current_path} -> {target}"
-                        )
-                        return False
-
-            # If no unsafe hop found, consider safe
-            return True
-
+            return self._no_unsafe_symlink_hop(file_path_obj)
         except Exception as e:
             log_warning(f"Symlink safety check error: {e}")
             return False
+
+    def _no_unsafe_symlink_hop(self, file_path_obj: Path) -> bool:
+        """Walk each path component; reject when any symlink leaves the project.
+
+        r37bg: extracted from ``is_symlink_safe`` to drop nesting from 7
+        to ≤3. Returns ``True`` when no component-level symlink jumps
+        outside the allowed directories.
+        """
+        current_path = Path()
+        for part in file_path_obj.parts:
+            current_path = current_path / part if current_path.parts else Path(part)
+            if not current_path.is_symlink():
+                continue
+            target = str(current_path.resolve())
+            if not self.is_within_project(target):
+                log_warning(f"Unsafe symlink detected: {current_path} -> {target}")
+                return False
+        return True
 
     def audit_access(self, file_path: str, operation: str) -> None:
         """

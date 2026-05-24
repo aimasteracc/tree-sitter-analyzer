@@ -86,18 +86,20 @@ fields:
     validatedUsers,,(27,27)
     pendingOperations,,(28,28)
 imports:
-  [8]{name,is_static,is_wildcard,statement,line_range(a,b)}:
-    java.util.,false,false,import java.util.*;,(3,3)
-    java.time.LocalDateTime,false,false,import java.time.LocalDateTime;,(4,4)
-    java.time.format.DateTimeFormatter,false,false,import java.time.format.DateTimeFormatter;,(5,5)
-    java.sql.Connection,false,false,import java.sql.Connection;,(6,6)
-    java.sql.PreparedStatement,false,false,import java.sql.PreparedStatement;,(7,7)
-    java.sql.ResultSet,false,false,import java.sql.ResultSet;,(8,8)
-    java.sql.SQLException,false,false,import java.sql.SQLException;,(9,9)
-    javax.sql.DataSource,false,false,import javax.sql.DataSource;,(10,10)
+  [8]{name,module_name,statement,is_static,is_wildcard,line_range(a,b),imported_names,raw_text}:
+    java.util.,java.util.,import java.util.*;,false,false,(3,3),[],import java.util.*;
+    java.time.LocalDateTime,java.time.LocalDateTime,import java.time.LocalDateTime;,false,false,(4,4),[],import java.time.LocalDateTime;
+    java.time.format.DateTimeFormatter,java.time.format.DateTimeFormatter,import java.time.format.DateTimeFormatter;,false,false,(5,5),[],import java.time.format.DateTimeFormatter;
+    java.sql.Connection,java.sql.Connection,import java.sql.Connection;,false,false,(6,6),[],import java.sql.Connection;
+    java.sql.PreparedStatement,java.sql.PreparedStatement,import java.sql.PreparedStatement;,false,false,(7,7),[],import java.sql.PreparedStatement;
+    java.sql.ResultSet,java.sql.ResultSet,import java.sql.ResultSet;,false,false,(8,8),[],import java.sql.ResultSet;
+    java.sql.SQLException,java.sql.SQLException,import java.sql.SQLException;,false,false,(9,9),[],import java.sql.SQLException;
+    javax.sql.DataSource,javax.sql.DataSource,import javax.sql.DataSource;,false,false,(10,10),[],import javax.sql.DataSource;
 statistics:
   class_count: 1
   method_count: 66
   field_count: 9
   import_count: 8
-  total_lines: 1420
+  total_lines: 1419
+effective_table: toon
+requested_table: toon

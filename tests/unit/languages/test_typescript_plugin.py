@@ -421,7 +421,8 @@ class TestTypeScriptPlugin:
         assert "TSX/JSX support" in features
 
     @patch(
-        "tree_sitter_analyzer.languages.typescript_plugin.TREE_SITTER_AVAILABLE", False
+        "tree_sitter_analyzer.languages.typescript_plugin.plugin.TREE_SITTER_AVAILABLE",
+        False,
     )
     @pytest.mark.asyncio
     async def test_analyze_file_no_tree_sitter(self, plugin):
@@ -434,7 +435,9 @@ class TestTypeScriptPlugin:
         assert result.success is False
         assert "Tree-sitter library not available" in result.error_message
 
-    @patch("tree_sitter_analyzer.languages.typescript_plugin.loader.load_language")
+    @patch(
+        "tree_sitter_analyzer.languages.typescript_plugin.extractor.loader.load_language"
+    )
     @pytest.mark.asyncio
     async def test_analyze_file_no_language(self, mock_load_language, plugin):
         """Test file analysis when TypeScript language cannot be loaded"""
@@ -462,7 +465,7 @@ class TestTypeScriptPlugin:
         """Test tree-sitter language caching"""
         # First call should load the language
         with patch(
-            "tree_sitter_analyzer.languages.typescript_plugin.loader.load_language"
+            "tree_sitter_analyzer.languages.typescript_plugin.extractor.loader.load_language"
         ) as mock_load:
             mock_language = Mock()
             mock_load.return_value = mock_language

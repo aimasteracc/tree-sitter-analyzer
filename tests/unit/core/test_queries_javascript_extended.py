@@ -210,15 +210,15 @@ class TestJavaScriptExtendedQueries:
             query_string = query_data["query"]
 
             # Basic syntax checks
-            assert query_string.count("(") == query_string.count(
-                ")"
-            ), f"Unbalanced parentheses in {query_name} query"
-            assert query_string.count("[") == query_string.count(
-                "]"
-            ), f"Unbalanced brackets in {query_name} query"
-            assert query_string.count("{") == query_string.count(
-                "}"
-            ), f"Unbalanced braces in {query_name} query"
+            assert query_string.count("(") == query_string.count(")"), (
+                f"Unbalanced parentheses in {query_name} query"
+            )
+            assert query_string.count("[") == query_string.count("]"), (
+                f"Unbalanced brackets in {query_name} query"
+            )
+            assert query_string.count("{") == query_string.count("}"), (
+                f"Unbalanced braces in {query_name} query"
+            )
 
     def test_capture_groups_present(self):
         """Test that queries contain capture groups"""
@@ -247,9 +247,9 @@ class TestJavaScriptExtendedQueries:
         ]
 
         for feature in js_features:
-            assert (
-                feature in all_queries_text
-            ), f"JavaScript feature '{feature}' not found in queries"
+            assert feature in all_queries_text, (
+                f"JavaScript feature '{feature}' not found in queries"
+            )
 
     def test_query_descriptions_quality(self):
         """Test that query descriptions are meaningful"""
@@ -258,9 +258,9 @@ class TestJavaScriptExtendedQueries:
 
             # Description should be meaningful
             assert len(description) > 10, f"Description for {query_name} is too short"
-            assert not description.lower().startswith(
-                "todo"
-            ), f"Description for {query_name} appears to be a placeholder"
+            assert not description.lower().startswith("todo"), (
+                f"Description for {query_name} appears to be a placeholder"
+            )
 
     def test_utility_functions(self):
         """Test utility functions"""
@@ -354,9 +354,9 @@ class TestJavaScriptQueryComparison:
         js_count = len(js_queries.ALL_QUERIES)
 
         # JavaScript should have 85+ queries
-        assert (
-            js_count >= 85
-        ), f"JavaScript should have at least 85 queries, got {js_count}"
+        assert js_count >= 85, (
+            f"JavaScript should have at least 85 queries, got {js_count}"
+        )
 
     def test_javascript_vs_typescript_features(self):
         """Test JavaScript vs TypeScript feature overlap"""
@@ -364,9 +364,9 @@ class TestJavaScriptQueryComparison:
         common_features = ["functions", "classes", "variables", "imports", "exports"]
 
         for feature in common_features:
-            assert (
-                feature in js_queries.ALL_QUERIES
-            ), f"Common feature '{feature}' missing from JavaScript queries"
+            assert feature in js_queries.ALL_QUERIES, (
+                f"Common feature '{feature}' missing from JavaScript queries"
+            )
 
     def test_javascript_specific_vs_typescript(self):
         """Test JavaScript-specific features vs TypeScript"""
@@ -386,9 +386,9 @@ class TestJavaScriptQueryComparison:
         ]
 
         for feature in js_core:
-            assert (
-                feature in all_queries_text
-            ), f"Core JavaScript feature '{feature}' not found"
+            assert feature in all_queries_text, (
+                f"Core JavaScript feature '{feature}' not found"
+            )
 
 
 if __name__ == "__main__":

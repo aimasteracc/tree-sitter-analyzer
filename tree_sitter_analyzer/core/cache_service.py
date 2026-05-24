@@ -300,21 +300,32 @@ class CacheService:
             無効化されたキー数
         """
         invalidated_count = 0
-
+        # r37dn (dogfood): flattened nesting 6 → 3 via _invalidate_keys_in_cache.
         with self._lock:
-            # 各階層からパターンに一致するキーを削除
-            for cache in [self._l1_cache, self._l2_cache, self._l3_cache]:
-                keys_to_remove = [key for key in cache.keys() if pattern in key]
-
-                for key in keys_to_remove:
-                    if key in cache:
-                        del cache[key]
-                        invalidated_count += 1
+            for cache in (self._l1_cache, self._l2_cache, self._l3_cache):
+                invalidated_count += self._invalidate_keys_in_cache(cache, pattern)
 
         log_info(
             f"Invalidated {invalidated_count} cache entries matching pattern: {pattern}"
         )
         return invalidated_count
+
+    @staticmethod
+    def _invalidate_keys_in_cache(cache: Any, pattern: str) -> int:
+        """Remove every key in ``cache`` that contains ``pattern``.
+
+        Accepts any mapping-like cache (LRU / TTL / dict). Returns the
+        number of entries actually deleted. We snapshot the match list
+        first so we can iterate without RuntimeError from mutating the
+        underlying store mid-iteration.
+        """
+        keys_to_remove = [key for key in cache if pattern in key]
+        removed = 0
+        for key in keys_to_remove:
+            if key in cache:
+                del cache[key]
+                removed += 1
+        return removed
 
     def __del__(self) -> None:
         """デストラクタ - リソースクリーンアップ"""

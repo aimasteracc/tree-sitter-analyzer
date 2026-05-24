@@ -25,7 +25,9 @@ class TestSearchContentToolIntegration:
         )
 
         # Test: Multiple format parameters should raise error
-        with pytest.raises(ValueError, match="Output Format Parameter Error|出力形式パラメータエラー"):
+        with pytest.raises(
+            ValueError, match="Output Format Parameter Error|出力形式パラメータエラー"
+        ):
             tool.validate_arguments(
                 {
                     "query": "hello",
@@ -35,7 +37,9 @@ class TestSearchContentToolIntegration:
                 }
             )
 
-        with pytest.raises(ValueError, match="Output Format Parameter Error|出力形式パラメータエラー"):
+        with pytest.raises(
+            ValueError, match="Output Format Parameter Error|出力形式パラメータエラー"
+        ):
             tool.validate_arguments(
                 {
                     "query": "hello",

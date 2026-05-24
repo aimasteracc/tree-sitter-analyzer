@@ -241,7 +241,9 @@ def test_rg_08_build_cmd_hidden_and_no_ignore(tmp_path):
         files_from=None,
         count_only_matches=False,
     )
-    assert "-H" in cmd  # hidden
+    # Pain #27 (2026-05-23): rg's -H is --with-filename, NOT hidden.
+    # The right flag is --hidden (long form).
+    assert "--hidden" in cmd
     assert "-u" in cmd  # no_ignore
 
 

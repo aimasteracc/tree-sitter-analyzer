@@ -18,6 +18,15 @@ from ..models import (
     SQLTrigger,
     SQLView,
 )
+from ._sql_formatters_helpers import (
+    format_sql_compact_details,
+    format_sql_csv_dependencies,
+    format_sql_csv_details,
+    format_sql_overview_details,
+    format_sql_parameter_details,
+    format_sql_table_foreign_keys,
+    iter_sql_elements_by_line,
+)
 
 
 class SQLFormatterBase:
@@ -107,13 +116,14 @@ class SQLFullFormatter(SQLFormatterBase):
         ]
 
         for element_type in type_order:
-            if element_type in grouped_elements:
-                section = self._format_element_section(
-                    element_type, grouped_elements[element_type]
-                )
-                if section:
-                    output.extend(section)
-                    output.append("")
+            section = self._format_element_section(
+                element_type,
+                grouped_elements.get(element_type, []),
+            )
+            if not section:
+                continue
+            output.extend(section)
+            output.append("")
 
         return "\n".join(output).rstrip() + "\n"
 
@@ -127,54 +137,10 @@ class SQLFullFormatter(SQLFormatterBase):
             "|---------|------|-------|-------------------|--------------|",
         ]
 
-        # Sort elements by line number for consistent output
-        all_elements = []
-        for elements in grouped_elements.values():
-            all_elements.extend(elements)
-        all_elements.sort(key=lambda x: x.start_line)
-
-        for element in all_elements:
+        for element in iter_sql_elements_by_line(grouped_elements):
             line_range = f"{element.start_line}-{element.end_line}"
-
-            # Format columns/parameters info
-            if hasattr(element, "columns") and element.columns:
-                details = f"{len(element.columns)} columns"
-            elif hasattr(element, "parameters") and element.parameters:
-                # Clean parameter names for display
-                param_names = []
-                for param in element.parameters:
-                    if hasattr(param, "name") and param.name:
-                        # Only include valid parameter names, skip SQL keywords
-                        if param.name.upper() not in (
-                            "SELECT",
-                            "FROM",
-                            "WHERE",
-                            "INTO",
-                            "VALUES",
-                            "SET",
-                            "UPDATE",
-                            "INSERT",
-                            "DELETE",
-                            "PENDING",
-                        ):
-                            param_names.append(param.name)
-                if param_names:
-                    details = f"({', '.join(param_names)})"
-                else:
-                    details = f"{len(element.parameters)} parameters"
-            elif hasattr(element, "indexed_columns") and element.indexed_columns:
-                col_info = f"({', '.join(element.indexed_columns)})"
-                if hasattr(element, "table_name") and element.table_name:
-                    col_info = f"{element.table_name}{col_info}"
-                details = col_info
-            elif hasattr(element, "source_tables") and element.source_tables:
-                details = f"from {', '.join(element.source_tables)}"
-            else:
-                details = "-"
-
-            # Format dependencies
+            details = format_sql_overview_details(element)
             deps = ", ".join(element.dependencies) if element.dependencies else "-"
-
             output.append(
                 f"| {element.name} | {element.sql_element_type.value} | {line_range} | {details} | {deps} |"
             )
@@ -212,19 +178,19 @@ class SQLFullFormatter(SQLFormatterBase):
     def _format_element_details(self, element: SQLElement) -> list[str]:
         """Format detailed information for a single element"""
         output = [f"### {element.name} ({element.start_line}-{element.end_line})"]
+        detail_formatters = (
+            (SQLTable, self._format_table_details),
+            (SQLView, self._format_view_details),
+            (SQLProcedure, self._format_procedure_details),
+            (SQLFunction, self._format_function_details),
+            (SQLTrigger, self._format_trigger_details),
+            (SQLIndex, self._format_index_details),
+        )
 
-        if isinstance(element, SQLTable):
-            output.extend(self._format_table_details(element))
-        elif isinstance(element, SQLView):
-            output.extend(self._format_view_details(element))
-        elif isinstance(element, SQLProcedure):
-            output.extend(self._format_procedure_details(element))
-        elif isinstance(element, SQLFunction):
-            output.extend(self._format_function_details(element))
-        elif isinstance(element, SQLTrigger):
-            output.extend(self._format_trigger_details(element))
-        elif isinstance(element, SQLIndex):
-            output.extend(self._format_index_details(element))
+        for element_class, formatter in detail_formatters:
+            if isinstance(element, element_class):
+                output.extend(formatter(element))
+                break
 
         return output
 
@@ -242,14 +208,13 @@ class SQLFullFormatter(SQLFormatterBase):
                 output.append(f"**Primary Key**: {', '.join(pk_columns)}")
 
             # Foreign keys
-            fk_columns = table.get_foreign_key_columns()
-            if fk_columns:
-                fk_details = []
-                for col in table.columns:
-                    if col.is_foreign_key and col.foreign_key_reference:
-                        fk_details.append(f"{col.name} → {col.foreign_key_reference}")
-                if fk_details:
-                    output.append(f"**Foreign Keys**: {', '.join(fk_details)}")
+            fk_details = (
+                format_sql_table_foreign_keys(table)
+                if table.get_foreign_key_columns()
+                else None
+            )
+            if fk_details:
+                output.append(fk_details)
 
         if table.constraints:
             constraint_types = [c.constraint_type for c in table.constraints]
@@ -275,12 +240,7 @@ class SQLFullFormatter(SQLFormatterBase):
         output = []
 
         if procedure.parameters:
-            param_details = []
-            for param in procedure.parameters:
-                param_str = f"{param.name} {param.data_type}"
-                if param.direction != "IN":
-                    param_str = f"{param.direction} {param_str}"
-                param_details.append(param_str)
+            param_details = format_sql_parameter_details(procedure.parameters)
             output.append(f"**Parameters**: {', '.join(param_details)}")
 
         if procedure.dependencies:
@@ -293,12 +253,7 @@ class SQLFullFormatter(SQLFormatterBase):
         output = []
 
         if function.parameters:
-            param_details = []
-            for param in function.parameters:
-                param_str = f"{param.name} {param.data_type}"
-                if param.direction != "IN":
-                    param_str = f"{param.direction} {param_str}"
-                param_details.append(param_str)
+            param_details = format_sql_parameter_details(function.parameters)
             output.append(f"**Parameters**: {', '.join(param_details)}")
 
         if function.return_type:
@@ -395,52 +350,7 @@ class SQLCompactFormatter(SQLFormatterBase):
 
     def _format_compact_details(self, element: SQLElement) -> str:
         """Format compact details for an element"""
-        if isinstance(element, SQLTable):
-            details = []
-            if element.columns:
-                details.append(f"{len(element.columns)} cols")
-            pk_columns = element.get_primary_key_columns()
-            if pk_columns:
-                details.append(f"PK: {', '.join(pk_columns)}")
-            return ", ".join(details) if details else "-"
-
-        elif isinstance(element, SQLView):
-            if element.source_tables:
-                return f"from {', '.join(element.source_tables)}"
-            return "view"
-
-        elif isinstance(element, SQLProcedure):
-            if element.parameters:
-                return f"{len(element.parameters)} params"
-            return "procedure"
-
-        elif isinstance(element, SQLFunction):
-            details = []
-            if element.parameters:
-                details.append(f"{len(element.parameters)} params")
-            if element.return_type:
-                details.append(f"-> {element.return_type}")
-            return ", ".join(details) if details else "function"
-
-        elif isinstance(element, SQLTrigger):
-            details = []
-            if element.trigger_timing and element.trigger_event:
-                details.append(f"{element.trigger_timing} {element.trigger_event}")
-            if element.table_name:
-                details.append(f"on {element.table_name}")
-            return ", ".join(details) if details else "trigger"
-
-        elif isinstance(element, SQLIndex):
-            details = []
-            if element.table_name:
-                details.append(f"on {element.table_name}")
-            if element.indexed_columns:
-                details.append(f"({', '.join(element.indexed_columns)})")
-            if element.is_unique:
-                details.append("UNIQUE")
-            return ", ".join(details) if details else "index"
-
-        return "-"
+        return format_sql_compact_details(element)
 
 
 class SQLCSVFormatter(SQLFormatterBase):
@@ -481,59 +391,10 @@ class SQLCSVFormatter(SQLFormatterBase):
         """Format elements as CSV"""
         output = ["Element,Type,Lines,Columns_Parameters,Dependencies"]
 
-        # Sort all elements by line number
-        all_elements = []
-        for elements in grouped_elements.values():
-            all_elements.extend(elements)
-        all_elements.sort(key=lambda x: x.start_line)
-
-        for element in all_elements:
+        for element in iter_sql_elements_by_line(grouped_elements):
             line_range = f"{element.start_line}-{element.end_line}"
-
-            # Format columns/parameters
-            if hasattr(element, "columns") and element.columns:
-                details = f"{len(element.columns)} columns"
-            elif hasattr(element, "parameters") and element.parameters:
-                # Clean parameter names for CSV display
-                param_names = []
-                for param in element.parameters:
-                    if hasattr(param, "name") and param.name:
-                        # Only include valid parameter names, skip SQL keywords
-                        if param.name.upper() not in (
-                            "SELECT",
-                            "FROM",
-                            "WHERE",
-                            "INTO",
-                            "VALUES",
-                            "SET",
-                            "UPDATE",
-                            "INSERT",
-                            "DELETE",
-                            "PENDING",
-                        ):
-                            param_names.append(param.name)
-                if param_names:
-                    details = f"{len(param_names)} parameters"
-                else:
-                    details = f"{len(element.parameters)} parameters"
-            elif hasattr(element, "indexed_columns") and element.indexed_columns:
-                details = f"{';'.join(element.indexed_columns)}"
-            else:
-                details = ""
-
-            # Format dependencies - ensure no line breaks in CSV
-            deps = ""
-            if element.dependencies:
-                # Clean dependencies and join with semicolon
-                clean_deps = []
-                for dep in element.dependencies:
-                    if dep and isinstance(dep, str):
-                        # Remove any line breaks or extra whitespace
-                        clean_dep = dep.replace("\n", "").replace("\r", "").strip()
-                        if clean_dep:
-                            clean_deps.append(clean_dep)
-                deps = ";".join(clean_deps)
-
+            details = format_sql_csv_details(element)
+            deps = format_sql_csv_dependencies(element)
             output.append(
                 f"{element.name},{element.sql_element_type.value},{line_range},{details},{deps}"
             )

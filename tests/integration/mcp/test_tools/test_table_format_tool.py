@@ -142,10 +142,9 @@ public class TestClass {
             return_value=mock_result,
         )
 
-        # Mock the conversion method to return the expected structure
-        mocker.patch.object(
-            self.tool,
-            "_convert_analysis_result_to_dict",
+        # Mock the conversion helper to return the expected structure
+        mocker.patch(
+            "tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool._convert_analysis_result",
             return_value=mock_structure_data,
         )
 
@@ -224,10 +223,9 @@ public class TestClass {
             return_value=mocker.MagicMock(),
         )
 
-        # Mock the conversion method to return the expected structure
-        mocker.patch.object(
-            self.tool,
-            "_convert_analysis_result_to_dict",
+        # Mock the conversion helper to return the expected structure
+        mocker.patch(
+            "tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool._convert_analysis_result",
             return_value=mock_structure_data,
         )
         arguments = {
@@ -317,10 +315,9 @@ public class TestClass {
             return_value=mocker.MagicMock(),
         )
 
-        # Mock the conversion method to return the expected structure
-        mocker.patch.object(
-            self.tool,
-            "_convert_analysis_result_to_dict",
+        # Mock the conversion helper to return the expected structure
+        mocker.patch(
+            "tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool._convert_analysis_result",
             return_value=mock_structure_data,
         )
 
@@ -386,10 +383,9 @@ public class TestClass {
             return_value=mocker.MagicMock(),
         )
 
-        # Mock the conversion method
-        mocker.patch.object(
-            self.tool,
-            "_convert_analysis_result_to_dict",
+        # Mock the conversion helper
+        mocker.patch(
+            "tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool._convert_analysis_result",
             return_value=mock_structure_data,
         )
 
@@ -473,10 +469,9 @@ public class TestClass {
             return_value=mocker.MagicMock(),
         )
 
-        # Mock the conversion method
-        mocker.patch.object(
-            self.tool,
-            "_convert_analysis_result_to_dict",
+        # Mock the conversion helper
+        mocker.patch(
+            "tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool._convert_analysis_result",
             return_value=mock_structure_data,
         )
 

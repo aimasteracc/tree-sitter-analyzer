@@ -773,3 +773,119 @@ class TestUniversalAnalyzeToolGetAvailableQueries:
         assert result["language"] == "python"
         assert "queries" in result
         assert "count" in result
+
+
+class TestUniversalAnalyzeFindings:
+    """Regression tests for round-16b dogfood findings 1 and 2."""
+
+    @pytest.mark.asyncio
+    async def test_universal_analyze_envelope_includes_success_and_summary(
+        self, tmp_path
+    ):
+        """Finding 2: response must carry success, summary_line, agent_summary.
+
+        Round-16b dogfood showed the response keys were limited to the
+        analysis payload (classes/methods/metrics/...) with no canonical
+        envelope fields. This regression guards against that shape
+        regressing.
+        """
+        sample = tmp_path / "sample.py"
+        sample.write_text(
+            '''"""Sample module."""
+
+# A single line comment
+def hello(name: str) -> str:
+    """Return greeting."""
+    return f"Hello, {name}!"
+
+
+# Another comment
+
+class Greeter:
+    pass
+''',
+            encoding="utf-8",
+        )
+
+        tool = UniversalAnalyzeTool(project_root=str(tmp_path))
+        result = await tool.execute({"file_path": str(sample), "output_format": "json"})
+
+        assert result["success"] is True, "Finding 2: success must be present"
+        sl = result.get("summary_line")
+        assert isinstance(sl, str) and sl, (
+            "Finding 2: summary_line must be a non-empty string"
+        )
+        agent_summary = result.get("agent_summary")
+        assert isinstance(agent_summary, dict), (
+            "Finding 2: agent_summary must be a populated dict"
+        )
+        assert agent_summary.get("summary_line") == sl, (
+            "Finding 2: agent_summary.summary_line must mirror top-level"
+        )
+        assert agent_summary.get("next_step"), (
+            "Finding 2: agent_summary.next_step must be non-empty"
+        )
+
+    @pytest.mark.asyncio
+    async def test_universal_analyze_counts_comments_and_blanks(self, tmp_path):
+        """Finding 1: comment/blank line counts must match analyze_scale.
+
+        Previously hardcoded ``lines_comment=0``/``lines_blank=0`` and copied
+        ``lines_total`` into ``lines_code``. We now classify lines via
+        :func:`compute_file_metrics` — so the universal-analyze counts
+        agree with the analyze_scale counts on the same file. This test
+        cross-checks them against each other rather than pinning exact
+        numbers (the line classifier's treatment of trailing blank lines
+        and shebangs varies).
+        """
+        from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import (
+            AnalyzeScaleTool,
+        )
+
+        sample = tmp_path / "sample.py"
+        sample.write_text(
+            "# header comment\n"
+            "# another comment\n"
+            "\n"
+            "def f():\n"
+            "    return 1\n"
+            "\n"
+            "# trailing comment\n"
+            "x = 2\n"
+            "y = 3\n",
+            encoding="utf-8",
+        )
+
+        u = UniversalAnalyzeTool(project_root=str(tmp_path))
+        u_res = await u.execute({"file_path": str(sample), "output_format": "json"})
+        u_metrics = u_res["metrics"]
+
+        s = AnalyzeScaleTool(project_root=str(tmp_path))
+        s_res = await s.execute({"file_path": str(sample), "output_format": "json"})
+        s_metrics = s_res["file_metrics"]
+
+        # Round-16b finding 1: the comment and blank counts produced by
+        # universal_analyze were ``0``/``0`` even though analyze_scale
+        # reported the real numbers. Now they must agree.
+        assert u_metrics["lines_comment"] == s_metrics["comment_lines"], (
+            f"comment count mismatch: universal={u_metrics['lines_comment']} "
+            f"vs analyze_scale={s_metrics['comment_lines']}"
+        )
+        assert u_metrics["lines_blank"] == s_metrics["blank_lines"], (
+            f"blank count mismatch: universal={u_metrics['lines_blank']} "
+            f"vs analyze_scale={s_metrics['blank_lines']}"
+        )
+        assert u_metrics["lines_code"] == s_metrics["code_lines"], (
+            f"code count mismatch: universal={u_metrics['lines_code']} "
+            f"vs analyze_scale={s_metrics['code_lines']}"
+        )
+        # Sanity: counts are non-trivial — fix actually exercised.
+        assert u_metrics["lines_comment"] > 0, (
+            "Finding 1: comment count is still 0 — hardcoded bug regressed"
+        )
+        assert u_metrics["lines_blank"] > 0, (
+            "Finding 1: blank count is still 0 — hardcoded bug regressed"
+        )
+        assert u_metrics["lines_code"] != u_metrics["lines_total"], (
+            "Finding 1: lines_code == lines_total — fix regressed"
+        )

@@ -201,9 +201,9 @@ class TestYAMLOutputFormatProperties:
 
         try:
             structure_parsed = json.loads(json_content)
-            assert isinstance(
-                structure_parsed, dict
-            ), "Structure JSON must be a dictionary"
+            assert isinstance(structure_parsed, dict), (
+                "Structure JSON must be a dictionary"
+            )
             assert "file_path" in structure_parsed, "Structure must contain file_path"
         except json.JSONDecodeError as e:
             pytest.fail(f"Structure JSON must be valid: {e}")
@@ -272,12 +272,12 @@ class TestYAMLOutputFormatProperties:
         assert len(text_output) > 0, "Text output must not be empty"
 
         # Property: Text output must contain key information
-        assert (
-            "File:" in text_output or "file" in text_output.lower()
-        ), "Text must mention file"
-        assert (
-            "Language:" in text_output or "yaml" in text_output.lower()
-        ), "Text must mention language"
+        assert "File:" in text_output or "file" in text_output.lower(), (
+            "Text must mention file"
+        )
+        assert "Language:" in text_output or "yaml" in text_output.lower(), (
+            "Text must mention language"
+        )
 
         # Property: Text output must be readable (no binary data)
         try:
@@ -380,9 +380,9 @@ class TestYAMLOutputFormatProperties:
         assert len(separator_lines) > 0, "Table must contain separator rows"
 
         # Property: File path should appear in the output
-        assert (
-            file_path in table_output or "File" in table_output
-        ), "Table should reference the file being analyzed"
+        assert file_path in table_output or "File" in table_output, (
+            "Table should reference the file being analyzed"
+        )
 
         # Property: Language should be mentioned
         assert "yaml" in table_output.lower(), "Table should mention YAML language"

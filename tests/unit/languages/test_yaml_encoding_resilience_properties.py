@@ -84,9 +84,9 @@ class TestYAMLEncodingResilienceProperties:
             result = asyncio.run(plugin.analyze_file(temp_path, MockRequest()))
 
             # Property: Analysis should succeed
-            assert (
-                result.success
-            ), f"UTF-8 file analysis should succeed: {result.error_message}"
+            assert result.success, (
+                f"UTF-8 file analysis should succeed: {result.error_message}"
+            )
 
             # Property: Elements should be extracted
             assert len(result.elements) > 0, "Should extract at least one element"
@@ -131,9 +131,9 @@ class TestYAMLEncodingResilienceProperties:
             result = asyncio.run(plugin.analyze_file(temp_path, MockRequest()))
 
             # Property: Analysis should succeed (fallback encoding)
-            assert (
-                result.success
-            ), f"Latin-1 file analysis should succeed: {result.error_message}"
+            assert result.success, (
+                f"Latin-1 file analysis should succeed: {result.error_message}"
+            )
 
             # Property: Elements should be extracted
             assert len(result.elements) > 0, "Should extract at least one element"

@@ -27,9 +27,9 @@ def validate_develop_workflow():
     # Check workflow structure
     assert "name" in develop_workflow, "Workflow must have a name"
     # Note: YAML parsers may convert 'on' to boolean True
-    assert (
-        "on" in develop_workflow or True in develop_workflow
-    ), "Workflow must have triggers"
+    assert "on" in develop_workflow or True in develop_workflow, (
+        "Workflow must have triggers"
+    )
     assert "jobs" in develop_workflow, "Workflow must have jobs"
 
     jobs = develop_workflow["jobs"]

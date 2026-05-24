@@ -546,6 +546,67 @@ class TestEdgeCases:
         assert isinstance(is_safe, bool)
 
 
+class TestMissingCoverage:
+    """Tests for uncovered lines: 103, 184-187, 262, 295-297"""
+
+    def test_validate_pattern_performance_error_path(self):
+        """Line 103: performance check returns error in validate_pattern."""
+        checker = RegexSafetyChecker()
+        with patch.object(
+            checker,
+            "_check_performance",
+            return_value="execution too slow: 1.5s",
+        ):
+            is_safe, error = checker.validate_pattern(r"test")
+            assert not is_safe
+            assert "Pattern performance issue" in error
+
+    def test_check_performance_slow_execution(self):
+        """Lines 184-187: execution exceeds MAX_EXECUTION_TIME."""
+        checker = RegexSafetyChecker()
+        # Python 3.12+ stdlib paths call ``time.time()`` more than twice
+        # internally (logging timestamps, GC). The original 2-element
+        # side_effect raised StopIteration. Use a stateful clock that
+        # returns 0.0 on the very first call (the captured start_time)
+        # and 2.0 thereafter so elapsed > MAX_EXECUTION_TIME regardless
+        # of how many internal time() calls happen between.
+        call_count = {"n": 0}
+
+        def fake_time() -> float:
+            call_count["n"] += 1
+            return 0.0 if call_count["n"] == 1 else 2.0
+
+        with patch("time.time", side_effect=fake_time):
+            is_slow = checker._check_performance(r"test")
+            assert is_slow is not None
+            assert "too slow" in is_slow
+
+    def test_suggest_safer_pattern_dangerous_no_replacement(self):
+        """Line 262: dangerous pattern that has no replacement rule."""
+        checker = RegexSafetyChecker()
+        # (a+){1,2} is detected as dangerous but doesn't match replacement patterns
+        result = checker.suggest_safer_pattern(r"(a+){1,2}")
+        assert result is None
+
+    def test_create_safe_pattern_compilation_failure_after_validation(self):
+        """Lines 295-297: re.compile fails after validation passes."""
+        checker = RegexSafetyChecker()
+        real_compile = re.compile
+        call_count = 0
+
+        def compile_side_effect(pattern, flags=0):
+            nonlocal call_count
+            call_count += 1
+            # Let first calls (in validate_pattern) succeed, fail on the final one
+            if call_count > 2:
+                raise re.error("unexpected failure")
+            return real_compile(pattern, flags)
+
+        with patch("re.compile", side_effect=compile_side_effect):
+            result = checker.create_safe_pattern(r"test")
+            assert result is None
+
+
 class TestIntegration:
     """测试集成场景"""
 

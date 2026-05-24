@@ -1,0 +1,214 @@
+## Auto-Sprint Execute (Level 2 of the autonomous-dev architecture).
+##
+## Reads the daily sprint plan (or an explicitly-specified work-item index),
+## generates a Claude Code brief via scripts/auto_sprint_brief.py, then:
+##
+##   * mode=brief         — uploads the brief as a workflow artifact + posts
+##                          it to the auto-sprint issue. Operator copies it
+##                          into their local Claude Code session. Zero cost.
+##                          (Level 1.5)
+##
+##   * mode=claude-code   — invokes anthropics/claude-code-action with the
+##                          brief. Requires `ANTHROPIC_API_KEY` repo secret.
+##                          Opens a PR; HUMAN MERGES. (Level 2)
+##
+## Safety guarantees:
+##   - never auto-merges
+##   - never pushes to main / master
+##   - never passes --dangerously-skip-permissions or --no-verify
+##   - permissions: contents:write (for branch) + pull-requests:write, no more
+
+name: Auto-Sprint Execute
+
+on:
+  workflow_dispatch:
+    inputs:
+      work_item_index:
+        description: "Which work item to take (0 = top of backlog)"
+        default: "0"
+        required: false
+      mode:
+        description: "brief = produce paste-ready brief; claude-code = let an agent run"
+        type: choice
+        options: [brief, claude-code]
+        default: brief
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  # Each work-item index gets its own slot; concurrent runs on different
+  # items are fine.
+  group: auto-sprint-execute-${{ github.event.inputs.work_item_index }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Build sprint plan + brief
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      has_work: ${{ steps.review.outputs.has_work }}
+      brief_path: artifacts/brief.md
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Install Python deps
+        run: uv sync --frozen --no-dev
+
+      - name: Generate sprint plan
+        id: review
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          if uv run python scripts/auto_review.py \
+                --max-items 10 --quiet \
+                --out artifacts/auto-review.json; then
+            echo "has_work=false" >> "$GITHUB_OUTPUT"
+          else
+            # exit 1 means "work found" — see scripts/auto_review.py docstring.
+            rc=$?
+            if [ "$rc" -eq 1 ]; then
+              echo "has_work=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "::error::auto_review failed with exit $rc"
+              exit "$rc"
+            fi
+          fi
+
+      - name: Generate Claude Code brief
+        if: steps.review.outputs.has_work == 'true'
+        run: |
+          set -euo pipefail
+          uv run python scripts/auto_sprint_brief.py \
+              --plan artifacts/auto-review.json \
+              --index "${{ github.event.inputs.work_item_index }}" \
+              --out artifacts/brief.md
+          echo "::group::Brief preview"
+          head -40 artifacts/brief.md
+          echo "::endgroup::"
+
+      - name: Upload brief + plan
+        if: steps.review.outputs.has_work == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: auto-sprint-brief
+          path: artifacts/
+
+      - name: Post brief to auto-sprint issue
+        if: steps.review.outputs.has_work == 'true' && github.event.inputs.mode == 'brief'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          EXISTING=$(gh issue list --label auto-sprint --state open --json number --jq '.[0].number' || true)
+          if [ -z "${EXISTING:-}" ]; then
+            gh label create auto-sprint --description "Auto-generated sprint plans" --color FBCA04 --force || true
+            gh issue create \
+                --title "Auto-Sprint brief ($(date -u +%Y-%m-%d))" \
+                --label auto-sprint \
+                --body "Brief produced — see comment(s) below."
+            EXISTING=$(gh issue list --label auto-sprint --state open --json number --jq '.[0].number')
+          fi
+          gh issue comment "$EXISTING" --body-file artifacts/brief.md
+
+  agent:
+    name: Run Claude Code (mode=claude-code)
+    needs: plan
+    if: needs.plan.outputs.has_work == 'true' && github.event.inputs.mode == 'claude-code'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify required secret
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+            echo "::error::mode=claude-code needs ANTHROPIC_API_KEY repo secret."
+            echo "::error::Add it at Settings → Secrets → Actions, or use mode=brief."
+            exit 1
+          fi
+
+      - name: Download brief
+        uses: actions/download-artifact@v4
+        with:
+          name: auto-sprint-brief
+          path: artifacts
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Install Python deps
+        run: uv sync --frozen
+
+      # Use the official anthropics/claude-code-base-action. The action
+      # creates a sandboxed agent run with the brief as prompt and a
+      # repo-scoped allowlist of tools.
+      - name: Invoke Claude Code
+        uses: anthropics/claude-code-base-action@v1
+        with:
+          prompt_file: artifacts/brief.md
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Tight allowlist: agent may edit and run tests but cannot push.
+          # The next step verifies + opens a PR with the diff.
+          allowed_tools: "Bash(uv run *),Bash(git add *),Bash(git diff *),Edit,Write,Read,Grep,Glob"
+          # Hard cap: a brief should take well under 30 min of model time.
+          timeout_minutes: "30"
+
+      - name: Verify + open PR (never merge)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "::warning::Agent produced no diff. Exiting cleanly."
+            exit 0
+          fi
+
+          # Quality gates — the same ones the brief told the agent to run.
+          uv run pytest -q tests/regression/test_plugin_golden_masters.py
+          uv run python -m tree_sitter_analyzer --change-impact --format json > /tmp/impact.json
+
+          branch="auto-sprint/$(date -u +%Y%m%d-%H%M)-item${{ github.event.inputs.work_item_index }}"
+          git config user.name "auto-sprint[bot]"
+          git config user.email "auto-sprint@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add -A
+          git commit -m "auto-sprint: work item ${{ github.event.inputs.work_item_index }}
+
+Generated by .github/workflows/auto-sprint-execute.yml.
+Review the diff before merging — this PR is NOT auto-merged."
+          git push -u origin "$branch"
+          gh pr create \
+              --base "${{ github.ref_name }}" \
+              --head "$branch" \
+              --title "auto-sprint: work item ${{ github.event.inputs.work_item_index }}" \
+              --body "$(cat artifacts/brief.md)
+
+---
+
+**Verification artifacts**: see workflow run.
+**Merge policy**: this PR is NEVER auto-merged. A human reviews and merges."
+
+      - name: Upload run artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: auto-sprint-execute-run
+          path: |
+            artifacts/
+            /tmp/impact.json

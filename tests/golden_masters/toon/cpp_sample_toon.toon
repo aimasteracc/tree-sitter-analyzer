@@ -4,18 +4,16 @@ package:
   name: math
   line_range: (18, 47)
 classes:
-  [8]{name,visibility,line_range(a,b)}:
-    Container,public,(30,45)
+  [6]{name,visibility,line_range(a,b)}:
+    Container,public,(31,45)
     Point,public,(62,70)
     Shape,public,(73,83)
     Rectangle,public,(86,128)
     Printable,public,(134,138)
     Circle,public,(140,157)
-    Color,public,(52,52)
-    Status,public,(55,59)
 methods:
   [36]{name,visibility,line_range(a,b)}:
-    max,public,(24,27)
+    max,public,(25,27)
     Container,public,(33,33)
     Container,public,(34,34)
     ~Container,public,(35,35)
@@ -45,17 +43,15 @@ methods:
     name,public,(146,146)
     print,public,(148,150)
     operator<<,public,(160,163)
-    swap_values,public,(175,180)
+    swap_values,public,(176,180)
     add,public,(185,187)
     add,public,(190,192)
     process,public,(195,199)
     create_shape,public,(202,208)
     main,public,(211,256)
 fields:
-  [13]{name,type,line_range(a,b)}:
+  [10]{name,type,line_range(a,b)}:
     PI,,(21,21)
-    T,,(24,24)
-    T,,(30,30)
     x,,(63,63)
     y,,(64,64)
     width_,,(123,123)
@@ -65,20 +61,21 @@ fields:
     static_value,,(170,170)
     APP_NAME,,(171,171)
     MAX_SIZE,,(172,172)
-    T,,(175,175)
 imports:
-  [8]{name,is_static,is_wildcard,statement,line_range(a,b)}:
-    iostream,false,false,"#include <iostream>\n",(7,7)
-    string,false,false,"#include <string>\n",(8,8)
-    vector,false,false,"#include <vector>\n",(9,9)
-    memory,false,false,"#include <memory>\n",(10,10)
-    functional,false,false,"#include <functional>\n",(11,11)
-    using namespace std;,false,false,using namespace std;,(14,14)
-    "using std::vector;",false,false,"using std::vector;",(15,15)
-    using StringList = vector<string>;,false,false,using StringList = vector<string>;,(167,167)
+  [8]{name,module_name,statement,is_static,is_wildcard,line_range(a,b),imported_names,raw_text}:
+    iostream,iostream,"#include <iostream>\n",false,false,(7,7),[],"#include <iostream>\n"
+    string,string,"#include <string>\n",false,false,(8,8),[],"#include <string>\n"
+    vector,vector,"#include <vector>\n",false,false,(9,9),[],"#include <vector>\n"
+    memory,memory,"#include <memory>\n",false,false,(10,10),[],"#include <memory>\n"
+    functional,functional,"#include <functional>\n",false,false,(11,11),[],"#include <functional>\n"
+    using namespace std;,,using namespace std;,false,false,(14,14),[],using namespace std;
+    "using std::vector;",,"using std::vector;",false,false,(15,15),[],"using std::vector;"
+    using StringList = vector<string>;,,using StringList = vector<string>;,false,false,(167,167),[],using StringList = vector<string>;
 statistics:
-  class_count: 8
+  class_count: 6
   method_count: 36
-  field_count: 13
+  field_count: 10
   import_count: 8
-  total_lines: 257
+  total_lines: 256
+effective_table: toon
+requested_table: toon

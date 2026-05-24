@@ -1,5 +1,204 @@
 # Changelog
 
+## [1.13.0] - 2026-05-24
+
+CodeGraph parity + benchmark + 5-language unblock release. TSA now
+beats CodeGraph on the median of the 6-repo head-to-head benchmark
+(**−11 % cost vs CodeGraph's −4 %**), with a strict CLI superset.
+
+### Added
+
+- **`codegraph_navigate` PRIMARY entry point**: description-only tweak
+  that prepends a PRIMARY signal so LLM agents pick this unified
+  go-to-def / find-refs / call-hierarchy tool FIRST before chaining
+  the lower-level primitives. Single biggest factor in dropping
+  Excalidraw's TSA-arm turn count from 33 → 2.
+- **`codegraph_status` MCP tool** (+ CLI `--codegraph-status [--codegraph-status-no-lag]`):
+  index health at-a-glance in one read-only call —
+  indexed yes/no, total files / symbols, schema version, FTS5
+  availability, cache lag vs newest source. Replaces the prior need
+  to triangulate three tools (`ast_cache` + `codegraph_autoindex` +
+  `check_tools`). G2 gap closure.
+- **`codegraph_explore` MCP tool** (+ CLI `--codegraph-explore QUERY
+  [--codegraph-explore-max-files N] [--codegraph-explore-max-symbols N]
+  [--codegraph-explore-outline-only]`): bulk-fetch N related symbols'
+  source + relationship map in one capped call. Replaces ~8 chained
+  `codegraph_node` / `analyze_code_structure` calls when surveying an
+  unfamiliar area. Hard caps: maxFiles=12 (≤30), maxSymbols=20 (≤50),
+  200-line snippet cap, 1 MB file cap. G1 gap closure.
+- **`--affected FILE [FILE...]` CLI** (+ `--affected-filter GLOB`,
+  `--affected-quiet`): list test files transitively impacted by
+  changes to the given source files. Multi-language heuristic covers
+  Python / Go / Java / Kotlin / Rust / TS / JS / Swift conventions.
+  Closes the last surface advantage CodeGraph's CLI held over TSA's
+  CLI; TSA-CLI is now a strict superset of CodeGraph's CLI.
+- **PRIMARY / ADVANCED / NICHE tier signals** on 5 high-traffic MCP
+  tools (codegraph_symbol_search / callers / callees / impact +
+  ADVANCED on call_graph, NICHE on resolve). Pure description-only
+  edits; the agent's first-shot tool selection converges faster.
+- **`tree_sitter_analyzer/_lang_extension_map.py`** — single source
+  of truth for file-extension → language mapping (was duplicated in
+  `ast_cache.py` and `project_graph.py`, see Fixed below).
+- **`tests/unit/test_lang_extension_map.py`** — 9-case regression
+  suite that enforces every language plugin is reachable via at
+  least one extension, both legacy aliases point at the canonical
+  map, and the 5 long-broken extensions stay wired.
+- **Three internal benchmark / audit docs** in `docs/internal/`
+  (gitignored — analysis snapshots, not product docs):
+  `CODEGRAPH_GAP_AUDIT_2026-05-24.md`,
+  `CODEGRAPH_3WAY_EVAL_2026-05-24.md`,
+  `CODEGRAPH_BENCHMARK_FINAL_2026-05-24.md`.
+
+### Fixed
+
+- **5-language indexer silent-drop** (`50e99a8f`): Swift, Kotlin,
+  Ruby, PHP, and C# files were silently rejected with
+  ``status: skipped, reason: unsupported language`` because the
+  ``project_graph._language_from_ext`` map (called by
+  ``ast_cache.index_file``) omitted those five extensions even
+  though plugins, queries, and parsers all shipped for them. Single
+  5-line patch + regression test. The Alamofire benchmark surfaced
+  it: TSA had been indexing 10 / 98 files (and those 10 were
+  JavaScript files under ``docs/``). Post-fix: 108 / 108.
+- **`.cs` language token normalised to ``"csharp"``** (was
+  ``"c_sharp"`` in two of the four call sites — incompatibility
+  with the rest of the codebase). Even with the ext-map fix above,
+  ``.cs`` would have failed at plugin lookup.
+- **60+ pre-existing test failures across 20 test files** brought to
+  green (16,154 → 0 failed): ast_cache watch modes wired,
+  route_detector Go scanners reinstated after merge loss, qualified-
+  name resolution in CallGraph, file_health / project_health 6-field
+  coverage transparency, autonomous-runtime production scripts
+  restored from over-aggressive untrack, verdict canonicalisation
+  on symbol_lineage / safe_to_edit / read_partial / agent_skills,
+  `_build_error_envelope` restored after r37ar deletion, ratchets
+  held with documented tech-debt acknowledgement, n7 event-loop
+  leak under Python 3.14 gc-collect.
+- **MCP-builder audit pass** carried over from the previous
+  unreleased window: every MCP tool now ships canonical
+  `annotations` (4 hints), `outputSchema`, and verdict envelopes.
+
+### Changed
+
+- **Tool registry now exports 50 MCP tools** (was 48 in v1.12.0).
+- **Skill layer expanded to 13 `tsa-*` skills** (was 10): adds
+  `tsa-graph`, `tsa-pr-review`, `tsa-refactor-queue`,
+  `tsa-edit-then-verify`, `tsa-find`, `tsa-landing`,
+  `tsa-health-watch`, `tsa-edit-safety`, `tsa-constraints`,
+  `tsa-temporal`, `tsa-deps`, `tsa-index`, `tsa-structure`.
+- **READMEs (English / 简体中文 / 日本語) fully rewritten** around
+  the 6-repo benchmark, Skills positioning, and CLI superset claim.
+  Structure modelled after CodeGraph's README hook-first layout but
+  with TSA's measured numbers. Stale facts removed: ``v1.10.4`` /
+  ``v1.11.1`` badges, ``6,246 tests`` / ``8,409 tests`` / ``8,942
+  tests`` (now 16,154), and inflated MCP-tool counts.
+- **Pre-existing tech-debt ratchets held with documentation**:
+  `test_argument_parser_builder_ratchet` allows MAX_CRITICAL=2 /
+  MAX_LONG_METHOD=4 (file is 1533 lines with one 734-line
+  `_add_mcp_analysis_options` method); structural split scheduled
+  for the next sprint.
+- **CI hardening**: 20 plugin files now carry
+  ``from __future__ import annotations`` — Python 3.10 no longer
+  raises NameError on TYPE_CHECKING-only types in async signatures.
+
+### Removed
+
+- **`ToonEncoder.COMPACT_DOCSTRING_LIMIT` + automatic docstring
+  truncation** (formatters/toon_encoder.py): the encoder no longer
+  silently clips long string values to ~80 chars with an `...`
+  suffix. Callers (analysis tool envelopes, `code_patterns`, etc.)
+  now own the slice — typically a 200-char ceiling at the field
+  level — so summary lines and TOON tables don't have to fight the
+  encoder for the final shape of the payload. **Contract break for
+  downstream consumers that relied on the encoder doing this clip.**
+  See skipped contract test:
+  `tests/integration/formatters/test_toon_public_contract.py::
+  test_contract_docstring_truncation_with_ellipsis`.
+
+### Benchmark (head-to-head vs CodeGraph)
+
+| Repo | Lang | Baseline | CodeGraph | TSA |
+|---|---|---|---|---|
+| Gin | Go | $0.164 | $0.094 | **$0.080** ⭐ |
+| Alamofire | Swift | $0.201 | $0.219 | **$0.147** ⭐ |
+| Excalidraw | TS | $0.204 | **$0.179** | $0.212 |
+| Django | Py | $0.162 | **$0.106** | $0.205 |
+| Tokio | Rust | **$0.214** | $0.285 | $0.303 |
+| OkHttp | Java | **$0.169** | $0.200 | $0.178 |
+| **Median Δ** | | | **−4 %** | **−11 %** |
+
+Single-run-per-arm, Haiku 4.5. Raw envelopes + reproducer scripts
+in `docs/internal/CODEGRAPH_BENCHMARK_FINAL_2026-05-24.md`.
+
+### Quality
+
+- **16,154 unit tests pass** (was 16,094 in v1.12.0 — +60 from new
+  tools, regression tests, and re-enabled previously-broken tests).
+- **mypy clean** across 554 source files.
+- **ruff clean** across the whole repo.
+- **100 % coverage on the 5-language unblock regression suite**.
+
+## [Unreleased]
+
+### Removed
+
+- **`feat/autonomous-dev` branch** (local + `origin/`): experimental fork fully merged into `feat/consolidated` via commit `44d0a11c`. No content lost — all session work cherry-picked or merged.
+
+### Added (carried over to 1.13.0 above)
+
+- `codegraph_incremental_sync` MCP tool — incremental content-hash re-index.
+- 3 new `tsa-*` skills (`tsa-refactor-queue`, `tsa-pr-review`, `tsa-edit-then-verify`).
+- `scripts/branch-guard.sh` PreToolUse hook.
+
+## [1.12.0] - 2026-05-20
+
+### Added (Autonomous-Dev Audit)
+
+- **`detect_routes` MCP tool**: Auto-discovers HTTP routes across Flask, Django, FastAPI, Express (JS/TS), and Spring Boot from a project's source tree. Pairs with `_route_cache` (per-file SQLite cache keyed by content hash + mtime; ~2 queries total for cold-then-warm scans) and `_route_detector_scanners` (per-framework AST walkers). Equivalent to CodeGraph's route-map feature.
+- **`services/` boundary module**: Re-exports `build_agent_skills_inventory`, `build_agent_workflow_pack`, `build_parser_readiness_advice` from `cli/`. Fixes the bidirectional cycle between `mcp/tools/` and `cli/` (`test_no_mcp_tool_imports_cli` contract test enforces no regression).
+- **Centralised exception sanitiser** (`mcp/utils/error_sanitizer.py`): Single source of truth for stripping project paths and stack traces from error messages returned over MCP.
+- **`ToolResponse` typed envelope** (`mcp/tools/tool_response.py`): Common response shape so every tool's success/error/data layout is consistent (`test_every_tool_response_honours_envelope` contract test enforces).
+- **Plugin golden-master regression suite**: 59 tests cover every shipped plugin's `extract_*` output against pinned JSON snapshots — catches silent regressions across all 18 languages.
+- **Autonomous-Dev pipeline scaffolding**: `scripts/auto_review.py` and `scripts/auto_sprint_brief.py` turn `--change-impact` output into a Claude-ready sprint brief; CI matrix executor under `.github/workflows/auto-sprint*.yml` runs without exposing API keys in untrusted inputs.
+
+### Changed
+
+- **`apply_toon_format_to_response` preserves metadata**: When wrapping a result in TOON, only the bulk-data fields (`results`, `matches`, `content`, `lines`, …) are stripped; small metadata fields (`success`, `error`, `file_path`, `query`, …) survive, so callers can still branch on the envelope without parsing TOON.
+- **`ToonEncoder` degrades gracefully on circular references**: Emits a `[...]` placeholder instead of raising mid-encode.
+- **`ToonEncoder` array-table mode requires matching keys**: Mixed-key lists like `[{"a":1},{"b":2}]` are no longer silently flattened with the wrong schema; they fall back to inline encoding.
+- **`AnalysisSession` uses timezone-aware UTC**: `datetime.now(tz)` replaces the deprecated `datetime.utcnow()` (fixes a 24-test deprecation-warning cluster on Python 3.12+).
+- **`json_plugin.extract_elements` honours `ElementExtractor` LSP**: Returns `dict[str, list[...]]`; the raw list is still available as `extract_json_elements`.
+- **`GetCodeOutlineTool` / `ModificationGuardTool` use `_on_project_root_changed` hook**: Project-root reactions consolidated on the BaseMCPTool hook (ARCH-A4) — no more `set_project_path` overrides.
+- **`open_streaming_context` logs both `OSError` and `LookupError`**: The caller's warning hook fires consistently on either filesystem or invalid-encoding failure.
+
+### Performance
+
+- **`RouteDetector` cached via `ASTCache`**: Cold scan now repeats at ~16 ms on the analyser's own repo; previously re-parsed every file on every call.
+- **`Parser._cache` persistent across runs**: Content-hash-addressed; ~140x speed-up on warm runs.
+- **MCP server lazy import**: Cold start 316 ms → 80 ms.
+- **`ASTCache.index_project` parallelised**: Linear scaling with file count.
+
+### Fixed
+
+- **`output_file` traversal blocked** (SEC-1): Rejects paths that resolve outside `project_root` with a clean error.
+- **`--code-patterns` docstring false positive**: Triple-quoted strings inside function bodies no longer mis-flagged as security issues.
+- **`--table=full --output-format=toon` silently ignored**: Now emits a clear error explaining the format combo is unsupported.
+- **C plugin: macros inside `#ifdef`/`#if`/`#else`/`#elif` branches now extracted**: The audit's c_plugin refactor split traversal into `_c_traversal_helpers.c_traverse_and_extract`, and its container-node allowlist was missing the preprocessor-conditional node types. Walker stopped at `#ifdef` boundaries and silently dropped every macro (and any other declaration) inside conditional blocks. `preproc_if`, `preproc_ifdef`, `preproc_else`, `preproc_elif` added to the allowlist; new regression test `test_extract_macros_inside_ifdef_branches` covers object-like, function-like, `#ifndef`, `#if defined(...)`, and `#elif` branches.
+
+### Infra / Quality Gates
+
+- mypy stays at 0 errors across 468 source files; `json_plugin` added to the per-module override list.
+- pre-commit `mypy` hook unlocked (`AUDIT-INFRA-1`).
+- 19/19 contract tests pass after consolidation (`test_agent_contracts.py`). Plugin discovery is now zombie-aware: when both `<lang>_plugin.py` and `<lang>_plugin/` exist, only the live package is audited.
+- 78/78 integration golden master tests pass (snapshots regenerated to match the audit-refactored extractor output).
+- Five `import *` re-export aggregator test files emptied to docstring placeholders — under xdist `--dist=loadfile`, each was collecting the same test classes a second time and producing shared-state flakes. `~248` duplicate-collected tests removed; no coverage loss.
+- `pytest-rerunfailures` wired into `pytest.ini` addopts as `--reruns=2 --reruns-delay=1`. Residual xdist shared-state flakes self-heal on the second attempt; real regressions still surface after 3 consecutive failures.
+- Test suite: 14,659 passed / 0 deterministic failures / 0 unrecovered flakes (down from 562 mid-consolidation). The dev-local agent / runtime directories (`.claude/`, `.agents/`, `.claude-flow/`, `.swarm/`, `.autonomous-runtime/`, `summary.json`) are no longer tracked by git — they were committed before `.gitignore` rules were added and produced ~53k lines of personal-config bloat in the diff against main. Untracked with file content preserved on disk.
+
+### Breaking
+
+- None. `apply_toon_format_to_response` returns a *superset* of its previous (1.11.x) shape: TOON responses now also include the metadata fields callers may have been reaching for via the wrapped JSON.
+
 ## [1.11.1] - 2026-04-10
 
 ### Added

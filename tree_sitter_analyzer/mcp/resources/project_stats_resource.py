@@ -10,17 +10,26 @@ project analysis results through URI-based identification.
 import json
 import logging
 import re
-from datetime import datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
-from tree_sitter_analyzer.core.analysis_engine import (
-    AnalysisRequest,
-    get_analysis_engine,
-)
+from tree_sitter_analyzer.core.analysis_engine import get_analysis_engine
 from tree_sitter_analyzer.language_detector import (
     detect_language_from_file,
     is_language_supported,
+)
+
+from ._project_stats_resource_helpers import (
+    build_complexity_stats,
+    build_files_stats,
+    build_languages_list,
+    build_languages_stats,
+    build_overview_stats,
+    collect_complexity_data,
+    collect_files_data,
+    collect_language_scan,
+    collect_overview_scan,
+    require_project_dir,
 )
 
 logger = logging.getLogger(__name__)
@@ -210,61 +219,15 @@ class ProjectStatsResource:
         """
         logger.debug("Generating overview statistics")
 
-        # Scan project directory for actual file counts
-        if self._project_path is None:
-            raise ValueError("Project path is not set")
-        project_dir = Path(self._project_path)
-        total_files = 0
-        total_lines = 0
-        language_counts: dict[str, int] = {}
-
-        for file_path in project_dir.rglob("*"):
-            if file_path.is_file() and self._is_supported_code_file(file_path):
-                total_files += 1
-                try:
-                    from ...encoding_utils import read_file_safe
-
-                    content, _ = read_file_safe(file_path)
-                    file_lines = len(content.splitlines())
-                    total_lines += file_lines
-                except Exception as e:
-                    logger.debug(
-                        f"Skipping unreadable file during overview scan: {file_path} ({e})"
-                    )
-                    continue
-                language = self._get_language_from_file(file_path)
-                if language != "unknown":
-                    language_counts[language] = language_counts.get(language, 0) + 1
-
-        analysis_result = {
-            "total_files": total_files,
-            "total_lines": total_lines,
-            "languages": [
-                {"name": lang, "file_count": count}
-                for lang, count in language_counts.items()
-            ],
-        }
-
-        # Extract overview information
-        languages_data = analysis_result.get("languages", [])
-        if languages_data is None:
-            languages_data = []
-
-        # Ensure languages_data is a list for iteration
-        if not isinstance(languages_data, list):
-            languages_data = []
-
-        overview = {
-            "total_files": analysis_result.get("total_files", 0),
-            "total_lines": analysis_result.get("total_lines", 0),
-            "languages": [
-                str(lang["name"])
-                for lang in languages_data
-                if isinstance(lang, dict) and "name" in lang
-            ],
-            "project_path": self._project_path,
-            "last_updated": datetime.now().isoformat(),
-        }
+        total_files, total_lines, language_counts = collect_overview_scan(
+            require_project_dir(self._project_path),
+            self._is_supported_code_file,
+            self._get_language_from_file,
+            logger=logger,
+        )
+        overview = build_overview_stats(
+            self._project_path, total_files, total_lines, language_counts
+        )
 
         logger.debug(f"Generated overview with {overview['total_files']} files")
         return overview
@@ -278,56 +241,14 @@ class ProjectStatsResource:
         """
         logger.debug("Generating language statistics")
 
-        # Scan project directory for actual language counts
-        if self._project_path is None:
-            raise ValueError("Project path is not set")
-        project_dir = Path(self._project_path)
-        total_files = 0
-        total_lines = 0
-        language_data = {}
-
-        for file_path in project_dir.rglob("*"):
-            if file_path.is_file() and self._is_supported_code_file(file_path):
-                total_files += 1
-                try:
-                    from ...encoding_utils import read_file_safe
-
-                    content, _ = read_file_safe(file_path)
-                    file_lines = len(content.splitlines())
-                    total_lines += file_lines
-                except Exception as e:
-                    logger.debug(f"Failed to count lines for {file_path}: {e}")
-                    file_lines = 0
-
-                language = self._get_language_from_file(file_path)
-                if language != "unknown":
-                    if language not in language_data:
-                        language_data[language] = {"file_count": 0, "line_count": 0}
-                    language_data[language]["file_count"] += 1
-                    language_data[language]["line_count"] += file_lines
-
-        # Convert to list format and calculate percentages
-        languages_list = []
-        for lang, data in language_data.items():
-            percentage = (
-                round((data["line_count"] / total_lines) * 100, 2)
-                if total_lines > 0
-                else 0.0
-            )
-            languages_list.append(
-                {
-                    "name": lang,
-                    "file_count": data["file_count"],
-                    "line_count": data["line_count"],
-                    "percentage": percentage,
-                }
-            )
-
-        languages_stats = {
-            "languages": languages_list,
-            "total_languages": len(languages_list),
-            "last_updated": datetime.now().isoformat(),
-        }
+        total_lines, language_data = collect_language_scan(
+            require_project_dir(self._project_path),
+            self._is_supported_code_file,
+            self._get_language_from_file,
+            logger=logger,
+        )
+        languages_list = build_languages_list(total_lines, language_data)
+        languages_stats = build_languages_stats(languages_list)
 
         logger.debug(f"Generated stats for {len(languages_list)} languages")
         return languages_stats
@@ -341,100 +262,18 @@ class ProjectStatsResource:
         """
         logger.debug("Generating complexity statistics")
 
-        # Analyze files for complexity
-        if self._project_path is None:
-            raise ValueError("Project path is not set")
-        project_dir = Path(self._project_path)
-        complexity_data = []
-        total_complexity = 0
-        max_complexity = 0
-        file_count = 0
+        complexity_data = await collect_complexity_data(
+            require_project_dir(self._project_path),
+            self.analysis_engine,
+            self._is_supported_code_file,
+            self._get_language_from_file,
+            logger=logger,
+        )
+        complexity_stats = build_complexity_stats(complexity_data)
 
-        # Analyze each supported code file
-        for file_path in project_dir.rglob("*"):
-            if file_path.is_file() and self._is_supported_code_file(file_path):
-                try:
-                    language = self._get_language_from_file(file_path)
-
-                    # Use appropriate analyzer based on language
-                    if language == "java":
-                        # Use analysis engine for Java
-                        file_analysis = await self.analysis_engine.analyze_file_async(
-                            str(file_path)
-                        )
-                        if file_analysis and hasattr(file_analysis, "methods"):
-                            # Extract complexity from methods if available
-                            complexity = sum(
-                                method.complexity_score or 0
-                                for method in file_analysis.methods
-                            )
-                        elif file_analysis and hasattr(file_analysis, "elements"):
-                            # Extract complexity from elements for new architecture
-                            methods = [
-                                e
-                                for e in file_analysis.elements
-                                if hasattr(e, "complexity_score")
-                            ]
-                            complexity = sum(
-                                getattr(method, "complexity_score", 0) or 0
-                                for method in methods
-                            )
-                        else:
-                            complexity = 0
-                    else:
-                        # Use universal analyzer for other languages
-                        request = AnalysisRequest(
-                            file_path=str(file_path), language=language
-                        )
-                        file_analysis_result = await self.analysis_engine.analyze(
-                            request
-                        )
-
-                        complexity = 0
-                        if file_analysis_result and file_analysis_result.success:
-                            analysis_dict = file_analysis_result.to_dict()
-                            # Assuming complexity is part of metrics in new structure
-                            if (
-                                "metrics" in analysis_dict
-                                and "complexity" in analysis_dict["metrics"]
-                            ):
-                                complexity = analysis_dict["metrics"]["complexity"].get(
-                                    "total", 0
-                                )
-
-                    if complexity > 0:
-                        complexity_data.append(
-                            {
-                                "file": str(file_path.relative_to(project_dir)),
-                                "language": language,
-                                "complexity": complexity,
-                            }
-                        )
-
-                        total_complexity += complexity
-                        max_complexity = max(max_complexity, complexity)
-                        file_count += 1
-
-                except Exception as e:
-                    logger.warning(f"Failed to analyze complexity for {file_path}: {e}")
-                    continue
-
-        # Calculate average complexity
-        avg_complexity = total_complexity / file_count if file_count > 0 else 0
-
-        complexity_stats = {
-            "average_complexity": round(avg_complexity, 2),
-            "max_complexity": max_complexity,
-            "total_files_analyzed": file_count,
-            "files_by_complexity": sorted(
-                complexity_data,
-                key=lambda x: int(cast(int, x.get("complexity", 0))),
-                reverse=True,
-            ),
-            "last_updated": datetime.now().isoformat(),
-        }
-
-        logger.debug(f"Generated complexity stats for {file_count} files")
+        logger.debug(
+            f"Generated complexity stats for {complexity_stats['total_files_analyzed']} files"
+        )
         return complexity_stats
 
     async def _generate_files_stats(self) -> dict[str, Any]:
@@ -446,56 +285,13 @@ class ProjectStatsResource:
         """
         logger.debug("Generating file statistics")
 
-        # Get detailed file information
-        files_data = []
-        if self._project_path is None:
-            raise ValueError("Project path is not set")
-        project_dir = Path(self._project_path)
-
-        # Analyze each supported code file
-        for file_path in project_dir.rglob("*"):
-            if file_path.is_file() and self._is_supported_code_file(file_path):
-                try:
-                    # Get file stats
-                    file_stats = file_path.stat()
-
-                    # Determine language using language detector
-                    language = self._get_language_from_file(file_path)
-
-                    # Count lines
-                    try:
-                        from ...encoding_utils import read_file_safe
-
-                        content, _ = read_file_safe(file_path)
-                        line_count = len(content.splitlines())
-                    except Exception:
-                        line_count = 0
-
-                    files_data.append(
-                        {
-                            "path": str(file_path.relative_to(project_dir)),
-                            "language": language,
-                            "line_count": line_count,
-                            "size_bytes": file_stats.st_size,
-                            "modified": datetime.fromtimestamp(
-                                file_stats.st_mtime
-                            ).isoformat(),
-                        }
-                    )
-
-                except Exception as e:
-                    logger.warning(f"Failed to get stats for {file_path}: {e}")
-                    continue
-
-        files_stats = {
-            "files": sorted(
-                files_data,
-                key=lambda x: int(cast(int, x.get("line_count", 0))),
-                reverse=True,
-            ),
-            "total_count": len(files_data),
-            "last_updated": datetime.now().isoformat(),
-        }
+        files_data = collect_files_data(
+            require_project_dir(self._project_path),
+            self._is_supported_code_file,
+            self._get_language_from_file,
+            logger=logger,
+        )
+        files_stats = build_files_stats(files_data)
 
         logger.debug(f"Generated stats for {len(files_data)} files")
         return files_stats
@@ -533,27 +329,27 @@ class ProjectStatsResource:
         # Validate project path
         self._validate_project_path()
 
-        # Generate statistics based on type
         try:
-            if stats_type == "overview":
-                stats_data = await self._generate_overview_stats()
-            elif stats_type == "languages":
-                stats_data = await self._generate_languages_stats()
-            elif stats_type == "complexity":
-                stats_data = await self._generate_complexity_stats()
-            elif stats_type == "files":
-                stats_data = await self._generate_files_stats()
-            else:
-                raise ValueError(f"Unknown statistics type: {stats_type}")
-
-            # Convert to JSON
+            stats_data = await self._generate_stats(stats_type)
             json_content = json.dumps(stats_data, indent=2, ensure_ascii=False)
             logger.debug(f"Successfully generated {stats_type} statistics")
             return json_content
-
         except Exception as e:
             logger.error(f"Failed to generate {stats_type} statistics: {e}")
             raise
+
+    async def _generate_stats(self, stats_type: str) -> dict[str, Any]:
+        """Dispatch a supported stats type to its generator."""
+        generators = {
+            "overview": self._generate_overview_stats,
+            "languages": self._generate_languages_stats,
+            "complexity": self._generate_complexity_stats,
+            "files": self._generate_files_stats,
+        }
+        generator = generators.get(stats_type)
+        if generator is None:
+            raise ValueError(f"Unknown statistics type: {stats_type}")
+        return await generator()
 
     def get_supported_schemes(self) -> list[str]:
         """

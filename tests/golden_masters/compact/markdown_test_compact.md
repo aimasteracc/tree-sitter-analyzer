@@ -5,12 +5,12 @@
 | Element Type | Count |
 |--------------|-------|
 | Headers | 28 |
-| Links | 2 |
-| Images | 3 |
+| Links | 5 |
+| Images | 4 |
 | Code Blocks | 3 |
 | Lists | 0 |
 | Tables | 1 |
-| **Total** | **64** |
+| **Total** | **68** |
 
 ## Document Structure
 

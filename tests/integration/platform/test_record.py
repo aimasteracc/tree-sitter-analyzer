@@ -75,3 +75,9 @@ class TestRecordCLI:
         import tree_sitter_analyzer.platform_compat.record
 
         assert hasattr(tree_sitter_analyzer.platform_compat.record, "main")
+
+    def test_main_importable(self):
+        import importlib
+
+        mod = importlib.import_module("tree_sitter_analyzer.platform_compat.record")
+        assert callable(mod.main)

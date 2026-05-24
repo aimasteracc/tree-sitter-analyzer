@@ -301,9 +301,9 @@ class TestParserErrorRecoveryProperties:
         result = parser.parse_code(code, "python")
 
         # Property: Result should always be a ParseResult
-        assert isinstance(
-            result, ParseResult
-        ), "Parser should return ParseResult even for invalid code"
+        assert isinstance(result, ParseResult), (
+            "Parser should return ParseResult even for invalid code"
+        )
 
         # Property: Result should have language set
         assert result.language == "python", "Language should be preserved in result"
@@ -328,9 +328,9 @@ class TestParserErrorRecoveryProperties:
         result = parser.parse_code(code, "java")
 
         # Property: Result should always be a ParseResult
-        assert isinstance(
-            result, ParseResult
-        ), "Parser should return ParseResult even for invalid code"
+        assert isinstance(result, ParseResult), (
+            "Parser should return ParseResult even for invalid code"
+        )
 
         # Property: Result should have language set
         assert result.language == "java", "Language should be preserved in result"
@@ -354,9 +354,9 @@ class TestParserErrorRecoveryProperties:
         result = parser.parse_code(code, "javascript")
 
         # Property: Result should always be a ParseResult
-        assert isinstance(
-            result, ParseResult
-        ), "Parser should return ParseResult even for invalid code"
+        assert isinstance(result, ParseResult), (
+            "Parser should return ParseResult even for invalid code"
+        )
 
         # Property: Result should have language set
         assert result.language == "javascript", "Language should be preserved in result"
@@ -381,16 +381,16 @@ class TestParserErrorRecoveryProperties:
         result = parser.parse_code(code, language)
 
         # Property: Result should always be a ParseResult
-        assert isinstance(
-            result, ParseResult
-        ), "Parser should return ParseResult for mixed valid/invalid code"
+        assert isinstance(result, ParseResult), (
+            "Parser should return ParseResult for mixed valid/invalid code"
+        )
 
         # Property: If parsing succeeded, tree should have nodes
         # Tree-sitter is error-tolerant and often succeeds even with errors
         if result.success and result.tree is not None:
-            assert (
-                result.tree.root_node is not None
-            ), "Successful parse should have root node"
+            assert result.tree.root_node is not None, (
+                "Successful parse should have root node"
+            )
 
     @settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow])
     @given(garbage=random_garbage_code())
@@ -414,9 +414,9 @@ class TestParserErrorRecoveryProperties:
             result = parser.parse_code(garbage, language)
 
             # Property: Result should always be a ParseResult
-            assert isinstance(
-                result, ParseResult
-            ), f"Parser should return ParseResult for garbage input ({language})"
+            assert isinstance(result, ParseResult), (
+                f"Parser should return ParseResult for garbage input ({language})"
+            )
 
 
 class TestEngineErrorRecoveryProperties:
@@ -449,9 +449,9 @@ class TestEngineErrorRecoveryProperties:
         # Property: Result should always be an AnalysisResult
         from tree_sitter_analyzer.models import AnalysisResult
 
-        assert isinstance(
-            result, AnalysisResult
-        ), "Engine should return AnalysisResult even for invalid code"
+        assert isinstance(result, AnalysisResult), (
+            "Engine should return AnalysisResult even for invalid code"
+        )
 
         # Property: Language should be set
         assert result.language == "python", "Language should be preserved in result"
@@ -478,9 +478,9 @@ class TestEngineErrorRecoveryProperties:
         # Property: Result should always be an AnalysisResult
         from tree_sitter_analyzer.models import AnalysisResult
 
-        assert isinstance(
-            result, AnalysisResult
-        ), "Engine should return AnalysisResult even for invalid code"
+        assert isinstance(result, AnalysisResult), (
+            "Engine should return AnalysisResult even for invalid code"
+        )
 
     @settings(
         max_examples=100, suppress_health_check=[HealthCheck.too_slow], deadline=None
@@ -506,9 +506,9 @@ class TestEngineErrorRecoveryProperties:
         # Property: Result should always be an AnalysisResult
         from tree_sitter_analyzer.models import AnalysisResult
 
-        assert isinstance(
-            result, AnalysisResult
-        ), "Engine should return AnalysisResult even for invalid code"
+        assert isinstance(result, AnalysisResult), (
+            "Engine should return AnalysisResult even for invalid code"
+        )
 
         # Property: Language should be set
         assert result.language == "javascript", "Language should be preserved in result"
@@ -573,9 +573,9 @@ class TestParserErrorDetectionProperties:
         assert isinstance(is_valid, bool), "validate_ast should return a boolean"
 
         # Property: If tree is None, validation should return False
-        assert (
-            parser.validate_ast(None) is False
-        ), "validate_ast(None) should return False"
+        assert parser.validate_ast(None) is False, (
+            "validate_ast(None) should return False"
+        )
 
 
 class TestParserUnsupportedLanguageProperties:
@@ -616,19 +616,19 @@ class TestParserUnsupportedLanguageProperties:
         result = parser.parse_code(code, language)
 
         # Property: Result should always be a ParseResult
-        assert isinstance(
-            result, ParseResult
-        ), "Parser should return ParseResult for unsupported language"
+        assert isinstance(result, ParseResult), (
+            "Parser should return ParseResult for unsupported language"
+        )
 
         # Property: Success should be False for unsupported language
-        assert (
-            result.success is False
-        ), "Parsing unsupported language should not succeed"
+        assert result.success is False, (
+            "Parsing unsupported language should not succeed"
+        )
 
         # Property: Error message should be set
-        assert (
-            result.error_message is not None
-        ), "Error message should be set for unsupported language"
+        assert result.error_message is not None, (
+            "Error message should be set for unsupported language"
+        )
 
         # Property: Tree should be None
         assert result.tree is None, "Tree should be None for unsupported language"
@@ -661,9 +661,9 @@ class TestParserEmptyInputProperties:
         result = parser.parse_code("", language)
 
         # Property: Result should always be a ParseResult
-        assert isinstance(
-            result, ParseResult
-        ), "Parser should return ParseResult for empty string"
+        assert isinstance(result, ParseResult), (
+            "Parser should return ParseResult for empty string"
+        )
 
     @settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow])
     @given(
@@ -689,6 +689,6 @@ class TestParserEmptyInputProperties:
         result = parser.parse_code(whitespace, language)
 
         # Property: Result should always be a ParseResult
-        assert isinstance(
-            result, ParseResult
-        ), "Parser should return ParseResult for whitespace-only input"
+        assert isinstance(result, ParseResult), (
+            "Parser should return ParseResult for whitespace-only input"
+        )

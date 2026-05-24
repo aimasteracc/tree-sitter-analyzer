@@ -6,8 +6,34 @@ Optimized with enhanced caching and lazy loading for better performance.
 
 import importlib
 import threading
+from typing import Any
 
 from .utils import log_error
+
+
+def _populate_queries_from_module(module: Any, queries: dict[str, str]) -> None:
+    """Extract queries from a language module into ``queries`` in-place.
+
+    r37bf (dogfood): tool flagged ``load_language_queries`` at nesting
+    depth 7 (L88). Three-way dispatch (``get_all_queries`` callable,
+    ``ALL_QUERIES`` dict, or fallback to module attribute scan) was
+    inlined inside two ``try`` blocks. Extracting flattens the body.
+    """
+    if hasattr(module, "get_all_queries"):
+        queries.update(module.get_all_queries())
+        return
+    if hasattr(module, "ALL_QUERIES"):
+        queries.update(module.ALL_QUERIES)
+        return
+    # Fallback: scrape public string/dict module attributes.
+    for attr_name in dir(module):
+        if attr_name.startswith("_"):
+            continue
+        attr_value = getattr(module, attr_name)
+        if isinstance(attr_value, str):
+            queries[attr_name] = attr_value
+        elif isinstance(attr_value, dict):
+            queries.update(attr_value)
 
 
 class QueryLoader:
@@ -75,21 +101,7 @@ class QueryLoader:
         try:
             module_name = f"tree_sitter_analyzer.queries.{language}"
             module = importlib.import_module(module_name)
-
-            if hasattr(module, "get_all_queries"):
-                queries.update(module.get_all_queries())
-            elif hasattr(module, "ALL_QUERIES"):
-                queries.update(module.ALL_QUERIES)
-            else:
-                for attr_name in dir(module):
-                    if not attr_name.startswith("_"):
-                        attr_value = getattr(module, attr_name)
-                        if isinstance(attr_value, str):
-                            queries[attr_name] = attr_value
-                        elif isinstance(attr_value, dict):
-                            # Merge dict queries into the main queries dict
-                            queries.update(attr_value)
-
+            _populate_queries_from_module(module, queries)
             self._loaded_queries[language] = queries
             self._query_modules[language] = module
             return queries
@@ -160,18 +172,24 @@ class QueryLoader:
         """List all languages that have query modules available."""
         languages = []
 
-        # 既知の言語をチェック
         known_languages = [
-            "java",
-            "javascript",
-            "typescript",
-            "python",
-            "sql",
             "c",
             "cpp",
-            "rust",
+            "csharp",
+            "css",
             "go",
+            "html",
+            "java",
+            "javascript",
+            "kotlin",
             "markdown",
+            "php",
+            "python",
+            "ruby",
+            "rust",
+            "sql",
+            "typescript",
+            "yaml",
         ]
 
         for language in known_languages:

@@ -8,6 +8,7 @@ Bugs targeted:
 
 Both tests must FAIL before the fix, then PASS after.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -15,8 +16,12 @@ from pathlib import Path
 
 import pytest
 
-CAFFEINE_BASE = Path("/workspaces/claude-source-run-version/caffeine/caffeine/src/main/java")
-BOUNDED_LOCAL_CACHE = CAFFEINE_BASE / "com/github/benmanes/caffeine/cache/BoundedLocalCache.java"
+CAFFEINE_BASE = Path(
+    "/workspaces/claude-source-run-version/caffeine/caffeine/src/main/java"
+)
+BOUNDED_LOCAL_CACHE = (
+    CAFFEINE_BASE / "com/github/benmanes/caffeine/cache/BoundedLocalCache.java"
+)
 REFERENCES = CAFFEINE_BASE / "com/github/benmanes/caffeine/cache/References.java"
 
 pytestmark = pytest.mark.skipif(
@@ -28,14 +33,16 @@ pytestmark = pytest.mark.skipif(
 @pytest.fixture(scope="module")
 def mcp_server():
     from tree_sitter_analyzer.mcp.server import TreeSitterAnalyzerMCPServer
+
     return TreeSitterAnalyzerMCPServer(str(CAFFEINE_BASE))
 
 
 def call(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
+    return asyncio.run(coro)
 
 
 # ─── Bug 1: implements generics ───────────────────────────────────────────────
+
 
 class TestImplementsGenerics:
     """implements with generic type parameters must be preserved as complete strings."""
@@ -106,14 +113,21 @@ class Foo<K, V> implements Runnable, Comparable<Foo<K, V>>, Serializable {
             f"got {len(implements)}: {implements}"
         )
         assert "Runnable" in implements
-        assert any("Comparable" in i for i in implements), f"Missing Comparable in {implements}"
+        assert any("Comparable" in i for i in implements), (
+            f"Missing Comparable in {implements}"
+        )
         assert "Serializable" in implements
 
     def test_caffeine_bounded_local_cache_implements(self, mcp_server):
         """BoundedLocalCache must show 'LocalCache<K, V>' not split into 3 items."""
-        r = call(mcp_server.call_tool("analyze_code_structure", {
-            "file_path": str(BOUNDED_LOCAL_CACHE),
-        }))
+        r = call(
+            mcp_server.call_tool(
+                "analyze_code_structure",
+                {
+                    "file_path": str(BOUNDED_LOCAL_CACHE),
+                },
+            )
+        )
         classes = r.get("elements", {}).get("classes", [])
         blc = next((c for c in classes if c.get("name") == "BoundedLocalCache"), None)
         assert blc is not None, "Should find BoundedLocalCache class"
@@ -136,12 +150,19 @@ class Foo<K, V> implements Runnable, Comparable<Foo<K, V>>, Serializable {
 
 # ─── Bug 2: @Override on classes ──────────────────────────────────────────────
 
+
 class TestAnnotationAttribution:
     """@Override and other method-only annotations must never appear on classes."""
 
     METHOD_ONLY_ANNOTATIONS = {
-        "Override", "Test", "Before", "After",
-        "BeforeEach", "AfterEach", "BeforeAll", "AfterAll",
+        "Override",
+        "Test",
+        "Before",
+        "After",
+        "BeforeEach",
+        "AfterEach",
+        "BeforeAll",
+        "AfterAll",
         "ParameterizedTest",
     }
 
@@ -179,8 +200,9 @@ class Outer {
         inner2 = next((c for c in classes if c.name == "Inner2"), None)
         assert inner2 is not None, "Should find Inner2"
 
-        ann_names = {a.get("name") if isinstance(a, dict) else str(a)
-                     for a in inner2.annotations}
+        ann_names = {
+            a.get("name") if isinstance(a, dict) else str(a) for a in inner2.annotations
+        }
         assert "Override" not in ann_names, (
             f"@Override from Inner1.toString() must not bleed into Inner2. "
             f"Inner2 annotations: {ann_names}"
@@ -191,9 +213,14 @@ class Outer {
 
     def test_caffeine_no_override_on_any_class(self, mcp_server):
         """No class in BoundedLocalCache should have @Override in its annotations."""
-        r = call(mcp_server.call_tool("analyze_code_structure", {
-            "file_path": str(BOUNDED_LOCAL_CACHE),
-        }))
+        r = call(
+            mcp_server.call_tool(
+                "analyze_code_structure",
+                {
+                    "file_path": str(BOUNDED_LOCAL_CACHE),
+                },
+            )
+        )
         classes = r.get("elements", {}).get("classes", [])
 
         offenders = [
@@ -210,9 +237,14 @@ class Outer {
 
     def test_references_inner_classes_clean_annotations(self, mcp_server):
         """Inner classes in References.java should have no spurious annotations."""
-        r = call(mcp_server.call_tool("analyze_code_structure", {
-            "file_path": str(REFERENCES),
-        }))
+        r = call(
+            mcp_server.call_tool(
+                "analyze_code_structure",
+                {
+                    "file_path": str(REFERENCES),
+                },
+            )
+        )
         classes = r.get("elements", {}).get("classes", [])
 
         offenders = [
@@ -254,8 +286,10 @@ class B {}
         b_class = next((c for c in classes if c.name == "B"), None)
         assert b_class is not None
 
-        ann_names = {a.get("name") if isinstance(a, dict) else str(a)
-                     for a in b_class.annotations}
+        ann_names = {
+            a.get("name") if isinstance(a, dict) else str(a)
+            for a in b_class.annotations
+        }
         assert "Override" not in ann_names, (
             f"@Override from A.toString() must not bleed into class B. Got: {ann_names}"
         )

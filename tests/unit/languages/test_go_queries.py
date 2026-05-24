@@ -120,9 +120,9 @@ class TestGoQueryDescriptions:
     def test_all_queries_have_descriptions(self):
         """All queries should have descriptions."""
         for query_name in GO_QUERIES.keys():
-            assert (
-                query_name in GO_QUERY_DESCRIPTIONS
-            ), f"Query '{query_name}' has no description"
+            assert query_name in GO_QUERY_DESCRIPTIONS, (
+                f"Query '{query_name}' has no description"
+            )
 
 
 class TestGetGoQuery:

@@ -590,3 +590,37 @@ class TestCacheServiceEdgeCases:
         # The exact behavior depends on LRU implementation
         stats = service.get_stats()
         assert stats["sets"] == 5
+
+    @pytest.mark.asyncio
+    async def test_l2_cache_hit_promotes_to_l1(self):
+        """Test L2 cache hit promotes entry to L1."""
+        service = CacheService(l1_maxsize=1, l2_maxsize=10, l3_maxsize=10)
+
+        await service.set("target", "target_value")
+        # Setting "evictor" evicts "target" from L1 (maxsize=1)
+        await service.set("evictor", "evictor_value")
+
+        assert "target" not in service._l1_cache
+        assert "target" in service._l2_cache
+
+        result = await service.get("target")
+        assert result == "target_value"
+        stats = service.get_stats()
+        assert stats["l2_hits"] == 1
+
+    @pytest.mark.asyncio
+    async def test_l3_cache_hit_promotes_to_l1_and_l2(self):
+        """Test L3 cache hit promotes entry to L1 and L2."""
+        service = CacheService(l1_maxsize=1, l2_maxsize=1, l3_maxsize=10)
+
+        await service.set("target", "target_value")
+        await service.set("evictor", "evictor_value")
+
+        # "target" was evicted from L1 and L2 but should remain in L3
+        service._l1_cache.pop("target", None)
+        service._l2_cache.pop("target", None)
+
+        result = await service.get("target")
+        assert result == "target_value"
+        stats = service.get_stats()
+        assert stats["l3_hits"] == 1

@@ -9,21 +9,53 @@ import sys
 from typing import Any
 
 from ...constants import (
-    ELEMENT_TYPE_CLASS,
-    ELEMENT_TYPE_FUNCTION,
-    ELEMENT_TYPE_IMPORT,
-    ELEMENT_TYPE_PACKAGE,
-    ELEMENT_TYPE_SQL_FUNCTION,
-    ELEMENT_TYPE_SQL_INDEX,
-    ELEMENT_TYPE_SQL_PROCEDURE,
-    ELEMENT_TYPE_SQL_TABLE,
-    ELEMENT_TYPE_SQL_TRIGGER,
-    ELEMENT_TYPE_SQL_VIEW,
-    ELEMENT_TYPE_VARIABLE,
     get_element_type,
 )
 from ...output_manager import output_error
 from .base_command import BaseCommand
+from .table_command_helpers import (
+    StructureConverters,
+    build_structure_format,
+    collect_structure_elements,
+    convert_to_toon_format,
+    get_default_package_name,
+    process_parameters,
+    resolve_structure_package_name,
+)
+
+
+def _attach_table_envelope(data: dict[str, Any], analysis_result: Any) -> None:
+    """Attach canonical envelope keys to a ``--table json`` response.
+
+    r37ab (dogfood): without this, ``--table json`` was the 4th CLI
+    surface (after --advanced / --summary / --structure) emitting
+    ``summary_line=None`` / ``verdict=None`` / ``agent_summary=None``.
+    Agents reading the response shape couldn't tell the call
+    succeeded vs. silently failed. The 4 add'l keys are purely
+    additive — existing ``effective_table`` / ``requested_table`` /
+    ``classes`` / ``methods`` keys survive untouched.
+    """
+    stats = data.get("statistics", {})
+    n_classes = stats.get("class_count", len(data.get("classes", [])))
+    n_methods = stats.get("method_count", len(data.get("methods", [])))
+    n_fields = stats.get("field_count", len(data.get("fields", [])))
+    n_imports = stats.get("import_count", len(data.get("imports", [])))
+    summary_line = (
+        f"{analysis_result.file_path} ({analysis_result.language}) table=json: "
+        f"classes={n_classes} methods={n_methods} fields={n_fields} "
+        f"imports={n_imports} lines={analysis_result.line_count}"
+    )
+    data["success"] = True
+    data["summary_line"] = summary_line
+    data["verdict"] = "INFO"
+    data["agent_summary"] = {
+        "summary_line": summary_line,
+        "next_step": (
+            "Switch to --table full for a Markdown view, or run "
+            "extract_code_section (MCP) for body extraction by line range."
+        ),
+        "verdict": "INFO",
+    }
 
 
 class TableCommand(BaseCommand):
@@ -33,50 +65,158 @@ class TableCommand(BaseCommand):
         """Initialize the table command."""
         super().__init__(args)
 
+    # Main entry point - dispatches to handler: execute_async
     async def execute_async(self, language: str) -> int:
-        """Execute table format generation."""
+        """Execute table format generation.
+
+        r37d8 (dogfood): 113 lines → ~20 lines of phase dispatch.
+        Sub-helpers: ``_resolve_table_type`` (--table vs --format precedence
+        + K11 override warning), ``_render_table_output`` (json/toon/text
+        fan-out). ``effective_table`` / ``requested_table`` (K11) and the
+        r37ab canonical envelope are preserved.
+        """
         try:
-            # Perform standard analysis
             analysis_result = await self.analyze_file(language)
             if not analysis_result:
                 return 1
-
-            table_type = getattr(self.args, "table", "full")
-
-            # Handle TOON format separately
-            if table_type == "toon":
-                formatted_output = self._format_as_toon(analysis_result)
-            else:
-                # Get appropriate formatter using unified FormatterRegistry
-                from ...formatters.formatter_registry import FormatterRegistry
-
-                formatter = FormatterRegistry.get_formatter_for_language(
-                    analysis_result.language,
-                    table_type,
-                    include_javadoc=getattr(self.args, "include_javadoc", False),
-                )
-
-                # Check if formatter has a method to handle AnalysisResult directly
-                if hasattr(formatter, "format_analysis_result"):
-                    formatted_output = formatter.format_analysis_result(
-                        analysis_result, table_type
-                    )
-                else:
-                    # Convert to structure format that the formatter expects
-                    formatted_data = self._convert_to_structure_format(
-                        analysis_result, language
-                    )
-                    formatted_output = formatter.format_structure(formatted_data)
-
+            table_type, user_table_request, table_was_user_specified = (
+                self._resolve_table_type()
+            )
+            formatted_output = self._render_table_output(
+                analysis_result,
+                language,
+                table_type,
+                user_table_request,
+                table_was_user_specified,
+            )
             self._output_table(formatted_output)
             return 0
-
         except Exception as e:
             output_error(f"An error occurred during table format analysis: {e}")
             return 1
 
-    def _format_as_toon(self, analysis_result: Any) -> str:
-        """Format analysis result as TOON."""
+    def _resolve_table_type(self) -> tuple[str, str, bool]:
+        """Pick the effective table view, honouring ``--format`` overrides.
+
+        Returns ``(table_type, user_table_request, table_was_user_specified)``.
+        K11 / DOG-3: ``--format=json|toon`` wins over ``--table=...`` when the
+        user explicitly passed the flag (checked via ``sys.argv`` so the
+        argparse default ``json`` doesn't silently break ``--table=full``).
+        A stderr warning is emitted symmetric to DOG-3's TOON warning when
+        the override actually changed the rendered view.
+        """
+        table_type = getattr(self.args, "table", "full")
+        user_table_request = table_type
+        argv_tokens = " ".join(sys.argv[1:])
+        table_was_user_specified = "--table" in argv_tokens
+
+        output_format = ""
+        if "--output-format" in argv_tokens or "--format" in argv_tokens:
+            output_format = (
+                getattr(self.args, "format", None)
+                or getattr(self.args, "output_format", None)
+                or ""
+            ).lower()
+        if output_format == "toon" and table_type != "toon":
+            table_type = "toon"
+        elif output_format == "json" and table_type != "json":
+            table_type = "json"
+
+        if (
+            table_was_user_specified
+            and output_format in ("json", "toon")
+            and user_table_request != table_type
+        ):
+            print(
+                f"Warning: --table={user_table_request} is ignored when "
+                f"--format={output_format} (effective_table={table_type})",
+                file=sys.stderr,
+            )
+        return table_type, user_table_request, table_was_user_specified
+
+    def _render_table_output(
+        self,
+        analysis_result: Any,
+        language: str,
+        table_type: str,
+        user_table_request: str,
+        table_was_user_specified: bool,
+    ) -> str:
+        """Render the table output string per ``table_type`` (json/toon/text)."""
+        if table_type == "json":
+            return self._render_table_json(
+                analysis_result,
+                language,
+                table_type,
+                user_table_request,
+                table_was_user_specified,
+            )
+        if table_type == "toon":
+            return self._format_as_toon(
+                analysis_result,
+                effective_table=table_type,
+                requested_table=(
+                    user_table_request if table_was_user_specified else None
+                ),
+            )
+        from ...formatters.formatter_registry import FormatterRegistry
+
+        formatter = FormatterRegistry.get_formatter_for_language(
+            analysis_result.language,
+            table_type,
+            include_javadoc=getattr(self.args, "include_javadoc", False),
+        )
+        if hasattr(formatter, "format_analysis_result"):
+            rendered: str = formatter.format_analysis_result(
+                analysis_result, table_type
+            )
+            return rendered
+        formatted_data = self._convert_to_structure_format(analysis_result, language)
+        rendered_struct: str = formatter.format_structure(formatted_data)
+        return rendered_struct
+
+    def _render_table_json(
+        self,
+        analysis_result: Any,
+        language: str,
+        table_type: str,
+        user_table_request: str,
+        table_was_user_specified: bool,
+    ) -> str:
+        """Build the JSON envelope with K11 metadata + r37ab canonical envelope."""
+        import json
+
+        formatted_data = self._convert_to_structure_format(analysis_result, language)
+        # K11: surface the effective table view to programmatic callers.
+        # ``effective_table`` carries the actual view produced (always
+        # ``json`` when --format=json wins); ``requested_table`` echoes
+        # the user's original ``--table`` intent so they can detect the
+        # override.
+        if isinstance(formatted_data, dict):
+            formatted_data["effective_table"] = table_type
+            if table_was_user_specified:
+                formatted_data["requested_table"] = user_table_request
+            # r37ab (dogfood): 4th CLI surface (after --advanced r37y /
+            # --summary r37z / --structure r37aa) missing canonical
+            # envelope — attach success / summary_line / verdict /
+            # agent_summary.
+            _attach_table_envelope(formatted_data, analysis_result)
+        return json.dumps(formatted_data, indent=2, ensure_ascii=False)
+
+    # Format data for output: _format_as_toon
+    def _format_as_toon(
+        self,
+        analysis_result: Any,
+        effective_table: str | None = None,
+        requested_table: str | None = None,
+    ) -> str:
+        """Format analysis result as TOON.
+
+        K11: when ``--table`` is silently overridden by ``--format=toon``
+        the structure carries ``effective_table`` / ``requested_table``
+        so programmatic callers can detect the override symmetrically
+        to the JSON path.
+        """
         from ...formatters.toon_formatter import ToonFormatter
 
         use_tabs = getattr(self.args, "toon_use_tabs", False)
@@ -84,99 +224,18 @@ class TableCommand(BaseCommand):
 
         # Convert to structure format for TOON
         structure_data = self._convert_to_toon_format(analysis_result)
+        if effective_table is not None and isinstance(structure_data, dict):
+            structure_data["effective_table"] = effective_table
+            if requested_table is not None:
+                structure_data["requested_table"] = requested_table
         return formatter.format(structure_data)
 
+    # Format data for output: _convert_to_toon_format
     def _convert_to_toon_format(self, analysis_result: Any) -> dict[str, Any]:
         """Convert AnalysisResult to TOON-friendly format with position info."""
-        classes = []
-        methods = []
-        fields = []
-        imports = []
+        return convert_to_toon_format(analysis_result)
 
-        for element in analysis_result.elements:
-            element_type = get_element_type(element)
-
-            if element_type == ELEMENT_TYPE_CLASS:
-                classes.append(
-                    {
-                        "name": getattr(element, "name", "unknown"),
-                        "visibility": getattr(element, "visibility", "public"),
-                        "line_range": (
-                            getattr(element, "start_line", 0),
-                            getattr(element, "end_line", 0),
-                        ),
-                    }
-                )
-            elif element_type == ELEMENT_TYPE_FUNCTION:
-                methods.append(
-                    {
-                        "name": getattr(element, "name", "unknown"),
-                        "visibility": getattr(element, "visibility", "public"),
-                        "line_range": (
-                            getattr(element, "start_line", 0),
-                            getattr(element, "end_line", 0),
-                        ),
-                    }
-                )
-            elif element_type == ELEMENT_TYPE_VARIABLE:
-                fields.append(
-                    {
-                        "name": getattr(element, "name", "unknown"),
-                        "type": getattr(element, "type_annotation", ""),
-                        "line_range": (
-                            getattr(element, "start_line", 0),
-                            getattr(element, "end_line", 0),
-                        ),
-                    }
-                )
-            elif element_type == ELEMENT_TYPE_IMPORT:
-                imports.append(
-                    {
-                        "name": getattr(element, "name", "unknown"),
-                        "is_static": getattr(element, "is_static", False),
-                        "is_wildcard": getattr(element, "is_wildcard", False),
-                        "statement": getattr(element, "import_statement", ""),
-                        "line_range": (
-                            getattr(element, "start_line", 0),
-                            getattr(element, "end_line", 0),
-                        ),
-                    }
-                )
-
-        # Get package info
-        packages = [
-            e
-            for e in analysis_result.elements
-            if get_element_type(e) == ELEMENT_TYPE_PACKAGE
-        ]
-        package_info = None
-        if packages:
-            pkg = packages[0]
-            package_info = {
-                "name": getattr(pkg, "name", ""),
-                "line_range": (
-                    getattr(pkg, "start_line", 0),
-                    getattr(pkg, "end_line", 0),
-                ),
-            }
-
-        return {
-            "file_path": analysis_result.file_path,
-            "language": analysis_result.language,
-            "package": package_info,
-            "classes": classes,
-            "methods": methods,
-            "fields": fields,
-            "imports": imports,
-            "statistics": {
-                "class_count": len(classes),
-                "method_count": len(methods),
-                "field_count": len(fields),
-                "import_count": len(imports),
-                "total_lines": analysis_result.line_count,
-            },
-        }
-
+    # Format data for output: _convert_to_formatter_format
     def _convert_to_formatter_format(self, analysis_result: Any) -> dict[str, Any]:
         """Convert AnalysisResult to format expected by formatters."""
         return {
@@ -227,79 +286,33 @@ class TableCommand(BaseCommand):
         Returns:
             Default package name ("unknown" for Java-like, "" for others)
         """
-        # Languages with package/namespace concept
-        PACKAGED_LANGUAGES = {"java", "kotlin", "scala", "csharp", "cpp", "c++"}
+        return get_default_package_name(language)
 
-        if language.lower() in PACKAGED_LANGUAGES:
-            return "unknown"
-
-        return ""  # No package for JS, TS, Python, etc.
-
+    # Format data for output: _convert_to_structure_format
     def _convert_to_structure_format(
         self, analysis_result: Any, language: str
     ) -> dict[str, Any]:
         """Convert AnalysisResult to the format expected by table formatter."""
-        classes = []
-        methods = []
-        fields = []
-        imports = []
+        package_name = resolve_structure_package_name(analysis_result, language)
+        converters = StructureConverters(
+            class_element=self._convert_class_element,
+            function_element=self._convert_function_element,
+            variable_element=self._convert_variable_element,
+            import_element=self._convert_import_element,
+            sql_element=self._convert_sql_element,
+        )
+        package_name, classes, methods, fields, imports = collect_structure_elements(
+            analysis_result,
+            language,
+            package_name,
+            converters,
+            output_error,
+        )
+        return build_structure_format(
+            analysis_result, package_name, classes, methods, fields, imports
+        )
 
-        # Try to get package from analysis_result.package attribute first
-        package_obj = getattr(analysis_result, "package", None)
-        if package_obj and hasattr(package_obj, "name"):
-            package_name = str(package_obj.name)
-        else:
-            # Fall back to default or scanning elements
-            package_name = self._get_default_package_name(language)
-
-        # Process each element
-        for i, element in enumerate(analysis_result.elements):
-            try:
-                element_type = get_element_type(element)
-                element_name = getattr(element, "name", None)
-
-                if element_type == ELEMENT_TYPE_PACKAGE:
-                    package_name = str(element_name)
-                elif element_type == ELEMENT_TYPE_CLASS:
-                    classes.append(self._convert_class_element(element, i, language))
-                elif element_type == ELEMENT_TYPE_FUNCTION:
-                    methods.append(self._convert_function_element(element, language))
-                elif element_type == ELEMENT_TYPE_VARIABLE:
-                    fields.append(self._convert_variable_element(element, language))
-                elif element_type == ELEMENT_TYPE_IMPORT:
-                    imports.append(self._convert_import_element(element))
-                # SQL element types
-                elif element_type in [
-                    ELEMENT_TYPE_SQL_TABLE,
-                    ELEMENT_TYPE_SQL_VIEW,
-                    ELEMENT_TYPE_SQL_PROCEDURE,
-                    ELEMENT_TYPE_SQL_FUNCTION,
-                    ELEMENT_TYPE_SQL_TRIGGER,
-                    ELEMENT_TYPE_SQL_INDEX,
-                ]:
-                    methods.append(self._convert_sql_element(element, language))
-
-            except Exception as element_error:
-                output_error(f"ERROR: Element {i} processing failed: {element_error}")
-                continue
-
-        return {
-            "file_path": analysis_result.file_path,
-            "language": analysis_result.language,
-            "line_count": analysis_result.line_count,
-            "package": {"name": package_name},
-            "classes": classes,
-            "methods": methods,
-            "fields": fields,
-            "imports": imports,
-            "statistics": {
-                "method_count": len(methods),
-                "field_count": len(fields),
-                "class_count": len(classes),
-                "import_count": len(imports),
-            },
-        }
-
+    # Convert between formats: _convert_class_element
     def _convert_class_element(
         self, element: Any, index: int, language: str
     ) -> dict[str, Any]:
@@ -325,6 +338,7 @@ class TableCommand(BaseCommand):
             },
         }
 
+    # Convert between formats: _convert_function_element
     def _convert_function_element(self, element: Any, language: str) -> dict[str, Any]:
         """Convert function element to table format."""
         # Process parameters based on language
@@ -353,6 +367,7 @@ class TableCommand(BaseCommand):
             "javadoc": javadoc,
         }
 
+    # Convert between formats: _convert_variable_element
     def _convert_variable_element(self, element: Any, language: str) -> dict[str, Any]:
         """Convert variable element to table format."""
         # Get field type based on language
@@ -385,23 +400,46 @@ class TableCommand(BaseCommand):
             "javadoc": javadoc,
         }
 
+    # Convert between formats: _convert_import_element
     def _convert_import_element(self, element: Any) -> dict[str, Any]:
-        """Convert import element to table format."""
-        # Try to get the full import statement from raw_text
+        """Convert import element to table format.
+
+        Produces the K2 canonical import shape so JSON output matches the
+        TOON ``_toon_import`` projection key-for-key. ``raw_text`` is kept
+        as a backward-compat alias for downstream language formatters
+        (python/php/csharp/ruby/go) that still read it directly.
+        """
+        # Try to get the full import statement from raw_text first; fall back
+        # to the structured ``import_statement`` attribute (string only — skip
+        # non-string sentinels so MagicMock-based tests still hit the
+        # synthetic fallback), then to a synthetic ``import <name>``. This
+        # is the only field that varies by source.
         raw_text = getattr(element, "raw_text", "")
-        if raw_text:
+        import_statement_attr = getattr(element, "import_statement", "")
+        if raw_text and isinstance(raw_text, str):
             statement = raw_text
+        elif isinstance(import_statement_attr, str) and import_statement_attr:
+            statement = import_statement_attr
         else:
-            # Fallback to constructing from name
             statement = f"import {getattr(element, 'name', str(element))}"
 
         return {
-            "statement": statement,
-            "raw_text": statement,  # PythonTableFormatter expects raw_text
             "name": getattr(element, "name", str(element)),
             "module_name": getattr(element, "module_name", ""),
+            "statement": statement,
+            "is_static": bool(getattr(element, "is_static", False)),
+            "is_wildcard": bool(getattr(element, "is_wildcard", False)),
+            "line_range": [
+                int(getattr(element, "start_line", 0)),
+                int(getattr(element, "end_line", 0)),
+            ],
+            "imported_names": list(getattr(element, "imported_names", []) or []),
+            # Backward-compat alias retained for downstream formatters
+            # (python/php/csharp/ruby/go) that still read ``raw_text``.
+            "raw_text": statement,
         }
 
+    # Convert between formats: _convert_sql_element
     def _convert_sql_element(self, element: Any, language: str) -> dict[str, Any]:
         """Convert SQL element to table format."""
         element_name = getattr(element, "name", str(element))
@@ -435,6 +473,7 @@ class TableCommand(BaseCommand):
             "source_tables": source_tables,
         }
 
+    # Process data through pipeline: _process_sql_parameters
     def _process_sql_parameters(self, params: Any) -> list[dict[str, str]]:
         """Process SQL parameters."""
         if not params:
@@ -451,59 +490,10 @@ class TableCommand(BaseCommand):
         else:
             return [{"name": str(params), "type": "Any"}]
 
+    # Process data through pipeline: _process_parameters
     def _process_parameters(self, params: Any, language: str) -> list[dict[str, str]]:
         """Process parameters based on language syntax."""
-        if isinstance(params, str):
-            param_list = []
-            if params.strip():
-                param_names = [p.strip() for p in params.split(",") if p.strip()]
-                param_list = [{"name": name, "type": "Any"} for name in param_names]
-            return param_list
-        elif isinstance(params, list):
-            param_list = []
-            for param in params:
-                if isinstance(param, str):
-                    param = param.strip()
-                    # Languages using "name: type" syntax
-                    TYPE_SUFFIX_LANGUAGES = {
-                        "python",
-                        "rust",
-                        "kotlin",
-                        "typescript",
-                        "ts",
-                        "scala",
-                    }
-
-                    if language.lower() in TYPE_SUFFIX_LANGUAGES:
-                        # Format: "name: type"
-                        if ":" in param:
-                            parts = param.split(":", 1)
-                            param_name = parts[0].strip()
-                            param_type = parts[1].strip() if len(parts) > 1 else "Any"
-                            param_list.append({"name": param_name, "type": param_type})
-                        else:
-                            param_list.append({"name": param, "type": "Any"})
-                    else:
-                        # Java format: "Type name"
-                        last_space_idx = param.rfind(" ")
-                        if last_space_idx != -1:
-                            param_type = param[:last_space_idx].strip()
-                            param_name = param[last_space_idx + 1 :].strip()
-                            if param_type and param_name:
-                                param_list.append(
-                                    {"name": param_name, "type": param_type}
-                                )
-                            else:
-                                param_list.append({"name": param, "type": "Any"})
-                        else:
-                            param_list.append({"name": param, "type": "Any"})
-                elif isinstance(param, dict):
-                    param_list.append(param)
-                else:
-                    param_list.append({"name": str(param), "type": "Any"})
-            return param_list
-        else:
-            return []
+        return process_parameters(params, language)
 
     def _get_element_visibility(self, element: Any) -> str:
         """Get element visibility."""

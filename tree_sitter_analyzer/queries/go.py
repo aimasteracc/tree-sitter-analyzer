@@ -245,6 +245,11 @@ ALL_QUERIES["interfaces"] = {
     "description": "Search all interface declarations (alias for interface)",
 }
 
+ALL_QUERIES["functions"] = ALL_QUERIES["function"]
+ALL_QUERIES["methods"] = ALL_QUERIES["method"]
+ALL_QUERIES["imports"] = ALL_QUERIES["import"]
+ALL_QUERIES["variables"] = ALL_QUERIES["var"]
+
 
 def get_query(name: str) -> str:
     """Get a specific query by name."""

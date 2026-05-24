@@ -34,13 +34,15 @@ fields:
     _createdBy,,(14,14)
     MaxNameLength,,(15,15)
 imports:
-  [3]{name,is_static,is_wildcard,statement,line_range(a,b)}:
-    System,false,false,,(1,1)
-    System.Collections.Generic,false,false,,(2,2)
-    System.Linq,false,false,,(3,3)
+  [3]{name,module_name,statement,is_static,is_wildcard,line_range(a,b),imported_names,raw_text}:
+    System,System,using System;,false,false,(1,1),[],using System;
+    System.Collections.Generic,System.Collections.Generic,using System.Collections.Generic;,false,false,(2,2),[],using System.Collections.Generic;
+    System.Linq,System.Linq,using System.Linq;,false,false,(3,3),[],using System.Linq;
 statistics:
   class_count: 4
   method_count: 19
   field_count: 3
   import_count: 3
-  total_lines: 107
+  total_lines: 106
+effective_table: toon
+requested_table: toon

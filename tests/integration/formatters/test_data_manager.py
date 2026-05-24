@@ -11,10 +11,22 @@ import random
 import shutil
 import sqlite3
 import string
-from dataclasses import asdict, dataclass
-from datetime import datetime
+from contextlib import closing
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from ._test_data_manager_io import (
+    export_test_data_suite_data,
+    import_test_data_suite_data,
+)
+from ._test_data_manager_repository_io import (
+    search_test_data_sets,
+    store_test_data_set,
+)
+from ._test_data_manager_schema import TEST_DATA_TABLE_SCHEMAS
+from ._test_data_manager_templates import get_language_templates
 
 
 @dataclass
@@ -50,12 +62,7 @@ class FormatTestDataGenerator:
     """Generates test data for various scenarios"""
 
     def __init__(self):
-        self.language_templates = {
-            "python": self._get_python_templates(),
-            "java": self._get_java_templates(),
-            "javascript": self._get_javascript_templates(),
-            "typescript": self._get_typescript_templates(),
-        }
+        self.language_templates = get_language_templates()
 
     def generate_test_data(
         self,
@@ -192,7 +199,7 @@ class FormatTestDataGenerator:
             complexity_level=complexity,
             file_size_bytes=len(source_code.encode()),
             element_counts=element_counts,
-            created_timestamp=datetime.utcnow().isoformat(),
+            created_timestamp=datetime.now(timezone.utc).isoformat(),
             version="1.0.0",
             tags=[language, complexity, "generated"],
             source_hash=source_hash,
@@ -241,195 +248,6 @@ class FormatTestDataGenerator:
 
         return scenarios
 
-    def _get_python_templates(self) -> dict[str, str]:
-        """Get Python code templates"""
-        return {
-            "simple_class": """class {class_name}:
-    def __init__(self):
-        self.{field_name} = "value"
-
-    def {method_name}(self):
-        return self.{field_name}
-""",
-            "medium_class": """class {base_class}:
-    def __init__(self):
-        self.{field1} = "base_value"
-
-class {class_name}({base_class}):
-    def __init__(self):
-        super().__init__()
-        self.{field2} = "derived_value"
-
-    def {method1}(self):
-        return self.{field1}
-
-    def {method2}(self):
-        return self.{field2}
-""",
-            "complex_class": """class {class_name}:
-    {fields}
-
-    def __init__(self):
-        pass
-
-    {methods}
-""",
-            "method": '''def {method_name}(self):
-        return "result"''',
-            "field": '''self.{field_name} = "value"''',
-        }
-
-    def _get_java_templates(self) -> dict[str, str]:
-        """Get Java code templates"""
-        return {
-            "simple_class": """public class {class_name} {{
-    private String {field_name};
-
-    public {class_name}() {{
-        this.{field_name} = "value";
-    }}
-
-    public String {method_name}() {{
-        return this.{field_name};
-    }}
-}}""",
-            "medium_class": """public class {base_class} {{
-    protected String {field1};
-
-    public {base_class}() {{
-        this.{field1} = "base_value";
-    }}
-}}
-
-public class {class_name} extends {base_class} {{
-    private String {field2};
-
-    public {class_name}() {{
-        super();
-        this.{field2} = "derived_value";
-    }}
-
-    public String {method1}() {{
-        return this.{field1};
-    }}
-
-    public String {method2}() {{
-        return this.{field2};
-    }}
-}}""",
-            "complex_class": """public class {class_name} {{
-    {fields}
-
-    public {class_name}() {{
-        // Constructor
-    }}
-
-    {methods}
-}}""",
-            "method": """public String {method_name}() {{
-        return "result";
-    }}""",
-            "field": """private String {field_name};""",
-        }
-
-    def _get_javascript_templates(self) -> dict[str, str]:
-        """Get JavaScript code templates"""
-        return {
-            "simple_class": """class {class_name} {{
-    constructor() {{
-        this.{field_name} = "value";
-    }}
-
-    {method_name}() {{
-        return this.{field_name};
-    }}
-}}""",
-            "medium_class": """class {base_class} {{
-    constructor() {{
-        this.{field1} = "base_value";
-    }}
-}}
-
-class {class_name} extends {base_class} {{
-    constructor() {{
-        super();
-        this.{field2} = "derived_value";
-    }}
-
-    {method1}() {{
-        return this.{field1};
-    }}
-
-    {method2}() {{
-        return this.{field2};
-    }}
-}}""",
-            "complex_class": """class {class_name} {{
-    constructor() {{
-        {fields}
-    }}
-
-    {methods}
-}}""",
-            "method": """{method_name}() {{
-        return "result";
-    }}""",
-            "field": """this.{field_name} = "value";""",
-        }
-
-    def _get_typescript_templates(self) -> dict[str, str]:
-        """Get TypeScript code templates"""
-        return {
-            "simple_class": """class {class_name} {{
-    private {field_name}: string;
-
-    constructor() {{
-        this.{field_name} = "value";
-    }}
-
-    public {method_name}(): string {{
-        return this.{field_name};
-    }}
-}}""",
-            "medium_class": """class {base_class} {{
-    protected {field1}: string;
-
-    constructor() {{
-        this.{field1} = "base_value";
-    }}
-}}
-
-class {class_name} extends {base_class} {{
-    private {field2}: string;
-
-    constructor() {{
-        super();
-        this.{field2} = "derived_value";
-    }}
-
-    public {method1}(): string {{
-        return this.{field1};
-    }}
-
-    public {method2}(): string {{
-        return this.{field2};
-    }}
-}}""",
-            "complex_class": """class {class_name} {{
-    {fields}
-
-    constructor() {{
-        // Constructor
-    }}
-
-    {methods}
-}}""",
-            "method": """public {method_name}(): string {{
-        return "result";
-    }}""",
-            "field": """private {field_name}: string;""",
-        }
-
 
 class FormatTestDataRepository:
     """Repository for managing test data storage and retrieval"""
@@ -446,126 +264,15 @@ class FormatTestDataRepository:
 
     def _init_database(self):
         """Initialize test data database"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS test_data_sets (
-                id TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                description TEXT,
-                language TEXT NOT NULL,
-                complexity_level TEXT NOT NULL,
-                file_size_bytes INTEGER,
-                element_counts TEXT,
-                created_timestamp TEXT NOT NULL,
-                version TEXT NOT NULL,
-                tags TEXT,
-                source_hash TEXT NOT NULL,
-                validation_status TEXT DEFAULT 'unknown',
-                file_path TEXT NOT NULL
-            )
-        """
-        )
-
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS test_data_usage (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                test_data_id TEXT NOT NULL,
-                usage_timestamp TEXT NOT NULL,
-                test_type TEXT NOT NULL,
-                result TEXT,
-                FOREIGN KEY (test_data_id) REFERENCES test_data_sets (id)
-            )
-        """
-        )
-
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS test_data_versions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                test_data_id TEXT NOT NULL,
-                version TEXT NOT NULL,
-                changes TEXT,
-                created_timestamp TEXT NOT NULL,
-                FOREIGN KEY (test_data_id) REFERENCES test_data_sets (id)
-            )
-        """
-        )
-
-        conn.commit()
-        conn.close()
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            cursor = conn.cursor()
+            for statement in TEST_DATA_TABLE_SCHEMAS:
+                cursor.execute(statement)
+            conn.commit()
 
     def store_test_data(self, test_data_set: FormatTestDataSet) -> str:
         """Store test data set in repository"""
-        # Create data directory for this test set
-        data_dir = self.data_path / test_data_set.metadata.id
-        data_dir.mkdir(exist_ok=True)
-
-        # Save source code
-        source_file = (
-            data_dir
-            / f"source.{self._get_file_extension(test_data_set.metadata.language)}"
-        )
-        with open(source_file, "w", encoding="utf-8") as f:
-            f.write(test_data_set.source_code)
-
-        # Save expected outputs
-        outputs_dir = data_dir / "expected_outputs"
-        outputs_dir.mkdir(exist_ok=True)
-
-        for format_type, output in test_data_set.expected_outputs.items():
-            output_file = outputs_dir / f"{format_type}.txt"
-            with open(output_file, "w", encoding="utf-8") as f:
-                f.write(output)
-
-        # Save metadata and scenarios
-        metadata_file = data_dir / "metadata.json"
-        with open(metadata_file, "w", encoding="utf-8") as f:
-            json.dump(
-                {
-                    "metadata": asdict(test_data_set.metadata),
-                    "test_scenarios": test_data_set.test_scenarios,
-                },
-                f,
-                indent=2,
-            )
-
-        # Store in database
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        cursor.execute(
-            """
-            INSERT OR REPLACE INTO test_data_sets
-            (id, name, description, language, complexity_level, file_size_bytes,
-             element_counts, created_timestamp, version, tags, source_hash,
-             validation_status, file_path)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-            (
-                test_data_set.metadata.id,
-                test_data_set.metadata.name,
-                test_data_set.metadata.description,
-                test_data_set.metadata.language,
-                test_data_set.metadata.complexity_level,
-                test_data_set.metadata.file_size_bytes,
-                json.dumps(test_data_set.metadata.element_counts),
-                test_data_set.metadata.created_timestamp,
-                test_data_set.metadata.version,
-                json.dumps(test_data_set.metadata.tags),
-                test_data_set.metadata.source_hash,
-                test_data_set.metadata.validation_status,
-                str(data_dir),
-            ),
-        )
-
-        conn.commit()
-        conn.close()
-
-        return test_data_set.metadata.id
+        return store_test_data_set(self, test_data_set)
 
     def get_test_data(self, test_data_id: str) -> FormatTestDataSet | None:
         """Retrieve test data set by ID"""
@@ -625,51 +332,14 @@ class FormatTestDataRepository:
         limit: int = 100,
     ) -> list[FormatTestDataMetadata]:
         """Search for test data sets"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        query = "SELECT * FROM test_data_sets WHERE 1=1"
-        params = []
-
-        if language:
-            query += " AND language = ?"
-            params.append(language)
-
-        if complexity:
-            query += " AND complexity_level = ?"
-            params.append(complexity)
-
-        if tags:
-            for tag in tags:
-                query += " AND tags LIKE ?"
-                params.append(f"%{tag}%")
-
-        query += f" ORDER BY created_timestamp DESC LIMIT {limit}"
-
-        cursor.execute(query, params)
-        rows = cursor.fetchall()
-        conn.close()
-
-        results = []
-        for row in rows:
-            metadata = FormatTestDataMetadata(
-                id=row[0],
-                name=row[1],
-                description=row[2],
-                language=row[3],
-                format_types=["full", "compact", "csv"],  # Default
-                complexity_level=row[4],
-                file_size_bytes=row[5],
-                element_counts=json.loads(row[6]),
-                created_timestamp=row[7],
-                version=row[8],
-                tags=json.loads(row[9]),
-                source_hash=row[10],
-                validation_status=row[11],
-            )
-            results.append(metadata)
-
-        return results
+        return search_test_data_sets(
+            self.db_path,
+            FormatTestDataMetadata,
+            language=language,
+            complexity=complexity,
+            tags=tags,
+            limit=limit,
+        )
 
     def record_usage(self, test_data_id: str, test_type: str, result: str):
         """Record test data usage"""
@@ -682,7 +352,7 @@ class FormatTestDataRepository:
             (test_data_id, usage_timestamp, test_type, result)
             VALUES (?, ?, ?, ?)
         """,
-            (test_data_id, datetime.utcnow().isoformat(), test_type, result),
+            (test_data_id, datetime.now(timezone.utc).isoformat(), test_type, result),
         )
 
         conn.commit()
@@ -1101,150 +771,13 @@ class FormatTestDataManager:
         self, output_path: str, filters: dict[str, Any] | None = None
     ) -> str:
         """Export test data suite for sharing or backup"""
-        output_path = Path(output_path)
-        output_path.mkdir(exist_ok=True)
-
-        # Search for test data based on filters
-        if filters:
-            test_data_list = self.repository.search_test_data(
-                language=filters.get("language"),
-                complexity=filters.get("complexity"),
-                tags=filters.get("tags"),
-                limit=filters.get("limit", 1000),
-            )
-        else:
-            test_data_list = self.repository.search_test_data(limit=1000)
-
-        # Export each test data set
-        exported_count = 0
-        for metadata in test_data_list:
-            test_data = self.repository.get_test_data(metadata.id)
-            if test_data:
-                # Create export directory for this test set
-                export_dir = output_path / metadata.id
-                export_dir.mkdir(exist_ok=True)
-
-                # Export source code
-                source_file = (
-                    export_dir
-                    / f"source.{self.repository._get_file_extension(metadata.language)}"
-                )
-                with open(source_file, "w", encoding="utf-8") as f:
-                    f.write(test_data.source_code)
-
-                # Export expected outputs
-                outputs_dir = export_dir / "expected_outputs"
-                outputs_dir.mkdir(exist_ok=True)
-
-                for format_type, output in test_data.expected_outputs.items():
-                    output_file = outputs_dir / f"{format_type}.txt"
-                    with open(output_file, "w", encoding="utf-8") as f:
-                        f.write(output)
-
-                # Export metadata
-                metadata_file = export_dir / "metadata.json"
-                with open(metadata_file, "w", encoding="utf-8") as f:
-                    json.dump(
-                        {
-                            "metadata": asdict(test_data.metadata),
-                            "test_scenarios": test_data.test_scenarios,
-                        },
-                        f,
-                        indent=2,
-                    )
-
-                exported_count += 1
-
-        # Create export manifest
-        manifest_file = output_path / "export_manifest.json"
-        with open(manifest_file, "w", encoding="utf-8") as f:
-            json.dump(
-                {
-                    "export_timestamp": datetime.utcnow().isoformat(),
-                    "exported_count": exported_count,
-                    "filters_applied": filters or {},
-                    "test_data_ids": [m.id for m in test_data_list],
-                },
-                f,
-                indent=2,
-            )
-
-        return str(output_path)
+        return export_test_data_suite_data(self.repository, output_path, filters)
 
     def import_test_data_suite(self, import_path: str) -> dict[str, Any]:
         """Import test data suite from export"""
-        import_path = Path(import_path)
-
-        if not import_path.exists():
-            raise ValueError(f"Import path does not exist: {import_path}")
-
-        manifest_file = import_path / "export_manifest.json"
-        if not manifest_file.exists():
-            raise ValueError("Export manifest not found")
-
-        with open(manifest_file, encoding="utf-8") as f:
-            manifest = json.load(f)
-
-        imported_count = 0
-        skipped_count = 0
-        errors = []
-
-        for test_data_id in manifest["test_data_ids"]:
-            test_dir = import_path / test_data_id
-
-            if not test_dir.exists():
-                errors.append(f"Test data directory not found: {test_data_id}")
-                continue
-
-            try:
-                # Load metadata
-                metadata_file = test_dir / "metadata.json"
-                with open(metadata_file, encoding="utf-8") as f:
-                    data = json.load(f)
-                    metadata = FormatTestDataMetadata(**data["metadata"])
-                    test_scenarios = data["test_scenarios"]
-
-                # Check if already exists
-                existing = self.repository.get_test_data(test_data_id)
-                if existing:
-                    skipped_count += 1
-                    continue
-
-                # Load source code
-                source_file = (
-                    test_dir
-                    / f"source.{self.repository._get_file_extension(metadata.language)}"
-                )
-                with open(source_file, encoding="utf-8") as f:
-                    source_code = f.read()
-
-                # Load expected outputs
-                expected_outputs = {}
-                outputs_dir = test_dir / "expected_outputs"
-                if outputs_dir.exists():
-                    for output_file in outputs_dir.glob("*.txt"):
-                        format_type = output_file.stem
-                        with open(output_file, encoding="utf-8") as f:
-                            expected_outputs[format_type] = f.read()
-
-                # Create test data set
-                test_data_set = FormatTestDataSet(
-                    metadata=metadata,
-                    source_code=source_code,
-                    expected_outputs=expected_outputs,
-                    test_scenarios=test_scenarios,
-                )
-
-                # Store in repository
-                self.repository.store_test_data(test_data_set)
-                imported_count += 1
-
-            except Exception as e:
-                errors.append(f"Error importing {test_data_id}: {e}")
-
-        return {
-            "imported_count": imported_count,
-            "skipped_count": skipped_count,
-            "errors": errors,
-            "total_in_manifest": len(manifest["test_data_ids"]),
-        }
+        return import_test_data_suite_data(
+            self.repository,
+            import_path,
+            FormatTestDataMetadata,
+            FormatTestDataSet,
+        )

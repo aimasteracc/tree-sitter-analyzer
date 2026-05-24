@@ -1,0 +1,79 @@
+{
+  "counts_by_type": {
+    "Class": 6,
+    "Function": 36,
+    "Import": 8,
+    "Package": 1,
+    "Variable": 10
+  },
+  "element_total": 61,
+  "names_by_type": {
+    "Class": [
+      "Circle",
+      "Container",
+      "Point",
+      "Printable",
+      "Rectangle",
+      "Shape"
+    ],
+    "Function": [
+      "Circle",
+      "Container",
+      "Rectangle",
+      "add",
+      "area",
+      "create_shape",
+      "distance",
+      "get",
+      "height",
+      "main",
+      "max",
+      "name",
+      "operator<<",
+      "operator==",
+      "perimeter",
+      "print",
+      "process",
+      "set",
+      "square",
+      "swap_values",
+      "width",
+      "~Container",
+      "~Printable",
+      "~Rectangle",
+      "~Shape"
+    ],
+    "Import": [
+      "functional",
+      "iostream",
+      "memory",
+      "string",
+      "using StringList = vector<string>;",
+      "using namespace std;",
+      "using std::vector;",
+      "vector"
+    ],
+    "Package": [
+      "math"
+    ],
+    "Variable": [
+      "APP_NAME",
+      "MAX_SIZE",
+      "PI",
+      "height_",
+      "instance_count_",
+      "radius_",
+      "static_value",
+      "width_",
+      "x",
+      "y"
+    ]
+  },
+  "types": [
+    "Class",
+    "Function",
+    "Import",
+    "Package",
+    "Variable"
+  ]
+}

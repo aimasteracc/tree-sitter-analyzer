@@ -174,8 +174,10 @@ def 函数名():
                 assert isinstance(result, dict)
                 assert "error" in result
             except Exception as e:
-                # AnalysisError wraps various original errors
-                assert isinstance(e, AnalysisError)
+                # AnalysisError wraps various original errors; the
+                # MCP layer now raises ValueError for unknown params
+                # before any analysis runs.
+                assert isinstance(e, (AnalysisError, ValueError))
 
     @pytest.mark.asyncio
     async def test_execute_with_path_traversal_attempt(self, tool):

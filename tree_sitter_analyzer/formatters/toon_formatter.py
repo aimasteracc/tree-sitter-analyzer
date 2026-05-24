@@ -178,38 +178,57 @@ class ToonFormatter(BaseFormatter):
             lines.append("")
 
         # Elements (classes, methods, functions)
+        # r37dm (dogfood): flattened nesting 6 → 3 by extracting per-type
+        # emitters (_emit_class_lines / _emit_method_lines /
+        # _emit_function_lines). Limits and compact-array semantics
+        # preserved exactly.
         if result.elements:
             lines.append(f"elements[{len(result.elements)}]:")
-
-            # Group by type
             classes = [e for e in result.elements if e.element_type == "class"]
             methods = [e for e in result.elements if e.element_type == "method"]
             functions = [e for e in result.elements if e.element_type == "function"]
-
-            if classes:
-                lines.append(f"  classes[{len(classes)}]:")
-                for cls in classes:
-                    lines.append(f"    - {cls.name}")
-
-            if methods:
-                lines.append(f"  methods[{len(methods)}]:")
-                if self.compact_arrays:
-                    # Use compact table format
-                    method_dicts = [
-                        self._method_to_dict(m) for m in methods[:10]
-                    ]  # Limit for demo
-                    table = self.encoder.encode_array_table(method_dicts, indent=2)
-                    lines.append(table)
-                else:
-                    for method in methods[:10]:  # Limit for demo
-                        lines.append(f"    - {method.name}")
-
-            if functions:
-                lines.append(f"  functions[{len(functions)}]:")
-                for func in functions[:10]:  # Limit for demo
-                    lines.append(f"    - {func.name}")
+            self._emit_class_lines(lines, classes)
+            self._emit_method_lines(lines, methods)
+            self._emit_function_lines(lines, functions)
 
         return "\n".join(lines)
+
+    @staticmethod
+    def _emit_class_lines(lines: list[str], classes: list[Any]) -> None:
+        """Append ``classes[N]:`` header + ``- name`` lines for each class."""
+        if not classes:
+            return
+        lines.append(f"  classes[{len(classes)}]:")
+        for cls in classes:
+            lines.append(f"    - {cls.name}")
+
+    def _emit_method_lines(self, lines: list[str], methods: list[Any]) -> None:
+        """Append ``methods[N]:`` block (compact-table or simple name list).
+
+        Honours ``self.compact_arrays``: when enabled, the first 10 methods
+        are encoded as a TOON compact array table; otherwise the simple
+        ``- name`` form is used. The ``[:10]`` limit matches the prior
+        "limit for demo" cap.
+        """
+        if not methods:
+            return
+        lines.append(f"  methods[{len(methods)}]:")
+        if self.compact_arrays:
+            method_dicts = [self._method_to_dict(m) for m in methods[:10]]
+            table = self.encoder.encode_array_table(method_dicts, indent=2)
+            lines.append(table)
+            return
+        for method in methods[:10]:
+            lines.append(f"    - {method.name}")
+
+    @staticmethod
+    def _emit_function_lines(lines: list[str], functions: list[Any]) -> None:
+        """Append ``functions[N]:`` header + first-10 names."""
+        if not functions:
+            return
+        lines.append(f"  functions[{len(functions)}]:")
+        for func in functions[:10]:
+            lines.append(f"    - {func.name}")
 
     def format_mcp_response(self, data: dict[str, Any]) -> str:
         """

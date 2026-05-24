@@ -313,6 +313,9 @@ ALL_QUERIES["variables"] = {
     "description": "Search all variable declarations (alias for variable)",
 }
 
+ALL_QUERIES["functions"] = ALL_QUERIES["function"]
+ALL_QUERIES["methods"] = ALL_QUERIES["function"]
+
 
 def get_query(name: str) -> str:
     """Get a specific query by name."""

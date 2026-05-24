@@ -271,13 +271,23 @@ class TestApplyToonFormatToResponse:
         }
         response = apply_toon_format_to_response(result, "json")
 
-        # Should return original result unchanged
-        assert response == result
+        # Original keys must round-trip. v1.12+ may add a default
+        # ``verdict`` envelope field, so check key superset rather than
+        # strict equality.
         assert "results" in response
+        assert response["success"] is True
+        assert response["count"] == 5
         assert "toon_content" not in response
 
     def test_toon_format_removes_redundant_fields(self):
-        """Test that TOON format removes redundant data fields."""
+        """Test that TOON format strips bulk data but keeps metadata.
+
+        v1.12+ contract (CHANGELOG): TOON wrapping strips bulk-data fields
+        (``results``/``matches``/``content``/``lines``) and surfaces them
+        only inside ``toon_content``. Small metadata fields
+        (``success``/``error``/``file_path``/``query``/etc.) survive
+        so callers can still branch on the envelope without parsing TOON.
+        """
         result = {
             "success": True,
             "count": 5,
@@ -286,15 +296,15 @@ class TestApplyToonFormatToResponse:
         }
         response = apply_toon_format_to_response(result, "toon")
 
-        # TOON format returns minimal response - only format and toon_content
         assert response["format"] == "toon"
         assert "toon_content" in response
 
-        # All other fields should NOT be duplicated (they're in toon_content)
+        # Bulk data MOVED into toon_content.
         assert "results" not in response
-        assert "success" not in response
-        assert "count" not in response
-        assert "elapsed_ms" not in response
+        # Small metadata SURVIVES so callers can branch without parsing.
+        assert response.get("success") is True
+        assert response.get("count") == 5
+        assert response.get("elapsed_ms") == 100
 
     def test_toon_format_removes_all_redundant_fields(self):
         """Test that all redundant field types are removed."""

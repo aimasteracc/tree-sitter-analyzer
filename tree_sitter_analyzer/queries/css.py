@@ -524,32 +524,46 @@ AT_RULES = """
 (at_rule) @at_rule
 """
 
-# Convert to ALL_QUERIES format for dynamic loader compatibility
-ALL_QUERIES = {}
-for query_name, query_string in CSS_QUERIES.items():
-    description = CSS_QUERY_DESCRIPTIONS.get(query_name, "No description")
-    ALL_QUERIES[query_name] = {"query": query_string, "description": description}
+# TEST-P3 root-cause fix: build ALL_QUERIES as a single immutable dict
+# literal instead of an empty dict that gets mutated in place at import
+# time. Under pytest-xdist a sibling test could observe ALL_QUERIES at
+# different stages of population if any test's import order re-executed
+# this module — particularly the late-added "grid" / "at_rules" keys.
+# Constructing the dict in one expression eliminates the observable
+# intermediate state and also aligns with the project's "immutability"
+# coding rule.
+_LEGACY_QUERIES: dict[str, dict[str, str]] = {
+    "rules": {
+        "query": RULES,
+        "description": "Search all CSS rules with selectors and blocks",
+    },
+    "selectors": {
+        "query": SELECTORS,
+        "description": "Search all CSS selectors",
+    },
+    "declarations": {
+        "query": DECLARATIONS,
+        "description": "Search all CSS declarations",
+    },
+    "comments": {
+        "query": COMMENTS,
+        "description": "Search all CSS comments",
+    },
+    "at_rules": {
+        "query": AT_RULES,
+        "description": "Search all CSS at-rules",
+    },
+}
 
-# Add legacy queries for backward compatibility
-ALL_QUERIES["rules"] = {
-    "query": RULES,
-    "description": "Search all CSS rules with selectors and blocks",
-}
-ALL_QUERIES["selectors"] = {
-    "query": SELECTORS,
-    "description": "Search all CSS selectors",
-}
-ALL_QUERIES["declarations"] = {
-    "query": DECLARATIONS,
-    "description": "Search all CSS declarations",
-}
-ALL_QUERIES["comments"] = {
-    "query": COMMENTS,
-    "description": "Search all CSS comments",
-}
-ALL_QUERIES["at_rules"] = {
-    "query": AT_RULES,
-    "description": "Search all CSS at-rules",
+ALL_QUERIES: dict[str, dict[str, str]] = {
+    **{
+        query_name: {
+            "query": query_string,
+            "description": CSS_QUERY_DESCRIPTIONS.get(query_name, "No description"),
+        }
+        for query_name, query_string in CSS_QUERIES.items()
+    },
+    **_LEGACY_QUERIES,
 }
 
 

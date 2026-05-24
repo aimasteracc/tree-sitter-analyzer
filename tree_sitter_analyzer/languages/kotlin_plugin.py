@@ -5,18 +5,32 @@ Kotlin Language Plugin
 Provides Kotlin-specific parsing and element extraction functionality.
 """
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     import tree_sitter
 
-    from ..core.request import AnalysisRequest
+    from ..core.analysis_engine import AnalysisRequest
     from ..models import AnalysisResult
 
 from ..encoding_utils import extract_text_slice, safe_encode
-from ..models import Class, Expression, Function, Import, Package, Variable
+from ..models import Class, Function, Import, Package, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error
+from .kotlin_helpers import (
+    extract_import as _extract_import_standalone,
+)
+from .kotlin_helpers import (
+    extract_kotlin_class_or_object as _extract_class_standalone,
+)
+from .kotlin_helpers import (
+    extract_kotlin_function as _extract_func_standalone,
+)
+from .kotlin_helpers import (
+    extract_kotlin_property as _extract_prop_standalone,
+)
 
 
 class KotlinElementExtractor(ElementExtractor):
@@ -31,7 +45,7 @@ class KotlinElementExtractor(ElementExtractor):
         self._node_text_cache: dict[tuple[int, int], str] = {}
 
     def extract_functions(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[Function]:
         """Extract Kotlin function declarations"""
         self.source_code = source_code
@@ -49,9 +63,7 @@ class KotlinElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(functions)} Kotlin functions")
         return functions
 
-    def extract_classes(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Class]:
+    def extract_classes(self, tree: tree_sitter.Tree, source_code: str) -> list[Class]:
         """Extract Kotlin class declarations"""
         self.source_code = source_code
         self.content_lines = source_code.split("\n")
@@ -77,7 +89,7 @@ class KotlinElementExtractor(ElementExtractor):
         return classes
 
     def extract_variables(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[Variable]:
         """Extract Kotlin properties"""
         self.source_code = source_code
@@ -99,9 +111,7 @@ class KotlinElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(variables)} Kotlin properties")
         return variables
 
-    def extract_imports(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Import]:
+    def extract_imports(self, tree: tree_sitter.Tree, source_code: str) -> list[Import]:
         """Extract Kotlin imports"""
         self.source_code = source_code
         self.content_lines = source_code.split("\n")
@@ -111,7 +121,6 @@ class KotlinElementExtractor(ElementExtractor):
 
         extractors = {
             "import_header": self._extract_import,
-            "import": self._extract_import,
         }
 
         self._traverse_and_extract(
@@ -124,31 +133,47 @@ class KotlinElementExtractor(ElementExtractor):
         return imports
 
     def extract_packages(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[Package]:
         """Extract Kotlin package"""
         self.source_code = source_code
         self.content_lines = source_code.split("\n")
         self._reset_caches()
 
+        # r37ds (dogfood): flattened nesting 6 → 3 by extracting the
+        # package_header lookup into ``_find_package_header_node``.
         packages: list[Package] = []
         self._extract_package(tree.root_node)
-        if self.current_package:
-            # Find package node if needed for lines, or just create from string
-            # We'll try to find the package_header node
-            for child in tree.root_node.children:
-                if child.type == "package_header":
-                    pkg = Package(
-                        name=self.current_package,
-                        start_line=child.start_point[0] + 1,
-                        end_line=child.end_point[0] + 1,
-                        raw_text=self._get_node_text(child),
-                        language="kotlin",
-                    )
-                    packages.append(pkg)
-                    break
-
+        if not self.current_package:
+            return packages
+        package_node = self._find_package_header_node(tree.root_node)
+        if package_node is None:
+            return packages
+        packages.append(
+            Package(
+                name=self.current_package,
+                start_line=package_node.start_point[0] + 1,
+                end_line=package_node.end_point[0] + 1,
+                raw_text=self._get_node_text(package_node),
+                language="kotlin",
+            )
+        )
         return packages
+
+    @staticmethod
+    def _find_package_header_node(
+        root_node: tree_sitter.Node,
+    ) -> tree_sitter.Node | None:
+        """Return the first ``package_header`` child or ``None``.
+
+        Kotlin's tree-sitter grammar puts the package declaration as a
+        ``package_header`` node directly under the root. We stop at the
+        first match — there's only ever one per file.
+        """
+        for child in root_node.children:
+            if child.type == "package_header":
+                return child
+        return None
 
     def _reset_caches(self) -> None:
         """Reset performance caches"""
@@ -160,314 +185,78 @@ class KotlinElementExtractor(ElementExtractor):
 
     def _traverse_and_extract(
         self,
-        node: "tree_sitter.Node",
+        node: tree_sitter.Node,
         extractors: dict[str, Any],
         results: list[Any],
     ) -> None:
-        """Iterative traversal to find and extract elements (stack-safe)."""
-        stack = [node]
-        while stack:
-            current = stack.pop()
-            if current.type in extractors:
-                element = extractors[current.type](current)
-                if element:
-                    results.append(element)
-            stack.extend(reversed(current.children))
+        """Recursive traversal to find and extract elements"""
+        if node.type in extractors:
+            element = extractors[node.type](node)
+            if element:
+                results.append(element)
 
-    def _extract_package(self, node: "tree_sitter.Node") -> None:
-        """Extract package declaration"""
-        # Find package_header at top level usually
         for child in node.children:
-            if child.type == "package_header":
-                # Check children for identifier
-                # package_header -> (package) (identifier)
-                for grandchild in child.children:
-                    if (
-                        grandchild.type == "identifier"
-                        or grandchild.type == "simple_identifier"
-                    ):
-                        self.current_package = self._get_node_text(grandchild)
-                        return
-                    # Or maybe deeper if qualified name
-                    if "identifier" in grandchild.type:
-                        self.current_package = self._get_node_text(grandchild)
-                        return
+            self._traverse_and_extract(child, extractors, results)
 
-    def _extract_function(self, node: "tree_sitter.Node") -> Function | None:
+    def _extract_package(self, node: tree_sitter.Node) -> None:
+        """Extract package declaration.
+
+        r37ds (dogfood): flattened nesting 6 → 3 by extracting the
+        identifier scan into ``_kotlin_package_name_from_header``.
+        """
+        for child in node.children:
+            if child.type != "package_header":
+                continue
+            pkg_name = self._kotlin_package_name_from_header(child)
+            if pkg_name is not None:
+                self.current_package = pkg_name
+                return
+
+    def _kotlin_package_name_from_header(
+        self, package_header: tree_sitter.Node
+    ) -> str | None:
+        """Return the package name string from a ``package_header`` node.
+
+        Kotlin grammars emit either ``identifier`` / ``simple_identifier``
+        for bare names or a qualified-name node whose ``type`` contains
+        ``identifier``. We pick the first matching child.
+        """
+        for grandchild in package_header.children:
+            if grandchild.type in ("identifier", "simple_identifier"):
+                return self._get_node_text(grandchild)
+            if "identifier" in grandchild.type:
+                return self._get_node_text(grandchild)
+        return None
+
+    def _extract_function(self, node: tree_sitter.Node) -> Function | None:
         """Extract function information"""
-        try:
-            # name: simple_identifier
-            name = "anonymous"
-            # Try getting by field name first
-            name_node = node.child_by_field_name("name")
-            if name_node:
-                name = self._get_node_text(name_node)
-            else:
-                # Fallback to simple_identifier search
-                for child in node.children:
-                    if child.type == "simple_identifier":
-                        name = self._get_node_text(child)
-                        break
+        return _extract_func_standalone(node, self._get_node_text, self.current_package)
 
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-
-            # Parameters
-            parameters = []
-            params_node = node.child_by_field_name(
-                "parameters"
-            )  # function_value_parameters
-            if params_node:
-                for child in params_node.children:
-                    if child.type == "parameter":
-                        # parameter -> simple_identifier: type
-                        param_name = ""
-                        param_type = ""
-                        for grandchild in child.children:
-                            if grandchild.type == "simple_identifier":
-                                param_name = self._get_node_text(grandchild)
-                            elif (
-                                "type" in grandchild.type
-                                or grandchild.type == "user_type"
-                            ):
-                                param_type = self._get_node_text(grandchild)
-
-                        if param_name:
-                            parameters.append(f"{param_name}: {param_type or 'Any'}")
-
-            # Return type
-            return_type = "Unit"
-            # search for return type, usually after :
-            # function_declaration -> ... (type)? ...
-            # Hard to find specific field without query, iterating children
-            # If we find a colon, next child might be type?
-            # Tree-sitter-kotlin structure: function_declaration can have children: modifiers, fun, simple_identifier, function_value_parameters, type (return type), function_body
-
-            for i, child in enumerate(node.children):
-                if child.type == ":":
-                    # Next sibling should be return type
-                    if i + 1 < len(node.children):
-                        return_type = self._get_node_text(node.children[i + 1])
-                    break
-
-            # Visibility and modifiers
-            visibility = "public"
-            is_suspend = False
-            modifiers_node = node.child_by_field_name("modifiers")
-            if modifiers_node:
-                mods = self._get_node_text(modifiers_node)
-                if "private" in mods:
-                    visibility = "private"
-                elif "protected" in mods:
-                    visibility = "protected"
-                elif "internal" in mods:
-                    visibility = "internal"
-
-                if "suspend" in mods:
-                    is_suspend = True
-
-            # Docstring
-            docstring = self._extract_docstring(node)
-
-            raw_text = self._get_node_text(node)
-
-            func = Function(
-                name=name,
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
-                language="kotlin",
-                parameters=parameters,
-                return_type=return_type,
-                visibility=visibility,
-                docstring=docstring,
-            )
-            func.is_suspend = is_suspend
-            return func
-
-        except Exception as e:
-            log_error(f"Error extracting Kotlin function: {e}")
-            return None
-
-    def _extract_class(self, node: "tree_sitter.Node") -> Class | None:
+    def _extract_class(self, node: tree_sitter.Node) -> Class | None:
         """Extract class declaration"""
         return self._extract_class_or_object(node, "class")
 
-    def _extract_object(self, node: "tree_sitter.Node") -> Class | None:
+    def _extract_object(self, node: tree_sitter.Node) -> Class | None:
         """Extract object declaration"""
         return self._extract_class_or_object(node, "object")
 
     def _extract_class_or_object(
-        self, node: "tree_sitter.Node", kind: str
+        self, node: tree_sitter.Node, kind: str
     ) -> Class | None:
         """Generic extraction for class/object/interface"""
-        try:
-            name = "anonymous"
-            # Try getting by field name first
-            name_node = node.child_by_field_name("name")
-            if name_node:
-                name = self._get_node_text(name_node)
-            else:
-                for child in node.children:
-                    if child.type == "simple_identifier":
-                        name = self._get_node_text(child)
-                        break
+        return _extract_class_standalone(
+            node, kind, self._get_node_text, self.current_package
+        )
 
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-
-            visibility = "public"
-            modifiers_node = node.child_by_field_name("modifiers")
-            if modifiers_node:
-                mods = self._get_node_text(modifiers_node)
-                if "private" in mods:
-                    visibility = "private"
-                elif "protected" in mods:
-                    visibility = "protected"
-                elif "internal" in mods:
-                    visibility = "internal"
-
-            # Detect interface by checking for 'interface' keyword child node
-            # tree-sitter-kotlin parses both class and interface as class_declaration
-            # but includes 'interface' or 'class' keyword as a child node
-            if kind == "class":
-                for child in node.children:
-                    if child.type == "interface":
-                        kind = "interface"
-                        break
-                    elif child.type == "class":
-                        # Explicitly a class, not interface
-                        break
-
-            raw_text = self._get_node_text(node)
-
-            return Class(
-                name=name,
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
-                language="kotlin",
-                class_type=kind,
-                visibility=visibility,
-                package_name=self.current_package,
-            )
-
-        except Exception as e:
-            log_error(f"Error extracting Kotlin class: {e}")
-            return None
-
-    def _extract_property(self, node: "tree_sitter.Node") -> Variable | None:
+    def _extract_property(self, node: tree_sitter.Node) -> Variable | None:
         """Extract property declaration"""
-        try:
-            # var declaration or val declaration
-            is_val = False
-            is_var = False
-            text = self._get_node_text(node)
-            if text.startswith("val "):
-                is_val = True
-            elif text.startswith("var "):
-                is_var = True
+        return _extract_prop_standalone(node, self._get_node_text)
 
-            # variable_declaration -> (modifiers)? (val/var) ...
-            # Need to find name
-            name = "unknown"
+    def _extract_import(self, node: tree_sitter.Node) -> Import | None:
+        """Extract import header"""
+        return _extract_import_standalone(node, self._get_node_text)
 
-            # Try getting by field name 'name' directly on property_declaration (might work in newer grammars)
-            name_node = node.child_by_field_name("name")
-            if name_node:
-                name = self._get_node_text(name_node)
-            else:
-                # Fallback: Iterate children
-                for child in node.children:
-                    if child.type == "variable_declaration":
-                        for grandchild in child.children:
-                            if grandchild.type == "simple_identifier":
-                                name = self._get_node_text(grandchild)
-                                break
-                    elif child.type == "simple_identifier":
-                        name = self._get_node_text(child)
-                        break
-
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-
-            # Type?
-            prop_type = "Inferred"
-            # Look for : type
-
-            visibility = "public"
-            modifiers_node = node.child_by_field_name("modifiers")
-            if modifiers_node:
-                mods = self._get_node_text(modifiers_node)
-                if "private" in mods:
-                    visibility = "private"
-
-            docstring = self._extract_docstring(node)
-            raw_text = self._get_node_text(node)
-
-            var = Variable(
-                name=name,
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
-                language="kotlin",
-                variable_type=prop_type,
-                visibility=visibility,
-                docstring=docstring,
-            )
-            var.is_val = is_val
-            var.is_var = is_var
-
-            return var
-
-        except Exception as e:
-            log_error(f"Error extracting Kotlin property: {e}")
-            return None
-
-    def _extract_import(self, node: "tree_sitter.Node") -> Import | None:
-        """Extract import header or import node"""
-        try:
-            # Skip the 'import' keyword node (has no children with identifier)
-            # Only process the parent import node which contains qualified_identifier
-            if node.type == "import" and not any(
-                "identifier" in child.type for child in node.children
-            ):
-                return None
-
-            # import_header -> 'import' identifier .*
-            # import -> 'import' qualified_identifier
-            raw_text = self._get_node_text(node)
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-
-            # Parse name from qualified_identifier child or raw text
-            name = "unknown"
-
-            # Try to find qualified_identifier child
-            for child in node.children:
-                if "identifier" in child.type:
-                    name = self._get_node_text(child)
-                    break
-
-            # Fallback to parsing raw text
-            if name == "unknown":
-                parts = raw_text.split()
-                if len(parts) > 1:
-                    name = parts[1]
-
-            return Import(
-                name=name,
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
-                language="kotlin",
-                import_statement=raw_text,
-            )
-        except Exception as e:
-            log_error(f"Error extracting Kotlin import: {e}")
-            return None
-
-    def _get_node_text(self, node: "tree_sitter.Node") -> str:
+    def _get_node_text(self, node: tree_sitter.Node) -> str:
         """Get node text with caching using position-based keys"""
         cache_key = (node.start_byte, node.end_byte)
         if cache_key in self._node_text_cache:
@@ -484,148 +273,10 @@ class KotlinElementExtractor(ElementExtractor):
         except Exception:
             return ""
 
-    def _extract_docstring(self, node: "tree_sitter.Node") -> str | None:
+    def _extract_docstring(self, node: tree_sitter.Node) -> str | None:
         """Extract KDoc"""
         # Similar to Rust/Java logic
         return None
-
-    def extract_type_aliases(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Class]:
-        """Extract Kotlin type aliases"""
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
-        self._reset_caches()
-
-        type_aliases: list[Class] = []
-
-        self._traverse_and_extract(
-            tree.root_node,
-            {"type_alias": self._extract_type_alias},
-            type_aliases,
-        )
-
-        log_debug(f"Extracted {len(type_aliases)} Kotlin type aliases")
-        return type_aliases
-
-    def _extract_type_alias(self, node: "tree_sitter.Node") -> Class | None:
-        """Extract type alias as a Class element"""
-        try:
-            # type_alias -> 'typealias' identifier '=' type
-            name = "unknown"
-
-            # Find identifier
-            for child in node.children:
-                if child.type == "identifier":
-                    name = self._get_node_text(child)
-                    break
-
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            raw_text = self._get_node_text(node)
-
-            return Class(
-                name=name,
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
-                language="kotlin",
-                class_type="type_alias",
-                visibility="public",
-            )
-        except Exception as e:
-            log_error(f"Error extracting Kotlin type alias: {e}")
-            return None
-
-    def extract_comments(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Expression]:
-        """Extract Kotlin block comments"""
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
-        self._reset_caches()
-
-        comments: list[Expression] = []
-
-        self._traverse_and_extract(
-            tree.root_node,
-            {"block_comment": self._extract_comment},
-            comments,
-        )
-
-        log_debug(f"Extracted {len(comments)} Kotlin block comments")
-        return comments
-
-    def _extract_comment(self, node: "tree_sitter.Node") -> Expression | None:
-        """Extract block comment as Expression element"""
-        try:
-            raw_text = self._get_node_text(node)
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-
-            # Create preview (first 50 chars)
-            preview = raw_text[:50] if len(raw_text) > 50 else raw_text
-
-            return Expression(
-                name="block_comment",
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
-                language="kotlin",
-                expression_kind="block_comment",
-                preview=preview,
-            )
-        except Exception as e:
-            log_error(f"Error extracting Kotlin block comment: {e}")
-            return None
-
-    def extract_annotated_expressions(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Expression]:
-        """Extract Kotlin annotated expressions"""
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
-        self._reset_caches()
-
-        annotated_exprs: list[Expression] = []
-
-        self._traverse_and_extract(
-            tree.root_node,
-            {"annotated_expression": self._extract_annotated_expr},
-            annotated_exprs,
-        )
-
-        log_debug(f"Extracted {len(annotated_exprs)} Kotlin annotated expressions")
-        return annotated_exprs
-
-    def _extract_annotated_expr(self, node: "tree_sitter.Node") -> Expression | None:
-        """Extract annotated expression as Expression element"""
-        try:
-            raw_text = self._get_node_text(node)
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-
-            # Extract annotation name for preview
-            annotation_name = "annotation"
-            for child in node.children:
-                if child.type == "annotation":
-                    annotation_name = self._get_node_text(child)
-                    break
-
-            preview = annotation_name[:50] if len(annotation_name) > 50 else annotation_name
-
-            return Expression(
-                name="annotated_expression",
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
-                language="kotlin",
-                expression_kind="annotated_expression",
-                preview=preview,
-            )
-        except Exception as e:
-            log_error(f"Error extracting Kotlin annotated expression: {e}")
-            return None
 
 
 class KotlinPlugin(LanguagePlugin):
@@ -652,10 +303,8 @@ class KotlinPlugin(LanguagePlugin):
         return KotlinElementExtractor()
 
     async def analyze_file(
-        self, file_path: str, request: "AnalysisRequest"
-    ) -> "AnalysisResult":
-        """Analyze Kotlin code and return structured results."""
-
+        self, file_path: str, request: AnalysisRequest
+    ) -> AnalysisResult:
         from ..models import AnalysisResult
 
         try:
@@ -663,13 +312,12 @@ class KotlinPlugin(LanguagePlugin):
 
             file_content, detected_encoding = read_file_safe(file_path)
 
-            # Get tree-sitter language and parse
             language = self.get_tree_sitter_language()
             if language is None:
                 return AnalysisResult(
                     file_path=file_path,
                     language="kotlin",
-                    line_count=len(file_content.split("\n")),
+                    line_count=len(file_content.splitlines()),
                     elements=[],
                     source_code=file_content,
                 )
@@ -678,7 +326,6 @@ class KotlinPlugin(LanguagePlugin):
 
             parser = tree_sitter.Parser()
 
-            # Set language
             if hasattr(parser, "set_language"):
                 parser.set_language(language)
             elif hasattr(parser, "language"):
@@ -688,34 +335,25 @@ class KotlinPlugin(LanguagePlugin):
 
             tree = parser.parse(file_content.encode("utf-8"))
 
-            # Extract elements
-            elements_dict = self.extract_elements(tree, file_content)
-
-            all_elements = []
-            all_elements.extend(elements_dict.get("functions", []))
-            all_elements.extend(elements_dict.get("classes", []))
-            all_elements.extend(elements_dict.get("variables", []))
-            all_elements.extend(elements_dict.get("imports", []))
-            all_elements.extend(elements_dict.get("packages", []))
-            all_elements.extend(elements_dict.get("type_aliases", []))
-            all_elements.extend(elements_dict.get("comments", []))
-            all_elements.extend(elements_dict.get("annotated_expressions", []))
+            extractor = self.create_extractor()
+            all_elements: list[Any] = []
+            all_elements.extend(extractor.extract_functions(tree, file_content))
+            all_elements.extend(extractor.extract_classes(tree, file_content))
+            all_elements.extend(extractor.extract_variables(tree, file_content))
+            all_elements.extend(extractor.extract_imports(tree, file_content))
+            packages = extractor.extract_packages(tree, file_content)
+            all_elements.extend(packages)
 
             node_count = (
                 self._count_tree_nodes(tree.root_node) if tree and tree.root_node else 0
             )
 
-            # Get package
-            package = (
-                elements_dict.get("packages", [])[0]
-                if elements_dict.get("packages")
-                else None
-            )
+            package = packages[0] if packages else None
 
             return AnalysisResult(
                 file_path=file_path,
                 language="kotlin",
-                line_count=len(file_content.split("\n")),
+                line_count=len(file_content.splitlines()),
                 elements=all_elements,
                 node_count=node_count,
                 source_code=file_content,
@@ -783,9 +421,6 @@ class KotlinPlugin(LanguagePlugin):
                 "variables": [],
                 "imports": [],
                 "packages": [],
-                "type_aliases": [],
-                "comments": [],
-                "annotated_expressions": [],
             }
 
         try:
@@ -797,11 +432,6 @@ class KotlinPlugin(LanguagePlugin):
                 "variables": extractor.extract_variables(tree, source_code),
                 "imports": extractor.extract_imports(tree, source_code),
                 "packages": extractor.extract_packages(tree, source_code),
-                "type_aliases": extractor.extract_type_aliases(tree, source_code),  # type: ignore[attr-defined]
-                "comments": extractor.extract_comments(tree, source_code),  # type: ignore[attr-defined]
-                "annotated_expressions": extractor.extract_annotated_expressions(  # type: ignore[attr-defined]
-                    tree, source_code
-                ),
             }
 
         except Exception as e:
@@ -812,9 +442,6 @@ class KotlinPlugin(LanguagePlugin):
                 "variables": [],
                 "imports": [],
                 "packages": [],
-                "type_aliases": [],
-                "comments": [],
-                "annotated_expressions": [],
             }
 
     def supports_file(self, file_path: str) -> bool:

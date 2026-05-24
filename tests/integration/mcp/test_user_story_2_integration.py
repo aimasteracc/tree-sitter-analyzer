@@ -177,7 +177,6 @@ module.exports = { FileManager };
 Tests for main module
 \"\"\"
 
-import unittest
 import tempfile
 import json
 from pathlib import Path
@@ -189,10 +188,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from main import DataProcessor
 
-class TestDataProcessor(unittest.TestCase):
+class TestDataProcessor:
     \"\"\"Test DataProcessor class\"\"\"
 
-    def setUp(self):
+    def setup_method(self):
         \"\"\"Set up test fixtures\"\"\"
         self.temp_dir = tempfile.mkdtemp()
         self.config = {"debug": True, "temp_dir": self.temp_dir}
@@ -207,13 +206,13 @@ class TestDataProcessor(unittest.TestCase):
             json.dump(test_data, f)
 
         result = self.processor.load_data(str(test_file))
-        self.assertTrue(result)
-        self.assertEqual(len(self.processor.data), 2)
+        assert result
+        assert len(self.processor.data) == 2
 
     def test_load_data_failure(self):
         \"\"\"Test data loading failure\"\"\"
         result = self.processor.load_data("nonexistent_file.json")
-        self.assertFalse(result)
+        assert not result
 
     def test_process_data(self):
         \"\"\"Test data processing\"\"\"
@@ -224,9 +223,9 @@ class TestDataProcessor(unittest.TestCase):
         ]
 
         processed = self.processor.process_data()
-        self.assertEqual(len(processed), 2)
-        self.assertIsInstance(processed[0], dict)
-        self.assertIsInstance(processed[1], dict)
+        assert len(processed) == 2
+        assert isinstance(processed[0], dict)
+        assert isinstance(processed[1], dict)
 
     def test_save_results(self):
         \"\"\"Test saving results\"\"\"
@@ -234,17 +233,15 @@ class TestDataProcessor(unittest.TestCase):
         output_file = Path(self.temp_dir) / "test_output.json"
 
         result = self.processor.save_results(str(output_file))
-        self.assertTrue(result)
-        self.assertTrue(output_file.exists())
+        assert result
+        assert output_file.exists()
 
         # Verify saved content
         with open(output_file, 'r') as f:
             saved_data = json.load(f)
-        self.assertEqual(len(saved_data), 1)
-        self.assertEqual(saved_data[0]["id"], 1)
+        assert len(saved_data) == 1
+        assert saved_data[0]["id"] == 1
 
-if __name__ == "__main__":
-    unittest.main()
 """
             )
 

@@ -18,6 +18,17 @@ This is a placeholder for the demo.gif file.
 
 - Use `asciinema` or `terminalizer` to record terminal
 - Show analysis of a large file with structure table output
+- For a repeatable before/after story, run:
+  ```bash
+  uv run python examples/agent_workflow_comparison_demo.py
+  uv run python examples/agent_workflow_comparison_demo.py --format json
+  uv run python examples/agent_workflow_comparison_demo.py --format cast > docs/assets/agent-workflow-comparison.cast
+  ```
+  This compares reading all of `examples/BigService.java` with the SMART workflow
+  path that retrieves only the target method context. The `cast` format emits
+  asciinema v2 JSONL, so the demo evidence can be regenerated without an
+  interactive recording step. A checked-in sample lives at
+  [agent-workflow-comparison.cast](agent-workflow-comparison.cast).
 
 ## How to Create
 
@@ -34,6 +45,12 @@ This is a placeholder for the demo.gif file.
    ```bash
    # With asciinema
    asciinema rec demo.cast
+
+   # Recommended command to record
+   uv run python examples/agent_workflow_comparison_demo.py
+
+   # Non-interactive asciinema v2 payload
+   uv run python examples/agent_workflow_comparison_demo.py --format cast > demo.cast
    
    # With terminalizer
    terminalizer record demo
@@ -53,4 +70,3 @@ This is a placeholder for the demo.gif file.
 ---
 
 *This placeholder file can be deleted once the actual demo.gif is created.*
-

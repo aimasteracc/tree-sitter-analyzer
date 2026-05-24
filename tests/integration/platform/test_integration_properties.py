@@ -78,11 +78,13 @@ class TestIntegrationProperties:
         Property 11: Comprehensive diagnostic logging
         Validates: Requirements 5.2, 5.3, 5.4
         """
-        with patch("tree_sitter_analyzer.languages.sql_plugin.log_debug") as mock_log:
+        with patch(
+            "tree_sitter_analyzer.languages.sql_plugin.extractor.log_debug"
+        ) as mock_log:
             # Test SQLPlugin initialization logging
             # We need to mock PlatformDetector to ensure consistent behavior
             with patch(
-                "tree_sitter_analyzer.languages.sql_plugin.PlatformDetector"
+                "tree_sitter_analyzer.languages.sql_plugin.extractor.PlatformDetector"
             ) as mock_detector:
                 mock_detector.detect.return_value.platform_key = "test_platform"
 
@@ -95,9 +97,9 @@ class TestIntegrationProperties:
                     if "Diagnostic: Platform detected:" in str(call):
                         found_platform_log = True
                         break
-                assert (
-                    found_platform_log
-                ), "Should log platform detection in diagnostic mode"
+                assert found_platform_log, (
+                    "Should log platform detection in diagnostic mode"
+                )
 
                 # Test Extractor logging
                 extractor = plugin.extractor
@@ -151,7 +153,7 @@ class TestIntegrationProperties:
             extractor, "_extract_sql_tables", side_effect=Exception("Simulated failure")
         ):
             with patch(
-                "tree_sitter_analyzer.languages.sql_plugin.log_error"
+                "tree_sitter_analyzer.languages.sql_plugin.extractor.log_error"
             ) as mock_log:
                 tree = MagicMock()
                 tree.root_node = MagicMock()

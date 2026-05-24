@@ -1,0 +1,23 @@
+# Dogfood fixture mirroring this project's actual layered topology.
+#
+# Two rules that this repository's source tree should satisfy today:
+#   1. mcp -> cli is forbidden (presentation must not leak into adapter)
+#   2. tools should not bypass the formatter abstraction
+#
+# Used by the evaluator perf test and by the safe_to_edit integration
+# tests as a realistic constraints.yml.
+version: 1
+constraints:
+  - id: dogfood-mcp-no-cli
+    severity: error
+    rule: forbid
+    from: "tree_sitter_analyzer/mcp/**"
+    to: "tree_sitter_analyzer/cli/**"
+    reason: "MCP layer is the transport boundary; CLI commands belong to the CLI layer."
+
+  - id: dogfood-tools-no-raw-formatter
+    severity: warn
+    rule: forbid
+    from: "tree_sitter_analyzer/mcp/tools/**"
+    to: "tree_sitter_analyzer/formatters/_internal/**"
+    reason: "Tools must use the formatter registry, not internal formatter modules."

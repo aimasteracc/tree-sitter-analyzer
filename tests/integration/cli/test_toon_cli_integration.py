@@ -141,9 +141,9 @@ public class Sample {
         # Should NOT look like JSON (no curly braces at start)
         stripped = output.strip()
         if stripped:
-            assert not (
-                stripped.startswith("{") and stripped.endswith("}")
-            ), "Output should not be JSON format"
+            assert not (stripped.startswith("{") and stripped.endswith("}")), (
+                "Output should not be JSON format"
+            )
 
     def test_structure_command_with_format_alias(self, sample_python_file):
         """Test --structure command with --format toon alias."""

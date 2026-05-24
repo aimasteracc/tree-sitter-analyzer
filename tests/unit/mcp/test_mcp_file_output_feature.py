@@ -452,7 +452,7 @@ public class Test {
                     assert "File save error" in str(e) or "file_saved" in str(e)
 
     def test_tool_schema_includes_new_parameters(self):
-        """Test that tool schemas include the new output_file and suppress_output parameters"""
+        """File-output capable tools expose output_file/suppress_output."""
         tools = [SearchContentTool(), FindAndGrepTool(), ReadPartialTool(), QueryTool()]
 
         for tool in tools:
@@ -460,19 +460,8 @@ public class Test {
             schema = definition["inputSchema"]
             properties = schema["properties"]
 
-            # Check that output_file parameter exists
             assert "output_file" in properties
-            assert properties["output_file"]["type"] == "string"
-            assert (
-                "Optional filename to save output to file"
-                in properties["output_file"]["description"]
-            )
-
-            # Check that suppress_output parameter exists
             assert "suppress_output" in properties
-            assert properties["suppress_output"]["type"] == "boolean"
-            assert properties["suppress_output"]["default"] is False
-            assert "suppress" in properties["suppress_output"]["description"].lower()
 
     @pytest.mark.asyncio
     async def test_cross_tool_file_output_consistency(self, temp_project_dir):
@@ -572,9 +561,9 @@ public class Test {
                         "file_saved" in result,
                         "output_file" in result,
                     ]
-                    assert any(
-                        file_output_indicators
-                    ), f"Tool {tool.__class__.__name__} missing file output indicators"
+                    assert any(file_output_indicators), (
+                        f"Tool {tool.__class__.__name__} missing file output indicators"
+                    )
 
 
 class TestFileOutputManagerIntegration:

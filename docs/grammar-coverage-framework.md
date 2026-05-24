@@ -575,9 +575,9 @@ uv run pytest tests/ --cov=tree_sitter_analyzer.grammar_coverage --cov-report=ht
 ## References
 
 - **Issue #112**: Original decorator extraction bug that triggered this work
-- **Grammar Coverage Achievement**: [docs/grammar-coverage-achievement.md](grammar-coverage-achievement.md)
 - **Validator Source**: [tree_sitter_analyzer/grammar_coverage/validator.py](../tree_sitter_analyzer/grammar_coverage/validator.py)
 - **Golden Corpus**: [tests/golden/](../tests/golden/)
+- **Phase 3 Reports**: [docs/grammar-coverage/](./grammar-coverage/)
 
 ---
 

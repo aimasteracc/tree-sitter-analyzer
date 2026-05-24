@@ -117,7 +117,6 @@ outline:
 methods:
   [10]{name,returns,params,vis,static,ctor,lines}:
     __init__,None,self,public,false,true,47-51
-    set_project_path,None,"self,project_path:str",public,false,false,53-57
     get_tool_schema,"dict[str,Any]",self,public,false,false,59-97
     validate_arguments,bool,"self,arguments:dict",public,false,false,99-127
     _build_outline,"dict[str,Any]","self,result:Any,inc_fields:bool,inc_imports:bool",public,false,false,129-271
@@ -232,8 +231,7 @@ def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
 
 需要更新：
 1. `README.md` - 在 get_code_outline 示例中展示 TOON 格式
-2. `docs/get_code_outline_test_report.md` - 添加 TOON 格式示例
-3. 工具的 docstring - 说明 output_format 参数
+2. 工具的 docstring - 说明 output_format 参数
 
 ## 实现检查清单
 

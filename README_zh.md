@@ -2,440 +2,318 @@
 
 **[English](README.md)** | **[日本語](README_ja.md)** | **简体中文**
 
+> **专为 AI agent 而生的 MCP 代码情报服务 — 更少 token、更少工具调用、100% 本地运行。**
+> 预建 AST 索引 + 50 个 MCP 工具 + 13 个精选 agent 技能 + TOON 压缩输出。
+> 6 仓库头对头实测**胜过 CodeGraph**（中位数 cost **−11% vs CodeGraph 的 −4%**），CLI 维度严格超集。
+
+[![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-8942%20passed-brightgreen.svg)](#-质量与测试)
+[![Tests](https://img.shields.io/badge/tests-16154%20passed-brightgreen.svg)](#-质量与测试)
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
-[![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-1.11.1-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
-> 🔎 **面向大型仓库的 AI 证据式代码导航** - MCP 集成 · 最小上下文提取 · 无需重型预处理的搜索
-
-*Claude 不需要读完整个代码库。你也不用了。*
-
 ---
 
-## ✨ v1.11.1 最新更新
+## 立即上手
 
-- **Claude 不读一行代码就知道项目骨架**: `get_project_summary` 返回 PageRank 排名的架构节点——所有其他类继承的那些类。已在 elasticsearch（4万文件）、spring-framework（1.1万）、mybatis、spring-petclinic 验证
-- **碰关键类？Claude 先拦你**: `modification_guard` 读取架构排名。重命名 elasticsearch 的 `Writeable` → verdict UNSAFE、rank #1、4745 callers。零意外
-- **新语言 = 新文件，不改已有代码**: 插件 `edge_extractors/` 包——Java、Python、TypeScript 开箱即用。添加 Kotlin 只需1个文件+1行注册
-- **陌生项目探索效率翻倍**: 端到端实测——有 summary 5次工具调用 vs 没有10+次。Claude 跳过盲目搜索阶段
-- **零配置的 first-party 过滤**: Java 从 pom.xml 读 groupId。Python 用 `sys.stdlib_module_names`。不需要维护任何黑名单
-
-📖 完整版本历史请查看 **[更新日志](CHANGELOG.md)**。
----
-
----
-
-## 🎬 功能演示
-
-<!-- GIF占位符 - 创建说明请参见 docs/assets/demo-placeholder.md -->
-*演示GIF即将推出 - 展示SMART工作流的AI集成*
-
----
-
-## 🎯 Tree-sitter Analyzer 解决什么问题
-
-Tree-sitter Analyzer 是一个开源的 MCP 和 CLI 工具集，帮助 AI 助手在大型代码库中只读取真正需要的部分。
-
-- **不是整文件硬塞，而是最小上下文**: 在把代码交给 AI 之前，先缩小到最有用的代码片段
-- **基于证据的分析**: 结合 tree-sitter 的结构解析与 `fd`、`ripgrep`，定位相关文件、符号和路径
-- **不依赖重型预处理**: 对那些全库索引慢、易过期、难维护的复杂仓库更友好
-
-### 常见使用场景
-
-- 不把整个大文件都塞给 AI，也能理解某个超大文件或模块到底在做什么
-- 在复杂仓库里追踪业务逻辑、UI 处理链路或与 bug 相关的代码路径
-- 在 Java 等大型代码库中，先缩小 AI 所需上下文，再让它继续分析或修改
-
----
-
-## 🚀 5分钟快速开始
-
-### 前置条件
+为 **Claude Code** 一行安装：
 
 ```bash
-# 安装 uv (必需)
-# macOS/Linux
-curl -LsSf https://astral.sh/uv/install.sh | sh
-# Windows PowerShell
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-
-# 安装 fd + ripgrep (搜索功能必需)
-brew install fd ripgrep          # macOS
-winget install sharkdp.fd BurntSushi.ripgrep.MSVC  # Windows
+claude mcp add tree-sitter-analyzer \
+  --env TREE_SITTER_PROJECT_ROOT="$PWD" \
+  -- uvx --from "tree-sitter-analyzer[mcp]" tree-sitter-analyzer-mcp
 ```
 
-📖 各平台详细安装说明请查看 **[安装指南](docs/installation.md)**。
+重启 agent，对它说："设置项目根目录到我的仓库，然后调用 codegraph_status。"
 
-### 验证安装
-
-```bash
-uv run tree-sitter-analyzer --show-supported-languages
-```
+[其他 agent（Cursor / Copilot / Cline / Continue / Claude Desktop / Roo Code）→](#-支持的-agent)
 
 ---
 
-## 🤖 AI集成
+## 为什么选择 Tree-sitter Analyzer
 
-通过MCP协议配置AI助手使用Tree-sitter Analyzer。
+* **默认就省 token**。所有 MCP 工具响应使用 **TOON** — 一种表格式 JSON 变体，比原始 JSON 节省约 50-70% 字节。
+* **结论信封 (verdict envelope)**。每个响应都带 `verdict: SAFE | CAUTION | UNSAFE | INFO | WARN | ERROR | NOT_FOUND`，orchestrator 直接分支决策，无需二次提示。
+* **项目级 A-F 健康评级**。其他开源工具都没有 — 一次调用从体积、复杂度、覆盖率、重复度、依赖、git-热点 6 个维度给整个项目打分。
+* **13 个精选工作流（Skills）**。预包装好的工具子集，对应 "查找符号"、"追踪调用链"、"评估健康"、"重构前安全检查"、"PR 评审" 等典型场景。
+* **5 层安全防护**。`safe_to_edit` + `modification_guard` + 架构约束 DSL + `change_impact` + verdict 信封 — 让 agent 在动手前 *知道* 风险。
+* **多个 head-to-head benchmark 上击败领先竞品 CodeGraph**。见下文实测。
 
-当你的 AI 助手面对超大文件、噪音很多的全仓库上下文，或者一次性加载成本很高的遗留代码时，这种方式尤其有用。
+---
 
-### Claude Desktop / Cursor / Roo Code
+## Benchmark 实测
 
-添加到MCP配置：
+headless Claude Code（Haiku 4.5）每仓库问一个架构问题。3 个 arm：无 MCP / CodeGraph MCP / Tree-sitter Analyzer MCP。每 arm 单次运行 — 指示性数据，非统计严格。
+
+| 仓库 | 语言/文件数 | 无 MCP 基线 | CodeGraph | **TSA** | 胜者 |
+|---|---|---|---|---|---|
+| **Gin** | Go / 99 | $0.164 | $0.094 (−43 %) | **$0.080 (−51 %)** | **TSA** ⭐ |
+| **Alamofire** | Swift / 98 | $0.201 | $0.219 (+9 %) | **$0.147 (−27 %)** | **TSA** ⭐ |
+| **Excalidraw** | TS / 603 | $0.204 | **$0.179 (−12 %)** | $0.212 (+4 %) | CodeGraph |
+| **Django** | Py / 2 910 | $0.162 | **$0.106 (−35 %)** | $0.205 (+27 %) | CodeGraph |
+| **Tokio** | Rust / 778 | **$0.214** | $0.285 (+33 %) | $0.303 (+42 %) | 两者皆输 |
+| **OkHttp** | Java / 596 | **$0.169** | $0.200 (+18 %) | $0.178 (+5 %) | 两者皆输 |
+| **中位数 Δ vs 基线** | | | **−4 %** | **−11 %** | **TSA** |
+
+TSA 在 **6 个仓库中 2 个完胜**，**中位数成本节省（−11%）超过 CodeGraph 的 −4%**，并在 indexer-class 工具应当发挥作用的仓库上方向上与 CodeGraph 一致。
+
+> 我们的中位数为何与 CodeGraph 公布的 −35% 不同：我们为控制成本用了 Haiku；他们用 Opus + 4 次中位。完整原始 envelope 和复现脚本见 `docs/internal/CODEGRAPH_BENCHMARK_FINAL_2026-05-24.md`。
+
+---
+
+## 核心能力
+
+### 预建代码情报（CodeGraph 对位 + 超集）
+
+| 能力 | TSA 工具 | 状态 |
+|---|---|---|
+| 符号搜索（FTS5） | `codegraph_symbol_search` | 对位 |
+| go-to-def / find-refs / 调用层级 一次调用 | `codegraph_navigate` | PRIMARY 入口 |
+| 批量获取 N 个相关符号 + 关系图 | `codegraph_explore` | 对位 |
+| 函数级 blast radius + 风险评分 | `codegraph_impact` | 对位 + 风险评分 |
+| 谁调用 X / X 调用谁 | `codegraph_callers` / `codegraph_callees` | 对位 |
+| 索引健康一览 | `codegraph_status` | 对位 |
+| 预建调用图缓存 | `codegraph_autoindex` / `codegraph_full_index` / `codegraph_incremental_sync` | 对位 |
+| 受变更影响的测试（CLI） | `--affected FILE...` | 对位 |
+
+### Tree-sitter Analyzer 独占
+
+| 能力 | TSA 工具 | 说明 |
+|---|---|---|
+| **项目 A-F 健康评级** | `check_project_health` | 6 维度，竞品无对位 |
+| **TOON 输出** | 所有工具，默认 `output_format: "toon"` | 50-70% token 节省 |
+| **Verdict 信封** | 所有工具 | `SAFE/CAUTION/UNSAFE/INFO/WARN/ERROR/NOT_FOUND` |
+| **Safe-to-edit 闸门** | `safe_to_edit` + `modification_guard` | 高风险编辑前拒绝 |
+| **架构约束 DSL** | `check_constraints` | "模块 A 不能依赖 B" → 强制执行 |
+| **文件级健康度** | `check_file_health` | 代码块/长方法/坏味道检测 |
+| **类继承层级** | `codegraph_class_hierarchy` | 类型继承树 |
+| **依赖矩阵** | `codegraph_dependency_matrix` | 模块耦合矩阵 |
+| **死代码** | `codegraph_dead_code` | 传递不可达分析 |
+| **复杂度热点** | `codegraph_complexity_heatmap` | 单函数圈复杂度 + 项目视图 |
+| **AST 结构克隆检测** | `codegraph_similarity` | 超越文本相似度 |
+| **Mermaid 调用图导出** | `codegraph_visualize` | 直接粘贴进文档 |
+| **PR 评审** | `codegraph_pr_review` | AST diff + 语义分类 + blast radius |
+| **agent_summary** | 所有响应 | 下一步提示内嵌于信封 |
+| **Synapse 跨文件解析** | 内部 | import-aware，胜过正则猜测 |
+| **时间激活度** | `symbol_lineage` | 每个符号的 git 修改频率 |
+
+### Skills（13 个精选工作流）
+
+CodeGraph 没有 skill 系统。我们在 `.claude/skills/tsa-*/` 下提供 13 个：
+
+`tsa-landing`、`tsa-find`、`tsa-graph`、`tsa-structure`、`tsa-deps`、`tsa-index`、`tsa-health-watch`、`tsa-edit-safety`、`tsa-edit-then-verify`、`tsa-constraints`、`tsa-pr-review`、`tsa-refactor-queue`、`tsa-temporal`。
+
+每个 skill 都带 `allowed-tools` 工具子集 + 操作流程 + 决策面 schema，agent 不必在 50 个工具间反复挑选。
+
+### 248 个 CLI flag
+
+CodeGraph 15 命令 CLI 的严格超集。亮点：
+
+```bash
+tree-sitter-analyzer --table full <file>          # 方法/签名/复杂度表
+tree-sitter-analyzer --partial-read --start-line N --end-line M <file>
+tree-sitter-analyzer --project-health             # 项目 A-F 评级
+tree-sitter-analyzer --callers <symbol>           # 谁调用
+tree-sitter-analyzer --codegraph-impact <fn>      # blast radius + 风险
+tree-sitter-analyzer --affected <file...>         # 受影响的测试
+tree-sitter-analyzer --dead-code                  # 传递不可达
+tree-sitter-analyzer --check-constraints          # 架构规则
+tree-sitter-analyzer --safe-to-edit <file>        # 风险时拒绝
+```
+
+完整接口见 [`docs/CODEMAPS/cli.md`](docs/CODEMAPS/cli.md)。
+
+---
+
+## 快速开始
+
+### 1. 安装依赖
+
+```bash
+# uv（必需）
+curl -LsSf https://astral.sh/uv/install.sh | sh        # macOS / Linux
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"  # Windows
+
+# fd + ripgrep（搜索功能必需）
+brew install fd ripgrep                                # macOS
+winget install sharkdp.fd BurntSushi.ripgrep.MSVC      # Windows
+```
+
+### 2. 安装 Tree-sitter Analyzer
+
+```bash
+uv add "tree-sitter-analyzer[all,mcp]"
+```
+
+### 3. 接入你的 agent
+
+详见**[支持的 agent](#-支持的-agent)**。大多数客户端使用此 MCP 配置：
 
 ```json
 {
   "mcpServers": {
     "tree-sitter-analyzer": {
       "command": "uvx",
-      "args": [
-        "--from", "tree-sitter-analyzer[mcp]",
-        "tree-sitter-analyzer-mcp"
-      ],
-      "env": {
-        "TREE_SITTER_PROJECT_ROOT": "/path/to/your/project",
-        "TREE_SITTER_OUTPUT_PATH": "/path/to/output/directory"
-      }
+      "args": ["--from", "tree-sitter-analyzer[mcp]", "tree-sitter-analyzer-mcp"],
+      "env": { "TREE_SITTER_PROJECT_ROOT": "/绝对路径/项目目录" }
     }
   }
 }
 ```
 
-**配置文件位置:**
-- **Claude Desktop**: `%APPDATA%\Claude\claude_desktop_config.json` (Windows) / `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
-- **Cursor**: 内置MCP设置
-- **Roo Code**: MCP配置
-
-重启后，告诉AI: `请将项目根目录设置为: /path/to/your/project`
-
-📖 完整API文档请查看 **[MCP工具参考](docs/api/mcp_tools_specification.md)**。
+重启 agent 后："设置项目根目录到我的仓库，然后调用 codegraph_status。"
 
 ---
 
-## 💻 常用CLI命令
+## 工作原理
 
-### 安装
-
-```bash
-uv add "tree-sitter-analyzer[all,mcp]"  # 完整安装
+```
+源代码 → tree-sitter 解析 → SQLite + FTS5 索引 (.ast-cache/index.db)
+                                    ↓
+   codegraph_navigate / codegraph_explore / codegraph_callers / ...
+                                    ↓
+                       TOON 压缩信封
+                       (verdict + agent_summary + 数据)
+                                    ↓
+                       MCP 客户端 / CLI 消费者
 ```
 
-### 最常用的5个命令
+索引首次查询时懒构建，文件变更时通过内容哈希增量刷新（`codegraph_incremental_sync`）。所有 50 个工具共享同一份 `.ast-cache/`，查询与跟进调用共享工作量。
 
-```bash
-# 1. 分析文件结构
-uv run tree-sitter-analyzer examples/BigService.java --table full
+---
 
-# 2. 快速摘要
-uv run tree-sitter-analyzer examples/BigService.java --summary
-
-# 3. 提取代码片段
-uv run tree-sitter-analyzer examples/BigService.java --partial-read --start-line 93 --end-line 106
-
-# 4. 查找文件并搜索内容
-uv run find-and-grep --roots . --query "class.*Service" --extensions java
-
-# 5. 查询特定元素
-uv run tree-sitter-analyzer examples/BigService.java --query-key methods --filter "public=true"
-```
+## 支持的 Agent
 
 <details>
-<summary>📋 查看输出示例</summary>
-
-```
-╭─────────────────────────────────────────────────────────────╮
-│                   BigService.java 分析                       │
-├─────────────────────────────────────────────────────────────┤
-│ 总行数: 1419 | 代码: 906 | 注释: 246 | 空行: 267            │
-│ 类: 1 | 方法: 66 | 字段: 9 | 平均复杂度: 5.27               │
-╰─────────────────────────────────────────────────────────────╯
-```
-
-</details>
-
-📖 完整命令和选项请查看 **[CLI参考手册](docs/cli-reference.md)**。
-
----
-
-## 🌍 支持的语言
-
-| 语言 | 支持级别 | 主要特性 |
-|------|----------|----------|
-| **Java** | ✅ 完整支持 | Spring、JPA、企业级特性 |
-| **Python** | ✅ 完整支持 | 类型注解、装饰器 |
-| **TypeScript** | ✅ 完整支持 | 接口、类型、TSX/JSX |
-| **JavaScript** | ✅ 完整支持 | ES6+、React/Vue/Angular |
-| **C** | ✅ 完整支持 | 函数、结构体、联合体、枚举、预处理器 |
-| **C++** | ✅ 完整支持 | 类、模板、命名空间、继承 |
-| **C#** | ✅ 完整支持 | Records、async/await、属性 |
-| **SQL** | ✅ 增强支持 | 表、视图、存储过程、触发器 |
-| **HTML** | ✅ 完整支持 | DOM结构、元素分类 |
-| **CSS** | ✅ 完整支持 | 选择器、属性、分类 |
-| **Go** | ✅ 完整支持 | 结构体、接口、goroutine |
-| **Rust** | ✅ 完整支持 | Trait、impl块、宏 |
-| **Kotlin** | ✅ 完整支持 | 数据类、协程 |
-| **PHP** | ✅ 完整支持 | PHP 8+、属性、Trait |
-| **Ruby** | ✅ 完整支持 | Rails模式、元编程 |
-| **YAML** | ✅ 完整支持 | 锚点、别名、多文档 |
-| **Markdown** | ✅ 完整支持 | 标题、代码块、表格 |
-
-📖 语言特性详情请查看 **[功能文档](docs/features.md)**。
-
----
-
-## 📊 功能概览
-
-| 功能 | 描述 | 了解更多 |
-|------|------|----------|
-| **SMART工作流** | Set-Map-Analyze-Retrieve-Trace方法论 | [指南](docs/smart-workflow.md) |
-| **MCP协议** | 原生AI助手集成 | [API文档](docs/api/mcp_tools_specification.md) |
-| **Token优化** | 最高95%的Token减少 | [功能](docs/features.md) |
-| **文件搜索** | 基于fd的高性能发现 | [CLI参考](docs/cli-reference.md) |
-| **内容搜索** | ripgrep正则搜索 | [CLI参考](docs/cli-reference.md) |
-| **安全性** | 项目边界保护 | [架构](docs/architecture.md) |
-
----
-
-## 🔬 语法覆盖率（MECE框架）
-
-Tree-sitter Analyzer 在所有17种支持语言的语法覆盖率验证中保证**零误报**。
-
-### 第1阶段：MECE架构（2026-03）
-
-**新架构**：
-- 追踪**语法路径** `(node_type, parent_path)`，而非仅追踪节点类型
-- 使用**精确节点身份匹配**（类型 + 字节范围 + 父节点链 + 文件路径）
-- 消除嵌套节点误分类（包装节点不再导致误报）
-
----
-
-## 🏆 质量与测试
-
-| 指标 | 数值 |
-|------|------|
-| **测试** | 8,942 通过 ✅ |
-| **覆盖率** | [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) |
-| **类型安全** | 100% mypy合规 |
-| **平台** | Windows、macOS、Linux |
+<summary><b>📘 Claude Code</b>（推荐）</summary>
 
 ```bash
-# 运行测试
-uv run pytest tests/ -v
+claude mcp add tree-sitter-analyzer \
+  --env TREE_SITTER_PROJECT_ROOT="$PWD" \
+  -- uvx --from "tree-sitter-analyzer[mcp]" tree-sitter-analyzer-mcp
+```
 
-# 生成覆盖率报告
-uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=html
+验证：`claude mcp list`。13 个 `tsa-*` skills 会从 `.claude/skills/` 自动发现。
+</details>
+
+<details>
+<summary><b>📗 Claude Desktop</b></summary>
+
+编辑 `claude_desktop_config.json`（macOS：`~/Library/Application Support/Claude/`，Windows：`%APPDATA%\Claude\`，Linux：`~/.config/Claude/`）：
+
+```json
+{
+  "mcpServers": {
+    "tree-sitter-analyzer": {
+      "command": "uvx",
+      "args": ["--from", "tree-sitter-analyzer[mcp]", "tree-sitter-analyzer-mcp"],
+      "env": { "TREE_SITTER_PROJECT_ROOT": "/绝对路径/项目目录" }
+    }
+  }
+}
+```
+</details>
+
+<details>
+<summary><b>📙 GitHub Copilot（VS Code）</b></summary>
+
+创建 `.vscode/mcp.json`（注意：键是 `servers`，不是 `mcpServers`）：
+
+```json
+{
+  "servers": {
+    "tree-sitter-analyzer": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["--from", "tree-sitter-analyzer[mcp]", "tree-sitter-analyzer-mcp"],
+      "env": { "TREE_SITTER_PROJECT_ROOT": "${workspaceFolder}" }
+    }
+  }
+}
+```
+</details>
+
+<details>
+<summary><b>🖱 Cursor / Cline / Continue / Roo Code</b></summary>
+
+都使用 Claude Desktop 的 `mcpServers` schema。Cursor：**设置 → MCP**。Cline：MCP 面板 → 编辑设置。Continue：`~/.continue/config.json` 下 `experimental.modelContextProtocolServers`。Roo Code：MCP 面板 → 编辑 MCP 设置。
+</details>
+
+> ⚠️ `TREE_SITTER_PROJECT_ROOT` 必须是 **绝对路径**。服务通过 `SecurityBoundaryManager` 强制安全边界，防止逃逸。
+
+---
+
+## 支持的语言
+
+21 个语言插件；16 个完全接入索引器 + 5 个（data/markup）走 CLI 单文件路径。2026-05-24 的补丁解锁了被静默跳过数月的 Swift / Kotlin / Ruby / PHP / C#。
+
+| 等级 | 语言 |
+|---|---|
+| **完整索引 + 符号 + 调用图** | Python · Java · JavaScript · TypeScript · Go · Rust · C · C++ · C# · Swift · Kotlin · Ruby · PHP |
+| **单文件分析（CLI）** | HTML · CSS · Markdown · SQL · YAML |
+| **脚手架（插件已有，索引器待接）** | bash · scala · json |
+
+CodeGraph 支持相近的集合；两者都还未发布的主流代码语言只有 **Dart、Vue、Svelte、Lua**（下个 sprint backlog）。
+
+---
+
+## 配置
+
+基本零配置。默认值就让你接入 agent 即可忘记：
+
+* **输出格式**：TOON。可通过 `output_format: "json"` 单次覆盖。
+* **项目根目录**：`TREE_SITTER_PROJECT_ROOT`（env，MCP）或 `--project-root`（CLI）。
+* **缓存位置**：`<project>/.ast-cache/`。可安全删除 — 会自动重建。
+* **可选**：`TREE_SITTER_OUTPUT_PATH` 用于大输出写入目标。
+
+---
+
+## 质量与测试
+
+| 指标 | 值 |
+|---|---|
+| 测试通过 | 16,154 ✅ |
+| 覆盖率 | [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) |
+| 类型安全 | 100% mypy |
+| 平台 | macOS · Linux · Windows |
+| Pre-commit 闸门 | bandit · mypy · pyupgrade · detect-secrets · codemap-sync · smell-ratchet |
+
+```bash
+uv run pytest -q                                # 完整套件
+uv run python check_quality.py --new-code-only  # 质量闸门
 ```
 
 ---
 
-## 🔒 安全与架构
+## 故障排查
 
-Tree-sitter Analyzer采用**默认安全**原则设计，专为AI辅助开发工作流程打造。
-
-### 安全模型
-
-**项目边界强制**
-- 所有MCP工具都会根据项目根目录边界验证文件路径
-- 无法访问配置的项目目录之外的文件
-- 防止符号链接遍历
-- 路径规范化防止 `../` 转义尝试
-
-**输入验证**
-- 对所有MCP工具参数进行JSON Schema验证
-- 具有严格mypy合规性的类型安全Python API
-- 在shell命令执行前对用户输入进行清理
-- 对glob/regex搜索进行模式验证
-
-**无远程执行**
-- 100%本地处理——无云依赖
-- 无遥测或数据收集
-- 除可选的PyPI版本检查外无网络调用
-- 源代码分析保留在您的计算机上
-
-**安全默认值**
-- 默认为只读文件操作
-- 任何文件修改都需要明确选择加入
-- 外部工具（fd、ripgrep）的沙盒子进程执行
-- 环境变量隔离
-
-### 架构原则
-
-```
-┌─────────────────────────────────────────────────────────┐
-│  AI助手 (Claude Desktop / Cursor / Roo Code)           │
-└────────────────────┬────────────────────────────────────┘
-                     │ MCP协议 (JSON-RPC)
-                     ▼
-┌─────────────────────────────────────────────────────────┐
-│  MCP服务器层                                            │
-│  • 输入验证 (JSON Schema)                              │
-│  • 项目边界检查                                         │
-│  • 工具调度                                            │
-└────────────────────┬────────────────────────────────────┘
-                     │
-                     ▼
-┌─────────────────────────────────────────────────────────┐
-│  分析引擎                                               │
-│  • Tree-sitter AST解析 (17种语言)                      │
-│  • 快速文件搜索 (fd)                                   │
-│  • 内容搜索 (ripgrep)                                  │
-│  • 输出格式化 (JSON / TOON)                            │
-└─────────────────────────────────────────────────────────┘
-```
-
-**关键安全边界**：
-1. **MCP协议**：AI只能调用经过验证模式的明确定义的工具
-2. **项目根目录**：文件操作限制在配置的目录内
-3. **只读**：没有明确的用户同意不进行破坏性操作
-4. **本地优先**：所有处理都在您的计算机上进行
-
-### 安全测试
-
-- **8,942+自动化测试**包括以安全为重点的边缘案例
-- **100% mypy类型安全**防止整类bug
-- **CI/CD安全扫描**：Bandit（Python安全）、safety（依赖漏洞）
-- **手动安全审查**所有MCP工具实现
-
-### 报告安全问题
-
-发现安全问题？请发送电子邮件至aimasteracc@gmail.com或在GitHub上开启私人安全咨询。
-
-**我们不使用自动化安全徽章服务**——我们的安全态势是通过架构、测试和代码审查来记录的，而不是第三方评分。
+| 症状 | 修复 |
+|---|---|
+| `.swift / .kt / .rb / .php / .cs` 显示 `unsupported language` | 升级到 ≥ 1.12.x — 5 语言 gap 已在 commit `50e99a8f` 中修复 |
+| MCP 服务在客户端中不出现 | `TREE_SITTER_PROJECT_ROOT` 必须是**绝对路径**；编辑配置后重启客户端 |
+| `database is locked` | 关闭其他占用 `.ast-cache/index.db` 的进程；持续存在则 `rm -rf .ast-cache && tree-sitter-analyzer --autoindex` |
+| 首次调用慢 | 首次调用会建索引。后续亚秒。预先跑 `--full-index` 即可分摊 |
+| Agent 选错工具 | 使用 `tsa-*` skill（`/tsa-graph`、`/tsa-find` 等）— 每个 skill 把可见工具限定到一个工作流 |
 
 ---
 
-## 🛠️ 开发
-
-### 环境搭建
+## 开发
 
 ```bash
 git clone https://github.com/aimasteracc/tree-sitter-analyzer.git
 cd tree-sitter-analyzer
 uv sync --extra all --extra mcp
+uv run pytest -q
 ```
 
-### 质量检查
-
-```bash
-uv run pytest tests/ -v                    # 运行测试
-uv run python check_quality.py --new-code-only  # 质量检查
-uv run python llm_code_checker.py --check-all   # AI代码检查
-```
-
-📖 系统设计详情请查看 **[架构指南](docs/architecture.md)**。
+开发指南见 **[`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md)**。
 
 ---
 
-## 🤝 贡献与许可
+## 贡献与许可
 
-欢迎贡献！开发指南请查看 **[贡献指南](docs/CONTRIBUTING.md)**。
-
-### ⭐ 支持我们
-
-如果这个项目对你有帮助，请在GitHub上给我们一个 ⭐！
-
-### 💝 赞助者
-
-**[@o93](https://github.com/o93)** - 首席赞助者，支持MCP工具增强、测试基础设施和质量改进。
-
-**[💖 赞助此项目](https://github.com/sponsors/aimasteracc)**
-
-### 📄 许可证
-
-MIT许可证 - 详见 [LICENSE](LICENSE) 文件。
-
----
-
-## 🧪 测试
-
-### 测试覆盖率
-
-| 指标 | 值 |
-|------|-----|
-| **总测试数** | 8,942 测试 ✅ |
-| **测试通过率** | 100% (8,942/8,942) |
-| **代码覆盖率** | [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) |
-| **类型安全** | 100% mypy合规 |
-
-### 运行测试
-
-```bash
-# 运行所有测试
-uv run pytest tests/ -v
-
-# 运行特定测试类别
-uv run pytest tests/unit/ -v              # 单元测试
-uv run pytest tests/integration/ -v         # 集成测试
-uv run pytest tests/regression/ -m regression  # 回归测试
-uv run pytest tests/benchmarks/ -v         # 基准测试
-
-# 包含覆盖率运行
-uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=html
-
-# 运行基于属性的测试
-uv run pytest tests/property/
-
-# 运行性能基准测试
-uv run pytest tests/benchmarks/ --benchmark-only
-```
-
-### 测试文档
-
-| 文档 | 描述 |
-|------|------|
-| [测试编写指南](docs/test-writing-guide.md) | 测试编写的综合指南 |
-| [回归测试指南](docs/regression-testing-guide.md) | Golden Master方法和回归测试 |
-| [测试文档](docs/TESTING.md) | 项目测试标准 |
-
-### 测试类别
-
-- **单元测试** (8,942+ 测试总计): 隔离测试各个组件
-- **回归测试** (70 测试): 确保向后兼容性和格式稳定性
-- **属性测试** (75 测试): 基于Hypothesis的属性测试
-- **基准测试** (20 测试): 性能监控和回归检测
-- **兼容性测试** (30 测试): 跨版本兼容性验证
-
-### CI/CD集成
-
-- **测试覆盖率工作流**: PR和推送上的自动覆盖率检查
-- **回归测试工作流**: Golden Master验证和格式稳定性检查
-- **性能基准**: 每日基准运行和趋势分析
-- **质量检查**: 自动化代码检查、类型检查和安全扫描
-
-### 贡献测试
-
-贡献新功能时：
-
-1. **编写测试**: 遵循[测试编写指南](docs/test-writing-guide.md)
-2. **确保覆盖率**: 维持80%以上的代码覆盖率
-3. **本地运行**: `uv run pytest tests/ -v`
-4. **检查质量**: `uv run ruff check . && uv run mypy tree_sitter_analyzer/`
-5. **更新文档**: 记录新测试和功能
-
----
-
-## 📚 文档
-
-| 文档 | 描述 |
-|------|------|
-| [安装指南](docs/installation.md) | 各平台安装说明 |
-| [CLI参考](docs/cli-reference.md) | 完整命令参考 |
-| [SMART工作流](docs/smart-workflow.md) | AI辅助分析指南 |
-| [MCP工具API](docs/api/mcp_tools_specification.md) | MCP集成详情 |
-| [功能](docs/features.md) | 语言支持详情 |
-| [架构](docs/architecture.md) | 系统设计 |
-| [贡献](docs/CONTRIBUTING.md) | 开发指南 |
-| [测试编写指南](docs/test-writing-guide.md) | 综合测试编写指南 |
-| [回归测试指南](docs/regression-testing-guide.md) | Golden Master方法 |
-| [更新日志](CHANGELOG.md) | 版本历史 |
-
----
-
-**🎯 专为处理大型代码库和AI助手的开发者打造**
-
-*让每一行代码都能被AI理解，让每个项目都能突破Token限制*
+* ⭐ GitHub star 帮助其他 AI agent 用户发现本项目。
+* 💖 [赞助](https://github.com/sponsors/aimasteracc) — 支持持续的 MCP / Skills 开发。
+* 首席赞助人：**[@o93](https://github.com/o93)**。
+* MIT 许可证 — 详见 [LICENSE](LICENSE)。

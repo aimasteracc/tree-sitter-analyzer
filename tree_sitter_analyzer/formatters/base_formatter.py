@@ -146,56 +146,63 @@ class BaseTableFormatter(BaseFormatter):
         pass
 
     def _format_csv(self, data: dict[str, Any]) -> str:
-        """CSV format (common implementation)"""
+        """CSV format (common implementation).
+
+        r37dk (dogfood): flattened nesting 6 → 3 by extracting per-row
+        builders (``_csv_field_row`` / ``_csv_method_row``). Output bytes
+        unchanged — same columns, same order, same escapechar settings.
+        """
         output = io.StringIO()
         # Set escapechar to handle special characters that cannot be quoted (like null bytes in some envs)
         writer = csv.writer(output, lineterminator="\n", escapechar="\\")
 
-        # Header
         writer.writerow(
             ["Type", "Name", "Signature", "Visibility", "Lines", "Complexity", "Doc"]
         )
-
-        # Fields
         for field in data.get("fields", []):
-            writer.writerow(
-                [
-                    "Field",
-                    self._clean_csv_text(str(field.get("name", ""))),
-                    self._clean_csv_text(
-                        f"{str(field.get('name', ''))}:{str(field.get('type', ''))}"
-                    ),
-                    self._clean_csv_text(str(field.get("visibility", ""))),
-                    f"{field.get('line_range', {}).get('start', 0)}-{field.get('line_range', {}).get('end', 0)}",
-                    "",
-                    self._clean_csv_text(
-                        self._extract_doc_summary(str(field.get("javadoc", "")))
-                    ),
-                ]
-            )
-
-        # Methods
+            writer.writerow(self._csv_field_row(field))
         for method in data.get("methods", []):
-            writer.writerow(
-                [
-                    "Constructor" if method.get("is_constructor", False) else "Method",
-                    self._clean_csv_text(str(method.get("name", ""))),
-                    self._clean_csv_text(self._create_full_signature(method)),
-                    self._clean_csv_text(str(method.get("visibility", ""))),
-                    f"{method.get('line_range', {}).get('start', 0)}-{method.get('line_range', {}).get('end', 0)}",
-                    method.get("complexity_score", 0),
-                    self._clean_csv_text(
-                        self._extract_doc_summary(str(method.get("javadoc", "")))
-                    ),
-                ]
-            )
+            writer.writerow(self._csv_method_row(method))
 
         csv_content = output.getvalue()
         csv_content = csv_content.replace("\r\n", "\n").replace("\r", "\n")
         csv_content = csv_content.rstrip("\n")
         output.close()
-
         return csv_content
+
+    def _csv_field_row(self, field: dict[str, Any]) -> list[Any]:
+        """Build the CSV row for one ``field`` entry."""
+        name = str(field.get("name", ""))
+        ftype = str(field.get("type", ""))
+        signature = f"{name}:{ftype}"
+        line_range = field.get("line_range", {})
+        lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
+        javadoc = str(field.get("javadoc", ""))
+        return [
+            "Field",
+            self._clean_csv_text(name),
+            self._clean_csv_text(signature),
+            self._clean_csv_text(str(field.get("visibility", ""))),
+            lines_str,
+            "",
+            self._clean_csv_text(self._extract_doc_summary(javadoc)),
+        ]
+
+    def _csv_method_row(self, method: dict[str, Any]) -> list[Any]:
+        """Build the CSV row for one ``method`` entry."""
+        row_type = "Constructor" if method.get("is_constructor", False) else "Method"
+        line_range = method.get("line_range", {})
+        lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
+        javadoc = str(method.get("javadoc", ""))
+        return [
+            row_type,
+            self._clean_csv_text(str(method.get("name", ""))),
+            self._clean_csv_text(self._create_full_signature(method)),
+            self._clean_csv_text(str(method.get("visibility", ""))),
+            lines_str,
+            method.get("complexity_score", 0),
+            self._clean_csv_text(self._extract_doc_summary(javadoc)),
+        ]
 
     # Common helper methods
     def _create_full_signature(self, method: dict[str, Any]) -> str:
