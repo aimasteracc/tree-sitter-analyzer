@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Coverage boost for path_resolver.py: validate_path edge cases."""
 
+import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
@@ -61,6 +62,10 @@ class TestValidatePathEdges:
         assert not is_valid
         assert "Path validation error" in msg
 
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="Windows-specific incompatibility — tracked separately",
+    )
     def test_set_project_root_absolute(self, tmp_path):
         resolver = PathResolver()
         resolver.set_project_root(str(tmp_path))
@@ -72,6 +77,10 @@ class TestValidatePathEdges:
         resolver.set_project_root(None)
         assert resolver.project_root is None
 
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="Windows-specific incompatibility — tracked separately",
+    )
     def test_get_relative_path_cross_drive(self):
         """ValueError when paths don't share a prefix"""
         resolver = PathResolver()

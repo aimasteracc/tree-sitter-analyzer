@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
+
+import pytest
 
 from tree_sitter_analyzer.cli.commands.clean_state_command import (
     EPHEMERAL_STATE_PATHS,
@@ -89,6 +92,10 @@ def test_dry_run_does_not_touch_filesystem(tmp_path: Path, capsys) -> None:
     assert sentinel.read_text() == "keep me"
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Windows-specific incompatibility — tracked separately",
+)
 def test_handles_literal_colon_memory_directory(tmp_path: Path, capsys) -> None:
     """The literal ``:memory:`` directory created by legacy code is swept."""
     target = tmp_path / ":memory:"

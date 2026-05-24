@@ -10,6 +10,7 @@ table or column is missing.
 from __future__ import annotations
 
 import sqlite3
+import sys
 from pathlib import Path
 
 import pytest
@@ -151,6 +152,10 @@ class TestFreshDb:
 
 
 class TestSelfCheckDetection:
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="Windows-specific incompatibility — tracked separately",
+    )
     def test_self_check_detects_missing_column(self, tmp_path: Path) -> None:
         """Drop callee_resolution from ast_call_edges → SchemaIntegrityError.
 

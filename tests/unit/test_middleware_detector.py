@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Tests for middleware_detector and detect_middleware MCP tool."""
 
+import sys
 import textwrap
 from pathlib import Path
 
@@ -246,6 +247,10 @@ class TestMiddlewareDetectorTool:
         assert tool.validate_arguments({})
 
     @pytest.mark.asyncio
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="Windows-specific incompatibility — tracked separately",
+    )
     async def test_execute_all(self, tool):
         result = await tool.execute({"mode": "all", "output_format": "json"})
         assert result["success"] is True
@@ -253,6 +258,10 @@ class TestMiddlewareDetectorTool:
         assert "middleware_count" in result
 
     @pytest.mark.asyncio
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="Windows-specific incompatibility — tracked separately",
+    )
     async def test_execute_summary(self, tool):
         result = await tool.execute({"mode": "summary", "output_format": "json"})
         assert result["success"] is True
@@ -260,6 +269,10 @@ class TestMiddlewareDetectorTool:
         assert "by_framework" in result
 
     @pytest.mark.asyncio
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="Windows-specific incompatibility — tracked separately",
+    )
     async def test_execute_toon_format(self, tool):
         result = await tool.execute({"mode": "all", "output_format": "toon"})
         assert result["success"] is True

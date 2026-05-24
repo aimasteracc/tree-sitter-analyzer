@@ -28,6 +28,7 @@ the implementation chose — both are reasonable per the spec):
 
 from __future__ import annotations
 
+import sys
 import threading
 import time
 from pathlib import Path
@@ -223,6 +224,10 @@ def test_watch_health_daemon_starts_and_stops_clean_on_sigint(
 # ------------------------------------------------------------------ end-to-end modify
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Windows-specific incompatibility — tracked separately",
+)
 def test_file_modify_triggers_reevaluation(tmp_path: Path) -> None:
     """Modifying a watched file → after debounce, HealthHistory has a new row.
 

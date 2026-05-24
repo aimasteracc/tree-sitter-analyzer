@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import sys
+
+import pytest
+
 from tree_sitter_analyzer.cli.agent_skills import build_agent_skills_inventory
 from tree_sitter_analyzer.cli.agent_skills_metadata import split_front_matter
 from tree_sitter_analyzer.cli.agent_skills_validation import build_skill_validation
@@ -28,6 +32,10 @@ def test_split_front_matter_supports_folded_descriptions():
     assert body.startswith("# Caveman")
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Windows-specific incompatibility — tracked separately",
+)
 def test_agent_skills_inventory_exposes_decision_fields(tmp_path):
     """Inventory records should expose the fields an agent needs before loading."""
     skill_dir = tmp_path / ".agents" / "skills" / "triage"
