@@ -36,8 +36,13 @@ class SwiftPlugin(LanguagePlugin):
         return "swift"
 
     def get_file_extensions(self) -> list[str]:
-        """Get supported file extensions."""
-        return [".swift"]
+        """Get supported file extensions.
+
+        ``.swiftinterface`` files are module-interface artifacts emitted by
+        ``swiftc -emit-module-interface``. They are syntactically a subset
+        of Swift and parse with the same tree-sitter grammar. Issue #131.
+        """
+        return [".swift", ".swiftinterface"]
 
     def create_extractor(self) -> ElementExtractor:
         """Create a new element extractor instance."""
