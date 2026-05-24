@@ -49,7 +49,15 @@ runs:
       if: inputs.os == 'windows-latest'
       run: |
         Write-Host "Installing fd and ripgrep on Windows..."
-        # Install each package separately — `choco install fd ripgrep -y`
+        # NOTE: keep this block ASCII-only. The runner's `powershell`
+        # (Windows PowerShell 5.1) reads the inline script as cp1252,
+        # so UTF-8 emoji from this YAML get mojibake'd into
+        # `Write-Host "<garbage>"` and trip
+        # TerminatorExpectedAtEndOfString. Switching to `pwsh`
+        # (PowerShell Core, UTF-8 by default) is the long-term fix,
+        # but Windows runners ship `powershell` first.
+        #
+        # Install each package separately - `choco install fd ripgrep -y`
         # has been observed to silently skip fd while reporting
         # "1/1 packages" (likely ripgrep being pre-installed on the
         # runner image and consuming the slot). Separate calls also
@@ -69,13 +77,13 @@ runs:
         Write-Host "Verifying installation..."
         fd --version
         if ($LASTEXITCODE -ne 0) {
-          Write-Host "❌ fd not found after install — PATH refresh failed"
+          Write-Host "::error::fd not found after install - PATH refresh failed"
           exit 1
         }
         rg --version
         if ($LASTEXITCODE -ne 0) {
-          Write-Host "❌ ripgrep installation failed"
+          Write-Host "::error::ripgrep not found after install - PATH refresh failed"
           exit 1
         }
-        Write-Host "✅ System dependencies installed successfully on Windows"
+        Write-Host "[OK] System dependencies installed successfully on Windows"
       shell: powershell
