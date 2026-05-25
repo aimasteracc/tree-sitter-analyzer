@@ -1,0 +1,109 @@
+# E2E Locale Matrix
+#
+# Regression guard for the cp932/cp936/cp949 UnicodeDecodeError bug (PR #153).
+# The main CI matrix forces PYTHONUTF8=1; this workflow deliberately tests
+# without that safety net to catch subprocess decoding regressions when the
+# host locale is not UTF-8.
+#
+# Runs on:
+#   - push to main / develop (post-merge verification)
+#   - pull requests that touch tree_sitter_analyzer/** or tests/e2e/**
+#   - weekly schedule (catches regressions from indirect dependency changes)
+#   - manual trigger
+
+name: E2E Locale Matrix
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "tree_sitter_analyzer/**"
+      - "tests/e2e/**"
+      - ".github/workflows/e2e-locale.yml"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "tree_sitter_analyzer/**"
+      - "tests/e2e/**"
+  schedule:
+    # Weekly on Monday 02:00 UTC
+    - cron: "0 2 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e-locale:
+    name: E2E (${{ matrix.locale }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Japanese — cp932 is the Windows codepage; Linux approximation
+          - locale: ja_JP.eucjp
+            lang: ja_JP.EUC-JP
+            encoding: euc-jp
+          # Simplified Chinese — cp936 / GBK
+          - locale: zh_CN.gbk
+            lang: zh_CN.GBK
+            encoding: gbk
+          # Korean — cp949 / EUC-KR
+          - locale: ko_KR.euckr
+            lang: ko_KR.EUC-KR
+            encoding: euc-kr
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      - name: Install locale packages
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y locales locales-all
+          sudo locale-gen ${{ matrix.lang }} || true
+          sudo update-locale LANG=${{ matrix.lang }} || true
+
+      - name: Setup System Dependencies
+        uses: ./.github/actions/setup-system
+        with:
+          os: ubuntu-latest
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+        shell: bash
+
+      - name: Run E2E smoke tests under ${{ matrix.locale }}
+        run: |
+          echo "### E2E Locale: ${{ matrix.locale }}" >> $GITHUB_STEP_SUMMARY
+          uv run pytest tests/e2e/ -m e2e \
+            -p no:xdist -p no:rerunfailures \
+            --timeout=60 --tb=short -v \
+            -k "unicode or decode or stderr" > e2e-output.txt 2>&1 || touch e2e_failed
+          cat e2e-output.txt
+          echo '```text' >> $GITHUB_STEP_SUMMARY
+          tail -n 20 e2e-output.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          if [ -f e2e_failed ]; then
+            echo "E2E locale tests failed under ${{ matrix.locale }}." >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+        shell: bash
+        env:
+          LANG: ${{ matrix.lang }}
+          LC_ALL: ${{ matrix.lang }}
+          # Intentionally NOT setting PYTHONUTF8=1 — that's the whole point.
+          # We want to observe the encoding behavior under the native locale.
+          PYTHONIOENCODING: ${{ matrix.encoding }}

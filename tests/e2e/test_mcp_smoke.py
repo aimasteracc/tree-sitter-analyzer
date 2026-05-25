@@ -9,7 +9,11 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from tests.e2e.conftest import REPO_ROOT, MCPClient, initialized
+
+pytestmark = pytest.mark.e2e
 
 
 class TestStartup:

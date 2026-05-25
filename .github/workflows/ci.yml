@@ -19,22 +19,68 @@ jobs:
   quality-check:
     name: Code Quality
     uses: ./.github/workflows/reusable-quality.yml
-    secrets: inherit
+    secrets: inherit  # pragma: allowlist secret
 
   test:
     name: Test Suite
     needs: quality-check
     uses: ./.github/workflows/reusable-test.yml
-    secrets: inherit
+    secrets: inherit  # pragma: allowlist secret
 
   build:
     name: Build Verification
     needs: test
     uses: ./.github/workflows/reusable-build.yml
 
+  e2e:
+    name: E2E Tests (MCP black-box)
+    needs: quality-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      - name: Setup System Dependencies
+        uses: ./.github/actions/setup-system
+        with:
+          os: ubuntu-latest
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+        shell: bash
+
+      - name: Run E2E smoke tests
+        run: |
+          echo "### E2E Test Results" >> $GITHUB_STEP_SUMMARY
+          uv run pytest tests/e2e/ -m e2e \
+            -p no:xdist -p no:rerunfailures \
+            --timeout=60 --tb=short -v > e2e-output.txt 2>&1 || touch e2e_failed
+          cat e2e-output.txt
+          echo '```text' >> $GITHUB_STEP_SUMMARY
+          tail -n 25 e2e-output.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          if [ -f e2e_failed ]; then
+            echo "E2E tests failed — see above for server stderr output." >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+          PYTHONUTF8: 1
+
   quality-gate:
     name: Quality Gate
-    needs: [test, quality-check, build]
+    needs: [test, quality-check, build, e2e]
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -53,6 +99,10 @@ jobs:
           fi
           if [[ "${{ needs.build.result }}" != "success" ]]; then
             echo "❌ Build Verification failed" >> $GITHUB_STEP_SUMMARY
+            SUCCESS=false
+          fi
+          if [[ "${{ needs.e2e.result }}" != "success" ]]; then
+            echo "❌ E2E Tests failed" >> $GITHUB_STEP_SUMMARY
             SUCCESS=false
           fi
 
