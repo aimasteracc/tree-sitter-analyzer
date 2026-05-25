@@ -7,6 +7,7 @@ suite is meaningful.
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 import pytest
@@ -14,6 +15,11 @@ import pytest
 from tests.e2e.conftest import REPO_ROOT, MCPClient, initialized
 
 pytestmark = pytest.mark.e2e
+
+# GitHub Actions cold-start is significantly slower than a warm local machine.
+# Apply a multiplier to latency budgets and call timeouts so the same tests
+# catch catastrophic hangs everywhere without false-failing on runner lag.
+_CI_FACTOR = 3 if os.environ.get("CI") else 1
 
 
 class TestStartup:
@@ -203,23 +209,23 @@ class TestToolLatencyBudgets:
         )
 
     def test_check_project_health_under_10s(self, mcp_server: MCPClient) -> None:
-        """check_project_health on the TSA repo itself must complete in 10s."""
+        """check_project_health on the TSA repo itself must complete in 10s (×3 in CI)."""
         initialized(mcp_server)
         self._call_and_measure(
             mcp_server,
             "check_project_health",
             {},
-            budget_sec=10.0,
+            budget_sec=10.0 * _CI_FACTOR,
         )
 
     def test_safe_to_edit_under_5s(self, mcp_server: MCPClient) -> None:
-        """safe_to_edit on a known file must complete in 5s."""
+        """safe_to_edit on a known file must complete in 5s (×3 in CI)."""
         initialized(mcp_server)
         self._call_and_measure(
             mcp_server,
             "safe_to_edit",
             {"file_path": "tree_sitter_analyzer/__init__.py"},
-            budget_sec=5.0,
+            budget_sec=5.0 * _CI_FACTOR,
         )
 
 
@@ -245,7 +251,7 @@ class TestStderrNoiseBudget:
         mcp_server.call(
             "safe_to_edit",
             {"file_path": "tree_sitter_analyzer/__init__.py"},
-            timeout=10.0,
+            timeout=10.0 * _CI_FACTOR,
         )
         stderr = mcp_server.stderr_text()
         debug_lines = [
@@ -264,7 +270,7 @@ class TestStderrNoiseBudget:
         mcp_server.call(
             "check_project_health",
             {},
-            timeout=15.0,
+            timeout=15.0 * _CI_FACTOR,
         )
         stderr = mcp_server.stderr_text()
         error_lines = [

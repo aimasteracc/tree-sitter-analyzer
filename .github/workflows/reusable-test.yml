@@ -80,6 +80,7 @@ jobs:
         echo "### 📊 Test Coverage Report" >> $GITHUB_STEP_SUMMARY
         uv run pytest tests/ -n auto -v --tb=short --maxfail=200 \
           --cov=tree_sitter_analyzer --cov-report=xml --cov-report=term-missing \
+          --ignore=tests/e2e \
           -m "not requires_ripgrep and not requires_fd and not slow and not e2e" > pytest-output.txt 2>&1 || touch test_failed
 
         cat pytest-output.txt
@@ -97,6 +98,7 @@ jobs:
       if: matrix.os != 'ubuntu-latest' || matrix.python-version != inputs.python-version
       run: |
         uv run pytest tests/ -n auto -v --tb=short --maxfail=200 \
+          --ignore=tests/e2e \
           -m "not requires_ripgrep and not requires_fd and not slow and not e2e"
       shell: bash
 
