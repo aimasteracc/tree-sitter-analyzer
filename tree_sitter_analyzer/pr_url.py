@@ -74,6 +74,8 @@ def _run_gh(args: list[str], timeout: int = 30) -> tuple[int, str]:
             ["gh"] + args,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=timeout,
         )
         return result.returncode, result.stdout.strip()

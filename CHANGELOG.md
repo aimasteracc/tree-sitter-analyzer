@@ -140,6 +140,32 @@ verdict overrides). Two MCP startup UX bugs also fixed.
   ast_cache mode=index first`) instead of blocking the request.
   Cold-start now returns in **0.01 s**.
 
+- **Subprocess output decoding now forces UTF-8 on every
+  `text=True` call site**, eliminating the `UnicodeDecodeError:
+  'cp932' codec can't decode byte ...` `_readerthread` crashes that
+  hit every TSA user on Japanese / Chinese / Korean Windows
+  (cp932 / cp936 / cp949 locales).
+
+  Reproduced from real VS Code MCP logs on Windows + Japanese
+  locale: every MCP tool that shells out to `git`, the indexer,
+  or test runners (`change_impact`, `ast_diff`, `semantic_classify`,
+  `codegraph_pr_review`, health scorer, project index, etc.) hit
+  a per-call `Thread-N (_readerthread)` exception when the child
+  process emitted UTF-8 bytes the parent's locale-default decoder
+  could not parse. The server kept running but every subprocess
+  output was silently dropped.
+
+  Fix: append `encoding="utf-8", errors="replace"` to every
+  `subprocess.run` / `Popen` call that was using `text=True` without
+  an explicit codec. 15 call sites patched across 9 modules. The
+  `errors="replace"` belt-and-braces means any genuinely non-UTF-8
+  byte still surfaces a `U+FFFD` REPLACEMENT CHARACTER instead of
+  killing the reader thread.
+
+  This bug pre-dates 1.15.0 — it has affected every non-ASCII
+  Windows user since TSA started shelling out. Bundled into 1.15.0
+  because the report came in during release prep.
+
 ### Internal
 
 - 22 new tests for the fixture detector + AST scanner
