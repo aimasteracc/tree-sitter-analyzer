@@ -186,6 +186,8 @@ class ASTDiffTool(BaseMCPTool):
                 ["git", "show", f"{old_ref}:{file_path}"],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=10,
             )
             old_source = old_result.stdout if old_result.returncode == 0 else ""
@@ -197,6 +199,8 @@ class ASTDiffTool(BaseMCPTool):
                 ["git", "show", f"{new_ref}:{file_path}"],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=10,
             )
             new_source = new_result.stdout if new_result.returncode == 0 else ""

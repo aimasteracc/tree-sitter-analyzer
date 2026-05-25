@@ -111,7 +111,13 @@ def _get_local_diff(mode: str, project_root: str | None) -> str:
     }.get(mode, ["git", "diff"])
     try:
         rc = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=30, cwd=project_root
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30,
+            cwd=project_root,
         )
         return rc.stdout if rc.returncode == 0 else ""
     except (subprocess.TimeoutExpired, FileNotFoundError):
@@ -165,6 +171,8 @@ def _get_old_source(project_root: str, file_path: str) -> str:
             ["git", "show", f"HEAD:{file_path}"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=5,
             cwd=project_root,
         )

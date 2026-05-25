@@ -189,6 +189,8 @@ class SemanticClassifyTool(BaseMCPTool):
                 ["git", "show", f"{old_ref}:{file_path}"],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=10,
                 check=False,
             )
@@ -201,6 +203,8 @@ class SemanticClassifyTool(BaseMCPTool):
                 ["git", "show", f"{new_ref}:{file_path}"],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=10,
                 check=False,
             )

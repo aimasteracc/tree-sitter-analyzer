@@ -1,5 +1,48 @@
 # Changelog
 
+## [1.15.1] - 2026-05-25
+
+Patch release. Fixes a long-standing subprocess decoding crash that
+hit every TSA user on Japanese / Chinese / Korean Windows
+(cp932 / cp936 / cp949 locales) — reported during 1.15.0 release
+prep but didn't make the merge window.
+
+### Fixed
+
+- **Subprocess output decoding now forces UTF-8 on every `text=True`
+  call site**, eliminating the `UnicodeDecodeError: 'cp932' codec
+  can't decode byte ...` `_readerthread` crashes.
+
+  Reproduced from real VS Code MCP logs on Windows + Japanese
+  locale: every MCP tool that shells out to `git`, the indexer,
+  or test runners (`change_impact`, `ast_diff`, `semantic_classify`,
+  `codegraph_pr_review`, health scorer, project index, etc.) hit
+  a per-call `Thread-N (_readerthread)` exception when the child
+  process emitted UTF-8 bytes the parent's locale-default decoder
+  could not parse. The server kept running but every subprocess
+  output was silently dropped.
+
+  Fix: append `encoding="utf-8", errors="replace"` to every
+  `subprocess.run` / `Popen` call that was using `text=True`
+  without an explicit codec. 15 call sites patched across 9
+  modules. `errors="replace"` belt-and-braces means any genuinely
+  non-UTF-8 byte still surfaces a `U+FFFD` REPLACEMENT CHARACTER
+  instead of killing the reader thread.
+
+  This bug pre-dates 1.15.0 — it has affected every non-ASCII
+  Windows user since TSA started shelling out. Should have been
+  in 1.15.0 but the report arrived after the merge window closed.
+
+- **Drop a stray PEP-224-style variable docstring in
+  `git_activation.py`** that was misclassified by the
+  `check-docstring-first` pre-commit hook as a second module
+  docstring. Cosmetic; no runtime behaviour change. (Surfaced
+  while landing the cp932 fix above.)
+
+### Compatibility
+
+No breaking changes. Pure patch over 1.15.0.
+
 ## [1.15.0] - 2026-05-25
 
 Code-map quality release. Lands the first wave of the v1.15 code-map
