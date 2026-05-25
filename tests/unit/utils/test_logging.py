@@ -671,10 +671,22 @@ class TestCreatePerformanceLogger:
         logger = create_performance_logger("test_perf_handler")
         assert len(logger.handlers) > 0
 
-    def test_create_performance_logger_level(self):
-        """测试性能日志器级别"""
+    def test_create_performance_logger_inherits_root_level(self):
+        """Perf logger inherits root level (no hard-coded DEBUG).
+
+        Previously this test asserted the perf logger was hard-pinned
+        to DEBUG, which forced every TSA tool call to spew a
+        ``PERF -`` line to stderr regardless of the operator's
+        ``LOG_LEVEL`` configuration — and the record propagated up to
+        root, producing a second duplicate line. The fix makes the
+        level inherit (so ``LOG_LEVEL`` controls visibility) and
+        turns propagation off (so we never get a duplicate).
+        """
         logger = create_performance_logger("test_perf_level")
-        assert logger.level == logging.DEBUG
+        # NOTSET means "inherit from parent" — the contract we want.
+        assert logger.level == logging.NOTSET
+        # propagate=False is the duplicate-suppression invariant.
+        assert logger.propagate is False
 
 
 class TestSetupPerformanceLogger:

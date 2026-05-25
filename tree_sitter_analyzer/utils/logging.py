@@ -197,7 +197,28 @@ def safe_print(message: str | None, level: str = "info", quiet: bool = False) ->
 
 
 def create_performance_logger(name: str) -> logging.Logger:
-    """Create performance-focused logger"""
+    """Create performance-focused logger.
+
+    Two important invariants — observed as duplicate stderr noise in
+    real VS Code MCP client logs (every tool call produced two lines:
+    one ``PERF -`` line from this logger's handler, plus one
+    ``tree_sitter_analyzer.performance - DEBUG -`` line because the
+    record propagated up to the root logger):
+
+    1. **No hard-coded level.** We let the logger inherit the
+       configured level from the root logger (default ``WARNING`` via
+       :func:`resolve_configured_log_level`). Operators who want
+       per-call timings opt in via ``LOG_LEVEL=DEBUG``. Hard-coding
+       ``DEBUG`` here ignored that knob and emitted timings to every
+       MCP client log regardless of configuration.
+
+    2. **Propagation off.** Even when the operator does set
+       ``LOG_LEVEL=DEBUG``, the same event must not be logged twice
+       — once formatted as ``PERF -`` here, once again upstream by
+       the root logger's standard formatter. Setting
+       ``propagate = False`` prevents the double-log without
+       suppressing anything when the level is actually enabled.
+    """
     perf_logger = logging.getLogger(f"{name}.performance")
 
     if not perf_logger.handlers:
@@ -205,7 +226,9 @@ def create_performance_logger(name: str) -> logging.Logger:
         formatter = logging.Formatter("%(asctime)s - PERF - %(message)s")
         handler.setFormatter(formatter)
         perf_logger.addHandler(handler)
-        perf_logger.setLevel(logging.DEBUG)  # Change to DEBUG level
+        # Inherit level from root logger; stop propagation to root so
+        # we don't get a second formatted copy of every PERF record.
+        perf_logger.propagate = False
 
     return perf_logger
 
