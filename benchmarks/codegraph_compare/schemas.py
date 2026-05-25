@@ -15,7 +15,7 @@ from pydantic.dataclasses import dataclass
 class RunRecord:
     """One execution of a question under one arm at one repeat index."""
 
-    run_id: str  # format: "{question_id}__{arm}__{repeat:02d}"
+    run_id: str  # format: "{question_id}__{arm}__{agent_backend}__{repeat:02d}"
     repo: str
     question_id: str
     arm: str
@@ -35,11 +35,17 @@ class RunRecord:
     citations: list[str]
     transcript_path: str
     error: str | None = None
+    agent_backend: str = "claude"
+    model: str = ""
+    cached_input_tokens: int = 0
+    reasoning_output_tokens: int = 0
 
     @classmethod
-    def make_id(cls, question_id: str, arm: str, repeat: int) -> str:
+    def make_id(
+        cls, question_id: str, arm: str, repeat: int, agent_backend: str = "claude"
+    ) -> str:
         """Return the canonical run_id string."""
-        return f"{question_id}__{arm}__{repeat:02d}"
+        return f"{question_id}__{arm}__{agent_backend}__{repeat:02d}"
 
 
 @dataclass(config=ConfigDict(extra="forbid"))

@@ -67,18 +67,23 @@ def _enrich(run: dict[str, Any]) -> dict[str, Any]:
     # Support both schema field names (input_tokens) and runner field names (tokens_in)
     t_in = int(run.get("input_tokens") or run.get("tokens_in") or 0)
     t_out = int(run.get("output_tokens") or run.get("tokens_out") or 0)
+    t_total = int(run.get("total_tokens") or 0)
     existing = run.get("estimated_cost_usd")
     run["_cost"] = (
         float(existing)
         if existing and float(existing) > 0
         else estimate_cost(t_in, t_out)
     )
-    run["_total_tokens"] = t_in + t_out
+    run["_total_tokens"] = t_total if t_total > 0 else t_in + t_out
     # Support both 'repo' (schema) and 'repo_path' (runner)
     repo_raw = run.get("repo") or run.get("repo_path") or "unknown"
     run["_repo_name"] = Path(str(repo_raw)).name
-    # Normalise arm field: schema uses 'arm', runner uses 'arm_id'
-    run["_arm"] = run.get("arm") or run.get("arm_id") or "unknown"
+    # Normalise arm/backend fields and keep backend in the aggregate label so
+    # Claude and Codex runs do not get averaged together.
+    run["_agent_backend"] = run.get("agent_backend") or "claude"
+    arm = run.get("arm") or run.get("arm_id") or "unknown"
+    run["_arm_base"] = arm
+    run["_arm"] = f"{run['_agent_backend']}/{arm}"
     return run
 
 
@@ -284,7 +289,7 @@ def _s_savings(runs: list[dict[str, Any]]) -> str:
         )
 
     repos = sorted({r["_repo_name"] for r in runs})
-    non_native = sorted({r["_arm"] for r in runs if r["_arm"] != "native-only"})
+    non_native = sorted({r["_arm"] for r in runs if r["_arm_base"] != "native-only"})
     if not non_native:
         return "## 4. Savings vs native-only\n\n_No non-native arms found._"
 
@@ -295,13 +300,20 @@ def _s_savings(runs: list[dict[str, Any]]) -> str:
     )
     rows = []
     for repo in repos:
-        n_tok, n_cost = _medians(repo, "native-only")
-        if n_tok is None:
-            continue
         row = [repo]
         for arm in non_native:
+            backend = arm.split("/", 1)[0]
+            n_tok, _ = _medians(repo, f"{backend}/native-only")
+            if n_tok is None:
+                row.append("—")
+                continue
             row.append(_pct(n_tok, _medians(repo, arm)[0]))
         for arm in non_native:
+            backend = arm.split("/", 1)[0]
+            _, n_cost = _medians(repo, f"{backend}/native-only")
+            if n_cost is None:
+                row.append("—")
+                continue
             row.append(_pct(n_cost, _medians(repo, arm)[1]))
         rows.append(row)
     if not rows:
@@ -315,7 +327,9 @@ def _s_quality_efficiency(runs: list[dict[str, Any]], has_evals: bool) -> str:
             "## 5. Quality vs efficiency scatter summary\n\n_Quality data unavailable._"
         )
 
-    native_live = [r for r in runs if r["_arm"] == "native-only" and not _is_dry(r)]
+    native_live = [
+        r for r in runs if r["_arm_base"] == "native-only" and not _is_dry(r)
+    ]
     n_tok_med = _med([r["_total_tokens"] for r in native_live])
 
     lines = ["## 5. Quality vs efficiency scatter summary\n"]
@@ -358,10 +372,6 @@ def _s_quality_efficiency(runs: list[dict[str, Any]], has_evals: bool) -> str:
 
 
 def _s_cold_warm(runs: list[dict[str, Any]]) -> str:
-    by_ra: dict[tuple[str, str], list] = defaultdict(list)
-    for r in runs:
-        by_ra[(r["_repo_name"], r["_arm"])].append(r)
-
     headers = [
         "Repo",
         "Arm",
@@ -376,8 +386,20 @@ def _s_cold_warm(runs: list[dict[str, Any]]) -> str:
             ("codegraph-cold", "codegraph-warm"),
             ("tsa-cold", "tsa-warm"),
         ]:
-            cold = [r for r in by_ra.get((repo, cold_arm), []) if not _is_dry(r)]
-            warm = [r for r in by_ra.get((repo, warm_arm), []) if not _is_dry(r)]
+            cold = [
+                r
+                for r in runs
+                if r["_repo_name"] == repo
+                and r["_arm_base"] == cold_arm
+                and not _is_dry(r)
+            ]
+            warm = [
+                r
+                for r in runs
+                if r["_repo_name"] == repo
+                and r["_arm_base"] == warm_arm
+                and not _is_dry(r)
+            ]
             if not cold:
                 continue
             build = _med(
@@ -430,7 +452,7 @@ def _s_notes(n_repeats: int) -> str:
         [
             "## 8. Notes\n",
             f"- Median reported across {n_repeats} repeat(s) per question per arm",
-            "- Cost estimated at Sonnet 4.6 pricing: $3/M input, $15/M output",
+            "- Cost uses the agent CLI reported cost when available; otherwise it is estimated at $3/M input and $15/M output",
             "- Quality scores from LLM evaluator (claude-haiku) on 1-5 scale",
             "- Index build time excluded from warm query timing",
         ]
@@ -444,6 +466,7 @@ def _s_notes(n_repeats: int) -> str:
 _RUN_FIELDS = [
     "run_id",
     "question_id",
+    "agent_backend",
     "arm_id",
     "repo_name",
     "repo_path",
@@ -455,7 +478,9 @@ _RUN_FIELDS = [
     "elapsed_seconds",
     "answer",
     "tokens_in",
+    "cached_input_tokens",
     "tokens_out",
+    "reasoning_output_tokens",
     "total_tokens",
     "tool_calls",
     "estimated_cost_usd",
@@ -488,6 +513,7 @@ def _write_csv(
                 {
                     "run_id": run.get("run_id"),
                     "question_id": run.get("question_id"),
+                    "agent_backend": run["_agent_backend"],
                     "arm_id": run["_arm"],
                     "repo_name": run["_repo_name"],
                     "repo_path": run.get("repo_path") or run.get("repo"),
@@ -499,7 +525,9 @@ def _write_csv(
                     "elapsed_seconds": run.get("elapsed_seconds"),
                     "answer": run.get("answer"),
                     "tokens_in": run.get("tokens_in") or run.get("input_tokens"),
+                    "cached_input_tokens": run.get("cached_input_tokens"),
                     "tokens_out": run.get("tokens_out") or run.get("output_tokens"),
+                    "reasoning_output_tokens": run.get("reasoning_output_tokens"),
                     "total_tokens": run["_total_tokens"],
                     "tool_calls": run.get("tool_calls"),
                     "estimated_cost_usd": run["_cost"],

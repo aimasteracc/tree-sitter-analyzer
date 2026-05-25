@@ -278,6 +278,9 @@ def cmd_run(args: argparse.Namespace) -> int:
         repeat=repeat,
         run_config=run_config,
         results_dir=RESULTS_DIR,
+        timeout_seconds=args.timeout_seconds,
+        model=args.model,
+        agent_backend=args.agent_backend,
         dry_run=getattr(args, "dry_run", False),
     )
 
@@ -392,6 +395,9 @@ def cmd_run_matrix(args: argparse.Namespace) -> int:
                             repeat=repeat,
                             run_config=run_config,
                             results_dir=RESULTS_DIR,
+                            timeout_seconds=args.timeout_seconds,
+                            model=args.model,
+                            agent_backend=args.agent_backend,
                             dry_run=args.dry_run,
                         )
                         status = "DRY_RUN" if record["answer"] == "DRY_RUN" else "ok"
@@ -543,7 +549,24 @@ def _build_parser() -> argparse.ArgumentParser:
         "--dry-run",
         action="store_true",
         dest="dry_run",
-        help="Build prompt and record a stub without calling Claude.",
+        help="Build prompt and record a stub without calling an agent CLI.",
+    )
+    p_run.add_argument(
+        "--agent-backend",
+        choices=["claude", "codex"],
+        default="claude",
+        help="Agent CLI backend to execute the run (default: claude).",
+    )
+    p_run.add_argument(
+        "--model",
+        default=None,
+        help="Model name for the selected agent backend.",
+    )
+    p_run.add_argument(
+        "--timeout-seconds",
+        type=int,
+        default=1200,
+        help="Per-run timeout in seconds (default: 1200).",
     )
 
     # ---- run-matrix ----
@@ -575,8 +598,25 @@ def _build_parser() -> argparse.ArgumentParser:
         dest="dry_run",
         help=(
             "Dry-run mode: build prompts and record stubs without calling the "
-            "Claude API."
+            "agent CLI."
         ),
+    )
+    p_matrix.add_argument(
+        "--agent-backend",
+        choices=["claude", "codex"],
+        default="claude",
+        help="Agent CLI backend to execute each run (default: claude).",
+    )
+    p_matrix.add_argument(
+        "--model",
+        default=None,
+        help="Model name for the selected agent backend.",
+    )
+    p_matrix.add_argument(
+        "--timeout-seconds",
+        type=int,
+        default=1200,
+        help="Per-run timeout in seconds (default: 1200).",
     )
 
     # ---- status ----

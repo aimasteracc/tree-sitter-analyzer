@@ -1,11 +1,11 @@
-"""Benchmark runner that drives the `claude --print` CLI for each trial.
+"""Benchmark runner that drives Claude CLI or Codex CLI for each trial.
 
 No separate API key required — uses the current Claude Code session's
 authentication (keychain / OAuth).
 
 Writes:
-  - results_dir/raw/<run_id>_prompt.txt          — the full prompt sent to claude
-  - results_dir/raw/<run_id>_result.json         — raw JSON response from claude CLI
+  - results_dir/raw/<run_id>_prompt.txt          — the full prompt sent to the agent
+  - results_dir/raw/<run_id>_result.jsonl        — raw JSONL response from the agent CLI
   - results_dir/runs.jsonl                       — one JSONL line per trial (appended)
 """
 
@@ -74,8 +74,14 @@ _ARM_DISALLOWED_TOOLS: dict[str, list[str]] = {
 # ---------------------------------------------------------------------------
 
 
-def _make_run_id(question_id: str, arm_id: str, repeat: int) -> str:
-    return f"{question_id}__{arm_id}__{repeat:02d}"
+_DEFAULT_MODELS = {
+    "claude": "claude-sonnet-4-6",
+    "codex": "gpt-5.2",
+}
+
+
+def _make_run_id(question_id: str, arm_id: str, repeat: int, agent_backend: str) -> str:
+    return f"{question_id}__{arm_id}__{agent_backend}__{repeat:02d}"
 
 
 def _extract_citations(text: str) -> list[str]:
@@ -132,6 +138,116 @@ def _parse_tool_calls_from_stream(lines: list[str]) -> tuple[int, int, int, int]
     return tool_calls, file_reads, search_calls, index_queries
 
 
+def _looks_like_shell_read(command: str) -> bool:
+    return bool(re.search(r"\b(cat|head|tail|nl)\b|\bsed\s+-n\b", command))
+
+
+def _looks_like_shell_search(command: str) -> bool:
+    return bool(re.search(r"\b(rg|grep|find|fd|ls)\b", command))
+
+
+def _looks_like_index_query(command: str) -> bool:
+    return "tree_sitter_analyzer" in command or "codegraph" in command.lower()
+
+
+def _parse_codex_tool_calls_from_stream(lines: list[str]) -> tuple[int, int, int, int]:
+    """Count Codex CLI command_execution events by benchmark category."""
+    tool_calls = 0
+    file_reads = 0
+    search_calls = 0
+    index_queries = 0
+
+    for line in lines:
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if event.get("type") != "item.completed":
+            continue
+
+        item = event.get("item", {})
+        if item.get("type") != "command_execution":
+            continue
+
+        tool_calls += 1
+        command = str(item.get("command") or "")
+        if _looks_like_index_query(command):
+            index_queries += 1
+        elif _looks_like_shell_read(command):
+            file_reads += 1
+        elif _looks_like_shell_search(command):
+            search_calls += 1
+        else:
+            search_calls += 1
+
+    return tool_calls, file_reads, search_calls, index_queries
+
+
+def _parse_codex_stream(lines: list[str]) -> tuple[str, dict[str, Any], str | None]:
+    answer = ""
+    usage: dict[str, Any] = {}
+    error: str | None = None
+
+    for line in lines:
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+
+        event_type = event.get("type")
+        if event_type == "item.completed":
+            item = event.get("item", {})
+            if item.get("type") == "agent_message":
+                answer = item.get("text", "")
+            elif item.get("type") == "error":
+                error = item.get("message") or json.dumps(item)
+        elif event_type == "turn.completed":
+            usage = event.get("usage", {})
+        elif event_type in {"turn.failed", "error"}:
+            error = event.get("message") or event.get("error") or json.dumps(event)
+
+    if not answer and not error:
+        error = "No Codex agent_message event found in stream output"
+    return answer, usage, error
+
+
+def _usage_int(usage: dict[str, Any], key: str) -> int:
+    value = usage.get(key, 0)
+    return int(value or 0)
+
+
+def _extract_usage_metrics(
+    usage: dict[str, Any], agent_backend: str
+) -> tuple[int, int, int, int, int]:
+    """Return input, cached input, output, reasoning output, total tokens.
+
+    Claude and Codex expose cache details differently. Claude reports cache read
+    and creation tokens outside input_tokens; Codex reports cached/reasoning
+    counters as detail fields that are already included in input/output totals.
+    """
+    input_tokens = _usage_int(usage, "input_tokens")
+    output_tokens = _usage_int(usage, "output_tokens")
+    cached_input_tokens = (
+        _usage_int(usage, "cached_input_tokens")
+        + _usage_int(usage, "cache_read_input_tokens")
+        + _usage_int(usage, "cache_creation_input_tokens")
+    )
+    reasoning_output_tokens = _usage_int(usage, "reasoning_output_tokens")
+
+    if agent_backend == "claude":
+        total_tokens = input_tokens + cached_input_tokens + output_tokens
+    else:
+        total_tokens = input_tokens + output_tokens
+
+    return (
+        input_tokens,
+        cached_input_tokens,
+        output_tokens,
+        reasoning_output_tokens,
+        total_tokens,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
@@ -146,23 +262,41 @@ def run_one(
     run_config: RunConfig,
     results_dir: Path,
     timeout_seconds: int = 1200,
-    model: str = "claude-sonnet-4-6",
+    model: str | None = None,
+    agent_backend: str = "claude",
     dry_run: bool = False,
 ) -> dict:
-    """Run one benchmark trial via `claude --print --output-format json`.
+    """Run one benchmark trial via the configured agent CLI.
 
     Writes prompt + raw result to results_dir/raw/, appends to runs.jsonl.
     """
-    run_id = _make_run_id(question_id, arm_id, repeat)
+    if agent_backend not in {"claude", "codex"}:
+        raise ValueError("agent_backend must be one of: claude, codex")
+    model = model or _DEFAULT_MODELS[agent_backend]
+    run_id = _make_run_id(question_id, arm_id, repeat, agent_backend)
     started_at = datetime.now(timezone.utc).isoformat()
     started_perf = time.perf_counter()
 
-    # Build the prompt Claude will receive
+    allowed_tools_str = ",".join(
+        _ARM_ALLOWED_TOOLS.get(arm_id, _ARM_ALLOWED_TOOLS["native-only"])
+    )
+    disallowed_tools_str = ",".join(_ARM_DISALLOWED_TOOLS.get(arm_id, []))
+
+    # Build the prompt the agent will receive
     user_parts = []
     if run_config.extra_context:
         user_parts.append(run_config.extra_context)
     user_parts.append(f"Question: {question_prompt}")
     user_message = "\n\n".join(user_parts)
+    if agent_backend == "codex":
+        tool_policy = (
+            f"Benchmark arm: {arm_id}.\n"
+            f"Allowed tool policy: {allowed_tools_str}.\n"
+            f"Disallowed tool policy: {disallowed_tools_str or 'none'}.\n"
+            "Respect this policy strictly when using tools. Do not edit files. "
+            "Answer the architecture question with concrete file citations."
+        )
+        user_message = f"{tool_policy}\n\n{user_message}"
 
     full_prompt = f"{run_config.system_prompt}\n\n{user_message}"
 
@@ -172,29 +306,44 @@ def run_one(
     prompt_path = raw_dir / f"{run_id}_prompt.txt"
     prompt_path.write_text(full_prompt, encoding="utf-8")
 
-    # Build claude CLI command — stream-json captures per-tool-call events
-    allowed_tools_str = ",".join(
-        _ARM_ALLOWED_TOOLS.get(arm_id, _ARM_ALLOWED_TOOLS["native-only"])
-    )
-    disallowed_tools_str = ",".join(_ARM_DISALLOWED_TOOLS.get(arm_id, []))
-    cmd = [
-        "claude",
-        "--print",
-        "--output-format",
-        "stream-json",
-        "--verbose",
-        "--no-session-persistence",
-        "--model",
-        model,
-        "--add-dir",
-        str(repo_path),
-        "--append-system-prompt",
-        run_config.system_prompt,
-        "--allowed-tools",
-        allowed_tools_str,
-    ]
-    if disallowed_tools_str:
-        cmd += ["--disallowed-tools", disallowed_tools_str]
+    # Build agent CLI command. Claude has stronger tool allowlisting; Codex
+    # gets the same restrictions as explicit prompt text because codex exec
+    # currently exposes sandbox controls rather than per-tool allowlists.
+    if agent_backend == "claude":
+        cmd = [
+            "claude",
+            "--print",
+            "--output-format",
+            "stream-json",
+            "--verbose",
+            "--no-session-persistence",
+            "--model",
+            model,
+            "--add-dir",
+            str(repo_path),
+            "--append-system-prompt",
+            run_config.system_prompt,
+            "--allowed-tools",
+            allowed_tools_str,
+        ]
+        if disallowed_tools_str:
+            cmd += ["--disallowed-tools", disallowed_tools_str]
+    else:
+        cmd = [
+            "codex",
+            "--ask-for-approval",
+            "never",
+            "exec",
+            "--json",
+            "--ephemeral",
+            "--sandbox",
+            "read-only",
+            "--model",
+            model,
+            "-C",
+            str(repo_path),
+            "-",
+        ]
 
     # Run — prompt via stdin
     error: str | None = None
@@ -225,8 +374,10 @@ def run_one(
             result_path.write_text(proc.stdout, encoding="utf-8")
 
             if proc.returncode != 0 and not proc.stdout.strip():
-                error = f"claude CLI exited {proc.returncode}: {proc.stderr[:500]}"
-            else:
+                error = (
+                    f"{agent_backend} CLI exited {proc.returncode}: {proc.stderr[:500]}"
+                )
+            elif agent_backend == "claude":
                 # Extract result event (last line is usually the result)
                 for line in reversed(stream_lines):
                     try:
@@ -248,29 +399,42 @@ def run_one(
             error = f"Timed out after {timeout_seconds}s"
             answer = "TIMEOUT"
         except FileNotFoundError:
-            error = "claude CLI not found in PATH"
+            error = f"{agent_backend} CLI not found in PATH"
             answer = "ERROR"
+
+        if agent_backend == "codex" and not dry_run:
+            answer, codex_usage, codex_error = _parse_codex_stream(stream_lines)
+            if codex_error:
+                error = codex_error
+                answer = answer or "ERROR"
+            raw_result = {"usage": codex_usage}
 
     ended_at = datetime.now(timezone.utc).isoformat()
     elapsed_seconds = round(time.perf_counter() - started_perf, 4)
 
     # Extract metrics from result event
     usage = raw_result.get("usage", {})
-    input_tokens = usage.get("input_tokens", 0) + usage.get(
-        "cache_read_input_tokens", 0
-    )
-    output_tokens = usage.get("output_tokens", 0)
-    total_tokens = input_tokens + output_tokens
+    (
+        input_tokens,
+        cached_input_tokens,
+        output_tokens,
+        reasoning_output_tokens,
+        total_tokens,
+    ) = _extract_usage_metrics(usage, agent_backend)
     estimated_cost = float(raw_result.get("total_cost_usd", 0.0))
-    if estimated_cost == 0 and total_tokens > 0:
+    if estimated_cost == 0 and input_tokens + output_tokens > 0:
         estimated_cost = (input_tokens / 1_000_000 * 3.0) + (
             output_tokens / 1_000_000 * 15.0
         )
 
-    # Count tool calls from assistant events in the stream
-    tool_calls, file_reads, search_calls, index_queries = _parse_tool_calls_from_stream(
-        stream_lines
+    # Count tool calls from agent stream events. Claude exposes tool_use blocks;
+    # Codex exposes completed shell command events.
+    tool_parser = (
+        _parse_codex_tool_calls_from_stream
+        if agent_backend == "codex"
+        else _parse_tool_calls_from_stream
     )
+    tool_calls, file_reads, search_calls, index_queries = tool_parser(stream_lines)
 
     record: dict = {
         "run_id": run_id,
@@ -282,7 +446,9 @@ def run_one(
         "ended_at": ended_at,
         "elapsed_seconds": elapsed_seconds,
         "input_tokens": input_tokens,
+        "cached_input_tokens": cached_input_tokens,
         "output_tokens": output_tokens,
+        "reasoning_output_tokens": reasoning_output_tokens,
         "total_tokens": total_tokens,
         "estimated_cost_usd": round(estimated_cost, 6),
         "tool_calls": tool_calls,
@@ -293,6 +459,8 @@ def run_one(
         "citations": _extract_citations(answer),
         "transcript_path": str(raw_dir / f"{run_id}_result.jsonl"),
         "error": error,
+        "agent_backend": agent_backend,
+        "model": model,
     }
 
     runs_jsonl = results_dir / "runs.jsonl"

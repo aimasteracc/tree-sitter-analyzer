@@ -34,24 +34,40 @@ benchmarks/codegraph_compare/
 # 1. Prepare repos (clone at pinned SHA, optionally pre-build indexes)
 uv run python benchmarks/codegraph_compare/repo_prep.py --repos repos.yaml
 
-# 2. Run the benchmark (smoke = 1 repo × 1 question × 1 repeat)
-uv run python -m benchmarks.codegraph_compare.runner \
-    --repos repos.yaml --arms arms.yaml \
-    --phase smoke --repeats 1
+# 2. Run a Codex-backed smoke without spending model quota
+uv run python benchmarks/codegraph_compare/run.py run-matrix \
+    --repos gin \
+    --arms native-only,tsa-warm,codegraph-warm \
+    --repeats 1 \
+    --agent-backend codex \
+    --dry-run
 
-# 3. Run full pilot (1 repo × all questions × 4 repeats)
-uv run python -m benchmarks.codegraph_compare.runner \
-    --repos repos.yaml --arms arms.yaml \
-    --phase pilot --repeats 4
+# 3. Run a real Codex-backed smoke
+uv run python benchmarks/codegraph_compare/run.py run \
+    --repo gin \
+    --question gin-route-matching \
+    --arm native-only \
+    --agent-backend codex \
+    --repeat 0
 
 # 4. Evaluate answers (LLM judge, writes EvalRecord JSONL)
-uv run python -m benchmarks.codegraph_compare.evaluator \
+uv run python benchmarks/codegraph_compare/evaluate.py \
     --runs results/runs.jsonl --out results/evals.jsonl
 
 # 5. Print summary table
-uv run python -m benchmarks.codegraph_compare.analyze \
+uv run python benchmarks/codegraph_compare/analyze.py \
     --runs results/runs.jsonl --evals results/evals.jsonl
 ```
+
+Use `--agent-backend claude` to reproduce the original Claude Code arm, or
+`--agent-backend codex` to spend Codex quota through `codex exec --json`.
+Run IDs include the backend name so Claude and Codex results never overwrite
+each other.
+
+Codex records include `cached_input_tokens` and `reasoning_output_tokens` when
+the CLI reports them. These are stored separately because Codex reports them as
+detail counters already covered by the top-level input/output totals, while
+Claude reports cache counters outside `input_tokens`.
 
 ---
 
@@ -60,7 +76,7 @@ uv run python -m benchmarks.codegraph_compare.analyze \
 These rules are enforced by the harness. Violating any of them invalidates a run.
 
 1. **Pinned commits** — all repos use a fixed SHA from `repos.yaml`; no `HEAD`-tracking.
-2. **Same model for all arms** — the Claude model ID is a single config value applied uniformly.
+2. **Same model for all arms** — the selected model ID is applied uniformly within an agent backend.
 3. **Identical question text** — each arm receives the exact same `prompt` string from `QuestionSpec`.
 4. **Minimum 4 repeats** — the pilot and full phases require `--repeats 4` or higher; the summary drops any arm with fewer.
 5. **Report median, not best** — `overall`, `elapsed_seconds`, and `total_tokens` are summarized as median across repeats.
@@ -69,6 +85,10 @@ These rules are enforced by the harness. Violating any of them invalidates a run
 8. **Flag low-quality answers** — any run with `EvalRecord.overall < 2.5` is marked `LOW_QUALITY` in the report even if it was token-efficient.
 9. **Auto-penalize phantom citations** — citations to files that do not exist in the pinned repo reduce `citation_quality` automatically before human/LLM review.
 10. **No silent drops** — timeouts and exceptions are recorded as `RunRecord` entries with `error` set; they appear in the report as `FAILED` rather than being omitted.
+
+Claude runs use hard CLI tool allowlists. Codex runs use the same arm policy as
+prompted instructions plus a read-only sandbox because `codex exec` currently
+does not expose a matching per-tool allowlist flag.
 
 ---
 
