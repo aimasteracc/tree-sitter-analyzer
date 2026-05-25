@@ -1,0 +1,402 @@
+---
+# Benchmark question bank for the native / CodeGraph / TSA three-arm comparison.
+# 21 questions across 7 repos × 3 questions each.
+# All 5 categories appear across the full set.
+# Questions are tool-neutral — they do not mention CodeGraph or tree-sitter-analyzer.
+
+questions:
+
+  # ── GIN (Go router) ──────────────────────────────────────────────────────────
+
+  - id: gin-route-matching
+    repo: gin
+    category: entrypoint-tracing
+    prompt: >
+      How does Gin match an incoming URL path to a registered route handler?
+      Trace the code path from the moment (*Engine).ServeHTTP receives a request
+      through tree lookup to the final handler invocation, naming the key types
+      and functions involved.
+    expected_key_points:
+      - "(*Engine).ServeHTTP"
+      - "(*Engine).handleHTTPRequest"
+      - "methodTree / node (radix tree)"
+      - "getValue or (*node).getValue"
+      - "HandlerFunc / HandlersChain"
+    must_cite_files: true
+    anti_hallucination_checks:
+      - "must not claim Gin uses a hash map for route lookup — it uses a compressed radix trie"
+      - "must not attribute route matching to gin.Default() — Default() only wires middleware"
+
+  - id: gin-middleware-chain
+    repo: gin
+    category: call-chain
+    prompt: >
+      How does Gin execute the middleware chain for a matched route?
+      Explain how handlers are stored, how (*Context).Next() advances the chain,
+      and how (*Context).Abort() short-circuits it.
+    expected_key_points:
+      - "HandlersChain ([]HandlerFunc)"
+      - "(*Context).index"
+      - "(*Context).Next()"
+      - "(*Context).Abort() / abortIndex"
+      - "c.handlers set during route registration"
+    must_cite_files: true
+    anti_hallucination_checks:
+      - "must not say middleware runs in a separate goroutine per handler"
+      - "must not confuse abortIndex with a boolean flag — it is an int8 sentinel value"
+
+  - id: gin-404-handling
+    repo: gin
+    category: module-boundary
+    prompt: >
+      What happens when no route matches an incoming request in Gin?
+      How is the 404 response triggered, and how can an application register
+      a custom NoRoute handler?
+    expected_key_points:
+      - "(*Engine).handleHTTPRequest — no route found branch"
+      - "(*Engine).NoRoute / engine.allNoRoute"
+      - "serveError or c.Status(404) / default 404 path"
+      - "(*Engine).noRoute field (HandlersChain)"
+    must_cite_files: true
+    anti_hallucination_checks:
+      - "must not claim Gin panics on unmatched routes by default"
+      - "must not say NoRoute is registered via a middleware — it is registered via engine.NoRoute()"
+
+  # ── DJANGO (Python web framework) ────────────────────────────────────────────
+
+  - id: django-request-routing
+    repo: django
+    category: entrypoint-tracing
+    prompt: >
+      How does an incoming HTTP request travel from the WSGI/ASGI entry point
+      to a view function in Django? Identify the key classes and functions
+      involved, from WSGIHandler.__call__ through URL resolution to view dispatch.
+    expected_key_points:
+      - "WSGIHandler.__call__ (django/core/handlers/wsgi.py)"
+      - "BaseHandler.get_response or _get_response"
+      - "URLResolver.resolve (django/urls/resolvers.py)"
+      - "ResolverMatch"
+      - "view function invocation / callback"
+    must_cite_files: true
+    anti_hallucination_checks:
+      - "must not claim URLconf is parsed on every request — it is cached after first load"
+      - "must not say BaseHandler is in django/core/wsgi.py — it is in django/core/handlers/base.py"
+
+  - id: django-orm-queryset-sql
+    repo: django
+    category: call-chain
+    prompt: >
+      How does Django's ORM translate a queryset filter chain (e.g.
+      MyModel.objects.filter(field=value).order_by('name')) into a SQL query?
+      Trace through the relevant classes from QuerySet to the SQL compiler.
+    expected_key_points:
+      - "QuerySet.filter → QuerySet.clone + Q objects"
+      - "Query.add_q / Query.build_filter (django/db/models/sql/query.py)"
+      - "SQLCompiler.as_sql or execute_sql (django/db/models/sql/compiler.py)"
+      - "WhereNode"
+      - "DatabaseWrapper / cursor execution"
+    must_cite_files: true
+    anti_hallucination_checks:
+      - "must not say SQL is generated inside QuerySet.__iter__ directly — compilation is delegated to SQLCompiler"
+      - "must not claim Django uses an ORM called SQLAlchemy"
+
+  - id: django-migration-detection
+    repo: django
+    category: change-impact
+    prompt: >
+      How does Django's migration system detect schema changes in models and
+      generate migration files? Trace from the makemigrations management command
+      through autodetection to file writing.
+    expected_key_points:
+      - "MakeMigrationsCommand.handle (django/core/management/commands/makemigrations.py)"
+      - "MigrationAutodetector (django/db/migrations/autodetector.py)"
+      - "MigrationAutodetector.changes"
+      - "ProjectState / ModelState"
+      - "MigrationWriter (django/db/migrations/writer.py)"
+    must_cite_files: true
+    anti_hallucination_checks:
+      - "must not say Django diffs the live database — it diffs ProjectState objects built from existing migration files"
+      - "must not attribute autodetection to MigrationLoader"
+
+  # ── TOKIO (Rust async runtime) ────────────────────────────────────────────────
+
+  - id: tokio-task-spawn
+    repo: tokio
+    category: entrypoint-tracing
+    prompt: >
+      How does Tokio schedule a task spawned via tokio::spawn onto worker threads?
+      Trace from the tokio::spawn call through task creation and injection into
+      the scheduler's run queue.
+    expected_key_points:
+      - "tokio::spawn → task::spawn"
+      - "OwnedTasks or LocalOwnedTasks"
+      - "Inject queue / run_queue"
+      - "Worker thread / Handle::spawn_local or inject"
+      - "Notified / wake mechanism to signal an idle worker"
+    must_cite_files: true
+    anti_hallucination_checks:
+      - "must not say tokio::spawn blocks the calling thread"
+      - "must not claim each spawned task always gets its own OS thread"
+
+  - id: tokio-task-selection
+    repo: tokio
+    category: call-chain
+    prompt: >
+      How does a Tokio worker thread select the next task to execute from its
+      run queues? Describe the work-stealing strategy and the order in which
+      local, global, and stolen queues are checked.
+    expected_key_points:
+      - "Worker::run / run_task"
+      - "local run queue (Local<T>)"
+      - "global inject queue checked periodically (GLOBAL_QUEUE_INTERVAL)"
+      - "work-stealing from sibling worker queues"
+      - "park / unpark when queues are empty"
+    must_cite_files: true
+    anti_hallucination_checks:
+      - "must not say Tokio uses a single global FIFO for all tasks with no work-stealing"
+      - "must not claim the IO driver polling is done inside the same task-selection loop without noting the separate io-driver integration"
+
+  - id: tokio-select-macro
+    repo: tokio
+    category: subsystem-overview
+    prompt: >
+      How does the tokio::select! macro work under the hood to poll multiple
+      futures concurrently? Describe the generated code structure and how it
+      decides which branch to wake and complete.
+    expected_key_points:
+      - "select! macro expansion (tokio/src/macros/select.rs)"
+      - "polling each branch future in a randomized order"
+      - "BRANCHES bitmask / disabled branches"
+      - "Context / Waker forwarding"
+      - "biased mode vs default random ordering"
+    must_cite_files: true
+    anti_hallucination_checks:
+      - "must not say select! spawns each branch as a separate task"
+      - "must not say select! uses OS-level multiplexing like epoll directly"
+
+  # ── VS CODE (TypeScript editor) ──────────────────────────────────────────────
+
+  - id: vscode-command-dispatch
+    repo: vscode
+    category: entrypoint-tracing
+    prompt: >
+      How does VS Code register and dispatch a command from the command palette?
+      Trace from a user invoking a command through CommandService and into the
+      registered handler, naming key classes and interfaces.
+    expected_key_points:
+      - "CommandService (src/vs/platform/commands/common/commandService.ts)"
+      - "CommandsRegistry.registerCommand"
+      - "ICommandHandler / CommandsRegistry"
+      - "executeCommand → _tryExecuteCommand"
+      - "ICommandService interface"
+    must_cite_files: true
+    anti_hallucination_checks:
+      - "must not attribute command dispatch to ExtensionHostMain directly — core commands go through CommandService"
+      - "must not say commands are stored in a plain JS object — they are stored in a Map in CommandsRegistry"
+
+  - id: vscode-extension-activation
+    repo: vscode
+    category: module-boundary
+    prompt: >
+      How does VS Code's extension activation system determine when to activate
+      an extension? Trace how activation events declared in package.json are
+      matched and how the extension host triggers activation.
+    expected_key_points:
+      - "activationEvents field in package.json"
+      - "ExtensionService or AbstractExtensionService"
+      - "_activateByEvent or activateByEvent"
+      - "ExtensionHostManager / ExtensionHostProtocol"
+      - "IExtensionDescription"
+    must_cite_files: true
+    anti_hallucination_checks:
+      - "must not claim all extensions activate at startup by default — they activate lazily on matching events"
+      - "must not say activation happens in the main renderer process — it happens in the extension host process"
+
+  - id: vscode-lsp-diagnostics
+    repo: vscode
+    category: subsystem-overview
+    prompt: >
+      How does VS Code's language server protocol integration deliver diagnostics
+      (errors and warnings) from a language server to the editor UI? Describe
+      the message flow from the language server publishing diagnostics to the
+      markers appearing in the Problems panel.
+    expected_key_points:
+      - "textDocument/publishDiagnostics notification"
+      - "LanguageClient (vscode-languageclient) handling the notification"
+      - "IMarkerService.changeOne or MarkerService (src/vs/platform/markers)"
+      - "DiagnosticCollection (extension API surface)"
+      - "Problems panel / MarkersModel"
+    must_cite_files: true
+    anti_hallucination_checks:
+      - "must not say diagnostics are pulled by the editor — they are pushed via publishDiagnostics"
+      - "must not conflate DiagnosticSeverity values with HTTP status codes"
+
+  # ── EXCALIDRAW (TypeScript canvas app) ───────────────────────────────────────
+
+  - id: excalidraw-collab-sync
+    repo: excalidraw
+    category: subsystem-overview
+    prompt: >
+      How does Excalidraw handle collaborative real-time state synchronization
+      between clients? Identify the collaboration module, the protocol used,
+      and how incoming remote scene updates are reconciled with local state.
+    expected_key_points:
+      - "Collab class or useCollaboration hook (src/excalidraw-app/collab/)"
+      - "WebSocket / socket.io connection"
+      - "reconcileElements or scene reconciliation"
+      - "broadcastElements / broadcast scene"
+      - "ExcalidrawElement version vector or conflict resolution"
+    must_cite_files: true
+    anti_hallucination_checks:
+      - "must not say Excalidraw uses WebRTC peer-to-peer as its primary sync channel"
+      - "must not claim state is reconciled using operational transforms (OT) — it uses version-based last-write-wins per element"
+
+  - id: excalidraw-hit-testing
+    repo: excalidraw
+    category: call-chain
+    prompt: >
+      How does Excalidraw determine which element the user clicked on the canvas?
+      Trace from the canvas mousedown event through hit-testing logic to element
+      selection, naming the relevant functions and their locations.
+    expected_key_points:
+      - "onPointerDown or handleCanvasPointerDown"
+      - "getElementAtPosition or isHittingElement"
+      - "hitTest per element type (hitTestRectangle, hitTestEllipse, etc.)"
+      - "ExcalidrawElement bounding-box / bounds calculation"
+      - "appState.selectedElementIds update"
+    must_cite_files: true
+    anti_hallucination_checks:
+      - "must not say hit-testing uses a spatial index or quadtree — elements are iterated linearly in reverse z-order"
+      - "must not attribute click handling to the React synthetic event system alone — raw canvas events are used"
+
+  - id: excalidraw-serialization
+    repo: excalidraw
+    category: module-boundary
+    prompt: >
+      How does Excalidraw serialize and deserialize scene data for export and
+      import (.excalidraw files)? Identify the serialization functions, the
+      file format structure, and how binary assets (images) are handled.
+    expected_key_points:
+      - "serializeAsJSON / exportToBlob or exportToSvg (packages/excalidraw/data/)"
+      - "ImportedDataState / ExcalidrawDataState shape"
+      - "loadFromBlob or restore functions"
+      - "BinaryFiles / base64 encoded image data"
+      - "version field / file format versioning"
+    must_cite_files: true
+    anti_hallucination_checks:
+      - "must not say Excalidraw stores scene data in localStorage as the canonical persistence — .excalidraw is a JSON file export"
+      - "must not claim SVG export and JSON export share the same serialization path"
+
+  # ── OKHTTP (Java HTTP client) ─────────────────────────────────────────────────
+
+  - id: okhttp-interceptor-chain
+    repo: okhttp
+    category: call-chain
+    prompt: >
+      How does an HTTP call move through OkHttp's interceptor chain before
+      reaching the network layer? Describe how RealCall assembles the chain,
+      how each interceptor calls proceed(), and which built-in interceptors
+      are always present.
+    expected_key_points:
+      - "RealCall.getResponseWithInterceptorChain()"
+      - "RealInterceptorChain.proceed()"
+      - "RetryAndFollowUpInterceptor"
+      - "BridgeInterceptor"
+      - "CacheInterceptor and CallServerInterceptor"
+    must_cite_files: true
+    anti_hallucination_checks:
+      - "must not say interceptors run in parallel — they form a sequential chain"
+      - "must not attribute network I/O to BridgeInterceptor — that is CallServerInterceptor's role"
+
+  - id: okhttp-connection-pool
+    repo: okhttp
+    category: module-boundary
+    prompt: >
+      How does OkHttp's connection pool manage and reuse HTTP connections?
+      Describe how a connection is acquired from the pool, how idle connections
+      are evicted, and which classes are responsible.
+    expected_key_points:
+      - "ConnectionPool / RealConnectionPool"
+      - "RealConnectionPool.transmitterAcquirePooledConnection or acquire()"
+      - "connections deque / ConcurrentLinkedDeque"
+      - "cleanup task / cleanupRunnable eviction"
+      - "RealConnection with transmitter references / noNewExchanges"
+    must_cite_files: true
+    anti_hallucination_checks:
+      - "must not say OkHttp creates a new TCP connection for every request by default — pooling is on by default"
+      - "must not attribute connection eviction to a dedicated background thread per connection"
+
+  - id: okhttp-http2-multiplexing
+    repo: okhttp
+    category: subsystem-overview
+    prompt: >
+      How does OkHttp handle HTTP/2 multiplexing? Explain how multiple
+      concurrent streams share a single connection and how the Http2Connection
+      and Http2Stream classes relate.
+    expected_key_points:
+      - "Http2Connection (okhttp/src/main/kotlin/okhttp3/internal/http2/)"
+      - "Http2Stream"
+      - "stream ID assignment / newStream()"
+      - "FrameWriter / FrameReader for HEADERS and DATA frames"
+      - "RealConnection.isMultiplexed() or isHealthy()"
+    must_cite_files: true
+    anti_hallucination_checks:
+      - "must not say HTTP/2 multiplexing requires multiple TCP connections — it multiplexes over one"
+      - "must not claim OkHttp uses NIO selectors directly for HTTP/2 framing — it uses Okio"
+
+  # ── ALAMOFIRE (Swift HTTP library) ───────────────────────────────────────────
+
+  - id: alamofire-build-send-request
+    repo: alamofire
+    category: entrypoint-tracing
+    prompt: >
+      How does Alamofire build and send a URLRequest from a DataRequest?
+      Trace from Session.request() through RequestAdapter, URLRequestConvertible,
+      and into URLSession task creation.
+    expected_key_points:
+      - "Session.request() → DataRequest creation"
+      - "RequestInterceptor / RequestAdapter.adapt()"
+      - "URLRequestConvertible.asURLRequest()"
+      - "URLSessionDataTask creation via Session.sessionManager or session.dataTask"
+      - "RequestDelegate / task resume"
+    must_cite_files: true
+    anti_hallucination_checks:
+      - "must not say Alamofire bypasses URLSession and uses raw CFSocket — it wraps URLSession"
+      - "must not attribute request serialization to ResponseSerializer — that is only for response decoding"
+
+  - id: alamofire-response-validation
+    repo: alamofire
+    category: call-chain
+    prompt: >
+      How does Alamofire's response validation chain work? Describe how
+      validate() calls accumulate validators and how they are evaluated when
+      the response arrives.
+    expected_key_points:
+      - "DataRequest.validate() returning Self (fluent API)"
+      - "validators array on Request"
+      - "ValidationExecution closure / Validation typealias"
+      - "evaluation in response serializer or processResponse"
+      - "AFError.responseValidationFailed on failure"
+    must_cite_files: true
+    anti_hallucination_checks:
+      - "must not say validate() executes immediately when called — validators are stored and run after the response arrives"
+      - "must not conflate validate() with response() / responseJSON() calls"
+
+  - id: alamofire-retry-auth
+    repo: alamofire
+    category: change-impact
+    prompt: >
+      How does Alamofire handle request retrying and authentication challenges?
+      Explain how RequestRetrier and the URLSession authentication delegate
+      method interact with the Session to retry or credential-supply a failed
+      request.
+    expected_key_points:
+      - "RequestRetrier.retry() callback"
+      - "Session.retryRequest() or RequestInterceptor"
+      - "URLSessionTaskDelegate.urlSession(_:task:didReceive:completionHandler:)"
+      - "AuthenticationChallenge / credential(for:) or URLCredential"
+      - "RetryResult enum (retry, doNotRetry, retryWithDelay)"
+    must_cite_files: true
+    anti_hallucination_checks:
+      - "must not say retry logic lives inside URLSession — it is implemented in Alamofire's Session layer on top of URLSession callbacks"
+      - "must not claim Alamofire retries indefinitely by default — the retrier must explicitly return .retry"
