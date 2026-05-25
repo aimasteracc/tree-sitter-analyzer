@@ -149,32 +149,54 @@ def _repo_local_path(repo_entry: dict) -> Path:
 
 
 def cmd_prepare(args: argparse.Namespace) -> int:
-    """Prepare one or all repos — delegates to repo_prep.prepare_repo / prepare_all."""
+    """Prepare one or all repos — delegates to repo_prep."""
     try:
-        from repo_prep import prepare_all, prepare_repo  # noqa: PLC0415
+        from repo_prep import (  # noqa: PLC0415
+            load_repos_config,
+            prepare_all,
+            prepare_repo,
+            save_prepared_manifest,
+        )
     except ImportError:
         _die(
-            "repo_prep module not found. "
-            "Expected at benchmarks/codegraph_compare/repo_prep.py"
+            "repo_prep module not found. Expected at benchmarks/codegraph_compare/repo_prep.py"
         )
 
+    base_dir = (BENCHMARKS_DIR / ".." / ".." / ".benchmark-repos").resolve()
+
     if args.all:
-        repos_data = _load_yaml(REPOS_YAML)
-        items = _all_repos(repos_data)
-        print(f"Preparing {len(items)} repo(s)...", file=sys.stderr)
-        prepare_all(items, manifest_path=PREPARED_MANIFEST)
+        repos = load_repos_config(REPOS_YAML)
+        print(f"Preparing {len(repos)} repo(s)...", file=sys.stderr)
+        prepared = prepare_all(repos, base_dir=base_dir)
+        RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+        save_prepared_manifest(prepared, PREPARED_MANIFEST)
         print(f"Done. Manifest written to {PREPARED_MANIFEST}", file=sys.stderr)
         return 0
 
     if not args.repo:
         _die("Specify --repo <id> or --all")
 
-    repos_data = _load_yaml(REPOS_YAML)
-    repo_entry = _get_repo(repos_data, args.repo)
-    repo_path = _repo_local_path(repo_entry)
+    repos = load_repos_config(REPOS_YAML)
+    matches = [r for r in repos if r.id == args.repo]
+    if not matches:
+        _die(f"Repo '{args.repo}' not found in repos.yaml")
+    repo_spec = matches[0]
+    repo_path = base_dir / repo_spec.id
     print(f"Preparing repo '{args.repo}' at {repo_path} ...", file=sys.stderr)
-    prepare_repo(repo_entry, manifest_path=PREPARED_MANIFEST)
-    print("Done.", file=sys.stderr)
+    prepared = prepare_repo(repo_spec, base_dir=base_dir)
+    if prepared.error:
+        print(f"WARNING: {prepared.error}", file=sys.stderr)
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    # Merge into existing manifest
+    from repo_prep import PreparedRepo, load_prepared_manifest  # noqa: PLC0415
+
+    existing: dict[str, PreparedRepo] = {}
+    if PREPARED_MANIFEST.exists():
+        for pr in load_prepared_manifest(PREPARED_MANIFEST):
+            existing[pr.id] = pr
+    existing[prepared.id] = prepared
+    save_prepared_manifest(list(existing.values()), PREPARED_MANIFEST)
+    print(f"Done. commit={prepared.actual_commit}", file=sys.stderr)
     return 0
 
 
@@ -242,15 +264,18 @@ def cmd_run(args: argparse.Namespace) -> int:
     )
 
     # Print result summary
+    answer_snippet = (record["answer"] or "")[:120].replace("\n", " ")
     print(
         f"run_id:          {record['run_id']}\n"
-        f"answer:          {record['answer']}\n"
-        f"tokens_in:       {record['tokens_in']}\n"
-        f"tokens_out:      {record['tokens_out']}\n"
-        f"tool_calls:      {record['tool_calls']}\n"
+        f"answer:          {answer_snippet}...\n"
+        f"input_tokens:    {record['input_tokens']}\n"
+        f"output_tokens:   {record['output_tokens']}\n"
+        f"total_tokens:    {record['total_tokens']}\n"
+        f"cost_usd:        ${record['estimated_cost_usd']:.4f}\n"
+        f"tool_calls:      {record['tool_calls']} "
+        f"(reads={record['file_reads']} search={record['search_calls']} idx={record['index_queries']})\n"
         f"elapsed_seconds: {record['elapsed_seconds']}\n"
-        f"error:           {record['error']}\n"
-        f"prompt_file:     {record['prompt_file']}"
+        f"error:           {record['error']}"
     )
     return 0
 
