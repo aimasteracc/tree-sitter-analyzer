@@ -67,10 +67,10 @@ class TestSafeToEdit:
         content = response["result"]["content"]
         assert content, "safe_to_edit returned empty content"
         text = content[0]["text"] if isinstance(content, list) else str(content)
-        # The response must carry a verdict keyword — either SAFE or UNSAFE.
-        has_verdict = "SAFE" in text or "UNSAFE" in text
+        # The response must carry a verdict keyword — SAFE, CAUTION, or UNSAFE.
+        has_verdict = "SAFE" in text or "UNSAFE" in text or "CAUTION" in text
         assert has_verdict, (
-            f"safe_to_edit response has no SAFE/UNSAFE verdict:\n{text[:500]}"
+            f"safe_to_edit response has no verdict (expected SAFE/CAUTION/UNSAFE):\n{text[:500]}"
         )
 
     def test_nonexistent_file_returns_error_or_verdict(

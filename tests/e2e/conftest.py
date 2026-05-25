@@ -8,6 +8,12 @@ the public surface small and stable — downstream test suites
 Public fixtures
 ---------------
 
+``clone_repo_factory`` (session-scoped)
+    Shallow-clones a public git repo once per test session and returns its
+    local ``Path``. Automatically skips the calling test if the clone fails
+    (network unavailable, git not installed, etc.). Safe to call repeatedly
+    with the same ``(url, name)`` pair — the clone is cached.
+
 ``mcp_server`` (function-scoped)
     Spawns the MCP server as a subprocess against the current TSA
     checkout, parametrised over the project root. Returns an
@@ -370,6 +376,58 @@ def mcp_server(
     ``mcp_server_factory`` and call it explicitly.
     """
     return mcp_server_factory(REPO_ROOT)
+
+
+@pytest.fixture(scope="session")
+def clone_repo_factory(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> Callable[[str, str], Path]:
+    """Session-scoped factory: shallow-clone a public git repo once per session.
+
+    Usage::
+
+        def test_something(clone_repo_factory, mcp_server_factory):
+            repo_dir = clone_repo_factory("https://github.com/org/repo.git", "repo")
+            client = mcp_server_factory(repo_dir)
+            ...
+
+    The clone is cached: calling with the same ``name`` a second time returns
+    the already-cloned directory without re-cloning. If the clone fails for any
+    reason (network unavailable, git not installed, repo gone) the calling test
+    is automatically *skipped* rather than erroring, so offline developer
+    machines don't break the local test run.
+    """
+    base: Path = tmp_path_factory.mktemp("real-repos")
+    cache: dict[str, Path] = {}
+
+    def _clone(url: str, name: str) -> Path:
+        if name in cache:
+            return cache[name]
+
+        # Honour a pre-cloned directory supplied by CI to avoid double-cloning.
+        env_key = f"E2E_REAL_REPO_{name.upper().replace('-', '_')}"
+        pre_cloned = os.environ.get(env_key, "")
+        if pre_cloned:
+            dest = Path(pre_cloned)
+            if dest.is_dir():
+                cache[name] = dest
+                return dest
+
+        dest = base / name
+        result = subprocess.run(
+            ["git", "clone", "--depth", "1", "--quiet", url, str(dest)],
+            capture_output=True,
+            timeout=120.0,
+        )
+        if result.returncode != 0:
+            pytest.skip(
+                f"git clone {url!r} failed — likely offline or repo moved.\n"
+                + result.stderr.decode("utf-8", errors="replace")[:300]
+            )
+        cache[name] = dest
+        return dest
+
+    return _clone
 
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,213 @@
+# Health Monitor
+#
+# Daily E2E health check that answers: "Does our MCP server still work for
+# users today?" Runs independently of PRs — catches regressions introduced
+# by dependency updates, infrastructure changes, or environment drift.
+#
+# On failure:
+#   - Creates a GitHub issue labelled `monitoring-alert` + `bug`
+#   - Title includes the date and the failed test count
+#   - Body includes the last 50 lines of pytest output
+#
+# On recovery (re-run manually after a fix):
+#   - The issue is NOT auto-closed; close it manually after confirming the fix.
+#
+# Runs on:
+#   - Daily cron: 06:00 UTC (before EU business hours)
+#   - Manual dispatch (for on-demand health checks or post-incident verification)
+
+name: Health Monitor
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+    inputs:
+      include_real_repos:
+        description: "Also run real-repo tests (requires network)"
+        default: "false"
+        required: false
+        type: boolean
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: health-monitor
+  cancel-in-progress: false
+
+jobs:
+  e2e-health:
+    name: MCP E2E Health Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      failed: ${{ steps.run-e2e.outputs.failed }}
+      summary: ${{ steps.run-e2e.outputs.summary }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      - name: Setup System Dependencies
+        uses: ./.github/actions/setup-system
+        with:
+          os: ubuntu-latest
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+        shell: bash
+
+      - name: Clone real repos (if requested)
+        if: inputs.include_real_repos == 'true'
+        run: |
+          git clone --depth 1 --quiet https://github.com/pallets/click.git /tmp/real-repos/click
+          git clone --depth 1 --quiet https://github.com/psf/requests.git /tmp/real-repos/requests
+        continue-on-error: true
+
+      - name: Run E2E health check
+        id: run-e2e
+        run: |
+          EXTRA_MARKS=""
+          if [[ "${{ inputs.include_real_repos }}" == "true" ]]; then
+            EXTRA_MARKS=" or network"
+          fi
+
+          uv run pytest tests/e2e/ -m "e2e${EXTRA_MARKS}" \
+            -p no:xdist -p no:rerunfailures \
+            --timeout=60 --tb=short -v \
+            --junit-xml=health-report.xml > health-output.txt 2>&1
+          EXIT_CODE=$?
+
+          # Extract summary line (last "X passed / Y failed" line)
+          SUMMARY=$(tail -5 health-output.txt | grep -E "(passed|failed|error)" | tail -1 || echo "no summary")
+          echo "summary=$SUMMARY" >> $GITHUB_OUTPUT
+
+          if [ $EXIT_CODE -ne 0 ]; then
+            echo "failed=true" >> $GITHUB_OUTPUT
+            echo "E2E health check FAILED" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "failed=false" >> $GITHUB_OUTPUT
+            echo "E2E health check PASSED" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo '```text' >> $GITHUB_STEP_SUMMARY
+          tail -n 30 health-output.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+          cat health-output.txt
+          exit $EXIT_CODE
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+          PYTHONUTF8: 1
+          E2E_REAL_REPO_CLICK: /tmp/real-repos/click
+          E2E_REAL_REPO_REQUESTS: /tmp/real-repos/requests
+        continue-on-error: true
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: health-report-${{ github.run_id }}
+          path: |
+            health-output.txt
+            health-report.xml
+          retention-days: 30
+
+  create-incident-issue:
+    name: Create Incident Issue
+    needs: e2e-health
+    runs-on: ubuntu-latest
+    if: needs.e2e-health.outputs.failed == 'true'
+    permissions:
+      issues: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download test report
+        uses: actions/download-artifact@v4
+        with:
+          name: health-report-${{ github.run_id }}
+          path: ./report
+
+      - name: Create incident issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const today = new Date().toISOString().slice(0, 10);
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const summary = `${{ needs.e2e-health.outputs.summary }}`;
+
+            let output = '';
+            try {
+              output = fs.readFileSync('./report/health-output.txt', 'utf8')
+                .split('\n').slice(-50).join('\n');
+            } catch (e) {
+              output = '(could not read test output)';
+            }
+
+            const body = [
+              `## MCP E2E Health Monitor — Failure Alert`,
+              ``,
+              `**Date:** ${today}  `,
+              `**Run:** ${runUrl}  `,
+              `**Summary:** \`${summary}\``,
+              ``,
+              `### Last 50 lines of pytest output`,
+              ``,
+              `\`\`\`text`,
+              output,
+              `\`\`\``,
+              ``,
+              `### Next steps`,
+              ``,
+              `1. Check the [workflow run](${runUrl}) for full output.`,
+              `2. Reproduce locally: \`uv run pytest tests/e2e/ -m e2e -p no:xdist -v\``,
+              `3. Fix the regression and close this issue manually after confirming green.`,
+              ``,
+              `_Auto-created by [Health Monitor](${runUrl})_`,
+            ].join('\n');
+
+            // Check for an existing open monitoring issue to avoid duplicates.
+            const { data: openIssues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'monitoring-alert',
+              state: 'open',
+            });
+
+            if (openIssues.length > 0) {
+              // Append a comment to the existing open issue instead of creating a new one.
+              const existing = openIssues[0];
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body: `## Follow-up failure — ${today}\n\nRun: ${runUrl}\n\nSummary: \`${summary}\``,
+              });
+              console.log(`Appended to existing issue #${existing.number}`);
+            } else {
+              const { data: issue } = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: `[Health Monitor] MCP E2E failure — ${today}`,
+                body: body,
+                labels: ['monitoring-alert', 'bug'],
+              });
+              console.log(`Created issue #${issue.number}: ${issue.html_url}`);
+              core.notice(`Incident issue created: ${issue.html_url}`);
+            }

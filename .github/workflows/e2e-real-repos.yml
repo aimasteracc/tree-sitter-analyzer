@@ -1,0 +1,102 @@
+# E2E Real Repo Tests
+#
+# Clones real open-source Python projects and runs TSA against them.
+# Verifies that TSA produces meaningful health analysis and safe_to_edit
+# verdicts on codebases it has never seen — not just on its own repo.
+#
+# Repos under test:
+#   pallets/click  — small (~15 source files), stable
+#   psf/requests   — medium (~30 source files), classic
+#
+# Triggers:
+#   - push to main / develop (post-merge verification)
+#   - pull requests that touch the MCP tool implementations or e2e tests
+#   - weekly schedule (catches silent regressions)
+#   - manual trigger
+
+name: E2E Real Repos
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "tree_sitter_analyzer/mcp/**"
+      - "tests/e2e/**"
+      - ".github/workflows/e2e-real-repos.yml"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "tree_sitter_analyzer/mcp/**"
+      - "tests/e2e/test_real_repos.py"
+      - "tests/e2e/conftest.py"
+  schedule:
+    # Weekly on Tuesday 03:00 UTC (offset from Monday health-monitor)
+    - cron: "0 3 * * 2"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e-real-repos:
+    name: Real Repos E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      - name: Setup System Dependencies
+        uses: ./.github/actions/setup-system
+        with:
+          os: ubuntu-latest
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+        shell: bash
+
+      # Clone real repos before running pytest.
+      # Paths are passed via env vars so the clone_repo_factory fixture
+      # (conftest.py) reuses them instead of re-cloning.
+      - name: Clone pallets/click
+        run: |
+          git clone --depth 1 --quiet https://github.com/pallets/click.git /tmp/real-repos/click
+          echo "Cloned click: $(find /tmp/real-repos/click -name '*.py' | wc -l) Python files"
+
+      - name: Clone psf/requests
+        run: |
+          git clone --depth 1 --quiet https://github.com/psf/requests.git /tmp/real-repos/requests
+          echo "Cloned requests: $(find /tmp/real-repos/requests -name '*.py' | wc -l) Python files"
+
+      - name: Run real-repo E2E tests
+        run: |
+          echo "### E2E Real Repo Results" >> $GITHUB_STEP_SUMMARY
+          uv run pytest tests/e2e/test_real_repos.py -m "e2e and network" \
+            -p no:xdist -p no:rerunfailures \
+            --timeout=60 --tb=short -v > e2e-real-output.txt 2>&1 || touch e2e_failed
+          cat e2e-real-output.txt
+          echo '```text' >> $GITHUB_STEP_SUMMARY
+          tail -n 30 e2e-real-output.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          if [ -f e2e_failed ]; then
+            echo "Real-repo E2E tests failed — see above for details." >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+          PYTHONUTF8: 1
+          # Tell clone_repo_factory where we pre-cloned the repos.
+          E2E_REAL_REPO_CLICK: /tmp/real-repos/click
+          E2E_REAL_REPO_REQUESTS: /tmp/real-repos/requests
