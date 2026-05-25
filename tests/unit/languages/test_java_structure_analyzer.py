@@ -266,6 +266,101 @@ def test_empty_java_file(analyzer):
             temp_file.unlink()
 
 
+def _verify_package_fallback(package_info: dict | None, code: str) -> None:
+    if package_info is None:
+        assert "package com.complex.test;" in code, (
+            "Package declaration not found in source code"
+        )
+    else:
+        assert package_info["name"] == "com.complex.test", (
+            f"Expected 'com.complex.test', got '{package_info.get('name')}'"
+        )
+
+
+def _verify_imports_fallback(imports: list, code: str) -> None:
+    if len(imports) == 0:
+        assert "import java.util.*;" in code, (
+            "インポート宣言がソースコードに存在しません"
+        )
+        assert "import static java.lang.Math.PI;" in code, (
+            "staticインポート宣言がソースコードに存在しません"
+        )
+    else:
+        static_imports = [imp for imp in imports if imp["is_static"]]
+        if len(static_imports) == 0:
+            assert "import static java.lang.Math.PI;" in code, (
+                "staticインポート宣言がソースコードに存在しません"
+            )
+
+
+def _verify_classes_fallback(classes: list, code: str) -> None:
+    if len(classes) == 0:
+        assert "public class ComplexClass" in code
+        assert "enum Status" in code
+        assert "public static class NestedClass" in code
+        print(
+            "⚠️  Warning: Classes not detected by parser, but source code verification passed"
+        )
+        return
+    assert len(classes) >= 1
+    main_class = next((c for c in classes if "ComplexClass" in c.get("name", "")), None)
+    if main_class:
+        assert main_class["type"] == "class"
+        print(f"✅ Found main class: {main_class['name']}")
+    else:
+        assert "public class ComplexClass" in code
+        print(
+            "⚠️  Warning: ComplexClass not detected by parser, but source verification passed"
+        )
+    enums = [
+        c for c in classes if c.get("type") == "enum" or "Status" in c.get("name", "")
+    ]
+    if len(enums) == 0:
+        assert "enum Status" in code
+        print("⚠️  Warning: Enum not detected by parser, but source verification passed")
+
+
+def _verify_methods_fallback(methods: list, code: str) -> None:
+    if len(methods) == 0:
+        assert "public ComplexClass()" in code
+        assert "public ComplexClass(String name)" in code
+        assert "public <T extends Number> List<T> genericMethod" in code
+        print(
+            "⚠️  Warning: Methods not detected by parser, but source verification passed"
+        )
+    else:
+        print(f"✅ Found {len(methods)} methods")
+        method_names = [m.get("name", "") for m in methods]
+        if "genericMethod" not in method_names:
+            assert "genericMethod" in code
+            print(
+                "⚠️  Warning: genericMethod not detected by parser, but source verification passed"
+            )
+
+
+def _verify_fields_fallback(fields: list, code: str) -> None:
+    if len(fields) == 0:
+        assert "private Long id;" in code
+        assert "private String name;" in code
+        assert "public static final String CONSTANT" in code
+        print(
+            "⚠️  Warning: Fields not detected by parser, but source verification passed"
+        )
+    else:
+        print(f"✅ Found {len(fields)} fields")
+
+
+def _verify_annotations_fallback(annotations: list, code: str) -> None:
+    if len(annotations) == 0:
+        assert "@Entity" in code
+        assert "@Table" in code
+        print(
+            "⚠️  Warning: Annotations not detected by parser, but source verification passed"
+        )
+    else:
+        print(f"✅ Found {len(annotations)} annotations")
+
+
 @pytest.mark.skipif(
     False,  # Let's try to fix this test properly
     reason="Complex structure analysis is environment-dependent and unstable in full test suite",
@@ -365,167 +460,116 @@ enum Status {
 
     try:
         result = analyzer.analyze_structure(temp_path)
-
         assert result is not None
-
-        # Verify package information (with fallback support)
-        package_info = result["package"]
-        if package_info is None:
-            # If package information is not extracted, verify directly from source code
-            source_code = complex_java_code
-            assert "package com.complex.test;" in source_code, (
-                "Package declaration not found in source code"
-            )
-            # Continue test (package information extraction may be environment-dependent)
-        else:
-            assert package_info["name"] == "com.complex.test", (
-                f"Expected 'com.complex.test', got '{package_info.get('name')}'"
-            )
-
-        # Verify import information（フォールバック対応）
-        imports = result["imports"]
-        if len(imports) == 0:
-            # インポートが検出されない場合、ソースコードから直接確認
-            source_code = complex_java_code
-            assert "import java.util.*;" in source_code, (
-                "インポート宣言がソースコードに存在しません"
-            )
-            assert "import static java.lang.Math.PI;" in source_code, (
-                "staticインポート宣言がソースコードに存在しません"
-            )
-            # テストを続行（インポート情報の抽出は環境依存の可能性があるため）
-        else:
-            # staticインポートの確認
-            static_imports = [imp for imp in imports if imp["is_static"]]
-            # staticインポートが検出されない場合もフォールバック
-            if len(static_imports) == 0:
-                source_code = complex_java_code
-                assert "import static java.lang.Math.PI;" in source_code, (
-                    "staticインポート宣言がソースコードに存在しません"
-                )
-
-        # Verify class information with fallback
-        classes = result["classes"]
-
-        # If no classes are detected, verify the source code contains the expected structures
-        if len(classes) == 0:
-            # Fallback: verify source code contains expected class declarations
-            source_code = complex_java_code
-            assert "public class ComplexClass" in source_code, (
-                "ComplexClass declaration not found in source"
-            )
-            assert "enum Status" in source_code, (
-                "Status enum declaration not found in source"
-            )
-            assert "public static class NestedClass" in source_code, (
-                "NestedClass declaration not found in source"
-            )
-            print(
-                "⚠️  Warning: Classes not detected by parser, but source code verification passed"
-            )
-        else:
-            # Normal verification when classes are detected
-            assert len(classes) >= 1, f"Expected at least 1 class, got: {len(classes)}"
-
-            # Look for main class (more flexible matching)
-            main_class = next(
-                (cls for cls in classes if "ComplexClass" in cls.get("name", "")), None
-            )
-            if main_class:
-                assert main_class["type"] == "class"
-                # Note: visibility and implements may not always be detected reliably
-                print(f"✅ Found main class: {main_class['name']}")
-            else:
-                # Fallback verification
-                assert "public class ComplexClass" in complex_java_code, (
-                    "ComplexClass not found in source"
-                )
-                print(
-                    "⚠️  Warning: ComplexClass not detected by parser, but source verification passed"
-                )
-
-            # Check for enum (flexible)
-            enums = [
-                cls
-                for cls in classes
-                if cls.get("type") == "enum" or "Status" in cls.get("name", "")
-            ]
-            if len(enums) == 0:
-                assert "enum Status" in complex_java_code, (
-                    "Status enum not found in source"
-                )
-                print(
-                    "⚠️  Warning: Enum not detected by parser, but source verification passed"
-                )
-
-        # Verify method information with fallback
-        methods = result["methods"]
-        if len(methods) == 0:
-            # Fallback: verify source code contains expected method declarations
-            assert "public ComplexClass()" in complex_java_code, (
-                "Default constructor not found in source"
-            )
-            assert "public ComplexClass(String name)" in complex_java_code, (
-                "Parameterized constructor not found in source"
-            )
-            assert (
-                "public <T extends Number> List<T> genericMethod" in complex_java_code
-            ), "Generic method not found in source"
-            print(
-                "⚠️  Warning: Methods not detected by parser, but source verification passed"
-            )
-        else:
-            print(f"✅ Found {len(methods)} methods")
-
-            # Look for specific methods (flexible matching)
-            method_names = [m.get("name", "") for m in methods]
-            if "genericMethod" not in method_names:
-                assert "genericMethod" in complex_java_code, (
-                    "genericMethod not found in source"
-                )
-                print(
-                    "⚠️  Warning: genericMethod not detected by parser, but source verification passed"
-                )
-
-        # Verify field information with fallback
-        fields = result["fields"]
-        if len(fields) == 0:
-            # Fallback: verify source code contains expected field declarations
-            assert "private Long id;" in complex_java_code, (
-                "id field not found in source"
-            )
-            assert "private String name;" in complex_java_code, (
-                "name field not found in source"
-            )
-            assert "public static final String CONSTANT" in complex_java_code, (
-                "CONSTANT field not found in source"
-            )
-            print(
-                "⚠️  Warning: Fields not detected by parser, but source verification passed"
-            )
-        else:
-            print(f"✅ Found {len(fields)} fields")
-
-        # Annotation verification (optional, as annotations are complex to parse)
-        annotations = result.get("annotations", [])
-        if len(annotations) == 0:
-            # Fallback: verify source code contains expected annotations
-            assert "@Entity" in complex_java_code, (
-                "@Entity annotation not found in source"
-            )
-            assert "@Table" in complex_java_code, (
-                "@Table annotation not found in source"
-            )
-            print(
-                "⚠️  Warning: Annotations not detected by parser, but source verification passed"
-            )
-        else:
-            print(f"✅ Found {len(annotations)} annotations")
-
+        _verify_package_fallback(result["package"], complex_java_code)
+        _verify_imports_fallback(result["imports"], complex_java_code)
+        _verify_classes_fallback(result["classes"], complex_java_code)
+        _verify_methods_fallback(result["methods"], complex_java_code)
+        _verify_fields_fallback(result["fields"], complex_java_code)
+        _verify_annotations_fallback(result.get("annotations", []), complex_java_code)
     finally:
         temp_file = Path(temp_path)
         if temp_file.exists():
             temp_file.unlink()
+
+
+def _assert_package_schema(package: dict) -> None:
+    assert "name" in package
+    assert "line_range" in package
+    assert "start" in package["line_range"]
+    assert "end" in package["line_range"]
+
+
+def _assert_import_schema(imp: dict) -> None:
+    for key in ("name", "statement", "is_static", "is_wildcard", "line_range"):
+        assert key in imp, f"インポートに必須キー '{key}' がありません"
+    assert isinstance(imp["is_static"], bool)
+    assert isinstance(imp["is_wildcard"], bool)
+    assert "start" in imp["line_range"]
+    assert "end" in imp["line_range"]
+
+
+def _assert_class_schema(cls: dict) -> None:
+    for key in (
+        "name",
+        "full_qualified_name",
+        "type",
+        "visibility",
+        "modifiers",
+        "extends",
+        "implements",
+        "is_nested",
+        "parent_class",
+        "annotations",
+        "line_range",
+        "javadoc",
+    ):
+        assert key in cls, f"クラスに必須キー '{key}' がありません"
+    assert isinstance(cls["modifiers"], list)
+    assert isinstance(cls["implements"], list)
+    assert isinstance(cls["annotations"], list)
+    assert isinstance(cls["is_nested"], bool)
+    assert "start" in cls["line_range"]
+    assert "end" in cls["line_range"]
+
+
+def _assert_method_schema(method: dict) -> None:
+    for key in (
+        "name",
+        "return_type",
+        "parameters",
+        "visibility",
+        "modifiers",
+        "is_constructor",
+        "is_static",
+        "is_abstract",
+        "is_final",
+        "throws",
+        "complexity_score",
+        "annotations",
+        "line_range",
+        "javadoc",
+    ):
+        assert key in method, f"メソッドに必須キー '{key}' がありません"
+    assert isinstance(method["parameters"], list)
+    assert isinstance(method["modifiers"], list)
+    assert isinstance(method["throws"], list)
+    assert isinstance(method["annotations"], list)
+    assert isinstance(method["is_constructor"], bool)
+    assert isinstance(method["is_static"], bool)
+    assert isinstance(method["is_abstract"], bool)
+    assert isinstance(method["is_final"], bool)
+    assert isinstance(method["complexity_score"], int)
+    for param in method["parameters"]:
+        assert "type" in param
+        assert "name" in param
+
+
+def _assert_field_schema(field: dict) -> None:
+    for key in (
+        "name",
+        "type",
+        "visibility",
+        "modifiers",
+        "is_static",
+        "is_final",
+        "annotations",
+        "line_range",
+        "javadoc",
+    ):
+        assert key in field, f"フィールドに必須キー '{key}' がありません"
+    assert isinstance(field["modifiers"], list)
+    assert isinstance(field["annotations"], list)
+    assert isinstance(field["is_static"], bool)
+    assert isinstance(field["is_final"], bool)
+
+
+def _assert_annotation_schema(ann: dict) -> None:
+    for key in ("name", "parameters", "raw_text", "line_range"):
+        assert key in ann, f"アノテーションに必須キー '{key}' がありません"
+    assert isinstance(ann["parameters"], list)
+    assert "start" in ann["line_range"]
+    assert "end" in ann["line_range"]
 
 
 def test_output_schema_validation(analyzer, simple_java_code):
@@ -538,135 +582,19 @@ def test_output_schema_validation(analyzer, simple_java_code):
 
     try:
         result = analyzer.analyze_structure(temp_path)
-
-        # トップレベルスキーマの検証
         assert isinstance(result, dict)
-
-        # パッケージスキーマの検証
         if result["package"]:
-            package = result["package"]
-            assert "name" in package
-            assert "line_range" in package
-            assert "start" in package["line_range"]
-            assert "end" in package["line_range"]
-
-        # インポートスキーマの検証
+            _assert_package_schema(result["package"])
         for imp in result["imports"]:
-            required_import_keys = [
-                "name",
-                "statement",
-                "is_static",
-                "is_wildcard",
-                "line_range",
-            ]
-            for key in required_import_keys:
-                assert key in imp, f"インポートに必須キー '{key}' がありません"
-
-            assert isinstance(imp["is_static"], bool)
-            assert isinstance(imp["is_wildcard"], bool)
-            assert "start" in imp["line_range"]
-            assert "end" in imp["line_range"]
-
-        # クラススキーマの検証
+            _assert_import_schema(imp)
         for cls in result["classes"]:
-            required_class_keys = [
-                "name",
-                "full_qualified_name",
-                "type",
-                "visibility",
-                "modifiers",
-                "extends",
-                "implements",
-                "is_nested",
-                "parent_class",
-                "annotations",
-                "line_range",
-                "javadoc",
-            ]
-            for key in required_class_keys:
-                assert key in cls, f"クラスに必須キー '{key}' がありません"
-
-            assert isinstance(cls["modifiers"], list)
-            assert isinstance(cls["implements"], list)
-            assert isinstance(cls["annotations"], list)
-            assert isinstance(cls["is_nested"], bool)
-            assert "start" in cls["line_range"]
-            assert "end" in cls["line_range"]
-
-        # メソッドスキーマの検証
+            _assert_class_schema(cls)
         for method in result["methods"]:
-            required_method_keys = [
-                "name",
-                "return_type",
-                "parameters",
-                "visibility",
-                "modifiers",
-                "is_constructor",
-                "is_static",
-                "is_abstract",
-                "is_final",
-                "throws",
-                "complexity_score",
-                "annotations",
-                "line_range",
-                "javadoc",
-            ]
-            for key in required_method_keys:
-                assert key in method, f"メソッドに必須キー '{key}' がありません"
-
-            assert isinstance(method["parameters"], list)
-            assert isinstance(method["modifiers"], list)
-            assert isinstance(method["throws"], list)
-            assert isinstance(method["annotations"], list)
-            assert isinstance(method["is_constructor"], bool)
-            assert isinstance(method["is_static"], bool)
-            assert isinstance(method["is_abstract"], bool)
-            assert isinstance(method["is_final"], bool)
-            assert isinstance(method["complexity_score"], int)
-
-            # パラメータスキーマの検証
-            for param in method["parameters"]:
-                assert "type" in param
-                assert "name" in param
-
-        # フィールドスキーマの検証
+            _assert_method_schema(method)
         for field in result["fields"]:
-            required_field_keys = [
-                "name",
-                "type",
-                "visibility",
-                "modifiers",
-                "is_static",
-                "is_final",
-                "annotations",
-                "line_range",
-                "javadoc",
-            ]
-            for key in required_field_keys:
-                assert key in field, f"フィールドに必須キー '{key}' がありません"
-
-            assert isinstance(field["modifiers"], list)
-            assert isinstance(field["annotations"], list)
-            assert isinstance(field["is_static"], bool)
-            assert isinstance(field["is_final"], bool)
-
-        # アノテーションスキーマの検証
+            _assert_field_schema(field)
         for annotation in result["annotations"]:
-            required_annotation_keys = [
-                "name",
-                "parameters",
-                "raw_text",
-                "line_range",
-            ]
-            for key in required_annotation_keys:
-                assert key in annotation, (
-                    f"アノテーションに必須キー '{key}' がありません"
-                )
-
-            assert isinstance(annotation["parameters"], list)
-            assert "start" in annotation["line_range"]
-            assert "end" in annotation["line_range"]
-
+            _assert_annotation_schema(annotation)
     finally:
         temp_file = Path(temp_path)
         if temp_file.exists():
