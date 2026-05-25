@@ -137,6 +137,19 @@ def _all_questions(questions: dict | list) -> list[dict]:
     return questions if isinstance(questions, list) else questions.get("questions", [])
 
 
+def _questions_for_repo(questions: dict | list, repo_id: str) -> list[dict]:
+    return [q for q in _all_questions(questions) if q.get("repo") == repo_id]
+
+
+def _assert_question_matches_repo(question_entry: dict, repo_id: str) -> None:
+    question_repo = question_entry.get("repo")
+    if question_repo != repo_id:
+        _die(
+            f"Question '{question_entry.get('id')}' belongs to repo "
+            f"'{question_repo}', not '{repo_id}'."
+        )
+
+
 def _repo_local_path(repo_entry: dict) -> Path:
     """Return the local path for a repo: .benchmark-repos/<id>."""
     repo_id: str = repo_entry["id"]
@@ -209,6 +222,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     repo_entry = _get_repo(repos_data, args.repo)
     arm_entry = _get_arm(arms_data, args.arm)
     question_entry = _get_question(questions_data, args.question)
+    _assert_question_matches_repo(question_entry, args.repo)
 
     repo_path = _repo_local_path(repo_entry)
     arm_id: str = arm_entry["id"]
@@ -231,13 +245,16 @@ def cmd_run(args: argparse.Namespace) -> int:
         f"[prepare] arm={arm_id}  repo={args.repo}  cold={cold}",
         file=sys.stderr,
     )
-    index_stats = adapter.prepare_index(repo_path, cold=cold)
-    print(
-        f"[prepare] done  build_s={index_stats.build_seconds:.2f}"
-        f"  files={index_stats.file_count}"
-        f"  size={index_stats.index_size_bytes} bytes",
-        file=sys.stderr,
-    )
+    if args.dry_run:
+        print("[prepare] skipped in dry-run mode", file=sys.stderr)
+    else:
+        index_stats = adapter.prepare_index(repo_path, cold=cold)
+        print(
+            f"[prepare] done  build_s={index_stats.build_seconds:.2f}"
+            f"  files={index_stats.file_count}"
+            f"  size={index_stats.index_size_bytes} bytes",
+            file=sys.stderr,
+        )
 
     run_config = adapter.build_run_config(repo_path, question_prompt)
 
@@ -261,6 +278,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         repeat=repeat,
         run_config=run_config,
         results_dir=RESULTS_DIR,
+        dry_run=getattr(args, "dry_run", False),
     )
 
     # Print result summary
@@ -298,7 +316,6 @@ def cmd_run_matrix(args: argparse.Namespace) -> int:
     else:
         arm_entries = [_get_arm(arms_data, aid) for aid in args.arms.split(",")]
 
-    question_entries = _all_questions(questions_data)
     repeats: int = args.repeats if hasattr(args, "repeats") and args.repeats else 1
 
     # Lazy imports
@@ -310,13 +327,26 @@ def cmd_run_matrix(args: argparse.Namespace) -> int:
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
-    total = len(repo_entries) * len(arm_entries) * len(question_entries) * repeats
+    question_entries_by_repo = {
+        repo_entry["id"]: _questions_for_repo(questions_data, repo_entry["id"])
+        for repo_entry in repo_entries
+    }
+    total = (
+        sum(len(items) for items in question_entries_by_repo.values())
+        * len(arm_entries)
+        * repeats
+    )
     idx = 0
     failed = 0
 
     for repo_entry in repo_entries:
         repo_id: str = repo_entry["id"]
         repo_path = _repo_local_path(repo_entry)
+        question_entries = question_entries_by_repo[repo_id]
+
+        if not question_entries:
+            print(f"[skip] repo={repo_id} has no questions", file=sys.stderr)
+            continue
 
         for arm_entry in arm_entries:
             arm_id: str = arm_entry["id"]
@@ -324,7 +354,13 @@ def cmd_run_matrix(args: argparse.Namespace) -> int:
             cold = index_mode == "cold"
 
             adapter = get_adapter(arm_id)
-            adapter.prepare_index(repo_path, cold=cold)
+            if args.dry_run:
+                print(
+                    f"[prepare] skipped dry-run  arm={arm_id}  repo={repo_id}",
+                    file=sys.stderr,
+                )
+            else:
+                adapter.prepare_index(repo_path, cold=cold)
             run_config_cache: dict = {}
 
             for question_entry in question_entries:
@@ -356,6 +392,7 @@ def cmd_run_matrix(args: argparse.Namespace) -> int:
                             repeat=repeat,
                             run_config=run_config,
                             results_dir=RESULTS_DIR,
+                            dry_run=args.dry_run,
                         )
                         status = "DRY_RUN" if record["answer"] == "DRY_RUN" else "ok"
                         print(
@@ -426,7 +463,7 @@ def cmd_status(_args: argparse.Namespace) -> int:
     # By arm
     by_arm: dict[str, int] = {}
     for r in records:
-        arm = r.get("arm_id", "unknown")
+        arm = r.get("arm", "unknown")
         by_arm[arm] = by_arm.get(arm, 0) + 1
     print("  By arm:")
     for arm, count in sorted(by_arm.items()):
@@ -435,7 +472,7 @@ def cmd_status(_args: argparse.Namespace) -> int:
     # By repo
     by_repo: dict[str, int] = {}
     for r in records:
-        repo = Path(r.get("repo_path", "unknown")).name
+        repo = r.get("repo", "unknown")
         by_repo[repo] = by_repo.get(repo, 0) + 1
     print("  By repo:")
     for repo, count in sorted(by_repo.items()):
@@ -502,6 +539,12 @@ def _build_parser() -> argparse.ArgumentParser:
         default=0,
         help="Zero-based repeat index (default: 0).",
     )
+    p_run.add_argument(
+        "--dry-run",
+        action="store_true",
+        dest="dry_run",
+        help="Build prompt and record a stub without calling Claude.",
+    )
 
     # ---- run-matrix ----
     p_matrix = sub.add_parser(
@@ -532,8 +575,7 @@ def _build_parser() -> argparse.ArgumentParser:
         dest="dry_run",
         help=(
             "Dry-run mode: build prompts and record stubs without calling the "
-            "Claude API. (Currently the default behaviour — flag is a no-op until "
-            "real API calls are wired up.)"
+            "Claude API."
         ),
     )
 
