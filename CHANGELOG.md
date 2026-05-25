@@ -1,5 +1,39 @@
 # Changelog
 
+## [1.15.1] - 2026-05-25
+
+Patch on v1.15.0. Adds the MCP E2E test framework, fixes Windows/non-UTF-8
+locale subprocess failures, tunes the perf logger, and cleans up internal
+complexity — no user-facing behaviour changes beyond the subprocess fix.
+
+### Added
+
+- **MCP black-box E2E test suite** (`tests/e2e/`). Smoke, functional, and
+  real-repo test layers that exercise the MCP server as a subprocess. Four
+  new CI workflows: `e2e-locale.yml` (cp932/cp936/cp949 regression guard),
+  `e2e-real-repos.yml`, `health-monitor.yml` (daily monitoring + auto-issue
+  on failure). *(#156)*
+
+### Fixed
+
+- **Windows / non-UTF-8 locale subprocess failures** (`UnicodeDecodeError`
+  in `subprocess._readerthread`). All 15 `subprocess.run/Popen` call sites
+  with `text=True` across 9 modules now pass `encoding='utf-8',
+  errors='replace'`. Affected users: JP/CN/KR Windows hosts with cp932 /
+  cp936 / cp949 system locale.
+- **Perf logger level inheritance**. Logger now inherits the root log level
+  and has propagation disabled, fixing spurious noise at DEBUG level.
+  *(#154)*
+
+### Changed
+
+- **Internal complexity cleanup**. `validate_workflows.py` C-grade → B-grade
+  via helper extraction. `tree_sitter_analyzer/_ast_extraction.py` extracted
+  from `ast_cache.py` to stay under 500-line limit and make
+  `_worker_index_file` picklable independently. *(auto-sprint #155)*
+
+---
+
 ## [1.15.0] - 2026-05-25
 
 Code-map quality release. Lands the first wave of the v1.15 code-map
