@@ -17,17 +17,24 @@ def build_initialization_options(
     """Build MCP initialization options without bloating the runtime method."""
     from mcp.server.models import ServerCapabilities
     from mcp.types import (
-        LoggingCapability,
         PromptsCapability,
         ResourcesCapability,
         ToolsCapability,
     )
 
+    # NOTE: We deliberately do NOT advertise ``LoggingCapability()``.
+    # The spec lets clients that see this capability call
+    # ``logging/setLevel`` to adjust server verbosity (see
+    # https://spec.modelcontextprotocol.io/specification/server/utilities/logging/),
+    # but we never registered a handler — so the call returned JSON-RPC
+    # ``-32601 Method not found`` and surfaced as ``[error]`` in every
+    # client log (e.g. VS Code MCP, Claude Desktop). Until we actually
+    # implement set-level routing through our logger, advertising the
+    # capability is a contract lie; dropping it is the honest fix.
     capabilities = ServerCapabilities(
         tools=ToolsCapability(listChanged=True),
         resources=ResourcesCapability(subscribe=True, listChanged=True),
         prompts=PromptsCapability(listChanged=True),
-        logging=LoggingCapability(),
     )
     return initialization_options_cls(
         server_name=server_name,
