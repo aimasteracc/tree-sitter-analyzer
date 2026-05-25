@@ -12,6 +12,7 @@ Key classes:
 import os
 from collections import defaultdict, deque
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,27 @@ from .core.parser import Parser, ParseResult
 from .import_extractors import (
     walk_imports,
 )
+from .symbol_extractors import extract_top_level_defs_from_file
+
+
+@dataclass(frozen=True)
+class SymbolFanIn:
+    """Result type for :meth:`DependencyGraph.symbol_in_degree`.
+
+    ``file_count`` is the primary signal — distinct importing files,
+    deduplicated. ``importer_files`` carries the same set as a sorted
+    deterministic tuple so callers can render evidence lists without
+    re-querying. ``defining_files`` records every project file that
+    defines a symbol by this name; ``ambiguous`` is the convenience
+    flag for the >1-definition case (P4 will demote confidence when
+    set).
+    """
+
+    symbol: str
+    file_count: int
+    importer_files: tuple[str, ...]
+    defining_files: tuple[str, ...]
+    ambiguous: bool
 
 
 def _language_from_ext(file_path: str) -> str | None:
@@ -342,6 +364,21 @@ class DependencyGraph:
         self._edges: set[tuple[str, str]] = set()
         self._deps: dict[str, set[str]] = defaultdict(set)
         self._dependents: dict[str, set[str]] = defaultdict(set)
+
+        # PR-0.2: symbol-level fan-in index.
+        # ``_symbol_importers[name]`` = set of files that import a symbol
+        # with that name (deduplicated). Powers ``symbol_in_degree()``.
+        # ``_symbol_def_files[name]`` = set of files that define a symbol
+        # with that name. Lets the same query disambiguate when multiple
+        # files define a homonymous symbol.
+        # ``_symbol_importer_targets`` = which definition file each
+        # importer actually resolved to, for the ``defining_file=`` kwarg.
+        self._symbol_importers: dict[str, set[str]] = defaultdict(set)
+        self._symbol_def_files: dict[str, set[str]] = defaultdict(set)
+        self._symbol_importer_targets: dict[tuple[str, str], set[str]] = defaultdict(
+            set
+        )
+
         self._initialized = True
 
         self._build()
@@ -432,11 +469,20 @@ class DependencyGraph:
             except ValueError:
                 continue
 
-        # Parse each file and extract imports
+        # Parse each file and extract imports + top-level definitions.
+        # The symbol index lives alongside the file-edge index — same
+        # walk, no extra IO cost on the import side. See PR-0.2 design
+        # in .recon/pr-0-2-design.md for the rationale.
         for rel_path, abs_path in rel_to_abs.items():
             language = _language_from_ext(rel_path)
             if language is None:
                 continue
+
+            # Populate _symbol_def_files BEFORE the import pass so the
+            # ambiguity check in symbol_in_degree() is meaningful even
+            # if no other file imports this symbol yet.
+            for name in extract_top_level_defs_from_file(abs_path, language):
+                self._symbol_def_files[name].add(rel_path)
 
             raw_imports = extract_imports_from_file(abs_path, language)
             for imp in raw_imports:
@@ -445,6 +491,25 @@ class DependencyGraph:
                     self._edges.add((rel_path, resolved))
                     self._deps[rel_path].add(resolved)
                     self._dependents[resolved].add(rel_path)
+
+                    # Symbol-level fan-in: every named import becomes a
+                    # (symbol, importer) pair. Guards:
+                    #  (a) ``resolved in self._nodes`` (already true here)
+                    #  (b) skip empty names (JS bare imports yield [])
+                    #  (c) skip submodule-as-name imports: ``from . import
+                    #      sub`` lists ``sub`` in ``names`` AND resolves to
+                    #      ``sub.py`` — so ``name`` equals the resolved
+                    #      file's basename. That ``sub`` is the module
+                    #      handle, not an imported symbol; counting it
+                    #      would falsely treat any file with a sibling
+                    #      ``sub`` import as a symbol-importer of every
+                    #      definition in ``sub.py``.
+                    resolved_stem = Path(resolved).stem
+                    for name in imp.get("names", ()) or ():
+                        if not name or name == resolved_stem:
+                            continue
+                        self._symbol_importers[name].add(rel_path)
+                        self._symbol_importer_targets[(name, rel_path)].add(resolved)
 
     def _resolve_to_project_file(
         self,
@@ -485,6 +550,47 @@ class DependencyGraph:
         """Return files that depend on the given file."""
         return sorted(self._dependents.get(file_rel, set()))
 
+    def symbol_in_degree(
+        self,
+        symbol: str,
+        *,
+        defining_file: str | None = None,
+    ) -> SymbolFanIn:
+        """Return how many project files import a symbol by name.
+
+        Counts **distinct importer files**, not import edges — a file
+        with two ``from X import Foo`` lines still counts as 1.
+
+        ``defining_file`` (optional) narrows the count to importers whose
+        resolved import target was that exact file. Use this when the
+        symbol name is defined in multiple files (``ambiguous=True`` in
+        the default response) and the caller needs the precise fan-in
+        for one specific definition.
+
+        Returns ``SymbolFanIn(symbol, 0, (), (), False)`` for unknown
+        symbols rather than raising — same contract as ``dependents_of``
+        for unknown files.
+        """
+
+        importer_set = self._symbol_importers.get(symbol, set())
+
+        if defining_file is not None:
+            importer_set = {
+                importer
+                for importer in importer_set
+                if defining_file
+                in self._symbol_importer_targets.get((symbol, importer), set())
+            }
+
+        defining_set = self._symbol_def_files.get(symbol, set())
+        return SymbolFanIn(
+            symbol=symbol,
+            file_count=len(importer_set),
+            importer_files=tuple(sorted(importer_set)),
+            defining_files=tuple(sorted(defining_set)),
+            ambiguous=len(defining_set) > 1,
+        )
+
     def find_cycles(self) -> list[list[str]]:
         """Detect circular dependencies using DFS."""
         cycles: list[list[str]] = []
@@ -520,6 +626,10 @@ class DependencyGraph:
             "edges": [list(e) for e in self.edges()],
             "node_count": len(self._nodes),
             "edge_count": len(self._edges),
+            # PR-0.2 additive: number of distinct symbol names with at
+            # least one project-internal importer. Additive only;
+            # existing keys unchanged.
+            "symbol_index_size": len(self._symbol_importers),
         }
 
 

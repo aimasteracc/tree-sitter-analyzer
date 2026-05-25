@@ -45,7 +45,15 @@ class CodeGraphMetricsTool(BaseMCPTool):
     def _get_cache(self) -> Any:
         if self._cache is not None:
             return self._cache
-        cache = ensure_indexed(self.project_root)
+        # codegraph_metrics is a READ-only metrics surface. Building
+        # the AST index synchronously here regularly tripped MCP
+        # client timeouts (30-60 s on a 1500-file repo, vs the 30 s
+        # default client timeout), surfacing as "tool never returns".
+        # Pass ``auto_build=False`` so we return ``None`` immediately
+        # when the cache is empty; ``_collect_cache_metrics`` already
+        # surfaces the right hint ("Run ast_cache mode=index first")
+        # for that path.
+        cache = ensure_indexed(self.project_root, auto_build=False)
         if cache is not None:
             self._cache = cache
         return self._cache

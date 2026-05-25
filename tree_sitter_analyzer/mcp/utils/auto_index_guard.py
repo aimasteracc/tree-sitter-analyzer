@@ -38,11 +38,30 @@ _lock = threading.Lock()
 _indexed_roots: dict[str, bool] = {}
 
 
-def ensure_indexed(project_root: str | None, max_files: int = 5000) -> Any:
-    """Return a ready-to-query ASTCache, auto-indexing if needed.
+def ensure_indexed(
+    project_root: str | None,
+    max_files: int = 5000,
+    *,
+    auto_build: bool = True,
+) -> Any:
+    """Return a ready-to-query ASTCache, optionally auto-indexing if empty.
 
-    Returns ``None`` when ``project_root`` is ``None`` or indexing fails.
-    Thread-safe: concurrent calls for the same root block on a single index.
+    Returns ``None`` when ``project_root`` is ``None``, when indexing
+    fails, or when ``auto_build=False`` and the cache is empty.
+    Thread-safe: concurrent calls for the same root block on a single
+    index build.
+
+    ``auto_build`` controls the cold-start behaviour:
+
+    * **True** (default, legacy) — synchronously index the project if
+      the cache is empty. Can take 30-60 s on a 1500-file repo and
+      regularly trips MCP clients' default 30 s tool-call timeouts,
+      surfacing as a "stuck server" report from the operator.
+    * **False** — fail fast. If the cache is empty, return ``None``
+      immediately so the calling tool can surface "run
+      codegraph_autoindex first" rather than blocking. Read-only
+      tools that don't *need* to build the cache (``codegraph_metrics``,
+      ``codegraph_status``) should pass this.
     """
     if project_root is None:
         return None
@@ -66,6 +85,14 @@ def ensure_indexed(project_root: str | None, max_files: int = 5000) -> Any:
         if stats.get("total_files", 0) > 0:
             _indexed_roots[project_root] = True
             return cache
+
+        if not auto_build:
+            # Cache is empty and the caller opted out of synchronous
+            # indexing — return ``None`` so the tool can surface a
+            # "cache empty, run codegraph_autoindex first" hint
+            # instead of blocking the MCP request for 30-60 s and
+            # tripping the client timeout.
+            return None
 
         logger.info("auto-index: warming cache for %s", project_root)
         try:
