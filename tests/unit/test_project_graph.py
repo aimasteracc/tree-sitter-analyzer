@@ -205,6 +205,188 @@ class TestDependencyGraph:
 
 
 # ============================================================
+# PR-0.2: symbol_in_degree() — symbol-level fan-in primitive
+# ============================================================
+
+
+class TestSymbolInDegree:
+    """Test the PR-0.2 ``symbol_in_degree()`` API.
+
+    The primitive answers "how many project files import this symbol by
+    name?" — feeding P4's ranked entry-point detection. RED tests track
+    the planner's spec in ``.recon/pr-0-2-design.md``; GREEN tests are
+    regression guards on the existing public surface.
+    """
+
+    @pytest.fixture
+    def py_graph(self):
+        from tree_sitter_analyzer.project_graph import DependencyGraph
+
+        return DependencyGraph(str(PY_PROJECT))
+
+    @pytest.fixture
+    def custom_graph(self, tmp_path):
+        """Build a small focused project for the cases the PY_PROJECT
+        fixture doesn't cover (ambiguous defs, repeated imports, etc.).
+        """
+        from tree_sitter_analyzer.project_graph import DependencyGraph
+
+        (tmp_path / "utils.py").write_text(
+            "def format_thing(x):\n    return str(x)\n"
+            "\n"
+            "def never_imported_helper():\n    return None\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "main.py").write_text(
+            "from utils import format_thing\n"
+            "from utils import format_thing  # duplicate import on purpose\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "cli.py").write_text(
+            "from utils import format_thing\n", encoding="utf-8"
+        )
+        return DependencyGraph(str(tmp_path))
+
+    # ---- RED tests (define the new contract) ----
+
+    def test_R1_simple_fan_in_count(self, custom_graph):
+        # main.py and cli.py both import format_thing → file_count = 2.
+        result = custom_graph.symbol_in_degree("format_thing")
+        assert result.file_count == 2
+        assert set(result.importer_files) == {"main.py", "cli.py"}
+        # Definitions: utils.py only — not ambiguous.
+        assert result.defining_files == ("utils.py",)
+        assert result.ambiguous is False
+
+    def test_R2_zero_for_unimported_defined_symbol(self, custom_graph):
+        # never_imported_helper is defined in utils.py but no file imports it.
+        result = custom_graph.symbol_in_degree("never_imported_helper")
+        assert result.file_count == 0
+        assert result.importer_files == ()
+        assert result.defining_files == ("utils.py",)
+
+    def test_R3_zero_for_unknown_symbol_no_raise(self, custom_graph):
+        # Symbol that doesn't exist anywhere — must NOT raise.
+        result = custom_graph.symbol_in_degree("xyz_does_not_exist")
+        assert result.symbol == "xyz_does_not_exist"
+        assert result.file_count == 0
+        assert result.importer_files == ()
+        assert result.defining_files == ()
+        assert result.ambiguous is False
+
+    def test_R4_dedupes_repeated_imports_in_same_file(self, custom_graph):
+        # main.py imports format_thing twice → still counts as 1 importer file.
+        result = custom_graph.symbol_in_degree("format_thing")
+        assert "main.py" in result.importer_files
+        # The set was deduped during _build, so main.py appears exactly once.
+        assert sum(1 for f in result.importer_files if f == "main.py") == 1
+
+    def test_R5_ambiguous_when_two_files_define_same_name(self, tmp_path):
+        from tree_sitter_analyzer.project_graph import DependencyGraph
+
+        (tmp_path / "a.py").write_text("class Helper: pass\n", encoding="utf-8")
+        (tmp_path / "b.py").write_text("class Helper: pass\n", encoding="utf-8")
+        (tmp_path / "main.py").write_text("from a import Helper\n", encoding="utf-8")
+        graph = DependencyGraph(str(tmp_path))
+        result = graph.symbol_in_degree("Helper")
+        assert result.ambiguous is True
+        assert set(result.defining_files) == {"a.py", "b.py"}
+
+    def test_R6_disambiguate_by_defining_file(self, tmp_path):
+        from tree_sitter_analyzer.project_graph import DependencyGraph
+
+        (tmp_path / "a.py").write_text("class Helper: pass\n", encoding="utf-8")
+        (tmp_path / "b.py").write_text("class Helper: pass\n", encoding="utf-8")
+        # one importer per definition
+        (tmp_path / "uses_a.py").write_text("from a import Helper\n", encoding="utf-8")
+        (tmp_path / "uses_b.py").write_text("from b import Helper\n", encoding="utf-8")
+        graph = DependencyGraph(str(tmp_path))
+
+        result_default = graph.symbol_in_degree("Helper")
+        assert result_default.file_count == 2  # combined
+
+        result_a_only = graph.symbol_in_degree("Helper", defining_file="a.py")
+        assert result_a_only.file_count == 1
+        assert result_a_only.importer_files == ("uses_a.py",)
+
+    def test_R7_relative_import_counts(self, py_graph):
+        # main.py uses ``from .utils import helper, formatter`` — both
+        # named imports must register as importers of those symbols.
+        result_helper = py_graph.symbol_in_degree("helper")
+        assert "main.py" in result_helper.importer_files
+        result_formatter = py_graph.symbol_in_degree("formatter")
+        assert "main.py" in result_formatter.importer_files
+
+    def test_R8_stdlib_names_not_indexed(self, py_graph):
+        # main.py has ``from pathlib import Path`` — Path lives in
+        # stdlib, not the project, so the resolver returns no project
+        # file. The `resolved in self._nodes` gate must keep `Path`
+        # out of the index.
+        result = py_graph.symbol_in_degree("Path")
+        assert result.file_count == 0
+        assert result.defining_files == ()
+
+    def test_R9_js_bare_imports_yield_no_symbol_entry(self, tmp_path):
+        # PR-0.2 ships Python-only symbol extraction; JS files yield
+        # no symbol-level data (the import_extractors emit ``names: []``
+        # for JS bare imports, so the symbol-importer guard skips them).
+        from tree_sitter_analyzer.project_graph import DependencyGraph
+
+        (tmp_path / "lib.js").write_text("export function foo() {}\n", encoding="utf-8")
+        (tmp_path / "app.js").write_text(
+            "import { foo } from './lib';\n", encoding="utf-8"
+        )
+        graph = DependencyGraph(str(tmp_path))
+        # The file-edge layer still works …
+        assert "app.js" in graph.dependents_of("lib.js")
+        # … but the symbol layer is empty for JS in PR-0.2 (documented
+        # limitation; per-language extractors are follow-up PRs).
+        assert graph.symbol_in_degree("foo").file_count == 0
+        assert graph.symbol_in_degree("foo").defining_files == ()
+
+    # ---- GREEN tests (regression guard on existing surface) ----
+
+    def test_G1_dependents_of_unchanged(self, py_graph):
+        # PR-0.2 must not regress file-level dependents_of.
+        assert py_graph.dependents_of("utils.py") == ["main.py"]
+
+    def test_G2_to_dict_backward_compatible(self, py_graph):
+        result = py_graph.to_dict()
+        # All v1 keys still present.
+        for key in ("project_root", "nodes", "edges", "node_count", "edge_count"):
+            assert key in result, f"existing key {key} dropped from to_dict()"
+        # New additive key is present and non-negative.
+        assert "symbol_index_size" in result
+        assert result["symbol_index_size"] >= 0
+
+    def test_G3_find_cycles_unchanged(self, py_graph):
+        # PY_PROJECT has an intentional cycle (used by TestCycleDetection).
+        cycles = py_graph.find_cycles()
+        assert isinstance(cycles, list)
+
+    def test_G4_no_self_imports_polluting_count(self, tmp_path):
+        # ``from . import sub`` resolves to ``sub.py`` AND emits
+        # ``names: ["sub"]``. The submodule-as-name guard in _build()
+        # must skip this; otherwise every file that does ``from . import
+        # sub`` would falsely count itself as a symbol-importer of every
+        # name in sub.py.
+        from tree_sitter_analyzer.project_graph import DependencyGraph
+
+        (tmp_path / "sub.py").write_text(
+            "def real_symbol():\n    pass\n", encoding="utf-8"
+        )
+        (tmp_path / "main.py").write_text("from . import sub\n", encoding="utf-8")
+        graph = DependencyGraph(str(tmp_path))
+
+        # ``sub`` should NOT be in the symbol importer index — it is
+        # the module handle, not a symbol from sub.py.
+        result = graph.symbol_in_degree("sub")
+        # ``sub`` is also the basename of sub.py, so no file should
+        # appear as a symbol-importer of the name "sub".
+        assert "main.py" not in result.importer_files
+
+
+# ============================================================
 # Cycle detection tests
 # ============================================================
 
