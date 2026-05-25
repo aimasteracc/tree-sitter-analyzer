@@ -39,8 +39,8 @@ from typing import Literal
 logger = logging.getLogger(__name__)
 
 
+# Coarse classification of how usable git history is for a given file.
 GitState = Literal["tracked", "untracked", "shallow", "no_repo"]
-"""Coarse classification of how usable git history is for a given file."""
 
 
 _SECONDS_PER_DAY = 86_400
@@ -333,6 +333,8 @@ def _is_tracked(repo_root: str, abs_path: str) -> bool:
             ["git", "-C", repo_root, "ls-files", "--error-unmatch", "--", rel],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=_DEFAULT_GIT_TIMEOUT,
             check=False,
         )
@@ -370,6 +372,8 @@ def _run_git_log(
             args,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=_DEFAULT_GIT_TIMEOUT,
             check=False,
         )

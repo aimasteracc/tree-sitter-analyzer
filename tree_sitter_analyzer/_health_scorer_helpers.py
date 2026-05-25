@@ -76,6 +76,8 @@ def find_git_root(start_dir: Path) -> Path | None:
         ["git", "rev-parse", "--show-toplevel"],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=5,
         cwd=str(start_dir),
     )
@@ -97,6 +99,8 @@ def count_recent_commits(repo_root: Path, pathspec: str) -> int | None:
         ],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=5,
         cwd=str(repo_root),
     )

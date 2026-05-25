@@ -1,5 +1,194 @@
 # Changelog
 
+## [1.15.0] - 2026-05-25
+
+Code-map quality release. Lands the first wave of the v1.15 code-map
+improvement PRD (see `wiki/tsa-code-map-improvement-prd.md`): the
+**`is_fixture` safety net** that prevents agents from refactoring
+files used as negative test fixtures, plus two foundational
+primitives — a `CLAUDE.md` YAML frontmatter parser and a
+`symbol_in_degree()` import-graph primitive — that unblock the next
+batch of PRD work (P4 entry-point honesty, P5 intentional_design
+verdict overrides). Two MCP startup UX bugs also fixed.
+
+### Added
+
+- **`is_fixture` detection + `safe_to_edit` verdict override**.
+  *(PR #150, P3.1 of the v1.15 code-map improvement PRD)*
+
+  When an agent calls `safe_to_edit` on a file referenced as a
+  negative test fixture (e.g. `tree_sitter_analyzer/languages/java_plugin.py`
+  used by `test_python_detects_deep_nesting` for its deep-nesting
+  shape), the verdict is now promoted to **`UNSAFE`** with a
+  `TEST_FIXTURE` `reason_code` and three evidence lines from
+  `tests/`. Refactoring fixture files silently breaks tests — the
+  `feedback_test-fixture-files` incident class burned a full session;
+  this fix prevents recurrence.
+
+  Detection is two-tier and zero-LLM:
+  - **Tier 1 (allowlist)** — `CLAUDE.md` `fixture_allowlist` YAML
+    frontmatter, human-curated, confidence `1.0`.
+  - **Tier 2 (heuristic)** — AST scan of `tests/**/*.py` for three
+    signal patterns observed by real-repo grep:
+    - module-level `Path(...)` joins ending in a project basename → `0.9`
+    - `SAMPLE_*` / `FIXTURE_*` / `GOLDEN_*` constants → `0.85`
+    - bare `tree_sitter_analyzer/.../X.py` literals → `0.7`
+  - Sibling-cluster suppression kills the dominant false positive
+    (lists of `*_plugin.py` filenames are plugin manifests, not
+    fixture references).
+
+  Verdict mapping: confidence ≥ 0.85 → `UNSAFE`; 0.7–0.85 → `CAUTION`;
+  below 0.7 → no override. Composed via the existing `_max_verdict()`
+  chokepoint in `safe_to_edit_helpers.py`.
+
+  Cache: SHA-1 over `(mtime_ns, size)` of every `tests/**/*.py` file,
+  stored at `.ast-cache/fixture_index.json`. Rejects dir-mtime
+  (unreliable on macOS APFS / NFS / CI tarballs).
+
+  Roll-back lever: `TSA_DISABLE_FIXTURE_DETECTION=1` env var
+  short-circuits to a no-op `FixtureFact`.
+
+- **`CLAUDE.md` YAML frontmatter parser** (`tree_sitter_analyzer/utils/claude_md_frontmatter.py`).
+  *(PR #148, PR-0.3 of the v1.15 code-map improvement PRD)*
+
+  Shared infrastructure for **P3** (`fixture_allowlist` source) and
+  the upcoming **P5** (`intentional_design` rules that drive
+  `safe_to_edit` verdict overrides for locked design decisions
+  beyond fixtures — e.g. "TOON default is locked; do not flip to
+  JSON"). Public API:
+  - `load_frontmatter(project_root) -> dict`
+  - `parse_intentional_design(data) -> list[IntentionalDesignRule]`
+  - `parse_fixture_allowlist(data) -> list[FixtureAllowlistEntry]`
+  - `VALID_VERDICT_ACTIONS` frozenset aligned with
+    `base_tool._LEGAL_VERDICTS` (`SAFE / CAUTION / REVIEW / UNSAFE /
+    INFO / WARN / ERROR / NOT_FOUND`). The architect's original
+    spec used `REFUSE`; we coerce that to `INFO` with a warning
+    rather than silently dropping unknown verdict tokens.
+
+  All failure modes (missing file, no frontmatter, malformed YAML,
+  invalid fields) degrade via `WARNING` log + empty return — never
+  raise — so consumer tools can rely on the parser.
+
+  New deps: `pyyaml>=6.0`, `pathspec>=0.12.1`.
+
+- **`DependencyGraph.symbol_in_degree()` primitive** + new
+  `tree_sitter_analyzer/symbol_extractors.py` module.
+  *(PR #149, PR-0.2 of the v1.15 code-map improvement PRD)*
+
+  Answers "how many project files import this symbol by name?" —
+  the missing primitive for **P4** (entry-point ranking honesty).
+  Today the `codegraph_overview` tool keys entry-points off
+  `CallGraph._callers` (function-level call edges), which conflates
+  "no callers" with "true entry point" and collides with
+  `dead_code` detection. P4 will use the new primitive to compute
+  an additive `entry_score` with `confidence` + `evidence` fields.
+
+  API:
+  ```python
+  @dataclass(frozen=True)
+  class SymbolFanIn:
+      symbol: str
+      file_count: int                       # distinct importers, deduped
+      importer_files: tuple[str, ...]
+      defining_files: tuple[str, ...]
+      ambiguous: bool                       # len(defining_files) > 1
+
+  class DependencyGraph:
+      def symbol_in_degree(
+          self, symbol: str, *, defining_file: str | None = None,
+      ) -> SymbolFanIn: ...
+  ```
+
+  Scope: Python only in PR-0.2 (other languages return empty set
+  as documented limitation). Additive — no change to existing
+  `dependents_of` / `find_cycles` / `BlastRadius` / `to_dict` keys
+  (regression guards G1-G4 in the test suite).
+
+### Fixed
+
+- **MCP server no longer advertises an unimplemented
+  `LoggingCapability`**, eliminating the `[error] Failed to set MCP
+  server log level: Error: MPC -32601: Method not found` line in
+  every client log on every connection. *(PR #151)*
+
+  The capability was declared in `build_initialization_options`,
+  which signals clients to call `logging/setLevel` per the MCP spec,
+  but TSA never registered the matching handler — so every client
+  call got back JSON-RPC `-32601` and the client surfaced it as
+  `[error]` noise. Honest fix: don't advertise what we don't
+  implement. TSA's actual verbosity controls (`TSA_DEBUG`, standard
+  Python logging config) are unchanged.
+
+- **`codegraph_metrics` no longer hangs MCP clients on cold AST
+  cache**. *(PR #151)*
+
+  User report: `codegraph_metrics({sections:[cache,health]})`
+  "never returns". Reproduced as **50.34 s real time** on a 1500-file
+  repo with empty cache. MCP clients default to a 30 s tool-call
+  timeout, so the call drops client-side and surfaces as "tool
+  never returns" even though the server eventually completes the
+  index build.
+
+  Root cause: `_get_cache()` synchronously called
+  `ensure_indexed()` which triggered `cache.index_project(max_files=5000)`
+  when the AST cache was empty.
+
+  Fix: new `auto_build` kwarg on `ensure_indexed` (default `True`
+  for backward compat). `codegraph_metrics` is a read-only metrics
+  surface — passes `auto_build=False` so an empty cache returns
+  `None` immediately and the tool emits its existing hint (`Run
+  ast_cache mode=index first`) instead of blocking the request.
+  Cold-start now returns in **0.01 s**.
+
+- **Subprocess output decoding now forces UTF-8 on every
+  `text=True` call site**, eliminating the `UnicodeDecodeError:
+  'cp932' codec can't decode byte ...` `_readerthread` crashes that
+  hit every TSA user on Japanese / Chinese / Korean Windows
+  (cp932 / cp936 / cp949 locales).
+
+  Reproduced from real VS Code MCP logs on Windows + Japanese
+  locale: every MCP tool that shells out to `git`, the indexer,
+  or test runners (`change_impact`, `ast_diff`, `semantic_classify`,
+  `codegraph_pr_review`, health scorer, project index, etc.) hit
+  a per-call `Thread-N (_readerthread)` exception when the child
+  process emitted UTF-8 bytes the parent's locale-default decoder
+  could not parse. The server kept running but every subprocess
+  output was silently dropped.
+
+  Fix: append `encoding="utf-8", errors="replace"` to every
+  `subprocess.run` / `Popen` call that was using `text=True` without
+  an explicit codec. 15 call sites patched across 9 modules. The
+  `errors="replace"` belt-and-braces means any genuinely non-UTF-8
+  byte still surfaces a `U+FFFD` REPLACEMENT CHARACTER instead of
+  killing the reader thread.
+
+  This bug pre-dates 1.15.0 — it has affected every non-ASCII
+  Windows user since TSA started shelling out. Bundled into 1.15.0
+  because the report came in during release prep.
+
+### Internal
+
+- 22 new tests for the fixture detector + AST scanner
+  (`tests/unit/security/test_fixture_detector.py`), including a
+  real-repo regression canary
+  (`test_real_repo_finds_java_plugin`) that pins the
+  `feedback_test-fixture-files` incident.
+- 37 new tests for the CLAUDE.md frontmatter parser
+  (`tests/unit/utils/test_claude_md_frontmatter.py`), 92.86 %
+  coverage.
+- 13 new `TestSymbolInDegree` cases + 4 regression guards on the
+  existing `DependencyGraph` public surface.
+- Independent multi-agent review pass over the v1.15 code-map PRD
+  (Reality Checker, Product Manager, Backend Architect) caught
+  5 sketch-vs-code factual errors before any implementation
+  started — see `wiki/tsa-code-map-improvement-prd.md` § 0 errata.
+
+### Compatibility
+
+No breaking changes. All additions are opt-in or operate behind
+existing tool envelopes. Roll-back levers:
+`TSA_DISABLE_FIXTURE_DETECTION=1` (P3.1).
+
 ## [1.14.0] - 2026-05-24
 
 Quality + consistency release. Adds Swift module-interface support
