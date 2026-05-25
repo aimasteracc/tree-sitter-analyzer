@@ -70,6 +70,58 @@ anchor_names = st.one_of(
 )
 
 
+def _assert_base_element_attrs(element) -> None:
+    """Assert that base CodeElement attributes are present."""
+    for attr in (
+        "name",
+        "start_line",
+        "end_line",
+        "raw_text",
+        "language",
+        "element_type",
+    ):
+        assert hasattr(element, attr), f"YAMLElement must have '{attr}' attribute"
+
+
+def _assert_yaml_specific_attrs(element) -> None:
+    """Assert that YAML-specific attributes are present."""
+    for attr in (
+        "key",
+        "value",
+        "value_type",
+        "anchor_name",
+        "alias_target",
+        "nesting_level",
+        "document_index",
+        "child_count",
+    ):
+        assert hasattr(element, attr), f"YAMLElement must have '{attr}' attribute"
+
+
+def _assert_summary_required_fields(summary: dict) -> None:
+    """Assert that a to_summary_item() result has required fields."""
+    for field in ("name", "type", "lines"):
+        assert field in summary, f"Summary must contain '{field}' field"
+    assert "start" in summary["lines"], "Lines must contain 'start' field"
+    assert "end" in summary["lines"], "Lines must contain 'end' field"
+    for field in ("key", "value_type", "nesting_level", "document_index"):
+        assert field in summary, f"Summary must contain '{field}' field"
+
+
+def _assert_json_roundtrip(summary: dict) -> None:
+    """Assert that summary is JSON-serializable and round-trips correctly."""
+    try:
+        json_str = json.dumps(summary)
+        assert isinstance(json_str, str) and len(json_str) > 0
+    except (TypeError, ValueError) as e:
+        pytest.fail(f"Summary must be JSON serializable: {e}")
+    try:
+        parsed = json.loads(json_str)
+        assert parsed == summary, "JSON round-trip must preserve data"
+    except json.JSONDecodeError as e:
+        pytest.fail(f"JSON must be parseable: {e}")
+
+
 class TestYAMLElementProperties:
     """Property-based tests for YAMLElement data model."""
 
@@ -132,45 +184,9 @@ class TestYAMLElementProperties:
             child_count=child_count,
         )
 
-        # Property: All required base CodeElement attributes must be present
-        assert hasattr(element, "name"), "YAMLElement must have 'name' attribute"
-        assert hasattr(element, "start_line"), (
-            "YAMLElement must have 'start_line' attribute"
-        )
-        assert hasattr(element, "end_line"), (
-            "YAMLElement must have 'end_line' attribute"
-        )
-        assert hasattr(element, "raw_text"), (
-            "YAMLElement must have 'raw_text' attribute"
-        )
-        assert hasattr(element, "language"), (
-            "YAMLElement must have 'language' attribute"
-        )
-        assert hasattr(element, "element_type"), (
-            "YAMLElement must have 'element_type' attribute"
-        )
-
-        # Property: All YAML-specific attributes must be present
-        assert hasattr(element, "key"), "YAMLElement must have 'key' attribute"
-        assert hasattr(element, "value"), "YAMLElement must have 'value' attribute"
-        assert hasattr(element, "value_type"), (
-            "YAMLElement must have 'value_type' attribute"
-        )
-        assert hasattr(element, "anchor_name"), (
-            "YAMLElement must have 'anchor_name' attribute"
-        )
-        assert hasattr(element, "alias_target"), (
-            "YAMLElement must have 'alias_target' attribute"
-        )
-        assert hasattr(element, "nesting_level"), (
-            "YAMLElement must have 'nesting_level' attribute"
-        )
-        assert hasattr(element, "document_index"), (
-            "YAMLElement must have 'document_index' attribute"
-        )
-        assert hasattr(element, "child_count"), (
-            "YAMLElement must have 'child_count' attribute"
-        )
+        # Property: All required attributes must be present
+        _assert_base_element_attrs(element)
+        _assert_yaml_specific_attrs(element)
 
         # Property: Attribute values must match what was set
         assert element.name == name, f"Expected name '{name}', got '{element.name}'"
@@ -299,48 +315,16 @@ class TestYAMLElementProperties:
         assert isinstance(summary, dict), (
             f"to_summary_item() must return dict, got {type(summary)}"
         )
-
-        # Property: Summary must contain required fields
-        assert "name" in summary, "Summary must contain 'name' field"
-        assert "type" in summary, "Summary must contain 'type' field"
-        assert "lines" in summary, "Summary must contain 'lines' field"
-
-        # Property: Lines must contain start and end
-        assert "start" in summary["lines"], "Lines must contain 'start' field"
-        assert "end" in summary["lines"], "Lines must contain 'end' field"
+        _assert_summary_required_fields(summary)
 
         # Property: Summary values must match element values
-        assert summary["name"] == name, (
-            f"Summary name '{summary['name']}' must match element name '{name}'"
-        )
-        assert summary["type"] == element_type, (
-            f"Summary type '{summary['type']}' must match element_type '{element_type}'"
-        )
-        assert summary["lines"]["start"] == start_line, "Summary start line must match"
-        assert summary["lines"]["end"] == end_line, "Summary end line must match"
+        assert summary["name"] == name
+        assert summary["type"] == element_type
+        assert summary["lines"]["start"] == start_line
+        assert summary["lines"]["end"] == end_line
 
-        # Property: YAML-specific fields in summary
-        assert "key" in summary, "Summary must contain 'key' field"
-        assert "value_type" in summary, "Summary must contain 'value_type' field"
-        assert "nesting_level" in summary, "Summary must contain 'nesting_level' field"
-        assert "document_index" in summary, (
-            "Summary must contain 'document_index' field"
-        )
-
-        # Property: Summary must be JSON serializable
-        try:
-            json_str = json.dumps(summary)
-            assert isinstance(json_str, str), "JSON serialization must produce string"
-            assert len(json_str) > 0, "JSON string must not be empty"
-        except (TypeError, ValueError) as e:
-            pytest.fail(f"Summary must be JSON serializable: {e}")
-
-        # Property: JSON round-trip must preserve data
-        try:
-            parsed = json.loads(json_str)
-            assert parsed == summary, "JSON round-trip must preserve data"
-        except json.JSONDecodeError as e:
-            pytest.fail(f"JSON must be parseable: {e}")
+        # Property: Summary must be JSON serializable with round-trip
+        _assert_json_roundtrip(summary)
 
     @settings(max_examples=100)
     @given(

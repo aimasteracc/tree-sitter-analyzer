@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.15.2] - 2026-05-25
+
+Patch on v1.15.1. Adds the MCP E2E test framework, tunes the perf logger,
+and cleans up internal complexity — no user-facing behaviour changes.
+
+### Added
+
+- **MCP black-box E2E test suite** (`tests/e2e/`). Smoke, functional, and
+  real-repo test layers that exercise the MCP server as a subprocess. Four
+  new CI workflows: `e2e-locale.yml` (cp932/cp936/cp949 regression guard),
+  `e2e-real-repos.yml`, `health-monitor.yml` (daily monitoring + auto-issue
+  on failure). *(#156)*
+
+### Fixed
+
+- **Perf logger level inheritance**. Logger now inherits the root log level
+  and has propagation disabled, fixing spurious noise at DEBUG level.
+  *(#154)*
+
+### Changed
+
+- **Internal complexity cleanup**. `validate_workflows.py` C-grade → B-grade
+  via helper extraction. `tree_sitter_analyzer/_ast_extraction.py` extracted
+  from `ast_cache.py` to stay under 500-line limit and make
+  `_worker_index_file` picklable independently. *(auto-sprint #155)*
+
+---
+
 ## [1.15.1] - 2026-05-25
 
 Patch release. Fixes a long-standing subprocess decoding crash that
