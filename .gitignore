@@ -372,3 +372,10 @@ docs/designs/tree-sitter-analyzer-*.md
 ruvector.db
 .query_cache.json
 coverage.json
+
+# PM/agent workspace (recon / review / architect notes — not source)
+.recon/
+
+# Understand-Anything dashboard artifacts (UA writes knowledge-graph.json + intermediate/ + tmp/)
+.understand-anything/
+**/.understand-anything/
