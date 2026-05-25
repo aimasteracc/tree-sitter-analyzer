@@ -280,6 +280,7 @@ from ._ast_extraction import (  # noqa: E402
     _extract_structure,
     _extract_symbols,
     _has_fts5,
+    _node_text,  # noqa: F401 - public back-compat re-export
     _worker_index_file,
 )
 
