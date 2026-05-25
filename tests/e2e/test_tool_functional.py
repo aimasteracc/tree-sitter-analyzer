@@ -186,7 +186,8 @@ class TestCodegraphStatus:
         response = client.call("codegraph_status", {}, timeout=10.0)
         if "error" in response:
             pytest.skip(
-                "codegraph_status returned JSON-RPC error; skipping shape check"
+                "tracked: codegraph_status returned JSON-RPC error; "
+                "skipping shape check — index may not exist in this env"
             )
         content = response["result"]["content"]
         assert content, "codegraph_status returned empty content"

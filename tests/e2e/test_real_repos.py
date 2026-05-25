@@ -59,7 +59,9 @@ def _find_python_file(repo_dir: Path) -> str:
     for candidate in sorted(repo_dir.rglob("*.py")):
         if candidate.stat().st_size < 50_000:
             return str(candidate.relative_to(repo_dir))
-    pytest.skip(f"No Python file found in {repo_dir}")
+    pytest.skip(
+        f"tracked: No Python file found in {repo_dir} — repo layout changed?"
+    )  # tracked: real-repo layout drift
 
 
 # ---------------------------------------------------------------------------

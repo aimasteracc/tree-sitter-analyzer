@@ -421,7 +421,8 @@ def clone_repo_factory(
         )
         if result.returncode != 0:
             pytest.skip(
-                f"git clone {url!r} failed — likely offline or repo moved.\n"
+                f"tracked: git clone {url!r} failed — offline or repo moved. "
+                "Real-repo E2E requires network; skip is expected in air-gapped envs.\n"
                 + result.stderr.decode("utf-8", errors="replace")[:300]
             )
         cache[name] = dest

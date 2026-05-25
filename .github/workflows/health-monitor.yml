@@ -84,7 +84,7 @@ jobs:
           fi
 
           uv run pytest tests/e2e/ -m "e2e${EXTRA_MARKS}" \
-            -p no:xdist -p no:rerunfailures \
+            --override-ini="addopts=--strict-markers --verbose --tb=short" \
             --timeout=60 --tb=short -v \
             --junit-xml=health-report.xml > health-output.txt 2>&1
           EXIT_CODE=$?
@@ -176,7 +176,7 @@ jobs:
               `### Next steps`,
               ``,
               `1. Check the [workflow run](${runUrl}) for full output.`,
-              `2. Reproduce locally: \`uv run pytest tests/e2e/ -m e2e -p no:xdist -v\``,
+              `2. Reproduce locally: \`uv run pytest tests/e2e/ -m e2e --override-ini="addopts=--strict-markers --verbose --tb=short" -v\``,
               `3. Fix the regression and close this issue manually after confirming green.`,
               ``,
               `_Auto-created by [Health Monitor](${runUrl})_`,

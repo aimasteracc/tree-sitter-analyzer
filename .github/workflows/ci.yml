@@ -63,8 +63,8 @@ jobs:
         run: |
           echo "### E2E Test Results" >> $GITHUB_STEP_SUMMARY
           uv run pytest tests/e2e/ -m e2e \
-            -p no:xdist -p no:rerunfailures \
-            --timeout=60 --tb=short -v > e2e-output.txt 2>&1 || touch e2e_failed
+            --override-ini="addopts=--strict-markers --verbose --tb=short" \
+            --timeout=60 -v > e2e-output.txt 2>&1 || touch e2e_failed
           cat e2e-output.txt
           echo '```text' >> $GITHUB_STEP_SUMMARY
           tail -n 25 e2e-output.txt >> $GITHUB_STEP_SUMMARY
