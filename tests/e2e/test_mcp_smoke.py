@@ -19,7 +19,7 @@ pytestmark = pytest.mark.e2e
 # GitHub Actions cold-start is significantly slower than a warm local machine.
 # Apply a multiplier to latency budgets and call timeouts so the same tests
 # catch catastrophic hangs everywhere without false-failing on runner lag.
-_CI_FACTOR = 3 if os.environ.get("CI") else 1
+_CI_FACTOR = 5 if os.environ.get("CI") else 1
 
 
 class TestStartup:
