@@ -247,7 +247,16 @@ class TestNoExtraExports:
         public_items = [name for name in dir(utils) if not name.startswith("_")]
 
         # These are submodules, not items to export
-        submodules = ["logging", "tree_sitter_compat", "text_utils"]
+        submodules = [
+            "logging",
+            "tree_sitter_compat",
+            "text_utils",
+            # PR-0.3: CLAUDE.md frontmatter parser. Consumers import via
+            # the submodule path (``from tree_sitter_analyzer.utils
+            # .claude_md_frontmatter import load_frontmatter``), so no
+            # flat re-export is needed.
+            "claude_md_frontmatter",
+        ]
 
         for item in public_items:
             if item in submodules:
