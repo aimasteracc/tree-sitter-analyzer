@@ -9,6 +9,7 @@ from typing import Any
 
 from ....health_scorer import HealthScorer
 from ....project_graph import DependencyGraph
+from ....security.fixture_detector import fixture_to_verdict, is_fixture
 from ..file_health_tool import _build_signal
 from .constraint_violation_query import (
     constraint_risk_factor,
@@ -132,10 +133,20 @@ def _format_safe_to_edit_result(
         context.project_root, [_relative_for_constraints(context)]
     )
     constraint_verdict = verdict_from_violations(violations)
-    verdict = _max_verdict(base_verdict, constraint_verdict)
+    # P3: also check whether the file is a registered test fixture; that
+    # promotes the verdict on top of any constraint-derived escalation.
+    # The chokepoint design (see PRD §P3) is "every override flows
+    # through _max_verdict" — so chaining is the only safe composition.
+    fixture_fact = is_fixture(context.resolved_path, context.project_root)
+    fixture_verdict = fixture_to_verdict(fixture_fact)
+    verdict = _max_verdict(
+        _max_verdict(base_verdict, constraint_verdict), fixture_verdict
+    )
     risk_factors = list(facts.risk_factors)
     if violations:
         risk_factors.extend(constraint_risk_factor(row) for row in violations)
+    if fixture_fact.is_fixture:
+        risk_factors.append(_fixture_risk_factor(fixture_fact, context.file_path))
     recommendation = _format_recommendation(risk, facts, workflow)
     summary = build_agent_summary(workflow_context, workflow)
     # Promote agent_summary.verdict when constraint violations escalate
@@ -216,6 +227,32 @@ def _risk_to_verdict(risk: str) -> str:
     if risk_lower in ("caution", "medium"):
         return "CAUTION"
     return "SAFE"
+
+
+def _fixture_risk_factor(fact: Any, file_path: str) -> dict[str, Any]:
+    """Build a ``risk_factors`` entry for a detected test-fixture file.
+
+    Mirrors the shape of :func:`constraint_risk_factor` — a flat dict
+    with ``factor`` / ``reason_code`` / ``detail`` plus evidence so the
+    consumer agent can verify without a second tool call. See PRD §P3
+    and ``feedback_test-fixture-files`` for why this needs to land in
+    the response envelope (and not just the verdict).
+    """
+
+    return {
+        "factor": "test_fixture",
+        "reason_code": "TEST_FIXTURE",
+        "confidence": fact.confidence,
+        "source": fact.source,
+        "evidence": list(fact.evidence),
+        "note": fact.note,
+        "detail": (
+            f"{file_path} is referenced as a test fixture (confidence "
+            f"{fact.confidence:.2f}, source {fact.source}). Refactoring "
+            "this file will likely break the tests in the evidence "
+            "list — edit the test references first."
+        ),
+    }
 
 
 def _format_recommendation(
