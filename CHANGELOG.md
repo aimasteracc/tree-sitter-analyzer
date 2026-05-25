@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.15.1] - 2026-05-25
+## [1.15.2] - 2026-05-25
 
 Patch on v1.15.0. Adds the MCP E2E test framework, fixes Windows/non-UTF-8
 locale subprocess failures, tunes the perf logger, and cleans up internal
