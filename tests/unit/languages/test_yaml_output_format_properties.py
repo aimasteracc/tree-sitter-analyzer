@@ -48,6 +48,81 @@ document_indices = st.integers(min_value=0, max_value=5)
 child_counts = st.one_of(st.none(), st.integers(min_value=0, max_value=100))
 
 
+def _build_basic_yaml_elements(element_count: int) -> list:
+    """Build element_count basic YAML elements cycling through 4 types."""
+    elements = []
+    types = ["mapping", "sequence", "scalar", "document"]
+    for i in range(element_count):
+        element_type = types[i % 4]
+        elements.append(
+            create_yaml_element_dict(
+                name=f"element_{i}",
+                start_line=i + 1,
+                end_line=i + 1,
+                element_type=element_type,
+                key=f"key_{i}" if element_type == "mapping" else None,
+                value=f"value_{i}" if element_type in ["scalar", "mapping"] else None,
+                value_type="string" if element_type in ["scalar", "mapping"] else None,
+                nesting_level=i % 3,
+                document_index=0,
+            )
+        )
+    return elements
+
+
+def _build_mapping_yaml_elements(mapping_count: int) -> list:
+    """Build mapping_count YAML mapping elements."""
+    return [
+        create_yaml_element_dict(
+            name=f"key_{i}",
+            start_line=i + 1,
+            end_line=i + 1,
+            element_type="mapping",
+            key=f"key_{i}",
+            value=f"value_{i}",
+            value_type="string",
+            nesting_level=0,
+            document_index=0,
+        )
+        for i in range(mapping_count)
+    ]
+
+
+def _make_yaml_analysis_result(file_path: str, line_count: int, elements: list) -> dict:
+    """Build a standard analysis_result dict for YAML formatter tests."""
+    return {
+        "file_path": file_path,
+        "language": "yaml",
+        "line_count": line_count,
+        "elements": elements,
+        "analysis_metadata": {
+            "analysis_time": 0.1,
+            "language": "yaml",
+            "file_path": file_path,
+        },
+    }
+
+
+def _parse_json_from_output(output: str, context: str) -> dict:
+    """Extract the first JSON object from formatter output and parse it."""
+    lines = output.split("\n")
+    json_start = 0
+    for i, line in enumerate(lines):
+        if line.strip().startswith("{"):
+            json_start = i
+            break
+    try:
+        return json.loads("\n".join(lines[json_start:]))
+    except json.JSONDecodeError as e:
+        pytest.fail(f"{context} JSON must be valid: {e}")
+
+
+def _assert_format_succeeds(result: str, context: str) -> None:
+    """Assert that a formatter result is a non-empty string."""
+    assert isinstance(result, str), f"{context} must be a string"
+    assert len(result) > 0, f"{context} must not be empty"
+
+
 def create_yaml_element_dict(
     name: str,
     start_line: int,
@@ -105,108 +180,29 @@ class TestYAMLOutputFormatProperties:
         Validates: Requirements 4.3, 4.5
         """
         formatter = YAMLFormatter()
+        elements = _build_basic_yaml_elements(element_count)
+        analysis_result = _make_yaml_analysis_result(file_path, line_count, elements)
 
-        # Generate random elements
-        elements = []
-        for i in range(element_count):
-            element_type = ["mapping", "sequence", "scalar", "document"][i % 4]
-            elements.append(
-                create_yaml_element_dict(
-                    name=f"element_{i}",
-                    start_line=i + 1,
-                    end_line=i + 1,
-                    element_type=element_type,
-                    key=f"key_{i}" if element_type == "mapping" else None,
-                    value=f"value_{i}"
-                    if element_type in ["scalar", "mapping"]
-                    else None,
-                    value_type="string"
-                    if element_type in ["scalar", "mapping"]
-                    else None,
-                    nesting_level=i % 3,
-                    document_index=0,
-                )
-            )
-
-        analysis_result = {
-            "file_path": file_path,
-            "language": "yaml",
-            "line_count": line_count,
-            "elements": elements,
-            "analysis_metadata": {
-                "analysis_time": 0.1,
-                "language": "yaml",
-                "file_path": file_path,
-            },
-        }
-
-        # Property: format_advanced with json output must produce valid JSON
         json_output = formatter.format_advanced(analysis_result, output_format="json")
-        assert isinstance(json_output, str), "JSON output must be a string"
-        assert len(json_output) > 0, "JSON output must not be empty"
-
-        # Property: JSON output must be parseable
-        try:
-            # Extract JSON from output (skip title line)
-            lines = json_output.split("\n")
-            json_start = 0
-            for i, line in enumerate(lines):
-                if line.strip().startswith("{"):
-                    json_start = i
-                    break
-            json_content = "\n".join(lines[json_start:])
-            parsed = json.loads(json_content)
-            assert isinstance(parsed, dict), "Parsed JSON must be a dictionary"
-        except json.JSONDecodeError as e:
-            pytest.fail(f"JSON output must be valid JSON: {e}")
-
-        # Property: Parsed JSON must contain expected fields
+        _assert_format_succeeds(json_output, "JSON output")
+        parsed = _parse_json_from_output(json_output, "JSON output")
+        assert isinstance(parsed, dict), "Parsed JSON must be a dictionary"
         assert "file_path" in parsed, "JSON must contain file_path"
         assert "language" in parsed, "JSON must contain language"
         assert parsed["language"] == "yaml", "Language must be yaml"
 
-        # Property: format_summary must also produce valid JSON
         summary_output = formatter.format_summary(analysis_result)
-        assert isinstance(summary_output, str), "Summary output must be a string"
+        _assert_format_succeeds(summary_output, "Summary output")
+        summary_parsed = _parse_json_from_output(summary_output, "Summary output")
+        assert isinstance(summary_parsed, dict), "Summary JSON must be a dictionary"
+        assert "file_path" in summary_parsed, "Summary must contain file_path"
+        assert "language" in summary_parsed, "Summary must contain language"
 
-        # Extract and parse JSON from summary
-        lines = summary_output.split("\n")
-        json_start = 0
-        for i, line in enumerate(lines):
-            if line.strip().startswith("{"):
-                json_start = i
-                break
-        json_content = "\n".join(lines[json_start:])
-
-        try:
-            summary_parsed = json.loads(json_content)
-            assert isinstance(summary_parsed, dict), "Summary JSON must be a dictionary"
-            assert "file_path" in summary_parsed, "Summary must contain file_path"
-            assert "language" in summary_parsed, "Summary must contain language"
-        except json.JSONDecodeError as e:
-            pytest.fail(f"Summary JSON must be valid: {e}")
-
-        # Property: format_structure must also produce valid JSON
         structure_output = formatter.format_structure(analysis_result)
-        assert isinstance(structure_output, str), "Structure output must be a string"
-
-        # Extract and parse JSON from structure
-        lines = structure_output.split("\n")
-        json_start = 0
-        for i, line in enumerate(lines):
-            if line.strip().startswith("{"):
-                json_start = i
-                break
-        json_content = "\n".join(lines[json_start:])
-
-        try:
-            structure_parsed = json.loads(json_content)
-            assert isinstance(structure_parsed, dict), (
-                "Structure JSON must be a dictionary"
-            )
-            assert "file_path" in structure_parsed, "Structure must contain file_path"
-        except json.JSONDecodeError as e:
-            pytest.fail(f"Structure JSON must be valid: {e}")
+        _assert_format_succeeds(structure_output, "Structure output")
+        structure_parsed = _parse_json_from_output(structure_output, "Structure output")
+        assert isinstance(structure_parsed, dict), "Structure JSON must be a dictionary"
+        assert "file_path" in structure_parsed, "Structure must contain file_path"
 
     @settings(max_examples=100)
     @given(
@@ -231,67 +227,24 @@ class TestYAMLOutputFormatProperties:
         Validates: Requirements 4.3, 4.5
         """
         formatter = YAMLFormatter()
+        elements = _build_basic_yaml_elements(element_count)
+        analysis_result = _make_yaml_analysis_result(file_path, line_count, elements)
 
-        # Generate random elements
-        elements = []
-        for i in range(element_count):
-            element_type = ["mapping", "sequence", "scalar", "document"][i % 4]
-            elements.append(
-                create_yaml_element_dict(
-                    name=f"element_{i}",
-                    start_line=i + 1,
-                    end_line=i + 1,
-                    element_type=element_type,
-                    key=f"key_{i}" if element_type == "mapping" else None,
-                    value=f"value_{i}"
-                    if element_type in ["scalar", "mapping"]
-                    else None,
-                    value_type="string"
-                    if element_type in ["scalar", "mapping"]
-                    else None,
-                    nesting_level=i % 3,
-                    document_index=0,
-                )
-            )
-
-        analysis_result = {
-            "file_path": file_path,
-            "language": "yaml",
-            "line_count": line_count,
-            "elements": elements,
-            "analysis_metadata": {
-                "analysis_time": 0.1,
-                "language": "yaml",
-                "file_path": file_path,
-            },
-        }
-
-        # Property: format_advanced with text output must produce valid text
         text_output = formatter.format_advanced(analysis_result, output_format="text")
-        assert isinstance(text_output, str), "Text output must be a string"
-        assert len(text_output) > 0, "Text output must not be empty"
-
-        # Property: Text output must contain key information
+        _assert_format_succeeds(text_output, "Text output")
         assert "File:" in text_output or "file" in text_output.lower(), (
             "Text must mention file"
         )
         assert "Language:" in text_output or "yaml" in text_output.lower(), (
             "Text must mention language"
         )
-
-        # Property: Text output must be readable (no binary data)
         try:
-            # Check that output is valid UTF-8 text
             text_output.encode("utf-8")
         except UnicodeEncodeError as e:
             pytest.fail(f"Text output must be valid UTF-8: {e}")
 
-        # Property: format_table must produce valid markdown table
         table_output = formatter.format_table(analysis_result, table_type="full")
-        assert isinstance(table_output, str), "Table output must be a string"
-        assert len(table_output) > 0, "Table output must not be empty"
-
-        # Property: Table output should contain markdown table markers
+        _assert_format_succeeds(table_output, "Table output")
         assert "|" in table_output, "Table output should contain pipe characters"
         assert "#" in table_output, "Table output should contain markdown headers"
 
@@ -322,35 +275,8 @@ class TestYAMLOutputFormatProperties:
         Validates: Requirements 4.3, 4.5
         """
         formatter = YAMLFormatter()
-
-        # Generate mapping elements for tabular output
-        elements = []
-        for i in range(mapping_count):
-            elements.append(
-                create_yaml_element_dict(
-                    name=f"key_{i}",
-                    start_line=i + 1,
-                    end_line=i + 1,
-                    element_type="mapping",
-                    key=f"key_{i}",
-                    value=f"value_{i}",
-                    value_type="string",
-                    nesting_level=0,
-                    document_index=0,
-                )
-            )
-
-        analysis_result = {
-            "file_path": file_path,
-            "language": "yaml",
-            "line_count": mapping_count,
-            "elements": elements,
-            "analysis_metadata": {
-                "analysis_time": 0.1,
-                "language": "yaml",
-                "file_path": file_path,
-            },
-        }
+        elements = _build_mapping_yaml_elements(mapping_count)
+        analysis_result = _make_yaml_analysis_result(file_path, mapping_count, elements)
 
         # Property: format_table produces structured output
         table_output = formatter.format_table(analysis_result, table_type="full")
@@ -452,44 +378,21 @@ class TestYAMLOutputFormatProperties:
         }
 
         # Property: All format methods must succeed without exceptions
-        try:
-            summary = formatter.format_summary(analysis_result)
-            assert isinstance(summary, str), "Summary must be string"
-            assert len(summary) > 0, "Summary must not be empty"
-        except Exception as e:
-            pytest.fail(f"format_summary must not raise exception: {e}")
-
-        try:
-            structure = formatter.format_structure(analysis_result)
-            assert isinstance(structure, str), "Structure must be string"
-            assert len(structure) > 0, "Structure must not be empty"
-        except Exception as e:
-            pytest.fail(f"format_structure must not raise exception: {e}")
-
-        try:
-            advanced_json = formatter.format_advanced(
-                analysis_result, output_format="json"
-            )
-            assert isinstance(advanced_json, str), "Advanced JSON must be string"
-            assert len(advanced_json) > 0, "Advanced JSON must not be empty"
-        except Exception as e:
-            pytest.fail(f"format_advanced(json) must not raise exception: {e}")
-
-        try:
-            advanced_text = formatter.format_advanced(
-                analysis_result, output_format="text"
-            )
-            assert isinstance(advanced_text, str), "Advanced text must be string"
-            assert len(advanced_text) > 0, "Advanced text must not be empty"
-        except Exception as e:
-            pytest.fail(f"format_advanced(text) must not raise exception: {e}")
-
-        try:
-            table = formatter.format_table(analysis_result, table_type="full")
-            assert isinstance(table, str), "Table must be string"
-            assert len(table) > 0, "Table must not be empty"
-        except Exception as e:
-            pytest.fail(f"format_table must not raise exception: {e}")
+        _assert_format_succeeds(formatter.format_summary(analysis_result), "Summary")
+        _assert_format_succeeds(
+            formatter.format_structure(analysis_result), "Structure"
+        )
+        _assert_format_succeeds(
+            formatter.format_advanced(analysis_result, output_format="json"),
+            "Advanced JSON",
+        )
+        _assert_format_succeeds(
+            formatter.format_advanced(analysis_result, output_format="text"),
+            "Advanced text",
+        )
+        _assert_format_succeeds(
+            formatter.format_table(analysis_result, table_type="full"), "Table"
+        )
 
     @settings(max_examples=50)
     @given(
