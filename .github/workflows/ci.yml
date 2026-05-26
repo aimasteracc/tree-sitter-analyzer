@@ -6,7 +6,7 @@ name: CI
 
 on:
   push:
-    branches: [ main, develop, hotfix/*, feature/*, release/* ]
+    branches: [ main, develop, hotfix/*, release/* ]
   pull_request:
     branches: [ main, develop ]
   workflow_dispatch:

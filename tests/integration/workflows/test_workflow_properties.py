@@ -17,6 +17,7 @@ Properties tested:
 - Property 9: Test Marker Consistency
 - Property 11: Reusable Workflow Behavioral Equivalence
 - Property 12: CI runner parallelism override
+- Property 13: PR branch CI trigger de-duplication
 
 Validates: All requirements (1.1-7.5)
 """
@@ -190,3 +191,16 @@ class TestWorkflowProperties:
         for env in (reusable_env, coverage_env):
             workers = int(str(env.get("PYTEST_XDIST_AUTO_NUM_WORKERS", "0")))
             assert workers >= 4
+
+    def test_property_13_ci_does_not_duplicate_feature_pr_runs(
+        self, all_workflows: dict[str, dict[str, Any]]
+    ):
+        """Property 13: Feature PRs should use pull_request CI, not duplicate push CI."""
+        ci_triggers = all_workflows["ci"]["on"]
+        push_branches = ci_triggers["push"]["branches"]
+        pr_branches = ci_triggers["pull_request"]["branches"]
+
+        assert "feature/*" not in push_branches
+        assert {"main", "develop"}.issubset(push_branches)
+        assert {"main", "develop"}.issubset(pr_branches)
+        assert {"hotfix/*", "release/*"}.issubset(push_branches)
