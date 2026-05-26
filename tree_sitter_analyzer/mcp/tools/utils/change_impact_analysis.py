@@ -9,6 +9,7 @@ from typing import Any
 
 from ....project_graph import BlastRadius, DependencyGraph
 from .call_graph_impact import compute_call_graph_impact
+from .change_impact_cached_graph import load_cached_dependency_graph
 from .change_impact_response import (
     LARGE_DIRTY_DIFF_THRESHOLD,
     AgentSummaryContext,
@@ -66,6 +67,7 @@ class ChangeImpactRequest:
     project_root: str | None
     include_tests: bool
     scope_paths: list[str] | None = None
+    agent_summary_only: bool = False
 
 
 def _find_test_files(
@@ -132,7 +134,7 @@ def _is_runnable_test_file(
 def _assess_risk(
     changed_files: list[str],
     affected: set[str],
-    graph: DependencyGraph,
+    graph: Any,
 ) -> str:
     """Assess change risk level based on blast radius size."""
     if not changed_files:
@@ -147,7 +149,7 @@ def _assess_risk(
 
 def _build_file_impacts(
     changed_files: list[str],
-    graph: DependencyGraph | None,
+    graph: Any | None,
 ) -> tuple[set[str], list[dict[str, Any]]]:
     """Build per-file impact rows and the total affected file set."""
     if graph is None:
@@ -172,7 +174,7 @@ def _build_file_impacts(
 
 def _build_test_plan(
     changed_files: list[str],
-    graph: DependencyGraph | None,
+    graph: Any | None,
     include_tests: bool,
 ) -> tuple[dict[str, list[str]], list[str]]:
     """Build changed-file-to-test mapping and a sorted runnable test list."""
@@ -203,8 +205,11 @@ def _is_test_only_change_set(changed_files: list[str]) -> bool:
     )
 
 
-def _load_dependency_graph(project_root: str | None) -> DependencyGraph | None:
+def _load_dependency_graph(project_root: str | None) -> Any | None:
     """Build the dependency graph, returning None when analysis is unavailable."""
+    cached = load_cached_dependency_graph(project_root)
+    if cached is not None:
+        return cached
     try:
         return DependencyGraph(project_root or ".")
     except Exception:
@@ -513,7 +518,9 @@ def _build_change_impact_result(request: ChangeImpactRequest) -> dict[str, Any]:
     call_graph_data: dict[str, Any] | None = None
     if request.project_root and request.changed_files:
         cg_result = compute_call_graph_impact(
-            request.project_root, request.changed_files
+            request.project_root,
+            request.changed_files,
+            allow_full_scan=not request.agent_summary_only,
         )
         if cg_result is not None:
             call_graph_data = cg_result.to_dict()
@@ -555,6 +562,9 @@ def _build_change_impact_result(request: ChangeImpactRequest) -> dict[str, Any]:
     # source file and overwrite seeded rows. The verdict bump needs the
     # CURRENT activation state, not the freshly-recomputed one.
     result = _attach_hot_zone_risk(result, request)
+
+    if request.agent_summary_only:
+        return _attach_constraint_violations(result, request, affected)
 
     cache = _ensure_ast_cache(request.project_root, request.changed_files)
     try:

@@ -263,3 +263,42 @@ class TestFindAffectedSymbols:
             assert any(s["name"] == "helper" for s in result)
         finally:
             cache.close()
+
+
+class TestSummaryOnlyFastPath:
+    def test_summary_only_skips_ast_cache_enrichment(self, tmp_path, monkeypatch):
+        from tree_sitter_analyzer.mcp.tools.utils import change_impact_analysis as ci
+
+        class FakeGraph:
+            _nodes = {"src/app.py", "tests/test_app.py"}
+
+            def nodes(self):
+                return sorted(self._nodes)
+
+            def dependents_of(self, file_rel):
+                return []
+
+            def dependencies_of(self, file_rel):
+                return []
+
+        monkeypatch.setattr(ci, "_load_dependency_graph", lambda _: FakeGraph())
+        monkeypatch.setattr(ci, "compute_call_graph_impact", lambda *_, **__: None)
+
+        def fail_enrichment(*args, **kwargs):
+            raise AssertionError("summary-only should not sync AST cache")
+
+        monkeypatch.setattr(ci, "_ensure_ast_cache", fail_enrichment)
+
+        result = ci._build_change_impact_result(
+            ci.ChangeImpactRequest(
+                mode="diff",
+                changed_files=["src/app.py"],
+                diff_stat="src/app.py | 1 +",
+                project_root=str(tmp_path),
+                include_tests=True,
+                agent_summary_only=True,
+            )
+        )
+
+        assert result["success"] is True
+        assert result["affected_count"] == 0

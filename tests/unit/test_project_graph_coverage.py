@@ -1,10 +1,11 @@
 """Coverage boost tests for project_graph.py — targets uncovered lines."""
 
 import sys
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 import pytest
 
+from tree_sitter_analyzer import project_graph
 from tree_sitter_analyzer.project_graph import (
     BlastRadius,
     DependencyGraph,
@@ -121,6 +122,42 @@ class TestResolveRelativeImport:
     def test_with_submodule(self):
         result = _resolve_relative_import(".models.user", "main.py")
         assert result == "models/user.py"
+
+
+class TestImportResolverPathNormalization:
+    def test_file_resolvers_keep_posix_paths_when_path_is_windows(self, monkeypatch):
+        monkeypatch.setattr(project_graph, "Path", PureWindowsPath)
+
+        assert (
+            project_graph._resolve_js_ts_import(
+                "./formatter", "src/index.js", {"src/formatter.js"}, True
+            )
+            == "src/formatter.js"
+        )
+        assert (
+            project_graph._resolve_js_ts_import(
+                "./pkg", "src/index.js", {"src/pkg/index.ts"}, True
+            )
+            == "src/pkg/index.ts"
+        )
+        assert (
+            project_graph._resolve_go_import(
+                "./internal/handler", "main.go", {"internal/handler.go"}, True
+            )
+            == "internal/handler.go"
+        )
+        assert (
+            project_graph._resolve_rust_import(
+                "crate::utils", "src/main.rs", {"src/utils.rs"}, True
+            )
+            == "src/utils.rs"
+        )
+        assert (
+            project_graph._resolve_c_cpp_import(
+                "handler.h", "src/main.cpp", {"src/handler.h"}, True
+            )
+            == "src/handler.h"
+        )
 
 
 class TestExtractImportsEdgeCases:
