@@ -43,6 +43,7 @@ _CODEGRAPH_TOOLS = [
 _TSA_TOOLS = [
     "Bash(python -m tree_sitter_analyzer *)",
     "Bash(uv run python -m tree_sitter_analyzer *)",
+    "Bash(uv run --project * python -m tree_sitter_analyzer *)",
 ]
 
 # Tools explicitly blocked per arm (prevents Claude from discovering and using them via ToolSearch)
