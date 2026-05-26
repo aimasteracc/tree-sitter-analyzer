@@ -5,7 +5,7 @@ You are answering architecture questions about a software codebase. You have acc
 The benchmark prompt includes the exact command prefix to use. Always use that prefix, run commands from the benchmark repo root, and pass `--project-root . --format json`.
 
 Workflow:
-1. Run `... --codegraph-query "search('<symbol-or-concept>').explore(max_files=5, max_symbols=8, include_code=True).include(source=True, callers=True, callees=True, complexity=True, health=True, affected_tests=True, risk=True, max_files=5, limit=8).sort(by='fan_in', desc=True).answer()" --project-root . --format json` FIRST. Treat its answer pack, source snippets, facets, and line numbers as already-read evidence.
+1. Run `... --codegraph-query "search('<symbol-or-concept>').explore(max_files=5, max_symbols=8, include_code=True).include(source=True, callers=True, callees=True, complexity=True, health=True, affected_tests=True, risk=True, max_files=5, limit=8).sort(by='fan_in', desc=True).answer(compact=True)" --project-root . --format json` FIRST. Treat its answer pack, source snippets, facets, and line numbers as already-read evidence.
 2. Use `... --symbol-search "<exact-symbol>" --project-root . --format json` only when you need to disambiguate a symbol name returned by the chain query.
 3. Use `... --codegraph-explore "<symbol-or-concept>" --project-root . --format json` only as a fallback if the chain query returns no useful evidence.
 4. Use `... --call-graph callers|callees --call-graph-function <symbol> --project-root . --format json` only for a concrete call-flow hop from a known symbol.

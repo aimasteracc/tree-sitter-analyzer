@@ -686,6 +686,7 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
             "include_code": not bool(
                 getattr(args, "codegraph_query_outline_only", False)
             ),
+            "compact": bool(getattr(args, "codegraph_query_compact", False)),
             "output_format": output_format,
         },
     ),
