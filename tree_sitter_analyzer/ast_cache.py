@@ -196,6 +196,38 @@ CREATE INDEX IF NOT EXISTS idx_cv_severity
 """
 
 
+# Large-repo hot-path indexes. These are deliberately versionless and
+# idempotent: adding an index does not change row shape, but existing caches
+# still need to pick it up when opened after an upgrade.
+_LARGE_REPO_INDEXES: tuple[tuple[str, str], ...] = (
+    (
+        "ast_symbol_rows",
+        "CREATE INDEX IF NOT EXISTS idx_sym_rows_name_kind_path_line "
+        "ON ast_symbol_rows(name, kind, file_path, line)",
+    ),
+    (
+        "ast_symbol_rows",
+        "CREATE INDEX IF NOT EXISTS idx_sym_rows_file_name_kind_line "
+        "ON ast_symbol_rows(file_path, name, kind, line)",
+    ),
+    (
+        "ast_call_edges",
+        "CREATE INDEX IF NOT EXISTS idx_ce_callee_name_resolved_file "
+        "ON ast_call_edges(callee_name, callee_resolved_file)",
+    ),
+    (
+        "ast_call_edges",
+        "CREATE INDEX IF NOT EXISTS idx_ce_callee_name_file_path "
+        "ON ast_call_edges(callee_name, file_path)",
+    ),
+    (
+        "ast_call_edges",
+        "CREATE INDEX IF NOT EXISTS idx_ce_caller_name_file "
+        "ON ast_call_edges(caller_name, caller_file)",
+    ),
+)
+
+
 # Schema-version registry — the "did every migration block actually apply?"
 # self-check. Earlier this sprint a parallel agent edit clobbered V4's two
 # ALTER TABLE statements down to one, and nothing detected it until a
@@ -439,11 +471,26 @@ class ASTCache:
                 conn.commit()
             except sqlite3.OperationalError:
                 pass
+        self._ensure_large_repo_indexes(conn)
         conn.commit()
         # Post-init self-check — raise SchemaIntegrityError if any
         # expected table / column is missing. Backfills the version
         # registry for legacy DBs that pre-date this code.
         self._verify_schema_integrity(conn)
+
+    @staticmethod
+    def _ensure_large_repo_indexes(conn: sqlite3.Connection) -> None:
+        """Create non-shape-changing indexes for large-repo query hot paths."""
+        for table_name, sql in _LARGE_REPO_INDEXES:
+            try:
+                exists = conn.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+                    (table_name,),
+                ).fetchone()
+                if exists:
+                    conn.execute(sql)
+            except sqlite3.OperationalError:
+                logger.debug("Skipping optional index for table %s", table_name)
 
     @staticmethod
     def _already_applied_versions(conn: sqlite3.Connection) -> set[int]:

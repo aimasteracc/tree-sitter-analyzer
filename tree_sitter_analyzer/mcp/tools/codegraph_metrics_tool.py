@@ -183,15 +183,17 @@ class CodeGraphMetricsTool(BaseMCPTool):
             return {"status": "error", "error": str(exc)}
 
     def _collect_call_graph_metrics(self, cache: Any) -> dict[str, Any]:
+        if cache is None:
+            return {
+                "status": "empty",
+                "hint": "Run ast_cache mode=index first",
+                "data_source": "none",
+            }
         try:
-            from ...call_graph import CachedCallGraph, CallGraph
+            from ...call_graph import CachedCallGraph
 
             assert self.project_root is not None, "project_root required"
-            cg: CallGraph
-            if cache is not None:
-                cg = CachedCallGraph(self.project_root, cache=cache)
-            else:
-                cg = CallGraph(self.project_root)
+            cg = CachedCallGraph(self.project_root, cache=cache)
             cg.build()
 
             # Use the public ``all_functions()`` API (returns list[dict]) and
@@ -237,7 +239,7 @@ class CodeGraphMetricsTool(BaseMCPTool):
                 "dead_code_candidates": len(dead),
                 "top_hub_functions": [{"name": n, "callers": c} for n, c in top_hubs],
                 "files_with_functions": len(files),
-                "data_source": "ast_cache" if cache is not None else "on_demand",
+                "data_source": "ast_cache",
             }
         except Exception as exc:
             return {"status": "error", "error": str(exc)}
