@@ -4,8 +4,9 @@ Supports two modes:
   - ``arm_id="tsa-cold"``: deletes .ast-cache/ and triggers a fresh index build.
   - ``arm_id="tsa-warm"``: verifies .ast-cache/index.db exists; rebuilds if absent.
 
-The index is populated by running ``python -m tree_sitter_analyzer --format json``
-with ``cwd=repo_path``, which parses the source tree and populates the SQLite cache.
+The index is populated by running tree-sitter-analyzer from this checkout via
+``uv run --project <analyzer-root> ... --project-root <repo_path>``, which parses
+the target source tree and populates the target repo's SQLite cache.
 Errors are logged, not raised, so the harness can continue with partial data.
 """
 
@@ -46,6 +47,7 @@ When answering:
 
 _PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 _PROMPT_FILE = _PROMPTS_DIR / "system_tsa.md"
+_ANALYZER_ROOT = Path(__file__).resolve().parents[3]
 
 # ---------------------------------------------------------------------------
 # AST cache paths
@@ -115,10 +117,16 @@ class TSAAdapter(BenchmarkAdapter):
 
     def build_run_config(self, repo_path: Path, question_prompt: str) -> RunConfig:
         system_prompt = _load_prompt(_PROMPT_FILE, _DEFAULT_SYSTEM_PROMPT)
+        command_prefix = (
+            f"uv run --project {_ANALYZER_ROOT} python -m tree_sitter_analyzer"
+        )
         extra_context = (
-            "tree-sitter-analyzer is available. "
-            f"Run: python -m tree_sitter_analyzer <subcommand> --format json. "
-            "Key subcommands: smart-context, project-graph, call-graph. "
+            "tree-sitter-analyzer is available through this command prefix: "
+            f"`{command_prefix}`. "
+            "Run it from the benchmark repo root with `--project-root .`. "
+            "Useful queries: `--symbol-search <name>`, `--codegraph-explore <query>`, "
+            "`--codegraph-overview`, and `--call-graph callers|callees "
+            "--call-graph-function <name>`. "
             f"The AST cache is at {repo_path}/.ast-cache/"
         )
 
@@ -285,13 +293,29 @@ def _delete_cache(cache_dir: Path) -> None:
 
 
 def _build_cache(repo_path: Path, cache_dir: Path) -> IndexStats:
-    """Run ``python -m tree_sitter_analyzer --format json`` to populate the cache."""
+    """Run tree-sitter-analyzer's AST-cache indexer for the target repo."""
     logger.info("Building TSA AST cache in %s ...", repo_path)
     t0 = time.perf_counter()
 
     result = subprocess.run(
-        ["python", "-m", "tree_sitter_analyzer", "--format", "json"],
-        cwd=repo_path,
+        [
+            "uv",
+            "run",
+            "--project",
+            str(_ANALYZER_ROOT),
+            "python",
+            "-m",
+            "tree_sitter_analyzer",
+            "--ast-cache",
+            "--ast-cache-mode",
+            "index",
+            "--project-root",
+            str(repo_path),
+            "--format",
+            "json",
+            "--quiet",
+        ],
+        cwd=_ANALYZER_ROOT,
         capture_output=True,
         text=True,
         encoding="utf-8",
