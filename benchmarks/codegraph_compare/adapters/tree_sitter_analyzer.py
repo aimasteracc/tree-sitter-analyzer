@@ -316,7 +316,8 @@ def _build_cache(repo_path: Path, cache_dir: Path) -> IndexStats:
             "--quiet",
         ],
         cwd=_ANALYZER_ROOT,
-        capture_output=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
         text=True,
         encoding="utf-8",
         check=False,
@@ -325,9 +326,8 @@ def _build_cache(repo_path: Path, cache_dir: Path) -> IndexStats:
 
     if result.returncode != 0:
         logger.error(
-            "tree_sitter_analyzer exited with code %d.\nstdout: %s\nstderr: %s",
+            "tree_sitter_analyzer exited with code %d.\nstderr: %s",
             result.returncode,
-            result.stdout[:2000],
             result.stderr[:2000],
         )
 
