@@ -326,6 +326,16 @@ class TestGetFuncName:
         func_node = root.children[0]
         assert _get_func_name(func_node, "c") == "myfunc"
 
+    def test_go_method_name_falls_back_to_field_identifier_child(self):
+        node = MagicMock()
+        node.child_by_field_name.return_value = None
+        child = MagicMock()
+        child.type = "field_identifier"
+        child.text = b"ServeHTTP"
+        node.children = [child]
+
+        assert _get_func_name(node, "go") == "ServeHTTP"
+
     def test_no_func_name_returns_none(self):
         node = MagicMock()
         node.children = []

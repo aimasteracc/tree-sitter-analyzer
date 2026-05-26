@@ -89,6 +89,45 @@ class TestIndexFile:
         ).fetchone()[0]
         assert version == _AST_CACHE_EXTRACTOR_VERSION
 
+    def test_init_migrates_legacy_index_without_extractor_version(self, tmp_path):
+        db_path = tmp_path / "legacy.db"
+        conn = sqlite3.connect(db_path)
+        conn.execute(
+            """CREATE TABLE ast_index (
+                file_path TEXT NOT NULL,
+                content_hash TEXT NOT NULL,
+                language TEXT NOT NULL,
+                mtime_ns INTEGER NOT NULL,
+                file_size INTEGER NOT NULL,
+                symbols_json TEXT NOT NULL DEFAULT '{}',
+                imports_json TEXT NOT NULL DEFAULT '[]',
+                structure_json TEXT NOT NULL DEFAULT '{}',
+                indexed_at TEXT NOT NULL,
+                PRIMARY KEY (file_path)
+            )"""
+        )
+        conn.commit()
+        conn.close()
+
+        migrated = ASTCache(str(tmp_path), db_path=str(db_path))
+        try:
+            columns = {
+                row[1]
+                for row in migrated._get_conn()
+                .execute("PRAGMA table_info(ast_index)")
+                .fetchall()
+            }
+            version_row = (
+                migrated._get_conn()
+                .execute("SELECT version FROM ast_schema_version WHERE version = 7")
+                .fetchone()
+            )
+
+            assert "extractor_version" in columns
+            assert version_row is not None
+        finally:
+            migrated.close()
+
     def test_index_with_explicit_language(self, cache, tmp_project):
         f = str(tmp_project / "src" / "main.py")
         result = cache.index_file(f, language="python")
@@ -591,6 +630,11 @@ class TestSQLNativeCallGraph:
 
             callers = cache.query_callers("handleHTTPRequest", callee_file="src/gin.go")
             assert [edge["caller_name"] for edge in callers] == ["ServeHTTP"]
+
+            full_callers = cache.query_callers(
+                "engine.handleHTTPRequest", callee_file="src/gin.go"
+            )
+            assert [edge["caller_name"] for edge in full_callers] == ["ServeHTTP"]
         finally:
             cache.close()
 
