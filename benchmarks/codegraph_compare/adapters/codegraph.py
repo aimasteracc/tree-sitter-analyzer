@@ -127,7 +127,10 @@ class CodeGraphAdapter(BenchmarkAdapter):
         system_prompt = _load_prompt(_PROMPT_FILE, _DEFAULT_SYSTEM_PROMPT)
         extra_context = (
             f"CodeGraph index is ready in {repo_path}/.codegraph/. "
-            "Use codegraph_context first, then explore as needed."
+            "Use codegraph_context first when MCP is available. "
+            "When running through a shell-only agent backend, run "
+            '`codegraph context -p . "<task>" --format json` first, then '
+            "confirm specific details with focused file reads as needed."
         )
 
         return RunConfig(

@@ -30,6 +30,7 @@ if TYPE_CHECKING:
 
 _BASE_TOOLS = ["Read", "Bash(grep *)", "Bash(find *)", "Bash(ls *)", "Glob", "Grep"]
 _CODEGRAPH_TOOLS = [
+    "Bash(codegraph *)",
     "mcp__codegraph__codegraph_context",
     "mcp__codegraph__codegraph_search",
     "mcp__codegraph__codegraph_callers",
@@ -57,14 +58,15 @@ _ARM_ALLOWED_TOOLS: dict[str, list[str]] = {
 # can't discover and call them even when --allowed-tools is set
 _ARM_DISALLOWED_TOOLS: dict[str, list[str]] = {
     "native-only": [
+        "Bash(codegraph *)",
         "mcp__codegraph__*",
         "mcp__ruflo__*",
         "mcp__*",
         "ToolSearch",
         "Agent",
     ],
-    "tsa-warm": ["mcp__codegraph__*", "ToolSearch", "Agent"],
-    "tsa-cold": ["mcp__codegraph__*", "ToolSearch", "Agent"],
+    "tsa-warm": ["Bash(codegraph *)", "mcp__codegraph__*", "ToolSearch", "Agent"],
+    "tsa-cold": ["Bash(codegraph *)", "mcp__codegraph__*", "ToolSearch", "Agent"],
     "codegraph-warm": ["ToolSearch", "Agent"],
     "codegraph-cold": ["ToolSearch", "Agent"],
 }
@@ -84,18 +86,36 @@ def _make_run_id(question_id: str, arm_id: str, repeat: int, agent_backend: str)
     return f"{question_id}__{arm_id}__{agent_backend}__{repeat:02d}"
 
 
-def _extract_citations(text: str) -> list[str]:
-    """Extract file-path-like strings from the answer text."""
-    return list(
-        dict.fromkeys(
-            m.group(0)
-            for m in re.finditer(
-                r"[\w./\-]+\."
-                r"(?:py|ts|tsx|go|rs|java|swift|kt|js|jsx|cpp|c|h|cs|rb|php)",
-                text,
-            )
-        )
-    )
+def _extract_citations(text: str, repo_path: Path) -> list[str]:
+    """Extract answer citations that correspond to real files in repo_path."""
+    citations: list[str] = []
+    seen: set[str] = set()
+
+    for match in re.finditer(
+        r"[\w./\-]+\."
+        r"(?:py|ts|tsx|go|rs|java|swift|kt|js|jsx|cpp|c|h|cs|rb|php)",
+        text,
+    ):
+        candidate = match.group(0).lstrip("./")
+        if candidate in seen:
+            continue
+        path = Path(candidate)
+        if path.is_absolute():
+            exists = path.is_file()
+        else:
+            exists = (repo_path / candidate).is_file()
+        if exists:
+            citations.append(candidate)
+            seen.add(candidate)
+
+    return citations
+
+
+def _codex_sandbox_for_arm(arm_id: str) -> str:
+    """Return the least-permissive Codex sandbox that still lets indexes query."""
+    if arm_id == "native-only":
+        return "read-only"
+    return "workspace-write"
 
 
 def _parse_tool_calls_from_stream(lines: list[str]) -> tuple[int, int, int, int]:
@@ -289,11 +309,16 @@ def run_one(
     user_parts.append(f"Question: {question_prompt}")
     user_message = "\n\n".join(user_parts)
     if agent_backend == "codex":
+        sandbox = _codex_sandbox_for_arm(arm_id)
         tool_policy = (
             f"Benchmark arm: {arm_id}.\n"
+            f"Codex sandbox: {sandbox}.\n"
             f"Allowed tool policy: {allowed_tools_str}.\n"
             f"Disallowed tool policy: {disallowed_tools_str or 'none'}.\n"
-            "Respect this policy strictly when using tools. Do not edit files. "
+            "Respect this policy strictly when using tools. Do not edit source "
+            "files or project configuration. For indexed arms, the only allowed "
+            "writes are tool-maintained cache/database side effects such as "
+            ".codegraph SQLite WAL files or .ast-cache metadata. "
             "Answer the architecture question with concrete file citations."
         )
         user_message = f"{tool_policy}\n\n{user_message}"
@@ -329,6 +354,7 @@ def run_one(
         if disallowed_tools_str:
             cmd += ["--disallowed-tools", disallowed_tools_str]
     else:
+        sandbox = _codex_sandbox_for_arm(arm_id)
         cmd = [
             "codex",
             "--ask-for-approval",
@@ -337,7 +363,7 @@ def run_one(
             "--json",
             "--ephemeral",
             "--sandbox",
-            "read-only",
+            sandbox,
             "--model",
             model,
             "-C",
@@ -456,7 +482,7 @@ def run_one(
         "search_calls": search_calls,
         "index_queries": index_queries,
         "answer": answer,
-        "citations": _extract_citations(answer),
+        "citations": _extract_citations(answer, repo_path),
         "transcript_path": str(raw_dir / f"{run_id}_result.jsonl"),
         "error": error,
         "agent_backend": agent_backend,
