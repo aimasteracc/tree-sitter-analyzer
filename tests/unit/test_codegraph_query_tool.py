@@ -16,13 +16,14 @@ from tree_sitter_analyzer.symbol_resolver import DefinitionLocation, ResolveResu
 def _make_def(
     file: str = "main.py",
     name: str = "run",
+    kind: str = "function",
     line: int = 1,
     end_line: int = 2,
 ) -> DefinitionLocation:
     return DefinitionLocation(
         file=file,
         name=name,
-        kind="function",
+        kind=kind,
         line=line,
         end_line=end_line,
         language="python",
@@ -61,6 +62,29 @@ class TestParseChain:
     def test_rejects_unsupported_step(self):
         with pytest.raises(ValueError, match="unsupported chain step"):
             parse_chain("search('x').delete()")
+
+    def test_parses_selection_and_terminal_steps(self):
+        steps = parse_chain(
+            "search('run').where(kind='function').paths('src app')."
+            "exclude_tests().explore().end().why().answer()"
+        )
+
+        assert [step.name for step in steps] == [
+            "search",
+            "where",
+            "paths",
+            "exclude_tests",
+            "explore",
+            "end",
+            "why",
+            "answer",
+        ]
+        assert steps[1].kwargs == {"kind": "function"}
+
+    def test_parses_list_literals_for_where(self):
+        steps = parse_chain("search('run').where(kind=['function', 'method'])")
+
+        assert steps[1].kwargs == {"kind": ["function", "method"]}
 
 
 class TestCodeGraphQueryTool:
@@ -142,7 +166,7 @@ class TestCodeGraphQueryTool:
             patch("tree_sitter_analyzer.ast_cache.ASTCache", return_value=mock_cache),
             _patch_resolver_with({"HandlerFunc": []}),
             patch(
-                "tree_sitter_analyzer.mcp.tools.codegraph_query_tool._h.concept_search",
+                "tree_sitter_analyzer.mcp.tools._codegraph_query_runtime._h.concept_search",
                 return_value=concept_files,
             ) as concept_search,
         ):
@@ -177,7 +201,7 @@ class TestCodeGraphQueryTool:
             patch("tree_sitter_analyzer.ast_cache.ASTCache", return_value=mock_cache),
             _patch_resolver_with({"run": [_make_def(name="run")], "HandlerFunc": []}),
             patch(
-                "tree_sitter_analyzer.mcp.tools.codegraph_query_tool._h.concept_search",
+                "tree_sitter_analyzer.mcp.tools._codegraph_query_runtime._h.concept_search",
                 return_value=concept_files,
             ),
         ):
@@ -219,6 +243,88 @@ class TestCodeGraphQueryTool:
         assert symbol["truncated"] is True
         assert symbol["truncated_end_line"] == 160
         assert symbol["code"].startswith("def big():")
+
+    @pytest.mark.asyncio
+    async def test_execute_filters_selection_and_returns_answer_pack(self, tmp_path):
+        src = tmp_path / "src"
+        src.mkdir()
+        app = src / "app.py"
+        app.write_text("def run():\n    return 1\n", encoding="utf-8")
+        test_file = tmp_path / "tests" / "test_app.py"
+        test_file.parent.mkdir()
+        test_file.write_text("def run():\n    return 1\n", encoding="utf-8")
+        mock_cache = MagicMock()
+
+        with (
+            patch("tree_sitter_analyzer.ast_cache.ASTCache", return_value=mock_cache),
+            _patch_resolver_with(
+                {
+                    "run": [
+                        _make_def(file="src/app.py", name="run", kind="function"),
+                        _make_def(
+                            file="tests/test_app.py", name="run", kind="function"
+                        ),
+                    ]
+                }
+            ),
+        ):
+            result = await CodeGraphQueryTool(str(tmp_path)).execute(
+                {
+                    "query": (
+                        "search('run').where(kind='function').exclude_tests()."
+                        "explore(max_files=4).why().answer()"
+                    ),
+                    "output_format": "json",
+                }
+            )
+
+        assert [symbol["file"] for symbol in result["symbols"]] == ["src/app.py"]
+        assert [entry["file_path"] for entry in result["files"]] == ["src/app.py"]
+        assert result["answer_pack"]["stop_signal"] is True
+        assert result["answer_pack"]["core_files"] == ["src/app.py"]
+        assert result["query_plan"][-1]["step"]["name"] == "answer"
+
+    @pytest.mark.asyncio
+    async def test_execute_paths_filter_and_end_restore_previous_selection(
+        self, tmp_path
+    ):
+        src = tmp_path / "src"
+        other = tmp_path / "other"
+        src.mkdir()
+        other.mkdir()
+        (src / "app.py").write_text("def run():\n    return 1\n", encoding="utf-8")
+        (other / "app.py").write_text("def run():\n    return 2\n", encoding="utf-8")
+        mock_cache = MagicMock()
+
+        with (
+            patch("tree_sitter_analyzer.ast_cache.ASTCache", return_value=mock_cache),
+            _patch_resolver_with(
+                {
+                    "run": [
+                        _make_def(file="src/app.py", name="run"),
+                        _make_def(file="other/app.py", name="run"),
+                    ]
+                }
+            ),
+        ):
+            filtered = await CodeGraphQueryTool(str(tmp_path)).execute(
+                {
+                    "query": "search('run').paths('src').explore(max_files=4)",
+                    "output_format": "json",
+                }
+            )
+            restored = await CodeGraphQueryTool(str(tmp_path)).execute(
+                {
+                    "query": "search('run').paths('src').end().explore(max_files=4)",
+                    "output_format": "json",
+                }
+            )
+
+        assert [entry["file_path"] for entry in filtered["files"]] == ["src/app.py"]
+        assert [entry["file_path"] for entry in restored["files"]] == [
+            "src/app.py",
+            "other/app.py",
+        ]
 
     @pytest.mark.asyncio
     async def test_execute_returns_error_envelope_for_bad_chain(self):

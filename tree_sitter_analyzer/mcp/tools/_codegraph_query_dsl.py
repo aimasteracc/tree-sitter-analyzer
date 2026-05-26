@@ -7,7 +7,20 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-_SUPPORTED_STEPS = {"search", "explore", "callers", "callees", "related", "take"}
+_SUPPORTED_STEPS = {
+    "search",
+    "explore",
+    "where",
+    "paths",
+    "exclude_tests",
+    "callers",
+    "callees",
+    "related",
+    "take",
+    "end",
+    "why",
+    "answer",
+}
 
 
 @dataclass(frozen=True)
@@ -123,6 +136,10 @@ def _literal(node: ast.AST) -> Any:
     value = ast.literal_eval(node)
     if isinstance(value, str | int | bool | float) or value is None:
         return value
+    if isinstance(value, list | tuple) and all(
+        isinstance(item, str | int | bool | float) or item is None for item in value
+    ):
+        return list(value)
     raise ValueError("chain arguments must be scalar literals")
 
 

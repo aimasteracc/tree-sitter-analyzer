@@ -83,8 +83,13 @@ When a question needs several graph hops plus source snippets, prefer the
 chain surface:
 
 ```
-codegraph_query(query="search('score_file').explore(max_files=3).callers(depth=1).callees(depth=1)")
+codegraph_query(query="search('score_file').explore(max_files=3).exclude_tests().callers(depth=1).callees(depth=1).answer()")
 ```
+
+Use `where(kind='function')`, `paths('src package')`, and `exclude_tests()` to
+shape the current selection before fetching more evidence. Use `end()` to return
+to the previous selection, `why()` to include the query plan, and `answer()` when
+you want a stop signal plus a compact evidence pack.
 
 ### Multi-step case (refactor planning)
 
