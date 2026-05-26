@@ -107,6 +107,133 @@ class TestHealthScorer:
 
         assert names == {"project.cfg"}
 
+    def test_score_file_fast_dependencies_uses_fallback(self, monkeypatch, tmp_path):
+        """Latency-sensitive callers can bypass whole-project dependency graphing."""
+        from tree_sitter_analyzer import health_scorer
+        from tree_sitter_analyzer.health_scorer import HealthScorer
+
+        source = tmp_path / "main.py"
+        source.write_text("import app.service\n")
+
+        def fail_full_graph(_file_path):
+            raise AssertionError("full dependency graph should not be used")
+
+        monkeypatch.setattr(health_scorer, "score_dependencies", fail_full_graph)
+        monkeypatch.setattr(
+            health_scorer,
+            "_score_deps_fallback",
+            lambda _file_path: 42.0,
+        )
+
+        result = HealthScorer().score_file(str(source), fast_dependencies=True)
+
+        assert result.dimensions["dependencies"] == 42.0
+
+    def test_score_file_default_dependencies_uses_full_graph_score(
+        self, monkeypatch, tmp_path
+    ):
+        """Default scoring keeps the full dependency graph dimension."""
+        from tree_sitter_analyzer import health_scorer
+        from tree_sitter_analyzer.health_scorer import HealthScorer
+
+        source = tmp_path / "main.py"
+        source.write_text("import app.service\n")
+
+        monkeypatch.setattr(
+            health_scorer,
+            "score_dependencies",
+            lambda _file_path: 77.0,
+        )
+
+        result = HealthScorer().score_file(str(source))
+
+        assert result.dimensions["dependencies"] == 77.0
+
+    def test_is_excluded_falls_back_to_absolute_parts(self, tmp_path):
+        """Paths outside root still honor generated/hidden path parts."""
+        from tree_sitter_analyzer.health_scorer import HealthScorer
+
+        scorer = HealthScorer()
+
+        assert scorer._is_excluded(tmp_path / ".hidden" / "file.py", Path("/outside"))
+
+    def test_iter_source_files_skips_hidden_filenames(self, tmp_path):
+        """Hidden filenames are not counted as project source files."""
+        from tree_sitter_analyzer.health_scorer import HealthScorer
+
+        visible = tmp_path / "src" / "main.py"
+        hidden = tmp_path / "src" / ".ignored.py"
+        visible.parent.mkdir(parents=True)
+        visible.write_text("x = 1\n")
+        hidden.write_text("x = 1\n")
+
+        files, pruned = HealthScorer(source_extensions={".py"})._iter_source_files(
+            tmp_path
+        )
+
+        assert [path.name for path in files] == ["main.py"]
+        assert pruned == 0
+
+    def test_score_project_counts_scoring_failures(self, monkeypatch, tmp_path):
+        """Stats should record files that were discovered but failed scoring."""
+        from tree_sitter_analyzer.health_scorer import HealthScorer
+
+        source = tmp_path / "main.py"
+        source.write_text("x = 1\n")
+        scorer = HealthScorer(source_extensions={".py"})
+        monkeypatch.setattr(scorer, "_score_file_with_cache", lambda *_args: None)
+
+        scores, stats = scorer.score_project_with_stats(str(tmp_path), use_cache=False)
+
+        assert scores == []
+        assert stats["skip_reasons"]["scoring_failed"] == 1
+
+    def test_score_project_counts_defensive_excluded_file(self, monkeypatch, tmp_path):
+        """A defensive _is_excluded hit is still reported in project stats."""
+        from tree_sitter_analyzer.health_scorer import HealthScorer
+
+        hidden = tmp_path / ".hidden" / "main.py"
+        hidden.parent.mkdir()
+        hidden.write_text("x = 1\n")
+        scorer = HealthScorer(source_extensions={".py"})
+        monkeypatch.setattr(scorer, "_iter_source_files", lambda _root: ([hidden], 0))
+        monkeypatch.setattr(
+            scorer,
+            "_score_file_with_cache",
+            lambda *_args: pytest.fail("excluded files must not be scored"),
+        )
+
+        scores, stats = scorer.score_project_with_stats(str(tmp_path), use_cache=False)
+
+        assert scores == []
+        assert stats["total_files_scanned"] == 1
+        assert stats["skip_reasons"]["excluded_dir"] == 1
+
+    def test_score_project_prunes_hidden_and_generated_dirs(self, tmp_path):
+        """Project scoring should not descend into hidden/generated directories."""
+        from tree_sitter_analyzer.health_scorer import HealthScorer
+
+        visible = tmp_path / "src" / "main.py"
+        hidden = tmp_path / ".hidden" / "ignored.py"
+        generated = tmp_path / "build" / "ignored.py"
+        visible.parent.mkdir(parents=True)
+        hidden.parent.mkdir(parents=True)
+        generated.parent.mkdir(parents=True)
+        visible.write_text("x = 1\n")
+        hidden.write_text("x = 1\n")
+        generated.write_text("x = 1\n")
+
+        scores, stats = HealthScorer(
+            source_extensions={".py"}
+        ).score_project_with_stats(
+            str(tmp_path),
+            use_cache=False,
+        )
+
+        assert {Path(score.file_path).name for score in scores} == {"main.py"}
+        assert stats["total_files_scanned"] == 1
+        assert stats["skip_reasons"]["excluded_dir"] >= 2
+
     def test_large_file_gets_penalized(self, scorer, tmp_path):
         """Files over 500 lines should have lower size score."""
         big = tmp_path / "big.py"

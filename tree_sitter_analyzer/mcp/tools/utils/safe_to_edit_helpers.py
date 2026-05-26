@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import os
+import re
 import shlex
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from ....health_scorer import HealthScorer
-from ....project_graph import DependencyGraph
 from ....security.fixture_detector import fixture_to_verdict, is_fixture
 from ..file_health_tool import _build_signal
 from .constraint_violation_query import (
@@ -29,8 +30,29 @@ class SafeToEditContext:
     edit_type: str
     resolved_path: str
     project_root: str
-    graph: DependencyGraph
+    graph: Any
     scorer: HealthScorer
+
+
+class FileDependencyView:
+    """Small graph-like view for one file's immediate import surface."""
+
+    def __init__(
+        self,
+        *,
+        rel_path: str,
+        dependencies: set[str],
+        dependents: set[str],
+    ) -> None:
+        self._nodes = {rel_path, *dependencies, *dependents}
+        self._deps = {rel_path: dependencies}
+        self._dependents = {rel_path: dependents}
+
+    def dependencies_of(self, file_rel: str) -> list[str]:
+        return sorted(self._deps.get(file_rel, set()))
+
+    def dependents_of(self, file_rel: str) -> list[str]:
+        return sorted(self._dependents.get(file_rel, set()))
 
 
 @dataclass(frozen=True)
@@ -71,7 +93,7 @@ def _collect_safe_to_edit_facts(context: SafeToEditContext) -> SafeToEditFacts:
     rel_path = to_relative(context.resolved_path, context.project_root)
     dependents = safe_dependents(context.graph, rel_path)
     dependencies = safe_dependencies(context.graph, rel_path)
-    health = context.scorer.score_file(context.resolved_path)
+    health = context.scorer.score_file(context.resolved_path, fast_dependencies=True)
     test_files = find_test_files(context.resolved_path, context.project_root)
     has_tests = bool(test_files)
     risk, risk_factors = compute_risk(
@@ -430,12 +452,166 @@ def to_relative(abs_path: str, project_root: str) -> str:
         return abs_path
 
 
-def safe_dependents(graph: DependencyGraph, rel_path: str) -> list[str]:
+_DEPENDENCY_SKIP_DIRS = frozenset(
+    {
+        "node_modules",
+        ".git",
+        ".hg",
+        ".svn",
+        "__pycache__",
+        ".venv",
+        "venv",
+        ".tox",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        "dist",
+        "build",
+        "htmlcov",
+        ".cache",
+        ".eggs",
+        ".idea",
+        ".vscode",
+        ".claude",
+    }
+)
+_DEPENDENCY_SOURCE_EXTS = frozenset(
+    {".py", ".js", ".jsx", ".ts", ".tsx", ".java", ".go", ".rs", ".c", ".cpp", ".h"}
+)
+
+
+def build_file_dependency_view(
+    resolved_path: str, project_root: str
+) -> FileDependencyView:
+    """Build a fast graph-like dependency view for one file.
+
+    ``safe_to_edit`` is latency-sensitive. A whole-project tree-sitter
+    dependency graph is useful, but cold-building it for every MCP process
+    makes the common pre-edit check too slow. This view keeps the same lookup
+    contract while limiting work to the target file plus a pruned text scan for
+    obvious importers.
+    """
+    root = Path(project_root).resolve()
+    target = Path(resolved_path).resolve()
+    rel_path = to_relative(str(target), str(root)).replace("\\", "/")
+    dependencies = _target_dependencies(target, rel_path, root)
+    dependents = _target_dependents(target, rel_path, root)
+    return FileDependencyView(
+        rel_path=rel_path,
+        dependencies=dependencies,
+        dependents=dependents,
+    )
+
+
+def _target_dependencies(target: Path, rel_path: str, root: Path) -> set[str]:
+    try:
+        source = target.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return set()
+
+    dependencies: set[str] = set()
+    for spec in _extract_import_specs(source, target.suffix.lower()):
+        resolved = _resolve_import_spec(spec, rel_path, root)
+        if resolved:
+            dependencies.add(resolved)
+    return dependencies
+
+
+def _target_dependents(target: Path, rel_path: str, root: Path) -> set[str]:
+    needles = _import_needles_for_target(rel_path)
+    if not needles:
+        return set()
+
+    dependents: set[str] = set()
+    for path in _iter_dependency_source_files(root):
+        if path == target:
+            continue
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if any(needle in text for needle in needles):
+            dependents.add(to_relative(str(path), str(root)).replace("\\", "/"))
+    return dependents
+
+
+def _iter_dependency_source_files(root: Path) -> list[Path]:
+    files: list[Path] = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [
+            name
+            for name in dirnames
+            if name not in _DEPENDENCY_SKIP_DIRS and not name.startswith(".")
+        ]
+        for filename in filenames:
+            if filename.startswith("."):
+                continue
+            if Path(filename).suffix.lower() in _DEPENDENCY_SOURCE_EXTS:
+                files.append(Path(dirpath) / filename)
+    return files
+
+
+def _extract_import_specs(source: str, suffix: str) -> set[str]:
+    specs: set[str] = set()
+    if suffix == ".py":
+        specs.update(re.findall(r"^\s*import\s+([A-Za-z_][\w.]*)", source, re.M))
+        specs.update(re.findall(r"^\s*from\s+([.\w]+)\s+import\b", source, re.M))
+    elif suffix in {".js", ".jsx", ".ts", ".tsx"}:
+        specs.update(re.findall(r"\bfrom\s+['\"]([^'\"]+)['\"]", source))
+        specs.update(re.findall(r"\brequire\(\s*['\"]([^'\"]+)['\"]\s*\)", source))
+    elif suffix == ".java":
+        specs.update(re.findall(r"^\s*import\s+([\w.]+);", source, re.M))
+    return specs
+
+
+def _resolve_import_spec(spec: str, rel_path: str, root: Path) -> str | None:
+    if not spec or spec.startswith(".."):
+        return None
+    if spec.startswith("."):
+        base = Path(rel_path).parent
+        candidate_base = (base / spec.lstrip("./")).as_posix()
+    else:
+        candidate_base = spec.replace(".", "/")
+
+    candidates = [
+        candidate_base,
+        f"{candidate_base}.py",
+        f"{candidate_base}.js",
+        f"{candidate_base}.ts",
+        f"{candidate_base}.tsx",
+        f"{candidate_base}.java",
+        f"{candidate_base}/__init__.py",
+        f"{candidate_base}/index.js",
+        f"{candidate_base}/index.ts",
+    ]
+    for candidate in candidates:
+        if (root / candidate).is_file():
+            return candidate
+    return None
+
+
+def _import_needles_for_target(rel_path: str) -> set[str]:
+    path = Path(rel_path)
+    suffix = path.suffix
+    without_suffix = path.with_suffix("").as_posix()
+    module = without_suffix.replace("/", ".")
+    basename = path.stem
+    needles = {without_suffix, module}
+    if suffix == ".py" and path.name == "__init__.py":
+        package = path.parent.as_posix()
+        needles.add(package)
+        needles.add(package.replace("/", "."))
+    if basename and basename != "__init__":
+        needles.add(basename)
+    return {needle for needle in needles if needle}
+
+
+def safe_dependents(graph: Any, rel_path: str) -> list[str]:
     """Return files that depend on rel_path, tolerating stale graph data."""
     return _safe_graph_lookup(graph, rel_path, graph.dependents_of)
 
 
-def safe_dependencies(graph: DependencyGraph, rel_path: str) -> list[str]:
+def safe_dependencies(graph: Any, rel_path: str) -> list[str]:
     """Return files rel_path depends on, tolerating stale graph data."""
     return _safe_graph_lookup(graph, rel_path, graph.dependencies_of)
 
@@ -446,7 +622,7 @@ def is_init_file(file_path: str) -> bool:
 
 
 def _safe_graph_lookup(
-    graph: DependencyGraph,
+    graph: Any,
     rel_path: str,
     lookup: Any,
 ) -> list[str]:
@@ -458,8 +634,10 @@ def _safe_graph_lookup(
         return []
 
 
-def _matching_node(graph: DependencyGraph, rel_path: str) -> str | None:
+def _matching_node(graph: Any, rel_path: str) -> str | None:
     """Find the graph node matching a relative path."""
     if rel_path in graph._nodes:
         return rel_path
-    return next((node for node in graph._nodes if node.endswith(rel_path)), None)
+    normalized = rel_path.replace("\\", "/")
+    suffix = f"/{normalized}"
+    return next((node for node in graph._nodes if node.endswith(suffix)), None)
