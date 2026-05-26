@@ -1,0 +1,49 @@
+repos:
+  - id: vscode
+    name: VS Code
+    language: TypeScript
+    url: https://github.com/microsoft/vscode
+    commit: "PLACEHOLDER_SHA"
+    approx_files: 10000
+
+  - id: excalidraw
+    name: Excalidraw
+    language: TypeScript
+    url: https://github.com/excalidraw/excalidraw
+    commit: "PLACEHOLDER_SHA"
+    approx_files: 800
+
+  - id: django
+    name: Django
+    language: Python
+    url: https://github.com/django/django
+    commit: "PLACEHOLDER_SHA"
+    approx_files: 5000
+
+  - id: tokio
+    name: Tokio
+    language: Rust
+    url: https://github.com/tokio-rs/tokio
+    commit: "PLACEHOLDER_SHA"
+    approx_files: 800
+
+  - id: okhttp
+    name: OkHttp
+    language: Java
+    url: https://github.com/square/okhttp
+    commit: "PLACEHOLDER_SHA"
+    approx_files: 600
+
+  - id: gin
+    name: Gin
+    language: Go
+    url: https://github.com/gin-gonic/gin
+    commit: "PLACEHOLDER_SHA"
+    approx_files: 200
+
+  - id: alamofire
+    name: Alamofire
+    language: Swift
+    url: https://github.com/Alamofire/Alamofire
+    commit: "PLACEHOLDER_SHA"
+    approx_files: 150
