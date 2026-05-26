@@ -72,6 +72,9 @@ from tree_sitter_analyzer.mcp.tools.codegraph_overview_tool import (
 from tree_sitter_analyzer.mcp.tools.codegraph_pr_review_tool import (
     CodeGraphPRReviewTool,  # noqa: F401
 )
+from tree_sitter_analyzer.mcp.tools.codegraph_query_tool import (
+    CodeGraphQueryTool,  # noqa: F401
+)
 from tree_sitter_analyzer.mcp.tools.codegraph_sitemap_tool import (
     CodeGraphSitemapTool,  # noqa: F401
 )
@@ -673,6 +676,20 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
         },
     ),
     McpCommandSpec(
+        flag_name="codegraph_query",
+        tool_attr="CodeGraphQueryTool",
+        label="jQuery-style chained code graph query",
+        build_tool_args=lambda args, output_format: {
+            "query": getattr(args, "codegraph_query", "") or "",
+            "max_symbols": getattr(args, "codegraph_query_max_symbols", 20),
+            "max_files": getattr(args, "codegraph_query_max_files", 8),
+            "include_code": not bool(
+                getattr(args, "codegraph_query_outline_only", False)
+            ),
+            "output_format": output_format,
+        },
+    ),
+    McpCommandSpec(
         flag_name="ast_path",
         tool_attr="CodeGraphASTPathTool",
         label="AST path/scope navigation (CodeGraph parity)",
@@ -986,6 +1003,7 @@ _TOOL_CLASS_NAMES: frozenset[str] = frozenset(
         "CodeGraphNavigateTool",
         "CodeGraphStatusTool",
         "CodeGraphExploreTool",
+        "CodeGraphQueryTool",
         "CodeGraphImportGraphTool",
         # Pain pass 4: dead_code spec was added but the class wasn't in
         # this allowlist, so the contract test caught a registry/spec drift.

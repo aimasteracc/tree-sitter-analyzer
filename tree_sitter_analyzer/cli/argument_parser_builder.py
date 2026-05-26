@@ -987,6 +987,31 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Return symbol outline without source snippets for --codegraph-explore",
     )
+    parser.add_argument(
+        "--codegraph-query",
+        metavar="CHAIN",
+        help=(
+            "jQuery-style chained graph query in one process. Example: "
+            "search('CommandService').explore(max_files=4).callees().callers()"
+        ),
+    )
+    parser.add_argument(
+        "--codegraph-query-max-files",
+        type=int,
+        default=8,
+        help="Default max files for --codegraph-query explore steps (default: 8)",
+    )
+    parser.add_argument(
+        "--codegraph-query-max-symbols",
+        type=int,
+        default=20,
+        help="Default max symbols for --codegraph-query steps (default: 20)",
+    )
+    parser.add_argument(
+        "--codegraph-query-outline-only",
+        action="store_true",
+        help="Return outlines without source snippets for --codegraph-query",
+    )
     # --affected: CodeGraph CLI parity (the last CLI surface they had
     # over us). Takes one or more changed files, returns the union of
     # test files transitively affected.

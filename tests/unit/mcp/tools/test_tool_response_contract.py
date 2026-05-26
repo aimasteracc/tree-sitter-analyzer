@@ -264,6 +264,7 @@ class TestExecuteAcrossAllTools:
             "codegraph_incremental_sync": {"mode": "status"},
             "codegraph_status": {},
             "codegraph_explore": {"query": "greet"},
+            "codegraph_query": {"query": "search('greet').explore()"},
             # consolidated-only tools ported during merge of feat/autonomous-dev
             "trace_impact": {"symbol": "greet", "mode": "callers"},
             "modification_guard": {"file_path": sample_file, "symbol": "greet"},

@@ -48,6 +48,7 @@ def create_tool_registry(
     from .tools.codegraph_navigate_tool import CodeGraphNavigateTool
     from .tools.codegraph_overview_tool import CodeGraphOverviewTool
     from .tools.codegraph_pr_review_tool import CodeGraphPRReviewTool
+    from .tools.codegraph_query_tool import CodeGraphQueryTool
     from .tools.codegraph_sitemap_tool import CodeGraphSitemapTool
     from .tools.codegraph_status_tool import CodeGraphStatusTool
     from .tools.codegraph_visualize_tool import CodeGraphVisualizeTool
@@ -125,6 +126,10 @@ def create_tool_registry(
         # map — replaces ~8 chained codegraph_node / analyze_code_structure
         # calls when surveying an unfamiliar area.
         ("codegraph_explore", CodeGraphExploreTool(project_root)),
+        # jQuery-style chain DSL: one process, many graph operations.
+        # Lets agents replace search → explore → callers → callees loops
+        # with e.g. search("X").explore().callees().callers().
+        ("codegraph_query", CodeGraphQueryTool(project_root)),
         # Pain pass 2: codegraph_overview was imported in server.py but
         # missing from the central registry, which broke the cli-mcp-parity
         # contract test. Re-register here so both code paths agree.
