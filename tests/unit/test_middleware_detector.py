@@ -236,6 +236,28 @@ class TestLookup:
         assert mws[0].middleware_name == "apiAuth"
 
 
+class TestSourceWalk:
+    def test_excludes_hidden_work_dirs(self, tmp_path):
+        _write_fixture(
+            tmp_path,
+            ".benchmark-repos/express/app.js",
+            """\
+            const app = require('express')();
+            app.use('/leak', hiddenMiddleware);
+        """,
+        )
+        _write_fixture(
+            tmp_path,
+            "app.js",
+            """\
+            const app = require('express')();
+            app.use('/api', visibleMiddleware);
+        """,
+        )
+        mws = MiddlewareDetector(str(tmp_path)).detect_all()
+        assert [mw.middleware_name for mw in mws] == ["visibleMiddleware"]
+
+
 class TestMiddlewareDetectorTool:
     def test_tool_definition(self, tool):
         defn = tool.get_tool_definition()
@@ -247,6 +269,7 @@ class TestMiddlewareDetectorTool:
 
     @pytest.mark.asyncio
     @pytest.mark.slow  # 10s+ on slow CI — excluded from matrix, run via nightly perf
+    @pytest.mark.slow_ok  # Whole-repo middleware scan intentionally crosses 5s cold.
     async def test_execute_all(self, tool):
         result = await tool.execute({"mode": "all", "output_format": "json"})
         assert result["success"] is True
@@ -255,6 +278,7 @@ class TestMiddlewareDetectorTool:
 
     @pytest.mark.asyncio
     @pytest.mark.slow  # 10s+ on slow CI — excluded from matrix, run via nightly perf
+    @pytest.mark.slow_ok  # Whole-repo middleware scan intentionally crosses 5s cold.
     async def test_execute_summary(self, tool):
         result = await tool.execute({"mode": "summary", "output_format": "json"})
         assert result["success"] is True
@@ -263,6 +287,7 @@ class TestMiddlewareDetectorTool:
 
     @pytest.mark.asyncio
     @pytest.mark.slow  # 10s+ on slow CI — excluded from matrix, run via nightly perf
+    @pytest.mark.slow_ok  # Whole-repo middleware scan intentionally crosses 5s cold.
     async def test_execute_toon_format(self, tool):
         result = await tool.execute({"mode": "all", "output_format": "toon"})
         assert result["success"] is True

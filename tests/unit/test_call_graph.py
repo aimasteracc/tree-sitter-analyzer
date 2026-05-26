@@ -669,6 +669,25 @@ class TestCallGraphInternalMethods:
         assert cg._is_excluded(Path("/tmp/project/.git/config"))
         assert not cg._is_excluded(Path("/tmp/project/main.py"))
 
+    def test_iter_source_files_prunes_hidden_and_generated_dirs(self, tmp_path):
+        (tmp_path / "src").mkdir()
+        (tmp_path / "node_modules" / "pkg").mkdir(parents=True)
+        (tmp_path / ".hidden").mkdir()
+        (tmp_path / "src" / "main.py").write_text("def main():\n    pass\n")
+        (tmp_path / "node_modules" / "pkg" / "skip.py").write_text(
+            "def skip():\n    pass\n"
+        )
+        (tmp_path / ".hidden" / "skip.py").write_text("def skip():\n    pass\n")
+        (tmp_path / ".secret.py").write_text("def skip():\n    pass\n")
+        cg = CallGraph(str(tmp_path))
+
+        files = {
+            path.relative_to(tmp_path).as_posix()
+            for path in cg._iter_source_files({".py"})
+        }
+
+        assert files == {"src/main.py"}
+
     def test_resolve_targets_with_file_path(self):
         cg = CallGraph(str(PY_PROJECT))
         ref = FunctionRef("main.py", "foo", 10, "python")

@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Tests for symbol_resolver engine and codegraph_resolve MCP tool."""
 
+import sqlite3
+
 import pytest
 
 from tree_sitter_analyzer.ast_cache import ASTCache
@@ -78,6 +80,38 @@ class TestSymbolResolverEngine:
         assert len(result.definitions) >= 1
         assert result.definitions[0].name == "get_user"
         cache.close()
+
+    def test_resolve_variable_from_symbol_rows(self):
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.execute(
+            """CREATE TABLE ast_symbol_rows (
+                name TEXT,
+                kind TEXT,
+                file_path TEXT,
+                language TEXT,
+                line INTEGER,
+                end_line INTEGER
+            )"""
+        )
+        conn.execute(
+            "INSERT INTO ast_symbol_rows VALUES (?, ?, ?, ?, ?, ?)",
+            ("APP_NAME", "variable", "constants.ts", "typescript", 1, 1),
+        )
+
+        class Cache:
+            _fts5_available = False
+
+            @staticmethod
+            def _get_conn():
+                return conn
+
+        cache = Cache()
+        resolver = SymbolResolver(cache)
+        result = resolver.resolve("APP_NAME")
+        assert len(result.definitions) >= 1
+        assert result.definitions[0].name == "APP_NAME"
+        assert result.definitions[0].kind == "variable"
 
     def test_resolve_nonexistent(self, indexed_project):
         cache = ASTCache(str(indexed_project))
@@ -217,26 +251,20 @@ class TestCodeGraphSymbolResolveExecution:
 
     async def test_toon_format(self, indexed_project):
         tool = CodeGraphSymbolResolveTool(str(indexed_project))
-        result = await tool.execute(
-            {"symbol": "UserService", "output_format": "toon"}
-        )
+        result = await tool.execute({"symbol": "UserService", "output_format": "toon"})
         assert "toon_content" in result
 
     async def test_empty_cache_error(self, tmp_path):
         project = tmp_path / "empty"
         project.mkdir()
         tool = CodeGraphSymbolResolveTool(str(project))
-        result = await tool.execute(
-            {"symbol": "anything", "output_format": "json"}
-        )
+        result = await tool.execute({"symbol": "anything", "output_format": "json"})
         assert result["success"] is False
         assert "empty" in result["error"].lower()
 
     async def test_resolve_function_definition(self, indexed_project):
         tool = CodeGraphSymbolResolveTool(str(indexed_project))
-        result = await tool.execute(
-            {"symbol": "format_user", "output_format": "json"}
-        )
+        result = await tool.execute({"symbol": "format_user", "output_format": "json"})
         assert result["success"] is True
         assert result["definition_count"] >= 1
         defs = result["definitions"]
@@ -244,9 +272,7 @@ class TestCodeGraphSymbolResolveExecution:
 
     async def test_resolve_class_in_different_file(self, indexed_project):
         tool = CodeGraphSymbolResolveTool(str(indexed_project))
-        result = await tool.execute(
-            {"symbol": "User", "output_format": "json"}
-        )
+        result = await tool.execute({"symbol": "User", "output_format": "json"})
         assert result["success"] is True
         assert result["definition_count"] >= 1
         defs = result["definitions"]

@@ -2,7 +2,8 @@
 
 Supports two modes:
   - ``arm_id="tsa-cold"``: deletes .ast-cache/ and triggers a fresh index build.
-  - ``arm_id="tsa-warm"``: verifies .ast-cache/index.db exists; rebuilds if absent.
+  - ``arm_id="tsa-warm"``: verifies .ast-cache/index.db is populated;
+    rebuilds if absent or empty.
 
 The index is populated by running tree-sitter-analyzer from this checkout via
 ``uv run --project <analyzer-root> ... --project-root <repo_path>``, which parses
@@ -15,6 +16,7 @@ from __future__ import annotations
 import logging
 import re
 import shutil
+import sqlite3
 import subprocess
 import time
 from pathlib import Path
@@ -31,13 +33,14 @@ _DEFAULT_SYSTEM_PROMPT = """\
 You are answering an architecture question about a software codebase.
 tree-sitter-analyzer has been pre-run and its AST cache is available.
 
-Tools available to you: Read, Bash, Grep, Glob.
 You may run ``python -m tree_sitter_analyzer <subcommand> --format json``
-via Bash to query the AST cache.
+via Bash to query the AST cache. Treat TSA output as already-read evidence.
 
 When answering:
-- Start with a tree-sitter-analyzer subcommand (smart-context, project-graph,
-  or call-graph) before falling back to raw Grep or Read.
+- Start with codegraph-explore for the relevant symbol or concept.
+- Do not use raw grep/find/rg/read for discovery; TSA is the index.
+- Use at most one narrow raw file read only if TSA output misses a required
+  detail, and explain the miss.
 - Cite the specific file path and symbol name for every claim you make.
 - Do not guess — only report what you find via the tool or in the files.
 - If a subcommand returns no results, say so and try an alternative query
@@ -57,7 +60,7 @@ _CACHE_DIR = ".ast-cache"
 _CACHE_INDEX = ".ast-cache/index.db"
 
 # Tools Claude is allowed in this arm (TSA is invoked via Bash)
-_ALLOWED_TOOLS = ["Read", "Bash", "Grep", "Glob"]
+_ALLOWED_TOOLS = ["Bash"]
 
 # Patterns used for parse_tool_metrics
 _FILE_READ_TOOLS = frozenset({"read"})
@@ -99,16 +102,30 @@ class TSAAdapter(BenchmarkAdapter):
             _delete_cache(cache_dir)
             return _build_cache(repo_path, cache_dir)
 
-        # Warm path — rebuild only if the index DB is absent
+        # Warm path — rebuild unless the SQLite cache is both present and
+        # populated. A zero-row DB is worse than no DB: prompts tell the
+        # agent "TSA is warm", but every CodeGraph query returns
+        # "cache empty" and the run silently falls back to raw search/read.
         if not index_db.exists():
             logger.info("TSA index.db not found at %s; running cold build.", index_db)
             return _build_cache(repo_path, cache_dir)
+        indexed_files = _indexed_file_count(index_db)
+        if indexed_files is None:
+            logger.info("TSA index.db at %s is unreadable; rebuilding.", index_db)
+            _delete_cache(cache_dir)
+            return _build_cache(repo_path, cache_dir)
+        if indexed_files <= 0:
+            logger.info("TSA index.db at %s is empty; rebuilding.", index_db)
+            return _build_cache(repo_path, cache_dir)
 
-        logger.info("TSA index.db exists at %s; warm path — skipping build.", index_db)
+        logger.info(
+            "TSA index.db exists at %s with %d indexed files; warm path — skipping build.",
+            index_db,
+            indexed_files,
+        )
         size = _dir_size(cache_dir)
-        file_count = _count_files(cache_dir)
         return IndexStats(
-            build_seconds=0.0, index_size_bytes=size, file_count=file_count
+            build_seconds=0.0, index_size_bytes=size, file_count=indexed_files
         )
 
     # ------------------------------------------------------------------
@@ -332,7 +349,10 @@ def _build_cache(repo_path: Path, cache_dir: Path) -> IndexStats:
         )
 
     size = _dir_size(cache_dir) if cache_dir.exists() else 0
-    file_count = _count_files(cache_dir) if cache_dir.exists() else 0
+    index_db = cache_dir / "index.db"
+    file_count = _indexed_file_count(index_db) or (
+        _count_files(cache_dir) if cache_dir.exists() else 0
+    )
 
     logger.info(
         "TSA cache built in %.2fs, size=%d bytes, files=%d",
@@ -359,6 +379,19 @@ def _count_files(path: Path) -> int:
     if not path.exists():
         return 0
     return sum(1 for f in path.rglob("*") if f.is_file())
+
+
+def _indexed_file_count(index_db: Path) -> int | None:
+    """Return ast_index row count, or None for unreadable/corrupt DBs."""
+    try:
+        conn = sqlite3.connect(f"file:{index_db}?mode=ro", uri=True)
+        try:
+            row = conn.execute("SELECT COUNT(*) FROM ast_index").fetchone()
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return None
+    return int(row[0]) if row else None
 
 
 def _load_prompt(prompt_file: Path, default: str) -> str:

@@ -20,6 +20,8 @@ from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
 
+_HUB_CALLER_FILE_SAMPLE_LIMIT = 25
+
 
 class CodeGraphOverviewTool(BaseMCPTool):
     """MCP Tool for project-wide call graph intelligence (CodeGraph parity)."""
@@ -191,21 +193,29 @@ def _find_entry_points(graph: CallGraph, limit: int) -> list[dict[str, Any]]:
 
 def _find_hub_functions(graph: CallGraph, limit: int) -> list[dict[str, Any]]:
     """Functions called by many others (high fan-in)."""
-    hubs = []
+    candidates: list[tuple[int, str, Any]] = []
     for func in graph._functions:
         callers = graph._callers.get(func, [])
         if len(callers) >= 3:
-            hubs.append(
-                {
-                    "name": func.name,
-                    "file": func.file_path,
-                    "line": func.start_line,
-                    "caller_count": len(callers),
-                    "caller_files": sorted({c.file_path for c in callers}),
-                }
-            )
-    hubs.sort(key=lambda x: -cast(int, x["caller_count"]))
-    return hubs[:limit]
+            candidates.append((len(callers), func.name, func))
+
+    candidates.sort(key=lambda x: (-x[0], x[1]))
+    hubs = []
+    for caller_count, _name, func in candidates[:limit]:
+        caller_files = sorted({c.file_path for c in graph._callers.get(func, [])})
+        hubs.append(
+            {
+                "name": func.name,
+                "file": func.file_path,
+                "line": func.start_line,
+                "caller_count": caller_count,
+                "caller_file_count": len(caller_files),
+                "caller_files": caller_files[:_HUB_CALLER_FILE_SAMPLE_LIMIT],
+                "caller_files_truncated": len(caller_files)
+                > _HUB_CALLER_FILE_SAMPLE_LIMIT,
+            }
+        )
+    return hubs
 
 
 def _find_dead_code(graph: CallGraph, limit: int) -> list[dict[str, Any]]:
@@ -228,36 +238,51 @@ def _find_dead_code(graph: CallGraph, limit: int) -> list[dict[str, Any]]:
 
 
 def _compute_depth_distribution(graph: CallGraph) -> dict[str, Any]:
-    """Compute call depth distribution across all functions."""
-    func_depths: dict[str, int] = {}
+    """Compute a bounded call depth distribution across all functions.
 
-    def _chain_depth(func_name: str, visited: set[str] | None = None) -> int:
-        if visited is None:
-            visited = set()
-        candidates = graph._func_by_name.get(func_name, [])
-        if not candidates:
+    Large monorepos can contain hundreds of thousands of call edges. Keep this
+    pass linear by memoizing per function reference and by capping at the
+    public distribution bucket limit.
+    """
+    func_depths: dict[str, int] = {}
+    memo: dict[Any, int] = {}
+    visiting: set[Any] = set()
+    depth_cap = 10
+    capped = False
+
+    def _chain_depth(func: Any) -> int:
+        nonlocal capped
+        if func in memo:
+            return memo[func]
+        if func in visiting:
             return 0
-        func = candidates[0]
-        key = func.qualified_name()
-        if key in visited:
-            return 0
-        visited.add(key)
-        callees = graph._callees.get(func, [])
-        if not callees:
-            return 0
+
+        visiting.add(func)
         max_child = 0
-        for callee in callees:
-            d = _chain_depth(callee.name, visited.copy())
-            if d > max_child:
-                max_child = d
-        return 1 + max_child
+        for callee in graph._callees.get(func, []):
+            child_depth = 1 + _chain_depth(callee)
+            if child_depth > max_child:
+                max_child = child_depth
+            if max_child >= depth_cap:
+                max_child = depth_cap
+                capped = True
+                break
+        visiting.remove(func)
+        memo[func] = max_child
+        return max_child
 
     for func in graph._functions:
-        d = _chain_depth(func.name)
+        d = _chain_depth(func)
         func_depths[func.qualified_name()] = d
 
     if not func_depths:
-        return {"max_depth": 0, "distribution": {}, "avg_depth": 0.0}
+        return {
+            "max_depth": 0,
+            "distribution": {},
+            "avg_depth": 0.0,
+            "depth_cap": depth_cap,
+            "capped": False,
+        }
 
     max_depth = max(func_depths.values())
     dist: dict[str, int] = {}
@@ -270,6 +295,8 @@ def _compute_depth_distribution(graph: CallGraph) -> dict[str, Any]:
         "max_depth": max_depth,
         "avg_depth": round(sum(func_depths.values()) / len(func_depths), 2),
         "distribution": dict(sorted(dist.items())),
+        "depth_cap": depth_cap,
+        "capped": capped,
     }
 
 

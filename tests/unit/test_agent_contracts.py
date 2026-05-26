@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import configparser
+import os
 import re
 from pathlib import Path
 
@@ -19,6 +20,7 @@ from tree_sitter_analyzer.mcp.server import _create_tool_registry
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SKIPPED_SCAN_DIRS = {
     ".git",
+    ".benchmark-repos",
     ".mypy_cache",
     ".pytest_cache",
     ".ruff_cache",
@@ -524,18 +526,25 @@ def test_warning_prone_python_api_patterns_are_blocked() -> None:
     }
 
     violations: list[str] = []
-    for path in PROJECT_ROOT.rglob("*.py"):
-        if any(part in SKIPPED_SCAN_DIRS for part in path.parts):
-            continue
+    for dirpath, dirnames, filenames in os.walk(PROJECT_ROOT):
+        dirnames[:] = [
+            name
+            for name in dirnames
+            if name not in SKIPPED_SCAN_DIRS and not name.startswith(".")
+        ]
+        for filename in filenames:
+            if not filename.endswith(".py"):
+                continue
+            path = Path(dirpath) / filename
 
-        text = path.read_text(encoding="utf-8")
-        for pattern, replacement in blocked_patterns.items():
-            for match in re.finditer(pattern, text):
-                line_number = text.count("\n", 0, match.start()) + 1
-                relative_path = path.relative_to(PROJECT_ROOT)
-                violations.append(
-                    f"{relative_path}:{line_number} matches {pattern}; {replacement}"
-                )
+            text = path.read_text(encoding="utf-8")
+            for pattern, replacement in blocked_patterns.items():
+                for match in re.finditer(pattern, text):
+                    line_number = text.count("\n", 0, match.start()) + 1
+                    relative_path = path.relative_to(PROJECT_ROOT)
+                    violations.append(
+                        f"{relative_path}:{line_number} matches {pattern}; {replacement}"
+                    )
 
     assert violations == []
 

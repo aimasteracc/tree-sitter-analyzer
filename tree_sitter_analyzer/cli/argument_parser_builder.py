@@ -335,8 +335,8 @@ def _add_mcp_index_management_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--autoindex-max-files",
         type=int,
-        default=5000,
-        help="Max files to index when --autoindex-mode=warm (default: 5000)",
+        default=20_000,
+        help="Max files to index when --autoindex-mode=warm (default: 20000)",
     )
     parser.add_argument(
         "--full-index",
@@ -356,8 +356,16 @@ def _add_mcp_index_management_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--full-index-max-files",
         type=int,
-        default=5000,
-        help="Max files for --full-index rebuild (default: 5000)",
+        default=20_000,
+        help="Max files for --full-index rebuild (default: 20000)",
+    )
+    parser.add_argument(
+        "--full-index-include-activation",
+        action="store_true",
+        help=(
+            "Compute temporal git activation during --full-index "
+            "(slower; default keeps warm-cache indexing fast)"
+        ),
     )
     parser.add_argument(
         "--codegraph-metrics",
@@ -398,8 +406,8 @@ def _add_mcp_index_management_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--incremental-sync-max-files",
         type=int,
-        default=5000,
-        help="Max files for --incremental-sync (default: 5000)",
+        default=20_000,
+        help="Max files for --incremental-sync (default: 20000)",
     )
 
 
@@ -696,13 +704,21 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--ast-cache-max-files",
         type=int,
-        default=5000,
-        help="Max files to index with --ast-cache (default: 5000)",
+        default=20_000,
+        help="Max files to index with --ast-cache (default: 20000)",
     )
     parser.add_argument(
         "--ast-cache-force",
         action="store_true",
         help="Force full re-index with --ast-cache",
+    )
+    parser.add_argument(
+        "--ast-cache-include-activation",
+        action="store_true",
+        help=(
+            "Compute temporal git activation during project indexing "
+            "(slower; default keeps warm-cache indexing fast)"
+        ),
     )
     parser.add_argument(
         "--watch",

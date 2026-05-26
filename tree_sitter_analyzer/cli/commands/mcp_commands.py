@@ -527,8 +527,11 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
             "file_path": getattr(args, "file_path", None),
             "query": getattr(args, "ast_cache_query", None),
             "language": getattr(args, "ast_cache_language", None),
-            "max_files": getattr(args, "ast_cache_max_files", 5000),
+            "max_files": getattr(args, "ast_cache_max_files", 20_000),
             "force": bool(getattr(args, "ast_cache_force", False)),
+            "include_activation": bool(
+                getattr(args, "ast_cache_include_activation", False)
+            ),
             "poll_interval": getattr(args, "watch_poll_interval", 5.0),
             "backend": getattr(args, "watch_backend", "poll"),
         },
