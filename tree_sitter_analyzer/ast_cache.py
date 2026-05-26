@@ -404,7 +404,7 @@ class ASTCache:
                 conn.executescript(_SCHEMA_V3_CALL_EDGES)
                 self._record_schema_version(conn, 3, "ast_call_edges + indices")
                 conn.commit()
-            except sqlite3.OperationalError:
+            except sqlite3.OperationalError:  # pragma: no cover - defensive fallback
                 pass
         # Feature 1 (Synapse) — V4 schema. ALTER TABLE has no
         # IF NOT EXISTS form in SQLite, so we add the columns only when

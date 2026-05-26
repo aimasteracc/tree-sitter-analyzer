@@ -73,6 +73,23 @@ class TestIndexFile:
         result = cache.index_file(f)
         assert result["status"] == "cached"
 
+    def test_content_unchanged_refreshes_file_metadata(self, cache, tmp_project):
+        f = str(tmp_project / "src" / "main.py")
+        cache.index_file(f)
+        conn = cache._get_conn()
+        conn.execute(
+            "UPDATE ast_index SET mtime_ns = 0 WHERE file_path = ?", ("src/main.py",)
+        )
+        conn.commit()
+
+        result = cache.index_file(f)
+
+        assert result == {
+            "file": "src/main.py",
+            "status": "cached",
+            "reason": "content unchanged",
+        }
+
     def test_stale_extractor_version_reindexes_unchanged_file(self, cache, tmp_project):
         f = str(tmp_project / "src" / "main.py")
         cache.index_file(f)
