@@ -6,6 +6,7 @@ from unittest.mock import patch
 import pytest
 
 from tree_sitter_analyzer.ast_cache import (
+    _AST_CACHE_EXTRACTOR_VERSION,
     _EXT_TO_LANG,
     ASTCache,
     _content_hash,
@@ -72,6 +73,22 @@ class TestIndexFile:
         result = cache.index_file(f)
         assert result["status"] == "cached"
 
+    def test_stale_extractor_version_reindexes_unchanged_file(self, cache, tmp_project):
+        f = str(tmp_project / "src" / "main.py")
+        cache.index_file(f)
+        conn = cache._get_conn()
+        conn.execute("UPDATE ast_index SET extractor_version = 0")
+        conn.commit()
+
+        result = cache.index_file(f)
+
+        assert result["status"] == "indexed"
+        version = conn.execute(
+            "SELECT extractor_version FROM ast_index WHERE file_path = ?",
+            ("src/main.py",),
+        ).fetchone()[0]
+        assert version == _AST_CACHE_EXTRACTOR_VERSION
+
     def test_index_with_explicit_language(self, cache, tmp_project):
         f = str(tmp_project / "src" / "main.py")
         result = cache.index_file(f, language="python")
@@ -88,6 +105,17 @@ class TestIndexProject:
         cache.index_project()
         result = cache.index_project()
         assert result["cached"] >= 2
+
+    def test_index_project_reindexes_stale_extractor_version(self, cache):
+        cache.index_project(workers=0)
+        conn = cache._get_conn()
+        conn.execute("UPDATE ast_index SET extractor_version = 0")
+        conn.commit()
+
+        result = cache.index_project(workers=0)
+
+        assert result["indexed"] >= 2
+        assert result["cached"] == 0
 
     def test_index_project_force(self, cache):
         cache.index_project()

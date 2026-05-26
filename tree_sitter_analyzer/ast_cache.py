@@ -23,6 +23,8 @@ from .project_graph import _language_from_ext
 
 logger = logging.getLogger(__name__)
 
+_AST_CACHE_EXTRACTOR_VERSION = 2
+
 _SCHEMA_V1 = """
 CREATE TABLE IF NOT EXISTS ast_index (
     file_path    TEXT NOT NULL,
@@ -30,6 +32,7 @@ CREATE TABLE IF NOT EXISTS ast_index (
     language     TEXT NOT NULL,
     mtime_ns     INTEGER NOT NULL,
     file_size    INTEGER NOT NULL,
+    extractor_version INTEGER NOT NULL DEFAULT 0,
     symbols_json TEXT NOT NULL DEFAULT '{}',
     imports_json TEXT NOT NULL DEFAULT '[]',
     structure_json TEXT NOT NULL DEFAULT '{}',
@@ -290,6 +293,13 @@ _EXPECTED_SCHEMA_VERSIONS: list[tuple[int, str, dict[str, list[str]]]] = [
             "tables": ["ast_constraint_violations"],
         },
     ),
+    (
+        7,
+        "Extractor version invalidation",
+        {
+            "ast_index_columns": ["extractor_version"],
+        },
+    ),
 ]
 
 
@@ -468,6 +478,24 @@ class ASTCache:
             try:
                 conn.executescript(_SCHEMA_V6_VIOLATIONS)
                 self._record_schema_version(conn, 6, "Constraint violations")
+                conn.commit()
+            except sqlite3.OperationalError:
+                pass
+        # V7 records which extraction algorithm produced the serialized
+        # per-file rows. Bump ``_AST_CACHE_EXTRACTOR_VERSION`` whenever
+        # symbols/imports/structure/call_edges change semantics so existing
+        # caches are re-parsed instead of serving stale graph answers.
+        if 7 not in applied_versions:
+            try:
+                index_cols = {
+                    r[1] for r in conn.execute("PRAGMA table_info(ast_index)")
+                }
+                if "extractor_version" not in index_cols:
+                    conn.execute(
+                        "ALTER TABLE ast_index "
+                        "ADD COLUMN extractor_version INTEGER NOT NULL DEFAULT 0"
+                    )
+                self._record_schema_version(conn, 7, "Extractor version invalidation")
                 conn.commit()
             except sqlite3.OperationalError:
                 pass
@@ -651,13 +679,15 @@ class ASTCache:
         source_code: str | None = None
         conn = self._get_conn()
         row = conn.execute(
-            "SELECT content_hash, mtime_ns, file_size FROM ast_index WHERE file_path = ?",
+            "SELECT content_hash, mtime_ns, file_size, extractor_version "
+            "FROM ast_index WHERE file_path = ?",
             (rel_path,),
         ).fetchone()
         if row is not None:
             if (
                 row["mtime_ns"] == int(stat.st_mtime_ns)
                 and row["file_size"] == stat.st_size
+                and row["extractor_version"] >= _AST_CACHE_EXTRACTOR_VERSION
             ):
                 return {"file": rel_path, "status": "cached", "reason": "unchanged"}
 
@@ -669,7 +699,11 @@ class ASTCache:
 
         content_hash = _content_hash(source_code)
 
-        if row is not None and row["content_hash"] == content_hash:
+        if (
+            row is not None
+            and row["content_hash"] == content_hash
+            and row["extractor_version"] >= _AST_CACHE_EXTRACTOR_VERSION
+        ):
             conn.execute(
                 "UPDATE ast_index SET mtime_ns = ?, file_size = ? WHERE file_path = ?",
                 (int(stat.st_mtime_ns), stat.st_size, rel_path),
@@ -694,14 +728,16 @@ class ASTCache:
         conn.execute(
             """INSERT OR REPLACE INTO ast_index
                (file_path, content_hash, language, mtime_ns, file_size,
-                symbols_json, imports_json, structure_json, indexed_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                extractor_version, symbols_json, imports_json, structure_json,
+                indexed_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 rel_path,
                 content_hash,
                 language,
                 int(stat.st_mtime_ns),
                 stat.st_size,
+                _AST_CACHE_EXTRACTOR_VERSION,
                 json.dumps(symbols, ensure_ascii=False),
                 json.dumps(imports, ensure_ascii=False),
                 json.dumps(structure, ensure_ascii=False),
@@ -1180,13 +1216,15 @@ class ASTCache:
                 )
                 continue
             row = conn.execute(
-                "SELECT mtime_ns, file_size FROM ast_index WHERE file_path = ?",
+                "SELECT mtime_ns, file_size, extractor_version "
+                "FROM ast_index WHERE file_path = ?",
                 (rel_path,),
             ).fetchone()
             if (
                 row is not None
                 and row["mtime_ns"] == int(stat.st_mtime_ns)
                 and row["file_size"] == stat.st_size
+                and row["extractor_version"] >= _AST_CACHE_EXTRACTOR_VERSION
             ):
                 already_cached.append(
                     {"file": rel_path, "status": "cached", "reason": "unchanged"}
@@ -1317,14 +1355,16 @@ class ASTCache:
         conn.execute(
             """INSERT OR REPLACE INTO ast_index
                (file_path, content_hash, language, mtime_ns, file_size,
-                symbols_json, imports_json, structure_json, indexed_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                extractor_version, symbols_json, imports_json, structure_json,
+                indexed_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 rel_path,
                 r["content_hash"],
                 r["language"],
                 r["mtime_ns"],
                 r["file_size"],
+                _AST_CACHE_EXTRACTOR_VERSION,
                 r["symbols_json"],
                 r["imports_json"],
                 r["structure_json"],
