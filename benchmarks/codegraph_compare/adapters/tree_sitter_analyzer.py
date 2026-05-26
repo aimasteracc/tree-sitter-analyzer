@@ -37,7 +37,7 @@ You may run ``python -m tree_sitter_analyzer <subcommand> --format json``
 via Bash to query the AST cache. Treat TSA output as already-read evidence.
 
 When answering:
-- Start with codegraph-query for the relevant symbol or concept.
+- Start with one codegraph-query answer pack for the relevant symbol or concept.
 - Do not use raw grep/find/rg/read for discovery; TSA is the index.
 - Use at most one narrow raw file read only if TSA output misses a required
   detail, and explain the miss.
@@ -141,7 +141,8 @@ class TSAAdapter(BenchmarkAdapter):
             "tree-sitter-analyzer is available through this command prefix: "
             f"`{command_prefix}`. "
             "Run it from the benchmark repo root with `--project-root .`. "
-            "Useful queries: `--codegraph-query \"search('<symbol-or-concept>').explore(max_files=5).related(limit=8)\"`, "
+            "Useful query: `--codegraph-query \"search('<symbol-or-concept>').explore(max_files=5, max_symbols=8, include_code=True).include(source=True, callers=True, callees=True, complexity=True, health=True, affected_tests=True, risk=True, max_files=5, limit=8).sort(by='fan_in', desc=True).answer()\"`. "
+            "Fallbacks: "
             "`--symbol-search <name>`, `--codegraph-explore <query>`, "
             "`--codegraph-overview`, and `--call-graph callers|callees "
             "--call-graph-function <name>`. "

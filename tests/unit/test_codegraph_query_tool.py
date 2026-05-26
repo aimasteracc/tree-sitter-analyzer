@@ -12,14 +12,23 @@ from tree_sitter_analyzer.mcp.tools._codegraph_query_dsl import (
     first_int,
     first_str,
     int_kw,
+    string_args,
 )
 from tree_sitter_analyzer.mcp.tools.codegraph_query_tool import (
     CodeGraphQueryTool,
+    _absolute_path,
+    _affected_tests_facet,
     _build_file_entries,
+    _complexity_facet,
     _dedupe_symbols,
+    _health_facet,
+    _include_facets,
     _QueryState,
     _relation_step,
+    _resolve_queries,
     _resolve_query,
+    _risk_facet,
+    _sort_state,
     parse_chain,
 )
 from tree_sitter_analyzer.symbol_resolver import DefinitionLocation, ResolveResult
@@ -74,6 +83,21 @@ class TestParseChain:
         with pytest.raises(ValueError, match="unsupported chain step"):
             parse_chain("search('x').delete()")
 
+    def test_parses_batch_seed_and_answer_pack_steps(self):
+        steps = parse_chain(
+            "search(['Router', 'Handler']).include(callers=True, source=True)"
+            ".sort(by='fan_in', desc=True).answer()"
+        )
+
+        assert [step.name for step in steps] == [
+            "search",
+            "include",
+            "sort",
+            "answer",
+        ]
+        assert string_args(steps[0], required=True) == ["Router", "Handler"]
+        assert steps[1].kwargs == {"callers": True, "source": True}
+
     def test_parses_kwargs_and_escaped_quotes(self):
         steps = parse_chain(r'search(query="src/a.\"b.py Run").take(2)')
 
@@ -86,7 +110,9 @@ class TestParseChain:
             ("search('x'))", r"unbalanced '\)'"),
             ("search('x)", "unbalanced quote or parentheses"),
             ("search('x').callers", "invalid chain step"),
-            ("search(['x'])", "chain arguments must be scalar literals"),
+            ("search({'x': 1})", "chain arguments must be scalar literals"),
+            ("search('x', **{'limit': 1})", r"does not support \*\*kwargs"),
+            ("search('x', unknown=True)", "does not support keyword"),
         ],
     )
     def test_rejects_malformed_chains(self, query, match):
@@ -107,9 +133,41 @@ class TestParseChain:
         assert int_kw(_ChainStep("search", [], {"limit": 99}), "limit", 7, 10) == 10
         assert bool_kw(step, "enabled", default=True) is False
         assert bool_kw(_ChainStep("explore", [], {}), "include_code", True) is True
+        assert string_args(_ChainStep("search", [["a", "b"]], {}), required=True) == [
+            "a",
+            "b",
+        ]
 
         with pytest.raises(ValueError, match=r"search\(\) requires a string query"):
             first_str(_ChainStep("search", [], {}), required=True)
+
+    @pytest.mark.parametrize(
+        ("query", "match"),
+        [
+            ("x" * 4097 + "()", "query exceeds"),
+            (".".join(["answer()"] * 21), "query exceeds 20 chain steps"),
+            ("search(['ok', 1])", "list arguments must contain only strings"),
+            ("search(" + repr(["x"] * 9) + ")", "list arguments must contain <= 8"),
+            ("search(" + repr("x" * 161) + ")", "string arguments must be <= 160"),
+            (
+                "search(" + repr(["ok", "x" * 161]) + ")",
+                "string arguments must be <= 160",
+            ),
+        ],
+    )
+    def test_parser_rejects_guardrail_violations(self, query, match):
+        with pytest.raises(ValueError, match=match):
+            parse_chain(query)
+
+    def test_argument_helpers_cover_keyword_lists_and_limits(self):
+        step = _ChainStep("search", ["positional"], {"query": ["kw1", "kw2"]})
+
+        assert string_args(step, required=True) == ["kw1", "kw2"]
+        assert (
+            first_str(_ChainStep("search", ["needle"], {}), required=True) == "needle"
+        )
+        assert first_str(_ChainStep("include", [], {}), required=False) == ""
+        assert first_int(_ChainStep("take", [], {"limit": 4}), default=9) == 4
 
 
 class TestCodeGraphQueryTool:
@@ -312,6 +370,61 @@ class TestCodeGraphQueryTool:
         assert result["success"] is True
         assert [symbol["name"] for symbol in result["symbols"]] == ["run"]
 
+    @pytest.mark.asyncio
+    async def test_execute_batch_seed_include_sort_and_answer(self, tmp_path):
+        source = tmp_path / "main.py"
+        source.write_text(
+            "def run():\n    return helper()\n\ndef helper():\n    return 1\n",
+            encoding="utf-8",
+        )
+        mock_cache = MagicMock()
+        mock_cache.query_callers.return_value = [
+            {
+                "caller_name": "entry",
+                "caller_file": "tests/test_main.py",
+                "caller_line": 8,
+                "depth": 1,
+            }
+        ]
+        mock_cache.query_callees.return_value = [
+            {
+                "callee_name": "helper",
+                "callee_file": "main.py",
+                "callee_line": 4,
+                "depth": 1,
+            }
+        ]
+
+        defs = {
+            "run": [_make_def(file="main.py", name="run", line=1)],
+            "helper": [_make_def(file="main.py", name="helper", line=4)],
+        }
+
+        with (
+            patch("tree_sitter_analyzer.ast_cache.ASTCache", return_value=mock_cache),
+            _patch_resolver_with(defs),
+        ):
+            result = await CodeGraphQueryTool(str(tmp_path)).execute(
+                {
+                    "query": (
+                        "search(['run', 'helper']).explore(max_files=2)"
+                        ".include(source=True, callers=True, callees=True, "
+                        "affected_tests=True, risk=True)"
+                        ".sort(by='fan_in', desc=True).answer()"
+                    ),
+                    "output_format": "json",
+                }
+            )
+
+        assert result["success"] is True
+        assert result["stats"]["facets_returned"] == 5
+        assert result["facets"]["source"]["file_count"] == 1
+        assert result["facets"]["callers"]["edges"]
+        assert result["facets"]["callees"]["edges"]
+        assert result["facets"]["affected_tests"]["files"] == ["tests/test_main.py"]
+        assert result["facets"]["risk"]["level"] == "info"
+        assert result["normalized_chain"][-1]["name"] == "answer"
+
     def test_apply_step_rejects_unknown_step(self):
         with pytest.raises(ValueError, match="unsupported chain step"):
             CodeGraphQueryTool("/tmp")._apply_step(
@@ -345,6 +458,21 @@ class TestCodeGraphQueryInternals:
         ):
             assert _resolve_query(MagicMock(), "run", limit=5) == []
 
+    def test_resolve_queries_stops_at_limit_and_dedupes(self):
+        defs = {
+            "run": [
+                _make_def(file="main.py", name="run", line=1),
+                _make_def(file="main.py", name="run", line=1),
+            ],
+            "helper": [_make_def(file="helper.py", name="helper", line=3)],
+        }
+
+        with _patch_resolver_with(defs):
+            assert [
+                symbol["name"]
+                for symbol in _resolve_queries(MagicMock(), ["run", "helper"], limit=1)
+            ] == ["run"]
+
     def test_relation_step_skips_symbols_without_names_and_empty_rows(self):
         mock_cache = MagicMock()
         mock_cache.query_callers.return_value = [
@@ -372,6 +500,24 @@ class TestCodeGraphQueryInternals:
         assert [symbol["name"] for symbol in related] == ["entry"]
         mock_cache.query_callers.assert_called_once_with("run", "main.py", max_depth=1)
         assert state.relationships["callers"]["main.py:2:run"][0]["name"] == "entry"
+
+    def test_sort_state_supports_path_alias_fan_out_and_rejects_unknown_fields(self):
+        state = _QueryState()
+        state.current = [
+            {"file": "b.py", "line": 2, "name": "b"},
+            {"file": "a.py", "line": 1, "name": "a"},
+        ]
+        state.symbols = list(state.current)
+        state.relationships["callees"] = {"a.py:1:a": [{}, {}], "b.py:2:b": [{}]}
+
+        _sort_state(state, _ChainStep("sort", [], {"by": "path"}))
+        assert [symbol["file"] for symbol in state.current] == ["a.py", "b.py"]
+
+        _sort_state(state, _ChainStep("sort", [], {"by": "fan_out", "desc": True}))
+        assert [symbol["name"] for symbol in state.current] == ["a", "b"]
+
+        with pytest.raises(ValueError, match="unsupported field"):
+            _sort_state(state, _ChainStep("sort", [], {"by": "unknown"}))
 
     def test_build_file_entries_skips_blank_files_and_omits_oversized_snippets(
         self, tmp_path
@@ -410,6 +556,109 @@ class TestCodeGraphQueryInternals:
                 ],
             }
         ]
+
+    def test_include_facets_collects_quality_health_tests_and_risk(self, tmp_path):
+        source = tmp_path / "main.py"
+        source.write_text("def run():\n    return 1\n", encoding="utf-8")
+        mock_cache = MagicMock()
+        mock_cache.query_callers.return_value = [
+            {"caller_name": f"caller_{i}", "caller_file": f"c{i}.py", "caller_line": i}
+            for i in range(10)
+        ]
+        mock_cache.query_callees.return_value = [
+            {"callee_name": "helper", "callee_file": "helper.py", "callee_line": 7}
+        ]
+        state = _QueryState()
+        state.current = [
+            {"file": "main.py", "line": 1, "name": "run", "kind": "function"},
+            {
+                "file": "tests/test_main.py",
+                "line": 3,
+                "name": "test_run",
+                "kind": "function",
+            },
+        ]
+        state.symbols = list(state.current)
+
+        complexity_row = MagicMock(name="run", line=1, complexity=22)
+        health_score = MagicMock(total=51, grade="D", dimensions={"complexity": 20})
+        with (
+            patch(
+                "tree_sitter_analyzer.complexity_heatmap."
+                "analyze_file_complexity_from_cache",
+                return_value=[complexity_row],
+            ),
+            patch("tree_sitter_analyzer.health_scorer.HealthScorer") as scorer_cls,
+        ):
+            scorer_cls.return_value.score_file.return_value = health_score
+            _include_facets(
+                cache=mock_cache,
+                project_root=str(tmp_path),
+                state=state,
+                step=_ChainStep(
+                    "include",
+                    [],
+                    {
+                        "source": True,
+                        "callers": True,
+                        "callees": True,
+                        "complexity": True,
+                        "health": True,
+                        "affected_tests": True,
+                        "risk": True,
+                        "include_code": False,
+                    },
+                ),
+                default_max_symbols=10,
+                default_max_files=5,
+                default_include_code=True,
+            )
+
+        assert set(state.facets) == {
+            "source",
+            "callers",
+            "callees",
+            "complexity",
+            "health",
+            "affected_tests",
+            "risk",
+        }
+        assert state.facets["complexity"]["files"][0]["max_complexity"] == 22
+        assert state.facets["health"]["files"][0]["grade"] == "D"
+        assert state.facets["affected_tests"]["files"] == ["tests/test_main.py"]
+        assert state.facets["risk"]["level"] == "review"
+
+    def test_quality_facets_cover_empty_error_and_missing_paths(self, tmp_path):
+        symbols = [{"file": "main.py", "line": 1, "name": "run"}]
+
+        with patch(
+            "tree_sitter_analyzer.complexity_heatmap.analyze_file_complexity_from_cache",
+            side_effect=[[], RuntimeError("boom")],
+        ):
+            result = _complexity_facet(
+                MagicMock(),
+                str(tmp_path),
+                [*symbols, {"file": "other.py", "line": 2, "name": "other"}],
+                max_files=2,
+            )
+
+        assert result["files"][0]["status"] == "no_functions"
+        assert result["files"][1]["status"] == "error"
+
+        with patch("tree_sitter_analyzer.health_scorer.HealthScorer") as scorer_cls:
+            scorer_cls.return_value.score_file.side_effect = RuntimeError("bad health")
+            health = _health_facet(str(tmp_path), symbols, max_files=1)
+
+        assert health["files"] == [
+            {"file": "main.py", "status": "error", "error": "bad health"}
+        ]
+
+        empty_state = _QueryState()
+        assert _affected_tests_facet(empty_state)["status"] == "missing"
+        assert _risk_facet(empty_state)["level"] == "info"
+        assert _absolute_path(str(tmp_path), str(tmp_path / "main.py")) == str(
+            tmp_path / "main.py"
+        )
 
     def test_dedupe_symbols_keeps_first_instance(self):
         symbols = [
