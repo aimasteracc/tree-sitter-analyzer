@@ -89,6 +89,7 @@ Categories of CLI surface:
 - `--ast-path FILE:LINE` — "what is at file:line?"
 - `--codegraph-symbol-search QUERY` — FTS5 symbol search
 - `--codegraph-explore QUERY` — bulk-fetch N related symbols + relmap (CodeGraph parity)
+- `--codegraph-query CHAIN` — jQuery-style chained graph query (`search().explore().callees()`)
 - `--affected FILE [FILE...]` — list test files transitively affected by changes (CodeGraph parity; closes the last CLI surface gap)
 - `--dead-code` — transitive dead functions / unused imports
 - `--class-hierarchy` / `--dependency-matrix` / `--import-graph` — structural

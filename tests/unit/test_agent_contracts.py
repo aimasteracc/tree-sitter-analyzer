@@ -255,6 +255,7 @@ def test_registered_mcp_tools_have_cli_parity() -> None:
         # CodeGraph parity gap-closure (2026-05-24).
         "codegraph_status": ("main", "--codegraph-status"),
         "codegraph_explore": ("main", "--codegraph-explore"),
+        "codegraph_query": ("main", "--codegraph-query"),
         "codegraph_impact": ("main", "--codegraph-impact"),
         "codegraph_pr_review": ("main", "--pr-review"),
         "semantic_classify": ("main", "--semantic-classify"),
