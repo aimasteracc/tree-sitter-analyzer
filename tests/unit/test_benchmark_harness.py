@@ -316,7 +316,7 @@ class TestCodeGraphCompareToolPolicy:
         assert "invalidates the benchmark" in prompt
         assert "--codegraph-query" in prompt
         assert "flow(" not in prompt
-        assert ".answer(" not in prompt
+        assert ".answer()" in prompt
 
 
 class TestCodeGraphComparePhases:
