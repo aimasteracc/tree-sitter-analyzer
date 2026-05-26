@@ -13,6 +13,7 @@ Computes a 0-100 health score for source files based on weighted dimensions:
 
 import json
 import logging
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -354,7 +355,9 @@ class HealthScorer:
         self.source_extensions = set(source_extensions or PROJECT_HEALTH_SOURCE_EXTS)
         self._coverage_cache: dict[str, float] | None = None
 
-    def score_file(self, file_path: str) -> HealthScore:
+    def score_file(
+        self, file_path: str, *, fast_dependencies: bool = False
+    ) -> HealthScore:
         """
         Score a single file.
 
@@ -370,7 +373,9 @@ class HealthScorer:
             return HealthScore(file_path=file_path, total=0.0, dimensions={})
 
         language = _EXT_TO_LANG.get(path.suffix.lower())
-        dims = self._score_dimensions(file_path, source, language)
+        dims = self._score_dimensions(
+            file_path, source, language, fast_dependencies=fast_dependencies
+        )
         total = calculate_weighted_total(dims, self.weights)
 
         return HealthScore(
@@ -384,12 +389,19 @@ class HealthScorer:
         file_path: str,
         source: str,
         language: str | None,
+        *,
+        fast_dependencies: bool = False,
     ) -> dict[str, float | None]:
         """Score each health dimension for a source file."""
+        dependency_score = (
+            _score_deps_fallback(file_path)
+            if fast_dependencies
+            else score_dependencies(file_path)
+        )
         return {
             "size": score_size(len(source.splitlines())),
             "complexity": score_complexity(file_path, source, language),
-            "dependencies": score_dependencies(file_path),
+            "dependencies": dependency_score,
             "coverage": self._score_coverage(file_path),
             "duplication": score_duplication(source, language),
             "structure": score_structure(file_path, source, language),
@@ -445,7 +457,28 @@ class HealthScorer:
             rel_parts = file_path.relative_to(root).parts
         except ValueError:
             rel_parts = file_path.parts
-        return any(part in self._EXCLUDE_DIRS for part in rel_parts)
+        return any(
+            part in self._EXCLUDE_DIRS or part.startswith(".") for part in rel_parts
+        )
+
+    def _iter_source_files(self, root: Path) -> tuple[list[Path], int]:
+        """Return source files and a count of pruned generated/hidden dirs."""
+        files: list[Path] = []
+        pruned_dirs = 0
+        for dirpath, dirnames, filenames in os.walk(root):
+            kept_dirs: list[str] = []
+            for name in dirnames:
+                if name in self._EXCLUDE_DIRS or name.startswith("."):
+                    pruned_dirs += 1
+                else:
+                    kept_dirs.append(name)
+            dirnames[:] = kept_dirs
+            for filename in filenames:
+                if filename.startswith("."):
+                    continue
+                if Path(filename).suffix.lower() in self.source_extensions:
+                    files.append(Path(dirpath) / filename)
+        return files, pruned_dirs
 
     def score_project(
         self,
@@ -513,17 +546,17 @@ class HealthScorer:
         excluded_dir = 0
         scoring_failed = 0
         try:
-            for ext in self.source_extensions:
-                for f in root.rglob(f"*{ext}"):
-                    scanned += 1
-                    if self._is_excluded(f, root):
-                        excluded_dir += 1
-                        continue
-                    score = self._score_file_with_cache(str(f), cache)
-                    if score is None:
-                        scoring_failed += 1
-                        continue
-                    results.append(score)
+            files, excluded_dir = self._iter_source_files(root)
+            for f in files:
+                scanned += 1
+                if self._is_excluded(f, root):
+                    excluded_dir += 1
+                    continue
+                score = self._score_file_with_cache(str(f), cache)
+                if score is None:
+                    scoring_failed += 1
+                    continue
+                results.append(score)
         finally:
             if cache is not None:
                 cache.close()

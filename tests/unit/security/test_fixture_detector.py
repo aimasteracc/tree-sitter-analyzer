@@ -207,7 +207,11 @@ class TestCache:
         root = _make_project(
             tmp_path,
             {
-                "tests/test_x.py": "name = 'tree_sitter_analyzer/foo.py'\n",
+                "tests/test_x.py": (
+                    "from pathlib import Path\n"
+                    "PROJECT_ROOT = Path('.')\n"
+                    "name = PROJECT_ROOT / 'tree_sitter_analyzer' / 'foo.py'\n"
+                ),
                 "tree_sitter_analyzer/foo.py": "",
             },
         )
