@@ -47,6 +47,7 @@ jobs:
     env:
       PYTHONIOENCODING: utf-8
       PYTHONUTF8: 1
+      PYTEST_XDIST_AUTO_NUM_WORKERS: "4"
 
     steps:
     - uses: actions/checkout@v4

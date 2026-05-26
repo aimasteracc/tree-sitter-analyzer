@@ -30,6 +30,7 @@ on:
 env:
   COVERAGE_THRESHOLD: 40  # Minimum coverage percentage (adjust as needed)
   COVERAGE_THRESHOLD_FAIL: false  # Set to true to fail CI on low coverage
+  PYTEST_XDIST_AUTO_NUM_WORKERS: "4"
 
 jobs:
   coverage-check:
