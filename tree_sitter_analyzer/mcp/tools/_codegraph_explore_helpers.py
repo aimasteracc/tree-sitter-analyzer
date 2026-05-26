@@ -8,7 +8,9 @@ module's namespace.
 
 from __future__ import annotations
 
+import json
 import os
+import re
 from typing import Any
 
 from ...utils import setup_logger
@@ -116,12 +118,23 @@ def extract_snippet(file_path: str, start_line: int, end_line: int) -> str:
     Returns an empty string on any failure so the tool degrades to
     outline-only rather than crashing.
     """
-    if start_line < 1 or end_line < start_line:
-        return ""
+    return extract_snippet_from_lines(read_file_lines(file_path), start_line, end_line)
+
+
+def read_file_lines(file_path: str) -> list[str]:
+    """Return all lines for ``file_path`` or [] when unreadable."""
     try:
         with open(file_path, encoding="utf-8", errors="replace") as fh:
-            lines = fh.readlines()
+            return fh.readlines()
     except Exception:
+        return []
+
+
+def extract_snippet_from_lines(lines: list[str], start_line: int, end_line: int) -> str:
+    """Slice an already-read line list without re-opening the file."""
+    if start_line < 1 or end_line < start_line:
+        return ""
+    if not lines:
         return ""
     # Clamp to actual file length — defensive against stale line numbers
     # from a re-saved file the AST cache hasn't re-indexed yet.
@@ -129,3 +142,250 @@ def extract_snippet(file_path: str, start_line: int, end_line: int) -> str:
     if start_line > last:
         return ""
     return "".join(lines[start_line - 1 : last])
+
+
+def concept_search(
+    cache: Any,
+    query_terms: list[str],
+    file_tokens: list[str],
+    project_root: str,
+    max_files: int,
+    *,
+    max_matches_per_file: int = 5,
+    max_file_bytes: int = 1_000_000,
+) -> list[dict[str, Any]]:
+    """Return ranked file-level matches for concept/natural-language queries."""
+    terms = _search_terms(query_terms)
+    if not terms:
+        return []
+
+    conn = cache._get_conn()
+    rows = conn.execute(
+        "SELECT file_path, language, file_size, symbols_json FROM ast_index"
+    ).fetchall()
+    candidate_paths = _concept_candidate_paths(
+        conn, terms, file_tokens, max_paths=max(max_files * 25, 50)
+    )
+
+    candidates: list[tuple[int, dict[str, Any]]] = []
+    for row in rows:
+        rel_path = row["file_path"]
+        if candidate_paths and rel_path not in candidate_paths:
+            continue
+        if file_tokens and not any(t.lower() in rel_path.lower() for t in file_tokens):
+            continue
+        if int(row["file_size"] or 0) > max_file_bytes:
+            continue
+        entry = _concept_file_entry(
+            project_root=project_root,
+            rel_path=rel_path,
+            language=row["language"],
+            symbols_json=row["symbols_json"],
+            terms=terms,
+            max_matches=max_matches_per_file,
+        )
+        if entry is None:
+            continue
+        candidates.append((_concept_rank(entry, terms), entry))
+
+    candidates.sort(key=lambda item: (-item[0], item[1]["file_path"]))
+    return [entry for _, entry in candidates[:max_files]]
+
+
+def _concept_candidate_paths(
+    conn: Any,
+    terms: list[str],
+    file_tokens: list[str],
+    *,
+    max_paths: int,
+) -> set[str]:
+    """Use structured path/symbol indexes to avoid scanning every file.
+
+    Returns an empty set when no useful candidates are found or when a
+    legacy test/cache schema lacks ``ast_symbol_rows``. Callers treat an
+    empty set as "fall back to the full scan" so concept search remains
+    recall-oriented.
+    """
+    if not terms and not file_tokens:
+        return set()
+    candidates: set[str] = set()
+
+    def _add_rows(sql: str, params: tuple[Any, ...]) -> None:
+        if len(candidates) >= max_paths:
+            return
+        for row in conn.execute(sql, params).fetchall():
+            path = row["file_path"] if hasattr(row, "keys") else row[0]
+            candidates.add(str(path))
+            if len(candidates) >= max_paths:
+                break
+
+    try:
+        for token in file_tokens:
+            _add_rows(
+                "SELECT file_path FROM ast_index WHERE lower(file_path) LIKE ? LIMIT ?",
+                (f"%{token.lower()}%", max_paths),
+            )
+        for term in terms:
+            pattern = f"%{term.lower()}%"
+            _add_rows(
+                "SELECT DISTINCT file_path FROM ast_symbol_rows "
+                "WHERE lower(name) LIKE ? LIMIT ?",
+                (pattern, max_paths),
+            )
+            _add_rows(
+                "SELECT file_path FROM ast_index WHERE lower(file_path) LIKE ? LIMIT ?",
+                (pattern, max_paths),
+            )
+            if len(candidates) >= max_paths:
+                break
+    except Exception:
+        return set()
+    return candidates
+
+
+def concept_response_payload(
+    query: str,
+    entries: list[dict[str, Any]],
+    *,
+    query_terms: int,
+) -> dict[str, Any]:
+    return {
+        "query": query,
+        "files": entries,
+        "relationship_map": {},
+        "stats": {
+            "query_terms": query_terms,
+            "symbols_resolved": 0,
+            "symbols_returned": sum(len(f.get("symbols", [])) for f in entries),
+            "files_returned": len(entries),
+            "concept_files_returned": len(entries),
+        },
+        "hint": (
+            "no exact symbol definitions matched; returned ranked concept "
+            "matches from indexed source files."
+        ),
+    }
+
+
+def _search_terms(query_terms: list[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for raw in query_terms:
+        for part in re.findall(r"[A-Za-z_][A-Za-z0-9_]*", raw):
+            term = part.lower()
+            if len(term) < 3 or term in seen:
+                continue
+            seen.add(term)
+            out.append(term)
+    return out
+
+
+def _concept_file_entry(
+    *,
+    project_root: str,
+    rel_path: str,
+    language: str,
+    symbols_json: str,
+    terms: list[str],
+    max_matches: int,
+) -> dict[str, Any] | None:
+    abs_path = (
+        rel_path if os.path.isabs(rel_path) else os.path.join(project_root, rel_path)
+    )
+    try:
+        with open(abs_path, encoding="utf-8", errors="replace") as fh:
+            lines = fh.readlines()
+    except OSError:
+        return None
+
+    matches: list[dict[str, Any]] = []
+    matched_terms: set[str] = set()
+    for line_no, line in enumerate(lines, start=1):
+        lowered = line.lower()
+        terms_on_line = [term for term in terms if term in lowered]
+        if not terms_on_line:
+            continue
+        matched_terms.update(terms_on_line)
+        matches.append(
+            {
+                "line": line_no,
+                "text": line.strip()[:300],
+                "terms": terms_on_line,
+            }
+        )
+        if len(matches) >= max_matches:
+            break
+
+    if not matches:
+        return None
+
+    return {
+        "file_path": rel_path,
+        "language": language,
+        "symbols": _nearby_symbols(symbols_json, matches),
+        "matches": matches,
+        "matched_terms": sorted(matched_terms),
+    }
+
+
+def _nearby_symbols(
+    symbols_json: str, matches: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    try:
+        symbols = json.loads(symbols_json).get("symbols", [])
+    except Exception:
+        return []
+    match_lines = [int(m["line"]) for m in matches]
+    nearby: list[dict[str, Any]] = []
+    seen: set[tuple[str, int]] = set()
+    for sym in symbols:
+        line = int(sym.get("line", 0) or 0)
+        if not line or all(abs(line - ml) > 30 for ml in match_lines):
+            continue
+        key = (str(sym.get("name", sym.get("text", ""))), line)
+        if key in seen:
+            continue
+        seen.add(key)
+        nearby.append(
+            {
+                "name": key[0],
+                "kind": sym.get("kind", "unknown"),
+                "start_line": line,
+                "end_line": sym.get("end_line", 0),
+            }
+        )
+        if len(nearby) >= 8:
+            break
+    return nearby
+
+
+def _concept_rank(entry: dict[str, Any], terms: list[str]) -> int:
+    path = entry["file_path"].lower()
+    matched = set(entry.get("matched_terms", []))
+    rank = len(matched) * 100
+    rank += sum(60 for term in terms if term in path)
+    rank += min(len(entry.get("matches", [])), 5) * 3
+    if any(
+        _is_definition_like_match(m.get("text", ""), terms)
+        for m in entry.get("matches", [])
+    ):
+        rank += 70
+    if path.startswith("src/"):
+        rank += 40
+    if any(part in path for part in ("/test/", "/tests/", "/fixtures/", "/gen/")):
+        rank -= 80
+    if "/copilot/" in path:
+        rank -= 40
+    return rank
+
+
+def _is_definition_like_match(text: str, terms: list[str]) -> bool:
+    lowered = text.lower()
+    if not any(term in lowered for term in terms):
+        return False
+    return bool(
+        re.search(
+            r"\b(export\s+)?(abstract\s+)?(class|interface|function|const|let|var|type|enum)\b",
+            lowered,
+        )
+    )

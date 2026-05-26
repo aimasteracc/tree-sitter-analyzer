@@ -12,6 +12,7 @@ Falls back to a linear scan when FTS5 is unavailable or the cache is empty.
 from __future__ import annotations
 
 import fnmatch
+import os
 from typing import Any
 
 from ...utils import setup_logger
@@ -116,6 +117,7 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
         raw_results = self._search(cache, query, language, kind, limit)
 
         results = self._apply_kind_filter(raw_results, kind)
+        self._add_source_context(results)
 
         by_file: dict[str, int] = {}
         for r in results:
@@ -133,6 +135,11 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
             "results": results,
             "data_source": "fts5" if cache._fts5_available else "linear_scan",
         }
+        if results:
+            result["next_step"] = (
+                f"Run codegraph_explore query={query!r} before raw grep/read "
+                "to bulk-fetch related symbols and concept matches."
+            )
         if language:
             result["language_filter"] = language
         if kind != "any":
@@ -307,3 +314,29 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
         if kind == "any":
             return results
         return [r for r in results if r.get("kind", "") == kind]
+
+    def _add_source_context(self, results: list[dict[str, Any]]) -> None:
+        for r in results:
+            line = int(r.get("line", 0) or 0)
+            if line < 1:
+                continue
+            text = self._read_line(str(r.get("file", "")), line)
+            if text:
+                r["code"] = text.strip()[:300]
+
+    def _read_line(self, file_path: str, line: int) -> str:
+        if not self.project_root or not file_path:
+            return ""
+        path = (
+            file_path
+            if os.path.isabs(file_path)
+            else os.path.join(self.project_root, file_path)
+        )
+        try:
+            with open(path, encoding="utf-8", errors="replace") as fh:
+                for idx, text in enumerate(fh, start=1):
+                    if idx == line:
+                        return text
+        except OSError:
+            return ""
+        return ""

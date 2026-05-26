@@ -272,11 +272,22 @@ class ASTCacheTool(BaseMCPTool):
                 },
                 "max_files": {
                     "type": "integer",
-                    "description": "Max files to index (default: 5000)",
+                    "description": "Max files to index (default: 20000)",
+                    "default": 20000,
                 },
                 "force": {
                     "type": "boolean",
                     "description": "Force full re-index (default: false)",
+                },
+                "include_activation": {
+                    "type": "boolean",
+                    "description": (
+                        "Compute temporal git activation during project indexing. "
+                        "Default false for fast warm-cache builds; single-file "
+                        "indexing still computes activation unless disabled by "
+                        "TSA_INDEX_ACTIVATION=0."
+                    ),
+                    "default": False,
                 },
                 "poll_interval": {
                     "type": "number",
@@ -378,9 +389,14 @@ class ASTCacheTool(BaseMCPTool):
                 "to retrieve the cached entry"
             )
         else:
-            max_files = arguments.get("max_files", 5000)
+            max_files = arguments.get("max_files", 20_000)
             force = arguments.get("force", False)
-            result = cache.index_project(max_files=max_files, force=force)
+            include_activation = bool(arguments.get("include_activation", False))
+            result = cache.index_project(
+                max_files=max_files,
+                force=force,
+                include_activation=include_activation,
+            )
             indexed_files = int(
                 result.get("indexed", result.get("files_indexed", 0)) or 0
             )
@@ -505,7 +521,7 @@ class ASTCacheTool(BaseMCPTool):
     def _handle_sync(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """``mode=sync``: drift-detect + reconcile + M15 considered alias."""
         sync_engine = self._get_sync()
-        max_files = arguments.get("max_files", 5000)
+        max_files = arguments.get("max_files", 20_000)
         sync_result = sync_engine.sync(max_files=max_files)
         sync_dict = sync_result.to_dict()
         # M15: surface J8's ``considered`` vocabulary at the top level too.

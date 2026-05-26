@@ -66,7 +66,7 @@ def run_autoindex(args: Any, output_error: OutputErrorFn) -> int:
             tool.execute(
                 {
                     "mode": getattr(args, "autoindex_mode", "status") or "status",
-                    "max_files": int(getattr(args, "autoindex_max_files", 5000)),
+                    "max_files": int(getattr(args, "autoindex_max_files", 20_000)),
                     "output_format": output_format,
                 }
             )
@@ -94,7 +94,10 @@ def run_full_index(args: Any, output_error: OutputErrorFn) -> int:
             tool.execute(
                 {
                     "mode": getattr(args, "full_index_mode", "rebuild") or "rebuild",
-                    "max_files": int(getattr(args, "full_index_max_files", 5000)),
+                    "max_files": int(getattr(args, "full_index_max_files", 20_000)),
+                    "include_activation": bool(
+                        getattr(args, "full_index_include_activation", False)
+                    ),
                     "output_format": output_format,
                 }
             )
@@ -122,7 +125,9 @@ def run_incremental_sync(args: Any, output_error: OutputErrorFn) -> int:
             tool.execute(
                 {
                     "mode": getattr(args, "incremental_sync_mode", "sync") or "sync",
-                    "max_files": int(getattr(args, "incremental_sync_max_files", 5000)),
+                    "max_files": int(
+                        getattr(args, "incremental_sync_max_files", 20_000)
+                    ),
                     "output_format": output_format,
                 }
             )

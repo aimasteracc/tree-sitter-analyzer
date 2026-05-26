@@ -1,7 +1,7 @@
 """Tests for the pre-indexed AST cache (ast_cache module)."""
 
-
 import sqlite3
+from unittest.mock import patch
 
 import pytest
 
@@ -21,9 +21,7 @@ def tmp_project(tmp_path):
     (src / "main.py").write_text(
         "def hello():\n    print('hello')\n\nclass Foo:\n    pass\n"
     )
-    (src / "util.js").write_text(
-        "function add(a, b) { return a + b; }\n"
-    )
+    (src / "util.js").write_text("function add(a, b) { return a + b; }\n")
     (src / "readme.md").write_text("# Readme\n")
     return tmp_path
 
@@ -147,6 +145,44 @@ class TestIndexProject:
         result = cache.index_project(workers=4)
         assert result["workers"] == 0
 
+    def test_index_project_skips_activation_by_default(self, cache, monkeypatch):
+        """Large-repo warm-cache builds must not run per-file git history by default."""
+        monkeypatch.delenv("TSA_INDEX_ACTIVATION", raising=False)
+        with patch(
+            "tree_sitter_analyzer.git_activation.compute_symbol_activation"
+        ) as compute:
+            result = cache.index_project(workers=0)
+
+        assert result["activation_enabled"] is False
+        compute.assert_not_called()
+        conn = cache._get_conn()
+        activation_rows = conn.execute(
+            "SELECT COUNT(*) FROM ast_symbol_activation"
+        ).fetchone()[0]
+        assert activation_rows == 0
+
+    def test_index_project_activation_opt_in_via_argument(self, cache, monkeypatch):
+        monkeypatch.delenv("TSA_INDEX_ACTIVATION", raising=False)
+        with patch(
+            "tree_sitter_analyzer.git_activation.compute_symbol_activation",
+            return_value=[],
+        ) as compute:
+            result = cache.index_project(workers=0, include_activation=True)
+
+        assert result["activation_enabled"] is True
+        assert compute.called
+
+    def test_index_project_activation_opt_in_via_env(self, cache, monkeypatch):
+        monkeypatch.setenv("TSA_INDEX_ACTIVATION", "1")
+        with patch(
+            "tree_sitter_analyzer.git_activation.compute_symbol_activation",
+            return_value=[],
+        ) as compute:
+            result = cache.index_project(workers=0)
+
+        assert result["activation_enabled"] is True
+        assert compute.called
+
 
 class TestLookup:
     def test_lookup_indexed_file(self, cache, tmp_project):
@@ -193,6 +229,20 @@ class TestStats:
         assert stats["total_files"] >= 2
         assert stats["total_symbols"] > 0
         assert "python" in stats["by_language"]
+
+    def test_stats_uses_symbol_rows_when_fts_available(self, cache):
+        cache.index_project()
+        if not cache._fts5_available:
+            pytest.skip("FTS5 not available")
+
+        with patch(
+            "tree_sitter_analyzer.ast_cache.json.loads",
+            side_effect=AssertionError("get_stats should not scan symbols_json"),
+        ):
+            stats = cache.get_stats()
+
+        assert stats["total_symbols"] == stats["fts_indexed_symbols"]
+        assert stats["total_symbols"] > 0
 
 
 class TestInvalidate:
@@ -246,7 +296,9 @@ class TestHasFts5:
         assert isinstance(result, bool)
 
 
-@pytest.mark.skipif(not _has_fts5(sqlite3.connect(":memory:")), reason="FTS5 not available")
+@pytest.mark.skipif(
+    not _has_fts5(sqlite3.connect(":memory:")), reason="FTS5 not available"
+)
 class TestFtsSearch:
     def test_fts_search_basic(self, cache, tmp_project):
         cache.index_project()
@@ -335,10 +387,7 @@ class TestSQLNativeCallGraph:
             "def baz():\n"
             "    pass\n"
         )
-        (src / "b.py").write_text(
-            "def bar():\n"
-            "    pass\n"
-        )
+        (src / "b.py").write_text("def bar():\n    pass\n")
         return tmp_path
 
     @pytest.fixture

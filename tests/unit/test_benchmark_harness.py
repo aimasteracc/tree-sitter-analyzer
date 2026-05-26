@@ -10,9 +10,11 @@ Created: 2026-05-22 r37fE
 from __future__ import annotations
 
 import json
+import sqlite3
 import sys
 import textwrap
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -23,6 +25,11 @@ if str(_BENCH_DIR) not in sys.path:
 
 import bench_runner  # noqa: E402
 import scenarios  # noqa: E402
+
+from benchmarks.codegraph_compare.adapters import IndexStats  # noqa: E402
+from benchmarks.codegraph_compare.adapters.tree_sitter_analyzer import (  # noqa: E402
+    TSAAdapter,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures — a tiny Python project the harness can analyze fast
@@ -196,3 +203,86 @@ class TestTokenEstimation:
         # 400 chars → 100 tokens (within 1)
         text = "x" * 400
         assert 99 <= scenarios.estimate_tokens(text) <= 101
+
+
+class TestCodeGraphCompareTSAAdapter:
+    def test_warm_index_rebuilds_when_db_is_empty(self, tmp_path: Path):
+        cache_dir = tmp_path / ".ast-cache"
+        cache_dir.mkdir()
+        index_db = cache_dir / "index.db"
+        conn = sqlite3.connect(index_db)
+        conn.execute("CREATE TABLE ast_index (file_path TEXT)")
+        conn.commit()
+        conn.close()
+
+        expected = IndexStats(build_seconds=1.0, index_size_bytes=2, file_count=3)
+        with patch(
+            "benchmarks.codegraph_compare.adapters.tree_sitter_analyzer._build_cache",
+            return_value=expected,
+        ) as build_cache:
+            result = TSAAdapter().prepare_index(tmp_path, cold=False)
+
+        assert result == expected
+        build_cache.assert_called_once()
+
+    def test_warm_index_skips_when_db_has_rows(self, tmp_path: Path):
+        cache_dir = tmp_path / ".ast-cache"
+        cache_dir.mkdir()
+        index_db = cache_dir / "index.db"
+        conn = sqlite3.connect(index_db)
+        conn.execute("CREATE TABLE ast_index (file_path TEXT)")
+        conn.execute("INSERT INTO ast_index VALUES ('src/main.py')")
+        conn.commit()
+        conn.close()
+
+        with patch(
+            "benchmarks.codegraph_compare.adapters.tree_sitter_analyzer._build_cache"
+        ) as build_cache:
+            result = TSAAdapter().prepare_index(tmp_path, cold=False)
+
+        assert result.build_seconds == 0.0
+        assert result.file_count == 1
+        build_cache.assert_not_called()
+
+
+class TestCodeGraphCompareToolPolicy:
+    def test_tsa_arms_are_index_first(self):
+        from benchmarks.codegraph_compare.adapters.claude_runner import (
+            _ARM_ALLOWED_TOOLS,
+            _ARM_DISALLOWED_TOOLS,
+        )
+        from benchmarks.codegraph_compare.adapters.tree_sitter_analyzer import (
+            _ALLOWED_TOOLS,
+        )
+
+        raw_tools = {
+            "Read",
+            "Glob",
+            "Grep",
+            "Bash(grep *)",
+            "Bash(rg *)",
+            "Bash(find *)",
+            "Bash(ls *)",
+        }
+        for arm in ("tsa-warm", "tsa-cold"):
+            allowed = set(_ARM_ALLOWED_TOOLS[arm])
+            disallowed = set(_ARM_DISALLOWED_TOOLS[arm])
+
+            assert allowed
+            assert all("tree_sitter_analyzer" in tool for tool in allowed)
+            assert raw_tools.isdisjoint(allowed)
+            assert raw_tools <= disallowed
+        assert _ALLOWED_TOOLS == ["Bash"]
+
+    def test_tsa_prompt_rejects_filesystem_discovery(self):
+        prompt_path = (
+            Path(__file__).resolve().parents[2]
+            / "benchmarks"
+            / "codegraph_compare"
+            / "prompts"
+            / "system_tsa.md"
+        )
+        prompt = prompt_path.read_text(encoding="utf-8")
+
+        assert "TSA is the index" in prompt
+        assert "invalidates the benchmark" in prompt

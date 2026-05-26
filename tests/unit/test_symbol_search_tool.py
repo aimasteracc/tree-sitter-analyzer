@@ -140,7 +140,13 @@ class TestCodeGraphSymbolSearchExecution:
         hit = result["results"][0]
         assert "file" in hit
         assert "line" in hit
+        assert "code" in hit
         assert hit["line"] > 0
+
+    async def test_next_step_points_to_bulk_explore(self, indexed_project):
+        tool = CodeGraphSymbolSearchTool(str(indexed_project))
+        result = await tool.execute({"query": "UserService", "output_format": "json"})
+        assert "codegraph_explore" in result["next_step"]
 
     async def test_toon_output_format(self, indexed_project):
         tool = CodeGraphSymbolSearchTool(str(indexed_project))

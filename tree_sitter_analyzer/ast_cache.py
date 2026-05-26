@@ -288,6 +288,20 @@ from ._ast_extraction import (  # noqa: E402
 from ._lang_extension_map import EXT_TO_LANG as _EXT_TO_LANG  # noqa: E402
 
 
+def _project_index_activation_enabled(include_activation: bool | None) -> bool:
+    """Return whether project-wide indexing should compute git activation.
+
+    Full-project indexing is the warm-cache path used by agents. It must be
+    fast and predictable on large repos, so activation is opt-in there. The
+    existing ``TSA_INDEX_ACTIVATION=1`` escape hatch keeps the richer path
+    available without adding per-file git subprocess cost by default.
+    """
+    if include_activation is not None:
+        return bool(include_activation)
+    value = os.environ.get("TSA_INDEX_ACTIVATION", "")
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 class ASTCache:
     """
     SQLite-backed persistent AST cache.
@@ -1014,11 +1028,12 @@ class ASTCache:
 
     def index_project(
         self,
-        max_files: int = 5000,
+        max_files: int = 20_000,
         force: bool = False,
         *,
         workers: int | None = None,
         resolve_only: bool = False,
+        include_activation: bool | None = None,
     ) -> dict[str, Any]:
         """Index every source file under ``self.project_root``.
 
@@ -1042,7 +1057,15 @@ class ASTCache:
           ``ast_index`` / ``ast_symbol_rows`` / ``ast_imports``. This is
           the cheap path agents call after a schema bump or policy
           change — no tree-sitter, no IO, just a SQL pass.
+
+        ``include_activation``:
+          Project-wide indexing defaults to the fast warm-cache path:
+          temporal git activation is skipped unless this is explicitly
+          ``True`` or ``TSA_INDEX_ACTIVATION=1`` is set. Single-file
+          ``index_file`` keeps the historical default because its cost is
+          bounded to one file.
         """
+        activation_enabled = _project_index_activation_enabled(include_activation)
         if resolve_only:
             # Cheap path: re-run the resolver against the data already
             # in the cache. No walk, no parse, no FTS5 rewrite. The
@@ -1058,6 +1081,7 @@ class ASTCache:
                 "skipped": 0,
                 "files": [],
                 "synapse_backfill": updated,
+                "activation_enabled": activation_enabled,
             }
 
         if force:
@@ -1087,6 +1111,7 @@ class ASTCache:
             "errors": 0,
             "skipped": 0,
             "files": [],
+            "activation_enabled": activation_enabled,
         }
         count = 0
         conn = self._get_conn()
@@ -1173,7 +1198,11 @@ class ASTCache:
                         }
                     )
                     continue
-                self._insert_index_row(r, indexed_at)
+                self._insert_index_row(
+                    r,
+                    indexed_at,
+                    include_activation=activation_enabled,
+                )
                 stats["indexed"] += 1
                 stats["files"].append(
                     {
@@ -1223,7 +1252,13 @@ class ASTCache:
                 results.append(r)
         return results
 
-    def _insert_index_row(self, r: dict[str, Any], indexed_at: str) -> None:
+    def _insert_index_row(
+        self,
+        r: dict[str, Any],
+        indexed_at: str,
+        *,
+        include_activation: bool = True,
+    ) -> None:
         """Write one worker result to SQLite (main table + optional FTS5).
 
         Workers DO NOT run git themselves — only this writer thread does,
@@ -1313,12 +1348,26 @@ class ASTCache:
         # Feature 2 (Temporal Activation): only this writer thread runs
         # git. Workers stay focused on parse + extract; subprocess in a
         # multiprocess pool would deadlock against git's index lock.
-        self._write_activation_for_file(conn, rel_path, inserted_symbol_rows)
+        if include_activation:
+            self._write_activation_for_file(conn, rel_path, inserted_symbol_rows)
+        else:
+            self._clear_activation_for_file(conn, rel_path)
 
         # NOTE: Synapse resolver pass is NOT run per-file in the parallel
         # writer. The whole-project resolver pass at the end of
         # ``index_project`` does it once with the full context, which is
         # both correct (sees every file's symbols + imports) and cheap.
+
+    @staticmethod
+    def _clear_activation_for_file(conn: sqlite3.Connection, rel_path: str) -> None:
+        """Drop stale activation rows when project indexing runs in fast mode."""
+        try:
+            conn.execute(
+                "DELETE FROM ast_symbol_activation WHERE file_path = ?",
+                (rel_path,),
+            )
+        except sqlite3.OperationalError:
+            pass
 
     def lookup(self, file_path: str) -> dict[str, Any] | None:
         try:
@@ -1437,10 +1486,19 @@ class ASTCache:
         by_lang = conn.execute(
             "SELECT language, COUNT(*) as c FROM ast_index GROUP BY language ORDER BY c DESC"
         ).fetchall()
-        total_symbols = 0
-        for row in conn.execute("SELECT symbols_json FROM ast_index").fetchall():
-            syms = json.loads(row["symbols_json"])
-            total_symbols += len(syms.get("symbols", []))
+        total_symbols: int | None = None
+        if self._fts5_available:
+            try:
+                total_symbols = conn.execute(
+                    "SELECT COUNT(*) as c FROM ast_symbol_rows"
+                ).fetchone()["c"]
+            except sqlite3.OperationalError:
+                total_symbols = None
+        if total_symbols is None:
+            total_symbols = 0
+            for row in conn.execute("SELECT symbols_json FROM ast_index").fetchall():
+                syms = json.loads(row["symbols_json"])
+                total_symbols += len(syms.get("symbols", []))
         stats: dict[str, Any] = {
             "total_files": total,
             "total_symbols": total_symbols,
@@ -1450,10 +1508,7 @@ class ASTCache:
         }
         if self._fts5_available:
             try:
-                fts_count = conn.execute(
-                    "SELECT COUNT(*) as c FROM ast_symbol_rows"
-                ).fetchone()["c"]
-                stats["fts_indexed_symbols"] = fts_count
+                stats["fts_indexed_symbols"] = total_symbols
             except sqlite3.OperationalError:
                 pass
         return stats

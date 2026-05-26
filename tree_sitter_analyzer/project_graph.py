@@ -430,7 +430,29 @@ class DependencyGraph:
 
     def _is_excluded(self, path: Path) -> bool:
         """Check if a path is inside an excluded directory."""
-        return any(part in self._EXCLUDE_DIRS for part in path.parts)
+        try:
+            rel_parts = path.relative_to(self.project_root).parts
+        except ValueError:
+            rel_parts = path.parts
+        return any(
+            part in self._EXCLUDE_DIRS or part.startswith(".") for part in rel_parts
+        )
+
+    def _iter_source_files(self, supported_exts: set[str]) -> list[Path]:
+        """Return source files while pruning generated and hidden work dirs."""
+        files: list[Path] = []
+        for root, dirs, names in os.walk(self.project_root):
+            dirs[:] = [
+                name
+                for name in dirs
+                if name not in self._EXCLUDE_DIRS and not name.startswith(".")
+            ]
+            for name in names:
+                if name.startswith("."):
+                    continue
+                if Path(name).suffix.lower() in supported_exts:
+                    files.append(Path(root) / name)
+        return files
 
     def _build(self) -> None:
         """Scan project directory and build the dependency graph."""
@@ -453,11 +475,7 @@ class DependencyGraph:
         }
 
         # Collect all source files (excluding generated/dependency dirs)
-        all_files: list[Path] = []
-        for ext in supported_exts:
-            for f in self.project_root.rglob(f"*{ext}"):
-                if not self._is_excluded(f):
-                    all_files.append(f)
+        all_files = self._iter_source_files(supported_exts)
 
         # Build relative path mapping
         rel_to_abs: dict[str, str] = {}

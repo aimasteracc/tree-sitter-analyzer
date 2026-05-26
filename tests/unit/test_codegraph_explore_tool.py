@@ -7,10 +7,13 @@ NOT_FOUND / INFO branches with mocked SymbolResolver + ASTCache.
 
 from __future__ import annotations
 
+import json
+import sqlite3
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from tree_sitter_analyzer.mcp.tools import _codegraph_explore_helpers as helpers
 from tree_sitter_analyzer.mcp.tools.codegraph_explore_tool import (
     CodeGraphExploreTool,
     _extract_snippet,
@@ -166,6 +169,40 @@ class TestExecuteNotFound:
         assert "codegraph_symbol_search" in result["hint"]
         assert result["stats"]["symbols_resolved"] == 0
 
+    @pytest.mark.asyncio
+    async def test_zero_symbol_matches_returns_concept_matches(self, tool_with_root):
+        concept_files = [
+            {
+                "file_path": "src/activation.ts",
+                "language": "typescript",
+                "symbols": [],
+                "matches": [
+                    {
+                        "line": 10,
+                        "text": "activationEvents",
+                        "terms": ["activationevents"],
+                    }
+                ],
+                "matched_terms": ["activationevents"],
+            }
+        ]
+        with (
+            _patch_cache_with(),
+            _patch_resolver_with({}),
+            patch(
+                "tree_sitter_analyzer.mcp.tools.codegraph_explore_tool._h.concept_search",
+                return_value=concept_files,
+            ),
+        ):
+            result = await tool_with_root.execute(
+                {"query": "activationEvents", "output_format": "json"}
+            )
+
+        assert result["verdict"] == "INFO"
+        assert result["files"] == concept_files
+        assert result["stats"]["concept_files_returned"] == 1
+        assert "concept matches" in result["hint"]
+
 
 class TestExecuteHappyPath:
     @pytest.mark.asyncio
@@ -226,6 +263,39 @@ class TestExecuteHappyPath:
             for sym in f["symbols"]:
                 assert "code" not in sym or not sym["code"]
 
+    @pytest.mark.asyncio
+    async def test_relationships_use_sql_cache_not_full_graph(
+        self, tool_with_root, tmp_path
+    ):
+        a = tmp_path / "alpha.py"
+        a.write_text("def alpha():\n    beta()\n")
+        defs = {"alpha": [_make_def(str(a), "alpha", line=1, end_line=2)]}
+
+        mock_cache = MagicMock()
+        mock_cache.get_stats.return_value = {"total_files": 1}
+        mock_cache.query_callers.return_value = [
+            {"caller_name": "caller_one"},
+            {"caller_name": "caller_one"},
+        ]
+        mock_cache.query_callees.return_value = [{"callee_name": "beta"}]
+
+        with (
+            patch("tree_sitter_analyzer.ast_cache.ASTCache", return_value=mock_cache),
+            _patch_resolver_with(defs),
+            patch.object(
+                tool_with_root,
+                "_get_call_graph",
+                side_effect=AssertionError("full graph build should not run"),
+            ),
+        ):
+            result = await tool_with_root.execute(
+                {"query": "alpha", "output_format": "json"}
+            )
+
+        symbol = result["files"][0]["symbols"][0]
+        assert symbol["callers"] == ["caller_one"]
+        assert symbol["callees"] == ["beta"]
+
 
 class TestExecuteOutputFormat:
     @pytest.mark.asyncio
@@ -254,3 +324,60 @@ class TestExtractSnippet:
         f = tmp_path / "x.py"
         f.write_text("only one line\n")
         assert _extract_snippet(str(f), 5, 10) == ""
+
+
+class TestConceptSearch:
+    def test_ranks_src_multi_term_match_above_test_fixture(self, tmp_path):
+        src = tmp_path / "src/vs/platform/markers/common/markerService.ts"
+        src.parent.mkdir(parents=True)
+        src.write_text(
+            "export class MarkerService {\n"
+            "  public readDiagnosticsMarkerService() { return true; }\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        fixture = tmp_path / "extensions/copilot/test/fixtures/service.ts"
+        fixture.parent.mkdir(parents=True)
+        fixture.write_text(
+            "export function service() { return diagnostics; }\n", encoding="utf-8"
+        )
+
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.execute(
+            """CREATE TABLE ast_index (
+                file_path TEXT,
+                language TEXT,
+                file_size INTEGER,
+                symbols_json TEXT
+            )"""
+        )
+        for path in (fixture, src):
+            rel = path.relative_to(tmp_path).as_posix()
+            conn.execute(
+                "INSERT INTO ast_index VALUES (?, ?, ?, ?)",
+                (
+                    rel,
+                    "typescript",
+                    path.stat().st_size,
+                    json.dumps(
+                        {"symbols": [{"name": path.stem, "kind": "class", "line": 1}]}
+                    ),
+                ),
+            )
+
+        cache = MagicMock()
+        cache._get_conn.return_value = conn
+        result = helpers.concept_search(
+            cache,
+            ["diagnostics", "marker", "service"],
+            [],
+            str(tmp_path),
+            max_files=2,
+        )
+
+        assert (
+            result[0]["file_path"] == "src/vs/platform/markers/common/markerService.ts"
+        )
+        assert result[0]["matches"]
+        assert result[0]["symbols"][0]["name"] == "markerService"

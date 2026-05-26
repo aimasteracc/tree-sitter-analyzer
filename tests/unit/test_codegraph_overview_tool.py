@@ -1,9 +1,11 @@
 """Unit tests for codegraph_overview_tool.py — CodeGraphOverviewTool MCP tool."""
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+from tree_sitter_analyzer.call_graph import FunctionRef
 from tree_sitter_analyzer.mcp.tools.codegraph_overview_tool import (
     CodeGraphOverviewTool,
     _compute_depth_distribution,
@@ -160,6 +162,7 @@ class TestCodeGraphOverviewToolExecute:
     async def test_execute_empty_project(self, tmp_path):
         empty_dir = str(tmp_path / "empty")
         import os
+
         os.makedirs(empty_dir)
         t = CodeGraphOverviewTool(empty_dir)
         result = await _execute(t)
@@ -197,6 +200,21 @@ class TestFindHubFunctions:
         for hub in hubs:
             assert hub["caller_count"] >= 3
 
+    def test_hub_caller_files_are_sampled(self):
+        hub = FunctionRef("hub.py", "hub", 1, "python")
+        callers = [
+            FunctionRef(f"caller_{i}.py", f"caller_{i}", i + 1, "python")
+            for i in range(40)
+        ]
+        graph = SimpleNamespace(_functions=[hub, *callers], _callers={hub: callers})
+
+        hubs = _find_hub_functions(graph, 10)
+
+        assert hubs[0]["caller_count"] == 40
+        assert hubs[0]["caller_file_count"] == 40
+        assert len(hubs[0]["caller_files"]) == 25
+        assert hubs[0]["caller_files_truncated"] is True
+
 
 class TestFindDeadCode:
     def test_dead_code_has_no_callers_or_callees(self, tool):
@@ -217,6 +235,43 @@ class TestComputeDepthDistribution:
         assert "avg_depth" in dist
         assert "distribution" in dist
         assert dist["max_depth"] >= 0
+
+    def test_handles_cycles_without_recursive_explosion(self):
+        a = FunctionRef("graph.py", "a", 1, "python")
+        b = FunctionRef("graph.py", "b", 2, "python")
+        c = FunctionRef("graph.py", "c", 3, "python")
+        d = FunctionRef("graph.py", "d", 4, "python")
+        graph = SimpleNamespace(
+            _functions=[a, b, c, d],
+            _callees={
+                a: [b, c],
+                b: [d],
+                c: [d],
+                d: [b],
+            },
+        )
+
+        dist = _compute_depth_distribution(graph)
+
+        assert dist["depth_cap"] == 10
+        assert dist["max_depth"] <= dist["depth_cap"]
+        assert sum(dist["distribution"].values()) == 4
+
+    def test_uses_function_references_not_ambiguous_names(self):
+        root = FunctionRef("root.py", "run", 1, "python")
+        unrelated = FunctionRef("a.py", "handle", 1, "python")
+        target = FunctionRef("b.py", "handle", 1, "python")
+        leaf = FunctionRef("b.py", "leaf", 2, "python")
+        graph = SimpleNamespace(
+            _functions=[root, unrelated, target, leaf],
+            _callees={root: [target], target: [leaf]},
+        )
+
+        dist = _compute_depth_distribution(graph)
+
+        assert dist["distribution"]["depth_0"] == 2
+        assert dist["distribution"]["depth_1"] == 1
+        assert dist["distribution"]["depth_2"] == 1
 
 
 class TestComputeModuleCoupling:

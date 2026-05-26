@@ -20,29 +20,19 @@ and a 200-line limit per snippet.
 
 Query semantics
 ---------------
-The ``query`` is NOT a natural-language sentence. It's whitespace-tokenised:
+The ``query`` is whitespace-tokenised:
 
 * Tokens containing ``/`` or a known file extension → file-path hints
   (case-insensitive substring filter applied AFTER symbol resolution).
 * Other tokens (length ≥ 2) → symbol names passed to ``SymbolResolver``.
-
-Verdict semantics
------------------
-The canonical envelope (``_response_builder``) only accepts:
-``{SAFE, REVIEW, CAUTION, UNSAFE, INFO, WARN, ERROR, NOT_FOUND}``. The
-brief asked for a ``PASS`` verdict on the happy path; since that string
-is not canonical, we map success→``INFO`` (the canonicaliser already maps
-``"success"``/``"ok"``→``INFO``/``SAFE``, so this matches the established
-convention). Other verdicts:
-
-* ``WARN`` — project_root unset or AST cache empty (degraded — hint surfaced).
-* ``NOT_FOUND`` — zero symbols matched any query token.
-* ``INFO`` — symbols resolved (with or without extractable source).
-* ``ERROR`` — exception during resolution (caught and re-emitted).
+* Multi-term or unresolved symbol queries also get ranked concept matches
+  from indexed source files so architecture questions do not fan out into
+  raw grep/read loops.
 """
 
 from __future__ import annotations
 
+import os
 from collections import defaultdict
 from typing import Any
 
@@ -52,8 +42,7 @@ from . import _codegraph_explore_helpers as _h
 from ._response_builder import build_response
 from .base_tool import BaseMCPTool
 
-# Helpers live in a sibling module so this file stays under the 500-line
-# cap; aliased to the original underscore names so existing test imports
+# Aliased to original underscore names so existing test imports
 # (`from codegraph_explore_tool import _split_query`) keep working.
 _split_query = _h.split_query
 _resolve_tokens = _h.resolve_tokens
@@ -311,9 +300,22 @@ class CodeGraphExploreTool(BaseMCPTool):
 
         # Stable ordering keeps the response deterministic across runs.
         resolved.sort(key=lambda d: (d.file, d.line))
+        concept_entries = []
+        if not resolved or len(symbol_tokens) > 1:
+            concept_entries = _h.concept_search(
+                cache, symbol_tokens, file_tokens, self.project_root, max_files
+            )
 
         # --- NOT_FOUND: zero matches ---------------------------------
         if not resolved:
+            if concept_entries:
+                payload = _h.concept_response_payload(
+                    query,
+                    concept_entries,
+                    query_terms=len(symbol_tokens) + len(file_tokens),
+                )
+                result = build_response(verdict="INFO", **payload)
+                return apply_toon_format_to_response(result, output_format)
             result = build_response(
                 verdict="NOT_FOUND",
                 query=query,
@@ -346,19 +348,6 @@ class CodeGraphExploreTool(BaseMCPTool):
         ordered_files = list(files_map.keys())[:max_files]
         kept_symbol_keys: set[tuple[str, int]] = set()
 
-        # Call graph powers the relationship_map AND the per-symbol
-        # callers/callees fields — it's useful regardless of includeCode,
-        # so we always attempt it. _get_call_graph caches the instance
-        # and triggers build() lazily on first lookup; failures degrade
-        # silently to an empty relationship_map.
-        graph = self._get_call_graph(cache)
-        if graph is not None:
-            try:
-                graph.build()
-            except Exception as exc:
-                logger.debug(f"call_graph.build failed: {exc}")
-                graph = None
-
         # --- Build file entries --------------------------------------
         file_entries: list[dict[str, Any]] = []
         symbols_returned = 0
@@ -367,7 +356,13 @@ class CodeGraphExploreTool(BaseMCPTool):
         for file_path in ordered_files:
             defs = files_map[file_path]
             language = _language_of(defs)
-            file_size = _file_size(file_path) if include_code else 0
+            source_path = self._source_path(file_path)
+            file_size = _file_size(source_path) if include_code else 0
+            source_lines = (
+                _h.read_file_lines(source_path)
+                if include_code and 0 < file_size <= _MAX_FILE_BYTES
+                else []
+            )
 
             symbol_entries: list[dict[str, Any]] = []
             for d in defs:
@@ -383,35 +378,22 @@ class CodeGraphExploreTool(BaseMCPTool):
                 if signature:
                     entry["signature"] = signature
 
-                span = max(0, d.end_line - d.line)
+                end_line = d.end_line or d.line
+                span = max(0, end_line - d.line)
                 if (
                     include_code
                     and 0 < file_size <= _MAX_FILE_BYTES
                     and span <= _MAX_SNIPPET_LINES
                 ):
-                    code = _extract_snippet(d.file, d.line, d.end_line)
+                    code = _h.extract_snippet_from_lines(source_lines, d.line, end_line)
                     if code:
                         entry["code"] = code
 
-                # Relationship info: callers/callees pulled from graph
-                # ONLY if cheap and only the first N. Failures here must
-                # not crash the whole response.
-                if graph is not None:
-                    try:
-                        callers = graph.callers_of(d.name, d.file) or []
-                        callees = graph.callees_of(d.name, d.file) or []
-                    except Exception as exc:
-                        logger.debug(f"graph lookup failed for {d.name}: {exc}")
-                        callers = []
-                        callees = []
-                    if callers:
-                        entry["callers"] = [
-                            c.get("name", "") for c in callers[:_MAX_REL_PER_SYMBOL]
-                        ]
-                    if callees:
-                        entry["callees"] = [
-                            c.get("name", "") for c in callees[:_MAX_REL_PER_SYMBOL]
-                        ]
+                callers, callees = self._relationship_names(cache, d.name, d.file)
+                if callers:
+                    entry["callers"] = callers
+                if callees:
+                    entry["callees"] = callees
 
                 symbol_entries.append(entry)
                 symbols_returned += 1
@@ -424,26 +406,34 @@ class CodeGraphExploreTool(BaseMCPTool):
                 }
             )
 
+        if concept_entries:
+            concept_paths = {entry["file_path"] for entry in concept_entries}
+            file_entries = concept_entries + [
+                entry
+                for entry in file_entries
+                if entry["file_path"] not in concept_paths
+            ]
+            file_entries = file_entries[:max_files]
+
         # --- Relationship map: only edges where BOTH ends are in result
         relationship_map: dict[str, list[str]] = {}
-        if graph is not None:
-            for entry in file_entries:
-                for sym in entry["symbols"]:
-                    name = sym["name"]
-                    targets = [
-                        c
-                        for c in (sym.get("callees") or [])
-                        if c in kept_names and c != name
-                    ]
-                    if targets:
-                        # Preserve order, dedupe.
-                        seen: set[str] = set()
-                        deduped: list[str] = []
-                        for t in targets:
-                            if t not in seen:
-                                seen.add(t)
-                                deduped.append(t)
-                        relationship_map[name] = deduped
+        for entry in file_entries:
+            for sym in entry["symbols"]:
+                name = sym["name"]
+                targets = [
+                    c
+                    for c in (sym.get("callees") or [])
+                    if c in kept_names and c != name
+                ]
+                if targets:
+                    # Preserve order, dedupe.
+                    seen: set[str] = set()
+                    deduped: list[str] = []
+                    for t in targets:
+                        if t not in seen:
+                            seen.add(t)
+                            deduped.append(t)
+                    relationship_map[name] = deduped
 
         # --- Verdict --------------------------------------------------
         # Contract calls for "PASS" on the happy path, but the canonical
@@ -474,6 +464,7 @@ class CodeGraphExploreTool(BaseMCPTool):
             "symbols_resolved": symbols_resolved,
             "symbols_returned": symbols_returned,
             "files_returned": len(file_entries),
+            "concept_files_returned": len(concept_entries),
         }
 
         fields: dict[str, Any] = {
@@ -487,3 +478,45 @@ class CodeGraphExploreTool(BaseMCPTool):
 
         result = build_response(verdict=verdict, **fields)
         return apply_toon_format_to_response(result, output_format)
+
+    def _source_path(self, file_path: str) -> str:
+        if os.path.isabs(file_path) or not self.project_root:
+            return file_path
+        return os.path.join(self.project_root, file_path)
+
+    def _relationship_names(
+        self,
+        cache: Any,
+        symbol_name: str,
+        file_path: str,
+    ) -> tuple[list[str], list[str]]:
+        """Return capped callers/callees via SQL-native cache lookups.
+
+        Avoids constructing ``CachedCallGraph`` for every explore call.
+        On large repos that full build reads all function rows, all import
+        JSON, and all call edges even when the response only contains a
+        handful of symbols.
+        """
+        callers: list[str] = []
+        callees: list[str] = []
+        try:
+            caller_rows = cache.query_callers(symbol_name, file_path, max_depth=1) or []
+            for row in caller_rows:
+                name = row.get("caller_name", "")
+                if name and name not in callers:
+                    callers.append(name)
+                if len(callers) >= _MAX_REL_PER_SYMBOL:
+                    break
+        except Exception as exc:
+            logger.debug(f"SQL caller lookup failed for {symbol_name}: {exc}")
+        try:
+            callee_rows = cache.query_callees(symbol_name, file_path, max_depth=1) or []
+            for row in callee_rows:
+                name = row.get("callee_name", "")
+                if name and name not in callees:
+                    callees.append(name)
+                if len(callees) >= _MAX_REL_PER_SYMBOL:
+                    break
+        except Exception as exc:
+            logger.debug(f"SQL callee lookup failed for {symbol_name}: {exc}")
+        return callers, callees

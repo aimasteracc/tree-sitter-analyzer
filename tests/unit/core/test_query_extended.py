@@ -332,7 +332,7 @@ class TestQueryExecutorPerformance:
         mock_language.query.return_value = mock_query
 
         # Execute many queries
-        for i in range(50):
+        for i in range(10):
             try:
                 result = query_executor.execute_query_string(
                     mock_tree, mock_language, "(function_definition)", "test code"

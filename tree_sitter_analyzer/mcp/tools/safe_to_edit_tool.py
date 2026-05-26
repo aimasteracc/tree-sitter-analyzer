@@ -18,6 +18,7 @@ from .base_tool import BaseMCPTool, mirror_summary_line
 from .utils.parse_validity import is_file_parse_broken
 from .utils.safe_to_edit_helpers import (
     SafeToEditContext,
+    build_file_dependency_view,
     is_init_file,
 )
 from .utils.safe_to_edit_helpers import (
@@ -162,7 +163,10 @@ class SafeToEditTool(BaseMCPTool):
                 edit_type=edit_type,
                 resolved_path=resolved,
                 project_root=self.project_root or ".",
-                graph=self._get_graph(),
+                graph=build_file_dependency_view(
+                    resolved,
+                    self.project_root or ".",
+                ),
                 scorer=self._get_scorer(),
             )
         )
