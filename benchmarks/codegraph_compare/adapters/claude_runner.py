@@ -155,6 +155,18 @@ def _codex_sandbox_for_arm(arm_id: str) -> str:
     return "workspace-write"
 
 
+def _stdin_prompt_for_backend(
+    agent_backend: str,
+    *,
+    full_prompt: str,
+    user_message: str,
+) -> str:
+    """Return the prompt text to pass through stdin for an agent backend."""
+    if agent_backend == "codex":
+        return full_prompt
+    return user_message
+
+
 def _parse_tool_calls_from_stream(lines: list[str]) -> tuple[int, int, int, int]:
     """Count tool calls by category from stream-json event lines."""
     tool_calls = 0
@@ -381,6 +393,11 @@ def run_one(
         user_message = f"{tool_policy}\n\n{user_message}"
 
     full_prompt = f"{run_config.system_prompt}\n\n{user_message}"
+    stdin_prompt = _stdin_prompt_for_backend(
+        agent_backend,
+        full_prompt=full_prompt,
+        user_message=user_message,
+    )
 
     # Persist prompt
     raw_dir = results_dir / "raw"
@@ -442,7 +459,7 @@ def run_one(
         try:
             proc = subprocess.run(
                 cmd,
-                input=user_message,
+                input=stdin_prompt,
                 capture_output=True,
                 text=True,
                 encoding="utf-8",

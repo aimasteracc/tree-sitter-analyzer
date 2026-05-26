@@ -126,6 +126,101 @@ class TestCodeGraphQueryTool:
         )
 
     @pytest.mark.asyncio
+    async def test_execute_uses_concept_fallback_for_unresolved_query(self, tmp_path):
+        mock_cache = MagicMock()
+        concept_files = [
+            {
+                "file_path": "tree.go",
+                "language": "go",
+                "symbols": [],
+                "matches": [{"line": 42, "text": "type HandlerFunc func(*Context)"}],
+                "matched_terms": ["handlerfunc"],
+            }
+        ]
+
+        with (
+            patch("tree_sitter_analyzer.ast_cache.ASTCache", return_value=mock_cache),
+            _patch_resolver_with({"HandlerFunc": []}),
+            patch(
+                "tree_sitter_analyzer.mcp.tools.codegraph_query_tool._h.concept_search",
+                return_value=concept_files,
+            ) as concept_search,
+        ):
+            result = await CodeGraphQueryTool(str(tmp_path)).execute(
+                {
+                    "query": "search('HandlerFunc').explore(max_files=2)",
+                    "output_format": "json",
+                }
+            )
+
+        assert result["success"] is True
+        assert result["verdict"] == "INFO"
+        assert result["files"] == concept_files
+        concept_search.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_execute_merges_concept_matches_for_broad_query(self, tmp_path):
+        source = tmp_path / "main.py"
+        source.write_text("def run():\n    return 1\n", encoding="utf-8")
+        mock_cache = MagicMock()
+        concept_files = [
+            {
+                "file_path": "types.go",
+                "language": "go",
+                "symbols": [],
+                "matches": [{"line": 1, "text": "type HandlerFunc func(*Context)"}],
+                "matched_terms": ["handlerfunc"],
+            }
+        ]
+
+        with (
+            patch("tree_sitter_analyzer.ast_cache.ASTCache", return_value=mock_cache),
+            _patch_resolver_with({"run": [_make_def(name="run")], "HandlerFunc": []}),
+            patch(
+                "tree_sitter_analyzer.mcp.tools.codegraph_query_tool._h.concept_search",
+                return_value=concept_files,
+            ),
+        ):
+            result = await CodeGraphQueryTool(str(tmp_path)).execute(
+                {
+                    "query": "search('run HandlerFunc').explore(max_files=2)",
+                    "output_format": "json",
+                }
+            )
+
+        assert [entry["file_path"] for entry in result["files"]] == [
+            "main.py",
+            "types.go",
+        ]
+
+    @pytest.mark.asyncio
+    async def test_execute_includes_truncated_code_for_long_symbol(self, tmp_path):
+        source = tmp_path / "main.py"
+        source.write_text(
+            "\n".join(["def big():", *("    pass" for _ in range(220))]) + "\n",
+            encoding="utf-8",
+        )
+        mock_cache = MagicMock()
+
+        with (
+            patch("tree_sitter_analyzer.ast_cache.ASTCache", return_value=mock_cache),
+            _patch_resolver_with(
+                {"big": [_make_def(name="big", line=1, end_line=221)]}
+            ),
+        ):
+            result = await CodeGraphQueryTool(str(tmp_path)).execute(
+                {
+                    "query": "search('big').explore(max_files=1)",
+                    "output_format": "json",
+                }
+            )
+
+        symbol = result["files"][0]["symbols"][0]
+        assert symbol["truncated"] is True
+        assert symbol["truncated_end_line"] == 160
+        assert symbol["code"].startswith("def big():")
+
+    @pytest.mark.asyncio
     async def test_execute_returns_error_envelope_for_bad_chain(self):
         with patch("tree_sitter_analyzer.ast_cache.ASTCache", return_value=MagicMock()):
             result = await CodeGraphQueryTool("/tmp").execute(

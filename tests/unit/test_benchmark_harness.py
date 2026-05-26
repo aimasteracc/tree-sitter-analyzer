@@ -27,6 +27,9 @@ import bench_runner  # noqa: E402
 import scenarios  # noqa: E402
 
 from benchmarks.codegraph_compare.adapters import IndexStats  # noqa: E402
+from benchmarks.codegraph_compare.adapters.claude_runner import (  # noqa: E402
+    _stdin_prompt_for_backend,
+)
 from benchmarks.codegraph_compare.adapters.tree_sitter_analyzer import (  # noqa: E402
     TSAAdapter,
 )
@@ -206,6 +209,17 @@ class TestTokenEstimation:
 
 
 class TestCodeGraphCompareTSAAdapter:
+    def test_run_config_prefers_chained_query(self, tmp_path: Path):
+        config = TSAAdapter().build_run_config(tmp_path, "How does request flow work?")
+
+        assert "--codegraph-query" in config.system_prompt
+        assert "--codegraph-query" in config.extra_context
+        assert "explore(max_files=8).callees(depth=1)" in (
+            config.system_prompt + config.extra_context
+        )
+        assert "at most 2 TSA CLI calls" in config.system_prompt
+        assert "at most 2 TSA CLI calls" in config.extra_context
+
     def test_warm_index_rebuilds_when_db_is_empty(self, tmp_path: Path):
         cache_dir = tmp_path / ".ast-cache"
         cache_dir.mkdir()
@@ -286,3 +300,38 @@ class TestCodeGraphCompareToolPolicy:
 
         assert "TSA is the index" in prompt
         assert "invalidates the benchmark" in prompt
+
+    def test_tsa_prompt_prefers_codegraph_query(self):
+        prompt_path = (
+            Path(__file__).resolve().parents[2]
+            / "benchmarks"
+            / "codegraph_compare"
+            / "prompts"
+            / "system_tsa.md"
+        )
+        prompt = prompt_path.read_text(encoding="utf-8")
+
+        query_pos = prompt.index("--codegraph-query")
+        explore_pos = prompt.index("--codegraph-explore")
+        assert query_pos < explore_pos
+        assert "jQuery selector pipeline" in prompt
+        assert "ServeHTTP handleHTTPRequest getValue" in prompt
+        assert "at most 2 TSA CLI calls" in prompt
+
+    def test_codex_backend_receives_full_prompt_on_stdin(self):
+        assert (
+            _stdin_prompt_for_backend(
+                "codex",
+                full_prompt="SYSTEM\n\nUSER",
+                user_message="USER",
+            )
+            == "SYSTEM\n\nUSER"
+        )
+        assert (
+            _stdin_prompt_for_backend(
+                "claude",
+                full_prompt="SYSTEM\n\nUSER",
+                user_message="USER",
+            )
+            == "USER"
+        )

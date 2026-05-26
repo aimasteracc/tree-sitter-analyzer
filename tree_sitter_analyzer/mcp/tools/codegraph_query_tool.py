@@ -164,7 +164,7 @@ class CodeGraphQueryTool(BaseMCPTool):
                 warnings.append(str(exc))
 
         result = build_response(
-            verdict="INFO" if state.symbols else "NOT_FOUND",
+            verdict="INFO" if state.symbols or state.files else "NOT_FOUND",
             query=query,
             normalized_chain=[step_to_dict(step) for step in steps],
             symbols=state.symbols[:max_symbols],
@@ -198,6 +198,7 @@ class CodeGraphQueryTool(BaseMCPTool):
         if step.name == "search":
             query = first_str(step, required=True)
             limit = int_kw(step, "limit", default_max_symbols, _MAX_SYMBOLS_CAP)
+            state.last_query = query
             state.current = _resolve_query(cache, query, limit)
             state.add_symbols(state.current)
             return
@@ -205,6 +206,7 @@ class CodeGraphQueryTool(BaseMCPTool):
         if step.name == "explore":
             query = first_str(step, required=False)
             if query:
+                state.last_query = query
                 limit = int_kw(
                     step, "max_symbols", default_max_symbols, _MAX_SYMBOLS_CAP
                 )
@@ -221,6 +223,16 @@ class CodeGraphQueryTool(BaseMCPTool):
                 max_files=max_files,
                 include_code=include_code,
             )
+            if state.last_query and (
+                not state.files or _is_broad_query(state.last_query)
+            ):
+                concept_files = _build_concept_file_entries(
+                    cache=cache,
+                    query=state.last_query,
+                    project_root=self.project_root or "",
+                    max_files=max_files,
+                )
+                state.files = _merge_file_entries(state.files, concept_files, max_files)
             return
 
         if step.name == "callers":
@@ -253,6 +265,7 @@ class _QueryState:
         self.current: list[dict[str, Any]] = []
         self.symbols: list[dict[str, Any]] = []
         self.files: list[dict[str, Any]] = []
+        self.last_query = ""
         self.relationships: dict[str, dict[str, list[dict[str, Any]]]] = {
             "callers": {},
             "callees": {},
@@ -391,10 +404,14 @@ def _build_file_entries(
             }
             start_line = int(symbol.get("line", 0) or 0)
             end_line = int(symbol.get("end_line", start_line) or start_line)
-            if include_code and lines and end_line - start_line <= _MAX_SNIPPET_LINES:
-                code = _h.extract_snippet_from_lines(lines, start_line, end_line)
+            if include_code and lines:
+                snippet_end = min(end_line, start_line + _MAX_SNIPPET_LINES - 1)
+                code = _h.extract_snippet_from_lines(lines, start_line, snippet_end)
                 if code:
                     entry["code"] = code
+                    if snippet_end < end_line:
+                        entry["truncated"] = True
+                        entry["truncated_end_line"] = snippet_end
             symbol_entries.append(entry)
         entries.append(
             {
@@ -411,6 +428,48 @@ def _build_file_entries(
             }
         )
     return entries
+
+
+def _build_concept_file_entries(
+    *,
+    cache: Any,
+    query: str,
+    project_root: str,
+    max_files: int,
+) -> list[dict[str, Any]]:
+    symbol_tokens, file_tokens = _h.split_query(query)
+    query_terms = symbol_tokens or [query]
+    return _h.concept_search(
+        cache=cache,
+        query_terms=query_terms,
+        file_tokens=file_tokens,
+        project_root=project_root,
+        max_files=max_files,
+        max_matches_per_file=8,
+    )
+
+
+def _is_broad_query(query: str) -> bool:
+    symbol_tokens, _file_tokens = _h.split_query(query)
+    return len(symbol_tokens) > 1
+
+
+def _merge_file_entries(
+    primary: list[dict[str, Any]],
+    secondary: list[dict[str, Any]],
+    max_files: int,
+) -> list[dict[str, Any]]:
+    merged = list(primary)
+    seen = {str(entry.get("file_path") or "") for entry in merged}
+    for entry in secondary:
+        file_path = str(entry.get("file_path") or "")
+        if file_path in seen:
+            continue
+        merged.append(entry)
+        seen.add(file_path)
+        if len(merged) >= max_files:
+            break
+    return merged[:max_files]
 
 
 def _dedupe_symbols(symbols: list[dict[str, Any]]) -> list[dict[str, Any]]:

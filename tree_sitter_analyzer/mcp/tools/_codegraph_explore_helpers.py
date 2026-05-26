@@ -374,6 +374,8 @@ def _concept_rank(entry: dict[str, Any], terms: list[str]) -> int:
         rank += 40
     if any(part in path for part in ("/test/", "/tests/", "/fixtures/", "/gen/")):
         rank -= 80
+    if path.endswith(("_test.go", ".spec.ts", ".test.ts", ".spec.tsx", ".test.tsx")):
+        rank -= 80
     if "/copilot/" in path:
         rank -= 40
     return rank
