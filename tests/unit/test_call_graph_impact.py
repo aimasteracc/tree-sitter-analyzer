@@ -173,6 +173,7 @@ class TestChangeImpactIntegration:
                     diff_stat="1 file changed",
                     project_root=tmpdir,
                     include_tests=True,
+                    agent_summary_only=True,
                 )
                 result = _build_change_impact_result(req)
                 assert "call_graph_impact" in result

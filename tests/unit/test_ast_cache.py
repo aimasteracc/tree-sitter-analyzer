@@ -33,6 +33,11 @@ def cache(tmp_project):
     c.close()
 
 
+def _query_plan(conn: sqlite3.Connection, sql: str, params: tuple[str, ...]) -> str:
+    rows = conn.execute(f"EXPLAIN QUERY PLAN {sql}", params).fetchall()
+    return " ".join(str(row[3]) for row in rows)
+
+
 class TestContentHash:
     def test_deterministic(self):
         assert _content_hash("hello") == _content_hash("hello")
@@ -270,6 +275,110 @@ class TestStats:
 
         ASTCache._clear_activation_for_file(conn, "src/main.py")
 
+        conn.close()
+
+
+class TestLargeRepoHotPathIndexes:
+    def test_large_repo_hot_path_indexes_exist(self, cache):
+        if not cache._fts5_available:
+            pytest.skip("tracked: large-repo-hotpath-indexes require FTS5")
+        conn = cache._get_conn()
+        index_names = {
+            row["name"]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'index'"
+            ).fetchall()
+        }
+
+        assert "idx_sym_rows_name_kind_path_line" in index_names
+        assert "idx_sym_rows_file_name_kind_line" in index_names
+        assert "idx_ce_callee_name_resolved_file" in index_names
+        assert "idx_ce_callee_name_file_path" in index_names
+        assert "idx_ce_caller_name_file" in index_names
+
+    def test_symbol_resolver_hot_queries_use_composite_indexes(self, cache):
+        if not cache._fts5_available:
+            pytest.skip("tracked: large-repo-hotpath-indexes require FTS5")
+        conn = cache._get_conn()
+
+        symbol_plan = _query_plan(
+            conn,
+            """SELECT name, kind, file_path, language, line, end_line
+               FROM ast_symbol_rows
+               WHERE name = ? AND kind IN ('function', 'class', 'method', 'variable')
+               ORDER BY file_path, line""",
+            ("target",),
+        )
+        scoped_symbol_plan = _query_plan(
+            conn,
+            """SELECT name, kind, file_path, language, line, end_line
+               FROM ast_symbol_rows
+               WHERE file_path = ? AND name = ? AND kind IN ('function', 'class', 'method')
+               ORDER BY line""",
+            ("src/main.py", "target"),
+        )
+
+        assert "idx_sym_rows_name_kind_path_line" in symbol_plan
+        assert "idx_sym_rows_file_name_kind_line" in scoped_symbol_plan
+
+    def test_call_graph_hot_queries_use_composite_indexes(self, cache):
+        conn = cache._get_conn()
+
+        callers_plan = _query_plan(
+            conn,
+            """SELECT caller_name, caller_file, caller_line,
+                      callee_name, file_path, callee_line, callee_resolved_file
+               FROM ast_call_edges
+               WHERE callee_name = ? AND callee_resolved_file = ?""",
+            ("render", "src/view.py"),
+        )
+        callers_fallback_plan = _query_plan(
+            conn,
+            """SELECT caller_name, caller_file, caller_line,
+                      callee_name, file_path, callee_line, callee_resolved_file
+               FROM ast_call_edges
+               WHERE callee_name = ? AND file_path = ?""",
+            ("render", "src/view.py"),
+        )
+        callees_plan = _query_plan(
+            conn,
+            """SELECT caller_name, caller_file, caller_line,
+                      callee_name, callee_full, file_path, callee_line, callee_resolved_file
+               FROM ast_call_edges
+               WHERE caller_name = ? AND caller_file = ?""",
+            ("handle", "src/handler.py"),
+        )
+
+        assert "idx_ce_callee_name_resolved_file" in callers_plan
+        assert "idx_ce_callee_name_file_path" in callers_fallback_plan
+        assert "idx_ce_caller_name_file" in callees_plan
+
+    def test_large_repo_index_helper_skips_missing_tables(self):
+        conn = sqlite3.connect(":memory:")
+
+        ASTCache._ensure_large_repo_indexes(conn)
+
+        assert (
+            conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'index'"
+            ).fetchall()
+            == []
+        )
+        conn.close()
+
+    def test_large_repo_index_helper_tolerates_legacy_partial_tables(self):
+        conn = sqlite3.connect(":memory:")
+        conn.execute("CREATE TABLE ast_call_edges (callee_name TEXT)")
+
+        ASTCache._ensure_large_repo_indexes(conn)
+
+        index_names = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'index'"
+            ).fetchall()
+        }
+        assert "idx_ce_callee_name_resolved_file" not in index_names
         conn.close()
 
 
