@@ -40,7 +40,7 @@ _indexed_roots: dict[str, bool] = {}
 
 def ensure_indexed(
     project_root: str | None,
-    max_files: int = 5000,
+    max_files: int = 20_000,
     *,
     auto_build: bool = True,
 ) -> Any:

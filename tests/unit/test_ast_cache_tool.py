@@ -217,7 +217,29 @@ class TestExecute:
         mock_cache.index_project.return_value = {"files_indexed": 50}
         result = await tool.execute({"mode": "index", "max_files": 100, "force": True})
         assert result["success"] is True
-        mock_cache.index_project.assert_called_once_with(max_files=100, force=True)
+        mock_cache.index_project.assert_called_once_with(
+            max_files=100,
+            force=True,
+            include_activation=False,
+        )
+
+    @pytest.mark.asyncio
+    async def test_index_project_can_include_activation(self, tool_with_mock_cache):
+        tool, mock_cache = tool_with_mock_cache
+        mock_cache.index_project.return_value = {"files_indexed": 50}
+        result = await tool.execute(
+            {
+                "mode": "index",
+                "max_files": 100,
+                "include_activation": True,
+            }
+        )
+        assert result["success"] is True
+        mock_cache.index_project.assert_called_once_with(
+            max_files=100,
+            force=False,
+            include_activation=True,
+        )
 
     @pytest.mark.asyncio
     async def test_invalidate_mode(self, tool_with_mock_cache):

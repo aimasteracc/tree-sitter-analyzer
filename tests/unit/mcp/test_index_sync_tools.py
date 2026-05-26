@@ -27,6 +27,7 @@ class TestCodeGraphFullIndexTool:
         assert "mode" in schema["properties"]
         assert "max_files" in schema["properties"]
         assert "resolve_synapse" in schema["properties"]
+        assert "include_activation" in schema["properties"]
 
     def test_schema_defaults(self):
         from tree_sitter_analyzer.mcp.tools.full_index_tool import (
@@ -36,7 +37,8 @@ class TestCodeGraphFullIndexTool:
         tool = CodeGraphFullIndexTool()
         schema = tool.get_tool_schema()
         assert schema["properties"]["mode"]["default"] == "incremental"
-        assert schema["properties"]["max_files"]["default"] == 5000
+        assert schema["properties"]["max_files"]["default"] == 20000
+        assert schema["properties"]["include_activation"]["default"] is False
 
     def test_validate_arguments_valid(self):
         from tree_sitter_analyzer.mcp.tools.full_index_tool import (

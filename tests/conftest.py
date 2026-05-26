@@ -83,8 +83,12 @@ def pytest_collection_modifyitems(config, items):
     has_ripgrep = shutil.which("rg") is not None
     has_fd = shutil.which("fd") is not None
 
-    skip_ripgrep = pytest.mark.skip(reason="ripgrep (rg) not available")
-    skip_fd = pytest.mark.skip(reason="fd not available")
+    skip_ripgrep = pytest.mark.skip(
+        reason="ripgrep (rg) not available; tracked: optional local CLI dependency"
+    )
+    skip_fd = pytest.mark.skip(
+        reason="fd not available; tracked: optional local CLI dependency"
+    )
 
     for item in items:
         # Skip tests that require ripgrep if not available

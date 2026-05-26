@@ -69,13 +69,21 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 },
                 "max_files": {
                     "type": "integer",
-                    "description": "Max files to index (default: 5000)",
-                    "default": 5000,
+                    "description": "Max files to index (default: 20000)",
+                    "default": 20000,
                 },
                 "resolve_synapse": {
                     "type": "boolean",
                     "description": "Run cross-file callee resolution after indexing (default: true)",
                     "default": True,
+                },
+                "include_activation": {
+                    "type": "boolean",
+                    "description": (
+                        "Compute temporal git activation during AST cache indexing. "
+                        "Default false keeps large-repo warm-up fast."
+                    ),
+                    "default": False,
                 },
                 "output_format": {
                     "type": "string",
@@ -107,8 +115,9 @@ class CodeGraphFullIndexTool(BaseMCPTool):
             )
 
         mode = arguments.get("mode", "incremental")
-        max_files = arguments.get("max_files", 5000)
+        max_files = arguments.get("max_files", 20_000)
         resolve_synapse = arguments.get("resolve_synapse", True)
+        include_activation = bool(arguments.get("include_activation", False))
         output_format = arguments.get("output_format", "toon")
 
         phases: dict[str, Any] = {}
@@ -117,7 +126,11 @@ class CodeGraphFullIndexTool(BaseMCPTool):
         if mode == "full":
             mark_dirty(self.project_root)
 
-        phases["ast_cache"] = self._phase_ast_cache(mode == "full", max_files)
+        phases["ast_cache"] = self._phase_ast_cache(
+            mode == "full",
+            max_files,
+            include_activation=include_activation,
+        )
         phases["incremental_sync"] = self._phase_incremental_sync()
         phases["fts5"] = self._phase_fts5_stats()
 
@@ -141,13 +154,23 @@ class CodeGraphFullIndexTool(BaseMCPTool):
 
         return apply_toon_format_to_response(result, output_format)
 
-    def _phase_ast_cache(self, force: bool, max_files: int) -> dict[str, Any]:
+    def _phase_ast_cache(
+        self,
+        force: bool,
+        max_files: int,
+        *,
+        include_activation: bool = False,
+    ) -> dict[str, Any]:
         t0 = time.monotonic()
         try:
             from ...ast_cache import ASTCache
 
             cache = ASTCache(self.project_root or ".")
-            result = cache.index_project(max_files=max_files, force=force)
+            result = cache.index_project(
+                max_files=max_files,
+                force=force,
+                include_activation=include_activation,
+            )
             elapsed = round(time.monotonic() - t0, 3)
             indexed = result.get("indexed", 0)
             cached = result.get("cached", 0)
@@ -160,6 +183,7 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 "files_cached": cached,
                 "errors": errors,
                 "mode_used": result.get("mode_used", "unknown"),
+                "activation_enabled": result.get("activation_enabled", False),
             }
         except Exception as exc:
             return {
@@ -176,7 +200,7 @@ class CodeGraphFullIndexTool(BaseMCPTool):
 
             cache = ASTCache(self.project_root or ".")
             sync = IncrementalSync(cache)
-            result = sync.sync(max_files=5000)
+            result = sync.sync(max_files=20_000)
             cache.close()
             elapsed = round(time.monotonic() - t0, 3)
             return {

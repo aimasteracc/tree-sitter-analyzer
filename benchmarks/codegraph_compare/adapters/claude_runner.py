@@ -49,8 +49,8 @@ _TSA_TOOLS = [
 # Tools explicitly blocked per arm (prevents Claude from discovering and using them via ToolSearch)
 _ARM_ALLOWED_TOOLS: dict[str, list[str]] = {
     "native-only": _BASE_TOOLS,
-    "tsa-warm": _BASE_TOOLS + _TSA_TOOLS,
-    "tsa-cold": _BASE_TOOLS + _TSA_TOOLS,
+    "tsa-warm": _TSA_TOOLS,
+    "tsa-cold": _TSA_TOOLS,
     "codegraph-warm": _BASE_TOOLS + _CODEGRAPH_TOOLS,
     "codegraph-cold": _BASE_TOOLS + _CODEGRAPH_TOOLS,
 }
@@ -66,8 +66,44 @@ _ARM_DISALLOWED_TOOLS: dict[str, list[str]] = {
         "ToolSearch",
         "Agent",
     ],
-    "tsa-warm": ["Bash(codegraph *)", "mcp__codegraph__*", "ToolSearch", "Agent"],
-    "tsa-cold": ["Bash(codegraph *)", "mcp__codegraph__*", "ToolSearch", "Agent"],
+    "tsa-warm": [
+        "Read",
+        "Glob",
+        "Grep",
+        "Bash(grep *)",
+        "Bash(rg *)",
+        "Bash(find *)",
+        "Bash(fd *)",
+        "Bash(ls *)",
+        "Bash(cat *)",
+        "Bash(sed *)",
+        "Bash(nl *)",
+        "Bash(head *)",
+        "Bash(tail *)",
+        "Bash(codegraph *)",
+        "mcp__codegraph__*",
+        "ToolSearch",
+        "Agent",
+    ],
+    "tsa-cold": [
+        "Read",
+        "Glob",
+        "Grep",
+        "Bash(grep *)",
+        "Bash(rg *)",
+        "Bash(find *)",
+        "Bash(fd *)",
+        "Bash(ls *)",
+        "Bash(cat *)",
+        "Bash(sed *)",
+        "Bash(nl *)",
+        "Bash(head *)",
+        "Bash(tail *)",
+        "Bash(codegraph *)",
+        "mcp__codegraph__*",
+        "ToolSearch",
+        "Agent",
+    ],
     "codegraph-warm": ["ToolSearch", "Agent"],
     "codegraph-cold": ["ToolSearch", "Agent"],
 }
@@ -209,6 +245,9 @@ def _parse_codex_stream(lines: list[str]) -> tuple[str, dict[str, Any], str | No
     usage: dict[str, Any] = {}
     error: str | None = None
 
+    def _is_reconnect_error(message: Any) -> bool:
+        return str(message or "").startswith("Reconnecting...")
+
     for line in lines:
         try:
             event = json.loads(line)
@@ -216,16 +255,33 @@ def _parse_codex_stream(lines: list[str]) -> tuple[str, dict[str, Any], str | No
             continue
 
         event_type = event.get("type")
-        if event_type == "item.completed":
-            item = event.get("item", {})
+        item = event.get("item", {})
+        if isinstance(item, dict) and item.get("type") == "agent_message":
+            answer = item.get("text", "")
+        elif event_type == "item.completed":
             if item.get("type") == "agent_message":
                 answer = item.get("text", "")
             elif item.get("type") == "error":
                 error = item.get("message") or json.dumps(item)
         elif event_type == "turn.completed":
             usage = event.get("usage", {})
+        elif event_type == "agent_message":
+            answer = str(
+                (item.get("text") if isinstance(item, dict) else event.get("text", ""))
+                or ""
+            )
         elif event_type in {"turn.failed", "error"}:
-            error = event.get("message") or event.get("error") or json.dumps(event)
+            if error is None or not _is_reconnect_error(error):
+                error = event.get("message") or event.get("error") or json.dumps(event)
+        elif (
+            event_type == "item.started"
+            and isinstance(item, dict)
+            and item.get("type") == "agent_message"
+        ):
+            answer = item.get("text", "")
+
+    if answer and error and _is_reconnect_error(error):
+        error = None
 
     if not answer and not error:
         error = "No Codex agent_message event found in stream output"

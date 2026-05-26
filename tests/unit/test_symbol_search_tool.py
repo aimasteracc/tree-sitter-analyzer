@@ -140,7 +140,13 @@ class TestCodeGraphSymbolSearchExecution:
         hit = result["results"][0]
         assert "file" in hit
         assert "line" in hit
+        assert "code" in hit
         assert hit["line"] > 0
+
+    async def test_next_step_points_to_bulk_explore(self, indexed_project):
+        tool = CodeGraphSymbolSearchTool(str(indexed_project))
+        result = await tool.execute({"query": "UserService", "output_format": "json"})
+        assert "codegraph_explore" in result["next_step"]
 
     async def test_toon_output_format(self, indexed_project):
         tool = CodeGraphSymbolSearchTool(str(indexed_project))
@@ -164,6 +170,27 @@ class TestCodeGraphSymbolSearchNoCache:
         result = await tool.execute({"query": "anything", "output_format": "json"})
         assert result["success"] is True
         assert result["match_count"] == 0
+
+
+class TestCodeGraphSymbolSearchSourceContext:
+    def test_add_source_context_skips_invalid_line_numbers(self, indexed_project):
+        tool = CodeGraphSymbolSearchTool(str(indexed_project))
+        results = [{"file": "app.py", "line": 0}]
+
+        tool._add_source_context(results)
+
+        assert "code" not in results[0]
+
+    def test_read_line_requires_project_root_and_file_path(self):
+        tool = CodeGraphSymbolSearchTool()
+
+        assert tool._read_line("app.py", 1) == ""
+
+    def test_read_line_degrades_for_missing_or_short_files(self, indexed_project):
+        tool = CodeGraphSymbolSearchTool(str(indexed_project))
+
+        assert tool._read_line("missing.py", 1) == ""
+        assert tool._read_line("app.py", 999) == ""
 
 
 class TestCodeGraphSymbolSearchRegistration:

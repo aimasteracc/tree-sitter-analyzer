@@ -70,6 +70,37 @@ class TestLanguageFromExt:
         assert _language_from_ext("FOO.PY") == "python"
 
 
+class TestDependencyGraphSourceFileIteration:
+    def test_iter_source_files_prunes_hidden_and_generated_dirs(self, tmp_path):
+        project = tmp_path / "proj"
+        (project / "src").mkdir(parents=True)
+        (project / "node_modules" / "pkg").mkdir(parents=True)
+        (project / ".hidden").mkdir(parents=True)
+        (project / "src" / "main.py").write_text("import os\n")
+        (project / "node_modules" / "pkg" / "skip.py").write_text("x = 1\n")
+        (project / ".hidden" / "skip.py").write_text("x = 1\n")
+        (project / ".secret.py").write_text("x = 1\n")
+
+        DependencyGraph._global_cache.clear()
+        graph = DependencyGraph(str(project))
+
+        files = {
+            path.relative_to(project).as_posix()
+            for path in graph._iter_source_files({".py"})
+        }
+        assert files == {"src/main.py"}
+
+    def test_is_excluded_handles_paths_outside_project_root(self, tmp_path):
+        project = tmp_path / "proj"
+        project.mkdir()
+
+        DependencyGraph._global_cache.clear()
+        graph = DependencyGraph(str(project))
+
+        assert graph._is_excluded(Path("/tmp/outside/.git/config"))
+        assert not graph._is_excluded(project / "src" / "main.py")
+
+
 class TestResolveRelativeImport:
     def test_absolute_returns_none(self):
         assert _resolve_relative_import("os", "main.py") is None

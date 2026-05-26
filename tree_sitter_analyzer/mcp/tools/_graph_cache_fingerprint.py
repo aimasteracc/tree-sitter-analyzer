@@ -171,10 +171,10 @@ def _process_entry(
     """Sort a single entry into recurse-stack or fingerprint accumulator."""
     try:
         if entry.is_dir(follow_symlinks=False):
-            if entry.name not in _EXCLUDE_DIRS:
+            if entry.name not in _EXCLUDE_DIRS and not entry.name.startswith("."):
                 stack.append(entry.path)
             return file_count, max_mtime_ns
-        if entry.name.endswith(exts):
+        if not entry.name.startswith(".") and entry.name.endswith(exts):
             stat = entry.stat()
             file_count += 1
             if stat.st_mtime_ns > max_mtime_ns:
