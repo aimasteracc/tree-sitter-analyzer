@@ -8,8 +8,12 @@ from dataclasses import dataclass
 from typing import Any
 
 _SUPPORTED_STEPS = {
+    "flow",
+    "impact",
+    "ownership",
     "search",
     "explore",
+    "prefer",
     "where",
     "paths",
     "exclude_tests",

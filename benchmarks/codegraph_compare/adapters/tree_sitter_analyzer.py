@@ -39,7 +39,7 @@ via Bash to query the AST cache. Treat TSA output as already-read evidence.
 When answering:
 - Start with codegraph-query for the relevant symbol or concept, using a
   jQuery-style chain such as
-  search('ServeHTTP handleHTTPRequest getValue Context Next HandlerFunc methodTree nodeValue').explore(max_files=8).exclude_tests().callees(depth=1).answer().
+  flow('request routing ServeHTTP handleHTTPRequest getValue Context Next HandlerFunc methodTree nodeValue').prefer(exclude_tests=True).callees(depth=1).answer().
 - Hard budget: use at most 2 TSA CLI calls. Treat the first broad chain as
   the answer pack; after one optional targeted follow-up, stop and answer.
 - Do not use raw grep/find/rg/read for discovery; TSA is the index.
@@ -145,9 +145,9 @@ class TSAAdapter(BenchmarkAdapter):
             "tree-sitter-analyzer is available through this command prefix: "
             f"`{command_prefix}`. "
             "Run it from the benchmark repo root with `--project-root .`. "
-            "Use one broad `--codegraph-query \"search('<named symbols and "
-            "concepts from the question>').explore(max_files=8)."
-            'exclude_tests().callees(depth=1).answer()"` first for most '
+            "Use one broad `--codegraph-query \"flow('<question intent plus "
+            "named symbols>').prefer(exclude_tests=True).callees(depth=1)."
+            'answer()"` first for most '
             "architecture questions; it "
             "combines search, source snippets, concept matches, and relationship "
             "hops in one TSA process. Hard budget: use at most 2 TSA CLI calls; "

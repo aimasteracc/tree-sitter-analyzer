@@ -81,6 +81,20 @@ class TestParseChain:
         ]
         assert steps[1].kwargs == {"kind": "function"}
 
+    def test_parses_intent_macros_and_prefer(self):
+        steps = parse_chain(
+            "flow('request routing').prefer(paths='src', exclude_tests=True)."
+            "callees(depth=1).answer()"
+        )
+
+        assert [step.name for step in steps] == [
+            "flow",
+            "prefer",
+            "callees",
+            "answer",
+        ]
+        assert steps[1].kwargs == {"paths": "src", "exclude_tests": True}
+
     def test_parses_list_literals_for_where(self):
         steps = parse_chain("search('run').where(kind=['function', 'method'])")
 
@@ -325,6 +339,107 @@ class TestCodeGraphQueryTool:
             "src/app.py",
             "other/app.py",
         ]
+
+    @pytest.mark.asyncio
+    async def test_execute_flow_macro_returns_answer_intent(self, tmp_path):
+        source = tmp_path / "gin.py"
+        source.write_text(
+            "def ServeHTTP():\n    return handleHTTPRequest()\n", encoding="utf-8"
+        )
+        mock_cache = MagicMock()
+        mock_cache.query_callees.return_value = []
+
+        with (
+            patch("tree_sitter_analyzer.ast_cache.ASTCache", return_value=mock_cache),
+            _patch_resolver_with(
+                {"ServeHTTP": [_make_def(file="gin.py", name="ServeHTTP")]}
+            ),
+        ):
+            result = await CodeGraphQueryTool(str(tmp_path)).execute(
+                {
+                    "query": "flow('request routing').exclude_tests().why().answer()",
+                    "output_format": "json",
+                }
+            )
+
+        assert result["answer_pack"]["intent"] == "flow"
+        assert result["answer_pack"]["stop_signal"] is True
+        assert result["files"][0]["file_path"] == "gin.py"
+        assert result["query_plan"][0]["step"]["name"] == "flow"
+
+    @pytest.mark.asyncio
+    async def test_execute_impact_macro_collects_call_edges(self, tmp_path):
+        source = tmp_path / "service.py"
+        source.write_text("def save():\n    return helper()\n", encoding="utf-8")
+        mock_cache = MagicMock()
+        mock_cache.query_callers.return_value = [
+            {
+                "caller_name": "route",
+                "caller_file": "api.py",
+                "caller_line": 10,
+                "depth": 1,
+            }
+        ]
+        mock_cache.query_callees.return_value = [
+            {
+                "callee_name": "helper",
+                "callee_file": "service.py",
+                "callee_line": 2,
+                "depth": 1,
+            }
+        ]
+
+        with (
+            patch("tree_sitter_analyzer.ast_cache.ASTCache", return_value=mock_cache),
+            _patch_resolver_with({"save": [_make_def(file="service.py", name="save")]}),
+        ):
+            result = await CodeGraphQueryTool(str(tmp_path)).execute(
+                {
+                    "query": "impact('save').answer()",
+                    "output_format": "json",
+                }
+            )
+
+        assert result["answer_pack"]["intent"] == "impact"
+        assert (
+            result["relationships"]["callers"]["service.py:1:save"][0]["name"]
+            == "route"
+        )
+        assert (
+            result["relationships"]["callees"]["service.py:1:save"][0]["name"]
+            == "helper"
+        )
+
+    @pytest.mark.asyncio
+    async def test_execute_ownership_macro_uses_concept_fallback(self, tmp_path):
+        mock_cache = MagicMock()
+        concept_files = [
+            {
+                "file_path": "auth/session.py",
+                "language": "python",
+                "symbols": [],
+                "matches": [{"line": 7, "text": "class SessionStore:"}],
+                "matched_terms": ["session"],
+            }
+        ]
+
+        with (
+            patch("tree_sitter_analyzer.ast_cache.ASTCache", return_value=mock_cache),
+            _patch_resolver_with({"session": []}),
+            patch(
+                "tree_sitter_analyzer.mcp.tools._codegraph_query_runtime._h.concept_search",
+                return_value=concept_files,
+            ),
+        ):
+            result = await CodeGraphQueryTool(str(tmp_path)).execute(
+                {
+                    "query": "ownership('session').answer()",
+                    "output_format": "json",
+                }
+            )
+
+        assert result["answer_pack"]["intent"] == "ownership"
+        assert result["answer_pack"]["core_files"] == ["auth/session.py"]
 
     @pytest.mark.asyncio
     async def test_execute_returns_error_envelope_for_bad_chain(self):

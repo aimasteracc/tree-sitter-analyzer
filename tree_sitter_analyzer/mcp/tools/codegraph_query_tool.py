@@ -31,6 +31,7 @@ from ._codegraph_query_runtime import (
     QueryState,
     apply_exclude_tests,
     apply_path_filter,
+    apply_prefer_filter,
     apply_where_filter,
     build_answer_pack,
     build_concept_file_entries,
@@ -68,12 +69,12 @@ class CodeGraphQueryTool(BaseMCPTool):
         return {
             "name": "codegraph_query",
             "description": (
-                "jQuery-style chained code graph query. Compose search(), "
-                "where(), paths(), exclude_tests(), explore(), callers(), "
-                "callees(), related(), take(), end(), why(), and answer() in "
-                "one statement so agents get an answer pack without 40 separate "
-                "CLI calls. Example: search('CommandService').where(kind="
-                "'function').explore().callees().answer()."
+                "jQuery-style chained code graph query. Compose intent macros "
+                "flow(), impact(), ownership() with search(), prefer(), where(), "
+                "paths(), exclude_tests(), explore(), callers(), callees(), "
+                "related(), take(), end(), why(), and answer() in one statement. "
+                "Example: flow('request routing').prefer(paths='src app')."
+                "exclude_tests().callees().answer()."
             ),
             "inputSchema": self.get_tool_schema(),
             "annotations": {
@@ -91,9 +92,9 @@ class CodeGraphQueryTool(BaseMCPTool):
                 "query": {
                     "type": "string",
                     "description": (
-                        "Chain DSL, e.g. search('CommandService').explore("
-                        "max_files=4).exclude_tests().callees(depth=1)."
-                        "answer(). "
+                        "Chain DSL, e.g. flow('request routing').prefer("
+                        "paths='src app').exclude_tests().callees(depth=1)."
+                        "answer(), or impact('CommandService').answer(). "
                         "A plain string is treated as explore('<query>').related()."
                     ),
                 },
@@ -214,12 +215,67 @@ class CodeGraphQueryTool(BaseMCPTool):
         default_max_files: int,
         default_include_code: bool,
     ) -> None:
+        if step.name == "flow":
+            query = _flow_query(first_str(step, required=True))
+            state.intent = "flow"
+            state.last_query = query
+            state.current = resolve_query(cache, query, default_max_symbols)
+            state.add_symbols(state.current)
+            state.files = _explore_current(
+                cache=cache,
+                state=state,
+                project_root=self.project_root or "",
+                max_files=default_max_files,
+                max_symbols=default_max_symbols,
+                include_code=default_include_code,
+            )
+            return
+
+        if step.name == "impact":
+            query = first_str(step, required=True)
+            state.intent = "impact"
+            state.last_query = query
+            state.current = resolve_query(cache, query, default_max_symbols)
+            state.add_symbols(state.current)
+            state.files = _explore_current(
+                cache=cache,
+                state=state,
+                project_root=self.project_root or "",
+                max_files=default_max_files,
+                max_symbols=default_max_symbols,
+                include_code=default_include_code,
+            )
+            relation_step(cache, state, direction="callers", step=step)
+            state.current = resolve_query(cache, query, default_max_symbols)
+            relation_step(cache, state, direction="callees", step=step)
+            return
+
+        if step.name == "ownership":
+            query = first_str(step, required=True)
+            state.intent = "ownership"
+            state.last_query = query
+            state.current = resolve_query(cache, query, default_max_symbols)
+            state.add_symbols(state.current)
+            state.files = _explore_current(
+                cache=cache,
+                state=state,
+                project_root=self.project_root or "",
+                max_files=default_max_files,
+                max_symbols=default_max_symbols,
+                include_code=default_include_code,
+            )
+            return
+
         if step.name == "search":
             query = first_str(step, required=True)
             limit = int_kw(step, "limit", default_max_symbols, MAX_SYMBOLS_CAP)
             state.last_query = query
             state.current = resolve_query(cache, query, limit)
             state.add_symbols(state.current)
+            return
+
+        if step.name == "prefer":
+            apply_prefer_filter(state, step.kwargs)
             return
 
         if step.name == "where":
@@ -307,6 +363,49 @@ class CodeGraphQueryTool(BaseMCPTool):
             return
 
         raise ValueError(f"unsupported chain step: {step.name}")
+
+
+def _explore_current(
+    *,
+    cache: Any,
+    state: QueryState,
+    project_root: str,
+    max_files: int,
+    max_symbols: int,
+    include_code: bool,
+) -> list[dict[str, Any]]:
+    files = build_file_entries(
+        project_root=project_root,
+        symbols=state.current[:max_symbols],
+        max_files=max_files,
+        include_code=include_code,
+    )
+    if state.last_query and (not files or is_broad_query(state.last_query)):
+        concept_files = build_concept_file_entries(
+            cache=cache,
+            query=state.last_query,
+            project_root=project_root,
+            max_files=max_files,
+        )
+        files = merge_file_entries(files, concept_files, max_files)
+    return files
+
+
+def _flow_query(intent: str) -> str:
+    lowered = intent.lower()
+    terms = [intent]
+    if any(
+        token in lowered for token in ("request", "route", "routing", "handler", "http")
+    ):
+        terms.append(
+            "ServeHTTP handleHTTPRequest route router routes handler middleware "
+            "dispatch request response context getValue nodeValue"
+        )
+    if any(token in lowered for token in ("cli", "command", "subcommand")):
+        terms.append("main command subcommand handler parser arguments execute run")
+    if any(token in lowered for token in ("event", "message", "queue", "worker")):
+        terms.append("event message queue worker dispatch handle process consumer")
+    return " ".join(terms)
 
 
 __all__ = ["CodeGraphQueryTool", "parse_chain"]

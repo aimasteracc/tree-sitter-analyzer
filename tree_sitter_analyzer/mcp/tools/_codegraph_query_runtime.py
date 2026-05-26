@@ -26,6 +26,7 @@ class QueryState:
         self.symbols: list[dict[str, Any]] = []
         self.files: list[dict[str, Any]] = []
         self.last_query = ""
+        self.intent = ""
         self.include_plan = False
         self.answer_requested = False
         self.query_plan: list[dict[str, Any]] = []
@@ -312,6 +313,25 @@ def apply_exclude_tests(state: QueryState) -> None:
     state.rebuild_seen()
 
 
+def apply_prefer_filter(state: QueryState, criteria: dict[str, Any]) -> None:
+    merged = {
+        key: value
+        for key, value in criteria.items()
+        if key in {"kind", "language", "name", "path", "file"}
+    }
+    if criteria.get("paths") is not None:
+        merged["path"] = criteria["paths"]
+    if criteria.get("exclude_tests"):
+        merged["exclude_tests"] = True
+    if not merged:
+        return
+    state.push_selection()
+    state.current = filter_symbols(state.current, merged)
+    state.symbols = filter_symbols(state.symbols, merged)
+    state.files = filter_files(state.files, merged)
+    state.rebuild_seen()
+
+
 def filter_symbols(
     symbols: list[dict[str, Any]],
     criteria: dict[str, Any],
@@ -398,6 +418,7 @@ def build_answer_pack(
     missing.extend(warnings)
     return {
         "stop_signal": True,
+        "intent": state.intent or "custom",
         "query": query,
         "summary": (
             f"Answer pack ready: {len(state.files)} files, "

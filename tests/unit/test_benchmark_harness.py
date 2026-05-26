@@ -214,7 +214,8 @@ class TestCodeGraphCompareTSAAdapter:
 
         assert "--codegraph-query" in config.system_prompt
         assert "--codegraph-query" in config.extra_context
-        assert "explore(max_files=8).exclude_tests().callees(depth=1).answer()" in (
+        assert "flow(" in config.system_prompt
+        assert ".prefer(exclude_tests=True).callees(depth=1).answer()" in (
             config.system_prompt + config.extra_context
         )
         assert "at most 2 TSA CLI calls" in config.system_prompt
@@ -316,7 +317,7 @@ class TestCodeGraphCompareToolPolicy:
         assert query_pos < explore_pos
         assert "jQuery selector pipeline" in prompt
         assert "ServeHTTP handleHTTPRequest getValue" in prompt
-        assert ".exclude_tests().callees(depth=1).answer()" in prompt
+        assert ".prefer(exclude_tests=True).callees(depth=1).answer()" in prompt
         assert "at most 2 TSA CLI calls" in prompt
 
     def test_codex_backend_receives_full_prompt_on_stdin(self):

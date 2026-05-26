@@ -71,7 +71,7 @@ TSA wins outright on **2 of 6 repos**, has a lower **median cost saving (−11 %
 | Symbol search (FTS5) | `codegraph_symbol_search` | parity |
 | Go-to-def / find-refs / call hierarchy in one call | `codegraph_navigate` | PRIMARY entry point |
 | Bulk-fetch N related symbols + relationship map | `codegraph_explore` | parity |
-| jQuery-style chained answer packs | `codegraph_query` | `search().explore().exclude_tests().answer()` in one call |
+| jQuery-style chained answer packs | `codegraph_query` | `flow().prefer().answer()` in one call |
 | Function-level blast radius + risk score | `codegraph_impact` | parity + risk score |
 | Who-calls-X / what-X-calls | `codegraph_callers` / `codegraph_callees` | parity |
 | Index health at-a-glance | `codegraph_status` | parity |
@@ -116,7 +116,7 @@ tree-sitter-analyzer --table full <file>          # method/signature/complexity 
 tree-sitter-analyzer --partial-read --start-line N --end-line M <file>
 tree-sitter-analyzer --project-health             # A-F grade across the project
 tree-sitter-analyzer --callers <symbol>           # who-calls
-tree-sitter-analyzer --codegraph-query "search('Handler').explore().exclude_tests().answer()"
+tree-sitter-analyzer --codegraph-query "flow('request routing Handler').prefer(exclude_tests=True).answer()"
 tree-sitter-analyzer --codegraph-impact <fn>      # blast radius + risk
 tree-sitter-analyzer --affected <file...>         # tests transitively affected
 tree-sitter-analyzer --dead-code                  # transitive unreachable
