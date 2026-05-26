@@ -22,6 +22,7 @@ MCP_COMMAND_FLAGS = (
     "callers",
     "callees",
     "symbol_resolve",
+    "codegraph_query",
 )
 
 
@@ -34,6 +35,10 @@ def _args(**overrides: Any) -> Namespace:
     defaults["callees_file"] = None
     defaults["symbol_resolve"] = False
     defaults["symbol_resolve_mode"] = "resolve"
+    defaults["codegraph_query"] = False
+    defaults["codegraph_query_max_symbols"] = 20
+    defaults["codegraph_query_max_files"] = 8
+    defaults["codegraph_query_outline_only"] = False
     defaults.update(
         {
             "file_path": "target.py",
@@ -119,6 +124,17 @@ def _args(**overrides: Any) -> Namespace:
             {"smart_context": True},
             "SmartContextTool",
             {"file_path": "target.py", "output_format": "json"},
+        ),
+        (
+            {"codegraph_query": "search('target').explore()"},
+            "CodeGraphQueryTool",
+            {
+                "query": "search('target').explore()",
+                "max_symbols": 20,
+                "max_files": 8,
+                "include_code": True,
+                "output_format": "json",
+            },
         ),
     ],
 )

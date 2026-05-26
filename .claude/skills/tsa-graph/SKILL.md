@@ -17,6 +17,7 @@ description: |
   Replaces: grep + read + manual chain-following (~10-30k tokens) with
   2-4 MCP calls (~1-3k tokens).
 allowed-tools:
+  - mcp__tree-sitter-analyzer__codegraph_query
   - mcp__tree-sitter-analyzer__codegraph_callees
   - mcp__tree-sitter-analyzer__codegraph_callers
   - mcp__tree-sitter-analyzer__codegraph_symbol_search
@@ -40,9 +41,9 @@ allowed-tools:
 
 # tsa-graph — Code archaeology, one call deep
 
-> 47 MCP tools live in this repo; this skill exposes the 6 that answer
-> "who is connected to what" — the questions agents waste the most tokens on
-> when they fall back to grep.
+> This skill exposes the graph-focused tools that answer "who is connected to
+> what" — the questions agents waste the most tokens on when they fall back to
+> grep.
 
 ## When to use
 
@@ -50,6 +51,7 @@ Pick the right tool by question shape:
 
 | Question                              | Tool                          |
 |---------------------------------------|-------------------------------|
+| Need search + snippets + callers/callees together? | `codegraph_query` |
 | What does FUNCTION call?              | `codegraph_callees`           |
 | What calls FUNCTION?                  | `codegraph_callers`           |
 | Where is SYMBOL defined?              | `codegraph_symbol_search`     |
@@ -76,6 +78,13 @@ codegraph_callers(function_name="score_file", language="python", limit=20)
 Returns: `callers: [{name, file, line, callee_resolution, callee_resolved_file}, ...]`.
 The new `callee_resolution` field tells you `local` / `project` / `stdlib` /
 `unknown` so you can filter out noise.
+
+When a question needs several graph hops plus source snippets, prefer the
+chain surface:
+
+```
+codegraph_query(query="search('score_file').explore(max_files=3).callers(depth=1).callees(depth=1)")
+```
 
 ### Multi-step case (refactor planning)
 
