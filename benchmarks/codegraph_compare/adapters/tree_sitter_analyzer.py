@@ -37,7 +37,7 @@ You may run ``python -m tree_sitter_analyzer <subcommand> --format json``
 via Bash to query the AST cache. Treat TSA output as already-read evidence.
 
 When answering:
-- Start with codegraph-explore for the relevant symbol or concept.
+- Start with codegraph-query for the relevant symbol or concept.
 - Do not use raw grep/find/rg/read for discovery; TSA is the index.
 - Use at most one narrow raw file read only if TSA output misses a required
   detail, and explain the miss.
@@ -141,7 +141,8 @@ class TSAAdapter(BenchmarkAdapter):
             "tree-sitter-analyzer is available through this command prefix: "
             f"`{command_prefix}`. "
             "Run it from the benchmark repo root with `--project-root .`. "
-            "Useful queries: `--symbol-search <name>`, `--codegraph-explore <query>`, "
+            "Useful queries: `--codegraph-query \"search('<symbol-or-concept>').explore(max_files=5).related(limit=8)\"`, "
+            "`--symbol-search <name>`, `--codegraph-explore <query>`, "
             "`--codegraph-overview`, and `--call-graph callers|callees "
             "--call-graph-function <name>`. "
             f"The AST cache is at {repo_path}/.ast-cache/"
@@ -181,28 +182,24 @@ class TSAAdapter(BenchmarkAdapter):
         in_bash_call = False
         pending_bash_lines: list[str] = []
 
+        def flush_bash_call() -> None:
+            nonlocal search_calls, index_queries, in_bash_call, pending_bash_lines
+            if not in_bash_call:
+                return
+            bash_body = "\n".join(pending_bash_lines)
+            if _TSA_PATTERNS.search(bash_body):
+                index_queries += 1
+            else:
+                search_calls += 1
+            in_bash_call = False
+            pending_bash_lines = []
+
         for line in lines:
             # Detect "Tool: <name>" annotation lines
             tool_match = re.match(r"\s*Tool:\s*(\S+)", line, re.IGNORECASE)
             if tool_match:
                 # Flush any pending bash call first
-                if in_bash_call:
-                    _classify_bash(
-                        "\n".join(pending_bash_lines),
-                        result=_MutableCounts(
-                            tool_calls_ref=[tool_calls],
-                            search_calls_ref=[search_calls],
-                            index_queries_ref=[index_queries],
-                        ),
-                    )
-                    # Update locals from mutable containers
-                    tool_calls = _MutableCounts(
-                        tool_calls_ref=[tool_calls],
-                        search_calls_ref=[search_calls],
-                        index_queries_ref=[index_queries],
-                    ).tool_calls_ref[0]
-                    in_bash_call = False
-                    pending_bash_lines = []
+                flush_bash_call()
 
                 name = tool_match.group(1).lower().rstrip("()")
                 tool_calls += 1
@@ -221,12 +218,7 @@ class TSAAdapter(BenchmarkAdapter):
                 pending_bash_lines.append(line)
 
         # Flush trailing bash call
-        if in_bash_call and pending_bash_lines:
-            bash_body = "\n".join(pending_bash_lines)
-            if _TSA_PATTERNS.search(bash_body):
-                index_queries += 1
-            else:
-                search_calls += 1
+        flush_bash_call()
 
         # Fallback: bracket notation [ToolName] for transcripts that don't
         # use "Tool:" prefix
@@ -245,17 +237,17 @@ class TSAAdapter(BenchmarkAdapter):
             elif name in _SEARCH_TOOLS:
                 search_calls += 1
 
-        # Also scan the whole transcript for TSA invocations that appear in
-        # command blocks without a "Tool: Bash" prefix (e.g. inline code fences)
-        for match in _TSA_PATTERNS.finditer(transcript_text):
-            # Only count if on a line that looks like a shell command, not prose
-            line_start = transcript_text.rfind("\n", 0, match.start()) + 1
-            line_end = transcript_text.find("\n", match.end())
-            if line_end == -1:
-                line_end = len(transcript_text)
-            cmd_line = transcript_text[line_start:line_end].strip()
-            if cmd_line.startswith(("$", "python", "uv run")):
-                index_queries += 1
+        if tool_calls == 0:
+            # Also scan transcripts that only include raw command blocks without
+            # tool annotations. Annotated transcripts were already counted above.
+            for match in _TSA_PATTERNS.finditer(transcript_text):
+                line_start = transcript_text.rfind("\n", 0, match.start()) + 1
+                line_end = transcript_text.find("\n", match.end())
+                if line_end == -1:
+                    line_end = len(transcript_text)
+                cmd_line = transcript_text[line_start:line_end].strip()
+                if cmd_line.startswith(("$", "python", "uv run")):
+                    index_queries += 1
 
         return ToolMetrics(
             tool_calls=tool_calls,
@@ -263,35 +255,6 @@ class TSAAdapter(BenchmarkAdapter):
             search_calls=search_calls,
             index_queries=index_queries,
         )
-
-
-# ---------------------------------------------------------------------------
-# Internal helper dataclass for mutable counter passing
-# ---------------------------------------------------------------------------
-
-
-class _MutableCounts:
-    """Tiny mutable container used to pass counters by reference."""
-
-    __slots__ = ("tool_calls_ref", "search_calls_ref", "index_queries_ref")
-
-    def __init__(
-        self,
-        tool_calls_ref: list[int],
-        search_calls_ref: list[int],
-        index_queries_ref: list[int],
-    ) -> None:
-        self.tool_calls_ref = tool_calls_ref
-        self.search_calls_ref = search_calls_ref
-        self.index_queries_ref = index_queries_ref
-
-
-def _classify_bash(bash_body: str, result: _MutableCounts) -> None:
-    """Classify one Bash call as either an index_query or a search_call."""
-    if _TSA_PATTERNS.search(bash_body):
-        result.index_queries_ref[0] += 1
-    else:
-        result.search_calls_ref[0] += 1
 
 
 # ---------------------------------------------------------------------------
