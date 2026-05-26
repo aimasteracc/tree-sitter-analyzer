@@ -21,6 +21,7 @@ from pathlib import Path
 
 import pytest
 
+from tree_sitter_analyzer.security import fixture_detector
 from tree_sitter_analyzer.security.fixture_detector import (
     FixtureFact,
     fixture_to_verdict,
@@ -207,7 +208,11 @@ class TestCache:
         root = _make_project(
             tmp_path,
             {
-                "tests/test_x.py": "name = 'tree_sitter_analyzer/foo.py'\n",
+                "tests/test_x.py": (
+                    "from pathlib import Path\n"
+                    "PROJECT_ROOT = Path('.')\n"
+                    "name = PROJECT_ROOT / 'tree_sitter_analyzer' / 'foo.py'\n"
+                ),
                 "tree_sitter_analyzer/foo.py": "",
             },
         )
@@ -244,6 +249,192 @@ class TestCache:
         # … and the broken cache produces a single warning so the
         # operator notices.
         assert any("cache" in record.message.lower() for record in caplog.records)
+
+    def test_readable_cache_uses_targeted_scan(self, tmp_path: Path) -> None:
+        root = _make_project(
+            tmp_path,
+            {
+                "tests/test_x.py": (
+                    "from pathlib import Path\n"
+                    "PROJECT_ROOT = Path('.')\n"
+                    "name = PROJECT_ROOT / 'tree_sitter_analyzer' / 'foo.py'\n"
+                ),
+                "tree_sitter_analyzer/foo.py": "",
+                ".ast-cache/fixture_index.json": (
+                    '{"schema_version": 1, "signature": "old", "fixtures": {}}\n'
+                ),
+            },
+        )
+
+        fact = is_fixture("tree_sitter_analyzer/foo.py", root)
+
+        assert fact.is_fixture is True
+        assert fact.confidence >= 0.85
+        assert fact.source == "targeted_text_scan"
+
+    def test_hidden_test_dirs_do_not_count_as_fixture_signals(
+        self, tmp_path: Path
+    ) -> None:
+        root = _make_project(
+            tmp_path,
+            {
+                "tests/.hidden/test_x.py": "name = 'tree_sitter_analyzer/foo.py'\n",
+                "tree_sitter_analyzer/foo.py": "",
+            },
+        )
+
+        fact = is_fixture("tree_sitter_analyzer/foo.py", root)
+
+        assert fact.is_fixture is False
+
+    def test_targeted_scan_returns_none_without_tests_dir(self, tmp_path: Path) -> None:
+        root = _make_project(tmp_path, {"tree_sitter_analyzer/foo.py": ""})
+
+        fact = fixture_detector._targeted_fixture_scan(
+            root, "tree_sitter_analyzer/foo.py"
+        )
+
+        assert fact is None
+
+    def test_targeted_scan_detects_exact_repo_relative_literal(
+        self, tmp_path: Path
+    ) -> None:
+        root = _make_project(
+            tmp_path,
+            {
+                "tests/test_x.py": "target = 'tree_sitter_analyzer/foo.py'\n",
+                "tree_sitter_analyzer/foo.py": "",
+            },
+        )
+
+        fact = fixture_detector._targeted_fixture_scan(
+            root, "tree_sitter_analyzer/foo.py"
+        )
+
+        assert fact is not None
+        assert fact.is_fixture is True
+        assert fact.confidence >= 0.7
+
+    def test_targeted_scan_skips_init_and_main_basenames(self, tmp_path: Path) -> None:
+        root = _make_project(
+            tmp_path,
+            {
+                "tests/test_x.py": "name = 'tree_sitter_analyzer/__init__.py'\n",
+                "tree_sitter_analyzer/__init__.py": "",
+            },
+        )
+
+        fact = fixture_detector._targeted_fixture_scan(
+            root, "tree_sitter_analyzer/__init__.py"
+        )
+
+        assert fact is None
+
+    def test_targeted_scan_skips_unreadable_test_files(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        root = _make_project(
+            tmp_path,
+            {
+                "tests/test_x.py": "name = 'tree_sitter_analyzer/foo.py'\n",
+                "tree_sitter_analyzer/foo.py": "",
+            },
+        )
+        broken = root / "tests" / "test_x.py"
+        original_read_text = Path.read_text
+
+        def flaky_read_text(path: Path, *args, **kwargs):
+            if path == broken:
+                raise OSError("unreadable")
+            return original_read_text(path, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "read_text", flaky_read_text)
+
+        fact = fixture_detector._targeted_fixture_scan(
+            root, "tree_sitter_analyzer/foo.py"
+        )
+
+        assert fact is None
+
+    def test_basename_seen_in_tests_handles_unreadable_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        root = _make_project(
+            tmp_path,
+            {
+                "tests/test_x.py": "foo.py\n",
+                "tree_sitter_analyzer/foo.py": "",
+            },
+        )
+        broken = root / "tests" / "test_x.py"
+        original_read_text = Path.read_text
+
+        def flaky_read_text(path: Path, *args, **kwargs):
+            if path == broken:
+                raise OSError("unreadable")
+            return original_read_text(path, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "read_text", flaky_read_text)
+
+        assert fixture_detector._basename_seen_in_tests(root, "foo.py") is False
+
+    def test_cache_readability_accepts_legacy_schema_and_rejects_bad_shapes(
+        self, tmp_path: Path
+    ) -> None:
+        readable = tmp_path / "readable.json"
+        readable.write_text('{"fixtures": {}}\n', encoding="utf-8")
+        bad = tmp_path / "bad.json"
+        bad.write_text('{"schema_version": 99, "fixtures": {}}\n', encoding="utf-8")
+
+        assert fixture_detector._cache_is_readable(readable) is True
+        assert fixture_detector._cache_is_readable(tmp_path / "missing.json") is False
+        assert fixture_detector._cache_is_readable(bad) is False
+
+    def test_scan_tests_skips_unreadable_and_syntax_broken_tests(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        root = _make_project(
+            tmp_path,
+            {
+                "tests/test_unreadable.py": "name = 'tree_sitter_analyzer/foo.py'\n",
+                "tests/test_broken.py": "def broken(:\n",
+                "tree_sitter_analyzer/foo.py": "",
+            },
+        )
+        unreadable = root / "tests" / "test_unreadable.py"
+        original_read_text = Path.read_text
+
+        def flaky_read_text(path: Path, *args, **kwargs):
+            if path == unreadable:
+                raise OSError("unreadable")
+            return original_read_text(path, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "read_text", flaky_read_text)
+
+        assert fixture_detector._scan_tests(root / "tests", root) == {}
+
+    def test_write_cache_logs_os_errors(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        cache_path = tmp_path / "cache.json"
+
+        def fail_write_text(self: Path, *_args, **_kwargs):
+            raise OSError("disk full")
+
+        monkeypatch.setattr(Path, "write_text", fail_write_text)
+
+        with caplog.at_level(
+            logging.WARNING,
+            logger="tree_sitter_analyzer.security.fixture_detector",
+        ):
+            fixture_detector._write_cache(cache_path, "sig", {})
+
+        assert any(
+            "could not write cache" in record.message for record in caplog.records
+        )
 
 
 # ---------------------------------------------------------------------------
