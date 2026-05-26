@@ -12,6 +12,7 @@ from tree_sitter_analyzer.mcp.tools.utils.change_impact_analysis import (
     _build_test_plan,
     _find_test_files,
     _is_runnable_test_file,
+    _is_test_only_change_set,
     _load_dependency_graph,
     _test_file_matches_change,
 )
@@ -83,6 +84,18 @@ class TestIsRunnableTestFile:
         assert (
             _is_runnable_test_file("src/example.py", {"tests/"}, ("_test.py",)) is False
         )
+
+
+class TestIsTestOnlyChangeSet:
+    def test_true_for_runnable_test_files(self):
+        assert _is_test_only_change_set(
+            ["tests/unit/test_alpha.py", "tests/unit/beta_test.py"]
+        )
+
+    def test_false_for_runtime_or_test_support_files(self):
+        assert not _is_test_only_change_set(["tree_sitter_analyzer/runtime.py"])
+        assert not _is_test_only_change_set(["tests/conftest.py"])
+        assert not _is_test_only_change_set([])
 
 
 class TestAssessRisk:
