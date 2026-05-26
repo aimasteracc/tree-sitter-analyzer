@@ -539,6 +539,33 @@ class TestSQLNativeCallGraph:
         callee_names = [e["callee_name"] for e in callees]
         assert "bar" in callee_names
 
+    def test_query_callees_finds_go_method_selector_calls(self, tmp_path):
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "gin.go").write_text(
+            "package gin\n\n"
+            "type Engine struct{}\n\n"
+            "func (engine *Engine) ServeHTTP() {\n"
+            "    engine.handleHTTPRequest()\n"
+            "}\n\n"
+            "func (engine *Engine) handleHTTPRequest() {}\n",
+            encoding="utf-8",
+        )
+        cache = ASTCache(str(tmp_path))
+        try:
+            cache.index_project()
+
+            callees = cache.query_callees("ServeHTTP", caller_file="src/gin.go")
+            assert [edge["callee_name"] for edge in callees] == ["handleHTTPRequest"]
+            assert [edge["callee_full"] for edge in callees] == [
+                "engine.handleHTTPRequest"
+            ]
+
+            callers = cache.query_callers("handleHTTPRequest", callee_file="src/gin.go")
+            assert [edge["caller_name"] for edge in callers] == ["ServeHTTP"]
+        finally:
+            cache.close()
+
     def test_query_callers_finds_caller(self, call_cache):
         callers = call_cache.query_callers("bar")
         caller_names = [e["caller_name"] for e in callers]

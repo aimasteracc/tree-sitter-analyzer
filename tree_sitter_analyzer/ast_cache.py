@@ -1693,25 +1693,30 @@ class ASTCache:
             if current_file:
                 rows = conn.execute(
                     "SELECT caller_name, caller_file, caller_line, "
-                    "callee_name, file_path, callee_line, callee_resolved_file "
+                    "callee_name, callee_full, file_path, callee_line, "
+                    "callee_resolved_file "
                     "FROM ast_call_edges "
-                    "WHERE callee_name = ? AND callee_resolved_file = ?",
-                    (current_name, current_file),
+                    "WHERE (callee_name = ? OR callee_full = ?) "
+                    "AND callee_resolved_file = ?",
+                    (current_name, current_name, current_file),
                 ).fetchall()
                 if not rows:
                     rows = conn.execute(
                         "SELECT caller_name, caller_file, caller_line, "
-                        "callee_name, file_path, callee_line, callee_resolved_file "
+                        "callee_name, callee_full, file_path, callee_line, "
+                        "callee_resolved_file "
                         "FROM ast_call_edges "
-                        "WHERE callee_name = ? AND file_path = ?",
-                        (current_name, current_file),
+                        "WHERE (callee_name = ? OR callee_full = ?) "
+                        "AND file_path = ?",
+                        (current_name, current_name, current_file),
                     ).fetchall()
             else:
                 rows = conn.execute(
                     "SELECT caller_name, caller_file, caller_line, "
-                    "callee_name, file_path, callee_line, callee_resolved_file "
-                    "FROM ast_call_edges WHERE callee_name = ?",
-                    (current_name,),
+                    "callee_name, callee_full, file_path, callee_line, "
+                    "callee_resolved_file "
+                    "FROM ast_call_edges WHERE callee_name = ? OR callee_full = ?",
+                    (current_name, current_name),
                 ).fetchall()
             for row in rows:
                 key = f"{row['caller_file']}:{row['caller_name']}:{row['caller_line']}"
@@ -1724,6 +1729,7 @@ class ASTCache:
                     "caller_file": row["caller_file"],
                     "caller_line": row["caller_line"],
                     "callee_name": row["callee_name"],
+                    "callee_full": row["callee_full"],
                     "callee_file": callee_file_val,
                     "callee_line": row["callee_line"],
                     "depth": depth + 1,
@@ -1796,6 +1802,7 @@ class ASTCache:
                     "caller_file": row["caller_file"],
                     "caller_line": row["caller_line"],
                     "callee_name": row["callee_name"],
+                    "callee_full": row["callee_full"],
                     "callee_file": callee_file_val,
                     "callee_line": row["callee_line"],
                     "depth": depth + 1,

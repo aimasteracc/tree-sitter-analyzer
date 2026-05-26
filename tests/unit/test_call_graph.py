@@ -248,6 +248,28 @@ class TestWalkTree:
         assert "main" in names
         assert "helper" in names
 
+    def test_go_method_defs_and_selector_calls(self):
+        source = (
+            "package main\n\n"
+            "type Engine struct{}\n\n"
+            "func (engine *Engine) ServeHTTP() {\n"
+            "\tengine.handleHTTPRequest()\n"
+            "}\n\n"
+            "func (engine *Engine) handleHTTPRequest() {}\n"
+        )
+        root, src = _parse_source(source, "go")
+        defs, calls = _walk_tree(root, src, "go")
+
+        assert {d["name"] for d in defs} == {"ServeHTTP", "handleHTTPRequest"}
+        assert calls == [
+            {
+                "name": "handleHTTPRequest",
+                "full_name": "engine.handleHTTPRequest",
+                "line": 6,
+                "receiver": "engine",
+            }
+        ]
+
     def test_c_function_defs(self):
         source = "int foo(void) { return 1; }\nint bar(void) { return foo(); }\n"
         root, src = _parse_source(source, "c")
@@ -597,6 +619,23 @@ class TestCallGraphGoProject:
         callees = cg.callees_of("main")
         callee_names = {c["name"] for c in callees}
         assert "loadData" in callee_names
+
+    def test_go_method_selector_callees(self, tmp_path):
+        src = tmp_path / "gin.go"
+        src.write_text(
+            "package gin\n\n"
+            "type Engine struct{}\n\n"
+            "func (engine *Engine) ServeHTTP() {\n"
+            "\tengine.handleHTTPRequest()\n"
+            "}\n\n"
+            "func (engine *Engine) handleHTTPRequest() {}\n",
+            encoding="utf-8",
+        )
+        cg = CallGraph(str(tmp_path))
+        cg.build()
+
+        callees = cg.callees_of("ServeHTTP", file_path="gin.go")
+        assert [callee["name"] for callee in callees] == ["handleHTTPRequest"]
 
 
 class TestCallGraphJavaProject:
