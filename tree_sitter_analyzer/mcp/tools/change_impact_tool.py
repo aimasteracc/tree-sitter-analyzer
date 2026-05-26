@@ -364,6 +364,7 @@ class ChangeImpactTool(BaseMCPTool):
                 project_root=self.project_root,
                 include_tests=include_tests,
                 scope_paths=scope_paths,
+                agent_summary_only=agent_summary_only,
             )
         )
         # r37fG phase 3: surface related decision_journal entries and
@@ -447,6 +448,7 @@ class ChangeImpactTool(BaseMCPTool):
                 project_root=self.project_root,
                 include_tests=include_tests,
                 scope_paths=scope_paths,
+                agent_summary_only=agent_summary_only,
             )
         )
         return self._finalize_pr_result(
