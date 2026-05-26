@@ -32,23 +32,17 @@ benchmarks/codegraph_compare/
 
 ```bash
 # 1. Prepare repos (clone at pinned SHA, optionally pre-build indexes)
-uv run python benchmarks/codegraph_compare/repo_prep.py --repos repos.yaml
+uv run python benchmarks/codegraph_compare/run.py prepare --all
 
 # 2. Run a Codex-backed smoke without spending model quota
-uv run python benchmarks/codegraph_compare/run.py run-matrix \
-    --repos gin \
-    --arms native-only,tsa-warm,codegraph-warm \
-    --repeats 1 \
+uv run python benchmarks/codegraph_compare/run.py phase smoke \
     --agent-backend codex \
     --dry-run
 
 # 3. Run a real Codex-backed smoke
-uv run python benchmarks/codegraph_compare/run.py run \
-    --repo gin \
-    --question gin-route-matching \
-    --arm native-only \
+uv run python benchmarks/codegraph_compare/run.py phase smoke \
     --agent-backend codex \
-    --repeat 0
+    --timeout-seconds 1200
 
 # 4. Evaluate answers (LLM judge, writes EvalRecord JSONL)
 uv run python benchmarks/codegraph_compare/evaluate.py \
@@ -56,7 +50,8 @@ uv run python benchmarks/codegraph_compare/evaluate.py \
 
 # 5. Print summary table
 uv run python benchmarks/codegraph_compare/analyze.py \
-    --runs results/runs.jsonl --evals results/evals.jsonl
+    --runs results/runs.jsonl --evals results/evals.jsonl \
+    --fail-on-gate
 ```
 
 Use `--agent-backend claude` to reproduce the original Claude Code arm, or
@@ -124,6 +119,14 @@ cold     →  all 7 repos, all questions, 4 repeats, cold arms only
 ```
 
 Stop and investigate if any arm has a `FAILED` rate above 5 % in smoke or pilot.
+The `phase` subcommand applies these defaults directly:
+
+```bash
+uv run python benchmarks/codegraph_compare/run.py phase smoke --agent-backend codex
+uv run python benchmarks/codegraph_compare/run.py phase pilot --agent-backend codex
+uv run python benchmarks/codegraph_compare/run.py phase full-warm --agent-backend codex
+uv run python benchmarks/codegraph_compare/run.py phase cold --agent-backend codex
+```
 
 ---
 

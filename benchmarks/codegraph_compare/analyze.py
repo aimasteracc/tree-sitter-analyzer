@@ -31,6 +31,8 @@ from typing import Any
 
 _INPUT_COST_PER_M = 3.0  # USD / M input tokens  (Sonnet 4.6)
 _OUTPUT_COST_PER_M = 15.0  # USD / M output tokens (Sonnet 4.6)
+_GATE_MAX_FAILURE_RATE = 0.05
+_GATE_MIN_QUALITY = 2.5
 
 
 def estimate_cost(input_tokens: int, output_tokens: int) -> float:
@@ -99,6 +101,11 @@ def _is_timeout(run: dict[str, Any]) -> bool:
     return "timeout" in str(run.get("error") or "").lower()
 
 
+def _is_low_quality(run: dict[str, Any]) -> bool:
+    quality = run.get("_quality")
+    return quality is not None and float(quality) < _GATE_MIN_QUALITY
+
+
 # ---------------------------------------------------------------------------
 # Statistical helpers
 # ---------------------------------------------------------------------------
@@ -133,6 +140,7 @@ def _agg(runs: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "count": len(runs),
         "failed": sum(1 for r in runs if _is_failed(r)),
+        "low_quality": sum(1 for r in live if _is_low_quality(r)),
         "median_cost": _med([r["_cost"] for r in live]),
         "median_tokens": _med([r["_total_tokens"] for r in live]),
         "median_time": _med(
@@ -433,30 +441,74 @@ def _s_cold_warm(runs: list[dict[str, Any]]) -> str:
 
 
 def _s_failed(runs: list[dict[str, Any]]) -> str:
-    problems = [r for r in runs if _is_failed(r) or _is_dry(r)]
+    problems = [r for r in runs if _is_failed(r) or _is_dry(r) or _is_low_quality(r)]
     if not problems:
-        return "## 7. Failed / timed-out runs\n\n_No failed or dry-run records._"
+        return "## 8. Failed / low-quality / dry-run records\n\n_No problem records._"
     headers = ["run_id", "repo", "arm", "question_id", "error / note"]
     rows = []
     for r in problems:
-        msg = r.get("error") or ("DRY_RUN stub" if _is_dry(r) else "—")
+        msg = r.get("error") or (
+            "LOW_QUALITY"
+            if _is_low_quality(r)
+            else ("DRY_RUN stub" if _is_dry(r) else "-")
+        )
         qid = r.get("question_id") or r.get("question_id", "—")
         rows.append(
             [r.get("run_id", "—"), r["_repo_name"], r["_arm"], str(qid), str(msg)[:120]]
         )
-    return "## 7. Failed / timed-out runs\n\n" + _table(headers, rows)
+    return "## 8. Failed / low-quality / dry-run records\n\n" + _table(headers, rows)
 
 
 def _s_notes(n_repeats: int) -> str:
     return "\n".join(
         [
-            "## 8. Notes\n",
+            "## 9. Notes\n",
             f"- Median reported across {n_repeats} repeat(s) per question per arm",
             "- Cost uses the agent CLI reported cost when available; otherwise it is estimated at $3/M input and $15/M output",
             "- Quality scores from LLM evaluator (claude-haiku) on 1-5 scale",
             "- Index build time excluded from warm query timing",
         ]
     )
+
+
+def gate_violations(runs: list[dict[str, Any]], has_evals: bool) -> list[str]:
+    """Return benchmark gate violations for already-enriched run records."""
+    by_arm: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for run in runs:
+        by_arm[run["_arm"]].append(run)
+
+    violations: list[str] = []
+    for arm, arm_runs in sorted(by_arm.items()):
+        counted = [r for r in arm_runs if not _is_dry(r)]
+        if not counted:
+            violations.append(f"{arm}: no non-dry-run records")
+            continue
+
+        failed = sum(1 for r in counted if _is_failed(r))
+        fail_rate = failed / len(counted)
+        if fail_rate > _GATE_MAX_FAILURE_RATE:
+            violations.append(
+                f"{arm}: failure rate {fail_rate:.1%} exceeds "
+                f"{_GATE_MAX_FAILURE_RATE:.0%}"
+            )
+
+        if has_evals:
+            low_quality = sum(1 for r in counted if _is_low_quality(r))
+            if low_quality:
+                violations.append(
+                    f"{arm}: {low_quality} run(s) below quality {_GATE_MIN_QUALITY:.1f}"
+                )
+
+    return violations
+
+
+def _s_gate(runs: list[dict[str, Any]], has_evals: bool) -> str:
+    violations = gate_violations(runs, has_evals)
+    if not violations:
+        return "## 7. Industry benchmark gate\n\nPASS"
+    lines = ["## 7. Industry benchmark gate\n", "FAIL"]
+    lines.extend(f"- {item}" for item in violations)
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
@@ -547,7 +599,7 @@ def _write_csv(
 # ---------------------------------------------------------------------------
 
 
-def build_report(runs_path: Path, evals_path: Path | None, output_path: Path) -> None:
+def build_report(runs_path: Path, evals_path: Path | None, output_path: Path) -> bool:
     if not runs_path.exists():
         print(f"ERROR: runs file not found: {runs_path}", file=sys.stderr)
         sys.exit(1)
@@ -602,6 +654,8 @@ def build_report(runs_path: Path, evals_path: Path | None, output_path: Path) ->
         "",
         _s_cold_warm(runs),
         "",
+        _s_gate(runs, has_evals),
+        "",
         _s_failed(runs),
         "",
         _s_notes(max_repeats),
@@ -615,6 +669,7 @@ def build_report(runs_path: Path, evals_path: Path | None, output_path: Path) ->
     csv_path = output_path.with_suffix(".csv")
     _write_csv(runs, evals_by_id, csv_path)
     print(f"CSV written to {csv_path}", file=sys.stderr)
+    return not gate_violations(runs, has_evals)
 
 
 # ---------------------------------------------------------------------------
@@ -644,12 +699,19 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=Path("results/summary.md"),
         help="Output markdown path (default: results/summary.md)",
     )
+    parser.add_argument(
+        "--fail-on-gate",
+        action="store_true",
+        help="Exit non-zero when the industry benchmark gate fails.",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> None:
     args = _parse_args(argv)
-    build_report(args.runs, args.evals, args.output)
+    passed = build_report(args.runs, args.evals, args.output)
+    if args.fail_on_gate and not passed:
+        sys.exit(2)
 
 
 if __name__ == "__main__":

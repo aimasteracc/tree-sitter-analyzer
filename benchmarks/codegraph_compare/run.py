@@ -14,6 +14,7 @@ Subcommands
              --arms native-only,tsa-warm
              --repeats 4
              [--dry-run]
+  phase smoke                         Run a named benchmark phase
   status                              Show prepared repos + last run stats
 
 Config files are resolved relative to this file:
@@ -30,6 +31,7 @@ import argparse
 import json
 import sys
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import NoReturn
 
@@ -43,6 +45,54 @@ ARMS_YAML = BENCHMARKS_DIR / "arms.yaml"
 QUESTIONS_YAML = BENCHMARKS_DIR / "questions.yaml"
 RESULTS_DIR = BENCHMARKS_DIR / "results"
 PREPARED_MANIFEST = RESULTS_DIR / "prepared_repos.json"
+
+
+@dataclass(frozen=True)
+class PhasePreset:
+    """Named benchmark phase with reproducible defaults."""
+
+    repos: str
+    arms: str
+    repeats: int
+    min_repeats: int
+    question_limit: int | None
+    description: str
+
+
+PHASE_PRESETS: dict[str, PhasePreset] = {
+    "smoke": PhasePreset(
+        repos="gin",
+        arms="all",
+        repeats=1,
+        min_repeats=1,
+        question_limit=1,
+        description="1 repo, 1 question, 1 repeat, all arms",
+    ),
+    "pilot": PhasePreset(
+        repos="gin",
+        arms="all",
+        repeats=4,
+        min_repeats=4,
+        question_limit=None,
+        description="1 repo, all questions, 4 repeats, all arms",
+    ),
+    "full-warm": PhasePreset(
+        repos="all",
+        arms="native-only,codegraph-warm,tsa-warm",
+        repeats=4,
+        min_repeats=4,
+        question_limit=None,
+        description="all repos, all questions, 4 repeats, warm arms",
+    ),
+    "cold": PhasePreset(
+        repos="all",
+        arms="codegraph-cold,tsa-cold",
+        repeats=4,
+        min_repeats=4,
+        question_limit=None,
+        description="all repos, all questions, 4 repeats, cold arms",
+    ),
+}
 
 
 # ---------------------------------------------------------------------------
@@ -141,6 +191,17 @@ def _questions_for_repo(questions: dict | list, repo_id: str) -> list[dict]:
     return [q for q in _all_questions(questions) if q.get("repo") == repo_id]
 
 
+def _limited_questions_for_repo(
+    questions: dict | list, repo_id: str, limit: int | None
+) -> list[dict]:
+    repo_questions = _questions_for_repo(questions, repo_id)
+    if limit is None:
+        return repo_questions
+    if limit < 1:
+        _die("--question-limit must be greater than zero")
+    return repo_questions[:limit]
+
+
 def _assert_question_matches_repo(question_entry: dict, repo_id: str) -> None:
     question_repo = question_entry.get("repo")
     if question_repo != repo_id:
@@ -154,6 +215,38 @@ def _repo_local_path(repo_entry: dict) -> Path:
     """Return the local path for a repo: .benchmark-repos/<id>."""
     repo_id: str = repo_entry["id"]
     return (BENCHMARKS_DIR / ".." / ".." / ".benchmark-repos" / repo_id).resolve()
+
+
+def _phase_to_matrix_args(args: argparse.Namespace) -> argparse.Namespace:
+    """Expand a named phase into the same namespace used by run-matrix."""
+    preset = PHASE_PRESETS.get(args.phase)
+    if preset is None:
+        known = ", ".join(sorted(PHASE_PRESETS))
+        _die(f"Unknown phase '{args.phase}'. Known phases: {known}")
+
+    repeats = args.repeats if args.repeats is not None else preset.repeats
+    if repeats < preset.min_repeats:
+        _die(f"Phase '{args.phase}' requires --repeats {preset.min_repeats} or higher.")
+
+    question_limit = (
+        args.question_limit
+        if args.question_limit is not None
+        else preset.question_limit
+    )
+    if question_limit is not None and question_limit < 1:
+        _die("--question-limit must be greater than zero")
+
+    return argparse.Namespace(
+        repos=args.repos or preset.repos,
+        arms=args.arms or preset.arms,
+        repeats=repeats,
+        question_limit=question_limit,
+        dry_run=args.dry_run,
+        agent_backend=args.agent_backend,
+        model=args.model,
+        timeout_seconds=args.timeout_seconds,
+        phase=args.phase,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -320,6 +413,9 @@ def cmd_run_matrix(args: argparse.Namespace) -> int:
         arm_entries = [_get_arm(arms_data, aid) for aid in args.arms.split(",")]
 
     repeats: int = args.repeats if hasattr(args, "repeats") and args.repeats else 1
+    question_limit = getattr(args, "question_limit", None)
+    if question_limit is not None and question_limit < 1:
+        _die("--question-limit must be greater than zero")
 
     # Lazy imports
     try:
@@ -331,7 +427,9 @@ def cmd_run_matrix(args: argparse.Namespace) -> int:
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
     question_entries_by_repo = {
-        repo_entry["id"]: _questions_for_repo(questions_data, repo_entry["id"])
+        repo_entry["id"]: _limited_questions_for_repo(
+            questions_data, repo_entry["id"], question_limit
+        )
         for repo_entry in repo_entries
     }
     total = (
@@ -415,6 +513,19 @@ def cmd_run_matrix(args: argparse.Namespace) -> int:
     )
     print(f"Results: {RESULTS_DIR / 'runs.jsonl'}", file=sys.stderr)
     return 0 if failed == 0 else 1
+
+
+def cmd_phase(args: argparse.Namespace) -> int:
+    """Run a named benchmark phase with reproducible defaults."""
+    matrix_args = _phase_to_matrix_args(args)
+    preset = PHASE_PRESETS[args.phase]
+    print(
+        f"[phase] {args.phase}: {preset.description} "
+        f"(repos={matrix_args.repos}, arms={matrix_args.arms}, "
+        f"repeats={matrix_args.repeats}, question_limit={matrix_args.question_limit})",
+        file=sys.stderr,
+    )
+    return cmd_run_matrix(matrix_args)
 
 
 def cmd_status(_args: argparse.Namespace) -> int:
@@ -515,6 +626,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "--arms native-only,tsa-warm --repeats 3\n"
             "  python run.py run-matrix --repos all --arms all "
             "--repeats 1 --dry-run\n"
+            "  python run.py phase smoke --agent-backend codex --dry-run\n"
             "  python run.py status\n"
         ),
     )
@@ -618,6 +730,68 @@ def _build_parser() -> argparse.ArgumentParser:
         default=1200,
         help="Per-run timeout in seconds (default: 1200).",
     )
+    p_matrix.add_argument(
+        "--question-limit",
+        type=int,
+        default=None,
+        help="Limit questions per repo; useful for smoke runs.",
+    )
+
+    # ---- phase ----
+    p_phase = sub.add_parser(
+        "phase",
+        help="Run a named phase: smoke, pilot, full-warm, or cold.",
+    )
+    p_phase.add_argument(
+        "phase",
+        choices=sorted(PHASE_PRESETS),
+        help="Benchmark phase name.",
+    )
+    p_phase.add_argument(
+        "--repos",
+        default="",
+        help="Override phase repo set with comma-separated IDs or 'all'.",
+    )
+    p_phase.add_argument(
+        "--arms",
+        default="",
+        help="Override phase arms with comma-separated IDs or 'all'.",
+    )
+    p_phase.add_argument(
+        "--repeats",
+        type=int,
+        default=None,
+        help="Override phase repeat count.",
+    )
+    p_phase.add_argument(
+        "--question-limit",
+        type=int,
+        default=None,
+        help="Override phase question limit per repo.",
+    )
+    p_phase.add_argument(
+        "--dry-run",
+        action="store_true",
+        dest="dry_run",
+        help="Build prompts and record stubs without calling an agent CLI.",
+    )
+    p_phase.add_argument(
+        "--agent-backend",
+        choices=["claude", "codex"],
+        default="claude",
+        help="Agent CLI backend to execute each run (default: claude).",
+    )
+    p_phase.add_argument(
+        "--model",
+        default=None,
+        help="Model name for the selected agent backend.",
+    )
+    p_phase.add_argument(
+        "--timeout-seconds",
+        type=int,
+        default=1200,
+        help="Per-run timeout in seconds (default: 1200).",
+    )
 
     # ---- status ----
     sub.add_parser("status", help="Show prepared repos and last run statistics.")
@@ -639,6 +813,7 @@ def main(argv: list[str] | None = None) -> int:
         "prepare": cmd_prepare,
         "run": cmd_run,
         "run-matrix": cmd_run_matrix,
+        "phase": cmd_phase,
         "status": cmd_status,
     }
 

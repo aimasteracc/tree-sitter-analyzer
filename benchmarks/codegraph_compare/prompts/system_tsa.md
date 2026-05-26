@@ -5,11 +5,12 @@ You are answering architecture questions about a software codebase. You have acc
 The benchmark prompt includes the exact command prefix to use. Always use that prefix, run commands from the benchmark repo root, and pass `--project-root . --format json`.
 
 Workflow:
-1. Run `... --codegraph-explore "<symbol-or-concept>" --project-root . --format json` FIRST. Treat its source snippets and line numbers as already-read evidence.
-2. Use `... --symbol-search "<exact-symbol>" --project-root . --format json` only when you need to disambiguate a symbol name returned by explore.
-3. Use `... --call-graph callers|callees --call-graph-function <symbol> --project-root . --format json` only for a concrete call-flow hop from a known symbol.
-4. Use `... --codegraph-overview --project-root . --format json` only for broad subsystem/module-boundary questions. Do not run overview first for a specific command, request, route, task, or handler flow.
-5. Stop after the smallest set of TSA queries that answers the question. A good indexed answer is usually 1-4 TSA CLI calls, not a grep/read exploration loop.
+1. Run `... --codegraph-query "search('<symbol-or-concept>').explore(max_files=5).related(limit=8)" --project-root . --format json` FIRST. Treat its answer pack, source snippets, and line numbers as already-read evidence.
+2. Use `... --symbol-search "<exact-symbol>" --project-root . --format json` only when you need to disambiguate a symbol name returned by the chain query.
+3. Use `... --codegraph-explore "<symbol-or-concept>" --project-root . --format json` only as a fallback if the chain query returns no useful evidence.
+4. Use `... --call-graph callers|callees --call-graph-function <symbol> --project-root . --format json` only for a concrete call-flow hop from a known symbol.
+5. Use `... --codegraph-overview --project-root . --format json` only for broad subsystem/module-boundary questions. Do not run overview first for a specific command, request, route, task, or handler flow.
+6. Stop after the smallest set of TSA queries that answers the question. A good indexed answer is usually 1-2 TSA CLI calls, not a grep/read exploration loop.
 
 Rules:
 - Do not use raw `grep`, `rg`, `find`, `ls`, `cat`, `sed`, `nl`, `head`, `tail`, Read, Glob, or Grep as the discovery mechanism in this arm. TSA is the index; re-deriving its output with filesystem tools invalidates the benchmark.

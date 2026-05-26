@@ -14,6 +14,7 @@ import sqlite3
 import sys
 import textwrap
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -26,6 +27,8 @@ if str(_BENCH_DIR) not in sys.path:
 import bench_runner  # noqa: E402
 import scenarios  # noqa: E402
 
+from benchmarks.codegraph_compare import analyze as compare_analyze  # noqa: E402
+from benchmarks.codegraph_compare import run as compare_run  # noqa: E402
 from benchmarks.codegraph_compare.adapters import IndexStats  # noqa: E402
 from benchmarks.codegraph_compare.adapters.tree_sitter_analyzer import (  # noqa: E402
     TSAAdapter,
@@ -244,6 +247,31 @@ class TestCodeGraphCompareTSAAdapter:
         assert result.file_count == 1
         build_cache.assert_not_called()
 
+    def test_parse_tool_metrics_counts_multiple_annotated_bash_calls_once(self):
+        transcript = textwrap.dedent(
+            """
+            Tool: Bash
+            uv run --project /repo python -m tree_sitter_analyzer --codegraph-query "search('Router')"
+            Tool: Bash
+            rg Router
+            Tool: Read
+            src/router.ts
+            """
+        ).strip()
+
+        result = TSAAdapter().parse_tool_metrics(transcript)
+
+        assert result.tool_calls == 3
+        assert result.index_queries == 1
+        assert result.search_calls == 1
+        assert result.file_reads == 1
+
+    def test_run_config_promotes_chain_query_first(self, tmp_path: Path):
+        config = TSAAdapter().build_run_config(tmp_path, "Where is routing handled?")
+
+        assert "--codegraph-query" in config.extra_context
+        assert "search('<symbol-or-concept>').explore" in config.extra_context
+
 
 class TestCodeGraphCompareToolPolicy:
     def test_tsa_arms_are_index_first(self):
@@ -286,3 +314,80 @@ class TestCodeGraphCompareToolPolicy:
 
         assert "TSA is the index" in prompt
         assert "invalidates the benchmark" in prompt
+        assert "--codegraph-query" in prompt
+        assert "flow(" not in prompt
+        assert ".answer(" not in prompt
+
+
+class TestCodeGraphComparePhases:
+    def test_smoke_phase_expands_to_one_question_dry_run_defaults(self):
+        args = SimpleNamespace(
+            phase="smoke",
+            repos="",
+            arms="",
+            repeats=None,
+            question_limit=None,
+            dry_run=True,
+            agent_backend="codex",
+            model=None,
+            timeout_seconds=1200,
+        )
+
+        matrix_args = compare_run._phase_to_matrix_args(args)
+
+        assert matrix_args.repos == "gin"
+        assert matrix_args.arms == "all"
+        assert matrix_args.repeats == 1
+        assert matrix_args.question_limit == 1
+        assert matrix_args.dry_run is True
+        assert matrix_args.agent_backend == "codex"
+
+    def test_pilot_phase_rejects_too_few_repeats(self):
+        args = SimpleNamespace(
+            phase="pilot",
+            repos="",
+            arms="",
+            repeats=1,
+            question_limit=None,
+            dry_run=True,
+            agent_backend="codex",
+            model=None,
+            timeout_seconds=1200,
+        )
+
+        with pytest.raises(SystemExit):
+            compare_run._phase_to_matrix_args(args)
+
+
+class TestCodeGraphCompareAnalysisGate:
+    def test_gate_flags_failed_and_low_quality_arms(self):
+        runs = [
+            {
+                "_arm": "codex/tsa-warm",
+                "answer": "ok",
+                "error": "",
+                "_quality": 4.0,
+            },
+            {
+                "_arm": "codex/tsa-warm",
+                "answer": "ok",
+                "error": "timeout",
+                "_quality": 4.0,
+            },
+            {
+                "_arm": "codex/native-only",
+                "answer": "ok",
+                "error": "",
+                "_quality": 2.0,
+            },
+        ]
+
+        violations = compare_analyze.gate_violations(runs, has_evals=True)
+
+        assert any(
+            "codex/tsa-warm" in item and "failure rate" in item for item in violations
+        )
+        assert any(
+            "codex/native-only" in item and "below quality" in item
+            for item in violations
+        )
