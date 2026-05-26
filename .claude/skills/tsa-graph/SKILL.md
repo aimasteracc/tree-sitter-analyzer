@@ -90,8 +90,9 @@ Use intent macros first: `flow('request routing')`, `impact('score_file')`, or
 `ownership('auth module')`. Then shape the current selection with
 `prefer(paths='src package', exclude_tests=True)`, `where(kind='function')`, and
 `paths('src package')`. Use `end()` to return to the previous selection, `why()`
-to include the query plan, and `answer()` when you want a stop signal plus a
-compact evidence pack.
+to include the query planner, and `answer()` when you want Answer Pack v2:
+stop decision, citations, coverage, relationship summary, and a compact
+evidence pack.
 
 ### Multi-step case (refactor planning)
 

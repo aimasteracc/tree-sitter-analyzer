@@ -41,7 +41,8 @@ When answering:
   jQuery-style chain such as
   flow('request routing ServeHTTP handleHTTPRequest getValue Context Next HandlerFunc methodTree nodeValue').prefer(exclude_tests=True).callees(depth=1).answer().
 - Hard budget: use at most 2 TSA CLI calls. Treat the first broad chain as
-  the answer pack; after one optional targeted follow-up, stop and answer.
+  Answer Pack v2; use its decision, citations, coverage, and planner budget
+  as the stopping contract. After one optional targeted follow-up, stop and answer.
 - Do not use raw grep/find/rg/read for discovery; TSA is the index.
 - Use at most one narrow raw file read only if TSA output misses a required
   detail, and explain the miss.

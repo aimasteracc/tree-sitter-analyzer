@@ -16,6 +16,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..utils.format_helper import apply_toon_format_to_response
+from ._codegraph_answer_pack import build_answer_pack
 from ._codegraph_query_dsl import (
     _ChainStep,
     bool_kw,
@@ -25,6 +26,7 @@ from ._codegraph_query_dsl import (
     parse_chain,
     step_to_dict,
 )
+from ._codegraph_query_planner import build_query_planner
 from ._codegraph_query_runtime import (
     MAX_FILES_CAP,
     MAX_SYMBOLS_CAP,
@@ -33,7 +35,6 @@ from ._codegraph_query_runtime import (
     apply_path_filter,
     apply_prefer_filter,
     apply_where_filter,
-    build_answer_pack,
     build_concept_file_entries,
     build_file_entries,
     dedupe_symbols,
@@ -179,6 +180,12 @@ class CodeGraphQueryTool(BaseMCPTool):
         extra_fields: dict[str, Any] = {}
         if state.include_plan or state.answer_requested:
             extra_fields["query_plan"] = state.query_plan
+            extra_fields["query_planner"] = build_query_planner(
+                query=query,
+                steps=steps,
+                state=state,
+                warnings=warnings,
+            )
         if state.answer_requested:
             extra_fields["answer_pack"] = build_answer_pack(
                 state=state,

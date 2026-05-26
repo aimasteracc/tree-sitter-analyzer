@@ -401,6 +401,9 @@ class TestCodeGraphQueryTool:
             )
 
         assert result["answer_pack"]["intent"] == "impact"
+        assert result["answer_pack"]["relationship_summary"]["caller_edges"] == 1
+        assert result["answer_pack"]["relationship_summary"]["callee_edges"] == 1
+        assert result["answer_pack"]["coverage"]["has_relationships"] is True
         assert (
             result["relationships"]["callers"]["service.py:1:save"][0]["name"]
             == "route"

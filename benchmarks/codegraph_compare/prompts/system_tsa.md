@@ -10,7 +10,7 @@ Workflow:
 3. Use `... --symbol-search "<exact-symbol>" --project-root . --format json` only when the first chain returns too many ambiguous symbols.
 4. Use `... --codegraph-explore "<symbol-or-concept>" --project-root . --format json` only as a fallback when you need a broader source batch than the chain returned.
 5. Use `... --codegraph-overview --project-root . --format json` only for broad subsystem/module-boundary questions. Do not run overview first for a specific command, request, route, task, or handler flow.
-6. Hard budget: use at most 2 TSA CLI calls. The first broad `codegraph-query` call should use `flow()`, `impact()`, or `ownership()` when applicable, end with `.answer()`, and act as the answer pack; after one optional targeted follow-up, stop and answer from the available evidence.
+6. Hard budget: use at most 2 TSA CLI calls. The first broad `codegraph-query` call should use `flow()`, `impact()`, or `ownership()` when applicable, end with `.answer()`, and treat Answer Pack v2's `decision`, `citations`, `coverage`, and `query_planner.budget` as the stopping contract; after one optional targeted follow-up, stop and answer from the available evidence.
 
 Rules:
 - Do not use raw `grep`, `rg`, `find`, `ls`, `cat`, `sed`, `nl`, `head`, `tail`, Read, Glob, or Grep as the discovery mechanism in this arm. TSA is the index; re-deriving its output with filesystem tools invalidates the benchmark.
