@@ -145,6 +145,46 @@ class TestIndexFile:
         finally:
             migrated.close()
 
+    def test_init_tolerates_extractor_version_migration_operational_error(
+        self, tmp_path, monkeypatch
+    ):
+        class FlakyConnection:
+            def __init__(self, path):
+                self._conn = sqlite3.connect(path)
+                self._conn.row_factory = sqlite3.Row
+
+            def execute(self, sql, *args, **kwargs):
+                if "PRAGMA table_info(ast_index)" in sql:
+                    raise sqlite3.OperationalError("metadata temporarily unavailable")
+                return self._conn.execute(sql, *args, **kwargs)
+
+            def executescript(self, *args, **kwargs):
+                return self._conn.executescript(*args, **kwargs)
+
+            def commit(self):
+                self._conn.commit()
+
+            def close(self):
+                self._conn.close()
+
+        class FlakyASTCache(ASTCache):
+            def _get_conn(self):
+                conn = getattr(self._local, "conn", None)
+                if conn is None:
+                    conn = FlakyConnection(self.db_path)
+                    self._local.conn = conn
+                return conn
+
+        monkeypatch.setattr(
+            ASTCache, "_verify_schema_integrity", lambda self, conn: None
+        )
+
+        cache = FlakyASTCache(str(tmp_path), db_path=str(tmp_path / "flaky.db"))
+        try:
+            assert cache.project_root == str(tmp_path)
+        finally:
+            cache.close()
+
     def test_index_with_explicit_language(self, cache, tmp_project):
         f = str(tmp_project / "src" / "main.py")
         result = cache.index_file(f, language="python")

@@ -344,6 +344,14 @@ class TestGetFuncName:
 
         assert _get_func_name(node, "go") == "ServeHTTP"
 
+    def test_go_method_name_decodes_bytes_from_name_field(self):
+        node = MagicMock()
+        name_node = MagicMock()
+        name_node.text = b"ServeHTTP"
+        node.child_by_field_name.return_value = name_node
+
+        assert _get_func_name(node, "go") == "ServeHTTP"
+
     def test_no_func_name_returns_none(self):
         node = MagicMock()
         node.children = []
