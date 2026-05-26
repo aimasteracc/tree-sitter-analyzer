@@ -212,7 +212,8 @@ def _build_index(repo_path: Path, index_dir: Path) -> IndexStats:
     result = subprocess.run(
         ["codegraph", "init", "-i"],
         cwd=repo_path,
-        capture_output=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
         text=True,
         encoding="utf-8",
         check=False,
@@ -221,9 +222,8 @@ def _build_index(repo_path: Path, index_dir: Path) -> IndexStats:
 
     if result.returncode != 0:
         logger.error(
-            "codegraph init -i exited with code %d.\nstdout: %s\nstderr: %s",
+            "codegraph init -i exited with code %d.\nstderr: %s",
             result.returncode,
-            result.stdout[:2000],
             result.stderr[:2000],
         )
 
