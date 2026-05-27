@@ -123,6 +123,7 @@ _SAFE_DEFAULT_SCORES: dict[str, Any] = {
     "citation_quality": 3,
     "hallucination_risk": 3,
     "reasoning": "LLM response could not be parsed; safe defaults used.",
+    "_llm_success": False,
 }
 
 
@@ -357,6 +358,7 @@ def _call_llm(
     scores["reasoning"] = str(
         parsed.get("reasoning", _SAFE_DEFAULT_SCORES["reasoning"])
     )
+    scores["_llm_success"] = True
     return scores
 
 
@@ -552,7 +554,7 @@ def _evaluate_run_inner(
             answer=answer,
         )
         scores = _call_llm(eval_prompt, model=model)
-        evaluated_with_llm = True
+        evaluated_with_llm = bool(scores.pop("_llm_success", False))
 
     # ------------------------------------------------------------------
     # Step 4: Apply auto-penalties and compute overall

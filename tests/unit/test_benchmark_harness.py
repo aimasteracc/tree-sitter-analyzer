@@ -467,3 +467,41 @@ class TestCodeGraphCompareEvaluator:
         assert record["overall"] == 3.0
         assert record["evaluated_with_llm"] is False
         assert record["evaluator_model"] == record["eval_model"]
+
+    def test_evaluate_run_marks_llm_fallback_as_not_evaluated(self, tmp_path: Path):
+        run = {
+            "run_id": "gin-route-matching__tsa-warm__codex__00",
+            "repo": "gin",
+            "question_id": "gin-route-matching",
+            "arm": "tsa-warm",
+            "answer": "Route matching is handled in tree.go:1.",
+            "citations": ["tree.go:1"],
+            "error": None,
+        }
+        question = {
+            "id": "gin-route-matching",
+            "prompt": "Where is route matching handled?",
+            "expected_key_points": ["route matching"],
+        }
+        (tmp_path / "tree.go").write_text("package gin\n", encoding="utf-8")
+
+        with patch(
+            "benchmarks.codegraph_compare.evaluate._call_llm",
+            return_value={
+                "correctness": 3,
+                "completeness": 3,
+                "citation_quality": 3,
+                "hallucination_risk": 3,
+                "reasoning": "fallback",
+                "_llm_success": False,
+            },
+        ):
+            record = compare_evaluate.evaluate_run(
+                run=run,
+                question=question,
+                repo_path=tmp_path,
+                dry_run=False,
+            )
+
+        assert record["evaluated_with_llm"] is False
+        assert record["overall"] == 3.0
