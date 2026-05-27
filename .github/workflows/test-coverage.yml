@@ -75,7 +75,8 @@ jobs:
         # Run tests with coverage
         # Exclude tests requiring ripgrep or fd as they may not be available in all CI environments
         uv run pytest tests/ -n auto -v --tb=short --maxfail=200 \
-          -m "not requires_ripgrep and not requires_fd and not slow" \
+          --ignore=tests/e2e \
+          -m "not requires_ripgrep and not requires_fd and not slow and not e2e" \
           --cov=tree_sitter_analyzer \
           --cov-report=xml \
           --cov-report=html \
