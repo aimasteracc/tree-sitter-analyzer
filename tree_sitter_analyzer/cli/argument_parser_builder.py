@@ -1012,6 +1012,11 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Return outlines without source snippets for --codegraph-query",
     )
+    parser.add_argument(
+        "--codegraph-query-compact",
+        action="store_true",
+        help="Return compact answer-pack output for --codegraph-query",
+    )
     # --affected: CodeGraph CLI parity (the last CLI surface they had
     # over us). Takes one or more changed files, returns the union of
     # test files transitively affected.

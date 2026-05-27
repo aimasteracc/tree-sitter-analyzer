@@ -106,6 +106,14 @@ class CodeGraphQueryTool(BaseMCPTool):
                     "default": True,
                     "description": "Include source snippets in explore output",
                 },
+                "compact": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": (
+                        "Return a compact answer-pack shape that removes duplicate "
+                        "source payloads and trims empty relationship fields"
+                    ),
+                },
                 "output_format": {
                     "type": "string",
                     "enum": ["json", "toon"],
@@ -131,6 +139,7 @@ class CodeGraphQueryTool(BaseMCPTool):
         max_symbols = min(int(arguments.get("max_symbols", 20) or 20), _MAX_SYMBOLS_CAP)
         max_files = min(int(arguments.get("max_files", 8) or 8), _MAX_FILES_CAP)
         include_code = bool(arguments.get("include_code", True))
+        compact = bool(arguments.get("compact", False))
 
         cache = self._get_cache()
         try:
@@ -148,7 +157,7 @@ class CodeGraphQueryTool(BaseMCPTool):
             )
             return apply_toon_format_to_response(result, output_format)
 
-        state = _QueryState()
+        state = _QueryState(compact=compact)
         warnings: list[str] = []
 
         for step in steps:
@@ -164,19 +173,33 @@ class CodeGraphQueryTool(BaseMCPTool):
             except ValueError as exc:
                 warnings.append(str(exc))
 
+        files_payload = state.files[:max_files]
+        facets_payload = state.facets or None
+        relationships_payload = state.relationships
+        symbols_payload = state.symbols[:max_symbols]
+        if state.compact:
+            if state.facets.get("source"):
+                files_payload = []
+            facets_payload = _compact_facets(state.facets) or None
+            relationships_payload = _compact_relationships(state.relationships)
+            symbols_payload = [
+                _compact_symbol(symbol) for symbol in state.symbols[:max_symbols]
+            ]
+
         result = build_response(
             verdict="INFO" if state.symbols else "NOT_FOUND",
             query=query,
             normalized_chain=[step_to_dict(step) for step in steps],
-            symbols=state.symbols[:max_symbols],
-            files=state.files[:max_files],
-            relationships=state.relationships,
-            facets=state.facets or None,
+            symbols=symbols_payload,
+            files=files_payload,
+            relationships=relationships_payload,
+            facets=facets_payload,
             stats={
                 "steps": len(steps),
                 "symbols_returned": len(state.symbols),
                 "files_returned": len(state.files),
                 "facets_returned": len(state.facets),
+                "compact": state.compact,
                 "caller_edges": sum(
                     len(v) for v in state.relationships["callers"].values()
                 ),
@@ -265,13 +288,14 @@ class CodeGraphQueryTool(BaseMCPTool):
             return
 
         if step.name == "answer":
+            state.compact = bool_kw(step, "compact", state.compact)
             return
 
         raise ValueError(f"unsupported chain step: {step.name}")
 
 
 class _QueryState:
-    def __init__(self) -> None:
+    def __init__(self, *, compact: bool = False) -> None:
         self.current: list[dict[str, Any]] = []
         self.symbols: list[dict[str, Any]] = []
         self.files: list[dict[str, Any]] = []
@@ -281,6 +305,7 @@ class _QueryState:
         }
         self.facets: dict[str, Any] = {}
         self._seen_symbols: set[tuple[str, int, str]] = set()
+        self.compact = compact
 
     def add_symbols(self, symbols: list[dict[str, Any]]) -> None:
         for symbol in symbols:
@@ -570,6 +595,126 @@ def _risk_facet(state: _QueryState) -> dict[str, Any]:
         "status": "included",
         "level": "review" if reasons else "info",
         "reasons": reasons,
+    }
+
+
+def _compact_symbol(symbol: dict[str, Any]) -> dict[str, Any]:
+    entry: dict[str, Any] = {
+        "name": symbol.get("name", ""),
+        "file": symbol.get("file", ""),
+        "line": symbol.get("line", 0),
+    }
+    if symbol.get("kind"):
+        entry["kind"] = symbol["kind"]
+    if symbol.get("depth"):
+        entry["depth"] = symbol["depth"]
+    return entry
+
+
+def _compact_relationships(
+    relationships: dict[str, dict[str, list[dict[str, Any]]]],
+) -> dict[str, dict[str, list[dict[str, Any]]]]:
+    return {
+        direction: _compact_edge_map(edges)
+        for direction, edges in relationships.items()
+        if edges
+    }
+
+
+def _compact_edge_map(
+    edges: dict[str, list[dict[str, Any]]],
+) -> dict[str, list[dict[str, Any]]]:
+    return {
+        source_key: [_compact_symbol(entry) for entry in entries]
+        for source_key, entries in edges.items()
+        if entries
+    }
+
+
+def _compact_facets(facets: dict[str, Any]) -> dict[str, Any]:
+    compacted: dict[str, Any] = {}
+    for name, facet in facets.items():
+        if name == "source":
+            compacted[name] = {
+                "status": facet.get("status"),
+                "file_count": facet.get("file_count", 0),
+                "files": [
+                    _compact_file_entry(entry) for entry in facet.get("files", [])
+                ],
+            }
+        elif name in {"callers", "callees"}:
+            compacted[name] = {
+                "status": facet.get("status"),
+                "edges": _compact_edge_map(facet.get("edges", {})),
+            }
+        elif name == "complexity":
+            compacted[name] = _compact_complexity_facet(facet)
+        elif name == "health":
+            compacted[name] = _compact_health_facet(facet)
+        else:
+            compacted[name] = facet
+    return compacted
+
+
+def _compact_file_entry(entry: dict[str, Any]) -> dict[str, Any]:
+    compacted: dict[str, Any] = {
+        "file": entry.get("file_path", ""),
+        "symbols": [],
+    }
+    if entry.get("language"):
+        compacted["lang"] = entry["language"]
+    for symbol in entry.get("symbols", []):
+        start_line = int(symbol.get("start_line", 0) or 0)
+        end_line = int(symbol.get("end_line", start_line) or start_line)
+        symbol_entry: dict[str, Any] = {
+            "name": symbol.get("name", ""),
+            "lines": f"{start_line}-{end_line}"
+            if end_line != start_line
+            else start_line,
+        }
+        if symbol.get("kind"):
+            symbol_entry["kind"] = symbol["kind"]
+        if symbol.get("code"):
+            symbol_entry["code"] = symbol["code"]
+        compacted["symbols"].append(symbol_entry)
+    return compacted
+
+
+def _compact_complexity_facet(facet: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "status": facet.get("status"),
+        "files": [
+            {
+                "file": entry.get("file"),
+                "status": entry.get("status"),
+                "max": entry.get("max_complexity"),
+                "total": entry.get("total_complexity"),
+                "hotspots": [
+                    {
+                        "name": hotspot.get("name"),
+                        "line": hotspot.get("line"),
+                        "cc": hotspot.get("complexity"),
+                    }
+                    for hotspot in entry.get("hotspots", [])
+                ],
+            }
+            for entry in facet.get("files", [])
+        ],
+    }
+
+
+def _compact_health_facet(facet: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "status": facet.get("status"),
+        "files": [
+            {
+                "file": entry.get("file"),
+                "status": entry.get("status"),
+                "total": entry.get("total"),
+                "grade": entry.get("grade"),
+            }
+            for entry in facet.get("files", [])
+        ],
     }
 
 

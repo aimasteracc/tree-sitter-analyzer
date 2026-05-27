@@ -141,7 +141,7 @@ class TSAAdapter(BenchmarkAdapter):
             "tree-sitter-analyzer is available through this command prefix: "
             f"`{command_prefix}`. "
             "Run it from the benchmark repo root with `--project-root .`. "
-            "Useful query: `--codegraph-query \"search('<symbol-or-concept>').explore(max_files=5, max_symbols=8, include_code=True).include(source=True, callers=True, callees=True, complexity=True, health=True, affected_tests=True, risk=True, max_files=5, limit=8).sort(by='fan_in', desc=True).answer()\"`. "
+            "Useful query: `--codegraph-query \"search('<symbol-or-concept>').explore(max_files=5, max_symbols=8, include_code=True).include(source=True, callers=True, callees=True, complexity=True, health=True, affected_tests=True, risk=True, max_files=5, limit=8).sort(by='fan_in', desc=True).answer(compact=True)\"`. "
             "Fallbacks: "
             "`--symbol-search <name>`, `--codegraph-explore <query>`, "
             "`--codegraph-overview`, and `--call-graph callers|callees "

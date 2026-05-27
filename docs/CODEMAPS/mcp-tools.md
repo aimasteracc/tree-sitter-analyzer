@@ -44,7 +44,7 @@ All tools default to **TOON output** (locked — see `CLAUDE.md`).
 | **CodeGraph parity — symbol navigation** | | |
 | `codegraph_navigate` | `--codegraph-navigate` | PRIMARY symbol navigation hub (def + refs + hierarchy) |
 | `codegraph_explore` | `--codegraph-explore` | BULK fetch N related symbols' source + relationship map |
-| `codegraph_query` | `--codegraph-query` | jQuery-style chained graph query with batch seeds, sorting, and evidence facets |
+| `codegraph_query` | `--codegraph-query` | jQuery-style chained graph query with batch seeds, sorting, compact answer packs, and evidence facets |
 | `codegraph_symbol_search` | `--codegraph-symbol-search` | FTS5-powered symbol search over indexed project |
 | `codegraph_resolve` | `--symbol-resolve` | Go-to-definition / find-all-references |
 | `codegraph_ast_path` | `--ast-path` | "What is at file:line?" AST path/scope |

@@ -39,6 +39,7 @@ def _args(**overrides: Any) -> Namespace:
     defaults["codegraph_query_max_symbols"] = 20
     defaults["codegraph_query_max_files"] = 8
     defaults["codegraph_query_outline_only"] = False
+    defaults["codegraph_query_compact"] = False
     defaults.update(
         {
             "file_path": "target.py",
@@ -133,6 +134,7 @@ def _args(**overrides: Any) -> Namespace:
                 "max_symbols": 20,
                 "max_files": 8,
                 "include_code": True,
+                "compact": False,
                 "output_format": "json",
             },
         ),

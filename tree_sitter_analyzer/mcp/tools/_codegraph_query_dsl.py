@@ -61,7 +61,7 @@ _ALLOWED_KWARGS: dict[str, frozenset[str]] = {
             "limit",
         }
     ),
-    "answer": frozenset(),
+    "answer": frozenset({"compact"}),
 }
 
 

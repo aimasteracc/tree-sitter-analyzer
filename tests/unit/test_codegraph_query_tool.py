@@ -19,6 +19,7 @@ from tree_sitter_analyzer.mcp.tools.codegraph_query_tool import (
     _absolute_path,
     _affected_tests_facet,
     _build_file_entries,
+    _compact_facets,
     _complexity_facet,
     _dedupe_symbols,
     _health_facet,
@@ -86,7 +87,7 @@ class TestParseChain:
     def test_parses_batch_seed_and_answer_pack_steps(self):
         steps = parse_chain(
             "search(['Router', 'Handler']).include(callers=True, source=True)"
-            ".sort(by='fan_in', desc=True).answer()"
+            ".sort(by='fan_in', desc=True).answer(compact=True)"
         )
 
         assert [step.name for step in steps] == [
@@ -97,6 +98,7 @@ class TestParseChain:
         ]
         assert string_args(steps[0], required=True) == ["Router", "Handler"]
         assert steps[1].kwargs == {"callers": True, "source": True}
+        assert steps[3].kwargs == {"compact": True}
 
     def test_parses_kwargs_and_escaped_quotes(self):
         steps = parse_chain(r'search(query="src/a.\"b.py Run").take(2)')
@@ -425,6 +427,48 @@ class TestCodeGraphQueryTool:
         assert result["facets"]["risk"]["level"] == "info"
         assert result["normalized_chain"][-1]["name"] == "answer"
 
+    @pytest.mark.asyncio
+    async def test_execute_compact_answer_removes_duplicate_source_payload(
+        self, tmp_path
+    ):
+        source = tmp_path / "main.py"
+        source.write_text(
+            "def run():\n    return helper()\n\ndef helper():\n    return 1\n",
+            encoding="utf-8",
+        )
+        mock_cache = MagicMock()
+        mock_cache.query_callers.return_value = []
+        mock_cache.query_callees.return_value = [
+            {
+                "callee_name": "helper",
+                "callee_file": "main.py",
+                "callee_line": 4,
+                "depth": 1,
+            }
+        ]
+        defs = {"run": [_make_def(file="main.py", name="run", line=1)]}
+
+        with (
+            patch("tree_sitter_analyzer.ast_cache.ASTCache", return_value=mock_cache),
+            _patch_resolver_with(defs),
+        ):
+            result = await CodeGraphQueryTool(str(tmp_path)).execute(
+                {
+                    "query": (
+                        "search('run').explore(max_files=1)"
+                        ".include(source=True, callees=True).answer(compact=True)"
+                    ),
+                    "output_format": "json",
+                }
+            )
+
+        assert result["success"] is True
+        assert result["stats"]["compact"] is True
+        assert result["files"] == []
+        assert result["facets"]["source"]["files"][0]["file"] == "main.py"
+        assert result["facets"]["source"]["files"][0]["symbols"][0]["lines"] == "1-2"
+        assert "language" not in result["relationships"]["callees"]["main.py:1:run"][0]
+
     def test_apply_step_rejects_unknown_step(self):
         with pytest.raises(ValueError, match="unsupported chain step"):
             CodeGraphQueryTool("/tmp")._apply_step(
@@ -627,6 +671,85 @@ class TestCodeGraphQueryInternals:
         assert state.facets["health"]["files"][0]["grade"] == "D"
         assert state.facets["affected_tests"]["files"] == ["tests/test_main.py"]
         assert state.facets["risk"]["level"] == "review"
+
+    def test_compact_facets_trim_source_relationship_and_quality_shapes(self):
+        facets = {
+            "source": {
+                "status": "included",
+                "file_count": 1,
+                "files": [
+                    {
+                        "file_path": "main.py",
+                        "language": "python",
+                        "symbols": [
+                            {
+                                "name": "run",
+                                "kind": "function",
+                                "start_line": 1,
+                                "end_line": 2,
+                                "code": "def run():\n    pass\n",
+                            }
+                        ],
+                    }
+                ],
+            },
+            "callees": {
+                "status": "included",
+                "edges": {
+                    "main.py:1:run": [
+                        {
+                            "name": "helper",
+                            "kind": "function",
+                            "file": "main.py",
+                            "line": 4,
+                            "end_line": 4,
+                            "language": "",
+                            "depth": 1,
+                        }
+                    ]
+                },
+            },
+            "complexity": {
+                "status": "included",
+                "files": [
+                    {
+                        "file": "main.py",
+                        "status": "included",
+                        "max_complexity": 12,
+                        "total_complexity": 20,
+                        "hotspots": [{"name": "run", "line": 1, "complexity": 12}],
+                    }
+                ],
+            },
+            "health": {
+                "status": "included",
+                "files": [
+                    {
+                        "file": "main.py",
+                        "status": "included",
+                        "total": 82,
+                        "grade": "B",
+                        "dimensions": {"complexity": 80},
+                    }
+                ],
+            },
+        }
+
+        compact = _compact_facets(facets)
+
+        assert compact["source"]["files"][0]["file"] == "main.py"
+        assert compact["source"]["files"][0]["symbols"][0]["lines"] == "1-2"
+        assert compact["callees"]["edges"]["main.py:1:run"] == [
+            {
+                "name": "helper",
+                "file": "main.py",
+                "line": 4,
+                "kind": "function",
+                "depth": 1,
+            }
+        ]
+        assert compact["complexity"]["files"][0]["hotspots"][0]["cc"] == 12
+        assert "dimensions" not in compact["health"]["files"][0]
 
     def test_quality_facets_cover_empty_error_and_missing_paths(self, tmp_path):
         symbols = [{"file": "main.py", "line": 1, "name": "run"}]
