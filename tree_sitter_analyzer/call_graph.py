@@ -160,6 +160,8 @@ def _extract_recursive(
                 parent_class = _find_parent_class_python(node) or enclosing_class
             elif language in ("java",):
                 parent_class = _find_parent_class_java(node) or enclosing_class
+            elif language == "go" and node.type == "method_declaration":
+                parent_class = _find_receiver_type_go(node) or enclosing_class
 
             definitions.append(
                 {
@@ -407,6 +409,40 @@ def _find_parent_class_java(node: Any) -> str | None:
                         text.decode("utf-8") if isinstance(text, bytes) else str(text)
                     )
         current = current.parent
+    return None
+
+
+def _find_receiver_type_go(node: Any) -> str | None:
+    """Extract receiver type from a Go method_declaration node.
+
+    For ``func (e *Engine) ServeHTTP(...)`` returns ``Engine``.
+    """
+    if node is None or node.type != "method_declaration":
+        return None
+    for child in node.children:
+        if child.type == "parameter_list":
+            for param in child.children:
+                for sub in param.children if hasattr(param, "children") else []:
+                    if sub.type in ("type_identifier", "generic_type", "pointer_type"):
+                        text = sub.text
+                        raw = (
+                            text.decode("utf-8")
+                            if isinstance(text, bytes)
+                            else str(text)
+                        )
+                        return raw.lstrip("*")
+                    for leaf in sub.children if hasattr(sub, "children") else []:
+                        if leaf.type in (
+                            "type_identifier",
+                            "generic_type",
+                        ):
+                            text = leaf.text
+                            raw = (
+                                text.decode("utf-8")
+                                if isinstance(text, bytes)
+                                else str(text)
+                            )
+                            return raw.lstrip("*")
     return None
 
 
