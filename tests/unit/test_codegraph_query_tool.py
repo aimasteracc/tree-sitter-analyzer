@@ -927,11 +927,14 @@ class TestCodeGraphQueryInternals:
         with pytest.raises(ValueError, match="unsupported field"):
             _sort_state(state, _ChainStep("sort", [], {"by": "unknown"}))
 
-    def test_build_file_entries_skips_blank_files_and_omits_oversized_snippets(
+    def test_build_file_entries_includes_truncated_excerpt_for_long_symbols(
         self, tmp_path
     ):
         source = tmp_path / "main.py"
-        source.write_text("def run():\n    return 1\n", encoding="utf-8")
+        source.write_text(
+            "\n".join(f"line_{idx}" for idx in range(1, 201)) + "\n",
+            encoding="utf-8",
+        )
 
         entries = _build_file_entries(
             project_root=str(tmp_path),
@@ -942,7 +945,7 @@ class TestCodeGraphQueryInternals:
                     "kind": "function",
                     "file": "main.py",
                     "line": 1,
-                    "end_line": 999,
+                    "end_line": 200,
                     "language": "python",
                 },
             ],
@@ -959,7 +962,11 @@ class TestCodeGraphQueryInternals:
                         "name": "run",
                         "kind": "function",
                         "start_line": 1,
-                        "end_line": 999,
+                        "end_line": 200,
+                        "code": "\n".join(f"line_{idx}" for idx in range(1, 161))
+                        + "\n",
+                        "code_truncated": True,
+                        "code_lines": "1-160 of 200",
                     }
                 ],
             }
@@ -1052,6 +1059,8 @@ class TestCodeGraphQueryInternals:
                                 "start_line": 1,
                                 "end_line": 2,
                                 "code": "def run():\n    pass\n",
+                                "code_truncated": True,
+                                "code_lines": "1-2 of 8",
                             }
                         ],
                     }
@@ -1103,6 +1112,8 @@ class TestCodeGraphQueryInternals:
 
         assert compact["source"]["files"][0]["file"] == "main.py"
         assert compact["source"]["files"][0]["symbols"][0]["lines"] == "1-2"
+        assert compact["source"]["files"][0]["symbols"][0]["code_truncated"] is True
+        assert compact["source"]["files"][0]["symbols"][0]["code_lines"] == "1-2 of 8"
         assert compact["callees"]["edges"]["main.py:1:run"] == [
             {
                 "name": "helper",
