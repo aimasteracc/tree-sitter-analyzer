@@ -241,6 +241,7 @@ class TestConceptSearchHelpers:
     def test_nearby_symbols_skips_far_duplicates_and_caps_results(self):
         matches = [{"line": 50}]
         symbols = [
+            {"name": 'import "fmt"', "kind": "import", "line": 49},
             {"name": "missing_line", "kind": "function"},
             {"name": "far", "kind": "function", "line": 1},
             {"name": "dup", "kind": "function", "line": 45},
@@ -258,6 +259,30 @@ class TestConceptSearchHelpers:
 
     def test_nearby_symbols_degrades_on_invalid_json(self):
         assert helpers._nearby_symbols("{not json", [{"line": 1}]) == []
+
+    def test_definition_like_and_test_path_helpers_cover_go(self):
+        assert helpers._is_definition_like_match(
+            "func addRoute(path string) {}", ["route"]
+        )
+        assert helpers._is_test_like_path("gin_test.go")
+
+        rank = helpers._concept_rank(
+            {
+                "file_path": "gin_test.go",
+                "matched_terms": ["route"],
+                "matches": [{"text": "func TestRoute(t *testing.T) {", "line": 1}],
+            },
+            ["route"],
+        )
+
+        assert rank < helpers._concept_rank(
+            {
+                "file_path": "gin.go",
+                "matched_terms": ["route"],
+                "matches": [{"text": "func addRoute(path string) {", "line": 1}],
+            },
+            ["route"],
+        )
 
     def test_definition_like_match_requires_term_in_text(self):
         assert helpers._is_definition_like_match(

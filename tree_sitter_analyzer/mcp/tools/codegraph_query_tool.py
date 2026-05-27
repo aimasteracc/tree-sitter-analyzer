@@ -19,6 +19,7 @@ from typing import Any
 from ...utils import setup_logger
 from ..utils.format_helper import apply_toon_format_to_response
 from . import _codegraph_explore_helpers as _h
+from . import _codegraph_query_concepts as _concepts
 from ._codegraph_query_dsl import (
     _ChainStep,
     bool_kw,
@@ -186,8 +187,9 @@ class CodeGraphQueryTool(BaseMCPTool):
                 _compact_symbol(symbol) for symbol in state.symbols[:max_symbols]
             ]
 
+        has_evidence = bool(state.symbols or state.files)
         result = build_response(
-            verdict="INFO" if state.symbols else "NOT_FOUND",
+            verdict="INFO" if has_evidence else "NOT_FOUND",
             query=query,
             normalized_chain=[step_to_dict(step) for step in steps],
             symbols=symbols_payload,
@@ -198,6 +200,7 @@ class CodeGraphQueryTool(BaseMCPTool):
                 "steps": len(steps),
                 "symbols_returned": len(state.symbols),
                 "files_returned": len(state.files),
+                "concept_files_returned": state.concept_files_returned,
                 "facets_returned": len(state.facets),
                 "compact": state.compact,
                 "caller_edges": sum(
@@ -224,6 +227,7 @@ class CodeGraphQueryTool(BaseMCPTool):
         if step.name == "search":
             queries = string_args(step, required=True)
             limit = int_kw(step, "limit", default_max_symbols, _MAX_SYMBOLS_CAP)
+            state.seed_queries = queries
             state.current = _resolve_queries(cache, queries, limit)
             state.add_symbols(state.current)
             return
@@ -234,6 +238,7 @@ class CodeGraphQueryTool(BaseMCPTool):
                 limit = int_kw(
                     step, "max_symbols", default_max_symbols, _MAX_SYMBOLS_CAP
                 )
+                state.seed_queries = queries
                 state.current = _resolve_queries(cache, queries, limit)
                 state.add_symbols(state.current)
             max_files = int_kw(step, "max_files", default_max_files, _MAX_FILES_CAP)
@@ -241,6 +246,16 @@ class CodeGraphQueryTool(BaseMCPTool):
                 step, "max_symbols", default_max_symbols, _MAX_SYMBOLS_CAP
             )
             include_code = bool_kw(step, "include_code", default_include_code)
+            if not state.current:
+                _apply_concept_fallback(
+                    cache=cache,
+                    project_root=self.project_root or "",
+                    state=state,
+                    max_files=max_files,
+                    max_symbols=max_symbols,
+                )
+            if state.files and state.concept_files_returned:
+                return
             state.files = _build_file_entries(
                 project_root=self.project_root or "",
                 symbols=state.current[:max_symbols],
@@ -306,6 +321,8 @@ class _QueryState:
         self.facets: dict[str, Any] = {}
         self._seen_symbols: set[tuple[str, int, str]] = set()
         self.compact = compact
+        self.seed_queries: list[str] = []
+        self.concept_files_returned = 0
 
     def add_symbols(self, symbols: list[dict[str, Any]]) -> None:
         for symbol in symbols:
@@ -347,6 +364,33 @@ def _resolve_query(cache: Any, query: str, limit: int) -> list[dict[str, Any]]:
             if len(resolved) >= limit:
                 return resolved
     return resolved
+
+
+def _apply_concept_fallback(
+    *,
+    cache: Any,
+    project_root: str,
+    state: _QueryState,
+    max_files: int,
+    max_symbols: int,
+) -> None:
+    if not state.seed_queries:
+        return
+    entries = _concepts.concept_entries_for_queries(
+        cache,
+        state.seed_queries,
+        project_root=project_root,
+        max_files=max_files,
+    )
+    if not entries:
+        return
+    state.files = entries
+    state.concept_files_returned = len(entries)
+    state.current = _concepts.symbols_from_concept_entries(
+        entries,
+        limit=max_symbols,
+    )
+    state.add_symbols(state.current)
 
 
 def _resolve_queries(
@@ -463,12 +507,21 @@ def _include_facets(
         }
     if bool_kw(step, "source", False):
         if not state.files:
-            state.files = _build_file_entries(
-                project_root=project_root,
-                symbols=state.current[:max_symbols],
-                max_files=max_files,
-                include_code=include_code,
-            )
+            if not state.current:
+                _apply_concept_fallback(
+                    cache=cache,
+                    project_root=project_root,
+                    state=state,
+                    max_files=max_files,
+                    max_symbols=max_symbols,
+                )
+            if not state.files or not state.concept_files_returned:
+                state.files = _build_file_entries(
+                    project_root=project_root,
+                    symbols=state.current[:max_symbols],
+                    max_files=max_files,
+                    include_code=include_code,
+                )
         state.facets["source"] = {
             "status": "included",
             "file_count": len(state.files),
@@ -663,6 +716,15 @@ def _compact_file_entry(entry: dict[str, Any]) -> dict[str, Any]:
     }
     if entry.get("language"):
         compacted["lang"] = entry["language"]
+    if entry.get("matches"):
+        compacted["matches"] = [
+            {
+                "line": match.get("line", 0),
+                "text": match.get("text", ""),
+                "terms": match.get("terms", []),
+            }
+            for match in entry.get("matches", [])[:5]
+        ]
     for symbol in entry.get("symbols", []):
         start_line = int(symbol.get("start_line", 0) or 0)
         end_line = int(symbol.get("end_line", start_line) or start_line)

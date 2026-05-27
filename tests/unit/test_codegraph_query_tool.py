@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+import json
+import sqlite3
+from unittest.mock import ANY, MagicMock, patch
 
 import pytest
 
+from tree_sitter_analyzer.mcp.tools import _codegraph_query_concepts as concepts
 from tree_sitter_analyzer.mcp.tools._codegraph_query_dsl import (
     _ChainStep,
     bool_kw,
@@ -18,6 +21,7 @@ from tree_sitter_analyzer.mcp.tools.codegraph_query_tool import (
     CodeGraphQueryTool,
     _absolute_path,
     _affected_tests_facet,
+    _apply_concept_fallback,
     _build_file_entries,
     _compact_facets,
     _complexity_facet,
@@ -373,6 +377,131 @@ class TestCodeGraphQueryTool:
         assert [symbol["name"] for symbol in result["symbols"]] == ["run"]
 
     @pytest.mark.asyncio
+    async def test_execute_explore_falls_back_to_concept_search_for_plain_language(
+        self, tmp_path
+    ):
+        source = tmp_path / "router.py"
+        source.write_text(
+            "def handle_route():\n    # route matching lives here\n    return True\n",
+            encoding="utf-8",
+        )
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.execute(
+            """CREATE TABLE ast_index (
+                file_path TEXT,
+                language TEXT,
+                file_size INTEGER,
+                symbols_json TEXT
+            )"""
+        )
+        conn.execute(
+            "INSERT INTO ast_index VALUES (?, ?, ?, ?)",
+            (
+                "router.py",
+                "python",
+                source.stat().st_size,
+                json.dumps(
+                    {
+                        "symbols": [
+                            {
+                                "name": "handle_route",
+                                "kind": "function",
+                                "line": 1,
+                                "end_line": 3,
+                            }
+                        ]
+                    }
+                ),
+            ),
+        )
+        mock_cache = MagicMock()
+        mock_cache._get_conn.return_value = conn
+        mock_cache.query_callers.return_value = []
+        mock_cache.query_callees.return_value = []
+
+        with (
+            patch("tree_sitter_analyzer.ast_cache.ASTCache", return_value=mock_cache),
+            _patch_resolver_with({}),
+        ):
+            result = await CodeGraphQueryTool(str(tmp_path)).execute(
+                {
+                    "query": (
+                        "search('route matching').explore(max_files=3)"
+                        ".include(source=True).answer(compact=True)"
+                    ),
+                    "output_format": "json",
+                }
+            )
+
+        assert result["success"] is True
+        assert result["verdict"] == "INFO"
+        assert result["stats"]["concept_files_returned"] == 1
+        assert result["symbols"][0]["name"] == "handle_route"
+        source_facet = result["facets"]["source"]["files"][0]
+        assert source_facet["file"] == "router.py"
+        assert any(match["line"] == 2 for match in source_facet["matches"])
+        assert source_facet["symbols"][0]["name"] == "handle_route"
+
+    @pytest.mark.asyncio
+    async def test_execute_include_source_can_trigger_concept_fallback(self, tmp_path):
+        source = tmp_path / "router.py"
+        source.write_text(
+            "def handle_route():\n    # route matching lives here\n    return True\n",
+            encoding="utf-8",
+        )
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.execute(
+            """CREATE TABLE ast_index (
+                file_path TEXT,
+                language TEXT,
+                file_size INTEGER,
+                symbols_json TEXT
+            )"""
+        )
+        conn.execute(
+            "INSERT INTO ast_index VALUES (?, ?, ?, ?)",
+            (
+                "router.py",
+                "python",
+                source.stat().st_size,
+                json.dumps(
+                    {
+                        "symbols": [
+                            {
+                                "name": "handle_route",
+                                "kind": "function",
+                                "line": 1,
+                                "end_line": 3,
+                            }
+                        ]
+                    }
+                ),
+            ),
+        )
+        mock_cache = MagicMock()
+        mock_cache._get_conn.return_value = conn
+
+        with (
+            patch("tree_sitter_analyzer.ast_cache.ASTCache", return_value=mock_cache),
+            _patch_resolver_with({}),
+        ):
+            result = await CodeGraphQueryTool(str(tmp_path)).execute(
+                {
+                    "query": (
+                        "search('route matching')"
+                        ".include(source=True).answer(compact=True)"
+                    ),
+                    "output_format": "json",
+                }
+            )
+
+        assert result["verdict"] == "INFO"
+        assert result["stats"]["concept_files_returned"] == 1
+        assert result["facets"]["source"]["files"][0]["file"] == "router.py"
+
+    @pytest.mark.asyncio
     async def test_execute_batch_seed_include_sort_and_answer(self, tmp_path):
         source = tmp_path / "main.py"
         source.write_text(
@@ -516,6 +645,103 @@ class TestCodeGraphQueryInternals:
                 symbol["name"]
                 for symbol in _resolve_queries(MagicMock(), ["run", "helper"], limit=1)
             ] == ["run"]
+
+    def test_apply_concept_fallback_degrades_on_missing_seed_or_matches(self):
+        state = _QueryState()
+        _apply_concept_fallback(
+            cache=MagicMock(),
+            project_root="/tmp",
+            state=state,
+            max_files=2,
+            max_symbols=2,
+        )
+        assert state.files == []
+
+        state.seed_queries = ["missing concept"]
+        with patch(
+            "tree_sitter_analyzer.mcp.tools._codegraph_query_concepts."
+            "concept_entries_for_queries",
+            return_value=[],
+        ):
+            _apply_concept_fallback(
+                cache=MagicMock(),
+                project_root="/tmp",
+                state=state,
+                max_files=2,
+                max_symbols=2,
+            )
+
+        assert state.files == []
+        assert state.current == []
+
+    def test_query_concept_helpers_cover_empty_dedupe_and_limit_paths(self):
+        assert (
+            concepts.concept_entries_for_queries(
+                MagicMock(),
+                ["  "],
+                project_root="/tmp",
+                max_files=2,
+            )
+            == []
+        )
+
+        with patch.object(
+            concepts._h,
+            "concept_search",
+            return_value=[{"file_path": "src/router.py"}],
+        ) as concept_search:
+            assert concepts.concept_entries_for_queries(
+                MagicMock(),
+                ["src/router.py route route src/router.py"],
+                project_root="/tmp",
+                max_files=2,
+            ) == [{"file_path": "src/router.py"}]
+
+        concept_search.assert_called_once_with(
+            ANY,
+            ["route"],
+            ["src/router.py"],
+            "/tmp",
+            2,
+        )
+
+        entries = [
+            {
+                "file_path": "src/router.py",
+                "language": "python",
+                "symbols": [
+                    {"name": "", "kind": "function", "start_line": 1},
+                    {"name": "missing_line", "kind": "function", "start_line": 0},
+                    {
+                        "name": "handle_route",
+                        "kind": "function",
+                        "start_line": 2,
+                        "end_line": 4,
+                    },
+                    {
+                        "name": "handle_route",
+                        "kind": "function",
+                        "start_line": 2,
+                        "end_line": 4,
+                    },
+                    {"name": "helper", "kind": "function", "start_line": 8},
+                ],
+            },
+            {
+                "file_path": "",
+                "language": "python",
+                "symbols": [{"name": "ignored", "kind": "function", "start_line": 1}],
+            },
+        ]
+
+        limited = concepts.symbols_from_concept_entries(entries, limit=1)
+        assert [symbol["name"] for symbol in limited] == ["handle_route"]
+
+        all_symbols = concepts.symbols_from_concept_entries(entries, limit=10)
+        assert [symbol["name"] for symbol in all_symbols] == [
+            "handle_route",
+            "helper",
+        ]
 
     def test_relation_step_skips_symbols_without_names_and_empty_rows(self):
         mock_cache = MagicMock()
