@@ -84,6 +84,9 @@ def _resolve_date(date_spec: str) -> str:
     return date_spec
 
 
+_GIT_TIMEOUT_SECONDS = 15
+
+
 def _run(repo: Path, args: list[str], env: dict[str, str] | None = None) -> str:
     """Run a git command inside ``repo`` and return stdout.
 
@@ -102,6 +105,7 @@ def _run(repo: Path, args: list[str], env: dict[str, str] | None = None) -> str:
         capture_output=True,
         text=True,
         env=base_env,
+        timeout=_GIT_TIMEOUT_SECONDS,
     )
     return completed.stdout
 
