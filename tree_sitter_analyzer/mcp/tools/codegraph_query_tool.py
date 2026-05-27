@@ -39,6 +39,7 @@ _MAX_FILES_CAP = 30
 _MAX_REL_PER_SYMBOL = 20
 _MAX_SNIPPET_LINES = 160
 _MAX_FILE_BYTES = 1_000_000
+_DECLARATION_QUERY_KINDS = frozenset({"class", "enum", "interface", "type"})
 
 
 class CodeGraphQueryTool(BaseMCPTool):
@@ -362,9 +363,32 @@ def _resolve_query(cache: Any, query: str, limit: int) -> list[dict[str, Any]]:
             resolved.append((token_order, item))
     resolved.sort(key=lambda item: (item[0], _source_preference_key(item[1])))
     symbols = [item for _, item in resolved]
+    symbols = _filter_declaration_query_symbols(query, symbols)
     if not file_tokens:
         symbols = _drop_test_shadow_symbols(symbols)
     return symbols[:limit]
+
+
+def _filter_declaration_query_symbols(
+    query: str, symbols: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    declared_type = _concepts.declared_type_name(query)
+    if not declared_type or not symbols:
+        return symbols
+
+    exact_name = declared_type.lower()
+    declaration_symbols = [
+        symbol
+        for symbol in symbols
+        if str(symbol.get("name") or "").lower() == exact_name
+        and str(symbol.get("kind") or "") in _DECLARATION_QUERY_KINDS
+    ]
+    if declaration_symbols:
+        return declaration_symbols
+
+    if any(str(symbol.get("name") or "").lower() == exact_name for symbol in symbols):
+        return []
+    return symbols
 
 
 def _apply_concept_fallback(

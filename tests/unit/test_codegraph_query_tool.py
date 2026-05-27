@@ -27,6 +27,7 @@ from tree_sitter_analyzer.mcp.tools.codegraph_query_tool import (
     _complexity_facet,
     _dedupe_symbols,
     _drop_test_shadow_symbols,
+    _filter_declaration_query_symbols,
     _health_facet,
     _include_facets,
     _QueryState,
@@ -44,16 +45,18 @@ from tree_sitter_analyzer.symbol_resolver import DefinitionLocation, ResolveResu
 def _make_def(
     file: str = "main.py",
     name: str = "run",
+    kind: str = "function",
     line: int = 1,
     end_line: int = 2,
+    language: str = "python",
 ) -> DefinitionLocation:
     return DefinitionLocation(
         file=file,
         name=name,
-        kind="function",
+        kind=kind,
         line=line,
         end_line=end_line,
-        language="python",
+        language=language,
     )
 
 
@@ -650,6 +653,46 @@ class TestCodeGraphQueryInternals:
 
         assert [symbol["name"] for symbol in result] == ["handleHTTPRequest"]
 
+    def test_resolve_query_filters_non_declaration_for_type_query(self):
+        defs = {
+            "Param": [
+                _make_def(file="context.go", name="Param", kind="function", line=503)
+            ]
+        }
+
+        with _patch_resolver_with(defs):
+            result = _resolve_query(MagicMock(), "type Param struct", limit=5)
+
+        assert result == []
+
+    def test_resolve_query_keeps_matching_declaration_for_type_query(self):
+        defs = {
+            "Param": [
+                _make_def(file="context.go", name="Param", kind="function", line=503),
+                _make_def(
+                    file="tree.go",
+                    name="Param",
+                    kind="type",
+                    line=17,
+                    end_line=20,
+                    language="go",
+                ),
+            ]
+        }
+
+        with _patch_resolver_with(defs):
+            result = _resolve_query(MagicMock(), "type Param struct", limit=5)
+
+        assert [symbol["file"] for symbol in result] == ["tree.go"]
+        assert result[0]["kind"] == "type"
+
+    def test_declaration_query_filter_keeps_unrelated_symbols(self):
+        symbols = [{"name": "Other", "kind": "function", "file": "main.go", "line": 1}]
+
+        assert (
+            _filter_declaration_query_symbols("type Param struct", symbols) == symbols
+        )
+
     def test_resolve_query_drops_test_shadow_when_source_definition_exists(self):
         defs = {
             "ServeHTTP": [
@@ -693,6 +736,7 @@ class TestCodeGraphQueryInternals:
         assert concepts.symbol_candidate_tokens("type HandlerFunc func(*Context)") == [
             "HandlerFunc"
         ]
+        assert concepts.declared_type_name("type Param struct") == "Param"
         assert concepts.concept_query_terms("type HandlerFunc func(*Context)") == [
             "HandlerFunc",
             "type",
@@ -728,6 +772,35 @@ class TestCodeGraphQueryInternals:
             "handleHTTPRequest"
         ]
         assert concepts.normalized_query_terms("...") == []
+
+    def test_declared_type_entries_prefer_exact_type_declaration(self):
+        entries = [
+            {
+                "file_path": "tree.go",
+                "matches": [{"text": "type Param struct {"}],
+            },
+            {
+                "file_path": "logger.go",
+                "matches": [{"text": "type LogFormatterParams struct {"}],
+            },
+        ]
+
+        narrowed = concepts.narrow_declared_type_entries(["type Param struct"], entries)
+
+        assert [entry["file_path"] for entry in narrowed] == ["tree.go"]
+
+    def test_declared_type_entries_keep_broad_matches_without_exact_declaration(self):
+        entries = [
+            {
+                "file_path": "logger.go",
+                "matches": [{"text": "type LogFormatterParams struct {"}],
+            }
+        ]
+
+        assert (
+            concepts.narrow_declared_type_entries(["type Param struct"], entries)
+            == entries
+        )
         assert concepts._primary_signature_terms("func ()", []) == []
 
     def test_resolve_queries_stops_at_limit_and_dedupes(self):

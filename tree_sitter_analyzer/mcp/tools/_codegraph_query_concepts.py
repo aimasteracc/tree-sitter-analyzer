@@ -58,13 +58,14 @@ def concept_entries_for_queries(
     query_terms, file_tokens = _split_seed_queries(queries)
     if not query_terms and not file_tokens:
         return []
-    return _h.concept_search(
+    entries = _h.concept_search(
         cache,
         query_terms,
         file_tokens,
         project_root,
         max_files,
     )
+    return narrow_declared_type_entries(queries, entries)
 
 
 def symbol_candidate_tokens(query: str) -> list[str]:
@@ -80,6 +81,35 @@ def symbol_candidate_tokens(query: str) -> list[str]:
         return _dedupe_tokens([declared_const, *terms])
     primary = _primary_signature_terms(query, terms)
     return _dedupe_tokens([*primary, *terms])
+
+
+def declared_type_name(query: str) -> str:
+    """Return the declared type name for ``type X ...`` query strings."""
+    return _declared_type_name(query)
+
+
+def narrow_declared_type_entries(
+    queries: list[str], entries: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Prefer exact ``type X`` declaration matches over broader mentions."""
+    patterns = [
+        re.compile(rf"\btype\s+{re.escape(name)}\b")
+        for query in queries
+        if (name := _declared_type_name(query))
+    ]
+    if not patterns:
+        return entries
+
+    exact_entries = [
+        entry
+        for entry in entries
+        if any(
+            pattern.search(str(match.get("text") or ""))
+            for pattern in patterns
+            for match in entry.get("matches", [])
+        )
+    ]
+    return exact_entries or entries
 
 
 def normalized_query_terms(query: str) -> list[str]:
