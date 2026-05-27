@@ -339,6 +339,8 @@ def _nearby_symbols(
     nearby: list[dict[str, Any]] = []
     seen: set[tuple[str, int]] = set()
     for sym in symbols:
+        if _is_noise_nearby_symbol(sym):
+            continue
         line = int(sym.get("line", 0) or 0)
         if not line or all(abs(line - ml) > 30 for ml in match_lines):
             continue
@@ -363,6 +365,8 @@ def _concept_rank(entry: dict[str, Any], terms: list[str]) -> int:
     path = entry["file_path"].lower()
     matched = set(entry.get("matched_terms", []))
     rank = len(matched) * 100
+    if terms and all(term in matched for term in terms):
+        rank += 100
     rank += sum(60 for term in terms if term in path)
     rank += min(len(entry.get("matches", [])), 5) * 3
     if any(
@@ -373,6 +377,8 @@ def _concept_rank(entry: dict[str, Any], terms: list[str]) -> int:
     if path.startswith("src/"):
         rank += 40
     if any(part in path for part in ("/test/", "/tests/", "/fixtures/", "/gen/")):
+        rank -= 80
+    if _is_test_like_path(path):
         rank -= 80
     if "/copilot/" in path:
         rank -= 40
@@ -385,7 +391,27 @@ def _is_definition_like_match(text: str, terms: list[str]) -> bool:
         return False
     return bool(
         re.search(
-            r"\b(export\s+)?(abstract\s+)?(class|interface|function|const|let|var|type|enum)\b",
+            r"\b(export\s+)?(abstract\s+)?"
+            r"(class|interface|function|const|let|var|type|enum|func|struct)\b",
             lowered,
         )
+    )
+
+
+def _is_noise_nearby_symbol(symbol: dict[str, Any]) -> bool:
+    kind = str(symbol.get("kind", "")).lower()
+    name = str(symbol.get("name", "")).strip().lower()
+    return kind in {"import", "package", "module"} or name.startswith("import (")
+
+
+def _is_test_like_path(path: str) -> bool:
+    name = os.path.basename(path)
+    return bool(
+        name.startswith("test_")
+        or "_test." in name
+        or name.endswith(".test")
+        or name.endswith(".spec.ts")
+        or name.endswith(".test.ts")
+        or name.endswith(".spec.js")
+        or name.endswith(".test.js")
     )
