@@ -2,9 +2,49 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from . import _codegraph_explore_helpers as _h
+
+_IDENTIFIER_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+_QUERY_STOPWORDS = {
+    "abstract",
+    "async",
+    "await",
+    "class",
+    "const",
+    "def",
+    "defer",
+    "else",
+    "enum",
+    "export",
+    "extends",
+    "false",
+    "for",
+    "func",
+    "function",
+    "if",
+    "implements",
+    "import",
+    "interface",
+    "let",
+    "nil",
+    "null",
+    "package",
+    "private",
+    "protected",
+    "public",
+    "range",
+    "return",
+    "static",
+    "struct",
+    "this",
+    "true",
+    "type",
+    "var",
+    "void",
+}
 
 
 def concept_entries_for_queries(
@@ -25,6 +65,37 @@ def concept_entries_for_queries(
         project_root,
         max_files,
     )
+
+
+def symbol_candidate_tokens(query: str) -> list[str]:
+    """Return high-signal resolver tokens for code-like query strings."""
+    terms = normalized_query_terms(query)
+    if not terms:
+        return [query] if query else []
+    primary = _primary_signature_terms(query, terms)
+    return _dedupe_tokens([*primary, *terms])
+
+
+def normalized_query_terms(query: str) -> list[str]:
+    """Extract identifier-like query terms while dropping syntax noise."""
+    symbol_tokens, file_tokens = _h.split_query(query)
+    file_token_parts = {
+        part.lower()
+        for file_token in file_tokens
+        for part in _IDENTIFIER_RE.findall(file_token)
+    }
+    ignored = _receiver_variable_terms(query)
+    terms: list[str] = []
+    for raw in [*symbol_tokens, *_IDENTIFIER_RE.findall(query)]:
+        token = _clean_identifier(raw)
+        if not token:
+            continue
+        if token.lower() in file_token_parts:
+            continue
+        if token.lower() in _QUERY_STOPWORDS or token in ignored:
+            continue
+        terms.append(token)
+    return _dedupe_tokens(terms)
 
 
 def symbols_from_concept_entries(
@@ -68,8 +139,8 @@ def _split_seed_queries(queries: list[str]) -> tuple[list[str], list[str]]:
     seen_terms: set[str] = set()
     seen_files: set[str] = set()
     for query in queries:
-        symbols, files = _h.split_query(query)
-        for symbol in symbols or [query]:
+        _, files = _h.split_query(query)
+        for symbol in normalized_query_terms(query):
             token = symbol.strip()
             if token and token not in seen_terms:
                 seen_terms.add(token)
@@ -82,4 +153,54 @@ def _split_seed_queries(queries: list[str]) -> tuple[list[str], list[str]]:
     return query_terms, file_tokens
 
 
-__all__ = ["concept_entries_for_queries", "symbols_from_concept_entries"]
+def _clean_identifier(raw: str) -> str:
+    match = _IDENTIFIER_RE.search(raw)
+    return match.group(0) if match else ""
+
+
+def _receiver_variable_terms(query: str) -> set[str]:
+    ignored: set[str] = set()
+    for match in re.finditer(
+        r"\(\s*([a-z_][A-Za-z0-9_]*)\s+(?:\*|\.\*)?[A-Za-z_][A-Za-z0-9_]*",
+        query,
+    ):
+        ignored.add(match.group(1))
+    return ignored
+
+
+def _primary_signature_terms(query: str, terms: list[str]) -> list[str]:
+    primary: list[str] = []
+    primary.extend(
+        _clean_identifier(match.group(1))
+        for match in re.finditer(r"\)\s*([A-Za-z_][A-Za-z0-9_]*)", query)
+    )
+    primary.extend(
+        _clean_identifier(match.group(1))
+        for match in re.finditer(
+            r"\b(?:def|func|function)\s+([A-Za-z_][A-Za-z0-9_]*)",
+            query,
+        )
+    )
+    if terms:
+        primary.append(terms[-1])
+    return [term for term in primary if term]
+
+
+def _dedupe_tokens(tokens: list[str]) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for token in tokens:
+        key = token.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(token)
+    return out
+
+
+__all__ = [
+    "concept_entries_for_queries",
+    "normalized_query_terms",
+    "symbol_candidate_tokens",
+    "symbols_from_concept_entries",
+]
