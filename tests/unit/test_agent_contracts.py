@@ -91,6 +91,22 @@ def test_pytest_runtime_dependencies_are_declared() -> None:
     assert "pytest-timeout>=2.4.0" in dev_dependencies
 
 
+def test_reusable_test_workflow_has_job_timeout() -> None:
+    """The CI matrix must fail fast instead of hanging forever on runner stalls."""
+    workflow = PROJECT_ROOT / ".github" / "workflows" / "reusable-test.yml"
+    text = workflow.read_text(encoding="utf-8")
+    test_matrix = re.search(
+        r"(?ms)^  test-matrix:\n(?P<body>.*?)(?=^  [A-Za-z0-9_-]+:|\Z)",
+        text,
+    )
+
+    assert test_matrix is not None
+    assert re.search(
+        r"(?m)^    timeout-minutes:\s*15\s*$",
+        test_matrix.group("body"),
+    )
+
+
 def test_gitflow_documentation_is_present() -> None:
     """The GitFlow mandate must remain documented + machine-enforced.
 
