@@ -578,9 +578,9 @@ def _concept_rank(entry: dict[str, Any], terms: list[str]) -> int:
     if path.startswith("src/"):
         rank += 40
     if any(part in path for part in ("/test/", "/tests/", "/fixtures/", "/gen/")):
-        rank -= 80
+        rank -= 500
     if _is_test_like_path(path):
-        rank -= 80
+        rank -= 500
     if "/copilot/" in path:
         rank -= 40
     return rank
