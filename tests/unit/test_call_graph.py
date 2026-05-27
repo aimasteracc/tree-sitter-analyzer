@@ -12,6 +12,7 @@ from tree_sitter_analyzer.call_graph import (
     _extract_call,
     _find_parent_class_java,
     _find_parent_class_python,
+    _find_receiver_type_go,
     _get_func_name,
     _node_text,
     _walk_tree,
@@ -269,6 +270,52 @@ class TestWalkTree:
                 "receiver": "engine",
             }
         ]
+
+    def test_go_method_receiver_type_extracted(self):
+        source = (
+            "package main\n\n"
+            "type Engine struct{}\n\n"
+            "func (e *Engine) ServeHTTP() {}\n"
+            "func (e Engine) Handle() {}\n"
+        )
+        root, src = _parse_source(source, "go")
+        defs, _ = _walk_tree(root, src, "go")
+        serve = next(d for d in defs if d["name"] == "ServeHTTP")
+        handle = next(d for d in defs if d["name"] == "Handle")
+        assert serve["class"] == "Engine"
+        assert handle["class"] == "Engine"
+
+    def test_go_function_no_receiver(self):
+        source = "package main\n\nfunc helper() int { return 1 }\n"
+        root, src = _parse_source(source, "go")
+        defs, _ = _walk_tree(root, src, "go")
+        assert defs[0]["class"] is None
+
+    def test_find_receiver_type_go_pointer(self):
+        source = "package main\n\nfunc (e *Engine) Run() {}\n"
+        root, src = _parse_source(source, "go")
+        method_node = None
+        for child in root.children:
+            if child.type == "method_declaration":
+                method_node = child
+                break
+        assert method_node is not None
+        assert _find_receiver_type_go(method_node) == "Engine"
+
+    def test_find_receiver_type_go_value_receiver(self):
+        source = "package main\n\nfunc (e Engine) Run() {}\n"
+        root, src = _parse_source(source, "go")
+        method_node = next(c for c in root.children if c.type == "method_declaration")
+        assert _find_receiver_type_go(method_node) == "Engine"
+
+    def test_find_receiver_type_go_none_for_non_method(self):
+        assert _find_receiver_type_go(None) is None
+
+    def test_find_receiver_type_go_wrong_node_type(self):
+        source = "package main\n\nfunc helper() {}\n"
+        root, src = _parse_source(source, "go")
+        func_node = next(c for c in root.children if c.type == "function_declaration")
+        assert _find_receiver_type_go(func_node) is None
 
     def test_c_function_defs(self):
         source = "int foo(void) { return 1; }\nint bar(void) { return foo(); }\n"
