@@ -54,6 +54,16 @@ class TestConceptSearchHelpers:
 
         assert helpers._concept_candidate_paths(conn, [], [], max_paths=5) == set()
 
+    def test_concept_candidate_paths_full_scans_declaration_queries(self):
+        conn = sqlite3.connect(":memory:")
+
+        assert (
+            helpers._concept_candidate_paths(
+                conn, ["node", "type", "struct"], [], max_paths=5
+            )
+            == set()
+        )
+
     def test_concept_candidate_paths_breaks_after_term_cap(self):
         conn = sqlite3.connect(":memory:")
         conn.execute("CREATE TABLE ast_index (file_path TEXT)")
@@ -237,6 +247,122 @@ class TestConceptSearchHelpers:
 
         assert entry is not None
         assert len(entry["matches"]) == 1
+
+    def test_concept_file_entry_prioritizes_type_declaration_matches(self, tmp_path):
+        source = tmp_path / "tree.go"
+        source.write_text(
+            "package gin\n\n"
+            "type Param struct {\n"
+            "\tKey string\n"
+            "}\n\n"
+            "type methodTree struct {\n"
+            "\troot *node\n"
+            "}\n\n"
+            "type nodeType uint8\n\n"
+            "type node struct {\n"
+            "\tpath string\n"
+            "\tchildren []*node\n"
+            "}\n\n"
+            "func (n *node) addChild(child *node) {}\n",
+            encoding="utf-8",
+        )
+
+        entry = helpers._concept_file_entry(
+            project_root=str(tmp_path),
+            rel_path="tree.go",
+            language="go",
+            symbols_json='{"symbols": [{"name": "addChild", "kind": "function", "line": 18}]}',
+            terms=["node", "type", "struct"],
+            max_matches=2,
+        )
+
+        assert entry is not None
+        assert any(match["text"] == "type node struct {" for match in entry["matches"])
+        assert entry["symbols"][0]["name"] == "node"
+        assert entry["symbols"][0]["kind"] == "type"
+        assert "children []*node" in entry["symbols"][0]["code"]
+
+    def test_concept_search_ranks_declaration_file_above_test_usage(self, tmp_path):
+        src = tmp_path / "tree.go"
+        test = tmp_path / "tree_test.go"
+        src.write_text(
+            "package gin\n\ntype node struct {\n\tpath string\n}\n",
+            encoding="utf-8",
+        )
+        test.write_text(
+            "package gin\n\nfunc checkRequests(t *testing.T, tree *node) {}\n",
+            encoding="utf-8",
+        )
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.execute(
+            """CREATE TABLE ast_index (
+                file_path TEXT,
+                language TEXT,
+                file_size INTEGER,
+                symbols_json TEXT
+            )"""
+        )
+        for path in (test, src):
+            conn.execute(
+                "INSERT INTO ast_index VALUES (?, ?, ?, ?)",
+                (
+                    path.name,
+                    "go",
+                    path.stat().st_size,
+                    '{"symbols": []}',
+                ),
+            )
+        cache = MagicMock()
+        cache._get_conn.return_value = conn
+
+        result = helpers.concept_search(
+            cache,
+            ["node", "type", "struct"],
+            [],
+            str(tmp_path),
+            max_files=2,
+        )
+
+        assert result[0]["file_path"] == "tree.go"
+        assert result[0]["symbols"][0]["name"] == "node"
+
+    def test_declaration_helpers_cover_invalid_lines_and_unclosed_blocks(self):
+        symbols = helpers._declaration_symbols_from_matches(
+            ["type node struct {}\n"],
+            [{"line": 0}, {"line": 2}, {"line": 1}],
+            ["node"],
+        )
+
+        assert [symbol["name"] for symbol in symbols] == ["node"]
+        assert helpers._declaration_symbol_from_line(
+            "class Router {}", 1, [], ["router"]
+        ) == {
+            "name": "Router",
+            "kind": "type",
+            "start_line": 1,
+            "end_line": 1,
+            "code": "class Router {}",
+        }
+        assert (
+            helpers._declaration_end_line(
+                ["type node struct {\n", "\tpath string\n"], 1
+            )
+            == 1
+        )
+
+    def test_dedupe_concept_symbols_skips_invalid_and_duplicates(self):
+        deduped = helpers._dedupe_concept_symbols(
+            [
+                {},
+                {"name": "node"},
+                {"name": "node", "start_line": 1},
+                {"name": "node", "start_line": 1},
+                {"name": "nodeValue", "start_line": 2},
+            ]
+        )
+
+        assert [symbol["name"] for symbol in deduped] == ["node", "nodeValue"]
 
     def test_nearby_symbols_skips_far_duplicates_and_caps_results(self):
         matches = [{"line": 50}]
