@@ -30,6 +30,8 @@ import pytest
 from tree_sitter_analyzer.core.request import AnalysisRequest
 from tree_sitter_analyzer.plugins.manager import PluginManager
 
+pytestmark = pytest.mark.full_language
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 EXAMPLES = PROJECT_ROOT / "examples"
 GOLDEN_DIR = PROJECT_ROOT / "tests" / "golden_masters" / "plugins"

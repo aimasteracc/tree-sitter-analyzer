@@ -1,0 +1,86 @@
+# CI routing rules. Keep this file simple: scripts/ci_route.py intentionally
+# supports only this small YAML subset so the route job can run before deps install.
+
+always:
+  run_quality: true
+  run_test_matrix: true
+  run_build: true
+  upload_coverage: true
+  full_language_once: true
+
+full_suite:
+  - ".github/workflows/ci.yml"
+  - ".github/workflows/reusable-test.yml"
+  - ".github/actions/**"
+  - "config/ci-routing.yml"
+  - "scripts/ci_route.py"
+  - "pyproject.toml"
+  - "uv.lock"
+  - "pytest.ini"
+  - "tests/conftest.py"
+  - "tests/unit/test_agent_contracts.py"
+
+routes:
+  run_e2e_smoke:
+    - "tree_sitter_analyzer/mcp/**"
+    - "tree_sitter_analyzer/cli/**"
+    - "tree_sitter_analyzer/cli_main.py"
+    - "tests/e2e/**"
+    - ".github/workflows/ci.yml"
+  run_regression:
+    - "tree_sitter_analyzer/api.py"
+    - "tree_sitter_analyzer/formatters/**"
+    - "tree_sitter_analyzer/models.py"
+    - "tests/regression/**"
+    - "tests/compatibility/**"
+    - "tests/golden_masters/**"
+    - ".github/workflows/regression-tests.yml"
+  run_sql_platform_compat:
+    - "tree_sitter_analyzer/languages/sql_plugin/**"
+    - "tree_sitter_analyzer/platform_compat/**"
+    - "tests/unit/languages/*sql*"
+    - "tests/platform_profiles/**"
+    - "examples/*.sql"
+    - ".github/workflows/sql-platform-compat.yml"
+  run_benchmarks:
+    - "benchmarks/**"
+    - "tests/benchmarks/**"
+    - "tree_sitter_analyzer/ast_cache.py"
+    - "tree_sitter_analyzer/mcp/tools/utils/search_cache.py"
+    - "tree_sitter_analyzer/mcp/tools/utils/change_impact_cached_graph.py"
+    - ".github/workflows/benchmarks.yml"
+  run_grammar_coverage:
+    - "pyproject.toml"
+    - "uv.lock"
+    - "tree_sitter_analyzer/grammar_coverage/**"
+    - "tree_sitter_analyzer/languages/**"
+    - ".github/workflows/grammar-coverage-guard.yml"
+
+scopes:
+  regression_scope:
+    default: "all"
+    values:
+      format:
+        - "tree_sitter_analyzer/formatters/**"
+        - "tests/regression/test_format_regression.py"
+      api:
+        - "tree_sitter_analyzer/api.py"
+        - "tests/regression/test_api_regression.py"
+      compatibility:
+        - "tests/compatibility/**"
+        - "pyproject.toml"
+        - "uv.lock"
+  benchmark_scope:
+    default: "all"
+    values:
+      query:
+        - "tests/benchmarks/test_query_performance.py"
+        - "tree_sitter_analyzer/mcp/tools/query_code_tool.py"
+      cache:
+        - "tree_sitter_analyzer/ast_cache.py"
+        - "tree_sitter_analyzer/mcp/tools/utils/search_cache.py"
+      analysis:
+        - "tests/benchmarks/test_large_file_performance.py"
+        - "tree_sitter_analyzer/core/**"
+      formatting:
+        - "tree_sitter_analyzer/formatters/**"

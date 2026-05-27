@@ -51,6 +51,11 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "performance: mark test as performance test")
     config.addinivalue_line("markers", "regression: mark test as regression test")
     config.addinivalue_line("markers", "property: mark test as property-based test")
+    config.addinivalue_line(
+        "markers",
+        "full_language: exhaustive all-language golden/regression tests; "
+        "CI runs these once on the Linux coverage axis",
+    )
     # Tests that legitimately need >SLOW_TEST_BUDGET_S of real wall time
     # (file watcher polling, large-fixture parsers, etc.) must opt out
     # explicitly. Without the marker the runtime gate below fails them.

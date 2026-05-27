@@ -24,6 +24,7 @@ jobs:
     with:
       python-version: "3.11"
       upload-coverage: false
+      matrix-profile: "full"
     secrets: inherit # pragma: allowlist secret
 
   build:
@@ -48,22 +49,22 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create Pull Request to main
-        uses: peter-evans/create-pull-request@v5
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          base: main
-          branch: hotfix-to-main
-          title: "🚨 Hotfix: ${{ github.ref_name }}"
-          body: |
-            ## 🚨 Emergency Hotfix: ${{ github.ref_name }}
-            This PR was automatically created to finalize an emergency fix.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh pr create \
+            --base main \
+            --head "${GITHUB_REF_NAME}" \
+            --title "🚨 Hotfix: ${GITHUB_REF_NAME}" \
+            --body "## 🚨 Emergency Hotfix: ${GITHUB_REF_NAME}
+          This PR was automatically created to finalize an emergency fix.
 
-            ### 🐛 Fix Details
-            - **Branch**: ${{ github.ref_name }}
-            - **Status**: **Published to PyPI**
-            - **Action Required**: Merge immediately to main.
+          ### 🐛 Fix Details
+          - **Branch**: ${GITHUB_REF_NAME}
+          - **Status**: **Published to PyPI**
+          - **Action Required**: Merge immediately to main.
 
-            ---
-            *Authoritative CI/CD Pipeline*
-          delete-branch: true
-          commit-message: "fix: Hotfix ${{ github.ref_name }} to main"
+          ---
+          *Authoritative CI/CD Pipeline*" \
+            || gh pr view "${GITHUB_REF_NAME}" --json url --jq '.url'

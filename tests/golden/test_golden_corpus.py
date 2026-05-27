@@ -38,6 +38,8 @@ import pytest
 
 from tree_sitter_analyzer import api
 
+pytestmark = pytest.mark.full_language
+
 
 class TestGoldenCorpus:
     """Golden corpus tests for all supported languages"""

@@ -32,46 +32,53 @@ jobs:
           violation=""
 
           # Dependabot / Renovate / GitHub auto-PRs use bot-namespaced
-          # heads — allow through to keep automation working.
+          # heads. They may target develop, but main still only accepts
+          # release/v* or hotfix/* so automation cannot bypass GitFlow.
           case "${HEAD}" in
             dependabot/*|renovate/*|github-actions/*)
-              echo "ℹ️  Bot PR detected — skipping GitFlow head naming check."
-              exit 0
+              if [ "${BASE}" = "main" ]; then
+                violation="Bot PRs to main MUST come from release/v* or hotfix/* (got: ${HEAD})."
+              else
+                echo "ℹ️  Bot PR detected for ${BASE} — skipping head naming check."
+                exit 0
+              fi
               ;;
           esac
 
-          case "${BASE}" in
-            main)
-              # PRs to main MUST come from release/v* or hotfix/*.
-              # See GITFLOW.md §2 (Release Process) and §3 (Hotfix Process).
-              case "${HEAD}" in
-                release/v*|hotfix/*)
-                  echo "✅ ${HEAD} → main allowed (release/hotfix flow)."
-                  ;;
-                *)
-                  violation="PR to main MUST come from release/v* or hotfix/* (got: ${HEAD})."
-                  ;;
-              esac
-              ;;
-            develop)
-              # PRs to develop MUST come from feature/*, release/v*,
-              # hotfix/*, chore/*, docs/*, test/*, or fix/*.
-              case "${HEAD}" in
-                feature/*|release/v*|hotfix/*|chore/*|docs/*|test/*|fix/*|refactor/*|perf/*|ci/*)
-                  echo "✅ ${HEAD} → develop allowed (feature/integration flow)."
-                  ;;
-                *)
-                  violation="PR to develop must use a GitFlow-compatible branch name (feature/* | chore/* | docs/* | test/* | fix/* | refactor/* | perf/* | ci/*). Got: ${HEAD}."
-                  ;;
-              esac
-              ;;
-            *)
-              # PRs targeting any other base (long-lived branches, etc.)
-              # are out of scope for this guard. Repo owners can extend
-              # this case block as new bases get introduced.
-              echo "ℹ️  Base ${BASE} not covered by GITFLOW guard — passing through."
-              ;;
-          esac
+          if [ -z "${violation}" ]; then
+            case "${BASE}" in
+              main)
+                # PRs to main MUST come from release/v* or hotfix/*.
+                # See GITFLOW.md §2 (Release Process) and §3 (Hotfix Process).
+                case "${HEAD}" in
+                  release/v*|hotfix/*)
+                    echo "✅ ${HEAD} → main allowed (release/hotfix flow)."
+                    ;;
+                  *)
+                    violation="PR to main MUST come from release/v* or hotfix/* (got: ${HEAD})."
+                    ;;
+                esac
+                ;;
+              develop)
+                # PRs to develop MUST come from feature/*, release/v*,
+                # hotfix/*, chore/*, docs/*, test/*, or fix/*.
+                case "${HEAD}" in
+                  feature/*|release/v*|hotfix/*|chore/*|docs/*|test/*|fix/*|refactor/*|perf/*|ci/*)
+                    echo "✅ ${HEAD} → develop allowed (feature/integration flow)."
+                    ;;
+                  *)
+                    violation="PR to develop must use a GitFlow-compatible branch name (feature/* | chore/* | docs/* | test/* | fix/* | refactor/* | perf/* | ci/*). Got: ${HEAD}."
+                    ;;
+                esac
+                ;;
+              *)
+                # PRs targeting any other base (long-lived branches, etc.)
+                # are out of scope for this guard. Repo owners can extend
+                # this case block as new bases get introduced.
+                echo "ℹ️  Base ${BASE} not covered by GITFlow guard — passing through."
+                ;;
+            esac
+          fi
 
           if [ -n "${violation}" ]; then
             echo "::error::${violation}"

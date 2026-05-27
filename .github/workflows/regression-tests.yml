@@ -1,7 +1,7 @@
 # Regression Tests Workflow
 #
 # Purpose: Run regression tests to ensure backward compatibility and Golden Master validation
-# Triggers: Pull requests, push to main/develop branches, manual dispatch
+# Triggers: Called by CI route, plus manual dispatch
 # Jobs:
 #   - regression-tests: Run all regression tests including Golden Master validation
 #   - golden-master-update: Allow manual Golden Master updates (manual trigger only)
@@ -9,10 +9,13 @@
 name: Regression Tests
 
 on:
-  pull_request:
-    branches: [main, develop]
-  push:
-    branches: [main, develop]
+  workflow_call:
+    inputs:
+      test-scope:
+        description: 'Test scope'
+        required: false
+        default: 'all'
+        type: string
   workflow_dispatch:
     inputs:
       update-golden-masters:

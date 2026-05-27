@@ -29,6 +29,7 @@ jobs:
     with:
       python-version: "3.11"
       upload-coverage: true
+      matrix-profile: "full"
     secrets: inherit # pragma: allowlist secret
 
   build:
@@ -53,27 +54,27 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create Pull Request to main
-        uses: peter-evans/create-pull-request@v5
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          base: main
-          branch: release-to-main
-          title: "🚀 Release to Main: ${{ github.ref_name }}"
-          body: |
-            ## 🚀 Automated Production Release
-            This PR marks the completion of the release cycle for **${{ github.ref_name }}**.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh pr create \
+            --base main \
+            --head "${GITHUB_REF_NAME}" \
+            --title "🚀 Release to Main: ${GITHUB_REF_NAME}" \
+            --body "## 🚀 Automated Production Release
+          This PR marks the completion of the release cycle for **${GITHUB_REF_NAME}**.
 
-            ### ✅ Achievements
-            - All quality standards met
-            - Cross-platform tests passed
-            - **Package successfully published to PyPI**
+          ### ✅ Achievements
+          - All quality standards met
+          - Cross-platform tests passed
+          - **Package successfully published to PyPI**
 
-            ### 📦 Release Status
-            - **Version**: ${{ github.ref_name }}
-            - **Environment**: Production
-            - **Deployment**: Completed
+          ### 📦 Release Status
+          - **Version**: ${GITHUB_REF_NAME}
+          - **Environment**: Production
+          - **Deployment**: Completed
 
-            ---
-            *Authoritative CI/CD Pipeline*
-          delete-branch: true
-          commit-message: "chore: Release ${{ github.ref_name }} to main"
+          ---
+          *Authoritative CI/CD Pipeline*" \
+            || gh pr view "${GITHUB_REF_NAME}" --json url --jq '.url'

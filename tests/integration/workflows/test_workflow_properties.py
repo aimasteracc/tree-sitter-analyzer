@@ -84,9 +84,25 @@ class TestWorkflowProperties:
         """Extract test matrix configuration from workflow."""
         jobs = workflow.get("jobs", {})
 
-        for _job_id, job in jobs.items():
+        preferred_jobs = [
+            jobs[name]
+            for name in ("test-matrix-full", "test-matrix-pr")
+            if name in jobs
+        ]
+        scan_jobs = preferred_jobs or list(jobs.values())
+
+        for job in scan_jobs:
             if "strategy" in job and "matrix" in job["strategy"]:
                 matrix = job["strategy"]["matrix"]
+                if "include" in matrix:
+                    entries = matrix.get("include", [])
+                    return {
+                        "os": [entry.get("os") for entry in entries],
+                        "python_versions": [
+                            entry.get("python-version") for entry in entries
+                        ],
+                        "exclude": [],
+                    }
                 return {
                     "os": matrix.get("os", []),
                     "python_versions": matrix.get("python-version", []),
@@ -185,10 +201,14 @@ class TestWorkflowProperties:
         test_coverage_workflow: dict[str, Any],
     ):
         """Property 12: CI should not leave xdist auto at the 2-core runner floor."""
-        reusable_env = reusable_test_workflow["jobs"]["test-matrix"].get("env", {})
+        test_jobs = [
+            job
+            for name, job in reusable_test_workflow["jobs"].items()
+            if name.startswith("test-matrix")
+        ]
         coverage_env = test_coverage_workflow.get("env", {})
 
-        for env in (reusable_env, coverage_env):
+        for env in [job.get("env", {}) for job in test_jobs] + [coverage_env]:
             workers = int(str(env.get("PYTEST_XDIST_AUTO_NUM_WORKERS", "0")))
             assert workers >= 4
 
