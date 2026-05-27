@@ -3,7 +3,7 @@
 **English** | **[日本語](README_ja.md)** | **[简体中文](README_zh.md)**
 
 > **The MCP code-intelligence server for AI agents — fewer tokens, fewer tool calls, 100 % local.**
-> Pre-indexed AST cache + 58 MCP tools + 13 curated agent skills + TOON-compressed output.
+> Pre-indexed AST cache + 59 MCP tools + 13 curated agent skills + TOON-compressed output.
 > Beats CodeGraph on 6-repo head-to-head median (**−11 % cost vs CodeGraph's −4 %**), with a strict CLI superset.
 
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
@@ -104,9 +104,9 @@ CodeGraph has zero skills. We ship 13 under `.claude/skills/tsa-*/`:
 
 `tsa-landing`, `tsa-find`, `tsa-graph`, `tsa-structure`, `tsa-deps`, `tsa-index`, `tsa-health-watch`, `tsa-edit-safety`, `tsa-edit-then-verify`, `tsa-constraints`, `tsa-pr-review`, `tsa-refactor-queue`, `tsa-temporal`.
 
-Each skill ships an `allowed-tools` subset + procedure recipe + decision-surface schema, so the agent doesn't have to triage 58 tools on every question.
+Each skill ships an `allowed-tools` subset + procedure recipe + decision-surface schema, so the agent doesn't have to triage 59 tools on every question.
 
-### 237 CLI flags
+### 244 CLI flags
 
 Strict superset of CodeGraph's 15-command CLI. Highlights:
 
@@ -179,7 +179,7 @@ Source code → tree-sitter parse → SQLite + FTS5 index (.ast-cache/index.db)
                               MCP client / CLI consumer
 ```
 
-The index is built lazily on first query, refreshed on file change via a content-hash diff (`codegraph_incremental_sync`). All 58 tools read from the same `.ast-cache/`, so a query and its follow-up share work.
+The index is built lazily on first query, refreshed on file change via a content-hash diff (`codegraph_incremental_sync`). All 59 tools read from the same `.ast-cache/`, so a query and its follow-up share work.
 
 ---
 

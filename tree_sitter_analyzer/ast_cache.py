@@ -23,6 +23,8 @@ from .project_graph import _language_from_ext
 
 logger = logging.getLogger(__name__)
 
+_AST_CACHE_EXTRACTOR_VERSION = 2
+
 _SCHEMA_V1 = """
 CREATE TABLE IF NOT EXISTS ast_index (
     file_path    TEXT NOT NULL,
@@ -30,6 +32,7 @@ CREATE TABLE IF NOT EXISTS ast_index (
     language     TEXT NOT NULL,
     mtime_ns     INTEGER NOT NULL,
     file_size    INTEGER NOT NULL,
+    extractor_version INTEGER NOT NULL DEFAULT 0,
     symbols_json TEXT NOT NULL DEFAULT '{}',
     imports_json TEXT NOT NULL DEFAULT '[]',
     structure_json TEXT NOT NULL DEFAULT '{}',
@@ -196,6 +199,38 @@ CREATE INDEX IF NOT EXISTS idx_cv_severity
 """
 
 
+# Large-repo hot-path indexes. These are deliberately versionless and
+# idempotent: adding an index does not change row shape, but existing caches
+# still need to pick it up when opened after an upgrade.
+_LARGE_REPO_INDEXES: tuple[tuple[str, str], ...] = (
+    (
+        "ast_symbol_rows",
+        "CREATE INDEX IF NOT EXISTS idx_sym_rows_name_kind_path_line "
+        "ON ast_symbol_rows(name, kind, file_path, line)",
+    ),
+    (
+        "ast_symbol_rows",
+        "CREATE INDEX IF NOT EXISTS idx_sym_rows_file_name_kind_line "
+        "ON ast_symbol_rows(file_path, name, kind, line)",
+    ),
+    (
+        "ast_call_edges",
+        "CREATE INDEX IF NOT EXISTS idx_ce_callee_name_resolved_file "
+        "ON ast_call_edges(callee_name, callee_resolved_file)",
+    ),
+    (
+        "ast_call_edges",
+        "CREATE INDEX IF NOT EXISTS idx_ce_callee_name_file_path "
+        "ON ast_call_edges(callee_name, file_path)",
+    ),
+    (
+        "ast_call_edges",
+        "CREATE INDEX IF NOT EXISTS idx_ce_caller_name_file "
+        "ON ast_call_edges(caller_name, caller_file)",
+    ),
+)
+
+
 # Schema-version registry — the "did every migration block actually apply?"
 # self-check. Earlier this sprint a parallel agent edit clobbered V4's two
 # ALTER TABLE statements down to one, and nothing detected it until a
@@ -258,6 +293,13 @@ _EXPECTED_SCHEMA_VERSIONS: list[tuple[int, str, dict[str, list[str]]]] = [
             "tables": ["ast_constraint_violations"],
         },
     ),
+    (
+        7,
+        "Extractor version invalidation",
+        {
+            "ast_index_columns": ["extractor_version"],
+        },
+    ),
 ]
 
 
@@ -286,6 +328,20 @@ from ._ast_extraction import (  # noqa: E402
 
 # Back-compat alias imported by file_watcher.py and incremental_sync.py.
 from ._lang_extension_map import EXT_TO_LANG as _EXT_TO_LANG  # noqa: E402
+
+
+def _project_index_activation_enabled(include_activation: bool | None) -> bool:
+    """Return whether project-wide indexing should compute git activation.
+
+    Full-project indexing is the warm-cache path used by agents. It must be
+    fast and predictable on large repos, so activation is opt-in there. The
+    existing ``TSA_INDEX_ACTIVATION=1`` escape hatch keeps the richer path
+    available without adding per-file git subprocess cost by default.
+    """
+    if include_activation is not None:
+        return bool(include_activation)
+    value = os.environ.get("TSA_INDEX_ACTIVATION", "")
+    return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
 class ASTCache:
@@ -425,11 +481,44 @@ class ASTCache:
                 conn.commit()
             except sqlite3.OperationalError:
                 pass
+        # V7 records which extraction algorithm produced the serialized
+        # per-file rows. Bump ``_AST_CACHE_EXTRACTOR_VERSION`` whenever
+        # symbols/imports/structure/call_edges change semantics so existing
+        # caches are re-parsed instead of serving stale graph answers.
+        if 7 not in applied_versions:
+            try:
+                index_cols = {
+                    r[1] for r in conn.execute("PRAGMA table_info(ast_index)")
+                }
+                if "extractor_version" not in index_cols:
+                    conn.execute(
+                        "ALTER TABLE ast_index "
+                        "ADD COLUMN extractor_version INTEGER NOT NULL DEFAULT 0"
+                    )
+                self._record_schema_version(conn, 7, "Extractor version invalidation")
+                conn.commit()
+            except sqlite3.OperationalError:
+                pass
+        self._ensure_large_repo_indexes(conn)
         conn.commit()
         # Post-init self-check — raise SchemaIntegrityError if any
         # expected table / column is missing. Backfills the version
         # registry for legacy DBs that pre-date this code.
         self._verify_schema_integrity(conn)
+
+    @staticmethod
+    def _ensure_large_repo_indexes(conn: sqlite3.Connection) -> None:
+        """Create non-shape-changing indexes for large-repo query hot paths."""
+        for table_name, sql in _LARGE_REPO_INDEXES:
+            try:
+                exists = conn.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+                    (table_name,),
+                ).fetchone()
+                if exists:
+                    conn.execute(sql)
+            except sqlite3.OperationalError:
+                logger.debug("Skipping optional index for table %s", table_name)
 
     @staticmethod
     def _already_applied_versions(conn: sqlite3.Connection) -> set[int]:
@@ -590,13 +679,15 @@ class ASTCache:
         source_code: str | None = None
         conn = self._get_conn()
         row = conn.execute(
-            "SELECT content_hash, mtime_ns, file_size FROM ast_index WHERE file_path = ?",
+            "SELECT content_hash, mtime_ns, file_size, extractor_version "
+            "FROM ast_index WHERE file_path = ?",
             (rel_path,),
         ).fetchone()
         if row is not None:
             if (
                 row["mtime_ns"] == int(stat.st_mtime_ns)
                 and row["file_size"] == stat.st_size
+                and row["extractor_version"] >= _AST_CACHE_EXTRACTOR_VERSION
             ):
                 return {"file": rel_path, "status": "cached", "reason": "unchanged"}
 
@@ -608,7 +699,11 @@ class ASTCache:
 
         content_hash = _content_hash(source_code)
 
-        if row is not None and row["content_hash"] == content_hash:
+        if (
+            row is not None
+            and row["content_hash"] == content_hash
+            and row["extractor_version"] >= _AST_CACHE_EXTRACTOR_VERSION
+        ):
             conn.execute(
                 "UPDATE ast_index SET mtime_ns = ?, file_size = ? WHERE file_path = ?",
                 (int(stat.st_mtime_ns), stat.st_size, rel_path),
@@ -633,14 +728,16 @@ class ASTCache:
         conn.execute(
             """INSERT OR REPLACE INTO ast_index
                (file_path, content_hash, language, mtime_ns, file_size,
-                symbols_json, imports_json, structure_json, indexed_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                extractor_version, symbols_json, imports_json, structure_json,
+                indexed_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 rel_path,
                 content_hash,
                 language,
                 int(stat.st_mtime_ns),
                 stat.st_size,
+                _AST_CACHE_EXTRACTOR_VERSION,
                 json.dumps(symbols, ensure_ascii=False),
                 json.dumps(imports, ensure_ascii=False),
                 json.dumps(structure, ensure_ascii=False),
@@ -1014,11 +1111,12 @@ class ASTCache:
 
     def index_project(
         self,
-        max_files: int = 5000,
+        max_files: int = 20_000,
         force: bool = False,
         *,
         workers: int | None = None,
         resolve_only: bool = False,
+        include_activation: bool | None = None,
     ) -> dict[str, Any]:
         """Index every source file under ``self.project_root``.
 
@@ -1042,7 +1140,15 @@ class ASTCache:
           ``ast_index`` / ``ast_symbol_rows`` / ``ast_imports``. This is
           the cheap path agents call after a schema bump or policy
           change — no tree-sitter, no IO, just a SQL pass.
+
+        ``include_activation``:
+          Project-wide indexing defaults to the fast warm-cache path:
+          temporal git activation is skipped unless this is explicitly
+          ``True`` or ``TSA_INDEX_ACTIVATION=1`` is set. Single-file
+          ``index_file`` keeps the historical default because its cost is
+          bounded to one file.
         """
+        activation_enabled = _project_index_activation_enabled(include_activation)
         if resolve_only:
             # Cheap path: re-run the resolver against the data already
             # in the cache. No walk, no parse, no FTS5 rewrite. The
@@ -1058,6 +1164,7 @@ class ASTCache:
                 "skipped": 0,
                 "files": [],
                 "synapse_backfill": updated,
+                "activation_enabled": activation_enabled,
             }
 
         if force:
@@ -1087,6 +1194,7 @@ class ASTCache:
             "errors": 0,
             "skipped": 0,
             "files": [],
+            "activation_enabled": activation_enabled,
         }
         count = 0
         conn = self._get_conn()
@@ -1108,13 +1216,15 @@ class ASTCache:
                 )
                 continue
             row = conn.execute(
-                "SELECT mtime_ns, file_size FROM ast_index WHERE file_path = ?",
+                "SELECT mtime_ns, file_size, extractor_version "
+                "FROM ast_index WHERE file_path = ?",
                 (rel_path,),
             ).fetchone()
             if (
                 row is not None
                 and row["mtime_ns"] == int(stat.st_mtime_ns)
                 and row["file_size"] == stat.st_size
+                and row["extractor_version"] >= _AST_CACHE_EXTRACTOR_VERSION
             ):
                 already_cached.append(
                     {"file": rel_path, "status": "cached", "reason": "unchanged"}
@@ -1173,7 +1283,11 @@ class ASTCache:
                         }
                     )
                     continue
-                self._insert_index_row(r, indexed_at)
+                self._insert_index_row(
+                    r,
+                    indexed_at,
+                    include_activation=activation_enabled,
+                )
                 stats["indexed"] += 1
                 stats["files"].append(
                     {
@@ -1223,7 +1337,13 @@ class ASTCache:
                 results.append(r)
         return results
 
-    def _insert_index_row(self, r: dict[str, Any], indexed_at: str) -> None:
+    def _insert_index_row(
+        self,
+        r: dict[str, Any],
+        indexed_at: str,
+        *,
+        include_activation: bool = True,
+    ) -> None:
         """Write one worker result to SQLite (main table + optional FTS5).
 
         Workers DO NOT run git themselves — only this writer thread does,
@@ -1235,14 +1355,16 @@ class ASTCache:
         conn.execute(
             """INSERT OR REPLACE INTO ast_index
                (file_path, content_hash, language, mtime_ns, file_size,
-                symbols_json, imports_json, structure_json, indexed_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                extractor_version, symbols_json, imports_json, structure_json,
+                indexed_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 rel_path,
                 r["content_hash"],
                 r["language"],
                 r["mtime_ns"],
                 r["file_size"],
+                _AST_CACHE_EXTRACTOR_VERSION,
                 r["symbols_json"],
                 r["imports_json"],
                 r["structure_json"],
@@ -1313,12 +1435,26 @@ class ASTCache:
         # Feature 2 (Temporal Activation): only this writer thread runs
         # git. Workers stay focused on parse + extract; subprocess in a
         # multiprocess pool would deadlock against git's index lock.
-        self._write_activation_for_file(conn, rel_path, inserted_symbol_rows)
+        if include_activation:
+            self._write_activation_for_file(conn, rel_path, inserted_symbol_rows)
+        else:
+            self._clear_activation_for_file(conn, rel_path)
 
         # NOTE: Synapse resolver pass is NOT run per-file in the parallel
         # writer. The whole-project resolver pass at the end of
         # ``index_project`` does it once with the full context, which is
         # both correct (sees every file's symbols + imports) and cheap.
+
+    @staticmethod
+    def _clear_activation_for_file(conn: sqlite3.Connection, rel_path: str) -> None:
+        """Drop stale activation rows when project indexing runs in fast mode."""
+        try:
+            conn.execute(
+                "DELETE FROM ast_symbol_activation WHERE file_path = ?",
+                (rel_path,),
+            )
+        except sqlite3.OperationalError:
+            pass
 
     def lookup(self, file_path: str) -> dict[str, Any] | None:
         try:
@@ -1437,10 +1573,19 @@ class ASTCache:
         by_lang = conn.execute(
             "SELECT language, COUNT(*) as c FROM ast_index GROUP BY language ORDER BY c DESC"
         ).fetchall()
-        total_symbols = 0
-        for row in conn.execute("SELECT symbols_json FROM ast_index").fetchall():
-            syms = json.loads(row["symbols_json"])
-            total_symbols += len(syms.get("symbols", []))
+        total_symbols: int | None = None
+        if self._fts5_available:
+            try:
+                total_symbols = conn.execute(
+                    "SELECT COUNT(*) as c FROM ast_symbol_rows"
+                ).fetchone()["c"]
+            except sqlite3.OperationalError:
+                total_symbols = None
+        if total_symbols is None:
+            total_symbols = 0
+            for row in conn.execute("SELECT symbols_json FROM ast_index").fetchall():
+                syms = json.loads(row["symbols_json"])
+                total_symbols += len(syms.get("symbols", []))
         stats: dict[str, Any] = {
             "total_files": total,
             "total_symbols": total_symbols,
@@ -1450,10 +1595,7 @@ class ASTCache:
         }
         if self._fts5_available:
             try:
-                fts_count = conn.execute(
-                    "SELECT COUNT(*) as c FROM ast_symbol_rows"
-                ).fetchone()["c"]
-                stats["fts_indexed_symbols"] = fts_count
+                stats["fts_indexed_symbols"] = total_symbols
             except sqlite3.OperationalError:
                 pass
         return stats
@@ -1591,25 +1733,30 @@ class ASTCache:
             if current_file:
                 rows = conn.execute(
                     "SELECT caller_name, caller_file, caller_line, "
-                    "callee_name, file_path, callee_line, callee_resolved_file "
+                    "callee_name, callee_full, file_path, callee_line, "
+                    "callee_resolved_file "
                     "FROM ast_call_edges "
-                    "WHERE callee_name = ? AND callee_resolved_file = ?",
-                    (current_name, current_file),
+                    "WHERE (callee_name = ? OR callee_full = ?) "
+                    "AND callee_resolved_file = ?",
+                    (current_name, current_name, current_file),
                 ).fetchall()
                 if not rows:
                     rows = conn.execute(
                         "SELECT caller_name, caller_file, caller_line, "
-                        "callee_name, file_path, callee_line, callee_resolved_file "
+                        "callee_name, callee_full, file_path, callee_line, "
+                        "callee_resolved_file "
                         "FROM ast_call_edges "
-                        "WHERE callee_name = ? AND file_path = ?",
-                        (current_name, current_file),
+                        "WHERE (callee_name = ? OR callee_full = ?) "
+                        "AND file_path = ?",
+                        (current_name, current_name, current_file),
                     ).fetchall()
             else:
                 rows = conn.execute(
                     "SELECT caller_name, caller_file, caller_line, "
-                    "callee_name, file_path, callee_line, callee_resolved_file "
-                    "FROM ast_call_edges WHERE callee_name = ?",
-                    (current_name,),
+                    "callee_name, callee_full, file_path, callee_line, "
+                    "callee_resolved_file "
+                    "FROM ast_call_edges WHERE callee_name = ? OR callee_full = ?",
+                    (current_name, current_name),
                 ).fetchall()
             for row in rows:
                 key = f"{row['caller_file']}:{row['caller_name']}:{row['caller_line']}"
@@ -1622,6 +1769,7 @@ class ASTCache:
                     "caller_file": row["caller_file"],
                     "caller_line": row["caller_line"],
                     "callee_name": row["callee_name"],
+                    "callee_full": row["callee_full"],
                     "callee_file": callee_file_val,
                     "callee_line": row["callee_line"],
                     "depth": depth + 1,
@@ -1694,6 +1842,7 @@ class ASTCache:
                     "caller_file": row["caller_file"],
                     "caller_line": row["caller_line"],
                     "callee_name": row["callee_name"],
+                    "callee_full": row["callee_full"],
                     "callee_file": callee_file_val,
                     "callee_line": row["callee_line"],
                     "depth": depth + 1,

@@ -11,6 +11,7 @@ Key classes:
 - FunctionRef: Qualified function reference (file, name, line, language)
 """
 
+import os
 from collections import defaultdict, deque
 from pathlib import Path
 from typing import Any
@@ -209,8 +210,12 @@ def _get_func_name(node: Any, language: str) -> str | None:
                         text.decode("utf-8") if isinstance(text, bytes) else str(text)
                     )
         elif language == "go":
+            name_node = node.child_by_field_name("name")
+            if name_node is not None:
+                text = name_node.text
+                return text.decode("utf-8") if isinstance(text, bytes) else str(text)
             for child in node.children:
-                if child.type == "identifier":
+                if child.type in ("identifier", "field_identifier"):
                     text = child.text
                     return (
                         text.decode("utf-8") if isinstance(text, bytes) else str(text)
@@ -451,11 +456,7 @@ class CallGraph:
             ".cxx",
         }
 
-        all_files: list[Path] = []
-        for ext in supported_exts:
-            for f in self.project_root.rglob(f"*{ext}"):
-                if not self._is_excluded(f):
-                    all_files.append(f)
+        all_files = self._iter_source_files(supported_exts)
 
         rel_to_abs: dict[str, str] = {}
         for f in all_files:
@@ -535,7 +536,27 @@ class CallGraph:
         self._built = True
 
     def _is_excluded(self, path: Path) -> bool:
-        return any(part in _EXCLUDE_DIRS for part in path.parts)
+        try:
+            rel_parts = path.relative_to(self.project_root).parts
+        except ValueError:
+            rel_parts = path.parts
+        return any(part in _EXCLUDE_DIRS or part.startswith(".") for part in rel_parts)
+
+    def _iter_source_files(self, supported_exts: set[str]) -> list[Path]:
+        """Return source files while pruning generated and hidden work dirs."""
+        files: list[Path] = []
+        for root, dirs, names in os.walk(self.project_root):
+            dirs[:] = [
+                name
+                for name in dirs
+                if name not in _EXCLUDE_DIRS and not name.startswith(".")
+            ]
+            for name in names:
+                if name.startswith("."):
+                    continue
+                if Path(name).suffix.lower() in supported_exts:
+                    files.append(Path(root) / name)
+        return files
 
     def _collect_import_map(
         self,

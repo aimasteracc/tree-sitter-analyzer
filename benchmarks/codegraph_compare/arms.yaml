@@ -1,0 +1,20 @@
+arms:
+  - id: native-only
+    adapter: native
+    index_mode: none
+
+  - id: codegraph-warm
+    adapter: codegraph
+    index_mode: warm
+
+  - id: tsa-warm
+    adapter: tree_sitter_analyzer
+    index_mode: warm
+
+  - id: codegraph-cold
+    adapter: codegraph
+    index_mode: cold
+
+  - id: tsa-cold
+    adapter: tree_sitter_analyzer
+    index_mode: cold

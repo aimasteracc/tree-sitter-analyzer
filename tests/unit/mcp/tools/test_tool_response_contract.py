@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -73,6 +74,77 @@ class TestEnvelopeSuccess:
         tool = ASTCacheTool(str(tiny_project))
         result = _run(tool.execute({"mode": "stats"}))
         validate_tool_response(result, "ast_cache:stats")
+
+    def test_codegraph_metrics_call_graph_is_read_only_on_cold_cache(
+        self, tiny_project: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from tree_sitter_analyzer.mcp.tools import codegraph_metrics_tool
+        from tree_sitter_analyzer.mcp.tools.codegraph_metrics_tool import (
+            CodeGraphMetricsTool,
+        )
+
+        monkeypatch.setattr(
+            codegraph_metrics_tool, "ensure_indexed", lambda *_, **__: None
+        )
+
+        tool = CodeGraphMetricsTool(str(tiny_project))
+        result = _run(
+            tool.execute({"sections": ["call_graph"], "output_format": "json"})
+        )
+
+        validate_tool_response(result, "codegraph_metrics")
+        assert result["success"] is True
+        assert result["call_graph"]["status"] == "empty"
+        assert result["call_graph"]["data_source"] == "none"
+
+    def test_codegraph_metrics_call_graph_uses_cached_graph(
+        self, tiny_project: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from tree_sitter_analyzer import call_graph
+        from tree_sitter_analyzer.mcp.tools import codegraph_metrics_tool
+        from tree_sitter_analyzer.mcp.tools.codegraph_metrics_tool import (
+            CodeGraphMetricsTool,
+        )
+
+        fake_cache = object()
+        monkeypatch.setattr(
+            codegraph_metrics_tool, "ensure_indexed", lambda *_, **__: fake_cache
+        )
+
+        class FakeCachedCallGraph:
+            def __init__(self, project_root: str, cache: object) -> None:
+                assert project_root == str(tiny_project)
+                assert cache is fake_cache
+                self._call_edges = [
+                    (
+                        SimpleNamespace(file_path="main.py", name="entry"),
+                        SimpleNamespace(file_path="main.py", name="helper"),
+                        2,
+                    )
+                ]
+
+            def build(self) -> None:
+                self.built = True
+
+            def all_functions(self) -> list[dict[str, str]]:
+                return [
+                    {"file_path": "main.py", "name": "entry"},
+                    {"file_path": "main.py", "name": "helper"},
+                ]
+
+        monkeypatch.setattr(call_graph, "CachedCallGraph", FakeCachedCallGraph)
+
+        tool = CodeGraphMetricsTool(str(tiny_project))
+        result = _run(
+            tool.execute({"sections": ["call_graph"], "output_format": "json"})
+        )
+
+        validate_tool_response(result, "codegraph_metrics")
+        assert result["success"] is True
+        assert result["call_graph"]["status"] == "computed"
+        assert result["call_graph"]["total_functions"] == 2
+        assert result["call_graph"]["total_call_edges"] == 1
+        assert result["call_graph"]["data_source"] == "ast_cache"
 
 
 class TestEnvelopeFailure:
@@ -264,6 +336,7 @@ class TestExecuteAcrossAllTools:
             "codegraph_incremental_sync": {"mode": "status"},
             "codegraph_status": {},
             "codegraph_explore": {"query": "greet"},
+            "codegraph_query": {"query": "search('greet').explore()"},
             # consolidated-only tools ported during merge of feat/autonomous-dev
             "trace_impact": {"symbol": "greet", "mode": "callers"},
             "modification_guard": {"file_path": sample_file, "symbol": "greet"},

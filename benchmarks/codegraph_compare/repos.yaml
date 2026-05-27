@@ -1,0 +1,49 @@
+repos:
+  - id: vscode
+    name: VS Code
+    language: TypeScript
+    url: https://github.com/microsoft/vscode
+    commit: "0e3051a9669d4b829aec4f16e8d4d17adec8fb28"  # pragma: allowlist secret
+    approx_files: 10000
+
+  - id: excalidraw
+    name: Excalidraw
+    language: TypeScript
+    url: https://github.com/excalidraw/excalidraw
+    commit: "c08be69618dcac9386817bced03d2d79883e50b6"  # pragma: allowlist secret
+    approx_files: 800
+
+  - id: django
+    name: Django
+    language: Python
+    url: https://github.com/django/django
+    commit: "0a2bc6d88ffd7918ca9bbe039ec2f4ed7dd639c9"  # pragma: allowlist secret
+    approx_files: 5000
+
+  - id: tokio
+    name: Tokio
+    language: Rust
+    url: https://github.com/tokio-rs/tokio
+    commit: "32312ae0d6f0b1c6457f1323e3e7f568f448d0db"  # pragma: allowlist secret
+    approx_files: 800
+
+  - id: okhttp
+    name: OkHttp
+    language: Java
+    url: https://github.com/square/okhttp
+    commit: "cfc45a3f146d2389797a3d51d405e9118bed56c9"  # pragma: allowlist secret
+    approx_files: 600
+
+  - id: gin
+    name: Gin
+    language: Go
+    url: https://github.com/gin-gonic/gin
+    commit: "5f4f9643258dc2a65e684b63f12c8d543c936c67"  # pragma: allowlist secret
+    approx_files: 200
+
+  - id: alamofire
+    name: Alamofire
+    language: Swift
+    url: https://github.com/Alamofire/Alamofire
+    commit: "7595cbcf59809f9977c5f6378500de2ad73b7ddb"  # pragma: allowlist secret
+    approx_files: 150

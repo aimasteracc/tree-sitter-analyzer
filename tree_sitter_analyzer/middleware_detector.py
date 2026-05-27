@@ -171,7 +171,7 @@ class MiddlewareDetector:
             with it:
                 for entry in it:
                     name = entry.name
-                    if name in _EXCLUDE_DIRS:
+                    if name in _EXCLUDE_DIRS or name.startswith("."):
                         continue
                     if entry.is_dir(follow_symlinks=False):
                         stack.append(entry.path)

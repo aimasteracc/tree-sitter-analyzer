@@ -189,6 +189,52 @@ def test_execute_supports_agent_summary_only(monkeypatch):
     assert "test_mapping" not in result
 
 
+def test_execute_test_only_diff_skips_expensive_analysis(monkeypatch):
+    """Changed test files are exact targets; no graph/cache walk is needed."""
+    monkeypatch.setattr(
+        tool_module,
+        "_get_changed_files",
+        lambda mode, project_root, scope_paths=None: ["tests/unit/test_fast.py"],
+    )
+    monkeypatch.setattr(
+        tool_module,
+        "_get_diff_stat",
+        lambda mode, project_root, scope_paths=None: "tests/unit/test_fast.py | 1 +",
+    )
+
+    def fail_expensive_path(*args, **kwargs):
+        raise AssertionError("test-only change-impact should not scan the project")
+
+    monkeypatch.setattr(
+        change_impact_tool, "_load_dependency_graph", fail_expensive_path
+    )
+    monkeypatch.setattr(change_impact_tool, "_ensure_ast_cache", fail_expensive_path)
+    monkeypatch.setattr(
+        change_impact_tool,
+        "compute_call_graph_impact",
+        fail_expensive_path,
+    )
+
+    tool = tool_module.ChangeImpactTool()
+    result = asyncio.run(tool.execute({"output_format": "json"}))
+
+    assert result["analysis_fast_path"] == "test_only"
+    assert result["risk_level"] == "low"
+    assert result["affected_count"] == 0
+    assert result["tests_to_run"] == ["tests/unit/test_fast.py"]
+    assert result["verification_command"] == (
+        "uv run pytest tests/unit/test_fast.py -q"
+    )
+    assert result["file_impacts"] == [
+        {
+            "file": "tests/unit/test_fast.py",
+            "direct_dependents": [],
+            "total_affected": 0,
+            "test_only": True,
+        }
+    ]
+
+
 def test_change_impact_result_uses_complete_mapped_tests_for_verification(monkeypatch):
     """Display limits must not silently drop tests from the runnable command."""
 

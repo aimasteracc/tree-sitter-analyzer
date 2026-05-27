@@ -62,8 +62,8 @@ class CodeGraphIncrementalSyncTool(BaseMCPTool):
                 },
                 "max_files": {
                     "type": "integer",
-                    "description": "Max files to scan (default: 5000)",
-                    "default": 5000,
+                    "description": "Max files to scan (default: 20000)",
+                    "default": 20000,
                 },
                 "output_format": {
                     "type": "string",
@@ -91,7 +91,7 @@ class CodeGraphIncrementalSyncTool(BaseMCPTool):
             return apply_toon_format_to_response(result, output_format)
 
         if mode == "sync":
-            return self._sync(arguments.get("max_files", 5000), output_format)
+            return self._sync(arguments.get("max_files", 20_000), output_format)
         elif mode == "changes":
             return self._changes(output_format)
         elif mode == "status":

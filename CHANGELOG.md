@@ -1,5 +1,54 @@
 # Changelog
 
+## [1.15.3] - 2026-05-27
+
+CodeGraph query-chain reliability and benchmark-evidence release. This
+ships the post-v1.15.2 work that makes TSA more useful on real external
+repositories, especially Go projects and large repos where agents need
+compact, source-grounded answers instead of broad grep-style scans.
+
+### Added
+
+- **Chained `codegraph_query` answer packs** for agent workflows, with
+  compact relationship evidence, source excerpts, and query-chain
+  fallback behavior for concept-style architecture questions.
+- **Reproducible CodeGraph comparison benchmark phases** so performance,
+  token, cost, tool-call, and file-read behavior can be measured across
+  external repositories instead of argued from anecdotes.
+- **Local patch coverage gate** that mirrors Codecov patch requirements
+  before CI, reducing release-cycle surprises.
+
+### Improved
+
+- **Query evidence quality for Go code**. TSA now prefers exact type,
+  method, const, and source-symbol declarations in chained query packs,
+  which makes answers more directly grounded in the code under analysis.
+- **Large-repo indexing and change-impact speed** through hot-path
+  optimizations, dependency-graph cache reuse, and fast-path handling for
+  test-only diffs.
+- **Answer-pack signal-to-noise ratio** by filtering low-value runtime
+  and builtin callees from query relationships while keeping the raw call
+  graph unchanged for users that need complete graph data.
+
+### Fixed
+
+- **Go method call-edge resolution** in CodeGraph relationship packs.
+- **Benchmark schema handling** for current comparison-run outputs.
+- **Windows 3.13 temporal activation test timeout** by bounding git
+  subprocess calls in the temporal test path.
+
+### Validation
+
+- PR #187 CI passed before this release, including Codecov patch gate,
+  Quality Gate, Build, and the Windows 3.13 full test matrix.
+- Local full suite from the final PR #187 validation completed in 67.85s:
+  `17881 passed, 104 skipped, 2 xfailed`.
+- Gin benchmark repeat 97 after the runtime-noise filter recorded
+  `97.1901s`, `344277` total tokens, `$1.070559`, `11` tool calls,
+  and `0` file reads/search calls.
+
+---
+
 ## [1.15.2] - 2026-05-25
 
 Patch on v1.15.1. Adds the MCP E2E test framework, tunes the perf logger,

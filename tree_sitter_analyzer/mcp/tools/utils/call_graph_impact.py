@@ -81,7 +81,9 @@ class CallGraphImpactResult:
         }
 
 
-def _build_call_graph(project_root: str) -> CallGraph | None:
+def _build_call_graph(
+    project_root: str, *, allow_full_scan: bool = True
+) -> CallGraph | None:
     try:
         cache = ASTCache(project_root)
         stats = cache.get_stats()
@@ -90,10 +92,14 @@ def _build_call_graph(project_root: str) -> CallGraph | None:
             cg = CachedCallGraph(project_root, cache=cache)
         else:
             cache.close()
+            if not allow_full_scan:
+                return None
             cg = CallGraph(project_root)
         cg.build()
         return cg
     except Exception:
+        if not allow_full_scan:
+            return None
         try:
             cg = CallGraph(project_root)
             cg.build()
@@ -106,11 +112,13 @@ def _build_call_graph(project_root: str) -> CallGraph | None:
 def compute_call_graph_impact(
     project_root: str,
     changed_files: list[str],
+    *,
+    allow_full_scan: bool = True,
 ) -> CallGraphImpactResult | None:
     if not changed_files:
         return None
 
-    cg = _build_call_graph(project_root)
+    cg = _build_call_graph(project_root, allow_full_scan=allow_full_scan)
     if cg is None:
         return None
 

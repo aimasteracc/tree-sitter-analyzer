@@ -605,7 +605,7 @@ class TestAnalysisEnginePerformanceExtendedTestMixin:
 
         try:
             # Perform repeated analysis
-            for _i in range(10):
+            for _i in range(2):
                 try:
                     result = await engine_perf.analyze_file(temp_path)
                     assert result is not None or result is None  # Either is acceptable

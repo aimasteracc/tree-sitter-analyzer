@@ -74,7 +74,7 @@ class IncrementalSync:
 
     def sync(
         self,
-        max_files: int = 5000,
+        max_files: int = 20_000,
         callback: Any | None = None,
     ) -> SyncResult:
         """Sync the on-disk source tree with the AST cache.

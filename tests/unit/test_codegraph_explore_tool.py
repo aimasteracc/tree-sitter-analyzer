@@ -166,6 +166,40 @@ class TestExecuteNotFound:
         assert "codegraph_symbol_search" in result["hint"]
         assert result["stats"]["symbols_resolved"] == 0
 
+    @pytest.mark.asyncio
+    async def test_zero_symbol_matches_returns_concept_matches(self, tool_with_root):
+        concept_files = [
+            {
+                "file_path": "src/activation.ts",
+                "language": "typescript",
+                "symbols": [],
+                "matches": [
+                    {
+                        "line": 10,
+                        "text": "activationEvents",
+                        "terms": ["activationevents"],
+                    }
+                ],
+                "matched_terms": ["activationevents"],
+            }
+        ]
+        with (
+            _patch_cache_with(),
+            _patch_resolver_with({}),
+            patch(
+                "tree_sitter_analyzer.mcp.tools.codegraph_explore_tool._h.concept_search",
+                return_value=concept_files,
+            ),
+        ):
+            result = await tool_with_root.execute(
+                {"query": "activationEvents", "output_format": "json"}
+            )
+
+        assert result["verdict"] == "INFO"
+        assert result["files"] == concept_files
+        assert result["stats"]["concept_files_returned"] == 1
+        assert "concept matches" in result["hint"]
+
 
 class TestExecuteHappyPath:
     @pytest.mark.asyncio
@@ -225,6 +259,139 @@ class TestExecuteHappyPath:
         for f in result["files"]:
             for sym in f["symbols"]:
                 assert "code" not in sym or not sym["code"]
+
+    @pytest.mark.asyncio
+    async def test_relationships_use_sql_cache_not_full_graph(
+        self, tool_with_root, tmp_path
+    ):
+        a = tmp_path / "alpha.py"
+        a.write_text("def alpha():\n    beta()\n")
+        defs = {"alpha": [_make_def(str(a), "alpha", line=1, end_line=2)]}
+
+        mock_cache = MagicMock()
+        mock_cache.get_stats.return_value = {"total_files": 1}
+        mock_cache.query_callers.return_value = [
+            {"caller_name": "caller_one"},
+            {"caller_name": "caller_one"},
+        ]
+        mock_cache.query_callees.return_value = [{"callee_name": "beta"}]
+
+        with (
+            patch("tree_sitter_analyzer.ast_cache.ASTCache", return_value=mock_cache),
+            _patch_resolver_with(defs),
+            patch.object(
+                tool_with_root,
+                "_get_call_graph",
+                side_effect=AssertionError("full graph build should not run"),
+            ),
+        ):
+            result = await tool_with_root.execute(
+                {"query": "alpha", "output_format": "json"}
+            )
+
+        symbol = result["files"][0]["symbols"][0]
+        assert symbol["callers"] == ["caller_one"]
+        assert symbol["callees"] == ["beta"]
+
+    @pytest.mark.asyncio
+    async def test_relationship_map_dedupes_returned_symbol_callees(
+        self, tool_with_root, tmp_path
+    ):
+        a = tmp_path / "alpha.py"
+        a.write_text("def alpha():\n    beta()\n\ndef beta():\n    return 2\n")
+        defs = {
+            "alpha": [_make_def(str(a), "alpha", line=1, end_line=2)],
+            "beta": [_make_def(str(a), "beta", line=4, end_line=5)],
+        }
+
+        mock_cache = MagicMock()
+        mock_cache.get_stats.return_value = {"total_files": 1}
+
+        def _query_callees(symbol_name, _file_path, max_depth=1):
+            if symbol_name == "alpha":
+                return [{"callee_name": "beta"}, {"callee_name": "beta"}]
+            return []
+
+        mock_cache.query_callers.return_value = []
+        mock_cache.query_callees.side_effect = _query_callees
+
+        with (
+            patch("tree_sitter_analyzer.ast_cache.ASTCache", return_value=mock_cache),
+            _patch_resolver_with(defs),
+        ):
+            result = await tool_with_root.execute(
+                {"query": "alpha beta", "output_format": "json"}
+            )
+
+        assert result["relationship_map"] == {"alpha": ["beta"]}
+
+    @pytest.mark.asyncio
+    async def test_concept_matches_merge_before_resolved_file_entries(
+        self, tool_with_root, tmp_path
+    ):
+        a = tmp_path / "alpha.py"
+        b = tmp_path / "beta.py"
+        a.write_text("def alpha():\n    return 1\n")
+        b.write_text("def beta():\n    return 2\n")
+        defs = {"alpha": [_make_def(str(a), "alpha", line=1, end_line=2)]}
+        concept_files = [
+            {
+                "file_path": str(b),
+                "language": "python",
+                "symbols": [],
+                "matches": [{"line": 1, "text": "def beta():", "terms": ["beta"]}],
+                "matched_terms": ["beta"],
+            },
+            {
+                "file_path": str(a),
+                "language": "python",
+                "symbols": [],
+                "matches": [{"line": 1, "text": "def alpha():", "terms": ["alpha"]}],
+                "matched_terms": ["alpha"],
+            },
+        ]
+
+        with (
+            _patch_cache_with(),
+            _patch_resolver_with(defs),
+            patch(
+                "tree_sitter_analyzer.mcp.tools.codegraph_explore_tool._h.concept_search",
+                return_value=concept_files,
+            ),
+        ):
+            result = await tool_with_root.execute(
+                {"query": "alpha beta", "maxFiles": 2, "output_format": "json"}
+            )
+
+        assert [entry["file_path"] for entry in result["files"]] == [str(b), str(a)]
+        assert result["stats"]["concept_files_returned"] == 2
+
+    def test_relationship_names_degrades_when_sql_lookup_fails(self, tool_with_root):
+        cache = MagicMock()
+        cache.query_callers.side_effect = RuntimeError("caller lookup failed")
+        cache.query_callees.side_effect = RuntimeError("callee lookup failed")
+
+        assert tool_with_root._relationship_names(cache, "alpha", "alpha.py") == (
+            [],
+            [],
+        )
+
+    def test_relationship_names_caps_caller_and_callee_lists(self, tool_with_root):
+        cache = MagicMock()
+        cache.query_callers.return_value = [
+            {"caller_name": f"caller_{i}"} for i in range(10)
+        ]
+        cache.query_callees.return_value = [
+            {"callee_name": f"callee_{i}"} for i in range(10)
+        ]
+
+        callers, callees = tool_with_root._relationship_names(cache, "alpha", "a.py")
+
+        assert callers == [f"caller_{i}" for i in range(5)]
+        assert callees == [f"callee_{i}" for i in range(5)]
+
+    def test_source_path_joins_relative_paths_with_project_root(self, tool_with_root):
+        assert tool_with_root._source_path("src/app.py").endswith("src/app.py")
 
 
 class TestExecuteOutputFormat:

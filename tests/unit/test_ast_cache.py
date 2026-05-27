@@ -1,11 +1,12 @@
 """Tests for the pre-indexed AST cache (ast_cache module)."""
 
-
 import sqlite3
+from unittest.mock import patch
 
 import pytest
 
 from tree_sitter_analyzer.ast_cache import (
+    _AST_CACHE_EXTRACTOR_VERSION,
     _EXT_TO_LANG,
     ASTCache,
     _content_hash,
@@ -21,9 +22,7 @@ def tmp_project(tmp_path):
     (src / "main.py").write_text(
         "def hello():\n    print('hello')\n\nclass Foo:\n    pass\n"
     )
-    (src / "util.js").write_text(
-        "function add(a, b) { return a + b; }\n"
-    )
+    (src / "util.js").write_text("function add(a, b) { return a + b; }\n")
     (src / "readme.md").write_text("# Readme\n")
     return tmp_path
 
@@ -33,6 +32,11 @@ def cache(tmp_project):
     c = ASTCache(str(tmp_project))
     yield c
     c.close()
+
+
+def _query_plan(conn: sqlite3.Connection, sql: str, params: tuple[str, ...]) -> str:
+    rows = conn.execute(f"EXPLAIN QUERY PLAN {sql}", params).fetchall()
+    return " ".join(str(row[3]) for row in rows)
 
 
 class TestContentHash:
@@ -69,6 +73,118 @@ class TestIndexFile:
         result = cache.index_file(f)
         assert result["status"] == "cached"
 
+    def test_content_unchanged_refreshes_file_metadata(self, cache, tmp_project):
+        f = str(tmp_project / "src" / "main.py")
+        cache.index_file(f)
+        conn = cache._get_conn()
+        conn.execute(
+            "UPDATE ast_index SET mtime_ns = 0 WHERE file_path = ?", ("src/main.py",)
+        )
+        conn.commit()
+
+        result = cache.index_file(f)
+
+        assert result == {
+            "file": "src/main.py",
+            "status": "cached",
+            "reason": "content unchanged",
+        }
+
+    def test_stale_extractor_version_reindexes_unchanged_file(self, cache, tmp_project):
+        f = str(tmp_project / "src" / "main.py")
+        cache.index_file(f)
+        conn = cache._get_conn()
+        conn.execute("UPDATE ast_index SET extractor_version = 0")
+        conn.commit()
+
+        result = cache.index_file(f)
+
+        assert result["status"] == "indexed"
+        version = conn.execute(
+            "SELECT extractor_version FROM ast_index WHERE file_path = ?",
+            ("src/main.py",),
+        ).fetchone()[0]
+        assert version == _AST_CACHE_EXTRACTOR_VERSION
+
+    def test_init_migrates_legacy_index_without_extractor_version(self, tmp_path):
+        db_path = tmp_path / "legacy.db"
+        conn = sqlite3.connect(db_path)
+        conn.execute(
+            """CREATE TABLE ast_index (
+                file_path TEXT NOT NULL,
+                content_hash TEXT NOT NULL,
+                language TEXT NOT NULL,
+                mtime_ns INTEGER NOT NULL,
+                file_size INTEGER NOT NULL,
+                symbols_json TEXT NOT NULL DEFAULT '{}',
+                imports_json TEXT NOT NULL DEFAULT '[]',
+                structure_json TEXT NOT NULL DEFAULT '{}',
+                indexed_at TEXT NOT NULL,
+                PRIMARY KEY (file_path)
+            )"""
+        )
+        conn.commit()
+        conn.close()
+
+        migrated = ASTCache(str(tmp_path), db_path=str(db_path))
+        try:
+            columns = {
+                row[1]
+                for row in migrated._get_conn()
+                .execute("PRAGMA table_info(ast_index)")
+                .fetchall()
+            }
+            version_row = (
+                migrated._get_conn()
+                .execute("SELECT version FROM ast_schema_version WHERE version = 7")
+                .fetchone()
+            )
+
+            assert "extractor_version" in columns
+            assert version_row is not None
+        finally:
+            migrated.close()
+
+    def test_init_tolerates_extractor_version_migration_operational_error(
+        self, tmp_path, monkeypatch
+    ):
+        class FlakyConnection:
+            def __init__(self, path):
+                self._conn = sqlite3.connect(path)
+                self._conn.row_factory = sqlite3.Row
+
+            def execute(self, sql, *args, **kwargs):
+                if "PRAGMA table_info(ast_index)" in sql:
+                    raise sqlite3.OperationalError("metadata temporarily unavailable")
+                return self._conn.execute(sql, *args, **kwargs)
+
+            def executescript(self, *args, **kwargs):
+                return self._conn.executescript(*args, **kwargs)
+
+            def commit(self):
+                self._conn.commit()
+
+            def close(self):
+                self._conn.close()
+
+        class FlakyASTCache(ASTCache):
+            def _get_conn(self):
+                conn = getattr(self._local, "conn", None)
+                if conn is None:
+                    conn = FlakyConnection(self.db_path)
+                    self._local.conn = conn
+                return conn
+
+        monkeypatch.setattr(
+            ASTCache, "_verify_schema_integrity", lambda self, conn: None
+        )
+
+        cache = FlakyASTCache(str(tmp_path), db_path=str(tmp_path / "flaky.db"))
+        try:
+            assert cache.project_root == str(tmp_path)
+        finally:
+            cache.close()
+
     def test_index_with_explicit_language(self, cache, tmp_project):
         f = str(tmp_project / "src" / "main.py")
         result = cache.index_file(f, language="python")
@@ -85,6 +201,17 @@ class TestIndexProject:
         cache.index_project()
         result = cache.index_project()
         assert result["cached"] >= 2
+
+    def test_index_project_reindexes_stale_extractor_version(self, cache):
+        cache.index_project(workers=0)
+        conn = cache._get_conn()
+        conn.execute("UPDATE ast_index SET extractor_version = 0")
+        conn.commit()
+
+        result = cache.index_project(workers=0)
+
+        assert result["indexed"] >= 2
+        assert result["cached"] == 0
 
     def test_index_project_force(self, cache):
         cache.index_project()
@@ -147,6 +274,44 @@ class TestIndexProject:
         result = cache.index_project(workers=4)
         assert result["workers"] == 0
 
+    def test_index_project_skips_activation_by_default(self, cache, monkeypatch):
+        """Large-repo warm-cache builds must not run per-file git history by default."""
+        monkeypatch.delenv("TSA_INDEX_ACTIVATION", raising=False)
+        with patch(
+            "tree_sitter_analyzer.git_activation.compute_symbol_activation"
+        ) as compute:
+            result = cache.index_project(workers=0)
+
+        assert result["activation_enabled"] is False
+        compute.assert_not_called()
+        conn = cache._get_conn()
+        activation_rows = conn.execute(
+            "SELECT COUNT(*) FROM ast_symbol_activation"
+        ).fetchone()[0]
+        assert activation_rows == 0
+
+    def test_index_project_activation_opt_in_via_argument(self, cache, monkeypatch):
+        monkeypatch.delenv("TSA_INDEX_ACTIVATION", raising=False)
+        with patch(
+            "tree_sitter_analyzer.git_activation.compute_symbol_activation",
+            return_value=[],
+        ) as compute:
+            result = cache.index_project(workers=0, include_activation=True)
+
+        assert result["activation_enabled"] is True
+        assert compute.called
+
+    def test_index_project_activation_opt_in_via_env(self, cache, monkeypatch):
+        monkeypatch.setenv("TSA_INDEX_ACTIVATION", "1")
+        with patch(
+            "tree_sitter_analyzer.git_activation.compute_symbol_activation",
+            return_value=[],
+        ) as compute:
+            result = cache.index_project(workers=0)
+
+        assert result["activation_enabled"] is True
+        assert compute.called
+
 
 class TestLookup:
     def test_lookup_indexed_file(self, cache, tmp_project):
@@ -193,6 +358,152 @@ class TestStats:
         assert stats["total_files"] >= 2
         assert stats["total_symbols"] > 0
         assert "python" in stats["by_language"]
+
+    def test_stats_uses_symbol_rows_when_fts_available(self, cache):
+        cache.index_project()
+        if not cache._fts5_available:
+            pytest.skip("FTS5 not available")
+
+        with patch(
+            "tree_sitter_analyzer.ast_cache.json.loads",
+            side_effect=AssertionError("get_stats should not scan symbols_json"),
+        ):
+            stats = cache.get_stats()
+
+        assert stats["total_symbols"] == stats["fts_indexed_symbols"]
+        assert stats["total_symbols"] > 0
+
+    def test_stats_falls_back_to_symbols_json_without_fts(self, cache):
+        cache.index_project()
+        cache._fts5_available = False
+
+        stats = cache.get_stats()
+
+        assert stats["total_symbols"] > 0
+        assert stats["fts5_available"] is False
+
+    def test_stats_falls_back_when_symbol_rows_table_missing(self, cache):
+        cache.index_project()
+        if not cache._fts5_available:
+            pytest.skip("FTS5 not available")
+
+        conn = cache._get_conn()
+        conn.execute("DROP TABLE ast_symbol_rows")
+
+        stats = cache.get_stats()
+
+        assert stats["total_symbols"] > 0
+
+    def test_clear_activation_for_file_ignores_missing_table(self, cache):
+        conn = sqlite3.connect(":memory:")
+
+        ASTCache._clear_activation_for_file(conn, "src/main.py")
+
+        conn.close()
+
+
+class TestLargeRepoHotPathIndexes:
+    def test_large_repo_hot_path_indexes_exist(self, cache):
+        if not cache._fts5_available:
+            pytest.skip("tracked: large-repo-hotpath-indexes require FTS5")
+        conn = cache._get_conn()
+        index_names = {
+            row["name"]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'index'"
+            ).fetchall()
+        }
+
+        assert "idx_sym_rows_name_kind_path_line" in index_names
+        assert "idx_sym_rows_file_name_kind_line" in index_names
+        assert "idx_ce_callee_name_resolved_file" in index_names
+        assert "idx_ce_callee_name_file_path" in index_names
+        assert "idx_ce_caller_name_file" in index_names
+
+    def test_symbol_resolver_hot_queries_use_composite_indexes(self, cache):
+        if not cache._fts5_available:
+            pytest.skip("tracked: large-repo-hotpath-indexes require FTS5")
+        conn = cache._get_conn()
+
+        symbol_plan = _query_plan(
+            conn,
+            """SELECT name, kind, file_path, language, line, end_line
+               FROM ast_symbol_rows
+               WHERE name = ? AND kind IN ('function', 'class', 'method', 'variable')
+               ORDER BY file_path, line""",
+            ("target",),
+        )
+        scoped_symbol_plan = _query_plan(
+            conn,
+            """SELECT name, kind, file_path, language, line, end_line
+               FROM ast_symbol_rows
+               WHERE file_path = ? AND name = ? AND kind IN ('function', 'class', 'method')
+               ORDER BY line""",
+            ("src/main.py", "target"),
+        )
+
+        assert "idx_sym_rows_name_kind_path_line" in symbol_plan
+        assert "idx_sym_rows_file_name_kind_line" in scoped_symbol_plan
+
+    def test_call_graph_hot_queries_use_composite_indexes(self, cache):
+        conn = cache._get_conn()
+
+        callers_plan = _query_plan(
+            conn,
+            """SELECT caller_name, caller_file, caller_line,
+                      callee_name, file_path, callee_line, callee_resolved_file
+               FROM ast_call_edges
+               WHERE callee_name = ? AND callee_resolved_file = ?""",
+            ("render", "src/view.py"),
+        )
+        callers_fallback_plan = _query_plan(
+            conn,
+            """SELECT caller_name, caller_file, caller_line,
+                      callee_name, file_path, callee_line, callee_resolved_file
+               FROM ast_call_edges
+               WHERE callee_name = ? AND file_path = ?""",
+            ("render", "src/view.py"),
+        )
+        callees_plan = _query_plan(
+            conn,
+            """SELECT caller_name, caller_file, caller_line,
+                      callee_name, callee_full, file_path, callee_line, callee_resolved_file
+               FROM ast_call_edges
+               WHERE caller_name = ? AND caller_file = ?""",
+            ("handle", "src/handler.py"),
+        )
+
+        assert "idx_ce_callee_name_resolved_file" in callers_plan
+        assert "idx_ce_callee_name_file_path" in callers_fallback_plan
+        assert "idx_ce_caller_name_file" in callees_plan
+
+    def test_large_repo_index_helper_skips_missing_tables(self):
+        conn = sqlite3.connect(":memory:")
+
+        ASTCache._ensure_large_repo_indexes(conn)
+
+        assert (
+            conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'index'"
+            ).fetchall()
+            == []
+        )
+        conn.close()
+
+    def test_large_repo_index_helper_tolerates_legacy_partial_tables(self):
+        conn = sqlite3.connect(":memory:")
+        conn.execute("CREATE TABLE ast_call_edges (callee_name TEXT)")
+
+        ASTCache._ensure_large_repo_indexes(conn)
+
+        index_names = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'index'"
+            ).fetchall()
+        }
+        assert "idx_ce_callee_name_resolved_file" not in index_names
+        conn.close()
 
 
 class TestInvalidate:
@@ -246,7 +557,9 @@ class TestHasFts5:
         assert isinstance(result, bool)
 
 
-@pytest.mark.skipif(not _has_fts5(sqlite3.connect(":memory:")), reason="FTS5 not available")
+@pytest.mark.skipif(
+    not _has_fts5(sqlite3.connect(":memory:")), reason="FTS5 not available"
+)
 class TestFtsSearch:
     def test_fts_search_basic(self, cache, tmp_project):
         cache.index_project()
@@ -335,10 +648,7 @@ class TestSQLNativeCallGraph:
             "def baz():\n"
             "    pass\n"
         )
-        (src / "b.py").write_text(
-            "def bar():\n"
-            "    pass\n"
-        )
+        (src / "b.py").write_text("def bar():\n    pass\n")
         return tmp_path
 
     @pytest.fixture
@@ -352,6 +662,38 @@ class TestSQLNativeCallGraph:
         callees = call_cache.query_callees("foo")
         callee_names = [e["callee_name"] for e in callees]
         assert "bar" in callee_names
+
+    def test_query_callees_finds_go_method_selector_calls(self, tmp_path):
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "gin.go").write_text(
+            "package gin\n\n"
+            "type Engine struct{}\n\n"
+            "func (engine *Engine) ServeHTTP() {\n"
+            "    engine.handleHTTPRequest()\n"
+            "}\n\n"
+            "func (engine *Engine) handleHTTPRequest() {}\n",
+            encoding="utf-8",
+        )
+        cache = ASTCache(str(tmp_path))
+        try:
+            cache.index_project()
+
+            callees = cache.query_callees("ServeHTTP", caller_file="src/gin.go")
+            assert [edge["callee_name"] for edge in callees] == ["handleHTTPRequest"]
+            assert [edge["callee_full"] for edge in callees] == [
+                "engine.handleHTTPRequest"
+            ]
+
+            callers = cache.query_callers("handleHTTPRequest", callee_file="src/gin.go")
+            assert [edge["caller_name"] for edge in callers] == ["ServeHTTP"]
+
+            full_callers = cache.query_callers(
+                "engine.handleHTTPRequest", callee_file="src/gin.go"
+            )
+            assert [edge["caller_name"] for edge in full_callers] == ["ServeHTTP"]
+        finally:
+            cache.close()
 
     def test_query_callers_finds_caller(self, call_cache):
         callers = call_cache.query_callers("bar")

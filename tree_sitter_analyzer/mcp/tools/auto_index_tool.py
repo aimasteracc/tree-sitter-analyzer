@@ -67,8 +67,8 @@ class CodeGraphAutoIndexTool(BaseMCPTool):
                 },
                 "max_files": {
                     "type": "integer",
-                    "description": "Max files to index when warming (default: 5000)",
-                    "default": 5000,
+                    "description": "Max files to index when warming (default: 20000)",
+                    "default": 20000,
                 },
                 "output_format": {
                     "type": "string",
@@ -94,7 +94,7 @@ class CodeGraphAutoIndexTool(BaseMCPTool):
         if mode == "status":
             return self._status(output_format)
         elif mode == "warm":
-            return self._warm(arguments.get("max_files", 5000), output_format)
+            return self._warm(arguments.get("max_files", 20_000), output_format)
         elif mode == "reset":
             return self._reset(output_format)
 

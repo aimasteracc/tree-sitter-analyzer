@@ -90,6 +90,8 @@ _PLUGIN_MANIFEST_PATTERN = re.compile(r"^[a-z_]+_plugin\.py$")
 # The canonical repo-relative path form we look for as a Tier-2 signal.
 _REPO_RELATIVE_PATTERN = re.compile(r"^tree_sitter_analyzer/.+\.py$")
 
+_TARGETED_SKIP_BASENAMES = {"__init__.py", "__main__.py"}
+
 # Where the cache lives. Computed relative to project_root at runtime.
 _CACHE_PATH_SUFFIX = ".ast-cache/fixture_index.json"
 _CACHE_SCHEMA_VERSION = 1
@@ -165,6 +167,14 @@ def is_fixture(file_path: str, project_root: str | Path) -> FixtureFact:
     allowlist_hit = _check_allowlist(root, relative)
     if allowlist_hit is not None:
         return allowlist_hit
+
+    cache_path = root / _CACHE_PATH_SUFFIX
+    if _cache_is_readable(cache_path):
+        targeted_hit = _targeted_fixture_scan(root, relative)
+        if targeted_hit is not None:
+            return targeted_hit
+    if not _basename_seen_in_tests(root, Path(relative).name):
+        return _NEGATIVE
 
     # Tier 2 — load (or rebuild) the test-fixture index and look up.
     index = _load_or_build_index(root)
@@ -269,6 +279,83 @@ def _check_allowlist(project_root: Path, relative: str) -> FixtureFact | None:
 # ---------------------------------------------------------------------------
 
 
+def _iter_test_files(tests_dir: Path) -> list[Path]:
+    """Return Python test files while pruning generated and hidden dirs."""
+    files: list[Path] = []
+    skip_dirs = {
+        "__pycache__",
+        ".pytest_cache",
+        ".mypy_cache",
+        ".ruff_cache",
+        ".venv",
+        "venv",
+    }
+    for dirpath, dirnames, filenames in os.walk(tests_dir):
+        dirnames[:] = [
+            name
+            for name in dirnames
+            if name not in skip_dirs and not name.startswith(".")
+        ]
+        for filename in filenames:
+            if filename.endswith(".py"):
+                files.append(Path(dirpath) / filename)
+    return files
+
+
+def _targeted_fixture_scan(
+    project_root: Path,
+    relative: str,
+) -> FixtureFact | None:
+    """Fast exact-path scan for the common single-file ``is_fixture`` query."""
+    tests_dir = project_root / "tests"
+    if not tests_dir.is_dir():
+        return None
+
+    basename = Path(relative).name
+    if basename in _TARGETED_SKIP_BASENAMES:
+        return None
+    best: FixtureFact | None = None
+    for path in _iter_test_files(tests_dir):
+        try:
+            source = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        evidence = (_safe_relative(path, project_root),)
+        confidence = 0.0
+        if relative in source:
+            confidence = max(confidence, _REPO_RELATIVE_CONFIDENCE)
+        if basename and basename in source and "PROJECT_ROOT" in source:
+            confidence = max(confidence, _CONSTANT_ASSIGNMENT_CONFIDENCE)
+        if confidence <= 0.0:
+            continue
+        fact = FixtureFact(
+            is_fixture=confidence >= _CONFIDENCE_CAUTION,
+            confidence=confidence,
+            source="targeted_text_scan",
+            evidence=evidence,
+            note="",
+        )
+        if best is None or fact.confidence > best.confidence:
+            best = fact
+            if best.confidence >= _CONFIDENCE_UNSAFE:
+                break
+    return best
+
+
+def _basename_seen_in_tests(project_root: Path, basename: str) -> bool:
+    """Return whether the filename appears anywhere in tests/ source."""
+    tests_dir = project_root / "tests"
+    if not tests_dir.is_dir() or not basename:
+        return False
+    for path in _iter_test_files(tests_dir):
+        try:
+            if basename in path.read_text(encoding="utf-8"):
+                return True
+        except OSError:
+            continue
+    return False
+
+
 def _load_or_build_index(project_root: Path) -> dict[str, FixtureFact]:
     """Return the Tier-2 index, building (and caching) on signature change."""
 
@@ -292,7 +379,7 @@ def _tests_signature(tests_dir: Path) -> str:
     """Compute a SHA-1 over every ``tests/**/*.py``'s ``(mtime_ns, size)``."""
 
     hasher = hashlib.sha1(usedforsecurity=False)
-    for path in sorted(tests_dir.rglob("*.py")):
+    for path in sorted(_iter_test_files(tests_dir)):
         try:
             st = path.stat()
         except OSError:
@@ -380,7 +467,7 @@ def _scan_tests(tests_dir: Path, project_root: Path) -> dict[str, FixtureFact]:
     """Walk ``tests_dir`` and merge signals from every ``*.py`` file."""
 
     aggregator: dict[str, _Aggregator] = {}
-    for path in tests_dir.rglob("*.py"):
+    for path in _iter_test_files(tests_dir):
         try:
             source = path.read_text(encoding="utf-8")
         except OSError:
@@ -578,6 +665,21 @@ def _assignment_target_name(node: ast.Assign) -> str | None:
     if isinstance(target, ast.Name):
         return target.id
     return None
+
+
+def _cache_is_readable(cache_path: Path) -> bool:
+    """Return ``True`` when the fixture cache file parses as expected JSON."""
+    if not cache_path.is_file():
+        return False
+    try:
+        payload = json.loads(cache_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    return (
+        isinstance(payload, dict)
+        and payload.get("schema_version") in (None, _CACHE_SCHEMA_VERSION)
+        and isinstance(payload.get("fixtures"), dict)
+    )
 
 
 def _collect_strings(expr: ast.expr) -> list[str]:

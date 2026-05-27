@@ -16,6 +16,8 @@ Properties tested:
 - Property 8: Test Matrix Consistency
 - Property 9: Test Marker Consistency
 - Property 11: Reusable Workflow Behavioral Equivalence
+- Property 12: CI runner parallelism override
+- Property 13: PR branch CI trigger de-duplication
 
 Validates: All requirements (1.1-7.5)
 """
@@ -68,6 +70,13 @@ class TestWorkflowProperties:
     def reusable_quality_workflow(self, workflow_root: Path) -> dict[str, Any]:
         """Load the reusable quality workflow."""
         workflow_path = workflow_root / "reusable-quality.yml"
+        with open(workflow_path, encoding="utf-8") as f:
+            return yaml.safe_load(f)
+
+    @pytest.fixture
+    def test_coverage_workflow(self, workflow_root: Path) -> dict[str, Any]:
+        """Load the standalone coverage workflow."""
+        workflow_path = workflow_root / "test-coverage.yml"
         with open(workflow_path, encoding="utf-8") as f:
             return yaml.safe_load(f)
 
@@ -169,3 +178,29 @@ class TestWorkflowProperties:
         """Property 11: Reusable workflows must have a clear job structure."""
         assert len(reusable_test_workflow.get("jobs", {})) >= 1
         assert len(reusable_quality_workflow.get("jobs", {})) >= 1
+
+    def test_property_12_ci_xdist_worker_override(
+        self,
+        reusable_test_workflow: dict[str, Any],
+        test_coverage_workflow: dict[str, Any],
+    ):
+        """Property 12: CI should not leave xdist auto at the 2-core runner floor."""
+        reusable_env = reusable_test_workflow["jobs"]["test-matrix"].get("env", {})
+        coverage_env = test_coverage_workflow.get("env", {})
+
+        for env in (reusable_env, coverage_env):
+            workers = int(str(env.get("PYTEST_XDIST_AUTO_NUM_WORKERS", "0")))
+            assert workers >= 4
+
+    def test_property_13_ci_does_not_duplicate_feature_pr_runs(
+        self, all_workflows: dict[str, dict[str, Any]]
+    ):
+        """Property 13: Feature PRs should use pull_request CI, not duplicate push CI."""
+        ci_triggers = all_workflows["ci"]["on"]
+        push_branches = ci_triggers["push"]["branches"]
+        pr_branches = ci_triggers["pull_request"]["branches"]
+
+        assert "feature/*" not in push_branches
+        assert {"main", "develop"}.issubset(push_branches)
+        assert {"main", "develop"}.issubset(pr_branches)
+        assert {"hotfix/*", "release/*"}.issubset(push_branches)

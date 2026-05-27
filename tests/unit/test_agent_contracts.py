@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import configparser
+import os
 import re
 from pathlib import Path
 
@@ -19,6 +20,7 @@ from tree_sitter_analyzer.mcp.server import _create_tool_registry
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SKIPPED_SCAN_DIRS = {
     ".git",
+    ".benchmark-repos",
     ".mypy_cache",
     ".pytest_cache",
     ".ruff_cache",
@@ -87,6 +89,22 @@ def test_pytest_runtime_dependencies_are_declared() -> None:
 
     assert "pytest-xdist>=3.8.0" in dev_dependencies
     assert "pytest-timeout>=2.4.0" in dev_dependencies
+
+
+def test_reusable_test_workflow_has_job_timeout() -> None:
+    """The CI matrix must fail fast instead of hanging forever on runner stalls."""
+    workflow = PROJECT_ROOT / ".github" / "workflows" / "reusable-test.yml"
+    text = workflow.read_text(encoding="utf-8")
+    test_matrix = re.search(
+        r"(?ms)^  test-matrix:\n(?P<body>.*?)(?=^  [A-Za-z0-9_-]+:|\Z)",
+        text,
+    )
+
+    assert test_matrix is not None
+    assert re.search(
+        r"(?m)^    timeout-minutes:\s*15\s*$",
+        test_matrix.group("body"),
+    )
 
 
 def test_gitflow_documentation_is_present() -> None:
@@ -253,6 +271,7 @@ def test_registered_mcp_tools_have_cli_parity() -> None:
         # CodeGraph parity gap-closure (2026-05-24).
         "codegraph_status": ("main", "--codegraph-status"),
         "codegraph_explore": ("main", "--codegraph-explore"),
+        "codegraph_query": ("main", "--codegraph-query"),
         "codegraph_impact": ("main", "--codegraph-impact"),
         "codegraph_pr_review": ("main", "--pr-review"),
         "semantic_classify": ("main", "--semantic-classify"),
@@ -513,6 +532,30 @@ def test_agent_docs_require_change_impact_verification_command() -> None:
         assert "--change-impact --format json" in text, path
 
 
+def test_agent_docs_require_local_patch_coverage_gate() -> None:
+    """Future agents should pass local patch coverage before Codecov sees a PR."""
+    script = PROJECT_ROOT / "scripts" / "check_patch_coverage.py"
+    agents_text = (PROJECT_ROOT / "AGENTS.md").read_text(encoding="utf-8")
+
+    assert script.exists(), "scripts/check_patch_coverage.py must exist"
+    assert "check_patch_coverage.py" in agents_text
+    assert "--cov=tree_sitter_analyzer" in agents_text
+    assert "--cov-report=json" in agents_text
+    assert "Codecov" in agents_text
+
+
+def test_agent_docs_require_dogfood_feedback_memory_loop() -> None:
+    """Agents should use TSA feedback and preserve reusable findings in memory."""
+    agents_text = (PROJECT_ROOT / "AGENTS.md").read_text(encoding="utf-8")
+
+    assert "Agent Dogfood Feedback Loop" in agents_text
+    assert "tree_sitter_analyzer --change-impact --format json" in agents_text
+    assert "memory_store" in agents_text
+    assert "tsa/agent-feedback" in agents_text
+    assert "tools_used" in agents_text
+    assert "verification" in agents_text
+
+
 def test_warning_prone_python_api_patterns_are_blocked() -> None:
     """Keep future agents from reintroducing known Python 3.14 warning sources."""
     blocked_patterns = {
@@ -524,18 +567,25 @@ def test_warning_prone_python_api_patterns_are_blocked() -> None:
     }
 
     violations: list[str] = []
-    for path in PROJECT_ROOT.rglob("*.py"):
-        if any(part in SKIPPED_SCAN_DIRS for part in path.parts):
-            continue
+    for dirpath, dirnames, filenames in os.walk(PROJECT_ROOT):
+        dirnames[:] = [
+            name
+            for name in dirnames
+            if name not in SKIPPED_SCAN_DIRS and not name.startswith(".")
+        ]
+        for filename in filenames:
+            if not filename.endswith(".py"):
+                continue
+            path = Path(dirpath) / filename
 
-        text = path.read_text(encoding="utf-8")
-        for pattern, replacement in blocked_patterns.items():
-            for match in re.finditer(pattern, text):
-                line_number = text.count("\n", 0, match.start()) + 1
-                relative_path = path.relative_to(PROJECT_ROOT)
-                violations.append(
-                    f"{relative_path}:{line_number} matches {pattern}; {replacement}"
-                )
+            text = path.read_text(encoding="utf-8")
+            for pattern, replacement in blocked_patterns.items():
+                for match in re.finditer(pattern, text):
+                    line_number = text.count("\n", 0, match.start()) + 1
+                    relative_path = path.relative_to(PROJECT_ROOT)
+                    violations.append(
+                        f"{relative_path}:{line_number} matches {pattern}; {replacement}"
+                    )
 
     assert violations == []
 

@@ -1,10 +1,11 @@
 """Coverage boost tests for project_graph.py — targets uncovered lines."""
 
 import sys
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 import pytest
 
+from tree_sitter_analyzer import project_graph
 from tree_sitter_analyzer.project_graph import (
     BlastRadius,
     DependencyGraph,
@@ -70,6 +71,37 @@ class TestLanguageFromExt:
         assert _language_from_ext("FOO.PY") == "python"
 
 
+class TestDependencyGraphSourceFileIteration:
+    def test_iter_source_files_prunes_hidden_and_generated_dirs(self, tmp_path):
+        project = tmp_path / "proj"
+        (project / "src").mkdir(parents=True)
+        (project / "node_modules" / "pkg").mkdir(parents=True)
+        (project / ".hidden").mkdir(parents=True)
+        (project / "src" / "main.py").write_text("import os\n")
+        (project / "node_modules" / "pkg" / "skip.py").write_text("x = 1\n")
+        (project / ".hidden" / "skip.py").write_text("x = 1\n")
+        (project / ".secret.py").write_text("x = 1\n")
+
+        DependencyGraph._global_cache.clear()
+        graph = DependencyGraph(str(project))
+
+        files = {
+            path.relative_to(project).as_posix()
+            for path in graph._iter_source_files({".py"})
+        }
+        assert files == {"src/main.py"}
+
+    def test_is_excluded_handles_paths_outside_project_root(self, tmp_path):
+        project = tmp_path / "proj"
+        project.mkdir()
+
+        DependencyGraph._global_cache.clear()
+        graph = DependencyGraph(str(project))
+
+        assert graph._is_excluded(Path("/tmp/outside/.git/config"))
+        assert not graph._is_excluded(project / "src" / "main.py")
+
+
 class TestResolveRelativeImport:
     def test_absolute_returns_none(self):
         assert _resolve_relative_import("os", "main.py") is None
@@ -90,6 +122,42 @@ class TestResolveRelativeImport:
     def test_with_submodule(self):
         result = _resolve_relative_import(".models.user", "main.py")
         assert result == "models/user.py"
+
+
+class TestImportResolverPathNormalization:
+    def test_file_resolvers_keep_posix_paths_when_path_is_windows(self, monkeypatch):
+        monkeypatch.setattr(project_graph, "Path", PureWindowsPath)
+
+        assert (
+            project_graph._resolve_js_ts_import(
+                "./formatter", "src/index.js", {"src/formatter.js"}, True
+            )
+            == "src/formatter.js"
+        )
+        assert (
+            project_graph._resolve_js_ts_import(
+                "./pkg", "src/index.js", {"src/pkg/index.ts"}, True
+            )
+            == "src/pkg/index.ts"
+        )
+        assert (
+            project_graph._resolve_go_import(
+                "./internal/handler", "main.go", {"internal/handler.go"}, True
+            )
+            == "internal/handler.go"
+        )
+        assert (
+            project_graph._resolve_rust_import(
+                "crate::utils", "src/main.rs", {"src/utils.rs"}, True
+            )
+            == "src/utils.rs"
+        )
+        assert (
+            project_graph._resolve_c_cpp_import(
+                "handler.h", "src/main.cpp", {"src/handler.h"}, True
+            )
+            == "src/handler.h"
+        )
 
 
 class TestExtractImportsEdgeCases:

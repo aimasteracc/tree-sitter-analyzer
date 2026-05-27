@@ -72,9 +72,11 @@ Categories of CLI surface:
 - `--detect-routes` — framework route detection
 
 ### Cache & Index
-- `--ast-cache index|stats|lookup|invalidate` — AST cache ops
+- `--ast-cache index|stats|lookup|invalidate` — AST cache ops (project index default cap: 20k files)
+- `--ast-cache-include-activation` — opt in to slower temporal git activation during project indexing
 - `--autoindex [--autoindex-mode status|warm|reset]` — transparent auto-index
-- `--full-index [--full-index-mode rebuild|stats|clear]` — one-shot complete index
+- `--full-index [--full-index-mode rebuild|stats|clear]` — one-shot complete index (default cap: 20k files)
+- `--full-index-include-activation` — opt in to temporal git activation during full-index rebuilds
 - `--incremental-sync [--incremental-sync-mode sync|changes|status]` — content-hash diff re-index (SHA-256)
 - `--codegraph-status [--codegraph-status-no-lag]` — index health at-a-glance (CodeGraph parity)
 - `--codegraph-metrics` — aggregated cache/call-graph/complexity/health dashboard
@@ -87,6 +89,8 @@ Categories of CLI surface:
 - `--ast-path FILE:LINE` — "what is at file:line?"
 - `--codegraph-symbol-search QUERY` — FTS5 symbol search
 - `--codegraph-explore QUERY` — bulk-fetch N related symbols + relmap (CodeGraph parity)
+- `--codegraph-query CHAIN` — jQuery-style chained graph query (`search(['A','B']).explore().include(callers=True).sort(by='fan_in').answer(compact=True)`)
+- `--codegraph-query-compact` — trim duplicate source payloads and empty relationship fields in chained query answers
 - `--affected FILE [FILE...]` — list test files transitively affected by changes (CodeGraph parity; closes the last CLI surface gap)
 - `--dead-code` — transitive dead functions / unused imports
 - `--class-hierarchy` / `--dependency-matrix` / `--import-graph` — structural

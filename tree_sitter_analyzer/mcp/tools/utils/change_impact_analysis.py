@@ -9,6 +9,7 @@ from typing import Any
 
 from ....project_graph import BlastRadius, DependencyGraph
 from .call_graph_impact import compute_call_graph_impact
+from .change_impact_cached_graph import load_cached_dependency_graph
 from .change_impact_response import (
     LARGE_DIRTY_DIFF_THRESHOLD,
     AgentSummaryContext,
@@ -42,6 +43,18 @@ logger = logging.getLogger(__name__)
 
 TESTS_TO_RUN_DISPLAY_LIMIT = 30
 FOCUSED_TEST_COMMAND_LIMIT = 20
+TEST_DIRS = {"tests/", "test/", "spec/", "__tests__/"}
+TEST_SUFFIXES = (
+    "_test.py",
+    "_test.js",
+    "_test.ts",
+    "Test.java",
+    ".test.py",
+    ".test.js",
+    ".test.ts",
+    "_spec.py",
+    "_spec.js",
+)
 
 
 @dataclass(frozen=True)
@@ -54,6 +67,7 @@ class ChangeImpactRequest:
     project_root: str | None
     include_tests: bool
     scope_paths: list[str] | None = None
+    agent_summary_only: bool = False
 
 
 def _find_test_files(
@@ -61,23 +75,10 @@ def _find_test_files(
     graph_nodes: set[str],
 ) -> dict[str, list[str]]:
     """Map changed files to related test files using stem matching."""
-    test_dirs = {"tests/", "test/", "spec/", "__tests__/"}
-    test_suffixes = (
-        "_test.py",
-        "_test.js",
-        "_test.ts",
-        "Test.java",
-        ".test.py",
-        ".test.js",
-        ".test.ts",
-        "_spec.py",
-        "_spec.js",
-    )
-
     test_files = {
         node
         for node in graph_nodes
-        if _is_runnable_test_file(node, test_dirs, test_suffixes)
+        if _is_runnable_test_file(node, TEST_DIRS, TEST_SUFFIXES)
     }
 
     mapping: dict[str, list[str]] = {}
@@ -133,7 +134,7 @@ def _is_runnable_test_file(
 def _assess_risk(
     changed_files: list[str],
     affected: set[str],
-    graph: DependencyGraph,
+    graph: Any,
 ) -> str:
     """Assess change risk level based on blast radius size."""
     if not changed_files:
@@ -148,7 +149,7 @@ def _assess_risk(
 
 def _build_file_impacts(
     changed_files: list[str],
-    graph: DependencyGraph | None,
+    graph: Any | None,
 ) -> tuple[set[str], list[dict[str, Any]]]:
     """Build per-file impact rows and the total affected file set."""
     if graph is None:
@@ -173,7 +174,7 @@ def _build_file_impacts(
 
 def _build_test_plan(
     changed_files: list[str],
-    graph: DependencyGraph | None,
+    graph: Any | None,
     include_tests: bool,
 ) -> tuple[dict[str, list[str]], list[str]]:
     """Build changed-file-to-test mapping and a sorted runnable test list."""
@@ -192,12 +193,87 @@ def _build_test_plan(
     return test_mapping, tests_to_run
 
 
-def _load_dependency_graph(project_root: str | None) -> DependencyGraph | None:
+def _is_runnable_test_change(path: str) -> bool:
+    """Return True when a changed path is itself a direct test target."""
+    return _is_runnable_test_file(path, TEST_DIRS, TEST_SUFFIXES)
+
+
+def _is_test_only_change_set(changed_files: list[str]) -> bool:
+    """Return True when every changed file is a runnable test file."""
+    return bool(changed_files) and all(
+        _is_runnable_test_change(path) for path in changed_files
+    )
+
+
+def _load_dependency_graph(project_root: str | None) -> Any | None:
     """Build the dependency graph, returning None when analysis is unavailable."""
+    cached = load_cached_dependency_graph(project_root)
+    if cached is not None:
+        return cached
     try:
         return DependencyGraph(project_root or ".")
     except Exception:
         return None
+
+
+def _build_test_only_change_impact_result(
+    request: ChangeImpactRequest,
+) -> dict[str, Any]:
+    """Build a fast change-impact response for test-only edits.
+
+    Runnable test files are already the exact verification targets. Avoid
+    walking the whole dependency graph, building a call graph, or syncing the
+    AST cache when the diff cannot alter runtime dependency edges.
+    """
+    tests_to_run = sorted(dict.fromkeys(request.changed_files))
+    test_mapping = {path: [path] for path in tests_to_run}
+    default_test_command = detect_default_test_command(request.project_root)
+    verification = _build_verification_plan(
+        request.changed_files,
+        tests_to_run,
+        test_mapping,
+        default_test_command,
+    )
+    strategy = _build_verification_strategy(
+        changed_count=len(request.changed_files),
+        tests_to_run=tests_to_run,
+        verification=verification,
+    )
+    agent_summary = build_agent_summary(
+        AgentSummaryContext(
+            risk="low",
+            changed_files=request.changed_files,
+            scope_paths=request.scope_paths,
+            verification=verification,
+            strategy=strategy,
+            affected_count=0,
+            tests_to_run_count=len(tests_to_run),
+        )
+    )
+    result = build_change_impact_response(
+        ChangeImpactResponseContext(
+            request=request,
+            risk="low",
+            affected=set(),
+            file_impacts=[
+                {
+                    "file": path,
+                    "direct_dependents": [],
+                    "total_affected": 0,
+                    "test_only": True,
+                }
+                for path in request.changed_files
+            ],
+            visible_tests=tests_to_run[:TESTS_TO_RUN_DISPLAY_LIMIT],
+            all_tests=tests_to_run,
+            verification=verification,
+            strategy=strategy,
+            test_mapping=test_mapping,
+            agent_summary=agent_summary,
+        )
+    )
+    result["analysis_fast_path"] = "test_only"
+    return result
 
 
 def _build_verification_strategy(
@@ -416,6 +492,9 @@ def _find_affected_symbols(
 
 def _build_change_impact_result(request: ChangeImpactRequest) -> dict[str, Any]:
     """Build the full change-impact response for changed files."""
+    if _is_test_only_change_set(request.changed_files):
+        return _build_test_only_change_impact_result(request)
+
     graph = _load_dependency_graph(request.project_root)
     affected, file_impacts = _build_file_impacts(request.changed_files, graph)
     risk = _assess_risk(request.changed_files, affected, graph) if graph else "unknown"
@@ -439,7 +518,9 @@ def _build_change_impact_result(request: ChangeImpactRequest) -> dict[str, Any]:
     call_graph_data: dict[str, Any] | None = None
     if request.project_root and request.changed_files:
         cg_result = compute_call_graph_impact(
-            request.project_root, request.changed_files
+            request.project_root,
+            request.changed_files,
+            allow_full_scan=not request.agent_summary_only,
         )
         if cg_result is not None:
             call_graph_data = cg_result.to_dict()
@@ -481,6 +562,9 @@ def _build_change_impact_result(request: ChangeImpactRequest) -> dict[str, Any]:
     # source file and overwrite seeded rows. The verdict bump needs the
     # CURRENT activation state, not the freshly-recomputed one.
     result = _attach_hot_zone_risk(result, request)
+
+    if request.agent_summary_only:
+        return _attach_constraint_violations(result, request, affected)
 
     cache = _ensure_ast_cache(request.project_root, request.changed_files)
     try:

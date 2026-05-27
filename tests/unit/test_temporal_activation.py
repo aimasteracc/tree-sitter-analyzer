@@ -21,6 +21,8 @@ import pytest
 from tests.fixtures.git_temporal import make_repo
 from tests.fixtures.git_temporal.make_repo import make_shallow_marker
 
+_GIT_TIMEOUT_SECONDS = 15
+
 
 def _import_git_activation():
     """Deferred import so collection works before the module exists."""
@@ -63,6 +65,41 @@ def _read_activation_rows(db_path: str) -> list[dict]:
         return [dict(r) for r in cur.fetchall()]
     finally:
         conn.close()
+
+
+def _git_env() -> dict[str, str]:
+    """Return the same isolated git environment used by the fixture builder."""
+    env = os.environ.copy()
+    env["GIT_TEMPLATE_DIR"] = ""
+    env["GIT_CONFIG_NOSYSTEM"] = "1"
+    return env
+
+
+def _run_git(repo: Path, args: list[str]) -> None:
+    """Run a bounded git command in a test repo."""
+    subprocess.run(
+        ["git", "-C", str(repo), *args],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=_git_env(),
+        timeout=_GIT_TIMEOUT_SECONDS,
+    )
+
+
+def _init_git_repo(repo: Path) -> None:
+    """Initialize and configure a bounded disposable git repository."""
+    subprocess.run(
+        ["git", "init", "--initial-branch=main", str(repo)],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=_git_env(),
+        timeout=_GIT_TIMEOUT_SECONDS,
+    )
+    _run_git(repo, ["config", "user.email", "test@example.com"])
+    _run_git(repo, ["config", "user.name", "Test"])
+    _run_git(repo, ["config", "commit.gpgsign", "false"])
 
 
 def _index_with_activation(repo: Path, files: list[str]) -> str:
@@ -109,9 +146,7 @@ class TestDetectGitState:
         assert ga.detect_git_state(str(loose)) == "no_repo"
 
     def test_shallow_clone_returns_shallow(self, tmp_path):
-        repo = make_repo(
-            tmp_path, [{"message": "init", "files": {"a.py": "x = 1\n"}}]
-        )
+        repo = make_repo(tmp_path, [{"message": "init", "files": {"a.py": "x = 1\n"}}])
         make_shallow_marker(repo)
         ga = _import_git_activation()
         assert ga.detect_git_state(str(repo / "a.py")) == "shallow"
@@ -187,14 +222,8 @@ class TestSymbolAttribution:
                 lines[i] = lines[i] + "  # tweaked"
         v1 = "\n".join(lines)
         (repo / "mod.py").write_text(v1, encoding="utf-8")
-        subprocess.run(
-            ["git", "-C", str(repo), "add", "mod.py"], check=True, capture_output=True
-        )
-        subprocess.run(
-            ["git", "-C", str(repo), "commit", "-m", "tweak first"],
-            check=True,
-            capture_output=True,
-        )
+        _run_git(repo, ["add", "mod.py"])
+        _run_git(repo, ["commit", "-m", "tweak first"])
 
         monkeypatch.chdir(repo)
         ga = _import_git_activation()
@@ -214,17 +243,13 @@ class TestSymbolAttribution:
                 {
                     "message": "rename and tweak",
                     "rename": ("src/old.py", "src/new.py"),
-                    "files": {
-                        "src/new.py": body.replace("a = x + 1", "a = x + 100")
-                    },
+                    "files": {"src/new.py": body.replace("a = x + 1", "a = x + 100")},
                 },
             ],
         )
         monkeypatch.chdir(repo)
         ga = _import_git_activation()
-        rows = ga.compute_symbol_activation(
-            "src/new.py", [_sym("foo", 1, 7, 10)]
-        )
+        rows = ga.compute_symbol_activation("src/new.py", [_sym("foo", 1, 7, 10)])
         assert len(rows) == 1
         # Original commit (under old.py) + rename-tweak commit (under new.py)
         assert rows[0].mod_count_all == 2
@@ -266,21 +291,7 @@ class TestColdStart:
         """Fresh ``git init`` with no commits: counts all zero, no exception."""
         repo = tmp_path / "fresh"
         repo.mkdir()
-        subprocess.run(
-            ["git", "init", "--initial-branch=main", str(repo)],
-            check=True,
-            capture_output=True,
-        )
-        subprocess.run(
-            ["git", "-C", str(repo), "config", "user.email", "test@example.com"],
-            check=True,
-            capture_output=True,
-        )
-        subprocess.run(
-            ["git", "-C", str(repo), "config", "user.name", "Test"],
-            check=True,
-            capture_output=True,
-        )
+        _init_git_repo(repo)
         (repo / "a.py").write_text(_seven_line_function("foo"), encoding="utf-8")
 
         monkeypatch.chdir(repo)
@@ -298,9 +309,7 @@ class TestColdStart:
         """Outside any git dir: git_state='no_repo', zero counts, row exists."""
         loose_dir = tmp_path / "loose"
         loose_dir.mkdir()
-        (loose_dir / "a.py").write_text(
-            _seven_line_function("foo"), encoding="utf-8"
-        )
+        (loose_dir / "a.py").write_text(_seven_line_function("foo"), encoding="utf-8")
         monkeypatch.chdir(loose_dir)
         ga = _import_git_activation()
         rows = ga.compute_symbol_activation("a.py", [_sym("foo", 1, 7, 41)])
@@ -346,14 +355,8 @@ class TestReindexIdempotence:
         # Add another commit touching the same body.
         new_body = body.replace("a = x + 1", "a = x + 999")
         (repo / "a.py").write_text(new_body, encoding="utf-8")
-        subprocess.run(
-            ["git", "-C", str(repo), "add", "a.py"], check=True, capture_output=True
-        )
-        subprocess.run(
-            ["git", "-C", str(repo), "commit", "-m", "bump"],
-            check=True,
-            capture_output=True,
-        )
+        _run_git(repo, ["add", "a.py"])
+        _run_git(repo, ["commit", "-m", "bump"])
 
         db_path_2 = _index_with_activation(repo, ["a.py"])
         assert db_path_2 == db_path  # same db
@@ -387,9 +390,7 @@ class TestEnvDisable:
             conn = sqlite3.connect(db_path)
             try:
                 try:
-                    cur = conn.execute(
-                        "SELECT COUNT(*) FROM ast_symbol_activation"
-                    )
+                    cur = conn.execute("SELECT COUNT(*) FROM ast_symbol_activation")
                     count = cur.fetchone()[0]
                 except sqlite3.OperationalError:
                     # Table may not exist when feature is disabled —
@@ -457,9 +458,7 @@ class TestModuleSurface:
         )
         monkeypatch.chdir(repo)
         ga = _import_git_activation()
-        rows = ga.compute_symbol_activation(
-            "a.py", [_sym("foo", 1, 7, 99)]
-        )
+        rows = ga.compute_symbol_activation("a.py", [_sym("foo", 1, 7, 99)])
         assert len(rows) == 1
         row = rows[0]
         for field in (

@@ -297,6 +297,13 @@ tree-sitter-*/
 # Benchmark and performance files
 benchmark_results/
 performance_data/
+.benchmark-repos/
+benchmarks/codegraph_compare/results/raw/
+benchmarks/codegraph_compare/results/runs.jsonl
+benchmarks/codegraph_compare/results/evals.jsonl
+benchmarks/codegraph_compare/results/summary.md
+benchmarks/codegraph_compare/results/summary.csv
+benchmarks/codegraph_compare/results/prepared_repos.json
 
 # Local configuration files
 local_config.py

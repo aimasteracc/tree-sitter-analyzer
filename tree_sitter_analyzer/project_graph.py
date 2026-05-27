@@ -13,7 +13,7 @@ import os
 from collections import defaultdict, deque
 from collections.abc import Callable
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from .core.parser import Parser, ParseResult
@@ -160,7 +160,18 @@ def _relative_anchor_init(module_path: str, current_file_rel: str) -> str | None
     for _ in range(dots - 1):
         target_dir = target_dir.parent
 
-    return str(target_dir / "__init__.py")
+    return str(target_dir / "__init__.py").replace("\\", "/")
+
+
+def _project_rel_join(source_rel: str, module_path: str) -> str:
+    """Join project-relative imports with stable POSIX separators.
+
+    DependencyGraph nodes are project-relative POSIX paths even on Windows.
+    Using ``Path`` here lets the host OS leak ``\\`` into resolver candidates,
+    so keep import resolution in PurePosixPath space.
+    """
+    source_dir = PurePosixPath(source_rel.replace("\\", "/")).parent
+    return str(source_dir / module_path).replace("\\", "/")
 
 
 def extract_imports_from_file(
@@ -237,8 +248,7 @@ def _resolve_js_ts_import(
     """JS/TS import → ``./foo`` resolved to file/index w/ common extensions."""
     if not is_relative:
         return None
-    source_dir = Path(source_rel).parent
-    candidate_raw = str(source_dir / module)
+    candidate_raw = _project_rel_join(source_rel, module)
     for ext in (".js", ".ts", ".jsx", ".tsx", "/index.js", "/index.ts"):
         candidate = candidate_raw + ext
         if candidate in nodes:
@@ -254,8 +264,7 @@ def _resolve_go_import(
     """Go relative imports — extension probe similar to JS."""
     if not is_relative:
         return None
-    source_dir = Path(source_rel).parent
-    candidate_raw = str(source_dir / module)
+    candidate_raw = _project_rel_join(source_rel, module)
     if candidate_raw in nodes:
         return candidate_raw
     for ext in (".go", "/index.go"):
@@ -275,8 +284,7 @@ def _resolve_rust_import(
         module.replace("crate::", "").replace("super::", "").replace("self::", "")
     )
     path = path_parts.replace("::", "/")
-    source_dir = Path(source_rel).parent
-    candidate = str(source_dir / path)
+    candidate = _project_rel_join(source_rel, path)
     if candidate in nodes:
         return candidate
     for ext in (".rs", "/mod.rs", "/lib.rs"):
@@ -290,8 +298,7 @@ def _resolve_c_cpp_import(
     module: str, source_rel: str, nodes: set[str], is_relative: bool
 ) -> str | None:
     """C/C++ ``#include "foo.h"`` → relative to source dir."""
-    source_dir = Path(source_rel).parent
-    candidate = str(source_dir / module)
+    candidate = _project_rel_join(source_rel, module)
     if candidate in nodes:
         return candidate
     return None
@@ -430,7 +437,29 @@ class DependencyGraph:
 
     def _is_excluded(self, path: Path) -> bool:
         """Check if a path is inside an excluded directory."""
-        return any(part in self._EXCLUDE_DIRS for part in path.parts)
+        try:
+            rel_parts = path.relative_to(self.project_root).parts
+        except ValueError:
+            rel_parts = path.parts
+        return any(
+            part in self._EXCLUDE_DIRS or part.startswith(".") for part in rel_parts
+        )
+
+    def _iter_source_files(self, supported_exts: set[str]) -> list[Path]:
+        """Return source files while pruning generated and hidden work dirs."""
+        files: list[Path] = []
+        for root, dirs, names in os.walk(self.project_root):
+            dirs[:] = [
+                name
+                for name in dirs
+                if name not in self._EXCLUDE_DIRS and not name.startswith(".")
+            ]
+            for name in names:
+                if name.startswith("."):
+                    continue
+                if Path(name).suffix.lower() in supported_exts:
+                    files.append(Path(root) / name)
+        return files
 
     def _build(self) -> None:
         """Scan project directory and build the dependency graph."""
@@ -453,11 +482,7 @@ class DependencyGraph:
         }
 
         # Collect all source files (excluding generated/dependency dirs)
-        all_files: list[Path] = []
-        for ext in supported_exts:
-            for f in self.project_root.rglob(f"*{ext}"):
-                if not self._is_excluded(f):
-                    all_files.append(f)
+        all_files = self._iter_source_files(supported_exts)
 
         # Build relative path mapping
         rel_to_abs: dict[str, str] = {}

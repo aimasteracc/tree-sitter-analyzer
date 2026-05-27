@@ -21,9 +21,21 @@
 - After edits, run `uv run python -m tree_sitter_analyzer --change-impact --format json` and follow its `verification_command`.
 - If `test_required` is `false`, do not run tests just to look busy; run the reported non-test verification such as `git diff --check`.
 - For targeted code feedback, prefer `verification_command`/`test_command`; `pytest_required` and `pytest_command` are retained for pytest-specific compatibility.
+- For PRs that change Python source, run focused tests with `--cov=tree_sitter_analyzer --cov-report=json`, then run `uv run python scripts/check_patch_coverage.py --base origin/develop --coverage-json coverage.json` before pushing. The local patch gate must report no added executable misses; add effective tests instead of waiting for CI Codecov to block the PR.
 - Benchmark-only runs are the exception: use `uv run pytest tests/benchmarks/ --benchmark-enable --benchmark-only -n 0 --session-timeout=0`.
 - Do not remove or weaken these pytest defaults. They prevent repeated agent mistakes: serial full-suite runs, accidental benchmark execution, hidden hangs, and >5 minute feedback loops.
 - If a test-runtime setting must change, update `tests/unit/test_agent_contracts.py`, explain why the new setting is faster or safer, and prove `uv run pytest -q` still finishes under 5 minutes.
+
+## Agent Dogfood Feedback Loop
+
+For non-trivial work, expert agents must use this project as their primary feedback instrument while they work, then preserve the learning in memory:
+
+1. **Before edits:** run `uv run python -m tree_sitter_analyzer --change-impact --format json` to get the affected surface and verification command.
+2. **During exploration:** prefer TSA queries over blind file scans. Use focused codegraph/query/health commands for the area being changed, and keep the raw command outputs small enough to compare before/after.
+3. **After edits:** rerun change-impact and the reported verification command. For Python source changes, also run the local patch coverage gate from the Test Runtime Contract.
+4. **Memory capture:** store a concise JSON record in project memory with `branch`, `task`, `tools_used`, `signals`, `decision`, `verification`, and `followups`. Use the available `memory_store` MCP when present; otherwise use the Claude Flow memory CLI (`npx @claude-flow/cli@latest memory store --namespace tsa/agent-feedback ...`). If neither memory backend is available, include the JSON in the final response so the lead can store it.
+
+Memory records should capture reusable lessons, not logs: benchmark surprises, Codecov/CI failure patterns, query misses, performance bottlenecks, and successful verification recipes.
 
 ## MCP/CLI Parity Contract
 

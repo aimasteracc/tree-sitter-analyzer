@@ -84,15 +84,22 @@ class TestComputeCallGraphImpact:
         assert result is None
 
     @patch("tree_sitter_analyzer.mcp.tools.utils.call_graph_impact._build_call_graph")
+    def test_can_disable_full_scan_fallback(self, mock_build):
+        mock_build.return_value = None
+        result = compute_call_graph_impact(
+            "/tmp/project", ["a.py"], allow_full_scan=False
+        )
+        assert result is None
+        mock_build.assert_called_once_with("/tmp/project", allow_full_scan=False)
+
+    @patch("tree_sitter_analyzer.mcp.tools.utils.call_graph_impact._build_call_graph")
     def test_basic_impact(self, mock_build):
         cg = MagicMock()
         cg.all_functions.return_value = [
             {"name": "foo", "file": "a.py", "line": 10},
             {"name": "bar", "file": "b.py", "line": 5},
         ]
-        cg.callers_of.return_value = [
-            {"name": "bar", "file": "b.py", "line": 7}
-        ]
+        cg.callers_of.return_value = [{"name": "bar", "file": "b.py", "line": 7}]
         cg.callees_of.return_value = []
         mock_build.return_value = cg
 
@@ -110,8 +117,7 @@ class TestComputeCallGraphImpact:
             {"name": "critical_fn", "file": "core.py", "line": 42},
         ]
         cg.callers_of.return_value = [
-            {"name": f"caller_{i}", "file": f"mod_{i}.py", "line": i}
-            for i in range(6)
+            {"name": f"caller_{i}", "file": f"mod_{i}.py", "line": i} for i in range(6)
         ]
         cg.callees_of.return_value = []
         mock_build.return_value = cg
@@ -167,6 +173,7 @@ class TestChangeImpactIntegration:
                     diff_stat="1 file changed",
                     project_root=tmpdir,
                     include_tests=True,
+                    agent_summary_only=True,
                 )
                 result = _build_change_impact_result(req)
                 assert "call_graph_impact" in result

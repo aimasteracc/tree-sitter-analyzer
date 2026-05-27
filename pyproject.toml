@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tree-sitter-analyzer"
-version = "1.15.2"
-description = "MCP code-intelligence server for AI agents — beats CodeGraph on 6-repo head-to-head benchmark median. 58 MCP tools, 13 curated skills, TOON output, 100% local."
+version = "1.15.3"
+description = "MCP code-intelligence server for AI agents — beats CodeGraph on 6-repo head-to-head benchmark median. 59 MCP tools, 13 curated skills, TOON output, 100% local."
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
@@ -83,6 +83,7 @@ dependencies = [
     "numpy>=2.2.6",
     "pyyaml>=6.0",
     "pathspec>=0.12.1",
+    "anthropic>=0.104.1",
 ]
 
 # Add C# to optional dependencies
@@ -618,7 +619,7 @@ directory = "htmlcov"
 # MCP server configuration
 [tool.mcp]
 server_name = "tree-sitter-analyzer"
-server_version = "1.15.1"
+server_version = "1.15.3"
 description = "AI-era enterprise-grade code analysis MCP server with comprehensive HTML/CSS support and multi-language capabilities"
 capabilities = [
     "check_code_scale",

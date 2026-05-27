@@ -878,6 +878,27 @@ class TestSourceWalk:
         routes = RouteDetector(str(tmp_path)).detect_all()
         assert all("/.venv/" not in r.file_path for r in routes)
 
+    def test_excludes_hidden_work_dirs(self, tmp_path: Path):
+        _write(
+            tmp_path,
+            ".benchmark-repos/gin/gin_test.go",
+            """\
+package main
+
+func routes(r *gin.Engine) {
+    r.GET("/leak", handler)
+}
+""",
+        )
+        _write(
+            tmp_path,
+            "app.py",
+            "from flask import Flask\napp = Flask(__name__)\n@app.route('/')\ndef i(): pass",
+        )
+        routes = RouteDetector(str(tmp_path)).detect_all()
+        assert routes
+        assert all("/.benchmark-repos/" not in r.file_path for r in routes)
+
 
 # ---------------------------------------------------------------------------
 # MCP tool layer

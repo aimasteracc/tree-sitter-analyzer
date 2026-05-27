@@ -24,7 +24,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-_DEFINITION_KINDS = frozenset({"function", "class", "method"})
+_DEFINITION_KINDS = frozenset({"function", "class", "method", "variable"})
 
 _REFERENCE_KINDS = frozenset({"function", "class", "method", "variable"})
 
@@ -204,7 +204,7 @@ class SymbolResolver:
             rows = conn.execute(
                 """SELECT name, kind, file_path, language, line, end_line
                    FROM ast_symbol_rows
-                   WHERE name = ? AND kind IN ('function', 'class', 'method')
+                   WHERE name = ? AND kind IN ('function', 'class', 'method', 'variable')
                    ORDER BY file_path, line""",
                 (name,),
             ).fetchall()
