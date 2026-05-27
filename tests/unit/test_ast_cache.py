@@ -149,8 +149,8 @@ class TestIndexFile:
         self, tmp_path, monkeypatch
     ):
         class FlakyConnection:
-            def __init__(self, path):
-                self._conn = sqlite3.connect(path)
+            def __init__(self):
+                self._conn = sqlite3.connect(":memory:")
                 self._conn.row_factory = sqlite3.Row
 
             def execute(self, sql, *args, **kwargs):
@@ -171,7 +171,7 @@ class TestIndexFile:
             def _get_conn(self):
                 conn = getattr(self._local, "conn", None)
                 if conn is None:
-                    conn = FlakyConnection(self.db_path)
+                    conn = FlakyConnection()
                     self._local.conn = conn
                 return conn
 

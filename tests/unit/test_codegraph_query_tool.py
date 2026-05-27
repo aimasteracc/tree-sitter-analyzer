@@ -131,6 +131,25 @@ class TestParseChain:
         }
         assert steps[2].kwargs == {"regex": "Service$"}
 
+    def test_parses_relation_aware_has_step(self):
+        steps = parse_chain(
+            "search('Handler').has(callees=True, name='authorize', depth=2, limit=5)"
+            ".has(callers=True, regex='Controller$', test=False)"
+        )
+
+        assert [step.name for step in steps] == ["search", "has", "has"]
+        assert steps[1].kwargs == {
+            "callees": True,
+            "name": "authorize",
+            "depth": 2,
+            "limit": 5,
+        }
+        assert steps[2].kwargs == {
+            "callers": True,
+            "regex": "Controller$",
+            "test": False,
+        }
+
     def test_parses_kwargs_and_escaped_quotes(self):
         steps = parse_chain(r'search(query="src/a.\"b.py Run").take(2)')
 
@@ -925,6 +944,129 @@ class TestCodeGraphQueryTool:
 
         assert result["symbols"] == []
         assert result["relationships"]["callees"] == {}
+
+    @pytest.mark.asyncio
+    async def test_execute_has_filters_sources_by_related_symbols(self, tmp_path):
+        mock_cache = MagicMock()
+
+        def _query_callees(name, file_path, max_depth):
+            assert max_depth == 1
+            if name == "run":
+                return [
+                    {
+                        "callee_name": "authorize",
+                        "callee_file": "auth.py",
+                        "callee_line": 4,
+                        "depth": 1,
+                    },
+                    {
+                        "callee_name": "helper",
+                        "callee_file": "helper.py",
+                        "callee_line": 8,
+                        "depth": 1,
+                    },
+                ]
+            return [
+                {
+                    "callee_name": "helper",
+                    "callee_file": "helper.py",
+                    "callee_line": 8,
+                    "depth": 1,
+                }
+            ]
+
+        mock_cache.query_callees.side_effect = _query_callees
+        defs = {
+            "run": [_make_def(file="main.py", name="run", line=1)],
+            "skip": [_make_def(file="main.py", name="skip", line=10)],
+        }
+
+        with (
+            patch("tree_sitter_analyzer.ast_cache.ASTCache", return_value=mock_cache),
+            _patch_resolver_with(defs),
+        ):
+            result = await CodeGraphQueryTool(str(tmp_path)).execute(
+                {
+                    "query": "search(['run', 'skip']).has(callees=True, name='authorize')",
+                    "output_format": "json",
+                }
+            )
+
+        assert [symbol["name"] for symbol in result["symbols"]] == ["run"]
+        assert result["relationships"]["callees"]["main.py:1:run"] == [
+            {
+                "name": "authorize",
+                "kind": "function",
+                "file": "auth.py",
+                "line": 4,
+                "end_line": 4,
+                "language": "",
+                "depth": 1,
+            }
+        ]
+        assert mock_cache.query_callees.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_execute_has_reuses_relation_cache_for_later_include(self, tmp_path):
+        mock_cache = MagicMock()
+        mock_cache.query_callees.return_value = [
+            {
+                "callee_name": "helper",
+                "callee_file": "helper.py",
+                "callee_line": 4,
+                "depth": 1,
+            },
+            {
+                "callee_name": "other",
+                "callee_file": "other.py",
+                "callee_line": 8,
+                "depth": 1,
+            },
+        ]
+        defs = {"run": [_make_def(file="main.py", name="run", line=1)]}
+
+        with (
+            patch("tree_sitter_analyzer.ast_cache.ASTCache", return_value=mock_cache),
+            _patch_resolver_with(defs),
+        ):
+            result = await CodeGraphQueryTool(str(tmp_path)).execute(
+                {
+                    "query": (
+                        "search('run').has(callees=True, name='helper')"
+                        ".include(callees=True)"
+                    ),
+                    "output_format": "json",
+                }
+            )
+
+        assert [symbol["name"] for symbol in result["symbols"]] == [
+            "run",
+            "helper",
+            "other",
+        ]
+        assert [
+            symbol["name"]
+            for symbol in result["relationships"]["callees"]["main.py:1:run"]
+        ] == ["helper", "other"]
+        assert mock_cache.query_callees.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_execute_has_reports_missing_direction(self, tmp_path):
+        defs = {"run": [_make_def(file="main.py", name="run", line=1)]}
+
+        with (
+            patch("tree_sitter_analyzer.ast_cache.ASTCache", return_value=MagicMock()),
+            _patch_resolver_with(defs),
+        ):
+            result = await CodeGraphQueryTool(str(tmp_path)).execute(
+                {
+                    "query": "search('run').has(name='helper')",
+                    "output_format": "json",
+                }
+            )
+
+        assert [symbol["name"] for symbol in result["symbols"]] == ["run"]
+        assert result["warnings"] == ["has() requires callers=True or callees=True"]
 
     @pytest.mark.asyncio
     async def test_execute_reuses_relation_cache_within_single_chain(self, tmp_path):

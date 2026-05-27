@@ -91,10 +91,11 @@ class CodeGraphQueryTool(BaseMCPTool):
             "name": "codegraph_query",
             "description": (
                 "jQuery-style chained code graph query. Compose search(), "
-                "explore(), callers(), callees(), related(), filter(), exclude(), "
+                "explore(), callers(), callees(), related(), filter(), exclude(), has(), "
                 "include(), sort(), take(), and answer() in one statement so agents "
                 "get an answer pack without 40 separate CLI calls. Example: "
-                "search(['Router', 'Handler']).explore().include(callers=True, "
+                "search(['Router', 'Handler']).has(callees=True, name='authorize')"
+                ".explore().include(callers=True, "
                 "complexity=True).sort(by='fan_in', desc=True).answer()."
             ),
             "inputSchema": self.get_tool_schema(),
@@ -314,6 +315,10 @@ class CodeGraphQueryTool(BaseMCPTool):
             _filter_current_selection(state, step, invert=True)
             return
 
+        if step.name == "has":
+            _filter_selection_by_related_symbols(cache, state, step)
+            return
+
         if step.name == "take":
             limit = first_int(step, default_max_symbols)
             state.current = state.current[:limit]
@@ -482,28 +487,50 @@ def _relation_step(
     limit = int_kw(step, "limit", _MAX_REL_PER_SYMBOL, _MAX_SYMBOLS_CAP)
     related: list[dict[str, Any]] = []
     for symbol in state.current:
-        name = str(symbol.get("name") or "")
-        file_path = str(symbol.get("file") or "")
-        if not name:
+        entries = _relation_entries_for_symbol(
+            cache=cache,
+            state=state,
+            direction=direction,
+            symbol=symbol,
+            depth=depth,
+            limit=limit,
+        )
+        if not entries:
             continue
-        cache_key = (direction, name, file_path, depth, limit)
-        entries = state.relation_cache.get(cache_key)
-        if entries is None:
-            entries = _query_relation_entries(
-                cache=cache,
-                direction=direction,
-                name=name,
-                file_path=file_path,
-                depth=depth,
-                limit=limit,
-            )
-            state.relation_cache[cache_key] = entries
         source_key = _symbol_key(symbol)
         state.relationships[direction][source_key] = list(entries)
         related.extend(entries)
     deduped = _dedupe_symbols(related)
     state.add_symbols(deduped)
     return deduped
+
+
+def _relation_entries_for_symbol(
+    *,
+    cache: Any,
+    state: _QueryState,
+    direction: str,
+    symbol: dict[str, Any],
+    depth: int,
+    limit: int,
+) -> list[dict[str, Any]]:
+    name = str(symbol.get("name") or "")
+    file_path = str(symbol.get("file") or "")
+    if not name:
+        return []
+    cache_key = (direction, name, file_path, depth, limit)
+    entries = state.relation_cache.get(cache_key)
+    if entries is None:
+        entries = _query_relation_entries(
+            cache=cache,
+            direction=direction,
+            name=name,
+            file_path=file_path,
+            depth=depth,
+            limit=limit,
+        )
+        state.relation_cache[cache_key] = entries
+    return entries
 
 
 def _query_relation_entries(
@@ -541,7 +568,53 @@ def _filter_current_selection(
     invert: bool,
 ) -> None:
     state.selection_filters.append((step, invert))
-    state.current = _apply_selection_filters(state.current, state.selection_filters)
+    selected = _apply_selection_filters(state.current, state.selection_filters)
+    _replace_current_selection(state, selected)
+
+
+def _filter_selection_by_related_symbols(
+    cache: Any,
+    state: _QueryState,
+    step: _ChainStep,
+) -> None:
+    directions: list[str] = []
+    if bool_kw(step, "callers", False):
+        directions.append("callers")
+    if bool_kw(step, "callees", False):
+        directions.append("callees")
+    if not directions:
+        raise ValueError("has() requires callers=True or callees=True")
+
+    depth = int_kw(step, "depth", 1, 5)
+    limit = int_kw(step, "limit", _MAX_REL_PER_SYMBOL, _MAX_SYMBOLS_CAP)
+    selected: list[dict[str, Any]] = []
+    for symbol in state.current:
+        source_key = _symbol_key(symbol)
+        matched_any = False
+        for direction in directions:
+            entries = _relation_entries_for_symbol(
+                cache=cache,
+                state=state,
+                direction=direction,
+                symbol=symbol,
+                depth=depth,
+                limit=limit,
+            )
+            matches = _filters.filter_symbols(entries, step)
+            if matches:
+                state.relationships[direction][source_key] = matches
+                matched_any = True
+        if matched_any:
+            selected.append(symbol)
+
+    _replace_current_selection(state, selected)
+
+
+def _replace_current_selection(
+    state: _QueryState,
+    selected: list[dict[str, Any]],
+) -> None:
+    state.current = _dedupe_symbols(selected)
     keep_tuples = {_symbol_key_tuple(symbol) for symbol in state.current}
     keep_keys = {_symbol_key(symbol) for symbol in state.current}
     state.symbols = [
