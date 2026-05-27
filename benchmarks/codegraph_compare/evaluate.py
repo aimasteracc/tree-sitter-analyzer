@@ -30,6 +30,7 @@ import argparse
 import json
 import re
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -246,12 +247,44 @@ def _build_eval_prompt(
     else:
         template = _DEFAULT_EVALUATOR_PROMPT
 
-    key_points_block = "\n".join(f"- {p}" for p in expected_key_points)
-    return template.format(
-        question=question_text,
-        key_points=key_points_block,
+    return _render_eval_template(
+        template=template,
+        question_text=question_text,
+        expected_key_points=expected_key_points,
         answer=answer,
     )
+
+
+def _render_eval_template(
+    *,
+    template: str,
+    question_text: str,
+    expected_key_points: list[str],
+    answer: str,
+) -> str:
+    """Render evaluator input without treating JSON braces as format fields."""
+    key_points_block = "\n".join(f"- {p}" for p in expected_key_points)
+    replacements = {
+        "{question}": question_text,
+        "{key_points}": key_points_block,
+        "{answer}": answer,
+    }
+    if any(placeholder in template for placeholder in replacements):
+        rendered = template
+        for placeholder, value in replacements.items():
+            rendered = rendered.replace(placeholder, value)
+        return rendered
+
+    input_block = (
+        "\n\n## Benchmark Input\n\n"
+        "### Question\n"
+        f"{question_text}\n\n"
+        "### Expected key points\n"
+        f"{key_points_block or '(none)'}\n\n"
+        "### Answer under evaluation\n"
+        f"{answer}\n"
+    )
+    return template.rstrip() + input_block
 
 
 def _call_llm(
@@ -445,7 +478,7 @@ def _evaluate_run_inner(
 ) -> dict:
     run_id = run.get("run_id", "")
     question_id = question.get("id", run.get("question_id", ""))
-    arm_id = run.get("arm_id", "")
+    arm_id = _run_arm_id(run)
     run_repo_path = run.get("repo_path", str(repo_path))
 
     # ------------------------------------------------------------------
@@ -565,7 +598,7 @@ def _minimal_error_record(run: dict, question: dict, reason: str) -> dict:
     return _build_record(
         run_id=run.get("run_id", ""),
         question_id=question.get("id", run.get("question_id", "")),
-        arm_id=run.get("arm_id", ""),
+        arm_id=_run_arm_id(run),
         repo_path=run.get("repo_path", ""),
         correctness=_ERROR_SCORE,
         completeness=_ERROR_SCORE,
@@ -598,6 +631,7 @@ def _build_record(
     eval_model: str,
 ) -> dict:
     """Assemble a canonical EvalRecord dict."""
+    evaluated_at = datetime.now(timezone.utc).isoformat()
     return {
         "run_id": run_id,
         "question_id": question_id,
@@ -613,7 +647,19 @@ def _build_record(
         "reasoning": reasoning,
         "evaluated_with_llm": evaluated_with_llm,
         "eval_model": eval_model,
+        "evaluator_model": eval_model,
+        "evaluated_at": evaluated_at,
     }
+
+
+def _run_arm_id(run: dict) -> str:
+    """Return the arm id across historical and current RunRecord schemas."""
+    return str(run.get("arm_id") or run.get("arm") or "")
+
+
+def _run_repo_id(run: dict) -> str:
+    """Return the repo id across historical and current RunRecord schemas."""
+    return str(run.get("repo_id") or run.get("repo") or "")
 
 
 # ---------------------------------------------------------------------------
@@ -678,7 +724,7 @@ def evaluate_all(
         if repo_path_str:
             repo_path = Path(repo_path_str)
         else:
-            repo_id = run.get("repo_id", "")
+            repo_id = _run_repo_id(run)
             if repo_id and repo_id in repo_path_by_id:
                 repo_path = repo_path_by_id[repo_id]
             else:
