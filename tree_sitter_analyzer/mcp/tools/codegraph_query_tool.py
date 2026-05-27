@@ -20,6 +20,7 @@ from ...utils import setup_logger
 from ..utils.format_helper import apply_toon_format_to_response
 from . import _codegraph_explore_helpers as _h
 from . import _codegraph_query_concepts as _concepts
+from . import _codegraph_query_filters as _filters
 from ._codegraph_query_dsl import (
     _ChainStep,
     bool_kw,
@@ -90,9 +91,9 @@ class CodeGraphQueryTool(BaseMCPTool):
             "name": "codegraph_query",
             "description": (
                 "jQuery-style chained code graph query. Compose search(), "
-                "explore(), callers(), callees(), related(), include(), sort(), "
-                "take(), and answer() in one statement so agents get an answer "
-                "pack without 40 separate CLI calls. Example: "
+                "explore(), callers(), callees(), related(), filter(), exclude(), "
+                "include(), sort(), take(), and answer() in one statement so agents "
+                "get an answer pack without 40 separate CLI calls. Example: "
                 "search(['Router', 'Handler']).explore().include(callers=True, "
                 "complexity=True).sort(by='fan_in', desc=True).answer()."
             ),
@@ -305,6 +306,14 @@ class CodeGraphQueryTool(BaseMCPTool):
             state.current = _dedupe_symbols([*callers, *callees])
             return
 
+        if step.name in {"filter", "where"}:
+            _filter_current_selection(state, step, invert=False)
+            return
+
+        if step.name in {"exclude", "not"}:
+            _filter_current_selection(state, step, invert=True)
+            return
+
         if step.name == "take":
             limit = first_int(step, default_max_symbols)
             state.current = state.current[:limit]
@@ -348,6 +357,10 @@ class _QueryState:
         self.compact = compact
         self.seed_queries: list[str] = []
         self.concept_files_returned = 0
+        self.relation_cache: dict[
+            tuple[str, str, str, int, int], list[dict[str, Any]]
+        ] = {}
+        self.selection_filters: list[tuple[_ChainStep, bool]] = []
 
     def add_symbols(self, symbols: list[dict[str, Any]]) -> None:
         for symbol in symbols:
@@ -431,6 +444,8 @@ def _apply_concept_fallback(
         project_root=project_root,
         max_files=max_files,
     )
+    if state.selection_filters:
+        entries = _filter_concept_entries(entries, state.selection_filters)
     if not entries:
         return
     state.files = entries
@@ -439,6 +454,7 @@ def _apply_concept_fallback(
         entries,
         limit=max_symbols,
     )
+    state.current = _apply_selection_filters(state.current, state.selection_filters)
     state.add_symbols(state.current)
 
 
@@ -470,29 +486,173 @@ def _relation_step(
         file_path = str(symbol.get("file") or "")
         if not name:
             continue
-        if direction == "callers":
-            rows = cache.query_callers(name, file_path or None, max_depth=depth) or []
-            entries = [
-                _row_symbol(row, "caller_name", "caller_file", "caller_line")
-                for row in rows
-            ]
-        else:
-            rows = cache.query_callees(name, file_path or None, max_depth=depth) or []
-            entries = [
-                _row_symbol(row, "callee_name", "callee_file", "callee_line")
-                for row in rows
-            ]
-        entries = _source_first_symbols(
-            entry
-            for entry in entries
-            if entry["name"] and not _is_relation_noise_symbol(entry)
-        )[:limit]
+        cache_key = (direction, name, file_path, depth, limit)
+        entries = state.relation_cache.get(cache_key)
+        if entries is None:
+            entries = _query_relation_entries(
+                cache=cache,
+                direction=direction,
+                name=name,
+                file_path=file_path,
+                depth=depth,
+                limit=limit,
+            )
+            state.relation_cache[cache_key] = entries
         source_key = _symbol_key(symbol)
-        state.relationships[direction][source_key] = entries
+        state.relationships[direction][source_key] = list(entries)
         related.extend(entries)
     deduped = _dedupe_symbols(related)
     state.add_symbols(deduped)
     return deduped
+
+
+def _query_relation_entries(
+    *,
+    cache: Any,
+    direction: str,
+    name: str,
+    file_path: str,
+    depth: int,
+    limit: int,
+) -> list[dict[str, Any]]:
+    if direction == "callers":
+        rows = cache.query_callers(name, file_path or None, max_depth=depth) or []
+        entries = [
+            _row_symbol(row, "caller_name", "caller_file", "caller_line")
+            for row in rows
+        ]
+    else:
+        rows = cache.query_callees(name, file_path or None, max_depth=depth) or []
+        entries = [
+            _row_symbol(row, "callee_name", "callee_file", "callee_line")
+            for row in rows
+        ]
+    return _source_first_symbols(
+        entry
+        for entry in entries
+        if entry["name"] and not _is_relation_noise_symbol(entry)
+    )[:limit]
+
+
+def _filter_current_selection(
+    state: _QueryState,
+    step: _ChainStep,
+    *,
+    invert: bool,
+) -> None:
+    state.selection_filters.append((step, invert))
+    state.current = _apply_selection_filters(state.current, state.selection_filters)
+    keep_tuples = {_symbol_key_tuple(symbol) for symbol in state.current}
+    keep_keys = {_symbol_key(symbol) for symbol in state.current}
+    state.symbols = [
+        symbol for symbol in state.symbols if _symbol_key_tuple(symbol) in keep_tuples
+    ]
+    state._seen_symbols = set(keep_tuples)
+    state.files = []
+    state.concept_files_returned = 0
+    _prune_relationships(
+        state.relationships, keep_tuples=keep_tuples, keep_keys=keep_keys
+    )
+
+
+def _apply_selection_filters(
+    symbols: list[dict[str, Any]],
+    selection_filters: list[tuple[_ChainStep, bool]],
+) -> list[dict[str, Any]]:
+    selected = list(symbols)
+    for step, invert in selection_filters:
+        selected = _filters.filter_symbols(selected, step, invert=invert)
+    return selected
+
+
+def _filter_concept_entries(
+    entries: list[dict[str, Any]],
+    selection_filters: list[tuple[_ChainStep, bool]],
+) -> list[dict[str, Any]]:
+    filtered: list[dict[str, Any]] = []
+    file_only = _selection_filters_are_file_only(selection_filters)
+    for entry in entries:
+        symbol_pairs = [
+            (_concept_symbol_to_query_symbol(entry, symbol), symbol)
+            for symbol in entry.get("symbols", [])
+        ]
+        kept_symbols = _apply_selection_filters(
+            [symbol for symbol, _ in symbol_pairs],
+            selection_filters,
+        )
+        file_matches = _concept_file_matches(entry, selection_filters, file_only)
+        if not file_matches and not kept_symbols:
+            continue
+        next_entry = dict(entry)
+        if not file_matches:
+            kept_keys = {_symbol_key_tuple(symbol) for symbol in kept_symbols}
+            next_entry["symbols"] = [
+                raw
+                for symbol, raw in symbol_pairs
+                if _symbol_key_tuple(symbol) in kept_keys
+            ]
+        filtered.append(next_entry)
+    return filtered
+
+
+def _concept_file_matches(
+    entry: dict[str, Any],
+    selection_filters: list[tuple[_ChainStep, bool]],
+    file_only: bool,
+) -> bool:
+    if not file_only:
+        return False
+    file_marker = {
+        "name": "",
+        "kind": "file",
+        "file": entry.get("file_path", ""),
+        "line": 0,
+        "language": entry.get("language", ""),
+    }
+    return bool(_apply_selection_filters([file_marker], selection_filters))
+
+
+def _selection_filters_are_file_only(
+    selection_filters: list[tuple[_ChainStep, bool]],
+) -> bool:
+    symbol_fields = {"name", "kind", "language", "regex"}
+    return not any(
+        symbol_fields.intersection(step.kwargs) for step, _ in selection_filters
+    )
+
+
+def _concept_symbol_to_query_symbol(
+    entry: dict[str, Any],
+    symbol: dict[str, Any],
+) -> dict[str, Any]:
+    start_line = int(symbol.get("start_line", symbol.get("line", 0)) or 0)
+    return {
+        "name": symbol.get("name", ""),
+        "kind": symbol.get("kind", ""),
+        "file": entry.get("file_path", ""),
+        "line": start_line,
+        "end_line": symbol.get("end_line", start_line),
+        "language": entry.get("language", ""),
+    }
+
+
+def _prune_relationships(
+    relationships: dict[str, dict[str, list[dict[str, Any]]]],
+    *,
+    keep_tuples: set[tuple[str, int, str]],
+    keep_keys: set[str],
+) -> None:
+    for direction, edge_map in relationships.items():
+        pruned: dict[str, list[dict[str, Any]]] = {}
+        for source_key, entries in edge_map.items():
+            kept_entries = [
+                entry for entry in entries if _symbol_key_tuple(entry) in keep_tuples
+            ]
+            if source_key in keep_keys:
+                pruned[source_key] = entries
+            elif kept_entries:
+                pruned[source_key] = kept_entries
+        relationships[direction] = pruned
 
 
 def _is_relation_noise_symbol(symbol: dict[str, Any]) -> bool:
@@ -972,20 +1132,11 @@ def _source_preference_key(symbol: dict[str, Any]) -> tuple[int, int, str, int, 
 
 
 def _is_test_or_fixture_path(path: str) -> bool:
-    name = os.path.basename(path)
-    return bool(
-        "/test/" in path
-        or "/tests/" in path
-        or "/__tests__/" in path
-        or "/fixtures/" in path
-        or name.startswith("test_")
-        or "_test." in name
-        or name.endswith((".test.ts", ".test.tsx", ".test.js", ".spec.ts", ".spec.js"))
-    )
+    return _filters.is_test_or_fixture_path(path)
 
 
 def _is_generated_or_vendor_path(path: str) -> bool:
-    return any(part in path for part in ("/vendor/", "/gen/", "/generated/"))
+    return _filters.is_generated_or_vendor_path(path)
 
 
 def _unique_symbol_files(symbols: list[dict[str, Any]]) -> list[str]:
