@@ -98,6 +98,7 @@ Categories of CLI surface:
 - `--codegraph-complexity-heatmap` — cyclomatic complexity heatmap
 - `--codegraph-sitemap` — hierarchical project code map
 - `--codegraph-visualize` — Mermaid flowchart export
+- `--uml class|package|component|sequence` — UML-style Mermaid diagram export
 - `--code-similarity` — AST-structural clone detection
 - `--pr-review` — AST diff + semantic classify + blast-radius PR review
 
@@ -139,7 +140,7 @@ or `git diff --check` for non-code edits.
 
 ## See Also
 
-- [`docs/cli-reference.md`](../cli-reference.md) — Full CLI reference (226 unique flags total — this codemap is intentionally categorical, not exhaustive)
+- [`docs/cli-reference.md`](../cli-reference.md) — Full CLI reference (252 unique flags total — this codemap is intentionally categorical, not exhaustive)
 - [`docs/CODEMAPS/mcp-tools.md`](./mcp-tools.md) — MCP-side counterpart
 - [`tests/unit/cli/test_mcp_commands.py`](../../tests/unit/cli/test_mcp_commands.py) — Parity contract tests
 - [`scripts/codemap-sync-check.sh`](../../scripts/codemap-sync-check.sh) — pre-commit gate that blocks `argument_parser_builder.py` changes without a `cli.md` update

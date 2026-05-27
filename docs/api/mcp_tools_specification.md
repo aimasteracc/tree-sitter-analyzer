@@ -2056,7 +2056,30 @@ Modes: `full` (all edges), `file` (single-file scope), `function` (transitive ch
 
 **CLI Parity**: `uv run python -m tree_sitter_analyzer --codegraph-visualize --codegraph-visualize-mode function --codegraph-visualize-function NAME --format json`
 
-### 46. codegraph_xref
+### 46. codegraph_uml
+
+**Purpose**: Export UML-style Mermaid diagrams from indexed project intelligence. First-phase diagrams are `class` (inheritance), `package` (package/import dependencies), `component` (top-level component dependencies), and `sequence` (static call-path approximation).
+
+**Input**:
+```json
+{
+  "diagram": "class",
+  "source": "handler",
+  "target": "repository",
+  "max_edges": 200,
+  "max_depth": 8,
+  "max_paths": 3,
+  "package_depth": 2,
+  "include_external_bases": true,
+  "output_format": "toon"
+}
+```
+
+Modes: `class`, `package`, `component`, `sequence`. Sequence diagrams require `source` and `target`; they are static call-path approximations, not runtime traces.
+
+**CLI Parity**: `uv run python -m tree_sitter_analyzer --uml class --format json`
+
+### 47. codegraph_xref
 
 **Purpose**: Instant multi-dimension cross-reference from pre-indexed AST cache (CodeGraph parity). For a symbol: definition + callers + callees + import dependents + file blast radius. For a file: all symbols + deps. Requires `ast_cache` index.
 
@@ -2076,7 +2099,7 @@ Modes: `full` (all edges), `file` (single-file scope), `function` (transitive ch
 
 **CLI Parity**: `uv run python -m tree_sitter_analyzer --codegraph-xref --codegraph-xref-mode symbol --codegraph-xref-symbol NAME --format json`
 
-### 47. decision_journal
+### 48. decision_journal
 
 **Purpose**: Persistent journal of architectural decisions. Records every decision with title, rationale, verdict, scope, alternatives considered, related symbols, and tags. The only registered MCP tool that persists *reasoning* across sessions. Storage: `<project_root>/.ast-cache/decision_journal.db`.
 
@@ -2099,7 +2122,7 @@ Modes: `record` (new entry), `get` (by id), `search` (substring + verdict + path
 
 **CLI Parity**: `uv run python -m tree_sitter_analyzer --decision-journal --decision-journal-mode search --decision-journal-query "topic" --format json`
 
-### 48. detect_routes
+### 49. detect_routes
 
 **Purpose**: Detect HTTP route declarations across web frameworks (Flask, Django, FastAPI, Express, Spring Boot). The only built-in tool that provides URL→Handler mapping.
 
@@ -2118,7 +2141,7 @@ Modes: `all` (list all routes), `summary` (stats), `lookup` (find handler for UR
 
 **CLI Parity**: `uv run python -m tree_sitter_analyzer --detect-routes --detect-routes-mode all --format json`
 
-### 49. modification_guard
+### 50. modification_guard
 
 **Purpose**: Pre-modification safety check — run this BEFORE editing any public symbol. Returns a structured safety report showing how many places depend on the symbol you are about to modify.
 
@@ -2137,7 +2160,7 @@ Do NOT call alongside `trace_impact` — `modification_guard` invokes it interna
 
 **CLI Parity**: `uv run python -m tree_sitter_analyzer --modification-guard --modification-guard-symbol NAME --modification-guard-type rename --format json`
 
-### 50. refactoring_suggestions
+### 51. refactoring_suggestions
 
 **Purpose**: Concrete refactoring plan for a single file. Surfaces structural smells (god class, long method, deep nesting, duplicated code) AND anti-patterns / security issues (eval, bare except, mutable default, SQL-injection-shaped f-strings) packaged as actionable extraction targets with helper names, line ranges, parameters, return types, and optional code skeletons.
 
@@ -2157,7 +2180,7 @@ Do NOT call alongside `trace_impact` — `modification_guard` invokes it interna
 
 **SMART Workflow**: Call after `check_file_health` flags a file as B/C/D/F grade. Pair with `safe_to_edit` before applying. Verdict vocabulary: `SAFE` / `CAUTION` / `REVIEW` / `UNSAFE` / `INFO`. If the verdict is `INFO` (nothing to extract), do not invent extractions to satisfy the user.
 
-### 51. safe_to_edit
+### 52. safe_to_edit
 
 **Purpose**: Pre-edit safety check for a single file — how many other modules depend on it, which test files cover it, and a concrete checklist of pre-edit verifications. Returns `risk_level` (`SAFE`/`CAUTION`/`UNSAFE`) plus actionable next steps. MUST be called before editing any production-facing file.
 
@@ -2174,7 +2197,7 @@ Do NOT call alongside `trace_impact` — `modification_guard` invokes it interna
 
 **SMART Workflow**: Use in the **Trace (T)** step before any edit to a public-facing module or utility. Pair with `modification_guard` for symbol-level rename impact.
 
-### 52. semantic_classify
+### 53. semantic_classify
 
 **Purpose**: Classify code changes into semantic categories with risk assessment. Returns dominant category, risk level, confidence, and per-hunk classification.
 
@@ -2193,7 +2216,7 @@ Modes: `classify_string` (two code strings), `classify_file` (file between git r
 
 **CLI Parity**: `uv run python -m tree_sitter_analyzer --semantic-classify --semantic-classify-mode classify_file --semantic-classify-file PATH --format json`
 
-### 53. smart_context
+### 54. smart_context
 
 **Purpose**: One-shot file orientation: combines `check_file_health` grade, exported symbols (the file's public API), upstream/downstream dependencies, associated test files, and edit-risk estimate into a single envelope. Designed as the first tool an agent calls when handed an unfamiliar file — replaces 3-4 separate calls (`extract_code_section` + `check_file_health` + `analyze_dependencies` + `safe_to_edit`) with one.
 
@@ -2209,7 +2232,7 @@ Modes: `classify_string` (two code strings), `classify_file` (file between git r
 
 **SMART Workflow**: First tool when picking up an unfamiliar file. Includes compact `agent_summary` (risk, next step, verification command, stop condition).
 
-### 54. symbol_lineage
+### 55. symbol_lineage
 
 **Purpose**: Symbol lineage: definition → callers → downstream files → risk. Shows what breaks if you change a symbol. Combines AST references with the file dependency graph. SLOW — traverses AST references plus the full dependency graph (5-15s per symbol on medium repos); cache via `build_project_index`.
 
@@ -2224,7 +2247,7 @@ Modes: `classify_string` (two code strings), `classify_file` (file between git r
 
 **CLI Parity**: `uv run python -m tree_sitter_analyzer --symbol-lineage --symbol-lineage-symbol NAME --format json`
 
-### 55. trace_impact
+### 56. trace_impact
 
 **Purpose**: Find every caller and usage site of a symbol across the entire project. REQUIRED before modifying any public function, class, or variable.
 

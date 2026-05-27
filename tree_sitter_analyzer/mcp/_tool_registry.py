@@ -82,6 +82,7 @@ def create_tool_registry(
     from .tools.symbol_resolve_tool import CodeGraphSymbolResolveTool
     from .tools.symbol_search_tool import CodeGraphSymbolSearchTool
     from .tools.trace_impact_tool import TraceImpactTool
+    from .tools.uml_tool import CodeGraphUMLTool
 
     tool_instances: list[tuple[str, Any]] = [
         ("check_code_scale", AnalyzeScaleTool(project_root)),
@@ -157,6 +158,7 @@ def create_tool_registry(
         ("codegraph_dependency_matrix", CodeGraphDependencyMatrixTool(project_root)),
         ("check_constraints", ConstraintCheckTool(project_root)),
         ("codegraph_visualize", CodeGraphVisualizeTool(project_root)),
+        ("codegraph_uml", CodeGraphUMLTool(project_root)),
         # consolidated-only tools ported during merge of feat/autonomous-dev
         ("trace_impact", TraceImpactTool(project_root)),
         ("check_tools", CheckToolsTool(project_root)),

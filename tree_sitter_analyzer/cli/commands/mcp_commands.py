@@ -148,6 +148,7 @@ from tree_sitter_analyzer.mcp.tools.symbol_search_tool import (
 from tree_sitter_analyzer.mcp.tools.trace_impact_tool import (
     TraceImpactTool,  # noqa: F401
 )
+from tree_sitter_analyzer.mcp.tools.uml_tool import CodeGraphUMLTool  # noqa: F401
 
 _DEPENDENCY_FILE_SCOPED_MODES = {"blast_radius", "file_deps"}
 _DEPENDENCY_MODE_ALIASES = {"full": "summary"}
@@ -843,6 +844,24 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
             "output_format": output_format,
         },
     ),
+    McpCommandSpec(
+        flag_name="uml",
+        tool_attr="CodeGraphUMLTool",
+        label="UML Mermaid export: class, package, component, sequence diagrams",
+        build_tool_args=lambda args, output_format: {
+            "diagram": getattr(args, "uml", "class") or "class",
+            "source": getattr(args, "uml_source", None),
+            "target": getattr(args, "uml_target", None),
+            "max_edges": getattr(args, "uml_max_edges", 200),
+            "max_depth": getattr(args, "uml_max_depth", 8),
+            "max_paths": getattr(args, "uml_max_paths", 3),
+            "package_depth": getattr(args, "uml_package_depth", 2),
+            "include_external_bases": not bool(
+                getattr(args, "uml_no_external_bases", False)
+            ),
+            "output_format": output_format,
+        },
+    ),
     # consolidated-only dispatchers ported during merge of feat/autonomous-dev
     McpCommandSpec(
         flag_name="trace_impact",
@@ -1016,6 +1035,7 @@ _TOOL_CLASS_NAMES: frozenset[str] = frozenset(
         "ClassHierarchyTool",
         "CodeGraphDependencyMatrixTool",
         "CodeGraphVisualizeTool",
+        "CodeGraphUMLTool",
         "ConstraintCheckTool",
         # consolidated-only tools ported during merge of feat/autonomous-dev
         "TraceImpactTool",
