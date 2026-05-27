@@ -69,6 +69,9 @@ def concept_entries_for_queries(
 
 def symbol_candidate_tokens(query: str) -> list[str]:
     """Return high-signal resolver tokens for code-like query strings."""
+    declared_type = _declared_type_name(query)
+    if declared_type:
+        return [declared_type]
     terms = normalized_query_terms(query)
     if not terms:
         return [query] if query else []
@@ -100,6 +103,9 @@ def normalized_query_terms(query: str) -> list[str]:
 
 def concept_query_terms(query: str) -> list[str]:
     """Return terms for source concept search, including declaration hints."""
+    declared_type = _declared_type_name(query)
+    if declared_type:
+        return _dedupe_tokens([declared_type, *_declaration_hint_terms(query)])
     return _dedupe_tokens(
         [*normalized_query_terms(query), *_declaration_hint_terms(query)]
     )
@@ -191,6 +197,11 @@ def _primary_signature_terms(query: str, terms: list[str]) -> list[str]:
     if terms:
         primary.append(terms[-1])
     return [term for term in primary if term]
+
+
+def _declared_type_name(query: str) -> str:
+    match = re.search(r"\btype\s+([A-Za-z_][A-Za-z0-9_]*)\b", query)
+    return match.group(1) if match else ""
 
 
 def _declaration_hint_terms(query: str) -> list[str]:

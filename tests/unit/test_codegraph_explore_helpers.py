@@ -351,6 +351,29 @@ class TestConceptSearchHelpers:
             == 1
         )
 
+    def test_declaration_symbol_from_line_supports_go_type_aliases(self):
+        assert helpers._declaration_symbol_from_line(
+            "type HandlerFunc func(*Context)", 9, [], ["handlerfunc"]
+        ) == {
+            "name": "HandlerFunc",
+            "kind": "type",
+            "start_line": 9,
+            "end_line": 9,
+            "code": "type HandlerFunc func(*Context)",
+        }
+        assert (
+            helpers._declaration_symbol_from_line(
+                "type Params []Param", 12, [], ["params"]
+            )["name"]
+            == "Params"
+        )
+        assert (
+            helpers._declaration_symbol_from_line(
+                "type Params []Param", 12, [], ["node"]
+            )
+            is None
+        )
+
     def test_dedupe_concept_symbols_skips_invalid_and_duplicates(self):
         deduped = helpers._dedupe_concept_symbols(
             [

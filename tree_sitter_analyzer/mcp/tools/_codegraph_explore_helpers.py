@@ -425,7 +425,7 @@ def _declaration_symbol_from_line(
 ) -> dict[str, Any] | None:
     stripped = line.strip()
     patterns = (
-        (r"^type\s+([A-Za-z_][A-Za-z0-9_]*)\s+(struct|interface)\b", "type"),
+        (r"^type\s+([A-Za-z_][A-Za-z0-9_]*)\b", "type"),
         (
             r"^(?:export\s+)?(?:class|interface|enum)\s+([A-Za-z_][A-Za-z0-9_]*)\b",
             "type",
