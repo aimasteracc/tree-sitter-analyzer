@@ -50,6 +50,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import threading
@@ -414,17 +415,45 @@ def clone_repo_factory(
                 return dest
 
         dest = base / name
-        result = subprocess.run(
-            ["git", "clone", "--depth", "1", "--quiet", url, str(dest)],
-            capture_output=True,
-            timeout=120.0,
-        )
+        if (dest / ".git").exists():
+            cache[name] = dest
+            return dest
+
+        if dest.exists():
+            shutil.rmtree(dest)
+
+        tmp_dest = base / f".{name}.clone-tmp"
+        if tmp_dest.exists():
+            shutil.rmtree(tmp_dest)
+
+        try:
+            result = subprocess.run(
+                ["git", "clone", "--depth", "1", "--quiet", url, str(tmp_dest)],
+                capture_output=True,
+                timeout=45.0,
+            )
+        except subprocess.TimeoutExpired:
+            shutil.rmtree(tmp_dest, ignore_errors=True)
+            pytest.skip(
+                f"tracked: git clone {url!r} timed out after 45s. "
+                "Real-repo E2E requires network; skip is expected in slow or "
+                "air-gapped envs."
+            )
+        except FileNotFoundError:
+            pytest.skip(
+                "tracked: git executable not found. Real-repo E2E requires git; "
+                "skip is expected in minimal envs."
+            )
+
         if result.returncode != 0:
+            shutil.rmtree(tmp_dest, ignore_errors=True)
             pytest.skip(
                 f"tracked: git clone {url!r} failed — offline or repo moved. "
                 "Real-repo E2E requires network; skip is expected in air-gapped envs.\n"
                 + result.stderr.decode("utf-8", errors="replace")[:300]
             )
+
+        tmp_dest.replace(dest)
         cache[name] = dest
         return dest
 
