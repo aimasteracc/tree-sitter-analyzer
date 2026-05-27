@@ -741,6 +741,10 @@ def _compact_file_entry(entry: dict[str, Any]) -> dict[str, Any]:
             symbol_entry["kind"] = symbol["kind"]
         if symbol.get("code"):
             symbol_entry["code"] = symbol["code"]
+        if symbol.get("code_truncated"):
+            symbol_entry["code_truncated"] = True
+        if symbol.get("code_lines"):
+            symbol_entry["code_lines"] = symbol["code_lines"]
         compacted["symbols"].append(symbol_entry)
     return compacted
 
@@ -837,10 +841,16 @@ def _build_file_entries(
             }
             start_line = int(symbol.get("line", 0) or 0)
             end_line = int(symbol.get("end_line", start_line) or start_line)
-            if include_code and lines and end_line - start_line <= _MAX_SNIPPET_LINES:
-                code = _h.extract_snippet_from_lines(lines, start_line, end_line)
+            if include_code and lines:
+                snippet_end = min(
+                    end_line, len(lines), start_line + _MAX_SNIPPET_LINES - 1
+                )
+                code = _h.extract_snippet_from_lines(lines, start_line, snippet_end)
                 if code:
                     entry["code"] = code
+                if snippet_end < end_line:
+                    entry["code_truncated"] = True
+                    entry["code_lines"] = f"{start_line}-{snippet_end} of {end_line}"
             symbol_entries.append(entry)
         entries.append(
             {
