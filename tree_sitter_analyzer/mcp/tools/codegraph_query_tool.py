@@ -340,9 +340,9 @@ def _resolve_query(cache: Any, query: str, limit: int) -> list[dict[str, Any]]:
     _, file_tokens = _h.split_query(query)
     symbol_tokens = _concepts.symbol_candidate_tokens(query)
 
-    resolved: list[dict[str, Any]] = []
+    resolved: list[tuple[int, dict[str, Any]]] = []
     seen: set[tuple[str, int, str]] = set()
-    for token in symbol_tokens:
+    for token_order, token in enumerate(symbol_tokens):
         try:
             defs = resolver.resolve(token).definitions
         except Exception as exc:
@@ -359,10 +359,12 @@ def _resolve_query(cache: Any, query: str, limit: int) -> list[dict[str, Any]]:
             if key in seen:
                 continue
             seen.add(key)
-            resolved.append(item)
-            if len(resolved) >= limit:
-                return resolved
-    return resolved
+            resolved.append((token_order, item))
+    resolved.sort(key=lambda item: (item[0], _source_preference_key(item[1])))
+    symbols = [item for _, item in resolved]
+    if not file_tokens:
+        symbols = _drop_test_shadow_symbols(symbols)
+    return symbols[:limit]
 
 
 def _apply_concept_fallback(
@@ -424,15 +426,17 @@ def _relation_step(
             rows = cache.query_callers(name, file_path or None, max_depth=depth) or []
             entries = [
                 _row_symbol(row, "caller_name", "caller_file", "caller_line")
-                for row in rows[:limit]
+                for row in rows
             ]
         else:
             rows = cache.query_callees(name, file_path or None, max_depth=depth) or []
             entries = [
                 _row_symbol(row, "callee_name", "callee_file", "callee_line")
-                for row in rows[:limit]
+                for row in rows
             ]
-        entries = [entry for entry in entries if entry["name"]]
+        entries = _source_first_symbols(entry for entry in entries if entry["name"])[
+            :limit
+        ]
         source_key = _symbol_key(symbol)
         state.relationships[direction][source_key] = entries
         related.extend(entries)
@@ -865,6 +869,58 @@ def _dedupe_symbols(symbols: list[dict[str, Any]]) -> list[dict[str, Any]]:
         seen.add(key)
         out.append(symbol)
     return out
+
+
+def _source_first_symbols(symbols: Any) -> list[dict[str, Any]]:
+    return sorted(symbols, key=_source_preference_key)
+
+
+def _drop_test_shadow_symbols(symbols: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    source_names = {
+        str(symbol.get("name") or "").lower()
+        for symbol in symbols
+        if symbol.get("name")
+        and not _is_test_or_fixture_path(str(symbol.get("file") or "").lower())
+    }
+    if not source_names:
+        return symbols
+    return [
+        symbol
+        for symbol in symbols
+        if not (
+            str(symbol.get("name") or "").lower() in source_names
+            and _is_test_or_fixture_path(str(symbol.get("file") or "").lower())
+        )
+    ]
+
+
+def _source_preference_key(symbol: dict[str, Any]) -> tuple[int, int, str, int, str]:
+    path = str(symbol.get("file") or "")
+    normalized = path.replace("\\", "/").lower()
+    return (
+        1 if _is_test_or_fixture_path(normalized) else 0,
+        1 if _is_generated_or_vendor_path(normalized) else 0,
+        normalized,
+        int(symbol.get("line", 0) or 0),
+        str(symbol.get("name") or ""),
+    )
+
+
+def _is_test_or_fixture_path(path: str) -> bool:
+    name = os.path.basename(path)
+    return bool(
+        "/test/" in path
+        or "/tests/" in path
+        or "/__tests__/" in path
+        or "/fixtures/" in path
+        or name.startswith("test_")
+        or "_test." in name
+        or name.endswith((".test.ts", ".test.tsx", ".test.js", ".spec.ts", ".spec.js"))
+    )
+
+
+def _is_generated_or_vendor_path(path: str) -> bool:
+    return any(part in path for part in ("/vendor/", "/gen/", "/generated/"))
 
 
 def _unique_symbol_files(symbols: list[dict[str, Any]]) -> list[str]:
