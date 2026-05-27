@@ -210,8 +210,12 @@ def _get_func_name(node: Any, language: str) -> str | None:
                         text.decode("utf-8") if isinstance(text, bytes) else str(text)
                     )
         elif language == "go":
+            name_node = node.child_by_field_name("name")
+            if name_node is not None:
+                text = name_node.text
+                return text.decode("utf-8") if isinstance(text, bytes) else str(text)
             for child in node.children:
-                if child.type == "identifier":
+                if child.type in ("identifier", "field_identifier"):
                     text = child.text
                     return (
                         text.decode("utf-8") if isinstance(text, bytes) else str(text)

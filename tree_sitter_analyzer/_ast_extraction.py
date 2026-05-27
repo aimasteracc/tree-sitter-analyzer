@@ -532,9 +532,6 @@ def _extract_call_edges(
         callee_name = call.get("name", "")
         callee_full = call.get("full_name", callee_name)
         callee_line = call_line
-        receiver = call.get("receiver")
-        if receiver:
-            callee_name = f"{receiver}.{callee_name}"
         edges.append(
             {
                 "caller_name": caller_name,
