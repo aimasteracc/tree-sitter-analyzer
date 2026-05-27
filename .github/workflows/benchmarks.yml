@@ -11,8 +11,22 @@ name: Performance Benchmarks
 on:
   pull_request:
     branches: [main, develop]
+    paths:
+      - "benchmarks/**"
+      - "tests/benchmarks/**"
+      - "tree_sitter_analyzer/ast_cache.py"
+      - "tree_sitter_analyzer/mcp/tools/utils/search_cache.py"
+      - "tree_sitter_analyzer/mcp/tools/utils/change_impact_cached_graph.py"
+      - ".github/workflows/benchmarks.yml"
   push:
     branches: [main]
+    paths:
+      - "benchmarks/**"
+      - "tests/benchmarks/**"
+      - "tree_sitter_analyzer/ast_cache.py"
+      - "tree_sitter_analyzer/mcp/tools/utils/search_cache.py"
+      - "tree_sitter_analyzer/mcp/tools/utils/change_impact_cached_graph.py"
+      - ".github/workflows/benchmarks.yml"
   schedule:
     # Run benchmarks daily at 00:00 UTC
     - cron: '0 0 * * *'

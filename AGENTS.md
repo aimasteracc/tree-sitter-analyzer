@@ -26,6 +26,15 @@
 - Do not remove or weaken these pytest defaults. They prevent repeated agent mistakes: serial full-suite runs, accidental benchmark execution, hidden hangs, and >5 minute feedback loops.
 - If a test-runtime setting must change, update `tests/unit/test_agent_contracts.py`, explain why the new setting is faster or safer, and prove `uv run pytest -q` still finishes under 5 minutes.
 
+## CI Test Tier Contract
+
+- CI must not run exhaustive all-language golden/regression tests on every OS/Python axis. Mark that class with `@pytest.mark.full_language`.
+- `.github/workflows/reusable-test.yml` runs `full_language` tests only on the single Linux coverage axis; every no-coverage matrix job must exclude `not full_language`.
+- PR feedback uses `matrix-profile: pr` to run a small representative matrix (Linux coverage/full-language, Linux latest Python, Windows, macOS). Release/hotfix/push validation must keep `matrix-profile: full`.
+- `.github/workflows/test-coverage.yml` is manual-only because reusable-test already uploads coverage on the Linux coverage axis. Do not re-enable PR/push triggers unless reusable-test coverage is removed in the same change.
+- `.github/workflows/ci.yml` owns ordinary PR routing through `scripts/ci_route.py` and `config/ci-routing.yml`. Expensive optional checks such as regression, SQL platform compatibility, benchmarks, and broad E2E must be path-routed or manual/scheduled instead of running unconditionally on every PR.
+- For language-plugin changes, rely on `--change-impact --change-impact-scope ...` during development, run the focused command it reports, then let CI's single full-language axis provide the final cross-language golden gate.
+
 ## Agent Dogfood Feedback Loop
 
 For non-trivial work, expert agents must use this project as their primary feedback instrument while they work, then preserve the learning in memory:

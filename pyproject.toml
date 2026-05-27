@@ -577,6 +577,7 @@ markers = [
     "integration: marks tests as integration tests",
     "unit: marks tests as unit tests",
     "mcp: marks tests as MCP-related tests",
+    "full_language: marks exhaustive all-language golden/regression tests; CI runs these once on the Linux coverage axis",
     "requires_python: marks tests that require tree-sitter-python",
     "requires_java: marks tests that require tree-sitter-java",
 ]

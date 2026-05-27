@@ -16,8 +16,41 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  route:
+    name: Route CI
+    runs-on: ubuntu-latest
+    outputs:
+      run_e2e_smoke: ${{ steps.route.outputs.run_e2e_smoke }}
+      run_regression: ${{ steps.route.outputs.run_regression }}
+      regression_scope: ${{ steps.route.outputs.regression_scope }}
+      run_sql_platform_compat: ${{ steps.route.outputs.run_sql_platform_compat }}
+      full_suite_required: ${{ steps.route.outputs.full_suite_required }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed files
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.sha }}" > changed-files.txt
+          elif [[ "${{ github.event.before || '' }}" != "" && "${{ github.event.before || '' }}" != "0000000000000000000000000000000000000000" ]]; then
+            git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" > changed-files.txt
+          else
+            git diff --name-only HEAD~1 HEAD > changed-files.txt
+          fi
+          cat changed-files.txt
+        shell: bash
+
+      - name: Route jobs
+        id: route
+        run: python3 scripts/ci_route.py --files changed-files.txt --github-output "$GITHUB_OUTPUT"
+        shell: bash
+
   quality-check:
     name: Code Quality
+    needs: route
     uses: ./.github/workflows/reusable-quality.yml
     secrets: inherit  # pragma: allowlist secret
 
@@ -25,6 +58,8 @@ jobs:
     name: Test Suite
     needs: quality-check
     uses: ./.github/workflows/reusable-test.yml
+    with:
+      matrix-profile: ${{ github.event_name == 'pull_request' && 'pr' || 'full' }}
     secrets: inherit  # pragma: allowlist secret
 
   build:
@@ -34,7 +69,8 @@ jobs:
 
   e2e:
     name: E2E Tests (MCP black-box)
-    needs: quality-check
+    needs: [route, quality-check]
+    if: needs.route.outputs.run_e2e_smoke == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -78,9 +114,23 @@ jobs:
           PYTHONIOENCODING: utf-8
           PYTHONUTF8: 1
 
+  regression:
+    name: Regression Tests
+    needs: [route, test]
+    if: needs.route.outputs.run_regression == 'true'
+    uses: ./.github/workflows/regression-tests.yml
+    with:
+      test-scope: ${{ needs.route.outputs.regression_scope }}
+
+  sql-platform-compat:
+    name: SQL Platform Compatibility
+    needs: [route, test]
+    if: needs.route.outputs.run_sql_platform_compat == 'true'
+    uses: ./.github/workflows/sql-platform-compat.yml
+
   quality-gate:
     name: Quality Gate
-    needs: [test, quality-check, build, e2e]
+    needs: [route, test, quality-check, build, e2e, regression, sql-platform-compat]
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -89,22 +139,33 @@ jobs:
           echo "### 🏆 Final Quality Gate Status" >> $GITHUB_STEP_SUMMARY
           SUCCESS=true
 
-          if [[ "${{ needs.quality-check.result }}" != "success" ]]; then
-            echo "❌ Quality Checks failed" >> $GITHUB_STEP_SUMMARY
-            SUCCESS=false
-          fi
-          if [[ "${{ needs.test.result }}" != "success" ]]; then
-            echo "❌ Test Suite failed" >> $GITHUB_STEP_SUMMARY
-            SUCCESS=false
-          fi
-          if [[ "${{ needs.build.result }}" != "success" ]]; then
-            echo "❌ Build Verification failed" >> $GITHUB_STEP_SUMMARY
-            SUCCESS=false
-          fi
-          if [[ "${{ needs.e2e.result }}" != "success" ]]; then
-            echo "❌ E2E Tests failed" >> $GITHUB_STEP_SUMMARY
-            SUCCESS=false
-          fi
+          check_required() {
+            local name="$1"
+            local result="$2"
+            if [[ "$result" != "success" ]]; then
+              echo "❌ ${name} failed: ${result}" >> $GITHUB_STEP_SUMMARY
+              SUCCESS=false
+            fi
+          }
+
+          check_optional() {
+            local name="$1"
+            local result="$2"
+            if [[ "$result" == "failure" || "$result" == "cancelled" ]]; then
+              echo "❌ ${name} failed: ${result}" >> $GITHUB_STEP_SUMMARY
+              SUCCESS=false
+            else
+              echo "✅ ${name}: ${result}" >> $GITHUB_STEP_SUMMARY
+            fi
+          }
+
+          check_required "Route CI" "${{ needs.route.result }}"
+          check_required "Quality Checks" "${{ needs.quality-check.result }}"
+          check_required "Test Suite" "${{ needs.test.result }}"
+          check_required "Build Verification" "${{ needs.build.result }}"
+          check_optional "E2E Tests" "${{ needs.e2e.result }}"
+          check_optional "Regression Tests" "${{ needs.regression.result }}"
+          check_optional "SQL Platform Compatibility" "${{ needs.sql-platform-compat.result }}"
 
           if [ "$SUCCESS" = true ]; then
             echo "✅ All systems go! This version meets our authority standards." >> $GITHUB_STEP_SUMMARY

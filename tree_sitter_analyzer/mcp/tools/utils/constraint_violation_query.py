@@ -56,7 +56,7 @@ def violations_for_files(
 
     placeholders = ",".join(["?"] * len(files))
     sql = (
-        "SELECT rule_id, caller_file, caller_name, caller_line, "
+        "SELECT rule_id, caller_file, caller_name, caller_line, "  # nosec B608 - placeholders are generated from file count only.
         "       callee_name, callee_file, severity, detected_at "
         "FROM ast_constraint_violations "
         f"WHERE caller_file IN ({placeholders}) "

@@ -1,7 +1,7 @@
 # Test Coverage Check Workflow
 #
 # Purpose: Run comprehensive test suite with coverage reporting and threshold checks
-# Triggers: Pull requests, push to main/develop branches, manual dispatch
+# Triggers: manual dispatch only. PR/push coverage is owned by reusable-test.yml.
 # Jobs:
 #   - coverage-check: Run tests with coverage and enforce minimum thresholds
 # Secrets Required:
@@ -10,10 +10,6 @@
 name: Test Coverage Check
 
 on:
-  pull_request:
-    branches: [main, develop]
-  push:
-    branches: [main, develop]
   workflow_dispatch:
     inputs:
       python-version:

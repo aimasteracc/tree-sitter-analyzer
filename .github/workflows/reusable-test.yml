@@ -24,13 +24,119 @@ on:
         default: true
         type: boolean
 
+      matrix-profile:
+        description: 'Test matrix size: pr for fast PR feedback, full for release/hotfix/push validation'
+        required: false
+        default: 'full'
+        type: string
+
     secrets:
       CODECOV_TOKEN:
         required: true
 
 jobs:
-  test-matrix:
-    name: Test Suite
+  test-matrix-pr:
+    name: Test Suite (PR fast)
+    if: inputs.matrix-profile == 'pr'
+    timeout-minutes: 15
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python-version: "3.11"
+            coverage: true
+          - os: ubuntu-latest
+            python-version: "3.13"
+            coverage: false
+          - os: windows-latest
+            python-version: "3.11"
+            coverage: false
+          - os: macos-latest
+            python-version: "3.11"
+            coverage: false
+
+    env:
+      PYTHONIOENCODING: utf-8
+      PYTHONUTF8: 1
+      PYTEST_XDIST_AUTO_NUM_WORKERS: "4"
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: "latest"
+        enable-cache: true
+        cache-dependency-glob: "uv.lock"
+
+    - name: Set up Python ${{ matrix.python-version }}
+      run: uv python install ${{ matrix.python-version }}
+
+    - name: Setup System Dependencies
+      uses: ./.github/actions/setup-system
+      with:
+        os: ${{ matrix.os }}
+
+    - name: Install dependencies
+      run: |
+        uv sync --all-extras
+      shell: bash
+
+    - name: Run Tests with Coverage
+      if: matrix.coverage
+      id: test-coverage
+      run: |
+        echo "### 📊 Test Coverage Report" >> $GITHUB_STEP_SUMMARY
+        uv run pytest tests/ -n auto -v --tb=short --maxfail=200 \
+          --cov=tree_sitter_analyzer --cov-report=xml --cov-report=term-missing \
+          --ignore=tests/e2e \
+          -m "not requires_ripgrep and not requires_fd and not slow and not e2e" > pytest-output.txt 2>&1 || touch test_failed
+
+        cat pytest-output.txt
+        echo '```text' >> $GITHUB_STEP_SUMMARY
+        tail -n 20 pytest-output.txt >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+
+        if [ -f test_failed ]; then
+          echo "❌ Tests failed!" >> $GITHUB_STEP_SUMMARY
+          exit 1
+        fi
+      shell: bash
+
+    - name: Run Tests (no coverage)
+      if: ${{ !matrix.coverage }}
+      run: |
+        uv run pytest tests/ -n auto -v --tb=short --maxfail=200 \
+          --ignore=tests/e2e \
+          -m "not requires_ripgrep and not requires_fd and not slow and not e2e and not full_language"
+      shell: bash
+
+    - name: Upload coverage to Codecov
+      if: inputs.upload-coverage && matrix.coverage
+      uses: codecov/codecov-action@v5
+      env:
+        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      with:
+        files: ./coverage.xml
+        fail_ci_if_error: false
+        flags: unittests
+        name: codecov-umbrella
+
+    - name: Update README statistics
+      if: matrix.coverage
+      run: |
+        echo "Updating README statistics..."
+        uv run python scripts/update_readme_stats.py || echo "README stats update completed with warnings"
+      shell: bash
+
+  test-matrix-full:
+    name: Test Suite (full)
+    if: inputs.matrix-profile == 'full'
     timeout-minutes: 15
     runs-on: ${{ matrix.os }}
     strategy:
@@ -101,7 +207,7 @@ jobs:
       run: |
         uv run pytest tests/ -n auto -v --tb=short --maxfail=200 \
           --ignore=tests/e2e \
-          -m "not requires_ripgrep and not requires_fd and not slow and not e2e"
+          -m "not requires_ripgrep and not requires_fd and not slow and not e2e and not full_language"
       shell: bash
 
     - name: Upload coverage to Codecov
