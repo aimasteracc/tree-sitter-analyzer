@@ -72,9 +72,12 @@ def symbol_candidate_tokens(query: str) -> list[str]:
     declared_type = _declared_type_name(query)
     if declared_type:
         return [declared_type]
+    declared_const = _declared_const_name(query)
     terms = normalized_query_terms(query)
     if not terms:
         return [query] if query else []
+    if declared_const:
+        return _dedupe_tokens([declared_const, *terms])
     primary = _primary_signature_terms(query, terms)
     return _dedupe_tokens([*primary, *terms])
 
@@ -106,8 +109,24 @@ def concept_query_terms(query: str) -> list[str]:
     declared_type = _declared_type_name(query)
     if declared_type:
         return _dedupe_tokens([declared_type, *_declaration_hint_terms(query)])
+    declared_const = _declared_const_name(query)
+    normalized_terms = normalized_query_terms(query)
+    if declared_const:
+        return _dedupe_tokens(
+            [
+                declared_const,
+                *normalized_terms,
+                *_const_declaration_hint_terms(
+                    query, [declared_const, *normalized_terms]
+                ),
+            ]
+        )
     return _dedupe_tokens(
-        [*normalized_query_terms(query), *_declaration_hint_terms(query)]
+        [
+            *normalized_terms,
+            *_const_declaration_hint_terms(query, normalized_terms),
+            *_declaration_hint_terms(query),
+        ]
     )
 
 
@@ -202,6 +221,32 @@ def _primary_signature_terms(query: str, terms: list[str]) -> list[str]:
 def _declared_type_name(query: str) -> str:
     match = re.search(r"\btype\s+([A-Za-z_][A-Za-z0-9_]*)\b", query)
     return match.group(1) if match else ""
+
+
+def _declared_const_name(query: str) -> str:
+    match = re.search(r"\b(?:const|var|let)\s+([A-Za-z_][A-Za-z0-9_]*)\b", query)
+    if match:
+        return match.group(1)
+    if not re.search(r"\biota\b", query):
+        return ""
+    match = re.search(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\b", query)
+    return match.group(1) if match else ""
+
+
+def _const_declaration_hint_terms(query: str, terms: list[str]) -> list[str]:
+    if re.search(r"\biota\b", query):
+        return ["const"]
+    if (
+        len(terms) >= 2
+        and _is_lower_camel(terms[0])
+        and any(term.lower().endswith("type") for term in terms[1:])
+    ):
+        return ["const"]
+    return []
+
+
+def _is_lower_camel(token: str) -> bool:
+    return bool(re.match(r"^[a-z][A-Za-z0-9]*[A-Z][A-Za-z0-9]*$", token))
 
 
 def _declaration_hint_terms(query: str) -> list[str]:

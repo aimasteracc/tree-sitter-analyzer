@@ -374,6 +374,117 @@ class TestConceptSearchHelpers:
             is None
         )
 
+    def test_declaration_symbol_from_line_supports_go_const_blocks(self):
+        lines = [
+            "const (\n",
+            "\tstatic nodeType = iota\n",
+            "\troot\n",
+            "\tparam\n",
+            "\tcatchAll\n",
+            ")\n",
+        ]
+
+        assert helpers._declaration_symbol_from_line(
+            lines[1], 2, lines, ["static"]
+        ) == {
+            "name": "static",
+            "kind": "constant",
+            "start_line": 2,
+            "end_line": 6,
+            "code": "".join(lines),
+        }
+        assert (
+            helpers._declaration_symbol_from_line(lines[4], 5, lines, ["catchall"])[
+                "name"
+            ]
+            == "catchAll"
+        )
+        assert (
+            helpers._declaration_symbol_from_line(lines[4], 5, lines, ["node"]) is None
+        )
+        assert helpers._term_position("missing", ["static"]) == 1
+        assert helpers._declaration_symbol_from_line(
+            "const maxParams = 8", 11, [], ["maxparams"]
+        ) == {
+            "name": "maxParams",
+            "kind": "constant",
+            "start_line": 11,
+            "end_line": 11,
+            "code": "const maxParams = 8",
+        }
+        assert (
+            helpers._declaration_symbol_from_line(
+                "var routeCache = map[string]int{}", 12, [], ["routecache"]
+            )["kind"]
+            == "variable"
+        )
+
+    def test_block_declaration_bounds_cover_invalid_and_unclosed_blocks(self):
+        assert helpers._block_declaration_bounds(["const (\n"], 0) is None
+        assert (
+            helpers._block_declaration_bounds([")\n", "\tstatic nodeType = iota\n"], 2)
+            is None
+        )
+        assert helpers._block_declaration_bounds(["var (\n", "\tcurrent = 1\n"], 2) == (
+            1,
+            2,
+            "variable",
+        )
+
+    def test_concept_search_ranks_const_block_source_above_test_usage(self, tmp_path):
+        src = tmp_path / "tree.go"
+        src.write_text(
+            "package gin\n\n"
+            "type nodeType uint8\n\n"
+            "const (\n"
+            "\tstatic nodeType = iota\n"
+            "\troot\n"
+            "\tparam\n"
+            "\tcatchAll\n"
+            ")\n",
+            encoding="utf-8",
+        )
+        test = tmp_path / "tree_test.go"
+        test.write_text(
+            "package gin\n\n"
+            "func TestTreeCatchAllConflict(t *testing.T) {}\n"
+            "func TestTreeInvalidNodeType(t *testing.T) {}\n",
+            encoding="utf-8",
+        )
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.execute(
+            """CREATE TABLE ast_index (
+                file_path TEXT,
+                language TEXT,
+                file_size INTEGER,
+                symbols_json TEXT
+            )"""
+        )
+        for path in (test, src):
+            conn.execute(
+                "INSERT INTO ast_index VALUES (?, ?, ?, ?)",
+                (
+                    path.name,
+                    "go",
+                    path.stat().st_size,
+                    '{"symbols": []}',
+                ),
+            )
+        cache = MagicMock()
+        cache._get_conn.return_value = conn
+
+        result = helpers.concept_search(
+            cache,
+            ["catchAll", "nodeType"],
+            [],
+            str(tmp_path),
+            max_files=2,
+        )
+
+        assert result[0]["file_path"] == "tree.go"
+        assert result[0]["symbols"][0]["name"] == "catchAll"
+
     def test_dedupe_concept_symbols_skips_invalid_and_duplicates(self):
         deduped = helpers._dedupe_concept_symbols(
             [
