@@ -17,18 +17,39 @@ _SUPPORTED_STEPS = {
     "callers",
     "callees",
     "related",
+    "filter",
+    "where",
+    "exclude",
+    "not",
     "take",
     "sort",
     "include",
     "with",
     "answer",
 }
+_FILTER_KWARGS = frozenset(
+    {
+        "name",
+        "kind",
+        "file",
+        "path",
+        "language",
+        "test",
+        "generated",
+        "regex",
+        "case",
+    }
+)
 _ALLOWED_KWARGS: dict[str, frozenset[str]] = {
     "search": frozenset({"query", "limit"}),
     "explore": frozenset({"query", "max_files", "max_symbols", "include_code"}),
     "callers": frozenset({"depth", "limit"}),
     "callees": frozenset({"depth", "limit"}),
     "related": frozenset({"depth", "limit"}),
+    "filter": _FILTER_KWARGS,
+    "where": _FILTER_KWARGS,
+    "exclude": _FILTER_KWARGS,
+    "not": _FILTER_KWARGS,
     "take": frozenset({"limit"}),
     "sort": frozenset({"by", "desc"}),
     "include": frozenset(

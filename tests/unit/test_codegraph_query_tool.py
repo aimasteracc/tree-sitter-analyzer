@@ -9,6 +9,7 @@ from unittest.mock import ANY, MagicMock, patch
 import pytest
 
 from tree_sitter_analyzer.mcp.tools import _codegraph_query_concepts as concepts
+from tree_sitter_analyzer.mcp.tools import _codegraph_query_filters as filters
 from tree_sitter_analyzer.mcp.tools._codegraph_query_dsl import (
     _ChainStep,
     bool_kw,
@@ -109,6 +110,26 @@ class TestParseChain:
         assert string_args(steps[0], required=True) == ["Router", "Handler"]
         assert steps[1].kwargs == {"callers": True, "source": True}
         assert steps[3].kwargs == {"compact": True}
+
+    def test_parses_selection_filter_steps(self):
+        steps = parse_chain(
+            "search('run').filter(kind='function', path='src/', test=False)"
+            ".where(regex='Service$').exclude(generated=True).not(file='vendor/')"
+        )
+
+        assert [step.name for step in steps] == [
+            "search",
+            "filter",
+            "where",
+            "exclude",
+            "not",
+        ]
+        assert steps[1].kwargs == {
+            "kind": "function",
+            "path": "src/",
+            "test": False,
+        }
+        assert steps[2].kwargs == {"regex": "Service$"}
 
     def test_parses_kwargs_and_escaped_quotes(self):
         steps = parse_chain(r'search(query="src/a.\"b.py Run").take(2)')
@@ -508,6 +529,141 @@ class TestCodeGraphQueryTool:
         assert result["facets"]["source"]["files"][0]["file"] == "router.py"
 
     @pytest.mark.asyncio
+    async def test_execute_filter_applies_to_later_concept_fallback(self, tmp_path):
+        router = tmp_path / "router.py"
+        router.write_text(
+            "def handle_route():\n    # route matching lives here\n    return True\n",
+            encoding="utf-8",
+        )
+        service = tmp_path / "service.py"
+        service.write_text(
+            "def handle_service():\n    # route matching should be filtered\n    return True\n",
+            encoding="utf-8",
+        )
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.execute(
+            """CREATE TABLE ast_index (
+                file_path TEXT,
+                language TEXT,
+                file_size INTEGER,
+                symbols_json TEXT
+            )"""
+        )
+        for path, symbol_name in (
+            (router, "handle_route"),
+            (service, "handle_service"),
+        ):
+            conn.execute(
+                "INSERT INTO ast_index VALUES (?, ?, ?, ?)",
+                (
+                    path.name,
+                    "python",
+                    path.stat().st_size,
+                    json.dumps(
+                        {
+                            "symbols": [
+                                {
+                                    "name": symbol_name,
+                                    "kind": "function",
+                                    "line": 1,
+                                    "end_line": 3,
+                                }
+                            ]
+                        }
+                    ),
+                ),
+            )
+        mock_cache = MagicMock()
+        mock_cache._get_conn.return_value = conn
+
+        with (
+            patch("tree_sitter_analyzer.ast_cache.ASTCache", return_value=mock_cache),
+            _patch_resolver_with({}),
+        ):
+            result = await CodeGraphQueryTool(str(tmp_path)).execute(
+                {
+                    "query": (
+                        "search('route matching').filter(file='router.py')"
+                        ".include(source=True).answer(compact=True)"
+                    ),
+                    "output_format": "json",
+                }
+            )
+
+        assert result["verdict"] == "INFO"
+        assert result["stats"]["concept_files_returned"] == 1
+        assert [symbol["file"] for symbol in result["symbols"]] == ["router.py"]
+        assert [file["file"] for file in result["facets"]["source"]["files"]] == [
+            "router.py"
+        ]
+
+    @pytest.mark.asyncio
+    async def test_execute_symbol_filter_applies_to_later_concept_fallback(
+        self, tmp_path
+    ):
+        source = tmp_path / "router.py"
+        source.write_text(
+            "class Router:\n    pass\n\ndef handle_route():\n    return Router()\n",
+            encoding="utf-8",
+        )
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.execute(
+            """CREATE TABLE ast_index (
+                file_path TEXT,
+                language TEXT,
+                file_size INTEGER,
+                symbols_json TEXT
+            )"""
+        )
+        conn.execute(
+            "INSERT INTO ast_index VALUES (?, ?, ?, ?)",
+            (
+                "router.py",
+                "python",
+                source.stat().st_size,
+                json.dumps(
+                    {
+                        "symbols": [
+                            {
+                                "name": "Router",
+                                "kind": "class",
+                                "line": 1,
+                                "end_line": 2,
+                            },
+                            {
+                                "name": "handle_route",
+                                "kind": "function",
+                                "line": 4,
+                                "end_line": 5,
+                            },
+                        ]
+                    }
+                ),
+            ),
+        )
+        mock_cache = MagicMock()
+        mock_cache._get_conn.return_value = conn
+
+        with (
+            patch("tree_sitter_analyzer.ast_cache.ASTCache", return_value=mock_cache),
+            _patch_resolver_with({}),
+        ):
+            result = await CodeGraphQueryTool(str(tmp_path)).execute(
+                {
+                    "query": (
+                        "search('route').filter(kind='function')"
+                        ".include(source=True).answer(compact=True)"
+                    ),
+                    "output_format": "json",
+                }
+            )
+
+        source_symbols = result["facets"]["source"]["files"][0]["symbols"]
+        assert [symbol["name"] for symbol in source_symbols] == ["handle_route"]
+
+    @pytest.mark.asyncio
     async def test_execute_batch_seed_include_sort_and_answer(self, tmp_path):
         source = tmp_path / "main.py"
         source.write_text(
@@ -604,6 +760,202 @@ class TestCodeGraphQueryTool:
         assert result["facets"]["source"]["files"][0]["symbols"][0]["lines"] == "1-2"
         assert "language" not in result["relationships"]["callees"]["main.py:1:run"][0]
 
+    @pytest.mark.asyncio
+    async def test_execute_filter_narrows_current_selection_and_rebuilds_source(
+        self, tmp_path
+    ):
+        source = tmp_path / "src" / "main.py"
+        source.parent.mkdir()
+        source.write_text("def run():\n    return 1\n", encoding="utf-8")
+        test_source = tmp_path / "tests" / "test_main.py"
+        test_source.parent.mkdir()
+        test_source.write_text("def run():\n    return 1\n", encoding="utf-8")
+        defs = {
+            "run": [
+                _make_def(file="src/main.py", name="run", line=1),
+                _make_def(file="tests/test_main.py", name="run", line=1),
+            ]
+        }
+
+        with (
+            patch("tree_sitter_analyzer.ast_cache.ASTCache", return_value=MagicMock()),
+            _patch_resolver_with(defs),
+        ):
+            result = await CodeGraphQueryTool(str(tmp_path)).execute(
+                {
+                    "query": (
+                        "search('run').explore(max_files=5)"
+                        ".filter(path='src/', test=False)"
+                        ".include(source=True).answer(compact=True)"
+                    ),
+                    "output_format": "json",
+                }
+            )
+
+        assert result["success"] is True
+        assert [symbol["file"] for symbol in result["symbols"]] == ["src/main.py"]
+        assert result["files"] == []
+        assert result["facets"]["source"]["files"][0]["file"] == "src/main.py"
+
+    @pytest.mark.asyncio
+    async def test_execute_exclude_removes_matching_selection(self, tmp_path):
+        defs = {
+            "run": [_make_def(file="src/main.py", name="run", line=1)],
+            "test_run": [_make_def(file="tests/test_main.py", name="test_run", line=1)],
+        }
+
+        with (
+            patch("tree_sitter_analyzer.ast_cache.ASTCache", return_value=MagicMock()),
+            _patch_resolver_with(defs),
+        ):
+            result = await CodeGraphQueryTool(str(tmp_path)).execute(
+                {
+                    "query": "search(['run', 'test_run']).exclude(test=True)",
+                    "output_format": "json",
+                }
+            )
+
+        assert [symbol["name"] for symbol in result["symbols"]] == ["run"]
+
+    @pytest.mark.asyncio
+    async def test_execute_filter_prunes_relationships_to_kept_entries(self, tmp_path):
+        mock_cache = MagicMock()
+        mock_cache.query_callees.return_value = [
+            {
+                "callee_name": "helper",
+                "callee_file": "helper.py",
+                "callee_line": 4,
+                "depth": 1,
+            },
+            {
+                "callee_name": "ignored",
+                "callee_file": "ignored.py",
+                "callee_line": 8,
+                "depth": 1,
+            },
+        ]
+        defs = {"run": [_make_def(file="main.py", name="run", line=1)]}
+
+        with (
+            patch("tree_sitter_analyzer.ast_cache.ASTCache", return_value=mock_cache),
+            _patch_resolver_with(defs),
+        ):
+            result = await CodeGraphQueryTool(str(tmp_path)).execute(
+                {
+                    "query": "search('run').callees().filter(name='helper')",
+                    "output_format": "json",
+                }
+            )
+
+        assert [symbol["name"] for symbol in result["symbols"]] == ["helper"]
+        assert result["relationships"]["callees"]["main.py:1:run"] == [
+            {
+                "name": "helper",
+                "kind": "function",
+                "file": "helper.py",
+                "line": 4,
+                "end_line": 4,
+                "language": "",
+                "depth": 1,
+            }
+        ]
+
+    @pytest.mark.asyncio
+    async def test_execute_filter_keeps_relationships_for_kept_source(self, tmp_path):
+        mock_cache = MagicMock()
+        mock_cache.query_callees.return_value = [
+            {
+                "callee_name": "helper",
+                "callee_file": "helper.py",
+                "callee_line": 4,
+                "depth": 1,
+            }
+        ]
+        defs = {"run": [_make_def(file="main.py", name="run", line=1)]}
+
+        with (
+            patch("tree_sitter_analyzer.ast_cache.ASTCache", return_value=mock_cache),
+            _patch_resolver_with(defs),
+        ):
+            result = await CodeGraphQueryTool(str(tmp_path)).execute(
+                {
+                    "query": "search('run').include(callees=True).filter(name='run')",
+                    "output_format": "json",
+                }
+            )
+
+        assert [symbol["name"] for symbol in result["symbols"]] == ["run"]
+        assert result["relationships"]["callees"]["main.py:1:run"] == [
+            {
+                "name": "helper",
+                "kind": "function",
+                "file": "helper.py",
+                "line": 4,
+                "end_line": 4,
+                "language": "",
+                "depth": 1,
+            }
+        ]
+
+    @pytest.mark.asyncio
+    async def test_execute_filter_removes_relationships_without_kept_edges(
+        self, tmp_path
+    ):
+        mock_cache = MagicMock()
+        mock_cache.query_callees.return_value = [
+            {
+                "callee_name": "helper",
+                "callee_file": "helper.py",
+                "callee_line": 4,
+                "depth": 1,
+            }
+        ]
+        defs = {"run": [_make_def(file="main.py", name="run", line=1)]}
+
+        with (
+            patch("tree_sitter_analyzer.ast_cache.ASTCache", return_value=mock_cache),
+            _patch_resolver_with(defs),
+        ):
+            result = await CodeGraphQueryTool(str(tmp_path)).execute(
+                {
+                    "query": "search('run').callees().filter(name='missing')",
+                    "output_format": "json",
+                }
+            )
+
+        assert result["symbols"] == []
+        assert result["relationships"]["callees"] == {}
+
+    @pytest.mark.asyncio
+    async def test_execute_reuses_relation_cache_within_single_chain(self, tmp_path):
+        mock_cache = MagicMock()
+        mock_cache.query_callers.return_value = [
+            {
+                "caller_name": "entry",
+                "caller_file": "entry.py",
+                "caller_line": 10,
+                "depth": 1,
+            }
+        ]
+        defs = {"run": [_make_def(file="main.py", name="run", line=1)]}
+
+        with (
+            patch("tree_sitter_analyzer.ast_cache.ASTCache", return_value=mock_cache),
+            _patch_resolver_with(defs),
+        ):
+            result = await CodeGraphQueryTool(str(tmp_path)).execute(
+                {
+                    "query": (
+                        "search('run').include(callers=True).include(callers=True)"
+                    ),
+                    "output_format": "json",
+                }
+            )
+
+        assert result["success"] is True
+        assert mock_cache.query_callers.call_count == 1
+        assert result["relationships"]["callers"]["main.py:1:run"][0]["name"] == "entry"
+
     def test_apply_step_rejects_unknown_step(self):
         with pytest.raises(ValueError, match="unsupported chain step"):
             CodeGraphQueryTool("/tmp")._apply_step(
@@ -617,6 +969,76 @@ class TestCodeGraphQueryTool:
 
 
 class TestCodeGraphQueryInternals:
+    def test_filter_symbols_supports_predicates_and_inverse_selection(self):
+        symbols = [
+            {
+                "name": "RouterService",
+                "kind": "class",
+                "file": "src/router.py",
+                "language": "python",
+                "line": 1,
+            },
+            {
+                "name": "RouterServiceTest",
+                "kind": "class",
+                "file": "tests/test_router.py",
+                "language": "python",
+                "line": 1,
+            },
+            {
+                "name": "GeneratedRouter",
+                "kind": "class",
+                "file": "src/generated/router.py",
+                "language": "python",
+                "line": 1,
+            },
+        ]
+        step = _ChainStep(
+            "filter",
+            [],
+            {"kind": ["class"], "regex": "Service$", "test": False},
+        )
+
+        assert [s["name"] for s in filters.filter_symbols(symbols, step)] == [
+            "RouterService"
+        ]
+        assert [
+            s["name"] for s in filters.filter_symbols(symbols, step, invert=True)
+        ] == ["RouterServiceTest", "GeneratedRouter"]
+
+    def test_filter_symbols_reports_bad_regex(self):
+        with pytest.raises(ValueError, match=r"filter\(\) invalid regex"):
+            filters.filter_symbols(
+                [{"name": "run", "file": "main.py"}],
+                _ChainStep("filter", [], {"regex": "["}),
+            )
+
+    def test_filter_symbols_covers_empty_case_and_negative_predicates(self):
+        symbols = [
+            {"name": "RunService", "file": "src/run.py", "kind": "class"},
+            {"name": "runservice", "file": "tests/test_run.py", "kind": "class"},
+            {"name": "Generated", "file": "src/generated/run.py", "kind": "class"},
+        ]
+
+        assert filters.filter_symbols(symbols, _ChainStep("filter", [], {})) == symbols
+        assert filters.filter_symbols(
+            symbols,
+            _ChainStep("filter", [], {"name": "Run", "case": True}),
+        ) == [symbols[0]]
+        assert filters.filter_symbols(
+            symbols,
+            _ChainStep("filter", [], {"test": False, "generated": False}),
+        ) == [symbols[0]]
+        assert (
+            filters.filter_symbols(
+                symbols,
+                _ChainStep("filter", [], {"name": ""}),
+            )
+            == symbols
+        )
+        with pytest.raises(ValueError, match="regex must be a non-empty string"):
+            filters.filter_symbols(symbols, _ChainStep("filter", [], {"regex": 1}))
+
     def test_query_state_add_symbols_dedupes_repeated_entries(self):
         state = _QueryState()
         symbol = {"file": "main.py", "line": 1, "name": "run"}
@@ -1230,6 +1652,7 @@ class TestCodeGraphQueryInternals:
                     }
                 ],
             },
+            "risk": {"status": "included", "level": "info", "reasons": []},
         }
 
         compact = _compact_facets(facets)
@@ -1249,9 +1672,20 @@ class TestCodeGraphQueryInternals:
         ]
         assert compact["complexity"]["files"][0]["hotspots"][0]["cc"] == 12
         assert "dimensions" not in compact["health"]["files"][0]
+        assert compact["risk"] == {"status": "included", "level": "info", "reasons": []}
 
     def test_quality_facets_cover_empty_error_and_missing_paths(self, tmp_path):
         symbols = [{"file": "main.py", "line": 1, "name": "run"}]
+
+        with patch.dict(
+            "sys.modules", {"tree_sitter_analyzer.complexity_heatmap": None}
+        ):
+            assert (
+                _complexity_facet(MagicMock(), str(tmp_path), symbols, max_files=1)[
+                    "status"
+                ]
+                == "missing"
+            )
 
         with patch(
             "tree_sitter_analyzer.complexity_heatmap.analyze_file_complexity_from_cache",
@@ -1274,10 +1708,23 @@ class TestCodeGraphQueryInternals:
         assert health["files"] == [
             {"file": "main.py", "status": "error", "error": "bad health"}
         ]
+        with patch.dict("sys.modules", {"tree_sitter_analyzer.health_scorer": None}):
+            assert _health_facet(str(tmp_path), symbols, max_files=1)["status"] == (
+                "missing"
+            )
 
         empty_state = _QueryState()
         assert _affected_tests_facet(empty_state)["status"] == "missing"
         assert _risk_facet(empty_state)["level"] == "info"
+        caution_state = _QueryState()
+        caution_state.facets["complexity"] = {
+            "files": [
+                {"file": "mid.py", "max_complexity": 12},
+                {"file": "small.py", "max_complexity": 5},
+            ]
+        }
+        caution_state.facets["health"] = {"files": [{"file": "ok.py", "grade": "B"}]}
+        assert _risk_facet(caution_state)["reasons"] == ["mid.py: high complexity 12"]
         assert _absolute_path(str(tmp_path), str(tmp_path / "main.py")) == str(
             tmp_path / "main.py"
         )
