@@ -40,6 +40,30 @@ _MAX_REL_PER_SYMBOL = 20
 _MAX_SNIPPET_LINES = 160
 _MAX_FILE_BYTES = 1_000_000
 _DECLARATION_QUERY_KINDS = frozenset({"class", "enum", "interface", "type"})
+_RELATION_NOISE_SYMBOLS = frozenset(
+    {
+        # Go builtins frequently appear as callsite pseudo-symbols in call edges.
+        "append",
+        "cap",
+        "clear",
+        "close",
+        "complex",
+        "copy",
+        "delete",
+        "imag",
+        "len",
+        "make",
+        "new",
+        "panic",
+        "print",
+        "println",
+        "real",
+        "recover",
+        # Python runtime helpers are similarly low-signal for architecture packs.
+        "super",
+        "super().__init__",
+    }
+)
 
 
 class CodeGraphQueryTool(BaseMCPTool):
@@ -458,15 +482,22 @@ def _relation_step(
                 _row_symbol(row, "callee_name", "callee_file", "callee_line")
                 for row in rows
             ]
-        entries = _source_first_symbols(entry for entry in entries if entry["name"])[
-            :limit
-        ]
+        entries = _source_first_symbols(
+            entry
+            for entry in entries
+            if entry["name"] and not _is_relation_noise_symbol(entry)
+        )[:limit]
         source_key = _symbol_key(symbol)
         state.relationships[direction][source_key] = entries
         related.extend(entries)
     deduped = _dedupe_symbols(related)
     state.add_symbols(deduped)
     return deduped
+
+
+def _is_relation_noise_symbol(symbol: dict[str, Any]) -> bool:
+    name = str(symbol.get("name") or "").strip()
+    return name in _RELATION_NOISE_SYMBOLS
 
 
 def _sort_state(state: _QueryState, step: _ChainStep) -> None:

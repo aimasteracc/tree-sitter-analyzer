@@ -30,6 +30,7 @@ from tree_sitter_analyzer.mcp.tools.codegraph_query_tool import (
     _filter_declaration_query_symbols,
     _health_facet,
     _include_facets,
+    _is_relation_noise_symbol,
     _QueryState,
     _relation_step,
     _resolve_queries,
@@ -971,6 +972,56 @@ class TestCodeGraphQueryInternals:
 
         assert [symbol["file"] for symbol in related] == ["gin.go"]
         assert state.relationships["callees"]["gin.go:600:dispatch"][0]["line"] == 623
+
+    def test_relation_step_filters_builtin_runtime_noise_before_limits(self):
+        mock_cache = MagicMock()
+        mock_cache.query_callees.return_value = [
+            {
+                "callee_name": "len",
+                "callee_file": "gin.go",
+                "callee_line": 698,
+                "depth": 1,
+            },
+            {
+                "callee_name": "make",
+                "callee_file": "gin.go",
+                "callee_line": 741,
+                "depth": 1,
+            },
+            {
+                "callee_name": "getValue",
+                "callee_file": "tree.go",
+                "callee_line": 418,
+                "depth": 1,
+            },
+        ]
+        state = _QueryState()
+        state.current = [{"name": "handleHTTPRequest", "file": "gin.go", "line": 690}]
+
+        related = _relation_step(
+            mock_cache,
+            state,
+            direction="callees",
+            step=_ChainStep("callees", [], {"limit": 2}),
+        )
+
+        assert [symbol["name"] for symbol in related] == ["getValue"]
+        assert state.relationships["callees"]["gin.go:690:handleHTTPRequest"] == [
+            {
+                "name": "getValue",
+                "kind": "function",
+                "file": "tree.go",
+                "line": 418,
+                "end_line": 418,
+                "language": "",
+                "depth": 1,
+            }
+        ]
+
+    def test_relation_noise_symbol_identifies_runtime_helpers(self):
+        assert _is_relation_noise_symbol({"name": "len"})
+        assert _is_relation_noise_symbol({"name": "super().__init__"})
+        assert not _is_relation_noise_symbol({"name": "getValue"})
 
     def test_source_preference_key_identifies_test_fixture_and_generated_paths(self):
         source = {"file": "gin.go", "line": 2, "name": "run"}
