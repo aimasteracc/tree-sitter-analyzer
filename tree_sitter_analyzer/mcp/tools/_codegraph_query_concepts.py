@@ -69,6 +69,9 @@ def concept_entries_for_queries(
 
 def symbol_candidate_tokens(query: str) -> list[str]:
     """Return high-signal resolver tokens for code-like query strings."""
+    declared_type = _declared_type_name(query)
+    if declared_type:
+        return [declared_type]
     terms = normalized_query_terms(query)
     if not terms:
         return [query] if query else []
@@ -96,6 +99,16 @@ def normalized_query_terms(query: str) -> list[str]:
             continue
         terms.append(token)
     return _dedupe_tokens(terms)
+
+
+def concept_query_terms(query: str) -> list[str]:
+    """Return terms for source concept search, including declaration hints."""
+    declared_type = _declared_type_name(query)
+    if declared_type:
+        return _dedupe_tokens([declared_type, *_declaration_hint_terms(query)])
+    return _dedupe_tokens(
+        [*normalized_query_terms(query), *_declaration_hint_terms(query)]
+    )
 
 
 def symbols_from_concept_entries(
@@ -140,7 +153,7 @@ def _split_seed_queries(queries: list[str]) -> tuple[list[str], list[str]]:
     seen_files: set[str] = set()
     for query in queries:
         _, files = _h.split_query(query)
-        for symbol in normalized_query_terms(query):
+        for symbol in concept_query_terms(query):
             token = symbol.strip()
             if token and token not in seen_terms:
                 seen_terms.add(token)
@@ -186,6 +199,22 @@ def _primary_signature_terms(query: str, terms: list[str]) -> list[str]:
     return [term for term in primary if term]
 
 
+def _declared_type_name(query: str) -> str:
+    match = re.search(r"\btype\s+([A-Za-z_][A-Za-z0-9_]*)\b", query)
+    return match.group(1) if match else ""
+
+
+def _declaration_hint_terms(query: str) -> list[str]:
+    hints: list[str] = []
+    lowered = query.lower()
+    if re.search(r"\btype\b", lowered):
+        hints.append("type")
+    for keyword in ("struct", "interface", "class", "enum"):
+        if re.search(rf"\b{keyword}\b", lowered):
+            hints.append(keyword)
+    return hints
+
+
 def _dedupe_tokens(tokens: list[str]) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
@@ -199,6 +228,7 @@ def _dedupe_tokens(tokens: list[str]) -> list[str]:
 
 
 __all__ = [
+    "concept_query_terms",
     "concept_entries_for_queries",
     "normalized_query_terms",
     "symbol_candidate_tokens",

@@ -657,6 +657,18 @@ class TestCodeGraphQueryInternals:
             "route",
             "matching",
         ]
+        assert concepts.concept_query_terms("type node struct") == [
+            "node",
+            "type",
+            "struct",
+        ]
+        assert concepts.symbol_candidate_tokens("type HandlerFunc func(*Context)") == [
+            "HandlerFunc"
+        ]
+        assert concepts.concept_query_terms("type HandlerFunc func(*Context)") == [
+            "HandlerFunc",
+            "type",
+        ]
         assert concepts.normalized_query_terms("func (engine .*handleHTTPRequest)") == [
             "handleHTTPRequest"
         ]

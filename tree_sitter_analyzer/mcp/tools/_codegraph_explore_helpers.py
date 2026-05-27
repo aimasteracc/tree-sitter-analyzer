@@ -42,6 +42,8 @@ FILE_EXT_MARKERS = (
     ".toml",
 )
 
+DECLARATION_TERMS = {"class", "enum", "interface", "struct", "type"}
+
 
 def split_query(query: str) -> tuple[list[str], list[str]]:
     """Return (symbol_tokens, file_tokens) from a whitespace-tokenised query.
@@ -208,6 +210,8 @@ def _concept_candidate_paths(
     """
     if not terms and not file_tokens:
         return set()
+    if any(term in DECLARATION_TERMS for term in terms):
+        return set()
     candidates: set[str] = set()
 
     def _add_rows(sql: str, params: tuple[Any, ...]) -> None:
@@ -298,34 +302,68 @@ def _concept_file_entry(
     except OSError:
         return None
 
-    matches: list[dict[str, Any]] = []
-    matched_terms: set[str] = set()
+    raw_matches: list[dict[str, Any]] = []
     for line_no, line in enumerate(lines, start=1):
         lowered = line.lower()
         terms_on_line = [term for term in terms if term in lowered]
         if not terms_on_line:
             continue
-        matched_terms.update(terms_on_line)
-        matches.append(
+        if not _concept_line_satisfies_declaration_query(terms_on_line, terms):
+            continue
+        raw_matches.append(
             {
                 "line": line_no,
                 "text": line.strip()[:300],
                 "terms": terms_on_line,
             }
         )
-        if len(matches) >= max_matches:
-            break
 
-    if not matches:
+    if not raw_matches:
         return None
+    scored_matches = [
+        (_concept_match_rank(match, terms), match) for match in raw_matches
+    ]
+    scored_matches.sort(key=lambda item: (-item[0], item[1]["line"]))
+    matches = [match for _, match in scored_matches[:max_matches]]
+    matches.sort(key=lambda match: int(match["line"]))
+    matched_terms = {term for match in matches for term in match.get("terms", [])}
+    declaration_symbols = _declaration_symbols_from_matches(lines, matches, terms)
+    nearby_symbols = _nearby_symbols(symbols_json, matches)
 
     return {
         "file_path": rel_path,
         "language": language,
-        "symbols": _nearby_symbols(symbols_json, matches),
+        "symbols": _dedupe_concept_symbols([*declaration_symbols, *nearby_symbols]),
         "matches": matches,
         "matched_terms": sorted(matched_terms),
     }
+
+
+def _concept_line_satisfies_declaration_query(
+    terms_on_line: list[str], terms: list[str]
+) -> bool:
+    specific_terms = [term for term in terms if term not in DECLARATION_TERMS]
+    kind_terms = [
+        term for term in terms if term in DECLARATION_TERMS and term != "type"
+    ]
+    if specific_terms and not any(term in terms_on_line for term in specific_terms):
+        return False
+    if kind_terms and not any(term in terms_on_line for term in kind_terms):
+        return False
+    return True
+
+
+def _concept_match_rank(match: dict[str, Any], terms: list[str]) -> int:
+    text = str(match.get("text") or "")
+    matched = set(match.get("terms", []))
+    rank = len(matched) * 20
+    if terms and all(term in matched for term in terms):
+        rank += 100
+    if _is_definition_like_match(text, terms):
+        rank += 80
+    if _declaration_symbol_from_line(text, int(match.get("line", 0) or 0), [], terms):
+        rank += 120
+    return rank
 
 
 def _nearby_symbols(
@@ -361,6 +399,87 @@ def _nearby_symbols(
     return nearby
 
 
+def _declaration_symbols_from_matches(
+    lines: list[str],
+    matches: list[dict[str, Any]],
+    terms: list[str],
+) -> list[dict[str, Any]]:
+    symbols: list[dict[str, Any]] = []
+    for match in matches:
+        line_no = int(match.get("line", 0) or 0)
+        if line_no < 1 or line_no > len(lines):
+            continue
+        symbol = _declaration_symbol_from_line(
+            lines[line_no - 1], line_no, lines, terms
+        )
+        if symbol:
+            symbols.append(symbol)
+    return symbols
+
+
+def _declaration_symbol_from_line(
+    line: str,
+    line_no: int,
+    lines: list[str],
+    terms: list[str],
+) -> dict[str, Any] | None:
+    stripped = line.strip()
+    patterns = (
+        (r"^type\s+([A-Za-z_][A-Za-z0-9_]*)\b", "type"),
+        (
+            r"^(?:export\s+)?(?:class|interface|enum)\s+([A-Za-z_][A-Za-z0-9_]*)\b",
+            "type",
+        ),
+    )
+    for pattern, kind in patterns:
+        match = re.search(pattern, stripped)
+        if not match:
+            continue
+        name = match.group(1)
+        if terms and name.lower() not in terms:
+            continue
+        end_line = _declaration_end_line(lines, line_no)
+        code = (
+            extract_snippet_from_lines(lines, line_no, end_line) if lines else stripped
+        )
+        return {
+            "name": name,
+            "kind": kind,
+            "start_line": line_no,
+            "end_line": end_line,
+            "code": code,
+        }
+    return None
+
+
+def _declaration_end_line(lines: list[str], start_line: int) -> int:
+    if not lines or start_line < 1 or start_line > len(lines):
+        return start_line
+    brace_balance = 0
+    saw_open = False
+    for idx in range(start_line - 1, min(len(lines), start_line + 80)):
+        line = lines[idx]
+        brace_balance += line.count("{")
+        if "{" in line:
+            saw_open = True
+        brace_balance -= line.count("}")
+        if saw_open and brace_balance <= 0:
+            return idx + 1
+    return start_line
+
+
+def _dedupe_concept_symbols(symbols: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    seen: set[tuple[str, int]] = set()
+    for symbol in symbols:
+        key = (str(symbol.get("name") or ""), int(symbol.get("start_line", 0) or 0))
+        if not key[0] or not key[1] or key in seen:
+            continue
+        seen.add(key)
+        out.append(symbol)
+    return out
+
+
 def _concept_rank(entry: dict[str, Any], terms: list[str]) -> int:
     path = entry["file_path"].lower()
     matched = set(entry.get("matched_terms", []))
@@ -374,6 +493,8 @@ def _concept_rank(entry: dict[str, Any], terms: list[str]) -> int:
         for m in entry.get("matches", [])
     ):
         rank += 70
+    if any(symbol.get("kind") == "type" for symbol in entry.get("symbols", [])):
+        rank += 180
     if path.startswith("src/"):
         rank += 40
     if any(part in path for part in ("/test/", "/tests/", "/fixtures/", "/gen/")):
