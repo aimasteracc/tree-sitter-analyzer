@@ -330,6 +330,7 @@ class TestExecuteAcrossAllTools:
             "codegraph_sitemap": {"mode": "module"},
             "codegraph_complexity_heatmap": {"mode": "project"},
             "codegraph_visualize": {"mode": "full"},
+            "codegraph_uml": {"diagram": "class"},
             "codegraph_autoindex": {"mode": "status"},
             "codegraph_full_index": {"mode": "stats"},
             "codegraph_metrics": {"mode": "project"},

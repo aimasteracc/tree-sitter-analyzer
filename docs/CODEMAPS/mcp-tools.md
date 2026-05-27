@@ -1,7 +1,7 @@
 <!-- Generated: 2026-05-22 -->
 # MCP Tools Codemap
 
-59 MCP tools registered in [`mcp/_tool_registry.py`](../../tree_sitter_analyzer/mcp/_tool_registry.py).
+60 MCP tools registered in [`mcp/_tool_registry.py`](../../tree_sitter_analyzer/mcp/_tool_registry.py).
 All tools default to **TOON output** (locked — see `CLAUDE.md`).
 
 ## Tool Registry
@@ -64,6 +64,7 @@ All tools default to **TOON output** (locked — see `CLAUDE.md`).
 | `codegraph_xref` | `--codegraph-xref` | Multi-dimension cross-reference from AST cache |
 | `codegraph_similarity` | `--code-similarity` | AST-structural clone detection |
 | `codegraph_visualize` | `--codegraph-visualize` | Export call graph as Mermaid flowchart |
+| `codegraph_uml` | `--uml` | Export UML-style Mermaid diagrams (class/package/component/sequence) |
 | **CodeGraph parity — cache/index** | | |
 | `codegraph_status` | `--codegraph-status` | INDEX HEALTH at-a-glance (indexed?, files, symbols, lag) |
 | `codegraph_autoindex` | `--autoindex` | Transparent AST cache auto-indexing |

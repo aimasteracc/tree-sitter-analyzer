@@ -1388,6 +1388,48 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
         help="Mermaid flowchart direction for --codegraph-visualize (default: TD)",
     )
     parser.add_argument(
+        "--uml",
+        choices=["class", "package", "component", "sequence"],
+        help="Export a UML-style Mermaid diagram from indexed project intelligence",
+    )
+    parser.add_argument(
+        "--uml-source",
+        help="Source function for --uml sequence",
+    )
+    parser.add_argument(
+        "--uml-target",
+        help="Target function for --uml sequence",
+    )
+    parser.add_argument(
+        "--uml-max-edges",
+        type=int,
+        default=200,
+        help="Max relationships to render for --uml (default: 200)",
+    )
+    parser.add_argument(
+        "--uml-max-depth",
+        type=int,
+        default=8,
+        help="Max call-path depth for --uml sequence (default: 8)",
+    )
+    parser.add_argument(
+        "--uml-max-paths",
+        type=int,
+        default=3,
+        help="Max call paths to inspect for --uml sequence (default: 3)",
+    )
+    parser.add_argument(
+        "--uml-package-depth",
+        type=int,
+        default=2,
+        help="Directory depth used to group packages for --uml package (default: 2)",
+    )
+    parser.add_argument(
+        "--uml-no-external-bases",
+        action="store_true",
+        help="Omit common external bases such as ABC/Enum from --uml class",
+    )
+    parser.add_argument(
         "--dependency-matrix-threshold",
         type=float,
         default=0.7,

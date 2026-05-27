@@ -3,7 +3,7 @@
 **English** | **[日本語](README_ja.md)** | **[简体中文](README_zh.md)**
 
 > **The MCP code-intelligence server for AI agents — fewer tokens, fewer tool calls, 100 % local.**
-> Pre-indexed AST cache + 59 MCP tools + 13 curated agent skills + TOON-compressed output.
+> Pre-indexed AST cache + 60 MCP tools + 13 curated agent skills + TOON-compressed output.
 > Beats CodeGraph on 6-repo head-to-head median (**−11 % cost vs CodeGraph's −4 %**), with a strict CLI superset.
 
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
@@ -93,6 +93,7 @@ TSA wins outright on **2 of 6 repos**, has a lower **median cost saving (−11 %
 | **Complexity heatmap** | `codegraph_complexity_heatmap` | per-fn cyclomatic + project view |
 | **AST-structural clone detection** | `codegraph_similarity` | beyond text similarity |
 | **Mermaid call-graph export** | `codegraph_visualize` | paste-ready in docs |
+| **UML Mermaid export** | `codegraph_uml` | class / package / component / sequence diagrams |
 | **PR review** | `codegraph_pr_review` | AST-diff + semantic classify + blast radius |
 | **agent_summary** | every response | next-step hint baked into the envelope |
 | **Synapse cross-file resolver** | internal | import-aware, beats regex guessing |
@@ -104,9 +105,9 @@ CodeGraph has zero skills. We ship 13 under `.claude/skills/tsa-*/`:
 
 `tsa-landing`, `tsa-find`, `tsa-graph`, `tsa-structure`, `tsa-deps`, `tsa-index`, `tsa-health-watch`, `tsa-edit-safety`, `tsa-edit-then-verify`, `tsa-constraints`, `tsa-pr-review`, `tsa-refactor-queue`, `tsa-temporal`.
 
-Each skill ships an `allowed-tools` subset + procedure recipe + decision-surface schema, so the agent doesn't have to triage 59 tools on every question.
+Each skill ships an `allowed-tools` subset + procedure recipe + decision-surface schema, so the agent doesn't have to triage 60 tools on every question.
 
-### 244 CLI flags
+### 252 CLI flags
 
 Strict superset of CodeGraph's 15-command CLI. Highlights:
 
@@ -120,6 +121,7 @@ tree-sitter-analyzer --affected <file...>         # tests transitively affected
 tree-sitter-analyzer --dead-code                  # transitive unreachable
 tree-sitter-analyzer --check-constraints          # architectural rules
 tree-sitter-analyzer --safe-to-edit <file>        # refuse if risky
+tree-sitter-analyzer --uml class                  # Mermaid UML class diagram
 ```
 
 See [`docs/CODEMAPS/cli.md`](docs/CODEMAPS/cli.md) for the full surface.
@@ -179,7 +181,7 @@ Source code → tree-sitter parse → SQLite + FTS5 index (.ast-cache/index.db)
                               MCP client / CLI consumer
 ```
 
-The index is built lazily on first query, refreshed on file change via a content-hash diff (`codegraph_incremental_sync`). All 59 tools read from the same `.ast-cache/`, so a query and its follow-up share work.
+The index is built lazily on first query, refreshed on file change via a content-hash diff (`codegraph_incremental_sync`). All 60 tools read from the same `.ast-cache/`, so a query and its follow-up share work.
 
 ---
 
