@@ -28,6 +28,7 @@ import bench_runner  # noqa: E402
 import scenarios  # noqa: E402
 
 from benchmarks.codegraph_compare import analyze as compare_analyze  # noqa: E402
+from benchmarks.codegraph_compare import evaluate as compare_evaluate  # noqa: E402
 from benchmarks.codegraph_compare import run as compare_run  # noqa: E402
 from benchmarks.codegraph_compare.adapters import IndexStats  # noqa: E402
 from benchmarks.codegraph_compare.adapters.tree_sitter_analyzer import (  # noqa: E402
@@ -391,3 +392,116 @@ class TestCodeGraphCompareAnalysisGate:
             "codex/native-only" in item and "below quality" in item
             for item in violations
         )
+
+
+class TestCodeGraphCompareEvaluator:
+    def test_eval_prompt_renders_inputs_without_formatting_json_example(self):
+        prompt = compare_evaluate._build_eval_prompt(
+            question_text="Where is route matching handled?",
+            expected_key_points=["router tree", "method matching"],
+            answer="The route tree is used in tree.go.",
+        )
+
+        assert '"correctness"' in prompt
+        assert "Where is route matching handled?" in prompt
+        assert "router tree" in prompt
+        assert "The route tree is used in tree.go." in prompt
+
+    def test_evaluate_all_accepts_current_run_schema(self, tmp_path: Path):
+        repo = tmp_path / "gin"
+        repo.mkdir()
+        (repo / "tree.go").write_text("package gin\n", encoding="utf-8")
+
+        runs_jsonl = tmp_path / "runs.jsonl"
+        runs_jsonl.write_text(
+            json.dumps(
+                {
+                    "run_id": "gin-route-matching__tsa-warm__codex__00",
+                    "repo": "gin",
+                    "question_id": "gin-route-matching",
+                    "arm": "tsa-warm",
+                    "answer": "Route matching is handled in tree.go:1.",
+                    "citations": ["tree.go:1"],
+                    "error": None,
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        questions_yaml = tmp_path / "questions.yaml"
+        questions_yaml.write_text(
+            textwrap.dedent(
+                """
+                questions:
+                  - id: gin-route-matching
+                    repo: gin
+                    category: entrypoint-tracing
+                    prompt: Where is route matching handled?
+                    expected_key_points:
+                      - route matching
+                """
+            ).strip()
+            + "\n",
+            encoding="utf-8",
+        )
+        manifest = tmp_path / "prepared_repos.json"
+        manifest.write_text(
+            json.dumps([{"id": "gin", "local_path": str(repo)}]),
+            encoding="utf-8",
+        )
+        results_dir = tmp_path / "results"
+
+        evals = compare_evaluate.evaluate_all(
+            runs_jsonl=runs_jsonl,
+            questions_yaml=questions_yaml,
+            prepared_manifest=manifest,
+            results_dir=results_dir,
+            dry_run=True,
+        )
+
+        assert len(evals) == 1
+        record = evals[0]
+        assert record["arm_id"] == "tsa-warm"
+        assert record["repo_path"] == str(repo)
+        assert record["bad_citations"] == []
+        assert record["overall"] == 3.0
+        assert record["evaluated_with_llm"] is False
+        assert record["evaluator_model"] == record["eval_model"]
+
+    def test_evaluate_run_marks_llm_fallback_as_not_evaluated(self, tmp_path: Path):
+        run = {
+            "run_id": "gin-route-matching__tsa-warm__codex__00",
+            "repo": "gin",
+            "question_id": "gin-route-matching",
+            "arm": "tsa-warm",
+            "answer": "Route matching is handled in tree.go:1.",
+            "citations": ["tree.go:1"],
+            "error": None,
+        }
+        question = {
+            "id": "gin-route-matching",
+            "prompt": "Where is route matching handled?",
+            "expected_key_points": ["route matching"],
+        }
+        (tmp_path / "tree.go").write_text("package gin\n", encoding="utf-8")
+
+        with patch(
+            "benchmarks.codegraph_compare.evaluate._call_llm",
+            return_value={
+                "correctness": 3,
+                "completeness": 3,
+                "citation_quality": 3,
+                "hallucination_risk": 3,
+                "reasoning": "fallback",
+                "_llm_success": False,
+            },
+        ):
+            record = compare_evaluate.evaluate_run(
+                run=run,
+                question=question,
+                repo_path=tmp_path,
+                dry_run=False,
+            )
+
+        assert record["evaluated_with_llm"] is False
+        assert record["overall"] == 3.0
