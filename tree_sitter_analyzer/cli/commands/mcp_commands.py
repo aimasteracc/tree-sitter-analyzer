@@ -491,7 +491,7 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
         tool_attr="CodeGraphCallTool",
         label="Function-level call graph (CodeGraph parity)",
         build_tool_args=lambda args, output_format: {
-            "mode": getattr(args, "call_graph_mode", "summary") or "summary",
+            "mode": getattr(args, "call_graph", "summary") or "summary",
             "function_name": getattr(args, "call_graph_function", None),
             "file_path": getattr(args, "call_graph_file", None),
             "depth": getattr(args, "call_graph_depth", 5),
