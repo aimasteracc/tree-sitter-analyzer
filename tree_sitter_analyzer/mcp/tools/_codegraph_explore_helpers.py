@@ -42,7 +42,7 @@ FILE_EXT_MARKERS = (
     ".toml",
 )
 
-DECLARATION_TERMS = {"class", "enum", "interface", "struct", "type"}
+DECLARATION_TERMS = {"class", "const", "enum", "interface", "struct", "type"}
 
 
 def split_query(query: str) -> tuple[list[str], list[str]]:
@@ -321,7 +321,7 @@ def _concept_file_entry(
     if not raw_matches:
         return None
     scored_matches = [
-        (_concept_match_rank(match, terms), match) for match in raw_matches
+        (_concept_match_rank(match, terms, lines), match) for match in raw_matches
     ]
     scored_matches.sort(key=lambda item: (-item[0], item[1]["line"]))
     matches = [match for _, match in scored_matches[:max_matches]]
@@ -344,7 +344,9 @@ def _concept_line_satisfies_declaration_query(
 ) -> bool:
     specific_terms = [term for term in terms if term not in DECLARATION_TERMS]
     kind_terms = [
-        term for term in terms if term in DECLARATION_TERMS and term != "type"
+        term
+        for term in terms
+        if term in DECLARATION_TERMS and term not in {"const", "type"}
     ]
     if specific_terms and not any(term in terms_on_line for term in specific_terms):
         return False
@@ -353,7 +355,9 @@ def _concept_line_satisfies_declaration_query(
     return True
 
 
-def _concept_match_rank(match: dict[str, Any], terms: list[str]) -> int:
+def _concept_match_rank(
+    match: dict[str, Any], terms: list[str], lines: list[str] | None = None
+) -> int:
     text = str(match.get("text") or "")
     matched = set(match.get("terms", []))
     rank = len(matched) * 20
@@ -361,7 +365,9 @@ def _concept_match_rank(match: dict[str, Any], terms: list[str]) -> int:
         rank += 100
     if _is_definition_like_match(text, terms):
         rank += 80
-    if _declaration_symbol_from_line(text, int(match.get("line", 0) or 0), [], terms):
+    line_no = int(match.get("line", 0) or 0)
+    source_line = lines[line_no - 1] if lines and 1 <= line_no <= len(lines) else text
+    if _declaration_symbol_from_line(source_line, line_no, lines or [], terms):
         rank += 120
     return rank
 
@@ -414,7 +420,21 @@ def _declaration_symbols_from_matches(
         )
         if symbol:
             symbols.append(symbol)
+    symbols.sort(
+        key=lambda symbol: (
+            _term_position(symbol.get("name", ""), terms),
+            symbol["start_line"],
+        )
+    )
     return symbols
+
+
+def _term_position(name: object, terms: list[str]) -> int:
+    lowered = str(name or "").lower()
+    try:
+        return terms.index(lowered)
+    except ValueError:
+        return len(terms)
 
 
 def _declaration_symbol_from_line(
@@ -426,6 +446,8 @@ def _declaration_symbol_from_line(
     stripped = line.strip()
     patterns = (
         (r"^type\s+([A-Za-z_][A-Za-z0-9_]*)\b", "type"),
+        (r"^const\s+([A-Za-z_][A-Za-z0-9_]*)\b", "constant"),
+        (r"^(?:var|let)\s+([A-Za-z_][A-Za-z0-9_]*)\b", "variable"),
         (
             r"^(?:export\s+)?(?:class|interface|enum)\s+([A-Za-z_][A-Za-z0-9_]*)\b",
             "type",
@@ -449,7 +471,62 @@ def _declaration_symbol_from_line(
             "end_line": end_line,
             "code": code,
         }
+    block_symbol = _block_member_declaration_symbol(stripped, line_no, lines, terms)
+    if block_symbol:
+        return block_symbol
     return None
+
+
+def _block_member_declaration_symbol(
+    stripped: str,
+    line_no: int,
+    lines: list[str],
+    terms: list[str],
+) -> dict[str, Any] | None:
+    if not lines or not stripped or stripped.startswith(("//", ")")):
+        return None
+    name_match = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)\b", stripped)
+    if not name_match:
+        return None
+    name = name_match.group(1)
+    if terms and name.lower() not in terms:
+        return None
+    bounds = _block_declaration_bounds(lines, line_no)
+    if bounds is None:
+        return None
+    block_start, block_end, kind = bounds
+    return {
+        "name": name,
+        "kind": kind,
+        "start_line": line_no,
+        "end_line": block_end,
+        "code": extract_snippet_from_lines(lines, block_start, block_end),
+    }
+
+
+def _block_declaration_bounds(
+    lines: list[str], line_no: int
+) -> tuple[int, int, str] | None:
+    if line_no < 1 or line_no > len(lines):
+        return None
+    start = line_no - 1
+    while start >= 0:
+        stripped = lines[start].strip()
+        if re.match(r"^(const|var)\s*\(", stripped):
+            kind = "constant" if stripped.startswith("const") else "variable"
+            break
+        if stripped in {"}", ")"}:
+            return None
+        start -= 1
+    else:
+        return None
+
+    end = start
+    while end < len(lines):
+        if lines[end].strip().startswith(")"):
+            return start + 1, end + 1, kind
+        end += 1
+    return start + 1, line_no, kind
 
 
 def _declaration_end_line(lines: list[str], start_line: int) -> int:
@@ -493,7 +570,10 @@ def _concept_rank(entry: dict[str, Any], terms: list[str]) -> int:
         for m in entry.get("matches", [])
     ):
         rank += 70
-    if any(symbol.get("kind") == "type" for symbol in entry.get("symbols", [])):
+    if any(
+        symbol.get("kind") in {"constant", "type", "variable"}
+        for symbol in entry.get("symbols", [])
+    ):
         rank += 180
     if path.startswith("src/"):
         rank += 40

@@ -669,6 +669,33 @@ class TestCodeGraphQueryInternals:
             "HandlerFunc",
             "type",
         ]
+        assert concepts.symbol_candidate_tokens("static nodeType = iota") == [
+            "static",
+            "nodeType",
+            "iota",
+        ]
+        assert concepts.concept_query_terms("static nodeType = iota") == [
+            "static",
+            "nodeType",
+            "iota",
+            "const",
+        ]
+        assert concepts.symbol_candidate_tokens("const static nodeType = iota") == [
+            "static",
+            "nodeType",
+            "iota",
+        ]
+        assert concepts.concept_query_terms("const static nodeType = iota") == [
+            "static",
+            "nodeType",
+            "iota",
+            "const",
+        ]
+        assert concepts.concept_query_terms("catchAll nodeType") == [
+            "catchAll",
+            "nodeType",
+            "const",
+        ]
         assert concepts.normalized_query_terms("func (engine .*handleHTTPRequest)") == [
             "handleHTTPRequest"
         ]
