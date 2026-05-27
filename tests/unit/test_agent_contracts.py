@@ -516,6 +516,30 @@ def test_agent_docs_require_change_impact_verification_command() -> None:
         assert "--change-impact --format json" in text, path
 
 
+def test_agent_docs_require_local_patch_coverage_gate() -> None:
+    """Future agents should pass local patch coverage before Codecov sees a PR."""
+    script = PROJECT_ROOT / "scripts" / "check_patch_coverage.py"
+    agents_text = (PROJECT_ROOT / "AGENTS.md").read_text(encoding="utf-8")
+
+    assert script.exists(), "scripts/check_patch_coverage.py must exist"
+    assert "check_patch_coverage.py" in agents_text
+    assert "--cov=tree_sitter_analyzer" in agents_text
+    assert "--cov-report=json" in agents_text
+    assert "Codecov" in agents_text
+
+
+def test_agent_docs_require_dogfood_feedback_memory_loop() -> None:
+    """Agents should use TSA feedback and preserve reusable findings in memory."""
+    agents_text = (PROJECT_ROOT / "AGENTS.md").read_text(encoding="utf-8")
+
+    assert "Agent Dogfood Feedback Loop" in agents_text
+    assert "tree_sitter_analyzer --change-impact --format json" in agents_text
+    assert "memory_store" in agents_text
+    assert "tsa/agent-feedback" in agents_text
+    assert "tools_used" in agents_text
+    assert "verification" in agents_text
+
+
 def test_warning_prone_python_api_patterns_are_blocked() -> None:
     """Keep future agents from reintroducing known Python 3.14 warning sources."""
     blocked_patterns = {

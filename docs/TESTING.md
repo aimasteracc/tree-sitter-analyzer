@@ -226,6 +226,16 @@ xdg-open htmlcov/index.html  # Linux
 start htmlcov/index.html  # Windows
 ```
 
+Before pushing a PR that changes Python source, also check the patch itself:
+
+```bash
+# Use the focused tests reported by --change-impact, but add coverage JSON.
+uv run pytest <focused tests> --cov=tree_sitter_analyzer --cov-report=json --cov-report=term-missing
+
+# Fail locally on added executable lines or branch partials that Codecov would flag.
+uv run python scripts/check_patch_coverage.py --base origin/develop --coverage-json coverage.json
+```
+
 ## Running Tests
 
 ### Run All Tests
