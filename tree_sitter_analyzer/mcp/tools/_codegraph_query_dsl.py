@@ -21,6 +21,7 @@ _SUPPORTED_STEPS = {
     "where",
     "exclude",
     "not",
+    "has",
     "take",
     "sort",
     "include",
@@ -50,6 +51,7 @@ _ALLOWED_KWARGS: dict[str, frozenset[str]] = {
     "where": _FILTER_KWARGS,
     "exclude": _FILTER_KWARGS,
     "not": _FILTER_KWARGS,
+    "has": _FILTER_KWARGS | frozenset({"callers", "callees", "depth", "limit"}),
     "take": frozenset({"limit"}),
     "sort": frozenset({"by", "desc"}),
     "include": frozenset(
