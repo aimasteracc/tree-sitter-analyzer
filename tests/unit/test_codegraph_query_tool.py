@@ -26,6 +26,7 @@ from tree_sitter_analyzer.mcp.tools.codegraph_query_tool import (
     _compact_facets,
     _complexity_facet,
     _dedupe_symbols,
+    _drop_test_shadow_symbols,
     _health_facet,
     _include_facets,
     _QueryState,
@@ -34,6 +35,7 @@ from tree_sitter_analyzer.mcp.tools.codegraph_query_tool import (
     _resolve_query,
     _risk_facet,
     _sort_state,
+    _source_preference_key,
     parse_chain,
 )
 from tree_sitter_analyzer.symbol_resolver import DefinitionLocation, ResolveResult
@@ -648,6 +650,32 @@ class TestCodeGraphQueryInternals:
 
         assert [symbol["name"] for symbol in result] == ["handleHTTPRequest"]
 
+    def test_resolve_query_drops_test_shadow_when_source_definition_exists(self):
+        defs = {
+            "ServeHTTP": [
+                _make_def(file="utils_test.go", name="ServeHTTP", line=33),
+                _make_def(file="gin.go", name="ServeHTTP", line=623),
+            ]
+        }
+
+        with _patch_resolver_with(defs):
+            result = _resolve_query(MagicMock(), "ServeHTTP", limit=5)
+
+        assert [symbol["file"] for symbol in result] == ["gin.go"]
+
+    def test_resolve_query_keeps_test_shadow_with_file_hint(self):
+        defs = {
+            "ServeHTTP": [
+                _make_def(file="utils_test.go", name="ServeHTTP", line=33),
+                _make_def(file="gin.go", name="ServeHTTP", line=623),
+            ]
+        }
+
+        with _patch_resolver_with(defs):
+            result = _resolve_query(MagicMock(), "utils_test.go ServeHTTP", limit=5)
+
+        assert [symbol["file"] for symbol in result] == ["utils_test.go"]
+
     def test_query_concept_token_normalization_prefers_signature_names(self):
         assert concepts.symbol_candidate_tokens("func (trees methodTrees) get") == [
             "get",
@@ -841,6 +869,45 @@ class TestCodeGraphQueryInternals:
         assert [symbol["name"] for symbol in related] == ["entry"]
         mock_cache.query_callers.assert_called_once_with("run", "main.py", max_depth=1)
         assert state.relationships["callers"]["main.py:2:run"][0]["name"] == "entry"
+
+    def test_relation_step_sorts_source_edges_before_tests_then_limits(self):
+        mock_cache = MagicMock()
+        mock_cache.query_callees.return_value = [
+            {
+                "callee_name": "ServeHTTP",
+                "callee_file": "utils_test.go",
+                "callee_line": 33,
+                "depth": 1,
+            },
+            {
+                "callee_name": "ServeHTTP",
+                "callee_file": "gin.go",
+                "callee_line": 623,
+                "depth": 1,
+            },
+        ]
+        state = _QueryState()
+        state.current = [{"name": "dispatch", "file": "gin.go", "line": 600}]
+
+        related = _relation_step(
+            mock_cache,
+            state,
+            direction="callees",
+            step=_ChainStep("callees", [], {"limit": 1}),
+        )
+
+        assert [symbol["file"] for symbol in related] == ["gin.go"]
+        assert state.relationships["callees"]["gin.go:600:dispatch"][0]["line"] == 623
+
+    def test_source_preference_key_identifies_test_fixture_and_generated_paths(self):
+        source = {"file": "gin.go", "line": 2, "name": "run"}
+        test = {"file": "tests/fixtures/gin_test.go", "line": 1, "name": "run"}
+        generated = {"file": "src/generated/gin.go", "line": 1, "name": "run"}
+
+        assert _source_preference_key(source) < _source_preference_key(test)
+        assert _source_preference_key(source) < _source_preference_key(generated)
+        assert _drop_test_shadow_symbols([test, source]) == [source]
+        assert _drop_test_shadow_symbols([test]) == [test]
 
     def test_sort_state_supports_path_alias_fan_out_and_rejects_unknown_fields(self):
         state = _QueryState()
