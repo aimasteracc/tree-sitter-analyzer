@@ -337,9 +337,8 @@ def _resolve_query(cache: Any, query: str, limit: int) -> list[dict[str, Any]]:
     from ...symbol_resolver import SymbolResolver
 
     resolver = SymbolResolver(cache)
-    symbol_tokens, file_tokens = _h.split_query(query)
-    if not symbol_tokens:
-        symbol_tokens = [query]
+    _, file_tokens = _h.split_query(query)
+    symbol_tokens = _concepts.symbol_candidate_tokens(query)
 
     resolved: list[dict[str, Any]] = []
     seen: set[tuple[str, int, str]] = set()

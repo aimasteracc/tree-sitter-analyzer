@@ -631,6 +631,38 @@ class TestCodeGraphQueryInternals:
         ):
             assert _resolve_query(MagicMock(), "run", limit=5) == []
 
+    def test_resolve_query_normalizes_code_like_signature_tokens(self):
+        defs = {
+            "handleHTTPRequest": [
+                _make_def(file="gin.go", name="handleHTTPRequest", line=690)
+            ],
+            "engine": [_make_def(file="wrong.go", name="Engine", line=1)],
+        }
+
+        with _patch_resolver_with(defs):
+            result = _resolve_query(
+                MagicMock(),
+                "func (engine .*handleHTTPRequest)",
+                limit=5,
+            )
+
+        assert [symbol["name"] for symbol in result] == ["handleHTTPRequest"]
+
+    def test_query_concept_token_normalization_prefers_signature_names(self):
+        assert concepts.symbol_candidate_tokens("func (trees methodTrees) get") == [
+            "get",
+            "methodTrees",
+        ]
+        assert concepts.normalized_query_terms("route matching") == [
+            "route",
+            "matching",
+        ]
+        assert concepts.normalized_query_terms("func (engine .*handleHTTPRequest)") == [
+            "handleHTTPRequest"
+        ]
+        assert concepts.normalized_query_terms("...") == []
+        assert concepts._primary_signature_terms("func ()", []) == []
+
     def test_resolve_queries_stops_at_limit_and_dedupes(self):
         defs = {
             "run": [
