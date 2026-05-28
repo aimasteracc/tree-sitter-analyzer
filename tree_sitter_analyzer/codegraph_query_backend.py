@@ -61,7 +61,7 @@ class CodeGraphQueryBackend:
         return SemanticSymbolSearch(self.cache).search(query, limit=limit)
 
     def _fts_definitions(self, symbol: str) -> list[dict[str, Any]]:
-        if not getattr(self.cache, "fts5_available", False):
+        if not getattr(self.cache, "_fts5_available", False):
             return []
         return [
             _definition(
@@ -78,7 +78,7 @@ class CodeGraphQueryBackend:
         ]
 
     def _symbol_row_definitions(self, symbol: str) -> list[dict[str, Any]]:
-        conn = self.cache.get_conn()
+        conn = self.cache._get_conn()
         try:
             rows = conn.execute(
                 """SELECT name, kind, file_path, language, line, end_line
@@ -103,7 +103,7 @@ class CodeGraphQueryBackend:
         ]
 
     def _symbols_json_definitions(self, symbol: str) -> list[dict[str, Any]]:
-        conn = self.cache.get_conn()
+        conn = self.cache._get_conn()
         try:
             rows = conn.execute(
                 "SELECT file_path, symbols_json, language FROM ast_index"

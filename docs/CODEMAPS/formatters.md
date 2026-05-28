@@ -1,4 +1,4 @@
-<!-- Generated: 2026-05-22 -->
+<!-- Generated: 2026-05-30 -->
 # Formatters Codemap
 
 Output formats supported by both CLI and MCP. Located in `tree_sitter_analyzer/formatters/`.
@@ -7,11 +7,11 @@ Output formats supported by both CLI and MCP. Located in `tree_sitter_analyzer/f
 
 | Format | Module | Default for | Use case |
 |---|---|---|---|
-| `toon` | `toon_formatter.py` | **MCP** | LLM agents — 73% smaller than JSON |
-| `json` | `json_formatter.py` | **CLI** | `jq` piping, programmatic ingestion |
+| `toon` | `formatters/toon_formatter.py` | **MCP** | LLM agents — 73% smaller than JSON |
+| `json` | `formatters/json_formatter.py` | **CLI** | `jq` piping, programmatic ingestion |
 | `table` | `formatters/table_formatter.py` (canonical, re-exports `LegacyTableFormatter`) + `tree_sitter_analyzer/default_table_formatter.py` + `legacy_table_formatter.py` | `--table` flag | Terminal viewing with box-drawing chars |
 | `csv` | via `tree_sitter_analyzer/_legacy_table_formatter_csv.py` | `--table csv` | Spreadsheet ingestion |
-| `yaml` | `yaml_formatter.py` | explicit `--format yaml` | Human-readable structured |
+| `yaml` | `formatters/yaml_formatter.py` | explicit `--format yaml` | Human-readable structured |
 
 ## Why TOON for MCP, JSON for CLI?
 

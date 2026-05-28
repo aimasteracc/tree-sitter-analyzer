@@ -44,7 +44,7 @@ class SemanticSymbolSearch:
         return [item for _score, item in scored[:limit]]
 
     def _symbols(self) -> list[dict[str, Any]]:
-        conn = self.cache.get_conn()
+        conn = self.cache._get_conn()
         try:
             rows = conn.execute(
                 """SELECT name, kind, file_path, language, line, end_line

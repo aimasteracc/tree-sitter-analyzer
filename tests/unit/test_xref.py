@@ -41,6 +41,7 @@ class TestXRefEngineSymbol:
             def _get_conn(self):  # backward-compat alias
                 return self.get_conn()
 
+
         cache = MockCache()
 
         class FakeBackend:
