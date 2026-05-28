@@ -15,25 +15,27 @@
 
 ## Phase 2 — DependencyGraph public API (project_graph.py)
 
-- [ ] **P6** `DependencyGraph.all_nodes()` → list
-- [ ] **P7** `DependencyGraph.all_deps()` → dict copy
-- [ ] **P8** `DependencyGraph.all_edges()` → list copy
-  - Fix all callers in MCP tools and dependency_analysis_tool.py
+- [x] **P6** `DependencyGraph.all_nodes()` → `frozenset[str]`
+- [x] **P7** `DependencyGraph.all_deps()` → `dict[str, set[str]]` (deep copy)
+- [x] **P8** `DependencyGraph.all_edges()` → `frozenset[tuple[str, str]]`
+  - Also added `FileDependencyView.all_nodes()` for duck-typing compatibility
 
 ## Phase 3 — Fix callers in MCP tools
 
 - [x] **F1** `codegraph_impact_tool.py` — replace all `graph._callers`/`graph._callees`/`graph._resolve_targets` calls
 - [x] **F2** `codegraph_overview_tool.py` — replace `graph._functions`/`graph._callers`
 - [x] **F3** `call_graph_tool.py` — replace `graph._resolve_targets` calls
-- [ ] **F4** `dependency_analysis_tool.py` + helpers — replace DependencyGraph private access
+- [x] **F4** `dependency_analysis_tool.py` + helpers — replace DependencyGraph private access
+  - Also fixed: `smart_context_tool.py`, `symbol_lineage_tool.py`, `safe_to_edit_helpers.py`,
+    `codegraph_visualize_tool.py`
 
 ## Phase 4 — Tests
 
 - [x] **T1** Tests for `all_function_refs()`, `callers_map()`, `callees_map()`, `resolve_targets()`, `functions_by_file()`
-- [ ] **T2** Tests for DependencyGraph public API
+- [x] **T2** Tests for DependencyGraph public API (11 tests in `TestDependencyGraphPublicAPI`)
 
 ## Phase 5 — Verification
 
-- [ ] **V1** Run full test suite
-- [ ] **V2** Re-run cross-class private attr scan (should be zero in MCP tool layer)
-- [ ] **V3** Commit
+- [x] **V1** Run full test suite — 16638 passed, 73 skipped, 2 xfailed
+- [x] **V2** Re-run cross-class private attr scan — 0 violations in MCP tool layer
+- [x] **V3** Commit — committed in 2 batches on feature/code-intelligence-architecture
