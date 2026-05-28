@@ -540,6 +540,9 @@ class JavaPlugin(LanguagePlugin):
                 extractor = self.create_extractor()
                 # ARCH-A3: use the standardised ElementExtractor hook.
                 extractor.set_file_encoding(detected_encoding)
+                # Populate self.annotations before class/function extraction so
+                # _find_annotations_for_line_cached() has data to scan.
+                extractor.extract_annotations(tree, file_content)
                 all_elements: list[Any] = []
                 all_elements.extend(extractor.extract_functions(tree, file_content))
                 all_elements.extend(extractor.extract_classes(tree, file_content))

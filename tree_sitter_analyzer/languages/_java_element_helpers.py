@@ -69,7 +69,7 @@ def extract_java_class(
             implements_interfaces,
             modifiers,
             determine_visibility(modifiers),
-            find_annotations_for_line(start_line),
+            _extract_node_annotations(node, get_node_text),
             is_nested,
             find_parent_class(node) if is_nested else None,
         )
@@ -195,6 +195,50 @@ def _collect_javadoc(
 
 def _node_line_span(node: Any) -> tuple[int, int]:
     return node.start_point[0] + 1, node.end_point[0] + 1
+
+
+_ANNOTATION_NODE_TYPES = frozenset({"annotation", "marker_annotation"})
+
+
+def _extract_node_annotations(
+    node: Any, get_node_text: Callable[..., str]
+) -> list[dict[str, Any]]:
+    """Extract annotations directly from a node's modifiers subtree.
+
+    Reads only the direct ``modifiers`` child of *node* — so only annotations
+    that actually belong to this declaration are returned, not annotations that
+    happen to be nearby (which the proximity-based fallback can confuse).
+    """
+    annotations: list[dict[str, Any]] = []
+    for child in node.children:
+        if child.type != "modifiers":
+            continue
+        for modifier in child.children:
+            if modifier.type not in _ANNOTATION_NODE_TYPES:
+                continue
+            ann_text = get_node_text(modifier)
+            ann_name = None
+            for sub in modifier.children:
+                if sub.type == "identifier":
+                    ann_name = get_node_text(sub)
+                    break
+            if not ann_name:
+                import re as _re
+
+                m = _re.search(r"@(\w+)", ann_text)
+                if m:
+                    ann_name = m.group(1)
+            if ann_name:
+                annotations.append(
+                    {
+                        "name": ann_name,
+                        "line": modifier.start_point[0] + 1,
+                        "text": ann_text,
+                        "type": "annotation",
+                    }
+                )
+        break  # only one modifiers child per declaration
+    return annotations
 
 
 def _extract_identifier(node: Any, get_node_text: Callable[..., str]) -> str | None:

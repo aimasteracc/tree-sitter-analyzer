@@ -348,20 +348,35 @@ class UserConfig {
         mock_node.start_point = (0, 0)
         mock_node.end_point = (10, 0)
 
+        # Mock modifiers child with @Service annotation (AST-based extraction)
+        mock_modifiers = Mock()
+        mock_modifiers.type = "modifiers"
+        mock_annotation = Mock()
+        mock_annotation.type = "marker_annotation"
+        mock_annotation.start_point = (3, 0)
+        mock_ann_identifier = Mock()
+        mock_ann_identifier.type = "identifier"
+        mock_annotation.children = [mock_ann_identifier]
+        mock_modifiers.children = [mock_annotation]
+
         # Mock identifier child
         mock_identifier = Mock()
         mock_identifier.type = "identifier"
-        mock_node.children = [mock_identifier]
 
         # Mock superclass child
         mock_superclass = Mock()
         mock_superclass.type = "superclass"
-        mock_node.children.append(mock_superclass)
 
         # Mock super_interfaces child
         mock_interfaces = Mock()
         mock_interfaces.type = "super_interfaces"
-        mock_node.children.append(mock_interfaces)
+
+        mock_node.children = [
+            mock_modifiers,
+            mock_identifier,
+            mock_superclass,
+            mock_interfaces,
+        ]
 
         extractor.content_lines = [
             "/**",
@@ -376,51 +391,46 @@ class UserConfig {
 
         with patch.object(extractor, "_get_node_text_optimized") as mock_get_text:
             mock_get_text.side_effect = [
-                "UserService",  # Class name
-                "extends BaseService",  # Superclass text
-                "implements UserOperations",  # Interfaces text
-                "public class UserService extends BaseService implements UserOperations { // class body }",  # Full class text
+                "UserService",  # _extract_identifier: class name
+                "extends BaseService",  # _extract_class_relationships: superclass
+                "implements UserOperations",  # _extract_class_relationships: interfaces
+                "@Service",  # _extract_node_annotations: annotation text
+                "Service",  # _extract_node_annotations: annotation name identifier
             ]
 
             with patch.object(
                 extractor, "_extract_modifiers_optimized"
-            ) as mock_modifiers:
-                mock_modifiers.return_value = ["public"]
+            ) as mock_modifiers_fn:
+                mock_modifiers_fn.return_value = ["public"]
 
                 with patch.object(
                     extractor, "_determine_visibility"
                 ) as mock_visibility:
                     mock_visibility.return_value = "public"
 
-                    with patch.object(
-                        extractor, "_find_annotations_for_line_cached"
-                    ) as mock_annotations:
-                        mock_annotations.return_value = [{"name": "Service"}]
+                    with patch.object(extractor, "_is_nested_class") as mock_is_nested:
+                        mock_is_nested.return_value = False
 
-                        with patch.object(
-                            extractor, "_is_nested_class"
-                        ) as mock_is_nested:
-                            mock_is_nested.return_value = False
+                        result = extractor._extract_class_optimized(mock_node)
 
-                            result = extractor._extract_class_optimized(mock_node)
-
-                            assert isinstance(result, Class)
-                            assert result.name == "UserService"
-                            assert result.start_line == 1
-                            assert result.end_line == 11
-                            assert result.language == "java"
-                            assert result.class_type == "class"
-                            assert (
-                                result.full_qualified_name
-                                == "com.example.service.UserService"
-                            )
-                            assert result.package_name == "com.example.service"
-                            assert result.superclass == "BaseService"
-                            assert result.interfaces == ["UserOperations"]
-                            assert result.modifiers == ["public"]
-                            assert result.visibility == "public"
-                            assert result.annotations == [{"name": "Service"}]
-                            assert result.is_nested is False
+                        assert isinstance(result, Class)
+                        assert result.name == "UserService"
+                        assert result.start_line == 1
+                        assert result.end_line == 11
+                        assert result.language == "java"
+                        assert result.class_type == "class"
+                        assert (
+                            result.full_qualified_name
+                            == "com.example.service.UserService"
+                        )
+                        assert result.package_name == "com.example.service"
+                        assert result.superclass == "BaseService"
+                        assert result.interfaces == ["UserOperations"]
+                        assert result.modifiers == ["public"]
+                        assert result.visibility == "public"
+                        assert len(result.annotations) == 1
+                        assert result.annotations[0]["name"] == "Service"
+                        assert result.is_nested is False
 
     def test_extract_method_optimized_complete(self, extractor):
         """Test complete method extraction"""
@@ -641,5 +651,3 @@ class UserConfig {
                         assert result[0].name == "firstName"
                         assert result[1].name == "lastName"
                         assert result[2].name == "email"
-
-
