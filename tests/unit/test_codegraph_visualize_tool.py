@@ -127,9 +127,9 @@ class TestVisualizeToolNoProject:
         tool = CodeGraphVisualizeTool(_PROJECT_ROOT)
         with patch.object(tool, "_get_call_graph") as mock_cg:
             cg = MagicMock()
-            cg._functions = []
-            cg._callers = {}
-            cg._callees = {}
+            cg.function_refs.return_value = []
+            cg.caller_refs_of.return_value = []
+            cg.callee_refs_of.return_value = []
             mock_cg.return_value = cg
             result = await tool.execute({"mode": "full", "output_format": "json"})
         assert result["success"] is True
@@ -146,8 +146,10 @@ class TestVisualizeToolNoProject:
         fn_b = FunctionRef("b.py", "beta", 5, "python")
         cg = MagicMock()
         cg._resolve_targets.return_value = [fn_a]
-        cg._callees = {fn_a: [fn_b]}
-        cg._callers = {}
+        callees_map = {fn_a: [fn_b], fn_b: []}
+        callers_map: dict = {}
+        cg.callee_refs_of.side_effect = lambda f: callees_map.get(f, [])
+        cg.caller_refs_of.side_effect = lambda f: callers_map.get(f, [])
         with patch.object(tool, "_get_call_graph", return_value=cg):
             result = await tool.execute(
                 {
@@ -171,8 +173,10 @@ class TestVisualizeToolNoProject:
         fn_b = FunctionRef("b.py", "beta", 5, "python")
         cg = MagicMock()
         cg._func_by_file = {"a.py": [fn_a]}
-        cg._callees = {fn_a: [fn_b]}
-        cg._callers = {}
+        callees_map = {fn_a: [fn_b], fn_b: []}
+        callers_map: dict = {}
+        cg.callee_refs_of.side_effect = lambda f: callees_map.get(f, [])
+        cg.caller_refs_of.side_effect = lambda f: callers_map.get(f, [])
         with patch.object(tool, "_get_call_graph", return_value=cg):
             result = await tool.execute(
                 {

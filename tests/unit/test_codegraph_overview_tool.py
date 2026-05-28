@@ -1,7 +1,7 @@
 """Unit tests for codegraph_overview_tool.py — CodeGraphOverviewTool MCP tool."""
 
 from pathlib import Path
-from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -206,7 +206,10 @@ class TestFindHubFunctions:
             FunctionRef(f"caller_{i}.py", f"caller_{i}", i + 1, "python")
             for i in range(40)
         ]
-        graph = SimpleNamespace(_functions=[hub, *callers], _callers={hub: callers})
+        graph = MagicMock()
+        graph.function_refs.return_value = [hub, *callers]
+        callers_map = {hub: callers, **{c: [] for c in callers}}
+        graph.caller_refs_of.side_effect = lambda f: callers_map.get(f, [])
 
         hubs = _find_hub_functions(graph, 10)
 
@@ -241,15 +244,10 @@ class TestComputeDepthDistribution:
         b = FunctionRef("graph.py", "b", 2, "python")
         c = FunctionRef("graph.py", "c", 3, "python")
         d = FunctionRef("graph.py", "d", 4, "python")
-        graph = SimpleNamespace(
-            _functions=[a, b, c, d],
-            _callees={
-                a: [b, c],
-                b: [d],
-                c: [d],
-                d: [b],
-            },
-        )
+        callees_map = {a: [b, c], b: [d], c: [d], d: [b]}
+        graph = MagicMock()
+        graph.function_refs.return_value = [a, b, c, d]
+        graph.callee_refs_of.side_effect = lambda f: callees_map.get(f, [])
 
         dist = _compute_depth_distribution(graph)
 
@@ -262,10 +260,10 @@ class TestComputeDepthDistribution:
         unrelated = FunctionRef("a.py", "handle", 1, "python")
         target = FunctionRef("b.py", "handle", 1, "python")
         leaf = FunctionRef("b.py", "leaf", 2, "python")
-        graph = SimpleNamespace(
-            _functions=[root, unrelated, target, leaf],
-            _callees={root: [target], target: [leaf]},
-        )
+        callees_map = {root: [target], target: [leaf]}
+        graph = MagicMock()
+        graph.function_refs.return_value = [root, unrelated, target, leaf]
+        graph.callee_refs_of.side_effect = lambda f: callees_map.get(f, [])
 
         dist = _compute_depth_distribution(graph)
 
@@ -275,10 +273,10 @@ class TestComputeDepthDistribution:
 
     def test_caps_deep_call_chains(self):
         funcs = [FunctionRef("chain.py", f"f{i}", i + 1, "python") for i in range(13)]
-        graph = SimpleNamespace(
-            _functions=funcs,
-            _callees={funcs[i]: [funcs[i + 1]] for i in range(len(funcs) - 1)},
-        )
+        callees_map = {funcs[i]: [funcs[i + 1]] for i in range(len(funcs) - 1)}
+        graph = MagicMock()
+        graph.function_refs.return_value = funcs
+        graph.callee_refs_of.side_effect = lambda f: callees_map.get(f, [])
 
         dist = _compute_depth_distribution(graph)
 

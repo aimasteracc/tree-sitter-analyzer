@@ -30,7 +30,7 @@ class TestTransitiveCallers:
         graph = MagicMock()
         func = _make_func("foo")
         graph._resolve_targets.return_value = [func]
-        graph._callers = {func: []}
+        graph.caller_refs_of.return_value = []
         result = _compute_transitive_callers(graph, "foo")
         assert result == []
 
@@ -39,7 +39,8 @@ class TestTransitiveCallers:
         foo = _make_func("foo")
         bar = _make_func("bar", "b.py", 5)
         graph._resolve_targets.return_value = [foo]
-        graph._callers = {foo: [bar], bar: []}
+        callers_map = {foo: [bar], bar: []}
+        graph.caller_refs_of.side_effect = lambda f: callers_map.get(f, [])
         result = _compute_transitive_callers(graph, "foo")
         assert len(result) == 1
         assert result[0]["name"] == "bar"
@@ -51,7 +52,8 @@ class TestTransitiveCallers:
         bar = _make_func("bar", "b.py", 5)
         baz = _make_func("baz", "c.py", 10)
         graph._resolve_targets.return_value = [foo]
-        graph._callers = {foo: [bar], bar: [baz], baz: []}
+        callers_map = {foo: [bar], bar: [baz], baz: []}
+        graph.caller_refs_of.side_effect = lambda f: callers_map.get(f, [])
         result = _compute_transitive_callers(graph, "foo", max_depth=3)
         assert len(result) == 2
         names = [r["name"] for r in result]
@@ -67,7 +69,7 @@ class TestTransitiveCallees:
         graph = MagicMock()
         func = _make_func("foo")
         graph._resolve_targets.return_value = [func]
-        graph._callees = {func: []}
+        graph.callee_refs_of.return_value = []
         result = _compute_transitive_callees(graph, "foo")
         assert result == []
 
@@ -77,7 +79,8 @@ class TestTransitiveCallees:
         bar = _make_func("bar", "b.py", 5)
         baz = _make_func("baz", "c.py", 10)
         graph._resolve_targets.return_value = [foo]
-        graph._callees = {foo: [bar], bar: [baz], baz: []}
+        callees_map = {foo: [bar], bar: [baz], baz: []}
+        graph.callee_refs_of.side_effect = lambda f: callees_map.get(f, [])
         result = _compute_transitive_callees(graph, "foo")
         assert len(result) == 2
 
@@ -94,8 +97,8 @@ class TestRiskScore:
         graph = MagicMock()
         func = _make_func("isolated")
         graph._resolve_targets.return_value = [func]
-        graph._callers = {func: []}
-        graph._callees = {func: []}
+        graph.caller_refs_of.return_value = []
+        graph.callee_refs_of.return_value = []
         graph.call_chain.return_value = []
         result = _compute_risk_score(graph, "isolated")
         assert result["score"] == 0
@@ -107,8 +110,8 @@ class TestRiskScore:
         callers = [_make_func(f"caller_{i}", f"mod_{i}.py", i) for i in range(12)]
         callees = [_make_func("dep", "dep.py")]
         graph._resolve_targets.return_value = [func]
-        graph._callers = {func: callers}
-        graph._callees = {func: callees}
+        graph.caller_refs_of.return_value = callers
+        graph.callee_refs_of.return_value = callees
         graph.call_chain.return_value = [{"depth": 3}]
         result = _compute_risk_score(graph, "core_fn")
         assert result["score"] >= 40
@@ -120,8 +123,8 @@ class TestRiskScore:
         callers = [_make_func(f"c_{i}", f"v{i}.py", i) for i in range(15)]
         callees = [_make_func(f"d_{i}", f"s{i}.py", i) for i in range(8)]
         graph._resolve_targets.return_value = [func]
-        graph._callers = {func: callers}
-        graph._callees = {func: callees}
+        graph.caller_refs_of.return_value = callers
+        graph.callee_refs_of.return_value = callees
         graph.call_chain.return_value = [{"depth": 5}]
         result = _compute_risk_score(graph, "api_handler")
         assert result["score"] >= 60
@@ -133,8 +136,8 @@ class TestBlastRadius:
         graph = MagicMock()
         func = _make_func("solo")
         graph._resolve_targets.return_value = [func]
-        graph._callers = {func: []}
-        graph._callees = {func: []}
+        graph.caller_refs_of.return_value = []
+        graph.callee_refs_of.return_value = []
         result = _blast_radius_for_functions(graph, ["solo"])
         assert result["total_affected_functions"] == 1
         assert result["total_files_at_risk"] == 0
@@ -145,8 +148,10 @@ class TestBlastRadius:
         bar = _make_func("bar", "b.py")
         baz = _make_func("baz", "c.py")
         graph._resolve_targets.return_value = [foo]
-        graph._callers = {foo: [bar], bar: []}
-        graph._callees = {foo: [baz], baz: []}
+        callers_map = {foo: [bar], bar: [], baz: []}
+        callees_map = {foo: [baz], bar: [], baz: []}
+        graph.caller_refs_of.side_effect = lambda f: callers_map.get(f, [])
+        graph.callee_refs_of.side_effect = lambda f: callees_map.get(f, [])
         result = _blast_radius_for_functions(graph, ["foo"])
         assert result["total_affected_functions"] == 3
         assert result["total_files_at_risk"] == 2
@@ -157,8 +162,10 @@ class TestBlastRadius:
         b = _make_func("b", "b.py")
         c = _make_func("c", "c.py")
         graph._resolve_targets.return_value = [a]
-        graph._callers = {a: [b], b: [c], c: []}
-        graph._callees = {a: []}
+        callers_map = {a: [b], b: [c], c: []}
+        callees_map = {a: [], b: [], c: []}
+        graph.caller_refs_of.side_effect = lambda f: callers_map.get(f, [])
+        graph.callee_refs_of.side_effect = lambda f: callees_map.get(f, [])
         result = _blast_radius_for_functions(graph, ["a"], depth=1)
         assert result["total_affected_functions"] == 2
 
@@ -197,8 +204,8 @@ class TestCodeGraphImpactTool:
         func = _make_func("test_fn", "test.py")
         mock_graph = MagicMock()
         mock_graph._resolve_targets.return_value = [func]
-        mock_graph._callers = {func: []}
-        mock_graph._callees = {func: []}
+        mock_graph.caller_refs_of.return_value = []
+        mock_graph.callee_refs_of.return_value = []
         mock_graph.call_chain.return_value = []
         tool._call_graph = mock_graph
 
