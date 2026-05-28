@@ -534,7 +534,7 @@ class AutoDiscoveryEngine:
                     return
 
                 if node.is_named and parent_path:
-                    path_str = " > ".join(parent_path[-1:]) + " > " + node.type
+                    path_str = parent_path[-1] + " > " + node.type
                     path_counts[path_str] += 1
 
                 new_path = parent_path + (node.type,) if node.is_named else parent_path
