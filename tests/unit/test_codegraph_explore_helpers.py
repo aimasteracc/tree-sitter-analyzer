@@ -119,7 +119,8 @@ class TestConceptSearchHelpers:
             )
 
         cache = MagicMock()
-        cache._get_conn.return_value = conn
+        cache.get_conn.return_value = conn
+        cache._get_conn.return_value = conn  # backward-compat alias
         result = helpers.concept_search(
             cache,
             ["diagnostics", "marker", "service"],
@@ -164,7 +165,8 @@ class TestConceptSearchHelpers:
         ]
         conn.executemany("INSERT INTO ast_index VALUES (?, ?, ?, ?)", rows)
         cache = MagicMock()
-        cache._get_conn.return_value = conn
+        cache.get_conn.return_value = conn
+        cache._get_conn.return_value = conn  # backward-compat alias
 
         result = helpers.concept_search(
             cache,
@@ -205,7 +207,8 @@ class TestConceptSearchHelpers:
             "INSERT INTO ast_symbol_rows VALUES (?, ?)", ("src/hit.py", "needle")
         )
         cache = MagicMock()
-        cache._get_conn.return_value = conn
+        cache.get_conn.return_value = conn
+        cache._get_conn.return_value = conn  # backward-compat alias
 
         result = helpers.concept_search(
             cache,
@@ -314,7 +317,8 @@ class TestConceptSearchHelpers:
                 ),
             )
         cache = MagicMock()
-        cache._get_conn.return_value = conn
+        cache.get_conn.return_value = conn
+        cache._get_conn.return_value = conn  # backward-compat alias
 
         result = helpers.concept_search(
             cache,
@@ -472,7 +476,8 @@ class TestConceptSearchHelpers:
                 ),
             )
         cache = MagicMock()
-        cache._get_conn.return_value = conn
+        cache.get_conn.return_value = conn
+        cache._get_conn.return_value = conn  # backward-compat alias
 
         result = helpers.concept_search(
             cache,
