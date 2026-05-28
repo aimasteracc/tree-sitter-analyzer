@@ -79,6 +79,14 @@ _VARIABLE_ASSIGN_TYPES = {
     "cpp": {"declaration"},
 }
 
+_CLASS_DEF_TYPES = {
+    "python": {"class_definition"},
+    "javascript": {"class_declaration"},
+    "typescript": {"class_declaration"},
+    "java": {"class_declaration"},
+    "go": {"type_declaration"},
+}
+
 
 @dataclass
 class DeadFunction:
@@ -146,13 +154,6 @@ def find_transitive_dead_code(
     alive: set[FunctionRef] = set()
 
     for func in all_funcs:
-        callers = graph._callers.get(func, [])
-        has_callers = len(callers) > 0
-
-        if has_callers:
-            alive.add(func)
-            continue
-
         if not include_test_files and _is_test_file(func.file_path):
             alive.add(func)
             continue
@@ -227,8 +228,7 @@ def find_unused_imports(
         if any(part in _EXCLUDE_DIRS for part in p.parts):
             continue
         if p.is_file():
-            ext = p.suffix.lower()
-            lang = _language_from_ext(ext)
+            lang = _language_from_ext(str(p))
             if lang and lang in (
                 "python",
                 "javascript",
@@ -262,12 +262,15 @@ def find_unused_imports(
             continue
 
         imports: list[dict[str, Any]] = []
-        walk_imports(result.tree, source, language, imports)
+        root_node = result.tree.root_node
+        walk_imports(root_node, source, language, imports)
 
         if not imports:
             continue
 
-        all_identifiers = _collect_identifiers(result.tree, source, language)
+        all_identifiers = _collect_identifiers(
+            root_node, source, language, skip_import_subtrees=True
+        )
         identifier_names = {name for name, _ in all_identifiers}
 
         for imp in imports:
@@ -281,8 +284,8 @@ def find_unused_imports(
                     continue
 
             unused = [n for n in imported_names if n not in identifier_names]
-            if unused and len(unused) == len(imported_names):
-                line = imp.get("line", 0)
+            if unused:
+                line = imp.get("line", 0) or _infer_import_line(source, imp)
                 if line == 0:
                     continue
                 import_text = imp.get("module_name", "")
@@ -300,6 +303,26 @@ def find_unused_imports(
 
     results.sort(key=lambda x: (x.file, x.line))
     return results
+
+
+def _infer_import_line(source: str, imp: dict[str, Any]) -> int:
+    """Best-effort line number fallback for extractors that omit line metadata."""
+    module_name = imp.get("module_name", "")
+    names = imp.get("names", [])
+    for line_number, line in enumerate(source.splitlines(), start=1):
+        stripped = line.strip()
+        if module_name and (
+            stripped.startswith(f"import {module_name}")
+            or stripped.startswith(f"from {module_name} import ")
+        ):
+            return line_number
+        if (
+            names
+            and stripped.startswith("import ")
+            and any(n in stripped for n in names)
+        ):
+            return line_number
+    return 0
 
 
 def find_unreferenced_variables(
@@ -325,8 +348,7 @@ def find_unreferenced_variables(
         if any(part in _EXCLUDE_DIRS for part in p.parts):
             continue
         if p.is_file():
-            ext = p.suffix.lower()
-            lang = _language_from_ext(ext)
+            lang = _language_from_ext(str(p))
             if lang and lang in ("python", "javascript", "typescript", "go", "java"):
                 source_files.append((p, lang))
         if len(source_files) >= max_files:
@@ -350,12 +372,13 @@ def find_unreferenced_variables(
         if not result or not result.tree:
             continue
 
-        top_level_vars = _extract_top_level_variables(result.tree, source, language)
+        root_node = result.tree.root_node
+        top_level_vars = _extract_top_level_variables(root_node, source, language)
         if not top_level_vars:
             continue
 
         body_identifiers = _collect_function_body_identifiers(
-            result.tree, source, language
+            root_node, source, language
         )
 
         for name, line in top_level_vars:
@@ -374,13 +397,15 @@ def find_unreferenced_variables(
 
 
 def _collect_identifiers(
-    node: Any, source: str, language: str
+    node: Any, source: str, language: str, *, skip_import_subtrees: bool = False
 ) -> list[tuple[str, int]]:
     """Collect all identifier nodes from the AST."""
     identifiers: list[tuple[str, int]] = []
 
     def _walk(n: Any) -> None:
         if not hasattr(n, "type"):
+            return
+        if skip_import_subtrees and "import" in n.type:
             return
         if n.type in ("identifier", "property_identifier", "type_identifier"):
             text = _node_text(n, source)
@@ -397,7 +422,7 @@ def _collect_function_body_identifiers(
     tree: Any, source: str, language: str
 ) -> set[str]:
     """Collect identifiers that appear inside function bodies."""
-    from .call_graph import _FUNC_DEF_TYPES
+    from .function_extraction import _FUNC_DEF_TYPES
 
     func_types = _FUNC_DEF_TYPES.get(language, set())
     identifiers: set[str] = set()
@@ -430,7 +455,7 @@ def _extract_top_level_variables(
     tree: Any, source: str, language: str
 ) -> list[tuple[str, int]]:
     """Extract variable names assigned at the top level (module scope)."""
-    from .call_graph import _CLASS_DEF_TYPES, _FUNC_DEF_TYPES
+    from .function_extraction import _FUNC_DEF_TYPES
 
     func_types = _FUNC_DEF_TYPES.get(language, set())
     class_types = _CLASS_DEF_TYPES.get(language, set())
@@ -441,18 +466,21 @@ def _extract_top_level_variables(
         for child in getattr(tree, "children", []):
             if child.type in func_types or child.type in class_types:
                 continue
-            if child.type == "assignment":
-                left = child.child_by_field_name("left")
+            stmt = child
+            if child.type == "expression_statement" and getattr(child, "children", []):
+                stmt = child.children[0]
+            if stmt.type == "assignment":
+                left = stmt.child_by_field_name("left")
                 if left and left.type == "identifier":
                     text = _node_text(left, source)
                     if text and not text.startswith("_"):
-                        variables.append((text, child.start_point[0] + 1))
-            elif child.type == "augmented_assignment":
-                left = child.child_by_field_name("left")
+                        variables.append((text, stmt.start_point[0] + 1))
+            elif stmt.type == "augmented_assignment":
+                left = stmt.child_by_field_name("left")
                 if left and left.type == "identifier":
                     text = _node_text(left, source)
                     if text and not text.startswith("_"):
-                        variables.append((text, child.start_point[0] + 1))
+                        variables.append((text, stmt.start_point[0] + 1))
     elif language in ("javascript", "typescript"):
         for child in getattr(tree, "children", []):
             if child.type in func_types or child.type in class_types:

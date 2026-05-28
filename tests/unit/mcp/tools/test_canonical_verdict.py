@@ -53,11 +53,13 @@ class TestValidateToolResponseVerdict:
     def test_accepts_payload_with_no_verdict_key(self):
         # The check is opt-in: legacy tools that haven't been migrated
         # yet should not start failing the contract.
-        validate_tool_response({"success": True}, "noop")
+        assert validate_tool_response({"success": True}, "noop") is None
 
     @pytest.mark.parametrize("verdict", sorted(CANONICAL_VERDICTS))
     def test_accepts_every_canonical_verdict(self, verdict: str):
-        validate_tool_response({"success": True, "verdict": verdict}, "ok")
+        assert (
+            validate_tool_response({"success": True, "verdict": verdict}, "ok") is None
+        )
 
     @pytest.mark.parametrize(
         "bad",
@@ -83,6 +85,4 @@ class TestValidateToolResponseVerdict:
 
     def test_error_message_names_the_tool(self):
         with pytest.raises(AssertionError, match=r"my_tool:"):
-            validate_tool_response(
-                {"success": True, "verdict": "CLEAN"}, "my_tool"
-            )
+            validate_tool_response({"success": True, "verdict": "CLEAN"}, "my_tool")
