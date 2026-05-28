@@ -285,11 +285,12 @@ class BashElementExtractor(ElementExtractor):
             if i >= len(self.content_lines):
                 continue
             line = self.content_lines[i]
+            line_len = len(line)
             if i == start_point[0]:
-                start_col = max(0, min(start_point[1], len(line)))
+                start_col = max(0, min(start_point[1], line_len))
                 lines.append(line[start_col:])
             elif i == end_point[0]:
-                end_col = max(0, min(end_point[1], len(line)))
+                end_col = max(0, min(end_point[1], line_len))
                 lines.append(line[:end_col])
             else:
                 lines.append(line)
