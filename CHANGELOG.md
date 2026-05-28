@@ -564,7 +564,16 @@ in `docs/internal/CODEGRAPH_BENCHMARK_FINAL_2026-05-24.md`.
 
 - **Java `implements` generic preservation** — Interface list parsing split on commas inside
   generic type arguments (`LocalCache<K, V>, Runnable` was misread as three interfaces). Fixed
-  with a depth-counter-based splitter in `_split_respecting_generics()`.
+  with a depth-counter-based splitter in `_split_respecting_generics()`. Validated against
+  netty (T3.3): `AddressedEnvelope<M, A>`, `ChannelFactory<T>` correctly preserved.
+
+- **C# attribute extraction** — All C# classes and methods returned `annotations=[]` because
+  `extract_attributes()` walked `node.prev_sibling` to find `[ApiController]` / `[HttpGet]`
+  style attributes. In the tree-sitter-c-sharp grammar, `attribute_list` nodes are **direct
+  children** of the declaration node (not siblings), so `prev_sibling` always returned `None`.
+  Fixed by iterating `node.children` and extracting names from the `attribute → identifier`
+  subtree. Affected: all C# classes, methods, fields, properties with any `[Attribute]`
+  decorator. Now `UsersController` correctly shows `annotations=[ApiController, Route, Authorize]`.
 
 ### Removed
 
