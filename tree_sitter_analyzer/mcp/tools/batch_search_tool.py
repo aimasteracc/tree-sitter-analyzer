@@ -15,6 +15,45 @@ from .base_tool import BaseMCPTool, mirror_summary_line
 
 _BATCH_MAX_MATCHES_PER_QUERY = 20
 
+# Schema for a single query item — extracted to module level to reduce
+# the AST nesting depth inside get_tool_definition.
+_QUERY_ITEM_SCHEMA: dict = {
+    "type": "object",
+    "properties": {
+        "pattern": {
+            "type": "string",
+            "description": "Regex or literal pattern to search for",
+        },
+        "label": {
+            "type": "string",
+            "description": "Human-readable label for this search (for organizing results)",
+        },
+        "roots": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Directories to search in",
+        },
+        "literal": {
+            "type": "boolean",
+            "description": "If true, treat pattern as literal string (not regex)",
+        },
+        "case_sensitive": {
+            "type": "boolean",
+            "description": "Case sensitive search",
+        },
+    },
+    "required": ["pattern"],
+}
+
+
+def _case_mode(case_sensitive: bool | None) -> str:
+    """Map the case_sensitive flag to a ripgrep case mode string."""
+    if case_sensitive is True:
+        return "sensitive"
+    if case_sensitive is False:
+        return "insensitive"
+    return "smart"
+
 
 class BatchSearchTool(BaseMCPTool):
     """MCP tool that runs multiple ripgrep searches concurrently."""
@@ -46,33 +85,7 @@ class BatchSearchTool(BaseMCPTool):
                     "queries": {
                         "type": "array",
                         "description": "List of search queries to execute in parallel",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "pattern": {
-                                    "type": "string",
-                                    "description": "Regex or literal pattern to search for",
-                                },
-                                "label": {
-                                    "type": "string",
-                                    "description": "Human-readable label for this search (for organizing results)",
-                                },
-                                "roots": {
-                                    "type": "array",
-                                    "items": {"type": "string"},
-                                    "description": "Directories to search in",
-                                },
-                                "literal": {
-                                    "type": "boolean",
-                                    "description": "If true, treat pattern as literal string (not regex)",
-                                },
-                                "case_sensitive": {
-                                    "type": "boolean",
-                                    "description": "Case sensitive search",
-                                },
-                            },
-                            "required": ["pattern"],
-                        },
+                        "items": _QUERY_ITEM_SCHEMA,
                         "minItems": 2,
                         "maxItems": 10,
                     }
@@ -118,31 +131,27 @@ class BatchSearchTool(BaseMCPTool):
                 raise ValueError(f"queries[{i}].pattern must be a non-empty string")
         return True
 
+    def _resolve_single_root(self, r: str) -> str:
+        """Resolve and validate a single root path; fall back to raw value on error."""
+        try:
+            return self.resolve_and_validate_directory_path(r)
+        except ValueError:
+            return r
+
     def _build_command_for_query(self, query: dict[str, Any]) -> list[str]:
         """Build a ripgrep command for a single query dict."""
         pattern: str = query["pattern"]
         literal: bool = bool(query.get("literal", False))
-        case_sensitive: bool | None = query.get("case_sensitive")
+        case: str = _case_mode(query.get("case_sensitive"))
         roots: list[str] | None = query.get("roots")
 
-        # Resolve case mode
-        if case_sensitive is True:
-            case = "sensitive"
-        elif case_sensitive is False:
-            case = "insensitive"
-        else:
-            case = "smart"
-
         # Resolve roots: validate each if provided, else default to project_root or cwd
-        resolved_roots: list[str] = []
         if roots:
-            for r in roots:
-                try:
-                    resolved_roots.append(self.resolve_and_validate_directory_path(r))
-                except ValueError:
-                    resolved_roots.append(r)
+            resolved_roots: list[str] = [self._resolve_single_root(r) for r in roots]
         elif self.project_root:
             resolved_roots = [self.project_root]
+        else:
+            resolved_roots = []
 
         return fd_rg_utils.build_rg_command(
             query=pattern,
