@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import sqlite3
 from collections.abc import Callable
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # Schema DDL constants
@@ -263,3 +264,309 @@ def apply_migration_v7(conn: sqlite3.Connection, record_fn: RecordFn) -> None:
         conn.commit()
     except sqlite3.OperationalError:
         pass
+
+
+# ---------------------------------------------------------------------------
+# Schema DDL constants V1 and V2 (moved from ast_cache.py)
+# ---------------------------------------------------------------------------
+
+SCHEMA_V1 = """
+CREATE TABLE IF NOT EXISTS ast_index (
+    file_path    TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    language     TEXT NOT NULL,
+    mtime_ns     INTEGER NOT NULL,
+    file_size    INTEGER NOT NULL,
+    extractor_version INTEGER NOT NULL DEFAULT 0,
+    symbols_json TEXT NOT NULL DEFAULT '{}',
+    imports_json TEXT NOT NULL DEFAULT '[]',
+    structure_json TEXT NOT NULL DEFAULT '{}',
+    indexed_at   TEXT NOT NULL,
+    PRIMARY KEY (file_path)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ast_content_hash
+    ON ast_index(content_hash);
+
+CREATE INDEX IF NOT EXISTS idx_ast_language
+    ON ast_index(language);
+"""
+
+SCHEMA_V2_FTS = """
+CREATE VIRTUAL TABLE IF NOT EXISTS ast_symbols_fts
+    USING fts5(
+        name,
+        kind,
+        file_path,
+        language,
+        content=''
+    );
+
+CREATE TABLE IF NOT EXISTS ast_symbol_rows (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        name      TEXT NOT NULL,
+        kind      TEXT NOT NULL,
+        file_path TEXT NOT NULL,
+        language  TEXT NOT NULL,
+        line      INTEGER NOT NULL DEFAULT 0,
+        end_line  INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_sym_rows_file_path
+    ON ast_symbol_rows(file_path);
+"""
+
+LARGE_REPO_INDEXES: tuple[tuple[str, str], ...] = (
+    (
+        "ast_symbol_rows",
+        "CREATE INDEX IF NOT EXISTS idx_sym_rows_name_kind_path_line "
+        "ON ast_symbol_rows(name, kind, file_path, line)",
+    ),
+    (
+        "ast_symbol_rows",
+        "CREATE INDEX IF NOT EXISTS idx_sym_rows_file_name_kind_line "
+        "ON ast_symbol_rows(file_path, name, kind, line)",
+    ),
+    (
+        "ast_call_edges",
+        "CREATE INDEX IF NOT EXISTS idx_ce_callee_name_resolved_file "
+        "ON ast_call_edges(callee_name, callee_resolved_file)",
+    ),
+    (
+        "ast_call_edges",
+        "CREATE INDEX IF NOT EXISTS idx_ce_callee_name_file_path "
+        "ON ast_call_edges(callee_name, file_path)",
+    ),
+    (
+        "ast_call_edges",
+        "CREATE INDEX IF NOT EXISTS idx_ce_caller_name_file "
+        "ON ast_call_edges(caller_name, caller_file)",
+    ),
+)
+
+SCHEMA_VERSIONS_DDL = """
+CREATE TABLE IF NOT EXISTS ast_schema_version (
+    version    INTEGER PRIMARY KEY,
+    applied_at INTEGER NOT NULL,
+    description TEXT NOT NULL
+);
+"""
+
+EXPECTED_SCHEMA_VERSIONS: list[Any] = [
+    (
+        3,
+        "ast_call_edges + indices",
+        {
+            "tables": ["ast_call_edges"],
+            "ast_call_edges_columns": [
+                "caller_name",
+                "caller_file",
+                "caller_line",
+                "callee_name",
+                "callee_full",
+                "callee_line",
+                "file_path",
+                "language",
+            ],
+        },
+    ),
+    (
+        4,
+        "Synapse: callee_resolution + ast_imports",
+        {
+            "tables": ["ast_imports"],
+            "ast_call_edges_columns": [
+                "callee_symbol_id",
+                "callee_resolution",
+                "callee_resolved_file",
+            ],
+        },
+    ),
+    (
+        5,
+        "Temporal activation",
+        {
+            "tables": ["ast_symbol_activation"],
+        },
+    ),
+    (
+        6,
+        "Constraint violations",
+        {
+            "tables": ["ast_constraint_violations"],
+        },
+    ),
+    (
+        7,
+        "Extractor version invalidation",
+        {
+            "ast_index_columns": ["extractor_version"],
+        },
+    ),
+]
+
+# ---------------------------------------------------------------------------
+# SQL helper constants (moved from ast_cache.py)
+# ---------------------------------------------------------------------------
+
+SQL_TABLE_EXISTS = "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?"
+SQL_GET_SCHEMA_VERSION = "SELECT version FROM ast_schema_version WHERE version = ?"
+SQL_UPDATE_CALLEE_RESOLVED = (
+    "UPDATE ast_call_edges SET callee_resolved_file = ? "
+    "WHERE caller_file = ? AND caller_line = ? "
+    "AND callee_name = ? AND callee_line = ?"
+)
+SQL_COUNT_SYMBOL_ROWS = "SELECT COUNT(*) as c FROM ast_symbol_rows"
+SQL_COUNT_RESOLVED_EDGES = (
+    "SELECT COUNT(*) as c FROM ast_call_edges WHERE callee_resolved_file != ''"
+)
+SQL_COUNT_CROSS_FILE_EDGES = (
+    "SELECT COUNT(*) as c FROM ast_call_edges "
+    "WHERE callee_resolved_file != '' "
+    "AND callee_resolved_file != file_path"
+)
+
+# ---------------------------------------------------------------------------
+# Pure schema helper functions (moved from ASTCache static methods)
+# ---------------------------------------------------------------------------
+
+
+def get_table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    """Return the column names of ``table``, or empty set when absent."""
+    try:
+        rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+    except sqlite3.OperationalError:
+        return set()
+    return {r[1] for r in rows}
+
+
+def check_schema_expectations(
+    conn: sqlite3.Connection,
+    expectations: dict[str, list[str]],
+    missing: list[str],
+) -> bool:
+    """Confirm every expected table + column from one version block exists."""
+    all_ok = True
+    for table in expectations.get("tables", []):
+        cols = get_table_columns(conn, table)
+        if not cols:
+            missing.append(f"table {table!r}")
+            all_ok = False
+    for key, required_cols in expectations.items():
+        if key == "tables":
+            continue
+        if not key.endswith("_columns"):
+            continue
+        table = key[: -len("_columns")]
+        cols = get_table_columns(conn, table)
+        if not cols:
+            if table not in expectations.get("tables", []):
+                missing.append(f"table {table!r} (needed for columns)")
+            all_ok = False
+            continue
+        for col in required_cols:
+            if col not in cols:
+                missing.append(f"column {table}.{col}")
+                all_ok = False
+    return all_ok
+
+
+def apply_large_repo_indexes(conn: sqlite3.Connection) -> None:
+    """Create non-shape-changing indexes for large-repo query hot paths."""
+    import logging as _logging
+
+    _log = _logging.getLogger(__name__)
+    for table_name, sql in LARGE_REPO_INDEXES:
+        try:
+            exists = conn.execute(SQL_TABLE_EXISTS, (table_name,)).fetchone()
+            if exists:
+                conn.execute(sql)
+        except sqlite3.OperationalError:
+            _log.debug("Skipping optional index for table %s", table_name)
+
+
+def already_applied_versions(conn: sqlite3.Connection) -> set[int]:
+    """Return the set of schema versions already recorded in ast_schema_version."""
+    try:
+        rows = conn.execute("SELECT version FROM ast_schema_version").fetchall()
+    except sqlite3.OperationalError:
+        return set()
+    return {int(r[0]) for r in rows}
+
+
+def record_schema_version(
+    conn: sqlite3.Connection, version: int, description: str
+) -> None:
+    """Stamp a row in ast_schema_version after a migration block applies."""
+    import time as _time
+
+    ts = int(_time.time())
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO ast_schema_version "
+            "(version, applied_at, description) VALUES (?, ?, ?)",
+            (version, ts, description),
+        )
+    except sqlite3.OperationalError:
+        pass
+
+
+def backfill_schema_version_row(
+    conn: sqlite3.Connection,
+    version: int,
+    description: str,
+    missing: list[str],
+) -> None:
+    """INSERT OR IGNORE a version row for a legacy DB that predates the registry."""
+    import time as _time
+
+    ts = int(_time.time())
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO ast_schema_version "
+            "(version, applied_at, description) VALUES (?, ?, ?)",
+            (version, ts, description),
+        )
+        conn.commit()
+    except sqlite3.OperationalError:
+        missing.append(
+            f"ast_schema_version row for v{version} ({description}) could not be inserted"
+        )
+
+
+def clear_activation_for_file(conn: sqlite3.Connection, rel_path: str) -> None:
+    """Drop stale activation rows when project indexing runs in fast mode."""
+    try:
+        conn.execute(
+            "DELETE FROM ast_symbol_activation WHERE file_path = ?",
+            (rel_path,),
+        )
+    except sqlite3.OperationalError:
+        pass
+
+
+def init_db(
+    conn: sqlite3.Connection,
+    fts5_available: bool | None,
+    has_fts5_fn: Any,
+    migrations: list[tuple[int, Any]],
+) -> bool:
+    """Apply schema DDL and migrations. Returns updated fts5_available flag."""
+    conn.executescript(SCHEMA_V1)
+    conn.executescript(SCHEMA_VERSIONS_DDL)
+    conn.commit()
+    if fts5_available is None:
+        fts5_available = has_fts5_fn(conn)
+    if fts5_available:
+        try:
+            conn.executescript(SCHEMA_V2_FTS)
+            conn.commit()
+        except sqlite3.OperationalError:
+            fts5_available = False
+    applied = already_applied_versions(conn)
+    for version, migration_fn in migrations:
+        if version not in applied:
+            migration_fn(conn, record_schema_version)
+    apply_large_repo_indexes(conn)
+    conn.commit()
+    return bool(fts5_available)
