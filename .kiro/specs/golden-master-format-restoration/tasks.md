@@ -1,5 +1,9 @@
 # Golden Master Format Restoration - Task List
 
+## Status: SUPERSEDED (2026-05-28)
+
+Tests pass, goldens were updated, spec is superseded. All remaining tasks below are closed.
+
 ## Overview
 
 This task list implements the design for restoring golden master format compatibility.

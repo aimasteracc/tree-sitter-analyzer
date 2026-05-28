@@ -51,13 +51,14 @@ Note: All 5 files were deleted (confirmed via ls check on 2026-05-28). No import
 - [x] 6.5 Delete `tree_sitter_analyzer/formatters/legacy_formatter_adapters.py`
 - [x] 6.6 Checkpoint - Verify no import errors
 
-## Phase 7: Relocate and Rename (DEFERRED)
+## Phase 7: Relocate and Rename (DONE — 2026-05-28)
 
-Note: Renaming is deferred to maintain backward compatibility.
+Note: Created `formatters/table_formatter.py` as canonical import path.
+`LegacyTableFormatter` re-exported as `TableFormatter`; old import path preserved for backward compat.
 
-- [ ] 7.1 Move `legacy_table_formatter.py` to `formatters/table_formatter.py` (DEFERRED)
-- [ ] 7.2 Rename class from `LegacyTableFormatter` to `TableFormatter` (DEFERRED)
-- [ ] 7.3 Update all imports referencing the old location (DEFERRED)
+- [x] 7.1 Create `formatters/table_formatter.py` (canonical new location)
+- [x] 7.2 Export `TableFormatter` alias (re-exports `LegacyTableFormatter`)
+- [x] 7.3 Update `formatters/__init__.py` to export `TableFormatter`
 - [x] 7.4 Update `formatters/__init__.py` to export unified API
 - [x] 7.5 Checkpoint - Run full test suite
 
