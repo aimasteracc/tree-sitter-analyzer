@@ -189,15 +189,16 @@ def _execute_query_string(
             query_string_field=query_string_field,
         )
     except Exception as exc:
+        exc_msg = str(exc)
         if query_name is not None:
             logger.error(f"Error executing query '{query_name}': {exc}")
             return executor.create_error_result(
-                f"Query execution failed: {str(exc)}", query_name=query_name
+                f"Query execution failed: {exc_msg}", query_name=query_name
             )
 
         logger.error(f"Error executing query string: {exc}")
         return executor.create_error_result(
-            f"Query execution failed: {str(exc)}", query_string=query_string
+            f"Query execution failed: {exc_msg}", query_string=query_string
         )
 
 
@@ -210,11 +211,12 @@ def _process_captures_or_error(
     try:
         return executor.process_captures(captures, source_code)
     except Exception as exc:
+        exc_msg = str(exc)
         if query_name is not None:
             return executor.create_error_result(
-                f"Capture processing failed: {str(exc)}", query_name=query_name
+                f"Capture processing failed: {exc_msg}", query_name=query_name
             )
-        return executor.create_error_result(f"Capture processing failed: {str(exc)}")
+        return executor.create_error_result(f"Capture processing failed: {exc_msg}")
 
 
 def _success_result(
