@@ -384,7 +384,7 @@ def _extract_cached_functions(
     if not functions:
         return []
 
-    conn = cache._get_conn()
+    conn = cache.get_conn()
     rows_by_file: dict[str, dict[str, Any]] = {}
     for row in conn.execute(
         "SELECT file_path, content_hash, language FROM ast_index"

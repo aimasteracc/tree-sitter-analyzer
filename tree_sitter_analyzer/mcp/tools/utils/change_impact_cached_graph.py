@@ -96,7 +96,7 @@ def load_cached_dependency_graph(
 
 
 def _cached_index_rows(cache: ASTCache) -> list[dict[str, Any]]:
-    conn = cache._get_conn()
+    conn = cache.get_conn()
     try:
         rows = conn.execute(
             "SELECT file_path, language, imports_json FROM ast_index"

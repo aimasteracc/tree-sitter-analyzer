@@ -364,7 +364,16 @@ class ASTCache:
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
         self._init_db()
 
-    def _get_conn(self) -> sqlite3.Connection:
+    def get_conn(self) -> sqlite3.Connection:
+        """Return the thread-local SQLite connection for this cache.
+
+        Public accessor for the database connection.  Each thread gets its
+        own ``sqlite3.Connection`` (created lazily on first access) configured
+        with WAL journal mode and ``Row`` row factory.
+
+        Prefer this over the private ``_get_conn()`` — external modules that
+        need raw SQL access should call ``cache.get_conn()``.
+        """
         conn = getattr(self._local, "conn", None)
         if conn is None:
             conn = sqlite3.connect(self.db_path, timeout=10)
@@ -373,6 +382,10 @@ class ASTCache:
             conn.row_factory = sqlite3.Row
             self._local.conn = conn
         return conn
+
+    def _get_conn(self) -> sqlite3.Connection:
+        """Private alias kept for backward compatibility — delegates to get_conn()."""
+        return self.get_conn()
 
     def _init_db(self) -> None:
         conn = self._get_conn()

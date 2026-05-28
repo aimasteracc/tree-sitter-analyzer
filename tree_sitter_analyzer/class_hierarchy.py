@@ -103,7 +103,7 @@ class ClassHierarchy:
 
     def _load_from_cache(self) -> None:
         try:
-            conn = self._cache._get_conn()
+            conn = self._cache.get_conn()
             rows = conn.execute(
                 "SELECT file_path, symbols_json, language FROM ast_index"
             ).fetchall()

@@ -401,7 +401,7 @@ def _enrich_with_cache_symbols(
     """
     if cache is None:
         return []
-    conn = cache._get_conn()
+    conn = cache.get_conn()
     enriched: list[dict[str, Any]] = []
     for rel in changed_files:
         try:
@@ -451,7 +451,7 @@ def _find_affected_symbols(
     """
     if cache is None or not affected_files:
         return []
-    conn = cache._get_conn()
+    conn = cache.get_conn()
     results: list[dict[str, Any]] = []
     for rel in sorted(affected_files):
         try:

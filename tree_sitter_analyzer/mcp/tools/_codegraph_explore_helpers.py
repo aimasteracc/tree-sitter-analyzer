@@ -161,7 +161,7 @@ def concept_search(
     if not terms:
         return []
 
-    conn = cache._get_conn()
+    conn = cache.get_conn()
     rows = conn.execute(
         "SELECT file_path, language, file_size, symbols_json FROM ast_index"
     ).fetchall()

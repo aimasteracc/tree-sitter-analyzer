@@ -107,7 +107,7 @@ def _build_import_map(cache: Any) -> dict[str, list[Any]]:
 
     Caller code branches on `isinstance(imp, str)` to handle both shapes.
     """
-    conn = cache._get_conn()
+    conn = cache.get_conn()
     rows = conn.execute(
         "SELECT file_path, imports_json, language FROM ast_index"
     ).fetchall()
@@ -120,7 +120,7 @@ def _build_import_map(cache: Any) -> dict[str, list[Any]]:
 
 
 def _build_module_to_file_map(cache: Any) -> dict[str, str]:
-    conn = cache._get_conn()
+    conn = cache.get_conn()
     rows = conn.execute("SELECT file_path, language FROM ast_index").fetchall()
     module_map: dict[str, str] = {}
     for row in rows:
@@ -225,7 +225,7 @@ class SymbolResolver:
         return filtered if filtered else candidates
 
     def _is_child_of(self, location: DefinitionLocation, parent_name: str) -> bool:
-        conn = self._cache._get_conn()
+        conn = self._cache.get_conn()
         row = conn.execute(
             "SELECT symbols_json FROM ast_index WHERE file_path = ?",
             (location.file,),
@@ -299,7 +299,7 @@ class SymbolResolver:
         return []
 
     def _find_defs_in_file(self, file_path: str, name: str) -> list[DefinitionLocation]:
-        conn = self._cache._get_conn()
+        conn = self._cache.get_conn()
         rows = conn.execute(
             """SELECT name, kind, file_path, language, line, end_line
                FROM ast_symbol_rows
@@ -344,7 +344,7 @@ class SymbolResolver:
     def _find_references(self, symbol: str, short_name: str) -> list[ReferenceLocation]:
         references: list[ReferenceLocation] = []
         seen: set[tuple[str, int]] = set()
-        conn = self._cache._get_conn()
+        conn = self._cache.get_conn()
         try:
             rows = conn.execute(
                 """SELECT callee_name, callee_full, caller_name, caller_file,

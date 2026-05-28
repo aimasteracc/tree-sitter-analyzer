@@ -196,7 +196,7 @@ class CallPathFinder:
         max_depth: int,
         max_paths: int,
     ) -> CallPathResult:
-        conn = cache._get_conn()
+        conn = cache.get_conn()
         start_key = (source_function, source_file)
         target_key = (target_function, target_file)
         queue: deque[tuple[str, str | None, list[dict[str, Any]]]] = deque()
@@ -245,7 +245,7 @@ class CallPathFinder:
         max_depth: int,
         max_paths: int,
     ) -> CallPathResult:
-        conn = cache._get_conn()
+        conn = cache.get_conn()
         target_key = (target_function, target_file)
         start_key = (source_function, source_file)
         queue: deque[tuple[str, str | None, list[dict[str, Any]]]] = deque()
@@ -292,7 +292,7 @@ class CallPathFinder:
         max_depth: int,
         max_paths: int,
     ) -> CallPathResult:
-        conn = cache._get_conn()
+        conn = cache.get_conn()
         forward_visited: dict[tuple[str, str | None], list[dict[str, Any]]] = {
             (source_function, source_file): [],
         }

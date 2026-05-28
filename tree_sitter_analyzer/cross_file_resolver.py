@@ -220,7 +220,7 @@ class CrossFileResolver:
         return resolved
 
     def _build_module_map(self) -> None:
-        conn = self._cache._get_conn()
+        conn = self._cache.get_conn()
         rows = conn.execute("SELECT file_path, language FROM ast_index").fetchall()
         for row in rows:
             fp = row["file_path"]
@@ -260,7 +260,7 @@ class CrossFileResolver:
                     self._module_to_file[short] = fp
 
     def _build_function_index(self) -> None:
-        conn = self._cache._get_conn()
+        conn = self._cache.get_conn()
         rows = conn.execute(
             "SELECT file_path, symbols_json, language FROM ast_index"
         ).fetchall()
@@ -283,7 +283,7 @@ class CrossFileResolver:
                 self._functions_by_file.setdefault(fp, []).append(func)
 
     def _build_import_index(self) -> None:
-        conn = self._cache._get_conn()
+        conn = self._cache.get_conn()
         rows = conn.execute(
             "SELECT file_path, imports_json, language FROM ast_index"
         ).fetchall()

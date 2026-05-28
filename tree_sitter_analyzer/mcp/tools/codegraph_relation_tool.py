@@ -182,7 +182,7 @@ class CodeGraphRelationToolMixin:
     ) -> dict[tuple[str, int], dict[str, Any]]:
         """Build a (file_path, line) -> activation map from AST cache rows."""
         try:
-            conn = cache._get_conn()
+            conn = cache.get_conn()
             rows = conn.execute(
                 "SELECT s.file_path, s.line, a.mod_count_30d, a.last_modified_at "
                 "FROM ast_symbol_activation a "

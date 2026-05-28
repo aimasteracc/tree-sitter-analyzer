@@ -91,7 +91,7 @@ class XRefEngine:
         include_imports: bool = True,
         include_file_deps: bool = True,
     ) -> XRefResult:
-        conn = self._cache._get_conn()
+        conn = self._cache.get_conn()
 
         definitions = self._find_definitions(conn, symbol, file_path)
         primary_file = file_path
@@ -126,7 +126,7 @@ class XRefEngine:
         )
 
     def file_xref(self, file_path: str) -> dict[str, Any]:
-        conn = self._cache._get_conn()
+        conn = self._cache.get_conn()
 
         symbols = self._file_symbols(conn, file_path)
         callers = self._file_callers(conn, file_path)
