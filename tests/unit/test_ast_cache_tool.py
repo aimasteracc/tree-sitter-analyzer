@@ -141,7 +141,7 @@ class TestExecute:
     def tool_with_mock_cache(self, tmp_path):
         tool = ASTCacheTool(project_root=str(tmp_path))
         mock_cache = MagicMock()
-        tool._cache = mock_cache
+        tool._cache = mock_cache  # noqa: SLF001 — test setup write
         return tool, mock_cache
 
     @pytest.mark.asyncio
