@@ -64,7 +64,7 @@ class TestExecuteDefinition:
         mock_cache = MagicMock()
         mock_conn = MagicMock()
         mock_conn.execute.return_value.fetchone.return_value = (10,)
-        mock_cache._get_conn.return_value = mock_conn
+        mock_cache.get_conn.return_value = mock_conn
 
         mock_resolver = MagicMock()
         mock_result = MagicMock()
