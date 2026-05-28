@@ -62,8 +62,7 @@ class TestCodeGraphQueryToolAdvanced:
                 ),
             )
         mock_cache = MagicMock()
-        mock_cache.get_conn.return_value = conn
-        mock_cache._get_conn.return_value = conn  # backward-compat alias
+        mock_cache._get_conn.return_value = conn
 
         with (
             patch("tree_sitter_analyzer.ast_cache.ASTCache", return_value=mock_cache),
@@ -132,8 +131,7 @@ class TestCodeGraphQueryToolAdvanced:
             ),
         )
         mock_cache = MagicMock()
-        mock_cache.get_conn.return_value = conn
-        mock_cache._get_conn.return_value = conn  # backward-compat alias
+        mock_cache._get_conn.return_value = conn
 
         with (
             patch("tree_sitter_analyzer.ast_cache.ASTCache", return_value=mock_cache),
