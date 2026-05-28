@@ -160,6 +160,20 @@ def _text_fingerprint(source_text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()[:32]
 
 
+def _should_visit_dir(d: str) -> bool:
+    """Return True if directory should be walked (not excluded, not hidden)."""
+    return d not in _EXCLUDE_DIRS and not d.startswith(".")
+
+
+def _read_file_content(path: str) -> str | None:
+    """Read file content as text, returning None on OSError."""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            return f.read()
+    except OSError:
+        return None
+
+
 def _extract_function_bodies(
     project_root: str,
     *,
@@ -176,11 +190,10 @@ def _extract_function_bodies(
     file_count = 0
 
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [
-            d for d in dirnames if d not in _EXCLUDE_DIRS and not d.startswith(".")
-        ]
+        dirnames[:] = [d for d in dirnames if _should_visit_dir(d)]
         for fname in filenames:
-            ext = os.path.splitext(fname)[1].lower()
+            _, ext = os.path.splitext(fname)
+            ext = ext.lower()
             fake_name = "dummy" + ext
             lang = _language_from_ext(fake_name)
             if not lang:
@@ -192,10 +205,8 @@ def _extract_function_bodies(
             if file_count > max_files:
                 return results
 
-            try:
-                with open(abs_path, encoding="utf-8", errors="replace") as f:
-                    source = f.read()
-            except OSError:
+            source = _read_file_content(abs_path)
+            if source is None:
                 continue
 
             try:
@@ -410,11 +421,10 @@ def _extract_cached_functions(
 
         if file_rel not in file_sources:
             abs_path = os.path.join(root, file_rel)
-            try:
-                with open(abs_path, encoding="utf-8", errors="replace") as f:
-                    file_sources[file_rel] = f.read()
-            except OSError:
+            content = _read_file_content(abs_path)
+            if content is None:
                 continue
+            file_sources[file_rel] = content
 
         source = file_sources.get(file_rel)
         if source is None:
@@ -425,9 +435,9 @@ def _extract_cached_functions(
         end_idx = min(len(source_lines), end_line)
         body = "".join(source_lines[start_idx:end_idx])
 
-        language = func.get(
-            "language", rows_by_file.get(file_rel, {}).get("language", "")
-        )
+        file_meta = rows_by_file.get(file_rel) or {}
+        fallback_lang = file_meta.get("language", "")
+        language = func.get("language", fallback_lang)
         results.append((file_rel, func["name"], start_line, end_line, language, body))
 
     return results
