@@ -87,7 +87,7 @@ class TestDependencyGraphSourceFileIteration:
 
         files = {
             path.relative_to(project).as_posix()
-            for path in graph._iter_source_files({".py"})
+            for path in graph.iter_source_files({".py"})
         }
         assert files == {"src/main.py"}
 
@@ -98,8 +98,8 @@ class TestDependencyGraphSourceFileIteration:
         DependencyGraph._global_cache.clear()
         graph = DependencyGraph(str(project))
 
-        assert graph._is_excluded(Path("/tmp/outside/.git/config"))
-        assert not graph._is_excluded(project / "src" / "main.py")
+        assert graph.is_excluded(Path("/tmp/outside/.git/config"))
+        assert not graph.is_excluded(project / "src" / "main.py")
 
 
 class TestResolveRelativeImport:
