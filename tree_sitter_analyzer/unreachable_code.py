@@ -21,8 +21,8 @@ import os
 from dataclasses import dataclass, field
 from typing import Any
 
-from .call_graph import _FUNC_DEF_TYPES
 from .core.parser import Parser
+from .function_extraction import _FUNC_DEF_TYPES
 from .project_graph import _language_from_ext
 from .utils import setup_logger
 
@@ -485,7 +485,7 @@ def analyze_file_unreachable(
 
 _CLASS_DEF_TYPES_SET: set[str] = set()
 try:
-    from .call_graph import _CLASS_DEF_TYPES
+    from .dead_code_analyzer import _CLASS_DEF_TYPES
 
     for _s in _CLASS_DEF_TYPES.values():
         _CLASS_DEF_TYPES_SET.update(_s)
