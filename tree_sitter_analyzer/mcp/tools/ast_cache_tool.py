@@ -198,6 +198,15 @@ class ASTCacheTool(BaseMCPTool):
             self._cache = ASTCache(self.project_root)
         return self._cache
 
+    def get_cache(self) -> ASTCache:
+        """Public alias for _get_cache() — use this instead of accessing _cache directly."""
+        return self._get_cache()
+
+    @property
+    def cache_initialized(self) -> bool:
+        """True if the AST cache has been lazily initialized (i.e. cached)."""
+        return self._cache is not None
+
     def _get_sync(self) -> IncrementalSync:
         if self._sync is None:
             self._sync = IncrementalSync(self._get_cache())

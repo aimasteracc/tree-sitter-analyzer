@@ -12,7 +12,7 @@ class TestASTCacheToolInit:
 
     def test_default_init(self):
         tool = ASTCacheTool()
-        assert tool._cache is None
+        assert not tool.cache_initialized
 
     def test_init_with_project_root(self):
         tool = ASTCacheTool(project_root="/tmp/project")
@@ -20,28 +20,28 @@ class TestASTCacheToolInit:
 
     def test_set_project_path_resets_cache(self, tmp_path):
         tool = ASTCacheTool(project_root=str(tmp_path))
-        tool._cache = MagicMock()
+        tool._cache = MagicMock()  # noqa: SLF001 — test setup write
         tool.set_project_path(str(tmp_path / "sub"))
-        assert tool._cache is None
+        assert not tool.cache_initialized
 
 
 class TestGetCache:
-    """Tests for _get_cache lazy initialization."""
+    """Tests for get_cache lazy initialization."""
 
     def test_raises_without_project_root(self):
         tool = ASTCacheTool()
         with pytest.raises(ValueError, match="Project root not set"):
-            tool._get_cache()
+            tool.get_cache()
 
     def test_creates_cache_with_project_root(self, tmp_path):
         tool = ASTCacheTool(project_root=str(tmp_path))
-        cache = tool._get_cache()
+        cache = tool.get_cache()
         assert cache is not None
 
     def test_reuses_existing_cache(self, tmp_path):
         tool = ASTCacheTool(project_root=str(tmp_path))
-        cache1 = tool._get_cache()
-        cache2 = tool._get_cache()
+        cache1 = tool.get_cache()
+        cache2 = tool.get_cache()
         assert cache1 is cache2
 
 

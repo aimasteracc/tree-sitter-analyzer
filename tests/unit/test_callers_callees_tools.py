@@ -70,10 +70,10 @@ class TestCodeGraphCallersTool:
         assert result["success"] is True
 
     def test_project_root_change_resets_cache(self, callers_tool):
-        callers_tool._get_call_graph()
-        assert callers_tool._call_graph is not None
+        callers_tool.get_call_graph()
+        assert callers_tool.call_graph_initialized
         callers_tool._on_project_root_changed(None)
-        assert callers_tool._call_graph is None
+        assert not callers_tool.call_graph_initialized
 
     @pytest.mark.asyncio
     async def test_no_project_root_raises(self):
@@ -127,10 +127,10 @@ class TestCodeGraphCalleesTool:
         assert result["success"] is True
 
     def test_project_root_change_resets_cache(self, callees_tool):
-        callees_tool._get_call_graph()
-        assert callees_tool._call_graph is not None
+        callees_tool.get_call_graph()
+        assert callees_tool.call_graph_initialized
         callees_tool._on_project_root_changed(None)
-        assert callees_tool._call_graph is None
+        assert not callees_tool.call_graph_initialized
 
     @pytest.mark.asyncio
     async def test_no_project_root_raises(self):
