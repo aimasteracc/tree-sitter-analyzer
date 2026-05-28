@@ -52,6 +52,18 @@ class CachedDependencyGraph:
     def edges(self) -> list[tuple[str, str]]:
         return sorted(self._edges)
 
+    def has_node(self, file_rel: str) -> bool:
+        """Return True if *file_rel* is a node in the graph (O(1) set lookup)."""
+        return file_rel in self._nodes
+
+    def node_count(self) -> int:
+        """Return the number of nodes in the graph."""
+        return len(self._nodes)
+
+    def edge_count(self) -> int:
+        """Return the number of directed edges in the graph."""
+        return len(self._edges)
+
     def dependencies_of(self, file_rel: str) -> list[str]:
         return sorted(self._deps.get(file_rel, set()))
 
