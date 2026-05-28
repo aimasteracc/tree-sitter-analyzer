@@ -344,20 +344,20 @@ def _add_mcp_index_management_options(parser: argparse.ArgumentParser) -> None:
         help=(
             "Force a complete project-wide AST re-index "
             "(codegraph_full_index). Use after pulls, rebases, or large "
-            "refactors. Default mode 'rebuild'."
+            "refactors. Default mode 'incremental'."
         ),
     )
     parser.add_argument(
         "--full-index-mode",
-        choices=["rebuild", "stats", "clear"],
-        default="rebuild",
-        help="Mode for --full-index (default: rebuild)",
+        choices=["full", "incremental"],
+        default="incremental",
+        help="'full' re-indexes all; 'incremental' processes changes only (default)",
     )
     parser.add_argument(
         "--full-index-max-files",
         type=int,
         default=20_000,
-        help="Max files for --full-index rebuild (default: 20000)",
+        help="Max files to index per --full-index run (default: 20000)",
     )
     parser.add_argument(
         "--full-index-include-activation",

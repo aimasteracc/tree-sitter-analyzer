@@ -93,7 +93,8 @@ def run_full_index(args: Any, output_error: OutputErrorFn) -> int:
         result = asyncio.run(
             tool.execute(
                 {
-                    "mode": getattr(args, "full_index_mode", "rebuild") or "rebuild",
+                    "mode": getattr(args, "full_index_mode", "incremental")
+                    or "incremental",
                     "max_files": int(getattr(args, "full_index_max_files", 20_000)),
                     "include_activation": bool(
                         getattr(args, "full_index_include_activation", False)
