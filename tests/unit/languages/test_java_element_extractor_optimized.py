@@ -9,6 +9,99 @@ from tree_sitter_analyzer.languages.java_plugin import JavaElementExtractor
 from tree_sitter_analyzer.models import Class, Function, Variable
 
 
+def _build_class_mock_node() -> Mock:
+    """Build a mock class_declaration AST node for extraction tests."""
+    mock_node = Mock()
+    mock_node.type = "class_declaration"
+    mock_node.start_point = (0, 0)
+    mock_node.end_point = (10, 0)
+    mock_modifiers = Mock()
+    mock_modifiers.type = "modifiers"
+    mock_annotation = Mock()
+    mock_annotation.type = "marker_annotation"
+    mock_annotation.start_point = (3, 0)
+    mock_ann_identifier = Mock()
+    mock_ann_identifier.type = "identifier"
+    mock_annotation.children = [mock_ann_identifier]
+    mock_modifiers.children = [mock_annotation]
+    mock_identifier = Mock()
+    mock_identifier.type = "identifier"
+    mock_superclass = Mock()
+    mock_superclass.type = "superclass"
+    mock_interfaces = Mock()
+    mock_interfaces.type = "super_interfaces"
+    mock_node.children = [
+        mock_modifiers,
+        mock_identifier,
+        mock_superclass,
+        mock_interfaces,
+    ]
+    return mock_node
+
+
+def _assert_class_extracted(result) -> None:
+    """Assert _extract_class_optimized result for the UserService fixture."""
+    assert isinstance(result, Class)
+    assert result.name == "UserService"
+    assert result.start_line == 1
+    assert result.end_line == 11
+    assert result.language == "java"
+    assert result.class_type == "class"
+    assert result.full_qualified_name == "com.example.service.UserService"
+    assert result.package_name == "com.example.service"
+    assert result.superclass == "BaseService"
+    assert result.interfaces == ["UserOperations"]
+    assert result.modifiers == ["public"]
+    assert result.visibility == "public"
+    assert len(result.annotations) == 1
+    assert result.annotations[0]["name"] == "Service"
+    assert result.is_nested is False
+
+
+def _assert_method_extracted(result) -> None:
+    """Assert _extract_method_optimized result for the findById fixture."""
+    assert isinstance(result, Function)
+    assert result.name == "findById"
+    assert result.start_line == 1
+    assert result.end_line == 6
+    assert result.language == "java"
+    assert result.parameters == ["String userId"]
+    assert result.return_type == "User"
+    assert result.modifiers == ["public"]
+    assert result.is_static is False
+    assert result.is_private is False
+    assert result.is_public is True
+    assert result.is_constructor is False
+    assert result.visibility == "public"
+    assert result.docstring == "Find user by ID"
+    assert result.annotations == [{"name": "Override"}]
+    assert result.throws == ["UserNotFoundException"]
+    assert result.complexity_score == 2
+    assert result.is_abstract is False
+    assert result.is_final is False
+
+
+def _assert_field_extracted(result) -> None:
+    """Assert _extract_field_optimized result for the userRepository fixture."""
+    assert isinstance(result, list)
+    assert len(result) == 1
+    field = result[0]
+    assert isinstance(field, Variable)
+    assert field.name == "userRepository"
+    assert field.start_line == 1
+    assert field.end_line == 3
+    assert field.language == "java"
+    assert field.variable_type == "UserRepository"
+    assert field.modifiers == ["private"]
+    assert field.is_static is False
+    assert field.is_constant is False
+    assert field.visibility == "private"
+    assert field.docstring == "User repository for data access"
+    assert field.annotations == [{"name": "Autowired"}]
+    assert field.is_final is False
+    assert field.field_type == "UserRepository"
+
+
 class TestJavaElementExtractor:
     """Test Java element extractor — optimized extraction"""
 
@@ -344,41 +437,7 @@ class UserConfig {
 
     def test_extract_class_optimized_complete(self, extractor):
         """Test complete class extraction"""
-        mock_node = Mock()
-        mock_node.type = "class_declaration"
-        mock_node.start_point = (0, 0)
-        mock_node.end_point = (10, 0)
-
-        # Mock modifiers child with @Service annotation (AST-based extraction)
-        mock_modifiers = Mock()
-        mock_modifiers.type = "modifiers"
-        mock_annotation = Mock()
-        mock_annotation.type = "marker_annotation"
-        mock_annotation.start_point = (3, 0)
-        mock_ann_identifier = Mock()
-        mock_ann_identifier.type = "identifier"
-        mock_annotation.children = [mock_ann_identifier]
-        mock_modifiers.children = [mock_annotation]
-
-        # Mock identifier child
-        mock_identifier = Mock()
-        mock_identifier.type = "identifier"
-
-        # Mock superclass child
-        mock_superclass = Mock()
-        mock_superclass.type = "superclass"
-
-        # Mock super_interfaces child
-        mock_interfaces = Mock()
-        mock_interfaces.type = "super_interfaces"
-
-        mock_node.children = [
-            mock_modifiers,
-            mock_identifier,
-            mock_superclass,
-            mock_interfaces,
-        ]
-
+        mock_node = _build_class_mock_node()
         extractor.content_lines = [
             "/**",
             " * User service class",
@@ -403,7 +462,6 @@ class UserConfig {
             mock_is_nested = stack.enter_context(
                 patch.object(extractor, "_is_nested_class")
             )
-
             mock_get_text.side_effect = [
                 "UserService",
                 "extends BaseService",
@@ -414,24 +472,9 @@ class UserConfig {
             mock_modifiers_fn.return_value = ["public"]
             mock_visibility.return_value = "public"
             mock_is_nested.return_value = False
-
             result = extractor._extract_class_optimized(mock_node)
 
-            assert isinstance(result, Class)
-            assert result.name == "UserService"
-            assert result.start_line == 1
-            assert result.end_line == 11
-            assert result.language == "java"
-            assert result.class_type == "class"
-            assert result.full_qualified_name == "com.example.service.UserService"
-            assert result.package_name == "com.example.service"
-            assert result.superclass == "BaseService"
-            assert result.interfaces == ["UserOperations"]
-            assert result.modifiers == ["public"]
-            assert result.visibility == "public"
-            assert len(result.annotations) == 1
-            assert result.annotations[0]["name"] == "Service"
-            assert result.is_nested is False
+        _assert_class_extracted(result)
 
     def test_extract_method_optimized_complete(self, extractor):
         """Test complete method extraction"""
@@ -483,25 +526,7 @@ class UserConfig {
 
             result = extractor._extract_method_optimized(mock_node)
 
-            assert isinstance(result, Function)
-            assert result.name == "findById"
-            assert result.start_line == 1
-            assert result.end_line == 6
-            assert result.language == "java"
-            assert result.parameters == ["String userId"]
-            assert result.return_type == "User"
-            assert result.modifiers == ["public"]
-            assert result.is_static is False
-            assert result.is_private is False
-            assert result.is_public is True
-            assert result.is_constructor is False
-            assert result.visibility == "public"
-            assert result.docstring == "Find user by ID"
-            assert result.annotations == [{"name": "Override"}]
-            assert result.throws == ["UserNotFoundException"]
-            assert result.complexity_score == 2
-            assert result.is_abstract is False
-            assert result.is_final is False
+        _assert_method_extracted(result)
 
     def test_extract_method_optimized_constructor(self, extractor):
         """Test constructor extraction"""
@@ -592,24 +617,7 @@ class UserConfig {
 
             result = extractor._extract_field_optimized(mock_node)
 
-            assert isinstance(result, list)
-            assert len(result) == 1
-
-            field = result[0]
-            assert isinstance(field, Variable)
-            assert field.name == "userRepository"
-            assert field.start_line == 1
-            assert field.end_line == 3
-            assert field.language == "java"
-            assert field.variable_type == "UserRepository"
-            assert field.modifiers == ["private"]
-            assert field.is_static is False
-            assert field.is_constant is False
-            assert field.visibility == "private"
-            assert field.docstring == "User repository for data access"
-            assert field.annotations == [{"name": "Autowired"}]
-            assert field.is_final is False
-            assert field.field_type == "UserRepository"
+        _assert_field_extracted(result)
 
     def test_extract_field_optimized_multiple_variables(self, extractor):
         """Test field extraction with multiple variables in one declaration"""
