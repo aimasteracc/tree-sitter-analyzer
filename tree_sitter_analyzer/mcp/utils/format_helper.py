@@ -60,11 +60,22 @@ def format_as_toon(data: dict[str, Any]) -> str:
         formatter = ToonFormatter()
         return formatter.format(data)
     except ImportError as e:
-        logger.warning(f"ToonFormatter not available, falling back to JSON: {e}")
+        logger.warning("ToonFormatter not available, falling back to JSON: %s", e)
         return format_as_json(data)
     except Exception as e:
-        logger.warning(f"TOON formatting failed, falling back to JSON: {e}")
+        logger.warning("TOON formatting failed, falling back to JSON: %s", e)
         return format_as_json(data)
+
+
+def _get_formatter_for_toon() -> Any:
+    """Return ToonFormatter or JsonFormatter fallback on import failure."""
+    try:
+        from ...formatters.toon_formatter import ToonFormatter
+
+        return ToonFormatter()
+    except ImportError:
+        logger.warning("ToonFormatter not available, using JSON formatter")
+        return JsonFormatter()
 
 
 def get_formatter(output_format: str = "json") -> Any:
@@ -78,13 +89,7 @@ def get_formatter(output_format: str = "json") -> Any:
         Formatter instance with format() method
     """
     if output_format == "toon":
-        try:
-            from ...formatters.toon_formatter import ToonFormatter
-
-            return ToonFormatter()
-        except ImportError:
-            logger.warning("ToonFormatter not available, using JSON formatter")
-            return JsonFormatter()
+        return _get_formatter_for_toon()
     return JsonFormatter()
 
 
@@ -147,6 +152,25 @@ def format_for_file_output(
     return content, extension
 
 
+def _copy_metadata_fields(
+    result: dict[str, Any],
+    toon_response: dict[str, Any],
+    redundant_fields: set[str],
+    conditionally_redundant_list_fields: set[str],
+) -> None:
+    """Copy non-redundant metadata fields from result into toon_response."""
+    for key, value in result.items():
+        if key in redundant_fields:
+            continue
+        if key in conditionally_redundant_list_fields and isinstance(value, list):
+            # Only strip when the field is genuinely an array of
+            # content; scalar aliases (int/str) pass through.
+            continue
+        if key in {"format", "toon_content"}:
+            continue
+        toon_response[key] = value
+
+
 def apply_toon_format_to_response(
     result: dict[str, Any], output_format: str = "json"
 ) -> dict[str, Any]:
@@ -175,11 +199,10 @@ def apply_toon_format_to_response(
     # Verdict safety-net runs regardless of output_format so JSON callers
     # also see the default. Only inject when success is True; failure
     # responses are handled by the explicit ERROR branch in the validator.
-    if (
-        isinstance(result, dict)
-        and result.get("success") is True
-        and "verdict" not in result
-    ):
+    is_dict = isinstance(result, dict)
+    is_success = result.get("success") is True
+    no_verdict = "verdict" not in result
+    if is_dict and is_success and no_verdict:
         result = {**result, "verdict": "INFO"}
 
     if output_format != "toon":
@@ -212,27 +235,20 @@ def apply_toon_format_to_response(
         # JSON↔TOON callers see the same dict shape.
         conditionally_redundant_list_fields = {"lines"}
 
-        toon_response: dict[str, Any] = {
+        toon_response = {
             "format": "toon",
             "toon_content": toon_content,
         }
 
         # Preserve metadata, but never stomp the format/toon_content keys.
-        for key, value in result.items():
-            if key in redundant_fields:
-                continue
-            if key in conditionally_redundant_list_fields and isinstance(value, list):
-                # Only strip when the field is genuinely an array of
-                # content; scalar aliases (int/str) pass through.
-                continue
-            if key in {"format", "toon_content"}:
-                continue
-            toon_response[key] = value
+        _copy_metadata_fields(
+            result, toon_response, redundant_fields, conditionally_redundant_list_fields
+        )
 
         return toon_response
 
     except Exception as e:
-        logger.warning(f"Failed to apply TOON format, returning JSON: {e}")
+        logger.warning("Failed to apply TOON format, returning JSON: %s", e)
         return result
 
 
@@ -250,5 +266,5 @@ def attach_toon_content_to_response(result: dict[str, Any]) -> dict[str, Any]:
         enriched["toon_content"] = toon_content
         return enriched
     except Exception as e:
-        logger.warning(f"Failed to attach TOON content, returning JSON: {e}")
+        logger.warning("Failed to attach TOON content, returning JSON: %s", e)
         return result
