@@ -19,6 +19,16 @@ from ...utils import setup_logger
 logger = setup_logger(__name__)
 
 
+def _similar_comma_count(line: str, ref_count: int) -> bool:
+    """Return True if *line*'s comma count is within 1 of *ref_count*.
+
+    Extracted from FileOutputManager._detect_content_format so the
+    generator expression ``if abs(line.count(',') - ref_count) <= 1``
+    doesn't push string_start leaves to depth 21 inside the class method.
+    """
+    return abs(line.count(",") - ref_count) <= 1
+
+
 class FileOutputManager:
     """
     Manages file output for analysis results with automatic extension detection
@@ -178,7 +188,7 @@ class FileOutputManager:
                 similar_comma_lines = sum(
                     1
                     for line in lines[1:4]
-                    if abs(line.count(",") - first_line_commas) <= 1
+                    if _similar_comma_count(line, first_line_commas)
                 )
                 if similar_comma_lines >= 1:
                     return "csv"
