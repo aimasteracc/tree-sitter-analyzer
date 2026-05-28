@@ -219,14 +219,16 @@ class RustElementExtractor(ElementExtractor):
             if name_node:
                 name = self._get_node_text(name_node)
                 visibility = self._extract_visibility(node)
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
 
                 self.modules.append(
                     {
                         "name": name,
                         "visibility": visibility,
                         "line_range": {
-                            "start": node.start_point[0] + 1,
-                            "end": node.end_point[0] + 1,
+                            "start": start_line,
+                            "end": end_line,
                         },
                     }
                 )
@@ -352,13 +354,15 @@ class RustElementExtractor(ElementExtractor):
             type_name = self._get_node_text(type_node) if type_node else None
 
             if type_name:
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
                 self.impl_blocks.append(
                     {
                         "type": type_name,
                         "trait": trait_name,
                         "line_range": {
-                            "start": node.start_point[0] + 1,
-                            "end": node.end_point[0] + 1,
+                            "start": start_line,
+                            "end": end_line,
                         },
                     }
                 )
@@ -449,7 +453,8 @@ class RustElementExtractor(ElementExtractor):
                 content = self._get_node_text(child)
                 # Strip /** and */
                 if content.startswith("/**") and content.endswith("*/"):
-                    docs.append(content[3:-2].strip())
+                    stripped = content[3:-2]
+                    docs.append(stripped.strip())
 
         if docs:
             return "\n".join(docs)
