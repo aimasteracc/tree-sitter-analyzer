@@ -1,9 +1,56 @@
 """Private helpers for tree-sitter compatibility shims."""
 
 import logging
+import re
 from typing import Any
 
 logger = logging.getLogger("tree_sitter_analyzer.utils.tree_sitter_compat")
+
+# ---------------------------------------------------------------------------
+# #match? predicate helpers (tree-sitter 0.25+ does not apply these for us)
+# ---------------------------------------------------------------------------
+
+_MATCH_PRED_RE = re.compile(r'\(#match\?\s+@(\w+)\s+"([^"]+)"\)')
+
+
+def _extract_match_predicates(query_string: str) -> dict[str, list[str]]:
+    """Extract ``#match?`` predicates from a tree-sitter query string.
+
+    Returns a mapping of ``{capture_name: [pattern, ...]}`` for every
+    ``(#match? @capture_name "pattern")`` clause found in the query.
+    Other predicates (``#eq?``, ``#is?``, etc.) are ignored.
+    """
+    result: dict[str, list[str]] = {}
+    for m in _MATCH_PRED_RE.finditer(query_string):
+        capture_name, pattern = m.group(1), m.group(2)
+        result.setdefault(capture_name, []).append(pattern)
+    return result
+
+
+def _apply_match_predicates(
+    captures_dict: dict[str, list[Any]],
+    predicates: dict[str, list[str]],
+) -> bool:
+    """Return True if all ``#match?`` predicates pass for a single match.
+
+    Args:
+        captures_dict: ``{capture_name: [node, ...]}`` from ``QueryCursor.matches()``.
+        predicates: Output of :func:`_extract_match_predicates`.
+    """
+    for capture_name, patterns in predicates.items():
+        nodes = captures_dict.get(capture_name, [])
+        if not nodes:
+            return False  # required capture absent → reject match
+        for node in nodes:
+            raw = getattr(node, "text", None)
+            node_text = (
+                raw.decode("utf-8", errors="replace")
+                if isinstance(raw, bytes)
+                else (raw or "")
+            )
+            if not all(re.search(p, node_text) for p in patterns):
+                return False
+    return True
 
 
 def execute_query_compat(
@@ -13,7 +60,9 @@ def execute_query_compat(
         import tree_sitter
 
         query = tree_sitter.Query(language, query_string)
-        return execute_query_object(tree_sitter, query, root_node)
+        return execute_query_object(
+            tree_sitter, query, root_node, query_string=query_string
+        )
     except Exception as e:
         logger.error(f"Tree-sitter query execution failed: {e}")
         logger.debug("Returning empty result due to query execution failure")
@@ -21,11 +70,14 @@ def execute_query_compat(
 
 
 def execute_query_object(
-    tree_sitter_module: Any, query: Any, root_node: Any
+    tree_sitter_module: Any,
+    query: Any,
+    root_node: Any,
+    query_string: str = "",
 ) -> list[tuple[Any, str]]:
     if hasattr(tree_sitter_module, "QueryCursor"):
         logger.debug("Using newest tree-sitter API (QueryCursor)")
-        return execute_newest_api(query, root_node)
+        return execute_newest_api(query, root_node, query_string=query_string)
     if hasattr(query, "matches"):
         logger.debug("Using modern tree-sitter API (matches)")
         return execute_modern_api(query, root_node)
@@ -36,14 +88,28 @@ def execute_query_object(
     return execute_old_api(query, root_node)
 
 
-def execute_newest_api(query: Any, root_node: Any) -> list[tuple[Any, str]]:
+def execute_newest_api(
+    query: Any,
+    root_node: Any,
+    query_string: str = "",
+) -> list[tuple[Any, str]]:
+    """Execute query using tree-sitter 0.25+ QueryCursor, applying ``#match?`` predicates.
+
+    ``QueryCursor.matches()`` returns raw AST matches without applying custom
+    predicates such as ``#match?``.  We extract those predicates from
+    ``query_string`` and filter matches manually so that queries like
+    ``spring_controller`` and ``jpa_entity`` work correctly.
+    """
     captures: list[tuple[Any, str]] = []
     try:
         import tree_sitter
 
+        predicates = _extract_match_predicates(query_string) if query_string else {}
         cursor = tree_sitter.QueryCursor(query)
         matches = cursor.matches(root_node)
         for _pattern_index, captures_dict in matches:
+            if predicates and not _apply_match_predicates(captures_dict, predicates):
+                continue
             captures.extend(
                 (node, capture_name)
                 for capture_name, nodes in captures_dict.items()
