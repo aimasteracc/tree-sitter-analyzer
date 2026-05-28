@@ -177,7 +177,7 @@ class TestCodeGraphOverviewToolExecute:
 
 class TestFindEntryPoints:
     def test_finds_entry_points(self, tool):
-        graph = tool._get_call_graph()
+        graph = tool.get_call_graph()
         graph.build()
         eps = _find_entry_points(graph, 100)
         assert isinstance(eps, list)
@@ -186,7 +186,7 @@ class TestFindEntryPoints:
             assert "callee_count" in ep
 
     def test_respects_limit(self, tool):
-        graph = tool._get_call_graph()
+        graph = tool.get_call_graph()
         graph.build()
         eps = _find_entry_points(graph, 1)
         assert len(eps) <= 1
@@ -194,7 +194,7 @@ class TestFindEntryPoints:
 
 class TestFindHubFunctions:
     def test_hubs_have_min_three_callers(self, tool):
-        graph = tool._get_call_graph()
+        graph = tool.get_call_graph()
         graph.build()
         hubs = _find_hub_functions(graph, 100)
         for hub in hubs:
@@ -221,7 +221,7 @@ class TestFindHubFunctions:
 
 class TestFindDeadCode:
     def test_dead_code_has_no_callers_or_callees(self, tool):
-        graph = tool._get_call_graph()
+        graph = tool.get_call_graph()
         graph.build()
         dead = _find_dead_code(graph, 100)
         for d in dead:
@@ -231,7 +231,7 @@ class TestFindDeadCode:
 
 class TestComputeDepthDistribution:
     def test_returns_expected_keys(self, tool):
-        graph = tool._get_call_graph()
+        graph = tool.get_call_graph()
         graph.build()
         dist = _compute_depth_distribution(graph)
         assert "max_depth" in dist
@@ -287,7 +287,7 @@ class TestComputeDepthDistribution:
 
 class TestComputeModuleCoupling:
     def test_coupling_cross_file_only(self, tool):
-        graph = tool._get_call_graph()
+        graph = tool.get_call_graph()
         graph.build()
         coupling = _compute_module_coupling(graph, 100)
         for c in coupling:

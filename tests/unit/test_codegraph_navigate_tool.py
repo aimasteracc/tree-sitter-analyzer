@@ -72,11 +72,12 @@ class TestExecuteDefinition:
         mock_result.resolved_via = "fts"
         mock_resolver.resolve.return_value = mock_result
 
-        tool_with_root._cache = mock_cache
-
-        with patch(
-            "tree_sitter_analyzer.symbol_resolver.SymbolResolver",
-            return_value=mock_resolver,
+        with (
+            patch.object(tool_with_root, "get_cache", return_value=mock_cache),
+            patch(
+                "tree_sitter_analyzer.symbol_resolver.SymbolResolver",
+                return_value=mock_resolver,
+            ),
         ):
             result = await tool_with_root.execute(
                 {"symbol": "parse_tree", "mode": "definition"}

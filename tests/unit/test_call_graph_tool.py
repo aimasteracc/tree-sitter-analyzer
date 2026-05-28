@@ -32,33 +32,33 @@ class TestCodeGraphCallToolInit:
     def test_init_with_project_root(self):
         t = CodeGraphCallTool(PY_PROJECT)
         assert t.project_root == PY_PROJECT
-        assert t._call_graph is None
+        assert not t.call_graph_initialized
 
     def test_init_without_project_root(self):
         t = CodeGraphCallTool()
         assert t.project_root is None
-        assert t._call_graph is None
+        assert not t.call_graph_initialized
 
     def test_set_project_path_resets_graph(self, tool):
-        tool._get_call_graph()
-        assert tool._call_graph is not None
+        tool.get_call_graph()
+        assert tool.call_graph_initialized
         tool.set_project_path(PY_PROJECT)
-        assert tool._call_graph is None
+        assert not tool.call_graph_initialized
 
     def test_get_call_graph_creates_instance(self, tool):
-        cg = tool._get_call_graph()
+        cg = tool.get_call_graph()
         assert cg is not None
         assert cg.project_root == Path(PY_PROJECT).resolve()
 
     def test_get_call_graph_caches(self, tool):
-        cg1 = tool._get_call_graph()
-        cg2 = tool._get_call_graph()
+        cg1 = tool.get_call_graph()
+        cg2 = tool.get_call_graph()
         assert cg1 is cg2
 
     def test_get_call_graph_raises_without_root(self):
         t = CodeGraphCallTool()
         with pytest.raises(ValueError, match="Project root not set"):
-            t._get_call_graph()
+            t.get_call_graph()
 
 
 # ============================================================
@@ -144,11 +144,11 @@ class TestCodeGraphCallToolValidation:
     @pytest.mark.asyncio
     async def test_execute_invalid_mode_fails_before_graph_build(self, tool):
         # Pre-condition: no graph built yet.
-        assert tool._call_graph is None
+        assert not tool.call_graph_initialized
         with pytest.raises(ValueError, match="Invalid mode 'tree'"):
             await tool.execute({"mode": "tree"})
         # Post-condition: still no graph — validation rejected before build.
-        assert tool._call_graph is None
+        assert not tool.call_graph_initialized
 
 
 # ============================================================
