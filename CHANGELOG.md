@@ -541,6 +541,24 @@ in `docs/internal/CODEGRAPH_BENCHMARK_FINAL_2026-05-24.md`.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Java annotation extraction** — Four independent bugs caused all annotations to be silently
+  empty (`annotations: []`) for every class, method, and field. Root causes:
+  1. `extract_annotations()` was called *after* `extract_classes()` / `extract_functions()`,
+     so `_reset_caches()` wiped the annotation lookup cache before it was ever used.
+  2. `_reset_caches()` incorrectly cleared `self.annotations` (raw AST data, not a cache).
+  3. `analyze_code_structure_tool.py` hardcoded `"annotations": []` instead of reading
+     from model objects.
+  4. `field_declaration` was missing from `container_node_types`, so field annotations
+     (`@ManyToMany`, `@Column`, `@Id`) were never traversed.
+  All four bugs fixed; all 18 002 tests pass. See
+  `openspec/changes/improve-java-annotation-extraction/` for full writeup.
+
+- **Java `implements` generic preservation** — Interface list parsing split on commas inside
+  generic type arguments (`LocalCache<K, V>, Runnable` was misread as three interfaces). Fixed
+  with a depth-counter-based splitter in `_split_respecting_generics()`.
+
 ### Removed
 
 - **`feat/autonomous-dev` branch** (local + `origin/`): experimental fork fully merged into `feat/consolidated` via commit `44d0a11c`. No content lost — all session work cherry-picked or merged.
