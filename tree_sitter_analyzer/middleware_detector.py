@@ -97,6 +97,18 @@ class MiddlewareInfo:
         }
 
 
+def _collect_generic_type_names(child: Any, interfaces: list[str]) -> None:
+    """Append type_identifier names from a generic_type AST node to *interfaces*.
+
+    Extracted from MiddlewareDetector._java_class_implements to remove the
+    for→if nesting that pushed sc.text.decode() leaves to depth 22 inside
+    the class method.
+    """
+    for sc in child.children:
+        if sc.type == "type_identifier":
+            interfaces.append(sc.text.decode())
+
+
 class MiddlewareDetector:
     """
     Detect middleware/interceptor declarations across web frameworks.
@@ -232,19 +244,20 @@ class MiddlewareDetector:
                 status_code = ""
                 if hook_type == "errorhandler":
                     status_code = m.group(1)
-                results.append(
-                    MiddlewareInfo(
-                        http_method="*",
-                        url_pattern="/*",
-                        middleware_name=handler,
-                        middleware_type=hook_type,
-                        file_path=file_path,
-                        line_number=node.start_point[0] + 1,
-                        framework="flask",
-                        language="python",
-                        extra={"status_code": status_code} if status_code else {},
-                    )
+                line_num = node.start_point[0] + 1
+                extra = {"status_code": status_code} if status_code else {}
+                info = MiddlewareInfo(
+                    http_method="*",
+                    url_pattern="/*",
+                    middleware_name=handler,
+                    middleware_type=hook_type,
+                    file_path=file_path,
+                    line_number=line_num,
+                    framework="flask",
+                    language="python",
+                    extra=extra,
                 )
+                results.append(info)
                 break
         return results
 
@@ -263,19 +276,19 @@ class MiddlewareDetector:
             if not m:
                 continue
             handler = self._func_name_after_decorator(node)
-            results.append(
-                MiddlewareInfo(
-                    http_method="*",
-                    url_pattern="/*",
-                    middleware_name=handler,
-                    middleware_type="middleware",
-                    file_path=file_path,
-                    line_number=node.start_point[0] + 1,
-                    framework="fastapi",
-                    language="python",
-                    extra={"http_type": m.group(1)},
-                )
+            line_num = node.start_point[0] + 1
+            info = MiddlewareInfo(
+                http_method="*",
+                url_pattern="/*",
+                middleware_name=handler,
+                middleware_type="middleware",
+                file_path=file_path,
+                line_number=line_num,
+                framework="fastapi",
+                language="python",
+                extra={"http_type": m.group(1)},
             )
+            results.append(info)
         return results
 
     def _scan_django_settings(
@@ -361,18 +374,18 @@ class MiddlewareDetector:
                     "function_expression",
                 ):
                     mw_name = self._extract_mw_name(child)
-                    results.append(
-                        MiddlewareInfo(
-                            http_method="*",
-                            url_pattern=url_pattern,
-                            middleware_name=mw_name,
-                            middleware_type="use_middleware",
-                            file_path=file_path,
-                            line_number=node.start_point[0] + 1,
-                            framework="express",
-                            language=language,
-                        )
+                    line_num = node.start_point[0] + 1
+                    info = MiddlewareInfo(
+                        http_method="*",
+                        url_pattern=url_pattern,
+                        middleware_name=mw_name,
+                        middleware_type="use_middleware",
+                        file_path=file_path,
+                        line_number=line_num,
+                        framework="express",
+                        language=language,
                     )
+                    results.append(info)
                 arg_idx += 1
         return results
 
@@ -402,32 +415,32 @@ class MiddlewareDetector:
             simple = ann_name.rsplit(".", 1)[-1]
             if simple == "ControllerAdvice":
                 class_name = self._java_class_containing(node)
-                results.append(
-                    MiddlewareInfo(
-                        http_method="*",
-                        url_pattern="/*",
-                        middleware_name=class_name,
-                        middleware_type="controller_advice",
-                        file_path=file_path,
-                        line_number=node.start_point[0] + 1,
-                        framework="spring",
-                        language="java",
-                    )
+                line_num = node.start_point[0] + 1
+                info = MiddlewareInfo(
+                    http_method="*",
+                    url_pattern="/*",
+                    middleware_name=class_name,
+                    middleware_type="controller_advice",
+                    file_path=file_path,
+                    line_number=line_num,
+                    framework="spring",
+                    language="java",
                 )
+                results.append(info)
             elif simple == "ExceptionHandler":
                 method_name = self._java_method_after_annotation(node)
-                results.append(
-                    MiddlewareInfo(
-                        http_method="*",
-                        url_pattern="/*",
-                        middleware_name=method_name,
-                        middleware_type="exception_handler",
-                        file_path=file_path,
-                        line_number=node.start_point[0] + 1,
-                        framework="spring",
-                        language="java",
-                    )
+                line_num = node.start_point[0] + 1
+                info = MiddlewareInfo(
+                    http_method="*",
+                    url_pattern="/*",
+                    middleware_name=method_name,
+                    middleware_type="exception_handler",
+                    file_path=file_path,
+                    line_number=line_num,
+                    framework="spring",
+                    language="java",
                 )
+                results.append(info)
         return results
 
     def _scan_spring_filters(self, root: Any, file_path: str) -> list[MiddlewareInfo]:
@@ -447,18 +460,18 @@ class MiddlewareDetector:
                             name_node = child
                             break
                     class_name = name_node.text.decode() if name_node else "<unknown>"
-                    results.append(
-                        MiddlewareInfo(
-                            http_method="*",
-                            url_pattern="/*",
-                            middleware_name=class_name,
-                            middleware_type="filter",
-                            file_path=file_path,
-                            line_number=node.start_point[0] + 1,
-                            framework="spring",
-                            language="java",
-                        )
+                    line_num = node.start_point[0] + 1
+                    info = MiddlewareInfo(
+                        http_method="*",
+                        url_pattern="/*",
+                        middleware_name=class_name,
+                        middleware_type="filter",
+                        file_path=file_path,
+                        line_number=line_num,
+                        framework="spring",
+                        language="java",
                     )
+                    results.append(info)
         return results
 
     def _scan_spring_interceptors(
@@ -480,18 +493,18 @@ class MiddlewareDetector:
                             name_node = child
                             break
                     class_name = name_node.text.decode() if name_node else "<unknown>"
-                    results.append(
-                        MiddlewareInfo(
-                            http_method="*",
-                            url_pattern="/*",
-                            middleware_name=class_name,
-                            middleware_type="handler_interceptor",
-                            file_path=file_path,
-                            line_number=node.start_point[0] + 1,
-                            framework="spring",
-                            language="java",
-                        )
+                    line_num = node.start_point[0] + 1
+                    info = MiddlewareInfo(
+                        http_method="*",
+                        url_pattern="/*",
+                        middleware_name=class_name,
+                        middleware_type="handler_interceptor",
+                        file_path=file_path,
+                        line_number=line_num,
+                        framework="spring",
+                        language="java",
                     )
+                    results.append(info)
         return results
 
     def _func_name_after_decorator(self, decorator_node: Any) -> str:
@@ -557,9 +570,7 @@ class MiddlewareDetector:
                 if child.type == "type_identifier":
                     interfaces.append(child.text.decode())
                 elif child.type == "generic_type":
-                    for sc in child.children:
-                        if sc.type == "type_identifier":
-                            interfaces.append(sc.text.decode())
+                    _collect_generic_type_names(child, interfaces)
                 elif child.type == "{":
                     break
         return interfaces
