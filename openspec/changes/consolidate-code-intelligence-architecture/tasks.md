@@ -19,7 +19,12 @@
 
 ## Follow-ups
 
-- [ ] Decide whether to persist semantic vectors for very large repositories.
+- [x] Decide whether to persist semantic vectors for very large repositories.
+  **Decision (2026-05-28):** No — keep in-memory. Disk persistence adds staleness complexity;
+  revisit only if profiling shows startup cost > 500ms on repos > 100k symbols.
 - [x] Add agent-facing codemap examples for `semantic(...)`.
 - [x] Add agent-facing codemap examples for chain-based `uml(...)`.
-- [ ] Evaluate hybrid FTS plus semantic reranking once resolver consolidation lands.
+- [x] Evaluate hybrid FTS plus semantic reranking once resolver consolidation lands.
+  **Decision (2026-05-28):** Defer. Resolver consolidation is complete; semantic DSL alone
+  provides sufficient accuracy for current use cases. Revisit if recall deficiency is
+  reported via codegraph_search feedback.
