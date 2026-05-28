@@ -73,6 +73,28 @@ items:
 )
 
 
+_YAML_SPECIFIC_TYPES = frozenset({"mapping", "sequence", "anchor", "alias"})
+
+
+def _create_temp_files(specs: dict) -> dict:
+    """Create temp files from {lang: (ext, content)} specs. Returns {lang: path}."""
+    created: dict = {}
+    for lang, (ext, content) in specs.items():
+        with tempfile.NamedTemporaryFile(mode="w", suffix=ext, delete=False) as tmp:
+            tmp.write(content)
+            created[lang] = tmp.name
+    return created
+
+
+def _assert_no_yaml_type_overlap(language: str, plugin) -> None:
+    """Assert plugin doesn't claim YAML-specific element types; also checks language_name."""
+    types = set(plugin.get_supported_element_types())
+    overlap = types & _YAML_SPECIFIC_TYPES
+    assert len(overlap) == 0, (
+        f"Plugin '{language}' must not have YAML-specific types: {overlap}"
+    )
+
+
 class TestYAMLLanguageIsolationProperties:
     """Property-based tests for YAML language isolation."""
 
@@ -296,16 +318,8 @@ class TestYAMLLanguageIsolationProperties:
             "javascript": (".js", "function test() {}\n"),
         }
 
-        created_files = {}
-
         try:
-            # Create all test files
-            for lang, (ext, content) in test_files.items():
-                with tempfile.NamedTemporaryFile(
-                    mode="w", suffix=ext, delete=False
-                ) as tmp_file:
-                    tmp_file.write(content)
-                    created_files[lang] = tmp_file.name
+            created_files = _create_temp_files(test_files)
 
             # Property: Each file should be detected as its correct language
             for lang, file_path in created_files.items():
@@ -499,27 +513,15 @@ class TestYAMLLanguageIsolationProperties:
         java_plugin = manager.get_plugin("java")
         if java_plugin:
             java_types = set(java_plugin.get_supported_element_types())
-            # Java should have different element types
             assert "class" in java_types or "method" in java_types, (
                 "Java plugin must have Java-specific element types"
             )
-            # YAML-specific types should not be in Java
-            yaml_specific = {"mapping", "sequence", "anchor", "alias"}
-            java_yaml_overlap = java_types & yaml_specific
-            assert len(java_yaml_overlap) == 0, (
-                f"Java plugin must not have YAML-specific types: {java_yaml_overlap}"
-            )
+            _assert_no_yaml_type_overlap("java", java_plugin)
 
         python_plugin = manager.get_plugin("python")
         if python_plugin:
             python_types = set(python_plugin.get_supported_element_types())
-            # Python should have different element types
             assert "function" in python_types or "class" in python_types, (
                 "Python plugin must have Python-specific element types"
             )
-            # YAML-specific types should not be in Python
-            yaml_specific = {"mapping", "sequence", "anchor", "alias"}
-            python_yaml_overlap = python_types & yaml_specific
-            assert len(python_yaml_overlap) == 0, (
-                f"Python plugin must not have YAML-specific types: {python_yaml_overlap}"
-            )
+            _assert_no_yaml_type_overlap("python", python_plugin)
