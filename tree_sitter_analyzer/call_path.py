@@ -70,6 +70,13 @@ def _files_in_chain(hops: list[dict[str, Any]]) -> int:
     return len(seen)
 
 
+def _make_chain(path: list[dict[str, Any]]) -> CallChain:
+    """Construct a CallChain from a hop list."""
+    return CallChain(
+        hops=path, total_hops=len(path), files_crossed=_files_in_chain(path)
+    )
+
+
 class CallPathFinder:
     """Find execution paths between two functions via BFS on call edges.
 
@@ -215,12 +222,7 @@ class CallPathFinder:
                 }
                 new_path = path + [hop]
                 if self._matches_target(callee_name, callee_file, target_key):
-                    chain = CallChain(
-                        hops=new_path,
-                        total_hops=len(new_path),
-                        files_crossed=_files_in_chain(new_path),
-                    )
-                    paths.append(chain)
+                    paths.append(_make_chain(new_path))
                     continue
                 state = (callee_name, callee_file or None)
                 if state not in visited:
@@ -267,12 +269,7 @@ class CallPathFinder:
                 }
                 new_path = [hop] + path
                 if self._matches_target(caller_name, caller_file, start_key):
-                    chain = CallChain(
-                        hops=new_path,
-                        total_hops=len(new_path),
-                        files_crossed=_files_in_chain(new_path),
-                    )
-                    paths.append(chain)
+                    paths.append(_make_chain(new_path))
                     continue
                 state = (caller_name, caller_file or None)
                 if state not in visited:
@@ -337,12 +334,7 @@ class CallPathFinder:
                         full_path = forward_visited[state] + list(
                             reversed(backward_visited[state])
                         )
-                        chain = CallChain(
-                            hops=full_path,
-                            total_hops=len(full_path),
-                            files_crossed=_files_in_chain(full_path),
-                        )
-                        paths.append(chain)
+                        paths.append(_make_chain(full_path))
                         continue
                     next_forward.append(state)
             forward_queue = next_forward
@@ -367,12 +359,7 @@ class CallPathFinder:
                         full_path = forward_visited[state] + list(
                             reversed(backward_visited[state])
                         )
-                        chain = CallChain(
-                            hops=full_path,
-                            total_hops=len(full_path),
-                            files_crossed=_files_in_chain(full_path),
-                        )
-                        paths.append(chain)
+                        paths.append(_make_chain(full_path))
                         continue
                     next_backward.append(state)
             backward_queue = next_backward
@@ -543,22 +530,12 @@ class CallPathFinder:
                     "line": callee.get("line", 0),
                 }
                 new_path = path + [hop]
-                if callee_name == target_function:
-                    if target_file and callee_file and callee_file != target_file:
-                        state = (callee_name, callee_file or None)
-                        if state not in visited:
-                            visited.add(state)
-                            queue.append((callee_name, callee_file or None, new_path))
-                        continue
-                    chain = CallChain(
-                        hops=new_path,
-                        total_hops=len(new_path),
-                        files_crossed=_files_in_chain(new_path),
-                    )
-                    paths.append(chain)
-                    continue
                 state = (callee_name, callee_file or None)
-                if state not in visited:
+                if CallPathFinder._matches_target(
+                    callee_name, callee_file, (target_function, target_file)
+                ):
+                    paths.append(_make_chain(new_path))
+                elif state not in visited:
                     visited.add(state)
                     queue.append((callee_name, callee_file or None, new_path))
 
@@ -592,21 +569,11 @@ class CallPathFinder:
                     "line": caller.get("line", 0),
                 }
                 new_path = [hop] + path
-                if caller_name == source_function:
-                    if source_file and caller_file and caller_file != source_file:
-                        state = (caller_name, caller_file or None)
-                        if state not in visited:
-                            visited.add(state)
-                            queue.append((caller_name, caller_file or None, new_path))
-                        continue
-                    chain = CallChain(
-                        hops=new_path,
-                        total_hops=len(new_path),
-                        files_crossed=_files_in_chain(new_path),
-                    )
-                    paths.append(chain)
-                    continue
                 state = (caller_name, caller_file or None)
-                if state not in visited:
+                if CallPathFinder._matches_target(
+                    caller_name, caller_file, (source_function, source_file)
+                ):
+                    paths.append(_make_chain(new_path))
+                elif state not in visited:
                     visited.add(state)
                     queue.append((caller_name, caller_file or None, new_path))

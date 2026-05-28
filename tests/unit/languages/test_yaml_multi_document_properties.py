@@ -87,6 +87,41 @@ def yaml_explicit_multi_document_content(draw):
     return "---\n" + "\n---\n".join(documents)
 
 
+def _parse_yaml_content(yaml_content: str):
+    """Parse YAML and return (elements, doc_elements). Skips if library unavailable."""
+    try:
+        import tree_sitter
+        import tree_sitter_yaml as ts_yaml
+    except ImportError:
+        pytest.skip("tree-sitter-yaml not available")
+
+    lang = tree_sitter.Language(ts_yaml.language())
+    parser = tree_sitter.Parser()
+    parser.language = lang
+    tree = parser.parse(yaml_content.encode("utf-8"))
+    extractor = YAMLElementExtractor()
+    elements = extractor.extract_yaml_elements(tree, yaml_content)
+    documents = [e for e in elements if e.element_type == "document"]
+    return elements, documents
+
+
+def _find_containing_doc(element, doc_elements):
+    """Return the first document whose line range contains element, or None."""
+    for doc in doc_elements:
+        if doc.start_line <= element.start_line <= doc.end_line:
+            return doc
+    return None
+
+
+def _build_multi_doc_yaml(num_documents: int, keys_per_doc: int) -> str:
+    """Build a predictable multi-document YAML string."""
+    docs = [
+        "\n".join(f"doc{d}_key{k}: value{k}" for k in range(keys_per_doc))
+        for d in range(num_documents)
+    ]
+    return "---\n" + "\n---\n".join(docs)
+
+
 class TestYAMLMultiDocumentProperties:
     """Property-based tests for YAML multi-document separation."""
 
@@ -102,24 +137,7 @@ class TestYAMLMultiDocumentProperties:
 
         Validates: Requirements 1.5
         """
-        try:
-            import tree_sitter
-            import tree_sitter_yaml as ts_yaml
-        except ImportError:
-            pytest.skip("tree-sitter-yaml not available")
-
-        # Parse the YAML content
-        YAML_LANGUAGE = tree_sitter.Language(ts_yaml.language())
-        parser = tree_sitter.Parser()
-        parser.language = YAML_LANGUAGE
-        tree = parser.parse(yaml_content.encode("utf-8"))
-
-        # Extract elements
-        extractor = YAMLElementExtractor()
-        elements = extractor.extract_yaml_elements(tree, yaml_content)
-
-        # Property: Documents must be extracted
-        documents = [e for e in elements if e.element_type == "document"]
+        elements, documents = _parse_yaml_content(yaml_content)
 
         # Count expected documents (number of --- separators + 1)
         _expected_doc_count = yaml_content.count("---") + 1  # noqa: F841
@@ -177,18 +195,12 @@ class TestYAMLMultiDocumentProperties:
 
         # Property: Elements should belong to documents within their line range
         for element in non_doc_elements:
-            # Find which document this element belongs to
-            containing_docs = [
-                d for d in documents if d.start_line <= element.start_line <= d.end_line
-            ]
-
-            # Element should be within at least one document's range
-            if containing_docs:
-                # The element's document_index should match one of the containing documents
-                containing_indices = [d.document_index for d in containing_docs]
-                assert element.document_index in containing_indices, (
-                    f"Element at line {element.start_line} has document_index {element.document_index}, "
-                    f"but is within documents with indices {containing_indices}"
+            containing_doc = _find_containing_doc(element, documents)
+            if containing_doc is not None:
+                assert element.document_index == containing_doc.document_index, (
+                    f"Element at line {element.start_line} has document_index "
+                    f"{element.document_index}, but containing doc has index "
+                    f"{containing_doc.document_index}"
                 )
 
     @settings(max_examples=100)
@@ -202,24 +214,7 @@ class TestYAMLMultiDocumentProperties:
 
         Validates: Requirements 1.5
         """
-        try:
-            import tree_sitter
-            import tree_sitter_yaml as ts_yaml
-        except ImportError:
-            pytest.skip("tree-sitter-yaml not available")
-
-        # Parse the YAML content
-        YAML_LANGUAGE = tree_sitter.Language(ts_yaml.language())
-        parser = tree_sitter.Parser()
-        parser.language = YAML_LANGUAGE
-        tree = parser.parse(yaml_content.encode("utf-8"))
-
-        # Extract elements
-        extractor = YAMLElementExtractor()
-        elements = extractor.extract_yaml_elements(tree, yaml_content)
-
-        # Property: Documents must be extracted
-        documents = [e for e in elements if e.element_type == "document"]
+        elements, documents = _parse_yaml_content(yaml_content)
 
         assert len(documents) >= 1, (
             f"Expected at least 1 document with explicit markers, got {len(documents)}. "
@@ -260,34 +255,8 @@ class TestYAMLMultiDocumentProperties:
 
         Validates: Requirements 1.5
         """
-        try:
-            import tree_sitter
-            import tree_sitter_yaml as ts_yaml
-        except ImportError:
-            pytest.skip("tree-sitter-yaml not available")
-
-        # Generate YAML content with known structure
-        documents = []
-        for doc_idx in range(num_documents):
-            lines = []
-            for key_idx in range(keys_per_doc):
-                lines.append(f"doc{doc_idx}_key{key_idx}: value{key_idx}")
-            documents.append("\n".join(lines))
-
-        yaml_content = "---\n" + "\n---\n".join(documents)
-
-        # Parse the YAML content
-        YAML_LANGUAGE = tree_sitter.Language(ts_yaml.language())
-        parser = tree_sitter.Parser()
-        parser.language = YAML_LANGUAGE
-        tree = parser.parse(yaml_content.encode("utf-8"))
-
-        # Extract elements
-        extractor = YAMLElementExtractor()
-        elements = extractor.extract_yaml_elements(tree, yaml_content)
-
-        # Property: All documents must be found
-        doc_elements = [e for e in elements if e.element_type == "document"]
+        yaml_content = _build_multi_doc_yaml(num_documents, keys_per_doc)
+        elements, doc_elements = _parse_yaml_content(yaml_content)
         assert len(doc_elements) >= 1, (
             f"Expected at least 1 document, got {len(doc_elements)}"
         )
@@ -296,12 +265,7 @@ class TestYAMLMultiDocumentProperties:
         mappings = [e for e in elements if e.element_type == "mapping"]
 
         for mapping in mappings:
-            # Find the document this mapping belongs to
-            containing_doc = None
-            for doc in doc_elements:
-                if doc.start_line <= mapping.start_line <= doc.end_line:
-                    containing_doc = doc
-                    break
+            containing_doc = _find_containing_doc(mapping, doc_elements)
 
             assert containing_doc is not None, (
                 f"Mapping at line {mapping.start_line} ('{mapping.name}') "
@@ -325,33 +289,13 @@ class TestYAMLMultiDocumentProperties:
 
         Validates: Requirements 1.5
         """
-        try:
-            import tree_sitter
-            import tree_sitter_yaml as ts_yaml
-        except ImportError:
-            pytest.skip("tree-sitter-yaml not available")
-
-        # Generate YAML content
         if num_documents == 1:
-            # Single document without explicit marker
             yaml_content = "key: value\nother: data"
         else:
-            # Multiple documents with explicit markers
-            documents = [f"doc{i}: value{i}" for i in range(num_documents)]
-            yaml_content = "---\n" + "\n---\n".join(documents)
-
-        # Parse the YAML content
-        YAML_LANGUAGE = tree_sitter.Language(ts_yaml.language())
-        parser = tree_sitter.Parser()
-        parser.language = YAML_LANGUAGE
-        tree = parser.parse(yaml_content.encode("utf-8"))
-
-        # Extract elements
-        extractor = YAMLElementExtractor()
-        elements = extractor.extract_yaml_elements(tree, yaml_content)
-
-        # Property: At least one document must be found
-        documents = [e for e in elements if e.element_type == "document"]
+            yaml_content = "---\n" + "\n---\n".join(
+                f"doc{i}: value{i}" for i in range(num_documents)
+            )
+        elements, documents = _parse_yaml_content(yaml_content)
         assert len(documents) >= 1, (
             f"Expected at least 1 document, got {len(documents)}. "
             f"Content:\n{yaml_content}"
@@ -381,24 +325,7 @@ class TestYAMLMultiDocumentProperties:
 
         Validates: Requirements 1.5
         """
-        try:
-            import tree_sitter
-            import tree_sitter_yaml as ts_yaml
-        except ImportError:
-            pytest.skip("tree-sitter-yaml not available")
-
-        # Parse the YAML content
-        YAML_LANGUAGE = tree_sitter.Language(ts_yaml.language())
-        parser = tree_sitter.Parser()
-        parser.language = YAML_LANGUAGE
-        tree = parser.parse(yaml_content.encode("utf-8"))
-
-        # Extract elements
-        extractor = YAMLElementExtractor()
-        elements = extractor.extract_yaml_elements(tree, yaml_content)
-
-        # Property: Documents must have child_count attribute
-        documents = [e for e in elements if e.element_type == "document"]
+        elements, documents = _parse_yaml_content(yaml_content)
 
         for doc in documents:
             assert hasattr(doc, "child_count"), (

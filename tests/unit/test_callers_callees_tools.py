@@ -7,6 +7,9 @@ import pytest
 
 from tree_sitter_analyzer.mcp.tools.callees_tool import CodeGraphCalleesTool
 from tree_sitter_analyzer.mcp.tools.callers_tool import CodeGraphCallersTool
+from tree_sitter_analyzer.mcp.tools.codegraph_relation_tool import (
+    CodeGraphRelationToolMixin,
+)
 
 _PROJECT_ROOT = str(Path(__file__).resolve().parent.parent.parent)
 
@@ -37,6 +40,7 @@ class TestCodeGraphCallersTool:
         assert callers_tool.validate_arguments({"function_name": "main"})
 
     @pytest.mark.asyncio
+    @pytest.mark.slow_ok  # scans full project graph; ~12s on CI hardware
     async def test_execute_returns_callers(self, callers_tool):
         result = await callers_tool.execute(
             {"function_name": "_walk_tree", "output_format": "json"}
@@ -136,6 +140,10 @@ class TestCodeGraphCalleesTool:
 
 
 class TestCallerCalleeIntegration:
+    def test_callers_and_callees_share_relation_bootstrap(self):
+        assert issubclass(CodeGraphCallersTool, CodeGraphRelationToolMixin)
+        assert issubclass(CodeGraphCalleesTool, CodeGraphRelationToolMixin)
+
     @pytest.mark.asyncio
     async def test_unknown_function_returns_empty(self, callers_tool, callees_tool):
         result = await callers_tool.execute(

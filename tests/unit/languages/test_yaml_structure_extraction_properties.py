@@ -144,6 +144,52 @@ def yaml_nested_content(draw):
     return generate_nested(depth)
 
 
+def _extract_yaml_elements(yaml_content: str) -> list:
+    """Parse YAML and return extracted elements. Skips if library unavailable."""
+    try:
+        import tree_sitter
+        import tree_sitter_yaml as ts_yaml
+    except ImportError:
+        pytest.skip("tree-sitter-yaml not available")
+
+    lang = tree_sitter.Language(ts_yaml.language())
+    parser = tree_sitter.Parser()
+    parser.language = lang
+    tree = parser.parse(yaml_content.encode("utf-8"))
+    extractor = YAMLElementExtractor()
+    return extractor.extract_yaml_elements(tree, yaml_content)
+
+
+def _group_by_level(elements) -> dict:
+    """Group elements by nesting_level."""
+    from collections import defaultdict
+
+    by_level: dict = defaultdict(list)
+    for element in elements:
+        by_level[element.nesting_level].append(element)
+    return dict(by_level)
+
+
+def _assert_no_partial_overlap(level: int, level_elements: list) -> None:
+    """Assert that elements at a given nesting level do not partially overlap."""
+    sorted_elements = sorted(level_elements, key=lambda e: e.start_line)
+    for i in range(len(sorted_elements) - 1):
+        current = sorted_elements[i]
+        next_elem = sorted_elements[i + 1]
+        if current.end_line >= next_elem.start_line:
+            assert (
+                current.start_line <= next_elem.start_line
+                and current.end_line >= next_elem.end_line
+            ) or (
+                next_elem.start_line <= current.start_line
+                and next_elem.end_line >= current.end_line
+            ), (
+                f"Elements at level {level} should not partially overlap. "
+                f"Element 1: lines {current.start_line}-{current.end_line}, "
+                f"Element 2: lines {next_elem.start_line}-{next_elem.end_line}"
+            )
+
+
 class TestYAMLStructureExtractionProperties:
     """Property-based tests for YAML structure extraction."""
 
@@ -158,21 +204,7 @@ class TestYAMLStructureExtractionProperties:
 
         Validates: Requirements 1.2
         """
-        try:
-            import tree_sitter
-            import tree_sitter_yaml as ts_yaml
-        except ImportError:
-            pytest.skip("tree-sitter-yaml not available")
-
-        # Parse the YAML content
-        YAML_LANGUAGE = tree_sitter.Language(ts_yaml.language())
-        parser = tree_sitter.Parser()
-        parser.language = YAML_LANGUAGE
-        tree = parser.parse(yaml_content.encode("utf-8"))
-
-        # Extract elements
-        extractor = YAMLElementExtractor()
-        elements = extractor.extract_yaml_elements(tree, yaml_content)
+        elements = _extract_yaml_elements(yaml_content)
 
         # Property: All mappings must be extracted
         mappings = [e for e in elements if e.element_type == "mapping"]
@@ -228,21 +260,7 @@ class TestYAMLStructureExtractionProperties:
 
         Validates: Requirements 1.3
         """
-        try:
-            import tree_sitter
-            import tree_sitter_yaml as ts_yaml
-        except ImportError:
-            pytest.skip("tree-sitter-yaml not available")
-
-        # Parse the YAML content
-        YAML_LANGUAGE = tree_sitter.Language(ts_yaml.language())
-        parser = tree_sitter.Parser()
-        parser.language = YAML_LANGUAGE
-        tree = parser.parse(yaml_content.encode("utf-8"))
-
-        # Extract elements
-        extractor = YAMLElementExtractor()
-        elements = extractor.extract_yaml_elements(tree, yaml_content)
+        elements = _extract_yaml_elements(yaml_content)
 
         # Property: Sequences must be extracted
         sequences = [e for e in elements if e.element_type == "sequence"]
@@ -300,21 +318,7 @@ class TestYAMLStructureExtractionProperties:
 
         Validates: Requirements 1.4
         """
-        try:
-            import tree_sitter
-            import tree_sitter_yaml as ts_yaml
-        except ImportError:
-            pytest.skip("tree-sitter-yaml not available")
-
-        # Parse the YAML content
-        YAML_LANGUAGE = tree_sitter.Language(ts_yaml.language())
-        parser = tree_sitter.Parser()
-        parser.language = YAML_LANGUAGE
-        tree = parser.parse(yaml_content.encode("utf-8"))
-
-        # Extract elements
-        extractor = YAMLElementExtractor()
-        elements = extractor.extract_yaml_elements(tree, yaml_content)
+        elements = _extract_yaml_elements(yaml_content)
 
         # Property: All elements must have nesting_level attribute
         for element in elements:
@@ -373,24 +377,8 @@ class TestYAMLStructureExtractionProperties:
 
         Validates: Requirements 1.2, 1.3, 1.4
         """
-        try:
-            import tree_sitter
-            import tree_sitter_yaml as ts_yaml
-        except ImportError:
-            pytest.skip("tree-sitter-yaml not available")
-
-        # Combine mapping and sequence content
         yaml_content = f"{mapping_content}\nitems:\n{sequence_content}"
-
-        # Parse the YAML content
-        YAML_LANGUAGE = tree_sitter.Language(ts_yaml.language())
-        parser = tree_sitter.Parser()
-        parser.language = YAML_LANGUAGE
-        tree = parser.parse(yaml_content.encode("utf-8"))
-
-        # Extract elements
-        extractor = YAMLElementExtractor()
-        elements = extractor.extract_yaml_elements(tree, yaml_content)
+        elements = _extract_yaml_elements(yaml_content)
 
         # Property: Both mappings and sequences must be extracted
         mappings = [e for e in elements if e.element_type == "mapping"]
@@ -415,33 +403,8 @@ class TestYAMLStructureExtractionProperties:
             )
 
         # Property: No overlapping elements at the same nesting level
-        same_level_elements = {}
-        for element in elements:
-            level = element.nesting_level
-            if level not in same_level_elements:
-                same_level_elements[level] = []
-            same_level_elements[level].append(element)
-
-        for level, level_elements in same_level_elements.items():
-            sorted_elements = sorted(level_elements, key=lambda e: e.start_line)
-            for i in range(len(sorted_elements) - 1):
-                current = sorted_elements[i]
-                next_elem = sorted_elements[i + 1]
-
-                # Elements at same level should not overlap (unless one contains the other)
-                if current.end_line >= next_elem.start_line:
-                    # This is okay if one fully contains the other
-                    assert (
-                        current.start_line <= next_elem.start_line
-                        and current.end_line >= next_elem.end_line
-                    ) or (
-                        next_elem.start_line <= current.start_line
-                        and next_elem.end_line >= current.end_line
-                    ), (
-                        f"Elements at level {level} should not partially overlap. "
-                        f"Element 1: lines {current.start_line}-{current.end_line}, "
-                        f"Element 2: lines {next_elem.start_line}-{next_elem.end_line}"
-                    )
+        for level, level_elements in _group_by_level(elements).items():
+            _assert_no_partial_overlap(level, level_elements)
 
     @settings(max_examples=50)
     @given(
@@ -459,35 +422,11 @@ class TestYAMLStructureExtractionProperties:
 
         Validates: Requirements 1.2, 1.3
         """
-        try:
-            import tree_sitter
-            import tree_sitter_yaml as ts_yaml
-        except ImportError:
-            pytest.skip("tree-sitter-yaml not available")
-
-        # Generate YAML content with known structure
-        lines = []
-
-        # Add mappings
-        for i in range(num_mappings):
-            lines.append(f"key{i}: value{i}")
-
-        # Add a sequence
+        lines = [f"key{i}: value{i}" for i in range(num_mappings)]
         lines.append("items:")
-        for i in range(num_sequences):
-            lines.append(f"  - item{i}")
-
+        lines.extend(f"  - item{i}" for i in range(num_sequences))
         yaml_content = "\n".join(lines)
-
-        # Parse the YAML content
-        YAML_LANGUAGE = tree_sitter.Language(ts_yaml.language())
-        parser = tree_sitter.Parser()
-        parser.language = YAML_LANGUAGE
-        tree = parser.parse(yaml_content.encode("utf-8"))
-
-        # Extract elements
-        extractor = YAMLElementExtractor()
-        elements = extractor.extract_yaml_elements(tree, yaml_content)
+        elements = _extract_yaml_elements(yaml_content)
 
         # Property: Number of mappings should match (including the "items" key)
         mappings = [e for e in elements if e.element_type == "mapping"]

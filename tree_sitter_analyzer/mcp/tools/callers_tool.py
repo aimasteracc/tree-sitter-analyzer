@@ -11,12 +11,12 @@ Simpler and more discoverable than the monolithic codegraph_call_graph tool.
 import os
 from typing import Any
 
-from ...call_graph import CachedCallGraph, CallGraph
 from ...utils import setup_logger
 from ._response_builder import build_response
 from .base_tool import BaseMCPTool
-from .callees_tool import (
+from .codegraph_relation_tool import (
     _STALE_CACHE_WARNING,
+    CodeGraphRelationToolMixin,
     _is_stale_resolution,
     classify_callee_resolution,
 )
@@ -24,47 +24,15 @@ from .callees_tool import (
 logger = setup_logger(__name__)
 
 
-class CodeGraphCallersTool(BaseMCPTool):
+class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
     """MCP Tool for finding callers of a function (CodeGraph parity)."""
 
     def __init__(self, project_root: str | None = None) -> None:
-        self._call_graph: CallGraph | None = None
-        self._data_source: str = "unknown"
+        self._init_relation_state()
         super().__init__(project_root)
 
     def _on_project_root_changed(self, project_root: str | None) -> None:
-        self._call_graph = None
-        self._data_source = "unknown"
-
-    def _try_get_cache(self) -> Any:
-        try:
-            from ...ast_cache import ASTCache
-
-            if self.project_root is None:
-                return None
-            cache = ASTCache(self.project_root)
-            if cache.has_call_edges():
-                return cache
-            stats = cache.get_stats()
-            if stats.get("total_files", 0) > 0:
-                return cache
-            cache.close()
-        except Exception:  # nosec B110
-            pass
-        return None
-
-    def _get_call_graph(self) -> CallGraph:
-        if self._call_graph is None:
-            if not self.project_root:
-                raise ValueError("Project root not set. Call set_project_path first.")
-            cache = self._try_get_cache()
-            if cache is not None:
-                self._call_graph = CachedCallGraph(self.project_root, cache=cache)
-                self._data_source = "cache"
-            else:
-                self._call_graph = CallGraph(self.project_root)
-                self._data_source = "parse"
-        return self._call_graph
+        self._reset_relation_state()
 
     def get_tool_definition(self) -> dict[str, Any]:
         return {
@@ -221,35 +189,3 @@ class CodeGraphCallersTool(BaseMCPTool):
                 )
                 entry.setdefault("callee_resolution", resolution)
                 entry.setdefault("callee_resolved_file", resolved_file)
-
-    @staticmethod
-    def _fetch_activation_map(
-        cache: Any,
-    ) -> dict[tuple[str, int], dict[str, Any]]:
-        """Build a (file_path, line) -> activation map.
-
-        Returns an empty map when ``ast_symbol_activation`` doesn't exist
-        on a legacy cache — callers default to zero-counts in that case.
-        """
-        try:
-            conn = cache._get_conn()
-            rows = conn.execute(
-                "SELECT s.file_path, s.line, a.mod_count_30d, a.last_modified_at "
-                "FROM ast_symbol_activation a "
-                "JOIN ast_symbol_rows s ON s.id = a.symbol_id"
-            ).fetchall()
-        except Exception:
-            return {}
-        out: dict[tuple[str, int], dict[str, Any]] = {}
-        for row in rows:
-            file_path = row["file_path"] or ""
-            line = int(row["line"] or 0)
-            out[(file_path, line)] = {
-                "mod_count_30d": int(row["mod_count_30d"] or 0),
-                "last_modified_at": (
-                    int(row["last_modified_at"])
-                    if row["last_modified_at"] is not None
-                    else None
-                ),
-            }
-        return out

@@ -16,7 +16,11 @@ from collections import defaultdict, deque
 from pathlib import Path
 from typing import Any
 
+from .callee_resolution import CalleeResolver
 from .core.parser import Parser, ParseResult
+from .function_extraction import (
+    walk_tree as _walk_tree,
+)
 from .import_extractors import walk_imports
 from .project_graph import _language_from_ext
 
@@ -94,358 +98,6 @@ class FunctionRef:
         return d
 
 
-_CALL_NODE_TYPES = {
-    "python": {"call"},
-    "javascript": {"call_expression"},
-    "typescript": {"call_expression"},
-    "java": {"method_invocation", "class_body"},
-    "go": {"call_expression"},
-    "c": {"call_expression"},
-    "cpp": {"call_expression"},
-}
-
-_FUNC_DEF_TYPES = {
-    "python": {"function_definition"},
-    "javascript": {"function_declaration", "method_definition", "arrow_function"},
-    "typescript": {"function_declaration", "method_definition", "arrow_function"},
-    "java": {"method_declaration", "constructor_declaration"},
-    "go": {"function_declaration", "method_declaration"},
-    "c": {"function_definition"},
-    "cpp": {"function_definition"},
-}
-
-_CLASS_DEF_TYPES = {
-    "python": {"class_definition"},
-    "javascript": {"class_declaration"},
-    "typescript": {"class_declaration"},
-    "java": {"class_declaration"},
-    "go": set(),
-    "c": set(),
-    "cpp": {"class_specifier"},
-}
-
-
-def _walk_tree(node: Any, source: str, language: str) -> tuple[list[dict], list[dict]]:
-    """
-    Walk the AST to extract function definitions and call sites.
-
-    Returns (definitions, calls) where each is a list of dicts.
-    """
-    definitions: list[dict[str, Any]] = []
-    calls: list[dict[str, Any]] = []
-
-    _extract_recursive(node, source, language, definitions, calls, None)
-    return definitions, calls
-
-
-def _extract_recursive(
-    node: Any,
-    source: str,
-    language: str,
-    definitions: list[dict[str, Any]],
-    calls: list[dict[str, Any]],
-    enclosing_class: str | None,
-) -> None:
-    """Recursively walk AST extracting function defs and call sites."""
-    if not hasattr(node, "type"):
-        return
-
-    node_type = node.type
-
-    if node_type in _FUNC_DEF_TYPES.get(language, set()):
-        func_name = _get_func_name(node, language)
-        if func_name:
-            parent_class = enclosing_class
-            if language == "python":
-                parent_class = _find_parent_class_python(node) or enclosing_class
-            elif language in ("java",):
-                parent_class = _find_parent_class_java(node) or enclosing_class
-            elif language == "go" and node.type == "method_declaration":
-                parent_class = _find_receiver_type_go(node) or enclosing_class
-
-            definitions.append(
-                {
-                    "name": func_name,
-                    "start_line": node.start_point[0] + 1,
-                    "end_line": node.end_point[0] + 1,
-                    "class": parent_class,
-                }
-            )
-
-            for child in node.children:
-                _extract_recursive(
-                    child, source, language, definitions, calls, parent_class
-                )
-            return
-
-    if node_type in _CALL_NODE_TYPES.get(language, set()):
-        call_info = _extract_call(node, source, language)
-        if call_info:
-            calls.append(call_info)
-
-    for child in node.children:
-        _extract_recursive(child, source, language, definitions, calls, enclosing_class)
-
-
-def _get_func_name(node: Any, language: str) -> str | None:
-    """Extract function name from a definition node."""
-    try:
-        if language == "python":
-            for child in node.children:
-                if child.type == "identifier":
-                    text = child.text
-                    return (
-                        text.decode("utf-8") if isinstance(text, bytes) else str(text)
-                    )
-        elif language in ("javascript", "typescript"):
-            for child in node.children:
-                if child.type in ("identifier", "property_identifier"):
-                    text = child.text
-                    return (
-                        text.decode("utf-8") if isinstance(text, bytes) else str(text)
-                    )
-        elif language == "java":
-            for child in node.children:
-                if child.type == "identifier":
-                    text = child.text
-                    return (
-                        text.decode("utf-8") if isinstance(text, bytes) else str(text)
-                    )
-        elif language == "go":
-            name_node = node.child_by_field_name("name")
-            if name_node is not None:
-                text = name_node.text
-                return text.decode("utf-8") if isinstance(text, bytes) else str(text)
-            for child in node.children:
-                if child.type in ("identifier", "field_identifier"):
-                    text = child.text
-                    return (
-                        text.decode("utf-8") if isinstance(text, bytes) else str(text)
-                    )
-        elif language in ("c", "cpp"):
-            for child in node.children:
-                if child.type in (
-                    "identifier",
-                    "field_identifier",
-                    "destructor_name",
-                ):
-                    text = child.text
-                    return (
-                        text.decode("utf-8") if isinstance(text, bytes) else str(text)
-                    )
-                if child.type == "function_declarator":
-                    for sub in child.children:
-                        if sub.type in ("identifier", "field_identifier"):
-                            text = sub.text
-                            return (
-                                text.decode("utf-8")
-                                if isinstance(text, bytes)
-                                else str(text)
-                            )
-    except Exception:  # nosec B110
-        pass
-    return None
-
-
-def _extract_call(node: Any, source: str, language: str) -> dict[str, Any] | None:
-    """Extract call target info from a call node."""
-    try:
-        if language == "python":
-            func_node = node.child_by_field_name("function")
-            if func_node is None:
-                return None
-            name = _node_text(func_node, source)
-            receiver = None
-            if "." in name:
-                parts = name.rsplit(".", 1)
-                receiver = parts[0]
-                name = parts[1]
-            return {
-                "name": name,
-                "full_name": _node_text(func_node, source),
-                "line": node.start_point[0] + 1,
-                "receiver": receiver,
-            }
-        elif language in ("javascript", "typescript"):
-            func_node = node.child_by_field_name("function")
-            if func_node is None:
-                return None
-            name = _node_text(func_node, source)
-            receiver = None
-            if "." in name:
-                parts = name.rsplit(".", 1)
-                receiver = parts[0]
-                name = parts[1]
-            return {
-                "name": name,
-                "full_name": _node_text(func_node, source),
-                "line": node.start_point[0] + 1,
-                "receiver": receiver,
-            }
-        elif language == "java":
-            for child in node.children:
-                if child.type == "identifier":
-                    text = _node_text(child, source)
-                    return {
-                        "name": text,
-                        "full_name": text,
-                        "line": node.start_point[0] + 1,
-                        "receiver": None,
-                    }
-                if child.type in ("field_access", "method_reference"):
-                    text = _node_text(child, source)
-                    receiver = None
-                    name = text
-                    if "." in text:
-                        parts = text.rsplit(".", 1)
-                        receiver = parts[0]
-                        name = parts[1]
-                    return {
-                        "name": name,
-                        "full_name": text,
-                        "line": node.start_point[0] + 1,
-                        "receiver": receiver,
-                    }
-            return None
-        elif language == "go":
-            func_node = node.child_by_field_name("function")
-            if func_node is None:
-                return None
-            name = _node_text(func_node, source)
-            receiver = None
-            if "." in name:
-                parts = name.rsplit(".", 1)
-                receiver = parts[0]
-                name = parts[1]
-            return {
-                "name": name,
-                "full_name": _node_text(func_node, source),
-                "line": node.start_point[0] + 1,
-                "receiver": receiver,
-            }
-        elif language in ("c", "cpp"):
-            func_node = node.child_by_field_name("function")
-            if func_node is None:
-                for child in node.children:
-                    if child.type == "identifier":
-                        text = _node_text(child, source)
-                        return {
-                            "name": text,
-                            "full_name": text,
-                            "line": node.start_point[0] + 1,
-                            "receiver": None,
-                        }
-                return None
-            name = _node_text(func_node, source)
-            return {
-                "name": name,
-                "full_name": name,
-                "line": node.start_point[0] + 1,
-                "receiver": None,
-            }
-    except Exception:  # nosec B110
-        pass
-    return None
-
-
-def _node_text(node: Any, source: str) -> str:
-    """Extract text from a node given the full source string.
-
-    Tree-sitter exposes start_byte/end_byte as UTF-8 *byte* offsets.
-    Slicing a Python str with byte indices produces correct results for
-    pure-ASCII but silently shifts after any multi-byte character.  The
-    same class of bug that was fixed in ast_cache._node_text.
-
-    Fix: prefer node.text (bytes view from tree-sitter, canonical
-    source-of-truth).  Fall back to byte-level slicing on the encoded
-    source so legacy callers still work.
-    """
-    if node is None:
-        return ""
-    text_attr = getattr(node, "text", None)
-    if isinstance(text_attr, bytes):
-        try:
-            return text_attr.decode("utf-8", errors="replace")
-        except UnicodeDecodeError:
-            return ""
-    if isinstance(text_attr, str):
-        return text_attr
-    try:
-        return source.encode("utf-8")[node.start_byte : node.end_byte].decode(
-            "utf-8", errors="replace"
-        )
-    except (IndexError, TypeError, UnicodeDecodeError):
-        return ""
-
-
-def _find_parent_class_python(node: Any) -> str | None:
-    """Walk up from a function node to find enclosing class."""
-    if node is None:
-        return None
-    current = node.parent
-    while current is not None:
-        if current.type == "class_definition":
-            for child in current.children:
-                if child.type == "identifier":
-                    text = child.text
-                    return (
-                        text.decode("utf-8") if isinstance(text, bytes) else str(text)
-                    )
-        current = current.parent
-    return None
-
-
-def _find_parent_class_java(node: Any) -> str | None:
-    """Walk up from a method node to find enclosing class."""
-    if node is None:
-        return None
-    current = node.parent
-    while current is not None:
-        if current.type == "class_declaration":
-            for child in current.children:
-                if child.type == "identifier":
-                    text = child.text
-                    return (
-                        text.decode("utf-8") if isinstance(text, bytes) else str(text)
-                    )
-        current = current.parent
-    return None
-
-
-def _find_receiver_type_go(node: Any) -> str | None:
-    """Extract receiver type from a Go method_declaration node.
-
-    For ``func (e *Engine) ServeHTTP(...)`` returns ``Engine``.
-    """
-    if node is None or node.type != "method_declaration":
-        return None
-    for child in node.children:
-        if child.type == "parameter_list":
-            for param in child.children:
-                for sub in param.children if hasattr(param, "children") else []:
-                    if sub.type in ("type_identifier", "generic_type", "pointer_type"):
-                        text = sub.text
-                        raw = (
-                            text.decode("utf-8")
-                            if isinstance(text, bytes)
-                            else str(text)
-                        )
-                        return raw.lstrip("*")
-                    for leaf in sub.children if hasattr(sub, "children") else []:
-                        if leaf.type in (
-                            "type_identifier",
-                            "generic_type",
-                        ):
-                            text = leaf.text
-                            raw = (
-                                text.decode("utf-8")
-                                if isinstance(text, bytes)
-                                else str(text)
-                            )
-                            return raw.lstrip("*")
-    return None
-
-
 class CallGraph:
     """
     Project-level function call graph.
@@ -472,6 +124,7 @@ class CallGraph:
         self._file_module_map: dict[str, str] = {}
         self._imported_names: dict[str, dict[str, str]] = {}
         self._module_to_file: dict[str, str] = {}
+        self._callee_resolver: CalleeResolver | None = None
 
     def build(self) -> None:
         """Scan the project and build the call graph."""
@@ -553,6 +206,12 @@ class CallGraph:
                 file_funcs[defn["name"]] = ref
 
             per_file.append((rel_path, abs_path, language, file_funcs, calls))
+
+        self._callee_resolver = CalleeResolver(
+            functions_by_name=self._func_by_name,
+            functions_by_file=self._func_by_file,
+            name_to_source=self._imported_names,
+        )
 
         # Pass 2: resolve calls against the fully-populated index.
         for rel_path, _abs_path, _language, file_funcs, calls in per_file:
@@ -688,37 +347,19 @@ class CallGraph:
         rel_to_abs: dict[str, str],
     ) -> list[FunctionRef]:
         name = call["name"]
-        results: list[FunctionRef] = []
-        seen: set[str] = set()
-
-        same_file = self._func_by_name.get(name, [])
-        local = [c for c in same_file if c.file_path == source_rel]
-        if local:
-            for c in local:
-                if c.qualified_name() not in seen:
-                    seen.add(c.qualified_name())
-                    results.append(c)
-            return results
-
-        imported_names = self._imported_names.get(source_rel, {})
-        target_file = imported_names.get(name)
-        if target_file:
-            candidates = self._func_by_name.get(name, [])
-            for c in candidates:
-                if c.file_path == target_file and c.qualified_name() not in seen:
-                    seen.add(c.qualified_name())
-                    results.append(c)
-            if results:
-                return results
-
-        if same_file:
-            for c in same_file:
-                if c.qualified_name() not in seen:
-                    seen.add(c.qualified_name())
-                    results.append(c)
-            return results
-
-        return results
+        if self._callee_resolver is None:
+            self._callee_resolver = CalleeResolver(
+                functions_by_name=self._func_by_name,
+                functions_by_file=self._func_by_file,
+                name_to_source=self._imported_names,
+            )
+        return [
+            ref
+            for ref, _confidence in self._callee_resolver.resolve_items(
+                name,
+                source_rel,
+            )
+        ]
 
     def callers_of(
         self, func_name: str, file_path: str | None = None
@@ -1013,21 +654,20 @@ class CachedCallGraph(CallGraph):
             if caller_ref is None:
                 continue
 
-            callee_name = edge["callee_name"]
-            dot_parts = callee_name.rsplit(".", 1)
-            if len(dot_parts) == 2:
-                base_name = dot_parts[0]
-                callee_name = dot_parts[1]
-            else:
-                base_name = callee_name
+            if self._callee_resolver is None:
+                self._callee_resolver = CalleeResolver(
+                    functions_by_name=self._func_by_name,
+                    functions_by_file=self._func_by_file,
+                    name_to_source=file_import_map,
+                )
 
-            callee_candidates = self._func_by_name.get(callee_name, [])
-            if not callee_candidates:
-                continue
-
-            resolved = self._resolve_callee_from_cache(
-                callee_name, base_name, caller_file, callee_candidates, file_import_map
-            )
+            resolved = [
+                ref
+                for ref, _confidence in self._callee_resolver.resolve_items(
+                    edge["callee_name"],
+                    caller_file,
+                )
+            ]
 
             for callee_ref in resolved:
                 self._callees[caller_ref].append(callee_ref)
@@ -1037,24 +677,3 @@ class CachedCallGraph(CallGraph):
                 )
 
         self._built = True
-
-    def _resolve_callee_from_cache(
-        self,
-        callee_name: str,
-        base_name: str,
-        caller_file: str,
-        candidates: list[FunctionRef],
-        file_import_map: dict[str, dict[str, str]],
-    ) -> list[FunctionRef]:
-        same_file = [c for c in candidates if c.file_path == caller_file]
-        if same_file:
-            return same_file
-
-        imports = file_import_map.get(caller_file, {})
-        target_file = imports.get(base_name) or imports.get(callee_name)
-        if target_file:
-            imported = [c for c in candidates if c.file_path == target_file]
-            if imported:
-                return imported
-
-        return candidates[:1]

@@ -1071,6 +1071,7 @@ class ASTCache:
         resolved = 0
         unchanged = 0
         errors = 0
+        updates: list[tuple[int | None, str, str, int]] = []
         for row in rows:
             try:
                 result = resolve_callee(row["callee_name"], row["caller_file"], ctx)
@@ -1081,23 +1082,27 @@ class ASTCache:
             if result.resolution == "unknown" and not result.resolved_file:
                 unchanged += 1
                 continue
+            updates.append(
+                (
+                    result.callee_symbol_id,
+                    result.resolution,
+                    result.resolved_file,
+                    row["id"],
+                )
+            )
+        if updates:
             try:
-                conn.execute(
+                conn.executemany(
                     "UPDATE ast_call_edges "
                     "SET callee_symbol_id = ?, callee_resolution = ?, "
                     "    callee_resolved_file = ? "
                     "WHERE id = ?",
-                    (
-                        result.callee_symbol_id,
-                        result.resolution,
-                        result.resolved_file,
-                        row["id"],
-                    ),
+                    updates,
                 )
-                resolved += 1
+                resolved += len(updates)
             except sqlite3.OperationalError as exc:
                 logger.debug("synapse backfill update failed: %s", exc)
-                errors += 1
+                errors += len(updates)
         try:
             conn.commit()
         except sqlite3.OperationalError:
@@ -1844,6 +1849,7 @@ class ASTCache:
                     "callee_name": row["callee_name"],
                     "callee_full": row["callee_full"],
                     "callee_file": callee_file_val,
+                    "callee_resolved_file": row["callee_resolved_file"] or "",
                     "callee_line": row["callee_line"],
                     "depth": depth + 1,
                 }

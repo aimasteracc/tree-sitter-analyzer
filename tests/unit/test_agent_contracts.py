@@ -49,6 +49,39 @@ def test_pyproject_pytest_runtime_contract_mirror_is_locked() -> None:
     )
 
 
+def test_ast_cache_call_edge_extraction_does_not_depend_on_call_graph() -> None:
+    """ASTCache and CallGraph must share extraction helpers without a back-edge."""
+    path = PROJECT_ROOT / "tree_sitter_analyzer" / "_ast_extraction.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    imports: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imports.extend(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imports.append(node.module)
+
+    assert "call_graph" not in imports
+    assert "tree_sitter_analyzer.call_graph" not in imports
+
+
+def test_callee_resolution_algorithm_has_single_shared_home() -> None:
+    """CallGraph/CrossFile/Synapse may expose APIs, but not bespoke algorithms."""
+    call_graph = (PROJECT_ROOT / "tree_sitter_analyzer" / "call_graph.py").read_text(
+        encoding="utf-8"
+    )
+    cross_file = (
+        PROJECT_ROOT / "tree_sitter_analyzer" / "cross_file_resolver.py"
+    ).read_text(encoding="utf-8")
+    synapse_context = (
+        PROJECT_ROOT / "tree_sitter_analyzer" / "synapse_resolver" / "_context.py"
+    ).read_text(encoding="utf-8")
+
+    assert "def _resolve_callee_from_cache" not in call_graph
+    assert "CalleeResolver(" in call_graph
+    assert "CalleeResolver(" in cross_file
+    assert "CalleeResolver(" in synapse_context
+
+
 def _assert_pytest_runtime_contract(
     addopts: str | list[str],
     warning_filters: str | list[str],
@@ -89,6 +122,25 @@ def test_pytest_runtime_dependencies_are_declared() -> None:
 
     assert "pytest-xdist>=3.8.0" in dev_dependencies
     assert "pytest-timeout>=2.4.0" in dev_dependencies
+
+
+def test_local_runtime_artifacts_are_gitignored_without_global_results_trap() -> None:
+    """Dogfood/cache output must stay local without hiding every results dir."""
+    gitignore = (PROJECT_ROOT / ".gitignore").read_text(encoding="utf-8")
+    lines = {
+        line.strip()
+        for line in gitignore.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    }
+
+    assert ".ast-cache/" in lines
+    assert "**/.ast-cache/" in lines
+    assert ".omm/" in lines
+    assert "ruvector.db" in lines
+    assert "/results/" in lines
+    assert "results/" not in lines
+    assert "benchmarks/codegraph_compare/results/*" in lines
+    assert "!benchmarks/codegraph_compare/results/.gitkeep" in lines
 
 
 def test_reusable_test_workflow_has_job_timeout() -> None:

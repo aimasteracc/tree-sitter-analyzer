@@ -59,6 +59,20 @@ def _lookup_symbol_id(file: str, name: str, ctx: ResolverContext) -> int | None:
     return None
 
 
+def _item_symbol_id(item: object) -> int | None:
+    if isinstance(item, dict):
+        value = item.get("id")
+        return int(value) if value is not None else None
+    value = getattr(item, "id", None)
+    return int(value) if value is not None else None
+
+
+def _item_file(item: object) -> str:
+    if isinstance(item, dict):
+        return str(item.get("file", item.get("file_path", "")))
+    return str(getattr(item, "file", getattr(item, "file_path", "")))
+
+
 def _try_self_method(
     base: str, qualifier: str, caller_file: str, ctx: ResolverContext
 ) -> ResolvedCallee | None:
@@ -74,9 +88,20 @@ def _try_self_method(
 def _try_local(
     base: str, caller_file: str, ctx: ResolverContext
 ) -> ResolvedCallee | None:
-    sym_id = _lookup_symbol_id(caller_file, base, ctx)
-    if sym_id is not None:
-        return ResolvedCallee(sym_id, "local", caller_file)
+    if ctx.callee_resolver is None:
+        sym_id = _lookup_symbol_id(caller_file, base, ctx)
+        if sym_id is not None:
+            return ResolvedCallee(sym_id, "local", caller_file)
+        return None
+    match = ctx.callee_resolver.resolve_first_item(
+        base,
+        caller_file,
+        include_import=False,
+        include_global=False,
+    )
+    if match is not None:
+        item, _confidence = match
+        return ResolvedCallee(_item_symbol_id(item), "local", _item_file(item))
     return None
 
 
@@ -87,19 +112,44 @@ def _try_import(
     * ``bb.baz()`` after ``from . import b as bb``: alias bb -> b.py.
     * ``baz()`` after ``from .b import baz``: name baz -> b.py.
     """
-    if qualifier:
-        target = ctx.import_alias_target.get(caller_file, {}).get(qualifier)
-        if target is None and "." in qualifier:
-            target = ctx.import_alias_target.get(caller_file, {}).get(
-                qualifier.split(".", 1)[0]
-            )
+    if ctx.callee_resolver is None:
+        if qualifier:
+            target = ctx.import_alias_target.get(caller_file, {}).get(qualifier)
+            if target is None and "." in qualifier:
+                target = ctx.import_alias_target.get(caller_file, {}).get(
+                    qualifier.split(".", 1)[0]
+                )
+            if target:
+                return ResolvedCallee(
+                    _lookup_symbol_id(target, base, ctx), "project", target
+                )
+
+        target = ctx.name_to_source.get(caller_file, {}).get(base)
         if target:
             return ResolvedCallee(
                 _lookup_symbol_id(target, base, ctx), "project", target
             )
+        return None
 
-    target = ctx.name_to_source.get(caller_file, {}).get(base)
-    if target:
+    query = f"{qualifier}.{base}" if qualifier else base
+    match = ctx.callee_resolver.resolve_first_item(
+        query,
+        caller_file,
+        include_local=False,
+        include_global=False,
+    )
+    if match is not None:
+        item, _confidence = match
+        return ResolvedCallee(_item_symbol_id(item), "project", _item_file(item))
+    file_match = ctx.callee_resolver.resolve_first_file(
+        query,
+        caller_file,
+        include_unmatched_import=True,
+        include_local=False,
+        include_global=False,
+    )
+    if file_match is not None:
+        target, _confidence = file_match
         return ResolvedCallee(_lookup_symbol_id(target, base, ctx), "project", target)
     return None
 
@@ -143,6 +193,17 @@ def _try_single_global(
     base: str, qualifier: str, ctx: ResolverContext
 ) -> ResolvedCallee | None:
     if qualifier:
+        return None
+    if ctx.callee_resolver is not None:
+        matches = ctx.callee_resolver.resolve_items(
+            base,
+            "",
+            include_local=False,
+            include_import=False,
+        )
+        if len(matches) == 1:
+            item, _confidence = matches[0]
+            return ResolvedCallee(_item_symbol_id(item), "project", _item_file(item))
         return None
     cands = ctx.global_name_table.get(base, [])
     if len(cands) == 1:

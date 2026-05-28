@@ -13,51 +13,58 @@ from tree_sitter_analyzer.cli.commands.find_and_grep_cli import (
 )
 
 
+def _make_default_args(**overrides) -> argparse.Namespace:
+    """Return a Namespace with all _run defaults; overrides replace specific fields."""
+    defaults = {
+        "roots": ["root1"],
+        "query": "test",
+        "output_format": "json",
+        "quiet": False,
+        "project_root": None,
+        "pattern": None,
+        "glob": False,
+        "types": None,
+        "extensions": None,
+        "exclude": None,
+        "depth": None,
+        "follow_symlinks": False,
+        "hidden": False,
+        "no_ignore": False,
+        "size": None,
+        "changed_within": None,
+        "changed_before": None,
+        "full_path_match": False,
+        "file_limit": None,
+        "sort": None,
+        "case": "smart",
+        "fixed_strings": False,
+        "word": False,
+        "multiline": False,
+        "include_globs": None,
+        "exclude_globs": None,
+        "max_filesize": None,
+        "context_before": None,
+        "context_after": None,
+        "encoding": None,
+        "max_count": None,
+        "timeout_ms": None,
+        "count_only_matches": False,
+        "summary_only": False,
+        "optimize_paths": False,
+        "group_by_file": False,
+        "total_only": False,
+    }
+    defaults.update(overrides)
+    return argparse.Namespace(**defaults)
+
+
 class TestRunFunction:
     """Test the _run async function."""
 
     @pytest.mark.asyncio
     async def test_minimal_execution(self) -> None:
         """Test minimal execution with required arguments."""
-        args = argparse.Namespace(
-            roots=["root1"],
-            query="test",
-            output_format="json",
-            quiet=False,
-            project_root=None,
-            pattern=None,
-            glob=False,
-            types=None,
-            extensions=None,
-            exclude=None,
-            depth=None,
-            follow_symlinks=False,
-            hidden=False,
-            no_ignore=False,
-            size=None,
-            changed_within=None,
-            changed_before=None,
-            full_path_match=False,
-            file_limit=None,
-            sort=None,
-            case="smart",
-            fixed_strings=False,
-            word=False,
-            multiline=False,
-            include_globs=None,
-            exclude_globs=None,
-            max_filesize=None,
-            context_before=None,
-            context_after=None,
-            encoding=None,
-            max_count=None,
-            timeout_ms=None,
-            count_only_matches=False,
-            summary_only=False,
-            optimize_paths=False,
-            group_by_file=False,
-            total_only=False,
-        )
+        args = _make_default_args()
 
         mock_result = {"matches": 5, "files": ["file1.py", "file2.py"]}
 
@@ -92,44 +99,8 @@ class TestRunFunction:
     @pytest.mark.asyncio
     async def test_text_output_format(self) -> None:
         """Test text output format."""
-        args = argparse.Namespace(
-            roots=["root1"],
-            query="test",
-            output_format="text",
-            quiet=True,
-            project_root="/custom/root",
-            pattern=None,
-            glob=False,
-            types=None,
-            extensions=None,
-            exclude=None,
-            depth=None,
-            follow_symlinks=False,
-            hidden=False,
-            no_ignore=False,
-            size=None,
-            changed_within=None,
-            changed_before=None,
-            full_path_match=False,
-            file_limit=None,
-            sort=None,
-            case="smart",
-            fixed_strings=False,
-            word=False,
-            multiline=False,
-            include_globs=None,
-            exclude_globs=None,
-            max_filesize=None,
-            context_before=None,
-            context_after=None,
-            encoding=None,
-            max_count=None,
-            timeout_ms=None,
-            count_only_matches=False,
-            summary_only=False,
-            optimize_paths=False,
-            group_by_file=False,
-            total_only=False,
+        args = _make_default_args(
+            output_format="text", quiet=True, project_root="/custom/root"
         )
 
         with (
@@ -160,12 +131,9 @@ class TestRunFunction:
     @pytest.mark.asyncio
     async def test_all_fd_options_in_payload(self) -> None:
         """Test all fd options are included in payload."""
-        args = argparse.Namespace(
+        args = _make_default_args(
             roots=["root1", "root2"],
             query="search_term",
-            output_format="json",
-            quiet=False,
-            project_root=None,
             pattern="*.py",
             glob=True,
             types=["python"],
@@ -181,23 +149,6 @@ class TestRunFunction:
             full_path_match=True,
             file_limit=500,
             sort="mtime",
-            case="smart",
-            fixed_strings=False,
-            word=False,
-            multiline=False,
-            include_globs=None,
-            exclude_globs=None,
-            max_filesize=None,
-            context_before=None,
-            context_after=None,
-            encoding=None,
-            max_count=None,
-            timeout_ms=None,
-            count_only_matches=False,
-            summary_only=False,
-            optimize_paths=False,
-            group_by_file=False,
-            total_only=False,
         )
 
         with (
@@ -242,27 +193,7 @@ class TestRunFunction:
     @pytest.mark.asyncio
     async def test_all_rg_options_in_payload(self) -> None:
         """Test all ripgrep options are included in payload."""
-        args = argparse.Namespace(
-            roots=["root1"],
-            query="test",
-            output_format="json",
-            quiet=False,
-            project_root=None,
-            pattern=None,
-            glob=False,
-            types=None,
-            extensions=None,
-            exclude=None,
-            depth=None,
-            follow_symlinks=False,
-            hidden=False,
-            no_ignore=False,
-            size=None,
-            changed_within=None,
-            changed_before=None,
-            full_path_match=False,
-            file_limit=None,
-            sort=None,
+        args = _make_default_args(
             case="insensitive",
             fixed_strings=True,
             word=True,
@@ -324,45 +255,7 @@ class TestRunFunction:
     @pytest.mark.asyncio
     async def test_integer_result(self) -> None:
         """Test integer result (count) is handled correctly."""
-        args = argparse.Namespace(
-            roots=["root1"],
-            query="test",
-            output_format="json",
-            quiet=False,
-            project_root=None,
-            pattern=None,
-            glob=False,
-            types=None,
-            extensions=None,
-            exclude=None,
-            depth=None,
-            follow_symlinks=False,
-            hidden=False,
-            no_ignore=False,
-            size=None,
-            changed_within=None,
-            changed_before=None,
-            full_path_match=False,
-            file_limit=None,
-            sort=None,
-            case="smart",
-            fixed_strings=False,
-            word=False,
-            multiline=False,
-            include_globs=None,
-            exclude_globs=None,
-            max_filesize=None,
-            context_before=None,
-            context_after=None,
-            encoding=None,
-            max_count=None,
-            timeout_ms=None,
-            count_only_matches=False,
-            summary_only=False,
-            optimize_paths=False,
-            group_by_file=False,
-            total_only=False,
-        )
+        args = _make_default_args()
 
         with (
             patch(
@@ -391,45 +284,7 @@ class TestRunFunction:
     @pytest.mark.asyncio
     async def test_error_handling(self) -> None:
         """Test error handling in _run."""
-        args = argparse.Namespace(
-            roots=["root1"],
-            query="test",
-            output_format="json",
-            quiet=False,
-            project_root=None,
-            pattern=None,
-            glob=False,
-            types=None,
-            extensions=None,
-            exclude=None,
-            depth=None,
-            follow_symlinks=False,
-            hidden=False,
-            no_ignore=False,
-            size=None,
-            changed_within=None,
-            changed_before=None,
-            full_path_match=False,
-            file_limit=None,
-            sort=None,
-            case="smart",
-            fixed_strings=False,
-            word=False,
-            multiline=False,
-            include_globs=None,
-            exclude_globs=None,
-            max_filesize=None,
-            context_before=None,
-            context_after=None,
-            encoding=None,
-            max_count=None,
-            timeout_ms=None,
-            count_only_matches=False,
-            summary_only=False,
-            optimize_paths=False,
-            group_by_file=False,
-            total_only=False,
-        )
+        args = _make_default_args()
 
         with (
             patch(
@@ -458,45 +313,7 @@ class TestRunFunction:
     @pytest.mark.asyncio
     async def test_custom_project_root(self) -> None:
         """Test custom project root is used."""
-        args = argparse.Namespace(
-            roots=["root1"],
-            query="test",
-            output_format="json",
-            quiet=False,
-            project_root="/custom/path",
-            pattern=None,
-            glob=False,
-            types=None,
-            extensions=None,
-            exclude=None,
-            depth=None,
-            follow_symlinks=False,
-            hidden=False,
-            no_ignore=False,
-            size=None,
-            changed_within=None,
-            changed_before=None,
-            full_path_match=False,
-            file_limit=None,
-            sort=None,
-            case="smart",
-            fixed_strings=False,
-            word=False,
-            multiline=False,
-            include_globs=None,
-            exclude_globs=None,
-            max_filesize=None,
-            context_before=None,
-            context_after=None,
-            encoding=None,
-            max_count=None,
-            timeout_ms=None,
-            count_only_matches=False,
-            summary_only=False,
-            optimize_paths=False,
-            group_by_file=False,
-            total_only=False,
-        )
+        args = _make_default_args(project_root="/custom/path")
 
         with (
             patch(

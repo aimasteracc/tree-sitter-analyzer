@@ -25,6 +25,50 @@ from tree_sitter_analyzer.cli import agent_workflow
 from tree_sitter_analyzer.mcp.tools.agent_workflow_tool import AgentWorkflowTool
 
 
+def _assert_step_handoffs(result: dict) -> None:
+    """Assert that every step's handoff matches the PHASE_ROUTING table."""
+    handoff_by_step = {route["from"]: route for route in agent_workflow.PHASE_ROUTING}
+    for step in result["steps"]:
+        handoff = step["handoff"]
+        expected = handoff_by_step[step["step"]]
+        assert handoff["to"] == expected["to"]
+        assert handoff["condition"] == expected["condition"]
+        assert handoff["goal"] == expected["goal"]
+        assert handoff["transition_command"] == step["cli_commands"][0]
+
+
+def _assert_agent_summary(result: dict) -> None:
+    """Assert the agent_summary block of a full JSON workflow pack response."""
+    summary = result["agent_summary"]
+    assert summary["next_step"] == (
+        "uv run tree-sitter-analyzer safe-to-edit src/service.py --edit-type refactor --format json"
+    )
+    assert summary["current_phase"] == "analyze"
+    assert summary["recommended_commands"] == [
+        "uv run tree-sitter-analyzer smart-context src/service.py --format json",
+        "uv run tree-sitter-analyzer file-health src/service.py --format json",
+        "uv run tree-sitter-analyzer safe-to-edit src/service.py --edit-type refactor --format json",
+        "uv run tree-sitter-analyzer refactor src/service.py --format json",
+    ]
+    assert summary["queue_ledger_command"] == (
+        "uv run tree-sitter-analyzer change-impact "
+        "--change-impact-scope src/service.py --agent-summary-only --format json"
+    )
+    assert result["steps"][-1]["cli_commands"][-1] == summary["queue_ledger_command"]
+
+
+def _assert_sprint_contract(result: dict) -> None:
+    """Assert the sprint_contract block of a full JSON workflow pack response."""
+    sc = result["sprint_contract"]
+    assert sc["mode"] == "single_queue_item"
+    assert sc["scope"] == "single_target_file"
+    assert sc["current_phase"] == "analyze"
+    assert sc["next_phase"] == "retrieve"
+    assert sc["evaluator_signature"]["ordered"] is True
+    assert sc["evaluator_signature"]["required_pass"] == ["queue_boundary"]
+    assert any(c["name"] == "queue_ledger" for c in sc["evaluator_checks"])
+
+
 @pytest.mark.asyncio
 async def test_agent_workflow_tool_returns_full_json_pack(tmp_path):
     """MCP JSON output should mirror the CLI workflow pack shape."""
@@ -53,44 +97,9 @@ async def test_agent_workflow_tool_returns_full_json_pack(tmp_path):
         "retrieve",
         "trace",
     ]
-    handoff_by_step = {route["from"]: route for route in agent_workflow.PHASE_ROUTING}
-    for step in result["steps"]:
-        handoff = step["handoff"]
-        expected_handoff = handoff_by_step[step["step"]]
-        assert handoff["to"] == expected_handoff["to"]
-        assert handoff["condition"] == expected_handoff["condition"]
-        assert handoff["goal"] == expected_handoff["goal"]
-        assert handoff["transition_command"] == step["cli_commands"][0]
-    assert result["agent_summary"]["next_step"] == (
-        "uv run tree-sitter-analyzer safe-to-edit src/service.py --edit-type refactor --format json"
-    )
-    assert result["agent_summary"]["current_phase"] == "analyze"
-    assert result["agent_summary"]["recommended_commands"] == [
-        "uv run tree-sitter-analyzer smart-context src/service.py --format json",
-        "uv run tree-sitter-analyzer file-health src/service.py --format json",
-        "uv run tree-sitter-analyzer safe-to-edit src/service.py --edit-type refactor --format json",
-        "uv run tree-sitter-analyzer refactor src/service.py --format json",
-    ]
-    assert result["agent_summary"]["queue_ledger_command"] == (
-        "uv run tree-sitter-analyzer change-impact "
-        "--change-impact-scope src/service.py --agent-summary-only --format json"
-    )
-    assert (
-        result["steps"][-1]["cli_commands"][-1]
-        == (result["agent_summary"]["queue_ledger_command"])
-    )
-    assert result["sprint_contract"]["mode"] == "single_queue_item"
-    assert result["sprint_contract"]["scope"] == "single_target_file"
-    assert result["sprint_contract"]["current_phase"] == "analyze"
-    assert result["sprint_contract"]["next_phase"] == "retrieve"
-    assert result["sprint_contract"]["evaluator_signature"]["ordered"] is True
-    assert result["sprint_contract"]["evaluator_signature"]["required_pass"] == [
-        "queue_boundary"
-    ]
-    assert any(
-        check["name"] == "queue_ledger"
-        for check in result["sprint_contract"]["evaluator_checks"]
-    )
+    _assert_step_handoffs(result)
+    _assert_agent_summary(result)
+    _assert_sprint_contract(result)
     # ``toon_content`` is stripped from JSON-format responses (it duplicates
     # the structured fields and wastes ~2 KB per call). Each step's
     # ``handoff`` is still asserted via the structured ``steps`` list

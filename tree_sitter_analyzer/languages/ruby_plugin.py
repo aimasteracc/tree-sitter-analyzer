@@ -99,22 +99,21 @@ class RubyElementExtractor(ElementExtractor):
         self._node_text_cache[cache_key] = text
         return text
 
-    def _determine_visibility(self, node: tree_sitter.Node) -> str:
-        """
-        Determine visibility of a method.
+    _VISIBILITY_KEYWORDS: frozenset[str] = frozenset({"private", "protected", "public"})
 
-        In Ruby, visibility is typically set using private, protected, public keywords.
-        Default is public for methods.
-
-        Args:
-            node: Method node
-
-        Returns:
-            Visibility string ("public", "private", "protected")
-        """
-        # TODO: Implement visibility detection by looking for visibility modifiers
-        # For now, default to public
-        return "public"
+    def _determine_visibility(self, node: tree_sitter.Node | None) -> str:
+        """Determine visibility by scanning preceding siblings for private/protected/public."""
+        if node is None or node.parent is None:
+            return "public"
+        current = "public"
+        for child in node.parent.children:
+            if child.start_byte == node.start_byte:
+                break
+            if child.type == "identifier":
+                text = child.text.decode(errors="replace") if child.text else ""
+                if text in self._VISIBILITY_KEYWORDS:
+                    current = text
+        return current
 
     def extract_classes(self, tree: tree_sitter.Tree, source_code: str) -> list[Class]:
         """

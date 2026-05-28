@@ -256,52 +256,41 @@ def build_next_steps(
     return steps[:3]
 
 
+def _validate_string_arg(
+    arguments: dict[str, Any],
+    key: str,
+    *,
+    non_empty: bool = False,
+    allowed: list[str] | None = None,
+) -> None:
+    """Raise ValueError if ``key`` is present but fails type/value constraints."""
+    if key not in arguments:
+        return
+    val = arguments[key]
+    if not isinstance(val, str):
+        raise ValueError(f"{key} must be a string")
+    if non_empty and not val.strip():
+        raise ValueError(f"{key} cannot be empty")
+    if allowed and val not in allowed:
+        raise ValueError(f"{key} must be one of: {', '.join(allowed)}")
+
+
 # validate_query_arguments: implementation
 # Validates all input parameters before executing a query
 def validate_query_arguments(arguments: dict[str, Any]) -> bool:
     """Validate file_path/symbol, query_key/query_string, and format options."""
-    # At least one of file_path or symbol must be present
     if "file_path" not in arguments and "symbol" not in arguments:
         raise ValueError("file_path or symbol is required")
-    # Validate file_path if provided
-    if "file_path" in arguments:
-        fp = arguments["file_path"]
-        if not isinstance(fp, str):
-            raise ValueError("file_path must be a string")
-        if not fp.strip():
-            raise ValueError("file_path cannot be empty")
-    # At least one query parameter is required
+    _validate_string_arg(arguments, "file_path", non_empty=True)
     if not arguments.get("query_key") and not arguments.get("query_string"):
         raise ValueError("Either query_key or query_string must be provided")
-    # Validate query_key type
-    if "query_key" in arguments and not isinstance(arguments["query_key"], str):
-        raise ValueError("query_key must be a string")
-    # Validate query_string type
-    if "query_string" in arguments and not isinstance(arguments["query_string"], str):
-        raise ValueError("query_string must be a string")
-    # Validate string-type optional fields
-    for key in ["language", "filter"]:
-        if key in arguments and not isinstance(arguments[key], str):
-            raise ValueError(f"{key} must be a string")
-    # Validate result_format enum
-    if "result_format" in arguments:
-        if not isinstance(arguments["result_format"], str):
-            raise ValueError("result_format must be a string")
-        if arguments["result_format"] not in ["json", "summary"]:
-            raise ValueError("result_format must be one of: json, summary")
-    # Validate output_format enum
-    if "output_format" in arguments:
-        if not isinstance(arguments["output_format"], str):
-            raise ValueError("output_format must be a string")
-        if arguments["output_format"] not in ["json", "toon"]:
-            raise ValueError("output_format must be one of: json, toon")
-    # Validate output_file path
-    if "output_file" in arguments:
-        if not isinstance(arguments["output_file"], str):
-            raise ValueError("output_file must be a string")
-        if not arguments["output_file"].strip():
-            raise ValueError("output_file cannot be empty")
-    # Validate suppress_output flag
+    _validate_string_arg(arguments, "query_key")
+    _validate_string_arg(arguments, "query_string")
+    _validate_string_arg(arguments, "language")
+    _validate_string_arg(arguments, "filter")
+    _validate_string_arg(arguments, "result_format", allowed=["json", "summary"])
+    _validate_string_arg(arguments, "output_format", allowed=["json", "toon"])
+    _validate_string_arg(arguments, "output_file", non_empty=True)
     if "suppress_output" in arguments and not isinstance(
         arguments["suppress_output"], bool
     ):

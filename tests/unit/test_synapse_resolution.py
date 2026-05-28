@@ -16,10 +16,12 @@ from __future__ import annotations
 import shutil
 import sqlite3
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
 from tree_sitter_analyzer.ast_cache import ASTCache
+from tree_sitter_analyzer.callee_resolution import CalleeResolver
 
 _FIXTURE_DIR = Path(__file__).resolve().parent.parent / "fixtures" / "synapse"
 
@@ -424,6 +426,79 @@ class TestResolverModuleSurface:
             assert resolved.resolved_file.endswith("local_calls.py")
         finally:
             cache.close()
+
+    def test_resolve_callee_uses_shared_resolver_for_local_and_import(self) -> None:
+        """Synapse keeps its cascade while sharing local/import resolution."""
+        from tree_sitter_analyzer import synapse_resolver
+
+        ctx = synapse_resolver.ResolverContext(
+            project_root="",
+            cache=None,  # type: ignore[arg-type]
+            builtins={"python": frozenset()},
+            stdlib_modules={"python": frozenset()},
+            callee_resolver=CalleeResolver(
+                functions_by_name={
+                    "bar": [{"name": "bar", "file": "a.py", "id": 1}],
+                    "baz": [
+                        {"name": "baz", "file": "a.py", "id": 2},
+                        {"name": "baz", "file": "b.py", "id": 3},
+                    ],
+                },
+                functions_by_file={
+                    "a.py": [
+                        {"name": "bar", "file": "a.py", "id": 1},
+                        {"name": "baz", "file": "a.py", "id": 2},
+                    ],
+                    "b.py": [{"name": "baz", "file": "b.py", "id": 3}],
+                },
+                name_to_source={"a.py": {"bb": "b.py"}},
+            ),
+        )
+
+        local = synapse_resolver.resolve_callee("bar", "a.py", ctx)
+        imported = synapse_resolver.resolve_callee("bb.baz", "a.py", ctx)
+
+        assert local.resolution == "local"
+        assert local.callee_symbol_id == 1
+        assert imported.resolution == "project"
+        assert imported.callee_symbol_id == 3
+        assert imported.resolved_file == "b.py"
+
+    def test_convenience_context_loads_lazily_and_reuses_lru_cache(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Constructing ResolverContext should be cheap; first use loads maps."""
+        from tree_sitter_analyzer.synapse_resolver import _context
+
+        cache = MagicMock()
+        cache.project_root = "/repo"
+        cache.db_path = "/repo/.ast-cache/index.db"
+        monkeypatch.setattr(
+            _context,
+            "_cache_identity",
+            lambda _cache: ("/repo/.ast-cache/index.db", 1, 2),
+        )
+
+        built = _context.ResolverContext(
+            project_root="/repo",
+            cache=cache,
+            file_symbols={"a.py": [("run", "function", 1)]},
+            builtins={"python": frozenset()},
+            stdlib_modules={"python": frozenset()},
+        )
+        build = MagicMock(return_value=built)
+        monkeypatch.setattr(_context, "_build_resolver_context_uncached", build)
+        _context.clear_resolver_context_cache()
+
+        ctx = _context.ResolverContext(project_root="/repo", cache=cache)
+        assert build.call_count == 0
+
+        assert ctx.file_symbols == {"a.py": [("run", "function", 1)]}
+        assert build.call_count == 1
+
+        ctx2 = _context.ResolverContext(project_root="/repo", cache=cache)
+        assert ctx2.file_symbols == {"a.py": [("run", "function", 1)]}
+        assert build.call_count == 1
 
 
 # ---------------------------------------------------------------------------

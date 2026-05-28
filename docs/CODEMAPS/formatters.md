@@ -9,7 +9,7 @@ Output formats supported by both CLI and MCP. Located in `tree_sitter_analyzer/f
 |---|---|---|---|
 | `toon` | `toon_formatter.py` | **MCP** | LLM agents — 73% smaller than JSON |
 | `json` | `json_formatter.py` | **CLI** | `jq` piping, programmatic ingestion |
-| `table` | `tree_sitter_analyzer/default_table_formatter.py` + `legacy_table_formatter.py` (top-level, not under `formatters/`) | `--table` flag | Terminal viewing with box-drawing chars |
+| `table` | `formatters/table_formatter.py` (canonical, re-exports `LegacyTableFormatter`) + `tree_sitter_analyzer/default_table_formatter.py` + `legacy_table_formatter.py` | `--table` flag | Terminal viewing with box-drawing chars |
 | `csv` | via `tree_sitter_analyzer/_legacy_table_formatter_csv.py` | `--table csv` | Spreadsheet ingestion |
 | `yaml` | `yaml_formatter.py` | explicit `--format yaml` | Human-readable structured |
 

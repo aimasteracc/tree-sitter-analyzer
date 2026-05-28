@@ -18,96 +18,44 @@ READMEs, and any Markdown context without a running server.
 from __future__ import annotations
 
 from collections import defaultdict
-from pathlib import Path
 from typing import Any
 
-from ...call_graph import CachedCallGraph, CallGraph
+from ...call_graph import CallGraph
 from ...utils import setup_logger
-from ..utils.auto_index_guard import ensure_indexed
 from ..utils.format_helper import apply_toon_format_to_response
 from ._response_builder import build_error, build_response
 from .base_tool import BaseMCPTool
+from .codegraph_visualization_hub import (
+    CodeGraphVisualizationHub,
+)
+from .codegraph_visualization_hub import (
+    render_call_flowchart as _render_mermaid,
+)
+from .codegraph_visualization_hub import (
+    safe_node_id as _safe_node_id,
+)
+from .codegraph_visualization_hub import (
+    short_label as _short_label,
+)
 
 logger = setup_logger(__name__)
 
 _MAX_EDGES_DEFAULT = 150
 _MAX_DEPTH_DEFAULT = 3
-_MAX_NODES_FULL = 80
-
-
-def _safe_node_id(name: str, file_path: str) -> str:
-    raw = f"{file_path}::{name}"
-    return "".join(c if c.isalnum() or c == "_" else "_" for c in raw)
-
-
-def _short_label(name: str, file_path: str) -> str:
-    parts = Path(file_path).parts
-    short_file = parts[-1] if parts else file_path
-    return f"{short_file}::{name}"
-
-
-def _render_mermaid(
-    edges: list[tuple[str, str, str, str]],
-    direction: str = "TD",
-) -> str:
-    lines: list[str] = [f"flowchart {direction}"]
-
-    node_ids = set()
-    for src_id, _, dst_id, _ in edges:
-        node_ids.add(src_id)
-        node_ids.add(dst_id)
-
-    if not node_ids:
-        lines.append('    empty["No call edges found"]')
-        return "\n".join(lines)
-
-    id_to_label: dict[str, str] = {}
-    for src_id, src_label, dst_id, dst_label in edges:
-        id_to_label[src_id] = src_label
-        id_to_label[dst_id] = dst_label
-
-    seen_ids: set[str] = set()
-    for nid, label in sorted(id_to_label.items()):
-        if nid not in seen_ids:
-            seen_ids.add(nid)
-            escaped = label.replace('"', "'")
-            lines.append(f'    {nid}["{escaped}"]')
-
-    seen_edges: set[tuple[str, str]] = set()
-    for src_id, _, dst_id, _ in edges:
-        pair = (src_id, dst_id)
-        if pair not in seen_edges:
-            seen_edges.add(pair)
-            lines.append(f"    {src_id} --> {dst_id}")
-
-    return "\n".join(lines)
 
 
 class CodeGraphVisualizeTool(BaseMCPTool):
     """MCP Tool for Mermaid call graph visualization (CodeGraph parity)."""
 
     def __init__(self, project_root: str | None = None) -> None:
-        self._call_graph: CallGraph | None = None
+        self._visualization_hub = CodeGraphVisualizationHub(project_root)
         super().__init__(project_root)
 
     def _on_project_root_changed(self, project_root: str | None) -> None:
-        self._call_graph = None
+        self._visualization_hub.reset(project_root)
 
     def _get_call_graph(self) -> CallGraph | None:
-        if self._call_graph is not None:
-            return self._call_graph
-        cache = ensure_indexed(self.project_root)
-        if cache is not None:
-            # ensure_indexed only returns non-None when project_root was usable.
-            assert self.project_root is not None
-            self._call_graph = CachedCallGraph(self.project_root, cache)
-            return self._call_graph
-        if self.project_root:
-            cg = CallGraph(self.project_root)
-            cg.build()
-            self._call_graph = cg
-            return cg
-        return None
+        return self._visualization_hub.call_graph()
 
     def get_tool_definition(self) -> dict[str, Any]:
         return {

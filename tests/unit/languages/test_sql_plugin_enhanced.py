@@ -8,6 +8,7 @@ and metadata support for the redesigned SQL output format.
 
 import os
 import tempfile
+from collections import defaultdict
 from pathlib import Path
 
 import pytest
@@ -26,6 +27,88 @@ from tree_sitter_analyzer.models import (
     SQLTrigger,
     SQLView,
 )
+
+
+def _group_by_sql_type(sql_elements: list) -> dict:
+    """Group SQL elements by their sql_element_type."""
+    by_type: dict = defaultdict(list)
+    for element in sql_elements:
+        by_type[element.sql_element_type].append(element)
+    return dict(by_type)
+
+
+def _check_enhanced_sql_elements(elements_by_type: dict) -> None:
+    """Assert expected SQL elements for test_enhanced_sql_element_extraction."""
+    if SQLElementType.TABLE in elements_by_type:
+        tables = elements_by_type[SQLElementType.TABLE]
+        table_names = {table.name for table in tables}
+        assert "users" in table_names
+        users_table = next((t for t in tables if t.name == "users"), None)
+        if users_table and hasattr(users_table, "columns"):
+            assert len(users_table.columns) > 0
+    if SQLElementType.VIEW in elements_by_type:
+        view_names = {view.name for view in elements_by_type[SQLElementType.VIEW]}
+        assert "active_users" in view_names
+    if SQLElementType.PROCEDURE in elements_by_type:
+        proc_names = {p.name for p in elements_by_type[SQLElementType.PROCEDURE]}
+        assert "get_user_orders" in proc_names
+    if SQLElementType.FUNCTION in elements_by_type:
+        func_names = {f.name for f in elements_by_type[SQLElementType.FUNCTION]}
+        assert "calculate_total" in func_names
+
+
+def _check_sample_db_sql_elements(elements_by_type: dict) -> None:
+    """Assert expected SQL elements for test_sample_database_sql_enhanced_extraction."""
+    expected_tables = {"users", "orders", "products"}
+    expected_views = {"active_users", "order_summary"}
+    expected_procedures = {"get_user_orders", "update_product_stock"}
+    expected_functions = {"calculate_order_total", "is_user_active"}
+    expected_triggers = {"update_order_total", "log_user_changes"}
+    expected_indexes = {
+        "idx_users_email",
+        "idx_users_status",
+        "idx_orders_user_id",
+        "idx_orders_date",
+        "idx_products_category",
+        "idx_products_name",
+        "idx_orders_user_date",
+    }
+    if SQLElementType.TABLE in elements_by_type:
+        table_names = {t.name for t in elements_by_type[SQLElementType.TABLE]}
+        assert len(table_names & expected_tables) > 0, (
+            f"Expected some tables from {expected_tables}, got {table_names}"
+        )
+    if SQLElementType.VIEW in elements_by_type:
+        view_names = {v.name for v in elements_by_type[SQLElementType.VIEW]}
+        assert len(view_names & expected_views) > 0, (
+            f"Expected some views from {expected_views}, got {view_names}"
+        )
+    if SQLElementType.PROCEDURE in elements_by_type:
+        proc_names = {p.name for p in elements_by_type[SQLElementType.PROCEDURE]}
+        assert len(proc_names & expected_procedures) > 0, (
+            f"Expected some procedures from {expected_procedures}, got {proc_names}"
+        )
+    if SQLElementType.FUNCTION in elements_by_type:
+        func_names = {f.name for f in elements_by_type[SQLElementType.FUNCTION]}
+        assert len(func_names & expected_functions) > 0, (
+            f"Expected some functions from {expected_functions}, got {func_names}"
+        )
+    if SQLElementType.TRIGGER in elements_by_type:
+        trigger_names = {
+            name
+            for name in (t.name for t in elements_by_type[SQLElementType.TRIGGER])
+            if name.lower() not in ["order_date", "user_id", "int", "text", "varchar"]
+        }
+        found_triggers = trigger_names & expected_triggers
+        if trigger_names:
+            assert len(found_triggers) > 0, (
+                f"Expected some triggers from {expected_triggers}, got {trigger_names}"
+            )
+    if SQLElementType.INDEX in elements_by_type:
+        index_names = {i.name for i in elements_by_type[SQLElementType.INDEX]}
+        assert len(index_names & expected_indexes) > 0, (
+            f"Expected some indexes from {expected_indexes}, got {index_names}"
+        )
 
 
 class TestEnhancedSQLElementExtraction:
@@ -350,60 +433,24 @@ CREATE UNIQUE INDEX idx_users_username ON users(username);
             assert result.language == "sql"
 
             if result.success:
-                # Check that we have SQL-specific elements
                 sql_elements = [
                     elem
                     for elem in result.elements
                     if hasattr(elem, "sql_element_type")
                 ]
-
+                elements_by_type: dict = {}
                 if sql_elements:
-                    # Group elements by type
-                    elements_by_type = {}
-                    for element in sql_elements:
-                        element_type = element.sql_element_type
-                        if element_type not in elements_by_type:
-                            elements_by_type[element_type] = []
-                        elements_by_type[element_type].append(element)
-
-                    # Check for expected elements
-                    if SQLElementType.TABLE in elements_by_type:
-                        tables = elements_by_type[SQLElementType.TABLE]
-                        table_names = {table.name for table in tables}
-                        assert "users" in table_names
-
-                        # Check table metadata
-                        users_table = next(
-                            (t for t in tables if t.name == "users"), None
-                        )
-                        if users_table and hasattr(users_table, "columns"):
-                            assert len(users_table.columns) > 0
-
-                    if SQLElementType.VIEW in elements_by_type:
-                        views = elements_by_type[SQLElementType.VIEW]
-                        view_names = {view.name for view in views}
-                        assert "active_users" in view_names
-
-                    if SQLElementType.PROCEDURE in elements_by_type:
-                        procedures = elements_by_type[SQLElementType.PROCEDURE]
-                        procedure_names = {proc.name for proc in procedures}
-                        assert "get_user_orders" in procedure_names
-
-                    if SQLElementType.FUNCTION in elements_by_type:
-                        functions = elements_by_type[SQLElementType.FUNCTION]
-                        function_names = {func.name for func in functions}
-                        assert "calculate_total" in function_names
-
+                    elements_by_type = _group_by_sql_type(sql_elements)
+                    _check_enhanced_sql_elements(elements_by_type)
                 if SQLElementType.TRIGGER in elements_by_type:
-                    triggers = elements_by_type[SQLElementType.TRIGGER]
-                    trigger_names = {trigger.name for trigger in triggers}
-                    # Trigger name extraction has issues, skip for now
-                    # assert "update_timestamp" in trigger_names
-                    assert len(trigger_names) > 0  # At least verify triggers are found
-
+                    trigger_names = {
+                        t.name for t in elements_by_type[SQLElementType.TRIGGER]
+                    }
+                    assert len(trigger_names) > 0
                     if SQLElementType.INDEX in elements_by_type:
-                        indexes = elements_by_type[SQLElementType.INDEX]
-                        index_names = {index.name for index in indexes}
+                        index_names = {
+                            i.name for i in elements_by_type[SQLElementType.INDEX]
+                        }
                         assert (
                             "idx_users_email" in index_names
                             or "idx_users_username" in index_names
@@ -430,99 +477,11 @@ CREATE UNIQUE INDEX idx_users_username ON users(username);
         assert result.language == "sql"
 
         if result.success:
-            # Check for SQL-specific elements
             sql_elements = [
                 elem for elem in result.elements if hasattr(elem, "sql_element_type")
             ]
-
             if sql_elements:
-                # Group by type
-                elements_by_type = {}
-                for element in sql_elements:
-                    element_type = element.sql_element_type
-                    if element_type not in elements_by_type:
-                        elements_by_type[element_type] = []
-                    elements_by_type[element_type].append(element)
-
-                # Expected elements from sample_database.sql
-                expected_tables = {"users", "orders", "products"}
-                expected_views = {"active_users", "order_summary"}
-                expected_procedures = {"get_user_orders", "update_product_stock"}
-                expected_functions = {"calculate_order_total", "is_user_active"}
-                expected_triggers = {"update_order_total", "log_user_changes"}
-                expected_indexes = {
-                    "idx_users_email",
-                    "idx_users_status",
-                    "idx_orders_user_id",
-                    "idx_orders_date",
-                    "idx_products_category",
-                    "idx_products_name",
-                    "idx_orders_user_date",
-                }
-
-                # Check tables
-                if SQLElementType.TABLE in elements_by_type:
-                    tables = elements_by_type[SQLElementType.TABLE]
-                    table_names = {table.name for table in tables}
-                    found_tables = table_names & expected_tables
-                    assert len(found_tables) > 0, (
-                        f"Expected some tables from {expected_tables}, got {table_names}"
-                    )
-
-                # Check views
-                if SQLElementType.VIEW in elements_by_type:
-                    views = elements_by_type[SQLElementType.VIEW]
-                    view_names = {view.name for view in views}
-                    found_views = view_names & expected_views
-                    assert len(found_views) > 0, (
-                        f"Expected some views from {expected_views}, got {view_names}"
-                    )
-
-                # Check procedures
-                if SQLElementType.PROCEDURE in elements_by_type:
-                    procedures = elements_by_type[SQLElementType.PROCEDURE]
-                    procedure_names = {proc.name for proc in procedures}
-                    found_procedures = procedure_names & expected_procedures
-                    assert len(found_procedures) > 0, (
-                        f"Expected some procedures from {expected_procedures}, got {procedure_names}"
-                    )
-
-                # Check functions
-                if SQLElementType.FUNCTION in elements_by_type:
-                    functions = elements_by_type[SQLElementType.FUNCTION]
-                    function_names = {func.name for func in functions}
-                    found_functions = function_names & expected_functions
-                    assert len(found_functions) > 0, (
-                        f"Expected some functions from {expected_functions}, got {function_names}"
-                    )
-
-                # Check triggers
-                # Note: Trigger detection is environment-dependent and may vary
-                if SQLElementType.TRIGGER in elements_by_type:
-                    triggers = elements_by_type[SQLElementType.TRIGGER]
-                    trigger_names = {trigger.name for trigger in triggers}
-                    # Filter out common false positives (SQL keywords misidentified as triggers)
-                    trigger_names = {
-                        name
-                        for name in trigger_names
-                        if name.lower()
-                        not in ["order_date", "user_id", "int", "text", "varchar"]
-                    }
-                    found_triggers = trigger_names & expected_triggers
-                    # Only assert if we found any triggers after filtering
-                    if len(trigger_names) > 0:
-                        assert len(found_triggers) > 0, (
-                            f"Expected some triggers from {expected_triggers}, got {trigger_names}"
-                        )
-
-                # Check indexes
-                if SQLElementType.INDEX in elements_by_type:
-                    indexes = elements_by_type[SQLElementType.INDEX]
-                    index_names = {index.name for index in indexes}
-                    found_indexes = index_names & expected_indexes
-                    assert len(found_indexes) > 0, (
-                        f"Expected some indexes from {expected_indexes}, got {index_names}"
-                    )
+                _check_sample_db_sql_elements(_group_by_sql_type(sql_elements))
 
     def test_sql_element_metadata_extraction(self, plugin: SQLPlugin) -> None:
         """Test detailed metadata extraction for SQL elements"""

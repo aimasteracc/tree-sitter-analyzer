@@ -35,6 +35,7 @@ from .formatter_registry import (
     IStructureFormatter,
     JsonFormatter,
 )
+from .table_formatter import TableFormatter
 
 __all__ = [
     # Primary API
@@ -46,4 +47,6 @@ __all__ = [
     "CsvFormatter",
     "FullFormatter",
     "CompactFormatter",
+    # Table formatter (canonical location, Phase 7)
+    "TableFormatter",
 ]

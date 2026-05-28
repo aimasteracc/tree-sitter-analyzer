@@ -22,6 +22,8 @@ import sqlite3
 from dataclasses import dataclass, field
 from typing import Any
 
+from .codegraph_query_backend import CodeGraphQueryBackend
+
 logger = logging.getLogger(__name__)
 
 _DEFINITION_KINDS = frozenset({"function", "class", "method", "variable"})
@@ -144,6 +146,19 @@ def _build_module_to_file_map(cache: Any) -> dict[str, str]:
     return module_map
 
 
+def _definition_location(item: dict[str, Any]) -> DefinitionLocation:
+    return DefinitionLocation(
+        file=str(item.get("file", "")),
+        name=str(item.get("name", "")),
+        kind=str(item.get("kind", "")),
+        line=int(item.get("line", 0) or 0),
+        end_line=int(item.get("end_line", 0) or 0),
+        language=str(item.get("language", "")),
+        confidence=float(item.get("confidence", 1.0) or 1.0),
+        context=str(item.get("context", "")),
+    )
+
+
 class SymbolResolver:
     """Resolve symbol definitions and find references using the AST cache.
 
@@ -154,6 +169,7 @@ class SymbolResolver:
 
     def __init__(self, cache: Any) -> None:
         self._cache = cache
+        self._definition_backend = CodeGraphQueryBackend(cache)
         self._import_map: dict[str, list[Any]] | None = None
         self._module_to_file: dict[str, str] | None = None
 
@@ -183,69 +199,10 @@ class SymbolResolver:
         return definitions
 
     def _resolve_simple(self, name: str) -> list[DefinitionLocation]:
-        results: list[DefinitionLocation] = []
-        if self._cache._fts5_available:
-            fts_results = self._cache.fts_search(name, limit=50)
-            for r in fts_results:
-                if r.get("name") == name and r.get("kind") in _DEFINITION_KINDS:
-                    results.append(
-                        DefinitionLocation(
-                            file=r["file"],
-                            name=r["name"],
-                            kind=r["kind"],
-                            line=r.get("line", 0),
-                            end_line=r.get("end_line", 0),
-                            language=r.get("language", ""),
-                            confidence=1.0,
-                        )
-                    )
-        if not results:
-            conn = self._cache._get_conn()
-            rows = conn.execute(
-                """SELECT name, kind, file_path, language, line, end_line
-                   FROM ast_symbol_rows
-                   WHERE name = ? AND kind IN ('function', 'class', 'method', 'variable')
-                   ORDER BY file_path, line""",
-                (name,),
-            ).fetchall()
-            for row in rows:
-                results.append(
-                    DefinitionLocation(
-                        file=row["file_path"],
-                        name=row["name"],
-                        kind=row["kind"],
-                        line=row["line"],
-                        end_line=row["end_line"],
-                        language=row["language"],
-                        confidence=1.0,
-                    )
-                )
-        if not results:
-            results = self._search_symbols_json(name)
-        return results
-
-    def _search_symbols_json(self, name: str) -> list[DefinitionLocation]:
-        conn = self._cache._get_conn()
-        rows = conn.execute(
-            "SELECT file_path, symbols_json, language FROM ast_index"
-        ).fetchall()
-        results: list[DefinitionLocation] = []
-        for row in rows:
-            symbols = json.loads(row["symbols_json"])
-            for sym in symbols.get("symbols", []):
-                if sym.get("name") == name and sym.get("kind") in _DEFINITION_KINDS:
-                    results.append(
-                        DefinitionLocation(
-                            file=row["file_path"],
-                            name=name,
-                            kind=sym["kind"],
-                            line=sym.get("line", 0),
-                            end_line=sym.get("end_line", 0),
-                            language=row["language"],
-                            confidence=0.9,
-                        )
-                    )
-        return results
+        return [
+            _definition_location(item)
+            for item in self._definition_backend.resolve_definitions(name)
+        ]
 
     def _resolve_qualified(
         self, parts: list[str], short_name: str

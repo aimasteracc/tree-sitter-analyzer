@@ -5,12 +5,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from ...uml_export import UMLExporter
 from ...utils import setup_logger
-from ..utils.auto_index_guard import ensure_indexed
 from ..utils.format_helper import apply_toon_format_to_response
 from ._response_builder import build_error, build_response
 from .base_tool import BaseMCPTool
+from .codegraph_visualization_hub import CodeGraphVisualizationHub
 
 logger = setup_logger(__name__)
 
@@ -116,8 +115,12 @@ class CodeGraphUMLTool(BaseMCPTool):
 
         output_format = arguments.get("output_format", "toon")
         diagram_type = arguments.get("diagram", "class")
-        cache = ensure_indexed(self.project_root)
-        exporter = UMLExporter(self.project_root, cache)
+        exporter = CodeGraphVisualizationHub(self.project_root).uml_exporter()
+        if exporter is None:
+            return apply_toon_format_to_response(
+                build_error(error="Project root not set."),
+                output_format,
+            )
 
         if diagram_type == "class":
             diagram = exporter.class_diagram(

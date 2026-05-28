@@ -288,6 +288,80 @@ def _parse_codex_stream(lines: list[str]) -> tuple[str, dict[str, Any], str | No
     return answer, usage, error
 
 
+def _parse_claude_result_from_stream(
+    stream_lines: list[str],
+) -> tuple[str, str | None, dict[str, Any]]:
+    """Extract answer, error, and raw_result from a claude stream-json output."""
+    answer = ""
+    error: str | None = None
+    raw_result: dict[str, Any] = {}
+    for line in reversed(stream_lines):
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if event.get("type") != "result":
+            continue
+        raw_result = event
+        if event.get("is_error"):
+            error = event.get("result", "unknown error")
+            answer = "ERROR"
+        else:
+            answer = event.get("result", "")
+        break
+    if not answer and not error:
+        error = "No result event found in stream output"
+    return answer, error, raw_result
+
+
+def _build_agent_cmd(
+    arm_id: str,
+    model: str,
+    repo_path: Path,
+    run_config: RunConfig,
+    allowed_tools_str: str,
+    disallowed_tools_str: str,
+    agent_backend: str,
+) -> list[str]:
+    """Build the CLI command list for the given agent backend."""
+    if agent_backend == "claude":
+        cmd = [
+            "claude",
+            "--print",
+            "--output-format",
+            "stream-json",
+            "--verbose",
+            "--no-session-persistence",
+            "--model",
+            model,
+            "--add-dir",
+            str(repo_path),
+            "--append-system-prompt",
+            run_config.system_prompt,
+            "--allowed-tools",
+            allowed_tools_str,
+        ]
+        if disallowed_tools_str:
+            cmd += ["--disallowed-tools", disallowed_tools_str]
+        return cmd
+    sandbox = _codex_sandbox_for_arm(arm_id)
+    return [
+        "codex",
+        "--ask-for-approval",
+        "never",
+        "exec",
+        "--json",
+        "--ephemeral",
+        "--sandbox",
+        sandbox,
+        "--model",
+        model,
+        "-C",
+        str(repo_path),
+        "-",
+    ]
+
+
 def _usage_int(usage: dict[str, Any], key: str) -> int:
     value = usage.get(key, 0)
     return int(value or 0)
@@ -391,42 +465,15 @@ def run_one(
     # Build agent CLI command. Claude has stronger tool allowlisting; Codex
     # gets the same restrictions as explicit prompt text because codex exec
     # currently exposes sandbox controls rather than per-tool allowlists.
-    if agent_backend == "claude":
-        cmd = [
-            "claude",
-            "--print",
-            "--output-format",
-            "stream-json",
-            "--verbose",
-            "--no-session-persistence",
-            "--model",
-            model,
-            "--add-dir",
-            str(repo_path),
-            "--append-system-prompt",
-            run_config.system_prompt,
-            "--allowed-tools",
-            allowed_tools_str,
-        ]
-        if disallowed_tools_str:
-            cmd += ["--disallowed-tools", disallowed_tools_str]
-    else:
-        sandbox = _codex_sandbox_for_arm(arm_id)
-        cmd = [
-            "codex",
-            "--ask-for-approval",
-            "never",
-            "exec",
-            "--json",
-            "--ephemeral",
-            "--sandbox",
-            sandbox,
-            "--model",
-            model,
-            "-C",
-            str(repo_path),
-            "-",
-        ]
+    cmd = _build_agent_cmd(
+        arm_id,
+        model,
+        repo_path,
+        run_config,
+        allowed_tools_str,
+        disallowed_tools_str,
+        agent_backend,
+    )
 
     # Run — prompt via stdin
     error: str | None = None
@@ -461,22 +508,9 @@ def run_one(
                     f"{agent_backend} CLI exited {proc.returncode}: {proc.stderr[:500]}"
                 )
             elif agent_backend == "claude":
-                # Extract result event (last line is usually the result)
-                for line in reversed(stream_lines):
-                    try:
-                        event = json.loads(line)
-                        if event.get("type") == "result":
-                            raw_result = event
-                            if event.get("is_error"):
-                                error = event.get("result", "unknown error")
-                                answer = "ERROR"
-                            else:
-                                answer = event.get("result", "")
-                            break
-                    except json.JSONDecodeError:
-                        continue
-                if not answer and not error:
-                    error = "No result event found in stream output"
+                answer, error, raw_result = _parse_claude_result_from_stream(
+                    stream_lines
+                )
 
         except subprocess.TimeoutExpired:
             error = f"Timed out after {timeout_seconds}s"

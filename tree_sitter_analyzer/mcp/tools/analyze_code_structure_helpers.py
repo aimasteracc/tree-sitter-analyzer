@@ -213,7 +213,7 @@ def _convert_class(cls: Any) -> dict[str, Any]:
         "visibility": "public",
         "extends": getattr(cls, "extends_class", None),
         "implements": getattr(cls, "implements_interfaces", []),
-        "annotations": [],
+        "annotations": getattr(cls, "annotations", []),
     }
 
 
@@ -232,7 +232,7 @@ def _convert_method(method: Any, get_params: Any, get_mods: Any) -> dict[str, An
         "is_constructor": getattr(method, "is_constructor", False),
         "complexity_score": getattr(method, "complexity_score", 0),
         "modifiers": get_mods(method),
-        "annotations": [],
+        "annotations": getattr(method, "annotations", []),
     }
 
 
@@ -247,7 +247,7 @@ def _convert_field(field: Any, get_mods: Any) -> dict[str, Any]:
         },
         "visibility": getattr(field, "visibility", "private"),
         "modifiers": get_mods(field),
-        "annotations": [],
+        "annotations": getattr(field, "annotations", []),
     }
 
 

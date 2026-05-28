@@ -84,28 +84,38 @@ def extract_attributes(
     get_node_text: Callable[..., str],
     attribute_cache: dict[tuple[int, int], list[dict[str, Any]]],
 ) -> list[dict[str, Any]]:
-    """Extract attributes (annotations) from a node."""
+    """Extract attributes (annotations) from a node's direct children.
+
+    In the tree-sitter-c-sharp grammar, attribute_list nodes appear as the
+    first children of declaration nodes (class_declaration, method_declaration,
+    etc.), not as prev_sibling nodes. Walking prev_sibling finds nothing.
+    """
     cache_key = (node.start_byte, node.end_byte)
     if cache_key in attribute_cache:
         return attribute_cache[cache_key]
 
     attributes: list[dict[str, Any]] = []
-    prev_sibling = node.prev_sibling
-    while prev_sibling:
-        if prev_sibling.type == "attribute_list":
-            attr_text = get_node_text(prev_sibling)
-            attributes.append(
-                {
-                    "name": attr_text.strip("[]"),
-                    "line": prev_sibling.start_point[0] + 1,
-                    "text": attr_text,
-                }
-            )
-        elif prev_sibling.type not in ("comment", "line_comment", "block_comment"):
-            break
-        prev_sibling = prev_sibling.prev_sibling
+    for child in node.children:
+        if child.type != "attribute_list":
+            break  # attribute_lists come first; stop on first non-attribute child
+        attr_list_text = get_node_text(child)
+        for attr_node in child.children:
+            if attr_node.type != "attribute":
+                continue
+            attr_name = None
+            for sub in attr_node.children:
+                if sub.type in ("identifier", "qualified_name", "generic_name"):
+                    attr_name = get_node_text(sub)
+                    break
+            if attr_name:
+                attributes.append(
+                    {
+                        "name": attr_name,
+                        "line": child.start_point[0] + 1,
+                        "text": attr_list_text,
+                    }
+                )
 
-    attributes.reverse()
     attribute_cache[cache_key] = attributes
     return attributes
 

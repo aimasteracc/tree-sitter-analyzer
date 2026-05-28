@@ -54,13 +54,7 @@ async def test_class_diagram_execute_with_mock_exporter(monkeypatch) -> None:
     from tree_sitter_analyzer.mcp.tools import uml_tool
     from tree_sitter_analyzer.uml_export import UMLDiagram, UMLEdge
 
-    monkeypatch.setattr(uml_tool, "ensure_indexed", lambda project_root: object())
-
     class FakeExporter:
-        def __init__(self, project_root: str, cache: object | None = None) -> None:
-            assert project_root == "/repo"
-            assert cache is not None
-
         def class_diagram(
             self, max_edges: int, include_external_bases: bool
         ) -> UMLDiagram:
@@ -74,7 +68,14 @@ async def test_class_diagram_execute_with_mock_exporter(monkeypatch) -> None:
                 edges=[UMLEdge("Base", "Child")],
             )
 
-    monkeypatch.setattr(uml_tool, "UMLExporter", FakeExporter)
+    class FakeHub:
+        def __init__(self, project_root: str) -> None:
+            assert project_root == "/repo"
+
+        def uml_exporter(self) -> FakeExporter:
+            return FakeExporter()
+
+    monkeypatch.setattr(uml_tool, "CodeGraphVisualizationHub", FakeHub)
 
     tool = CodeGraphUMLTool("/repo")
     result = await tool.execute(
@@ -109,13 +110,7 @@ async def test_execute_dispatches_non_class_diagrams(
     from tree_sitter_analyzer.mcp.tools import uml_tool
     from tree_sitter_analyzer.uml_export import UMLDiagram, UMLEdge
 
-    monkeypatch.setattr(uml_tool, "ensure_indexed", lambda project_root: object())
-
     class FakeExporter:
-        def __init__(self, project_root: str, cache: object | None = None) -> None:
-            assert project_root == "/repo"
-            assert cache is not None
-
         def package_diagram(self, max_edges: int, package_depth: int) -> UMLDiagram:
             assert (max_edges, package_depth) == (7, 3)
             return self._diagram("package")
@@ -150,7 +145,14 @@ async def test_execute_dispatches_non_class_diagrams(
                 edges=[UMLEdge("cli", "mcp")],
             )
 
-    monkeypatch.setattr(uml_tool, "UMLExporter", FakeExporter)
+    class FakeHub:
+        def __init__(self, project_root: str) -> None:
+            assert project_root == "/repo"
+
+        def uml_exporter(self) -> FakeExporter:
+            return FakeExporter()
+
+    monkeypatch.setattr(uml_tool, "CodeGraphVisualizationHub", FakeHub)
 
     arguments = {
         "diagram": diagram,
