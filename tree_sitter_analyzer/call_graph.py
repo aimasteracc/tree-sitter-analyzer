@@ -563,6 +563,58 @@ class CallGraph:
         """
         return self._resolve_targets(func_name, file_path)
 
+    # ------------------------------------------------------------------
+    # Public aliases for internal helper methods (exposed for testing and
+    # external tooling).  The private implementations remain unchanged.
+    # ------------------------------------------------------------------
+
+    @property
+    def is_built(self) -> bool:
+        """Return True after :meth:`build` has been called at least once."""
+        return bool(self._built)
+
+    def find_enclosing_func(
+        self,
+        file_funcs: dict,
+        line_number: int,
+    ) -> "FunctionRef | None":
+        """Public alias for :meth:`_find_enclosing_func`.
+
+        Returns the tightest-enclosing :class:`FunctionRef` for the given
+        *line_number* among *file_funcs*, or ``None`` if the line falls
+        before all known function starts.
+        """
+        return self._find_enclosing_func(file_funcs, line_number)
+
+    def resolve_callee(
+        self,
+        call: dict,
+        current_file: str,
+        imports: dict,
+    ) -> list["FunctionRef"]:
+        """Public alias for :meth:`_resolve_callee`.
+
+        Returns the list of :class:`FunctionRef` objects that *call* resolves
+        to.  See :meth:`_resolve_callee` for full resolution semantics.
+        """
+        return self._resolve_callee(call, current_file, imports)
+
+    def is_excluded(self, path: "Path") -> bool:
+        """Public alias for :meth:`_is_excluded`.
+
+        Returns ``True`` if *path* should be excluded from analysis
+        (hidden directories, __pycache__, node_modules, etc.).
+        """
+        return self._is_excluded(path)
+
+    def iter_source_files(self, supported_exts: set) -> list["Path"]:
+        """Public alias for :meth:`_iter_source_files`.
+
+        Yields source files under the project root whose suffix is in
+        *supported_exts*, skipping excluded directories.
+        """
+        return self._iter_source_files(supported_exts)
+
     def _resolve_targets(
         self, func_name: str, file_path: str | None = None
     ) -> list[FunctionRef]:

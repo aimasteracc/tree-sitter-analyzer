@@ -39,7 +39,7 @@ class TestCallGraphBuild:
     def test_build_python_project(self):
         cg = CallGraph(str(PY_PROJECT))
         cg.build()
-        assert cg._built
+        assert cg.is_built
         funcs = cg.all_functions()
         names = {f["name"] for f in funcs}
         assert "main" in names
@@ -65,7 +65,7 @@ class TestCallGraphBuild:
     def test_build_empty_dir(self, tmp_path):
         cg = CallGraph(str(tmp_path))
         cg.build()
-        assert cg._built
+        assert cg.is_built
         assert cg.all_functions() == []
 
     def test_build_idempotent(self):
@@ -229,7 +229,7 @@ class TestCallGraphInternalMethods:
         ref1 = FunctionRef("main.py", "foo", 10, "python")
         ref2 = FunctionRef("main.py", "bar", 5, "python")
         file_funcs = {"foo": ref1, "bar": ref2}
-        result = cg._find_enclosing_func(file_funcs, 12)
+        result = cg.find_enclosing_func(file_funcs, 12)
         assert result is not None
         assert result.name == "foo"
 
@@ -238,7 +238,7 @@ class TestCallGraphInternalMethods:
         ref1 = FunctionRef("main.py", "outer", 1, "python")
         ref2 = FunctionRef("main.py", "inner", 5, "python")
         file_funcs = {"outer": ref1, "inner": ref2}
-        result = cg._find_enclosing_func(file_funcs, 7)
+        result = cg.find_enclosing_func(file_funcs, 7)
         assert result is not None
         assert result.name == "inner"
 
@@ -246,7 +246,7 @@ class TestCallGraphInternalMethods:
         cg = CallGraph(str(PY_PROJECT))
         ref1 = FunctionRef("main.py", "foo", 10, "python")
         file_funcs = {"foo": ref1}
-        result = cg._find_enclosing_func(file_funcs, 5)
+        result = cg.find_enclosing_func(file_funcs, 5)
         assert result is None
 
     def test_resolve_callee_same_file(self):
@@ -254,7 +254,7 @@ class TestCallGraphInternalMethods:
         ref = FunctionRef("main.py", "foo", 10, "python")
         cg._func_by_name["foo"].append(ref)
         call = {"name": "foo"}
-        result = cg._resolve_callee(call, "main.py", {})
+        result = cg.resolve_callee(call, "main.py", {})
         assert len(result) == 1
         assert result[0].name == "foo"
 
@@ -263,20 +263,20 @@ class TestCallGraphInternalMethods:
         ref = FunctionRef("other.py", "foo", 10, "python")
         cg._func_by_name["foo"].append(ref)
         call = {"name": "foo"}
-        result = cg._resolve_callee(call, "main.py", {})
+        result = cg.resolve_callee(call, "main.py", {})
         assert len(result) == 1
 
     def test_resolve_callee_no_match(self):
         cg = CallGraph(str(PY_PROJECT))
         call = {"name": "nonexistent"}
-        result = cg._resolve_callee(call, "main.py", {})
+        result = cg.resolve_callee(call, "main.py", {})
         assert result == []
 
     def test_is_excluded(self):
         cg = CallGraph(str(PY_PROJECT))
-        assert cg._is_excluded(Path("/tmp/project/__pycache__/foo.py"))
-        assert cg._is_excluded(Path("/tmp/project/.git/config"))
-        assert not cg._is_excluded(Path("/tmp/project/main.py"))
+        assert cg.is_excluded(Path("/tmp/project/__pycache__/foo.py"))
+        assert cg.is_excluded(Path("/tmp/project/.git/config"))
+        assert not cg.is_excluded(Path("/tmp/project/main.py"))
 
     def test_iter_source_files_prunes_hidden_and_generated_dirs(self, tmp_path):
         (tmp_path / "src").mkdir()
@@ -292,7 +292,7 @@ class TestCallGraphInternalMethods:
 
         files = {
             path.relative_to(tmp_path).as_posix()
-            for path in cg._iter_source_files({".py"})
+            for path in cg.iter_source_files({".py"})
         }
 
         assert files == {"src/main.py"}
