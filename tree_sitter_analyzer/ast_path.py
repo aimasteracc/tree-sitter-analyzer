@@ -185,6 +185,43 @@ def _is_named_scope(node_type: str, language: str) -> bool:
     return node_type in _NAMED_SCOPE_TYPES.get(language, set())
 
 
+def _find_and_collect_siblings(
+    node: Any,
+    scope_node: ASTNode,
+    language: str,
+    source: str,
+    siblings: list[ASTNode],
+) -> bool:
+    """Collect sibling scope nodes at the same AST level as scope_node.
+
+    Module-level extraction from _get_siblings so the nested-closure depth
+    doesn't add to the tree-sitter AST nesting of ASTPathNavigator methods.
+    """
+    if not hasattr(node, "start_point"):
+        return False
+    start = node.start_point[0] + 1
+    end = node.end_point[0] + 1
+    if start == scope_node.start_line and end == scope_node.end_line:
+        parent = node.parent
+        if parent and hasattr(parent, "children"):
+            for child in parent.children:
+                if _is_named_scope(child.type, language):
+                    sib = _build_ast_node(child, source, language)
+                    if sib.name and not (
+                        sib.start_line == scope_node.start_line
+                        and sib.end_line == scope_node.end_line
+                    ):
+                        siblings.append(sib)
+        return True
+    if hasattr(node, "children"):
+        for child in node.children:
+            if _find_and_collect_siblings(
+                child, scope_node, language, source, siblings
+            ):
+                return True
+    return False
+
+
 def _build_ast_node(
     node: Any, source: str, language: str, field_name: str | None = None
 ) -> ASTNode:
@@ -368,28 +405,5 @@ class ASTPathNavigator:
         root = tree.root_node
         siblings: list[ASTNode] = []
 
-        def _find_and_collect(node: Any, depth: int = 0) -> bool:
-            if not hasattr(node, "start_point"):
-                return False
-            start = node.start_point[0] + 1
-            end = node.end_point[0] + 1
-            if start == scope_node.start_line and end == scope_node.end_line:
-                parent = node.parent
-                if parent and hasattr(parent, "children"):
-                    for child in parent.children:
-                        if _is_named_scope(child.type, language):
-                            sib = _build_ast_node(child, source, language)
-                            if sib.name and not (
-                                sib.start_line == scope_node.start_line
-                                and sib.end_line == scope_node.end_line
-                            ):
-                                siblings.append(sib)
-                return True
-            if hasattr(node, "children"):
-                for child in node.children:
-                    if _find_and_collect(child, depth + 1):
-                        return True
-            return False
-
-        _find_and_collect(root)
+        _find_and_collect_siblings(root, scope_node, language, source, siblings)
         return siblings
