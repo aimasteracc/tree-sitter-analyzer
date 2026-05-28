@@ -25,6 +25,22 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+def _extract_yaml_elements(yaml_content: str) -> list:
+    """Parse YAML content and return extracted elements. Skips if library unavailable."""
+    try:
+        import tree_sitter
+        import tree_sitter_yaml as ts_yaml
+    except ImportError:
+        pytest.skip("tree-sitter-yaml not available")
+
+    lang = tree_sitter.Language(ts_yaml.language())
+    parser = tree_sitter.Parser()
+    parser.language = lang
+    tree = parser.parse(yaml_content.encode("utf-8"))
+    extractor = YAMLElementExtractor()
+    return extractor.extract_yaml_elements(tree, yaml_content)
+
+
 class TestYAMLScalarTypeProperties:
     """Property-based tests for YAML scalar type identification."""
 
@@ -76,23 +92,8 @@ class TestYAMLScalarTypeProperties:
 
         Validates: Requirements 2.1
         """
-        try:
-            import tree_sitter
-            import tree_sitter_yaml as ts_yaml
-        except ImportError:
-            pytest.skip("tree-sitter-yaml not available")
-
         yaml_content = f"{key_name}: {string_value}"
-
-        # Parse the YAML content
-        YAML_LANGUAGE = tree_sitter.Language(ts_yaml.language())
-        parser = tree_sitter.Parser()
-        parser.language = YAML_LANGUAGE
-        tree = parser.parse(yaml_content.encode("utf-8"))
-
-        # Extract elements
-        extractor = YAMLElementExtractor()
-        elements = extractor.extract_yaml_elements(tree, yaml_content)
+        elements = _extract_yaml_elements(yaml_content)
 
         # Find mapping elements with values
         mappings = [
@@ -148,23 +149,8 @@ class TestYAMLScalarTypeProperties:
 
         Validates: Requirements 2.1
         """
-        try:
-            import tree_sitter
-            import tree_sitter_yaml as ts_yaml
-        except ImportError:
-            pytest.skip("tree-sitter-yaml not available")
-
         yaml_content = f"{key_name}: {number_value}"
-
-        # Parse the YAML content
-        YAML_LANGUAGE = tree_sitter.Language(ts_yaml.language())
-        parser = tree_sitter.Parser()
-        parser.language = YAML_LANGUAGE
-        tree = parser.parse(yaml_content.encode("utf-8"))
-
-        # Extract elements
-        extractor = YAMLElementExtractor()
-        elements = extractor.extract_yaml_elements(tree, yaml_content)
+        elements = _extract_yaml_elements(yaml_content)
 
         # Find mapping elements with values
         mappings = [
@@ -217,23 +203,8 @@ class TestYAMLScalarTypeProperties:
 
         Validates: Requirements 2.1
         """
-        try:
-            import tree_sitter
-            import tree_sitter_yaml as ts_yaml
-        except ImportError:
-            pytest.skip("tree-sitter-yaml not available")
-
         yaml_content = f"{key_name}: {bool_value}"
-
-        # Parse the YAML content
-        YAML_LANGUAGE = tree_sitter.Language(ts_yaml.language())
-        parser = tree_sitter.Parser()
-        parser.language = YAML_LANGUAGE
-        tree = parser.parse(yaml_content.encode("utf-8"))
-
-        # Extract elements
-        extractor = YAMLElementExtractor()
-        elements = extractor.extract_yaml_elements(tree, yaml_content)
+        elements = _extract_yaml_elements(yaml_content)
 
         # Find mapping elements with values
         mappings = [
@@ -284,23 +255,8 @@ class TestYAMLScalarTypeProperties:
 
         Validates: Requirements 2.1
         """
-        try:
-            import tree_sitter
-            import tree_sitter_yaml as ts_yaml
-        except ImportError:
-            pytest.skip("tree-sitter-yaml not available")
-
         yaml_content = f"{key_name}: {null_value}"
-
-        # Parse the YAML content
-        YAML_LANGUAGE = tree_sitter.Language(ts_yaml.language())
-        parser = tree_sitter.Parser()
-        parser.language = YAML_LANGUAGE
-        tree = parser.parse(yaml_content.encode("utf-8"))
-
-        # Extract elements
-        extractor = YAMLElementExtractor()
-        elements = extractor.extract_yaml_elements(tree, yaml_content)
+        elements = _extract_yaml_elements(yaml_content)
 
         # Find mapping elements with null values
         mappings = [e for e in elements if e.element_type == "mapping"]
