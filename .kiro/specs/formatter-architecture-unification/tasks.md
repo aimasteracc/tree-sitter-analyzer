@@ -40,17 +40,16 @@
 - [x] 5.4 Run CLI command tests
 - [x] 5.5 Checkpoint - Verify CLI output unchanged
 
-## Phase 6: Delete Redundant Files (DEFERRED)
+## Phase 6: Delete Redundant Files (DONE — 2026-05-28)
 
-Note: File deletion is deferred to maintain backward compatibility during transition period.
-The compat.py module provides deprecation warnings for old APIs.
+Note: All 5 files were deleted (confirmed via ls check on 2026-05-28). No importers remain.
 
-- [ ] 6.1 Delete `tree_sitter_analyzer/table_formatter.py` (DEFERRED)
-- [ ] 6.2 Delete `tree_sitter_analyzer/formatters/formatter_factory.py` (DEFERRED)
-- [ ] 6.3 Delete `tree_sitter_analyzer/formatters/formatter_config.py` (DEFERRED)
-- [ ] 6.4 Delete `tree_sitter_analyzer/formatters/formatter_selector.py` (DEFERRED)
-- [ ] 6.5 Delete `tree_sitter_analyzer/formatters/legacy_formatter_adapters.py` (DEFERRED)
-- [ ] 6.6 Checkpoint - Verify no import errors (DEFERRED)
+- [x] 6.1 Delete `tree_sitter_analyzer/table_formatter.py`
+- [x] 6.2 Delete `tree_sitter_analyzer/formatters/formatter_factory.py`
+- [x] 6.3 Delete `tree_sitter_analyzer/formatters/formatter_config.py`
+- [x] 6.4 Delete `tree_sitter_analyzer/formatters/formatter_selector.py`
+- [x] 6.5 Delete `tree_sitter_analyzer/formatters/legacy_formatter_adapters.py`
+- [x] 6.6 Checkpoint - Verify no import errors
 
 ## Phase 7: Relocate and Rename (DEFERRED)
 

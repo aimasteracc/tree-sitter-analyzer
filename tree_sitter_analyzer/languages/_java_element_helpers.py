@@ -204,6 +204,40 @@ def _extract_identifier(node: Any, get_node_text: Callable[..., str]) -> str | N
     return None
 
 
+def _split_respecting_generics(text: str) -> list[str]:
+    """Split a comma-separated interface list while preserving generic type arguments.
+
+    'LocalCache<K, V>, Runnable' → ['LocalCache<K, V>', 'Runnable']
+    Naive re.findall(r'\\b[A-Z]\\w*') would split '<K, V>' into separate items.
+    """
+    depth = 0
+    current: list[str] = []
+    parts: list[str] = []
+    for ch in text:
+        if ch == "<":
+            depth += 1
+        elif ch == ">":
+            depth -= 1
+        if ch == "," and depth == 0:
+            token = "".join(current).strip()
+            if token:
+                parts.append(token)
+            current = []
+        else:
+            current.append(ch)
+    token = "".join(current).strip()
+    if token:
+        parts.append(token)
+    # Each part may still contain leading 'implements ' keyword text from the node;
+    # strip everything before the first capital-letter word start.
+    result = []
+    for part in parts:
+        m = re.search(r"[A-Z]\w*.*", part, re.DOTALL)
+        if m:
+            result.append(m.group(0).strip())
+    return result
+
+
 def _extract_class_relationships(
     node: Any,
     get_node_text: Callable[..., str],
@@ -214,7 +248,10 @@ def _extract_class_relationships(
         if child.type == "superclass":
             extends_class = _extract_superclass(child, get_node_text)
         elif child.type == "super_interfaces":
-            implements_interfaces = re.findall(r"\b[A-Z]\w*", get_node_text(child))
+            raw = get_node_text(child)
+            # Strip the leading 'implements' keyword before splitting.
+            body = re.sub(r"^\s*implements\s*", "", raw)
+            implements_interfaces = _split_respecting_generics(body)
     return extends_class, implements_interfaces
 
 

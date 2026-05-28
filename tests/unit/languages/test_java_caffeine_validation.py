@@ -24,7 +24,7 @@ BOUNDED_LOCAL_CACHE = (
 )
 REFERENCES = CAFFEINE_BASE / "com/github/benmanes/caffeine/cache/References.java"
 
-pytestmark = pytest.mark.skipif(
+_skip_caffeine = pytest.mark.skipif(
     not CAFFEINE_BASE.exists(),
     reason="caffeine not cloned at expected path",
 )
@@ -118,6 +118,7 @@ class Foo<K, V> implements Runnable, Comparable<Foo<K, V>>, Serializable {
         )
         assert "Serializable" in implements
 
+    @_skip_caffeine
     def test_caffeine_bounded_local_cache_implements(self, mcp_server):
         """BoundedLocalCache must show 'LocalCache<K, V>' not split into 3 items."""
         r = call(
@@ -211,6 +212,7 @@ class Outer {
             f"Inner2 should have @SuppressWarnings. Got: {ann_names}"
         )
 
+    @_skip_caffeine
     def test_caffeine_no_override_on_any_class(self, mcp_server):
         """No class in BoundedLocalCache should have @Override in its annotations."""
         r = call(
@@ -235,6 +237,7 @@ class Outer {
             "last method has @Override within 2 lines of BoundedEviction's class start."
         )
 
+    @_skip_caffeine
     def test_references_inner_classes_clean_annotations(self, mcp_server):
         """Inner classes in References.java should have no spurious annotations."""
         r = call(
