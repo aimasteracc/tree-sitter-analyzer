@@ -275,6 +275,9 @@ class TestSummaryOnlyFastPath:
             def nodes(self):
                 return sorted(self._nodes)
 
+            def all_nodes(self):
+                return frozenset(self._nodes)
+
             def dependents_of(self, file_rel):
                 return []
 

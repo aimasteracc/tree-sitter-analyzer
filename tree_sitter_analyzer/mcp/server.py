@@ -358,6 +358,22 @@ class TreeSitterAnalyzerMCPServer:
         result2: dict[str, Any] = await self.read_partial_tool.execute(full_args)
         return result2
 
+    # Public aliases for tool_registration.py companion module
+    ensure_initialized = _ensure_initialized
+    validate_file_path_security = _validate_file_path_security
+    handle_set_project_path = _handle_set_project_path
+    handle_extract_code_section = _handle_extract_code_section
+
+    @property
+    def tool_instances(self) -> list[Any]:
+        """Public accessor for _tool_instances."""
+        return self._tool_instances
+
+    @property
+    def tools(self) -> dict[str, Any]:
+        """Public accessor for _tools."""
+        return self._tools
+
     # Execute main logic: run
     async def run(self) -> None:
         """

@@ -396,6 +396,11 @@ class ASTCache:
         """
         return bool(self._fts5_available)
 
+    @property
+    def fts5_available(self) -> bool | None:
+        """Public accessor for _fts5_available flag."""
+        return self._fts5_available
+
     def _init_db(self) -> None:
         conn = self._get_conn()
         conn.executescript(_SCHEMA_V1)
@@ -886,7 +891,7 @@ class ASTCache:
         except Exception as exc:  # pragma: no cover — import path defensive
             logger.debug("git_activation import failed: %s", exc)
             return
-        if git_activation._activation_disabled():
+        if git_activation._activation_disabled():  # noqa: SLF001 — module-level guard fn
             # Honour the kill switch BEFORE invoking subprocess. Tests
             # patch ``ga.subprocess`` to detect any escape.
             return

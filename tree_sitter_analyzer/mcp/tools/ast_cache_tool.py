@@ -605,8 +605,8 @@ class ASTCacheTool(BaseMCPTool):
         """
         # Already running? Don't double-start.
         if self._watcher is not None and self._watcher.is_running():
-            poll_interval = float(self._watcher._poll_interval)
-            backend = str(self._watcher._backend)
+            poll_interval = float(self._watcher.poll_interval)
+            backend = str(self._watcher.backend)
             summary_line = (
                 f"ast_cache watch_start status=already_running "
                 f"backend={backend} poll_interval={poll_interval}"
@@ -638,8 +638,8 @@ class ASTCacheTool(BaseMCPTool):
 
         # Read back the actual values the daemon enforced (poll_interval
         # has a min of 1.0 inside the daemon, so echo what was applied).
-        applied_poll = float(self._watcher._poll_interval)
-        applied_backend = str(self._watcher._backend)
+        applied_poll = float(self._watcher.poll_interval)
+        applied_backend = str(self._watcher.backend)
         summary_line = (
             f"ast_cache watch_start status=started "
             f"backend={applied_backend} poll_interval={applied_poll}"

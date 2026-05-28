@@ -114,6 +114,16 @@ class FileWatcherDaemon:
         self._snapshot: dict[str, float] = {}
         self._snapshot_lock = threading.Lock()
 
+    @property
+    def poll_interval(self) -> float:
+        """Public accessor for _poll_interval."""
+        return self._poll_interval
+
+    @property
+    def backend(self) -> str:
+        """Public accessor for _backend."""
+        return self._backend
+
     def start(self) -> None:
         if self._thread is not None and self._thread.is_alive():
             return

@@ -29,7 +29,7 @@ def _prepare_public_extraction(
     """Set per-call extractor state and return the tree root, if available."""
     extractor.source_code = source_code or ""
     extractor.content_lines = extractor.source_code.split("\n")
-    extractor._reset_caches()
+    extractor.reset_caches()
     if tree is None:
         return None
     return getattr(tree, "root_node", None)

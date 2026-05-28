@@ -14,7 +14,7 @@ class SharedCache:
     def __new__(cls) -> SharedCache:
         if cls._instance is None:
             cls._instance = super().__new__(cls)
-            cls._instance._initialize()
+            cls._instance.initialize()
         return cls._instance
 
     def _initialize(self) -> None:
@@ -108,6 +108,9 @@ class SharedCache:
     def clear(self) -> None:
         """Clear all caches"""
         self._initialize()
+
+    # Public alias for __new__ singleton init
+    initialize = _initialize
 
 
 # Global instance access

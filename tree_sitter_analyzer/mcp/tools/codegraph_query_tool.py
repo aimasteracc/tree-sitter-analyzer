@@ -416,6 +416,10 @@ class _QueryState:
         self.selection_filters: list[tuple[_ChainStep, bool]] = []
         self.backend = backend
 
+    def reset_seen_symbols(self, seen: set[tuple[str, int, str]]) -> None:
+        """Replace the seen-symbols set (for pruning operations)."""
+        self._seen_symbols = seen
+
     def add_symbols(self, symbols: list[dict[str, Any]]) -> None:
         for symbol in symbols:
             key = _symbol_key_tuple(symbol)
@@ -702,7 +706,7 @@ def _replace_current_selection(
     state.symbols = [
         symbol for symbol in state.symbols if _symbol_key_tuple(symbol) in keep_tuples
     ]
-    state._seen_symbols = set(keep_tuples)
+    state.reset_seen_symbols(set(keep_tuples))
     state.files = []
     state.concept_files_returned = 0
     _prune_relationships(
