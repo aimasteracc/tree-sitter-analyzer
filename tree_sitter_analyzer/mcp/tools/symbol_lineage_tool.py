@@ -407,7 +407,7 @@ class SymbolLineageTool(BaseMCPTool):
         if not graph:
             return downstream_files, upstream_files
         for f in all_symbol_files:
-            if f not in graph._nodes:
+            if not graph.has_node(f):
                 continue
             br = BlastRadius(graph)
             fwd = br.forward(f)

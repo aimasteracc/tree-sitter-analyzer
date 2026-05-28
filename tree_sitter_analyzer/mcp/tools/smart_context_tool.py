@@ -217,9 +217,9 @@ def _safe_query(graph: DependencyGraph, rel_path: str, method: str) -> list[str]
 
 # _resolve_graph_node: implementation
 def _resolve_graph_node(graph: DependencyGraph, rel_path: str) -> str:
-    if rel_path in graph._nodes:
+    if graph.has_node(rel_path):
         return rel_path
-    return next((node for node in graph._nodes if node.endswith(rel_path)), rel_path)
+    return next((node for node in graph.nodes() if node.endswith(rel_path)), rel_path)
 
 
 # _build_smart_context_result: implementation

@@ -226,40 +226,40 @@ class DependencyAnalysisTool(BaseMCPTool):
             if str(root) in str(fp)
             else str(fp)
         )
-        if rel in graph._nodes or any(n.endswith(rel) for n in graph._nodes):
+        if graph.has_node(rel) or any(n.endswith(rel) for n in graph.nodes()):
             return rel
 
         # Try resolving as absolute
         if fp.is_absolute():
             try:
                 rel = str(fp.relative_to(root))
-                if rel in graph._nodes:
+                if graph.has_node(rel):
                     return rel
             except ValueError:
                 pass
 
         # Fuzzy: find by filename
         target_name = fp.name
-        for node in graph._nodes:
+        for node in graph.nodes():
             if Path(node).name == target_name:
                 return node
 
         raise ValueError(
             f"File not found in dependency graph: {file_path}. "
-            f"The graph has {len(graph._nodes)} nodes."
+            f"The graph has {graph.node_count()} nodes."
         )
 
 
 def _summary(graph: DependencyGraph) -> dict[str, Any]:
-    node_count = len(graph._nodes)
-    edge_count = len(graph._edges)
+    node_count = graph.node_count()
+    edge_count = graph.edge_count()
 
     # Find hub files (most dependents = most relied upon)
-    dep_counts = {n: len(graph.dependents_of(n)) for n in graph._nodes}
+    dep_counts = {n: len(graph.dependents_of(n)) for n in graph.nodes()}
     hubs = sorted(dep_counts.items(), key=lambda x: -x[1])[:10]
 
     # Find high-fan-in files (most dependencies = most complex)
-    fan_in = {n: len(graph.dependencies_of(n)) for n in graph._nodes}
+    fan_in = {n: len(graph.dependencies_of(n)) for n in graph.nodes()}
     high_fan = sorted(fan_in.items(), key=lambda x: -x[1])[:10]
 
     return {
@@ -311,8 +311,7 @@ def _deterministic_find_cycles(graph: DependencyGraph) -> list[list[str]]:
     smallest node) and de-duplicated so equivalent cycles discovered from
     different DFS roots collapse to a single entry.
     """
-    nodes_sorted = sorted(graph._nodes)
-    deps = graph._deps  # dict[str, set[str]]
+    nodes_sorted = graph.nodes()  # already sorted by DependencyGraph.nodes()
 
     visited: set[str] = set()
     stack: list[str] = []
@@ -324,7 +323,7 @@ def _deterministic_find_cycles(graph: DependencyGraph) -> list[list[str]]:
         stack.append(node)
         on_stack.add(node)
 
-        for neighbor in sorted(deps.get(node, ())):
+        for neighbor in graph.dependencies_of(node):  # already sorted
             if neighbor not in visited:
                 dfs(neighbor)
             elif neighbor in on_stack:
