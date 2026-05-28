@@ -65,7 +65,7 @@ Note: Created `formatters/table_formatter.py` as canonical import path.
 ## Phase 8: Update Tests
 
 - [x] 8.1 Update test imports to use new module paths (tests updated for new assertions)
-- [ ] 8.2 Remove tests for deleted classes (DEFERRED - LegacyTableFormatter not yet deleted)
+- [x] 8.2 Remove tests for deleted classes (N/A — Phase 6 deleted modules had no dedicated test files; LegacyTableFormatter kept as backward-compat alias)
 - [x] 8.3 Add tests for FormatterRegistry.get_formatter_for_language()
 - [x] 8.4 Add tests for deprecation warnings (N/A — compat.py removed in Phase 6)
 - [x] 8.5 Checkpoint - All tests pass
