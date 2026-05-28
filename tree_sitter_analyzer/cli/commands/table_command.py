@@ -485,7 +485,8 @@ class TableCommand(BaseCommand):
                 if isinstance(param, dict):
                     param_list.append(param)
                 else:
-                    param_list.append({"name": str(param), "type": "Any"})
+                    param_name = str(param)
+                    param_list.append({"name": param_name, "type": "Any"})
             return param_list
         else:
             return [{"name": str(params), "type": "Any"}]
