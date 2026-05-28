@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import os
 import re
-from typing import Any, cast
+from typing import Any
 
 _SIMPLE_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -77,6 +77,35 @@ def _extensions_to_language(arguments: dict[str, Any]) -> str | None:
     if not exts or not isinstance(exts, list) or len(exts) != 1:
         return None
     return _EXTS_TO_LANG_SUFFIX.get(exts[0])
+
+
+def _aggregate_by_file(fts_results: list) -> dict[str, int]:
+    """Count FTS results per file path."""
+    by_file: dict[str, int] = {}
+    for r in fts_results:
+        fp = r["file"]
+        by_file[fp] = by_file.get(fp, 0) + 1
+    return by_file
+
+
+def _build_symbol_groups(fts_results: list) -> list[dict]:
+    """Group FTS results into per-file symbol lists, preserving sorted order."""
+    symbols: dict[str, list] = {}
+    for r in fts_results:
+        fp = r["file"]
+        if fp not in symbols:
+            symbols[fp] = []
+        symbols[fp].append(
+            {
+                "name": r.get("name", ""),
+                "kind": r.get("kind", ""),
+                "line": r.get("line", 0),
+            }
+        )
+    return [
+        {"file": fp, "count": len(syms), "symbols": syms}
+        for fp, syms in sorted(symbols.items())
+    ]
 
 
 def _match_line_from_fts(file_path: str, line: int, source_root: str) -> str:
@@ -145,10 +174,7 @@ def try_fts5_fast_path(
         }
 
     if requested_format == "count_only":
-        by_file: dict[str, int] = {}
-        for r in fts_results:
-            fp = r["file"]
-            by_file[fp] = by_file.get(fp, 0) + 1
+        by_file = _aggregate_by_file(fts_results)
         file_counts = [{"file": fp, "count": c} for fp, c in sorted(by_file.items())]
         return {
             "success": True,
@@ -158,19 +184,17 @@ def try_fts5_fast_path(
             "data_source": "fts5",
         }
 
-    formatted: list[dict[str, Any]] = []
-    for r in fts_results:
-        match_line = _match_line_from_fts(r["file"], r.get("line", 0), project_root)
-        formatted.append(
-            {
-                "file": r["file"],
-                "line": r.get("line", 0),
-                "kind": r.get("kind", ""),
-                "name": r.get("name", ""),
-                "language": r.get("language", ""),
-                "match": match_line,
-            }
-        )
+    formatted: list[dict[str, Any]] = [
+        {
+            "file": r["file"],
+            "line": r.get("line", 0),
+            "kind": r.get("kind", ""),
+            "name": r.get("name", ""),
+            "language": r.get("language", ""),
+            "match": _match_line_from_fts(r["file"], r.get("line", 0), project_root),
+        }
+        for r in fts_results
+    ]
 
     response: dict[str, Any] = {
         "success": True,
@@ -180,30 +204,10 @@ def try_fts5_fast_path(
         "results": formatted[:100],
         "data_source": "fts5",
     }
-
     if language:
         response["language_filter"] = language
 
     if requested_format == "summary":
-        by_file_summary: dict[str, int] = {}
-        for r in fts_results:
-            fp = r["file"]
-            by_file_summary[fp] = by_file_summary.get(fp, 0) + 1
-        summary_items = [
-            {"file": fp, "count": c, "symbols": []}
-            for fp, c in sorted(by_file_summary.items())
-        ]
-        for r in fts_results:
-            for item in summary_items:
-                if item["file"] == r["file"]:
-                    cast(list[dict[str, Any]], item["symbols"]).append(
-                        {
-                            "name": r.get("name", ""),
-                            "kind": r.get("kind", ""),
-                            "line": r.get("line", 0),
-                        }
-                    )
-        response["files"] = summary_items[:50]
-        return response
+        response["files"] = _build_symbol_groups(fts_results)[:50]
 
     return response
