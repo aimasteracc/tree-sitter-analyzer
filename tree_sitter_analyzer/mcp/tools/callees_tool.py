@@ -196,7 +196,7 @@ class CodeGraphCalleesTool(CodeGraphRelationToolMixin, BaseMCPTool):
             callee_name = entry.get("name", "")
             if "callee_resolution" not in entry or "callee_resolved_file" not in entry:
                 resolution, resolved_file = classify_callee_resolution(
-                    callee_name, callee_file, callee_file
+                    callee_name, callee_file, ""
                 )
                 entry.setdefault("callee_resolution", resolution)
                 entry.setdefault("callee_resolved_file", resolved_file)

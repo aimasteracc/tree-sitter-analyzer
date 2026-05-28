@@ -188,6 +188,7 @@ class TestVisualizeToolNoProject:
 
 class TestVisualizeRealProject:
     @pytest.mark.asyncio
+    @pytest.mark.slow_ok  # full-mode scan of real project; ~7s on CI hardware
     async def test_full_mode_on_self(self) -> None:
         tool = CodeGraphVisualizeTool(_PROJECT_ROOT)
         result = await tool.execute(

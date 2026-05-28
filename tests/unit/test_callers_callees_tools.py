@@ -40,6 +40,7 @@ class TestCodeGraphCallersTool:
         assert callers_tool.validate_arguments({"function_name": "main"})
 
     @pytest.mark.asyncio
+    @pytest.mark.slow_ok  # scans full project graph; ~12s on CI hardware
     async def test_execute_returns_callers(self, callers_tool):
         result = await callers_tool.execute(
             {"function_name": "_walk_tree", "output_format": "json"}

@@ -1849,6 +1849,7 @@ class ASTCache:
                     "callee_name": row["callee_name"],
                     "callee_full": row["callee_full"],
                     "callee_file": callee_file_val,
+                    "callee_resolved_file": row["callee_resolved_file"] or "",
                     "callee_line": row["callee_line"],
                     "depth": depth + 1,
                 }
