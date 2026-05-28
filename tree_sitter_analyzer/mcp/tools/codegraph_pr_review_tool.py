@@ -453,24 +453,30 @@ class CodeGraphPRReviewTool(BaseMCPTool):
                 key = f"{func.get('file', '')}:{func.get('name', '')}"
                 if key not in seen:
                     seen.add(key)
+                    func_name = func.get("name", "")
+                    func_file = func.get("file", "")
+                    func_line = func.get("line", 0)
                     affected.append(
                         {
-                            "function": func.get("name", ""),
-                            "file": func.get("file", ""),
+                            "function": func_name,
+                            "file": func_file,
                             "direction": "upstream",
-                            "line": func.get("line", 0),
+                            "line": func_line,
                         }
                     )
             for func in impact.get("downstream", [])[:5]:
                 key = f"{func.get('file', '')}:{func.get('name', '')}"
                 if key not in seen:
                     seen.add(key)
+                    func_name = func.get("name", "")
+                    func_file = func.get("file", "")
+                    func_line = func.get("line", 0)
                     affected.append(
                         {
-                            "function": func.get("name", ""),
-                            "file": func.get("file", ""),
+                            "function": func_name,
+                            "file": func_file,
                             "direction": "downstream",
-                            "line": func.get("line", 0),
+                            "line": func_line,
                         }
                     )
         return affected
