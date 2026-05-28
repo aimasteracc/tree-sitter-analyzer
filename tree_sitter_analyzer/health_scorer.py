@@ -441,6 +441,7 @@ class HealthScorer:
         "golden",
         "fixtures",
         "test_data",
+        "examples",
     }
 
     def _is_excluded(self, file_path: Path, root: Path) -> bool:
