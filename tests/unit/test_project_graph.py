@@ -486,6 +486,47 @@ class TestDependencyGraphCache:
 
 
 # ============================================================
+# Public accessor tests (expose-dependency-graph-public-api)
+# ============================================================
+
+
+class TestDependencyGraphPublicAccessors:
+    """TDD: has_node(), node_count(), edge_count() public API."""
+
+    @pytest.fixture
+    def small_graph(self, tmp_path):
+        from tree_sitter_analyzer.project_graph import DependencyGraph
+
+        proj = tmp_path / "small"
+        proj.mkdir()
+        (proj / "a.py").write_text("from . import b\n")
+        (proj / "b.py").write_text("x = 1\n")
+        return DependencyGraph(str(proj))
+
+    def test_has_node_true_for_existing_node(self, small_graph):
+        """has_node() returns True for a file that is in the graph."""
+        nodes = small_graph.nodes()
+        assert len(nodes) >= 1
+        assert small_graph.has_node(nodes[0]) is True
+
+    def test_has_node_false_for_missing_node(self, small_graph):
+        """has_node() returns False for a file not in the graph."""
+        assert small_graph.has_node("nonexistent_file_xyz.py") is False
+
+    def test_node_count_matches_nodes_length(self, small_graph):
+        """node_count() equals len(nodes())."""
+        assert small_graph.node_count() == len(small_graph.nodes())
+
+    def test_edge_count_matches_edges_length(self, small_graph):
+        """edge_count() equals len(edges())."""
+        assert small_graph.edge_count() == len(small_graph.edges())
+
+    def test_node_count_nonzero(self, small_graph):
+        """A non-empty project has at least one node."""
+        assert small_graph.node_count() >= 1
+
+
+# ============================================================
 # Helpers
 # ============================================================
 

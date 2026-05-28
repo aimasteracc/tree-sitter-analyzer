@@ -567,6 +567,18 @@ class DependencyGraph:
         """Return all directed edges (from_file, to_file) in the graph."""
         return sorted(self._edges)
 
+    def has_node(self, file_rel: str) -> bool:
+        """Return True if *file_rel* is a node in the graph (O(1) set lookup)."""
+        return file_rel in self._nodes
+
+    def node_count(self) -> int:
+        """Return the number of nodes in the graph."""
+        return len(self._nodes)
+
+    def edge_count(self) -> int:
+        """Return the number of directed edges in the graph."""
+        return len(self._edges)
+
     def dependencies_of(self, file_rel: str) -> list[str]:
         """Return files that the given file depends on."""
         return sorted(self._deps.get(file_rel, set()))
@@ -692,7 +704,7 @@ class BlastRadius:
         Returns:
             Set of relative file paths affected by changes to file_rel
         """
-        if file_rel not in self.graph._nodes:
+        if not self.graph.has_node(file_rel):
             return set()
 
         impacted: set[str] = set()
@@ -717,7 +729,7 @@ class BlastRadius:
         Returns:
             Set of relative file paths that file_rel depends on
         """
-        if file_rel not in self.graph._nodes:
+        if not self.graph.has_node(file_rel):
             return set()
 
         dependencies: set[str] = set()

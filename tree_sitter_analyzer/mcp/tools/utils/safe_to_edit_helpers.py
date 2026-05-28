@@ -48,6 +48,18 @@ class FileDependencyView:
         self._deps = {rel_path: dependencies}
         self._dependents = {rel_path: dependents}
 
+    def has_node(self, file_rel: str) -> bool:
+        """Return True if *file_rel* is a node in this view (O(1) set lookup)."""
+        return file_rel in self._nodes
+
+    def node_count(self) -> int:
+        """Return the number of nodes in this view."""
+        return len(self._nodes)
+
+    def nodes(self) -> list[str]:
+        """Return all nodes as a sorted list."""
+        return sorted(self._nodes)
+
     def dependencies_of(self, file_rel: str) -> list[str]:
         return sorted(self._deps.get(file_rel, set()))
 
@@ -636,8 +648,8 @@ def _safe_graph_lookup(
 
 def _matching_node(graph: Any, rel_path: str) -> str | None:
     """Find the graph node matching a relative path."""
-    if rel_path in graph._nodes:
+    if graph.has_node(rel_path):
         return rel_path
     normalized = rel_path.replace("\\", "/")
     suffix = f"/{normalized}"
-    return next((node for node in graph._nodes if node.endswith(suffix)), None)
+    return next((node for node in graph.nodes() if node.endswith(suffix)), None)
