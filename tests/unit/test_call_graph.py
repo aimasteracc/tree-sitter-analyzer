@@ -9,15 +9,29 @@ from tree_sitter_analyzer.call_graph import (
     CachedCallGraph,
     CallGraph,
     FunctionRef,
-    _extract_call,
-    _find_parent_class_java,
-    _find_parent_class_python,
-    _find_receiver_type_go,
-    _get_func_name,
-    _node_text,
-    _walk_tree,
 )
 from tree_sitter_analyzer.core.parser import Parser
+from tree_sitter_analyzer.function_extraction import (
+    extract_call as _extract_call,
+)
+from tree_sitter_analyzer.function_extraction import (
+    find_parent_class_java as _find_parent_class_java,
+)
+from tree_sitter_analyzer.function_extraction import (
+    find_parent_class_python as _find_parent_class_python,
+)
+from tree_sitter_analyzer.function_extraction import (
+    find_receiver_type_go as _find_receiver_type_go,
+)
+from tree_sitter_analyzer.function_extraction import (
+    get_func_name as _get_func_name,
+)
+from tree_sitter_analyzer.function_extraction import (
+    node_text as _node_text,
+)
+from tree_sitter_analyzer.function_extraction import (
+    walk_tree as _walk_tree,
+)
 
 # Historical: this marker first gated three call_graph cross-file
 # resolution tests as Windows-only. Then we discovered Linux CI fails
