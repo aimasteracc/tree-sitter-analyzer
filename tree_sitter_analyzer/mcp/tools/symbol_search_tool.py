@@ -133,7 +133,7 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
             "match_count": len(results),
             "file_count": len(by_file),
             "results": results,
-            "data_source": "fts5" if cache._fts5_available else "linear_scan",
+            "data_source": "fts5" if cache.fts5_available else "linear_scan",
         }
         if results:
             result["next_step"] = (
@@ -171,7 +171,7 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
         kind: str,
         limit: int,
     ) -> list[dict[str, Any]]:
-        if cache._fts5_available:
+        if cache.fts5_available:
             fts_results = cache.fts_search(query, language=language, limit=limit * 3)
             if fts_results:
                 return self._fts_to_results(fts_results, kind, limit)
@@ -188,7 +188,7 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
         sub_lower = substring.lower()
         all_results: list[dict[str, Any]] = []
 
-        if cache._fts5_available:
+        if cache.fts5_available:
             terms = substring.split()
             if terms:
                 fts_query = " OR ".join(f'"{t}"' for t in terms)

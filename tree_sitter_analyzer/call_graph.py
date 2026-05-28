@@ -501,6 +501,16 @@ class CallGraph:
         self.build()
         return [f.to_dict() for f in self._func_by_file.get(file_path, [])]
 
+    def function_refs_in_file(self, file_path: str) -> list["FunctionRef"]:
+        """Return raw :class:`FunctionRef` objects for functions in *file_path*.
+
+        Unlike :meth:`functions_in_file` (which serialises to dicts), this
+        returns the live objects so callers can pass them to ``caller_refs_of``
+        / ``callee_refs_of`` without an extra lookup.
+        """
+        self.build()
+        return list(self._func_by_file.get(file_path, []))
+
     def file_impact(self, file_path: str) -> dict[str, Any]:
         """Analyze call-graph impact of changes to a file.
 
@@ -541,6 +551,17 @@ class CallGraph:
             "call_edge_count": len(self._call_edges),
             "file_count": len({f.file_path for f in self._functions}),
         }
+
+    def resolve_targets(
+        self, func_name: str, file_path: str | None = None
+    ) -> list["FunctionRef"]:
+        """Public alias for :meth:`_resolve_targets`.
+
+        Resolves a function name (and optional file path) to the matching
+        :class:`FunctionRef` objects in the call graph.  See
+        :meth:`_resolve_targets` for the full semantics.
+        """
+        return self._resolve_targets(func_name, file_path)
 
     def _resolve_targets(
         self, func_name: str, file_path: str | None = None

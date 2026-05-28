@@ -11,6 +11,7 @@ from tree_sitter_analyzer.codegraph_query_backend import CodeGraphQueryBackend
 
 class RowCache:
     _fts5_available = False
+    fts5_available = False
 
     def __init__(self, conn: sqlite3.Connection) -> None:
         self.conn = conn
@@ -65,7 +66,7 @@ def test_backend_resolves_definitions_without_symbol_resolver() -> None:
 
 def test_backend_prefers_fts_definition_rows() -> None:
     cache = MagicMock()
-    cache._fts5_available = True
+    cache.fts5_available = True
     cache.fts_search.return_value = [
         {"name": "run", "kind": "reference", "file": "ref.py", "line": 1},
         {

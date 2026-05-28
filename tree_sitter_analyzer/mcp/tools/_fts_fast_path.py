@@ -149,7 +149,7 @@ def try_fts5_fast_path(
     except Exception:
         return None
 
-    if not cache._fts5_available:
+    if not cache.fts5_available:
         cache.close()
         return None
 

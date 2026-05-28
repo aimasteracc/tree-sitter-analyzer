@@ -182,7 +182,7 @@ class TestExecute:
         # works regardless of the runtime implementation.
         mock_cache.fts_search.return_value = [{"name": "MyClass"}]
         mock_cache.search_symbols.return_value = [{"name": "MyClass"}]
-        mock_cache._fts5_available = True
+        mock_cache.fts5_available = True
         result = await tool.execute({"mode": "search", "query": "MyClass"})
         assert result["count"] == 1
         assert result["query"] == "MyClass"
@@ -191,7 +191,7 @@ class TestExecute:
     async def test_fts_search_mode(self, tool_with_mock_cache):
         tool, mock_cache = tool_with_mock_cache
         mock_cache.fts_search.return_value = [{"name": "MyClass", "rank": -1.0}]
-        mock_cache._fts5_available = True
+        mock_cache.fts5_available = True
         result = await tool.execute(
             {"mode": "fts_search", "query": "MyClass", "limit": 10}
         )

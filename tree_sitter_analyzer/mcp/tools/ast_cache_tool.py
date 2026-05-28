@@ -446,7 +446,7 @@ class ASTCacheTool(BaseMCPTool):
         raw_results = cache.fts_search(query, language=language, limit=limit)
         # K7: defensively split legacy multi-symbol import rows.
         results = _apply_legacy_import_split(raw_results)
-        fts5_available = cache._fts5_available
+        fts5_available = cache.fts5_available
         summary_line = (
             f"ast_cache {mode} query={query!r} "
             f"results={len(results)} fts5={fts5_available}"

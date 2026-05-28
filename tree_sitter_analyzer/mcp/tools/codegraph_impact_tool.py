@@ -35,7 +35,7 @@ def _compute_transitive_callers(
     file_path: str | None = None,
     max_depth: int = _MAX_DEPTH,
 ) -> list[dict[str, Any]]:
-    targets = graph._resolve_targets(func_name, file_path)
+    targets = graph.resolve_targets(func_name, file_path)
     visited: set[str] = set()
     result: list[dict[str, Any]] = []
     queue: deque[tuple[FunctionRef, int]] = deque((t, 0) for t in targets)
@@ -63,7 +63,7 @@ def _compute_transitive_callees(
     file_path: str | None = None,
     max_depth: int = _MAX_DEPTH,
 ) -> list[dict[str, Any]]:
-    targets = graph._resolve_targets(func_name, file_path)
+    targets = graph.resolve_targets(func_name, file_path)
     visited: set[str] = set()
     result: list[dict[str, Any]] = []
     queue: deque[tuple[FunctionRef, int]] = deque((t, 0) for t in targets)
@@ -90,7 +90,7 @@ def _compute_risk_score(
     func_name: str,
     file_path: str | None = None,
 ) -> dict[str, Any]:
-    targets = graph._resolve_targets(func_name, file_path)
+    targets = graph.resolve_targets(func_name, file_path)
     if not targets:
         return {"score": 0, "level": "unknown", "factors": {}}
 
@@ -170,7 +170,7 @@ def _blast_radius_for_functions(
     files_at_risk: dict[str, set[str]] = {}
 
     for func_name in function_names:
-        targets = graph._resolve_targets(func_name, file_path)
+        targets = graph.resolve_targets(func_name, file_path)
         for target in targets:
             start_key = target.qualified_name()
             all_affected.add(start_key)
@@ -403,7 +403,7 @@ class CodeGraphImpactTool(BaseMCPTool):
 
         caller_files = {c.get("file", "") for c in direct_callers}
         callee_files = {c.get("file", "") for c in direct_callees}
-        targets = graph._resolve_targets(func_name, file_path)
+        targets = graph.resolve_targets(func_name, file_path)
         self_file = targets[0].file_path if targets else ""
         cross_file_callers = len(caller_files - {self_file})
         cross_file_callees = len(callee_files - {self_file})

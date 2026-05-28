@@ -101,6 +101,7 @@ class TestSymbolResolverEngine:
 
         class Cache:
             _fts5_available = False
+            fts5_available = False
 
             @staticmethod
             def get_conn():
