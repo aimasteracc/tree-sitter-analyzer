@@ -57,6 +57,12 @@ class CppTableFormatter(CppTableFormatterConvertMixin, BaseTableFormatter):
         """Shorten type name for C/C++ compact display"""
         return shorten_cpp_type(type_name)
 
+    # Public aliases for companion module _cpp_formatter_helpers.py
+    format_class_details = _format_class_details
+    format_method_row = _format_method_row
+    create_compact_signature = _create_compact_signature
+    shorten_type = _shorten_type
+
     def format_table(
         self, analysis_result: dict[str, Any], table_type: str = "full"
     ) -> str:

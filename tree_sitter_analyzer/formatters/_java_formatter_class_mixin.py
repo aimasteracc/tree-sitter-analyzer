@@ -27,9 +27,9 @@ class JavaTableFormatterClassMixin:
         line_range = class_info.get("line_range", {})
         start = line_range.get("start", 0)
         end = line_range.get("end", 0)
-        class_methods = self._get_class_methods(data.get("methods", []), line_range)
-        class_fields = self._get_class_fields(data.get("fields", []), line_range)
-        inner_classes = self._get_inner_classes(class_info, all_classes)
+        class_methods = get_class_methods(data.get("methods", []), line_range)
+        class_fields = get_class_fields(data.get("fields", []), line_range)
+        inner_classes = get_inner_classes(class_info, all_classes)
         class_methods, class_fields = _exclude_inner_members(
             self, inner_classes, class_methods, class_fields
         )
@@ -59,7 +59,7 @@ class JavaTableFormatterClassMixin:
         """Format a method table row for Java (golden master format)"""
         name = str(method.get("name", ""))
         signature = self._create_full_signature(method)
-        visibility = self._convert_visibility(str(method.get("visibility", "")))
+        visibility = self.convert_visibility(str(method.get("visibility", "")))
         line_range = method.get("line_range", {})
         lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
         complexity = method.get("complexity_score", 1)
@@ -96,7 +96,7 @@ def _non_constructor_methods(methods: list[dict[str, Any]]) -> list[dict[str, An
 def _field_row(field: dict[str, Any], formatter: Any) -> str:
     field_name = str(field.get("name", ""))
     field_type = str(field.get("type", ""))
-    visibility = formatter._convert_visibility(str(field.get("visibility", "")))
+    visibility = formatter.convert_visibility(str(field.get("visibility", "")))
     modifiers = ",".join([str(modifier) for modifier in field.get("modifiers", [])])
     line = field.get("line_range", {}).get("start", 0)
     doc = _clean_doc_cell(str(field.get("javadoc", "")) or "-")
@@ -154,7 +154,7 @@ def _append_method_group(
 
 
 def _exclude_inner_members(
-    formatter: Any,
+    _formatter: Any,
     inner_classes: list[dict[str, Any]],
     class_methods: list[dict[str, Any]],
     class_fields: list[dict[str, Any]],
@@ -164,12 +164,12 @@ def _exclude_inner_members(
         class_methods = [
             method
             for method in class_methods
-            if not formatter._is_in_range(method.get("line_range", {}), inner_range)
+            if not is_in_range(method.get("line_range", {}), inner_range)
         ]
         class_fields = [
             field
             for field in class_fields
-            if not formatter._is_in_range(field.get("line_range", {}), inner_range)
+            if not is_in_range(field.get("line_range", {}), inner_range)
         ]
     return class_methods, class_fields
 
@@ -259,8 +259,12 @@ def _clean_doc_cell(doc: str) -> str:
     return doc
 
 
-JavaTableFormatterClassMixin._get_class_methods = staticmethod(get_class_methods)  # type: ignore[attr-defined]
-JavaTableFormatterClassMixin._get_class_fields = staticmethod(get_class_fields)  # type: ignore[attr-defined]
-JavaTableFormatterClassMixin._get_inner_classes = staticmethod(get_inner_classes)  # type: ignore[attr-defined]
-JavaTableFormatterClassMixin._is_inner_class = staticmethod(is_inner_class)  # type: ignore[attr-defined]
-JavaTableFormatterClassMixin._is_in_range = staticmethod(is_in_range)  # type: ignore[attr-defined]
+JavaTableFormatterClassMixin._get_class_methods = staticmethod(get_class_methods)  # type: ignore[attr-defined]  # noqa: SLF001
+JavaTableFormatterClassMixin._get_class_fields = staticmethod(get_class_fields)  # type: ignore[attr-defined]  # noqa: SLF001
+JavaTableFormatterClassMixin._get_inner_classes = staticmethod(get_inner_classes)  # type: ignore[attr-defined]  # noqa: SLF001
+JavaTableFormatterClassMixin._is_inner_class = staticmethod(is_inner_class)  # type: ignore[attr-defined]  # noqa: SLF001
+JavaTableFormatterClassMixin._is_in_range = staticmethod(is_in_range)  # type: ignore[attr-defined]  # noqa: SLF001
+# Public alias (no leading underscore) for companion module access
+JavaTableFormatterClassMixin.format_class_section = (
+    JavaTableFormatterClassMixin._format_class_section
+)  # type: ignore[attr-defined]  # noqa: SLF001

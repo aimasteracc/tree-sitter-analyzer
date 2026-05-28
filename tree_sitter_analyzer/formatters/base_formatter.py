@@ -265,3 +265,8 @@ class BaseTableFormatter(BaseFormatter):
         cleaned = cleaned.replace('"', '""')
 
         return cleaned
+
+    # Public aliases used by companion formatter helper modules
+    convert_visibility = _convert_visibility
+    extract_doc_summary = _extract_doc_summary
+    clean_csv_text = _clean_csv_text

@@ -40,19 +40,19 @@ def _append_converted_element(
         conversion["package_name"] = str(getattr(element, "name", None))
     elif element_type == ELEMENT_TYPE_CLASS:
         conversion["classes"].append(
-            formatter._convert_class_element_for_python(element)
+            formatter.convert_class_element_for_python(element)
         )
     elif element_type == ELEMENT_TYPE_FUNCTION:
         conversion["methods"].append(
-            formatter._convert_function_element_for_python(element)
+            formatter.convert_function_element_for_python(element)
         )
     elif element_type == ELEMENT_TYPE_VARIABLE:
         conversion["fields"].append(
-            formatter._convert_variable_element_for_python(element)
+            formatter.convert_variable_element_for_python(element)
         )
     elif element_type == ELEMENT_TYPE_IMPORT:
         conversion["imports"].append(
-            formatter._convert_import_element_for_python(element)
+            formatter.convert_import_element_for_python(element)
         )
 
 
@@ -97,7 +97,7 @@ def convert_class_element_for_python(element: Any) -> dict[str, Any]:
 def convert_function_element_for_python(formatter: Any, element: Any) -> dict[str, Any]:
     """Convert function element for Python formatter"""
     params = getattr(element, "parameters", [])
-    processed_params = formatter._process_python_parameters(params)
+    processed_params = formatter.process_python_parameters(params)
 
     return {
         "name": getattr(element, "name", str(element)),

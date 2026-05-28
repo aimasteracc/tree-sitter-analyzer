@@ -97,7 +97,7 @@ def append_method_rows(
     lines.append("|--------|-----------|-----|-------|----|----| ")
 
     for method in methods:
-        lines.append(formatter._format_class_method_row(method))
+        lines.append(formatter.format_class_method_row(method))
     lines.append("")
 
 

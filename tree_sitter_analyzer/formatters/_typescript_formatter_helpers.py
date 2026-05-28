@@ -89,7 +89,7 @@ def format_method_row(formatter: Any, method: dict[str, Any]) -> str:
     """Format a TypeScript method table row."""
     name = str(method.get("name", ""))
     signature = create_full_signature(method)
-    visibility = formatter._convert_visibility(str(method.get("visibility", "public")))
+    visibility = formatter.convert_visibility(str(method.get("visibility", "public")))
     line_range = method.get("line_range", {})
     complexity = method.get("complexity_score", 0)
     doc = _doc_summary(formatter, method)
@@ -162,7 +162,7 @@ def _full_parameter_text(param: Any) -> str:
 
 def _doc_summary(formatter: Any, element: dict[str, Any]) -> str:
     return (
-        formatter._extract_doc_summary(
+        formatter.extract_doc_summary(
             str(element.get("javadoc", "") or element.get("doc", ""))
         )
         or "-"

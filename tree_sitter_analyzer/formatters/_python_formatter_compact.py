@@ -85,13 +85,13 @@ def _append_methods(
 
 def _compact_method_row(formatter: Any, method: dict[str, Any]) -> str:
     name = str(method.get("name", ""))
-    signature = formatter._create_compact_signature(method)
-    visibility = formatter._convert_visibility(str(method.get("visibility", "")))
+    signature = formatter.create_compact_signature(method)
+    visibility = formatter.convert_visibility(str(method.get("visibility", "")))
     line_range = method.get("line_range") or {}
     lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
     complexity = method.get("complexity_score", 0)
-    doc = formatter._clean_csv_text(
-        formatter._extract_doc_summary(str(method.get("javadoc", "")))
+    doc = formatter.clean_csv_text(
+        formatter.extract_doc_summary(str(method.get("javadoc", "")))
     )
     return (
         f"| {name} | {signature} | {visibility} | {lines_str} | {complexity} | {doc} |"

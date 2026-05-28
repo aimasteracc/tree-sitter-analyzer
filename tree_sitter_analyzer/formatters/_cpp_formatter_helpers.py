@@ -145,7 +145,7 @@ def _append_classes_section(
     lines.append("")
 
     for class_info in classes:
-        lines.extend(formatter._format_class_details(class_info, data))
+        lines.extend(formatter.format_class_details(class_info, data))
 
 
 def _format_class_overview_row(data: dict[str, Any], class_info: dict[str, Any]) -> str:
@@ -175,7 +175,7 @@ def _append_global_functions(
     lines.append("| Method | Signature | Vis | Lines | Cols | Cx | Doc |")
     lines.append("|--------|-----------|-----|-------|------|----|----|")
     for method in global_methods:
-        lines.append(formatter._format_method_row(method))
+        lines.append(formatter.format_method_row(method))
     lines.append("")
 
 
@@ -253,7 +253,7 @@ def _append_method_group(
     lines.append("| Method | Signature | Vis | Lines | Cx | Doc |")
     lines.append("|--------|-----------|-----|-------|----|----|")
     for method in methods:
-        lines.append(formatter._format_method_row(method))
+        lines.append(formatter.format_method_row(method))
     lines.append("")
 
 
@@ -287,13 +287,13 @@ def _append_compact_methods(
 
 
 def _format_compact_method_row(formatter: Any, method: dict[str, Any]) -> str:
-    doc = formatter._clean_csv_text(
-        formatter._extract_doc_summary(str(method.get("javadoc", "")))
+    doc = formatter.clean_csv_text(
+        formatter.extract_doc_summary(str(method.get("javadoc", "")))
     )
     return (
         f"| {str(method.get('name', ''))} | "
-        f"{formatter._create_compact_signature(method)} | "
-        f"{formatter._convert_visibility(str(method.get('visibility', '')))} | "
+        f"{formatter.create_compact_signature(method)} | "
+        f"{formatter.convert_visibility(str(method.get('visibility', '')))} | "
         f"{_line_range_text(method.get('line_range', {}))} | "
         f"{method.get('complexity_score', 0)} | {doc} |"
     )
@@ -307,7 +307,7 @@ def _format_field_row(
         doc = doc.replace("\n", " ").replace("|", "\\|")[:50]
     return (
         f"| {str(field.get('name', ''))} | {str(field.get('type', ''))} | "
-        f"{formatter._convert_visibility(str(field.get('visibility', '')))} | "
+        f"{formatter.convert_visibility(str(field.get('visibility', '')))} | "
         f"{','.join([str(modifier) for modifier in field.get('modifiers', [])])} | "
         f"{field.get('line_range', {}).get('start', 0)} | {doc} |"
     )

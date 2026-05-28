@@ -12,31 +12,31 @@ def build_task_handlers(
 ) -> dict[Any, Any]:
     """Build task handlers for the iterative TOON encoder."""
     return {
-        task_type.ENCODE_DICT_START: lambda task: encoder._handle_dict_start(
+        task_type.ENCODE_DICT_START: lambda task: encoder.handle_dict_start(
             task,
             stack,
             output,
             seen_ids,
         ),
-        task_type.ENCODE_DICT_KEY: lambda task: encoder._handle_dict_key(
+        task_type.ENCODE_DICT_KEY: lambda task: encoder.handle_dict_key(
             task,
             stack,
             output,
             seen_ids,
         ),
-        task_type.ENCODE_LIST_START: lambda task: encoder._handle_list_start(
+        task_type.ENCODE_LIST_START: lambda task: encoder.handle_list_start(
             task,
             stack,
             output,
             seen_ids,
         ),
-        task_type.ENCODE_LIST_ITEM: lambda task: encoder._handle_list_item(
+        task_type.ENCODE_LIST_ITEM: lambda task: encoder.handle_list_item(
             task,
             stack,
             output,
             seen_ids,
         ),
-        task_type.ENCODE_ARRAY_TABLE: lambda task: encoder._handle_array_table(
+        task_type.ENCODE_ARRAY_TABLE: lambda task: encoder.handle_array_table(
             task,
             output,
             seen_ids,

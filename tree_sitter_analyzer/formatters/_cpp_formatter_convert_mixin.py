@@ -62,13 +62,13 @@ def _append_converted_cpp_element(
 ) -> None:
     element_type = get_element_type(element)
     if element_type == ELEMENT_TYPE_CLASS:
-        classes.append(formatter._convert_class_element(element, index))
+        classes.append(formatter.convert_class_element(element, index))
     elif element_type == ELEMENT_TYPE_FUNCTION:
-        methods.append(formatter._convert_function_element(element))
+        methods.append(formatter.convert_function_element(element))
     elif element_type == ELEMENT_TYPE_VARIABLE:
-        fields.append(formatter._convert_variable_element(element))
+        fields.append(formatter.convert_variable_element(element))
     elif element_type == ELEMENT_TYPE_IMPORT:
-        imports.append(formatter._convert_import_element(element))
+        imports.append(formatter.convert_import_element(element))
 
 
 def _parse_cpp_parameter(param: Any) -> dict[str, Any]:
@@ -272,3 +272,9 @@ class CppTableFormatterConvertMixin:
             "name": getattr(element, "name", str(element)),
             "module_name": getattr(element, "module_name", ""),
         }
+
+    # Public aliases for companion module standalone functions
+    convert_class_element = _convert_class_element
+    convert_function_element = _convert_function_element
+    convert_variable_element = _convert_variable_element
+    convert_import_element = _convert_import_element
