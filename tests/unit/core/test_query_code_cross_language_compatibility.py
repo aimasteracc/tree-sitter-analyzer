@@ -14,6 +14,17 @@ import pytest
 from tree_sitter_analyzer.core.query_service import QueryService
 
 
+def _assert_result_structure(result: dict, language: str) -> None:
+    """Assert one query result has the expected fields and types."""
+    for field in ("capture_name", "node_type", "start_line", "end_line", "content"):
+        assert field in result, f"{language} result should have {field}"
+    assert isinstance(result["capture_name"], str), "capture_name should be string"
+    assert isinstance(result["node_type"], str), "node_type should be string"
+    assert isinstance(result["start_line"], int), "start_line should be int"
+    assert isinstance(result["end_line"], int), "end_line should be int"
+    assert isinstance(result["content"], str), "content should be string"
+
+
 class TestQueryCodeCrossLanguageCompatibility:
     """Test cross-language query compatibility"""
 
@@ -400,34 +411,7 @@ public class JavaClass {
 
                 # Check result structure consistency
                 for result in results:
-                    assert "capture_name" in result, (
-                        f"{language} result should have capture_name"
-                    )
-                    assert "node_type" in result, (
-                        f"{language} result should have node_type"
-                    )
-                    assert "start_line" in result, (
-                        f"{language} result should have start_line"
-                    )
-                    assert "end_line" in result, (
-                        f"{language} result should have end_line"
-                    )
-                    assert "content" in result, f"{language} result should have content"
-
-                    # Verify data types
-                    assert isinstance(result["capture_name"], str), (
-                        "capture_name should be string"
-                    )
-                    assert isinstance(result["node_type"], str), (
-                        "node_type should be string"
-                    )
-                    assert isinstance(result["start_line"], int), (
-                        "start_line should be int"
-                    )
-                    assert isinstance(result["end_line"], int), "end_line should be int"
-                    assert isinstance(result["content"], str), (
-                        "content should be string"
-                    )
+                    _assert_result_structure(result, language)
 
             finally:
                 os.unlink(temp_file)
