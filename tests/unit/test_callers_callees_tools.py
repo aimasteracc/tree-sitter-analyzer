@@ -7,6 +7,9 @@ import pytest
 
 from tree_sitter_analyzer.mcp.tools.callees_tool import CodeGraphCalleesTool
 from tree_sitter_analyzer.mcp.tools.callers_tool import CodeGraphCallersTool
+from tree_sitter_analyzer.mcp.tools.codegraph_relation_tool import (
+    CodeGraphRelationToolMixin,
+)
 
 _PROJECT_ROOT = str(Path(__file__).resolve().parent.parent.parent)
 
@@ -136,6 +139,10 @@ class TestCodeGraphCalleesTool:
 
 
 class TestCallerCalleeIntegration:
+    def test_callers_and_callees_share_relation_bootstrap(self):
+        assert issubclass(CodeGraphCallersTool, CodeGraphRelationToolMixin)
+        assert issubclass(CodeGraphCalleesTool, CodeGraphRelationToolMixin)
+
     @pytest.mark.asyncio
     async def test_unknown_function_returns_empty(self, callers_tool, callees_tool):
         result = await callers_tool.execute(

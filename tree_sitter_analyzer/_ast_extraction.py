@@ -508,12 +508,12 @@ def _extract_structure(symbols: dict[str, Any]) -> dict[str, Any]:
 def _extract_call_edges(
     tree: Any, source_code: str, language: str, symbols: dict[str, Any]
 ) -> list[dict[str, Any]]:
-    """Extract call edges from the AST using call_graph module helpers."""
+    """Extract call edges from the AST using shared function-call helpers."""
     if tree is None:
         return []
-    from . import call_graph as _cg
+    from .function_extraction import walk_tree
 
-    definitions, calls = _cg._walk_tree(tree.root_node, source_code, language)
+    definitions, calls = walk_tree(tree.root_node, source_code, language)
 
     file_funcs: dict[str, tuple[int, int]] = {}
     for d in definitions:

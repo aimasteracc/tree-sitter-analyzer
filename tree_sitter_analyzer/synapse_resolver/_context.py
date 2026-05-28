@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass, field
+from collections import OrderedDict
 from typing import TYPE_CHECKING, Any
 
+from ..callee_resolution import CalleeResolver
 from ._constants import BUILTINS_PY, STDLIB_NAMES_PY
 from ._imports import ImportEntry
 
@@ -14,7 +15,6 @@ if TYPE_CHECKING:
     from ..ast_cache import ASTCache
 
 
-@dataclass(frozen=True)
 class ResolverContext:
     """Project-wide indices the resolver consults per call edge.
 
@@ -29,45 +29,122 @@ class ResolverContext:
     All maps are caller-file-keyed where applicable.
     """
 
-    project_root: str
-    cache: ASTCache
-    file_symbols: dict[str, list[tuple[str, str, int]]] = field(default_factory=dict)
-    name_to_source: dict[str, dict[str, str]] = field(default_factory=dict)
-    file_class_methods: dict[str, dict[str, dict[str, int]]] = field(
-        default_factory=dict
-    )
-    global_name_table: dict[str, list[tuple[str, int]]] = field(default_factory=dict)
-    import_alias_target: dict[str, dict[str, str]] = field(default_factory=dict)
-    imports_by_file: dict[str, list[ImportEntry]] = field(default_factory=dict)
-    builtins: dict[str, frozenset[str]] = field(default_factory=dict)
-    stdlib_modules: dict[str, frozenset[str]] = field(default_factory=dict)
+    def __init__(
+        self,
+        project_root: str,
+        cache: ASTCache | None,
+        *,
+        file_symbols: dict[str, list[tuple[str, str, int]]] | None = None,
+        name_to_source: dict[str, dict[str, str]] | None = None,
+        file_class_methods: dict[str, dict[str, dict[str, int]]] | None = None,
+        global_name_table: dict[str, list[tuple[str, int]]] | None = None,
+        import_alias_target: dict[str, dict[str, str]] | None = None,
+        imports_by_file: dict[str, list[ImportEntry]] | None = None,
+        builtins: dict[str, frozenset[str]] | None = None,
+        stdlib_modules: dict[str, frozenset[str]] | None = None,
+        callee_resolver: CalleeResolver | None = None,
+    ) -> None:
+        self.project_root = project_root
+        self.cache = cache
+        self._file_symbols = file_symbols or {}
+        self._name_to_source = name_to_source or {}
+        self._file_class_methods = file_class_methods or {}
+        self._file_class_methods_loaded = file_class_methods is not None
+        self._global_name_table = global_name_table or {}
+        self._import_alias_target = import_alias_target or {}
+        self._imports_by_file = imports_by_file or {}
+        self._builtins = builtins or {}
+        self._stdlib_modules = stdlib_modules or {}
+        self._callee_resolver = callee_resolver
+        self._loaded = any(
+            value is not None
+            for value in (
+                file_symbols,
+                name_to_source,
+                file_class_methods,
+                global_name_table,
+                import_alias_target,
+                imports_by_file,
+                builtins,
+                stdlib_modules,
+                callee_resolver,
+            )
+        )
 
-    def __post_init__(self) -> None:
-        """Auto-build the indices when only (project_root, cache) is given.
+    @property
+    def file_symbols(self) -> dict[str, list[tuple[str, str, int]]]:
+        self._ensure_loaded()
+        return self._file_symbols
 
-        Detect the convenience case by checking whether the builtins map
-        is populated — the hot path always seeds it, the bare
-        ``ResolverContext(project_root=..., cache=...)`` call leaves the
-        default empty dict. Without this check the bootstrap below would
-        recurse via ``build_resolver_context`` -> ``ResolverContext(...)``.
-        """
-        if self.builtins or self.stdlib_modules:
+    @property
+    def name_to_source(self) -> dict[str, dict[str, str]]:
+        self._ensure_loaded()
+        return self._name_to_source
+
+    @property
+    def file_class_methods(self) -> dict[str, dict[str, dict[str, int]]]:
+        self._ensure_loaded()
+        if not self._file_class_methods_loaded and self.cache is not None:
+            self._file_class_methods = _build_file_class_methods_from_cache(self.cache)
+            self._file_class_methods_loaded = True
+        return self._file_class_methods
+
+    @property
+    def global_name_table(self) -> dict[str, list[tuple[str, int]]]:
+        self._ensure_loaded()
+        return self._global_name_table
+
+    @property
+    def import_alias_target(self) -> dict[str, dict[str, str]]:
+        self._ensure_loaded()
+        return self._import_alias_target
+
+    @property
+    def imports_by_file(self) -> dict[str, list[ImportEntry]]:
+        self._ensure_loaded()
+        return self._imports_by_file
+
+    @property
+    def builtins(self) -> dict[str, frozenset[str]]:
+        self._ensure_loaded()
+        return self._builtins
+
+    @property
+    def stdlib_modules(self) -> dict[str, frozenset[str]]:
+        self._ensure_loaded()
+        return self._stdlib_modules
+
+    @property
+    def callee_resolver(self) -> CalleeResolver | None:
+        self._ensure_loaded()
+        return self._callee_resolver
+
+    def _ensure_loaded(self) -> None:
+        if self._loaded:
             return
         if self.cache is None:
-            return  # type: ignore[unreachable]
-        # Frozen dataclass: must assign via object.__setattr__ in post_init.
+            self._loaded = True
+            return
         built = build_resolver_context(self.cache)
-        for attr in (
-            "file_symbols",
-            "name_to_source",
-            "file_class_methods",
-            "global_name_table",
-            "import_alias_target",
-            "imports_by_file",
-            "builtins",
-            "stdlib_modules",
-        ):
-            object.__setattr__(self, attr, getattr(built, attr))
+        self._file_symbols = built.file_symbols
+        self._name_to_source = built.name_to_source
+        self._file_class_methods = built._file_class_methods
+        self._file_class_methods_loaded = built._file_class_methods_loaded
+        self._global_name_table = built.global_name_table
+        self._import_alias_target = built.import_alias_target
+        self._imports_by_file = built.imports_by_file
+        self._builtins = built.builtins
+        self._stdlib_modules = built.stdlib_modules
+        self._callee_resolver = built.callee_resolver
+        self._loaded = True
+
+
+_CONTEXT_CACHE_MAX = 8
+_CONTEXT_CACHE: OrderedDict[tuple[str, int, int], ResolverContext] = OrderedDict()
+
+
+def clear_resolver_context_cache() -> None:
+    _CONTEXT_CACHE.clear()
 
 
 def is_enabled() -> bool:
@@ -229,6 +306,22 @@ def _build_file_class_methods(
     return out
 
 
+def _build_file_class_methods_from_cache(
+    cache: ASTCache,
+) -> dict[str, dict[str, dict[str, int]]]:
+    conn = cache._get_conn()
+    line_idx: dict[tuple[str, str, int], int] = {}
+    try:
+        rows = conn.execute(
+            "SELECT id, name, file_path, line FROM ast_symbol_rows"
+        ).fetchall()
+    except Exception:  # nosec B110
+        rows = []
+    for row in rows:
+        line_idx[(row["file_path"], row["name"], row["line"])] = row["id"]
+    return _build_file_class_methods(conn, line_idx)
+
+
 def _build_import_maps(
     imports_by_file: dict[str, list[ImportEntry]],
     module_to_file: dict[str, str],
@@ -272,7 +365,32 @@ def _build_import_maps(
     return name_to_source, alias_target
 
 
+def _cache_identity(cache: ASTCache) -> tuple[str, int, int]:
+    db_path = str(getattr(cache, "db_path", ""))
+    if not db_path:
+        return (str(id(cache)), 0, 0)
+    try:
+        stat = os.stat(db_path)
+    except OSError:
+        return (db_path, 0, 0)
+    return (db_path, int(stat.st_mtime_ns), int(stat.st_size))
+
+
 def build_resolver_context(cache: ASTCache) -> ResolverContext:
+    """Return a loaded resolver context, reusing recent cache snapshots."""
+    key = _cache_identity(cache)
+    cached = _CONTEXT_CACHE.get(key)
+    if cached is not None:
+        _CONTEXT_CACHE.move_to_end(key)
+        return cached
+    built = _build_resolver_context_uncached(cache)
+    _CONTEXT_CACHE[key] = built
+    if len(_CONTEXT_CACHE) > _CONTEXT_CACHE_MAX:
+        _CONTEXT_CACHE.popitem(last=False)
+    return built
+
+
+def _build_resolver_context_uncached(cache: ASTCache) -> ResolverContext:
     """One DB pass; populates every map the resolver needs."""
     conn = cache._get_conn()
 
@@ -281,7 +399,8 @@ def build_resolver_context(cache: ASTCache) -> ResolverContext:
     line_idx: dict[tuple[str, str, int], int] = {}
     try:
         sym_rows = conn.execute(
-            "SELECT id, name, kind, file_path, line FROM ast_symbol_rows"
+            "SELECT id, name, kind, file_path, line FROM ast_symbol_rows "
+            "WHERE kind IN ('function', 'method', 'class')"
         ).fetchall()
     except Exception:  # nosec B110 — fts5/table-missing tolerance.
         sym_rows = []
@@ -291,11 +410,8 @@ def build_resolver_context(cache: ASTCache) -> ResolverContext:
         kind = row["kind"]
         fp = row["file_path"]
         file_symbols.setdefault(fp, []).append((name, kind, sid))
-        if kind in ("function", "method", "class"):
-            global_name_table.setdefault(name, []).append((fp, sid))
+        global_name_table.setdefault(name, []).append((fp, sid))
         line_idx[(fp, name, row["line"])] = sid
-
-    file_class_methods = _build_file_class_methods(conn, line_idx)
 
     imports_by_file: dict[str, list[ImportEntry]] = {}
     try:
@@ -324,18 +440,69 @@ def build_resolver_context(cache: ASTCache) -> ResolverContext:
     ]
     module_to_file = _build_module_to_file(file_paths)
     name_to_source, alias_target = _build_import_maps(imports_by_file, module_to_file)
+    callee_resolver = _build_callee_resolver(
+        file_symbols=file_symbols,
+        global_name_table=global_name_table,
+        name_to_source=name_to_source,
+        alias_target=alias_target,
+    )
 
     return ResolverContext(
         project_root=cache.project_root,
         cache=cache,
         file_symbols=file_symbols,
         name_to_source=name_to_source,
-        file_class_methods=file_class_methods,
         global_name_table=global_name_table,
         import_alias_target=alias_target,
         imports_by_file=imports_by_file,
         builtins={"python": BUILTINS_PY},
         stdlib_modules={"python": STDLIB_NAMES_PY},
+        callee_resolver=callee_resolver,
+    )
+
+
+def _build_callee_resolver(
+    *,
+    file_symbols: dict[str, list[tuple[str, str, int]]],
+    global_name_table: dict[str, list[tuple[str, int]]],
+    name_to_source: dict[str, dict[str, str]],
+    alias_target: dict[str, dict[str, str]],
+) -> CalleeResolver:
+    functions_by_file: dict[str, list[dict[str, Any]]] = {}
+    for file_path, symbols in file_symbols.items():
+        for name, kind, sym_id in symbols:
+            if kind not in ("function", "method", "class"):
+                continue
+            functions_by_file.setdefault(file_path, []).append(
+                {
+                    "name": name,
+                    "kind": kind,
+                    "file": file_path,
+                    "id": sym_id,
+                }
+            )
+
+    functions_by_name: dict[str, list[dict[str, Any]]] = {}
+    for name, entries in global_name_table.items():
+        for file_path, sym_id in entries:
+            functions_by_name.setdefault(name, []).append(
+                {
+                    "name": name,
+                    "file": file_path,
+                    "id": sym_id,
+                }
+            )
+
+    combined_sources: dict[str, dict[str, str]] = {}
+    for file_path, sources in name_to_source.items():
+        combined_sources.setdefault(file_path, {}).update(sources)
+    for file_path, aliases in alias_target.items():
+        combined_sources.setdefault(file_path, {}).update(aliases)
+
+    return CalleeResolver(
+        functions_by_name=functions_by_name,
+        functions_by_file=functions_by_file,
+        name_to_source=combined_sources,
     )
 
 

@@ -16,6 +16,8 @@ from __future__ import annotations
 import os
 from typing import Any
 
+from ...codegraph_query_backend import CodeGraphQueryBackend
+from ...uml_export import UMLEdge, render_flowchart_mermaid
 from ...utils import setup_logger
 from ..utils.format_helper import apply_toon_format_to_response
 from . import _codegraph_explore_helpers as _h
@@ -91,12 +93,12 @@ class CodeGraphQueryTool(BaseMCPTool):
             "name": "codegraph_query",
             "description": (
                 "jQuery-style chained code graph query. Compose search(), "
-                "explore(), callers(), callees(), related(), filter(), exclude(), has(), "
-                "include(), sort(), take(), and answer() in one statement so agents "
+                "semantic(), explore(), callers(), callees(), related(), filter(), exclude(), has(), "
+                "include(), uml(), sort(), take(), and answer() in one statement so agents "
                 "get an answer pack without 40 separate CLI calls. Example: "
                 "search(['Router', 'Handler']).has(callees=True, name='authorize')"
                 ".explore().include(callers=True, "
-                "complexity=True).sort(by='fan_in', desc=True).answer()."
+                "complexity=True).uml().sort(by='fan_in', desc=True).answer()."
             ),
             "inputSchema": self.get_tool_schema(),
             "annotations": {
@@ -185,7 +187,10 @@ class CodeGraphQueryTool(BaseMCPTool):
             )
             return apply_toon_format_to_response(result, output_format)
 
-        state = _QueryState(compact=compact)
+        state = _QueryState(
+            compact=compact,
+            backend=CodeGraphQueryBackend(cache),
+        )
         warnings: list[str] = []
 
         for step in steps:
@@ -255,7 +260,19 @@ class CodeGraphQueryTool(BaseMCPTool):
             queries = string_args(step, required=True)
             limit = int_kw(step, "limit", default_max_symbols, _MAX_SYMBOLS_CAP)
             state.seed_queries = queries
-            state.current = _resolve_queries(cache, queries, limit)
+            state.current = _resolve_queries_with_backend(
+                _state_backend(state, cache), queries, limit
+            )
+            state.add_symbols(state.current)
+            return
+
+        if step.name == "semantic":
+            queries = string_args(step, required=True)
+            limit = int_kw(step, "limit", default_max_symbols, _MAX_SYMBOLS_CAP)
+            state.seed_queries = queries
+            state.current = _semantic_queries_with_backend(
+                _state_backend(state, cache), queries, limit
+            )
             state.add_symbols(state.current)
             return
 
@@ -266,7 +283,9 @@ class CodeGraphQueryTool(BaseMCPTool):
                     step, "max_symbols", default_max_symbols, _MAX_SYMBOLS_CAP
                 )
                 state.seed_queries = queries
-                state.current = _resolve_queries(cache, queries, limit)
+                state.current = _resolve_queries_with_backend(
+                    _state_backend(state, cache), queries, limit
+                )
                 state.add_symbols(state.current)
             max_files = int_kw(step, "max_files", default_max_files, _MAX_FILES_CAP)
             max_symbols = int_kw(
@@ -341,6 +360,21 @@ class CodeGraphQueryTool(BaseMCPTool):
             )
             return
 
+        if step.name == "uml":
+            direction = str(step.kwargs.get("direction") or "LR")
+            max_edges = int_kw(
+                step,
+                "max_edges",
+                int_kw(step, "limit", _MAX_REL_PER_SYMBOL, _MAX_SYMBOLS_CAP),
+                _MAX_SYMBOLS_CAP,
+            )
+            state.facets["uml"] = _uml_facet(
+                state,
+                direction=direction,
+                max_edges=max_edges,
+            )
+            return
+
         if step.name == "answer":
             state.compact = bool_kw(step, "compact", state.compact)
             return
@@ -349,7 +383,12 @@ class CodeGraphQueryTool(BaseMCPTool):
 
 
 class _QueryState:
-    def __init__(self, *, compact: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        compact: bool = False,
+        backend: CodeGraphQueryBackend | None = None,
+    ) -> None:
         self.current: list[dict[str, Any]] = []
         self.symbols: list[dict[str, Any]] = []
         self.files: list[dict[str, Any]] = []
@@ -366,6 +405,7 @@ class _QueryState:
             tuple[str, str, str, int, int], list[dict[str, Any]]
         ] = {}
         self.selection_filters: list[tuple[_ChainStep, bool]] = []
+        self.backend = backend
 
     def add_symbols(self, symbols: list[dict[str, Any]]) -> None:
         for symbol in symbols:
@@ -377,9 +417,22 @@ class _QueryState:
 
 
 def _resolve_query(cache: Any, query: str, limit: int) -> list[dict[str, Any]]:
-    from ...symbol_resolver import SymbolResolver
+    return _resolve_query_with_backend(
+        CodeGraphQueryBackend(cache),
+        query,
+        limit,
+    )
 
-    resolver = SymbolResolver(cache)
+
+def _state_backend(state: _QueryState, cache: Any) -> CodeGraphQueryBackend:
+    if state.backend is None:
+        state.backend = CodeGraphQueryBackend(cache)
+    return state.backend
+
+
+def _resolve_query_with_backend(
+    backend: CodeGraphQueryBackend, query: str, limit: int
+) -> list[dict[str, Any]]:
     _, file_tokens = _h.split_query(query)
     symbol_tokens = _concepts.symbol_candidate_tokens(query)
 
@@ -387,17 +440,16 @@ def _resolve_query(cache: Any, query: str, limit: int) -> list[dict[str, Any]]:
     seen: set[tuple[str, int, str]] = set()
     for token_order, token in enumerate(symbol_tokens):
         try:
-            defs = resolver.resolve(token).definitions
+            defs = backend.resolve_definitions(token)
         except Exception as exc:
             logger.debug("codegraph_query resolve(%r) failed: %s", token, exc)
             continue
-        for definition in defs:
+        for item in defs:
             if file_tokens and not any(
-                file_token.lower() in definition.file.lower()
+                file_token.lower() in str(item.get("file", "")).lower()
                 for file_token in file_tokens
             ):
                 continue
-            item = definition.to_dict()
             key = _symbol_key_tuple(item)
             if key in seen:
                 continue
@@ -466,12 +518,35 @@ def _apply_concept_fallback(
 def _resolve_queries(
     cache: Any, queries: list[str], limit: int
 ) -> list[dict[str, Any]]:
+    backend = CodeGraphQueryBackend(cache)
+    return _resolve_queries_with_backend(backend, queries, limit)
+
+
+def _resolve_queries_with_backend(
+    backend: CodeGraphQueryBackend, queries: list[str], limit: int
+) -> list[dict[str, Any]]:
     resolved: list[dict[str, Any]] = []
     for query in queries:
         remaining = limit - len(resolved)
         if remaining <= 0:
             break
-        resolved.extend(_resolve_query(cache, query, remaining))
+        resolved.extend(_resolve_query_with_backend(backend, query, remaining))
+        resolved = _dedupe_symbols(resolved)
+    return resolved[:limit]
+
+
+def _semantic_queries_with_backend(
+    backend: CodeGraphQueryBackend, queries: list[str], limit: int
+) -> list[dict[str, Any]]:
+    resolved: list[dict[str, Any]] = []
+    for query in queries:
+        remaining = limit - len(resolved)
+        if remaining <= 0:
+            break
+        try:
+            resolved.extend(backend.semantic_symbols(query, limit=remaining))
+        except Exception as exc:
+            logger.debug("codegraph_query semantic(%r) failed: %s", query, exc)
         resolved = _dedupe_symbols(resolved)
     return resolved[:limit]
 
@@ -523,6 +598,7 @@ def _relation_entries_for_symbol(
     if entries is None:
         entries = _query_relation_entries(
             cache=cache,
+            backend=state.backend,
             direction=direction,
             name=name,
             file_path=file_path,
@@ -536,24 +612,21 @@ def _relation_entries_for_symbol(
 def _query_relation_entries(
     *,
     cache: Any,
+    backend: CodeGraphQueryBackend | None = None,
     direction: str,
     name: str,
     file_path: str,
     depth: int,
     limit: int,
 ) -> list[dict[str, Any]]:
-    if direction == "callers":
-        rows = cache.query_callers(name, file_path or None, max_depth=depth) or []
-        entries = [
-            _row_symbol(row, "caller_name", "caller_file", "caller_line")
-            for row in rows
-        ]
-    else:
-        rows = cache.query_callees(name, file_path or None, max_depth=depth) or []
-        entries = [
-            _row_symbol(row, "callee_name", "callee_file", "callee_line")
-            for row in rows
-        ]
+    query_backend = backend or CodeGraphQueryBackend(cache)
+    entries = query_backend.relation_entries(
+        direction=direction,
+        name=name,
+        file_path=file_path,
+        depth=depth,
+        limit=limit,
+    )
     return _source_first_symbols(
         entry
         for entry in entries
@@ -940,6 +1013,88 @@ def _risk_facet(state: _QueryState) -> dict[str, Any]:
         "level": "review" if reasons else "info",
         "reasons": reasons,
     }
+
+
+def _uml_facet(
+    state: _QueryState,
+    *,
+    direction: str,
+    max_edges: int,
+) -> dict[str, Any]:
+    mermaid_direction = (
+        direction if direction in {"LR", "RL", "TB", "TD", "BT"} else "LR"
+    )
+    symbol_by_key = {_symbol_key(symbol): symbol for symbol in state.symbols}
+    symbol_by_key.update({_symbol_key(symbol): symbol for symbol in state.current})
+    edges: list[UMLEdge] = []
+    nodes: set[str] = set()
+
+    for source_key, entries in state.relationships["callees"].items():
+        source_name = _display_name(symbol_by_key.get(source_key), source_key)
+        nodes.add(source_name)
+        for entry in entries:
+            target_name = _display_name(entry, _symbol_key(entry))
+            nodes.add(target_name)
+            edges.append(UMLEdge(source_name, target_name, "calls"))
+
+    for target_key, entries in state.relationships["callers"].items():
+        target_name = _display_name(symbol_by_key.get(target_key), target_key)
+        nodes.add(target_name)
+        for entry in entries:
+            source_name = _display_name(entry, _symbol_key(entry))
+            nodes.add(source_name)
+            edges.append(UMLEdge(source_name, target_name, "calls"))
+
+    if not nodes:
+        nodes.update(
+            _display_name(symbol, _symbol_key(symbol))
+            for symbol in state.current
+            if _display_name(symbol, _symbol_key(symbol))
+        )
+
+    unique_edges = _dedupe_uml_edges(edges)
+    truncated = len(unique_edges) > max_edges
+    rendered_edges = unique_edges[:max_edges]
+    rendered_nodes = sorted(nodes)
+    return {
+        "status": "included",
+        "diagram_type": "query_flow",
+        "mermaid_type": "flowchart",
+        "node_count": len(rendered_nodes),
+        "edge_count": len(rendered_edges),
+        "truncated": truncated,
+        "nodes": rendered_nodes,
+        "edges": [edge.to_dict() for edge in rendered_edges],
+        "mermaid": render_flowchart_mermaid(
+            rendered_nodes,
+            rendered_edges,
+            mermaid_direction,
+        ),
+        "metadata": {
+            "source": "codegraph_query",
+            "direction": mermaid_direction,
+        },
+    }
+
+
+def _display_name(symbol: dict[str, Any] | None, fallback: str) -> str:
+    if symbol:
+        name = str(symbol.get("name") or "")
+        if name:
+            return name
+    if ":" in fallback:
+        return fallback.rsplit(":", 1)[-1]
+    return fallback
+
+
+def _dedupe_uml_edges(edges: list[UMLEdge]) -> list[UMLEdge]:
+    unique: dict[tuple[str, str, str], UMLEdge] = {}
+    for edge in edges:
+        key = (edge.source, edge.target, edge.label)
+        unique.setdefault(key, edge)
+    return sorted(
+        unique.values(), key=lambda edge: (edge.source, edge.target, edge.label)
+    )
 
 
 def _compact_symbol(symbol: dict[str, Any]) -> dict[str, Any]:

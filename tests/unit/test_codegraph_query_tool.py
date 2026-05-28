@@ -8,6 +8,9 @@ from unittest.mock import ANY, MagicMock, patch
 
 import pytest
 
+from tree_sitter_analyzer.codegraph_query_backend import (
+    CodeGraphQueryBackend as SharedCodeGraphQueryBackend,
+)
 from tree_sitter_analyzer.mcp.tools import _codegraph_query_concepts as concepts
 from tree_sitter_analyzer.mcp.tools import _codegraph_query_filters as filters
 from tree_sitter_analyzer.mcp.tools._codegraph_query_dsl import (
@@ -39,9 +42,10 @@ from tree_sitter_analyzer.mcp.tools.codegraph_query_tool import (
     _risk_facet,
     _sort_state,
     _source_preference_key,
+    _uml_facet,
     parse_chain,
 )
-from tree_sitter_analyzer.symbol_resolver import DefinitionLocation, ResolveResult
+from tree_sitter_analyzer.symbol_resolver import DefinitionLocation
 
 
 def _make_def(
@@ -63,14 +67,26 @@ def _make_def(
 
 
 def _patch_resolver_with(defs_per_token: dict[str, list[DefinitionLocation]]):
-    def _resolve(token: str) -> ResolveResult:
-        return ResolveResult(symbol=token, definitions=defs_per_token.get(token, []))
+    class FakeBackend:
+        def __init__(self, cache):
+            self._real_backend = SharedCodeGraphQueryBackend(cache)
 
-    mock_resolver = MagicMock()
-    mock_resolver.resolve.side_effect = _resolve
+        def resolve_definitions(self, token: str) -> list[dict[str, object]]:
+            return [
+                definition.to_dict() for definition in defs_per_token.get(token, [])
+            ]
+
+        def semantic_symbols(self, token: str, *, limit: int):
+            return [
+                definition.to_dict() for definition in defs_per_token.get(token, [])
+            ][:limit]
+
+        def relation_entries(self, **kwargs):
+            return self._real_backend.relation_entries(**kwargs)
+
     return patch(
-        "tree_sitter_analyzer.symbol_resolver.SymbolResolver",
-        return_value=mock_resolver,
+        "tree_sitter_analyzer.mcp.tools.codegraph_query_tool.CodeGraphQueryBackend",
+        FakeBackend,
     )
 
 
@@ -94,6 +110,19 @@ class TestParseChain:
     def test_rejects_unsupported_step(self):
         with pytest.raises(ValueError, match="unsupported chain step"):
             parse_chain("search('x').delete()")
+
+    def test_parses_semantic_search_step(self):
+        steps = parse_chain("semantic('user formatting', limit=5)")
+
+        assert steps[0].name == "semantic"
+        assert steps[0].args == ["user formatting"]
+        assert steps[0].kwargs == {"limit": 5}
+
+    def test_parses_uml_chain_step(self):
+        steps = parse_chain("search('run').callees().uml(direction='TD', limit=12)")
+
+        assert [step.name for step in steps] == ["search", "callees", "uml"]
+        assert steps[2].kwargs == {"direction": "TD", "limit": 12}
 
     def test_parses_batch_seed_and_answer_pack_steps(self):
         steps = parse_chain(
@@ -421,6 +450,61 @@ class TestCodeGraphQueryTool:
 
         assert result["success"] is True
         assert [symbol["name"] for symbol in result["symbols"]] == ["run"]
+
+    @pytest.mark.asyncio
+    async def test_execute_semantic_search_uses_vector_backend(self, tmp_path):
+        defs = {
+            "user formatting": [
+                _make_def(file="utils.py", name="format_user", line=1),
+            ]
+        }
+
+        with (
+            patch("tree_sitter_analyzer.ast_cache.ASTCache", return_value=MagicMock()),
+            _patch_resolver_with(defs),
+        ):
+            result = await CodeGraphQueryTool(str(tmp_path)).execute(
+                {
+                    "query": "semantic('user formatting', limit=5)",
+                    "output_format": "json",
+                }
+            )
+
+        assert result["success"] is True
+        assert [symbol["name"] for symbol in result["symbols"]] == ["format_user"]
+
+    @pytest.mark.asyncio
+    async def test_execute_uml_step_renders_current_relationships_as_mermaid(
+        self, tmp_path
+    ):
+        mock_cache = MagicMock()
+        mock_cache.query_callers.return_value = []
+        mock_cache.query_callees.return_value = [
+            {
+                "callee_name": "helper",
+                "callee_file": "main.py",
+                "callee_line": 4,
+                "depth": 1,
+            }
+        ]
+        defs = {"run": [_make_def(file="main.py", name="run", line=1)]}
+
+        with (
+            patch("tree_sitter_analyzer.ast_cache.ASTCache", return_value=mock_cache),
+            _patch_resolver_with(defs),
+        ):
+            result = await CodeGraphQueryTool(str(tmp_path)).execute(
+                {
+                    "query": "search('run').callees().uml(direction='TD').answer()",
+                    "output_format": "json",
+                }
+            )
+
+        assert result["success"] is True
+        assert result["facets"]["uml"]["mermaid"].startswith("flowchart TD")
+        assert 'run["run"]' in result["facets"]["uml"]["mermaid"]
+        assert "run -->|calls| helper" in result["facets"]["uml"]["mermaid"]
+        assert result["facets"]["uml"]["edge_count"] == 1
 
     @pytest.mark.asyncio
     async def test_execute_explore_falls_back_to_concept_search_for_plain_language(
@@ -1189,15 +1273,30 @@ class TestCodeGraphQueryInternals:
 
         assert state.symbols == [symbol]
 
+    def test_uml_facet_uses_current_symbols_when_no_relationships(self):
+        state = _QueryState()
+        state.current = [{"file": "main.py", "line": 1, "name": "run"}]
+
+        facet = _uml_facet(state, direction="LR", max_edges=5)
+
+        assert facet["status"] == "included"
+        assert facet["edge_count"] == 0
+        assert facet["mermaid"] == 'flowchart LR\n  run["run"]'
+
     def test_resolve_query_uses_raw_query_fallback_and_handles_resolver_errors(self):
         with _patch_resolver_with({"   ": [_make_def(name="fallback")]}):
             assert _resolve_query(MagicMock(), "   ", limit=5)[0]["name"] == "fallback"
 
-        mock_resolver = MagicMock()
-        mock_resolver.resolve.side_effect = RuntimeError("boom")
+        class FailingBackend:
+            def __init__(self, cache):
+                pass
+
+            def resolve_definitions(self, token):
+                raise RuntimeError("boom")
+
         with patch(
-            "tree_sitter_analyzer.symbol_resolver.SymbolResolver",
-            return_value=mock_resolver,
+            "tree_sitter_analyzer.mcp.tools.codegraph_query_tool.CodeGraphQueryBackend",
+            FailingBackend,
         ):
             assert _resolve_query(MagicMock(), "run", limit=5) == []
 
