@@ -27,13 +27,13 @@ from tree_sitter_analyzer.core._query_results import (
 
 def _make_executor(**overrides):
     executor = MagicMock()
-    executor._execution_stats = {
+    executor.execution_stats = {
         "total_queries": 0,
         "successful_queries": 0,
         "failed_queries": 0,
         "total_execution_time": 0.0,
     }
-    executor._create_error_result.side_effect = lambda msg, **kw: {
+    executor.create_error_result.side_effect = lambda msg, **kw: {
         "captures": [],
         "error": msg,
         "success": False,
@@ -87,6 +87,7 @@ class TestLanguageNameFromObject:
     def test_fallback_class_name(self):
         class _Language:
             pass
+
         lang = _Language()
         result = _language_name_from_object(lang)
         assert "_language" in result.lower() or result == "unknown"
@@ -105,9 +106,7 @@ class TestLanguageNameFromObject:
 
 class TestSuccessResult:
     def test_basic(self):
-        result = _success_result(
-            [{"a": 1}], "(class)", 0.01, query_name="classes"
-        )
+        result = _success_result([{"a": 1}], "(class)", 0.01, query_name="classes")
         assert result["success"] is True
         assert result["captures"] == [{"a": 1}]
         assert result["query_string"] == "(class)"
@@ -115,9 +114,7 @@ class TestSuccessResult:
         assert result["query_name"] == "classes"
 
     def test_with_query_string_field(self):
-        result = _success_result(
-            [], "(raw)", 0.0, query_string_field="(raw_override)"
-        )
+        result = _success_result([], "(raw)", 0.0, query_string_field="(raw_override)")
         assert result["query_string"] == "(raw_override)"
 
     def test_no_optional_fields(self):
@@ -133,11 +130,11 @@ class TestExecuteQueryByName:
             executor, None, MagicMock(), "q", "code", _safe_query
         )
         assert result["success"] is False
-        assert executor._execution_stats["total_queries"] == 1
+        assert executor.execution_stats["total_queries"] == 1
 
     def test_query_not_found(self):
         executor = _make_executor()
-        executor._query_loader.get_query.return_value = None
+        executor.query_loader.get_query.return_value = None
         lang = MagicMock()
         lang.name = "python"
         result = execute_query_by_name(
@@ -148,8 +145,8 @@ class TestExecuteQueryByName:
 
     def test_success(self):
         executor = _make_executor()
-        executor._query_loader.get_query.return_value = "(class_definition)"
-        executor._process_captures.return_value = [{"capture_name": "cls"}]
+        executor.query_loader.get_query.return_value = "(class_definition)"
+        executor.process_captures.return_value = [{"capture_name": "cls"}]
         lang = MagicMock()
         lang.name = "python"
         result = execute_query_by_name(
@@ -157,18 +154,18 @@ class TestExecuteQueryByName:
         )
         assert result["success"] is True
         assert result["query_name"] == "classes"
-        assert executor._execution_stats["successful_queries"] == 1
+        assert executor.execution_stats["successful_queries"] == 1
 
     def test_exception_increments_failed(self):
         executor = _make_executor()
-        executor._query_loader.get_query.side_effect = RuntimeError("boom")
+        executor.query_loader.get_query.side_effect = RuntimeError("boom")
         lang = MagicMock()
         lang.name = "python"
         result = execute_query_by_name(
             executor, MagicMock(), lang, "q", "code", _safe_query
         )
         assert result["success"] is False
-        assert executor._execution_stats["failed_queries"] == 1
+        assert executor.execution_stats["failed_queries"] == 1
 
 
 class TestExecuteQueryByExplicitLanguage:
@@ -181,30 +178,36 @@ class TestExecuteQueryByExplicitLanguage:
 
     def test_empty_language_name_becomes_unknown(self):
         executor = _make_executor()
-        executor._query_loader.get_query.return_value = None
+        executor.query_loader.get_query.return_value = None
         execute_query_by_explicit_language(
             executor, MagicMock(), MagicMock(), "q", "code", "", _safe_query
         )
-        executor._query_loader.get_query.assert_called_with("unknown", "q")
+        executor.query_loader.get_query.assert_called_with("unknown", "q")
 
     def test_success(self):
         executor = _make_executor()
-        executor._query_loader.get_query.return_value = "(fn)"
-        executor._process_captures.return_value = []
+        executor.query_loader.get_query.return_value = "(fn)"
+        executor.process_captures.return_value = []
         result = execute_query_by_explicit_language(
-            executor, MagicMock(), MagicMock(), "functions", "code", "Python", _safe_query
+            executor,
+            MagicMock(),
+            MagicMock(),
+            "functions",
+            "code",
+            "Python",
+            _safe_query,
         )
         assert result["success"] is True
-        executor._query_loader.get_query.assert_called_with("python", "functions")
+        executor.query_loader.get_query.assert_called_with("python", "functions")
 
     def test_whitespace_language_name_stripped(self):
         executor = _make_executor()
-        executor._query_loader.get_query.return_value = "(x)"
-        executor._process_captures.return_value = []
+        executor.query_loader.get_query.return_value = "(x)"
+        executor.process_captures.return_value = []
         execute_query_by_explicit_language(
             executor, MagicMock(), MagicMock(), "q", "code", "  JAVA  ", _safe_query
         )
-        executor._query_loader.get_query.assert_called_with("java", "q")
+        executor.query_loader.get_query.assert_called_with("java", "q")
 
 
 class TestExecuteRawQueryString:
@@ -217,16 +220,21 @@ class TestExecuteRawQueryString:
 
     def test_success(self):
         executor = _make_executor()
-        executor._process_captures.return_value = []
+        executor.process_captures.return_value = []
         result = execute_raw_query_string(
-            executor, MagicMock(), MagicMock(), "(class_definition)", "code", _safe_query
+            executor,
+            MagicMock(),
+            MagicMock(),
+            "(class_definition)",
+            "code",
+            _safe_query,
         )
         assert result["success"] is True
         assert result["query_string"] == "(class_definition)"
 
     def test_exception(self):
         executor = _make_executor()
-        executor._process_captures.side_effect = RuntimeError("fail")
+        executor.process_captures.side_effect = RuntimeError("fail")
         result = execute_raw_query_string(
             executor, MagicMock(), MagicMock(), "(q)", "code", _safe_query
         )
@@ -236,17 +244,17 @@ class TestExecuteRawQueryString:
 class TestExecuteQueryStringInternal:
     def test_captures_processed(self):
         executor = _make_executor()
-        executor._process_captures.return_value = [{"n": "c"}]
+        executor.process_captures.return_value = [{"n": "c"}]
         mock_safe = MagicMock(return_value=[])
         result = _execute_query_string(
             executor, MagicMock(), MagicMock(), "(q)", "code", mock_safe, 0.0
         )
         assert result["success"] is True
-        assert executor._execution_stats["successful_queries"] == 1
+        assert executor.execution_stats["successful_queries"] == 1
 
     def test_process_captures_returns_error_dict(self):
         executor = _make_executor()
-        executor._process_captures.return_value = {"success": False, "error": "bad"}
+        executor.process_captures.return_value = {"success": False, "error": "bad"}
         mock_safe = MagicMock(return_value=[])
         result = _execute_query_string(
             executor, MagicMock(), MagicMock(), "(q)", "code", mock_safe, 0.0
@@ -257,7 +265,14 @@ class TestExecuteQueryStringInternal:
         executor = _make_executor()
         mock_safe = MagicMock(side_effect=RuntimeError("crash"))
         result = _execute_query_string(
-            executor, MagicMock(), MagicMock(), "(q)", "code", mock_safe, 0.0, query_name="q"
+            executor,
+            MagicMock(),
+            MagicMock(),
+            "(q)",
+            "code",
+            mock_safe,
+            0.0,
+            query_name="q",
         )
         assert result["success"] is False
         assert "failed" in result["error"].lower()
@@ -275,20 +290,20 @@ class TestExecuteQueryStringInternal:
 class TestProcessCapturesOrError:
     def test_success(self):
         executor = _make_executor()
-        executor._process_captures.return_value = [{"a": 1}]
+        executor.process_captures.return_value = [{"a": 1}]
         result = _process_captures_or_error(executor, [], "code", query_name="q")
         assert isinstance(result, list)
 
     def test_exception(self):
         executor = _make_executor()
-        executor._process_captures.side_effect = RuntimeError("x")
+        executor.process_captures.side_effect = RuntimeError("x")
         result = _process_captures_or_error(executor, [], "code", query_name="q")
         assert isinstance(result, dict)
         assert result["success"] is False
 
     def test_exception_no_query_name(self):
         executor = _make_executor()
-        executor._process_captures.side_effect = RuntimeError("x")
+        executor.process_captures.side_effect = RuntimeError("x")
         result = _process_captures_or_error(executor, [], "code")
         assert isinstance(result, dict)
         assert result["success"] is False
@@ -321,9 +336,7 @@ class TestProcessCapturesResults:
         node.end_point = (1, 0)
         node.start_byte = 0
         node.end_byte = 5
-        results = process_captures(
-            [(node, "cls")], "code", lambda n, c, s: {"name": c}
-        )
+        results = process_captures([(node, "cls")], "code", lambda n, c, s: {"name": c})
         assert len(results) == 1
         assert results[0]["name"] == "cls"
 
@@ -335,15 +348,11 @@ class TestProcessCapturesResults:
         assert len(results) == 1
 
     def test_none_node_skipped(self):
-        results = process_captures(
-            [(None, "x")], "code", lambda n, c, s: {"name": c}
-        )
+        results = process_captures([(None, "x")], "code", lambda n, c, s: {"name": c})
         assert len(results) == 0
 
     def test_bad_capture_format_skipped(self):
-        results = process_captures(
-            ["bad"], "code", lambda n, c, s: {}
-        )
+        results = process_captures(["bad"], "code", lambda n, c, s: {})
         assert len(results) == 0
 
 
@@ -365,7 +374,9 @@ class TestCreateResultDictResults:
     def test_exception_in_text(self):
         node = MagicMock()
         node.type = "x"
-        result = create_result_dict(node, "c", "code", lambda n, s: (_ for _ in ()).throw(RuntimeError("e")))
+        result = create_result_dict(
+            node, "c", "code", lambda n, s: (_ for _ in ()).throw(RuntimeError("e"))
+        )
         assert result["node_type"] == "error"
         assert "error" in result
 
@@ -389,22 +400,26 @@ class TestCreateErrorResultResults:
 
 class TestQueryStatisticsResults:
     def test_empty(self):
-        s = query_statistics({
-            "total_queries": 0,
-            "successful_queries": 0,
-            "failed_queries": 0,
-            "total_execution_time": 0.0,
-        })
+        s = query_statistics(
+            {
+                "total_queries": 0,
+                "successful_queries": 0,
+                "failed_queries": 0,
+                "total_execution_time": 0.0,
+            }
+        )
         assert s["success_rate"] == 0.0
         assert s["average_execution_time"] == 0.0
 
     def test_with_data(self):
-        s = query_statistics({
-            "total_queries": 10,
-            "successful_queries": 8,
-            "failed_queries": 2,
-            "total_execution_time": 1.0,
-        })
+        s = query_statistics(
+            {
+                "total_queries": 10,
+                "successful_queries": 8,
+                "failed_queries": 2,
+                "total_execution_time": 1.0,
+            }
+        )
         assert s["success_rate"] == pytest.approx(0.8)
         assert s["average_execution_time"] == pytest.approx(0.1)
 

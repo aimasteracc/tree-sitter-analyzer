@@ -49,6 +49,17 @@ class UnifiedAnalysisEngine(
     _instances: dict[str, "UnifiedAnalysisEngine"] = {}
     _lock: threading.Lock = threading.Lock()
 
+    @classmethod
+    def _get_or_create(cls, instance_key: str) -> "UnifiedAnalysisEngine":
+        """Singleton factory: get or create an instance for the given key."""
+        instance = cls._instances.get(instance_key)
+        if instance is not None:
+            return instance
+        instance = object.__new__(cls)
+        cls._instances[instance_key] = instance
+        instance._initialized = False  # noqa: SLF001
+        return instance
+
     def __new__(cls, project_root: str | None = None) -> "UnifiedAnalysisEngine":
         """Singleton instance management (backward compatible)"""
         instance_key = project_root or "default"
@@ -57,7 +68,7 @@ class UnifiedAnalysisEngine(
             return instance
 
         with cls._lock:
-            return _get_or_create_engine_instance(cls, instance_key)
+            return cls._get_or_create(instance_key)
 
     def __init__(self, project_root: str | None = None) -> None:
         """Initialize the engine"""
@@ -166,16 +177,3 @@ class MockLanguagePlugin:
 def get_analysis_engine(project_root: str | None = None) -> UnifiedAnalysisEngine:
     """Get unified analysis engine instance"""
     return UnifiedAnalysisEngine(project_root)
-
-
-def _get_or_create_engine_instance(
-    engine_cls: type[UnifiedAnalysisEngine], instance_key: str
-) -> UnifiedAnalysisEngine:
-    instance = engine_cls._instances.get(instance_key)
-    if instance is not None:
-        return instance
-
-    instance = object.__new__(engine_cls)
-    engine_cls._instances[instance_key] = instance
-    instance._initialized = False
-    return instance

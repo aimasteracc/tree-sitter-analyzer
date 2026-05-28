@@ -30,6 +30,8 @@ class PerformanceMonitor:
         """Set operation time (internal use)"""
         self._last_duration = duration
 
+    set_duration = _set_duration  # public alias for PerformanceContext
+
     def start_monitoring(self) -> None:
         """Start performance monitoring"""
         self._monitoring_active = True
@@ -96,6 +98,6 @@ class PerformanceContext:
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         duration = time.time() - self.start_time
-        self.monitor._set_duration(duration)
+        self.monitor.set_duration(duration)
         self.monitor.record_operation(self.operation_name, duration)
         log_performance(self.operation_name, duration, "Operation completed")

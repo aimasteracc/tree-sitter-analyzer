@@ -205,6 +205,23 @@ class QueryExecutor:
         """
         return create_error_result(error_message, query_name, **kwargs)
 
+    # Public aliases used by companion module _query_execution.py
+    create_error_result = _create_error_result
+
+    @property
+    def execution_stats(self) -> dict[str, Any]:
+        """Return the live execution stats dict (mutable reference)."""
+        return self._execution_stats
+
+    @property
+    def query_loader(self) -> Any:
+        """Return the query loader instance."""
+        return self._query_loader
+
+    def process_captures(self, captures: Any, source_code: str) -> list[dict[str, Any]]:
+        """Public alias for _process_captures used by companion helpers."""
+        return self._process_captures(captures, source_code)
+
     def get_available_queries(self, language: str) -> list[str]:
         """
         Get available queries for a language.
