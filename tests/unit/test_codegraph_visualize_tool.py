@@ -204,6 +204,7 @@ class TestVisualizeRealProject:
         assert result["stats"]["edge_count"] <= 10
 
     @pytest.mark.asyncio
+    @pytest.mark.slow_ok  # function-mode graph walk on real project; ~13s on CI hardware
     async def test_function_mode_on_real_func(self) -> None:
         tool = CodeGraphVisualizeTool(_PROJECT_ROOT)
         result = await tool.execute(
