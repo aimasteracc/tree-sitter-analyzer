@@ -464,7 +464,7 @@ class CodeGraphCallTool(BaseMCPTool):
             "function": func_name,
             "caller_count": len(callers),
             "callers": callers,
-            "function_indexed": bool(graph._resolve_targets(func_name, file_path)),
+            "function_indexed": bool(graph.resolve_targets(func_name, file_path)),
         }
         hint = _maybe_bare_name_hint(graph, func_name, len(callers), "callers")
         if hint:
@@ -485,7 +485,7 @@ class CodeGraphCallTool(BaseMCPTool):
             "function": func_name,
             "callee_count": len(callees),
             "callees": callees,
-            "function_indexed": bool(graph._resolve_targets(func_name, file_path)),
+            "function_indexed": bool(graph.resolve_targets(func_name, file_path)),
         }
         hint = _maybe_bare_name_hint(graph, func_name, len(callees), "callees")
         if hint:
@@ -506,7 +506,7 @@ class CodeGraphCallTool(BaseMCPTool):
             "depth": depth,
             "edge_count": len(chain),
             "chain": chain,
-            "function_indexed": bool(graph._resolve_targets(func_name, file_path)),
+            "function_indexed": bool(graph.resolve_targets(func_name, file_path)),
         }
         hint = _maybe_bare_name_hint(graph, func_name, len(chain), "chain")
         if hint:

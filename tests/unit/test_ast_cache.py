@@ -361,7 +361,7 @@ class TestStats:
 
     def test_stats_uses_symbol_rows_when_fts_available(self, cache):
         cache.index_project()
-        if not cache._fts5_available:
+        if not cache.fts5_available:
             pytest.skip("FTS5 not available")
 
         with patch(
@@ -375,7 +375,7 @@ class TestStats:
 
     def test_stats_falls_back_to_symbols_json_without_fts(self, cache):
         cache.index_project()
-        cache._fts5_available = False
+        cache._fts5_available = False  # force non-FTS5 path for testing
 
         stats = cache.get_stats()
 
@@ -384,7 +384,7 @@ class TestStats:
 
     def test_stats_falls_back_when_symbol_rows_table_missing(self, cache):
         cache.index_project()
-        if not cache._fts5_available:
+        if not cache.fts5_available:
             pytest.skip("FTS5 not available")
 
         conn = cache._get_conn()
@@ -404,7 +404,7 @@ class TestStats:
 
 class TestLargeRepoHotPathIndexes:
     def test_large_repo_hot_path_indexes_exist(self, cache):
-        if not cache._fts5_available:
+        if not cache.fts5_available:
             pytest.skip("tracked: large-repo-hotpath-indexes require FTS5")
         conn = cache._get_conn()
         index_names = {
@@ -421,7 +421,7 @@ class TestLargeRepoHotPathIndexes:
         assert "idx_ce_caller_name_file" in index_names
 
     def test_symbol_resolver_hot_queries_use_composite_indexes(self, cache):
-        if not cache._fts5_available:
+        if not cache.fts5_available:
             pytest.skip("tracked: large-repo-hotpath-indexes require FTS5")
         conn = cache._get_conn()
 
@@ -602,13 +602,13 @@ class TestFtsSearch:
         cache.index_project()
         results = cache.search_symbols("hello")
         assert len(results) >= 1
-        if cache._fts5_available:
+        if cache.fts5_available:
             assert any(r["name"] == "hello" for r in results)
 
     def test_fts_indexed_symbols_in_stats(self, cache, tmp_project):
         cache.index_project()
         stats = cache.get_stats()
-        if cache._fts5_available:
+        if cache.fts5_available:
             assert stats["fts5_available"] is True
             assert "fts_indexed_symbols" in stats
             assert stats["fts_indexed_symbols"] > 0
@@ -616,7 +616,7 @@ class TestFtsSearch:
     def test_invalidate_removes_fts_rows(self, cache, tmp_project):
         f = str(tmp_project / "src" / "main.py")
         cache.index_file(f)
-        if cache._fts5_available:
+        if cache.fts5_available:
             results_before = cache.fts_search("hello")
             assert len(results_before) >= 1
             cache.invalidate(f)
@@ -626,7 +626,7 @@ class TestFtsSearch:
     def test_fts_search_after_reindex(self, cache, tmp_project):
         f = str(tmp_project / "src" / "main.py")
         cache.index_file(f)
-        if cache._fts5_available:
+        if cache.fts5_available:
             cache.invalidate(f)
             cache.index_file(f)
             results = cache.fts_search("hello")

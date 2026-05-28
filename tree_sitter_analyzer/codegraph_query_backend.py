@@ -61,7 +61,7 @@ class CodeGraphQueryBackend:
         return SemanticSymbolSearch(self.cache).search(query, limit=limit)
 
     def _fts_definitions(self, symbol: str) -> list[dict[str, Any]]:
-        if not getattr(self.cache, "_fts5_available", False):
+        if not getattr(self.cache, "fts5_available", False):
             return []
         return [
             _definition(

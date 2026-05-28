@@ -301,7 +301,7 @@ class TestCallGraphInternalMethods:
         cg = CallGraph(str(PY_PROJECT))
         ref = FunctionRef("main.py", "foo", 10, "python")
         cg._func_by_qualified["main.py:foo"] = ref
-        result = cg._resolve_targets("foo", "main.py")
+        result = cg.resolve_targets("foo", "main.py")
         assert len(result) == 1
         assert result[0].name == "foo"
 
@@ -309,10 +309,10 @@ class TestCallGraphInternalMethods:
         cg = CallGraph(str(PY_PROJECT))
         ref = FunctionRef("main.py", "foo", 10, "python")
         cg._func_by_name["foo"].append(ref)
-        result = cg._resolve_targets("foo")
+        result = cg.resolve_targets("foo")
         assert len(result) == 1
 
     def test_resolve_targets_no_match(self):
         cg = CallGraph(str(PY_PROJECT))
-        result = cg._resolve_targets("nonexistent")
+        result = cg.resolve_targets("nonexistent")
         assert result == []

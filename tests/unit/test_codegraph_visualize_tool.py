@@ -145,7 +145,7 @@ class TestVisualizeToolNoProject:
         fn_a = FunctionRef("a.py", "alpha", 1, "python")
         fn_b = FunctionRef("b.py", "beta", 5, "python")
         cg = MagicMock()
-        cg._resolve_targets.return_value = [fn_a]
+        cg.resolve_targets.return_value = [fn_a]
         callees_map = {fn_a: [fn_b], fn_b: []}
         callers_map: dict = {}
         cg.callee_refs_of.side_effect = lambda f: callees_map.get(f, [])
@@ -172,7 +172,7 @@ class TestVisualizeToolNoProject:
         fn_a = FunctionRef("a.py", "alpha", 1, "python")
         fn_b = FunctionRef("b.py", "beta", 5, "python")
         cg = MagicMock()
-        cg._func_by_file = {"a.py": [fn_a]}
+        cg.function_refs_in_file.return_value = [fn_a]
         callees_map = {fn_a: [fn_b], fn_b: []}
         callers_map: dict = {}
         cg.callee_refs_of.side_effect = lambda f: callees_map.get(f, [])
