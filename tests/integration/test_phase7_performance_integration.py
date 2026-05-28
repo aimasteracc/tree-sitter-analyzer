@@ -37,6 +37,36 @@ DEFAULT_SCALABILITY_RECOVERY_SECONDS = 0.05
 DEFAULT_RESOURCE_CLEANUP_SETTLE_SECONDS = 0.05
 DEFAULT_MEMORY_EFFICIENCY_FILES = 8
 
+_SEARCH_QUERIES = ["class", "function", "import", "def", "const"]
+
+
+def _create_task_for_tool(tool, i: int, project_root: str):
+    """Return an execute coroutine for the given tool/index, or None if no files."""
+    if isinstance(tool, AnalyzeScaleTool):
+        java_files = list(Path(project_root).glob("src/main/java/**/*.java"))
+        if not java_files:
+            return None
+        return tool.execute({"file_path": str(java_files[i % len(java_files)])})
+    if isinstance(tool, TableFormatTool):
+        python_files = list(Path(project_root).glob("python/**/*.py"))
+        if not python_files:
+            return None
+        return tool.execute(
+            {
+                "file_path": str(python_files[i % len(python_files)]),
+                "format_type": "compact",
+            }
+        )
+    if isinstance(tool, SearchContentTool):
+        return tool.execute(
+            {
+                "roots": [project_root],
+                "query": _SEARCH_QUERIES[i % len(_SEARCH_QUERIES)],
+                "max_count": 10,
+            }
+        )
+    return None
+
 
 class TestPhase7PerformanceIntegration:
     """Phase 7 パフォーマンス統合テスト"""
@@ -297,41 +327,10 @@ class TestPhase7PerformanceIntegration:
             ]
 
             for i in range(load_level):
-                tool = tools[i % len(tools)]
-
-                if isinstance(tool, AnalyzeScaleTool):
-                    # 異なるファイルを分析
-                    java_files = list(
-                        Path(large_scale_project).glob("src/main/java/**/*.java")
-                    )
-                    if java_files:
-                        file_path = java_files[i % len(java_files)]
-                        task = tool.execute({"file_path": str(file_path)})
-                        tasks.append(task)
-
-                elif isinstance(tool, TableFormatTool):
-                    # 異なるファイルの構造分析
-                    python_files = list(
-                        Path(large_scale_project).glob("python/**/*.py")
-                    )
-                    if python_files:
-                        file_path = python_files[i % len(python_files)]
-                        task = tool.execute(
-                            {"file_path": str(file_path), "format_type": "compact"}
-                        )
-                        tasks.append(task)
-
-                elif isinstance(tool, SearchContentTool):
-                    # 異なる検索クエリ
-                    queries = ["class", "function", "import", "def", "const"]
-                    query = queries[i % len(queries)]
-                    task = tool.execute(
-                        {
-                            "roots": [large_scale_project],
-                            "query": query,
-                            "max_count": 10,
-                        }
-                    )
+                task = _create_task_for_tool(
+                    tools[i % len(tools)], i, large_scale_project
+                )
+                if task is not None:
                     tasks.append(task)
 
             # 並行実行

@@ -1,5 +1,6 @@
 """Java element extractor tests."""
 
+from contextlib import ExitStack
 from unittest.mock import Mock, patch
 
 import pytest
@@ -389,48 +390,48 @@ class UserConfig {
         ] * 2
         extractor.current_package = "com.example.service"
 
-        with patch.object(extractor, "_get_node_text_optimized") as mock_get_text:
+        with ExitStack() as stack:
+            mock_get_text = stack.enter_context(
+                patch.object(extractor, "_get_node_text_optimized")
+            )
+            mock_modifiers_fn = stack.enter_context(
+                patch.object(extractor, "_extract_modifiers_optimized")
+            )
+            mock_visibility = stack.enter_context(
+                patch.object(extractor, "_determine_visibility")
+            )
+            mock_is_nested = stack.enter_context(
+                patch.object(extractor, "_is_nested_class")
+            )
+
             mock_get_text.side_effect = [
-                "UserService",  # _extract_identifier: class name
-                "extends BaseService",  # _extract_class_relationships: superclass
-                "implements UserOperations",  # _extract_class_relationships: interfaces
-                "@Service",  # _extract_node_annotations: annotation text
-                "Service",  # _extract_node_annotations: annotation name identifier
+                "UserService",
+                "extends BaseService",
+                "implements UserOperations",
+                "@Service",
+                "Service",
             ]
+            mock_modifiers_fn.return_value = ["public"]
+            mock_visibility.return_value = "public"
+            mock_is_nested.return_value = False
 
-            with patch.object(
-                extractor, "_extract_modifiers_optimized"
-            ) as mock_modifiers_fn:
-                mock_modifiers_fn.return_value = ["public"]
+            result = extractor._extract_class_optimized(mock_node)
 
-                with patch.object(
-                    extractor, "_determine_visibility"
-                ) as mock_visibility:
-                    mock_visibility.return_value = "public"
-
-                    with patch.object(extractor, "_is_nested_class") as mock_is_nested:
-                        mock_is_nested.return_value = False
-
-                        result = extractor._extract_class_optimized(mock_node)
-
-                        assert isinstance(result, Class)
-                        assert result.name == "UserService"
-                        assert result.start_line == 1
-                        assert result.end_line == 11
-                        assert result.language == "java"
-                        assert result.class_type == "class"
-                        assert (
-                            result.full_qualified_name
-                            == "com.example.service.UserService"
-                        )
-                        assert result.package_name == "com.example.service"
-                        assert result.superclass == "BaseService"
-                        assert result.interfaces == ["UserOperations"]
-                        assert result.modifiers == ["public"]
-                        assert result.visibility == "public"
-                        assert len(result.annotations) == 1
-                        assert result.annotations[0]["name"] == "Service"
-                        assert result.is_nested is False
+            assert isinstance(result, Class)
+            assert result.name == "UserService"
+            assert result.start_line == 1
+            assert result.end_line == 11
+            assert result.language == "java"
+            assert result.class_type == "class"
+            assert result.full_qualified_name == "com.example.service.UserService"
+            assert result.package_name == "com.example.service"
+            assert result.superclass == "BaseService"
+            assert result.interfaces == ["UserOperations"]
+            assert result.modifiers == ["public"]
+            assert result.visibility == "public"
+            assert len(result.annotations) == 1
+            assert result.annotations[0]["name"] == "Service"
+            assert result.is_nested is False
 
     def test_extract_method_optimized_complete(self, extractor):
         """Test complete method extraction"""
@@ -451,7 +452,23 @@ class UserConfig {
             "}",
         ]
 
-        with patch.object(extractor, "_parse_method_signature_optimized") as mock_parse:
+        with ExitStack() as stack:
+            mock_parse = stack.enter_context(
+                patch.object(extractor, "_parse_method_signature_optimized")
+            )
+            mock_visibility = stack.enter_context(
+                patch.object(extractor, "_determine_visibility")
+            )
+            mock_annotations = stack.enter_context(
+                patch.object(extractor, "_find_annotations_for_line_cached")
+            )
+            mock_complexity = stack.enter_context(
+                patch.object(extractor, "_calculate_complexity_optimized")
+            )
+            mock_javadoc = stack.enter_context(
+                patch.object(extractor, "_extract_javadoc_for_line")
+            )
+
             mock_parse.return_value = (
                 "findById",
                 "User",
@@ -459,46 +476,32 @@ class UserConfig {
                 ["public"],
                 ["UserNotFoundException"],
             )
+            mock_visibility.return_value = "public"
+            mock_annotations.return_value = [{"name": "Override"}]
+            mock_complexity.return_value = 2
+            mock_javadoc.return_value = "Find user by ID"
 
-            with patch.object(extractor, "_determine_visibility") as mock_visibility:
-                mock_visibility.return_value = "public"
+            result = extractor._extract_method_optimized(mock_node)
 
-                with patch.object(
-                    extractor, "_find_annotations_for_line_cached"
-                ) as mock_annotations:
-                    mock_annotations.return_value = [{"name": "Override"}]
-
-                    with patch.object(
-                        extractor, "_calculate_complexity_optimized"
-                    ) as mock_complexity:
-                        mock_complexity.return_value = 2
-
-                        with patch.object(
-                            extractor, "_extract_javadoc_for_line"
-                        ) as mock_javadoc:
-                            mock_javadoc.return_value = "Find user by ID"
-
-                            result = extractor._extract_method_optimized(mock_node)
-
-                            assert isinstance(result, Function)
-                            assert result.name == "findById"
-                            assert result.start_line == 1
-                            assert result.end_line == 6
-                            assert result.language == "java"
-                            assert result.parameters == ["String userId"]
-                            assert result.return_type == "User"
-                            assert result.modifiers == ["public"]
-                            assert result.is_static is False
-                            assert result.is_private is False
-                            assert result.is_public is True
-                            assert result.is_constructor is False
-                            assert result.visibility == "public"
-                            assert result.docstring == "Find user by ID"
-                            assert result.annotations == [{"name": "Override"}]
-                            assert result.throws == ["UserNotFoundException"]
-                            assert result.complexity_score == 2
-                            assert result.is_abstract is False
-                            assert result.is_final is False
+            assert isinstance(result, Function)
+            assert result.name == "findById"
+            assert result.start_line == 1
+            assert result.end_line == 6
+            assert result.language == "java"
+            assert result.parameters == ["String userId"]
+            assert result.return_type == "User"
+            assert result.modifiers == ["public"]
+            assert result.is_static is False
+            assert result.is_private is False
+            assert result.is_public is True
+            assert result.is_constructor is False
+            assert result.visibility == "public"
+            assert result.docstring == "Find user by ID"
+            assert result.annotations == [{"name": "Override"}]
+            assert result.throws == ["UserNotFoundException"]
+            assert result.complexity_score == 2
+            assert result.is_abstract is False
+            assert result.is_final is False
 
     def test_extract_method_optimized_constructor(self, extractor):
         """Test constructor extraction"""
@@ -513,7 +516,23 @@ class UserConfig {
             "}",
         ]
 
-        with patch.object(extractor, "_parse_method_signature_optimized") as mock_parse:
+        with ExitStack() as stack:
+            mock_parse = stack.enter_context(
+                patch.object(extractor, "_parse_method_signature_optimized")
+            )
+            mock_visibility = stack.enter_context(
+                patch.object(extractor, "_determine_visibility")
+            )
+            mock_annotations = stack.enter_context(
+                patch.object(extractor, "_find_annotations_for_line_cached")
+            )
+            mock_complexity = stack.enter_context(
+                patch.object(extractor, "_calculate_complexity_optimized")
+            )
+            mock_javadoc = stack.enter_context(
+                patch.object(extractor, "_extract_javadoc_for_line")
+            )
+
             mock_parse.return_value = (
                 "UserService",
                 "void",
@@ -521,31 +540,17 @@ class UserConfig {
                 ["public"],
                 [],
             )
+            mock_visibility.return_value = "public"
+            mock_annotations.return_value = []
+            mock_complexity.return_value = 1
+            mock_javadoc.return_value = None
 
-            with patch.object(extractor, "_determine_visibility") as mock_visibility:
-                mock_visibility.return_value = "public"
+            result = extractor._extract_method_optimized(mock_node)
 
-                with patch.object(
-                    extractor, "_find_annotations_for_line_cached"
-                ) as mock_annotations:
-                    mock_annotations.return_value = []
-
-                    with patch.object(
-                        extractor, "_calculate_complexity_optimized"
-                    ) as mock_complexity:
-                        mock_complexity.return_value = 1
-
-                        with patch.object(
-                            extractor, "_extract_javadoc_for_line"
-                        ) as mock_javadoc:
-                            mock_javadoc.return_value = None
-
-                            result = extractor._extract_method_optimized(mock_node)
-
-                            assert isinstance(result, Function)
-                            assert result.name == "UserService"
-                            assert result.is_constructor is True
-                            assert result.return_type == "void"
+            assert isinstance(result, Function)
+            assert result.name == "UserService"
+            assert result.is_constructor is True
+            assert result.return_type == "void"
 
     def test_extract_field_optimized_complete(self, extractor):
         """Test complete field extraction"""
@@ -562,48 +567,49 @@ class UserConfig {
             "private UserRepository userRepository;",
         ]
 
-        with patch.object(
-            extractor, "_parse_field_declaration_optimized"
-        ) as mock_parse:
+        with ExitStack() as stack:
+            mock_parse = stack.enter_context(
+                patch.object(extractor, "_parse_field_declaration_optimized")
+            )
+            mock_visibility = stack.enter_context(
+                patch.object(extractor, "_determine_visibility")
+            )
+            mock_annotations = stack.enter_context(
+                patch.object(extractor, "_find_annotations_for_line_cached")
+            )
+            mock_javadoc = stack.enter_context(
+                patch.object(extractor, "_extract_javadoc_for_line")
+            )
+
             mock_parse.return_value = (
                 "UserRepository",
                 ["userRepository"],
                 ["private"],
             )
+            mock_visibility.return_value = "private"
+            mock_annotations.return_value = [{"name": "Autowired"}]
+            mock_javadoc.return_value = "User repository for data access"
 
-            with patch.object(extractor, "_determine_visibility") as mock_visibility:
-                mock_visibility.return_value = "private"
+            result = extractor._extract_field_optimized(mock_node)
 
-                with patch.object(
-                    extractor, "_find_annotations_for_line_cached"
-                ) as mock_annotations:
-                    mock_annotations.return_value = [{"name": "Autowired"}]
+            assert isinstance(result, list)
+            assert len(result) == 1
 
-                    with patch.object(
-                        extractor, "_extract_javadoc_for_line"
-                    ) as mock_javadoc:
-                        mock_javadoc.return_value = "User repository for data access"
-
-                        result = extractor._extract_field_optimized(mock_node)
-
-                        assert isinstance(result, list)
-                        assert len(result) == 1
-
-                        field = result[0]
-                        assert isinstance(field, Variable)
-                        assert field.name == "userRepository"
-                        assert field.start_line == 1
-                        assert field.end_line == 3
-                        assert field.language == "java"
-                        assert field.variable_type == "UserRepository"
-                        assert field.modifiers == ["private"]
-                        assert field.is_static is False
-                        assert field.is_constant is False
-                        assert field.visibility == "private"
-                        assert field.docstring == "User repository for data access"
-                        assert field.annotations == [{"name": "Autowired"}]
-                        assert field.is_final is False
-                        assert field.field_type == "UserRepository"
+            field = result[0]
+            assert isinstance(field, Variable)
+            assert field.name == "userRepository"
+            assert field.start_line == 1
+            assert field.end_line == 3
+            assert field.language == "java"
+            assert field.variable_type == "UserRepository"
+            assert field.modifiers == ["private"]
+            assert field.is_static is False
+            assert field.is_constant is False
+            assert field.visibility == "private"
+            assert field.docstring == "User repository for data access"
+            assert field.annotations == [{"name": "Autowired"}]
+            assert field.is_final is False
+            assert field.field_type == "UserRepository"
 
     def test_extract_field_optimized_multiple_variables(self, extractor):
         """Test field extraction with multiple variables in one declaration"""
@@ -614,40 +620,40 @@ class UserConfig {
 
         extractor.content_lines = ["private String firstName, lastName, email;"]
 
-        with patch.object(
-            extractor, "_parse_field_declaration_optimized"
-        ) as mock_parse:
+        with ExitStack() as stack:
+            mock_parse = stack.enter_context(
+                patch.object(extractor, "_parse_field_declaration_optimized")
+            )
+            mock_visibility = stack.enter_context(
+                patch.object(extractor, "_determine_visibility")
+            )
+            mock_annotations = stack.enter_context(
+                patch.object(extractor, "_find_annotations_for_line_cached")
+            )
+            mock_javadoc = stack.enter_context(
+                patch.object(extractor, "_extract_javadoc_for_line")
+            )
+
             mock_parse.return_value = (
                 "String",
                 ["firstName", "lastName", "email"],
                 ["private"],
             )
+            mock_visibility.return_value = "private"
+            mock_annotations.return_value = []
+            mock_javadoc.return_value = None
 
-            with patch.object(extractor, "_determine_visibility") as mock_visibility:
-                mock_visibility.return_value = "private"
+            result = extractor._extract_field_optimized(mock_node)
 
-                with patch.object(
-                    extractor, "_find_annotations_for_line_cached"
-                ) as mock_annotations:
-                    mock_annotations.return_value = []
+            assert isinstance(result, list)
+            assert len(result) == 3
 
-                    with patch.object(
-                        extractor, "_extract_javadoc_for_line"
-                    ) as mock_javadoc:
-                        mock_javadoc.return_value = None
+            for _i, field in enumerate(result):
+                assert isinstance(field, Variable)
+                assert field.variable_type == "String"
+                assert field.modifiers == ["private"]
+                assert field.visibility == "private"
 
-                        result = extractor._extract_field_optimized(mock_node)
-
-                        assert isinstance(result, list)
-                        assert len(result) == 3
-
-                        # Check all three variables
-                        for _i, field in enumerate(result):
-                            assert isinstance(field, Variable)
-                            assert field.variable_type == "String"
-                            assert field.modifiers == ["private"]
-                            assert field.visibility == "private"
-
-                        assert result[0].name == "firstName"
-                        assert result[1].name == "lastName"
-                        assert result[2].name == "email"
+            assert result[0].name == "firstName"
+            assert result[1].name == "lastName"
+            assert result[2].name == "email"
