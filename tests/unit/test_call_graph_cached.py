@@ -331,3 +331,104 @@ class TestNodeTextUtf8:
 
     def test_node_text_none_returns_empty(self):
         assert _node_text(None, "source") == ""
+
+
+# ============================================================
+# CallGraph.call_edges() public accessor (TDD — added to replace
+# direct access to private _call_edges in codegraph_metrics_tool)
+# ============================================================
+
+
+class TestCallEdgesPublicAccessor:
+    """call_edges() must expose the same data as the private _call_edges."""
+
+    @staticmethod
+    def _make_mock_cache(functions, edges):
+        cache = MagicMock()
+        cache.get_functions.return_value = functions
+        cache.get_call_edges.return_value = edges
+        cache.get_imports.return_value = {}
+        return cache
+
+    def test_call_edges_returns_list(self):
+        """call_edges() must return a list (not None)."""
+        cg = CallGraph.__new__(CallGraph)  # avoid filesystem scan
+        cg._built = True  # skip build() so we don't need project_root
+        cg._functions = []
+        cg._call_edges = []
+        cg._func_by_name = {}
+        result = cg.call_edges()
+        assert isinstance(result, list)
+
+    def test_call_edges_matches_private_attribute(self):
+        """call_edges() must return the same object as _call_edges."""
+        cache = self._make_mock_cache(
+            functions=[
+                {
+                    "file": "a.py",
+                    "name": "foo",
+                    "line": 1,
+                    "language": "python",
+                    "end_line": 5,
+                },
+                {
+                    "file": "a.py",
+                    "name": "bar",
+                    "line": 7,
+                    "language": "python",
+                    "end_line": 10,
+                },
+            ],
+            edges=[
+                {
+                    "caller_name": "foo",
+                    "caller_file": "a.py",
+                    "callee_name": "bar",
+                    "callee_file": "a.py",
+                    "line": 3,
+                }
+            ],
+        )
+        cg = CachedCallGraph(".", cache=cache)
+        cg.build()
+        assert cg.call_edges() is cg._call_edges
+
+    def test_call_edges_returns_tuples(self):
+        """Each entry must be a (FunctionRef, FunctionRef, int) tuple."""
+        cache = self._make_mock_cache(
+            functions=[
+                {
+                    "file": "x.py",
+                    "name": "caller",
+                    "line": 1,
+                    "language": "python",
+                    "end_line": 4,
+                },
+                {
+                    "file": "x.py",
+                    "name": "callee",
+                    "line": 6,
+                    "language": "python",
+                    "end_line": 9,
+                },
+            ],
+            edges=[
+                {
+                    "caller_name": "caller",
+                    "caller_file": "x.py",
+                    "callee_name": "callee",
+                    "callee_file": "x.py",
+                    "line": 2,
+                }
+            ],
+        )
+        cg = CachedCallGraph(".", cache=cache)
+        cg.build()
+        edges = cg.call_edges()
+        assert len(edges) >= 1
+        for edge in edges:
+            assert len(edge) == 3
+            caller_ref, callee_ref, line = edge
+            assert isinstance(caller_ref, FunctionRef)
+            assert isinstance(callee_ref, FunctionRef)
+            assert isinstance(line, int)

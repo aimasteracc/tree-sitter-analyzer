@@ -454,6 +454,16 @@ class CallGraph:
         self.build()
         return [f.to_dict() for f in self._functions]
 
+    def call_edges(self) -> list[tuple["FunctionRef", "FunctionRef", int]]:
+        """Return all discovered call edges as (caller, callee, line) tuples.
+
+        Public accessor for the internal ``_call_edges`` list.  Prefer this
+        over accessing ``_call_edges`` directly so callers are not coupled to
+        the private attribute name.
+        """
+        self.build()
+        return self._call_edges
+
     def functions_in_file(self, file_path: str) -> list[dict[str, Any]]:
         """Return all functions defined in the given file."""
         self.build()
