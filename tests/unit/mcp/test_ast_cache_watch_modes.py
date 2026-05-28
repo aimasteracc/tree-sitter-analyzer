@@ -26,10 +26,10 @@ def cache(project):
 def tool(project):
     t = ASTCacheTool(str(project))
     yield t
-    if t._watcher is not None and t._watcher.is_running():
-        t._watcher.stop()
-    if t._cache is not None:
-        t._cache.close()
+    if t._watcher is not None and t._watcher.is_running():  # noqa: SLF001 — teardown cleanup
+        t._watcher.stop()  # noqa: SLF001
+    if t.cache_initialized:
+        t.get_cache().close()
 
 
 @pytest.mark.asyncio
