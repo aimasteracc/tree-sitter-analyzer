@@ -30,26 +30,27 @@ GATES = {
 }
 
 
+def _is_counted_call(node: ast.Call) -> bool:
+    """Return True if an AST Call node counts as an assertion."""
+    if not isinstance(node.func, ast.Attribute):
+        return False
+    attr = node.func.attr
+    return attr in ("raises", "fail", "skip") or attr.startswith("assert_")
+
+
 def count_assertions(filepath: Path) -> int:
     """Count assert/test statements in a test file — includes AST assert nodes + mock.assert_* calls."""
     try:
-        content = filepath.read_text()
-        tree = ast.parse(content)
-        count = 0
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Assert):
-                count += 1
-            elif isinstance(node, ast.Call):
-                if isinstance(node.func, ast.Attribute):
-                    # pytest.raises / pytest.fail / pytest.skip
-                    if node.func.attr in ("raises", "fail", "skip"):
-                        count += 1
-                    # Mock assertions: .assert_called, .assert_called_once, etc.
-                    elif node.func.attr.startswith("assert_"):
-                        count += 1
-        return count
+        tree = ast.parse(filepath.read_text())
     except SyntaxError:
         return 0
+    count = 0
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assert):
+            count += 1
+        elif isinstance(node, ast.Call) and _is_counted_call(node):
+            count += 1
+    return count
 
 
 def count_test_functions(filepath: Path) -> int:
