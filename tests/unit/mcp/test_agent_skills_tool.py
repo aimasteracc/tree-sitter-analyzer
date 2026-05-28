@@ -38,6 +38,46 @@ _LEGAL_VERDICTS = frozenset(
 )
 
 
+def _create_large_skill_fixture(skills_root, index: int) -> str:
+    """Create one skill directory + SKILL.md for the large-inventory stress test."""
+    name = f"skill-{index:02d}"
+    skill_dir = skills_root / name
+    skill_dir.mkdir()
+    if index % 2 == 0:
+        body = (
+            f"---\nname: {name}\n"
+            "description: Use when testing the large-skill stress path.\n"
+            "---\n\n"
+            f"# {name}\n\n"
+            "## Acceptance Criteria\n\n"
+            "- Verification step described here.\n"
+        )
+    else:
+        body = (
+            f"---\nname: {name}\n---\n\n# {name}\n\nBody without acceptance criteria.\n"
+        )
+    (skill_dir / "SKILL.md").write_text(body, encoding="utf-8")
+    for support_idx in range(3):
+        (skill_dir / f"NOTES-{support_idx}.md").write_text(
+            f"Notes {support_idx} for {name}\n", encoding="utf-8"
+        )
+    return name
+
+
+def _probe_chmod_enforcement(skill_path) -> None:
+    """Skip the test if the OS did not honour chmod 0 (e.g., running as root)."""
+    import os
+    import stat
+
+    try:
+        with skill_path.open("rb"):
+            pass
+        os.chmod(skill_path, stat.S_IRUSR | stat.S_IWUSR)
+        pytest.skip("OS ignored chmod 0 (likely running as root)")
+    except PermissionError:
+        pass  # Expected — chmod was enforced.
+
+
 @pytest.mark.asyncio
 async def test_agent_skills_tool_lists_project_skills(tmp_path):
     """MCP output should mirror the CLI inventory shape."""
@@ -281,20 +321,9 @@ async def test_agent_skills_tool_permission_denied_skill_is_still_listed(tmp_pat
         "- Skill should be readable.\n",
         encoding="utf-8",
     )
-    # Strip every permission bit. On macOS/Linux non-root this makes
-    # the file unreadable; the parser must still complete via
-    # ``errors='replace'`` even if the bytes come back empty.
+    # Strip every permission bit — makes the file unreadable on non-root Linux/macOS.
     os.chmod(skill_path, 0)
-
-    # Probe: does this OS actually enforce the chmod?
-    try:
-        with skill_path.open("rb"):
-            pass
-        skip_reason = "OS ignored chmod 0 (likely running as root)"
-        os.chmod(skill_path, stat.S_IRUSR | stat.S_IWUSR)
-        pytest.skip(skip_reason)
-    except PermissionError:
-        pass  # Expected — chmod was enforced.
+    _probe_chmod_enforcement(skill_path)
 
     try:
         result = await AgentSkillsTool(str(tmp_path)).execute({"output_format": "json"})
@@ -328,37 +357,7 @@ async def test_agent_skills_tool_handles_large_inventory(tmp_path):
     skills_root.mkdir(parents=True)
 
     # Build 50 skills, alternating ready / missing-description.
-    expected_names = []
-    for index in range(50):
-        # Use zero-padded names so lexicographic order matches index.
-        name = f"skill-{index:02d}"
-        expected_names.append(name)
-        skill_dir = skills_root / name
-        skill_dir.mkdir()
-        if index % 2 == 0:
-            body = (
-                f"---\nname: {name}\n"
-                "description: Use when testing the large-skill stress path.\n"
-                "---\n\n"
-                f"# {name}\n\n"
-                "## Acceptance Criteria\n\n"
-                "- Verification step described here.\n"
-            )
-        else:
-            # Odd skills: missing description (description gap).
-            body = (
-                f"---\nname: {name}\n"
-                "---\n\n"
-                f"# {name}\n\n"
-                "Body without acceptance criteria.\n"
-            )
-        (skill_dir / "SKILL.md").write_text(body, encoding="utf-8")
-        # Add a few support files to exercise the support-file loop.
-        for support_idx in range(3):
-            (skill_dir / f"NOTES-{support_idx}.md").write_text(
-                f"Notes {support_idx} for {name}\n",
-                encoding="utf-8",
-            )
+    expected_names = [_create_large_skill_fixture(skills_root, i) for i in range(50)]
 
     start = time.perf_counter()
     result = await AgentSkillsTool(str(tmp_path)).execute({"output_format": "json"})
