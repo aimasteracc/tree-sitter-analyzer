@@ -150,6 +150,15 @@ class UnreachableCodeTool(BaseMCPTool):
         response = self._build_project_response(results, output_format)
         return response
 
+    @staticmethod
+    def _format_block_line(block: Any) -> str:
+        """Format a single unreachable block as a TOON line."""
+        return (
+            f"- L{block.start_line}-{block.end_line} in "
+            f"`{block.function_name}`: {block.reason} "
+            f"[{block.severity}]"
+        )
+
     def _build_file_response(
         self, result: UnreachableCodeResult, output_format: str
     ) -> dict[str, Any]:
@@ -162,12 +171,9 @@ class UnreachableCodeTool(BaseMCPTool):
 
             if result.unreachable_blocks:
                 lines.append("")
-                for block in result.unreachable_blocks:
-                    lines.append(
-                        f"- L{block.start_line}-{block.end_line} in "
-                        f"`{block.function_name}`: {block.reason} "
-                        f"[{block.severity}]"
-                    )
+                lines.extend(
+                    self._format_block_line(b) for b in result.unreachable_blocks
+                )
             else:
                 lines.append("")
                 lines.append("No unreachable code detected.")
@@ -182,6 +188,18 @@ class UnreachableCodeTool(BaseMCPTool):
 
         return result.to_dict()
 
+    def _format_file_blocks_toon(self, r: UnreachableCodeResult) -> list[str]:
+        """Format a single file's unreachable blocks as TOON lines."""
+        if not r.unreachable_blocks:
+            return []
+        lines = [f"### {r.file_path} ({r.language})"]
+        for block in r.unreachable_blocks:
+            lines.append(
+                f"- L{block.start_line}-{block.end_line} in "
+                f"`{block.function_name}`: {block.reason}"
+            )
+        return lines
+
     def _build_project_response(
         self, results: list[UnreachableCodeResult], output_format: str
     ) -> dict[str, Any]:
@@ -190,7 +208,7 @@ class UnreachableCodeTool(BaseMCPTool):
         files_with_issues = sum(1 for r in results if r.unreachable_blocks)
 
         if output_format == "toon":
-            lines = []
+            lines: list[str] = []
             lines.append("## Unreachable Code: Project Scan")
             lines.append(f"Files with issues: {files_with_issues}")
             lines.append(f"Functions analyzed: {total_functions}")
@@ -199,13 +217,7 @@ class UnreachableCodeTool(BaseMCPTool):
             if results:
                 lines.append("")
                 for r in results:
-                    if r.unreachable_blocks:
-                        lines.append(f"### {r.file_path} ({r.language})")
-                        for block in r.unreachable_blocks:
-                            lines.append(
-                                f"- L{block.start_line}-{block.end_line} in "
-                                f"`{block.function_name}`: {block.reason}"
-                            )
+                    lines.extend(self._format_file_blocks_toon(r))
 
             return apply_toon_format_to_response(
                 {"content": "\n".join(lines)},
