@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from ...call_graph import CachedCallGraph, CallGraph
-from ...uml_export import UMLEdge, UMLExporter, render_flowchart_mermaid
+from ...uml_export import UMLExporter
 from ..utils.auto_index_guard import ensure_indexed
 
 
@@ -60,95 +60,6 @@ def render_call_flowchart(
             lines.append(f"    {src_id} --> {dst_id}")
 
     return "\n".join(lines)
-
-
-def query_flow_uml_facet(
-    *,
-    symbols: list[dict[str, Any]],
-    current: list[dict[str, Any]],
-    relationships: dict[str, dict[str, list[dict[str, Any]]]],
-    direction: str,
-    max_edges: int,
-) -> dict[str, Any]:
-    """Build the codegraph_query ``uml`` facet from chain state primitives."""
-    mermaid_direction = (
-        direction if direction in {"LR", "RL", "TB", "TD", "BT"} else "LR"
-    )
-    symbol_by_key = {_query_symbol_key(symbol): symbol for symbol in symbols}
-    symbol_by_key.update({_query_symbol_key(symbol): symbol for symbol in current})
-    edges: list[UMLEdge] = []
-    nodes: set[str] = set()
-
-    for source_key, entries in relationships.get("callees", {}).items():
-        source_name = _query_display_name(symbol_by_key.get(source_key), source_key)
-        nodes.add(source_name)
-        for entry in entries:
-            target_name = _query_display_name(entry, _query_symbol_key(entry))
-            nodes.add(target_name)
-            edges.append(UMLEdge(source_name, target_name, "calls"))
-
-    for target_key, entries in relationships.get("callers", {}).items():
-        target_name = _query_display_name(symbol_by_key.get(target_key), target_key)
-        nodes.add(target_name)
-        for entry in entries:
-            source_name = _query_display_name(entry, _query_symbol_key(entry))
-            nodes.add(source_name)
-            edges.append(UMLEdge(source_name, target_name, "calls"))
-
-    if not nodes:
-        nodes.update(
-            _query_display_name(symbol, _query_symbol_key(symbol))
-            for symbol in current
-            if _query_display_name(symbol, _query_symbol_key(symbol))
-        )
-
-    unique_edges = _dedupe_uml_edges(edges)
-    truncated = len(unique_edges) > max_edges
-    rendered_edges = unique_edges[:max_edges]
-    rendered_nodes = sorted(nodes)
-    return {
-        "status": "included",
-        "diagram_type": "query_flow",
-        "mermaid_type": "flowchart",
-        "node_count": len(rendered_nodes),
-        "edge_count": len(rendered_edges),
-        "truncated": truncated,
-        "nodes": rendered_nodes,
-        "edges": [edge.to_dict() for edge in rendered_edges],
-        "mermaid": render_flowchart_mermaid(
-            rendered_nodes,
-            rendered_edges,
-            mermaid_direction,
-        ),
-        "metadata": {
-            "source": "codegraph_query",
-            "direction": mermaid_direction,
-        },
-    }
-
-
-def _query_symbol_key(symbol: dict[str, Any]) -> str:
-    return f"{symbol.get('file', '')}:{symbol.get('line', 0)}:{symbol.get('name', '')}"
-
-
-def _query_display_name(symbol: dict[str, Any] | None, fallback: str) -> str:
-    if symbol:
-        name = str(symbol.get("name") or "")
-        if name:
-            return name
-    if ":" in fallback:
-        return fallback.rsplit(":", 1)[-1]
-    return fallback
-
-
-def _dedupe_uml_edges(edges: list[UMLEdge]) -> list[UMLEdge]:
-    unique: dict[tuple[str, str, str], UMLEdge] = {}
-    for edge in edges:
-        key = (edge.source, edge.target, edge.label)
-        unique.setdefault(key, edge)
-    return sorted(
-        unique.values(), key=lambda edge: (edge.source, edge.target, edge.label)
-    )
 
 
 class CodeGraphVisualizationHub:
