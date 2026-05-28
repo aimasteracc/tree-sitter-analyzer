@@ -85,7 +85,7 @@ class IncrementalSync:
         per-phase logic; ``sync`` becomes a thin orchestrator.
         """
         result = SyncResult()
-        conn = self._cache._get_conn()
+        conn = self._cache.get_conn()
 
         indexed_rows = self._load_indexed_rows(conn)
         disk_files = self._scan_disk_files(max_files)
@@ -244,7 +244,7 @@ class IncrementalSync:
         Returns dict with keys: 'new', 'modified', 'deleted' — each a list of
         relative file paths.
         """
-        conn = self._cache._get_conn()
+        conn = self._cache.get_conn()
         indexed_rows = {
             row["file_path"]: {
                 "content_hash": row["content_hash"],

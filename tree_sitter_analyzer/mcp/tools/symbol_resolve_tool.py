@@ -107,7 +107,7 @@ class CodeGraphSymbolResolveTool(BaseMCPTool):
         output_format = arguments.get("output_format", "toon")
 
         cache = self._get_cache()
-        conn = cache._get_conn()
+        conn = cache.get_conn()
         row_count = conn.execute("SELECT COUNT(*) FROM ast_index").fetchone()[0]
         if row_count == 0:
             return apply_toon_format_to_response(

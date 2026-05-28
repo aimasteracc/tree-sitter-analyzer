@@ -309,7 +309,7 @@ def _build_file_class_methods(
 def _build_file_class_methods_from_cache(
     cache: ASTCache,
 ) -> dict[str, dict[str, dict[str, int]]]:
-    conn = cache._get_conn()
+    conn = cache.get_conn()
     line_idx: dict[tuple[str, str, int], int] = {}
     try:
         rows = conn.execute(
@@ -392,7 +392,7 @@ def build_resolver_context(cache: ASTCache) -> ResolverContext:
 
 def _build_resolver_context_uncached(cache: ASTCache) -> ResolverContext:
     """One DB pass; populates every map the resolver needs."""
-    conn = cache._get_conn()
+    conn = cache.get_conn()
 
     file_symbols: dict[str, list[tuple[str, str, int]]] = {}
     global_name_table: dict[str, list[tuple[str, int]]] = {}

@@ -161,7 +161,7 @@ class CodeGraphSitemapTool(BaseMCPTool):
         directory: str | None,
         max_files: int,
     ) -> list[dict[str, Any]]:
-        conn = cache._get_conn()
+        conn = cache.get_conn()
         if language and directory:
             like_dir = directory.rstrip("/") + "/%"
             rows = conn.execute(

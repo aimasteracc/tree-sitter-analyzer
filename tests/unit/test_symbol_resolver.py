@@ -103,8 +103,12 @@ class TestSymbolResolverEngine:
             _fts5_available = False
 
             @staticmethod
-            def _get_conn():
+            def get_conn():
                 return conn
+
+            @staticmethod
+            def _get_conn():  # backward-compat alias
+                return Cache.get_conn()
 
         cache = Cache()
         resolver = SymbolResolver(cache)

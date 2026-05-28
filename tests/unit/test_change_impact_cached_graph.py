@@ -120,8 +120,11 @@ def test_cached_index_rows_handles_query_failure():
             raise RuntimeError("boom")
 
     class BadCache:
-        def _get_conn(self):
+        def get_conn(self):
             return BadConn()
+
+        def _get_conn(self):  # backward-compat alias
+            return self.get_conn()
 
     assert cached._cached_index_rows(BadCache()) == []
 

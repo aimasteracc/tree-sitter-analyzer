@@ -755,3 +755,30 @@ class TestSQLNativeCallGraph:
         callers = call_cache.query_callers("bar")
         for e in callers:
             assert e["depth"] >= 1
+
+
+# ---------------------------------------------------------------------------
+# ASTCache.get_conn() public accessor (TDD — replaces private _get_conn usage)
+# ---------------------------------------------------------------------------
+
+
+class TestASTCacheGetConnPublicAccessor:
+    """get_conn() must expose the same SQLite connection as _get_conn()."""
+
+    def test_get_conn_returns_sqlite_connection(self, tmp_project):
+        """get_conn() must return a live sqlite3.Connection, not None."""
+        cache = ASTCache(str(tmp_project))
+        conn = cache.get_conn()
+        assert isinstance(conn, sqlite3.Connection)
+
+    def test_get_conn_same_as_private_get_conn(self, tmp_project):
+        """get_conn() and _get_conn() must return the same connection object."""
+        cache = ASTCache(str(tmp_project))
+        assert cache.get_conn() is cache._get_conn()
+
+    def test_get_conn_thread_local_stable(self, tmp_project):
+        """Repeated calls to get_conn() within the same thread return the same object."""
+        cache = ASTCache(str(tmp_project))
+        conn1 = cache.get_conn()
+        conn2 = cache.get_conn()
+        assert conn1 is conn2

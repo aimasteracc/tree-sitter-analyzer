@@ -15,8 +15,11 @@ class RowCache:
     def __init__(self, conn: sqlite3.Connection) -> None:
         self.conn = conn
 
-    def _get_conn(self) -> sqlite3.Connection:
+    def get_conn(self) -> sqlite3.Connection:
         return self.conn
+
+    def _get_conn(self) -> sqlite3.Connection:  # backward-compat alias
+        return self.get_conn()
 
 
 def _connect() -> sqlite3.Connection:

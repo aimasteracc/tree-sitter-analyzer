@@ -193,7 +193,7 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
             if terms:
                 fts_query = " OR ".join(f'"{t}"' for t in terms)
 
-                conn = cache._get_conn()
+                conn = cache.get_conn()
                 if language:
                     rows = conn.execute(
                         """SELECT r.name, r.kind, r.file_path, r.language, r.line, r.end_line
@@ -241,7 +241,7 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
     ) -> list[dict[str, Any]]:
         import json
 
-        conn = cache._get_conn()
+        conn = cache.get_conn()
         pattern_lower = pattern.lower()
 
         if language:

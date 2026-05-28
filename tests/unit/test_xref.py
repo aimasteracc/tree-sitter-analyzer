@@ -35,8 +35,11 @@ class TestXRefEngineSymbol:
                 return MockCursor()
 
         class MockCache:
-            def _get_conn(self):
+            def get_conn(self):
                 return MockConn()
+
+            def _get_conn(self):  # backward-compat alias
+                return self.get_conn()
 
         cache = MockCache()
 
