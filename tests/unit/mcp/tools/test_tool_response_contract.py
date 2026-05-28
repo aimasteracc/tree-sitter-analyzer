@@ -132,6 +132,10 @@ class TestEnvelopeSuccess:
                     {"file_path": "main.py", "name": "helper"},
                 ]
 
+            def call_edges(self) -> list:
+                """Public accessor used by codegraph_metrics_tool."""
+                return self._call_edges
+
         monkeypatch.setattr(call_graph, "CachedCallGraph", FakeCachedCallGraph)
 
         tool = CodeGraphMetricsTool(str(tiny_project))

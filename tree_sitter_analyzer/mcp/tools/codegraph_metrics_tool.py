@@ -196,9 +196,6 @@ class CodeGraphMetricsTool(BaseMCPTool):
             cg = CachedCallGraph(self.project_root, cache=cache)
             cg.build()
 
-            # Use the public ``all_functions()`` API (returns list[dict]) and
-            # rebuild edges as (caller_name, callee_name) tuples from the
-            # internal ``_call_edges`` (no public accessor yet — see #TODO).
             func_dicts = cg.all_functions()
             functions: list[str] = [
                 f"{f.get('file_path', '')}::{f.get('name', '')}" for f in func_dicts
@@ -208,7 +205,7 @@ class CodeGraphMetricsTool(BaseMCPTool):
                     f"{caller.file_path}::{caller.name}",
                     f"{callee.file_path}::{callee.name}",
                 )
-                for caller, callee, _line in cg._call_edges
+                for caller, callee, _line in cg.call_edges()
             ]
 
             callers_map: dict[str, int] = {}
