@@ -482,9 +482,56 @@ class TestRubyExtractorHelpers:
     def test_determine_visibility_default(self):
         """Test default visibility determination."""
         extractor = RubyElementExtractor()
-        # Default visibility should be public
         visibility = extractor._determine_visibility(None)
         assert visibility == "public"
+
+    def test_determine_visibility_private(self):
+        """Method defined after 'private' keyword should be private."""
+        plugin = RubyPlugin()
+        code = "class Foo\n  def pub; end\n  private\n  def priv; end\nend"
+        tree = get_tree_for_code(code, plugin)
+        extractor = plugin.create_extractor()
+        extractor.source_code = code
+
+        functions = extractor.extract_functions(tree, code)
+        by_name = {f.name.split("#")[-1]: f for f in functions}
+        assert by_name["pub"].visibility == "public"
+        assert by_name["priv"].visibility == "private"
+
+    def test_determine_visibility_protected(self):
+        """Method defined after 'protected' keyword should be protected."""
+        plugin = RubyPlugin()
+        code = "class Foo\n  def a; end\n  protected\n  def b; end\nend"
+        tree = get_tree_for_code(code, plugin)
+        extractor = plugin.create_extractor()
+        extractor.source_code = code
+
+        functions = extractor.extract_functions(tree, code)
+        by_name = {f.name.split("#")[-1]: f for f in functions}
+        assert by_name["a"].visibility == "public"
+        assert by_name["b"].visibility == "protected"
+
+    def test_determine_visibility_restores_public(self):
+        """Method after explicit 'public' re-declaration should be public."""
+        plugin = RubyPlugin()
+        code = (
+            "class Foo\n"
+            "  def a; end\n"
+            "  private\n"
+            "  def b; end\n"
+            "  public\n"
+            "  def c; end\n"
+            "end"
+        )
+        tree = get_tree_for_code(code, plugin)
+        extractor = plugin.create_extractor()
+        extractor.source_code = code
+
+        functions = extractor.extract_functions(tree, code)
+        by_name = {f.name.split("#")[-1]: f for f in functions}
+        assert by_name["a"].visibility == "public"
+        assert by_name["b"].visibility == "private"
+        assert by_name["c"].visibility == "public"
 
     def test_get_node_text_optimized_caching(self):
         """Test that node text extraction uses caching."""
