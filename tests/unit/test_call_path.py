@@ -62,7 +62,8 @@ def _make_cache_with_edges(tmp_path: Path, edges: list[dict]) -> MagicMock:
             ),
         )
     conn.commit()
-    cache._get_conn.return_value = conn
+    cache.get_conn.return_value = conn
+    cache._get_conn.return_value = conn  # backward-compat alias
     return cache
 
 
