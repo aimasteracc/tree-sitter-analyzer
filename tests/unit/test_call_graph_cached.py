@@ -432,3 +432,109 @@ class TestCallEdgesPublicAccessor:
             assert isinstance(caller_ref, FunctionRef)
             assert isinstance(callee_ref, FunctionRef)
             assert isinstance(line, int)
+
+
+# ============================================================
+# CallGraph.function_refs(), callees_of(), callers_of()
+# (TDD — added to replace private _functions/_callees/_callers
+#  accesses in dead_code_analyzer.py and codegraph_impact_tool.py)
+# ============================================================
+
+
+class TestCallGraphInternalAccessors:
+    """function_refs(), callees_of(), callers_of() must expose FunctionRef data."""
+
+    @staticmethod
+    def _make_mock_cache(functions, edges):
+        cache = MagicMock()
+        cache.get_functions.return_value = functions
+        cache.get_call_edges.return_value = edges
+        cache.get_imports.return_value = {}
+        return cache
+
+    @staticmethod
+    def _two_func_cache():
+        return TestCallGraphInternalAccessors._make_mock_cache(
+            functions=[
+                {
+                    "file": "a.py",
+                    "name": "entry",
+                    "line": 1,
+                    "language": "python",
+                    "end_line": 5,
+                },
+                {
+                    "file": "a.py",
+                    "name": "helper",
+                    "line": 7,
+                    "language": "python",
+                    "end_line": 10,
+                },
+            ],
+            edges=[
+                {
+                    "caller_name": "entry",
+                    "caller_file": "a.py",
+                    "callee_name": "helper",
+                    "callee_file": "a.py",
+                    "line": 3,
+                }
+            ],
+        )
+
+    def test_function_refs_returns_function_ref_objects(self):
+        """function_refs() must return FunctionRef objects (not dicts)."""
+        cache = self._two_func_cache()
+        cg = CachedCallGraph(".", cache=cache)
+        cg.build()
+        refs = cg.function_refs()
+        assert isinstance(refs, list)
+        assert len(refs) == 2
+        assert all(isinstance(r, FunctionRef) for r in refs)
+
+    def test_function_refs_same_as_private_functions(self):
+        """function_refs() must return the same list as _functions."""
+        cache = self._two_func_cache()
+        cg = CachedCallGraph(".", cache=cache)
+        cg.build()
+        assert cg.function_refs() is cg._functions
+
+    def test_callee_refs_of_returns_list(self):
+        """callee_refs_of(func) must return the callees of a given FunctionRef."""
+        cache = self._two_func_cache()
+        cg = CachedCallGraph(".", cache=cache)
+        cg.build()
+        refs = cg.function_refs()
+        entry = next(r for r in refs if r.name == "entry")
+        callees = cg.callee_refs_of(entry)
+        assert isinstance(callees, list)
+        assert len(callees) == 1
+        assert callees[0].name == "helper"
+
+    def test_caller_refs_of_returns_list(self):
+        """caller_refs_of(func) must return the callers of a given FunctionRef."""
+        cache = self._two_func_cache()
+        cg = CachedCallGraph(".", cache=cache)
+        cg.build()
+        refs = cg.function_refs()
+        helper = next(r for r in refs if r.name == "helper")
+        callers = cg.caller_refs_of(helper)
+        assert isinstance(callers, list)
+        assert len(callers) == 1
+        assert callers[0].name == "entry"
+
+    def test_callee_refs_of_unknown_func_returns_empty(self):
+        """callee_refs_of(unknown) must return empty list, not raise."""
+        cache = self._two_func_cache()
+        cg = CachedCallGraph(".", cache=cache)
+        cg.build()
+        unknown = FunctionRef("x.py", "nonexistent", 0, "python")
+        assert cg.callee_refs_of(unknown) == []
+
+    def test_caller_refs_of_unknown_func_returns_empty(self):
+        """caller_refs_of(unknown) must return empty list, not raise."""
+        cache = self._two_func_cache()
+        cg = CachedCallGraph(".", cache=cache)
+        cg.build()
+        unknown = FunctionRef("x.py", "nonexistent", 0, "python")
+        assert cg.caller_refs_of(unknown) == []

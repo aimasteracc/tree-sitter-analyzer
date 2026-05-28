@@ -464,6 +464,38 @@ class CallGraph:
         self.build()
         return self._call_edges
 
+    def function_refs(self) -> list["FunctionRef"]:
+        """Return all discovered functions as ``FunctionRef`` objects.
+
+        Unlike :meth:`all_functions` (which returns serialised ``dict``
+        records), this returns the live ``FunctionRef`` instances needed for
+        graph-walk algorithms such as dead-code analysis.
+        """
+        self.build()
+        return self._functions
+
+    def callee_refs_of(self, func: "FunctionRef") -> list["FunctionRef"]:
+        """Return callees of *func* as ``FunctionRef`` objects.
+
+        Unlike :meth:`callees_of` (which accepts a name string and returns
+        serialised ``dict`` records), this accepts a live ``FunctionRef``
+        and returns live objects — needed for graph-walk algorithms such as
+        dead-code analysis.  Returns an empty list for unknown *func*.
+        """
+        self.build()
+        return list(self._callees.get(func, []))
+
+    def caller_refs_of(self, func: "FunctionRef") -> list["FunctionRef"]:
+        """Return callers of *func* as ``FunctionRef`` objects.
+
+        Unlike :meth:`callers_of` (which accepts a name string and returns
+        serialised ``dict`` records), this accepts a live ``FunctionRef``
+        and returns live objects — needed for graph-walk algorithms such as
+        dead-code analysis.  Returns an empty list for unknown *func*.
+        """
+        self.build()
+        return list(self._callers.get(func, []))
+
     def functions_in_file(self, file_path: str) -> list[dict[str, Any]]:
         """Return all functions defined in the given file."""
         self.build()

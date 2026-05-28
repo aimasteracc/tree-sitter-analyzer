@@ -149,8 +149,7 @@ def find_transitive_dead_code(
     3. BFS from entry points, marking reachable functions as alive.
     4. Remaining unmarked functions are transitively dead.
     """
-    graph.build()
-    all_funcs = set(graph._functions)
+    all_funcs = set(graph.function_refs())
     alive: set[FunctionRef] = set()
 
     for func in all_funcs:
@@ -167,7 +166,7 @@ def find_transitive_dead_code(
         func, depth = queue.popleft()
         if depth >= max_depth:
             continue
-        for callee in graph._callees.get(func, []):
+        for callee in graph.callee_refs_of(func):
             if callee not in alive and callee in all_funcs:
                 alive.add(callee)
                 queue.append((callee, depth + 1))
@@ -179,15 +178,15 @@ def find_transitive_dead_code(
 
     for func in dead_funcs:
         dead_callee_names = []
-        for callee in graph._callees.get(func, []):
+        for callee in graph.callee_refs_of(func):
             if callee.qualified_name() in dead_by_qname:
                 dead_callee_names.append(callee.name)
 
-        callers = graph._callers.get(func, [])
+        callers = graph.caller_refs_of(func)
         if callers:
             reason = "unreachable_from_entry"
         else:
-            callee_count = len(graph._callees.get(func, []))
+            callee_count = len(graph.callee_refs_of(func))
             if callee_count == 0:
                 reason = "orphan_no_callers_no_callees"
             else:
