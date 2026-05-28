@@ -55,7 +55,22 @@ caffeine (ben-manes/caffeine) — BoundedLocalCache.java
   - Validates Bug 1 (generics), Bug 2 (no @Override bleed), Bug 3 (@Deprecated on LegacyNode)
   - All 3 tests pass. Caffeine clone remains skipped.
 
-- [ ] **T3.3** Verify with netty (optional stretch goal — requires netty clone)
+- [x] **T3.3** Verify with netty (stretch goal — netty sparse-cloned to `/tmp/netty`)
+  - Clone: `git clone --depth 1 --filter=blob:none --sparse https://github.com/netty/netty.git /tmp/netty`
+  - Sparse path: `transport/src/main/java/io/netty/channel/`
+  - **Bug 1 verified**: `DefaultAddressedEnvelope<M, A>` → `implements=['AddressedEnvelope<M, A>']` (single item, generics preserved) ✓
+  - **Bug 1 verified**: `ReflectiveChannelFactory<T>` → `implements=['ChannelFactory<T>']` ✓
+  - **Bug 2 verified**: `AbstractChannel.java` (6 classes), `AbstractChannelHandlerContext.java` (3 classes) — zero annotation-bleed offenders ✓
+  - **Annotation extraction verified**: `@Sharable` on `ChannelInitializer`, `@UnstableApi` on `VoidChannelPromise` — correctly attributed ✓
+  - **Note**: `Channel` is an `interface` using `extends_interfaces` (not `super_interfaces`); its extended interfaces are not extracted — separate gap, tracked below.
+
+## Known Gaps (out of scope for this change)
+
+- **Interface `extends` not extracted**: Java `interface Foo extends Bar<T>` uses tree-sitter node
+  `extends_interfaces`, which `_extract_class_relationships()` does not handle.
+  Only `super_interfaces` (class `implements`) is supported. Affects netty `Channel.java`
+  (`Channel extends AttributeMap, ChannelOutboundInvoker, Comparable<Channel>`).
+  Low priority — interfaces rarely need `implements` field for call-graph purposes.
 
 ## Dependencies
 - T1.* before T2.*
@@ -63,4 +78,4 @@ caffeine (ben-manes/caffeine) — BoundedLocalCache.java
 - T3.* after T2.*
 
 ## Status
-COMPLETE (2026-05-28) — all unit tests green; T3.2/T3.3 deferred (require external repos)
+COMPLETE (2026-05-28) — all unit tests green; T3.2 via synthetic MCP test; T3.3 via netty sparse clone
