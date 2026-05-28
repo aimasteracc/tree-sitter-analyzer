@@ -406,10 +406,10 @@ class ASTCacheTool(BaseMCPTool):
                 force=force,
                 include_activation=include_activation,
             )
-            indexed_files = int(
-                result.get("indexed", result.get("files_indexed", 0)) or 0
-            )
-            symbols = int(result.get("symbol_count", result.get("symbols", 0)) or 0)
+            files_indexed_fallback = result.get("files_indexed", 0)
+            indexed_files = int(result.get("indexed", files_indexed_fallback) or 0)
+            symbols_fallback = result.get("symbols", 0)
+            symbols = int(result.get("symbol_count", symbols_fallback) or 0)
             summary_line = (
                 f"ast_cache index project files={indexed_files} "
                 f"symbols={symbols} force={bool(force)}"
