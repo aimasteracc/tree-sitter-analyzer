@@ -18,6 +18,23 @@ from collections.abc import Iterator
 from datetime import datetime, timezone
 from typing import Any
 
+from ._ast_cache_graph import bfs_callees as _bfs_callees_impl
+from ._ast_cache_graph import bfs_callers as _bfs_callers_impl
+from ._ast_cache_schema import (
+    apply_migration_v3 as _apply_migration_v3,
+)
+from ._ast_cache_schema import (
+    apply_migration_v4 as _apply_migration_v4,
+)
+from ._ast_cache_schema import (
+    apply_migration_v5 as _apply_migration_v5,
+)
+from ._ast_cache_schema import (
+    apply_migration_v6 as _apply_migration_v6,
+)
+from ._ast_cache_schema import (
+    apply_migration_v7 as _apply_migration_v7,
+)
 from .core.parser import Parser, ParseResult
 from .project_graph import _language_from_ext
 
@@ -71,132 +88,8 @@ CREATE INDEX IF NOT EXISTS idx_sym_rows_file_path
     ON ast_symbol_rows(file_path);
 """
 
-_SCHEMA_V3_CALL_EDGES = """
-CREATE TABLE IF NOT EXISTS ast_call_edges (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    caller_name TEXT NOT NULL,
-    caller_file TEXT NOT NULL,
-    caller_line INTEGER NOT NULL,
-    callee_name TEXT NOT NULL,
-    callee_full TEXT NOT NULL DEFAULT '',
-    callee_line INTEGER NOT NULL DEFAULT 0,
-    file_path   TEXT NOT NULL,
-    language    TEXT NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_ce_callee_name
-    ON ast_call_edges(callee_name);
-
-CREATE INDEX IF NOT EXISTS idx_ce_caller_name
-    ON ast_call_edges(caller_name);
-
-CREATE INDEX IF NOT EXISTS idx_ce_file_path
-    ON ast_call_edges(file_path);
-"""
-
-# Feature 1 (Synapse) — V4 schema additions.
-#
-# Adds three resolution columns to ``ast_call_edges`` plus a new
-# ``ast_imports`` table that records every imported name binding.
-#
-# The three new edge columns:
-#
-# * ``callee_symbol_id``    — points to the row in ``ast_symbol_rows`` the
-#   resolver believes is the called definition, or NULL when the callee
-#   isn't a project symbol (stdlib / builtin / unknown).
-# * ``callee_resolution``   — one of {local, project, stdlib, unknown}.
-#   Default ``'unknown'`` so legacy rows look identical to rows the
-#   resolver could not place.
-# * ``callee_resolved_file`` — relative path of the file containing the
-#   resolved definition, empty when ``resolution`` is stdlib / unknown.
-#
-# The ALTER statements live in ``_init_db`` (Python-side PRAGMA detection)
-# rather than a single executescript: ALTER lacks IF NOT EXISTS in SQLite,
-# so re-opening a DB that already has the columns would raise. The
-# imports table is plain CREATE TABLE IF NOT EXISTS, so the executescript
-# form is safe for it.
-_SCHEMA_V4_IMPORTS = """
-CREATE TABLE IF NOT EXISTS ast_imports (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    file_path   TEXT NOT NULL,
-    language    TEXT NOT NULL,
-    module_path TEXT NOT NULL,
-    local_name  TEXT NOT NULL DEFAULT '',
-    is_relative INTEGER NOT NULL DEFAULT 0,
-    is_star     INTEGER NOT NULL DEFAULT 0,
-    alias_of    TEXT NOT NULL DEFAULT '',
-    line        INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE INDEX IF NOT EXISTS idx_imp_file
-    ON ast_imports(file_path);
-
-CREATE INDEX IF NOT EXISTS idx_imp_local
-    ON ast_imports(local_name);
-
-CREATE INDEX IF NOT EXISTS idx_imp_star
-    ON ast_imports(is_star);
-"""
-
-
-# Feature 2 (Temporal Activation) — per-symbol git modification frequency.
-# Populated as a side-effect of ``index_file`` via ``git_activation``.
-# Consumers: change-impact verdict bump, callees/callers ``include_activation``,
-# homeostasis health scoring (Phase 3b).
-#
-# One row per symbol_id; the (file_path) index lets re-index deletes scope
-# by file without touching ast_symbol_rows joins.
-_SCHEMA_V5_ACTIVATION = """
-CREATE TABLE IF NOT EXISTS ast_symbol_activation (
-    symbol_id INTEGER PRIMARY KEY,
-    file_path TEXT NOT NULL,
-    last_modified_commit TEXT,
-    last_modified_at INTEGER,
-    mod_count_30d INTEGER NOT NULL DEFAULT 0,
-    mod_count_90d INTEGER NOT NULL DEFAULT 0,
-    mod_count_all INTEGER NOT NULL DEFAULT 0,
-    computed_at INTEGER NOT NULL,
-    git_state TEXT NOT NULL DEFAULT 'tracked'
-);
-
-CREATE INDEX IF NOT EXISTS idx_act_file
-    ON ast_symbol_activation(file_path);
-
-CREATE INDEX IF NOT EXISTS idx_act_hot_30d
-    ON ast_symbol_activation(mod_count_30d DESC);
-
-CREATE INDEX IF NOT EXISTS idx_act_last_at
-    ON ast_symbol_activation(last_modified_at DESC);
-"""
-
-
-# Feature 3 (Inhibition / Constraint DSL) — persistent violation cache.
-# ``check_constraints`` writes detected violations here; ``safe_to_edit``
-# and ``analyze_change_impact`` read them on every gate-tool call.
-#
-# Composite primary key (rule_id, caller_file, caller_line, callee_name)
-# is intentionally tight: a single rule can fire from many lines, and a
-# single line can violate many rules, but the same (rule, line, callee)
-# combination should dedupe into one row across re-evaluations.
-_SCHEMA_V6_VIOLATIONS = """
-CREATE TABLE IF NOT EXISTS ast_constraint_violations (
-    rule_id      TEXT NOT NULL,
-    caller_file  TEXT NOT NULL,
-    caller_name  TEXT NOT NULL,
-    caller_line  INTEGER NOT NULL,
-    callee_name  TEXT NOT NULL,
-    callee_file  TEXT NOT NULL DEFAULT '',
-    severity     TEXT NOT NULL,
-    detected_at  INTEGER NOT NULL,
-    PRIMARY KEY (rule_id, caller_file, caller_line, callee_name)
-);
-
-CREATE INDEX IF NOT EXISTS idx_cv_caller_file
-    ON ast_constraint_violations(caller_file);
-
-CREATE INDEX IF NOT EXISTS idx_cv_severity
-    ON ast_constraint_violations(severity);
-"""
+# Schema DDL constants V3-V6 are defined in _ast_cache_schema.py and
+# imported above as _SCHEMA_V3_CALL_EDGES … _SCHEMA_V6_VIOLATIONS.
 
 
 # Large-repo hot-path indexes. These are deliberately versionless and
@@ -249,7 +142,7 @@ CREATE TABLE IF NOT EXISTS ast_schema_version (
 
 # Expected versions + the columns / tables they bring. Keep in sync with the
 # _SCHEMA_V* constants above. Update this when adding a new V*.
-_EXPECTED_SCHEMA_VERSIONS: list[tuple[int, str, dict[str, list[str]]]] = [
+_EXPECTED_SCHEMA_VERSIONS: list[Any] = [
     (
         3,
         "ast_call_edges + indices",
@@ -329,6 +222,28 @@ from ._ast_extraction import (  # noqa: E402
 # Back-compat alias imported by file_watcher.py and incremental_sync.py.
 from ._lang_extension_map import EXT_TO_LANG as _EXT_TO_LANG  # noqa: E402
 
+_SQL_UPDATE_CALLEE_RESOLVED = (
+    "UPDATE ast_call_edges SET callee_resolved_file = ? "
+    "WHERE caller_file = ? AND caller_line = ? "
+    "AND callee_name = ? AND callee_line = ?"
+)
+
+_SQL_COUNT_SYMBOL_ROWS = "SELECT COUNT(*) as c FROM ast_symbol_rows"
+
+
+def _build_function_entry(
+    sym: dict[str, Any], file_path: str, language: str
+) -> dict[str, Any]:
+    """Build one function-entry dict from a symbol row."""
+    return {
+        "name": sym["name"],
+        "file": file_path,
+        "line": sym.get("line", 0),
+        "end_line": sym.get("end_line", 0),
+        "language": language,
+        "params": sym.get("params", ""),
+    }
+
 
 def _project_index_activation_enabled(include_activation: bool | None) -> bool:
     """Return whether project-wide indexing should compute git activation.
@@ -342,6 +257,185 @@ def _project_index_activation_enabled(include_activation: bool | None) -> bool:
         return bool(include_activation)
     value = os.environ.get("TSA_INDEX_ACTIVATION", "")
     return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _process_one_index_result(
+    r: dict[str, Any],
+    stats: dict[str, Any],
+    insert_fn: Any,
+    indexed_at: str,
+    activation_enabled: bool,
+) -> None:
+    """Apply one worker result dict to ``stats`` and the DB (in-place).
+
+    On io_error / parse_failed: increments ``stats["errors"]`` and appends
+    an error entry to ``stats["files"]`` then returns.  On success: calls
+    ``insert_fn`` and appends an indexed entry.
+    """
+    if r["status"] in ("io_error", "parse_failed"):
+        stats["errors"] += 1
+        stats["files"].append(
+            {"file": r["rel_path"], "status": "error", "reason": r["reason"]}
+        )
+        return
+    insert_fn(r, indexed_at, include_activation=activation_enabled)
+    stats["indexed"] += 1
+    stats["files"].append(
+        {
+            "file": r["rel_path"],
+            "status": "indexed",
+            "symbols": r["symbols_count"],
+            "content_hash": r["content_hash"][:16],
+        }
+    )
+
+
+def _backfill_schema_version_row(
+    conn: sqlite3.Connection,
+    version: int,
+    description: str,
+    missing: list[str],
+) -> None:
+    """INSERT OR IGNORE a version row for a legacy DB that predates the registry.
+
+    Called only when PRAGMA confirms the version's payload IS present but the
+    registry row is absent.  Silently appends to ``missing`` when the version
+    table itself is gone (self-check will surface that later).
+    """
+    import time as _time
+
+    ts = int(_time.time())
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO ast_schema_version "
+            "(version, applied_at, description) VALUES (?, ?, ?)",
+            (version, ts, description),
+        )
+        conn.commit()
+    except sqlite3.OperationalError:
+        # Version table missing — surface it as a missing payload.
+        missing.append(
+            f"ast_schema_version row for v{version} ({description}) could not be inserted"
+        )
+
+
+def _insert_import_entry(
+    conn: sqlite3.Connection,
+    rel_path: str,
+    language: str,
+    entry: Any,
+) -> bool:
+    """Insert one parsed import entry into ``ast_imports``.
+
+    Returns ``True`` on success, ``False`` when a fatal ``OperationalError``
+    fires (caller should stop iterating and return).
+    """
+    try:
+        conn.execute(
+            """INSERT INTO ast_imports
+               (file_path, language, module_path, local_name,
+                is_relative, is_star, alias_of)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (
+                rel_path,
+                language,
+                entry.module_path,
+                entry.local_name,
+                1 if entry.is_relative else 0,
+                1 if entry.is_star else 0,
+                entry.alias_of,
+            ),
+        )
+        return True
+    except sqlite3.OperationalError as exc:
+        logger.debug("ast_imports write failed for %s: %s", rel_path, exc)
+        return False
+
+
+def _parse_import_raw(raw: Any) -> tuple[str, int]:
+    """Extract (text, line) from a raw import entry (str or dict)."""
+    if isinstance(raw, dict):
+        text = raw.get("text") or raw.get("statement") or ""
+        line = int(raw.get("line", 0) or 0)
+    else:
+        text = str(raw)
+        line = 0
+    return text, line
+
+
+def _make_error_entry(rel_path: str, reason: str) -> dict[str, Any]:
+    """Build a file-error entry dict for the index_project stats list."""
+    return {"file": rel_path, "status": "error", "reason": reason}
+
+
+_SQL_TABLE_EXISTS = "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?"
+
+_SQL_GET_SCHEMA_VERSION = "SELECT version FROM ast_schema_version WHERE version = ?"
+
+_SQL_COUNT_RESOLVED_EDGES = (
+    "SELECT COUNT(*) as c FROM ast_call_edges WHERE callee_resolved_file != ''"
+)
+
+_SQL_COUNT_CROSS_FILE_EDGES = (
+    "SELECT COUNT(*) as c FROM ast_call_edges "
+    "WHERE callee_resolved_file != '' "
+    "AND callee_resolved_file != file_path"
+)
+
+
+def _apply_large_repo_indexes(conn: sqlite3.Connection) -> None:
+    """Create non-shape-changing indexes for large-repo query hot paths."""
+    for table_name, sql in _LARGE_REPO_INDEXES:
+        try:
+            exists = conn.execute(_SQL_TABLE_EXISTS, (table_name,)).fetchone()
+            if exists:
+                conn.execute(sql)
+        except sqlite3.OperationalError:
+            logger.debug("Skipping optional index for table %s", table_name)
+
+
+def _get_table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    """Return the column names of ``table``, or empty set when absent."""
+    try:
+        rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+    except sqlite3.OperationalError:
+        return set()
+    return {r[1] for r in rows}
+
+
+def _check_schema_expectations(
+    conn: sqlite3.Connection,
+    expectations: dict[str, list[str]],
+    missing: list[str],
+) -> bool:
+    """Confirm every expected table + column from one version block exists.
+
+    Appends descriptive entries to ``missing`` for anything absent.
+    Returns ``True`` when every check passed.
+    """
+    all_ok = True
+    for table in expectations.get("tables", []):
+        cols = _get_table_columns(conn, table)
+        if not cols:
+            missing.append(f"table {table!r}")
+            all_ok = False
+    for key, required_cols in expectations.items():
+        if key == "tables":
+            continue
+        if not key.endswith("_columns"):
+            continue
+        table = key[: -len("_columns")]
+        cols = _get_table_columns(conn, table)
+        if not cols:
+            if table not in expectations.get("tables", []):
+                missing.append(f"table {table!r} (needed for columns)")
+            all_ok = False
+            continue
+        for col in required_cols:
+            if col not in cols:
+                missing.append(f"column {table}.{col}")
+                all_ok = False
+    return all_ok
 
 
 class ASTCache:
@@ -416,116 +510,25 @@ class ASTCache:
                 conn.commit()
             except sqlite3.OperationalError:
                 self._fts5_available = False
-        # Snapshot which versions are already recorded. Each migration
-        # block consults this snapshot: if its version is recorded we
-        # skip the migration body (the version row is the source of
-        # truth for "this block already applied"). This lets the
-        # post-init self-check detect schema tampering: if the registry
-        # says v4 applied but the column is missing, somebody has
-        # corrupted the DB or a parallel-edit clobbered an ALTER
-        # statement, and the self-check raises rather than silently
-        # re-applying the migration and masking the problem.
-        applied_versions = self._already_applied_versions(conn)
-        if 3 not in applied_versions:
-            try:
-                conn.executescript(_SCHEMA_V3_CALL_EDGES)
-                self._record_schema_version(conn, 3, "ast_call_edges + indices")
-                conn.commit()
-            except sqlite3.OperationalError:
-                pass
-        # Feature 1 (Synapse) — V4 schema. ALTER TABLE has no
-        # IF NOT EXISTS form in SQLite, so we add the columns only when
-        # PRAGMA table_info confirms they are missing. Defaults match
-        # what a never-resolved row would look like, so the backfill
-        # path can detect "fresh" rows by ``callee_resolution = 'unknown'
-        # AND callee_resolved_file = ''``.
-        #
-        # Migration runs only when v4 is not in the registry. Once
-        # recorded, this block is skipped and the self-check below is
-        # the only thing that touches the schema — that's how we catch
-        # tampering / silently-dropped ALTER statements.
-        if 4 not in applied_versions:
-            try:
-                edge_cols = {
-                    r[1]
-                    for r in conn.execute(
-                        "PRAGMA table_info(ast_call_edges)"
-                    ).fetchall()
-                }
-                if "callee_symbol_id" not in edge_cols:
-                    conn.execute(
-                        "ALTER TABLE ast_call_edges ADD COLUMN callee_symbol_id INTEGER"
-                    )
-                if "callee_resolution" not in edge_cols:
-                    conn.execute(
-                        "ALTER TABLE ast_call_edges "
-                        "ADD COLUMN callee_resolution TEXT NOT NULL "
-                        "DEFAULT 'unknown'"
-                    )
-                if "callee_resolved_file" not in edge_cols:
-                    conn.execute(
-                        "ALTER TABLE ast_call_edges "
-                        "ADD COLUMN callee_resolved_file TEXT NOT NULL "
-                        "DEFAULT ''"
-                    )
-                conn.executescript(_SCHEMA_V4_IMPORTS)
-                conn.execute(
-                    "CREATE INDEX IF NOT EXISTS idx_ce_callee_symbol_id "
-                    "ON ast_call_edges(callee_symbol_id)"
-                )
-                conn.execute(
-                    "CREATE INDEX IF NOT EXISTS idx_ce_callee_resolved "
-                    "ON ast_call_edges(callee_resolved_file)"
-                )
-                conn.execute(
-                    "CREATE INDEX IF NOT EXISTS idx_ce_resolution "
-                    "ON ast_call_edges(callee_resolution)"
-                )
-                self._record_schema_version(
-                    conn, 4, "Synapse: callee_resolution + ast_imports"
-                )
-                conn.commit()
-            except sqlite3.OperationalError:
-                # Legacy DB with incompatible ast_call_edges shape —
-                # degrade silently rather than wedge open. The
-                # post-init self-check will fire if the legacy shape
-                # is missing columns we require.
-                pass
-        # Feature 2 (Temporal Activation) — V5 schema. Idempotent
-        # CREATE TABLE IF NOT EXISTS so the migration is safe to re-run.
-        if 5 not in applied_versions:
-            try:
-                conn.executescript(_SCHEMA_V5_ACTIVATION)
-                self._record_schema_version(conn, 5, "Temporal activation")
-                conn.commit()
-            except sqlite3.OperationalError:
-                pass
-        # Feature 3 (Constraint DSL) — V6 schema. Same idempotency.
-        if 6 not in applied_versions:
-            try:
-                conn.executescript(_SCHEMA_V6_VIOLATIONS)
-                self._record_schema_version(conn, 6, "Constraint violations")
-                conn.commit()
-            except sqlite3.OperationalError:
-                pass
-        # V7 records which extraction algorithm produced the serialized
-        # per-file rows. Bump ``_AST_CACHE_EXTRACTOR_VERSION`` whenever
-        # symbols/imports/structure/call_edges change semantics so existing
-        # caches are re-parsed instead of serving stale graph answers.
-        if 7 not in applied_versions:
-            try:
-                index_cols = {
-                    r[1] for r in conn.execute("PRAGMA table_info(ast_index)")
-                }
-                if "extractor_version" not in index_cols:
-                    conn.execute(
-                        "ALTER TABLE ast_index "
-                        "ADD COLUMN extractor_version INTEGER NOT NULL DEFAULT 0"
-                    )
-                self._record_schema_version(conn, 7, "Extractor version invalidation")
-                conn.commit()
-            except sqlite3.OperationalError:
-                pass
+        # Snapshot which versions are already recorded. Migration functions
+        # apply their block only when their version is absent from this
+        # snapshot — the version row is the source of truth for "applied".
+        # This lets the post-init self-check detect tampering: if the
+        # registry says v4 applied but the column is missing, somebody has
+        # corrupted the DB and the self-check raises rather than silently
+        # re-applying.
+        applied = self._already_applied_versions(conn)
+        record = self._record_schema_version
+        if 3 not in applied:
+            _apply_migration_v3(conn, record)
+        if 4 not in applied:
+            _apply_migration_v4(conn, record)
+        if 5 not in applied:
+            _apply_migration_v5(conn, record)
+        if 6 not in applied:
+            _apply_migration_v6(conn, record)
+        if 7 not in applied:
+            _apply_migration_v7(conn, record)
         self._ensure_large_repo_indexes(conn)
         conn.commit()
         # Post-init self-check — raise SchemaIntegrityError if any
@@ -536,16 +539,7 @@ class ASTCache:
     @staticmethod
     def _ensure_large_repo_indexes(conn: sqlite3.Connection) -> None:
         """Create non-shape-changing indexes for large-repo query hot paths."""
-        for table_name, sql in _LARGE_REPO_INDEXES:
-            try:
-                exists = conn.execute(
-                    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
-                    (table_name,),
-                ).fetchone()
-                if exists:
-                    conn.execute(sql)
-            except sqlite3.OperationalError:
-                logger.debug("Skipping optional index for table %s", table_name)
+        _apply_large_repo_indexes(conn)
 
     @staticmethod
     def _already_applied_versions(conn: sqlite3.Connection) -> set[int]:
@@ -565,11 +559,12 @@ class ASTCache:
         applies. INSERT OR IGNORE so re-opens are idempotent."""
         import time as _time
 
+        ts = int(_time.time())
         try:
             conn.execute(
                 "INSERT OR IGNORE INTO ast_schema_version "
                 "(version, applied_at, description) VALUES (?, ?, ?)",
-                (version, int(_time.time()), description),
+                (version, ts, description),
             )
         except sqlite3.OperationalError:
             # Version table missing — degrade silently. The self-check
@@ -593,8 +588,6 @@ class ASTCache:
         + remediation (``rm .ast-cache/index.db and re-index``) when the
         schema is incomplete.
         """
-        import time as _time
-
         missing: list[str] = []
         for version, description, expectations in _EXPECTED_SCHEMA_VERSIONS:
             # Recovery: backfill the version row if it's absent but the
@@ -602,38 +595,22 @@ class ASTCache:
             # decides whether the version's payload is actually present.
             payload_ok = self._check_expectations(conn, expectations, missing)
             try:
-                row = conn.execute(
-                    "SELECT version FROM ast_schema_version WHERE version = ?",
-                    (version,),
-                ).fetchone()
+                _cur = conn.execute(_SQL_GET_SCHEMA_VERSION, (version,))
+                row = _cur.fetchone()
             except sqlite3.OperationalError:
                 row = None
             if row is None and payload_ok:
-                # Legacy DB: tables exist but the registry row never got
-                # written. Backfill so future opens look clean.
-                try:
-                    conn.execute(
-                        "INSERT OR IGNORE INTO ast_schema_version "
-                        "(version, applied_at, description) VALUES (?, ?, ?)",
-                        (version, int(_time.time()), description),
-                    )
-                    conn.commit()
-                except sqlite3.OperationalError:
-                    # If we can't even backfill, the version table itself
-                    # is missing — surface it as a missing payload.
-                    missing.append(
-                        f"ast_schema_version row for v{version} "
-                        f"({description}) could not be inserted"
-                    )
+                _backfill_schema_version_row(conn, version, description, missing)
         if missing:
             remediation = (
                 f"Remove the cache DB at {self.db_path!r} and re-index "
                 "(e.g. ``rm -rf .ast-cache && uv run python -m "
                 "tree_sitter_analyzer --index``)."
             )
+            detail = "; ".join(missing)
             raise SchemaIntegrityError(
                 "AST cache schema is incomplete. Missing: "
-                + "; ".join(missing)
+                + detail
                 + ". "
                 + remediation
             )
@@ -644,47 +621,13 @@ class ASTCache:
         expectations: dict[str, list[str]],
         missing: list[str],
     ) -> bool:
-        """Confirm every expected table + column from one version block
-        exists. Appends descriptive entries to ``missing`` for anything
-        absent. Returns ``True`` when every check passed."""
-        # ``expectations`` is keyed by either ``tables`` (a list of table
-        # names that must exist) or ``<table>_columns`` (a list of column
-        # names that must exist on ``<table>``). We iterate both.
-        all_ok = True
-        for table in expectations.get("tables", []):
-            cols = ASTCache._table_columns(conn, table)
-            if not cols:
-                missing.append(f"table {table!r}")
-                all_ok = False
-        for key, required_cols in expectations.items():
-            if key == "tables":
-                continue
-            if not key.endswith("_columns"):
-                continue
-            table = key[: -len("_columns")]
-            cols = ASTCache._table_columns(conn, table)
-            if not cols:
-                # The table itself is missing — already reported via the
-                # ``tables`` check if it was listed there. Add it now for
-                # the column-only case (table not declared in ``tables``).
-                if table not in expectations.get("tables", []):
-                    missing.append(f"table {table!r} (needed for columns)")
-                all_ok = False
-                continue
-            for col in required_cols:
-                if col not in cols:
-                    missing.append(f"column {table}.{col}")
-                    all_ok = False
-        return all_ok
+        """Confirm every expected table + column from one version block exists."""
+        return _check_schema_expectations(conn, expectations, missing)
 
     @staticmethod
     def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
         """Return the column names of ``table``, or empty set when absent."""
-        try:
-            rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
-        except sqlite3.OperationalError:
-            return set()
-        return {r[1] for r in rows}
+        return _get_table_columns(conn, table)
 
     def index_file(self, file_path: str, language: str | None = None) -> dict[str, Any]:
         abs_path = os.path.abspath(file_path)
@@ -783,7 +726,7 @@ class ASTCache:
                 (rel_path,),
             )
             for sym in symbols.get("symbols", []):
-                sym_name = sym.get("name", sym.get("text", ""))
+                sym_name = sym.get("name") or sym.get("text", "")
                 sym_kind = sym.get("kind", "unknown")
                 sym_line = sym.get("line", 0)
                 sym_end = sym.get("end_line", 0)
@@ -798,12 +741,9 @@ class ASTCache:
                        VALUES (?, ?, ?, ?, ?)""",
                     (row_id, sym_name, sym_kind, rel_path, language),
                 )
+                sym_id = int(row_id or 0)
                 inserted_symbol_rows.append(
-                    {
-                        "id": int(row_id) if row_id is not None else 0,
-                        "line": sym_line,
-                        "end_line": sym_end,
-                    }
+                    {"id": sym_id, "line": sym_line, "end_line": sym_end}
                 )
 
         conn.execute(
@@ -910,6 +850,17 @@ class ASTCache:
                 (rel_path,),
             )
             for r in rows:
+                row_data = (
+                    int(r.symbol_id),
+                    rel_path,
+                    r.last_modified_commit,
+                    r.last_modified_at,
+                    int(r.mod_count_30d),
+                    int(r.mod_count_90d),
+                    int(r.mod_count_all),
+                    int(r.computed_at),
+                    r.git_state,
+                )
                 conn.execute(
                     """INSERT OR REPLACE INTO ast_symbol_activation (
                         symbol_id, file_path,
@@ -917,17 +868,7 @@ class ASTCache:
                         mod_count_30d, mod_count_90d, mod_count_all,
                         computed_at, git_state
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (
-                        int(r.symbol_id),
-                        rel_path,
-                        r.last_modified_commit,
-                        r.last_modified_at,
-                        int(r.mod_count_30d),
-                        int(r.mod_count_90d),
-                        int(r.mod_count_all),
-                        int(r.computed_at),
-                        r.git_state,
-                    ),
+                    row_data,
                 )
         except sqlite3.OperationalError as exc:
             # Table missing on legacy DB — degrade silently rather than
@@ -959,33 +900,11 @@ class ASTCache:
             # Table missing on legacy DB — skip.
             return
         for raw in imports or []:
-            if isinstance(raw, dict):
-                text = raw.get("text") or raw.get("statement") or ""
-                line = int(raw.get("line", 0) or 0)
-            else:
-                text = str(raw)
-                line = 0
+            text, line = _parse_import_raw(raw)
             if not text:
                 continue
             for entry in parse_imports(text, language, rel_path, line):
-                try:
-                    conn.execute(
-                        """INSERT INTO ast_imports
-                           (file_path, language, module_path, local_name,
-                            is_relative, is_star, alias_of)
-                           VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                        (
-                            rel_path,
-                            language,
-                            entry.module_path,
-                            entry.local_name,
-                            1 if entry.is_relative else 0,
-                            1 if entry.is_star else 0,
-                            entry.alias_of,
-                        ),
-                    )
-                except sqlite3.OperationalError as exc:
-                    logger.debug("ast_imports write failed for %s: %s", rel_path, exc)
+                if not _insert_import_entry(conn, rel_path, language, entry):
                     return
 
     def _resolve_call_edges_for_file(
@@ -1243,18 +1162,18 @@ class ASTCache:
                 stat = os.stat(abs_path)
             except OSError as e:
                 stats["errors"] += 1
-                stats["files"].append(
-                    {"file": rel_path, "status": "error", "reason": str(e)}
-                )
+                error_msg = str(e)
+                stats["files"].append(_make_error_entry(rel_path, error_msg))
                 continue
             row = conn.execute(
                 "SELECT mtime_ns, file_size, extractor_version "
                 "FROM ast_index WHERE file_path = ?",
                 (rel_path,),
             ).fetchone()
+            mtime_ns = int(stat.st_mtime_ns)
             if (
                 row is not None
-                and row["mtime_ns"] == int(stat.st_mtime_ns)
+                and row["mtime_ns"] == mtime_ns
                 and row["file_size"] == stat.st_size
                 and row["extractor_version"] >= _AST_CACHE_EXTRACTOR_VERSION
             ):
@@ -1278,7 +1197,8 @@ class ASTCache:
             if len(candidates) < 64:
                 workers = 0  # serial — spawn overhead not worth it on tiny sets
             else:
-                workers = max(2, (os.cpu_count() or 4) - 1)
+                cpu_count = os.cpu_count() or 4
+                workers = max(2, cpu_count - 1)
 
         if workers and workers >= 2 and len(candidates) >= 2:
             results = self._index_parallel(candidates, workers)
@@ -1292,42 +1212,12 @@ class ASTCache:
         # Batching avoids the per-insert fsync/commit cost that dominated
         # the post-parallel timing on medium projects (~1 ms per file).
         indexed_at = datetime.now(timezone.utc).isoformat()
+        insert_fn = self._insert_index_row
         conn.execute("BEGIN")
         try:
             for r in results:
-                if r["status"] == "io_error":
-                    stats["errors"] += 1
-                    stats["files"].append(
-                        {
-                            "file": r["rel_path"],
-                            "status": "error",
-                            "reason": r["reason"],
-                        }
-                    )
-                    continue
-                if r["status"] == "parse_failed":
-                    stats["errors"] += 1
-                    stats["files"].append(
-                        {
-                            "file": r["rel_path"],
-                            "status": "error",
-                            "reason": r["reason"],
-                        }
-                    )
-                    continue
-                self._insert_index_row(
-                    r,
-                    indexed_at,
-                    include_activation=activation_enabled,
-                )
-                stats["indexed"] += 1
-                stats["files"].append(
-                    {
-                        "file": r["rel_path"],
-                        "status": "indexed",
-                        "symbols": r["symbols_count"],
-                        "content_hash": r["content_hash"][:16],
-                    }
+                _process_one_index_result(
+                    r, stats, insert_fn, indexed_at, activation_enabled
                 )
             conn.execute("COMMIT")
         except Exception:
@@ -1489,10 +1379,9 @@ class ASTCache:
             pass
 
     def lookup(self, file_path: str) -> dict[str, Any] | None:
+        abs_path = os.path.abspath(file_path)
         try:
-            rel = os.path.relpath(
-                os.path.abspath(file_path), self.project_root
-            ).replace("\\", "/")
+            rel = os.path.relpath(abs_path, self.project_root).replace("\\", "/")
         except ValueError:
             # Windows: path on a different drive than project_root.
             return None
@@ -1587,16 +1476,13 @@ class ASTCache:
         query_lower = query.lower()
         for row in rows:
             symbols = json.loads(row["symbols_json"])
+            file_path = row["file_path"]
+            language = row["language"]
             for sym in symbols.get("symbols", []):
-                name = sym.get("name", sym.get("text", ""))
-                if query_lower in name.lower():
-                    results.append(
-                        {
-                            "file": row["file_path"],
-                            "language": row["language"],
-                            **sym,
-                        }
-                    )
+                name = sym.get("name") or sym.get("text", "")
+                if query_lower not in name.lower():
+                    continue
+                results.append({"file": file_path, "language": language, **sym})
         return results
 
     def get_stats(self) -> dict[str, Any]:
@@ -1608,16 +1494,16 @@ class ASTCache:
         total_symbols: int | None = None
         if self._fts5_available:
             try:
-                total_symbols = conn.execute(
-                    "SELECT COUNT(*) as c FROM ast_symbol_rows"
-                ).fetchone()["c"]
+                sym_row = conn.execute(_SQL_COUNT_SYMBOL_ROWS).fetchone()
+                total_symbols = sym_row["c"]
             except sqlite3.OperationalError:
                 total_symbols = None
         if total_symbols is None:
             total_symbols = 0
             for row in conn.execute("SELECT symbols_json FROM ast_index").fetchall():
                 syms = json.loads(row["symbols_json"])
-                total_symbols += len(syms.get("symbols", []))
+                sym_list = syms.get("symbols", [])
+                total_symbols += len(sym_list)
         stats: dict[str, Any] = {
             "total_files": total,
             "total_symbols": total_symbols,
@@ -1633,10 +1519,9 @@ class ASTCache:
         return stats
 
     def invalidate(self, file_path: str) -> bool:
+        abs_path = os.path.abspath(file_path)
         try:
-            rel = os.path.relpath(
-                os.path.abspath(file_path), self.project_root
-            ).replace("\\", "/")
+            rel = os.path.relpath(abs_path, self.project_root).replace("\\", "/")
         except ValueError:
             # Windows: path on a different drive than project_root.
             return False
@@ -1671,18 +1556,12 @@ class ASTCache:
         functions: list[dict[str, Any]] = []
         for row in rows:
             symbols = json.loads(row["symbols_json"])
+            fp = row["file_path"]
+            lang = row["language"]
             for sym in symbols.get("symbols", []):
-                if sym.get("kind") == "function":
-                    functions.append(
-                        {
-                            "name": sym["name"],
-                            "file": row["file_path"],
-                            "line": sym.get("line", 0),
-                            "end_line": sym.get("end_line", 0),
-                            "language": row["language"],
-                            "params": sym.get("params", ""),
-                        }
-                    )
+                if sym.get("kind") != "function":
+                    continue
+                functions.append(_build_function_entry(sym, fp, lang))
         return functions
 
     def get_functions_by_file(self, file_path: str) -> list[dict[str, Any]]:
@@ -1695,15 +1574,9 @@ class ASTCache:
         if row is None:
             return []
         symbols = json.loads(row["symbols_json"])
+        lang = row["language"]
         return [
-            {
-                "name": sym["name"],
-                "file": file_path,
-                "line": sym.get("line", 0),
-                "end_line": sym.get("end_line", 0),
-                "language": row["language"],
-                "params": sym.get("params", ""),
-            }
+            _build_function_entry(sym, file_path, lang)
             for sym in symbols.get("symbols", [])
             if sym.get("kind") == "function"
         ]
@@ -1755,61 +1628,7 @@ class ASTCache:
         callee_file: str | None,
         max_depth: int,
     ) -> list[dict[str, Any]]:
-        visited: set[str] = set()
-        result: list[dict[str, Any]] = []
-        queue: list[tuple[str, str | None, int]] = [(callee_name, callee_file, 0)]
-        while queue:
-            current_name, current_file, depth = queue.pop(0)
-            if depth >= max_depth:
-                continue
-            if current_file:
-                rows = conn.execute(
-                    "SELECT caller_name, caller_file, caller_line, "
-                    "callee_name, callee_full, file_path, callee_line, "
-                    "callee_resolved_file "
-                    "FROM ast_call_edges "
-                    "WHERE (callee_name = ? OR callee_full = ?) "
-                    "AND callee_resolved_file = ?",
-                    (current_name, current_name, current_file),
-                ).fetchall()
-                if not rows:
-                    rows = conn.execute(
-                        "SELECT caller_name, caller_file, caller_line, "
-                        "callee_name, callee_full, file_path, callee_line, "
-                        "callee_resolved_file "
-                        "FROM ast_call_edges "
-                        "WHERE (callee_name = ? OR callee_full = ?) "
-                        "AND file_path = ?",
-                        (current_name, current_name, current_file),
-                    ).fetchall()
-            else:
-                rows = conn.execute(
-                    "SELECT caller_name, caller_file, caller_line, "
-                    "callee_name, callee_full, file_path, callee_line, "
-                    "callee_resolved_file "
-                    "FROM ast_call_edges WHERE callee_name = ? OR callee_full = ?",
-                    (current_name, current_name),
-                ).fetchall()
-            for row in rows:
-                key = f"{row['caller_file']}:{row['caller_name']}:{row['caller_line']}"
-                if key in visited:
-                    continue
-                visited.add(key)
-                callee_file_val = row["callee_resolved_file"] or row["file_path"]
-                entry: dict[str, Any] = {
-                    "caller_name": row["caller_name"],
-                    "caller_file": row["caller_file"],
-                    "caller_line": row["caller_line"],
-                    "callee_name": row["callee_name"],
-                    "callee_full": row["callee_full"],
-                    "callee_file": callee_file_val,
-                    "callee_line": row["callee_line"],
-                    "depth": depth + 1,
-                }
-                result.append(entry)
-                if max_depth > 1:
-                    queue.append((row["caller_name"], row["caller_file"], depth + 1))
-        return result
+        return _bfs_callers_impl(conn, callee_name, callee_file, max_depth)
 
     def query_callees(
         self,
@@ -1841,49 +1660,7 @@ class ASTCache:
         caller_file: str | None,
         max_depth: int,
     ) -> list[dict[str, Any]]:
-        visited: set[str] = set()
-        result: list[dict[str, Any]] = []
-        queue: list[tuple[str, str | None, int]] = [(caller_name, caller_file, 0)]
-        while queue:
-            current_name, current_file, depth = queue.pop(0)
-            if depth >= max_depth:
-                continue
-            if current_file:
-                rows = conn.execute(
-                    "SELECT caller_name, caller_file, caller_line, "
-                    "callee_name, callee_full, file_path, callee_line, callee_resolved_file "
-                    "FROM ast_call_edges "
-                    "WHERE caller_name = ? AND caller_file = ?",
-                    (current_name, current_file),
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    "SELECT caller_name, caller_file, caller_line, "
-                    "callee_name, callee_full, file_path, callee_line, callee_resolved_file "
-                    "FROM ast_call_edges WHERE caller_name = ?",
-                    (current_name,),
-                ).fetchall()
-            for row in rows:
-                key = f"{row['callee_name']}:{row['file_path']}:{row['callee_line']}"
-                if key in visited:
-                    continue
-                visited.add(key)
-                callee_file_val = row["callee_resolved_file"] or row["file_path"]
-                entry: dict[str, Any] = {
-                    "caller_name": row["caller_name"],
-                    "caller_file": row["caller_file"],
-                    "caller_line": row["caller_line"],
-                    "callee_name": row["callee_name"],
-                    "callee_full": row["callee_full"],
-                    "callee_file": callee_file_val,
-                    "callee_resolved_file": row["callee_resolved_file"] or "",
-                    "callee_line": row["callee_line"],
-                    "depth": depth + 1,
-                }
-                result.append(entry)
-                if max_depth > 1:
-                    queue.append((row["callee_name"], None, depth + 1))
-        return result
+        return _bfs_callees_impl(conn, caller_name, caller_file, max_depth)
 
     def has_call_edges(self) -> bool:
         """Check whether the cache contains any call edge data."""
@@ -1922,9 +1699,9 @@ class ASTCache:
         resolver = self.get_cross_file_resolver()
         for entry in raw:
             if not entry.get("caller_name"):
-                name, line = resolver.find_caller_function(
-                    entry.get("callee_line", 0), entry.get("caller_file", "")
-                )
+                callee_line = entry.get("callee_line", 0)
+                caller_file = entry.get("caller_file", "")
+                name, line = resolver.find_caller_function(callee_line, caller_file)
                 if name:
                     entry["caller_name"] = name
                     entry["caller_line"] = line
@@ -1982,23 +1759,22 @@ class ASTCache:
                 if not callee_resolved:
                     unchanged += 1
                     continue
+                caller_file = edge.caller_file
+                caller_line = edge.caller_line
+                caller_name = edge.caller_name
+                edge_params = (
+                    callee_resolved,
+                    caller_file,
+                    caller_line,
+                    caller_name,
+                    caller_line,
+                )
                 try:
-                    cursor = conn.execute(
-                        "UPDATE ast_call_edges SET callee_resolved_file = ? "
-                        "WHERE caller_file = ? AND caller_line = ? "
-                        "AND callee_name = ? AND callee_line = ?",
-                        (
-                            callee_resolved,
-                            edge.caller_file,
-                            edge.caller_line,
-                            edge.caller_name,
-                            edge.caller_line,
-                        ),
-                    )
+                    cursor = conn.execute(_SQL_UPDATE_CALLEE_RESOLVED, edge_params)
                     if cursor.rowcount > 0:
                         resolved += 1
-                    else:
-                        unchanged += 1
+                        continue
+                    unchanged += 1
                 except Exception:
                     errors += 1
             conn.commit()
@@ -2017,18 +1793,14 @@ class ASTCache:
         """Return cross-file edge resolution statistics."""
         conn = self._get_conn()
         try:
-            total = conn.execute("SELECT COUNT(*) as c FROM ast_call_edges").fetchone()[
-                "c"
-            ]
-            resolved = conn.execute(
-                "SELECT COUNT(*) as c FROM ast_call_edges "
-                "WHERE callee_resolved_file != ''"
-            ).fetchone()["c"]
-            cross_file = conn.execute(
-                "SELECT COUNT(*) as c FROM ast_call_edges "
-                "WHERE callee_resolved_file != '' "
-                "AND callee_resolved_file != file_path"
-            ).fetchone()["c"]
+            r_total = conn.execute(
+                "SELECT COUNT(*) as c FROM ast_call_edges"
+            ).fetchone()
+            total = r_total["c"]
+            r_resolved = conn.execute(_SQL_COUNT_RESOLVED_EDGES).fetchone()
+            resolved = r_resolved["c"]
+            r_cross = conn.execute(_SQL_COUNT_CROSS_FILE_EDGES).fetchone()
+            cross_file = r_cross["c"]
         except sqlite3.OperationalError:
             return {"total": 0, "resolved": 0, "cross_file": 0, "pct": 0.0}
         pct = (cross_file / total * 100) if total > 0 else 0.0
