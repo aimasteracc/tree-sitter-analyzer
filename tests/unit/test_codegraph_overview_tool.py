@@ -37,27 +37,27 @@ class TestCodeGraphOverviewToolInit:
     def test_init_with_project_root(self):
         t = CodeGraphOverviewTool(PY_PROJECT)
         assert t.project_root == PY_PROJECT
-        assert t._call_graph is None
+        assert not t.call_graph_initialized
 
     def test_init_without_project_root(self):
         t = CodeGraphOverviewTool()
         assert t.project_root is None
 
     def test_set_project_path_resets_graph(self, tool):
-        tool._get_call_graph()
-        assert tool._call_graph is not None
+        tool.get_call_graph()
+        assert tool.call_graph_initialized
         tool.set_project_path(PY_PROJECT)
-        assert tool._call_graph is None
+        assert not tool.call_graph_initialized
 
     def test_get_call_graph_caches(self, tool):
-        cg1 = tool._get_call_graph()
-        cg2 = tool._get_call_graph()
+        cg1 = tool.get_call_graph()
+        cg2 = tool.get_call_graph()
         assert cg1 is cg2
 
     def test_get_call_graph_raises_without_root(self):
         t = CodeGraphOverviewTool()
         with pytest.raises(ValueError, match="Project root not set"):
-            t._get_call_graph()
+            t.get_call_graph()
 
 
 # ============================================================

@@ -59,6 +59,15 @@ class CodeGraphOverviewTool(BaseMCPTool):
                 self._call_graph = CallGraph(self.project_root)
         return self._call_graph
 
+    def get_call_graph(self) -> CallGraph:
+        """Public alias for _get_call_graph() — use this instead of accessing _call_graph."""
+        return self._get_call_graph()
+
+    @property
+    def call_graph_initialized(self) -> bool:
+        """True if the call graph has been lazily initialized (i.e. cached)."""
+        return self._call_graph is not None
+
     def get_tool_definition(self) -> dict[str, Any]:
         return {
             "name": "codegraph_overview",
@@ -123,7 +132,7 @@ class CodeGraphOverviewTool(BaseMCPTool):
         max_coupled_files = arguments.get("max_coupled_files", 15)
         output_format = arguments.get("output_format", "toon")
 
-        graph = self._get_call_graph()
+        graph = self.get_call_graph()
         graph.build()
 
         entry_points = _find_entry_points(graph, max_entry_points)

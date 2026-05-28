@@ -266,6 +266,15 @@ class CodeGraphImpactTool(BaseMCPTool):
                 self._call_graph = CallGraph(self.project_root)
         return self._call_graph
 
+    def get_call_graph(self) -> CallGraph:
+        """Public alias for _get_call_graph() — use this instead of accessing _call_graph."""
+        return self._get_call_graph()
+
+    @property
+    def call_graph_initialized(self) -> bool:
+        """True if the call graph has been lazily initialized (i.e. cached)."""
+        return self._call_graph is not None
+
     def get_tool_definition(self) -> dict[str, Any]:
         return {
             "name": "codegraph_impact",
@@ -350,7 +359,7 @@ class CodeGraphImpactTool(BaseMCPTool):
         depth = arguments.get("depth", 5)
         output_format = arguments.get("output_format", "toon")
 
-        graph = self._get_call_graph()
+        graph = self.get_call_graph()
         graph.build()
 
         if mode == "function_impact":

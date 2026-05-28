@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -207,11 +207,14 @@ class TestCodeGraphImpactTool:
         mock_graph.caller_refs_of.return_value = []
         mock_graph.callee_refs_of.return_value = []
         mock_graph.call_chain.return_value = []
-        tool._call_graph = mock_graph
-
-        result = await tool.execute(
-            {"mode": "risk_score", "function_name": "test_fn", "output_format": "json"}
-        )
+        with patch.object(tool, "get_call_graph", return_value=mock_graph):
+            result = await tool.execute(
+                {
+                    "mode": "risk_score",
+                    "function_name": "test_fn",
+                    "output_format": "json",
+                }
+            )
         assert result["success"] is True
         assert result["mode"] == "risk_score"
         assert "score" in result

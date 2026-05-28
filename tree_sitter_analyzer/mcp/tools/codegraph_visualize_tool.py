@@ -57,6 +57,10 @@ class CodeGraphVisualizeTool(BaseMCPTool):
     def _get_call_graph(self) -> CallGraph | None:
         return self._visualization_hub.call_graph()
 
+    def get_call_graph(self) -> CallGraph | None:
+        """Public alias for _get_call_graph() — use this instead of patching _get_call_graph."""
+        return self._get_call_graph()
+
     def get_tool_definition(self) -> dict[str, Any]:
         return {
             "name": "codegraph_visualize",
@@ -150,7 +154,7 @@ class CodeGraphVisualizeTool(BaseMCPTool):
         direction = arguments.get("direction", "TD")
         output_format = arguments.get("output_format", "toon")
 
-        cg = self._get_call_graph()
+        cg = self.get_call_graph()
         if cg is None:
             return apply_toon_format_to_response(
                 build_error(

@@ -125,7 +125,7 @@ class TestVisualizeToolNoProject:
     @pytest.mark.asyncio
     async def test_mocked_full_mode(self) -> None:
         tool = CodeGraphVisualizeTool(_PROJECT_ROOT)
-        with patch.object(tool, "_get_call_graph") as mock_cg:
+        with patch.object(tool, "get_call_graph") as mock_cg:
             cg = MagicMock()
             cg.function_refs.return_value = []
             cg.caller_refs_of.return_value = []
@@ -150,7 +150,7 @@ class TestVisualizeToolNoProject:
         callers_map: dict = {}
         cg.callee_refs_of.side_effect = lambda f: callees_map.get(f, [])
         cg.caller_refs_of.side_effect = lambda f: callers_map.get(f, [])
-        with patch.object(tool, "_get_call_graph", return_value=cg):
+        with patch.object(tool, "get_call_graph", return_value=cg):
             result = await tool.execute(
                 {
                     "mode": "function",
@@ -177,7 +177,7 @@ class TestVisualizeToolNoProject:
         callers_map: dict = {}
         cg.callee_refs_of.side_effect = lambda f: callees_map.get(f, [])
         cg.caller_refs_of.side_effect = lambda f: callers_map.get(f, [])
-        with patch.object(tool, "_get_call_graph", return_value=cg):
+        with patch.object(tool, "get_call_graph", return_value=cg):
             result = await tool.execute(
                 {
                     "mode": "file",

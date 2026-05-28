@@ -54,8 +54,8 @@ class TestValidateArguments:
 class TestExecuteDefinition:
     @pytest.mark.asyncio
     async def test_definition_no_cache(self, tool):
-        tool._get_cache = MagicMock(return_value=None)
-        result = await tool.execute({"symbol": "foo", "mode": "definition"})
+        with patch.object(tool, "get_cache", return_value=None):
+            result = await tool.execute({"symbol": "foo", "mode": "definition"})
         assert result["success"] is True
         assert result["definition"]["found"] is False
 
@@ -90,8 +90,8 @@ class TestExecuteHierarchy:
     async def test_hierarchy_no_graph(self, tool):
         mock_graph = MagicMock()
         mock_graph.build.side_effect = Exception("no project")
-        tool._call_graph = mock_graph
-        result = await tool.execute({"symbol": "foo", "mode": "hierarchy"})
+        with patch.object(tool, "get_call_graph", return_value=mock_graph):
+            result = await tool.execute({"symbol": "foo", "mode": "hierarchy"})
         assert result["success"] is True
         assert result["hierarchy"]["callers"] == []
         assert result["hierarchy"]["callees"] == []
@@ -105,10 +105,10 @@ class TestExecuteHierarchy:
         mock_graph.callees_of.return_value = [
             {"name": "baz", "file": "c.py", "line": 10, "language": "python"},
         ]
-        tool._call_graph = mock_graph
-        result = await tool.execute(
-            {"symbol": "foo", "mode": "hierarchy", "depth": 1}
-        )
+        with patch.object(tool, "get_call_graph", return_value=mock_graph):
+            result = await tool.execute(
+                {"symbol": "foo", "mode": "hierarchy", "depth": 1}
+            )
         assert result["success"] is True
         assert result["hierarchy"]["caller_count"] == 1
         assert result["hierarchy"]["callees_count"] == 1
@@ -133,11 +133,10 @@ class TestExecuteHierarchy:
 
         mock_graph.callers_of.side_effect = callers_of
         mock_graph.callees_of.return_value = []
-        tool._call_graph = mock_graph
-
-        result = await tool.execute(
-            {"symbol": "foo", "mode": "hierarchy", "depth": 3}
-        )
+        with patch.object(tool, "get_call_graph", return_value=mock_graph):
+            result = await tool.execute(
+                {"symbol": "foo", "mode": "hierarchy", "depth": 3}
+            )
         assert result["success"] is True
         tc = result["hierarchy"]["transitive_callers"]
         names = [r["name"] for r in tc]
@@ -148,14 +147,15 @@ class TestExecuteHierarchy:
 class TestExecuteFull:
     @pytest.mark.asyncio
     async def test_full_mode(self, tool):
-        tool._get_cache = MagicMock(return_value=None)
         mock_graph = MagicMock()
         mock_graph.build.return_value = None
         mock_graph.callers_of.return_value = []
         mock_graph.callees_of.return_value = []
-        tool._call_graph = mock_graph
-
-        result = await tool.execute({"symbol": "foo", "mode": "full"})
+        with (
+            patch.object(tool, "get_cache", return_value=None),
+            patch.object(tool, "get_call_graph", return_value=mock_graph),
+        ):
+            result = await tool.execute({"symbol": "foo", "mode": "full"})
         assert result["success"] is True
         assert "definition" in result
         assert "references" in result
@@ -165,27 +165,23 @@ class TestExecuteFull:
 class TestExecuteOutputFormat:
     @pytest.mark.asyncio
     async def test_toon_format(self, tool):
-        tool._get_cache = MagicMock(return_value=None)
         mock_graph = MagicMock()
         mock_graph.build.side_effect = Exception("no project")
-        tool._call_graph = mock_graph
-
-        result = await tool.execute(
-            {"symbol": "foo", "mode": "hierarchy", "output_format": "toon"}
-        )
+        with patch.object(tool, "get_call_graph", return_value=mock_graph):
+            result = await tool.execute(
+                {"symbol": "foo", "mode": "hierarchy", "output_format": "toon"}
+            )
         assert result["format"] == "toon"
         assert "toon_content" in result
 
     @pytest.mark.asyncio
     async def test_json_format(self, tool):
-        tool._get_cache = MagicMock(return_value=None)
         mock_graph = MagicMock()
         mock_graph.build.side_effect = Exception("no project")
-        tool._call_graph = mock_graph
-
-        result = await tool.execute(
-            {"symbol": "foo", "mode": "hierarchy", "output_format": "json"}
-        )
+        with patch.object(tool, "get_call_graph", return_value=mock_graph):
+            result = await tool.execute(
+                {"symbol": "foo", "mode": "hierarchy", "output_format": "json"}
+            )
         assert "toon_content" not in result
         assert "success" in result
 
@@ -196,7 +192,12 @@ class TestTransitiveHelpers:
 
         def callers_of(name, fp=None):
             return [
-                {"name": f"{name}_caller", "file": "f.py", "line": 1, "language": "python"}
+                {
+                    "name": f"{name}_caller",
+                    "file": "f.py",
+                    "line": 1,
+                    "language": "python",
+                }
             ]
 
         graph.callers_of.side_effect = callers_of
@@ -222,8 +223,8 @@ class TestTransitiveHelpers:
 
 class TestProjectRootChanged:
     def test_resets_caches(self, tool_with_root):
-        tool_with_root._call_graph = MagicMock()
-        tool_with_root._cache = MagicMock()
+        tool_with_root._call_graph = MagicMock()  # noqa: SLF001 — test setup write
+        tool_with_root._cache = MagicMock()  # noqa: SLF001 — test setup write
         tool_with_root._on_project_root_changed(None)
-        assert tool_with_root._call_graph is None
-        assert tool_with_root._cache is None
+        assert not tool_with_root.call_graph_initialized
+        assert not tool_with_root.cache_initialized
