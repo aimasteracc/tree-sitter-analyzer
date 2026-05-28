@@ -109,7 +109,7 @@ class LanguageDetector:
     }
 
     # Content-based detection patterns
-    CONTENT_PATTERNS: dict[str, dict[str, list[str]]] = {
+    CONTENT_PATTERNS: dict[str, Any] = {
         "c_vs_cpp": {
             "cpp": ["#include <iostream>", "std::", "namespace", "class ", "template<"],
             "c": ["#include <stdio.h>", "printf(", "malloc(", "typedef struct"],
