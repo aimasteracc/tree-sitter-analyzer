@@ -33,19 +33,19 @@ class TestCodeGraphQueryTool:
 
     def test_get_cache_requires_project_root_and_reuses_instance(self, tmp_path):
         with pytest.raises(ValueError, match="Project root not set"):
-            CodeGraphQueryTool()._get_cache()
+            CodeGraphQueryTool().get_cache()
 
         mock_cache = MagicMock()
         tool = CodeGraphQueryTool(str(tmp_path))
         with patch(
             "tree_sitter_analyzer.ast_cache.ASTCache", return_value=mock_cache
         ) as ast_cache:
-            assert tool._get_cache() is mock_cache
-            assert tool._get_cache() is mock_cache
+            assert tool.get_cache() is mock_cache
+            assert tool.get_cache() is mock_cache
 
         ast_cache.assert_called_once_with(str(tmp_path))
         tool.set_project_path(str(tmp_path / "next"))
-        assert tool._cache is None
+        assert not tool.cache_initialized
 
     @pytest.mark.asyncio
     async def test_execute_runs_chain_in_one_tool(self, tmp_path):
