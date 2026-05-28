@@ -543,16 +543,23 @@ in `docs/internal/CODEGRAPH_BENCHMARK_FINAL_2026-05-24.md`.
 
 ### Fixed
 
-- **Java annotation extraction** — Four independent bugs caused all annotations to be silently
-  empty (`annotations: []`) for every class, method, and field. Root causes:
-  1. `extract_annotations()` was called *after* `extract_classes()` / `extract_functions()`,
-     so `_reset_caches()` wiped the annotation lookup cache before it was ever used.
-  2. `_reset_caches()` incorrectly cleared `self.annotations` (raw AST data, not a cache).
-  3. `analyze_code_structure_tool.py` hardcoded `"annotations": []` instead of reading
-     from model objects.
+- **Java annotation extraction — full pipeline fix** — Six independent bugs caused annotations
+  to be empty for all Java classes, methods, and fields. Root causes (in order of discovery):
+  1. `_reset_caches()` incorrectly cleared `self.annotations` (raw AST data, not a cache).
+  2. `extract_annotations()` called after `extract_classes()`/`extract_functions()` in
+     `extract_elements()`, so proximity cache was empty at lookup time.
+  3. `analyze_code_structure_helpers.py` hardcoded `"annotations": []` in `_convert_class()`,
+     `_convert_method()`, `_convert_field()` instead of reading from model objects.
   4. `field_declaration` was missing from `container_node_types`, so field annotations
      (`@ManyToMany`, `@Column`, `@Id`) were never traversed.
-  All four bugs fixed; all 18 002 tests pass. See
+  5. `analyze_file()` never called `extract_annotations()` at all — `self.annotations` was
+     always `[]` for the MCP analyze path (only `extract_elements()` had the annotation call).
+  6. Class annotation attribution used ±2-line proximity matching. `@Override` on a method
+     2 lines below a class declaration incorrectly bled into that class. Replaced with
+     `_extract_node_annotations()` — reads only the class node's direct modifiers subtree
+     in the AST, making attribution exact and immune to nearby-annotation confusion.
+  All six bugs fixed; 18 004 tests pass. Validated via synthetic MCP test
+  (`TestBoundedLocalCacheSynthetic`) and full Java suite (1046 tests, 0 failures). See
   `openspec/changes/improve-java-annotation-extraction/` for full writeup.
 
 - **Java `implements` generic preservation** — Interface list parsing split on commas inside

@@ -50,9 +50,12 @@ caffeine (ben-manes/caffeine) — BoundedLocalCache.java
   - `uv run pytest tests/unit/languages/ -q` → 3644 passed, 24 skipped
   - Contract tests: 48 passed
 
-- [ ] **T3.2** Verify caffeine BoundedLocalCache.java via MCP (requires caffeine clone)
+- [x] **T3.2** Verify caffeine BoundedLocalCache.java via MCP
+  - Synthetic test added: `TestBoundedLocalCacheSynthetic` in `test_java_caffeine_validation.py`
+  - Validates Bug 1 (generics), Bug 2 (no @Override bleed), Bug 3 (@Deprecated on LegacyNode)
+  - All 3 tests pass. Caffeine clone remains skipped.
 
-- [ ] **T3.3** Verify with netty (optional stretch goal)
+- [ ] **T3.3** Verify with netty (optional stretch goal — requires netty clone)
 
 ## Dependencies
 - T1.* before T2.*
