@@ -391,6 +391,10 @@ class CodeGraphQueryTool(BaseMCPTool):
         raise ValueError(f"unsupported chain step: {step.name}")
 
 
+# Type alias to avoid deep generic nesting in annotations
+_RelMap = dict[str, dict[str, list[dict[str, Any]]]]
+
+
 class _QueryState:
     def __init__(
         self,
@@ -401,7 +405,7 @@ class _QueryState:
         self.current: list[dict[str, Any]] = []
         self.symbols: list[dict[str, Any]] = []
         self.files: list[dict[str, Any]] = []
-        self.relationships: dict[str, dict[str, list[dict[str, Any]]]] = {
+        self.relationships: _RelMap = {
             "callers": {},
             "callees": {},
         }
@@ -458,11 +462,10 @@ def _resolve_query_with_backend(
             logger.debug("codegraph_query resolve(%r) failed: %s", token, exc)
             continue
         for item in defs:
-            if file_tokens and not any(
-                file_token.lower() in str(item.get("file", "")).lower()
-                for file_token in file_tokens
-            ):
-                continue
+            if file_tokens:
+                item_file = str(item.get("file", "")).lower()
+                if not any(ft.lower() in item_file for ft in file_tokens):
+                    continue
             key = _symbol_key_tuple(item)
             if key in seen:
                 continue
