@@ -266,5 +266,5 @@ JavaTableFormatterClassMixin._is_inner_class = staticmethod(is_inner_class)  # t
 JavaTableFormatterClassMixin._is_in_range = staticmethod(is_in_range)  # type: ignore[attr-defined]  # noqa: SLF001
 # Public alias (no leading underscore) for companion module access
 JavaTableFormatterClassMixin.format_class_section = (
-    JavaTableFormatterClassMixin._format_class_section
-)  # type: ignore[attr-defined]  # noqa: SLF001
+    JavaTableFormatterClassMixin._format_class_section  # noqa: SLF001
+)  # type: ignore[attr-defined]
