@@ -30,84 +30,99 @@ from tree_sitter_analyzer.mcp.utils import (
     get_performance_monitor,
 )
 
+_UNSUPPORTED_LANG_KEYWORDS = frozenset(
+    [
+        "language not supported",
+        "no module named 'tree_sitter_",
+        "language plugin not found",
+        "unsupported language",
+        "could not load",
+        "language for parsing",
+    ]
+)
+
+
+def _is_language_support_error(exc: Exception) -> bool:
+    """Return True if exc indicates a missing/unsupported language."""
+    msg = str(exc).lower()
+    return any(kw in msg for kw in _UNSUPPORTED_LANG_KEYWORDS)
+
+
+async def _cancel_pending_tasks(pending: set) -> None:
+    """Cancel pending tasks and wait briefly for them to finish."""
+    for task in pending:
+        if not task.done():
+            task.cancel()
+    try:
+        await asyncio.wait_for(
+            asyncio.gather(*pending, return_exceptions=True), timeout=1.0
+        )
+    except asyncio.TimeoutError:
+        print(f"Warning: {len(pending)} tasks did not complete within timeout")
+        for i, task in enumerate(pending):
+            if not task.done():
+                print(f"  Task {i} is still running: {task}")
+                with contextlib.suppress(Exception):
+                    task.cancel()
+
+
+def _cleanup_loop_internals(loop: asyncio.AbstractEventLoop) -> None:
+    """Clear internal loop queues and deregister selector file descriptors."""
+    try:
+        if hasattr(loop, "_ready"):
+            loop._ready.clear()
+        if hasattr(loop, "_scheduled"):
+            loop._scheduled.clear()
+        if hasattr(loop, "_selector") and loop._selector:
+            try:
+                for key in list(loop._selector.get_map().values()):
+                    with contextlib.suppress(KeyError, ValueError, OSError):
+                        loop._selector.unregister(key.fileobj)
+            except Exception:
+                pass
+    except Exception as e:
+        print(f"Warning: Error during loop cleanup: {e}")
+
+
+def _cleanup_server_instance(server) -> None:
+    """Clear server references to release resources."""
+    try:
+        if hasattr(server, "server") and server.server:
+            server.server = None
+        if hasattr(server, "universal_analyzers"):
+            server.universal_analyzers.clear()
+    except Exception:
+        pass
+
 
 @pytest_asyncio.fixture(autouse=True)
 async def cleanup_event_loop():
     """Event loop cleanup fixture (root fix version)"""
     yield
 
-    # Explicitly cleanup singleton instances
     try:
-        # Performance monitor (UnifiedAnalysisEngine) cleanup
         monitor = get_performance_monitor()
         if monitor and hasattr(monitor, "cleanup"):
             monitor.cleanup()
-
-        # Cache manager cleanup
         cache_manager = get_cache_manager()
         if cache_manager and hasattr(cache_manager, "clear_all_caches"):
             cache_manager.clear_all_caches()
-
     except Exception as e:
         print(f"Warning: Error during explicit cleanup: {e}")
 
-    # Post-test cleanup
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
         loop = None
 
     if loop and not loop.is_closed():
-        # Investigate remaining tasks
         pending = asyncio.all_tasks(loop)
         current_task = asyncio.current_task(loop)
-
-        # Exclude current task
         pending = {task for task in pending if task is not current_task}
-
         if pending:
-            # Cancel tasks
-            for task in pending:
-                if not task.done():
-                    task.cancel()
+            await _cancel_pending_tasks(pending)
+        _cleanup_loop_internals(loop)
 
-            # Wait briefly to process cancellations
-            try:
-                await asyncio.wait_for(
-                    asyncio.gather(*pending, return_exceptions=True), timeout=1.0
-                )
-            except asyncio.TimeoutError:
-                print(f"Warning: {len(pending)} tasks did not complete within timeout")
-                # Forcibly check task status
-                for i, task in enumerate(pending):
-                    if not task.done():
-                        print(f"  Task {i} is still running: {task}")
-                        # Attempt forced termination
-                        with contextlib.suppress(Exception):
-                            task.cancel()
-
-        # Explicit event loop cleanup
-        try:
-            # Process remaining callbacks
-            if hasattr(loop, "_ready"):
-                loop._ready.clear()
-            if hasattr(loop, "_scheduled"):
-                loop._scheduled.clear()
-
-            # Socket and file descriptor cleanup
-            if hasattr(loop, "_selector") and loop._selector:
-                try:
-                    # Cleanup registered file descriptors in selector
-                    for key in list(loop._selector.get_map().values()):
-                        with contextlib.suppress(KeyError, ValueError, OSError):
-                            loop._selector.unregister(key.fileobj)
-                except Exception:
-                    pass
-
-        except Exception as e:
-            print(f"Warning: Error during loop cleanup: {e}")
-
-    # Force garbage collection
     gc.collect()
 
 
@@ -134,37 +149,18 @@ class TestMCPServerIntegration:
         """Clean up test fixtures"""
         import shutil
 
-        # Temporarily suppress ResourceWarning
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", ResourceWarning)
-
-            # Explicit cleanup
             try:
                 monitor = get_performance_monitor()
                 if monitor and hasattr(monitor, "cleanup"):
                     monitor.cleanup()
             except Exception:
                 pass
-
-            # Server instance cleanup
             if hasattr(self, "server"):
-                try:
-                    # Clear server references
-                    if hasattr(self.server, "server") and self.server.server:
-                        self.server.server = None
-
-                    # Clear analyzer references
-                    if hasattr(self.server, "universal_analyzers"):
-                        self.server.universal_analyzers.clear()
-
-                    self.server = None
-                except Exception:
-                    pass
-
-            # Delete temporary directory
+                _cleanup_server_instance(self.server)
+                self.server = None
             shutil.rmtree(self.temp_dir, ignore_errors=True)
-
-            # Force garbage collection
             gc.collect()
 
     def _create_test_files(self) -> dict[str, Path]:
@@ -373,20 +369,7 @@ module.exports = { Calculator, createCalculator };
                 languages_tested.append(lang)
 
             except Exception as e:
-                # Check if this is a language support issue
-                error_msg = str(e).lower()
-                if any(
-                    keyword in error_msg
-                    for keyword in [
-                        "language not supported",
-                        "no module named 'tree_sitter_",
-                        "language plugin not found",
-                        "unsupported language",
-                        "could not load",
-                        "language for parsing",
-                    ]
-                ):
-                    # Skip languages that aren't supported in this environment
+                if _is_language_support_error(e):
                     languages_skipped.append(lang)
                     print(f"Skipping {lang} analysis: {e}")
                 else:
