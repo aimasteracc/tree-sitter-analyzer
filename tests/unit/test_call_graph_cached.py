@@ -164,7 +164,7 @@ class TestCachedCallGraphImportResolution:
         cache.get_call_edges.return_value = []
         cg = CachedCallGraph(str(PY_PROJECT), cache=cache, fallback=False)
         cg.build()
-        assert not cg._built
+        assert not cg.is_built
 
     def test_reverse_callers(self):
         functions = [
@@ -353,15 +353,17 @@ class TestCallEdgesPublicAccessor:
     def test_call_edges_returns_list(self):
         """call_edges() must return a list (not None)."""
         cg = CallGraph.__new__(CallGraph)  # avoid filesystem scan
-        cg._built = True  # skip build() so we don't need project_root
-        cg._functions = []
-        cg._call_edges = []
-        cg._func_by_name = {}
+        # Write to private attrs here to bootstrap test state without build().
+        # This is test-only setup — not production code.
+        cg._built = True  # noqa: SLF001
+        cg._functions = []  # noqa: SLF001
+        cg._call_edges = []  # noqa: SLF001
+        cg._func_by_name = {}  # noqa: SLF001
         result = cg.call_edges()
         assert isinstance(result, list)
 
     def test_call_edges_matches_private_attribute(self):
-        """call_edges() must return the same object as _call_edges."""
+        """call_edges() must return the edges that were built (data contract)."""
         cache = self._make_mock_cache(
             functions=[
                 {
@@ -391,7 +393,11 @@ class TestCallEdgesPublicAccessor:
         )
         cg = CachedCallGraph(".", cache=cache)
         cg.build()
-        assert cg.call_edges() is cg._call_edges
+        edges = cg.call_edges()
+        assert len(edges) == 1  # one edge: foo → bar
+        caller, callee, line = edges[0]
+        assert caller.name == "foo"
+        assert callee.name == "bar"
 
     def test_call_edges_returns_tuples(self):
         """Each entry must be a (FunctionRef, FunctionRef, int) tuple."""
@@ -493,11 +499,14 @@ class TestCallGraphInternalAccessors:
         assert all(isinstance(r, FunctionRef) for r in refs)
 
     def test_function_refs_same_as_private_functions(self):
-        """function_refs() must return the same list as _functions."""
+        """function_refs() must return the functions that were built (data contract)."""
         cache = self._two_func_cache()
         cg = CachedCallGraph(".", cache=cache)
         cg.build()
-        assert cg.function_refs() is cg._functions
+        refs = cg.function_refs()
+        assert isinstance(refs, list)
+        assert len(refs) == 2
+        assert all(isinstance(r, FunctionRef) for r in refs)
 
     def test_callee_refs_of_returns_list(self):
         """callee_refs_of(func) must return the callees of a given FunctionRef."""
