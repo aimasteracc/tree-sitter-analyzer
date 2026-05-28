@@ -118,6 +118,50 @@ class Foo<K, V> implements Runnable, Comparable<Foo<K, V>>, Serializable {
         )
         assert "Serializable" in implements
 
+    def test_interface_extends_extracted_as_implements(self):
+        """[TDD] Java interface extends clause must be captured in implements_interfaces.
+
+        'interface Foo extends Runnable, Comparable<Foo>' uses the tree-sitter
+        node extends_interfaces (not super_interfaces), which _extract_class_relationships()
+        previously ignored. Result: implements=[] for all interfaces.
+        """
+        import tree_sitter
+        import tree_sitter_java as ts_java
+
+        from tree_sitter_analyzer.languages.java_plugin import JavaElementExtractor
+
+        src = """\
+package test;
+public interface Channel extends Runnable, Comparable<Channel>, java.io.Serializable {
+    void close();
+}
+"""
+        lang = tree_sitter.Language(ts_java.language())
+        parser = tree_sitter.Parser()
+        parser.language = lang
+        tree = parser.parse(src.encode())
+
+        ext = JavaElementExtractor()
+        ext.extract_annotations(tree, src)
+        classes = ext.extract_classes(tree, src)
+
+        assert classes, "Should extract Channel interface"
+        iface = classes[0]
+        assert iface.class_type == "interface"
+        impl = iface.implements_interfaces
+
+        assert len(impl) == 3, (
+            f"Interface should show 3 extended interfaces, got {impl}. "
+            "Bug: extends_interfaces node not handled in _extract_class_relationships()."
+        )
+        assert "Runnable" in impl, f"Runnable missing from {impl}"
+        assert any("Comparable" in i for i in impl), f"Comparable missing from {impl}"
+        assert any("Serializable" in i for i in impl), (
+            f"Serializable missing from {impl}"
+        )
+        comparable = next(i for i in impl if "Comparable" in i)
+        assert "<" in comparable, f"Comparable generic arg dropped. Got: {comparable!r}"
+
     @_skip_caffeine
     def test_caffeine_bounded_local_cache_implements(self, mcp_server):
         """BoundedLocalCache must show 'LocalCache<K, V>' not split into 3 items."""

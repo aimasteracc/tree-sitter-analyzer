@@ -296,6 +296,13 @@ def _extract_class_relationships(
             # Strip the leading 'implements' keyword before splitting.
             body = re.sub(r"^\s*implements\s*", "", raw)
             implements_interfaces = _split_respecting_generics(body)
+        elif child.type == "extends_interfaces":
+            # interface Foo extends Bar, Baz<T> — uses extends_interfaces node,
+            # not super_interfaces. Store in implements_interfaces so callers
+            # find all extended types in one place regardless of class/interface.
+            raw = get_node_text(child)
+            body = re.sub(r"^\s*extends\s*", "", raw)
+            implements_interfaces = _split_respecting_generics(body)
     return extends_class, implements_interfaces
 
 
