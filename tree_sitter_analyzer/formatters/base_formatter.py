@@ -235,9 +235,10 @@ class BaseTableFormatter(BaseFormatter):
             return "-"
 
         # Remove comment symbols
-        clean_doc = (
-            javadoc.replace("/**", "").replace("*/", "").replace("*", "").strip()
-        )
+        clean_doc = javadoc.replace("/**", "")
+        clean_doc = clean_doc.replace("*/", "")
+        clean_doc = clean_doc.replace("*", "")
+        clean_doc = clean_doc.strip()
 
         # Get first line
         lines = clean_doc.split("\n")
@@ -255,12 +256,10 @@ class BaseTableFormatter(BaseFormatter):
             return ""
 
         # Remove null bytes and normalize whitespace
-        cleaned = (
-            text.replace("\0", "")
-            .replace("\r\n", " ")
-            .replace("\r", " ")
-            .replace("\n", " ")
-        )
+        cleaned = text.replace("\0", "")
+        cleaned = cleaned.replace("\r\n", " ")
+        cleaned = cleaned.replace("\r", " ")
+        cleaned = cleaned.replace("\n", " ")
         cleaned = " ".join(cleaned.split())
         cleaned = cleaned.replace('"', '""')
 
