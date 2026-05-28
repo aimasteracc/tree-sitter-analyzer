@@ -316,3 +316,38 @@ class TestCallGraphInternalMethods:
         cg = CallGraph(str(PY_PROJECT))
         result = cg.resolve_targets("nonexistent")
         assert result == []
+
+
+class TestCallGraphAllCallEdges:
+    def test_all_call_edges_returns_list(self):
+        """all_call_edges() must return a list of 3-tuples."""
+        cg = CallGraph(str(PY_PROJECT))
+        edges = cg.all_call_edges()
+        assert isinstance(edges, list)
+        for caller, callee, line in edges:
+            assert isinstance(caller, FunctionRef)
+            assert isinstance(callee, FunctionRef)
+            assert isinstance(line, int)
+
+    def test_all_call_edges_triggers_build(self):
+        """all_call_edges() must build the graph if not yet built."""
+        cg = CallGraph(str(PY_PROJECT))
+        # Graph not yet built — calling all_call_edges() should trigger build.
+        # After the call, functions and edges are populated.
+        assert len(cg.all_call_edges()) >= 0
+        assert len(cg.all_functions()) > 0
+
+    def test_all_call_edges_count_matches_summary(self):
+        """all_call_edges() count must match the summary call_edge_count."""
+        cg = CallGraph(str(PY_PROJECT))
+        edges = cg.all_call_edges()
+        summary = cg.summary()
+        assert len(edges) == summary["call_edge_count"]
+
+    def test_all_call_edges_returns_copy(self):
+        """Mutating the returned list must not affect the internal state."""
+        cg = CallGraph(str(PY_PROJECT))
+        edges1 = cg.all_call_edges()
+        edges1.clear()
+        edges2 = cg.all_call_edges()
+        assert len(edges2) > 0  # internal list unaffected
