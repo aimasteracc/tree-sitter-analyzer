@@ -87,23 +87,7 @@ class JSONFormatter(BaseFormatter):
             lines.append("| Key | Type | Value / Children | Lines |")
             lines.append("|-----|------|-----------------|-------|")
             for p in group:
-                key = p.get("key") or p.get("name") or "?"
-                vtype = p.get("value_type", "")
-                val = p.get("value") or ""
-                children = p.get("child_count")
-                if children is not None:
-                    display = (
-                        f"({children} {'props' if vtype == 'object' else 'items'})"
-                    )
-                elif val:
-                    trimmed = val[:40] + "…" if len(val) > 40 else val
-                    display = f"`{trimmed}`"
-                else:
-                    display = ""
-                start = p.get("start_line", 0)
-                end = p.get("end_line", 0)
-                line_range = f"{start}" if start == end else f"{start}-{end}"
-                lines.append(f"| `{key}` | {vtype} | {display} | {line_range} |")
+                lines.append(self._format_prop_row(p))
             lines.append("")
 
         deeper = sum(len(v) for k, v in by_level.items() if k > max_show_level)
@@ -151,6 +135,25 @@ class JSONFormatter(BaseFormatter):
     # ------------------------------------------------------------------
     # Helper
     # ------------------------------------------------------------------
+
+    def _format_prop_row(self, p: dict[str, Any]) -> str:
+        """Format one property as a markdown table row."""
+        key = p.get("key") or p.get("name") or "?"
+        vtype = p.get("value_type", "")
+        val = p.get("value") or ""
+        children = p.get("child_count")
+        if children is not None:
+            child_label = "props" if vtype == "object" else "items"
+            display = f"({children} {child_label})"
+        elif val:
+            trimmed = val[:40] + "…" if len(val) > 40 else val
+            display = f"`{trimmed}`"
+        else:
+            display = ""
+        start = p.get("start_line", 0)
+        end = p.get("end_line", 0)
+        line_range = f"{start}" if start == end else f"{start}-{end}"
+        return f"| `{key}` | {vtype} | {display} | {line_range} |"
 
     def _format_json_output(self, title: str, data: dict[str, Any]) -> str:
         """Format data as a titled JSON block (matches BaseFormatter convention)."""
