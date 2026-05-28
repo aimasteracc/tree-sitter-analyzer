@@ -380,35 +380,46 @@ def _extract_parent_classes(node: Any, source: str, language: str) -> list[str]:
     parents: list[str] = []
     try:
         if language == "python":
-            for child in node.children:
-                if child.type == "argument_list":
-                    for arg in child.children:
-                        if arg.type in ("identifier", "attribute", "type"):
-                            parents.append(_node_text(arg, source))
+            parents.extend(
+                _node_text(arg, source)
+                for child in node.children
+                if child.type == "argument_list"
+                for arg in child.children
+                if arg.type in ("identifier", "attribute", "type")
+            )
         elif language in ("javascript", "typescript"):
-            for child in node.children:
-                if child.type == "class_heritage":
-                    for hc in child.children:
-                        if hc.type in ("identifier", "member_expression"):
-                            parents.append(_node_text(hc, source))
+            parents.extend(
+                _node_text(hc, source)
+                for child in node.children
+                if child.type == "class_heritage"
+                for hc in child.children
+                if hc.type in ("identifier", "member_expression")
+            )
         elif language == "java":
-            for child in node.children:
-                if child.type == "superclass":
-                    for sc in child.children:
-                        if sc.type == "type_identifier":
-                            parents.append(_node_text(sc, source))
-                elif child.type == "super_interfaces":
-                    for si in child.children:
-                        if si.type == "type_list":
-                            for tc in si.children:
-                                if tc.type == "type_identifier":
-                                    parents.append(_node_text(tc, source))
+            parents.extend(
+                _node_text(sc, source)
+                for child in node.children
+                if child.type == "superclass"
+                for sc in child.children
+                if sc.type == "type_identifier"
+            )
+            parents.extend(
+                _node_text(tc, source)
+                for child in node.children
+                if child.type == "super_interfaces"
+                for si in child.children
+                if si.type == "type_list"
+                for tc in si.children
+                if tc.type == "type_identifier"
+            )
         elif language in ("c", "cpp"):
-            for child in node.children:
-                if child.type == "base_class_clause":
-                    for bc in child.children:
-                        if bc.type in ("type_identifier", "qualified_identifier"):
-                            parents.append(_node_text(bc, source))
+            parents.extend(
+                _node_text(bc, source)
+                for child in node.children
+                if child.type == "base_class_clause"
+                for bc in child.children
+                if bc.type in ("type_identifier", "qualified_identifier")
+            )
     except Exception:  # nosec B110
         pass
     return parents
