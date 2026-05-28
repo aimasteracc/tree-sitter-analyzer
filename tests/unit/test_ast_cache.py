@@ -345,6 +345,14 @@ class TestSearchSymbols:
         results = cache.search_symbols("zzz_nonexistent_xyz")
         assert len(results) == 0
 
+    def test_search_symbols_uses_linear_when_fts_disabled(self, cache, tmp_project):
+        """search_symbols() falls back to linear scan when _fts5_available is False."""
+        cache.index_project()
+        cache._fts5_available = False
+        results = cache.search_symbols("hello")
+        assert len(results) >= 1
+        assert any(r["name"] == "hello" for r in results)
+
 
 class TestStats:
     def test_stats_empty(self, cache):
@@ -631,6 +639,29 @@ class TestFtsSearch:
             cache.index_file(f)
             results = cache.fts_search("hello")
             assert len(results) >= 1
+
+    def test_fts_search_falls_back_to_linear_when_fts_disabled(
+        self, cache, tmp_project
+    ):
+        """fts_search() falls back to linear scan when _fts5_available is False."""
+        cache.index_project()
+        cache._fts5_available = False
+        results = cache.fts_search("hello")
+        assert len(results) >= 1
+        assert any(r["name"] == "hello" for r in results)
+
+    def test_get_functions_by_file_returns_functions_for_indexed_file(
+        self, cache, tmp_project
+    ):
+        """get_functions_by_file() returns function entries for an indexed file."""
+        f = str(tmp_project / "src" / "main.py")
+        cache.index_file(f)
+        funcs = cache.get_functions_by_file("src/main.py")
+        assert len(funcs) >= 1
+        for fn in funcs:
+            assert "name" in fn
+            assert "file" in fn
+            assert "line" in fn
 
 
 class TestSQLNativeCallGraph:
