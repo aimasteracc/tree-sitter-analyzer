@@ -239,14 +239,14 @@ class TestFindEnclosingFuncRange:
         outer = FunctionRef("a.py", "outer", 1, "python", end_line=50)
         inner = FunctionRef("a.py", "inner", 10, "python", end_line=20)
         file_funcs = {"outer": outer, "inner": inner}
-        assert cg._find_enclosing_func(file_funcs, 15) == inner
+        assert cg.find_enclosing_func(file_funcs, 15) == inner
 
     def test_range_picks_tighter_scope(self):
         cg = CallGraph("/tmp")
         outer = FunctionRef("a.py", "outer", 1, "python", end_line=50)
         inner = FunctionRef("a.py", "inner", 10, "python", end_line=20)
         file_funcs = {"outer": outer, "inner": inner}
-        result = cg._find_enclosing_func(file_funcs, 15)
+        result = cg.find_enclosing_func(file_funcs, 15)
         assert result.name == "inner"
 
     def test_fallback_closest_start(self):
@@ -254,7 +254,7 @@ class TestFindEnclosingFuncRange:
         f1 = FunctionRef("a.py", "foo", 5, "python", end_line=5)
         f2 = FunctionRef("a.py", "bar", 15, "python", end_line=15)
         file_funcs = {"foo": f1, "bar": f2}
-        result = cg._find_enclosing_func(file_funcs, 10)
+        result = cg.find_enclosing_func(file_funcs, 10)
         assert result.name == "foo"
 
 
