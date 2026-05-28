@@ -567,6 +567,12 @@ in `docs/internal/CODEGRAPH_BENCHMARK_FINAL_2026-05-24.md`.
   with a depth-counter-based splitter in `_split_respecting_generics()`. Validated against
   netty (T3.3): `AddressedEnvelope<M, A>`, `ChannelFactory<T>` correctly preserved.
 
+- **Java interface `extends` clause extraction** — Java `interface Foo extends Bar, Baz<T>`
+  uses a different tree-sitter node (`extends_interfaces`) than class `implements`
+  (`super_interfaces`). Previously ignored, so all interfaces showed `implements_interfaces=[]`.
+  Fixed by adding `extends_interfaces` handler in `_extract_class_relationships()`. Validated
+  against netty `Channel extends AttributeMap, ChannelOutboundInvoker, Comparable<Channel>`.
+
 - **C# attribute extraction** — All C# classes and methods returned `annotations=[]` because
   `extract_attributes()` walked `node.prev_sibling` to find `[ApiController]` / `[HttpGet]`
   style attributes. In the tree-sitter-c-sharp grammar, `attribute_list` nodes are **direct
