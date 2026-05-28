@@ -319,6 +319,19 @@ def extract_python_import_simple(
         )
 
 
+def _parse_relative_import(child: Any, source: str) -> tuple[str, str]:
+    """Return (dots_prefix, module_name) from a ``relative_import`` node."""
+    dots = ""
+    module = ""
+    for sub in child.children:
+        st = getattr(sub, "type", None)
+        if st == "import_prefix":
+            dots = _node_text(sub, source)
+        elif st == "dotted_name":
+            module = _node_text(sub, source)
+    return dots, module
+
+
 def _parse_python_from_children(node: Any, source: str) -> tuple[str, str, list[str]]:
     """Walk an ``import_from_statement``'s children; return ``(module, dots, names)``.
 
@@ -338,17 +351,14 @@ def _parse_python_from_children(node: Any, source: str) -> tuple[str, str, list[
     for child in node.children:
         ct = getattr(child, "type", None)
         if ct == "relative_import":
-            for sub in child.children:
-                st = getattr(sub, "type", None)
-                if st == "import_prefix":
-                    dots_prefix = _node_text(sub, source)
-                elif st == "dotted_name":
-                    module_name = _node_text(sub, source)
+            dots_prefix, module_name = _parse_relative_import(child, source)
         elif ct == "dotted_name":
-            if not module_name and not dots_prefix:
-                module_name = _node_text(child, source)
-            else:
-                imported_names.append(_node_text(child, source))
+            node_text = _node_text(child, source)
+            is_module = not module_name and not dots_prefix
+            if is_module:
+                module_name = node_text
+            if not is_module:
+                imported_names.append(node_text)
         elif ct == "aliased_import":
             imported_names.extend(_extract_import_names(child, source))
     return module_name, dots_prefix, imported_names
@@ -465,12 +475,13 @@ def extract_js_imports(node: Any, source: str, imports: list[dict[str, Any]]) ->
         # r37de (dogfood): nesting 6 → 3 via _js_import_module_path helper.
         module_path = _js_import_module_path(node, source)
         if module_path:
+            is_rel = module_path.startswith(".")
             imports.append(
                 {
                     "module_name": module_path,
                     "resolved_path": module_path,
                     "names": [],
-                    "is_relative": module_path.startswith("."),
+                    "is_relative": is_rel,
                     "language": "javascript",
                 }
             )
@@ -604,6 +615,36 @@ def _node_text(node: Any, source: str) -> str:
         return ""
 
 
+def _parse_go_spec(spec: Any, source: str) -> dict[str, Any] | None:
+    """Return import dict from a single Go import_spec node, or None to skip."""
+    path = None
+    for ch in spec.children:
+        if getattr(ch, "type", None) != "interpreted_string_literal":
+            continue
+        raw = _node_text(ch, source).strip('"')
+        last_part = raw.split("/")[-1]
+        if last_part not in _GO_STD and raw not in _GO_STD:
+            path = raw
+    if path is None:
+        return None
+    resolved = path if path.endswith(".go") else path + ".go"
+    is_rel = path.startswith("./") or path.startswith("../")
+    return {
+        "module_name": path,
+        "resolved_path": resolved,
+        "names": [],
+        "is_relative": is_rel,
+        "language": "go",
+    }
+
+
+def _collect_go_specs(child: Any) -> list[Any]:
+    """Collect import_spec children from an import_spec_list node."""
+    return [
+        sub for sub in child.children if getattr(sub, "type", None) == "import_spec"
+    ]
+
+
 def _extract_go_imports(node: Any, source: str, imports: list[dict[str, Any]]) -> None:
     """Extract Go import declarations.
 
@@ -626,28 +667,12 @@ def _extract_go_imports(node: Any, source: str, imports: list[dict[str, Any]]) -
         if ct == "import_spec":
             specs.append(child)
         elif ct == "import_spec_list":
-            for sub in child.children:
-                if getattr(sub, "type", None) == "import_spec":
-                    specs.append(sub)
+            specs.extend(_collect_go_specs(child))
 
     for spec in specs:
-        path = None
-        for ch in spec.children:
-            ct = getattr(ch, "type", None)
-            if ct == "interpreted_string_literal":
-                raw = _node_text(ch, source).strip('"')
-                if raw.split("/")[-1] not in _GO_STD and raw not in _GO_STD:
-                    path = raw
-        if path:
-            imports.append(
-                {
-                    "module_name": path,
-                    "resolved_path": path + ".go" if not path.endswith(".go") else path,
-                    "names": [],
-                    "is_relative": path.startswith("./") or path.startswith("../"),
-                    "language": "go",
-                }
-            )
+        entry = _parse_go_spec(spec, source)
+        if entry is not None:
+            imports.append(entry)
 
 
 def _extract_rust_imports(
@@ -710,6 +735,17 @@ def _parse_rust_use_path(raw: str) -> str | None:
     return None
 
 
+def _cpp_import_entry(raw: str, is_relative: bool) -> dict[str, Any]:
+    """Build import entry dict for a C/C++ include directive."""
+    return {
+        "module_name": raw,
+        "resolved_path": raw,
+        "names": [],
+        "is_relative": is_relative,
+        "language": "cpp",
+    }
+
+
 def _extract_cpp_imports(node: Any, source: str, imports: list[dict[str, Any]]) -> None:
     """Extract C/C++ #include directives.
 
@@ -727,28 +763,14 @@ def _extract_cpp_imports(node: Any, source: str, imports: list[dict[str, Any]]) 
         if ct == "string_literal":
             raw = _node_text(child, source).strip('"')
             if raw:
-                imports.append(
-                    {
-                        "module_name": raw,
-                        "resolved_path": raw,
-                        "names": [],
-                        "is_relative": True,
-                        "language": "cpp",
-                    }
-                )
+                entry = _cpp_import_entry(raw, True)
+                imports.append(entry)
                 return
         if ct == "system_lib_string":
             raw = _node_text(child, source).strip("<>")
             if raw:
-                imports.append(
-                    {
-                        "module_name": raw,
-                        "resolved_path": raw,
-                        "names": [],
-                        "is_relative": False,
-                        "language": "cpp",
-                    }
-                )
+                entry = _cpp_import_entry(raw, False)
+                imports.append(entry)
                 return
 
 
@@ -828,6 +850,15 @@ def _extract_java_imports(
     )
 
 
+def _csharp_qualified_name_parts(node: Any, source: str) -> list[str]:
+    """Collect identifier parts from a C# qualified_name node."""
+    parts = []
+    for sub in node.children:
+        if getattr(sub, "type", None) == "identifier":
+            parts.append(_node_text(sub, source))
+    return parts
+
+
 def _extract_csharp_imports(
     node: Any, source: str, imports: list[dict[str, Any]]
 ) -> None:
@@ -848,10 +879,7 @@ def _extract_csharp_imports(
         if ct == "identifier":
             name_parts.append(_node_text(child, source))
         elif ct == "qualified_name":
-            for sub in child.children:
-                st = getattr(sub, "type", None)
-                if st == "identifier":
-                    name_parts.append(_node_text(sub, source))
+            name_parts.extend(_csharp_qualified_name_parts(child, source))
 
     if not name_parts:
         return
