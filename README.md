@@ -103,6 +103,8 @@ TSA wins outright on **2 of 6 repos**, has a lower **median cost saving (−11 %
 | **agent_summary** | every response | next-step hint baked into the envelope |
 | **Synapse cross-file resolver** | internal | import-aware, beats regex guessing |
 | **Temporal activation** | `symbol_lineage` | per-symbol git-modification frequency |
+| **One-shot file orientation** | `smart_context` | health + exports + deps + edit-risk in one call (replaces 3-4 calls) |
+| **Architectural decision journal** | `decision_journal` | persists reasoning across sessions — no competitor exposes this |
 
 ### Skills (13 curated workflows)
 
