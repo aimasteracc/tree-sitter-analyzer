@@ -13,7 +13,10 @@ def read_skill_metadata(skill_path: Path) -> tuple[dict[str, str], str]:
     """Read front-matter metadata and body text from a SKILL.md file."""
     if not skill_path.exists():
         return {}, ""
-    text = skill_path.read_text(encoding="utf-8", errors="replace")
+    try:
+        text = skill_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return {}, ""
     return split_front_matter(text)
 
 
