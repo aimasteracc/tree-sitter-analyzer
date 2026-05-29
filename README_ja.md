@@ -9,7 +9,7 @@
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-18612%20passed-brightgreen.svg)](#-品質とテスト)
+[![Tests](https://img.shields.io/badge/tests-18627%20passed-brightgreen.svg)](#-品質とテスト)
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
@@ -276,7 +276,7 @@ CodeGraph も類似の集合をサポート; 両ツール共に未実装の主�
 
 | 指標 | 値 |
 |---|---|
-| テスト通過 | 18,612 ✅ |
+| テスト通過 | 18,627 ✅ |
 | カバレッジ | [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) |
 | 型安全性 | 100% mypy |
 | プラットフォーム | macOS · Linux · Windows |
