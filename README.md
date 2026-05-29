@@ -36,7 +36,7 @@ Restart your agent, then say: *"Set the project root to my repo and run codegrap
 
 * **Token-efficient by default.** Every MCP response uses **TOON** — a tabular JSON variant that cuts payload by ~50-70 % vs raw JSON.
 * **Verdict envelopes.** Every response carries `verdict: SAFE | CAUTION | UNSAFE | INFO | WARN | ERROR | NOT_FOUND`, so orchestrators branch on outcomes without re-prompting.
-* **Project health grading (A–F).** No other open-source tool grades your whole project on size / complexity / coverage / duplication / dependencies / git-hotspots in one call.
+* **Project health grading (A–F).** No other open-source tool grades your whole project on size / complexity / coverage / duplication / dependencies / structure / git-hotspots in one call.
 * **13 curated workflows (Skills).** Pre-baked tool subsets for "find symbol", "trace call chain", "score health", "safe-to-edit before refactor", "PR review", etc.
 * **5 layers of safety.** `safe_to_edit` + `modification_guard` + constraint DSL + `change_impact` + verdict envelopes — designed so agents *know* before they touch.
 * **Beats the leading competitor (CodeGraph) on multiple head-to-head benchmarks.** See below.
@@ -84,7 +84,7 @@ TSA wins outright on **2 of 6 repos**, has a lower **median cost saving (−11 %
 |---|---|---|
 | **BM25-ranked symbol search** | all search tools | relevance_score on every result; sort(by='confidence') in DSL |
 | **Semantic search (133× faster)** | `codegraph_query semantic()` | BM25 pre-filter narrows 40k symbols to ~400 before cosine rerank |
-| **Project A–F health grading** | `check_project_health` | 6 dimensions, no competitor offers this |
+| **Project A–F health grading** | `check_project_health` | 7 dimensions (size/complexity/deps/coverage/duplication/structure/git-hotspot), no competitor offers this |
 | **TOON output** | every tool, `output_format: "toon"` (default) | 50-70 % token saving |
 | **Verdict envelopes** | every tool | `SAFE/CAUTION/UNSAFE/INFO/WARN/ERROR/NOT_FOUND` |
 | **Safe-to-edit gate** | `safe_to_edit` + `modification_guard` | refuses high-risk edits before they happen |
