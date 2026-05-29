@@ -5,10 +5,33 @@ compact multiple classes, edge cases.
 """
 
 import json
+from typing import Any
 
 import pytest
 
 from tree_sitter_analyzer.formatters.java_formatter import JavaTableFormatter
+
+_FMT = JavaTableFormatter()
+
+_BASE_CLASS = {
+    "name": "Test",
+    "type": "class",
+    "visibility": "public",
+    "line_range": {"start": 1, "end": 10},
+}
+_BASE_DATA: dict[str, Any] = {
+    "package": {"name": "com.example"},
+    "classes": [_BASE_CLASS],
+    "imports": [],
+    "methods": [],
+    "fields": [],
+    "statistics": {"method_count": 0, "field_count": 0},
+}
+
+
+def _data(**overrides: Any) -> dict[str, Any]:
+    """Return a copy of _BASE_DATA with top-level keys overridden."""
+    return {**_BASE_DATA, **overrides}
 
 
 class TestFormatStructure:
@@ -16,25 +39,7 @@ class TestFormatStructure:
 
     def test_format_structure(self):
         """Test structure formatting"""
-        formatter = JavaTableFormatter()
-        data = {
-            "package": {"name": "com.example"},
-            "classes": [
-                {
-                    "name": "Test",
-                    "type": "class",
-                    "visibility": "public",
-                    "line_range": {"start": 1, "end": 10},
-                }
-            ],
-            "imports": [],
-            "methods": [],
-            "fields": [],
-            "statistics": {"method_count": 0, "field_count": 0},
-        }
-
-        result = formatter.format_structure(data)
-
+        result = _FMT.format_structure(_data())
         assert isinstance(result, str)
         assert len(result) > 0
 
@@ -44,61 +49,24 @@ class TestFormatAdvanced:
 
     def test_format_advanced_json(self):
         """Test advanced formatting with JSON"""
-        formatter = JavaTableFormatter()
-        data = {
-            "package": {"name": "com.example"},
-            "classes": [{"name": "Test", "type": "class"}],
-        }
-
-        result = formatter.format_advanced(data, output_format="json")
-
+        result = _FMT.format_advanced(
+            {
+                "package": {"name": "com.example"},
+                "classes": [{"name": "Test", "type": "class"}],
+            },
+            output_format="json",
+        )
         assert isinstance(result, str)
-        parsed = json.loads(result)
-        assert parsed is not None
+        assert json.loads(result) is not None
 
     def test_format_advanced_csv(self):
         """Test advanced formatting with CSV"""
-        formatter = JavaTableFormatter()
-        data = {
-            "package": {"name": "com.example"},
-            "classes": [
-                {
-                    "name": "Test",
-                    "type": "class",
-                    "visibility": "public",
-                    "line_range": {"start": 1, "end": 10},
-                }
-            ],
-            "imports": [],
-            "methods": [],
-            "fields": [],
-            "statistics": {"method_count": 0, "field_count": 0},
-        }
-
-        result = formatter.format_advanced(data, output_format="csv")
-
+        result = _FMT.format_advanced(_data(), output_format="csv")
         assert isinstance(result, str)
 
     def test_format_advanced_default(self):
         """Test advanced formatting with default format"""
-        formatter = JavaTableFormatter()
-        data = {
-            "package": {"name": "com.example"},
-            "classes": [
-                {
-                    "name": "Test",
-                    "type": "class",
-                    "visibility": "public",
-                    "line_range": {"start": 1, "end": 10},
-                }
-            ],
-            "imports": [],
-            "methods": [],
-            "fields": [],
-            "statistics": {"method_count": 0, "field_count": 0},
-        }
-
-        result = formatter.format_advanced(data, output_format="other")
+        result = _FMT.format_advanced(_data(), output_format="other")
 
         assert isinstance(result, str)
 
@@ -108,10 +76,8 @@ class TestJavaDocHandling:
 
     def test_format_with_javadoc(self):
         """Test formatting with JavaDoc comments"""
-        formatter = JavaTableFormatter()
-        data = {
-            "package": {"name": "com.example"},
-            "classes": [
+        data = _data(
+            classes=[
                 {
                     "name": "Test",
                     "type": "class",
@@ -119,8 +85,7 @@ class TestJavaDocHandling:
                     "line_range": {"start": 1, "end": 20},
                 }
             ],
-            "imports": [],
-            "methods": [
+            methods=[
                 {
                     "name": "test",
                     "visibility": "public",
@@ -132,11 +97,10 @@ class TestJavaDocHandling:
                     "javadoc": "This is a test method",
                 }
             ],
-            "fields": [],
-            "statistics": {"method_count": 1, "field_count": 0},
-        }
+            statistics={"method_count": 1, "field_count": 0},
+        )
 
-        result = formatter._format_full_table(data)
+        result = _FMT._format_full_table(data)
 
         assert isinstance(result, str)
 
@@ -146,10 +110,8 @@ class TestPrivateMethods:
 
     def test_format_private_methods(self):
         """Test formatting class with private methods"""
-        formatter = JavaTableFormatter()
-        data = {
-            "package": {"name": "com.example"},
-            "classes": [
+        data = _data(
+            classes=[
                 {
                     "name": "TestClass",
                     "type": "class",
@@ -157,8 +119,7 @@ class TestPrivateMethods:
                     "line_range": {"start": 1, "end": 30},
                 }
             ],
-            "imports": [],
-            "methods": [
+            methods=[
                 {
                     "name": "privateHelper",
                     "visibility": "private",
@@ -170,21 +131,16 @@ class TestPrivateMethods:
                     "javadoc": "Private helper method",
                 }
             ],
-            "fields": [],
-            "statistics": {"method_count": 1, "field_count": 0},
-        }
-
-        result = formatter._format_full_table(data)
-
+            statistics={"method_count": 1, "field_count": 0},
+        )
+        result = _FMT._format_full_table(data)
         assert "## Private Methods" in result
         assert "privateHelper" in result
 
     def test_format_mixed_visibility_methods(self):
         """Test formatting class with both public and private methods"""
-        formatter = JavaTableFormatter()
-        data = {
-            "package": {"name": "com.example"},
-            "classes": [
+        data = _data(
+            classes=[
                 {
                     "name": "TestClass",
                     "type": "class",
@@ -192,8 +148,7 @@ class TestPrivateMethods:
                     "line_range": {"start": 1, "end": 50},
                 }
             ],
-            "imports": [],
-            "methods": [
+            methods=[
                 {
                     "name": "publicMethod",
                     "visibility": "public",
@@ -215,12 +170,9 @@ class TestPrivateMethods:
                     "javadoc": "",
                 },
             ],
-            "fields": [],
-            "statistics": {"method_count": 2, "field_count": 0},
-        }
-
-        result = formatter._format_full_table(data)
-
+            statistics={"method_count": 2, "field_count": 0},
+        )
+        result = _FMT._format_full_table(data)
         assert "## Public Methods" in result
         assert "## Private Methods" in result
         assert "publicMethod" in result
@@ -232,11 +184,9 @@ class TestCompactTableMultipleClasses:
 
     def test_format_compact_multiple_classes_with_package(self):
         """Test compact format with multiple classes and package"""
-        formatter = JavaTableFormatter()
-        data = {
-            "package": {"name": "com.example"},
-            "file_path": "path/to/MultiClass.java",
-            "classes": [
+        data = _data(
+            file_path="path/to/MultiClass.java",
+            classes=[
                 {
                     "name": "ClassA",
                     "type": "class",
@@ -250,23 +200,17 @@ class TestCompactTableMultipleClasses:
                     "line_range": {"start": 11, "end": 20},
                 },
             ],
-            "imports": [],
-            "methods": [],
-            "fields": [],
-            "statistics": {"method_count": 0, "field_count": 0},
-        }
-
-        result = formatter._format_compact_table(data)
-
+        )
+        result = _FMT._format_compact_table(data)
         assert "com.example.MultiClass" in result
         assert "## Info" in result
 
     def test_format_compact_multiple_classes_no_package(self):
         """Test compact format with multiple classes without package"""
-        formatter = JavaTableFormatter()
-        data = {
-            "file_path": "path/to/MultiClass.java",
-            "classes": [
+        data = _data(
+            file_path="path/to/MultiClass.java",
+            package={},
+            classes=[
                 {
                     "name": "ClassA",
                     "type": "class",
@@ -280,22 +224,16 @@ class TestCompactTableMultipleClasses:
                     "line_range": {"start": 11, "end": 20},
                 },
             ],
-            "imports": [],
-            "methods": [],
-            "fields": [],
-            "statistics": {"method_count": 0, "field_count": 0},
-        }
-
-        result = formatter._format_compact_table(data)
-
+        )
+        result = _FMT._format_compact_table(data)
         assert "MultiClass" in result
         assert "## Info" in result
 
     def test_format_compact_single_class_no_package(self):
         """Test compact format with single class without package"""
-        formatter = JavaTableFormatter()
-        data = {
-            "classes": [
+        data = _data(
+            package={},
+            classes=[
                 {
                     "name": "SingleClass",
                     "type": "class",
@@ -303,14 +241,8 @@ class TestCompactTableMultipleClasses:
                     "line_range": {"start": 1, "end": 20},
                 }
             ],
-            "imports": [],
-            "methods": [],
-            "fields": [],
-            "statistics": {"method_count": 0, "field_count": 0},
-        }
-
-        result = formatter._format_compact_table(data)
-
+        )
+        result = _FMT._format_compact_table(data)
         assert "# SingleClass" in result
         assert "## Info" in result
 
@@ -320,79 +252,34 @@ class TestEdgeCases:
 
     def test_format_empty_data(self):
         """Test formatting empty data"""
-        formatter = JavaTableFormatter()
-        data = {
-            "package": {},
-            "classes": [],
-            "imports": [],
-            "methods": [],
-            "fields": [],
-            "statistics": {},
-        }
-
-        result = formatter._format_full_table(data)
-
+        result = _FMT._format_full_table(_data(package={}, classes=[], statistics={}))
         assert isinstance(result, str)
 
     def test_format_missing_package(self):
         """Test formatting with missing package"""
-        formatter = JavaTableFormatter()
-        data = {
-            "classes": [
-                {
-                    "name": "Test",
-                    "type": "class",
-                    "visibility": "public",
-                    "line_range": {"start": 1, "end": 10},
-                }
-            ],
-            "imports": [],
-            "methods": [],
-            "fields": [],
-            "statistics": {"method_count": 0, "field_count": 0},
-        }
-
-        result = formatter._format_full_table(data)
-
+        result = _FMT._format_full_table(_data(package=None))
         assert isinstance(result, str)
         assert "unknown" in result.lower() or "Test" in result
 
     def test_format_missing_statistics(self):
         """Test formatting with missing statistics"""
-        formatter = JavaTableFormatter()
-        data = {
-            "package": {"name": "com.example"},
-            "classes": [
-                {
-                    "name": "Test",
-                    "type": "class",
-                    "visibility": "public",
-                    "line_range": {"start": 1, "end": 10},
-                }
-            ],
-            "imports": [],
-            "methods": [],
-            "fields": [],
-        }
-
-        result = formatter._format_full_table(data)
-
+        d = _data()
+        d.pop("statistics", None)
+        result = _FMT._format_full_table(d)
         assert isinstance(result, str)
 
     def test_format_none_values(self):
         """Test formatting with None values"""
-        formatter = JavaTableFormatter()
-        data = {
-            "package": None,
-            "classes": [],
-            "imports": [],
-            "methods": [],
-            "fields": [],
-            "statistics": None,
-        }
-
-        result = formatter._format_full_table(data)
-
+        result = _FMT._format_full_table(
+            {
+                "package": None,
+                "classes": [],
+                "imports": [],
+                "methods": [],
+                "fields": [],
+                "statistics": None,
+            }
+        )
         assert isinstance(result, str)
 
 
