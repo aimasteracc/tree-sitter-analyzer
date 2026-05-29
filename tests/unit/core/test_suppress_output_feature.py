@@ -18,16 +18,12 @@ from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (
 
 
 def _setup_analysis_mocks(
-    mock_monitor: Mock,
     mock_detect_lang: Mock,
     mock_engine: Mock,
     file_path: str,
 ) -> Mock:
-    """Configure the three standard analysis mocks; returns mock_analysis_result."""
+    """Configure the two standard analysis mocks; returns mock_analysis_result."""
     mock_detect_lang.return_value = "java"
-    ctx = mock_monitor.return_value.measure_operation.return_value
-    ctx.__enter__ = Mock()
-    ctx.__exit__ = Mock()
     result = Mock()
     result.file_path = file_path
     result.language = "java"
@@ -134,16 +130,11 @@ public class TestClass {
     @patch(
         "tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool.detect_language_from_file"
     )
-    @patch(
-        "tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool.get_performance_monitor"
-    )
     async def test_suppress_output_false_includes_table_output(
-        self, mock_monitor, mock_detect_lang, mock_engine, temp_java_file
+        self, mock_detect_lang, mock_engine, temp_java_file
     ):
         """Test that suppress_output=False includes table_output in response."""
-        _setup_analysis_mocks(
-            mock_monitor, mock_detect_lang, mock_engine, temp_java_file
-        )
+        _setup_analysis_mocks(mock_detect_lang, mock_engine, temp_java_file)
         tool = TableFormatTool()
 
         args = {
@@ -166,16 +157,11 @@ public class TestClass {
     @patch(
         "tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool.detect_language_from_file"
     )
-    @patch(
-        "tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool.get_performance_monitor"
-    )
     async def test_suppress_output_true_without_output_file_includes_table_output(
-        self, mock_monitor, mock_detect_lang, mock_engine, temp_java_file
+        self, mock_detect_lang, mock_engine, temp_java_file
     ):
         """Test that suppress_output=True without output_file still includes table_output."""
-        _setup_analysis_mocks(
-            mock_monitor, mock_detect_lang, mock_engine, temp_java_file
-        )
+        _setup_analysis_mocks(mock_detect_lang, mock_engine, temp_java_file)
         tool = TableFormatTool()
 
         args = {
@@ -200,23 +186,17 @@ public class TestClass {
         "tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool.detect_language_from_file"
     )
     @patch(
-        "tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool.get_performance_monitor"
-    )
-    @patch(
         "tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool.FileOutputManager.get_managed_instance"
     )
     async def test_suppress_output_true_with_output_file_excludes_table_output(
         self,
         mock_get_managed_instance,
-        mock_monitor,
         mock_detect_lang,
         mock_engine,
         temp_java_file,
     ):
         """Test that suppress_output=True with output_file excludes table_output from response."""
-        _setup_analysis_mocks(
-            mock_monitor, mock_detect_lang, mock_engine, temp_java_file
-        )
+        _setup_analysis_mocks(mock_detect_lang, mock_engine, temp_java_file)
         _setup_file_manager_mock(mock_get_managed_instance)
         tool = TableFormatTool()
 
@@ -244,23 +224,17 @@ public class TestClass {
         "tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool.detect_language_from_file"
     )
     @patch(
-        "tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool.get_performance_monitor"
-    )
-    @patch(
         "tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool.FileOutputManager.get_managed_instance"
     )
     async def test_suppress_output_false_with_output_file_includes_table_output(
         self,
         mock_get_managed_instance,
-        mock_monitor,
         mock_detect_lang,
         mock_engine,
         temp_java_file,
     ):
         """Test that suppress_output=False with output_file still includes table_output."""
-        _setup_analysis_mocks(
-            mock_monitor, mock_detect_lang, mock_engine, temp_java_file
-        )
+        _setup_analysis_mocks(mock_detect_lang, mock_engine, temp_java_file)
         _setup_file_manager_mock(mock_get_managed_instance)
         tool = TableFormatTool()
 
