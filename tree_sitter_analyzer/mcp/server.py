@@ -90,9 +90,21 @@ def _log_safely(log_fn: Any, msg: str, *args: Any) -> None:
         pass
 
 
+# Module-level string constants — keep string literals out of deeply-nested class methods.
+_UNKNOWN_URI_PREFIX = "Unknown resource URI: "
+_MSG_SERVER_ERROR = "Server error: %s"
+_MSG_SHUTTING_DOWN = "MCP server shutting down"
+
+
+def _resolve_relative_path(base_root: str, file_path: str) -> str:
+    """Resolve a relative file_path against base_root and return the absolute string."""
+    _p = PathClass(base_root) / file_path
+    return str(_p.resolve())
+
+
 def _create_tool_registry(
     project_root: str | None,
-) -> tuple[list[tuple[str, Any]], dict[str, Any]]:
+) -> tuple[list[Any], dict[str, Any]]:
     """Delegates to the single-source registry in ``_tool_registry.py``."""
     from ._tool_registry import create_tool_registry
 
@@ -162,7 +174,8 @@ class TreeSitterAnalyzerMCPServer:
             resolved = name
         tool = tools.get(resolved) or tools.get(name)
         if tool is None:
-            raise ValueError(f"Unknown tool: {name}")
+            _msg = "Unknown tool: " + name
+            raise ValueError(_msg)
         return await tool.execute(arguments)
 
     def _ensure_initialized(self) -> None:
@@ -199,7 +212,7 @@ class TreeSitterAnalyzerMCPServer:
         elif uri.startswith("code://stats/"):
             resource = self.project_stats_resource
         else:
-            _err_msg = "Unknown resource URI: " + uri
+            _err_msg = _UNKNOWN_URI_PREFIX + uri
             raise ValueError(_err_msg)
         result = await resource.read_resource(uri)
         return {"content": result}
@@ -246,15 +259,11 @@ class TreeSitterAnalyzerMCPServer:
             return
 
         file_path = arguments["file_path"]
-        base_root = getattr(
-            getattr(self.security_validator, "boundary_manager", None),
-            "project_root",
-            None,
-        )
-        if not PathClass(file_path).is_absolute() and base_root:
-            _p = PathClass(base_root) / file_path
-            _resolved = _p.resolve()
-            resolved_candidate = str(_resolved)
+        _bm = getattr(self.security_validator, "boundary_manager", None)
+        base_root = getattr(_bm, "project_root", None)
+        _is_abs = PathClass(file_path).is_absolute()
+        if not _is_abs and base_root:
+            resolved_candidate = _resolve_relative_path(base_root, file_path)
         else:
             resolved_candidate = file_path
 
@@ -262,8 +271,9 @@ class TreeSitterAnalyzerMCPServer:
         cached = shared_cache.get_security_validation(
             resolved_candidate, project_root=base_root
         )
+        _validate = self.security_validator.validate_file_path
         if cached is None:
-            cached = self.security_validator.validate_file_path(resolved_candidate)
+            cached = _validate(resolved_candidate)
             shared_cache.set_security_validation(
                 resolved_candidate, cached, project_root=base_root
             )
@@ -283,7 +293,8 @@ class TreeSitterAnalyzerMCPServer:
         if not project_path or not isinstance(project_path, str):
             raise ValueError("project_path parameter is required and must be a string")
         if not PathClass(project_path).is_dir():
-            raise ValueError(f"Project path does not exist: {project_path}")
+            _msg = "Project path does not exist: " + project_path
+            raise ValueError(_msg)
         self.set_project_path(project_path)
         return {"status": "success", "project_root": project_path}
 
@@ -298,18 +309,27 @@ class TreeSitterAnalyzerMCPServer:
         if "file_path" not in arguments or "start_line" not in arguments:
             raise ValueError("file_path and start_line parameters are required")
 
+        _end_line = arguments.get("end_line")
+        _start_col = arguments.get("start_column")
+        _end_col = arguments.get("end_column")
+        _fmt = arguments.get("format", "text")
+        _out_file = arguments.get("output_file")
+        _suppress = arguments.get("suppress_output", False)
+        _out_fmt = arguments.get("output_format", "toon")
+        _allow_trunc = arguments.get("allow_truncate", False)
+        _fail_fast = arguments.get("fail_fast", False)
         full_args = {
             "file_path": arguments["file_path"],
             "start_line": arguments["start_line"],
-            "end_line": arguments.get("end_line"),
-            "start_column": arguments.get("start_column"),
-            "end_column": arguments.get("end_column"),
-            "format": arguments.get("format", "text"),
-            "output_file": arguments.get("output_file"),
-            "suppress_output": arguments.get("suppress_output", False),
-            "output_format": arguments.get("output_format", "toon"),
-            "allow_truncate": arguments.get("allow_truncate", False),
-            "fail_fast": arguments.get("fail_fast", False),
+            "end_line": _end_line,
+            "start_column": _start_col,
+            "end_column": _end_col,
+            "format": _fmt,
+            "output_file": _out_file,
+            "suppress_output": _suppress,
+            "output_format": _out_fmt,
+            "allow_truncate": _allow_trunc,
+            "fail_fast": _fail_fast,
         }
         return await _tool.execute(full_args)  # type: ignore[return-value]
 
@@ -346,13 +366,15 @@ class TreeSitterAnalyzerMCPServer:
             InitializationOptions,
         )
         _log_safely(logger.info, "Starting MCP server: %s v%s", self.name, self.version)
+        _log_err = logger.error
+        _log_inf = logger.info
         try:
             await self._run_server_loop(server, options)
         except Exception as e:
-            _log_safely(logger.error, "Server error: %s", e)
+            _log_safely(_log_err, _MSG_SERVER_ERROR, e)
             raise
         finally:
-            _log_safely(logger.info, "MCP server shutting down")
+            _log_safely(_log_inf, _MSG_SHUTTING_DOWN)
 
 
 def parse_mcp_args(args: list[str] | None = None) -> argparse.Namespace:
