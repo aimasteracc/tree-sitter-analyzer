@@ -93,6 +93,7 @@ Categories of CLI surface:
 - `--codegraph-query-compact` — trim duplicate source payloads and empty relationship fields in chained query answers
 - `--affected FILE [FILE...]` — list test files transitively affected by changes (CodeGraph parity; closes the last CLI surface gap)
 - `--dead-code` — transitive dead functions / unused imports
+- `--doc-sync` — scan markdown docs for stale file-path references (add `--doc-sync-patterns GLOB...` to scope)
 - `--class-hierarchy` / `--dependency-matrix` / `--import-graph` — structural
 - `--codegraph-xref` — multi-dimension cross-reference
 - `--codegraph-complexity-heatmap` — cyclomatic complexity heatmap

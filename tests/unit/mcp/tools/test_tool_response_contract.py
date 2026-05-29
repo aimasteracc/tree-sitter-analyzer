@@ -358,6 +358,7 @@ class TestExecuteAcrossAllTools:
                 "query": "contract-test-no-match",
                 "output_format": "json",
             },
+            "doc_sync": {"output_format": "json"},
         }
         skipped: list[str] = []
         for name, tool in registered_tools:

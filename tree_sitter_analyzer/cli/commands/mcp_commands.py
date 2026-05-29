@@ -102,6 +102,9 @@ from tree_sitter_analyzer.mcp.tools.dependency_analysis_tool import (
 from tree_sitter_analyzer.mcp.tools.dependency_matrix_tool import (
     CodeGraphDependencyMatrixTool,  # noqa: F401
 )
+from tree_sitter_analyzer.mcp.tools.doc_sync_tool import (
+    DocSyncTool,  # noqa: F401
+)
 from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool  # noqa: F401
 from tree_sitter_analyzer.mcp.tools.get_code_outline_tool import (
     GetCodeOutlineTool,  # noqa: F401
@@ -792,6 +795,15 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
         },
     ),
     McpCommandSpec(
+        flag_name="doc_sync",
+        tool_attr="DocSyncTool",
+        label="Doc-sync: scan markdown docs for stale file-path references",
+        build_tool_args=lambda args, output_format: {
+            "doc_patterns": getattr(args, "doc_sync_patterns", None) or None,
+            "output_format": output_format,
+        },
+    ),
+    McpCommandSpec(
         flag_name="code_similarity",
         tool_attr="CodeGraphSimilarityTool",
         label="AST-structural clone detection: finds duplicate and near-duplicate functions (CodeGraph parity)",
@@ -1064,6 +1076,7 @@ _TOOL_CLASS_NAMES: frozenset[str] = frozenset(
         "ModificationGuardTool",
         "DecisionJournalTool",
         "BatchSearchTool",
+        "DocSyncTool",
     }
 )
 

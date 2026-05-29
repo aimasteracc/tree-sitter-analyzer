@@ -1171,6 +1171,17 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
         help="Max dead function candidates (default: 50)",
     )
     parser.add_argument(
+        "--doc-sync",
+        action="store_true",
+        help="Scan markdown docs for stale file-path references (broken links)",
+    )
+    parser.add_argument(
+        "--doc-sync-patterns",
+        nargs="+",
+        metavar="PATTERN",
+        help="Glob patterns for docs to scan (default: docs/**/*.md README.md CHANGELOG.md)",
+    )
+    parser.add_argument(
         "--symbol-search",
         help="FTS5-powered instant symbol search (CodeGraph parity). "
         "Use exact name, * wildcards, or ~ fuzzy prefix",
