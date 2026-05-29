@@ -18,13 +18,21 @@ class SemanticSymbolSearch:
     def __init__(self, cache: Any) -> None:
         self.cache = cache
 
+    # Candidate pool for BM25 pre-filter: 20x the requested limit.
+    _BM25_CANDIDATE_MULTIPLIER = 20
+
     def search(self, query: str, *, limit: int = 20) -> list[dict[str, Any]]:
         query_vector = _vectorize(query)
         if not query_vector:
             return []
 
+        # BM25 pre-filter: narrow the candidate pool before cosine reranking.
+        # Avoids scanning all 40k+ symbols on every call.  Falls back to the
+        # full scan when FTS5 is unavailable or the query is too short.
+        candidate_pool = self._candidate_symbols(query, limit)
+
         scored: list[tuple[float, dict[str, Any]]] = []
-        for symbol in self._symbols():
+        for symbol in candidate_pool:
             haystack = _symbol_text(symbol)
             score = _cosine(query_vector, _vectorize(haystack))
             if score <= 0:
@@ -42,6 +50,20 @@ class SemanticSymbolSearch:
             )
         )
         return [item for _score, item in scored[:limit]]
+
+    def _candidate_symbols(self, query: str, limit: int) -> list[dict[str, Any]]:
+        """Return a BM25-narrowed candidate pool, or the full symbol set."""
+        if len(query) >= 2 and getattr(self.cache, "_fts5_available", False):
+            try:
+                pool_size = limit * self._BM25_CANDIDATE_MULTIPLIER
+                candidates: list[dict[str, Any]] = self.cache.fts_search_ranked(
+                    query, limit=pool_size
+                )
+                if candidates:
+                    return candidates
+            except Exception:
+                pass
+        return self._symbols()
 
     def _symbols(self) -> list[dict[str, Any]]:
         conn = self.cache.get_conn()
