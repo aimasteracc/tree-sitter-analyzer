@@ -136,6 +136,11 @@ class ASTCache:
         """Public accessor for _fts5_available flag."""
         return self._fts5_available
 
+    @property
+    def parser(self) -> "Parser":
+        """Public accessor for the tree-sitter Parser instance."""
+        return self._parser
+
     def _init_db(self) -> None:
         conn = self._get_conn()
         migrations = [

@@ -82,7 +82,7 @@ def parse_and_write(
         _extract_symbols,
     )
 
-    result = cache._parser.parse_file(abs_path, language)
+    result = cache.parser.parse_file(abs_path, language)
     if not result.success:
         return {
             "file": rel_path,
@@ -116,13 +116,13 @@ def parse_and_write(
 
     inserted: list[dict[str, Any]] = (
         _write.write_fts5_symbols(conn, rel_path, language, symbols)
-        if cache._fts5_available
+        if cache.fts5_available
         else []
     )
     _write.write_call_edges(conn, rel_path, language, call_edges)
-    cache._write_imports_for_file(conn, rel_path, language, imports)
-    cache._write_activation_for_file(conn, rel_path, inserted)
-    cache._resolve_call_edges_for_file(conn, rel_path)
+    cache._write_imports_for_file(conn, rel_path, language, imports)  # noqa: SLF001
+    cache._write_activation_for_file(conn, rel_path, inserted)  # noqa: SLF001
+    cache._resolve_call_edges_for_file(conn, rel_path)  # noqa: SLF001
     conn.commit()
     return {
         "file": rel_path,
@@ -221,7 +221,7 @@ def insert_index_row(
             indexed_at,
         ),
     )
-    if not cache._fts5_available:
+    if not cache.fts5_available:
         return
     from . import _ast_cache_write as _write
 
@@ -231,8 +231,8 @@ def insert_index_row(
     call_edges = json.loads(r.get("call_edges_json", "[]"))
     _write.write_call_edges(conn, rel_path, r["language"], call_edges)
     imports_list = json.loads(r.get("imports_json", "[]"))
-    cache._write_imports_for_file(conn, rel_path, r["language"], imports_list)
+    cache._write_imports_for_file(conn, rel_path, r["language"], imports_list)  # noqa: SLF001
     if include_activation:
-        cache._write_activation_for_file(conn, rel_path, inserted_symbol_rows)
+        cache._write_activation_for_file(conn, rel_path, inserted_symbol_rows)  # noqa: SLF001
     else:
-        cache._clear_activation_for_file(conn, rel_path)
+        cache._clear_activation_for_file(conn, rel_path)  # noqa: SLF001
