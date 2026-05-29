@@ -160,6 +160,43 @@ class TestCodeGraphSymbolSearchExecution:
         assert "data_source" in result
         assert result["data_source"] in ("fts5", "linear_scan")
 
+    async def test_relevance_score_on_fts5_results(self, indexed_project):
+        """BM25 FTS5 results carry relevance_score in [0, 1] — README 'ahead' claim."""
+        tool = CodeGraphSymbolSearchTool(str(indexed_project))
+        result = await tool.execute({"query": "format_user", "output_format": "json"})
+        assert result["success"] is True
+        assert result["match_count"] >= 1, "fixture must have a format_user symbol"
+        # Indexed project always has FTS5 via ASTCache.index_project
+        assert result["data_source"] == "fts5", (
+            f"expected fts5 data source, got {result['data_source']}"
+        )
+        for hit in result["results"]:
+            assert "relevance_score" in hit, (
+                "FTS5 results must carry relevance_score (README 'ahead' claim)"
+            )
+            score = hit["relevance_score"]
+            assert 0.0 <= score <= 1.0, f"score out of range: {score}"
+
+    async def test_fts5_results_sorted_by_relevance_descending(self, indexed_project):
+        """FTS5 results are ordered best-match first, not by file path."""
+        tool = CodeGraphSymbolSearchTool(str(indexed_project))
+        result = await tool.execute(
+            {"query": "user", "limit": 10, "output_format": "json"}
+        )
+        assert result["success"] is True
+        assert result["data_source"] == "fts5", (
+            f"expected fts5 data source, got {result['data_source']}"
+        )
+        if result["match_count"] >= 2:
+            scores = [
+                r["relevance_score"]
+                for r in result["results"]
+                if "relevance_score" in r
+            ]
+            assert scores == sorted(scores, reverse=True), (
+                "FTS5 results must be sorted by relevance_score descending"
+            )
+
 
 @pytest.mark.asyncio
 class TestCodeGraphSymbolSearchNoCache:
