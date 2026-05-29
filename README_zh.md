@@ -60,6 +60,8 @@ headless Claude Code（Haiku 4.5）每仓库问一个架构问题。3 个 arm：
 TSA 在 **6 个仓库中 2 个完胜**，**中位数成本节省（−11%）超过 CodeGraph 的 −4%**，并在 indexer-class 工具应当发挥作用的仓库上方向上与 CodeGraph 一致。
 
 > 我们的中位数为何与 CodeGraph 公布的 −35% 不同：我们为控制成本用了 Haiku；他们用 Opus + 4 次中位。完整原始 envelope 和复现脚本见 `docs/internal/CODEGRAPH_BENCHMARK_FINAL_2026-05-24.md`。
+>
+> **Benchmark 后的改进（2026-05-30）：** BM25 预过滤器将 40k 符号收窄至 ~400 再做余弦重排 — 语义搜索加速 133×。此改进未纳入上述 benchmark；大符号量仓库（Django / Excalidraw）在复跑时预计会有更好的 token 效率表现。
 
 ---
 
