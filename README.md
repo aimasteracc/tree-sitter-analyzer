@@ -5,11 +5,12 @@
 > **The MCP code-intelligence server for AI agents — fewer tokens, fewer tool calls, 100 % local.**
 > Pre-indexed AST cache + 60 MCP tools + 13 curated agent skills + TOON-compressed output.
 > Beats CodeGraph on 6-repo head-to-head median (**−11 % cost vs CodeGraph's −4 %**), with a strict CLI superset.
+> Now with **BM25-ranked symbol search** across all 60 tools — results sorted by relevance, not file path.
 
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-16154%20passed-brightgreen.svg)](#-quality--testing)
+[![Tests](https://img.shields.io/badge/tests-18423%20passed-brightgreen.svg)](#-quality--testing)
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
@@ -68,12 +69,12 @@ TSA wins outright on **2 of 6 repos**, has a lower **median cost saving (−11 %
 
 | Capability | TSA tool | Status |
 |---|---|---|
-| Symbol search (FTS5) | `codegraph_symbol_search` | parity |
+| Symbol search (FTS5 + **BM25 ranked**) | `codegraph_symbol_search` | **ahead** — results sorted by relevance score, not file path |
 | Go-to-def / find-refs / call hierarchy in one call | `codegraph_navigate` | PRIMARY entry point |
 | Bulk-fetch N related symbols + relationship map | `codegraph_explore` | parity |
 | Function-level blast radius + risk score | `codegraph_impact` | parity + risk score |
 | Who-calls-X / what-X-calls | `codegraph_callers` / `codegraph_callees` | parity |
-| Index health at-a-glance | `codegraph_status` | parity |
+| Index health at-a-glance (+ edge count) | `codegraph_status` | **ahead** — reports `total_edges` for graph density signal |
 | Pre-built call graph cache | `codegraph_autoindex` / `codegraph_full_index` / `codegraph_incremental_sync` | parity |
 | Tests affected by a change (CLI) | `--affected FILE...` | parity |
 
@@ -81,6 +82,8 @@ TSA wins outright on **2 of 6 repos**, has a lower **median cost saving (−11 %
 
 | Capability | TSA tool | Note |
 |---|---|---|
+| **BM25-ranked symbol search** | all search tools | relevance_score on every result; sort(by='confidence') in DSL |
+| **Semantic search (133× faster)** | `codegraph_query semantic()` | BM25 pre-filter narrows 40k symbols to ~400 before cosine rerank |
 | **Project A–F health grading** | `check_project_health` | 6 dimensions, no competitor offers this |
 | **TOON output** | every tool, `output_format: "toon"` (default) | 50-70 % token saving |
 | **Verdict envelopes** | every tool | `SAFE/CAUTION/UNSAFE/INFO/WARN/ERROR/NOT_FOUND` |
@@ -107,7 +110,7 @@ CodeGraph has zero skills. We ship 13 under `.claude/skills/tsa-*/`:
 
 Each skill ships an `allowed-tools` subset + procedure recipe + decision-surface schema, so the agent doesn't have to triage 60 tools on every question.
 
-### 252 CLI flags
+### 265 CLI flags
 
 Strict superset of CodeGraph's 15-command CLI. Highlights:
 
@@ -275,7 +278,7 @@ Mostly nothing. The defaults are designed so you can hook it into your agent and
 
 | Metric | Value |
 |---|---|
-| Tests passed | 16,154 ✅ |
+| Tests passed | 18,423 ✅ |
 | Coverage | [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) |
 | Type safety | 100 % mypy |
 | Platforms | macOS · Linux · Windows |
