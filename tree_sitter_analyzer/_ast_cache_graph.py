@@ -15,7 +15,165 @@ that delegate to these functions.
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Callable
 from typing import Any
+
+# ---------------------------------------------------------------------------
+# Shared SQL fragment
+# ---------------------------------------------------------------------------
+
+_EDGE_SELECT = (
+    "SELECT caller_name, caller_file, caller_line, "
+    "callee_name, callee_full, file_path, callee_line, callee_resolved_file "
+    "FROM ast_call_edges "
+)
+
+# ---------------------------------------------------------------------------
+# Direction-specific row fetchers
+# ---------------------------------------------------------------------------
+
+
+def _fetch_caller_rows(
+    conn: sqlite3.Connection,
+    name: str,
+    file_: str | None,
+) -> list[Any]:
+    """Return rows where *name*/*file_* is the callee (i.e. rows with callers)."""
+    if file_:
+        rows = conn.execute(
+            _EDGE_SELECT
+            + "WHERE (callee_name = ? OR callee_full = ?) AND callee_resolved_file = ?",
+            (name, name, file_),
+        ).fetchall()
+        if not rows:
+            rows = conn.execute(
+                _EDGE_SELECT
+                + "WHERE (callee_name = ? OR callee_full = ?) AND file_path = ?",
+                (name, name, file_),
+            ).fetchall()
+        return rows
+    return conn.execute(
+        _EDGE_SELECT + "WHERE callee_name = ? OR callee_full = ?",
+        (name, name),
+    ).fetchall()
+
+
+def _fetch_callee_rows(
+    conn: sqlite3.Connection,
+    name: str,
+    file_: str | None,
+) -> list[Any]:
+    """Return rows where *name*/*file_* is the caller (i.e. rows with callees)."""
+    if file_:
+        return conn.execute(
+            _EDGE_SELECT + "WHERE caller_name = ? AND caller_file = ?",
+            (name, file_),
+        ).fetchall()
+    return conn.execute(
+        _EDGE_SELECT + "WHERE caller_name = ?",
+        (name,),
+    ).fetchall()
+
+
+# ---------------------------------------------------------------------------
+# Direction-specific key / entry / next-hop helpers
+# ---------------------------------------------------------------------------
+
+
+def _caller_key(row: Any) -> str:
+    return f"{row['caller_file']}:{row['caller_name']}:{row['caller_line']}"
+
+
+def _caller_entry(row: Any, depth: int) -> dict[str, Any]:
+    _cfile = row["callee_resolved_file"] or row["file_path"]
+    return {
+        "caller_name": row["caller_name"],
+        "caller_file": row["caller_file"],
+        "caller_line": row["caller_line"],
+        "callee_name": row["callee_name"],
+        "callee_full": row["callee_full"],
+        "callee_file": _cfile,
+        "callee_line": row["callee_line"],
+        "depth": depth + 1,
+    }
+
+
+def _caller_next_hop(row: Any) -> tuple[str, str | None]:
+    return row["caller_name"], row["caller_file"]
+
+
+def _callee_key(row: Any) -> str:
+    return f"{row['callee_name']}:{row['file_path']}:{row['callee_line']}"
+
+
+def _callee_entry(row: Any, depth: int) -> dict[str, Any]:
+    _cfile = row["callee_resolved_file"] or row["file_path"]
+    return {
+        "caller_name": row["caller_name"],
+        "caller_file": row["caller_file"],
+        "caller_line": row["caller_line"],
+        "callee_name": row["callee_name"],
+        "callee_full": row["callee_full"],
+        "callee_file": _cfile,
+        "callee_resolved_file": row["callee_resolved_file"] or "",
+        "callee_line": row["callee_line"],
+        "depth": depth + 1,
+    }
+
+
+def _callee_next_hop(row: Any) -> tuple[str, str | None]:
+    return row["callee_name"], None
+
+
+# ---------------------------------------------------------------------------
+# Generic BFS engine
+# ---------------------------------------------------------------------------
+
+
+def _bfs_traverse(
+    conn: sqlite3.Connection,
+    start_name: str,
+    start_file: str | None,
+    max_depth: int,
+    fetch_rows: Callable,
+    make_key: Callable,
+    make_entry: Callable,
+    next_hop: Callable,
+) -> list[dict[str, Any]]:
+    """BFS traversal over ``ast_call_edges`` in either direction.
+
+    Args:
+        conn: Live SQLite connection.
+        start_name: Seed symbol name.
+        start_file: Optional file path to narrow the seed lookup.
+        max_depth: Maximum hops (0 → empty, 1 → direct neighbours only).
+        fetch_rows: Callable(conn, name, file_) → list of row dicts.
+        make_key: Callable(row) → deduplication key string.
+        make_entry: Callable(row, depth) → result entry dict.
+        next_hop: Callable(row) → (name, file_) for the next BFS frontier.
+    """
+    visited: set[str] = set()
+    result: list[dict[str, Any]] = []
+    queue: list[tuple[str, str | None, int]] = [(start_name, start_file, 0)]
+    while queue:
+        current_name, current_file, depth = queue.pop(0)
+        if depth >= max_depth:
+            continue
+        for row in fetch_rows(conn, current_name, current_file):
+            key = make_key(row)
+            if key in visited:
+                continue
+            visited.add(key)
+            result.append(make_entry(row, depth))
+            if max_depth > 1:
+                nxt_name, nxt_file = next_hop(row)
+                queue.append((nxt_name, nxt_file, depth + 1))
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
 
 
 def bfs_callers(
@@ -37,61 +195,16 @@ def bfs_callers(
         caller_line, callee_name, callee_full, callee_file, callee_line,
         depth.  Deduplicated by (caller_file, caller_name, caller_line).
     """
-    visited: set[str] = set()
-    result: list[dict[str, Any]] = []
-    queue: list[tuple[str, str | None, int]] = [(callee_name, callee_file, 0)]
-    while queue:
-        current_name, current_file, depth = queue.pop(0)
-        if depth >= max_depth:
-            continue
-        if current_file:
-            rows = conn.execute(
-                "SELECT caller_name, caller_file, caller_line, "
-                "callee_name, callee_full, file_path, callee_line, "
-                "callee_resolved_file "
-                "FROM ast_call_edges "
-                "WHERE (callee_name = ? OR callee_full = ?) "
-                "AND callee_resolved_file = ?",
-                (current_name, current_name, current_file),
-            ).fetchall()
-            if not rows:
-                rows = conn.execute(
-                    "SELECT caller_name, caller_file, caller_line, "
-                    "callee_name, callee_full, file_path, callee_line, "
-                    "callee_resolved_file "
-                    "FROM ast_call_edges "
-                    "WHERE (callee_name = ? OR callee_full = ?) "
-                    "AND file_path = ?",
-                    (current_name, current_name, current_file),
-                ).fetchall()
-        else:
-            rows = conn.execute(
-                "SELECT caller_name, caller_file, caller_line, "
-                "callee_name, callee_full, file_path, callee_line, "
-                "callee_resolved_file "
-                "FROM ast_call_edges WHERE callee_name = ? OR callee_full = ?",
-                (current_name, current_name),
-            ).fetchall()
-        for row in rows:
-            key = f"{row['caller_file']}:{row['caller_name']}:{row['caller_line']}"
-            if key in visited:
-                continue
-            visited.add(key)
-            callee_file_val = row["callee_resolved_file"] or row["file_path"]
-            entry: dict[str, Any] = {
-                "caller_name": row["caller_name"],
-                "caller_file": row["caller_file"],
-                "caller_line": row["caller_line"],
-                "callee_name": row["callee_name"],
-                "callee_full": row["callee_full"],
-                "callee_file": callee_file_val,
-                "callee_line": row["callee_line"],
-                "depth": depth + 1,
-            }
-            result.append(entry)
-            if max_depth > 1:
-                queue.append((row["caller_name"], row["caller_file"], depth + 1))
-    return result
+    return _bfs_traverse(
+        conn,
+        callee_name,
+        callee_file,
+        max_depth,
+        _fetch_caller_rows,
+        _caller_key,
+        _caller_entry,
+        _caller_next_hop,
+    )
 
 
 def bfs_callees(
@@ -114,46 +227,13 @@ def bfs_callees(
         callee_resolved_file, callee_line, depth.  Deduplicated by
         (callee_name, file_path, callee_line).
     """
-    visited: set[str] = set()
-    result: list[dict[str, Any]] = []
-    queue: list[tuple[str, str | None, int]] = [(caller_name, caller_file, 0)]
-    while queue:
-        current_name, current_file, depth = queue.pop(0)
-        if depth >= max_depth:
-            continue
-        if current_file:
-            rows = conn.execute(
-                "SELECT caller_name, caller_file, caller_line, "
-                "callee_name, callee_full, file_path, callee_line, callee_resolved_file "
-                "FROM ast_call_edges "
-                "WHERE caller_name = ? AND caller_file = ?",
-                (current_name, current_file),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                "SELECT caller_name, caller_file, caller_line, "
-                "callee_name, callee_full, file_path, callee_line, callee_resolved_file "
-                "FROM ast_call_edges WHERE caller_name = ?",
-                (current_name,),
-            ).fetchall()
-        for row in rows:
-            key = f"{row['callee_name']}:{row['file_path']}:{row['callee_line']}"
-            if key in visited:
-                continue
-            visited.add(key)
-            callee_file_val = row["callee_resolved_file"] or row["file_path"]
-            entry: dict[str, Any] = {
-                "caller_name": row["caller_name"],
-                "caller_file": row["caller_file"],
-                "caller_line": row["caller_line"],
-                "callee_name": row["callee_name"],
-                "callee_full": row["callee_full"],
-                "callee_file": callee_file_val,
-                "callee_resolved_file": row["callee_resolved_file"] or "",
-                "callee_line": row["callee_line"],
-                "depth": depth + 1,
-            }
-            result.append(entry)
-            if max_depth > 1:
-                queue.append((row["callee_name"], None, depth + 1))
-    return result
+    return _bfs_traverse(
+        conn,
+        caller_name,
+        caller_file,
+        max_depth,
+        _fetch_callee_rows,
+        _callee_key,
+        _callee_entry,
+        _callee_next_hop,
+    )
