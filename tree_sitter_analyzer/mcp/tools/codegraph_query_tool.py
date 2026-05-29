@@ -107,7 +107,9 @@ class CodeGraphQueryTool(BaseMCPTool):
                 "get an answer pack without 40 separate CLI calls. Example: "
                 "search(['Router', 'Handler']).has(callees=True, name='authorize')"
                 ".explore().include(callers=True, "
-                "complexity=True).uml().sort(by='fan_in', desc=True).answer()."
+                "complexity=True).uml().sort(by='fan_in', desc=True).answer(). "
+                "sort() accepts: name, file, line, kind, fan_in, fan_out, confidence. "
+                "confidence reflects BM25 relevance (use desc=True for most-relevant first)."
             ),
             "inputSchema": self.get_tool_schema(),
             "annotations": {
