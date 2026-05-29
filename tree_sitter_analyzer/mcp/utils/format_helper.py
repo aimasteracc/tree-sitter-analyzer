@@ -200,8 +200,8 @@ def apply_toon_format_to_response(
     # also see the default. Only inject when success is True; failure
     # responses are handled by the explicit ERROR branch in the validator.
     is_dict = isinstance(result, dict)
-    is_success = result.get("success") is True
-    no_verdict = "verdict" not in result
+    is_success = is_dict and result.get("success") is True
+    no_verdict = is_dict and "verdict" not in result
     if is_dict and is_success and no_verdict:
         result = {**result, "verdict": "INFO"}
 

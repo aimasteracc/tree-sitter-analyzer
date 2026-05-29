@@ -28,31 +28,156 @@ from .read_partial_helpers import (
 
 logger = setup_logger(__name__)
 
+# ── Module-level helpers (extracted to keep class-method AST depth ≤ 11) ─────
+
+_TOOL_DESCRIPTION: str = (
+    "Extract code by exact line (and optional column) ranges. "
+    "Supports a ``requests`` array so you can pull many "
+    "non-contiguous slices — even from different files — in "
+    "ONE call rather than one Read per slice. Returns the raw "
+    "text plus line metadata; pair with ``analyze_code_structure`` "
+    "or ``query_code`` first to discover the line numbers you "
+    "want, then read just those ranges instead of the whole "
+    "file.\n\n"
+    "WHEN TO USE:\n"
+    "- Reading a specific function/class body by known line "
+    "range (e.g. lines 120-180)\n"
+    "- Batch-extracting several functions across one or many "
+    "files in a single MCP round-trip\n"
+    "- Loading targeted context for an agent without paying "
+    "the token cost of an entire file\n"
+    "- Following up an outline / query result (jump straight "
+    "to the lines that matter)\n"
+    "\n"
+    "WHEN NOT TO USE:\n"
+    "- Reading an entire small file end-to-end — the built-in "
+    "Read tool is simpler\n"
+    "- Searching for a pattern when you don't know the line "
+    "numbers — use ``search_content`` / ``find_and_grep``\n"
+    "- Getting a structural overview (classes, methods, "
+    "imports) — use ``get_code_outline`` /"
+    " ``analyze_code_structure``"
+)
+
+
+def _check_col_value(col_value: Any, col_field: str) -> None:
+    """Raise ValueError if *col_value* is not a valid column index."""
+    if not isinstance(col_value, int):
+        msg = f"{col_field} must be an integer"
+        raise ValueError(msg)
+    if col_value < 0:
+        msg = f"{col_field} must be >= 0"
+        raise ValueError(msg)
+
+
+def _exc_dict(
+    exc: Exception, project_root: str | None, file_path: str
+) -> dict[str, Any]:
+    """Build a canonical error envelope for an unexpected exception."""
+    return {
+        "success": False,
+        "error": safe_error_message(exc, project_root),
+        "file_path": file_path,
+    }
+
+
+def _count_lines(text: str) -> int:
+    """Count lines in *text*; returns 0 for falsy input."""
+    return len(text.splitlines()) if text else 0
+
+
+def _range_dict(
+    start_line: int,
+    end_line: int | None,
+    start_column: int | None,
+    end_column: int | None,
+) -> dict[str, Any]:
+    """Build the nested ``range`` sub-dict for the response envelope."""
+    return {
+        "start_line": start_line,
+        "end_line": end_line,
+        "start_column": start_column,
+        "end_column": end_column,
+    }
+
+
+def _set_clamped_to(result: dict[str, Any], clamped_to: list | None) -> None:
+    """Write ``clamped_to`` into *result* only when it is not None."""
+    if clamped_to is not None:
+        result["clamped_to"] = clamped_to
+
+
+def _check_requests_exclusivity(
+    arguments: dict[str, Any], single_keys: list[str]
+) -> None:
+    """Raise if batch ``requests`` and single-read keys are mixed."""
+    if any(k in arguments for k in single_keys):
+        raise ValueError(
+            "requests is mutually exclusive with "
+            "file_path/start_line/end_line/start_column/end_column"
+        )
+    if not isinstance(arguments["requests"], list):
+        raise ValueError("requests must be a list")
+
+
+def _log_read_partial_error(file_path: str, exc: Exception) -> None:
+    """Emit an error-level log for an unexpected read failure."""
+    logger.error("Error reading partial content from %s: %s", file_path, exc)
+
+
+def _validate_end_line(arguments: dict[str, Any]) -> None:
+    """Validate ``end_line`` when present: type + range check."""
+    if "end_line" not in arguments:
+        return
+    _validate_int_field(arguments, "end_line", min_val=1)
+    end_val = arguments["end_line"]
+    start_default = arguments.get("start_line", 0)
+    if end_val < start_default:
+        raise ValueError("end_line must be >= start_line")
+
+
+def _validate_format(arguments: dict[str, Any]) -> None:
+    """Validate the ``format`` field when present."""
+    if "format" not in arguments:
+        return
+    val = arguments["format"]
+    if not isinstance(val, str):
+        raise ValueError("format must be a string")
+    if val not in ("text", "json", "raw"):
+        raise ValueError("format must be 'text', 'json', or 'raw'")
+
+
+def _validate_suppress_output(arguments: dict[str, Any]) -> None:
+    """Validate ``suppress_output`` is a bool when present."""
+    if "suppress_output" not in arguments:
+        return
+    if not isinstance(arguments["suppress_output"], bool):
+        raise ValueError("suppress_output must be a boolean")
+
 
 def _validate_column_fields(arguments: dict[str, Any]) -> None:
     """Validate start_column and end_column fields."""
     for col_field in ["start_column", "end_column"]:
         if col_field in arguments:
-            col_value = arguments[col_field]
-            if not isinstance(col_value, int):
-                raise ValueError(f"{col_field} must be an integer")
-            if col_value < 0:
-                raise ValueError(f"{col_field} must be >= 0")
+            _check_col_value(arguments[col_field], col_field)
 
 
 def _require_fields(arguments: dict[str, Any], fields: list[str]) -> None:
     for field in fields:
         if field not in arguments:
-            raise ValueError(f"Required field '{field}' is missing")
+            msg = f"Required field '{field}' is missing"
+            raise ValueError(msg)
 
 
 def _validate_string_field(arguments: dict[str, Any], field: str) -> None:
     val = arguments.get(field)
     if val is not None:
         if not isinstance(val, str):
-            raise ValueError(f"{field} must be a string")
+            msg = f"{field} must be a string"
+            raise ValueError(msg)
         if not val.strip():
-            raise ValueError(f"{field} cannot be empty")
+            msg = f"{field} cannot be empty"
+            raise ValueError(msg)
 
 
 def _validate_int_field(
@@ -61,9 +186,11 @@ def _validate_int_field(
     val = arguments.get(field)
     if val is not None:
         if not isinstance(val, int):
-            raise ValueError(f"{field} must be an integer")
+            msg = f"{field} must be an integer"
+            raise ValueError(msg)
         if val < min_val:
-            raise ValueError(f"{field} must be >= {min_val}")
+            msg = f"{field} must be >= {min_val}"
+            raise ValueError(msg)
 
 
 def _read_failure_envelope(file_path: str) -> dict[str, Any]:
@@ -93,17 +220,21 @@ def _compute_range_flags(
     valid range. ``clamped_to=[start_line, file_lines]`` is set only when
     ``partial_range`` is true (caller honours the file boundary).
     """
+    has_file_lines = file_lines is not None
+    has_end_line = end_line is not None
+    file_lines_int: int = file_lines if file_lines is not None else 0
+    end_line_int: int = end_line if end_line is not None else 0
     out_of_range = bool(
-        content == "" and file_lines is not None and start_line > file_lines
+        content == "" and has_file_lines and start_line > file_lines_int
     )
     partial_range = bool(
-        file_lines is not None
-        and end_line is not None
-        and start_line <= file_lines
-        and end_line > file_lines
+        has_file_lines
+        and has_end_line
+        and start_line <= file_lines_int
+        and end_line_int > file_lines_int
     )
     clamped_to: list[int] | None = (
-        [start_line, file_lines] if partial_range and file_lines is not None else None
+        [start_line, file_lines_int] if partial_range and has_file_lines else None
     )
     return out_of_range, partial_range, clamped_to
 
@@ -153,10 +284,10 @@ class ReadPartialTool(BaseMCPTool):
         if err:
             return err
 
+        proj_root = self.project_root
         resolved_path = self.resolve_and_validate_file_path(file_path)
-        logger.info(
-            f"Reading partial content from {file_path}: lines {start_line}-{end_line or 'end'}"
-        )
+        log_msg = f"Reading partial content from {file_path}: lines {start_line}-{end_line or 'end'}"
+        logger.info(log_msg)
 
         try:
             # Delegate to extracted method to reduce nesting depth
@@ -173,13 +304,8 @@ class ReadPartialTool(BaseMCPTool):
                 suppress_output,
             )
         except Exception as e:
-            # Return error response for any unexpected failures
-            logger.error(f"Error reading partial content from {file_path}: {e}")
-            return {
-                "success": False,
-                "error": safe_error_message(e, self.project_root),
-                "file_path": file_path,
-            }
+            _log_read_partial_error(file_path, e)
+            return _exc_dict(e, proj_root, file_path)
 
     # Core read + format pipeline extracted to reduce nesting depth
     def _read_and_format(
@@ -212,15 +338,19 @@ class ReadPartialTool(BaseMCPTool):
         # K8: compute lines_extracted from the ACTUAL content. The old
         # ``end_line - start_line + 1`` formula lied when the requested
         # range was past EOF (content empty but lines_extracted=N).
-        lines_extracted = len(content.splitlines()) if content else 0
+        lines_extracted = _count_lines(content)
         file_lines = count_file_lines(resolved_path)
         out_of_range, partial_range, clamped_to = _compute_range_flags(
             content, file_lines, start_line, end_line
         )
 
+        n_chars = len(content)
         logger.info(
-            f"Read {len(content)} characters from {file_path} "
-            f"(out_of_range={out_of_range}, partial_range={partial_range})"
+            "Read %s characters from %s (out_of_range=%s, partial_range=%s)",
+            n_chars,
+            file_path,
+            out_of_range,
+            partial_range,
         )
 
         result = self._build_result(
@@ -262,15 +392,12 @@ class ReadPartialTool(BaseMCPTool):
         end_column: int | None,
     ) -> dict[str, Any] | None:
         """Validate and resolve file path and range parameters."""
+        proj_root = self.project_root
         # First check: is the file path valid and resolvable?
         try:
             self.resolve_and_validate_file_path(file_path)
         except ValueError as e:
-            return {
-                "success": False,
-                "error": safe_error_message(e, self.project_root),
-                "file_path": file_path,
-            }
+            return _exc_dict(e, proj_root, file_path)
 
         # Resolve path and check file exists on disk
         resolved = self.resolve_and_validate_file_path(file_path)
@@ -327,18 +454,13 @@ class ReadPartialTool(BaseMCPTool):
         file_lines: int | None = None,
         out_of_range: bool = False,
         partial_range: bool = False,
-        clamped_to: list[int] | None = None,
+        clamped_to: list | None = None,
     ) -> dict[str, Any]:
         """Build the result dict with range metadata and optional formatted content."""
         result: dict[str, Any] = {
             "success": True,
             "file_path": file_path,
-            "range": {
-                "start_line": start_line,
-                "end_line": end_line,
-                "start_column": start_column,
-                "end_column": end_column,
-            },
+            "range": _range_dict(start_line, end_line, start_column, end_column),
             "content_length": len(content),
             "lines_extracted": lines_extracted,
             # Top-level ``content`` exposes the raw extracted slice. The
@@ -353,8 +475,7 @@ class ReadPartialTool(BaseMCPTool):
             result["out_of_range"] = True
         if partial_range:
             result["partial_range"] = True
-            if clamped_to is not None:
-                result["clamped_to"] = clamped_to
+            _set_clamped_to(result, clamped_to)
         result["agent_summary"] = build_agent_summary_for_result(
             result, content_format, output_file, suppress_output
         )
@@ -506,34 +627,18 @@ class ReadPartialTool(BaseMCPTool):
                 "start_column",
                 "end_column",
             ]
-            if any(k in arguments for k in single_keys):
-                raise ValueError(
-                    "requests is mutually exclusive with file_path/start_line/end_line/start_column/end_column"
-                )
-            if not isinstance(arguments["requests"], list):
-                raise ValueError("requests must be a list")
+            _check_requests_exclusivity(arguments, single_keys)
             return True
 
         _require_fields(arguments, ["file_path", "start_line"])
         _validate_string_field(arguments, "file_path")
         _validate_int_field(arguments, "start_line", min_val=1)
-        if "end_line" in arguments:
-            _validate_int_field(arguments, "end_line", min_val=1)
-            if arguments["end_line"] < arguments.get("start_line", 0):
-                raise ValueError("end_line must be >= start_line")
+        _validate_end_line(arguments)
         _validate_column_fields(arguments)
-        if "format" in arguments:
-            val = arguments["format"]
-            if not isinstance(val, str):
-                raise ValueError("format must be a string")
-            if val not in ("text", "json", "raw"):
-                raise ValueError("format must be 'text', 'json', or 'raw'")
+        _validate_format(arguments)
         if "output_file" in arguments:
             _validate_string_field(arguments, "output_file")
-        if "suppress_output" in arguments and not isinstance(
-            arguments["suppress_output"], bool
-        ):
-            raise ValueError("suppress_output must be a boolean")
+        _validate_suppress_output(arguments)
         return True
 
     # MCP tool metadata - name, description, schema
@@ -542,34 +647,7 @@ class ReadPartialTool(BaseMCPTool):
         """Return the MCP tool name, description, and input schema."""
         return {
             "name": "extract_code_section",
-            "description": (
-                "Extract code by exact line (and optional column) ranges. "
-                "Supports a ``requests`` array so you can pull many "
-                "non-contiguous slices — even from different files — in "
-                "ONE call rather than one Read per slice. Returns the raw "
-                "text plus line metadata; pair with ``analyze_code_structure`` "
-                "or ``query_code`` first to discover the line numbers you "
-                "want, then read just those ranges instead of the whole "
-                "file.\n\n"
-                "WHEN TO USE:\n"
-                "- Reading a specific function/class body by known line "
-                "range (e.g. lines 120-180)\n"
-                "- Batch-extracting several functions across one or many "
-                "files in a single MCP round-trip\n"
-                "- Loading targeted context for an agent without paying "
-                "the token cost of an entire file\n"
-                "- Following up an outline / query result (jump straight "
-                "to the lines that matter)\n"
-                "\n"
-                "WHEN NOT TO USE:\n"
-                "- Reading an entire small file end-to-end — the built-in "
-                "Read tool is simpler\n"
-                "- Searching for a pattern when you don't know the line "
-                "numbers — use ``search_content`` / ``find_and_grep``\n"
-                "- Getting a structural overview (classes, methods, "
-                "imports) — use ``get_code_outline`` /"
-                " ``analyze_code_structure``"
-            ),
+            "description": _TOOL_DESCRIPTION,
             "inputSchema": self.get_tool_schema(),
             "annotations": {
                 "readOnlyHint": True,
