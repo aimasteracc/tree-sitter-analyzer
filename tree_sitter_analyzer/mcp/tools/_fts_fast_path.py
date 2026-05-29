@@ -95,13 +95,14 @@ def _build_symbol_groups(fts_results: list) -> list[dict]:
         fp = r["file"]
         if fp not in symbols:
             symbols[fp] = []
-        symbols[fp].append(
-            {
-                "name": r.get("name", ""),
-                "kind": r.get("kind", ""),
-                "line": r.get("line", 0),
-            }
-        )
+        entry: dict = {
+            "name": r.get("name", ""),
+            "kind": r.get("kind", ""),
+            "line": r.get("line", 0),
+        }
+        if "relevance_score" in r:
+            entry["relevance_score"] = round(float(r["relevance_score"]), 3)
+        symbols[fp].append(entry)
     return [
         {"file": fp, "count": len(syms), "symbols": syms}
         for fp, syms in sorted(symbols.items())
