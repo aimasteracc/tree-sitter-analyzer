@@ -165,6 +165,70 @@ def load_frontmatter(project_root: str | Path) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
+def _coerce_globs(raw: Any, rule_id: str) -> tuple[str, ...] | None:
+    """Return a non-empty tuple of glob strings, or ``None`` on validation error."""
+    if isinstance(raw, str):
+        raw = [raw]
+    if not isinstance(raw, list) or not raw:
+        logger.warning(
+            "intentional_design[%s] 'files' must be a non-empty list; skipping",
+            rule_id,
+        )
+        return None
+    return tuple(str(g) for g in raw)
+
+
+def _compile_patterns(
+    globs: tuple[str, ...], rule_id: str
+) -> tuple[pathspec.PathSpec, ...] | None:
+    """Compile glob strings to PathSpec objects, or ``None`` on error."""
+    try:
+        return tuple(pathspec.PathSpec.from_lines("gitwildmatch", [g]) for g in globs)
+    except (TypeError, ValueError) as exc:
+        logger.warning(
+            "intentional_design[%s] glob compilation failed: %s; skipping",
+            rule_id,
+            exc,
+        )
+        return None
+
+
+def _coerce_symbols(raw: Any, rule_id: str) -> tuple[str, ...]:
+    """Coerce raw ``symbols`` value to a tuple of strings."""
+    if isinstance(raw, str):
+        return (raw,)
+    try:
+        return tuple(str(s) for s in raw)
+    except TypeError:
+        logger.warning(
+            "intentional_design[%s] 'symbols' must be a list of strings; treating as empty",
+            rule_id,
+        )
+        return ()
+
+
+def _build_design_rule(
+    entry: dict[str, Any], rule_id: str
+) -> IntentionalDesignRule | None:
+    """Build one rule from a validated entry dict, or ``None`` on error."""
+    globs = _coerce_globs(entry["files"], rule_id)
+    if globs is None:
+        return None
+    patterns = _compile_patterns(globs, rule_id)
+    if patterns is None:
+        return None
+    symbols = _coerce_symbols(entry.get("symbols") or (), rule_id)
+    action = _normalise_action(entry.get("action_when_touched"), rule_id)
+    return IntentionalDesignRule(
+        id=rule_id,
+        raw_globs=globs,
+        file_patterns=patterns,
+        symbols=symbols,
+        action=action,
+        note=str(entry["note"]),
+    )
+
+
 def parse_intentional_design(data: dict[str, Any]) -> list[IntentionalDesignRule]:
     """Compile the ``intentional_design`` section into typed records.
 
@@ -173,14 +237,12 @@ def parse_intentional_design(data: dict[str, Any]) -> list[IntentionalDesignRule
     ``action_when_touched`` (default ``INFO``; invalid values coerced to
     ``INFO`` with a warning per PRD §0 F5).
     """
-
     raw_entries = data.get("intentional_design")
     if not raw_entries:
         return []
     if not isinstance(raw_entries, list):
         logger.warning(
-            "intentional_design must be a list, got %s",
-            type(raw_entries).__name__,
+            "intentional_design must be a list, got %s", type(raw_entries).__name__
         )
         return []
 
@@ -189,7 +251,6 @@ def parse_intentional_design(data: dict[str, Any]) -> list[IntentionalDesignRule
         if not isinstance(entry, dict):
             logger.warning("intentional_design[%d] is not a mapping; skipping", index)
             continue
-
         missing = [k for k in ("id", "files", "note") if entry.get(k) in (None, "")]
         if missing:
             logger.warning(
@@ -198,60 +259,9 @@ def parse_intentional_design(data: dict[str, Any]) -> list[IntentionalDesignRule
                 missing,
             )
             continue
-
-        rule_id = str(entry["id"])
-        note = str(entry["note"])
-
-        raw_globs = entry["files"]
-        if isinstance(raw_globs, str):
-            raw_globs = [raw_globs]
-        if not isinstance(raw_globs, list) or not raw_globs:
-            logger.warning(
-                "intentional_design[%s] 'files' must be a non-empty list; skipping",
-                rule_id,
-            )
-            continue
-
-        try:
-            globs = tuple(str(g) for g in raw_globs)
-            patterns = tuple(
-                pathspec.PathSpec.from_lines("gitwildmatch", [g]) for g in globs
-            )
-        except (TypeError, ValueError) as exc:
-            # pathspec raises ValueError on truly broken patterns; log and skip.
-            logger.warning(
-                "intentional_design[%s] glob compilation failed: %s; skipping",
-                rule_id,
-                exc,
-            )
-            continue
-
-        raw_symbols = entry.get("symbols") or ()
-        if isinstance(raw_symbols, str):
-            raw_symbols = (raw_symbols,)
-        else:
-            try:
-                raw_symbols = tuple(str(s) for s in raw_symbols)
-            except TypeError:
-                logger.warning(
-                    "intentional_design[%s] 'symbols' must be a list of strings; treating as empty",
-                    rule_id,
-                )
-                raw_symbols = ()
-
-        action = _normalise_action(entry.get("action_when_touched"), rule_id)
-
-        rules.append(
-            IntentionalDesignRule(
-                id=rule_id,
-                raw_globs=globs,
-                file_patterns=patterns,
-                symbols=raw_symbols,
-                action=action,
-                note=note,
-            )
-        )
-
+        rule = _build_design_rule(entry, str(entry["id"]))
+        if rule is not None:
+            rules.append(rule)
     return rules
 
 
