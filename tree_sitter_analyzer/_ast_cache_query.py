@@ -148,9 +148,12 @@ def fts_search_ranked(
     fts_query = (
         " OR ".join(f'"{term}"' for term in query.split() if term) or f'"{query}"'
     )
+    # Column weights: name (10x) >> file_path (0.5x), kind (0.5x), language (0.1x).
+    # Heavily favours exact function/class name matches over imports that happen
+    # to contain the token in their import-path or file-path text.
     join_sql = (
         "SELECT r.name, r.kind, r.file_path AS file, r.language, r.line, r.end_line, "
-        "bm25(ast_symbols_fts) AS bm25_raw "
+        "bm25(ast_symbols_fts, 10.0, 0.5, 0.5, 0.1) AS bm25_raw "
         "FROM ast_symbols_fts f JOIN ast_symbol_rows r ON f.rowid = r.id "
         "WHERE ast_symbols_fts MATCH ? {lang_clause} ORDER BY bm25_raw LIMIT ?"
     )
