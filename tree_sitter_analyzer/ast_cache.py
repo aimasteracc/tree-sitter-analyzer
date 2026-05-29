@@ -160,7 +160,8 @@ class ASTCache:
         for version, description, expectations in _EXPECTED_SCHEMA_VERSIONS:
             payload_ok = _check_schema_expectations(conn, expectations, missing)
             try:
-                row = conn.execute(_SQL_GET_SCHEMA_VERSION, (version,)).fetchone()
+                _cur = conn.execute(_SQL_GET_SCHEMA_VERSION, (version,))
+                row = _cur.fetchone()
             except sqlite3.OperationalError:
                 row = None
             if row is None and payload_ok:
@@ -170,11 +171,9 @@ class ASTCache:
                 f"Remove the cache DB at {self.db_path!r} and re-index "
                 "(e.g. ``rm -rf .ast-cache && uv run python -m tree_sitter_analyzer --index``)."
             )
+            _missing_str = "; ".join(missing)
             raise SchemaIntegrityError(
-                "AST cache schema is incomplete. Missing: "
-                + "; ".join(missing)
-                + ". "
-                + remediation
+                f"AST cache schema is incomplete. Missing: {_missing_str}. {remediation}"
             )
 
     def index_file(self, file_path: str, language: str | None = None) -> dict[str, Any]:
@@ -363,7 +362,8 @@ class ASTCache:
             except ValueError:
                 pass
         if workers is None:
-            workers = 0 if len(candidates) < 64 else max(2, (os.cpu_count() or 4) - 1)
+            _cpu = os.cpu_count() or 4
+            workers = 0 if len(candidates) < 64 else max(2, _cpu - 1)
         return workers
 
     def _post_index_backfill(self, stats: dict[str, Any]) -> None:
@@ -460,14 +460,12 @@ class ASTCache:
     def get_call_edges(self) -> list[dict[str, Any]]:
         """Return all stored call edges from the cache."""
         try:
-            rows = (
-                self._get_conn()
-                .execute(
-                    "SELECT caller_name, caller_file, caller_line, "
-                    "callee_name, callee_full, callee_line, file_path, language FROM ast_call_edges"
-                )
-                .fetchall()
+            _conn = self._get_conn()
+            _cur = _conn.execute(
+                "SELECT caller_name, caller_file, caller_line, "
+                "callee_name, callee_full, callee_line, file_path, language FROM ast_call_edges"
             )
+            rows = _cur.fetchall()
         except sqlite3.OperationalError:
             return []
         return [dict(row) for row in rows]
