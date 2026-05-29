@@ -172,7 +172,15 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
         limit: int,
     ) -> list[dict[str, Any]]:
         if cache.fts5_available:
-            fts_results = cache.fts_search(query, language=language, limit=limit * 3)
+            # G3: use ranked search for queries >= 2 chars (BM25 ordering).
+            if len(query) >= 2:
+                fts_results = cache.fts_search_ranked(
+                    query, language=language, limit=limit * 3
+                )
+            else:
+                fts_results = cache.fts_search(
+                    query, language=language, limit=limit * 3
+                )
             if fts_results:
                 return self._fts_to_results(fts_results, kind, limit)
         return self._linear_search(cache, query, language, kind, limit)
@@ -294,16 +302,17 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
     ) -> list[dict[str, Any]]:
         results: list[dict[str, Any]] = []
         for r in fts_results:
-            results.append(
-                {
-                    "name": r.get("name", ""),
-                    "kind": r.get("kind", ""),
-                    "file": r.get("file", ""),
-                    "language": r.get("language", ""),
-                    "line": r.get("line", 0),
-                    "end_line": r.get("end_line", 0),
-                }
-            )
+            entry: dict[str, Any] = {
+                "name": r.get("name", ""),
+                "kind": r.get("kind", ""),
+                "file": r.get("file", ""),
+                "language": r.get("language", ""),
+                "line": r.get("line", 0),
+                "end_line": r.get("end_line", 0),
+            }
+            if "relevance_score" in r:
+                entry["relevance_score"] = r["relevance_score"]
+            results.append(entry)
             if len(results) >= limit:
                 break
         return self._apply_kind_filter(results, kind)
