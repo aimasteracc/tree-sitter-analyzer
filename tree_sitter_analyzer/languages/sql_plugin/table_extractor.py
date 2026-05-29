@@ -81,6 +81,39 @@ def _first_valid_identifier(
     return None
 
 
+def _process_column_node(
+    node: Any,
+    columns: list[SQLColumn],
+    get_node_text: Callable[..., str],
+) -> None:
+    """Process one tree-sitter ``column_definition`` node into *columns*."""
+    column_name: str | None = None
+    data_type: str | None = None
+    nullable = True
+    is_primary_key = False
+
+    for child in node.children:
+        child_upper = get_node_text(child).upper()
+        if child.type == "identifier" and column_name is None:
+            column_name = get_node_text(child).strip()
+        elif child.type in ("data_type", "type_name"):
+            data_type = get_node_text(child).strip()
+        elif child.type == "not_null" or "NOT NULL" in child_upper:
+            nullable = False
+        elif child.type == "primary_key" or "PRIMARY KEY" in child_upper:
+            is_primary_key = True
+
+    if column_name and data_type and not any(c.name == column_name for c in columns):
+        columns.append(
+            SQLColumn(
+                name=column_name,
+                data_type=data_type,
+                nullable=nullable,
+                is_primary_key=is_primary_key,
+            )
+        )
+
+
 def extract_table_columns(
     table_node: "tree_sitter.Node",
     columns: list[SQLColumn],
@@ -94,16 +127,12 @@ def extract_table_columns(
     # Parse the table definition using regex as fallback
     table_content_match = re.search(r"\(\s*(.*?)\s*\)(?:\s*;)?$", table_text, re.DOTALL)
     if table_content_match:
-        table_content = table_content_match.group(1)
-        column_definitions = _split_column_definitions(table_content)
-
-        for col_def in column_definitions:
+        for col_def in _split_column_definitions(table_content_match.group(1)):
             col_def = col_def.strip()
             if not col_def or col_def.upper().startswith(
                 ("PRIMARY KEY", "FOREIGN KEY", "UNIQUE", "INDEX", "KEY")
             ):
                 continue
-
             column = _parse_column_definition(col_def)
             if column:
                 columns.append(column)
@@ -111,39 +140,7 @@ def extract_table_columns(
     # Also try tree-sitter approach as backup
     for node in traverse_nodes(table_node):
         if node.type == "column_definition":
-            column_name = None
-            data_type = None
-            nullable = True
-            is_primary_key = False
-
-            for child in node.children:
-                if child.type == "identifier" and column_name is None:
-                    column_name = get_node_text(child).strip()
-                elif child.type in ["data_type", "type_name"]:
-                    data_type = get_node_text(child).strip()
-                elif (
-                    child.type == "not_null"
-                    or "NOT NULL" in get_node_text(child).upper()
-                ):
-                    nullable = False
-                elif (
-                    child.type == "primary_key"
-                    or "PRIMARY KEY" in get_node_text(child).upper()
-                ):
-                    is_primary_key = True
-
-            if column_name and data_type:
-                existing_column = next(
-                    (c for c in columns if c.name == column_name), None
-                )
-                if not existing_column:
-                    column = SQLColumn(
-                        name=column_name,
-                        data_type=data_type,
-                        nullable=nullable,
-                        is_primary_key=is_primary_key,
-                    )
-                    columns.append(column)
+            _process_column_node(node, columns, get_node_text)
 
 
 def _split_column_definitions(content: str) -> list[str]:
