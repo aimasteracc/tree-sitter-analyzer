@@ -135,6 +135,19 @@ def _extract_import_infos(elements: list[Any]) -> list[dict[str, Any]]:
 _COMPLEXITY_HOTSPOT_THRESHOLD = 8
 
 
+def _make_hotspot_entry(
+    name: str, complexity: Any, start_line: int, end_line: int
+) -> dict[str, Any]:
+    """Build a complexity hotspot dict for a method element."""
+    return {
+        "type": "method",
+        "name": name,
+        "complexity": complexity,
+        "start_line": start_line,
+        "end_line": end_line,
+    }
+
+
 # Universal extraction for non-Java/Python languages using tree-sitter
 def extract_structural_overview_universal(
     analysis_result: Any,
@@ -154,64 +167,50 @@ def extract_structural_overview_universal(
     if not analysis_result or not hasattr(analysis_result, "elements"):
         return overview
 
+    # Pre-bind lists to avoid deep subscript chains inside the loop
+    _classes = overview["classes"]
+    _methods = overview["methods"]
+    _fields = overview["fields"]
+    _imports = overview["imports"]
+    _hotspots = overview["complexity_hotspots"]
+
     # Classify each element by its type and extract metadata
     for e in analysis_result.elements:
         etype = getattr(e, "element_type", "")
         name = getattr(e, "name", "unnamed")
         start_line = getattr(e, "start_line", 0)
         end_line = getattr(e, "end_line", 0)
+        _line_span = end_line - start_line + 1
+        _complexity_score = getattr(e, "complexity_score", 0)
 
         if etype == "class":
-            # Build class entry with line span
-            overview["classes"].append(
+            _classes.append(
                 {
                     "name": name,
                     "type": etype,
                     "start_line": start_line,
                     "end_line": end_line,
-                    "line_span": end_line - start_line + 1,
+                    "line_span": _line_span,
                 }
             )
         elif etype in ("function", "method"):
-            # Build method entry with complexity tracking
             method_info = {
                 "name": name,
                 "start_line": start_line,
                 "end_line": end_line,
-                "line_span": end_line - start_line + 1,
-                "complexity": getattr(e, "complexity_score", 0),
+                "line_span": _line_span,
+                "complexity": _complexity_score,
             }
-            overview["methods"].append(method_info)
-            complexity = getattr(e, "complexity_score", 0)
-            # Flag methods with high complexity as hotspots
-            if complexity and complexity >= 8:
-                overview["complexity_hotspots"].append(
-                    {
-                        "type": "method",
-                        "name": name,
-                        "complexity": complexity,
-                        "start_line": start_line,
-                        "end_line": end_line,
-                    }
-                )
+            _methods.append(method_info)
+            _entry = _make_hotspot_entry(name, _complexity_score, start_line, end_line)
+            if _complexity_score and _complexity_score >= _COMPLEXITY_HOTSPOT_THRESHOLD:
+                _hotspots.append(_entry)
         elif etype == "variable":
-            # Build field entry with position info
-            overview["fields"].append(
-                {
-                    "name": name,
-                    "start_line": start_line,
-                    "end_line": end_line,
-                }
+            _fields.append(
+                {"name": name, "start_line": start_line, "end_line": end_line}
             )
         elif etype == "import":
-            # Build import entry (simplified for non-Java files)
-            overview["imports"].append(
-                # Extract structural overview for non-Python files
-                {
-                    "name": name,
-                    "line": start_line,
-                }
-            )
+            _imports.append({"name": name, "line": start_line})
 
     return overview
 
