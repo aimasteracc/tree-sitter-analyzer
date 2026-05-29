@@ -13,6 +13,30 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+_PM_PATCH = "tree_sitter_analyzer.plugins.manager.PluginManager"
+_PARSER_PATCH = "tree_sitter_analyzer.language_loader.loader.create_parser_safely"
+
+
+def _make_plugin_mock(start_line: int, end_line: int) -> MagicMock:
+    """Return a mock PluginManager with one element covering start_line..end_line."""
+    element = MagicMock()
+    element.start_line = start_line
+    element.end_line = end_line
+    result = MagicMock()
+    result.elements = [element]
+    plugin = AsyncMock()
+    plugin.analyze_file.return_value = result
+    manager = MagicMock()
+    manager.get_plugin.return_value = plugin
+    return manager
+
+
+def _make_parser_mock(tree: MagicMock) -> MagicMock:
+    """Return a mock parser that returns *tree* from parse()."""
+    parser = MagicMock()
+    parser.parse.return_value = tree
+    return parser
+
 
 class TestWrapperNodesFalsePositivesC:
     """
@@ -69,32 +93,12 @@ class TestWrapperNodesFalsePositivesC:
         tree = MagicMock()
         tree.root_node = root
 
-        mock_parser = MagicMock()
-        mock_parser.parse.return_value = tree
-
-        # Extracted wrapper only
-        mock_element = MagicMock()
-        mock_element.start_line = 1
-        mock_element.end_line = 11
-
-        mock_result = MagicMock()
-        mock_result.elements = [mock_element]
-
-        mock_plugin = AsyncMock()
-        mock_plugin.analyze_file.return_value = mock_result
-
-        mock_plugin_manager = MagicMock()
-        mock_plugin_manager.get_plugin.return_value = mock_plugin
+        mock_parser = _make_parser_mock(tree)
+        mock_plugin_manager = _make_plugin_mock(start_line=1, end_line=11)
 
         with (
-            patch(
-                "tree_sitter_analyzer.plugins.manager.PluginManager",
-                return_value=mock_plugin_manager,
-            ),
-            patch(
-                "tree_sitter_analyzer.language_loader.loader.create_parser_safely",
-                return_value=mock_parser,
-            ),
+            patch(_PM_PATCH, return_value=mock_plugin_manager),
+            patch(_PARSER_PATCH, return_value=mock_parser),
             patch.object(Path, "read_text", return_value="wrapper with children"),
         ):
             covered = await _get_covered_node_types_from_plugin(
@@ -131,31 +135,12 @@ class TestWrapperNodesFalsePositivesC:
         tree = MagicMock()
         tree.root_node = root
 
-        mock_parser = MagicMock()
-        mock_parser.parse.return_value = tree
-
-        mock_element = MagicMock()
-        mock_element.start_line = 1
-        mock_element.end_line = 6
-
-        mock_result = MagicMock()
-        mock_result.elements = [mock_element]
-
-        mock_plugin = AsyncMock()
-        mock_plugin.analyze_file.return_value = mock_result
-
-        mock_plugin_manager = MagicMock()
-        mock_plugin_manager.get_plugin.return_value = mock_plugin
+        mock_parser = _make_parser_mock(tree)
+        mock_plugin_manager = _make_plugin_mock(start_line=1, end_line=6)
 
         with (
-            patch(
-                "tree_sitter_analyzer.plugins.manager.PluginManager",
-                return_value=mock_plugin_manager,
-            ),
-            patch(
-                "tree_sitter_analyzer.language_loader.loader.create_parser_safely",
-                return_value=mock_parser,
-            ),
+            patch(_PM_PATCH, return_value=mock_plugin_manager),
+            patch(_PARSER_PATCH, return_value=mock_parser),
             patch.object(Path, "read_text", return_value="def foo(): pass"),
         ):
             covered = await _get_covered_node_types_from_plugin(
@@ -195,32 +180,12 @@ class TestWrapperNodesFalsePositivesC:
         tree = MagicMock()
         tree.root_node = root
 
-        mock_parser = MagicMock()
-        mock_parser.parse.return_value = tree
-
-        # Extracted only func1
-        mock_element = MagicMock()
-        mock_element.start_line = 1
-        mock_element.end_line = 3
-
-        mock_result = MagicMock()
-        mock_result.elements = [mock_element]
-
-        mock_plugin = AsyncMock()
-        mock_plugin.analyze_file.return_value = mock_result
-
-        mock_plugin_manager = MagicMock()
-        mock_plugin_manager.get_plugin.return_value = mock_plugin
+        mock_parser = _make_parser_mock(tree)
+        mock_plugin_manager = _make_plugin_mock(start_line=1, end_line=3)
 
         with (
-            patch(
-                "tree_sitter_analyzer.plugins.manager.PluginManager",
-                return_value=mock_plugin_manager,
-            ),
-            patch(
-                "tree_sitter_analyzer.language_loader.loader.create_parser_safely",
-                return_value=mock_parser,
-            ),
+            patch(_PM_PATCH, return_value=mock_plugin_manager),
+            patch(_PARSER_PATCH, return_value=mock_parser),
             patch.object(
                 Path, "read_text", return_value="def f1(): pass\n\ndef f2(): pass"
             ),
