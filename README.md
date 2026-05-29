@@ -251,7 +251,7 @@ All read the same `mcpServers` schema as Claude Desktop. Cursor: **Settings → 
 
 ## Supported Languages
 
-21 language plugins; 16 fully wired into the indexer + 5 (data/markup) reachable via the single-file CLI path. The 2026-05-24 patch unblocked Swift / Kotlin / Ruby / PHP / C# that had been silently skipped for months.
+21 language plugins; 13 fully wired into the indexer (full symbol + call graph) + 5 (data/markup) reachable via the single-file CLI path + 3 scaffold (plugin exists, indexer wiring pending). The 2026-05-24 patch unblocked Swift / Kotlin / Ruby / PHP / C# that had been silently skipped for months.
 
 | Tier | Languages |
 |---|---|

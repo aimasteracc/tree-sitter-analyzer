@@ -250,7 +250,7 @@ claude mcp add tree-sitter-analyzer \
 
 ## 支持的语言
 
-21 个语言插件；16 个完全接入索引器 + 5 个（data/markup）走 CLI 单文件路径。2026-05-24 的补丁解锁了被静默跳过数月的 Swift / Kotlin / Ruby / PHP / C#。
+21 个语言插件；13 个完全接入索引器（符号 + 调用图）+ 5 个（data/markup）走 CLI 单文件路径 + 3 个脚手架（插件存在，索引接线待完成）。2026-05-24 的补丁解锁了被静默跳过数月的 Swift / Kotlin / Ruby / PHP / C#。
 
 | 等级 | 语言 |
 |---|---|
