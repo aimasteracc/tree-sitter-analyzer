@@ -146,3 +146,90 @@ class TestSemanticSymbolSearchBm25Path:
         assert any("semantic_score" in r for r in results)
         if results:
             assert results[0]["semantic_score"] > 0.0
+
+    def test_fts_exception_falls_back_to_full_scan(self):
+        """When fts_search_ranked raises, _candidate_symbols catches and falls back."""
+        cache = _make_cache([("handle_request", "function", "server.py", "python")])
+        cache.fts_search_ranked.side_effect = RuntimeError("fts unavailable")
+
+        results = SemanticSymbolSearch(cache).search("handle request", limit=5)
+
+        assert any(r["name"] == "handle_request" for r in results)
+
+
+class TestSemanticSymbolSearchFallbackSchema:
+    """Tests for the _symbols_from_json path used on older DB schemas."""
+
+    def _make_legacy_cache(self, rows: list[tuple[str, str, str, str]]) -> Any:
+        """Cache backed by ast_index (no ast_symbol_rows table)."""
+        import json
+
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.execute(
+            "CREATE TABLE ast_index(file_path TEXT, symbols_json TEXT, language TEXT)"
+        )
+        for name, kind, file_path, language in rows:
+            symbols_json = json.dumps({"symbols": [{"name": name, "kind": kind}]})
+            conn.execute(
+                "INSERT INTO ast_index VALUES(?,?,?)",
+                (file_path, symbols_json, language),
+            )
+        conn.commit()
+
+        cache = MagicMock()
+        cache.get_conn.return_value = conn
+        cache._fts5_available = False
+        return cache
+
+    def test_symbols_from_json_returns_results(self):
+        cache = self._make_legacy_cache(
+            [("parse_token", "function", "parser.py", "python")]
+        )
+
+        results = SemanticSymbolSearch(cache).search("parse token", limit=5)
+
+        assert any(r["name"] == "parse_token" for r in results)
+
+    def test_symbols_from_json_empty_on_corrupt_row(self):
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.execute(
+            "CREATE TABLE ast_index(file_path TEXT, symbols_json TEXT, language TEXT)"
+        )
+        conn.execute("INSERT INTO ast_index VALUES('bad.py', 'not-json', 'python')")
+        conn.commit()
+
+        cache = MagicMock()
+        cache.get_conn.return_value = conn
+        cache._fts5_available = False
+
+        results = SemanticSymbolSearch(cache).search("find token", limit=5)
+
+        assert results == []
+
+    def test_symbols_from_json_fallback_on_symbol_rows_error(self):
+        """ast_symbol_rows raises sqlite3.Error → falls back to _symbols_from_json."""
+        import json
+
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.execute(
+            "CREATE TABLE ast_index(file_path TEXT, symbols_json TEXT, language TEXT)"
+        )
+        symbols_json = json.dumps(
+            {"symbols": [{"name": "route_handler", "kind": "function"}]}
+        )
+        conn.execute(
+            "INSERT INTO ast_index VALUES('routes.py', ?, 'python')",
+            (symbols_json,),
+        )
+        conn.commit()
+
+        cache = MagicMock()
+        cache.get_conn.return_value = conn
+        cache._fts5_available = False
+
+        results = SemanticSymbolSearch(cache).search("route handler", limit=5)
+
+        assert any(r["name"] == "route_handler" for r in results)
