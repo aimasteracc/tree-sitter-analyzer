@@ -108,7 +108,7 @@ class CodeGraphQueryTool(BaseMCPTool):
                 "search(['Router', 'Handler']).has(callees=True, name='authorize')"
                 ".explore().include(callers=True, "
                 "complexity=True).uml().sort(by='fan_in', desc=True).answer(). "
-                "sort() accepts: name, file, line, kind, fan_in, fan_out, confidence. "
+                "sort() accepts: name, file (alias: path), line, kind, fan_in, fan_out, confidence. "
                 "confidence reflects BM25 relevance (use desc=True for most-relevant first). "
                 "fan_in/fan_out require callers()/callees() to have run first — otherwise 0."
             ),
