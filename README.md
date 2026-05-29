@@ -61,7 +61,7 @@ TSA wins outright on **2 of 6 repos**, has a lower **median cost saving (−11 %
 
 > Why the median diverges from CodeGraph's published −35 % claim: we used Haiku for cost control; they used Opus + 4-run median. See `docs/internal/CODEGRAPH_BENCHMARK_FINAL_2026-05-24.md` for raw envelopes + reproducer scripts.
 >
-> **Post-benchmark improvement (2026-05-30):** BM25 pre-filter narrows 40k symbols to ~400 before cosine rerank — a 133× speedup in semantic search. This was not in the benchmark run; repos with large symbol counts (Django, Excalidraw) should see improved token efficiency in re-runs.
+> **Post-benchmark improvements (2026-05-30):** (1) BM25 pre-filter narrows 40k symbols to ~400 before cosine rerank — a 133× speedup in semantic search. (2) Min-max BM25 normalization: relevance_score now properly differentiates strong matches (1.0) from weak (0.0) across all search paths. (3) `semantic().sort(by='confidence')` now works end-to-end. These improvements were not in the benchmark run; repos with large symbol counts (Django, Excalidraw) should see improved token efficiency in re-runs.
 
 ---
 
