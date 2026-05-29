@@ -17,6 +17,36 @@ from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (
 )
 
 
+def _setup_analysis_mocks(
+    mock_monitor: Mock,
+    mock_detect_lang: Mock,
+    mock_engine: Mock,
+    file_path: str,
+) -> Mock:
+    """Configure the three standard analysis mocks; returns mock_analysis_result."""
+    mock_detect_lang.return_value = "java"
+    ctx = mock_monitor.return_value.measure_operation.return_value
+    ctx.__enter__ = Mock()
+    ctx.__exit__ = Mock()
+    result = Mock()
+    result.file_path = file_path
+    result.language = "java"
+    result.line_count = 30
+    result.elements = []
+    engine = Mock()
+    engine.analyze = AsyncMock(return_value=result)
+    mock_engine.return_value = engine
+    return result
+
+
+def _setup_file_manager_mock(mock_get_managed_instance: Mock) -> Mock:
+    """Configure FileOutputManager mock; returns mock_file_manager_instance."""
+    manager = Mock()
+    manager.save_to_file.return_value = "/path/to/output.md"
+    mock_get_managed_instance.return_value = manager
+    return manager
+
+
 class TestSuppressOutputFeature:
     """Test suppress_output functionality in TableFormatTool."""
 
@@ -111,22 +141,9 @@ public class TestClass {
         self, mock_monitor, mock_detect_lang, mock_engine, temp_java_file
     ):
         """Test that suppress_output=False includes table_output in response."""
-        # Setup mocks
-        mock_detect_lang.return_value = "java"
-        mock_monitor.return_value.measure_operation.return_value.__enter__ = Mock()
-        mock_monitor.return_value.measure_operation.return_value.__exit__ = Mock()
-
-        # Mock analysis result
-        mock_analysis_result = Mock()
-        mock_analysis_result.file_path = temp_java_file
-        mock_analysis_result.language = "java"
-        mock_analysis_result.line_count = 30
-        mock_analysis_result.elements = []
-
-        mock_engine_instance = Mock()
-        mock_engine_instance.analyze = AsyncMock(return_value=mock_analysis_result)
-        mock_engine.return_value = mock_engine_instance
-
+        _setup_analysis_mocks(
+            mock_monitor, mock_detect_lang, mock_engine, temp_java_file
+        )
         tool = TableFormatTool()
 
         args = {
@@ -156,22 +173,9 @@ public class TestClass {
         self, mock_monitor, mock_detect_lang, mock_engine, temp_java_file
     ):
         """Test that suppress_output=True without output_file still includes table_output."""
-        # Setup mocks
-        mock_detect_lang.return_value = "java"
-        mock_monitor.return_value.measure_operation.return_value.__enter__ = Mock()
-        mock_monitor.return_value.measure_operation.return_value.__exit__ = Mock()
-
-        # Mock analysis result
-        mock_analysis_result = Mock()
-        mock_analysis_result.file_path = temp_java_file
-        mock_analysis_result.language = "java"
-        mock_analysis_result.line_count = 30
-        mock_analysis_result.elements = []
-
-        mock_engine_instance = Mock()
-        mock_engine_instance.analyze = AsyncMock(return_value=mock_analysis_result)
-        mock_engine.return_value = mock_engine_instance
-
+        _setup_analysis_mocks(
+            mock_monitor, mock_detect_lang, mock_engine, temp_java_file
+        )
         tool = TableFormatTool()
 
         args = {
@@ -210,27 +214,10 @@ public class TestClass {
         temp_java_file,
     ):
         """Test that suppress_output=True with output_file excludes table_output from response."""
-        # Setup mocks
-        mock_detect_lang.return_value = "java"
-        mock_monitor.return_value.measure_operation.return_value.__enter__ = Mock()
-        mock_monitor.return_value.measure_operation.return_value.__exit__ = Mock()
-
-        # Mock file output manager
-        mock_file_manager_instance = Mock()
-        mock_file_manager_instance.save_to_file.return_value = "/path/to/output.md"
-        mock_get_managed_instance.return_value = mock_file_manager_instance
-
-        # Mock analysis result
-        mock_analysis_result = Mock()
-        mock_analysis_result.file_path = temp_java_file
-        mock_analysis_result.language = "java"
-        mock_analysis_result.line_count = 30
-        mock_analysis_result.elements = []
-
-        mock_engine_instance = Mock()
-        mock_engine_instance.analyze = AsyncMock(return_value=mock_analysis_result)
-        mock_engine.return_value = mock_engine_instance
-
+        _setup_analysis_mocks(
+            mock_monitor, mock_detect_lang, mock_engine, temp_java_file
+        )
+        _setup_file_manager_mock(mock_get_managed_instance)
         tool = TableFormatTool()
 
         args = {
@@ -271,27 +258,10 @@ public class TestClass {
         temp_java_file,
     ):
         """Test that suppress_output=False with output_file still includes table_output."""
-        # Setup mocks
-        mock_detect_lang.return_value = "java"
-        mock_monitor.return_value.measure_operation.return_value.__enter__ = Mock()
-        mock_monitor.return_value.measure_operation.return_value.__exit__ = Mock()
-
-        # Mock file output manager
-        mock_file_manager_instance = Mock()
-        mock_file_manager_instance.save_to_file.return_value = "/path/to/output.md"
-        mock_get_managed_instance.return_value = mock_file_manager_instance
-
-        # Mock analysis result
-        mock_analysis_result = Mock()
-        mock_analysis_result.file_path = temp_java_file
-        mock_analysis_result.language = "java"
-        mock_analysis_result.line_count = 30
-        mock_analysis_result.elements = []
-
-        mock_engine_instance = Mock()
-        mock_engine_instance.analyze = AsyncMock(return_value=mock_analysis_result)
-        mock_engine.return_value = mock_engine_instance
-
+        _setup_analysis_mocks(
+            mock_monitor, mock_detect_lang, mock_engine, temp_java_file
+        )
+        _setup_file_manager_mock(mock_get_managed_instance)
         tool = TableFormatTool()
 
         args = {
