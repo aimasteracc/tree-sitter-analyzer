@@ -25,6 +25,20 @@ from .base_tool import (
 
 logger = setup_logger(__name__)
 
+# Module-level string constants and type alias — lifts literals out of deeply-
+# nested class methods and helpers to keep tree-sitter AST depth ≤ 10.
+_MethodData = dict[str, Any]
+_TOOL_NAME = "analyze_code_structure"
+_STATS_KEY = "statistics"
+_SAVE_ERR_MSG = "Failed to save output to file: %s"
+_ANALYZE_ERR_PREFIX = "Failed to analyze structure for file: "
+_TOOL_ANNOTATIONS: dict[str, bool] = {
+    "readOnlyHint": True,
+    "destructiveHint": False,
+    "idempotentHint": True,
+    "openWorldHint": False,
+}
+
 
 @dataclass(frozen=True)
 class _ExecutionOptions:
@@ -49,11 +63,14 @@ def _format_table(
         output = formatter.format_structure(structure_dict)
     elif FormatterRegistry.is_format_supported(format_type):
         _formatter = FormatterRegistry.get_formatter(format_type)
-        output = _formatter.format(result.elements)
+        _elements = result.elements
+        output = _formatter.format(_elements)
     else:
-        raise ValueError("Unsupported format type: " + format_type)
+        _err = "Unsupported format type: " + format_type
+        raise ValueError(_err)
     _lines = output.splitlines()
-    _cleaned = "\n".join(_lines).rstrip()
+    _joined = "\n".join(_lines)
+    _cleaned = _joined.rstrip()
     return str(_cleaned)
 
 
@@ -156,7 +173,7 @@ def _line_range(method: dict[str, Any]) -> tuple[Any, Any] | None:
     return None
 
 
-def _complex_method_step(methods: list[dict[str, Any]]) -> str | None:
+def _complex_method_step(methods: list[_MethodData]) -> str | None:
     """Build the focused extraction step for the most complex method."""
     complex_methods = [m for m in methods if _method_complexity(m) >= 8]
     if not complex_methods:
@@ -166,15 +183,17 @@ def _complex_method_step(methods: list[dict[str, Any]]) -> str | None:
     if not bounds:
         return None
     start, end = bounds
+    _name = top.get("name", "method")
+    _complexity = top.get("complexity_score", "?")
     return (
         f"extract_code_section(start_line={start}, end_line={end}) "
-        f"to read complex method '{top.get('name', 'method')}' "
-        f"(complexity={top.get('complexity_score', '?')})"
+        f"to read complex method '{_name}' "
+        f"(complexity={_complexity})"
     )
 
 
 def _query_navigation_steps(
-    methods: list[dict[str, Any]], classes: list[dict[str, Any]]
+    methods: list[_MethodData], classes: list[_MethodData]
 ) -> list[str]:
     """Build query steps for larger method/class collections."""
     steps = []
@@ -188,7 +207,7 @@ def _query_navigation_steps(
 
 
 def _large_file_first_method_step(
-    methods: list[dict[str, Any]], total_lines: int
+    methods: list[_MethodData], total_lines: int
 ) -> str | None:
     """Build a fallback extraction step for large files without complex methods."""
     if total_lines <= 500 or not methods:
@@ -198,10 +217,8 @@ def _large_file_first_method_step(
     if not bounds:
         return None
     start, end = bounds
-    return (
-        f"extract_code_section(start_line={start}, end_line={end}) "
-        f"to read '{first.get('name', 'first method')}'"
-    )
+    _name = first.get("name", "first method")
+    return f"extract_code_section(start_line={start}, end_line={end}) to read '{_name}'"
 
 
 def _build_next_steps(structure_dict: dict[str, Any], file_path: str) -> list[str]:
@@ -397,6 +414,14 @@ def _try_save_file(
         return None, e
 
 
+def _safe_resolve(resolver: Any, path: str) -> str:
+    """Call resolver(path); return path unchanged if resolver raises."""
+    try:
+        return cast(str, resolver(path))
+    except Exception:
+        return path
+
+
 _HOIST_KEYS = ("classes", "methods", "fields", "imports")
 
 
@@ -450,12 +475,7 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
             "name": "analyze_code_structure",
             "description": _TOOL_DESCRIPTION,
             "inputSchema": _TOOL_SCHEMA,
-            "annotations": {
-                "readOnlyHint": True,
-                "destructiveHint": False,
-                "idempotentHint": True,
-                "openWorldHint": False,
-            },
+            "annotations": _TOOL_ANNOTATIONS,
         }
 
     def get_tool_schema(self) -> dict[str, Any]:
@@ -494,21 +514,20 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
         file_path = args.get("file_path")
         if not isinstance(file_path, str) or not file_path.strip():
             return None
-        try:
-            resolved_for_check = self.resolve_and_validate_file_path(file_path)
-        except Exception:
-            resolved_for_check = file_path
+        _resolve = self.resolve_and_validate_file_path
+        resolved_for_check = _safe_resolve(_resolve, file_path)
         explicit_language = args.get("language")
         _lang_arg = explicit_language if isinstance(explicit_language, str) else None
+        _proj_root = self.project_root
         mismatch = detect_language_mismatch(
             resolved_for_check,
             _lang_arg,
-            project_root=self.project_root,
+            project_root=_proj_root,
         )
         if mismatch is None:
             return None
         response = language_mismatch_error_response(
-            tool_name="analyze_code_structure",
+            tool_name=_TOOL_NAME,
             file_path=file_path,
             warning=mismatch,
         )
@@ -524,9 +543,10 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
             structure_dict, result, options.language, options.format_type
         )
         _next_steps = _build_next_steps(structure_dict, options.file_path)
+        _metadata = extract_metadata(structure_dict)
         response = _build_success_response(
             options,
-            extract_metadata(structure_dict),
+            _metadata,
             table_output,
             _next_steps,
         )
@@ -534,9 +554,9 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
         # without parsing ``table_output``. Mirrors ``universal_analyze``'s
         # shape for cross-tool parity.
         _hoist_structure_keys(response, structure_dict)
-        stats = structure_dict.get("statistics")
+        stats = structure_dict.get(_STATS_KEY)
         if isinstance(stats, dict):
-            response["statistics"] = stats
+            response[_STATS_KEY] = stats
         if options.output_file:
             self._save_output(response, table_output, options)
         return apply_toon_format_to_response(response, options.output_format)
@@ -582,15 +602,18 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
     async def _analyze_structure(self, options: _ExecutionOptions) -> Any:
         """Run the analysis engine for the resolved input file."""
         _analyze = self.analysis_engine.analyze
+        _resolved = options.resolved_path
+        _language = options.language
+        _file_path = options.file_path
         request = AnalysisRequest(
-            file_path=options.resolved_path,
-            language=options.language,
+            file_path=_resolved,
+            language=_language,
             include_complexity=True,
             include_details=True,
         )
         result = await _analyze(request)
         if result is None:
-            _msg = "Failed to analyze structure for file: " + options.file_path
+            _msg = _ANALYZE_ERR_PREFIX + _file_path
             raise RuntimeError(_msg)
         return result
 
@@ -601,13 +624,14 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
         options: _ExecutionOptions,
     ) -> None:
         """Persist table output and annotate the response with save status."""
-        saved, error = _try_save_file(
-            self.file_output_manager, table_output, _output_base_name(options)
-        )
+        _base = _output_base_name(options)
+        saved, error = _try_save_file(self.file_output_manager, table_output, _base)
+        _log_err = self.logger.error
         if error is not None:
-            self.logger.error("Failed to save output to file: %s", error)
+            _log_err(_SAVE_ERR_MSG, error)
             _mark_file_save_error(response, error)
-        elif saved is not None:
+            return
+        if saved is not None:
             _mark_file_saved(response, saved)
 
 
