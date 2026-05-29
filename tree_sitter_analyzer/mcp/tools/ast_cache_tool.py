@@ -452,10 +452,15 @@ class ASTCacheTool(BaseMCPTool):
         query = arguments.get("query", "")
         language = arguments.get("language")
         limit = arguments.get("limit", 100)
-        raw_results = cache.fts_search(query, language=language, limit=limit)
+        fts5_available = cache.fts5_available
+        # G2: use BM25-ranked search for queries >= 2 chars when FTS5 is available.
+        use_ranked = fts5_available and len(query) >= 2 and mode != "fts_search"
+        if use_ranked:
+            raw_results = cache.fts_search_ranked(query, language=language, limit=limit)
+        else:
+            raw_results = cache.fts_search(query, language=language, limit=limit)
         # K7: defensively split legacy multi-symbol import rows.
         results = _apply_legacy_import_split(raw_results)
-        fts5_available = cache.fts5_available
         summary_line = (
             f"ast_cache {mode} query={query!r} "
             f"results={len(results)} fts5={fts5_available}"
@@ -471,6 +476,9 @@ class ASTCacheTool(BaseMCPTool):
             "count": len(results),
             "fts5_available": fts5_available,
         }
+        if use_ranked and results:
+            payload["ranked"] = True
+            payload["ranking_method"] = "fts5_bm25"
         if mode == "fts_search":
             payload["deprecated_alias"] = (
                 "use mode='search' — 'fts_search' is a deprecated alias"
