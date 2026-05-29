@@ -230,15 +230,24 @@ def _concept_candidate_paths(
                 (f"%{token.lower()}%", max_paths),
             )
         for term in terms:
-            pattern = f"%{term.lower()}%"
-            _add_rows(
-                "SELECT DISTINCT file_path FROM ast_symbol_rows "
-                "WHERE lower(name) LIKE ? LIMIT ?",
-                (pattern, max_paths),
-            )
+            # Prefer FTS5 index (O(1) via inverted index); fall back to LIKE scan.
+            fts_query = f'"{term}"'
+            try:
+                _add_rows(
+                    "SELECT DISTINCT r.file_path FROM ast_symbols_fts f "
+                    "JOIN ast_symbol_rows r ON f.rowid = r.id "
+                    "WHERE ast_symbols_fts MATCH ? LIMIT ?",
+                    (fts_query, max_paths),
+                )
+            except Exception:
+                _add_rows(
+                    "SELECT DISTINCT file_path FROM ast_symbol_rows "
+                    "WHERE lower(name) LIKE ? LIMIT ?",
+                    (f"%{term.lower()}%", max_paths),
+                )
             _add_rows(
                 "SELECT file_path FROM ast_index WHERE lower(file_path) LIKE ? LIMIT ?",
-                (pattern, max_paths),
+                (f"%{term.lower()}%", max_paths),
             )
             if len(candidates) >= max_paths:
                 break
