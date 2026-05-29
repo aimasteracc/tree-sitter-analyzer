@@ -438,6 +438,23 @@ class ASTCache:
 
         return _query.fts_search(self._get_conn(), query, language, limit)
 
+    def fts_search_ranked(
+        self,
+        query: str,
+        language: str | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """BM25-ranked FTS5 symbol search.
+
+        Falls back to linear search when FTS5 is unavailable or query is too short.
+        Results include a ``relevance_score`` field in [0.0, 1.0].
+        """
+        if not self._fts5_available or len(query) < 2:
+            return self._search_symbols_linear(query, language)
+        from . import _ast_cache_query as _query
+
+        return _query.fts_search_ranked(self._get_conn(), query, language, limit)
+
     def _search_symbols_linear(
         self, query: str, language: str | None = None
     ) -> list[dict[str, Any]]:

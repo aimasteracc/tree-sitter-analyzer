@@ -119,6 +119,72 @@ def fts_search(
     ]
 
 
+def _normalize_bm25(raw: float, worst: float) -> float:
+    """Normalize a raw FTS5 BM25 score to [0.0, 1.0].
+
+    BM25 scores from SQLite FTS5 are negative (more negative = better match).
+    ``worst`` is the maximum (least-negative) value in a result set.
+    Returns 1.0 for the best match, 0.0 for anomalous (non-negative) inputs.
+    """
+    if worst >= 0.0 or raw >= 0.0:
+        return 0.0
+    return min(1.0, raw / worst)
+
+
+def fts_search_ranked(
+    conn: sqlite3.Connection,
+    query: str,
+    language: str | None = None,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    """BM25-ranked FTS5 symbol search.
+
+    Returns dicts with keys: name, kind, file, language, line, end_line, relevance_score.
+    relevance_score is in [0.0, 1.0] — 1.0 = best match in this result set.
+    Returns [] for queries shorter than 2 characters or on SQLite errors.
+    """
+    if len(query) < 2:
+        return []
+    fts_query = (
+        " OR ".join(f'"{term}"' for term in query.split() if term) or f'"{query}"'
+    )
+    join_sql = (
+        "SELECT r.name, r.kind, r.file_path AS file, r.language, r.line, r.end_line, "
+        "bm25(ast_symbols_fts) AS bm25_raw "
+        "FROM ast_symbols_fts f JOIN ast_symbol_rows r ON f.rowid = r.id "
+        "WHERE ast_symbols_fts MATCH ? {lang_clause} ORDER BY bm25_raw LIMIT ?"
+    )
+    try:
+        if language:
+            rows = conn.execute(
+                join_sql.format(lang_clause="AND r.language = ?"),
+                (fts_query, language, limit),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                join_sql.format(lang_clause=""),
+                (fts_query, limit),
+            ).fetchall()
+    except sqlite3.OperationalError:
+        logger.debug("fts_search_ranked: OperationalError — FTS5 table not available")
+        return []
+    if not rows:
+        return []
+    worst = max(r["bm25_raw"] for r in rows)
+    return [
+        {
+            "name": r["name"],
+            "kind": r["kind"],
+            "file": r["file"],
+            "language": r["language"],
+            "line": r["line"],
+            "end_line": r["end_line"],
+            "relevance_score": _normalize_bm25(r["bm25_raw"], worst),
+        }
+        for r in rows
+    ]
+
+
 def search_symbols_linear(
     conn: sqlite3.Connection,
     query: str,
