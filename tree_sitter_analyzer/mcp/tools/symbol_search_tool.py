@@ -15,6 +15,7 @@ import fnmatch
 import os
 from typing import Any
 
+from ..._ast_cache_query import _normalize_bm25 as _norm_bm25
 from ...utils import setup_logger
 from .base_tool import BaseMCPTool
 
@@ -227,9 +228,10 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
                         _SQL_FUZZY_ANY,
                         (fts_query, limit * 5),
                     ).fetchall()
-                # Normalize BM25 scores across this result set.
+                # Min-max normalize BM25 scores across this result set.
                 raw_scores = [row["bm25_raw"] for row in rows if row["bm25_raw"] < 0]
                 worst = max(raw_scores) if raw_scores else -1.0
+                best = min(raw_scores) if raw_scores else worst
                 for row in rows:
                     if sub_lower in row["name"].lower():
                         entry: dict[str, Any] = {
@@ -241,8 +243,9 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
                             "end_line": row["end_line"],
                         }
                         raw = row["bm25_raw"]
-                        if worst < 0 and raw < 0:
-                            entry["relevance_score"] = round(min(1.0, raw / worst), 3)
+                        entry["relevance_score"] = round(
+                            _norm_bm25(raw, worst, best), 3
+                        )
                         all_results.append(entry)
                     if len(all_results) >= limit:
                         return all_results
