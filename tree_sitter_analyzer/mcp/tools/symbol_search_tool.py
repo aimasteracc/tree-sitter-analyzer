@@ -202,36 +202,48 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
                 fts_query = " OR ".join(f'"{t}"' for t in terms)
 
                 conn = cache.get_conn()
+                # Weighted BM25 (name col 10x) — hardcoded constant, no injection risk.
+                _SQL_FUZZY_LANG = (
+                    "SELECT r.name, r.kind, r.file_path, r.language, r.line, r.end_line, "
+                    "bm25(ast_symbols_fts, 10.0, 0.5, 0.5, 0.1) AS bm25_raw "
+                    "FROM ast_symbols_fts f JOIN ast_symbol_rows r ON f.rowid = r.id "
+                    "WHERE ast_symbols_fts MATCH ? AND r.language = ? "
+                    "ORDER BY bm25_raw LIMIT ?"
+                )
+                _SQL_FUZZY_ANY = (
+                    "SELECT r.name, r.kind, r.file_path, r.language, r.line, r.end_line, "
+                    "bm25(ast_symbols_fts, 10.0, 0.5, 0.5, 0.1) AS bm25_raw "
+                    "FROM ast_symbols_fts f JOIN ast_symbol_rows r ON f.rowid = r.id "
+                    "WHERE ast_symbols_fts MATCH ? "
+                    "ORDER BY bm25_raw LIMIT ?"
+                )
                 if language:
                     rows = conn.execute(
-                        """SELECT r.name, r.kind, r.file_path, r.language, r.line, r.end_line
-                           FROM ast_symbols_fts f
-                           JOIN ast_symbol_rows r ON f.rowid = r.id
-                           WHERE ast_symbols_fts MATCH ? AND r.language = ?
-                           ORDER BY rank LIMIT ?""",
+                        _SQL_FUZZY_LANG,
                         (fts_query, language, limit * 5),
                     ).fetchall()
                 else:
                     rows = conn.execute(
-                        """SELECT r.name, r.kind, r.file_path, r.language, r.line, r.end_line
-                           FROM ast_symbols_fts f
-                           JOIN ast_symbol_rows r ON f.rowid = r.id
-                           WHERE ast_symbols_fts MATCH ?
-                           ORDER BY rank LIMIT ?""",
+                        _SQL_FUZZY_ANY,
                         (fts_query, limit * 5),
                     ).fetchall()
+                # Normalize BM25 scores across this result set.
+                raw_scores = [row["bm25_raw"] for row in rows if row["bm25_raw"] < 0]
+                worst = max(raw_scores) if raw_scores else -1.0
                 for row in rows:
                     if sub_lower in row["name"].lower():
-                        all_results.append(
-                            {
-                                "name": row["name"],
-                                "kind": row["kind"],
-                                "file": row["file_path"],
-                                "language": row["language"],
-                                "line": row["line"],
-                                "end_line": row["end_line"],
-                            }
-                        )
+                        entry: dict[str, Any] = {
+                            "name": row["name"],
+                            "kind": row["kind"],
+                            "file": row["file_path"],
+                            "language": row["language"],
+                            "line": row["line"],
+                            "end_line": row["end_line"],
+                        }
+                        raw = row["bm25_raw"]
+                        if worst < 0 and raw < 0:
+                            entry["relevance_score"] = round(min(1.0, raw / worst), 3)
+                        all_results.append(entry)
                     if len(all_results) >= limit:
                         return all_results
                 if all_results:
