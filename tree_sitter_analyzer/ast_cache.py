@@ -422,8 +422,9 @@ class ASTCache:
     def search_symbols(
         self, query: str, language: str | None = None
     ) -> list[dict[str, Any]]:
+        # G4: use ranked search for queries >= 2 chars (BM25 ordering).
         if self._fts5_available:
-            return self.fts_search(query, language=language)
+            return self.fts_search_ranked(query, language=language)
         return self._search_symbols_linear(query, language)
 
     def fts_search(

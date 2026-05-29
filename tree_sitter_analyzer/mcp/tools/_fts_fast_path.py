@@ -160,7 +160,8 @@ def try_fts5_fast_path(
 
     query = arguments["query"]
     language = _extensions_to_language(arguments)
-    fts_results = cache.fts_search(query, language=language, limit=200)
+    # G5: use ranked search for BM25-ordered results (≥2 chars path via wrapper).
+    fts_results = cache.fts_search_ranked(query, language=language, limit=200)
     cache.close()
 
     if not fts_results:
