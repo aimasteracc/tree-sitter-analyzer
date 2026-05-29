@@ -88,6 +88,12 @@ class TestParseChain:
             assert steps[-1].name == "sort"
             assert steps[-1].kwargs.get("by") == field
 
+    def test_sort_path_alias_for_file_parses(self):
+        """'path' is documented as an alias for 'file' in sort()."""
+        steps = parse_chain("search('x').sort(by='path')")
+        assert steps[-1].name == "sort"
+        assert steps[-1].kwargs.get("by") == "path"
+
 
 @pytest.mark.asyncio
 class TestExecute:
