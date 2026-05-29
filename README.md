@@ -84,7 +84,7 @@ TSA wins outright on **2 of 6 repos**, has a lower **median cost saving (−11 %
 
 | Capability | TSA tool | Note |
 |---|---|---|
-| **BM25-ranked symbol search** | all search tools | relevance_score on every result; sort(by='confidence') in DSL |
+| **BM25-ranked symbol search** | all search tools | relevance_score on every result (min-max normalized: best=1.0, weakest=0.0); sort(by='confidence') in DSL |
 | **Semantic search (133× faster)** | `codegraph_query semantic()` | BM25 pre-filter narrows 40k symbols to ~400 before cosine rerank |
 | **Project A–F health grading** | `check_project_health` | 7 dimensions (size/complexity/deps/coverage/duplication/structure/git-hotspot), no competitor offers this |
 | **TOON output** | every tool, `output_format: "toon"` (default) | 50-70 % token saving |
