@@ -826,7 +826,7 @@ def _sort_state(state: _QueryState, step: _ChainStep) -> None:
     sort_by = str(step.kwargs.get("by") or "name")
     if sort_by == "path":
         sort_by = "file"
-    allowed = {"name", "file", "line", "kind", "fan_in", "fan_out"}
+    allowed = {"name", "file", "line", "kind", "fan_in", "fan_out", "confidence"}
     if sort_by not in allowed:
         raise ValueError(f"sort() unsupported field: {sort_by}")
     desc = bool_kw(step, "desc", False)
@@ -842,6 +842,8 @@ def _sort_state(state: _QueryState, step: _ChainStep) -> None:
             return fan_in.get(_symbol_key(symbol), 0)
         if sort_by == "fan_out":
             return fan_out.get(_symbol_key(symbol), 0)
+        if sort_by == "confidence":
+            return float(symbol.get("confidence", 0.0))
         return symbol.get(sort_by, "")
 
     state.current = sorted(state.current, key=sort_key, reverse=desc)

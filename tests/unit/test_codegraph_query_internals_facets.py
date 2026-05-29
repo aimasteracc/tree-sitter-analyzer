@@ -162,6 +162,21 @@ class TestCodeGraphQueryInternalsFacets:
         with pytest.raises(ValueError, match="unsupported field"):
             _sort_state(state, _ChainStep("sort", [], {"by": "unknown"}))
 
+    def test_sort_state_by_confidence_desc(self):
+        state = _QueryState()
+        state.current = [
+            {"file": "low.py", "line": 1, "name": "low", "confidence": 0.3},
+            {"file": "high.py", "line": 1, "name": "high", "confidence": 0.95},
+            {"file": "none.py", "line": 1, "name": "none"},
+        ]
+        state.symbols = list(state.current)
+
+        _sort_state(state, _ChainStep("sort", [], {"by": "confidence", "desc": True}))
+
+        names = [s["name"] for s in state.current]
+        assert names[0] == "high"
+        assert names[-1] == "none"
+
     def test_build_file_entries_includes_truncated_excerpt_for_long_symbols(
         self, tmp_path
     ):
