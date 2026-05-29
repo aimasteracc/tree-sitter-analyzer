@@ -237,6 +237,44 @@ def _find_class_name(node: Any, language: str) -> str | None:
     return None
 
 
+_NAME_CHILD_TYPES = frozenset(
+    {"identifier", "name", "property_identifier", "field_identifier"}
+)
+_ARROW_PARENT_TYPES = frozenset({"variable_declarator", "assignment_expression"})
+
+
+def _node_text(node: Any) -> str:
+    """Decode a node's text field to ``str``."""
+    text = node.text
+    return text.decode("utf-8") if isinstance(text, bytes) else str(text)
+
+
+def _name_from_children(node: Any) -> str:
+    """Return the first name-like child's text, or ``""``."""
+    for child in node.children:
+        if child.type in _NAME_CHILD_TYPES:
+            return _node_text(child)
+    return ""
+
+
+def _arrow_function_name(node: Any) -> str:
+    """Return the variable name an arrow function is assigned to, or ``""``."""
+    parent = node.parent
+    if parent and parent.type in _ARROW_PARENT_TYPES:
+        for child in parent.children:
+            if child.type in ("identifier", "property_identifier"):
+                return _node_text(child)
+    return ""
+
+
+def _get_function_name(node: Any) -> str:
+    """Extract the name from any function / method definition node."""
+    name = _name_from_children(node)
+    if not name and node.type == "arrow_function":
+        name = _arrow_function_name(node)
+    return name
+
+
 def _extract_functions(
     tree: Any, source: str, language: str, file_path: str
 ) -> list[FunctionComplexity]:
@@ -245,66 +283,26 @@ def _extract_functions(
         return []
 
     results: list[FunctionComplexity] = []
-    root = tree.root_node
-    stack = [root]
+    stack = [tree.root_node]
 
     while stack:
         node = stack.pop()
         if node.type in method_nodes:
-            name = ""
-            for child in node.children:
-                if child.type in (
-                    "identifier",
-                    "name",
-                    "property_identifier",
-                    "field_identifier",
-                ):
-                    name = (
-                        child.text.decode("utf-8")
-                        if isinstance(child.text, bytes)
-                        else str(child.text)
-                    )
-                    break
-
-            if not name and node.type == "arrow_function":
-                parent = node.parent
-                if parent and parent.type in (
-                    "variable_declarator",
-                    "assignment_expression",
-                ):
-                    for child in parent.children:
-                        if child.type in ("identifier", "property_identifier"):
-                            name = (
-                                child.text.decode("utf-8")
-                                if isinstance(child.text, bytes)
-                                else str(child.text)
-                            )
-                            break
-
-            line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
+            name = _get_function_name(node)
             cc, decision_points = _count_complexity_in_node(node, language)
-            cc = max(cc + 1, 1)
-            class_name = _find_class_name(node, language)
-
             results.append(
                 FunctionComplexity(
                     name=name or "<anonymous>",
                     file=file_path,
-                    line=line,
-                    end_line=end_line,
-                    complexity=cc,
+                    line=node.start_point[0] + 1,
+                    end_line=node.end_point[0] + 1,
+                    complexity=max(cc + 1, 1),
                     language=language,
-                    class_name=class_name,
+                    class_name=_find_class_name(node, language),
                     decision_points=decision_points,
                 )
             )
-
-        for child in node.children:
-            if child.type not in method_nodes:
-                stack.append(child)
-            elif child.type in method_nodes:
-                stack.append(child)
+        stack.extend(node.children)
 
     return results
 
