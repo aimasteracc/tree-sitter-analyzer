@@ -119,15 +119,23 @@ def fts_search(
     ]
 
 
-def _normalize_bm25(raw: float, worst: float) -> float:
+def _normalize_bm25(raw: float, worst: float, best: float | None = None) -> float:
     """Normalize a raw FTS5 BM25 score to [0.0, 1.0].
 
     BM25 scores from SQLite FTS5 are negative (more negative = better match).
     ``worst`` is the maximum (least-negative) value in a result set.
-    Returns 1.0 for the best match, 0.0 for anomalous (non-negative) inputs.
+    ``best``  is the minimum (most-negative) value in a result set.
+    When ``best`` is provided, uses min-max normalization so weak matches
+    score near 0.0 instead of capping everything at 1.0.
+    Returns 0.0 for anomalous (non-negative) inputs.
     """
     if worst >= 0.0 or raw >= 0.0:
         return 0.0
+    if best is not None and best < worst:
+        # Min-max normalization: best→1.0, worst→0.0
+        span = best - worst  # negative number
+        return max(0.0, min(1.0, (raw - worst) / span))
+    # Fallback: simple ratio (backwards-compatible)
     return min(1.0, raw / worst)
 
 
@@ -173,7 +181,9 @@ def fts_search_ranked(
         return []
     if not rows:
         return []
-    worst = max(r["bm25_raw"] for r in rows)
+    raw_scores = [r["bm25_raw"] for r in rows if r["bm25_raw"] < 0]
+    worst = max(raw_scores) if raw_scores else 0.0
+    best = min(raw_scores) if raw_scores else worst
     return [
         {
             "name": r["name"],
@@ -182,7 +192,7 @@ def fts_search_ranked(
             "language": r["language"],
             "line": r["line"],
             "end_line": r["end_line"],
-            "relevance_score": _normalize_bm25(r["bm25_raw"], worst),
+            "relevance_score": _normalize_bm25(r["bm25_raw"], worst, best),
         }
         for r in rows
     ]

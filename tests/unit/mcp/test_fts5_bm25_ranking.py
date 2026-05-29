@@ -92,10 +92,10 @@ _skip_no_fts5 = pytest.mark.skipif(
 
 
 class TestNormalizeBm25:
-    def _call(self, raw: float, worst: float) -> float:
+    def _call(self, raw: float, worst: float, best: float | None = None) -> float:
         from tree_sitter_analyzer._ast_cache_query import _normalize_bm25
 
-        return _normalize_bm25(raw, worst)
+        return _normalize_bm25(raw, worst, best)
 
     def test_worst_is_best_match(self):
         """raw=-1.5 with worst=-0.5 → raw is more negative, so it's the best match → 1.0."""
@@ -105,10 +105,8 @@ class TestNormalizeBm25:
         """When all scores are identical raw==worst, result is 1.0."""
         assert self._call(raw=-0.7, worst=-0.7) == pytest.approx(1.0)
 
-    def test_worst_match_gives_zero(self):
-        """The weakest result (raw == worst in a multi-result set) normalises to 1.0
-        because we don't have a lower reference; but in isolation raw==worst → 1.0.
-        Separate: if worst=0.0 (illegal BM25), returns 0.0."""
+    def test_worst_match_gives_zero_illegal_input(self):
+        """Non-negative raw is illegal BM25 → returns 0.0."""
         assert self._call(raw=0.0, worst=0.0) == 0.0
 
     def test_positive_raw_returns_zero(self):
@@ -119,6 +117,20 @@ class TestNormalizeBm25:
         """Score cannot exceed 1.0."""
         result = self._call(raw=-100.0, worst=-0.001)
         assert result == pytest.approx(1.0)
+
+    def test_minmax_best_gets_one_worst_gets_zero(self):
+        """Min-max normalization: best→1.0, worst→0.0, mid gets proportional score."""
+        assert self._call(raw=-1.0, worst=-0.1, best=-1.0) == pytest.approx(1.0)
+        assert self._call(raw=-0.1, worst=-0.1, best=-1.0) == pytest.approx(0.0)
+        mid = self._call(raw=-0.5, worst=-0.1, best=-1.0)
+        assert 0.0 < mid < 1.0, f"mid score should be between 0 and 1, got {mid}"
+
+    def test_minmax_weak_match_scores_low(self):
+        """Weak match (-0.00002) vs strong match (-0.995) → weak scores near 0.0."""
+        weak = self._call(raw=-0.00002, worst=-0.00002, best=-0.994995)
+        assert weak == pytest.approx(0.0)
+        strong = self._call(raw=-0.994995, worst=-0.00002, best=-0.994995)
+        assert strong == pytest.approx(1.0)
 
 
 # ---------------------------------------------------------------------------
