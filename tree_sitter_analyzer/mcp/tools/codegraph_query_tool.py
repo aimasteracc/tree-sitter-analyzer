@@ -109,7 +109,8 @@ class CodeGraphQueryTool(BaseMCPTool):
                 ".explore().include(callers=True, "
                 "complexity=True).uml().sort(by='fan_in', desc=True).answer(). "
                 "sort() accepts: name, file, line, kind, fan_in, fan_out, confidence. "
-                "confidence reflects BM25 relevance (use desc=True for most-relevant first)."
+                "confidence reflects BM25 relevance (use desc=True for most-relevant first). "
+                "fan_in/fan_out require callers()/callees() to have run first — otherwise 0."
             ),
             "inputSchema": self.get_tool_schema(),
             "annotations": {
