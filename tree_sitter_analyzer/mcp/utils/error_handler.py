@@ -13,7 +13,7 @@ import traceback
 from collections.abc import Callable
 from datetime import datetime
 from enum import Enum
-from functools import wraps
+from functools import update_wrapper
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -119,13 +119,11 @@ class ValidationError(MCPError):
     """Error related to input validation"""
 
     def __init__(self, message: str, field: str, value: Any = None, **kwargs: Any):
+        _val_str = str(value) if value is not None else None
         super().__init__(
             message,
             category=ErrorCategory.VALIDATION,
-            details={
-                "field": field,
-                "value": str(value) if value is not None else None,
-            },
+            details={"field": field, "value": _val_str},
             **kwargs,
         )
 
@@ -142,6 +140,43 @@ class ResourceError(MCPError):
         )
 
 
+# Module-level default recovery functions — lifted out of _register_default_strategies
+# to avoid triple nesting (class → method → nested def).
+
+
+def _recovery_file_not_found(
+    error: FileNotFoundError, context: dict[str, Any]
+) -> dict[str, Any]:
+    """Recovery for file-not-found errors."""
+    _fp = context.get("file_path", "unknown")
+    return {
+        "error": "File not found: " + _fp,
+        "suggestion": "Please check the file path and ensure the file exists",
+        "recoverable": True,
+    }
+
+
+def _recovery_permission(
+    error: PermissionError, context: dict[str, Any]
+) -> dict[str, Any]:
+    """Recovery for permission errors."""
+    _fp = context.get("file_path", "unknown")
+    return {
+        "error": "Permission denied: " + _fp,
+        "suggestion": "Please check file permissions or run with appropriate privileges",
+        "recoverable": False,
+    }
+
+
+def _recovery_value_error(error: ValueError, context: dict[str, Any]) -> dict[str, Any]:
+    """Recovery for value errors."""
+    return {
+        "error": "Invalid value: " + str(error),
+        "suggestion": "Please check input parameters and try again",
+        "recoverable": True,
+    }
+
+
 class ErrorHandler:
     """
     Centralized error handling and recovery system
@@ -153,9 +188,9 @@ class ErrorHandler:
     def __init__(self) -> None:
         """Initialize error handler"""
         self.error_counts: dict[str, int] = {}
-        self.error_history: list[dict[str, Any]] = []
+        self.error_history: list[Any] = []
         self.max_history_size = 1000
-        self.recovery_strategies: dict[type[Exception], Callable] = {}
+        self.recovery_strategies: dict[type, Any] = {}
 
         # Register default recovery strategies
         self._register_default_strategies()
@@ -163,60 +198,23 @@ class ErrorHandler:
         logger.info("Error handler initialized")
 
     def _register_default_strategies(self) -> None:
-        """Register default error recovery strategies"""
-
-        def file_not_found_recovery(
-            error: FileNotFoundError, context: dict[str, Any]
-        ) -> dict[str, Any]:
-            """Recovery strategy for file not found errors"""
-            return {
-                "error": f"File not found: {context.get('file_path', 'unknown')}",
-                "suggestion": "Please check the file path and ensure the file exists",
-                "recoverable": True,
-            }
-
-        def permission_error_recovery(
-            error: PermissionError, context: dict[str, Any]
-        ) -> dict[str, Any]:
-            """Recovery strategy for permission errors"""
-            return {
-                "error": f"Permission denied: {context.get('file_path', 'unknown')}",
-                "suggestion": "Please check file permissions or run with appropriate privileges",
-                "recoverable": False,
-            }
-
-        def value_error_recovery(
-            error: ValueError, context: dict[str, Any]
-        ) -> dict[str, Any]:
-            """Recovery strategy for value errors"""
-            return {
-                "error": f"Invalid value: {str(error)}",
-                "suggestion": "Please check input parameters and try again",
-                "recoverable": True,
-            }
-
+        """Register default error recovery strategies."""
         self.recovery_strategies.update(
             {
-                FileNotFoundError: file_not_found_recovery,
-                PermissionError: permission_error_recovery,
-                ValueError: value_error_recovery,
+                FileNotFoundError: _recovery_file_not_found,
+                PermissionError: _recovery_permission,
+                ValueError: _recovery_value_error,
             }
         )
 
     def register_recovery_strategy(
         self,
         exception_type: type[Exception],
-        strategy: Callable[[Exception, dict[str, Any]], dict[str, Any]],
+        strategy: Callable,
     ) -> None:
-        """
-        Register a custom recovery strategy for an exception type
-
-        Args:
-            exception_type: Type of exception to handle
-            strategy: Recovery function that takes (exception, context) and returns recovery info
-        """
+        """Register a custom recovery strategy for an exception type."""
         self.recovery_strategies[exception_type] = strategy
-        logger.debug(f"Registered recovery strategy for {exception_type.__name__}")
+        logger.debug("Registered recovery strategy for %s", exception_type.__name__)
 
     def handle_error(
         self,
@@ -224,17 +222,7 @@ class ErrorHandler:
         context: dict[str, Any] | None = None,
         operation: str = "unknown",
     ) -> dict[str, Any]:
-        """
-        Handle an error with classification, logging, and recovery
-
-        Args:
-            error: The exception that occurred
-            context: Additional context information
-            operation: Name of the operation that failed
-
-        Returns:
-            Error information dictionary with recovery suggestions
-        """
+        """Handle an error with classification, logging, and recovery."""
         context = context or {}
 
         # Classify error
@@ -262,17 +250,7 @@ class ErrorHandler:
     def _classify_error(
         self, error: Exception, context: dict[str, Any], operation: str
     ) -> dict[str, Any]:
-        """
-        Classify a generic exception into MCP error categories
-
-        Args:
-            error: The exception to classify
-            context: Error context
-            operation: Operation that failed
-
-        Returns:
-            Error information dictionary
-        """
+        """Classify a generic exception into MCP error categories."""
         error_type = type(error).__name__
         message = str(error)
 
@@ -326,145 +304,98 @@ class ErrorHandler:
         context: dict[str, Any],
         operation: str,
     ) -> None:
-        """
-        Log error with appropriate level based on severity
-
-        Args:
-            error: The original exception
-            error_info: Classified error information
-            context: Error context
-            operation: Operation that failed
-        """
+        """Log error with appropriate level based on severity."""
         severity = error_info.get("severity", "medium")
-        message = f"Error in {operation}: {error_info['message']}"
-
+        message = "Error in " + operation + ": " + error_info["message"]
+        extra_ctx = {"error_info": error_info, "context": context}
         if severity == "critical":
-            logger.critical(
-                message, extra={"error_info": error_info, "context": context}
-            )
+            logger.critical(message, extra=extra_ctx)
         elif severity == "high":
-            logger.error(message, extra={"error_info": error_info, "context": context})
+            logger.error(message, extra=extra_ctx)
         elif severity == "medium":
-            logger.warning(
-                message, extra={"error_info": error_info, "context": context}
-            )
+            logger.warning(message, extra=extra_ctx)
         else:
-            logger.info(message, extra={"error_info": error_info, "context": context})
+            logger.info(message, extra=extra_ctx)
 
     def _update_error_stats(self, error_info: dict[str, Any]) -> None:
-        """
-        Update error statistics
-
-        Args:
-            error_info: Error information
-        """
+        """Update error statistics."""
         error_type = error_info.get("error_type", "Unknown")
         category = error_info.get("category", "unknown")
-
-        # Count by type
-        self.error_counts[f"type:{error_type}"] = (
-            self.error_counts.get(f"type:{error_type}", 0) + 1
-        )
-
-        # Count by category
-        self.error_counts[f"category:{category}"] = (
-            self.error_counts.get(f"category:{category}", 0) + 1
-        )
-
-        # Count by severity
         severity = error_info.get("severity", "medium")
-        self.error_counts[f"severity:{severity}"] = (
-            self.error_counts.get(f"severity:{severity}", 0) + 1
-        )
+        type_key = "type:" + error_type
+        cat_key = "category:" + category
+        sev_key = "severity:" + severity
+        self.error_counts[type_key] = self.error_counts.get(type_key, 0) + 1
+        self.error_counts[cat_key] = self.error_counts.get(cat_key, 0) + 1
+        self.error_counts[sev_key] = self.error_counts.get(sev_key, 0) + 1
 
     def _add_to_history(
         self, error_info: dict[str, Any], context: dict[str, Any], operation: str
     ) -> None:
-        """
-        Add error to history with size limit
-
-        Args:
-            error_info: Error information
-            context: Error context
-            operation: Operation that failed
-        """
+        """Add error to history with size limit."""
         history_entry = {**error_info, "context": context, "operation": operation}
-
         self.error_history.append(history_entry)
-
-        # Maintain history size limit
         if len(self.error_history) > self.max_history_size:
-            self.error_history = self.error_history[-self.max_history_size :]
+            _limit = self.max_history_size
+            self.error_history = self.error_history[-_limit:]
+
+    def _try_strategy(
+        self,
+        strategy: Callable,
+        error: Exception,
+        context: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        """Attempt one recovery strategy; return result or None on failure."""
+        try:
+            result = strategy(error, context)
+            return result if result is not None else {}
+        except Exception as recovery_error:
+            logger.warning("Recovery strategy failed: %s", recovery_error)
+            return None
 
     def _attempt_recovery(
         self, error: Exception, context: dict[str, Any]
     ) -> dict[str, Any] | None:
-        """
-        Attempt to recover from error using registered strategies
-
-        Args:
-            error: The exception to recover from
-            context: Error context
-
-        Returns:
-            Recovery information or None
-        """
+        """Attempt recovery using registered strategies."""
+        _ts = self._try_strategy
         error_type = type(error)
-
-        # Try exact type match first
         if error_type in self.recovery_strategies:
-            try:
-                result = self.recovery_strategies[error_type](error, context)
-                return result if result is not None else {}
-            except Exception as recovery_error:
-                logger.warning(f"Recovery strategy failed: {recovery_error}")
-
-        # Try parent class matches
+            _strat = self.recovery_strategies[error_type]
+            result = _ts(_strat, error, context)
+            if result is not None:
+                return result
         for registered_type, strategy in self.recovery_strategies.items():
-            if isinstance(error, registered_type):
-                try:
-                    result = strategy(error, context)
-                    return result if result is not None else {}
-                except Exception as recovery_error:
-                    logger.warning(f"Recovery strategy failed: {recovery_error}")
-
+            if not isinstance(error, registered_type):
+                continue
+            result = _ts(strategy, error, context)
+            if result is not None:
+                return result
         return None
 
+    def _count_recent_errors(self) -> int:
+        """Count errors from the past hour."""
+        now_ts = datetime.now()
+        _ts_key = "timestamp"
+        count = 0
+        for e in self.error_history:
+            ts = datetime.fromisoformat(e[_ts_key])
+            if (now_ts - ts).seconds < 3600:
+                count += 1
+        return count
+
     def get_error_stats(self) -> dict[str, Any]:
-        """
-        Get error statistics
-
-        Returns:
-            Dictionary containing error statistics
-        """
-        total_errors = (
-            sum(self.error_counts.values()) // 3
-        )  # Divide by 3 because we count type, category, severity
-
+        """Get error statistics."""
+        _ec = self.error_counts
+        total_errors = sum(_ec.values()) // 3
         return {
             "total_errors": total_errors,
-            "error_counts": self.error_counts.copy(),
-            "recent_errors": len(
-                [
-                    e
-                    for e in self.error_history
-                    if (datetime.now() - datetime.fromisoformat(e["timestamp"])).seconds
-                    < 3600
-                ]
-            ),
+            "error_counts": _ec.copy(),
+            "recent_errors": self._count_recent_errors(),
             "history_size": len(self.error_history),
         }
 
     def get_recent_errors(self, limit: int = 10) -> list[dict[str, Any]]:
-        """
-        Get recent errors from history
-
-        Args:
-            limit: Maximum number of errors to return
-
-        Returns:
-            List of recent error entries
-        """
+        """Get recent errors from history."""
         return self.error_history[-limit:] if self.error_history else []
 
     def clear_history(self) -> None:
@@ -474,7 +405,6 @@ class ErrorHandler:
         logger.info("Error history and statistics cleared")
 
 
-# Handle request or event: handle_mcp_errors
 def _build_error_context(
     func: Callable[..., Any], args: tuple, kwargs: dict
 ) -> dict[str, Any]:
@@ -503,7 +433,7 @@ def _handle_runtime_error(
     nesting 6 → 3.
     """
     if "not fully initialized" in str(e):
-        logger.warning(f"Request received before initialization complete: {operation}")
+        logger.warning("Request received before initialization complete: %s", operation)
         raise MCPError(
             "Server is still initializing. Please wait a moment and try again.",
             category=ErrorCategory.CONFIGURATION,
@@ -521,60 +451,57 @@ def _handle_and_rethrow_as_analysis_error(
     kwargs: dict,
     operation: str,
 ) -> None:
-    """Log the error then wrap non-MCPError exceptions as ``AnalysisError``.
-
-    Returns normally for ``MCPError`` (the caller re-raises the
-    original). For all other exceptions, raises a fresh ``AnalysisError``
-    carrying the registered handler's message + severity.
-    """
+    """Log the error then wrap non-MCPError exceptions as ``AnalysisError``."""
     error_handler = get_error_handler()
     context = _build_error_context(func, args, kwargs)
     error_info = error_handler.handle_error(e, context, operation)
     if isinstance(e, MCPError):
         return
     raise AnalysisError(
-        f"Operation failed: {error_info['message']}",
+        "Operation failed: " + error_info["message"],
         operation=operation,
         severity=ErrorSeverity(error_info["severity"]),
     ) from e
 
 
+def _make_async_handler(func: Callable, operation: str) -> Callable:
+    """Build an async error-catching wrapper around func."""
+
+    async def wrapper(*args: Any, **kwargs: Any) -> Any:
+        try:
+            return await func(*args, **kwargs)
+        except RuntimeError as e:
+            _handle_runtime_error(e, func, args, kwargs, operation)
+            raise
+        except Exception as e:
+            _handle_and_rethrow_as_analysis_error(e, func, args, kwargs, operation)
+            raise
+
+    return update_wrapper(wrapper, func)
+
+
+def _make_sync_handler(func: Callable, operation: str) -> Callable:
+    """Build a sync error-catching wrapper around func."""
+
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            _handle_and_rethrow_as_analysis_error(e, func, args, kwargs, operation)
+            raise
+
+    return update_wrapper(wrapper, func)
+
+
 def handle_mcp_errors(
     operation: str = "unknown",
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-    """
-    Decorator for automatic error handling in MCP operations
+    """Decorator for automatic error handling in MCP operations."""
 
-    Args:
-        operation: Name of the operation for logging
-
-    Returns:
-        Decorated function with error handling
-    """
-
-    # r37e4 (dogfood): flatten nesting 6 → 3 by extracting the shared
-    # handle-and-rethrow steps into module-level helpers.
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
-        @wraps(func)
-        async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
-            try:
-                return await func(*args, **kwargs)
-            except RuntimeError as e:
-                _handle_runtime_error(e, func, args, kwargs, operation)
-                raise
-            except Exception as e:
-                _handle_and_rethrow_as_analysis_error(e, func, args, kwargs, operation)
-                raise
-
-        @wraps(func)
-        def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
-            try:
-                return func(*args, **kwargs)
-            except Exception as e:
-                _handle_and_rethrow_as_analysis_error(e, func, args, kwargs, operation)
-                raise
-
-        return async_wrapper if inspect.iscoroutinefunction(func) else sync_wrapper
+        if inspect.iscoroutinefunction(func):
+            return _make_async_handler(func, operation)
+        return _make_sync_handler(func, operation)
 
     return decorator
 
@@ -583,12 +510,6 @@ def handle_mcp_errors(
 _error_handler = ErrorHandler()
 
 
-# Handle request or event: get_error_handler
 def get_error_handler() -> ErrorHandler:
-    """
-    Get the global error handler instance
-
-    Returns:
-        Global error handler
-    """
+    """Get the global error handler instance."""
     return _error_handler
