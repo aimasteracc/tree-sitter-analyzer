@@ -6,6 +6,8 @@ import json
 import sqlite3
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from tree_sitter_analyzer.codegraph_query_backend import CodeGraphQueryBackend
 
 
@@ -67,8 +69,15 @@ def test_backend_resolves_definitions_without_symbol_resolver() -> None:
 def test_backend_prefers_fts_definition_rows() -> None:
     cache = MagicMock()
     cache._fts5_available = True
-    cache.fts_search.return_value = [
-        {"name": "run", "kind": "reference", "file": "ref.py", "line": 1},
+    # G6: _fts_definitions now uses fts_search_ranked; rows carry relevance_score.
+    cache.fts_search_ranked.return_value = [
+        {
+            "name": "run",
+            "kind": "reference",
+            "file": "ref.py",
+            "line": 1,
+            "relevance_score": 0.8,
+        },
         {
             "name": "run",
             "kind": "function",
@@ -76,6 +85,7 @@ def test_backend_prefers_fts_definition_rows() -> None:
             "line": 3,
             "end_line": 4,
             "language": "python",
+            "relevance_score": 1.0,
         },
     ]
     backend = CodeGraphQueryBackend(cache)
@@ -83,7 +93,8 @@ def test_backend_prefers_fts_definition_rows() -> None:
     results = backend.resolve_definitions("run")
 
     assert [item["file"] for item in results] == ["main.py"]
-    cache.fts_search.assert_called_once_with("run", limit=50)
+    assert results[0]["confidence"] == pytest.approx(1.0)
+    cache.fts_search_ranked.assert_called_once_with("run", limit=50)
 
 
 def test_backend_falls_back_to_symbols_json() -> None:
