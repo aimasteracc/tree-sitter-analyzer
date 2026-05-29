@@ -185,8 +185,9 @@ def try_fts5_fast_path(
             "data_source": "fts5",
         }
 
-    formatted: list[dict[str, Any]] = [
-        {
+    formatted: list[dict[str, Any]] = []
+    for r in fts_results:
+        entry: dict[str, Any] = {
             "file": r["file"],
             "line": r.get("line", 0),
             "kind": r.get("kind", ""),
@@ -194,8 +195,9 @@ def try_fts5_fast_path(
             "language": r.get("language", ""),
             "match": _match_line_from_fts(r["file"], r.get("line", 0), project_root),
         }
-        for r in fts_results
-    ]
+        if "relevance_score" in r:
+            entry["relevance_score"] = round(float(r["relevance_score"]), 3)
+        formatted.append(entry)
 
     response: dict[str, Any] = {
         "success": True,
