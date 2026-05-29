@@ -74,6 +74,42 @@ def _iter_test_files() -> list[Path]:
     return sorted(p for p in _TESTS_DIR.rglob("*.py") if "__pycache__" not in p.parts)
 
 
+def _collect_violations(
+    pattern: re.Pattern,
+    allowed_comment: str,
+    skip_conftest: bool = False,
+    extra_skip_words: tuple[str, ...] = (),
+) -> list[str]:
+    """Return a list of ``file:line: text`` strings for pattern violations.
+
+    Only lines near a graph-building constructor are flagged — see
+    ``_GRAPH_BUILDERS_NEAR_NONE``.  ``allowed_comment`` and
+    ``extra_skip_words`` provide per-check escape hatches.
+    """
+    bad: list[str] = []
+    for path in _iter_test_files():
+        if path.samefile(Path(__file__)):
+            continue
+        if skip_conftest and path.name == "conftest.py":
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        lines = text.splitlines()
+        for lineno, line in enumerate(lines, start=1):
+            if line.lstrip().startswith("#"):
+                continue
+            if not pattern.search(line):
+                continue
+            if allowed_comment in line:
+                continue
+            if any(w in line for w in extra_skip_words):
+                continue
+            window = "\n".join(lines[max(0, lineno - 6) : min(len(lines), lineno + 5)])
+            if not _GRAPH_BUILDERS_NEAR_NONE.search(window):
+                continue
+            bad.append(f"{path.relative_to(_REPO_ROOT)}:{lineno}: {line.strip()}")
+    return bad
+
+
 def test_no_project_root_eq_tmp_in_tests() -> None:
     """Banner: ``project_root='/tmp'`` inside tests/ is a perf trap.
 
@@ -81,35 +117,12 @@ def test_no_project_root_eq_tmp_in_tests() -> None:
     name appears in a ±5-line window so we skip Mock fixture data and
     assert-called mock verifications (those don't actually scan anything).
     """
-    bad: list[str] = []
-    for path in _iter_test_files():
-        # Skip THIS file — it documents the banned patterns by name.
-        if path.samefile(Path(__file__)):
-            continue
-        # Skip conftest — its help text quotes the offending pattern.
-        if path.name == "conftest.py":
-            continue
-        text = path.read_text(encoding="utf-8", errors="replace")
-        lines = text.splitlines()
-        for lineno, line in enumerate(lines, start=1):
-            if line.lstrip().startswith("#"):
-                continue
-            if not _TMP_PATTERN.search(line):
-                continue
-            # Skip mock assertions — they don't actually invoke the tool.
-            if "assert_called" in line or "Mock" in line:
-                continue
-            # Honor escape hatch — e.g. test deliberately probes "/tmp".
-            if "# allowed: tmp-string" in line:
-                continue
-            # Require a graph-building name nearby for it to be a real trap.
-            window_start = max(0, lineno - 6)
-            window_end = min(len(lines), lineno + 5)
-            window = "\n".join(lines[window_start:window_end])
-            if not _GRAPH_BUILDERS_NEAR_NONE.search(window):
-                continue
-            bad.append(f"{path.relative_to(_REPO_ROOT)}:{lineno}: {line.strip()}")
-
+    bad = _collect_violations(
+        _TMP_PATTERN,
+        "# allowed: tmp-string",
+        skip_conftest=True,
+        extra_skip_words=("assert_called", "Mock"),
+    )
     if bad:
         offenders = "\n  ".join(bad)
         pytest.fail(
@@ -132,29 +145,7 @@ def test_no_project_root_eq_none_in_tests() -> None:
     Other tools (FileOutputManager, registry, SemanticClassifyTool) are
     None-safe and ignored here.
     """
-    bad: list[str] = []
-    for path in _iter_test_files():
-        if path.samefile(Path(__file__)):
-            continue
-        text = path.read_text(encoding="utf-8", errors="replace")
-        lines = text.splitlines()
-        for lineno, line in enumerate(lines, start=1):
-            if line.lstrip().startswith("#"):
-                continue
-            if not _NONE_PATTERN.search(line):
-                continue
-            # Honor an explicit "# allowed: chdir(tmp_path)" escape.
-            if "# allowed: chdir(tmp_path)" in line:
-                continue
-            # Only fail when a known graph-building name appears in a
-            # ±5-line window around this line (call-site or constructor).
-            window_start = max(0, lineno - 6)
-            window_end = min(len(lines), lineno + 5)
-            window = "\n".join(lines[window_start:window_end])
-            if not _GRAPH_BUILDERS_NEAR_NONE.search(window):
-                continue
-            bad.append(f"{path.relative_to(_REPO_ROOT)}:{lineno}: {line.strip()}")
-
+    bad = _collect_violations(_NONE_PATTERN, "# allowed: chdir(tmp_path)")
     if bad:
         offenders = "\n  ".join(bad)
         pytest.fail(
