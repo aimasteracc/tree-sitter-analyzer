@@ -205,6 +205,9 @@ def try_fts5_fast_path(
         "results": formatted[:100],
         "data_source": "fts5",
     }
+    # Indicate BM25 ranking when ranked path was used (queries >= 2 chars).
+    if len(query) >= 2 and fts_results and "relevance_score" in fts_results[0]:
+        response["ranking_method"] = "fts5_bm25"
     if language:
         response["language_filter"] = language
 
