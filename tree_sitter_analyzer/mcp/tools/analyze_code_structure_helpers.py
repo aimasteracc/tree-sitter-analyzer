@@ -210,7 +210,7 @@ def _convert_class(cls: Any) -> dict[str, Any]:
             "end": getattr(cls, "end_line", 0),
         },
         "type": getattr(cls, "class_type", "class"),
-        "visibility": "public",
+        "visibility": getattr(cls, "visibility", "public"),
         "extends": getattr(cls, "extends_class", None),
         "implements": getattr(cls, "implements_interfaces", []),
         "annotations": getattr(cls, "annotations", []),

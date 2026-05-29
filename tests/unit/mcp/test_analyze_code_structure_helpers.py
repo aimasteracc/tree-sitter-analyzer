@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from tree_sitter_analyzer.mcp.tools.analyze_code_structure_helpers import (
+    _convert_class,
     extract_metadata,
 )
 from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (
@@ -176,3 +177,43 @@ class TestAnalyzeCodeStructureNextSteps:
         assert steps[0].startswith("extract_code_section(start_line=5, end_line=55)")
 
 
+class TestConvertClass:
+    """Tests for _convert_class — ensures class attributes are passed through."""
+
+    def _make_cls(self, **kwargs):
+        cls = MagicMock()
+        cls.name = kwargs.get("name", "MyClass")
+        cls.start_line = kwargs.get("start_line", 1)
+        cls.end_line = kwargs.get("end_line", 10)
+        cls.class_type = kwargs.get("class_type", "class")
+        cls.visibility = kwargs.get("visibility", "public")
+        cls.extends_class = kwargs.get("extends_class", None)
+        cls.implements_interfaces = kwargs.get("implements_interfaces", [])
+        cls.annotations = kwargs.get("annotations", [])
+        return cls
+
+    def test_converts_public_visibility(self):
+        cls = self._make_cls(visibility="public")
+        result = _convert_class(cls)
+        assert result["visibility"] == "public"
+
+    def test_converts_package_private_visibility(self):
+        """Package-private classes must not be reported as 'public'."""
+        cls = self._make_cls(visibility="package-private")
+        result = _convert_class(cls)
+        assert result["visibility"] == "package-private"
+
+    def test_converts_protected_visibility(self):
+        cls = self._make_cls(visibility="protected")
+        result = _convert_class(cls)
+        assert result["visibility"] == "protected"
+
+    def test_converts_private_visibility(self):
+        cls = self._make_cls(visibility="private")
+        result = _convert_class(cls)
+        assert result["visibility"] == "private"
+
+    def test_defaults_to_public_when_no_visibility_attr(self):
+        cls = MagicMock(spec=[])
+        result = _convert_class(cls)
+        assert result["visibility"] == "public"
