@@ -73,6 +73,21 @@ class TestParseChain:
         assert "search" in names
         assert "callers" in names
 
+    def test_sort_all_valid_fields_parse(self):
+        """All 7 sort fields in the README must parse without error."""
+        for field in (
+            "name",
+            "file",
+            "line",
+            "kind",
+            "fan_in",
+            "fan_out",
+            "confidence",
+        ):
+            steps = parse_chain(f"search('x').sort(by='{field}')")
+            assert steps[-1].name == "sort"
+            assert steps[-1].kwargs.get("by") == field
+
 
 @pytest.mark.asyncio
 class TestExecute:
