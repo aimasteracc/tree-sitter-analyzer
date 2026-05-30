@@ -201,5 +201,5 @@ class TestRunDocSync:
 
         assert result["stale_count"] == 1
         stale = result["stale_refs"][0]
-        assert "docs/guide.md" in stale["doc_file"]
+        assert "docs/guide.md" in stale["doc_file"].replace("\\", "/")
         assert stale["line"] == 2
