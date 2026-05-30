@@ -213,6 +213,50 @@ class TestFtsSearchRanked:
 
         assert all(r["language"] == "python" for r in results)
 
+    def test_kind_priority_class_over_import(self):
+        """Class/function definitions must rank above import entries when BM25 score is equal."""
+        conn = _make_fts_conn()
+        # Insert import first so it gets a lower rowid (and thus slightly better BM25
+        # due to ordering), ensuring the test is meaningful even if BM25 slightly favours it.
+        _insert_symbol(
+            conn,
+            name="routing",
+            kind="import",
+            file_path="app/deps.py",
+            line=1,
+            end_line=1,
+        )
+        _insert_symbol(
+            conn,
+            name="routing",
+            kind="class",
+            file_path="app/router.py",
+            line=10,
+            end_line=50,
+        )
+        _insert_symbol(
+            conn,
+            name="routing",
+            kind="function",
+            file_path="app/views.py",
+            line=20,
+            end_line=30,
+        )
+
+        results = self._call(conn, "routing")
+
+        assert len(results) >= 2
+        # imports must not appear before any class or function
+        kinds = [r["kind"] for r in results]
+        import_indices = [i for i, k in enumerate(kinds) if k == "import"]
+        class_func_indices = [
+            i for i, k in enumerate(kinds) if k in ("class", "function")
+        ]
+        if import_indices and class_func_indices:
+            assert min(class_func_indices) < min(import_indices), (
+                f"Expected class/function before import, got ordering: {kinds}"
+            )
+
     def test_limit_respected(self):
         conn = _make_fts_conn()
         for i in range(10):

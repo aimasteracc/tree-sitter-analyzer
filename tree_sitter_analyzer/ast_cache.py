@@ -24,38 +24,16 @@ from ._ast_cache_helpers import (
 )
 from ._ast_cache_schema import (
     EXPECTED_SCHEMA_VERSIONS as _EXPECTED_SCHEMA_VERSIONS,
-)
-from ._ast_cache_schema import (
     SQL_GET_SCHEMA_VERSION as _SQL_GET_SCHEMA_VERSION,
-)
-from ._ast_cache_schema import (
     apply_large_repo_indexes as _apply_large_repo_indexes,
-)
-from ._ast_cache_schema import (
     apply_migration_v3 as _apply_migration_v3,
-)
-from ._ast_cache_schema import (
     apply_migration_v4 as _apply_migration_v4,
-)
-from ._ast_cache_schema import (
     apply_migration_v5 as _apply_migration_v5,
-)
-from ._ast_cache_schema import (
     apply_migration_v6 as _apply_migration_v6,
-)
-from ._ast_cache_schema import (
     apply_migration_v7 as _apply_migration_v7,
-)
-from ._ast_cache_schema import (
     backfill_schema_version_row as _backfill_schema_version_row,
-)
-from ._ast_cache_schema import (
     check_schema_expectations as _check_schema_expectations,
-)
-from ._ast_cache_schema import (
     clear_activation_for_file as _clear_activation_for_file_fn,
-)
-from ._ast_cache_schema import (
     init_db as _schema_init_db,
 )
 from .core.parser import Parser

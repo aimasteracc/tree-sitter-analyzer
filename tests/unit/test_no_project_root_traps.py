@@ -38,8 +38,6 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-import pytest
-
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _TESTS_DIR = _REPO_ROOT / "tests"
 
@@ -117,25 +115,31 @@ def test_no_project_root_eq_tmp_in_tests() -> None:
     name appears in a ±5-line window so we skip Mock fixture data and
     assert-called mock verifications (those don't actually scan anything).
     """
+    # The scanner must actually find test files to be a meaningful lint.
+    test_files = _iter_test_files()
+    assert len(test_files) > 0, "No test files found under tests/ — scanner is broken"
+    # This file itself must be in the scanned set.
+    assert any(p.name == "test_no_project_root_traps.py" for p in test_files), (
+        "_iter_test_files() did not include the current lint file"
+    )
+
     bad = _collect_violations(
         _TMP_PATTERN,
         "# allowed: tmp-string",
         skip_conftest=True,
         extra_skip_words=("assert_called", "Mock"),
     )
-    if bad:
-        offenders = "\n  ".join(bad)
-        pytest.fail(
-            "Found tests passing project_root='/tmp' to a graph-building tool.\n"
-            "/tmp is non-deterministic — empty on a fresh dev box, full of\n"
-            "build artifacts on CI — so the dependency-graph build silently\n"
-            "scans whatever happens to be there (we've seen 22s on CI).\n"
-            "Use the pytest tmp_path fixture instead:\n\n"
-            "    def test_x(self, tmp_path):\n"
-            "        tool = ChangeImpactTool(project_root=str(tmp_path))\n\n"
-            f"Offenders:\n  {offenders}",
-            pytrace=False,
-        )
+    # No test file should pass project_root='/tmp' to a graph-building tool.
+    assert bad == [], (
+        "Found tests passing project_root='/tmp' to a graph-building tool.\n"
+        "/tmp is non-deterministic — empty on a fresh dev box, full of\n"
+        "build artifacts on CI — so the dependency-graph build silently\n"
+        "scans whatever happens to be there (we've seen 22s on CI).\n"
+        "Use the pytest tmp_path fixture instead:\n\n"
+        "    def test_x(self, tmp_path):\n"
+        "        tool = ChangeImpactTool(project_root=str(tmp_path))\n\n"
+        "Offenders:\n  " + "\n  ".join(bad)
+    )
 
 
 def test_no_project_root_eq_none_in_tests() -> None:
@@ -145,19 +149,24 @@ def test_no_project_root_eq_none_in_tests() -> None:
     Other tools (FileOutputManager, registry, SemanticClassifyTool) are
     None-safe and ignored here.
     """
+    # The scanner must find Python files to be a meaningful lint.
+    test_files = _iter_test_files()
+    assert len(test_files) > 0, "No test files found under tests/ — scanner is broken"
+    # Every file returned must actually exist.
+    for p in test_files:
+        assert p.exists(), f"_iter_test_files() returned non-existent path: {p}"
+
     bad = _collect_violations(_NONE_PATTERN, "# allowed: chdir(tmp_path)")
-    if bad:
-        offenders = "\n  ".join(bad)
-        pytest.fail(
-            "Found tests passing project_root=None to a tool that builds a\n"
-            "DependencyGraph or CallGraph. None falls back to '.' (cwd) and\n"
-            "silently scans the entire repo when pytest runs from the\n"
-            "repo root — turning a unit test into a ~10s integration test.\n\n"
-            "Two fixes:\n"
-            "  (a) pass project_root=str(tmp_path)  — the usual answer\n"
-            "  (b) if you specifically need to exercise the None-fallback\n"
-            "      semantic, monkeypatch.chdir(tmp_path) FIRST, then add\n"
-            "      '# allowed: chdir(tmp_path)' on the same line as None.\n\n"
-            f"Offenders:\n  {offenders}",
-            pytrace=False,
-        )
+    # No test file should pass project_root=None to a graph-building tool.
+    assert bad == [], (
+        "Found tests passing project_root=None to a tool that builds a\n"
+        "DependencyGraph or CallGraph. None falls back to '.' (cwd) and\n"
+        "silently scans the entire repo when pytest runs from the\n"
+        "repo root — turning a unit test into a ~10s integration test.\n\n"
+        "Two fixes:\n"
+        "  (a) pass project_root=str(tmp_path)  — the usual answer\n"
+        "  (b) if you specifically need to exercise the None-fallback\n"
+        "      semantic, monkeypatch.chdir(tmp_path) FIRST, then add\n"
+        "      '# allowed: chdir(tmp_path)' on the same line as None.\n\n"
+        "Offenders:\n  " + "\n  ".join(bad)
+    )

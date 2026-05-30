@@ -139,16 +139,34 @@ def _normalize_bm25(raw: float, worst: float, best: float | None = None) -> floa
     return min(1.0, raw / worst)
 
 
+# Kind-priority weights applied after BM25 normalization.
+# Definitions (class/function/method/type) rank above incidental mentions
+# (constant, other) which rank above import statements.
+_KIND_WEIGHT: dict[str, float] = {
+    "class": 1.0,
+    "function": 1.0,
+    "method": 1.0,
+    "type": 0.95,
+    "constant": 0.9,
+    "other": 0.85,
+    "import": 0.6,
+}
+_KIND_WEIGHT_DEFAULT = 0.85  # fallback for unrecognised kind values
+
+
 def fts_search_ranked(
     conn: sqlite3.Connection,
     query: str,
     language: str | None = None,
     limit: int = 100,
 ) -> list[dict[str, Any]]:
-    """BM25-ranked FTS5 symbol search.
+    """BM25-ranked FTS5 symbol search with kind-priority tie-breaking.
 
     Returns dicts with keys: name, kind, file, language, line, end_line, relevance_score.
     relevance_score is in [0.0, 1.0] — 1.0 = best match in this result set.
+    After BM25 normalization, a kind-weight multiplier is applied so that
+    class/function/method definitions rank above import statements even when
+    their raw BM25 score is identical.
     Returns [] for queries shorter than 2 characters or on SQLite errors.
     """
     if len(query) < 2:
@@ -184,7 +202,7 @@ def fts_search_ranked(
     raw_scores = [r["bm25_raw"] for r in rows if r["bm25_raw"] < 0]
     worst = max(raw_scores) if raw_scores else 0.0
     best = min(raw_scores) if raw_scores else worst
-    return [
+    results = [
         {
             "name": r["name"],
             "kind": r["kind"],
@@ -192,10 +210,13 @@ def fts_search_ranked(
             "language": r["language"],
             "line": r["line"],
             "end_line": r["end_line"],
-            "relevance_score": _normalize_bm25(r["bm25_raw"], worst, best),
+            "relevance_score": _normalize_bm25(r["bm25_raw"], worst, best)
+            * _KIND_WEIGHT.get(r["kind"], _KIND_WEIGHT_DEFAULT),
         }
         for r in rows
     ]
+    results.sort(key=lambda x: x["relevance_score"], reverse=True)
+    return results
 
 
 def search_symbols_linear(
