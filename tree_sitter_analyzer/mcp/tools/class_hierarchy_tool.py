@@ -141,12 +141,14 @@ class ClassHierarchyTool(BaseMCPTool):
             }
         elif mode == "tree":
             result = hierarchy.hierarchy_tree(class_name)
+            all_subs = hierarchy.subclasses_of(class_name, max_depth=max_depth)
             response = {
                 "success": True,
                 "mode": "tree",
                 "class_name": class_name,
+                "subclass_count": len(all_subs),
                 "tree": result,
-                "verdict": "INFO",
+                "verdict": "INFO" if all_subs else "NOT_FOUND",
             }
         elif mode == "impact":
             impact = hierarchy.hierarchy_impact(class_name)
