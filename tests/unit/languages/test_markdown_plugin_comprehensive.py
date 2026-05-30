@@ -490,26 +490,16 @@ class TestMarkdownPlugin:
             assert result.get("elements", []) == []
 
     def test_legacy_compatibility_methods(self):
-        """Test legacy compatibility methods"""
+        """Test extractor methods via create_extractor"""
         mock_tree = Mock()
-        mock_extractor = Mock()
-        mock_extractor.extract_functions.return_value = []
-        mock_extractor.extract_classes.return_value = []
-        mock_extractor.extract_variables.return_value = []
-        mock_extractor.extract_imports.return_value = []
+        mock_tree.root_node = Mock()
+        mock_tree.root_node.children = []
 
-        with patch.object(self.plugin, "get_extractor", return_value=mock_extractor):
-            # Test all legacy methods
-            self.plugin.extract_functions(mock_tree, "content")
-            self.plugin.extract_classes(mock_tree, "content")
-            self.plugin.extract_variables(mock_tree, "content")
-            self.plugin.extract_imports(mock_tree, "content")
-
-            # Verify all methods were called
-            mock_extractor.extract_functions.assert_called_once()
-            mock_extractor.extract_classes.assert_called_once()
-            mock_extractor.extract_variables.assert_called_once()
-            mock_extractor.extract_imports.assert_called_once()
+        extractor = self.plugin.create_extractor()
+        assert isinstance(extractor.extract_functions(mock_tree, "content"), list)
+        assert isinstance(extractor.extract_classes(mock_tree, "content"), list)
+        assert isinstance(extractor.extract_variables(mock_tree, "content"), list)
+        assert isinstance(extractor.extract_imports(mock_tree, "content"), list)
 
 
 class TestMarkdownPluginIntegration:

@@ -676,25 +676,6 @@ class BashPlugin(LanguagePlugin):
             self._extractor = BashElementExtractor()
         return self._extractor
 
-    def extract_functions(
-        self, tree: tree_sitter.Tree, source_code: str
-    ) -> list[Function]:
-        """Extract functions from the tree"""
-        extractor = self.get_extractor()
-        return extractor.extract_functions(tree, source_code)
-
-    def extract_classes(self, tree: tree_sitter.Tree, source_code: str) -> list[Any]:
-        """Extract classes from the tree (Bash has no classes)"""
-        return []
-
-    def extract_variables(self, tree: tree_sitter.Tree, source_code: str) -> list[Any]:
-        """Extract variables from the tree"""
-        return []
-
-    def extract_imports(self, tree: tree_sitter.Tree, source_code: str) -> list[Any]:
-        """Extract imports from the tree"""
-        return []
-
     def extract_elements(
         self, tree: tree_sitter.Tree, source_code: str
     ) -> dict[str, list[Any]]:

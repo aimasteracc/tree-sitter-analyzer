@@ -51,26 +51,6 @@ class PythonPlugin(LanguagePlugin):
             self._extractor = PythonElementExtractor()
         return self._extractor
 
-    def extract_functions(
-        self, tree: tree_sitter.Tree, source_code: str
-    ) -> list[Function]:
-        extractor = self.get_extractor()
-        return extractor.extract_functions(tree, source_code)
-
-    def extract_classes(self, tree: tree_sitter.Tree, source_code: str) -> list[Class]:
-        extractor = self.get_extractor()
-        return extractor.extract_classes(tree, source_code)
-
-    def extract_variables(
-        self, tree: tree_sitter.Tree, source_code: str
-    ) -> list[Variable]:
-        extractor = self.get_extractor()
-        return extractor.extract_variables(tree, source_code)
-
-    def extract_imports(self, tree: tree_sitter.Tree, source_code: str) -> list[Import]:
-        extractor = self.get_extractor()
-        return extractor.extract_imports(tree, source_code)
-
     def get_tree_sitter_language(self) -> tree_sitter.Language | None:
         if self._language_cache is None:
             try:
