@@ -302,3 +302,46 @@ cd ~/.claude/skills/gstack && ./setup --team
 
 Skills like /qa, /ship, /review, /investigate, and /browse become available after install.
 Use /browse for all web browsing. Use ~/.claude/skills/gstack/... for gstack file paths.
+
+## Release Gate Rules
+
+**NEVER merge release branch → main until ALL of these are confirmed:**
+
+1. **All CI axes green** — every platform (ubuntu/macos/windows) × every Python version must pass. Check with `gh run list --branch release/vX.Y.Z`.
+2. **PyPI published** — `Deploy to PyPI` job in Release Branch Automation shows ✓.
+3. **Release Automation completes** — the full `Release Branch Automation` workflow must reach the `Finalize Release` step. If that step fails (e.g. Actions permission error), fix the root cause or create the PR manually — but still wait for PyPI deploy to finish first.
+4. **README numbers verified against actuals** — CLI flag count, MCP tool count, and test count must be re-measured from the release CI logs, not assumed.
+
+**Merge order:**
+```
+feature/* → develop → release/vX.Y.Z → main (only after all gates above)
+```
+
+**Past incident (2026-05-31):** merged release/v1.17.0 → main immediately after the Release Automation `Finalize Release` step failed — before confirming PyPI had published and before README numbers were verified. The correct order is: wait for PyPI ✓, fix README, then merge.
+
+### How to get authoritative counts for README numbers
+
+**CLI flag count** — do NOT use grep on `--help` output (double-counts flags in multiple sections):
+```bash
+# WRONG
+uv run python -m tree_sitter_analyzer --help | grep -E "^\s+--" | wc -l
+
+# RIGHT — matches what test_readme_counts_match_registry uses
+uv run python -c "
+from tree_sitter_analyzer.cli_main import create_argument_parser
+p = create_argument_parser()
+flags = {s for a in p._actions for s in a.option_strings if s.startswith('--')}
+print(len(flags))
+"
+```
+
+**MCP tool count** — use the registry directly (matches `test_readme_counts_match_registry`):
+```bash
+uv run python -c "
+from tree_sitter_analyzer.mcp._tool_registry import create_tool_registry
+tools, _ = create_tool_registry('.')
+print(len(tools))
+"
+```
+
+**Test count** — read from the release CI log (`ubuntu-latest` axis), not from local `uv run pytest` (local skips differ from CI).
