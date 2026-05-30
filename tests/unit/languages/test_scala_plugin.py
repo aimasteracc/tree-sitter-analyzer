@@ -225,18 +225,6 @@ class TestScalaPlugin:
         extractor = plugin.create_extractor()
         assert isinstance(extractor, ScalaElementExtractor)
 
-    def test_supports_file_scala(self, plugin: ScalaPlugin) -> None:
-        assert plugin.supports_file("Main.scala") is True
-
-    def test_supports_file_sc(self, plugin: ScalaPlugin) -> None:
-        assert plugin.supports_file("script.sc") is True
-
-    def test_supports_file_false_for_other(self, plugin: ScalaPlugin) -> None:
-        assert plugin.supports_file("Main.java") is False
-
-    def test_supports_file_case_insensitive(self, plugin: ScalaPlugin) -> None:
-        assert plugin.supports_file("Main.SCALA") is True
-
     def test_count_tree_nodes_none(self, plugin: ScalaPlugin) -> None:
         assert plugin._count_tree_nodes(None) == 0
 

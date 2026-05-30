@@ -329,26 +329,6 @@ class TestCalculateComplexity:
         assert c >= 3
 
 
-class TestExecuteQuery:
-    def test_function_query(self, plugin):
-        code = "def hello():\n    pass\n"
-        tree = _parse(plugin, code)
-        result = plugin.execute_query(tree, "function")
-        assert "captures" in result
-
-    def test_class_query(self, plugin):
-        code = "class Foo:\n    pass\n"
-        tree = _parse(plugin, code)
-        result = plugin.execute_query(tree, "class")
-        assert "captures" in result
-
-    def test_unknown_query(self, plugin):
-        code = "x = 1\n"
-        tree = _parse(plugin, code)
-        result = plugin.execute_query(tree, "unknown_query_xyz")
-        assert "error" in result
-
-
 class TestExtractDetailedFunctionInfo:
     def test_async_function(self, extractor, plugin):
         code = "async def fetch():\n    return 1\n"

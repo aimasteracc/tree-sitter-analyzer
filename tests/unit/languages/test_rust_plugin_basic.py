@@ -64,12 +64,6 @@ class TestRustPlugin:
         extractor = rust_plugin.create_extractor()
         assert isinstance(extractor, RustElementExtractor)
 
-    def test_supports_file_true(self, rust_plugin):
-        assert rust_plugin.supports_file("main.rs") is True
-
-    def test_supports_file_false(self, rust_plugin):
-        assert rust_plugin.supports_file("main.py") is False
-
     def test_count_tree_nodes_none(self, rust_plugin):
         assert rust_plugin._count_tree_nodes(None) == 0
 

@@ -101,9 +101,11 @@ class TestKotlinExtractorMissingLines:
 
         mock_node = Mock()
         mock_node.child_by_field_name = Mock(
-            side_effect=lambda f: mock_params_node
-            if f == "parameters"
-            else (mock_name if f == "name" else None)
+            side_effect=lambda f: (
+                mock_params_node
+                if f == "parameters"
+                else (mock_name if f == "name" else None)
+            )
         )
         mock_node.children = []
         mock_node.start_point = (0, 0)
@@ -174,9 +176,9 @@ class TestKotlinExtractorMissingLines:
         mock_node.end_byte = 10
 
         extractor._get_node_text = Mock(
-            side_effect=lambda n: "TestClass"
-            if n.type == "simple_identifier"
-            else "class TestClass"
+            side_effect=lambda n: (
+                "TestClass" if n.type == "simple_identifier" else "class TestClass"
+            )
         )
 
         result = extractor._extract_class_or_object(mock_node, "class")
@@ -196,11 +198,13 @@ class TestKotlinExtractorMissingLines:
 
         mock_node = Mock()
         mock_node.child_by_field_name = Mock(
-            side_effect=lambda f: mock_name
-            if f == "name"
-            else mock_modifiers
-            if f == "modifiers"
-            else None
+            side_effect=lambda f: (
+                mock_name
+                if f == "name"
+                else mock_modifiers
+                if f == "modifiers"
+                else None
+            )
         )
         mock_node.children = []
         mock_node.start_point = (0, 0)
@@ -209,11 +213,13 @@ class TestKotlinExtractorMissingLines:
         mock_node.end_byte = 20
 
         extractor._get_node_text = Mock(
-            side_effect=lambda n: "Secret"
-            if n == mock_name
-            else "private"
-            if n == mock_modifiers
-            else "private class Secret"
+            side_effect=lambda n: (
+                "Secret"
+                if n == mock_name
+                else "private"
+                if n == mock_modifiers
+                else "private class Secret"
+            )
         )
 
         result = extractor._extract_class_or_object(mock_node, "class")
@@ -232,11 +238,13 @@ class TestKotlinExtractorMissingLines:
 
         mock_node = Mock()
         mock_node.child_by_field_name = Mock(
-            side_effect=lambda f: mock_name
-            if f == "name"
-            else mock_modifiers
-            if f == "modifiers"
-            else None
+            side_effect=lambda f: (
+                mock_name
+                if f == "name"
+                else mock_modifiers
+                if f == "modifiers"
+                else None
+            )
         )
         mock_node.children = []
         mock_node.start_point = (0, 0)
@@ -245,11 +253,13 @@ class TestKotlinExtractorMissingLines:
         mock_node.end_byte = 25
 
         extractor._get_node_text = Mock(
-            side_effect=lambda n: "Protected"
-            if n == mock_name
-            else "protected"
-            if n == mock_modifiers
-            else "protected class Protected"
+            side_effect=lambda n: (
+                "Protected"
+                if n == mock_name
+                else "protected"
+                if n == mock_modifiers
+                else "protected class Protected"
+            )
         )
 
         result = extractor._extract_class_or_object(mock_node, "class")
@@ -268,11 +278,13 @@ class TestKotlinExtractorMissingLines:
 
         mock_node = Mock()
         mock_node.child_by_field_name = Mock(
-            side_effect=lambda f: mock_name
-            if f == "name"
-            else mock_modifiers
-            if f == "modifiers"
-            else None
+            side_effect=lambda f: (
+                mock_name
+                if f == "name"
+                else mock_modifiers
+                if f == "modifiers"
+                else None
+            )
         )
         mock_node.children = []
         mock_node.start_point = (0, 0)
@@ -281,11 +293,13 @@ class TestKotlinExtractorMissingLines:
         mock_node.end_byte = 23
 
         extractor._get_node_text = Mock(
-            side_effect=lambda n: "Internal"
-            if n == mock_name
-            else "internal"
-            if n == mock_modifiers
-            else "internal class Internal"
+            side_effect=lambda n: (
+                "Internal"
+                if n == mock_name
+                else "internal"
+                if n == mock_modifiers
+                else "internal class Internal"
+            )
         )
 
         result = extractor._extract_class_or_object(mock_node, "class")
@@ -483,16 +497,6 @@ class TestKotlinPluginParserVariants:
         extractor = plugin.create_extractor()
 
         assert isinstance(extractor, KotlinElementExtractor)
-
-    def test_plugin_supports_file(self):
-        """Test supports_file for various file paths."""
-        plugin = KotlinPlugin()
-
-        assert plugin.supports_file("test.kt") is True
-        assert plugin.supports_file("test.kts") is True
-        assert plugin.supports_file("TEST.KT") is True
-        assert plugin.supports_file("test.java") is False
-        assert plugin.supports_file("test.py") is False
 
 
 class TestKotlinExtractorErrorHandling:

@@ -136,20 +136,6 @@ class TestGoPlugin:
         queries = go_plugin.get_queries()
         assert isinstance(queries, dict)
 
-    def test_supports_file_go(self, go_plugin: GoPlugin) -> None:
-        """Test supports_file for .go files."""
-        assert go_plugin.supports_file("test.go") is True
-        assert go_plugin.supports_file("main.go") is True
-        assert go_plugin.supports_file("/path/to/file.go") is True
-        assert go_plugin.supports_file("TEST.GO") is True  # Case insensitive
-
-    def test_supports_file_non_go(self, go_plugin: GoPlugin) -> None:
-        """Test supports_file for non-Go files."""
-        assert go_plugin.supports_file("test.py") is False
-        assert go_plugin.supports_file("test.rs") is False
-        assert go_plugin.supports_file("test.java") is False
-        assert go_plugin.supports_file("go.txt") is False
-
     def test_get_plugin_info(self, go_plugin: GoPlugin) -> None:
         """Test getting plugin information."""
         info = go_plugin.get_plugin_info()
@@ -383,10 +369,6 @@ class TestGoPluginIntegration:
         extractor = plugin.create_extractor()
         assert isinstance(extractor, GoElementExtractor)
 
-        # Test supports_file
-        assert plugin.supports_file("main.go") is True
-        assert plugin.supports_file("main.py") is False
-
         # Test plugin info
         info = plugin.get_plugin_info()
         assert info["language"] == "go"
@@ -407,30 +389,6 @@ class TestGoPluginIntegration:
         assert extractor1 is not extractor2
         assert isinstance(extractor1, GoElementExtractor)
         assert isinstance(extractor2, GoElementExtractor)
-
-    def test_plugin_with_various_go_files(self, plugin: GoPlugin) -> None:
-        """Test plugin with various Go file paths."""
-        go_files = [
-            "main.go",
-            "cmd/app/main.go",
-            "/path/to/file.go",
-            "TEST.GO",
-            "test.Go",
-        ]
-
-        for go_file in go_files:
-            assert plugin.supports_file(go_file) is True
-
-        non_go_files = [
-            "test.py",
-            "test.rs",
-            "test.java",
-            "go.txt",
-            "test.gohtml",
-        ]
-
-        for non_go_file in non_go_files:
-            assert plugin.supports_file(non_go_file) is False
 
 
 @pytest.mark.asyncio

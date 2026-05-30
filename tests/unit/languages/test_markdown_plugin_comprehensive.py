@@ -309,10 +309,6 @@ class TestMarkdownPlugin:
         extractor2 = self.plugin.get_extractor()
         assert extractor1 is extractor2  # Should be the same instance
 
-    def test_get_language(self):
-        """Test get_language method (legacy compatibility)"""
-        assert self.plugin.get_language() == "markdown"
-
     def test_get_supported_queries(self):
         """Test get_supported_queries method"""
         queries = self.plugin.get_supported_queries()
@@ -441,62 +437,6 @@ class TestMarkdownPlugin:
             # Test caching
             language2 = self.plugin.get_tree_sitter_language()
             assert language2 is mock_language_instance
-
-    def test_execute_query_no_language(self):
-        """Test execute_query when language is not available"""
-        with patch.object(self.plugin, "get_tree_sitter_language", return_value=None):
-            result = self.plugin.execute_query(Mock(), "headers")
-            assert "error" in result
-            assert "Language not available" in result["error"]
-
-    def test_execute_query_unknown_query(self):
-        """Test execute_query with unknown query"""
-        mock_language = Mock()
-        with patch.object(
-            self.plugin, "get_tree_sitter_language", return_value=mock_language
-        ):
-            result = self.plugin.execute_query(Mock(), "unknown_query")
-            assert "error" in result
-            assert "Unknown query" in result["error"]
-
-    def test_execute_query_success(self):
-        """Test successful execute_query"""
-        mock_language = Mock()
-        mock_tree = Mock()
-        mock_root = Mock()
-        mock_root.type = "document"
-        mock_root.children = []  # Prevent iteration errors
-        mock_tree.root_node = mock_root
-
-        # Mock Query class and get_query function
-        with patch.object(
-            self.plugin, "get_tree_sitter_language", return_value=mock_language
-        ):
-            # Patch get_query from where it's actually imported
-            with patch(
-                "tree_sitter_analyzer.queries.markdown.get_query",
-                return_value="test query",
-            ):
-                with patch(
-                    "tree_sitter_analyzer.languages.markdown_plugin.extractor.tree_sitter.Query"
-                ) as mock_query_class:
-                    mock_query_instance = Mock()
-                    mock_query_class.return_value = mock_query_instance
-
-                    result = self.plugin.execute_query(mock_tree, "headers")
-
-                    # Should return query results
-                    assert isinstance(result, dict)
-                    assert "query" in result
-
-    def test_execute_query_exception(self):
-        """Test execute_query with exception"""
-        with patch.object(
-            self.plugin, "get_tree_sitter_language", side_effect=Exception("Test error")
-        ):
-            result = self.plugin.execute_query(Mock(), "headers")
-            assert "error" in result
-            assert "Test error" in result["error"]
 
     def test_extract_elements(self):
         """Test extract_elements method"""

@@ -21,7 +21,6 @@ from ...core.analysis_engine import AnalysisRequest
 from ...models import AnalysisResult, Class, CodeElement, Function, Import, Variable
 from ...plugins.base import ElementExtractor, LanguagePlugin
 from ...utils import log_error
-from ...utils.tree_sitter_compat import TreeSitterQueryCompat
 from .extractor import PythonElementExtractor
 
 
@@ -51,9 +50,6 @@ class PythonPlugin(LanguagePlugin):
         if self._extractor is None:
             self._extractor = PythonElementExtractor()
         return self._extractor
-
-    def get_language(self) -> str:
-        return "python"
 
     def extract_functions(
         self, tree: tree_sitter.Tree, source_code: str
@@ -291,28 +287,6 @@ class PythonPlugin(LanguagePlugin):
                 success=False,
                 error_message=str(e),
             )
-
-    # Main entry point - dispatches to handler: execute_query
-    def execute_query(self, tree: tree_sitter.Tree, query_name: str) -> dict:
-        try:
-            language = self.get_tree_sitter_language()
-            if not language:
-                return {"error": "Language not available"}
-
-            if query_name == "function":
-                query_string = "(function_definition) @function"
-            elif query_name == "class":
-                query_string = "(class_definition) @class"
-            else:
-                return {"error": f"Unknown query: {query_name}"}
-
-            captures = TreeSitterQueryCompat.safe_execute_query(
-                language, query_string, tree.root_node, fallback_result=[]
-            )
-            return {"captures": captures, "query": query_string}
-        except Exception as e:
-            log_error(f"Query execution failed: {e}")
-            return {"error": str(e)}
 
     # Extract elements from AST: extract_elements
     def extract_elements(

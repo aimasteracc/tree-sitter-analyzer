@@ -21,7 +21,6 @@ except ImportError:
 from ...models import AnalysisResult, CodeElement
 from ...plugins.base import ElementExtractor, LanguagePlugin
 from ...utils import log_error
-from ...utils.tree_sitter_compat import TreeSitterQueryCompat
 from .extractor import MarkdownElementExtractor
 
 # Canonical query-key → node-types mapping for Markdown.
@@ -134,10 +133,6 @@ class MarkdownPlugin(LanguagePlugin):
     def get_extractor(self) -> ElementExtractor:
         """Get the cached extractor instance, creating it if necessary"""
         return self._extractor
-
-    def get_language(self) -> str:
-        """Get the language name for Markdown (legacy compatibility)"""
-        return "markdown"
 
     def extract_functions(
         self, tree: tree_sitter.Tree, source_code: str
@@ -400,35 +395,6 @@ class MarkdownPlugin(LanguagePlugin):
         elements.extend(extractor.extract_text_formatting(tree, source_code))
         elements.extend(extractor.extract_footnotes(tree, source_code))
         return elements
-
-    def execute_query(self, tree: tree_sitter.Tree, query_name: str) -> dict:
-        """Execute a specific query on the tree"""
-        try:
-            language = self.get_tree_sitter_language()
-            if not language:
-                return {"error": "Language not available"}
-
-            # Import query definitions
-            from ...queries.markdown import get_query
-
-            try:
-                query_string = get_query(query_name)
-            except KeyError:
-                return {"error": f"Unknown query: {query_name}"}
-
-            # Use tree-sitter API with modern handling
-            captures = TreeSitterQueryCompat.safe_execute_query(
-                language, query_string, tree.root_node, fallback_result=[]
-            )
-            return {
-                "captures": captures,
-                "query": query_string,
-                "matches": len(captures),
-            }
-
-        except Exception as e:
-            log_error(f"Query execution failed: {e}")
-            return {"error": str(e)}
 
     def extract_elements(
         self, tree: tree_sitter.Tree, source_code: str

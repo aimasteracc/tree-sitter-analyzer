@@ -342,14 +342,12 @@ class TestTypeScriptPlugin:
         assert isinstance(plugin, LanguagePlugin)
 
     def test_language_name(self, plugin):
-        """Test language name property"""
-        assert plugin.language_name == "typescript"
+        """Test language name"""
         assert plugin.get_language_name() == "typescript"
 
     def test_file_extensions(self, plugin):
-        """Test file extensions property"""
+        """Test file extensions"""
         expected_extensions = [".ts", ".tsx", ".d.ts"]
-        assert plugin.file_extensions == expected_extensions
         assert plugin.get_file_extensions() == expected_extensions
 
     def test_create_extractor(self, plugin):

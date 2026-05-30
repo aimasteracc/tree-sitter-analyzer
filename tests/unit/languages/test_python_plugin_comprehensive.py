@@ -24,10 +24,6 @@ class TestPythonPlugin:
         assert hasattr(plugin, "extractor")
         assert isinstance(plugin.extractor, PythonElementExtractor)
 
-    def test_plugin_get_language(self, plugin):
-        """Test get_language method"""
-        assert plugin.get_language() == "python"
-
     def test_plugin_extract_functions(self, plugin):
         """Test plugin function extraction"""
         mock_tree = Mock()

@@ -664,9 +664,3 @@ class RustPlugin(LanguagePlugin):
         except Exception as e:
             log_error(f"Error extracting elements: {e}")
             return {"functions": [], "classes": [], "variables": []}
-
-    def supports_file(self, file_path: str) -> bool:
-        """Check if this plugin supports the given file."""
-        return any(
-            file_path.lower().endswith(ext) for ext in self.get_file_extensions()
-        )

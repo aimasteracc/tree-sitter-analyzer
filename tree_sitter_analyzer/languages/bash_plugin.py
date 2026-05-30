@@ -676,10 +676,6 @@ class BashPlugin(LanguagePlugin):
             self._extractor = BashElementExtractor()
         return self._extractor
 
-    def get_language(self) -> str:
-        """Get the language name (legacy compatibility)"""
-        return "bash"
-
     def extract_functions(
         self, tree: tree_sitter.Tree, source_code: str
     ) -> list[Function]:

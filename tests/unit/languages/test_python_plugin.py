@@ -515,21 +515,6 @@ class TestPythonPlugin:
             # Should only be called once due to caching
             mock_language.assert_called_once()
 
-    def test_execute_query(self, plugin: PythonPlugin) -> None:
-        """Test query execution"""
-        mock_tree = Mock()
-
-        with patch.object(plugin, "get_tree_sitter_language") as mock_get_language:
-            # Mock will cause Query() to fail, so we expect an error
-            mock_get_language.return_value = Mock()
-
-            result = plugin.execute_query(mock_tree, "function")
-
-            assert isinstance(result, dict)
-            # When using Mock as Language, Query() will fail and return error
-            # The result should contain either 'error' or 'captures' key
-            assert "error" in result or "captures" in result
-
     @pytest.mark.asyncio
     async def test_analyze_file_success(self, plugin: PythonPlugin) -> None:
         """Test successful file analysis"""
@@ -641,18 +626,6 @@ class TestPythonPluginErrorHandling:
             language = plugin.get_tree_sitter_language()
 
             assert language is None
-
-    def test_execute_query_with_exception(self, plugin: PythonPlugin) -> None:
-        """Test query execution with exception"""
-        mock_tree = Mock()
-
-        with patch.object(plugin, "get_tree_sitter_language") as mock_get_language:
-            mock_get_language.return_value = None
-
-            result = plugin.execute_query(mock_tree, "function")
-
-            assert isinstance(result, dict)
-            assert "error" in result
 
     @pytest.mark.asyncio
     async def test_analyze_file_with_exception(self, plugin: PythonPlugin) -> None:

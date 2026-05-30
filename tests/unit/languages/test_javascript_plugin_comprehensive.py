@@ -257,7 +257,6 @@ class TestEnhancedJavaScriptPlugin:
 
     def test_plugin_enhanced_properties(self, plugin):
         """Test enhanced plugin properties"""
-        assert plugin.language_name == "javascript"
         assert plugin.get_language_name() == "javascript"
 
         extensions = plugin.get_file_extensions()
