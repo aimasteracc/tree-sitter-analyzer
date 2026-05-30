@@ -30,8 +30,8 @@ from ._ast_cache_query import (
 )
 from ._ast_cache_helpers import (
     _build_function_entry,
+    _commit_index_results,
     _make_error_entry,
-    _process_one_index_result,
     _project_index_activation_enabled,
 )
 from ._ast_cache_schema import (
@@ -308,16 +308,9 @@ class ASTCache:
             ]
         conn = self._get_conn()
         indexed_at = datetime.now(timezone.utc).isoformat()
-        conn.execute("BEGIN")
-        try:
-            for r in results:
-                _process_one_index_result(
-                    r, stats, self._insert_index_row, indexed_at, activation_enabled
-                )
-            conn.execute("COMMIT")
-        except Exception:
-            conn.execute("ROLLBACK")
-            raise
+        _commit_index_results(
+            conn, results, stats, self._insert_index_row, indexed_at, activation_enabled
+        )
         stats["total_files"] = count
         stats["workers"] = workers
         if stats["indexed"] > 0:
