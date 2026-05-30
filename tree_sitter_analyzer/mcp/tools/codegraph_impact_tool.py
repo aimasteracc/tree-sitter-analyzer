@@ -44,7 +44,7 @@ def _compute_transitive_callers(
         current, d = queue.popleft()
         if d >= max_depth:
             continue
-        for caller in graph._callers.get(current, []):
+        for caller in graph.caller_refs_of(current):
             key = caller.qualified_name()
             if key not in visited:
                 visited.add(key)
@@ -72,7 +72,7 @@ def _compute_transitive_callees(
         current, d = queue.popleft()
         if d >= max_depth:
             continue
-        for callee in graph._callees.get(current, []):
+        for callee in graph.callee_refs_of(current):
             key = callee.qualified_name()
             if key not in visited:
                 visited.add(key)
@@ -95,8 +95,8 @@ def _compute_risk_score(
         return {"score": 0, "level": "unknown", "factors": {}}
 
     target = targets[0]
-    direct_callers = graph._callers.get(target, [])
-    direct_callees = graph._callees.get(target, [])
+    direct_callers = graph.caller_refs_of(target)
+    direct_callees = graph.callee_refs_of(target)
     fan_in = len(direct_callers)
     fan_out = len(direct_callees)
     caller_files = {c.file_path for c in direct_callers}
@@ -182,7 +182,7 @@ def _blast_radius_for_functions(
                 current, d = queue.popleft()
                 if d >= depth:
                     continue
-                for caller in graph._callers.get(current, []):
+                for caller in graph.caller_refs_of(current):
                     key = caller.qualified_name()
                     if key not in visited:
                         visited.add(key)
@@ -200,7 +200,7 @@ def _blast_radius_for_functions(
                         )
                         queue.append((caller, d + 1))
 
-                for callee in graph._callees.get(current, []):
+                for callee in graph.callee_refs_of(current):
                     key = callee.qualified_name()
                     if key not in visited:
                         visited.add(key)

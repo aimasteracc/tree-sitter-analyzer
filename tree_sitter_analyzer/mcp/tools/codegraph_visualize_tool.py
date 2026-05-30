@@ -196,15 +196,15 @@ class CodeGraphVisualizeTool(BaseMCPTool):
         edges: list[tuple[str, str, str, str]] = []
         file_callers: dict[Any, list[Any]] = defaultdict(list)
         file_callees: dict[Any, list[Any]] = defaultdict(list)
-        for func in cg._functions:
-            for caller in cg._callers.get(func, []):
+        for func in cg.function_refs():
+            for caller in cg.caller_refs_of(func):
                 file_callers[func].append(caller)
-            for callee in cg._callees.get(func, []):
+            for callee in cg.callee_refs_of(func):
                 file_callees[func].append(callee)
 
         seen: set[tuple[str, str]] = set()
-        for func in cg._functions:
-            for caller in cg._callers.get(func, []):
+        for func in cg.function_refs():
+            for caller in cg.caller_refs_of(func):
                 pair = (
                     _safe_node_id(caller.name, caller.file_path),
                     _safe_node_id(func.name, func.file_path),
@@ -235,7 +235,7 @@ class CodeGraphVisualizeTool(BaseMCPTool):
         for func in funcs:
             fid = _safe_node_id(func.name, func.file_path)
             flabel = _short_label(func.name, func.file_path)
-            for callee in cg._callees.get(func, []):
+            for callee in cg.callee_refs_of(func):
                 cid = _safe_node_id(callee.name, callee.file_path)
                 pair = (fid, cid)
                 if pair not in seen and len(seen) < max_edges:
@@ -248,7 +248,7 @@ class CodeGraphVisualizeTool(BaseMCPTool):
                             _short_label(callee.name, callee.file_path),
                         )
                     )
-            for caller in cg._callers.get(func, []):
+            for caller in cg.caller_refs_of(func):
                 cid = _safe_node_id(caller.name, caller.file_path)
                 pair = (cid, fid)
                 if pair not in seen and len(seen) < max_edges:
@@ -299,7 +299,7 @@ class CodeGraphVisualizeTool(BaseMCPTool):
             cur_label = _short_label(current.name, current.file_path)
 
             if d < depth:
-                for callee in cg._callees.get(current, []):
+                for callee in cg.callee_refs_of(current):
                     cid = _safe_node_id(callee.name, callee.file_path)
                     pair = (cur_id, cid)
                     if pair not in seen_edges and len(seen_edges) < max_edges:
@@ -314,7 +314,7 @@ class CodeGraphVisualizeTool(BaseMCPTool):
                         )
                         queue.append((callee, d + 1))
 
-                for caller in cg._callers.get(current, []):
+                for caller in cg.caller_refs_of(current):
                     cid = _safe_node_id(caller.name, caller.file_path)
                     pair = (cid, cur_id)
                     if pair not in seen_edges and len(seen_edges) < max_edges:
