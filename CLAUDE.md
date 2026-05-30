@@ -302,3 +302,19 @@ cd ~/.claude/skills/gstack && ./setup --team
 
 Skills like /qa, /ship, /review, /investigate, and /browse become available after install.
 Use /browse for all web browsing. Use ~/.claude/skills/gstack/... for gstack file paths.
+
+## Release Gate Rules
+
+**NEVER merge release branch → main until ALL of these are confirmed:**
+
+1. **All CI axes green** — every platform (ubuntu/macos/windows) × every Python version must pass. Check with `gh run list --branch release/vX.Y.Z`.
+2. **PyPI published** — `Deploy to PyPI` job in Release Branch Automation shows ✓.
+3. **Release Automation completes** — the full `Release Branch Automation` workflow must reach the `Finalize Release` step. If that step fails (e.g. Actions permission error), fix the root cause or create the PR manually — but still wait for PyPI deploy to finish first.
+4. **README numbers verified against actuals** — CLI flag count, MCP tool count, and test count must be re-measured from the release CI logs, not assumed.
+
+**Merge order:**
+```
+feature/* → develop → release/vX.Y.Z → main (only after all gates above)
+```
+
+**Past incident (2026-05-31):** merged release/v1.17.0 → main immediately after the Release Automation `Finalize Release` step failed — before confirming PyPI had published and before README numbers were verified. The correct order is: wait for PyPI ✓, fix README, then merge.
