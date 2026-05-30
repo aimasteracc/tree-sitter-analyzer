@@ -717,7 +717,8 @@ def analyze_project_unreachable(
             if lang is None:
                 continue
             rel = os.path.relpath(full, project_root)
-            if not include_test_files and _test_pattern.search(rel):
+            rel_posix = rel.replace(os.sep, "/")  # normalize for cross-platform regex
+            if not include_test_files and _test_pattern.search(rel_posix):
                 continue
             result = analyze_file_unreachable(full, language=lang)
             if result.unreachable_blocks or result.errors:
