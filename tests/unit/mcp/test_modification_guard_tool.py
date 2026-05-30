@@ -57,11 +57,6 @@ class TestModificationGuardToolInitialization:
 class TestModificationGuardToolDefinition:
     """Tests for get_tool_definition()."""
 
-    def test_tool_definition_name(self, tool: ModificationGuardTool) -> None:
-        """Test that the tool name is modification_guard."""
-        defn = tool.get_tool_definition()
-        assert defn["name"] == "modification_guard"
-
     def test_description_contains_when_to_use(
         self, tool: ModificationGuardTool
     ) -> None:

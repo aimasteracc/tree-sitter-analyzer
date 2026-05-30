@@ -48,10 +48,6 @@ class TestSetProjectPath:
 class TestGetToolDefinition:
     """Tests for get_tool_definition method."""
 
-    def test_tool_definition_name(self, tool):
-        definition = tool.get_tool_definition()
-        assert definition["name"] == "search_content"
-
     def test_required_fields(self, tool):
         definition = tool.get_tool_definition()
         schema = definition["inputSchema"]

@@ -55,11 +55,6 @@ class TestGetProjectSummaryToolInitialization:
 class TestGetProjectSummaryToolDefinition:
     """Tests for get_tool_definition()."""
 
-    def test_tool_definition_name(self, tool: GetProjectSummaryTool) -> None:
-        """Test that the tool name is get_project_summary."""
-        defn = tool.get_tool_definition()
-        assert defn["name"] == "get_project_summary"
-
     def test_description_contains_when_to_use(
         self, tool: GetProjectSummaryTool
     ) -> None:

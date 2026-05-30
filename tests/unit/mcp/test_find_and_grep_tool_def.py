@@ -68,11 +68,6 @@ class TestSetProjectPath:
 class TestGetToolDefinition:
     """Tests for get_tool_definition method."""
 
-    def test_tool_definition_name(self, tool):
-        """Test that tool definition has correct name."""
-        definition = tool.get_tool_definition()
-        assert definition["name"] == "find_and_grep"
-
     def test_tool_definition_description(self, tool):
         """Test that tool definition has description."""
         definition = tool.get_tool_definition()

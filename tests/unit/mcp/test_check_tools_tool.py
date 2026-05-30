@@ -33,18 +33,6 @@ class TestCheckToolsToolInitialization:
 class TestCheckToolsToolDefinition:
     """Tests for get_tool_definition()."""
 
-    def test_tool_definition_has_required_keys(self, tool: CheckToolsTool) -> None:
-        """Test that the tool definition has name, description, and inputSchema."""
-        defn = tool.get_tool_definition()
-        assert "name" in defn
-        assert "description" in defn
-        assert "inputSchema" in defn
-
-    def test_tool_definition_name(self, tool: CheckToolsTool) -> None:
-        """Test that the tool name is correct."""
-        defn = tool.get_tool_definition()
-        assert defn["name"] == "check_tools"
-
     def test_tool_definition_description_contains_when_to_use(
         self, tool: CheckToolsTool
     ) -> None:

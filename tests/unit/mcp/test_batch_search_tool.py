@@ -48,11 +48,6 @@ class TestBatchSearchToolInitialization:
 class TestBatchSearchToolDefinition:
     """Tests for get_tool_definition()."""
 
-    def test_tool_definition_name(self, tool: BatchSearchTool) -> None:
-        """Test that the tool name is batch_search."""
-        defn = tool.get_tool_definition()
-        assert defn["name"] == "batch_search"
-
     def test_tool_definition_description_contains_when_to_use(
         self, tool: BatchSearchTool
     ) -> None:

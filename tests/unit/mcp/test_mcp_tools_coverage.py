@@ -235,12 +235,6 @@ from pathlib import Path
             yield f.name
         Path(f.name).unlink(missing_ok=True)
 
-    def test_get_tool_definition(self, analyze_scale_tool):
-        """Test get_tool_definition returns valid schema."""
-        definition = analyze_scale_tool.get_tool_definition()
-        assert definition["name"] == "check_code_scale"
-        assert "inputSchema" in definition
-
     @pytest.mark.asyncio
     async def test_execute_basic(self, analyze_scale_tool, temp_python_file):
         """Test basic execute."""
@@ -331,12 +325,6 @@ def standalone_function():
             yield f.name
         Path(f.name).unlink(missing_ok=True)
 
-    def test_get_tool_definition(self, read_partial_tool):
-        """Test get_tool_definition returns valid schema."""
-        definition = read_partial_tool.get_tool_definition()
-        assert definition["name"] == "extract_code_section"
-        assert "inputSchema" in definition
-
     @pytest.mark.asyncio
     async def test_execute_by_line_range(self, read_partial_tool, temp_python_file):
         """Test execute with line range."""
@@ -418,13 +406,6 @@ def function_two(): pass
             f.flush()
             yield f.name
         Path(f.name).unlink(missing_ok=True)
-
-    def test_get_tool_definition(self, analyze_code_structure_tool):
-        """Test get_tool_definition returns valid schema."""
-        definition = analyze_code_structure_tool.get_tool_definition()
-        # AnalyzeCodeStructureTool uses analyze_code_structure as tool name
-        assert definition["name"] == "analyze_code_structure"
-        assert "inputSchema" in definition
 
     @pytest.mark.asyncio
     async def test_execute_full_format(

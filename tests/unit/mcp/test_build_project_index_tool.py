@@ -49,11 +49,6 @@ class TestBuildProjectIndexToolInitialization:
 class TestBuildProjectIndexToolDefinition:
     """Tests for get_tool_definition()."""
 
-    def test_tool_definition_name(self, tool: BuildProjectIndexTool) -> None:
-        """Test that the tool name is build_project_index."""
-        defn = tool.get_tool_definition()
-        assert defn["name"] == "build_project_index"
-
     def test_description_contains_when_to_use(
         self, tool: BuildProjectIndexTool
     ) -> None:

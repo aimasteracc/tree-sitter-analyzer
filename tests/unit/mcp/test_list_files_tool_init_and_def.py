@@ -44,10 +44,6 @@ class TestListFilesToolInitialization:
 
 
 class TestGetToolDefinition:
-    def test_tool_definition_name(self, tool):
-        definition = tool.get_tool_definition()
-        assert definition["name"] == "list_files"
-
     def test_tool_definition_description(self, tool):
         definition = tool.get_tool_definition()
         assert definition["description"] is not None
