@@ -11,7 +11,7 @@ Architecture:
 - Data Models: Generic and language-specific code element representations
 """
 
-__version__ = "1.17.3"
+__version__ = "1.17.4"
 __author__ = "aisheng.yu"
 __email__ = "aimasteracc@gmail.com"
 
