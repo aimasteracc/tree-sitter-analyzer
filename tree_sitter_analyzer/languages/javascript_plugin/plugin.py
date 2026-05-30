@@ -26,6 +26,8 @@ from ...plugins.base import ElementExtractor, LanguagePlugin
 from ...utils import log_error
 from .extractor import JavaScriptElementExtractor
 
+_JS_EXTENSIONS = [".js", ".mjs", ".jsx", ".es6", ".es", ".cjs"]
+
 
 class JavaScriptPlugin(LanguagePlugin):
     """Enhanced JavaScript language plugin with comprehensive feature support"""
@@ -37,7 +39,7 @@ class JavaScriptPlugin(LanguagePlugin):
         # Legacy compatibility attributes for tests
         self.language = "javascript"
         self.extractor = self._extractor
-        self.supported_extensions = [".js", ".mjs", ".jsx", ".es6", ".es", ".cjs"]
+        self.supported_extensions = _JS_EXTENSIONS
 
     @property
     def language_name(self) -> str:
@@ -45,7 +47,7 @@ class JavaScriptPlugin(LanguagePlugin):
 
     @property
     def file_extensions(self) -> list[str]:
-        return [".js", ".mjs", ".jsx", ".es6", ".es"]
+        return _JS_EXTENSIONS
 
     def get_language_name(self) -> str:
         """Return the name of the programming language this plugin supports"""
@@ -53,7 +55,7 @@ class JavaScriptPlugin(LanguagePlugin):
 
     def get_file_extensions(self) -> list[str]:
         """Return list of file extensions this plugin supports"""
-        return [".js", ".mjs", ".jsx", ".es6", ".es"]
+        return _JS_EXTENSIONS
 
     def create_extractor(self) -> ElementExtractor:
         """Create and return an element extractor for this language"""

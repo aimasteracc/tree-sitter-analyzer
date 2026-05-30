@@ -214,6 +214,17 @@ class BashElementExtractor(ElementExtractor):
         """Bash does not have traditional imports (source statements are handled separately)"""
         return []
 
+    def extract_elements(
+        self, tree: tree_sitter.Tree, source_code: str
+    ) -> dict[str, list[Any]]:
+        """Unified extraction entry point grouped by type."""
+        return {
+            "functions": self.extract_functions(tree, source_code),
+            "classes": self.extract_classes(tree, source_code),
+            "imports": self.extract_imports(tree, source_code),
+            "variables": self.extract_variables(tree, source_code),
+        }
+
     def _reset_caches(self) -> None:
         """Reset performance caches"""
         self._node_text_cache.clear()
@@ -687,6 +698,12 @@ class BashPlugin(LanguagePlugin):
     def extract_imports(self, tree: tree_sitter.Tree, source_code: str) -> list[Any]:
         """Extract imports from the tree"""
         return []
+
+    def extract_elements(
+        self, tree: tree_sitter.Tree, source_code: str
+    ) -> dict[str, list[Any]]:
+        """Unified extraction entry point — delegates to the extractor."""
+        return self.get_extractor().extract_elements(tree, source_code)
 
     def get_tree_sitter_language(self) -> tree_sitter.Language | None:
         """Get the Tree-sitter language object for Bash"""
