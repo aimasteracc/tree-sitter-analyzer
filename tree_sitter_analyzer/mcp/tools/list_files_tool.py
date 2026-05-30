@@ -71,6 +71,9 @@ __all__ = ["ListFilesTool", "_build_agent_summary"]
 class ListFilesTool(BaseMCPTool):
     """MCP tool that wraps fd to list files with safety limits."""
 
+    def get_tool_schema(self) -> dict[str, Any]:
+        return TOOL_SCHEMA
+
     def get_tool_definition(self) -> dict[str, Any]:
         """Return the MCP tool name, description, and input schema."""
         return {
@@ -90,7 +93,7 @@ class ListFilesTool(BaseMCPTool):
                 "- To analyse a single file's structure — use get_code_outline\n"
                 "- To get a semantic project map — use project_overview"
             ),
-            "inputSchema": TOOL_SCHEMA,
+            "inputSchema": self.get_tool_schema(),
             "annotations": {
                 "readOnlyHint": True,
                 "destructiveHint": False,

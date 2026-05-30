@@ -666,6 +666,9 @@ class TraceImpactTool(BaseMCPTool):
         super().__init__(project_root)
         self.language_detector = LanguageDetector()
 
+    def get_tool_schema(self) -> dict[str, Any]:
+        return _TRACE_IMPACT_INPUT_SCHEMA
+
     def get_tool_definition(self) -> dict[str, Any]:
         """Get the MCP tool definition for trace_impact.
 
@@ -678,7 +681,7 @@ class TraceImpactTool(BaseMCPTool):
         return {
             "name": "trace_impact",
             "description": _TRACE_IMPACT_DESCRIPTION,
-            "inputSchema": _TRACE_IMPACT_INPUT_SCHEMA,
+            "inputSchema": self.get_tool_schema(),
             "annotations": {
                 "readOnlyHint": True,
                 "destructiveHint": False,

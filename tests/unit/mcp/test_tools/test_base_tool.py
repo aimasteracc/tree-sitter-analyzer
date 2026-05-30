@@ -35,11 +35,16 @@ class ConcreteMCPTool(BaseMCPTool):
         super().__init__(project_root)
         self.tool_name = "concrete_tool"
 
+    def get_tool_schema(self) -> dict:
+        """Get tool input schema"""
+        return {"type": "object", "properties": {}, "additionalProperties": True}
+
     def get_tool_definition(self) -> dict:
         """Get tool definition"""
         return {
             "name": self.tool_name,
             "description": "Test tool",
+            "inputSchema": self.get_tool_schema(),
         }
 
     async def execute(self, arguments: dict) -> dict:

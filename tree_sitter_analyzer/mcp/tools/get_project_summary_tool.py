@@ -201,6 +201,57 @@ def _make_quick_start(index: ProjectIndex) -> str:
 class GetProjectSummaryTool(BaseMCPTool):
     """MCP tool that returns a persistent cross-session architecture overview."""
 
+    def get_tool_schema(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "force_refresh": {
+                    "type": "boolean",
+                    "description": (
+                        "Force rebuild the index even if a fresh one exists. "
+                        "Use after major project restructuring."
+                    ),
+                    "default": False,
+                },
+                "include_notes": {
+                    "type": "boolean",
+                    "description": (
+                        "Include custom architecture notes if any have been added "
+                        "via annotate_project."
+                    ),
+                    "default": True,
+                },
+                "output_format": {
+                    "type": "string",
+                    "enum": ["toon", "json"],
+                    "description": (
+                        "Output format. 'toon' (default) returns a concise "
+                        "TOON-style structured text summary with semantic "
+                        "directory descriptions — chosen as the default "
+                        "because get_project_summary is the first-hop "
+                        "orientation tool and TOON cuts the response by "
+                        "roughly 70% on a typical project index. Pass "
+                        "'json' explicitly when you need the structured "
+                        "object (file_count, language_distribution, "
+                        "critical_nodes, top_level_structure, ...) for "
+                        "downstream code. Both values echo back in the "
+                        "``format`` and ``output_format`` keys (F12)."
+                    ),
+                    "default": "toon",
+                },
+                "format": {
+                    "type": "string",
+                    "enum": ["toon", "json"],
+                    "description": (
+                        "Deprecated alias for ``output_format`` — kept for "
+                        "backward compatibility with pre-1.12.1 callers. "
+                        "Prefer ``output_format``."
+                    ),
+                },
+            },
+            "additionalProperties": False,
+        }
+
     def get_tool_definition(self) -> dict[str, Any]:
         return {
             "name": "get_project_summary",
@@ -232,55 +283,7 @@ class GetProjectSummaryTool(BaseMCPTool):
                 "know the project structure has changed significantly, call "
                 "build_project_index to refresh."
             ),
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "force_refresh": {
-                        "type": "boolean",
-                        "description": (
-                            "Force rebuild the index even if a fresh one exists. "
-                            "Use after major project restructuring."
-                        ),
-                        "default": False,
-                    },
-                    "include_notes": {
-                        "type": "boolean",
-                        "description": (
-                            "Include custom architecture notes if any have been added "
-                            "via annotate_project."
-                        ),
-                        "default": True,
-                    },
-                    "output_format": {
-                        "type": "string",
-                        "enum": ["toon", "json"],
-                        "description": (
-                            "Output format. 'toon' (default) returns a concise "
-                            "TOON-style structured text summary with semantic "
-                            "directory descriptions — chosen as the default "
-                            "because get_project_summary is the first-hop "
-                            "orientation tool and TOON cuts the response by "
-                            "roughly 70% on a typical project index. Pass "
-                            "'json' explicitly when you need the structured "
-                            "object (file_count, language_distribution, "
-                            "critical_nodes, top_level_structure, ...) for "
-                            "downstream code. Both values echo back in the "
-                            "``format`` and ``output_format`` keys (F12)."
-                        ),
-                        "default": "toon",
-                    },
-                    "format": {
-                        "type": "string",
-                        "enum": ["toon", "json"],
-                        "description": (
-                            "Deprecated alias for ``output_format`` — kept for "
-                            "backward compatibility with pre-1.12.1 callers. "
-                            "Prefer ``output_format``."
-                        ),
-                    },
-                },
-                "additionalProperties": False,
-            },
+            "inputSchema": self.get_tool_schema(),
         }
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:

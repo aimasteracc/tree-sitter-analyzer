@@ -58,6 +58,22 @@ def _case_mode(case_sensitive: bool | None) -> str:
 class BatchSearchTool(BaseMCPTool):
     """MCP tool that runs multiple ripgrep searches concurrently."""
 
+    def get_tool_schema(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "queries": {
+                    "type": "array",
+                    "description": "List of search queries to execute in parallel",
+                    "items": _QUERY_ITEM_SCHEMA,
+                    "minItems": 2,
+                    "maxItems": 10,
+                }
+            },
+            "required": ["queries"],
+            "additionalProperties": False,
+        }
+
     def get_tool_definition(self) -> dict[str, Any]:
         return {
             "name": "batch_search",
@@ -79,20 +95,7 @@ class BatchSearchTool(BaseMCPTool):
                 "IMPORTANT: Each query in the batch runs independently. Results are returned "
                 "together once all searches complete. Maximum 10 queries per batch."
             ),
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "queries": {
-                        "type": "array",
-                        "description": "List of search queries to execute in parallel",
-                        "items": _QUERY_ITEM_SCHEMA,
-                        "minItems": 2,
-                        "maxItems": 10,
-                    }
-                },
-                "required": ["queries"],
-                "additionalProperties": False,
-            },
+            "inputSchema": self.get_tool_schema(),
             "annotations": {
                 "readOnlyHint": True,
                 "destructiveHint": False,

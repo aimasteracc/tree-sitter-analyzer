@@ -114,6 +114,9 @@ def _make_abs_root(r: str, project_root: str) -> str:
 class BuildProjectIndexTool(BaseMCPTool):
     """MCP tool that rebuilds and persists the project structure index."""
 
+    def get_tool_schema(self) -> dict[str, Any]:
+        return _INPUT_SCHEMA
+
     def get_tool_definition(self) -> dict[str, Any]:
         return {
             "name": "build_project_index",
@@ -137,7 +140,7 @@ class BuildProjectIndexTool(BaseMCPTool):
                 "Returns: build_duration_ms, files_scanned, languages_found, "
                 "index_saved_to path."
             ),
-            "inputSchema": _INPUT_SCHEMA,
+            "inputSchema": self.get_tool_schema(),
             # destructive depending on mode (rebuild/warm/sync write the cache)
             "annotations": {
                 "readOnlyHint": False,

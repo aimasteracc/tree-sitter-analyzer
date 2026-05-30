@@ -53,6 +53,9 @@ class QueryTool(BaseMCPTool):
         self.query_service = QueryService(project_root)
         self.file_output_manager = FileOutputManager.get_managed_instance(project_root)
 
+    def get_tool_schema(self) -> dict[str, Any]:
+        return _TOOL_SCHEMA
+
     # get_tool_definition: implementation
     def get_tool_definition(self) -> dict[str, Any]:
         """Return the MCP tool name, description, and input schema."""
@@ -80,7 +83,7 @@ class QueryTool(BaseMCPTool):
                 "- For a hierarchical file outline — use get_code_outline\n"
                 "- To search file names — use list_files"
             ),
-            "inputSchema": _TOOL_SCHEMA,
+            "inputSchema": self.get_tool_schema(),
             "annotations": {
                 "readOnlyHint": True,
                 "destructiveHint": False,

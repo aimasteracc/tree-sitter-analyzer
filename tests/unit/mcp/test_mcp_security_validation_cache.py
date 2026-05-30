@@ -7,8 +7,15 @@ from tree_sitter_analyzer.security.validator import SecurityValidator
 
 
 class _DummyFileTool(BaseMCPTool):
+    def get_tool_schema(self):
+        return {"type": "object", "properties": {}, "additionalProperties": True}
+
     def get_tool_definition(self):
-        return {"name": "dummy", "description": "dummy", "inputSchema": {}}
+        return {
+            "name": "dummy",
+            "description": "dummy",
+            "inputSchema": self.get_tool_schema(),
+        }
 
     async def execute(self, arguments):
         self.validate_arguments(arguments)
