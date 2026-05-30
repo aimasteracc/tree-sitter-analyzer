@@ -387,6 +387,15 @@ class ASTCache:
         """Private alias kept for backward compatibility — delegates to get_conn()."""
         return self.get_conn()
 
+    @property
+    def fts5_available(self) -> bool:
+        """Return True if the SQLite FTS5 extension is available for this cache.
+
+        Lazily initialised on the first call to ``_init_db()``.  Safe to read
+        before ``_init_db()`` completes — returns ``False`` in that case.
+        """
+        return bool(self._fts5_available)
+
     def _init_db(self) -> None:
         conn = self._get_conn()
         conn.executescript(_SCHEMA_V1)

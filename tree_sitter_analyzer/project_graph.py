@@ -579,6 +579,22 @@ class DependencyGraph:
         """Return the number of directed edges in the graph."""
         return len(self._edges)
 
+    def is_excluded(self, path: Path) -> bool:
+        """Public alias for :meth:`_is_excluded`.
+
+        Return ``True`` if *path* should be excluded from analysis
+        (hidden directories, __pycache__, node_modules, etc.).
+        """
+        return self._is_excluded(path)
+
+    def iter_source_files(self, supported_exts: set[str]) -> list[Path]:
+        """Public alias for :meth:`_iter_source_files`.
+
+        Return source files under the project root whose suffix is in
+        *supported_exts*, skipping excluded directories.
+        """
+        return self._iter_source_files(supported_exts)
+
     def dependencies_of(self, file_rel: str) -> list[str]:
         """Return files that the given file depends on."""
         return sorted(self._deps.get(file_rel, set()))

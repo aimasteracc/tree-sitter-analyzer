@@ -501,6 +501,16 @@ class CallGraph:
         self.build()
         return [f.to_dict() for f in self._func_by_file.get(file_path, [])]
 
+    def function_refs_in_file(self, file_path: str) -> list["FunctionRef"]:
+        """Return raw :class:`FunctionRef` objects for functions in *file_path*.
+
+        Unlike :meth:`functions_in_file` (which serialises to dicts), this
+        returns the live objects so callers can pass them to ``caller_refs_of``
+        / ``callee_refs_of`` without an extra lookup.
+        """
+        self.build()
+        return list(self._func_by_file.get(file_path, []))
+
     def file_impact(self, file_path: str) -> dict[str, Any]:
         """Analyze call-graph impact of changes to a file.
 
@@ -541,6 +551,69 @@ class CallGraph:
             "call_edge_count": len(self._call_edges),
             "file_count": len({f.file_path for f in self._functions}),
         }
+
+    def resolve_targets(
+        self, func_name: str, file_path: str | None = None
+    ) -> list["FunctionRef"]:
+        """Public alias for :meth:`_resolve_targets`.
+
+        Resolves a function name (and optional file path) to the matching
+        :class:`FunctionRef` objects in the call graph.  See
+        :meth:`_resolve_targets` for the full semantics.
+        """
+        return self._resolve_targets(func_name, file_path)
+
+    # ------------------------------------------------------------------
+    # Public aliases for internal helper methods (exposed for testing and
+    # external tooling).  The private implementations remain unchanged.
+    # ------------------------------------------------------------------
+
+    @property
+    def is_built(self) -> bool:
+        """Return True after :meth:`build` has been called at least once."""
+        return bool(self._built)
+
+    def find_enclosing_func(
+        self,
+        file_funcs: dict,
+        line_number: int,
+    ) -> "FunctionRef | None":
+        """Public alias for :meth:`_find_enclosing_func`.
+
+        Returns the tightest-enclosing :class:`FunctionRef` for the given
+        *line_number* among *file_funcs*, or ``None`` if the line falls
+        before all known function starts.
+        """
+        return self._find_enclosing_func(file_funcs, line_number)
+
+    def resolve_callee(
+        self,
+        call: dict,
+        current_file: str,
+        imports: dict,
+    ) -> list["FunctionRef"]:
+        """Public alias for :meth:`_resolve_callee`.
+
+        Returns the list of :class:`FunctionRef` objects that *call* resolves
+        to.  See :meth:`_resolve_callee` for full resolution semantics.
+        """
+        return self._resolve_callee(call, current_file, imports)
+
+    def is_excluded(self, path: "Path") -> bool:
+        """Public alias for :meth:`_is_excluded`.
+
+        Returns ``True`` if *path* should be excluded from analysis
+        (hidden directories, __pycache__, node_modules, etc.).
+        """
+        return self._is_excluded(path)
+
+    def iter_source_files(self, supported_exts: set) -> list["Path"]:
+        """Public alias for :meth:`_iter_source_files`.
+
+        Yields source files under the project root whose suffix is in
+        *supported_exts*, skipping excluded directories.
+        """
+        return self._iter_source_files(supported_exts)
 
     def _resolve_targets(
         self, func_name: str, file_path: str | None = None

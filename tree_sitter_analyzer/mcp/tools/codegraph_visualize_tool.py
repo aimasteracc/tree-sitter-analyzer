@@ -231,7 +231,7 @@ class CodeGraphVisualizeTool(BaseMCPTool):
         edges: list[tuple[str, str, str, str]] = []
         seen: set[tuple[str, str]] = set()
 
-        funcs = cg._func_by_file.get(normalized, [])
+        funcs = cg.function_refs_in_file(normalized)
         for func in funcs:
             fid = _safe_node_id(func.name, func.file_path)
             flabel = _short_label(func.name, func.file_path)
@@ -274,7 +274,7 @@ class CodeGraphVisualizeTool(BaseMCPTool):
         if not function:
             return []
         cg.build()
-        targets = cg._resolve_targets(function, file_path)
+        targets = cg.resolve_targets(function, file_path)
         if not targets:
             return []
 
