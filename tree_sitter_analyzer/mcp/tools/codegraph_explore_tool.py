@@ -43,15 +43,6 @@ from . import _codegraph_explore_helpers as _h
 from ._response_builder import build_response
 from .base_tool import BaseMCPTool
 
-# Aliased to original underscore names so existing test imports
-# (`from codegraph_explore_tool import _split_query`) keep working.
-_split_query = _h.split_query
-_resolve_tokens = _h.resolve_tokens
-_language_of = _h.language_of
-_signature_from = _h.signature_from
-_file_size = _h.file_size
-_extract_snippet = _h.extract_snippet
-
 logger = setup_logger(__name__)
 
 # Hint strings reused across response builders.
@@ -177,7 +168,7 @@ def _process_defs(
             "start_line": d.line,
             "end_line": d.end_line,
         }
-        sig = _signature_from(d)
+        sig = _h.signature_from(d)
         if sig:
             entry["signature"] = sig
         end_line = d.end_line or d.line
@@ -214,9 +205,9 @@ def _build_file_list_results(
     kept_names: set[str] = set()
     for file_path in ordered_files:
         defs = files_map[file_path]
-        language = _language_of(defs)
+        language = _h.language_of(defs)
         source_path = source_path_fn(file_path)
-        file_size = _file_size(source_path) if include_code else 0
+        file_size = _h.file_size(source_path) if include_code else 0
         source_lines = (
             _h.read_file_lines(source_path)
             if include_code and 0 < file_size <= max_file_bytes
@@ -464,14 +455,14 @@ class CodeGraphExploreTool(BaseMCPTool):
             return _warn_response("WARN", query, s, _HINT_NO_CACHE, output_format)
 
         # --- Tokenise + resolve --------------------------------------
-        symbol_tokens, file_tokens = _split_query(query)
+        symbol_tokens, file_tokens = _h.split_query(query)
         nterms = len(symbol_tokens) + len(file_tokens)
 
         try:
             from ...symbol_resolver import SymbolResolver
 
             resolver = SymbolResolver(cache)
-            resolved = _resolve_tokens(resolver, symbol_tokens)
+            resolved = _h.resolve_tokens(resolver, symbol_tokens)
         except Exception as exc:  # noqa: BLE001 — emit as ERROR envelope
             logger.warning(f"codegraph_explore resolve failed: {exc}")
             return _resolve_error_resp(exc, nterms, query, output_format)
