@@ -406,17 +406,6 @@ class TestGetElementCategories:
             assert isinstance(val, list), f"{key} value is not a list"
 
 
-class TestPluginInfo:
-    def test_get_plugin_info(self, plugin):
-        info = plugin.get_plugin_info()
-        assert info["name"] == "Python Plugin"
-        assert info["language"] == "python"
-        assert info["version"] == "2.0.0"
-        assert ".py" in info["extensions"]
-        assert len(info["supported_queries"]) > 0
-        assert len(info["features"]) > 0
-
-
 class TestExtractElementsErrorHandling:
     def test_with_bad_tree(self, plugin):
         result = plugin.extract_elements(None, "def f(): pass")

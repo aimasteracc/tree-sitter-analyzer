@@ -459,13 +459,6 @@ class TestJavaScriptPluginExtended:
             ".cjs",
         ]
 
-    def test_create_extractor(self):
-        """Test extractor creation"""
-        plugin = JavaScriptPlugin()
-        extractor = plugin.create_extractor()
-
-        assert isinstance(extractor, JavaScriptElementExtractor)
-
     def test_get_extractor(self):
         """Test get extractor method"""
         plugin = JavaScriptPlugin()

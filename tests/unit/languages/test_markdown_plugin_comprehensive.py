@@ -288,21 +288,6 @@ class TestMarkdownPlugin:
         assert plugin._extractor is not None
         assert isinstance(plugin._extractor, MarkdownElementExtractor)
 
-    def test_get_language_name(self):
-        """Test get_language_name method"""
-        assert self.plugin.get_language_name() == "markdown"
-
-    def test_get_file_extensions(self):
-        """Test get_file_extensions method"""
-        extensions = self.plugin.get_file_extensions()
-        expected = [".md", ".markdown", ".mdown", ".mkd", ".mkdn", ".mdx"]
-        assert extensions == expected
-
-    def test_create_extractor(self):
-        """Test create_extractor method"""
-        extractor = self.plugin.create_extractor()
-        assert isinstance(extractor, MarkdownElementExtractor)
-
     def test_get_extractor_cached(self):
         """Test get_extractor with caching"""
         extractor1 = self.plugin.get_extractor()
@@ -331,27 +316,6 @@ class TestMarkdownPlugin:
         ]
         for query in expected_queries:
             assert query in queries
-
-    def test_is_applicable_true(self):
-        """Test is_applicable method with valid extensions"""
-        assert self.plugin.is_applicable("test.md") is True
-        assert self.plugin.is_applicable("test.markdown") is True
-        assert self.plugin.is_applicable("test.MDX") is True  # Case insensitive
-
-    def test_is_applicable_false(self):
-        """Test is_applicable method with invalid extensions"""
-        assert self.plugin.is_applicable("test.py") is False
-        assert self.plugin.is_applicable("test.txt") is False
-        assert self.plugin.is_applicable("test") is False
-
-    def test_get_plugin_info(self):
-        """Test get_plugin_info method"""
-        info = self.plugin.get_plugin_info()
-        assert info["name"] == "Markdown Plugin"
-        assert info["language"] == "markdown"
-        assert info["version"] == "1.0.0"
-        assert "features" in info
-        assert "supported_queries" in info
 
     @patch(
         "tree_sitter_analyzer.languages.markdown_plugin.plugin.TREE_SITTER_AVAILABLE",

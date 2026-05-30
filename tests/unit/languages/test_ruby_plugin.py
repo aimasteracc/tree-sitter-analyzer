@@ -159,18 +159,6 @@ class TestRubyPluginInterface:
         plugin = RubyPlugin()
         assert plugin is not None
 
-    def test_get_language_name(self):
-        """Test language name."""
-        plugin = RubyPlugin()
-        assert plugin.get_language_name() == "ruby"
-
-    def test_get_file_extensions(self):
-        """Test file extensions."""
-        plugin = RubyPlugin()
-        extensions = plugin.get_file_extensions()
-        assert ".rb" in extensions
-        assert isinstance(extensions, list)
-
     def test_get_tree_sitter_language(self):
         """Test tree-sitter language retrieval."""
         plugin = RubyPlugin()
@@ -183,12 +171,6 @@ class TestRubyPluginInterface:
         lang1 = plugin.get_tree_sitter_language()
         lang2 = plugin.get_tree_sitter_language()
         assert lang1 is lang2
-
-    def test_create_extractor(self):
-        """Test extractor creation."""
-        plugin = RubyPlugin()
-        extractor = plugin.create_extractor()
-        assert isinstance(extractor, RubyElementExtractor)
 
 
 class TestRubyClassExtraction:

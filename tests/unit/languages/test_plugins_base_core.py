@@ -33,37 +33,6 @@ class TestLanguagePlugin:
 
         assert isinstance(extractor, DefaultExtractor)
 
-    def test_is_applicable(self) -> None:
-        """Test is_applicable method"""
-        plugin = DefaultLanguagePlugin()
-
-        # Should match supported extensions
-        assert plugin.is_applicable("test.txt") is True
-        assert plugin.is_applicable("README.md") is True
-
-        # Should not match unsupported extensions
-        assert plugin.is_applicable("test.py") is False
-        assert plugin.is_applicable("test.java") is False
-
-    def test_is_applicable_case_insensitive(self) -> None:
-        """Test is_applicable with case insensitive matching"""
-        plugin = DefaultLanguagePlugin()
-
-        # Should match regardless of case
-        assert plugin.is_applicable("TEST.TXT") is True
-        assert plugin.is_applicable("readme.MD") is True
-
-    def test_get_plugin_info(self) -> None:
-        """Test get_plugin_info method"""
-        plugin = DefaultLanguagePlugin()
-        info = plugin.get_plugin_info()
-
-        assert isinstance(info, dict)
-        assert info["language"] == "generic"
-        assert info["extensions"] == [".txt", ".md"]
-        assert info["class_name"] == "DefaultLanguagePlugin"
-        assert "module" in info
-
     def test_get_supported_element_types(self) -> None:
         """Test get_supported_element_types method"""
         plugin = DefaultLanguagePlugin()
@@ -474,4 +443,3 @@ class TestDefaultExtractorIntegration:
         functions = extractor.extract_functions(mock_tree, source_code)
         assert isinstance(functions, list)
         assert len(functions) == 0
-

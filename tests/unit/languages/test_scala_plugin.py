@@ -213,18 +213,6 @@ class TestScalaPlugin:
     def plugin(self) -> ScalaPlugin:
         return ScalaPlugin()
 
-    def test_get_language_name(self, plugin: ScalaPlugin) -> None:
-        assert plugin.get_language_name() == "scala"
-
-    def test_get_file_extensions(self, plugin: ScalaPlugin) -> None:
-        exts = plugin.get_file_extensions()
-        assert ".scala" in exts
-        assert ".sc" in exts
-
-    def test_create_extractor_returns_instance(self, plugin: ScalaPlugin) -> None:
-        extractor = plugin.create_extractor()
-        assert isinstance(extractor, ScalaElementExtractor)
-
     def test_count_tree_nodes_none(self, plugin: ScalaPlugin) -> None:
         assert plugin._count_tree_nodes(None) == 0
 

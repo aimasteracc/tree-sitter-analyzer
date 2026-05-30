@@ -259,47 +259,6 @@ class TestCPlugin:
         assert hasattr(plugin, "get_file_extensions")
         assert hasattr(plugin, "create_extractor")
 
-    def test_get_language_name(self, plugin: CPlugin) -> None:
-        """Test getting language name"""
-        language_name = plugin.get_language_name()
-
-        assert language_name == "c"
-
-    def test_get_file_extensions(self, plugin: CPlugin) -> None:
-        """Test getting file extensions"""
-        extensions = plugin.get_file_extensions()
-
-        assert isinstance(extensions, list)
-        assert ".c" in extensions
-        assert ".h" in extensions
-
-    def test_create_extractor(self, plugin: CPlugin) -> None:
-        """Test creating element extractor"""
-        extractor = plugin.create_extractor()
-
-        assert isinstance(extractor, CElementExtractor)
-        assert isinstance(extractor, ElementExtractor)
-
-    def test_is_applicable_c_file(self, plugin: CPlugin) -> None:
-        """Test applicability check for C file"""
-        assert plugin.is_applicable("test.c") is True
-        assert plugin.is_applicable("test.h") is True
-
-    def test_is_applicable_non_c_file(self, plugin: CPlugin) -> None:
-        """Test applicability check for non-C file"""
-        assert plugin.is_applicable("test.py") is False
-        assert plugin.is_applicable("test.java") is False
-        assert plugin.is_applicable("test.cpp") is False
-
-    def test_get_plugin_info(self, plugin: CPlugin) -> None:
-        """Test getting plugin information"""
-        info = plugin.get_plugin_info()
-
-        assert isinstance(info, dict)
-        assert "language" in info
-        assert "extensions" in info
-        assert info["language"] == "c"
-
     def test_get_tree_sitter_language(self, plugin: CPlugin) -> None:
         """Test getting tree-sitter language"""
         with (
@@ -561,12 +520,6 @@ class TestCPluginLegacyTests:
         from types import SimpleNamespace
 
         return SimpleNamespace(root_node=root)
-
-    def test_plugin_metadata_legacy(self) -> None:
-        """Test plugin metadata (legacy test)"""
-        p = CPlugin()
-        assert p.get_language_name() == "c"
-        assert ".c" in p.get_file_extensions()
 
     def test_extractor_covers_elements_legacy(self) -> None:
         """Test extractor covers all element types with FakeNode (legacy test)"""

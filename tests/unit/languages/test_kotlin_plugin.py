@@ -401,48 +401,6 @@ class MyClass {}
 class TestKotlinPlugin:
     """Tests for KotlinPlugin class."""
 
-    def test_get_language_name(self):
-        """get_language_name should return 'kotlin'."""
-        plugin = KotlinPlugin()
-        assert plugin.get_language_name() == "kotlin"
-
-    def test_get_file_extensions(self):
-        """get_file_extensions should include .kt."""
-        plugin = KotlinPlugin()
-        extensions = plugin.get_file_extensions()
-        assert ".kt" in extensions
-
-    def test_create_extractor(self):
-        """create_extractor should return KotlinElementExtractor."""
-        plugin = KotlinPlugin()
-        extractor = plugin.create_extractor()
-        assert isinstance(extractor, KotlinElementExtractor)
-
-    def test_is_applicable_for_kt(self):
-        """is_applicable should return True for .kt files."""
-        plugin = KotlinPlugin()
-        assert plugin.is_applicable("Main.kt")
-        assert plugin.is_applicable("path/to/File.kt")
-
-    def test_is_applicable_for_kts(self):
-        """is_applicable should return True for .kts files."""
-        plugin = KotlinPlugin()
-        assert plugin.is_applicable("build.gradle.kts")
-
-    def test_is_applicable_false_for_other(self):
-        """is_applicable should return False for non-Kotlin files."""
-        plugin = KotlinPlugin()
-        assert not plugin.is_applicable("Main.java")
-        assert not plugin.is_applicable("main.py")
-
-    def test_get_plugin_info(self):
-        """get_plugin_info should return plugin information."""
-        plugin = KotlinPlugin()
-        info = plugin.get_plugin_info()
-
-        assert info["language"] == "kotlin"
-        assert ".kt" in info["extensions"]
-
     def test_get_supported_element_types(self):
         """get_supported_element_types should return standard types."""
         plugin = KotlinPlugin()

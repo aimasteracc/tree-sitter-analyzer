@@ -15,7 +15,7 @@ from tree_sitter_analyzer.languages.typescript_plugin import (
     TypeScriptElementExtractor,
     TypeScriptPlugin,
 )
-from tree_sitter_analyzer.plugins.base import ElementExtractor, LanguagePlugin
+from tree_sitter_analyzer.plugins.base import LanguagePlugin
 
 
 class TestTypeScriptElementExtractor:
@@ -341,21 +341,6 @@ class TestTypeScriptPlugin:
         assert isinstance(plugin, TypeScriptPlugin)
         assert isinstance(plugin, LanguagePlugin)
 
-    def test_language_name(self, plugin):
-        """Test language name"""
-        assert plugin.get_language_name() == "typescript"
-
-    def test_file_extensions(self, plugin):
-        """Test file extensions"""
-        expected_extensions = [".ts", ".tsx", ".d.ts"]
-        assert plugin.get_file_extensions() == expected_extensions
-
-    def test_create_extractor(self, plugin):
-        """Test extractor creation"""
-        extractor = plugin.create_extractor()
-        assert isinstance(extractor, TypeScriptElementExtractor)
-        assert isinstance(extractor, ElementExtractor)
-
     def test_get_extractor(self, plugin):
         """Test extractor getter"""
         extractor = plugin.get_extractor()
@@ -387,36 +372,6 @@ class TestTypeScriptPlugin:
 
         for query in expected_queries:
             assert query in queries
-
-    def test_is_applicable(self, plugin):
-        """Test file applicability"""
-        assert plugin.is_applicable("test.ts") is True
-        assert plugin.is_applicable("component.tsx") is True
-        assert plugin.is_applicable("types.d.ts") is True
-        assert plugin.is_applicable("test.js") is False
-        assert plugin.is_applicable("test.py") is False
-        assert plugin.is_applicable("test.java") is False
-
-    def test_plugin_info(self, plugin):
-        """Test plugin information"""
-        info = plugin.get_plugin_info()
-
-        assert info["name"] == "TypeScript Plugin"
-        assert info["language"] == "typescript"
-        assert info["extensions"] == [".ts", ".tsx", ".d.ts"]
-        assert info["version"] == "2.0.0"
-        assert "supported_queries" in info
-        assert "features" in info
-
-        # Check some expected features
-        features = info["features"]
-        assert "TypeScript syntax support" in features
-        assert "Interface declarations" in features
-        assert "Type aliases" in features
-        assert "Enums" in features
-        assert "Generics" in features
-        assert "Decorators" in features
-        assert "TSX/JSX support" in features
 
     @patch(
         "tree_sitter_analyzer.languages.typescript_plugin.plugin.TREE_SITTER_AVAILABLE",

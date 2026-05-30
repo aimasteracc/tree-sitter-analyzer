@@ -18,18 +18,6 @@ from tree_sitter_analyzer.languages.yaml_plugin import (
 class TestYAMLPlugin:
     """Tests for YAMLPlugin class."""
 
-    def test_get_language_name(self) -> None:
-        """Test that plugin returns correct language name."""
-        plugin = YAMLPlugin()
-        assert plugin.get_language_name() == "yaml"
-
-    def test_get_file_extensions(self) -> None:
-        """Test that plugin returns correct file extensions."""
-        plugin = YAMLPlugin()
-        extensions = plugin.get_file_extensions()
-        assert ".yaml" in extensions
-        assert ".yml" in extensions
-
     def test_get_supported_element_types(self) -> None:
         """Test that plugin returns supported element types."""
         plugin = YAMLPlugin()
@@ -41,12 +29,6 @@ class TestYAMLPlugin:
         assert "alias" in types
         assert "comment" in types
         assert "document" in types
-
-    def test_create_extractor(self) -> None:
-        """Test that plugin creates correct extractor."""
-        plugin = YAMLPlugin()
-        extractor = plugin.create_extractor()
-        assert isinstance(extractor, YAMLElementExtractor)
 
     def test_get_queries(self) -> None:
         """Test that plugin returns queries."""

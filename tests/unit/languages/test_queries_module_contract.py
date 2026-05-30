@@ -1,4 +1,8 @@
-"""Parametrized contract tests for CSS, HTML, and SQL query modules.
+"""Parametrized contract tests for query modules.
+
+Covers every language module that exposes the standard
+(LANG_QUERIES, LANG_QUERY_DESCRIPTIONS, ALL_QUERIES,
+get_all_queries, list_queries, get_query) API.
 
 Replaces the structural boilerplate that was duplicated across:
   - test_queries_css_comprehensive.py  (identical API tests)
@@ -14,11 +18,31 @@ import types
 
 import pytest
 
-from tree_sitter_analyzer.queries import css, html, sql
+from tree_sitter_analyzer.queries import (
+    c,
+    cpp,
+    csharp,
+    css,
+    go,
+    html,
+    java,
+    javascript,
+    markdown,
+    python,
+    sql,
+)
 
 _MODULES = [
+    pytest.param(c, id="c"),
+    pytest.param(cpp, id="cpp"),
+    pytest.param(csharp, id="csharp"),
     pytest.param(css, id="css"),
+    pytest.param(go, id="go"),
     pytest.param(html, id="html"),
+    pytest.param(java, id="java"),
+    pytest.param(javascript, id="javascript"),
+    pytest.param(markdown, id="markdown"),
+    pytest.param(python, id="python"),
     pytest.param(sql, id="sql"),
 ]
 

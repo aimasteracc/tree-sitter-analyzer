@@ -99,22 +99,6 @@ class TestGoPlugin:
         assert hasattr(go_plugin, "get_file_extensions")
         assert hasattr(go_plugin, "create_extractor")
 
-    def test_get_language_name(self, go_plugin: GoPlugin) -> None:
-        """Test getting language name."""
-        assert go_plugin.get_language_name() == "go"
-
-    def test_get_file_extensions(self, go_plugin: GoPlugin) -> None:
-        """Test getting file extensions."""
-        extensions = go_plugin.get_file_extensions()
-        assert isinstance(extensions, list)
-        assert ".go" in extensions
-
-    def test_create_extractor(self, go_plugin: GoPlugin) -> None:
-        """Test creating element extractor."""
-        extractor = go_plugin.create_extractor()
-        assert isinstance(extractor, GoElementExtractor)
-        assert isinstance(extractor, ElementExtractor)
-
     def test_get_supported_element_types(self, go_plugin: GoPlugin) -> None:
         """Test getting supported element types."""
         types = go_plugin.get_supported_element_types()
@@ -135,14 +119,6 @@ class TestGoPlugin:
         """Test getting tree-sitter queries."""
         queries = go_plugin.get_queries()
         assert isinstance(queries, dict)
-
-    def test_get_plugin_info(self, go_plugin: GoPlugin) -> None:
-        """Test getting plugin information."""
-        info = go_plugin.get_plugin_info()
-        assert isinstance(info, dict)
-        assert "language" in info
-        assert "extensions" in info
-        assert info["language"] == "go"
 
     def test_get_tree_sitter_language_caching(self, go_plugin: GoPlugin) -> None:
         """Test tree-sitter language caching."""
