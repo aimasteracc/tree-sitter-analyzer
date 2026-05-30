@@ -14,7 +14,7 @@ def _build_function_entry(
     sym: dict[str, Any], file_path: str, language: str
 ) -> dict[str, Any]:
     """Build one function-entry dict from a symbol row."""
-    return {
+    entry: dict[str, Any] = {
         "name": sym["name"],
         "file": file_path,
         "line": sym.get("line", 0),
@@ -22,6 +22,9 @@ def _build_function_entry(
         "language": language,
         "params": sym.get("params", ""),
     }
+    if sym.get("class"):
+        entry["class"] = sym["class"]
+    return entry
 
 
 def _project_index_activation_enabled(include_activation: bool | None) -> bool:

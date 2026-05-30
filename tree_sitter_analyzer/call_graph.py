@@ -764,6 +764,7 @@ class CachedCallGraph(CallGraph):
                 start_line=func["line"],
                 language=func["language"],
                 end_line=func.get("end_line", func["line"]),
+                receiver=func.get("class"),
             )
             self._functions.append(ref)
             self._func_by_name[func["name"]].append(ref)
