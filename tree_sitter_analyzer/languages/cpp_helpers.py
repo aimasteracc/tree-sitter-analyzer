@@ -79,6 +79,22 @@ def is_global_scope(node: Any) -> bool:
     return True
 
 
+_EXPLICIT_VISIBILITY = ("public", "private", "protected")
+_VALID_SPECS = frozenset(_EXPLICIT_VISIBILITY)
+_CLASS_DEFAULT_ACCESS: dict[str, str] = {
+    "class_specifier": "private",
+    "struct_specifier": "public",
+    "union_specifier": "public",
+}
+
+
+def _default_class_access(class_node: Any) -> str | None:
+    """Return the default access specifier for a class/struct/union node."""
+    if class_node is None:
+        return None
+    return _CLASS_DEFAULT_ACCESS.get(class_node.type)
+
+
 def get_access_specifier(
     node: Any,
     get_node_text: Callable[..., str],
@@ -98,17 +114,10 @@ def get_access_specifier(
         sibling = siblings[i]
         if sibling.type == "access_specifier":
             spec_text = get_node_text(sibling).strip().rstrip(":")
-            if spec_text in ("public", "private", "protected"):
+            if spec_text in _VALID_SPECS:
                 return spec_text
 
-    class_node = parent.parent
-    if class_node:
-        if class_node.type == "class_specifier":
-            return "private"
-        elif class_node.type in ("struct_specifier", "union_specifier"):
-            return "public"
-
-    return None
+    return _default_class_access(parent.parent)
 
 
 def determine_visibility(
@@ -118,12 +127,9 @@ def determine_visibility(
     get_node_text: Callable[..., str] | None = None,
 ) -> str:
     """Determine visibility from modifiers and context."""
-    if "public" in modifiers:
-        return "public"
-    elif "private" in modifiers:
-        return "private"
-    elif "protected" in modifiers:
-        return "protected"
+    for vis in _EXPLICIT_VISIBILITY:
+        if vis in modifiers:
+            return vis
 
     if "static" in modifiers and is_global:
         return "private"

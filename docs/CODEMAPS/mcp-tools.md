@@ -1,7 +1,7 @@
 <!-- Generated: 2026-05-22 -->
 # MCP Tools Codemap
 
-59 MCP tools registered in [`mcp/_tool_registry.py`](../../tree_sitter_analyzer/mcp/_tool_registry.py).
+60 MCP tools registered in [`mcp/_tool_registry.py`](../../tree_sitter_analyzer/mcp/_tool_registry.py).
 All tools default to **TOON output** (locked — see `CLAUDE.md`).
 
 ## Tool Registry
@@ -40,11 +40,12 @@ All tools default to **TOON output** (locked — see `CLAUDE.md`).
 | `ast_diff` | `--ast-diff` | Structural AST diff (signature vs body vs new/removed symbol) |
 | `check_constraints` | `--check-constraints` | Evaluate architectural-constraints.yml against the tree |
 | `decision_journal` | `--decision-journal` | Persistent log of architectural decisions |
+| `doc_sync` | `--doc-sync` | Scan markdown docs for stale file-path references — backtick spans and link targets that no longer exist |
 | `semantic_classify` | `--semantic-classify` | Classify code changes (risk + category) |
 | **CodeGraph parity — symbol navigation** | | |
 | `codegraph_navigate` | `--codegraph-navigate` | PRIMARY symbol navigation hub (def + refs + hierarchy) |
 | `codegraph_explore` | `--codegraph-explore` | BULK fetch N related symbols' source + relationship map |
-| `codegraph_query` | `--codegraph-query` | jQuery-style chained graph query with batch seeds, sorting, compact answer packs, and evidence facets |
+| `codegraph_query` | `--codegraph-query` | jQuery-style chained graph query with lexical `search()`, offline `semantic()`, filter/exclude/has selection, cached relationship expansion, Mermaid `uml()` facets, compact answer packs, and evidence facets |
 | `codegraph_symbol_search` | `--codegraph-symbol-search` | FTS5-powered symbol search over indexed project |
 | `codegraph_resolve` | `--symbol-resolve` | Go-to-definition / find-all-references |
 | `codegraph_ast_path` | `--ast-path` | "What is at file:line?" AST path/scope |
@@ -59,11 +60,13 @@ All tools default to **TOON output** (locked — see `CLAUDE.md`).
 | `codegraph_sitemap` | `--codegraph-sitemap` | Hierarchical project code map |
 | `codegraph_complexity_heatmap` | `--codegraph-complexity-heatmap` | Cyclomatic complexity heatmap (per fn + project) |
 | `codegraph_class_hierarchy` | `--class-hierarchy` | Class inheritance hierarchy |
+| `codegraph_class_inspect` | `--class-inspect` | Inspect class methods with override detection |
 | `codegraph_dependency_matrix` | `--dependency-matrix` | Module coupling matrix |
 | `codegraph_import_graph` | `--import-graph` | File-level import dependency graph |
 | `codegraph_xref` | `--codegraph-xref` | Multi-dimension cross-reference from AST cache |
 | `codegraph_similarity` | `--code-similarity` | AST-structural clone detection |
 | `codegraph_visualize` | `--codegraph-visualize` | Export call graph as Mermaid flowchart |
+| `codegraph_uml` | `--uml` | Export UML-style Mermaid diagrams (class/package/component/sequence) |
 | **CodeGraph parity — cache/index** | | |
 | `codegraph_status` | `--codegraph-status` | INDEX HEALTH at-a-glance (indexed?, files, symbols, lag) |
 | `codegraph_autoindex` | `--autoindex` | Transparent AST cache auto-indexing |

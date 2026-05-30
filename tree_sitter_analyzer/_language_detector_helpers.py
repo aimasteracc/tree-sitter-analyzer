@@ -1,8 +1,28 @@
-"""Static configuration builders for language detection."""
+"""Static configuration builders and path helpers for language detection.
+
+This module is intentionally kept unified.  Mycelium flagged it as a "covert hub"
+with 8-10 callers, but the actual call graph has exactly **two** consumers:
+  - tree_sitter_analyzer/language_detector.py  (production)
+  - tests/unit/core/test_language_detector_helpers.py  (test)
+
+Both import all six functions.  Splitting into _language_path_helpers.py and
+_language_detector_helpers.py would yield a ~19-line path file with a single
+downstream consumer, adding indirection without reducing coupling.
+
+Logical groups within this file:
+  GROUP 1 — filesystem/path helpers (low-level OS operations):
+      normalize_detection_path, get_path_mtime_ns
+  GROUP 2 — language pattern builders (detection heuristics):
+      build_extension_confidence_map, build_content_pattern_weights
+  GROUP 3 — shared-cache integration:
+      get_cached_language, store_cached_language
+"""
 
 import logging
 import os
 from pathlib import Path
+
+from ._shared_cache import get_shared_cache
 
 logger = logging.getLogger("tree_sitter_analyzer.language_detector")
 
@@ -163,8 +183,6 @@ def get_cached_language(
     abs_path: str, mtime_ns: int, project_root: str | None
 ) -> str | None:
     try:
-        from .mcp.utils.shared_cache import get_shared_cache
-
         cached = get_shared_cache().get_language_meta(
             abs_path, project_root=project_root
         )
@@ -175,8 +193,6 @@ def get_cached_language(
         ):
             cached_lang = cached["language"]
             return cached_lang if cached_lang.strip() else "unknown"
-    except (ImportError, ModuleNotFoundError):
-        return None
     except Exception as e:
         logger.debug("Language cache lookup failed for %s: %s", abs_path, e)
     return None
@@ -189,14 +205,10 @@ def store_cached_language(
         return
 
     try:
-        from .mcp.utils.shared_cache import get_shared_cache
-
         get_shared_cache().set_language_meta(
             abs_path,
             {"language": result, "mtime_ns": mtime_ns},
             project_root=project_root,
         )
-    except (ImportError, ModuleNotFoundError):
-        return
     except Exception as e:
         logger.debug("Language cache store failed for %s: %s", abs_path, e)

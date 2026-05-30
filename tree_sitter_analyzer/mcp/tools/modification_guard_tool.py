@@ -291,6 +291,43 @@ class ModificationGuardTool(BaseMCPTool):
         if inner is not None:
             inner.set_project_path(project_root)
 
+    def get_tool_schema(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "symbol": {
+                    "type": "string",
+                    "description": (
+                        "The symbol you are about to modify "
+                        "(function/class/variable name). "
+                        "Example: 'processPayment', 'UserService'"
+                    ),
+                },
+                "modification_type": {
+                    "type": "string",
+                    "enum": [
+                        "rename",
+                        "signature_change",
+                        "delete",
+                        "behavior_change",
+                        "refactor",
+                    ],
+                    "description": "Type of modification you plan to make.",
+                },
+                "file_path": {
+                    "type": "string",
+                    "description": (
+                        "File where the symbol is defined (optional, improves accuracy). "
+                        "Example: 'src/services/PaymentService.java'"
+                    ),
+                },
+            },
+            "required": ["symbol", "modification_type"],
+            # F5: refuse unknown keys; central enforcement is in
+            # BaseMCPTool.__init_subclass__.
+            "additionalProperties": False,
+        }
+
     def get_tool_definition(self) -> dict[str, Any]:
         """
         Get the MCP tool definition for modification_guard.
@@ -338,41 +375,7 @@ class ModificationGuardTool(BaseMCPTool):
                 "vocabulary: SAFE / CAUTION / REVIEW / UNSAFE / INFO / WARN / ERROR / "
                 "NOT_FOUND."
             ),
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "symbol": {
-                        "type": "string",
-                        "description": (
-                            "The symbol you are about to modify "
-                            "(function/class/variable name). "
-                            "Example: 'processPayment', 'UserService'"
-                        ),
-                    },
-                    "modification_type": {
-                        "type": "string",
-                        "enum": [
-                            "rename",
-                            "signature_change",
-                            "delete",
-                            "behavior_change",
-                            "refactor",
-                        ],
-                        "description": "Type of modification you plan to make.",
-                    },
-                    "file_path": {
-                        "type": "string",
-                        "description": (
-                            "File where the symbol is defined (optional, improves accuracy). "
-                            "Example: 'src/services/PaymentService.java'"
-                        ),
-                    },
-                },
-                "required": ["symbol", "modification_type"],
-                # F5: refuse unknown keys; central enforcement is in
-                # BaseMCPTool.__init_subclass__.
-                "additionalProperties": False,
-            },
+            "inputSchema": self.get_tool_schema(),
             "annotations": {
                 "readOnlyHint": False,
                 "destructiveHint": False,

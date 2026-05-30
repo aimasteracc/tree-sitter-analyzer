@@ -150,8 +150,8 @@ JAVA_QUERIES: dict[str, str] = {
     # NOTE: Java annotations with no arguments are "marker_annotation" nodes in
     # tree-sitter (e.g. @Controller, @Entity, @Bean). Annotations WITH arguments
     # are "annotation" nodes (e.g. @Table(name="x")).  We must match BOTH.
-    # The (#match? ...) predicate is applied manually by _execute_newest_api()
-    # because tree-sitter-python 0.25+ QueryCursor does not apply it automatically.
+    # The (#match? ...) predicate is applied natively by tree-sitter 0.25.2+
+    # (QueryCursor.matches() filters results correctly in that version).
     "spring_controller": """
     ((class_declaration
       (modifiers

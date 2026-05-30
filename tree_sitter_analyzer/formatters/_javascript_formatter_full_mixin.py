@@ -2,6 +2,10 @@
 
 from typing import Any
 
+from .._legacy_table_formatter_common import (
+    trim_trailing_blank_lines as _trim_trailing_blank_lines,
+)
+
 
 class JavaScriptTableFormatterFullMixin:
     """Full-format rendering helpers."""
@@ -154,8 +158,3 @@ def _append_method_section(
     for method in methods:
         lines.append(row_formatter(method))
     lines.append("")
-
-
-def _trim_trailing_blank_lines(lines: list[str]) -> None:
-    while lines and lines[-1] == "":
-        lines.pop()

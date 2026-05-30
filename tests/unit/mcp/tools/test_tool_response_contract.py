@@ -132,6 +132,10 @@ class TestEnvelopeSuccess:
                     {"file_path": "main.py", "name": "helper"},
                 ]
 
+            def call_edges(self) -> list:
+                """Public accessor used by codegraph_metrics_tool."""
+                return self._call_edges
+
         monkeypatch.setattr(call_graph, "CachedCallGraph", FakeCachedCallGraph)
 
         tool = CodeGraphMetricsTool(str(tiny_project))
@@ -315,6 +319,10 @@ class TestExecuteAcrossAllTools:
             # envelope-contract rows.
             "codegraph_similarity": {"mode": "all"},
             "codegraph_class_hierarchy": {"mode": "summary"},
+            "codegraph_class_inspect": {
+                "class_name": "LanguagePlugin",
+                "output_format": "json",
+            },
             "codegraph_dependency_matrix": {"mode": "summary"},
             "check_constraints": {"output_format": "json"},
             # Pain pass 6: server.py registry consolidation surfaced 8
@@ -330,6 +338,7 @@ class TestExecuteAcrossAllTools:
             "codegraph_sitemap": {"mode": "module"},
             "codegraph_complexity_heatmap": {"mode": "project"},
             "codegraph_visualize": {"mode": "full"},
+            "codegraph_uml": {"diagram": "class"},
             "codegraph_autoindex": {"mode": "status"},
             "codegraph_full_index": {"mode": "stats"},
             "codegraph_metrics": {"mode": "project"},
@@ -353,6 +362,7 @@ class TestExecuteAcrossAllTools:
                 "query": "contract-test-no-match",
                 "output_format": "json",
             },
+            "doc_sync": {"output_format": "json"},
         }
         skipped: list[str] = []
         for name, tool in registered_tools:

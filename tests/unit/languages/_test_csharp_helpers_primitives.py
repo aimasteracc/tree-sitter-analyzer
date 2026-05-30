@@ -194,68 +194,77 @@ class TestCalculateComplexity:
         assert calculate_complexity(node, self._traverse) == 1
 
 
+def _make_attribute_list(name: str, line: int = 0) -> FakeNode:
+    """Build a FakeNode tree matching tree-sitter C# attribute_list structure.
+
+    attribute_list → attribute → identifier (the name)
+    """
+    ident = FakeNode("identifier", name)
+    attr = FakeNode("attribute", name, children=[ident])
+    return FakeNode(
+        "attribute_list", f"[{name}]", children=[attr], start_point=(line, 0)
+    )
+
+
 class TestExtractAttributes:
-    def test_no_prev_sibling_returns_empty(self) -> None:
-        node = FakeNode("class_declaration")
+    """Tests for extract_attributes — reads attribute_list direct children."""
+
+    def test_no_attribute_list_children_returns_empty(self) -> None:
+        node = FakeNode("class_declaration", children=[FakeNode("modifier", "public")])
         cache: dict[tuple[int, int], list[dict[str, Any]]] = {}
         result = extract_attributes(node, _get_node_text, cache)
         assert result == []
 
-    def test_single_attribute_before_node(self) -> None:
-        attr_node = FakeNode(
-            "attribute_list",
-            "[Serializable]",
-            start_point=(2, 0),
-        )
-        node = FakeNode("class_declaration", _prev_sibling=attr_node)
+    def test_single_attribute_child(self) -> None:
+        attr_list = _make_attribute_list("Serializable", line=2)
+        modifier = FakeNode("modifier", "public")
+        node = FakeNode("class_declaration", children=[attr_list, modifier])
         cache: dict[tuple[int, int], list[dict[str, Any]]] = {}
         result = extract_attributes(node, _get_node_text, cache)
         assert len(result) == 1
         assert result[0]["name"] == "Serializable"
         assert result[0]["text"] == "[Serializable]"
-        assert result[0]["line"] == 3
+        assert result[0]["line"] == 3  # line=2 → start_point=(2,0) → line 3 (1-indexed)
 
     def test_multiple_attributes(self) -> None:
-        attr2 = FakeNode("attribute_list", "[Obsolete]", start_point=(1, 0))
-        attr1 = FakeNode("attribute_list", "[Serializable]", start_point=(2, 0))
-        node = FakeNode("class_declaration", _prev_sibling=attr1)
-        attr1._prev_sibling = attr2
+        attr1 = _make_attribute_list("Serializable", line=1)
+        attr2 = _make_attribute_list("Obsolete", line=2)
+        modifier = FakeNode("modifier", "public")
+        node = FakeNode("class_declaration", children=[attr1, attr2, modifier])
         cache: dict[tuple[int, int], list[dict[str, Any]]] = {}
         result = extract_attributes(node, _get_node_text, cache)
         assert len(result) == 2
-        assert result[0]["name"] == "Obsolete"
-        assert result[1]["name"] == "Serializable"
+        assert result[0]["name"] == "Serializable"
+        assert result[1]["name"] == "Obsolete"
 
-    def test_stops_at_non_comment_non_attribute(self) -> None:
-        other = FakeNode("namespace_declaration", "namespace Foo")
-        attr = FakeNode("attribute_list", "[Serializable]", start_point=(0, 0))
-        node = FakeNode("class_declaration", _prev_sibling=attr)
-        attr._prev_sibling = other
+    def test_stops_at_first_non_attribute_list_child(self) -> None:
+        attr = _make_attribute_list("Serializable", line=0)
+        modifier = FakeNode("modifier", "public")
+        attr2 = _make_attribute_list("ShouldBeIgnored", line=3)
+        # attribute_list, modifier, attribute_list — second attr_list after modifier is ignored
+        node = FakeNode("class_declaration", children=[attr, modifier, attr2])
         cache: dict[tuple[int, int], list[dict[str, Any]]] = {}
         result = extract_attributes(node, _get_node_text, cache)
         assert len(result) == 1
+        assert result[0]["name"] == "Serializable"
 
-    def test_line_comment_does_not_block_attribute(self) -> None:
-        comment = FakeNode("line_comment", "// comment")
-        attr = FakeNode("attribute_list", "[Test]", start_point=(5, 0))
-        node = FakeNode("method_declaration", _prev_sibling=attr)
-        attr._prev_sibling = comment
+    def test_method_attributes(self) -> None:
+        attr = _make_attribute_list("HttpGet", line=5)
+        modifier = FakeNode("modifier", "public")
+        node = FakeNode("method_declaration", children=[attr, modifier])
         cache: dict[tuple[int, int], list[dict[str, Any]]] = {}
         result = extract_attributes(node, _get_node_text, cache)
         assert len(result) == 1
-
-    def test_block_comment_does_not_block_attribute(self) -> None:
-        comment = FakeNode("block_comment", "/* comment */")
-        attr = FakeNode("attribute_list", "[Test]", start_point=(3, 0))
-        node = FakeNode("method_declaration", _prev_sibling=attr)
-        attr._prev_sibling = comment
-        cache: dict[tuple[int, int], list[dict[str, Any]]] = {}
-        result = extract_attributes(node, _get_node_text, cache)
-        assert len(result) == 1
+        assert result[0]["name"] == "HttpGet"
 
     def test_caches_result(self) -> None:
-        attr = FakeNode("attribute_list", "[Cached]", start_point=(0, 0))
-        node = FakeNode("class_declaration", start_point=(1, 0), end_point=(5, 0), _prev_sibling=attr)
+        attr = _make_attribute_list("Cached", line=0)
+        node = FakeNode(
+            "class_declaration",
+            start_point=(1, 0),
+            end_point=(5, 0),
+            children=[attr],
+        )
         cache: dict[tuple[int, int], list[dict[str, Any]]] = {}
         result1 = extract_attributes(node, _get_node_text, cache)
         result2 = extract_attributes(node, _get_node_text, cache)

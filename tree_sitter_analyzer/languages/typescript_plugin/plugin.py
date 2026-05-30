@@ -32,14 +32,6 @@ class TypeScriptPlugin(LanguagePlugin):
         self._extractor = TypeScriptElementExtractor()
         self._language: tree_sitter.Language | None = None
 
-    @property
-    def language_name(self) -> str:
-        return "typescript"
-
-    @property
-    def file_extensions(self) -> list[str]:
-        return [".ts", ".tsx", ".d.ts"]
-
     def get_language_name(self) -> str:
         """Return the name of the programming language this plugin supports"""
         return "typescript"
@@ -103,6 +95,8 @@ class TypeScriptPlugin(LanguagePlugin):
             "name": "TypeScript Plugin",
             "language": self.get_language_name(),
             "extensions": self.get_file_extensions(),
+            "class_name": self.__class__.__name__,
+            "module": self.__class__.__module__,
             "version": "2.0.0",
             "supported_queries": self.get_supported_queries(),
             "features": [
@@ -134,7 +128,7 @@ class TypeScriptPlugin(LanguagePlugin):
         if not TREE_SITTER_AVAILABLE:
             return AnalysisResult(
                 file_path=file_path,
-                language=self.language_name,
+                language=self.get_language_name(),
                 success=False,
                 error_message="Tree-sitter library not available.",
             )
@@ -143,7 +137,7 @@ class TypeScriptPlugin(LanguagePlugin):
         if not language:
             return AnalysisResult(
                 file_path=file_path,
-                language=self.language_name,
+                language=self.get_language_name(),
                 success=False,
                 error_message="Could not load TypeScript language for parsing.",
             )
@@ -181,7 +175,7 @@ class TypeScriptPlugin(LanguagePlugin):
 
             return AnalysisResult(
                 file_path=file_path,
-                language=self.language_name,
+                language=self.get_language_name(),
                 success=True,
                 elements=elements,
                 line_count=len(source_code.splitlines()),
@@ -191,7 +185,7 @@ class TypeScriptPlugin(LanguagePlugin):
             log_error(f"Error analyzing TypeScript file {file_path}: {e}")
             return AnalysisResult(
                 file_path=file_path,
-                language=self.language_name,
+                language=self.get_language_name(),
                 success=False,
                 error_message=str(e),
             )

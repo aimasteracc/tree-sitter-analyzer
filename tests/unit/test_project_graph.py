@@ -485,6 +485,117 @@ class TestDependencyGraphCache:
         assert g1.edges() == g2.edges()
 
 
+class TestDependencyGraphPublicAPI:
+    """T2 — public adjacency API: all_nodes(), all_edges(), all_deps()."""
+
+    @pytest.fixture
+    def tiny(self, tmp_path):
+        from tree_sitter_analyzer.project_graph import DependencyGraph
+
+        (tmp_path / "a.py").write_text("from . import b\n")
+        (tmp_path / "b.py").write_text("from . import c\n")
+        (tmp_path / "c.py").write_text("x = 1\n")
+        return DependencyGraph(str(tmp_path))
+
+    def test_all_nodes_returns_frozenset(self, tiny):
+        result = tiny.all_nodes()
+        assert isinstance(result, frozenset)
+
+    def test_all_nodes_contains_all_files(self, tiny):
+        nodes = tiny.all_nodes()
+        assert "a.py" in nodes
+        assert "b.py" in nodes
+        assert "c.py" in nodes
+
+    def test_all_nodes_consistent_with_nodes(self, tiny):
+        assert set(tiny.nodes()) == set(tiny.all_nodes())
+
+    def test_all_nodes_returns_copy(self, tiny):
+        n1 = tiny.all_nodes()
+        n2 = tiny.all_nodes()
+        assert n1 == n2
+        assert n1 is not n2  # each call returns a new frozenset
+
+    def test_all_edges_returns_frozenset(self, tiny):
+        result = tiny.all_edges()
+        assert isinstance(result, frozenset)
+
+    def test_all_edges_consistent_with_edges(self, tiny):
+        assert set(tiny.edges()) == set(tiny.all_edges())
+
+    def test_all_edges_returns_copy(self, tiny):
+        e1 = tiny.all_edges()
+        e2 = tiny.all_edges()
+        assert e1 == e2
+        assert e1 is not e2
+
+    def test_all_deps_returns_dict(self, tiny):
+        result = tiny.all_deps()
+        assert isinstance(result, dict)
+
+    def test_all_deps_values_are_sets(self, tiny):
+        for v in tiny.all_deps().values():
+            assert isinstance(v, set)
+
+    def test_all_deps_mutation_does_not_affect_graph(self, tiny):
+        deps = tiny.all_deps()
+        # Mutate the returned copy — should not affect the graph
+        for v in deps.values():
+            v.clear()
+        # Graph's internal state should be unaffected
+        assert any(len(v) > 0 for v in tiny.all_deps().values()), (
+            "all_deps() must return independent copies, not shared references"
+        )
+
+    def test_all_deps_covers_dependencies_of(self, tiny):
+        deps = tiny.all_deps()
+        for node in tiny.all_nodes():
+            direct = tiny.dependencies_of(node)
+            via_all_deps = sorted(deps.get(node, set()))
+            assert direct == via_all_deps
+
+
+# ============================================================
+# Public accessor tests (expose-dependency-graph-public-api)
+# ============================================================
+
+
+class TestDependencyGraphPublicAccessors:
+    """TDD: has_node(), node_count(), edge_count() public API."""
+
+    @pytest.fixture
+    def small_graph(self, tmp_path):
+        from tree_sitter_analyzer.project_graph import DependencyGraph
+
+        proj = tmp_path / "small"
+        proj.mkdir()
+        (proj / "a.py").write_text("from . import b\n")
+        (proj / "b.py").write_text("x = 1\n")
+        return DependencyGraph(str(proj))
+
+    def test_has_node_true_for_existing_node(self, small_graph):
+        """has_node() returns True for a file that is in the graph."""
+        nodes = small_graph.nodes()
+        assert len(nodes) >= 1
+        assert small_graph.has_node(nodes[0]) is True
+
+    def test_has_node_false_for_missing_node(self, small_graph):
+        """has_node() returns False for a file not in the graph."""
+        assert small_graph.has_node("nonexistent_file_xyz.py") is False
+
+    def test_node_count_matches_nodes_length(self, small_graph):
+        """node_count() equals len(nodes())."""
+        assert small_graph.node_count() == len(small_graph.nodes())
+
+    def test_edge_count_matches_edges_length(self, small_graph):
+        """edge_count() equals len(edges())."""
+        assert small_graph.edge_count() == len(small_graph.edges())
+
+    def test_node_count_nonzero(self, small_graph):
+        """A non-empty project has at least one node."""
+        assert small_graph.node_count() >= 1
+
+
 # ============================================================
 # Helpers
 # ============================================================

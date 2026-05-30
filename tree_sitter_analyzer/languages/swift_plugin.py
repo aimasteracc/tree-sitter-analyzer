@@ -116,10 +116,6 @@ class SwiftPlugin(LanguagePlugin):
             log_error(f"Error extracting Swift elements: {e}")
             return _empty_elements()
 
-    def supports_file(self, file_path: str) -> bool:
-        """Check if this plugin supports the given file."""
-        return self.is_applicable(file_path)
-
 
 def _empty_elements() -> dict[str, list[Any]]:
     return {"functions": [], "classes": [], "variables": [], "imports": []}

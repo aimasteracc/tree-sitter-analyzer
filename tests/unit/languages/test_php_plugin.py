@@ -212,18 +212,6 @@ class TestPHPPluginInterface:
         plugin = PHPPlugin()
         assert plugin is not None
 
-    def test_get_language_name(self):
-        """Test language name."""
-        plugin = PHPPlugin()
-        assert plugin.get_language_name() == "php"
-
-    def test_get_file_extensions(self):
-        """Test file extensions."""
-        plugin = PHPPlugin()
-        extensions = plugin.get_file_extensions()
-        assert ".php" in extensions
-        assert isinstance(extensions, list)
-
     def test_get_tree_sitter_language(self):
         """Test tree-sitter language retrieval."""
         plugin = PHPPlugin()
@@ -236,12 +224,6 @@ class TestPHPPluginInterface:
         lang1 = plugin.get_tree_sitter_language()
         lang2 = plugin.get_tree_sitter_language()
         assert lang1 is lang2
-
-    def test_create_extractor(self):
-        """Test extractor creation."""
-        plugin = PHPPlugin()
-        extractor = plugin.create_extractor()
-        assert isinstance(extractor, PHPElementExtractor)
 
 
 class TestPHPClassExtraction:

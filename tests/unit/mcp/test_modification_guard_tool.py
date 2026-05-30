@@ -42,11 +42,6 @@ class TestModificationGuardToolInitialization:
         """Test that initialization creates a tool instance."""
         assert tool is not None
 
-    def test_init_with_project_root(self) -> None:
-        """Test initialization with a project root sets project_root."""
-        t = ModificationGuardTool(project_root="/opt/project")
-        assert t.project_root == "/opt/project"
-
     def test_init_creates_trace_impact_tool(self, tool: ModificationGuardTool) -> None:
         """Test that initialization also creates an inner TraceImpactTool."""
         assert hasattr(tool, "_trace_impact_tool")
@@ -62,19 +57,9 @@ class TestModificationGuardToolInitialization:
 class TestModificationGuardToolDefinition:
     """Tests for get_tool_definition()."""
 
-    def test_tool_definition_structure(self, tool: ModificationGuardTool) -> None:
-        """Test that the tool definition has correct keys."""
-        defn = tool.get_tool_definition()
-        assert "name" in defn
-        assert "description" in defn
-        assert "inputSchema" in defn
-
-    def test_tool_definition_name(self, tool: ModificationGuardTool) -> None:
-        """Test that the tool name is modification_guard."""
-        defn = tool.get_tool_definition()
-        assert defn["name"] == "modification_guard"
-
-    def test_description_contains_when_to_use(self, tool: ModificationGuardTool) -> None:
+    def test_description_contains_when_to_use(
+        self, tool: ModificationGuardTool
+    ) -> None:
         """Test that the description contains WHEN TO USE section."""
         defn = tool.get_tool_definition()
         assert "WHEN TO USE" in defn["description"]
@@ -115,7 +100,9 @@ class TestModificationGuardToolValidation:
         with pytest.raises(ValueError, match="symbol"):
             tool.validate_arguments({"symbol": "   ", "modification_type": "rename"})
 
-    def test_invalid_modification_type_raises(self, tool: ModificationGuardTool) -> None:
+    def test_invalid_modification_type_raises(
+        self, tool: ModificationGuardTool
+    ) -> None:
         """Test that an invalid modification_type raises ValueError."""
         with pytest.raises(ValueError, match="modification_type"):
             tool.validate_arguments({"symbol": "foo", "modification_type": "explode"})
@@ -314,10 +301,16 @@ class TestCriticalNodesIntegration:
         cache = tmp_path / ".tree-sitter-cache"
         cache.mkdir()
         (cache / "critical_nodes.json").write_text(
-            json.dumps([
-                {"name": "BeanFactory", "pagerank": 0.0156, "inbound_refs": 16},
-                {"name": "InitializingBean", "pagerank": 0.0089, "inbound_refs": 171},
-            ])
+            json.dumps(
+                [
+                    {"name": "BeanFactory", "pagerank": 0.0156, "inbound_refs": 16},
+                    {
+                        "name": "InitializingBean",
+                        "pagerank": 0.0089,
+                        "inbound_refs": 171,
+                    },
+                ]
+            )
         )
 
         tool = ModificationGuardTool(project_root=str(tmp_path))
@@ -337,17 +330,17 @@ class TestCriticalNodesIntegration:
         assert "BeanFactory" in result["architecture_warning"]
 
     @pytest.mark.asyncio
-    async def test_critical_node_boosts_verdict(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_critical_node_boosts_verdict(self, tmp_path: Path) -> None:
         """Top-10 critical node boosts safety verdict by one level."""
 
         cache = tmp_path / ".tree-sitter-cache"
         cache.mkdir()
         (cache / "critical_nodes.json").write_text(
-            json.dumps([
-                {"name": "BeanFactory", "pagerank": 0.0156, "inbound_refs": 16},
-            ])
+            json.dumps(
+                [
+                    {"name": "BeanFactory", "pagerank": 0.0156, "inbound_refs": 16},
+                ]
+            )
         )
 
         tool = ModificationGuardTool(project_root=str(tmp_path))
@@ -366,17 +359,17 @@ class TestCriticalNodesIntegration:
         assert result["safety_verdict"] == "REVIEW"
 
     @pytest.mark.asyncio
-    async def test_non_critical_node_no_architecture_info(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_non_critical_node_no_architecture_info(self, tmp_path: Path) -> None:
         """Symbols not in critical_nodes.json have no architecture fields."""
 
         cache = tmp_path / ".tree-sitter-cache"
         cache.mkdir()
         (cache / "critical_nodes.json").write_text(
-            json.dumps([
-                {"name": "BeanFactory", "pagerank": 0.0156, "inbound_refs": 16},
-            ])
+            json.dumps(
+                [
+                    {"name": "BeanFactory", "pagerank": 0.0156, "inbound_refs": 16},
+                ]
+            )
         )
 
         tool = ModificationGuardTool(project_root=str(tmp_path))

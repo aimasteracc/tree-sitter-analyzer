@@ -6,6 +6,8 @@ Tree-sitter queries specific to C++ language constructs.
 Covers classes, functions, templates, namespaces, and other C++ specific elements.
 """
 
+from ._base import make_query_accessors as _make_query_accessors
+
 # C++-specific query library
 CPP_QUERIES: dict[str, str] = {
     # --- Basic Structure ---
@@ -320,23 +322,7 @@ ALL_QUERIES["variables"] = {
 }
 
 
-def get_query(name: str) -> str:
-    """Get a specific query by name."""
-    if name in ALL_QUERIES:
-        return ALL_QUERIES[name]["query"]
-    raise ValueError(
-        f"Query '{name}' not found. Available queries: {list(ALL_QUERIES.keys())}"
-    )
-
-
-def get_all_queries() -> dict:
-    """Get all available queries."""
-    return ALL_QUERIES
-
-
-def list_queries() -> list:
-    """List all available query names."""
-    return list(ALL_QUERIES.keys())
+get_query, get_all_queries, list_queries = _make_query_accessors(ALL_QUERIES)
 
 
 def get_available_cpp_queries() -> list[str]:

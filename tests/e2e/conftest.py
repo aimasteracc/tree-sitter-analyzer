@@ -50,6 +50,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import threading
@@ -399,10 +400,13 @@ def clone_repo_factory(
     """
     base: Path = tmp_path_factory.mktemp("real-repos")
     cache: dict[str, Path] = {}
+    clone_failures: dict[str, str] = {}
 
     def _clone(url: str, name: str) -> Path:
         if name in cache:
             return cache[name]
+        if name in clone_failures:
+            pytest.skip("tracked: " + clone_failures[name])
 
         # Honour a pre-cloned directory supplied by CI to avoid double-cloning.
         env_key = f"E2E_REAL_REPO_{name.upper().replace('-', '_')}"
@@ -414,17 +418,48 @@ def clone_repo_factory(
                 return dest
 
         dest = base / name
-        result = subprocess.run(
-            ["git", "clone", "--depth", "1", "--quiet", url, str(dest)],
-            capture_output=True,
-            timeout=120.0,
-        )
+        if (dest / ".git").exists():
+            cache[name] = dest
+            return dest
+
+        if dest.exists():
+            shutil.rmtree(dest)
+
+        tmp_dest = base / f".{name}.clone-tmp"
+        if tmp_dest.exists():
+            shutil.rmtree(tmp_dest)
+
+        try:
+            result = subprocess.run(
+                ["git", "clone", "--depth", "1", "--quiet", url, str(tmp_dest)],
+                capture_output=True,
+                timeout=45.0,
+            )
+        except subprocess.TimeoutExpired:
+            shutil.rmtree(tmp_dest, ignore_errors=True)
+            clone_failures[name] = (
+                f"git clone {url!r} timed out after 45s. "
+                "Real-repo E2E requires network; skip is expected in slow or "
+                "air-gapped envs."
+            )
+            pytest.skip("tracked: " + clone_failures[name])
+        except FileNotFoundError:
+            clone_failures[name] = (
+                "git executable not found. Real-repo E2E requires git; "
+                "skip is expected in minimal envs."
+            )
+            pytest.skip("tracked: " + clone_failures[name])
+
         if result.returncode != 0:
-            pytest.skip(
-                f"tracked: git clone {url!r} failed — offline or repo moved. "
+            shutil.rmtree(tmp_dest, ignore_errors=True)
+            clone_failures[name] = (
+                f"git clone {url!r} failed — offline or repo moved. "
                 "Real-repo E2E requires network; skip is expected in air-gapped envs.\n"
                 + result.stderr.decode("utf-8", errors="replace")[:300]
             )
+            pytest.skip("tracked: " + clone_failures[name])
+
+        tmp_dest.replace(dest)
         cache[name] = dest
         return dest
 

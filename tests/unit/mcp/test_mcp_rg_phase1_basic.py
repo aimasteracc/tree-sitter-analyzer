@@ -6,6 +6,52 @@ from tree_sitter_analyzer.mcp.tools import fd_rg_utils
 from tree_sitter_analyzer.mcp.tools.search_content_tool import SearchContentTool
 
 
+def _build_rg(
+    query: str,
+    tmp_path: object,
+    *,
+    case: str = "smart",
+    fixed_strings: bool = False,
+    word: bool = False,
+    multiline: bool = False,
+    include_globs=None,
+    exclude_globs=None,
+    follow_symlinks: bool = False,
+    hidden: bool = False,
+    no_ignore: bool = False,
+    max_filesize=None,
+    context_before=None,
+    context_after=None,
+    encoding=None,
+    max_count=None,
+    timeout_ms=None,
+    files_from=None,
+    count_only_matches: bool = False,
+) -> list:
+    """Call build_rg_command with sensible defaults; only vary what the test cares about."""
+    return fd_rg_utils.build_rg_command(
+        query=query,
+        case=case,
+        fixed_strings=fixed_strings,
+        word=word,
+        multiline=multiline,
+        include_globs=include_globs,
+        exclude_globs=exclude_globs,
+        follow_symlinks=follow_symlinks,
+        hidden=hidden,
+        no_ignore=no_ignore,
+        max_filesize=max_filesize,
+        context_before=context_before,
+        context_after=context_after,
+        encoding=encoding,
+        max_count=max_count,
+        timeout_ms=timeout_ms,
+        roots=[str(tmp_path)],
+        files_from=files_from,
+        count_only_matches=count_only_matches,
+    )
+
+
 @pytest.fixture(autouse=True)
 def mock_external_commands(monkeypatch):
     """Auto-mock external command availability checks for all tests in this module."""
@@ -18,27 +64,7 @@ def mock_external_commands(monkeypatch):
 @pytest.mark.unit
 def test_rg_01_build_cmd_default_smart_case(tmp_path):
     """Default build: --json, smart case (-S), default max-filesize."""
-    cmd = fd_rg_utils.build_rg_command(
-        query="test",
-        case="smart",
-        fixed_strings=False,
-        word=False,
-        multiline=False,
-        include_globs=None,
-        exclude_globs=None,
-        follow_symlinks=False,
-        hidden=False,
-        no_ignore=False,
-        max_filesize=None,
-        context_before=None,
-        context_after=None,
-        encoding=None,
-        max_count=None,
-        timeout_ms=None,
-        roots=[str(tmp_path)],
-        files_from=None,
-        count_only_matches=False,
-    )
+    cmd = _build_rg("test", tmp_path)
 
     assert cmd[0] == "rg"
     assert "--json" in cmd
@@ -50,27 +76,7 @@ def test_rg_01_build_cmd_default_smart_case(tmp_path):
 
 @pytest.mark.unit
 def test_rg_02_build_cmd_case_insensitive(tmp_path):
-    cmd = fd_rg_utils.build_rg_command(
-        query="test",
-        case="insensitive",
-        fixed_strings=False,
-        word=False,
-        multiline=False,
-        include_globs=None,
-        exclude_globs=None,
-        follow_symlinks=False,
-        hidden=False,
-        no_ignore=False,
-        max_filesize=None,
-        context_before=None,
-        context_after=None,
-        encoding=None,
-        max_count=None,
-        timeout_ms=None,
-        roots=[str(tmp_path)],
-        files_from=None,
-        count_only_matches=False,
-    )
+    cmd = _build_rg("test", tmp_path, case="insensitive")
     assert "-i" in cmd
     assert "-S" not in cmd
     assert "-s" not in cmd
@@ -78,27 +84,7 @@ def test_rg_02_build_cmd_case_insensitive(tmp_path):
 
 @pytest.mark.unit
 def test_rg_03_build_cmd_case_sensitive(tmp_path):
-    cmd = fd_rg_utils.build_rg_command(
-        query="test",
-        case="sensitive",
-        fixed_strings=False,
-        word=False,
-        multiline=False,
-        include_globs=None,
-        exclude_globs=None,
-        follow_symlinks=False,
-        hidden=False,
-        no_ignore=False,
-        max_filesize=None,
-        context_before=None,
-        context_after=None,
-        encoding=None,
-        max_count=None,
-        timeout_ms=None,
-        roots=[str(tmp_path)],
-        files_from=None,
-        count_only_matches=False,
-    )
+    cmd = _build_rg("test", tmp_path, case="sensitive")
     assert "-s" in cmd
     assert "-S" not in cmd
     assert "-i" not in cmd
@@ -106,104 +92,29 @@ def test_rg_03_build_cmd_case_sensitive(tmp_path):
 
 @pytest.mark.unit
 def test_rg_04_build_cmd_fixed_strings_flag(tmp_path):
-    cmd = fd_rg_utils.build_rg_command(
-        query="a+b?",
-        case="smart",
-        fixed_strings=True,
-        word=False,
-        multiline=False,
-        include_globs=None,
-        exclude_globs=None,
-        follow_symlinks=False,
-        hidden=False,
-        no_ignore=False,
-        max_filesize=None,
-        context_before=None,
-        context_after=None,
-        encoding=None,
-        max_count=None,
-        timeout_ms=None,
-        roots=[str(tmp_path)],
-        files_from=None,
-        count_only_matches=False,
-    )
+    cmd = _build_rg("a+b?", tmp_path, fixed_strings=True)
     assert "-F" in cmd
 
 
 @pytest.mark.unit
 def test_rg_05_build_cmd_word_boundaries(tmp_path):
-    cmd = fd_rg_utils.build_rg_command(
-        query="test",
-        case="smart",
-        fixed_strings=False,
-        word=True,
-        multiline=False,
-        include_globs=None,
-        exclude_globs=None,
-        follow_symlinks=False,
-        hidden=False,
-        no_ignore=False,
-        max_filesize=None,
-        context_before=None,
-        context_after=None,
-        encoding=None,
-        max_count=None,
-        timeout_ms=None,
-        roots=[str(tmp_path)],
-        files_from=None,
-        count_only_matches=False,
-    )
+    cmd = _build_rg("test", tmp_path, word=True)
     assert "-w" in cmd
 
 
 @pytest.mark.unit
 def test_rg_06_build_cmd_multiline(tmp_path):
-    cmd = fd_rg_utils.build_rg_command(
-        query="class \\w+",
-        case="smart",
-        fixed_strings=False,
-        word=False,
-        multiline=True,
-        include_globs=None,
-        exclude_globs=None,
-        follow_symlinks=False,
-        hidden=False,
-        no_ignore=False,
-        max_filesize=None,
-        context_before=None,
-        context_after=None,
-        encoding=None,
-        max_count=None,
-        timeout_ms=None,
-        roots=[str(tmp_path)],
-        files_from=None,
-        count_only_matches=False,
-    )
+    cmd = _build_rg("class \\w+", tmp_path, multiline=True)
     assert "--multiline" in cmd
 
 
 @pytest.mark.unit
 def test_rg_07_build_cmd_globs_include_exclude(tmp_path):
-    cmd = fd_rg_utils.build_rg_command(
-        query="import",
-        case="smart",
-        fixed_strings=False,
-        word=False,
-        multiline=False,
+    cmd = _build_rg(
+        "import",
+        tmp_path,
         include_globs=["*.py", "src/*.ts"],
         exclude_globs=["*_test.py", "build/**"],
-        follow_symlinks=False,
-        hidden=False,
-        no_ignore=False,
-        max_filesize=None,
-        context_before=None,
-        context_after=None,
-        encoding=None,
-        max_count=None,
-        timeout_ms=None,
-        roots=[str(tmp_path)],
-        files_from=None,
-        count_only_matches=False,
     )
 
     def has_pair(flag: str, value: str) -> bool:
@@ -220,27 +131,7 @@ def test_rg_07_build_cmd_globs_include_exclude(tmp_path):
 
 @pytest.mark.unit
 def test_rg_08_build_cmd_hidden_and_no_ignore(tmp_path):
-    cmd = fd_rg_utils.build_rg_command(
-        query="TODO",
-        case="smart",
-        fixed_strings=False,
-        word=False,
-        multiline=False,
-        include_globs=None,
-        exclude_globs=None,
-        follow_symlinks=False,
-        hidden=True,
-        no_ignore=True,
-        max_filesize=None,
-        context_before=None,
-        context_after=None,
-        encoding=None,
-        max_count=None,
-        timeout_ms=None,
-        roots=[str(tmp_path)],
-        files_from=None,
-        count_only_matches=False,
-    )
+    cmd = _build_rg("TODO", tmp_path, hidden=True, no_ignore=True)
     # Pain #27 (2026-05-23): rg's -H is --with-filename, NOT hidden.
     # The right flag is --hidden (long form).
     assert "--hidden" in cmd

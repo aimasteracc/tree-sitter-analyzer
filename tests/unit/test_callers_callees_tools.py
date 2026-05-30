@@ -7,6 +7,9 @@ import pytest
 
 from tree_sitter_analyzer.mcp.tools.callees_tool import CodeGraphCalleesTool
 from tree_sitter_analyzer.mcp.tools.callers_tool import CodeGraphCallersTool
+from tree_sitter_analyzer.mcp.tools.codegraph_relation_tool import (
+    CodeGraphRelationToolMixin,
+)
 
 _PROJECT_ROOT = str(Path(__file__).resolve().parent.parent.parent)
 
@@ -37,6 +40,7 @@ class TestCodeGraphCallersTool:
         assert callers_tool.validate_arguments({"function_name": "main"})
 
     @pytest.mark.asyncio
+    @pytest.mark.slow_ok  # scans full project graph; ~12s on CI hardware
     async def test_execute_returns_callers(self, callers_tool):
         result = await callers_tool.execute(
             {"function_name": "_walk_tree", "output_format": "json"}
@@ -66,10 +70,10 @@ class TestCodeGraphCallersTool:
         assert result["success"] is True
 
     def test_project_root_change_resets_cache(self, callers_tool):
-        callers_tool._get_call_graph()
-        assert callers_tool._call_graph is not None
+        callers_tool.get_call_graph()
+        assert callers_tool.call_graph_initialized
         callers_tool._on_project_root_changed(None)
-        assert callers_tool._call_graph is None
+        assert not callers_tool.call_graph_initialized
 
     @pytest.mark.asyncio
     async def test_no_project_root_raises(self):
@@ -123,10 +127,10 @@ class TestCodeGraphCalleesTool:
         assert result["success"] is True
 
     def test_project_root_change_resets_cache(self, callees_tool):
-        callees_tool._get_call_graph()
-        assert callees_tool._call_graph is not None
+        callees_tool.get_call_graph()
+        assert callees_tool.call_graph_initialized
         callees_tool._on_project_root_changed(None)
-        assert callees_tool._call_graph is None
+        assert not callees_tool.call_graph_initialized
 
     @pytest.mark.asyncio
     async def test_no_project_root_raises(self):
@@ -136,6 +140,10 @@ class TestCodeGraphCalleesTool:
 
 
 class TestCallerCalleeIntegration:
+    def test_callers_and_callees_share_relation_bootstrap(self):
+        assert issubclass(CodeGraphCallersTool, CodeGraphRelationToolMixin)
+        assert issubclass(CodeGraphCalleesTool, CodeGraphRelationToolMixin)
+
     @pytest.mark.asyncio
     async def test_unknown_function_returns_empty(self, callers_tool, callees_tool):
         result = await callers_tool.execute(

@@ -147,6 +147,15 @@ def _assess_risk(
     return "high"
 
 
+def _file_impact_dict(changed_file: str, graph: Any, fwd: set[str]) -> dict[str, Any]:
+    """Build one file-impact row for _build_file_impacts."""
+    return {
+        "file": changed_file,
+        "direct_dependents": sorted(graph.dependents_of(changed_file))[:20],
+        "total_affected": len(fwd),
+    }
+
+
 def _build_file_impacts(
     changed_files: list[str],
     graph: Any | None,
@@ -161,13 +170,7 @@ def _build_file_impacts(
     for changed_file in changed_files:
         fwd = blast.forward(changed_file)
         affected.update(fwd)
-        file_impacts.append(
-            {
-                "file": changed_file,
-                "direct_dependents": sorted(graph.dependents_of(changed_file))[:20],
-                "total_affected": len(fwd),
-            }
-        )
+        file_impacts.append(_file_impact_dict(changed_file, graph, fwd))
 
     return affected, file_impacts
 
@@ -390,6 +393,73 @@ def _ensure_ast_cache(
         return None
 
 
+def _symbol_dict(s: dict[str, Any]) -> dict[str, Any]:
+    """Build a compact symbol dict for cache-enrichment output."""
+    name = s.get("name") or s.get("text", "")
+    return {"name": name, "kind": s.get("kind", "unknown"), "line": s.get("line", 0)}
+
+
+def _file_symbol_dict(rel: str, symbols: list[dict[str, Any]]) -> dict[str, Any]:
+    """Build the enriched file entry for _enrich_with_cache_symbols."""
+    valid = [s for s in symbols if s.get("name") or s.get("text")]
+    return {
+        "file": rel,
+        "symbol_count": len(symbols),
+        "symbols": [_symbol_dict(s) for s in valid][:50],
+    }
+
+
+def _affected_symbol_dict(rel: str, s: dict[str, Any]) -> dict[str, Any]:
+    """Build one result entry for _find_affected_symbols."""
+    name = s.get("name") or s.get("text", "")
+    return {
+        "file": rel,
+        "name": name,
+        "kind": s.get("kind", "unknown"),
+        "line": s.get("line", 0),
+    }
+
+
+def _inject_cs_into_impact(
+    fi: dict[str, Any], changed_symbols: list[dict[str, Any]]
+) -> None:
+    """Inject changed-symbol metadata into a file-impact row (in-place)."""
+    rel = fi.get("file", "")
+    for cs in changed_symbols:
+        if cs["file"] == rel:
+            fi["symbols"] = cs["symbols"][:10]
+            fi["symbol_count"] = cs["symbol_count"]
+            return
+
+
+def _hot_zone_factor(row: Any) -> dict[str, Any]:
+    """Build one hot-zone risk-factor dict from a hot-rows query result."""
+    reason = (
+        f"hot zone: {row['file_path']} "
+        f"symbol_id={row['symbol_id']} "
+        f"modified {row['mod_count_30d']} times in 30 days"
+    )
+    return {
+        "factor": "hot_zone",
+        "reason": reason,
+        "severity": "warn",
+        "mod_count_30d": int(row["mod_count_30d"]),
+        "file_path": row["file_path"],
+    }
+
+
+def _class_result_dict(
+    file_path: str, language: str, class_dict: dict[str, Any]
+) -> dict[str, Any]:
+    """Build one semantic-classification result entry."""
+    return {
+        "file": file_path,
+        "language": language,
+        "change_count": len(class_dict.get("classifications", [])),
+        **class_dict,
+    }
+
+
 def _enrich_with_cache_symbols(
     changed_files: list[str],
     cache: Any,
@@ -401,7 +471,7 @@ def _enrich_with_cache_symbols(
     """
     if cache is None:
         return []
-    conn = cache._get_conn()
+    conn = cache.get_conn()
     enriched: list[dict[str, Any]] = []
     for rel in changed_files:
         try:
@@ -422,21 +492,7 @@ def _enrich_with_cache_symbols(
         symbols = sym_data.get("symbols", [])
         if not symbols:
             continue
-        enriched.append(
-            {
-                "file": rel,
-                "symbol_count": len(symbols),
-                "symbols": [
-                    {
-                        "name": s.get("name", s.get("text", "")),
-                        "kind": s.get("kind", "unknown"),
-                        "line": s.get("line", 0),
-                    }
-                    for s in symbols
-                    if s.get("name") or s.get("text")
-                ][:50],
-            }
-        )
+        enriched.append(_file_symbol_dict(rel, symbols))
     return enriched
 
 
@@ -451,7 +507,7 @@ def _find_affected_symbols(
     """
     if cache is None or not affected_files:
         return []
-    conn = cache._get_conn()
+    conn = cache.get_conn()
     results: list[dict[str, Any]] = []
     for rel in sorted(affected_files):
         try:
@@ -477,14 +533,7 @@ def _find_affected_symbols(
                 "method",
                 "variable",
             ):
-                results.append(
-                    {
-                        "file": rel,
-                        "name": name,
-                        "kind": s.get("kind", "unknown"),
-                        "line": s.get("line", 0),
-                    }
-                )
+                results.append(_affected_symbol_dict(rel, s))
                 if len(results) >= 200:
                     return results
     return results
@@ -574,12 +623,7 @@ def _build_change_impact_result(request: ChangeImpactRequest) -> dict[str, Any]:
             total_syms = sum(f["symbol_count"] for f in changed_symbols)
             result["changed_symbol_count"] = total_syms
             for fi in file_impacts:
-                rel = fi.get("file", "")
-                for cs in changed_symbols:
-                    if cs["file"] == rel:
-                        fi["symbols"] = cs["symbols"][:10]
-                        fi["symbol_count"] = cs["symbol_count"]
-                        break
+                _inject_cs_into_impact(fi, changed_symbols)
         affected_symbols = _find_affected_symbols(affected, cache)
         if affected_symbols:
             result["affected_symbols"] = affected_symbols
@@ -631,19 +675,7 @@ def _attach_hot_zone_risk(
         return result
 
     for row in hot_rows:
-        existing_factors.append(
-            {
-                "factor": "hot_zone",
-                "reason": (
-                    f"hot zone: {row['file_path']} "
-                    f"symbol_id={row['symbol_id']} "
-                    f"modified {row['mod_count_30d']} times in 30 days"
-                ),
-                "severity": "warn",
-                "mod_count_30d": int(row["mod_count_30d"]),
-                "file_path": row["file_path"],
-            }
-        )
+        existing_factors.append(_hot_zone_factor(row))
     result["risk_factors"] = existing_factors
     # Bump verdict — CAUTION wins over INFO / REVIEW. UNSAFE may later
     # win via constraint-violation escalation; we never downgrade.
@@ -794,11 +826,10 @@ def _classify_changed_files(
             )
             old_source = old_proc.stdout if old_proc.returncode == 0 else ""
             new_path = Path(project_root) / file_path
-            new_source = (
-                new_path.read_text(encoding="utf-8", errors="replace")
-                if new_path.is_file()
-                else ""
-            )
+            if new_path.is_file():
+                new_source = new_path.read_text("utf-8", "replace")
+            else:
+                new_source = ""
             diff = differ.diff_strings(
                 old_source=old_source,
                 new_source=new_source,
@@ -810,14 +841,7 @@ def _classify_changed_files(
                 diff
             )
             class_dict = classification.to_dict()
-            results.append(
-                {
-                    "file": file_path,
-                    "language": language,
-                    "change_count": len(class_dict.get("classifications", [])),
-                    **class_dict,
-                }
-            )
+            results.append(_class_result_dict(file_path, language, class_dict))
         except Exception:
             # One bad file should not poison the whole batch.
             continue

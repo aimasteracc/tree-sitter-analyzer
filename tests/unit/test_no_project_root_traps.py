@@ -38,8 +38,6 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-import pytest
-
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _TESTS_DIR = _REPO_ROOT / "tests"
 
@@ -74,6 +72,42 @@ def _iter_test_files() -> list[Path]:
     return sorted(p for p in _TESTS_DIR.rglob("*.py") if "__pycache__" not in p.parts)
 
 
+def _collect_violations(
+    pattern: re.Pattern,
+    allowed_comment: str,
+    skip_conftest: bool = False,
+    extra_skip_words: tuple[str, ...] = (),
+) -> list[str]:
+    """Return a list of ``file:line: text`` strings for pattern violations.
+
+    Only lines near a graph-building constructor are flagged — see
+    ``_GRAPH_BUILDERS_NEAR_NONE``.  ``allowed_comment`` and
+    ``extra_skip_words`` provide per-check escape hatches.
+    """
+    bad: list[str] = []
+    for path in _iter_test_files():
+        if path.samefile(Path(__file__)):
+            continue
+        if skip_conftest and path.name == "conftest.py":
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        lines = text.splitlines()
+        for lineno, line in enumerate(lines, start=1):
+            if line.lstrip().startswith("#"):
+                continue
+            if not pattern.search(line):
+                continue
+            if allowed_comment in line:
+                continue
+            if any(w in line for w in extra_skip_words):
+                continue
+            window = "\n".join(lines[max(0, lineno - 6) : min(len(lines), lineno + 5)])
+            if not _GRAPH_BUILDERS_NEAR_NONE.search(window):
+                continue
+            bad.append(f"{path.relative_to(_REPO_ROOT)}:{lineno}: {line.strip()}")
+    return bad
+
+
 def test_no_project_root_eq_tmp_in_tests() -> None:
     """Banner: ``project_root='/tmp'`` inside tests/ is a perf trap.
 
@@ -81,48 +115,31 @@ def test_no_project_root_eq_tmp_in_tests() -> None:
     name appears in a ±5-line window so we skip Mock fixture data and
     assert-called mock verifications (those don't actually scan anything).
     """
-    bad: list[str] = []
-    for path in _iter_test_files():
-        # Skip THIS file — it documents the banned patterns by name.
-        if path.samefile(Path(__file__)):
-            continue
-        # Skip conftest — its help text quotes the offending pattern.
-        if path.name == "conftest.py":
-            continue
-        text = path.read_text(encoding="utf-8", errors="replace")
-        lines = text.splitlines()
-        for lineno, line in enumerate(lines, start=1):
-            if line.lstrip().startswith("#"):
-                continue
-            if not _TMP_PATTERN.search(line):
-                continue
-            # Skip mock assertions — they don't actually invoke the tool.
-            if "assert_called" in line or "Mock" in line:
-                continue
-            # Honor escape hatch — e.g. test deliberately probes "/tmp".
-            if "# allowed: tmp-string" in line:
-                continue
-            # Require a graph-building name nearby for it to be a real trap.
-            window_start = max(0, lineno - 6)
-            window_end = min(len(lines), lineno + 5)
-            window = "\n".join(lines[window_start:window_end])
-            if not _GRAPH_BUILDERS_NEAR_NONE.search(window):
-                continue
-            bad.append(f"{path.relative_to(_REPO_ROOT)}:{lineno}: {line.strip()}")
+    # The scanner must actually find test files to be a meaningful lint.
+    test_files = _iter_test_files()
+    assert len(test_files) > 0, "No test files found under tests/ — scanner is broken"
+    # This file itself must be in the scanned set.
+    assert any(p.name == "test_no_project_root_traps.py" for p in test_files), (
+        "_iter_test_files() did not include the current lint file"
+    )
 
-    if bad:
-        offenders = "\n  ".join(bad)
-        pytest.fail(
-            "Found tests passing project_root='/tmp' to a graph-building tool.\n"
-            "/tmp is non-deterministic — empty on a fresh dev box, full of\n"
-            "build artifacts on CI — so the dependency-graph build silently\n"
-            "scans whatever happens to be there (we've seen 22s on CI).\n"
-            "Use the pytest tmp_path fixture instead:\n\n"
-            "    def test_x(self, tmp_path):\n"
-            "        tool = ChangeImpactTool(project_root=str(tmp_path))\n\n"
-            f"Offenders:\n  {offenders}",
-            pytrace=False,
-        )
+    bad = _collect_violations(
+        _TMP_PATTERN,
+        "# allowed: tmp-string",
+        skip_conftest=True,
+        extra_skip_words=("assert_called", "Mock"),
+    )
+    # No test file should pass project_root='/tmp' to a graph-building tool.
+    assert bad == [], (
+        "Found tests passing project_root='/tmp' to a graph-building tool.\n"
+        "/tmp is non-deterministic — empty on a fresh dev box, full of\n"
+        "build artifacts on CI — so the dependency-graph build silently\n"
+        "scans whatever happens to be there (we've seen 22s on CI).\n"
+        "Use the pytest tmp_path fixture instead:\n\n"
+        "    def test_x(self, tmp_path):\n"
+        "        tool = ChangeImpactTool(project_root=str(tmp_path))\n\n"
+        "Offenders:\n  " + "\n  ".join(bad)
+    )
 
 
 def test_no_project_root_eq_none_in_tests() -> None:
@@ -132,41 +149,24 @@ def test_no_project_root_eq_none_in_tests() -> None:
     Other tools (FileOutputManager, registry, SemanticClassifyTool) are
     None-safe and ignored here.
     """
-    bad: list[str] = []
-    for path in _iter_test_files():
-        if path.samefile(Path(__file__)):
-            continue
-        text = path.read_text(encoding="utf-8", errors="replace")
-        lines = text.splitlines()
-        for lineno, line in enumerate(lines, start=1):
-            if line.lstrip().startswith("#"):
-                continue
-            if not _NONE_PATTERN.search(line):
-                continue
-            # Honor an explicit "# allowed: chdir(tmp_path)" escape.
-            if "# allowed: chdir(tmp_path)" in line:
-                continue
-            # Only fail when a known graph-building name appears in a
-            # ±5-line window around this line (call-site or constructor).
-            window_start = max(0, lineno - 6)
-            window_end = min(len(lines), lineno + 5)
-            window = "\n".join(lines[window_start:window_end])
-            if not _GRAPH_BUILDERS_NEAR_NONE.search(window):
-                continue
-            bad.append(f"{path.relative_to(_REPO_ROOT)}:{lineno}: {line.strip()}")
+    # The scanner must find Python files to be a meaningful lint.
+    test_files = _iter_test_files()
+    assert len(test_files) > 0, "No test files found under tests/ — scanner is broken"
+    # Every file returned must actually exist.
+    for p in test_files:
+        assert p.exists(), f"_iter_test_files() returned non-existent path: {p}"
 
-    if bad:
-        offenders = "\n  ".join(bad)
-        pytest.fail(
-            "Found tests passing project_root=None to a tool that builds a\n"
-            "DependencyGraph or CallGraph. None falls back to '.' (cwd) and\n"
-            "silently scans the entire repo when pytest runs from the\n"
-            "repo root — turning a unit test into a ~10s integration test.\n\n"
-            "Two fixes:\n"
-            "  (a) pass project_root=str(tmp_path)  — the usual answer\n"
-            "  (b) if you specifically need to exercise the None-fallback\n"
-            "      semantic, monkeypatch.chdir(tmp_path) FIRST, then add\n"
-            "      '# allowed: chdir(tmp_path)' on the same line as None.\n\n"
-            f"Offenders:\n  {offenders}",
-            pytrace=False,
-        )
+    bad = _collect_violations(_NONE_PATTERN, "# allowed: chdir(tmp_path)")
+    # No test file should pass project_root=None to a graph-building tool.
+    assert bad == [], (
+        "Found tests passing project_root=None to a tool that builds a\n"
+        "DependencyGraph or CallGraph. None falls back to '.' (cwd) and\n"
+        "silently scans the entire repo when pytest runs from the\n"
+        "repo root — turning a unit test into a ~10s integration test.\n\n"
+        "Two fixes:\n"
+        "  (a) pass project_root=str(tmp_path)  — the usual answer\n"
+        "  (b) if you specifically need to exercise the None-fallback\n"
+        "      semantic, monkeypatch.chdir(tmp_path) FIRST, then add\n"
+        "      '# allowed: chdir(tmp_path)' on the same line as None.\n\n"
+        "Offenders:\n  " + "\n  ".join(bad)
+    )

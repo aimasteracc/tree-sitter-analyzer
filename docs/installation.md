@@ -73,10 +73,13 @@ For users integrating with AI assistants (Claude Desktop, Cursor, etc.):
 
 #### Claude Desktop Configuration
 
-1. Locate the configuration file:
-   - **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
-   - **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-   - **Linux**: `~/.config/claude/claude_desktop_config.json`
+1. Locate the configuration file for your OS:
+
+   | OS | Path |
+   |---|---|
+   | **Windows** | `%APPDATA%\Claude\claude_desktop_config.json` |
+   | **macOS** | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+   | **Linux** | `~/.config/claude/claude_desktop_config.json` |
 
 2. Add the following configuration:
 

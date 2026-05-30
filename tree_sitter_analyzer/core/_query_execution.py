@@ -22,7 +22,7 @@ def execute_query_by_name(
 ) -> dict[str, Any]:
     """Execute a named query while preserving QueryExecutor's legacy contract."""
     start_time = time.time()
-    executor._execution_stats["total_queries"] += 1
+    executor.execution_stats["total_queries"] += 1
 
     try:
         error_result = _input_error(executor, tree, language, query_name=query_name)
@@ -30,9 +30,9 @@ def execute_query_by_name(
             return error_result
 
         language_name = _language_name_from_object(language)
-        query_string = executor._query_loader.get_query(language_name, query_name)
+        query_string = executor.query_loader.get_query(language_name, query_name)
         if query_string is None:
-            return executor._create_error_result(
+            return executor.create_error_result(
                 f"Query '{query_name}' not found", query_name=query_name
             )
 
@@ -48,8 +48,8 @@ def execute_query_by_name(
         )
     except Exception as exc:
         logger.error(f"Unexpected error in execute_query: {exc}")
-        executor._execution_stats["failed_queries"] += 1
-        return executor._create_error_result(
+        executor.execution_stats["failed_queries"] += 1
+        return executor.create_error_result(
             f"Unexpected error: {str(exc)}", query_name=query_name
         )
 
@@ -65,7 +65,7 @@ def execute_query_by_explicit_language(
 ) -> dict[str, Any]:
     """Execute a named query using a caller-provided language name."""
     start_time = time.time()
-    executor._execution_stats["total_queries"] += 1
+    executor.execution_stats["total_queries"] += 1
 
     try:
         error_result = _input_error(executor, tree, language, query_name=query_name)
@@ -73,9 +73,9 @@ def execute_query_by_explicit_language(
             return error_result
 
         lang_name = language_name.strip().lower() if language_name else "unknown"
-        query_string = executor._query_loader.get_query(lang_name, query_name)
+        query_string = executor.query_loader.get_query(lang_name, query_name)
         if query_string is None:
-            return executor._create_error_result(
+            return executor.create_error_result(
                 f"Query '{query_name}' not found", query_name=query_name
             )
 
@@ -91,8 +91,8 @@ def execute_query_by_explicit_language(
         )
     except Exception as exc:
         logger.error(f"Unexpected error in execute_query: {exc}")
-        executor._execution_stats["failed_queries"] += 1
-        return executor._create_error_result(
+        executor.execution_stats["failed_queries"] += 1
+        return executor.create_error_result(
             f"Unexpected error: {str(exc)}", query_name=query_name
         )
 
@@ -107,7 +107,7 @@ def execute_raw_query_string(
 ) -> dict[str, Any]:
     """Execute a raw tree-sitter query string."""
     start_time = time.time()
-    executor._execution_stats["total_queries"] += 1
+    executor.execution_stats["total_queries"] += 1
 
     try:
         error_result = _input_error(executor, tree, language)
@@ -126,8 +126,8 @@ def execute_raw_query_string(
         )
     except Exception as exc:
         logger.error(f"Unexpected error in execute_query_string: {exc}")
-        executor._execution_stats["failed_queries"] += 1
-        return executor._create_error_result(f"Unexpected error: {str(exc)}")
+        executor.execution_stats["failed_queries"] += 1
+        return executor.create_error_result(f"Unexpected error: {str(exc)}")
 
 
 def _input_error(
@@ -137,9 +137,9 @@ def _input_error(
     query_name: str | None = None,
 ) -> dict[str, Any] | None:
     if tree is None:
-        return executor._create_error_result("Tree is None", query_name=query_name)
+        return executor.create_error_result("Tree is None", query_name=query_name)
     if language is None:
-        return executor._create_error_result("Language is None", query_name=query_name)
+        return executor.create_error_result("Language is None", query_name=query_name)
     return None
 
 
@@ -178,9 +178,9 @@ def _execute_query_string(
         if isinstance(processed_captures, dict):
             return processed_captures
 
-        executor._execution_stats["successful_queries"] += 1
+        executor.execution_stats["successful_queries"] += 1
         execution_time = time.time() - start_time
-        executor._execution_stats["total_execution_time"] += execution_time
+        executor.execution_stats["total_execution_time"] += execution_time
         return _success_result(
             processed_captures,
             query_string,
@@ -189,15 +189,16 @@ def _execute_query_string(
             query_string_field=query_string_field,
         )
     except Exception as exc:
+        exc_msg = str(exc)
         if query_name is not None:
             logger.error(f"Error executing query '{query_name}': {exc}")
-            return executor._create_error_result(
-                f"Query execution failed: {str(exc)}", query_name=query_name
+            return executor.create_error_result(
+                f"Query execution failed: {exc_msg}", query_name=query_name
             )
 
         logger.error(f"Error executing query string: {exc}")
-        return executor._create_error_result(
-            f"Query execution failed: {str(exc)}", query_string=query_string
+        return executor.create_error_result(
+            f"Query execution failed: {exc_msg}", query_string=query_string
         )
 
 
@@ -208,13 +209,14 @@ def _process_captures_or_error(
     query_name: str | None = None,
 ) -> list[dict[str, Any]] | dict[str, Any]:
     try:
-        return executor._process_captures(captures, source_code)
+        return executor.process_captures(captures, source_code)
     except Exception as exc:
+        exc_msg = str(exc)
         if query_name is not None:
-            return executor._create_error_result(
-                f"Capture processing failed: {str(exc)}", query_name=query_name
+            return executor.create_error_result(
+                f"Capture processing failed: {exc_msg}", query_name=query_name
             )
-        return executor._create_error_result(f"Capture processing failed: {str(exc)}")
+        return executor.create_error_result(f"Capture processing failed: {exc_msg}")
 
 
 def _success_result(

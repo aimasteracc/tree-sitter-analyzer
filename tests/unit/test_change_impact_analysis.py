@@ -275,11 +275,17 @@ class TestSummaryOnlyFastPath:
             def nodes(self):
                 return sorted(self._nodes)
 
+            def all_nodes(self):
+                return frozenset(self._nodes)
+
             def dependents_of(self, file_rel):
                 return []
 
             def dependencies_of(self, file_rel):
                 return []
+
+            def has_node(self, file_rel):
+                return file_rel in self._nodes
 
         monkeypatch.setattr(ci, "_load_dependency_graph", lambda _: FakeGraph())
         monkeypatch.setattr(ci, "compute_call_graph_impact", lambda *_, **__: None)

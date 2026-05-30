@@ -49,8 +49,24 @@ class CachedDependencyGraph:
     def nodes(self) -> list[str]:
         return sorted(self._nodes)
 
+    def all_nodes(self) -> frozenset[str]:
+        """Return all nodes as frozenset — mirrors DependencyGraph.all_nodes()."""
+        return frozenset(self._nodes)
+
     def edges(self) -> list[tuple[str, str]]:
         return sorted(self._edges)
+
+    def has_node(self, file_rel: str) -> bool:
+        """Return True if *file_rel* is a node in the graph (O(1) set lookup)."""
+        return file_rel in self._nodes
+
+    def node_count(self) -> int:
+        """Return the number of nodes in the graph."""
+        return len(self._nodes)
+
+    def edge_count(self) -> int:
+        """Return the number of directed edges in the graph."""
+        return len(self._edges)
 
     def dependencies_of(self, file_rel: str) -> list[str]:
         return sorted(self._deps.get(file_rel, set()))
@@ -96,7 +112,7 @@ def load_cached_dependency_graph(
 
 
 def _cached_index_rows(cache: ASTCache) -> list[dict[str, Any]]:
-    conn = cache._get_conn()
+    conn = cache.get_conn()
     try:
         rows = conn.execute(
             "SELECT file_path, language, imports_json FROM ast_index"

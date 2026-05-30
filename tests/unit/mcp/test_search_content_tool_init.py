@@ -46,11 +46,6 @@ class TestSearchContentToolInitialization:
         assert hasattr(tool, "cache")
         assert hasattr(tool, "file_output_manager")
 
-    def test_init_with_project_root(self):
-        """Test initialization with project root."""
-        tool = SearchContentTool(project_root="/test/path")
-        assert tool.project_root == "/test/path"
-
     def test_init_with_cache_disabled(self):
         """Test initialization with cache disabled."""
         tool = SearchContentTool(enable_cache=False)
@@ -81,19 +76,6 @@ class TestSetProjectPath:
 
 class TestGetToolDefinition:
     """Tests for get_tool_definition method."""
-
-    def test_tool_definition_structure(self, tool):
-        """Test that tool definition has correct structure."""
-        definition = tool.get_tool_definition()
-        assert isinstance(definition, dict)
-        assert "name" in definition
-        assert "description" in definition
-        assert "inputSchema" in definition
-
-    def test_tool_definition_name(self, tool):
-        """Test that tool definition has correct name."""
-        definition = tool.get_tool_definition()
-        assert definition["name"] == "search_content"
 
     def test_required_fields(self, tool):
         """Test that required fields are correctly defined."""

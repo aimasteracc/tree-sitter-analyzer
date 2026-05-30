@@ -35,6 +35,8 @@ REQUIRED_PLUGIN_METHODS = (
     "get_language_name",
     "get_file_extensions",
     "create_extractor",
+    "analyze_file",
+    "get_tree_sitter_language",
 )
 
 

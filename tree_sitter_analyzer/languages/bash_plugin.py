@@ -214,6 +214,17 @@ class BashElementExtractor(ElementExtractor):
         """Bash does not have traditional imports (source statements are handled separately)"""
         return []
 
+    def extract_elements(
+        self, tree: tree_sitter.Tree, source_code: str
+    ) -> dict[str, list[Any]]:
+        """Unified extraction entry point grouped by type."""
+        return {
+            "functions": self.extract_functions(tree, source_code),
+            "classes": self.extract_classes(tree, source_code),
+            "imports": self.extract_imports(tree, source_code),
+            "variables": self.extract_variables(tree, source_code),
+        }
+
     def _reset_caches(self) -> None:
         """Reset performance caches"""
         self._node_text_cache.clear()
@@ -285,11 +296,12 @@ class BashElementExtractor(ElementExtractor):
             if i >= len(self.content_lines):
                 continue
             line = self.content_lines[i]
+            line_len = len(line)
             if i == start_point[0]:
-                start_col = max(0, min(start_point[1], len(line)))
+                start_col = max(0, min(start_point[1], line_len))
                 lines.append(line[start_col:])
             elif i == end_point[0]:
-                end_col = max(0, min(end_point[1], len(line)))
+                end_col = max(0, min(end_point[1], line_len))
                 lines.append(line[:end_col])
             else:
                 lines.append(line)
@@ -664,28 +676,11 @@ class BashPlugin(LanguagePlugin):
             self._extractor = BashElementExtractor()
         return self._extractor
 
-    def get_language(self) -> str:
-        """Get the language name (legacy compatibility)"""
-        return "bash"
-
-    def extract_functions(
+    def extract_elements(
         self, tree: tree_sitter.Tree, source_code: str
-    ) -> list[Function]:
-        """Extract functions from the tree"""
-        extractor = self.get_extractor()
-        return extractor.extract_functions(tree, source_code)
-
-    def extract_classes(self, tree: tree_sitter.Tree, source_code: str) -> list[Any]:
-        """Extract classes from the tree (Bash has no classes)"""
-        return []
-
-    def extract_variables(self, tree: tree_sitter.Tree, source_code: str) -> list[Any]:
-        """Extract variables from the tree"""
-        return []
-
-    def extract_imports(self, tree: tree_sitter.Tree, source_code: str) -> list[Any]:
-        """Extract imports from the tree"""
-        return []
+    ) -> dict[str, list[Any]]:
+        """Unified extraction entry point — delegates to the extractor."""
+        return self.get_extractor().extract_elements(tree, source_code)
 
     def get_tree_sitter_language(self) -> tree_sitter.Language | None:
         """Get the Tree-sitter language object for Bash"""
@@ -730,6 +725,8 @@ class BashPlugin(LanguagePlugin):
             "name": "Bash Plugin",
             "language": self.get_language_name(),
             "extensions": self.get_file_extensions(),
+            "class_name": self.__class__.__name__,
+            "module": self.__class__.__module__,
             "version": "1.0.0",
             "supported_queries": self.get_supported_queries(),
             "features": [

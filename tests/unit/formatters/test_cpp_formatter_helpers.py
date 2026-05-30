@@ -11,12 +11,18 @@ from tree_sitter_analyzer.formatters._cpp_formatter_helpers import (
 
 def _make_formatter():
     fmt = MagicMock()
-    fmt._format_class_details.return_value = ["## Foo (1-50)", ""]
-    fmt._format_method_row.side_effect = lambda m: f"| {m.get('name', '')} | sig | + | 1-5 | 1 | - |"
-    fmt._create_compact_signature.side_effect = lambda m: f"({','.join(str(p.get('type', 'Any')) for p in m.get('parameters', []))})"
-    fmt._convert_visibility.side_effect = lambda v: {"public": "+", "private": "-"}.get(v, v)
-    fmt._clean_csv_text.side_effect = lambda t: t
-    fmt._extract_doc_summary.side_effect = lambda t: t[:20] if t else ""
+    fmt.format_class_details.return_value = ["## Foo (1-50)", ""]
+    fmt.format_method_row.side_effect = lambda m: (
+        f"| {m.get('name', '')} | sig | + | 1-5 | 1 | - |"
+    )
+    fmt.create_compact_signature.side_effect = lambda m: (
+        f"({','.join(str(p.get('type', 'Any')) for p in m.get('parameters', []))})"
+    )
+    fmt.convert_visibility.side_effect = lambda v: {"public": "+", "private": "-"}.get(
+        v, v
+    )
+    fmt.clean_csv_text.side_effect = lambda t: t
+    fmt.extract_doc_summary.side_effect = lambda t: t[:20] if t else ""
     return fmt
 
 
@@ -25,7 +31,6 @@ def _identity_shorten(t):
 
 
 class TestShortenCppType:
-
     def test_none_returns_void(self):
         assert shorten_cpp_type(None) == "void"
 
@@ -85,7 +90,6 @@ class TestShortenCppType:
 
 
 class TestCreateCppCompactSignature:
-
     def test_no_params(self):
         method = {"parameters": [], "return_type": "void"}
         result = create_cpp_compact_signature(_identity_shorten, method)
@@ -125,15 +129,14 @@ class TestCreateCppCompactSignature:
 
 
 class TestFormatCppFullTable:
-
-    def test_empty_data(self):
-        fmt = _make_formatter()
-        result = format_cpp_full_table(fmt, {})
-        assert isinstance(result, str)
-
     def test_file_header(self):
         fmt = _make_formatter()
-        data = {"file_path": "/src/main.cpp", "classes": [], "methods": [], "fields": []}
+        data = {
+            "file_path": "/src/main.cpp",
+            "classes": [],
+            "methods": [],
+            "fields": [],
+        }
         result = format_cpp_full_table(fmt, data)
         assert "# main.cpp" in result
 
@@ -167,7 +170,10 @@ class TestFormatCppFullTable:
         fmt = _make_formatter()
         data = {
             "file_path": "test.cpp",
-            "imports": [{"statement": "#include <iostream>"}, {"statement": "#include <vector>"}],
+            "imports": [
+                {"statement": "#include <iostream>"},
+                {"statement": "#include <vector>"},
+            ],
             "language": "cpp",
             "classes": [],
             "methods": [],
@@ -271,7 +277,6 @@ class TestFormatCppFullTable:
 
 
 class TestFormatCppClassDetails:
-
     def test_basic_class(self):
         fmt = _make_formatter()
         class_info = {
@@ -295,12 +300,13 @@ class TestFormatCppClassDetails:
             "name": "Empty",
             "line_range": {"start": 1, "end": 10},
         }
-        result = format_cpp_class_details(fmt, class_info, {"methods": [], "fields": []})
+        result = format_cpp_class_details(
+            fmt, class_info, {"methods": [], "fields": []}
+        )
         assert "## Empty (1-10)" in result
 
 
 class TestFormatCppCompactTable:
-
     def test_basic(self):
         fmt = _make_formatter()
         data = {

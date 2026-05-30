@@ -113,44 +113,55 @@ def validate_action(action_path: Path) -> tuple[bool, list[str]]:
     return len(errors) == 0, errors
 
 
+def _report_workflow(workflow_path: Path, workflow_name: str) -> bool:
+    """Validate one workflow file, print status, and return True if valid."""
+    if not workflow_path.exists():
+        print(f"❌ {workflow_name}: File not found")
+        return False
+    is_valid, errors = validate_workflow(workflow_path)
+    if is_valid:
+        print(f"✅ {workflow_name}: Valid")
+        return True
+    print(f"❌ {workflow_name}: Invalid")
+    for error in errors:
+        print(f"   - {error}")
+    return False
+
+
+def _report_action(action_path: Path, label: str) -> bool:
+    """Validate one action file, print status, and return True if valid."""
+    if not action_path.exists():
+        print(f"❌ {label}: File not found")
+        return False
+    is_valid, errors = validate_action(action_path)
+    if is_valid:
+        print(f"✅ {label}: Valid")
+        return True
+    print(f"❌ {label}: Invalid")
+    for error in errors:
+        print(f"   - {error}")
+    return False
+
+
 def main():
     """Main validation function."""
     workflows_dir = Path(".github/workflows")
     actions_dir = Path(".github/actions")
-    all_valid = True
 
     print("Validating reusable workflows...")
-    for workflow_name in ["reusable-test.yml", "reusable-quality.yml"]:
-        workflow_path = workflows_dir / workflow_name
-        if not workflow_path.exists():
-            print(f"❌ {workflow_name}: File not found")
-            all_valid = False
-            continue
-        is_valid, errors = validate_workflow(workflow_path)
-        if is_valid:
-            print(f"✅ {workflow_name}: Valid")
-        else:
-            print(f"❌ {workflow_name}: Invalid")
-            for error in errors:
-                print(f"   - {error}")
-            all_valid = False
+    results = [
+        _report_workflow(workflows_dir / name, name)
+        for name in ["reusable-test.yml", "reusable-quality.yml"]
+    ]
 
     print("\nValidating composite actions...")
-    action_path = actions_dir / "setup-system" / "action.yml"
-    if not action_path.exists():
-        print("❌ setup-system/action.yml: File not found")
-        all_valid = False
-    else:
-        is_valid, errors = validate_action(action_path)
-        if is_valid:
-            print("✅ setup-system/action.yml: Valid")
-        else:
-            print("❌ setup-system/action.yml: Invalid")
-            for error in errors:
-                print(f"   - {error}")
-            all_valid = False
+    results.append(
+        _report_action(
+            actions_dir / "setup-system" / "action.yml", "setup-system/action.yml"
+        )
+    )
 
-    if all_valid:
+    if all(results):
         print("\n✅ All workflow files are valid!")
         return 0
     print("\n❌ Some workflow files have errors")

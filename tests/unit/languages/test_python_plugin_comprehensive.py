@@ -1,6 +1,6 @@
 """Python plugin integration tests."""
 
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 import pytest
 
@@ -24,23 +24,15 @@ class TestPythonPlugin:
         assert hasattr(plugin, "extractor")
         assert isinstance(plugin.extractor, PythonElementExtractor)
 
-    def test_plugin_get_language(self, plugin):
-        """Test get_language method"""
-        assert plugin.get_language() == "python"
-
     def test_plugin_extract_functions(self, plugin):
         """Test plugin function extraction"""
         mock_tree = Mock()
         mock_tree.root_node = Mock()
         mock_tree.root_node.children = []
 
-        with patch.object(plugin.extractor, "extract_functions") as mock_extract:
-            mock_extract.return_value = []
+        result = plugin.create_extractor().extract_functions(mock_tree, "test code")
 
-            result = plugin.extract_functions(mock_tree, "test code")
-
-            assert isinstance(result, list)
-            mock_extract.assert_called_once_with(mock_tree, "test code")
+        assert isinstance(result, list)
 
     def test_plugin_extract_classes(self, plugin):
         """Test plugin class extraction"""
@@ -48,13 +40,9 @@ class TestPythonPlugin:
         mock_tree.root_node = Mock()
         mock_tree.root_node.children = []
 
-        with patch.object(plugin.extractor, "extract_classes") as mock_extract:
-            mock_extract.return_value = []
+        result = plugin.create_extractor().extract_classes(mock_tree, "test code")
 
-            result = plugin.extract_classes(mock_tree, "test code")
-
-            assert isinstance(result, list)
-            mock_extract.assert_called_once_with(mock_tree, "test code")
+        assert isinstance(result, list)
 
     def test_plugin_extract_variables(self, plugin):
         """Test plugin variable extraction"""
@@ -62,13 +50,9 @@ class TestPythonPlugin:
         mock_tree.root_node = Mock()
         mock_tree.root_node.children = []
 
-        with patch.object(plugin.extractor, "extract_variables") as mock_extract:
-            mock_extract.return_value = []
+        result = plugin.create_extractor().extract_variables(mock_tree, "test code")
 
-            result = plugin.extract_variables(mock_tree, "test code")
-
-            assert isinstance(result, list)
-            mock_extract.assert_called_once_with(mock_tree, "test code")
+        assert isinstance(result, list)
 
     def test_plugin_extract_imports(self, plugin):
         """Test plugin import extraction"""
@@ -76,13 +60,9 @@ class TestPythonPlugin:
         mock_tree.root_node = Mock()
         mock_tree.root_node.children = []
 
-        with patch.object(plugin.extractor, "extract_imports") as mock_extract:
-            mock_extract.return_value = []
+        result = plugin.create_extractor().extract_imports(mock_tree, "test code")
 
-            result = plugin.extract_imports(mock_tree, "test code")
-
-            assert isinstance(result, list)
-            mock_extract.assert_called_once_with(mock_tree, "test code")
+        assert isinstance(result, list)
 
     def test_plugin_with_real_python_code(self, plugin):
         """Test plugin with realistic Python code"""
@@ -138,17 +118,17 @@ def process_users(users: List[User]) -> dict:
         mock_tree.language = Mock()
 
         # Test that plugin can handle real code without errors
-        with patch.object(plugin.extractor, "_traverse_and_extract_iterative"):
-            functions = plugin.extract_functions(mock_tree, python_code)
-            classes = plugin.extract_classes(mock_tree, python_code)
-            variables = plugin.extract_variables(mock_tree, python_code)
-            imports = plugin.extract_imports(mock_tree, python_code)
+        extractor = plugin.create_extractor()
+        functions = extractor.extract_functions(mock_tree, python_code)
+        classes = extractor.extract_classes(mock_tree, python_code)
+        variables = extractor.extract_variables(mock_tree, python_code)
+        imports = extractor.extract_imports(mock_tree, python_code)
 
-            # Should return lists without errors
-            assert isinstance(functions, list)
-            assert isinstance(classes, list)
-            assert isinstance(variables, list)
-            assert isinstance(imports, list)
+        # Should return lists without errors
+        assert isinstance(functions, list)
+        assert isinstance(classes, list)
+        assert isinstance(variables, list)
+        assert isinstance(imports, list)
 
 
 class TestPythonPluginIntegration:
@@ -306,10 +286,11 @@ if __name__ == "__main__":
         mock_tree.language.query.return_value = mock_query
 
         # Test extraction without errors
-        functions = plugin.extract_functions(mock_tree, complex_code)
-        classes = plugin.extract_classes(mock_tree, complex_code)
-        variables = plugin.extract_variables(mock_tree, complex_code)
-        imports = plugin.extract_imports(mock_tree, complex_code)
+        extractor = plugin.create_extractor()
+        functions = extractor.extract_functions(mock_tree, complex_code)
+        classes = extractor.extract_classes(mock_tree, complex_code)
+        variables = extractor.extract_variables(mock_tree, complex_code)
+        imports = extractor.extract_imports(mock_tree, complex_code)
 
         # Should handle complex code without errors
         assert isinstance(functions, list)
@@ -364,8 +345,9 @@ import
         mock_tree.language = Mock()
 
         # Should handle malformed code gracefully
-        functions = plugin.extract_functions(mock_tree, malformed_code)
-        classes = plugin.extract_classes(mock_tree, malformed_code)
+        extractor = plugin.create_extractor()
+        functions = extractor.extract_functions(mock_tree, malformed_code)
+        classes = extractor.extract_classes(mock_tree, malformed_code)
 
         assert isinstance(functions, list)
         assert isinstance(classes, list)

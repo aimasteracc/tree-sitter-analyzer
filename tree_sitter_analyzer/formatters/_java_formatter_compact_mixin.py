@@ -30,15 +30,18 @@ class JavaTableFormatterCompactMixin:
         """Create compact method signature for Java"""
         params = method.get("parameters", [])
         param_types = [
-            self._shorten_type(
+            shorten_type(
                 param.get("type", "O") if isinstance(param, dict) else str(param)
             )
             for param in params
         ]
         params_str = ",".join(param_types)
-        return_type = self._shorten_type(method.get("return_type", "void"))
+        return_type = shorten_type(method.get("return_type", "void"))
 
         return f"({params_str}):{return_type}"
+
+    # Public alias for companion module
+    create_compact_signature = _create_compact_signature
 
 
 _TYPE_MAPPING = {
@@ -83,13 +86,13 @@ def _append_methods(
 
 def _compact_method_row(method: dict[str, Any], formatter: Any) -> str:
     name = str(method.get("name", ""))
-    signature = formatter._create_compact_signature(method)
-    visibility = formatter._convert_visibility(str(method.get("visibility", "")))
+    signature = formatter.create_compact_signature(method)
+    visibility = formatter.convert_visibility(str(method.get("visibility", "")))
     line_range = method.get("line_range", {})
     lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
     complexity = method.get("complexity_score", 1)
-    doc = formatter._clean_csv_text(
-        formatter._extract_doc_summary(str(method.get("javadoc", "")))
+    doc = formatter.clean_csv_text(
+        formatter.extract_doc_summary(str(method.get("javadoc", "")))
     )
 
     return (
@@ -128,4 +131,4 @@ def shorten_type(type_name: Any) -> str:
     return str(_TYPE_MAPPING.get(type_name, type_name))
 
 
-JavaTableFormatterCompactMixin._shorten_type = staticmethod(shorten_type)  # type: ignore[attr-defined]
+JavaTableFormatterCompactMixin._shorten_type = staticmethod(shorten_type)  # type: ignore[attr-defined]  # noqa: SLF001

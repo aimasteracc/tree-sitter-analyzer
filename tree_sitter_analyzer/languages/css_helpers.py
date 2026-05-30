@@ -36,10 +36,11 @@ def parse_declaration(
             for child in decl_node.children:
                 if not hasattr(child, "type"):
                     continue
+                node_text = get_node_text(child).strip()
                 if child.type == "property_name":
-                    prop_name = get_node_text(child).strip()
+                    prop_name = node_text
                 elif child.type in ("value", "values"):
-                    prop_value = get_node_text(child).strip()
+                    prop_value = node_text
 
         if not prop_name:
             decl_text = get_node_text(decl_node)

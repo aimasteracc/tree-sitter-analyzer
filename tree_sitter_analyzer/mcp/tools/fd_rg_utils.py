@@ -13,7 +13,6 @@ import asyncio
 import os
 import shutil
 import tempfile
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -72,21 +71,46 @@ def clamp_int(value: int | None, default_value: int, hard_cap: int) -> int:
     return max(0, min(v, hard_cap))
 
 
+_SUFFIX_MULTIPLIERS: dict[str, int] = {
+    "K": 1024,
+    "M": 1024 * 1024,
+    "G": 1024 * 1024 * 1024,
+}
+
+
+def _apply_size_suffix(s: str) -> int | None:
+    """Apply K/M/G multiplier to a normalised size string; return None on error."""
+    suffix = s[-1] if s else ""
+    mult = _SUFFIX_MULTIPLIERS.get(suffix)
+    if mult is None:
+        try:
+            return int(s)
+        except ValueError:
+            return None
+    body = s.removesuffix(suffix)
+    try:
+        return int(float(body) * mult)
+    except ValueError:
+        return None
+
+
 def parse_size_to_bytes(size_str: str) -> int | None:
     """Parse ripgrep --max-filesize strings like '10M', '200K' to bytes."""
     if not size_str:
         return None
-    s = size_str.strip().upper()
+    return _apply_size_suffix(size_str.strip().upper())
+
+
+_SUBPROC_PIPE = asyncio.subprocess.PIPE
+
+
+async def _kill_proc(proc: Any) -> None:
+    """Kill a subprocess and wait for it to exit, suppressing errors."""
     try:
-        if s.endswith("K"):
-            return int(float(s[:-1]) * 1024)
-        if s.endswith("M"):
-            return int(float(s[:-1]) * 1024 * 1024)
-        if s.endswith("G"):
-            return int(float(s[:-1]) * 1024 * 1024 * 1024)
-        return int(s)
-    except ValueError:
-        return None
+        proc.kill()
+    finally:
+        with contextlib.suppress(Exception):
+            await proc.wait()
 
 
 async def run_command_capture(
@@ -99,12 +123,13 @@ async def run_command_capture(
         error_msg = f"Command '{cmd[0]}' not found in PATH. Please install {cmd[0]} to use this functionality."
         return 127, b"", error_msg.encode()
 
+    stdin_pipe = _SUBPROC_PIPE if input_data is not None else None
     try:
         proc = await asyncio.create_subprocess_exec(
             *cmd,
-            stdin=asyncio.subprocess.PIPE if input_data is not None else None,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+            stdin=stdin_pipe,
+            stdout=_SUBPROC_PIPE,
+            stderr=_SUBPROC_PIPE,
         )
     except FileNotFoundError as e:
         error_msg = f"Command '{cmd[0]}' not found: {e}"
@@ -120,11 +145,7 @@ async def run_command_capture(
         )
         return proc.returncode or 0, stdout, stderr
     except asyncio.TimeoutError:
-        try:
-            proc.kill()
-        finally:
-            with contextlib.suppress(Exception):
-                await proc.wait()
+        await _kill_proc(proc)
         return 124, b"", f"Timeout after {timeout_ms} ms".encode()
 
 
@@ -238,6 +259,11 @@ def normalize_max_filesize(user_value: str | None) -> str:
     return user_value
 
 
+def _glob_with_negation(g: str) -> str:
+    """Prefix g with '!' if it is not already a negation pattern."""
+    return g if g.startswith("!") else f"!{g}"
+
+
 def build_rg_command(
     *,
     query: str,
@@ -348,10 +374,7 @@ def build_rg_command(
             cmd += ["-g", g]
     if exclude_globs:
         for g in exclude_globs:
-            if not g.startswith("!"):
-                cmd += ["-g", f"!{g}"]
-            else:
-                cmd += ["-g", g]
+            cmd += ["-g", _glob_with_negation(g)]
 
     # Context: --context N sets BOTH sides; only emit when caller used
     # the combined arg AND didn't override with explicit before/after.
@@ -415,9 +438,11 @@ def parse_rg_count_output(stdout_bytes: bytes) -> dict[str, int]:
     return results
 
 
-@dataclass
 class TempFileList:
-    path: str
+    """Context manager that deletes a temporary file on exit."""
+
+    def __init__(self, path: str) -> None:
+        self.path = path
 
     def __enter__(self) -> TempFileList:
         """Context manager for temporary file cleanup."""
@@ -428,7 +453,8 @@ class TempFileList:
     ) -> None:
         """Clean up temporary file on context exit."""
         with contextlib.suppress(Exception):
-            Path(self.path).unlink(missing_ok=True)
+            p = Path(self.path)
+            p.unlink(missing_ok=True)
 
 
 class contextlib:  # minimal shim for suppress without importing globally
@@ -443,12 +469,11 @@ class contextlib:  # minimal shim for suppress without importing globally
 
         def __exit__(
             self,
-            exc_type: type[BaseException] | None,
+            exc_type: type | None,
             exc: BaseException | None,
             tb: Any,
-            # Temporary file helper for --files-from option
         ) -> bool:
-            """Clean up temp file on context exit."""
+            """Suppress exc if it matches one of the registered exception types."""
             return exc_type is not None and issubclass(exc_type, self.exceptions)
 
 
@@ -523,6 +548,16 @@ def merge_rg_results(
         return _merge_json_results(successful_results)
 
 
+def _merge_single_count(merged: dict[str, int], file_counts: dict[str, int]) -> int:
+    """Accumulate file_counts into merged; return the number of new matches."""
+    total = 0
+    for file_path, count in file_counts.items():
+        if file_path != "__total__":
+            merged[file_path] = merged.get(file_path, 0) + count
+            total += count
+    return total
+
+
 def _merge_count_results(
     results: list[tuple[int, bytes, bytes]],
 ) -> tuple[int, bytes, bytes]:
@@ -533,10 +568,7 @@ def _merge_count_results(
     for rc, stdout, _stderr in results:
         if rc in (0, 1):
             file_counts = parse_rg_count_output(stdout)
-            for file_path, count in file_counts.items():
-                if file_path != "__total__":
-                    merged_counts[file_path] = merged_counts.get(file_path, 0) + count
-                    total_matches += count
+            total_matches += _merge_single_count(merged_counts, file_counts)
 
     output_lines = []
     for file_path, count in merged_counts.items():
@@ -547,19 +579,25 @@ def _merge_count_results(
     return (return_code, merged_stdout, b"")
 
 
+def _collect_result_lines(rc: int, stdout: bytes) -> tuple[list[bytes], bool]:
+    """Extract JSON lines from one rg result; return (lines, had_matches)."""
+    if rc not in (0, 1) or not stdout.strip():
+        return [], False
+    return stdout.splitlines(), rc == 0
+
+
 def _merge_json_results(
     results: list[tuple[int, bytes, bytes]],
 ) -> tuple[int, bytes, bytes]:
     """Merge JSON results from multiple ripgrep executions."""
-    merged_lines = []
+    merged_lines: list[bytes] = []
     has_matches = False
 
     for rc, stdout, _stderr in results:
-        if rc in (0, 1):
-            if stdout.strip():
-                merged_lines.extend(stdout.splitlines())
-                if rc == 0:
-                    has_matches = True
+        lines, matched = _collect_result_lines(rc, stdout)
+        merged_lines.extend(lines)
+        if matched:
+            has_matches = True
 
     merged_stdout = b"\n".join(merged_lines)
     return_code = 0 if has_matches else 1

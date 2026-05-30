@@ -33,6 +33,9 @@ from .project_graph import _language_from_ext
 
 logger = logging.getLogger(__name__)
 
+# Type alias for route cache records — reduces generic nesting depth in annotations.
+_CacheRecord = tuple[str, str, int, list[dict[str, Any]]]
+
 _EXCLUDE_DIRS = {
     "node_modules",
     ".git",
@@ -243,7 +246,7 @@ class RouteDetector:
                 mtime_lookup[fp] = mt
         hits_by_path = self._cache.bulk_get_by_stat(path_with_mtime)
         routes: list[RouteInfo] = []
-        new_records: list[tuple[str, str, int, list[dict[str, Any]]]] = []
+        new_records: list[_CacheRecord] = []
         for fp in files:
             cached = hits_by_path.get(fp)
             if cached is not None:

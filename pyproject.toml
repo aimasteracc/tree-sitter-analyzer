@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tree-sitter-analyzer"
-version = "1.15.3"
-description = "MCP code-intelligence server for AI agents — beats CodeGraph on 6-repo head-to-head benchmark median. 59 MCP tools, 13 curated skills, TOON output, 100% local."
+version = "1.17.0"
+description = "MCP code-intelligence server for AI agents — beats CodeGraph on 6-repo head-to-head benchmark median. 62 MCP tools, 13 curated skills, TOON output, 100% local."
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
@@ -577,6 +577,7 @@ markers = [
     "integration: marks tests as integration tests",
     "unit: marks tests as unit tests",
     "mcp: marks tests as MCP-related tests",
+    "full_language: marks exhaustive all-language golden/regression tests; CI runs these once on the Linux coverage axis",
     "requires_python: marks tests that require tree-sitter-python",
     "requires_java: marks tests that require tree-sitter-java",
 ]
@@ -619,7 +620,7 @@ directory = "htmlcov"
 # MCP server configuration
 [tool.mcp]
 server_name = "tree-sitter-analyzer"
-server_version = "1.15.3"
+server_version = "1.16.0"
 description = "AI-era enterprise-grade code analysis MCP server with comprehensive HTML/CSS support and multi-language capabilities"
 capabilities = [
     "check_code_scale",
@@ -656,6 +657,7 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["B011"]
 "tests/fixtures/project_graph/**/*.py" = ["F401", "I001"]
+"tree_sitter_analyzer/ast_cache.py" = ["I001"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["tree_sitter_analyzer"]

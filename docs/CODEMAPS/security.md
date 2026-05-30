@@ -9,7 +9,7 @@ Security boundary enforcement for both CLI and MCP. Located in `tree_sitter_anal
 |---|---|
 | `security/validator.py` | `SecurityValidator` — path validation, **god class — high-risk to touch** |
 | `security/boundary_manager.py` | `BoundaryManager` — root resolution & boundary checks |
-| `security/path_resolver.py` | Canonicalize paths consistently across macOS/Windows |
+| `mcp/utils/path_resolver.py` | Canonicalize paths consistently across macOS/Windows |
 | `security/regex_checker.py` | Block regex DoS (ReDoS) patterns in user-supplied regex |
 
 ## Boundary Contract

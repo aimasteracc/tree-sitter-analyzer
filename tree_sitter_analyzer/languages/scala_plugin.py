@@ -473,7 +473,8 @@ class ScalaElementExtractor(ElementExtractor):
             if child.type in ("parameter", "class_parameter"):
                 param_name, param_type = self._scala_parameter_pair(child)
                 if param_name:
-                    parameters.append(f"{param_name}: {param_type or 'Any'}")
+                    type_str = param_type or "Any"
+                    parameters.append(f"{param_name}: {type_str}")
             elif child.type == "parameters" or "parameter" in child.type:
                 # Recursively extract nested parameters
                 parameters.extend(self._extract_parameters(child))
@@ -875,12 +876,13 @@ class ScalaPlugin(LanguagePlugin):
                 type(caps_or_lang)
             ):
                 self._cached_language = caps_or_lang
-            else:
-                try:
-                    self._cached_language = tree_sitter.Language(caps_or_lang)
-                except Exception as e:
-                    log_error(f"Failed to create Language object: {e}")
-                    return None
+                return self._cached_language
+
+            try:
+                self._cached_language = tree_sitter.Language(caps_or_lang)
+            except Exception as e:
+                log_error(f"Failed to create Language object: {e}")
+                return None
 
             return self._cached_language
         except ImportError as e:
@@ -927,9 +929,3 @@ class ScalaPlugin(LanguagePlugin):
                 "comments": [],
                 "annotations": [],
             }
-
-    def supports_file(self, file_path: str) -> bool:
-        """Check if this plugin supports the given file."""
-        return any(
-            file_path.lower().endswith(ext) for ext in self.get_file_extensions()
-        )

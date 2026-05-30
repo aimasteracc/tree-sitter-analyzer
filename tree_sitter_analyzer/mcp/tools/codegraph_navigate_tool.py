@@ -74,6 +74,24 @@ class CodeGraphNavigateTool(BaseMCPTool):
                 self._call_graph = CallGraph(self.project_root)
         return self._call_graph
 
+    def get_call_graph(self) -> CallGraph:
+        """Public alias for _get_call_graph() — use this instead of accessing _call_graph."""
+        return self._get_call_graph()
+
+    def get_cache(self) -> Any:
+        """Public alias for _get_cache() — use this instead of replacing _get_cache."""
+        return self._get_cache()
+
+    @property
+    def call_graph_initialized(self) -> bool:
+        """True if the call graph has been lazily initialized (i.e. cached)."""
+        return self._call_graph is not None
+
+    @property
+    def cache_initialized(self) -> bool:
+        """True if the AST cache has been lazily initialized (i.e. cached)."""
+        return self._cache is not None
+
     def get_tool_definition(self) -> dict[str, Any]:
         return {
             "name": "codegraph_navigate",
@@ -189,7 +207,7 @@ class CodeGraphNavigateTool(BaseMCPTool):
         return apply_toon_format_to_response(result, output_format)
 
     def _resolve_definition(self, symbol: str) -> dict[str, Any]:
-        cache = self._get_cache()
+        cache = self.get_cache()
         if cache is None:
             return {"found": False, "reason": "AST cache not available"}
         try:
@@ -209,7 +227,7 @@ class CodeGraphNavigateTool(BaseMCPTool):
             return {"found": False, "reason": str(exc)}
 
     def _find_references(self, symbol: str) -> dict[str, Any]:
-        cache = self._get_cache()
+        cache = self.get_cache()
         if cache is None:
             return {"found": False, "reason": "AST cache not available"}
         try:
@@ -233,7 +251,7 @@ class CodeGraphNavigateTool(BaseMCPTool):
         file_path: str | None,
         max_depth: int,
     ) -> dict[str, Any]:
-        graph = self._get_call_graph()
+        graph = self.get_call_graph()
         try:
             graph.build()
         except Exception as exc:

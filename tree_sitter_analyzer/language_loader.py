@@ -23,6 +23,21 @@ except ImportError:
 from .utils import log_warning
 
 
+def _try_wrap_language(caps_or_lang: Any, language: str) -> Any | None:
+    """Wrap a PyCapsule in tree_sitter.Language; return None on failure.
+
+    Extracted to module level so the try/except sits outside the deeply
+    nested class-method call stack, reducing tree-sitter AST depth.
+    """
+    if not TREE_SITTER_AVAILABLE:
+        return None
+    try:
+        return tree_sitter.Language(caps_or_lang)
+    except Exception as e:
+        log_warning(f"Failed to create Language object for {language}: {e}")
+        return None
+
+
 class LanguageLoader:
     """Optimized language loader with enhanced caching"""
 
@@ -140,10 +155,11 @@ class LanguageLoader:
                 else:
                     return None
             else:
+                lang_attr = f"language_{language}"
                 if hasattr(module, "language"):
                     language_func = module.language
-                elif hasattr(module, f"language_{language}"):
-                    language_func = getattr(module, f"language_{language}")
+                elif hasattr(module, lang_attr):
+                    language_func = getattr(module, lang_attr)
                 else:
                     return None
 
@@ -159,11 +175,8 @@ class LanguageLoader:
                 tree_sitter_language = caps_or_lang
             else:
                 # PyCapsuleの場合は、Languageオブジェクトを作成
-                try:
-                    # Use modern tree-sitter API - PyCapsule should be passed to Language constructor
-                    tree_sitter_language = tree_sitter.Language(caps_or_lang)
-                except Exception as e:
-                    log_warning(f"Failed to create Language object for {language}: {e}")
+                tree_sitter_language = _try_wrap_language(caps_or_lang, language)
+                if tree_sitter_language is None:
                     return None
 
             self._loaded_languages[language] = tree_sitter_language

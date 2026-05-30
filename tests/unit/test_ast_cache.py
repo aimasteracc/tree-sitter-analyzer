@@ -149,8 +149,8 @@ class TestIndexFile:
         self, tmp_path, monkeypatch
     ):
         class FlakyConnection:
-            def __init__(self, path):
-                self._conn = sqlite3.connect(path)
+            def __init__(self):
+                self._conn = sqlite3.connect(":memory:")
                 self._conn.row_factory = sqlite3.Row
 
             def execute(self, sql, *args, **kwargs):
@@ -171,7 +171,7 @@ class TestIndexFile:
             def _get_conn(self):
                 conn = getattr(self._local, "conn", None)
                 if conn is None:
-                    conn = FlakyConnection(self.db_path)
+                    conn = FlakyConnection()
                     self._local.conn = conn
                 return conn
 
@@ -345,6 +345,14 @@ class TestSearchSymbols:
         results = cache.search_symbols("zzz_nonexistent_xyz")
         assert len(results) == 0
 
+    def test_search_symbols_uses_linear_when_fts_disabled(self, cache, tmp_project):
+        """search_symbols() falls back to linear scan when _fts5_available is False."""
+        cache.index_project()
+        cache._fts5_available = False
+        results = cache.search_symbols("hello")
+        assert len(results) >= 1
+        assert any(r["name"] == "hello" for r in results)
+
 
 class TestStats:
     def test_stats_empty(self, cache):
@@ -361,7 +369,7 @@ class TestStats:
 
     def test_stats_uses_symbol_rows_when_fts_available(self, cache):
         cache.index_project()
-        if not cache._fts5_available:
+        if not cache.fts5_available:
             pytest.skip("FTS5 not available")
 
         with patch(
@@ -375,7 +383,7 @@ class TestStats:
 
     def test_stats_falls_back_to_symbols_json_without_fts(self, cache):
         cache.index_project()
-        cache._fts5_available = False
+        cache._fts5_available = False  # force non-FTS5 path for testing
 
         stats = cache.get_stats()
 
@@ -384,7 +392,7 @@ class TestStats:
 
     def test_stats_falls_back_when_symbol_rows_table_missing(self, cache):
         cache.index_project()
-        if not cache._fts5_available:
+        if not cache.fts5_available:
             pytest.skip("FTS5 not available")
 
         conn = cache._get_conn()
@@ -404,7 +412,7 @@ class TestStats:
 
 class TestLargeRepoHotPathIndexes:
     def test_large_repo_hot_path_indexes_exist(self, cache):
-        if not cache._fts5_available:
+        if not cache.fts5_available:
             pytest.skip("tracked: large-repo-hotpath-indexes require FTS5")
         conn = cache._get_conn()
         index_names = {
@@ -421,7 +429,7 @@ class TestLargeRepoHotPathIndexes:
         assert "idx_ce_caller_name_file" in index_names
 
     def test_symbol_resolver_hot_queries_use_composite_indexes(self, cache):
-        if not cache._fts5_available:
+        if not cache.fts5_available:
             pytest.skip("tracked: large-repo-hotpath-indexes require FTS5")
         conn = cache._get_conn()
 
@@ -602,13 +610,13 @@ class TestFtsSearch:
         cache.index_project()
         results = cache.search_symbols("hello")
         assert len(results) >= 1
-        if cache._fts5_available:
+        if cache.fts5_available:
             assert any(r["name"] == "hello" for r in results)
 
     def test_fts_indexed_symbols_in_stats(self, cache, tmp_project):
         cache.index_project()
         stats = cache.get_stats()
-        if cache._fts5_available:
+        if cache.fts5_available:
             assert stats["fts5_available"] is True
             assert "fts_indexed_symbols" in stats
             assert stats["fts_indexed_symbols"] > 0
@@ -616,7 +624,7 @@ class TestFtsSearch:
     def test_invalidate_removes_fts_rows(self, cache, tmp_project):
         f = str(tmp_project / "src" / "main.py")
         cache.index_file(f)
-        if cache._fts5_available:
+        if cache.fts5_available:
             results_before = cache.fts_search("hello")
             assert len(results_before) >= 1
             cache.invalidate(f)
@@ -626,11 +634,34 @@ class TestFtsSearch:
     def test_fts_search_after_reindex(self, cache, tmp_project):
         f = str(tmp_project / "src" / "main.py")
         cache.index_file(f)
-        if cache._fts5_available:
+        if cache.fts5_available:
             cache.invalidate(f)
             cache.index_file(f)
             results = cache.fts_search("hello")
             assert len(results) >= 1
+
+    def test_fts_search_falls_back_to_linear_when_fts_disabled(
+        self, cache, tmp_project
+    ):
+        """fts_search() falls back to linear scan when _fts5_available is False."""
+        cache.index_project()
+        cache._fts5_available = False
+        results = cache.fts_search("hello")
+        assert len(results) >= 1
+        assert any(r["name"] == "hello" for r in results)
+
+    def test_get_functions_by_file_returns_functions_for_indexed_file(
+        self, cache, tmp_project
+    ):
+        """get_functions_by_file() returns function entries for an indexed file."""
+        f = str(tmp_project / "src" / "main.py")
+        cache.index_file(f)
+        funcs = cache.get_functions_by_file("src/main.py")
+        assert len(funcs) >= 1
+        for fn in funcs:
+            assert "name" in fn
+            assert "file" in fn
+            assert "line" in fn
 
 
 class TestSQLNativeCallGraph:
@@ -755,3 +786,30 @@ class TestSQLNativeCallGraph:
         callers = call_cache.query_callers("bar")
         for e in callers:
             assert e["depth"] >= 1
+
+
+# ---------------------------------------------------------------------------
+# ASTCache.get_conn() public accessor (TDD — replaces private _get_conn usage)
+# ---------------------------------------------------------------------------
+
+
+class TestASTCacheGetConnPublicAccessor:
+    """get_conn() must expose the same SQLite connection as _get_conn()."""
+
+    def test_get_conn_returns_sqlite_connection(self, tmp_project):
+        """get_conn() must return a live sqlite3.Connection, not None."""
+        cache = ASTCache(str(tmp_project))
+        conn = cache.get_conn()
+        assert isinstance(conn, sqlite3.Connection)
+
+    def test_get_conn_same_as_private_get_conn(self, tmp_project):
+        """get_conn() and _get_conn() must return the same connection object."""
+        cache = ASTCache(str(tmp_project))
+        assert cache.get_conn() is cache._get_conn()
+
+    def test_get_conn_thread_local_stable(self, tmp_project):
+        """Repeated calls to get_conn() within the same thread return the same object."""
+        cache = ASTCache(str(tmp_project))
+        conn1 = cache.get_conn()
+        conn2 = cache.get_conn()
+        assert conn1 is conn2

@@ -64,22 +64,13 @@ uv run pytest tests/test_golden_master_regression.py -v
 # 例: tests/test_data/new_feature.java
 ```
 
-#### ステップ2: update_baselines.py を更新
-`scripts/update_baselines.py` の `test_cases` リストに追加：
-```python
-test_cases = [
-    ("examples/Sample.java", "java_sample_fixed"),
-    ("tests/test_data/new_feature.java", "java_new_feature"),  # 追加
-]
-```
-
-#### ステップ3: ゴールデンマスターを生成
+#### ステップ2: ゴールデンマスターを生成
 ```bash
-uv run python scripts/update_baselines.py
+uv run pytest tests/ -v --update-goldens
 ```
 
-#### ステップ4: テストケースを追加
-`tests/test_golden_master_regression.py` に新しいテストケースを追加：
+#### ステップ3: テストケースを追加
+該当するリグレッションテストファイル（`tests/` 以下）に新しいテストケースを追加：
 ```python
 @pytest.mark.parametrize("input_file,golden_name,table_format", [
     # ... 既存のケース ...
@@ -115,7 +106,7 @@ def test_golden_master_comparison(self, input_file, golden_name, table_format):
    - 必ず原因を調査して修正
 
 2. **ゴールデンマスターを手動編集しない**
-   - 必ず`update_baselines.py`を使用
+   - pytest の golden 更新オプションを使用
 
 3. **一時ファイルをコミットしない**
    - `test*.md`, `debug*.py` などはGit管理外
@@ -125,15 +116,14 @@ def test_golden_master_comparison(self, input_file, golden_name, table_format):
 ### Q: テストが失敗するが、出力は正しい
 A: ゴールデンマスターを更新してください：
 ```bash
-uv run python scripts/update_baselines.py
+uv run pytest tests/ -v --update-goldens
 ```
 
 ### Q: 新しい言語サポートを追加した
 A: 以下の手順で対応：
 1. `tests/test_data/`にサンプルファイルを追加
-2. `update_baselines.py`にケースを追加
-3. ゴールデンマスターを生成
-4. テストケースを追加
+2. ゴールデンマスターを生成（pytest golden 更新オプション使用）
+3. テストケースを追加
 
 ### Q: 一時ファイルがたくさん残っている
 A: 以下のコマンドでクリーンアップ：

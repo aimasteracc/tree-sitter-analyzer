@@ -176,6 +176,9 @@ def _load_expected_json(expected_path: Path) -> dict[str, Any]:
         return data
 
 
+# Type alias for the AST line index structure — extracted to reduce generic nesting depth.
+_LineIndex = dict[tuple[int, int], list[tuple[str, tuple[str, ...]]]]
+
 # r37cm (dogfood): file-root node types — they span the whole file and
 # would mask real top-level declarations. Skip when matching elements.
 _ROOT_NODE_TYPES = frozenset(
@@ -190,11 +193,53 @@ _ROOT_NODE_TYPES = frozenset(
 )
 
 
+def _walk_ast_into_index(
+    node: Any,
+    parent_path: tuple[str, ...],
+    depth: int,
+    max_depth: int,
+    max_nodes: int,
+    line_index: dict,
+    node_count: list[int],
+) -> None:
+    """Recursive walker for _build_ast_line_index — module-level to reduce nesting depth."""
+    if depth > max_depth:
+        return
+    node_count[0] += 1
+    if node_count[0] > max_nodes:
+        return
+    if not node.is_named:
+        for child in node.children:
+            _walk_ast_into_index(
+                child,
+                parent_path,
+                depth + 1,
+                max_depth,
+                max_nodes,
+                line_index,
+                node_count,
+            )
+        return
+    key = (node.start_point[0], node.end_point[0])
+    line_index.setdefault(key, []).append((node.type, parent_path))
+    new_parent_path = parent_path + (node.type,)
+    for child in node.children:
+        _walk_ast_into_index(
+            child,
+            new_parent_path,
+            depth + 1,
+            max_depth,
+            max_nodes,
+            line_index,
+            node_count,
+        )
+
+
 def _build_ast_line_index(
     root: Any,
     max_depth: int,
     max_nodes: int,
-) -> dict[tuple[int, int], list[tuple[str, tuple[str, ...]]]]:
+) -> _LineIndex:
     """Recursively walk an AST, building a ``(start_line, end_line)`` → list index.
 
     r37cm: extracted from ``_get_covered_node_types_from_plugin`` to drop
@@ -202,32 +247,15 @@ def _build_ast_line_index(
     pathological inputs (MAX_DEPTH=100 stack overflow, MAX_NODES=100k
     memory ceiling).
     """
-    line_index: dict[tuple[int, int], list[tuple[str, tuple[str, ...]]]] = {}
+    line_index: _LineIndex = {}
     node_count = [0]
-
-    def walk(node: Any, parent_path: tuple[str, ...], depth: int) -> None:
-        if depth > max_depth:
-            return
-        node_count[0] += 1
-        if node_count[0] > max_nodes:
-            return
-        if not node.is_named:
-            for child in node.children:
-                walk(child, parent_path, depth + 1)
-            return
-        key = (node.start_point[0], node.end_point[0])
-        line_index.setdefault(key, []).append((node.type, parent_path))
-        new_parent_path = parent_path + (node.type,)
-        for child in node.children:
-            walk(child, new_parent_path, depth + 1)
-
-    walk(root, (), 0)
+    _walk_ast_into_index(root, (), 0, max_depth, max_nodes, line_index, node_count)
     return line_index
 
 
 def _match_elements_to_paths(
     elements: Any,
-    line_index: dict[tuple[int, int], list[tuple[str, tuple[str, ...]]]],
+    line_index: _LineIndex,
 ) -> set[tuple[str, tuple[str, ...]]]:
     """Match plugin elements against the line index → covered (type, path) set.
 

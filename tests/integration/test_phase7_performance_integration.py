@@ -37,6 +37,68 @@ DEFAULT_SCALABILITY_RECOVERY_SECONDS = 0.05
 DEFAULT_RESOURCE_CLEANUP_SETTLE_SECONDS = 0.05
 DEFAULT_MEMORY_EFFICIENCY_FILES = 8
 
+_SEARCH_QUERIES = ["class", "function", "import", "def", "const"]
+
+
+def _create_task_for_tool(tool, i: int, project_root: str):
+    """Return an execute coroutine for the given tool/index, or None if no files."""
+    if isinstance(tool, AnalyzeScaleTool):
+        java_files = list(Path(project_root).glob("src/main/java/**/*.java"))
+        if not java_files:
+            return None
+        return tool.execute({"file_path": str(java_files[i % len(java_files)])})
+    if isinstance(tool, TableFormatTool):
+        python_files = list(Path(project_root).glob("python/**/*.py"))
+        if not python_files:
+            return None
+        return tool.execute(
+            {
+                "file_path": str(python_files[i % len(python_files)]),
+                "format_type": "compact",
+            }
+        )
+    if isinstance(tool, SearchContentTool):
+        return tool.execute(
+            {
+                "roots": [project_root],
+                "query": _SEARCH_QUERIES[i % len(_SEARCH_QUERIES)],
+                "max_count": 10,
+            }
+        )
+    return None
+
+
+def _collect_scalability_tasks(tools, load_level, project_root):
+    """Build task list for one scalability load level, skipping tools with no files."""
+    tasks = []
+    for i in range(load_level):
+        task = _create_task_for_tool(tools[i % len(tools)], i, project_root)
+        if task is not None:
+            tasks.append(task)
+    return tasks
+
+
+def _partition_task_results(tasks, results):
+    """Split gathered results into valid and error buckets based on task metadata."""
+    valid_results = []
+    error_results = []
+    for task_type, result in zip((t[0] for t in tasks), results, strict=False):
+        if task_type == "valid":
+            valid_results.append(result)
+        else:
+            error_results.append(result)
+    return valid_results, error_results
+
+
+def _collect_handled_errors(results):
+    """Return results that represent handled errors (raised exception or error dict)."""
+    return [
+        r
+        for r in results
+        if isinstance(r, Exception)
+        or (isinstance(r, dict) and not r.get("success", True))
+    ]
+
 
 class TestPhase7PerformanceIntegration:
     """Phase 7 パフォーマンス統合テスト"""
@@ -296,43 +358,7 @@ class TestPhase7PerformanceIntegration:
                 SearchContentTool(large_scale_project),
             ]
 
-            for i in range(load_level):
-                tool = tools[i % len(tools)]
-
-                if isinstance(tool, AnalyzeScaleTool):
-                    # 異なるファイルを分析
-                    java_files = list(
-                        Path(large_scale_project).glob("src/main/java/**/*.java")
-                    )
-                    if java_files:
-                        file_path = java_files[i % len(java_files)]
-                        task = tool.execute({"file_path": str(file_path)})
-                        tasks.append(task)
-
-                elif isinstance(tool, TableFormatTool):
-                    # 異なるファイルの構造分析
-                    python_files = list(
-                        Path(large_scale_project).glob("python/**/*.py")
-                    )
-                    if python_files:
-                        file_path = python_files[i % len(python_files)]
-                        task = tool.execute(
-                            {"file_path": str(file_path), "format_type": "compact"}
-                        )
-                        tasks.append(task)
-
-                elif isinstance(tool, SearchContentTool):
-                    # 異なる検索クエリ
-                    queries = ["class", "function", "import", "def", "const"]
-                    query = queries[i % len(queries)]
-                    task = tool.execute(
-                        {
-                            "roots": [large_scale_project],
-                            "query": query,
-                            "max_count": 10,
-                        }
-                    )
-                    tasks.append(task)
+            tasks = _collect_scalability_tasks(tools, load_level, large_scale_project)
 
             # 並行実行
             results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -596,30 +622,14 @@ class TestPhase7PerformanceIntegration:
         metrics = profiler.end_profiling()
 
         # 結果分析
-        valid_results = []
-        error_results = []
-
-        for _i, (task_type, result) in enumerate(
-            zip([t[0] for t in tasks], task_results, strict=False)
-        ):
-            if task_type == "valid":
-                valid_results.append(result)
-            else:
-                error_results.append(result)
+        valid_results, error_results = _partition_task_results(tasks, task_results)
+        handled_errors = _collect_handled_errors(error_results)
 
         # 正常なタスクが影響を受けていないことを確認
         successful_valid = [
             r for r in valid_results if isinstance(r, dict) and r.get("success")
         ]
         assert len(successful_valid) == 5, "エラーが正常なタスクに影響を与えました"
-
-        # エラー処理が適切に行われていることを確認（例外またはエラー辞書）
-        handled_errors = []
-        for r in error_results:
-            if isinstance(r, Exception):
-                handled_errors.append(r)  # 例外として処理された
-            elif isinstance(r, dict) and not r.get("success", True):
-                handled_errors.append(r)  # エラー辞書として処理された
 
         assert len(handled_errors) >= 2, (
             f"エラーが適切に処理されていません: {len(handled_errors)}/3"

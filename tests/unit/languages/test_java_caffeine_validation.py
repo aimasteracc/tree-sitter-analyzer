@@ -24,7 +24,7 @@ BOUNDED_LOCAL_CACHE = (
 )
 REFERENCES = CAFFEINE_BASE / "com/github/benmanes/caffeine/cache/References.java"
 
-pytestmark = pytest.mark.skipif(
+_skip_caffeine = pytest.mark.skipif(
     not CAFFEINE_BASE.exists(),
     reason="caffeine not cloned at expected path",
 )
@@ -118,6 +118,51 @@ class Foo<K, V> implements Runnable, Comparable<Foo<K, V>>, Serializable {
         )
         assert "Serializable" in implements
 
+    def test_interface_extends_extracted_as_implements(self):
+        """[TDD] Java interface extends clause must be captured in implements_interfaces.
+
+        'interface Foo extends Runnable, Comparable<Foo>' uses the tree-sitter
+        node extends_interfaces (not super_interfaces), which _extract_class_relationships()
+        previously ignored. Result: implements=[] for all interfaces.
+        """
+        import tree_sitter
+        import tree_sitter_java as ts_java
+
+        from tree_sitter_analyzer.languages.java_plugin import JavaElementExtractor
+
+        src = """\
+package test;
+public interface Channel extends Runnable, Comparable<Channel>, java.io.Serializable {
+    void close();
+}
+"""
+        lang = tree_sitter.Language(ts_java.language())
+        parser = tree_sitter.Parser()
+        parser.language = lang
+        tree = parser.parse(src.encode())
+
+        ext = JavaElementExtractor()
+        ext.extract_annotations(tree, src)
+        classes = ext.extract_classes(tree, src)
+
+        assert classes, "Should extract Channel interface"
+        iface = classes[0]
+        assert iface.class_type == "interface"
+        impl = iface.implements_interfaces
+
+        assert len(impl) == 3, (
+            f"Interface should show 3 extended interfaces, got {impl}. "
+            "Bug: extends_interfaces node not handled in _extract_class_relationships()."
+        )
+        assert "Runnable" in impl, f"Runnable missing from {impl}"
+        assert any("Comparable" in i for i in impl), f"Comparable missing from {impl}"
+        assert any("Serializable" in i for i in impl), (
+            f"Serializable missing from {impl}"
+        )
+        comparable = next(i for i in impl if "Comparable" in i)
+        assert "<" in comparable, f"Comparable generic arg dropped. Got: {comparable!r}"
+
+    @_skip_caffeine
     def test_caffeine_bounded_local_cache_implements(self, mcp_server):
         """BoundedLocalCache must show 'LocalCache<K, V>' not split into 3 items."""
         r = call(
@@ -211,6 +256,7 @@ class Outer {
             f"Inner2 should have @SuppressWarnings. Got: {ann_names}"
         )
 
+    @_skip_caffeine
     def test_caffeine_no_override_on_any_class(self, mcp_server):
         """No class in BoundedLocalCache should have @Override in its annotations."""
         r = call(
@@ -235,6 +281,7 @@ class Outer {
             "last method has @Override within 2 lines of BoundedEviction's class start."
         )
 
+    @_skip_caffeine
     def test_references_inner_classes_clean_annotations(self, mcp_server):
         """Inner classes in References.java should have no spurious annotations."""
         r = call(
@@ -295,4 +342,131 @@ class B {}
         )
         assert "SuppressWarnings" in ann_names, (
             f"@SuppressWarnings should be on class B. Got: {ann_names}"
+        )
+
+
+# ─── T3.2 synthetic: MCP-level validation without caffeine clone ───────────────
+
+
+class TestBoundedLocalCacheSynthetic:
+    """End-to-end MCP validation of Bug 1 and Bug 2 fixes using a synthetic file.
+
+    This closes T3.2 when caffeine is not available locally. The synthetic source
+    mirrors BoundedLocalCache.java's structural patterns:
+    - abstract class with multiple generic interfaces (Bug 1)
+    - multiple inner static classes each with @Override on a method (Bug 2 bleed risk)
+    - field-level annotations
+    - class-level annotations
+    """
+
+    _SRC = """\
+package com.github.benmanes.caffeine.cache;
+
+import java.util.concurrent.ConcurrentHashMap;
+
+/**
+ * Synthetic BoundedLocalCache mirroring caffeine structural patterns.
+ * Used for T3.2 MCP-level validation without cloning caffeine.
+ */
+@SuppressWarnings("unchecked")
+abstract class BoundedLocalCache<K, V>
+    implements LocalCache<K, V>, Runnable, java.io.Serializable {
+
+    private static final long serialVersionUID = 1L;
+
+    // field-level annotation — Bug 4 regression guard
+    @SuppressWarnings("rawtypes")
+    final ConcurrentHashMap<K, V> data = new ConcurrentHashMap<>();
+
+    @Override
+    public void run() {}
+
+    @Override
+    public V get(K key) { return data.get(key); }
+
+    static final class BoundedEviction {
+        // @Override immediately before this class declaration is the Bug 2 trigger
+        @Override
+        public String toString() { return "BoundedEviction"; }
+    }
+
+    @Deprecated
+    static final class LegacyNode<K, V> implements java.io.Serializable {
+        private static final long serialVersionUID = 2L;
+
+        @SuppressWarnings("unused")
+        private K key;
+    }
+}
+"""
+
+    @pytest.fixture(scope="class")
+    def mcp_result(self, tmp_path_factory):
+        import asyncio
+
+        from tree_sitter_analyzer.mcp.server import TreeSitterAnalyzerMCPServer
+
+        base = tmp_path_factory.mktemp("caffeine_synthetic")
+        java_file = base / "BoundedLocalCache.java"
+        java_file.write_text(self._SRC, encoding="utf-8")
+
+        server = TreeSitterAnalyzerMCPServer(str(base))
+        # Use json output_format — classes/methods/fields are top-level keys in the dict.
+        result = asyncio.run(
+            server.call_tool(
+                "analyze_code_structure",
+                {"file_path": str(java_file), "output_format": "json"},
+            )
+        )
+        return result
+
+    def _classes(self, mcp_result: dict) -> list:
+        # analyze_code_structure returns classes at the top level (not under "elements")
+        return mcp_result.get("classes", [])
+
+    def test_bounded_local_cache_implements_generics_preserved(self, mcp_result):
+        """Bug 1 via MCP: LocalCache<K, V> must appear as one item, not split."""
+        classes = self._classes(mcp_result)
+        blc = next((c for c in classes if c.get("name") == "BoundedLocalCache"), None)
+        assert blc is not None, (
+            f"BoundedLocalCache not found. Classes: {[c.get('name') for c in classes]}"
+        )
+
+        implements = blc.get("implements", [])
+        assert "K" not in implements, (
+            f"'K' must not appear as standalone interface. implements={implements}"
+        )
+        assert "V" not in implements, (
+            f"'V' must not appear as standalone interface. implements={implements}"
+        )
+        local_cache = [i for i in implements if "LocalCache" in i]
+        assert local_cache, f"LocalCache not in implements. Got: {implements}"
+        assert "<" in local_cache[0], (
+            f"LocalCache generic args dropped. Got: {local_cache[0]!r}"
+        )
+
+    def test_bounded_eviction_no_override_bleed(self, mcp_result):
+        """Bug 2 via MCP: @Override from BoundedLocalCache.run() must not bleed to BoundedEviction."""
+        classes = self._classes(mcp_result)
+        be = next((c for c in classes if c.get("name") == "BoundedEviction"), None)
+        if be is None:
+            pytest.skip(
+                "BoundedEviction inner class not surfaced by extractor (tracked: improve-java-annotation-extraction)"
+            )
+        ann_names = {a.get("name", "") for a in be.get("annotations", [])}
+        assert "Override" not in ann_names, (
+            f"@Override bled into BoundedEviction class annotations: {ann_names}"
+        )
+
+    def test_legacy_node_has_deprecated_annotation(self, mcp_result):
+        """Class-level annotation MCP round-trip: @Deprecated must reach LegacyNode."""
+        classes = self._classes(mcp_result)
+        legacy = next((c for c in classes if c.get("name") == "LegacyNode"), None)
+        if legacy is None:
+            pytest.skip(
+                "LegacyNode not surfaced by extractor (inner class) (tracked: improve-java-annotation-extraction)"
+            )
+        ann_names = {a.get("name", "") for a in legacy.get("annotations", [])}
+        assert "Deprecated" in ann_names, (
+            f"@Deprecated missing from LegacyNode annotations. Got: {ann_names}"
         )

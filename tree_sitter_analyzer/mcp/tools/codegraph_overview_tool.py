@@ -59,6 +59,15 @@ class CodeGraphOverviewTool(BaseMCPTool):
                 self._call_graph = CallGraph(self.project_root)
         return self._call_graph
 
+    def get_call_graph(self) -> CallGraph:
+        """Public alias for _get_call_graph() — use this instead of accessing _call_graph."""
+        return self._get_call_graph()
+
+    @property
+    def call_graph_initialized(self) -> bool:
+        """True if the call graph has been lazily initialized (i.e. cached)."""
+        return self._call_graph is not None
+
     def get_tool_definition(self) -> dict[str, Any]:
         return {
             "name": "codegraph_overview",
@@ -123,7 +132,7 @@ class CodeGraphOverviewTool(BaseMCPTool):
         max_coupled_files = arguments.get("max_coupled_files", 15)
         output_format = arguments.get("output_format", "toon")
 
-        graph = self._get_call_graph()
+        graph = self.get_call_graph()
         graph.build()
 
         entry_points = _find_entry_points(graph, max_entry_points)
@@ -173,8 +182,8 @@ class CodeGraphOverviewTool(BaseMCPTool):
 def _find_entry_points(graph: CallGraph, limit: int) -> list[dict[str, Any]]:
     """Functions with zero callers = public API surface."""
     entry_points = []
-    for func in graph._functions:
-        callers = graph._callers.get(func, [])
+    for func in graph.function_refs():
+        callers = graph.caller_refs_of(func)
         if not callers:
             entry_points.append(
                 {
@@ -182,7 +191,7 @@ def _find_entry_points(graph: CallGraph, limit: int) -> list[dict[str, Any]]:
                     "file": func.file_path,
                     "line": func.start_line,
                     "language": func.language,
-                    "callee_count": len(graph._callees.get(func, [])),
+                    "callee_count": len(graph.callee_refs_of(func)),
                 }
             )
     entry_points.sort(
@@ -194,15 +203,15 @@ def _find_entry_points(graph: CallGraph, limit: int) -> list[dict[str, Any]]:
 def _find_hub_functions(graph: CallGraph, limit: int) -> list[dict[str, Any]]:
     """Functions called by many others (high fan-in)."""
     candidates: list[tuple[int, str, Any]] = []
-    for func in graph._functions:
-        callers = graph._callers.get(func, [])
+    for func in graph.function_refs():
+        callers = graph.caller_refs_of(func)
         if len(callers) >= 3:
             candidates.append((len(callers), func.name, func))
 
     candidates.sort(key=lambda x: (-x[0], x[1]))
     hubs = []
     for caller_count, _name, func in candidates[:limit]:
-        caller_files = sorted({c.file_path for c in graph._callers.get(func, [])})
+        caller_files = sorted({c.file_path for c in graph.caller_refs_of(func)})
         hubs.append(
             {
                 "name": func.name,
@@ -221,9 +230,9 @@ def _find_hub_functions(graph: CallGraph, limit: int) -> list[dict[str, Any]]:
 def _find_dead_code(graph: CallGraph, limit: int) -> list[dict[str, Any]]:
     """Functions with zero callers AND zero callees (dead code candidates)."""
     dead = []
-    for func in graph._functions:
-        callers = graph._callers.get(func, [])
-        callees = graph._callees.get(func, [])
+    for func in graph.function_refs():
+        callers = graph.caller_refs_of(func)
+        callees = graph.callee_refs_of(func)
         if not callers and not callees:
             dead.append(
                 {
@@ -259,7 +268,7 @@ def _compute_depth_distribution(graph: CallGraph) -> dict[str, Any]:
 
         visiting.add(func)
         max_child = 0
-        for callee in graph._callees.get(func, []):
+        for callee in graph.callee_refs_of(func):
             child_depth = 1 + _chain_depth(callee)
             if child_depth > max_child:
                 max_child = child_depth
@@ -271,7 +280,7 @@ def _compute_depth_distribution(graph: CallGraph) -> dict[str, Any]:
         memo[func] = max_child
         return max_child
 
-    for func in graph._functions:
+    for func in graph.function_refs():
         d = _chain_depth(func)
         func_depths[func.qualified_name()] = d
 
@@ -303,9 +312,9 @@ def _compute_depth_distribution(graph: CallGraph) -> dict[str, Any]:
 def _compute_module_coupling(graph: CallGraph, limit: int) -> list[dict[str, Any]]:
     """Files with the most cross-file calls (high coupling)."""
     file_coupling: dict[str, dict[str, int]] = {}
-    for caller, callees in graph._callees.items():
+    for caller in graph.function_refs():
         caller_file = caller.file_path
-        for callee in callees:
+        for callee in graph.callee_refs_of(caller):
             callee_file = callee.file_path
             if caller_file == callee_file:
                 continue

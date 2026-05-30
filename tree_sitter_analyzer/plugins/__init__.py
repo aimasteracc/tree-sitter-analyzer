@@ -25,7 +25,6 @@ __all__ = [
     "LanguagePlugin",
     "ElementExtractor",
     "DefaultExtractor",
-    "DefaultLanguagePlugin",
 ]
 
 
@@ -281,21 +280,5 @@ class DefaultExtractor(ElementExtractor):
             return None
 
 
-# Legacy PluginRegistry removed - now using PluginManager from .manager
-
-
-class DefaultLanguagePlugin(LanguagePlugin):
-    """Default plugin that provides basic functionality for any language"""
-
-    def get_language_name(self) -> str:
-        return "generic"
-
-    def get_file_extensions(self) -> list[str]:
-        return [".txt", ".md"]  # Fallback extensions
-
-    def create_extractor(self) -> ElementExtractor:
-        return DefaultExtractor()
-
-
-# Legacy plugin registry removed - now using PluginManager
-# from .manager import PluginManager
+# DefaultLanguagePlugin lives in plugins/base.py — do not duplicate here.
+# Legacy plugin registry removed - now using PluginManager from .manager

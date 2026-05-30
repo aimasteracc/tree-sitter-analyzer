@@ -633,6 +633,18 @@ class BaseMCPTool(ABC):
         }
 
     @abstractmethod
+    def get_tool_schema(self) -> dict[str, Any]:
+        """Return the JSON Schema for the tool's input parameters.
+
+        The returned dict is the value placed under ``"inputSchema"`` in the
+        MCP tool definition. Every concrete subclass must implement this so
+        that :meth:`get_tool_definition` can call ``self.get_tool_schema()``
+        and the :meth:`_guard_strict_parameters` enforcement logic has a
+        consistent place to look up the allowed properties.
+        """
+        ...
+
+    @abstractmethod
     def get_tool_definition(self) -> Any:
         """
         Get the MCP tool definition.
@@ -680,6 +692,13 @@ class MCPTool(BaseMCPTool):
     All MCP tools must implement this protocol to ensure they have
     the required methods for integration with the MCP server.
     """
+
+    def get_tool_schema(self) -> dict[str, Any]:
+        """Return the JSON Schema for the tool's input parameters.
+
+        Deprecated stub — subclasses must override this.
+        """
+        raise NotImplementedError("Subclasses must implement get_tool_schema method")
 
     def get_tool_definition(self) -> Any:
         """

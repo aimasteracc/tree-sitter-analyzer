@@ -13,13 +13,23 @@ positional / keyword arguments only and never evals user input.
 
 from __future__ import annotations
 
-import os
 from typing import Any
 
+from ...codegraph_query_backend import CodeGraphQueryBackend
 from ...utils import setup_logger
 from ..utils.format_helper import apply_toon_format_to_response
 from . import _codegraph_explore_helpers as _h
 from . import _codegraph_query_concepts as _concepts
+from . import _codegraph_query_filters as _filters
+from ._codegraph_query_compact import (
+    compact_facets as _compact_facets,
+)
+from ._codegraph_query_compact import (
+    compact_relationships as _compact_relationships,
+)
+from ._codegraph_query_compact import (
+    compact_symbol as _compact_symbol,
+)
 from ._codegraph_query_dsl import (
     _ChainStep,
     bool_kw,
@@ -29,6 +39,67 @@ from ._codegraph_query_dsl import (
     step_to_dict,
     string_args,
 )
+from ._codegraph_query_facets import (
+    affected_tests_facet as _affected_tests_facet,
+)
+from ._codegraph_query_facets import (
+    complexity_facet as _complexity_facet,
+)
+from ._codegraph_query_facets import (
+    health_facet as _health_facet,
+)
+from ._codegraph_query_facets import (
+    risk_facet as _risk_facet,
+)
+from ._codegraph_query_facets import (
+    uml_facet as _uml_facet,
+)
+from ._codegraph_query_selection import (
+    apply_selection_filters as _apply_selection_filters,
+)
+from ._codegraph_query_selection import (
+    filter_concept_entries as _filter_concept_entries,
+)
+from ._codegraph_query_selection import (
+    filter_current_selection as _filter_current_selection,
+)
+from ._codegraph_query_selection import (
+    is_relation_noise_symbol as _is_relation_noise_symbol,
+)
+from ._codegraph_query_selection import (
+    replace_current_selection as _replace_current_selection,
+)
+from ._codegraph_query_selection import (
+    sort_state as _sort_state,
+)
+from ._codegraph_query_state import _QueryState
+from ._codegraph_query_symbols import (
+    absolute_path as _absolute_path,  # noqa: F401 — re-exported for tests
+)
+from ._codegraph_query_symbols import (
+    build_file_entries as _build_file_entries,
+)
+from ._codegraph_query_symbols import (
+    dedupe_symbols as _dedupe_symbols,
+)
+from ._codegraph_query_symbols import (
+    drop_test_shadow_symbols as _drop_test_shadow_symbols,
+)
+from ._codegraph_query_symbols import (
+    source_first_symbols as _source_first_symbols,
+)
+from ._codegraph_query_symbols import (
+    source_preference_key as _source_preference_key,
+)
+from ._codegraph_query_symbols import (
+    symbol_key as _symbol_key,
+)
+from ._codegraph_query_symbols import (
+    symbol_key_tuple as _symbol_key_tuple,
+)
+from ._codegraph_query_symbols import (
+    unique_symbol_files as _unique_symbol_files,  # noqa: F401 — re-exported for tests
+)
 from ._response_builder import build_response
 from .base_tool import BaseMCPTool
 
@@ -37,33 +108,7 @@ logger = setup_logger(__name__)
 _MAX_SYMBOLS_CAP = 50
 _MAX_FILES_CAP = 30
 _MAX_REL_PER_SYMBOL = 20
-_MAX_SNIPPET_LINES = 160
-_MAX_FILE_BYTES = 1_000_000
 _DECLARATION_QUERY_KINDS = frozenset({"class", "enum", "interface", "type"})
-_RELATION_NOISE_SYMBOLS = frozenset(
-    {
-        # Go builtins frequently appear as callsite pseudo-symbols in call edges.
-        "append",
-        "cap",
-        "clear",
-        "close",
-        "complex",
-        "copy",
-        "delete",
-        "imag",
-        "len",
-        "make",
-        "new",
-        "panic",
-        "print",
-        "println",
-        "real",
-        "recover",
-        # Python runtime helpers are similarly low-signal for architecture packs.
-        "super",
-        "super().__init__",
-    }
-)
 
 
 class CodeGraphQueryTool(BaseMCPTool):
@@ -85,16 +130,29 @@ class CodeGraphQueryTool(BaseMCPTool):
             self._cache = ASTCache(self.project_root)
         return self._cache
 
+    def get_cache(self) -> Any:
+        """Public alias for _get_cache() — use this instead of accessing _cache directly."""
+        return self._get_cache()
+
+    @property
+    def cache_initialized(self) -> bool:
+        """True if the AST cache has been lazily initialized (i.e. cached)."""
+        return self._cache is not None
+
     def get_tool_definition(self) -> dict[str, Any]:
         return {
             "name": "codegraph_query",
             "description": (
                 "jQuery-style chained code graph query. Compose search(), "
-                "explore(), callers(), callees(), related(), include(), sort(), "
-                "take(), and answer() in one statement so agents get an answer "
-                "pack without 40 separate CLI calls. Example: "
-                "search(['Router', 'Handler']).explore().include(callers=True, "
-                "complexity=True).sort(by='fan_in', desc=True).answer()."
+                "semantic(), explore(), callers(), callees(), related(), filter(), exclude(), has(), "
+                "include(), uml(), sort(), take(), and answer() in one statement so agents "
+                "get an answer pack without 40 separate CLI calls. Example: "
+                "search(['Router', 'Handler']).has(callees=True, name='authorize')"
+                ".explore().include(callers=True, "
+                "complexity=True).uml().sort(by='fan_in', desc=True).answer(). "
+                "sort() accepts: name, file (alias: path), line, kind, fan_in, fan_out, confidence. "
+                "confidence reflects BM25 relevance (use desc=True for most-relevant first). "
+                "fan_in/fan_out require callers()/callees() to have run first — otherwise 0."
             ),
             "inputSchema": self.get_tool_schema(),
             "annotations": {
@@ -183,7 +241,10 @@ class CodeGraphQueryTool(BaseMCPTool):
             )
             return apply_toon_format_to_response(result, output_format)
 
-        state = _QueryState(compact=compact)
+        state = _QueryState(
+            compact=compact,
+            backend=CodeGraphQueryBackend(cache),
+        )
         warnings: list[str] = []
 
         for step in steps:
@@ -253,7 +314,19 @@ class CodeGraphQueryTool(BaseMCPTool):
             queries = string_args(step, required=True)
             limit = int_kw(step, "limit", default_max_symbols, _MAX_SYMBOLS_CAP)
             state.seed_queries = queries
-            state.current = _resolve_queries(cache, queries, limit)
+            state.current = _resolve_queries_with_backend(
+                _state_backend(state, cache), queries, limit
+            )
+            state.add_symbols(state.current)
+            return
+
+        if step.name == "semantic":
+            queries = string_args(step, required=True)
+            limit = int_kw(step, "limit", default_max_symbols, _MAX_SYMBOLS_CAP)
+            state.seed_queries = queries
+            state.current = _semantic_queries_with_backend(
+                _state_backend(state, cache), queries, limit
+            )
             state.add_symbols(state.current)
             return
 
@@ -264,7 +337,9 @@ class CodeGraphQueryTool(BaseMCPTool):
                     step, "max_symbols", default_max_symbols, _MAX_SYMBOLS_CAP
                 )
                 state.seed_queries = queries
-                state.current = _resolve_queries(cache, queries, limit)
+                state.current = _resolve_queries_with_backend(
+                    _state_backend(state, cache), queries, limit
+                )
                 state.add_symbols(state.current)
             max_files = int_kw(step, "max_files", default_max_files, _MAX_FILES_CAP)
             max_symbols = int_kw(
@@ -305,6 +380,18 @@ class CodeGraphQueryTool(BaseMCPTool):
             state.current = _dedupe_symbols([*callers, *callees])
             return
 
+        if step.name in {"filter", "where"}:
+            _filter_current_selection(state, step, invert=False)
+            return
+
+        if step.name in {"exclude", "not"}:
+            _filter_current_selection(state, step, invert=True)
+            return
+
+        if step.name == "has":
+            _filter_selection_by_related_symbols(cache, state, step)
+            return
+
         if step.name == "take":
             limit = first_int(step, default_max_symbols)
             state.current = state.current[:limit]
@@ -327,6 +414,21 @@ class CodeGraphQueryTool(BaseMCPTool):
             )
             return
 
+        if step.name == "uml":
+            direction = str(step.kwargs.get("direction") or "LR")
+            max_edges = int_kw(
+                step,
+                "max_edges",
+                int_kw(step, "limit", _MAX_REL_PER_SYMBOL, _MAX_SYMBOLS_CAP),
+                _MAX_SYMBOLS_CAP,
+            )
+            state.facets["uml"] = _uml_facet(
+                state,
+                direction=direction,
+                max_edges=max_edges,
+            )
+            return
+
         if step.name == "answer":
             state.compact = bool_kw(step, "compact", state.compact)
             return
@@ -334,34 +436,24 @@ class CodeGraphQueryTool(BaseMCPTool):
         raise ValueError(f"unsupported chain step: {step.name}")
 
 
-class _QueryState:
-    def __init__(self, *, compact: bool = False) -> None:
-        self.current: list[dict[str, Any]] = []
-        self.symbols: list[dict[str, Any]] = []
-        self.files: list[dict[str, Any]] = []
-        self.relationships: dict[str, dict[str, list[dict[str, Any]]]] = {
-            "callers": {},
-            "callees": {},
-        }
-        self.facets: dict[str, Any] = {}
-        self._seen_symbols: set[tuple[str, int, str]] = set()
-        self.compact = compact
-        self.seed_queries: list[str] = []
-        self.concept_files_returned = 0
-
-    def add_symbols(self, symbols: list[dict[str, Any]]) -> None:
-        for symbol in symbols:
-            key = _symbol_key_tuple(symbol)
-            if key in self._seen_symbols:
-                continue
-            self._seen_symbols.add(key)
-            self.symbols.append(symbol)
-
-
+# Type alias to avoid deep generic nesting in annotations
 def _resolve_query(cache: Any, query: str, limit: int) -> list[dict[str, Any]]:
-    from ...symbol_resolver import SymbolResolver
+    return _resolve_query_with_backend(
+        CodeGraphQueryBackend(cache),
+        query,
+        limit,
+    )
 
-    resolver = SymbolResolver(cache)
+
+def _state_backend(state: _QueryState, cache: Any) -> CodeGraphQueryBackend:
+    if state.backend is None:
+        state.backend = CodeGraphQueryBackend(cache)
+    return state.backend
+
+
+def _resolve_query_with_backend(
+    backend: CodeGraphQueryBackend, query: str, limit: int
+) -> list[dict[str, Any]]:
     _, file_tokens = _h.split_query(query)
     symbol_tokens = _concepts.symbol_candidate_tokens(query)
 
@@ -369,17 +461,15 @@ def _resolve_query(cache: Any, query: str, limit: int) -> list[dict[str, Any]]:
     seen: set[tuple[str, int, str]] = set()
     for token_order, token in enumerate(symbol_tokens):
         try:
-            defs = resolver.resolve(token).definitions
+            defs = backend.resolve_definitions(token)
         except Exception as exc:
             logger.debug("codegraph_query resolve(%r) failed: %s", token, exc)
             continue
-        for definition in defs:
-            if file_tokens and not any(
-                file_token.lower() in definition.file.lower()
-                for file_token in file_tokens
-            ):
-                continue
-            item = definition.to_dict()
+        for item in defs:
+            if file_tokens:
+                item_file = str(item.get("file", "")).lower()
+                if not any(ft.lower() in item_file for ft in file_tokens):
+                    continue
             key = _symbol_key_tuple(item)
             if key in seen:
                 continue
@@ -431,6 +521,8 @@ def _apply_concept_fallback(
         project_root=project_root,
         max_files=max_files,
     )
+    if state.selection_filters:
+        entries = _filter_concept_entries(entries, state.selection_filters)
     if not entries:
         return
     state.files = entries
@@ -439,18 +531,42 @@ def _apply_concept_fallback(
         entries,
         limit=max_symbols,
     )
+    state.current = _apply_selection_filters(state.current, state.selection_filters)
     state.add_symbols(state.current)
 
 
 def _resolve_queries(
     cache: Any, queries: list[str], limit: int
 ) -> list[dict[str, Any]]:
+    backend = CodeGraphQueryBackend(cache)
+    return _resolve_queries_with_backend(backend, queries, limit)
+
+
+def _resolve_queries_with_backend(
+    backend: CodeGraphQueryBackend, queries: list[str], limit: int
+) -> list[dict[str, Any]]:
     resolved: list[dict[str, Any]] = []
     for query in queries:
         remaining = limit - len(resolved)
         if remaining <= 0:
             break
-        resolved.extend(_resolve_query(cache, query, remaining))
+        resolved.extend(_resolve_query_with_backend(backend, query, remaining))
+        resolved = _dedupe_symbols(resolved)
+    return resolved[:limit]
+
+
+def _semantic_queries_with_backend(
+    backend: CodeGraphQueryBackend, queries: list[str], limit: int
+) -> list[dict[str, Any]]:
+    resolved: list[dict[str, Any]] = []
+    for query in queries:
+        remaining = limit - len(resolved)
+        if remaining <= 0:
+            break
+        try:
+            resolved.extend(backend.semantic_symbols(query, limit=remaining))
+        except Exception as exc:
+            logger.debug("codegraph_query semantic(%r) failed: %s", query, exc)
         resolved = _dedupe_symbols(resolved)
     return resolved[:limit]
 
@@ -466,64 +582,114 @@ def _relation_step(
     limit = int_kw(step, "limit", _MAX_REL_PER_SYMBOL, _MAX_SYMBOLS_CAP)
     related: list[dict[str, Any]] = []
     for symbol in state.current:
-        name = str(symbol.get("name") or "")
-        file_path = str(symbol.get("file") or "")
-        if not name:
+        entries = _relation_entries_for_symbol(
+            cache=cache,
+            state=state,
+            direction=direction,
+            symbol=symbol,
+            depth=depth,
+            limit=limit,
+        )
+        if not entries:
             continue
-        if direction == "callers":
-            rows = cache.query_callers(name, file_path or None, max_depth=depth) or []
-            entries = [
-                _row_symbol(row, "caller_name", "caller_file", "caller_line")
-                for row in rows
-            ]
-        else:
-            rows = cache.query_callees(name, file_path or None, max_depth=depth) or []
-            entries = [
-                _row_symbol(row, "callee_name", "callee_file", "callee_line")
-                for row in rows
-            ]
-        entries = _source_first_symbols(
-            entry
-            for entry in entries
-            if entry["name"] and not _is_relation_noise_symbol(entry)
-        )[:limit]
         source_key = _symbol_key(symbol)
-        state.relationships[direction][source_key] = entries
+        state.relationships[direction][source_key] = list(entries)
         related.extend(entries)
     deduped = _dedupe_symbols(related)
     state.add_symbols(deduped)
     return deduped
 
 
-def _is_relation_noise_symbol(symbol: dict[str, Any]) -> bool:
-    name = str(symbol.get("name") or "").strip()
-    return name in _RELATION_NOISE_SYMBOLS
+def _relation_entries_for_symbol(
+    *,
+    cache: Any,
+    state: _QueryState,
+    direction: str,
+    symbol: dict[str, Any],
+    depth: int,
+    limit: int,
+) -> list[dict[str, Any]]:
+    name = str(symbol.get("name") or "")
+    file_path = str(symbol.get("file") or "")
+    if not name:
+        return []
+    cache_key = (direction, name, file_path, depth, limit)
+    entries = state.relation_cache.get(cache_key)
+    if entries is None:
+        entries = _query_relation_entries(
+            cache=cache,
+            backend=state.backend,
+            direction=direction,
+            name=name,
+            file_path=file_path,
+            depth=depth,
+            limit=limit,
+        )
+        state.relation_cache[cache_key] = entries
+    return entries
 
 
-def _sort_state(state: _QueryState, step: _ChainStep) -> None:
-    sort_by = str(step.kwargs.get("by") or "name")
-    if sort_by == "path":
-        sort_by = "file"
-    allowed = {"name", "file", "line", "kind", "fan_in", "fan_out"}
-    if sort_by not in allowed:
-        raise ValueError(f"sort() unsupported field: {sort_by}")
-    desc = bool_kw(step, "desc", False)
-    fan_in = {
-        key: len(entries) for key, entries in state.relationships["callers"].items()
-    }
-    fan_out = {
-        key: len(entries) for key, entries in state.relationships["callees"].items()
-    }
+def _query_relation_entries(
+    *,
+    cache: Any,
+    backend: CodeGraphQueryBackend | None = None,
+    direction: str,
+    name: str,
+    file_path: str,
+    depth: int,
+    limit: int,
+) -> list[dict[str, Any]]:
+    query_backend = backend or CodeGraphQueryBackend(cache)
+    entries = query_backend.relation_entries(
+        direction=direction,
+        name=name,
+        file_path=file_path,
+        depth=depth,
+        limit=limit,
+    )
+    return _source_first_symbols(
+        entry
+        for entry in entries
+        if entry["name"] and not _is_relation_noise_symbol(entry)
+    )[:limit]
 
-    def sort_key(symbol: dict[str, Any]) -> Any:
-        if sort_by == "fan_in":
-            return fan_in.get(_symbol_key(symbol), 0)
-        if sort_by == "fan_out":
-            return fan_out.get(_symbol_key(symbol), 0)
-        return symbol.get(sort_by, "")
 
-    state.current = sorted(state.current, key=sort_key, reverse=desc)
-    state.symbols = sorted(state.symbols, key=sort_key, reverse=desc)
+def _filter_selection_by_related_symbols(
+    cache: Any,
+    state: _QueryState,
+    step: _ChainStep,
+) -> None:
+    directions: list[str] = []
+    if bool_kw(step, "callers", False):
+        directions.append("callers")
+    if bool_kw(step, "callees", False):
+        directions.append("callees")
+    if not directions:
+        raise ValueError("has() requires callers=True or callees=True")
+
+    depth = int_kw(step, "depth", 1, 5)
+    limit = int_kw(step, "limit", _MAX_REL_PER_SYMBOL, _MAX_SYMBOLS_CAP)
+    selected: list[dict[str, Any]] = []
+    for symbol in state.current:
+        source_key = _symbol_key(symbol)
+        matched_any = False
+        for direction in directions:
+            entries = _relation_entries_for_symbol(
+                cache=cache,
+                state=state,
+                direction=direction,
+                symbol=symbol,
+                depth=depth,
+                limit=limit,
+            )
+            matches = _filters.filter_symbols(entries, step)
+            if matches:
+                state.relationships[direction][source_key] = matches
+                matched_any = True
+        if matched_any:
+            selected.append(symbol)
+
+    _replace_current_selection(state, selected)
 
 
 def _include_facets(
@@ -597,425 +763,6 @@ def _include_facets(
         state.facets["affected_tests"] = _affected_tests_facet(state)
     if bool_kw(step, "risk", False):
         state.facets["risk"] = _risk_facet(state)
-
-
-def _complexity_facet(
-    cache: Any, project_root: str, symbols: list[dict[str, Any]], max_files: int
-) -> dict[str, Any]:
-    try:
-        from ...complexity_heatmap import analyze_file_complexity_from_cache
-    except Exception as exc:
-        return {"status": "missing", "reason": str(exc)}
-
-    entries: list[dict[str, Any]] = []
-    for file_path in _unique_symbol_files(symbols)[:max_files]:
-        abs_path = _absolute_path(project_root, file_path)
-        try:
-            functions = analyze_file_complexity_from_cache(cache, abs_path)
-        except Exception as exc:
-            entries.append({"file": file_path, "status": "error", "error": str(exc)})
-            continue
-        if not functions:
-            entries.append({"file": file_path, "status": "no_functions"})
-            continue
-        hotspots = sorted(functions, key=lambda item: item.complexity, reverse=True)[:5]
-        entries.append(
-            {
-                "file": file_path,
-                "status": "included",
-                "function_count": len(functions),
-                "max_complexity": max(item.complexity for item in functions),
-                "total_complexity": sum(item.complexity for item in functions),
-                "hotspots": [
-                    {
-                        "name": item.name,
-                        "line": item.line,
-                        "complexity": item.complexity,
-                    }
-                    for item in hotspots
-                ],
-            }
-        )
-    return {"status": "included", "files": entries}
-
-
-def _health_facet(
-    project_root: str, symbols: list[dict[str, Any]], max_files: int
-) -> dict[str, Any]:
-    try:
-        from ...health_scorer import HealthScorer
-    except Exception as exc:
-        return {"status": "missing", "reason": str(exc)}
-
-    scorer = HealthScorer()
-    entries: list[dict[str, Any]] = []
-    for file_path in _unique_symbol_files(symbols)[:max_files]:
-        abs_path = _absolute_path(project_root, file_path)
-        try:
-            score = scorer.score_file(abs_path, fast_dependencies=True)
-        except Exception as exc:
-            entries.append({"file": file_path, "status": "error", "error": str(exc)})
-            continue
-        entries.append(
-            {
-                "file": file_path,
-                "status": "included",
-                "total": score.total,
-                "grade": score.grade,
-                "dimensions": score.dimensions,
-            }
-        )
-    return {"status": "included", "files": entries}
-
-
-def _affected_tests_facet(state: _QueryState) -> dict[str, Any]:
-    files = _unique_symbol_files(state.symbols)
-    tests = [
-        file_path
-        for file_path in files
-        if "test" in os.path.basename(file_path).lower()
-        or "/test" in file_path.replace("\\", "/").lower()
-    ]
-    return {
-        "status": "included" if tests else "missing",
-        "files": tests,
-        "reason": None if tests else "no test files appeared in the current chain",
-    }
-
-
-def _risk_facet(state: _QueryState) -> dict[str, Any]:
-    reasons: list[str] = []
-    complexity = state.facets.get("complexity", {})
-    for entry in complexity.get("files", []):
-        max_complexity = int(entry.get("max_complexity") or 0)
-        if max_complexity >= 20:
-            reasons.append(f"{entry.get('file')}: critical complexity {max_complexity}")
-        elif max_complexity >= 11:
-            reasons.append(f"{entry.get('file')}: high complexity {max_complexity}")
-
-    health = state.facets.get("health", {})
-    for entry in health.get("files", []):
-        if entry.get("grade") in {"D", "F"}:
-            reasons.append(f"{entry.get('file')}: health grade {entry.get('grade')}")
-
-    caller_edges = sum(len(v) for v in state.relationships["callers"].values())
-    if caller_edges >= 10:
-        reasons.append(f"fan-in {caller_edges} across current symbols")
-
-    return {
-        "status": "included",
-        "level": "review" if reasons else "info",
-        "reasons": reasons,
-    }
-
-
-def _compact_symbol(symbol: dict[str, Any]) -> dict[str, Any]:
-    entry: dict[str, Any] = {
-        "name": symbol.get("name", ""),
-        "file": symbol.get("file", ""),
-        "line": symbol.get("line", 0),
-    }
-    if symbol.get("kind"):
-        entry["kind"] = symbol["kind"]
-    if symbol.get("depth"):
-        entry["depth"] = symbol["depth"]
-    return entry
-
-
-def _compact_relationships(
-    relationships: dict[str, dict[str, list[dict[str, Any]]]],
-) -> dict[str, dict[str, list[dict[str, Any]]]]:
-    return {
-        direction: _compact_edge_map(edges)
-        for direction, edges in relationships.items()
-        if edges
-    }
-
-
-def _compact_edge_map(
-    edges: dict[str, list[dict[str, Any]]],
-) -> dict[str, list[dict[str, Any]]]:
-    return {
-        source_key: [_compact_symbol(entry) for entry in entries]
-        for source_key, entries in edges.items()
-        if entries
-    }
-
-
-def _compact_facets(facets: dict[str, Any]) -> dict[str, Any]:
-    compacted: dict[str, Any] = {}
-    for name, facet in facets.items():
-        if name == "source":
-            compacted[name] = {
-                "status": facet.get("status"),
-                "file_count": facet.get("file_count", 0),
-                "files": [
-                    _compact_file_entry(entry) for entry in facet.get("files", [])
-                ],
-            }
-        elif name in {"callers", "callees"}:
-            compacted[name] = {
-                "status": facet.get("status"),
-                "edges": _compact_edge_map(facet.get("edges", {})),
-            }
-        elif name == "complexity":
-            compacted[name] = _compact_complexity_facet(facet)
-        elif name == "health":
-            compacted[name] = _compact_health_facet(facet)
-        else:
-            compacted[name] = facet
-    return compacted
-
-
-def _compact_file_entry(entry: dict[str, Any]) -> dict[str, Any]:
-    compacted: dict[str, Any] = {
-        "file": entry.get("file_path", ""),
-        "symbols": [],
-    }
-    if entry.get("language"):
-        compacted["lang"] = entry["language"]
-    if entry.get("matches"):
-        compacted["matches"] = [
-            {
-                "line": match.get("line", 0),
-                "text": match.get("text", ""),
-                "terms": match.get("terms", []),
-            }
-            for match in entry.get("matches", [])[:5]
-        ]
-    for symbol in entry.get("symbols", []):
-        start_line = int(symbol.get("start_line", 0) or 0)
-        end_line = int(symbol.get("end_line", start_line) or start_line)
-        symbol_entry: dict[str, Any] = {
-            "name": symbol.get("name", ""),
-            "lines": f"{start_line}-{end_line}"
-            if end_line != start_line
-            else start_line,
-        }
-        if symbol.get("kind"):
-            symbol_entry["kind"] = symbol["kind"]
-        if symbol.get("code"):
-            symbol_entry["code"] = symbol["code"]
-        if symbol.get("code_truncated"):
-            symbol_entry["code_truncated"] = True
-        if symbol.get("code_lines"):
-            symbol_entry["code_lines"] = symbol["code_lines"]
-        compacted["symbols"].append(symbol_entry)
-    return compacted
-
-
-def _compact_complexity_facet(facet: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "status": facet.get("status"),
-        "files": [
-            {
-                "file": entry.get("file"),
-                "status": entry.get("status"),
-                "max": entry.get("max_complexity"),
-                "total": entry.get("total_complexity"),
-                "hotspots": [
-                    {
-                        "name": hotspot.get("name"),
-                        "line": hotspot.get("line"),
-                        "cc": hotspot.get("complexity"),
-                    }
-                    for hotspot in entry.get("hotspots", [])
-                ],
-            }
-            for entry in facet.get("files", [])
-        ],
-    }
-
-
-def _compact_health_facet(facet: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "status": facet.get("status"),
-        "files": [
-            {
-                "file": entry.get("file"),
-                "status": entry.get("status"),
-                "total": entry.get("total"),
-                "grade": entry.get("grade"),
-            }
-            for entry in facet.get("files", [])
-        ],
-    }
-
-
-def _row_symbol(
-    row: dict[str, Any],
-    name_key: str,
-    file_key: str,
-    line_key: str,
-) -> dict[str, Any]:
-    return {
-        "name": row.get(name_key, ""),
-        "kind": "function",
-        "file": row.get(file_key, ""),
-        "line": row.get(line_key, 0),
-        "end_line": row.get(line_key, 0),
-        "language": "",
-        "depth": row.get("depth", 1),
-    }
-
-
-def _build_file_entries(
-    *,
-    project_root: str,
-    symbols: list[dict[str, Any]],
-    max_files: int,
-    include_code: bool,
-) -> list[dict[str, Any]]:
-    by_file: dict[str, list[dict[str, Any]]] = {}
-    for symbol in symbols:
-        file_path = str(symbol.get("file") or "")
-        if not file_path:
-            continue
-        by_file.setdefault(file_path, []).append(symbol)
-
-    entries: list[dict[str, Any]] = []
-    for file_path, file_symbols in list(by_file.items())[:max_files]:
-        abs_path = (
-            file_path
-            if os.path.isabs(file_path)
-            else os.path.join(project_root, file_path)
-        )
-        size = _h.file_size(abs_path) if include_code else 0
-        lines = (
-            _h.read_file_lines(abs_path)
-            if include_code and 0 < size <= _MAX_FILE_BYTES
-            else []
-        )
-        symbol_entries: list[dict[str, Any]] = []
-        for symbol in file_symbols:
-            entry = {
-                "name": symbol.get("name", ""),
-                "kind": symbol.get("kind", ""),
-                "start_line": symbol.get("line", 0),
-                "end_line": symbol.get("end_line", 0),
-            }
-            start_line = int(symbol.get("line", 0) or 0)
-            end_line = int(symbol.get("end_line", start_line) or start_line)
-            if include_code and lines:
-                snippet_end = min(
-                    end_line, len(lines), start_line + _MAX_SNIPPET_LINES - 1
-                )
-                code = _h.extract_snippet_from_lines(lines, start_line, snippet_end)
-                if code:
-                    entry["code"] = code
-                if snippet_end < end_line:
-                    entry["code_truncated"] = True
-                    entry["code_lines"] = f"{start_line}-{snippet_end} of {end_line}"
-            symbol_entries.append(entry)
-        entries.append(
-            {
-                "file_path": file_path,
-                "language": next(
-                    (
-                        str(sym.get("language"))
-                        for sym in file_symbols
-                        if sym.get("language")
-                    ),
-                    "",
-                ),
-                "symbols": symbol_entries,
-            }
-        )
-    return entries
-
-
-def _dedupe_symbols(symbols: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    seen: set[tuple[str, int, str]] = set()
-    out: list[dict[str, Any]] = []
-    for symbol in symbols:
-        key = _symbol_key_tuple(symbol)
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append(symbol)
-    return out
-
-
-def _source_first_symbols(symbols: Any) -> list[dict[str, Any]]:
-    return sorted(symbols, key=_source_preference_key)
-
-
-def _drop_test_shadow_symbols(symbols: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    source_names = {
-        str(symbol.get("name") or "").lower()
-        for symbol in symbols
-        if symbol.get("name")
-        and not _is_test_or_fixture_path(str(symbol.get("file") or "").lower())
-    }
-    if not source_names:
-        return symbols
-    return [
-        symbol
-        for symbol in symbols
-        if not (
-            str(symbol.get("name") or "").lower() in source_names
-            and _is_test_or_fixture_path(str(symbol.get("file") or "").lower())
-        )
-    ]
-
-
-def _source_preference_key(symbol: dict[str, Any]) -> tuple[int, int, str, int, str]:
-    path = str(symbol.get("file") or "")
-    normalized = path.replace("\\", "/").lower()
-    return (
-        1 if _is_test_or_fixture_path(normalized) else 0,
-        1 if _is_generated_or_vendor_path(normalized) else 0,
-        normalized,
-        int(symbol.get("line", 0) or 0),
-        str(symbol.get("name") or ""),
-    )
-
-
-def _is_test_or_fixture_path(path: str) -> bool:
-    name = os.path.basename(path)
-    return bool(
-        "/test/" in path
-        or "/tests/" in path
-        or "/__tests__/" in path
-        or "/fixtures/" in path
-        or name.startswith("test_")
-        or "_test." in name
-        or name.endswith((".test.ts", ".test.tsx", ".test.js", ".spec.ts", ".spec.js"))
-    )
-
-
-def _is_generated_or_vendor_path(path: str) -> bool:
-    return any(part in path for part in ("/vendor/", "/gen/", "/generated/"))
-
-
-def _unique_symbol_files(symbols: list[dict[str, Any]]) -> list[str]:
-    files: list[str] = []
-    seen: set[str] = set()
-    for symbol in symbols:
-        file_path = str(symbol.get("file") or "")
-        if not file_path or file_path in seen:
-            continue
-        seen.add(file_path)
-        files.append(file_path)
-    return files
-
-
-def _absolute_path(project_root: str, file_path: str) -> str:
-    if os.path.isabs(file_path):
-        return file_path
-    return os.path.join(project_root, file_path)
-
-
-def _symbol_key(symbol: dict[str, Any]) -> str:
-    return f"{symbol.get('file', '')}:{symbol.get('line', 0)}:{symbol.get('name', '')}"
-
-
-def _symbol_key_tuple(symbol: dict[str, Any]) -> tuple[str, int, str]:
-    return (
-        str(symbol.get("file") or ""),
-        int(symbol.get("line", 0) or 0),
-        str(symbol.get("name") or ""),
-    )
 
 
 __all__ = ["CodeGraphQueryTool", "parse_chain"]

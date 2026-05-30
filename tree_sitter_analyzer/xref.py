@@ -24,6 +24,8 @@ import sqlite3
 from dataclasses import dataclass, field
 from typing import Any
 
+from .codegraph_query_backend import CodeGraphQueryBackend
+
 logger = logging.getLogger(__name__)
 
 
@@ -71,8 +73,13 @@ class XRefEngine:
     import data into a unified view.
     """
 
-    def __init__(self, cache: Any) -> None:
+    def __init__(
+        self,
+        cache: Any,
+        backend: Any | None = None,
+    ) -> None:
         self._cache = cache
+        self._backend = backend or CodeGraphQueryBackend(cache)
 
     def xref(
         self,
@@ -84,7 +91,7 @@ class XRefEngine:
         include_imports: bool = True,
         include_file_deps: bool = True,
     ) -> XRefResult:
-        conn = self._cache._get_conn()
+        conn = self._cache.get_conn()
 
         definitions = self._find_definitions(conn, symbol, file_path)
         primary_file = file_path
@@ -119,7 +126,7 @@ class XRefEngine:
         )
 
     def file_xref(self, file_path: str) -> dict[str, Any]:
-        conn = self._cache._get_conn()
+        conn = self._cache.get_conn()
 
         symbols = self._file_symbols(conn, file_path)
         callers = self._file_callers(conn, file_path)
@@ -148,86 +155,22 @@ class XRefEngine:
         symbol: str,
         file_path: str | None,
     ) -> list[dict[str, Any]]:
-        if self._cache._fts5_available:
-            return self._fts_definitions(conn, symbol, file_path)
-        return self._linear_definitions(conn, symbol, file_path)
-
-    def _fts_definitions(
-        self,
-        conn: sqlite3.Connection,
-        symbol: str,
-        file_path: str | None,
-    ) -> list[dict[str, Any]]:
-        if file_path:
-            rows = conn.execute(
-                "SELECT name, kind, file_path, language, line, end_line "
-                "FROM ast_symbol_rows "
-                "WHERE name = ? AND file_path = ? "
-                "ORDER BY line LIMIT 20",
-                (symbol, file_path),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                "SELECT name, kind, file_path, language, line, end_line "
-                "FROM ast_symbol_rows "
-                "WHERE name = ? "
-                "ORDER BY file_path, line LIMIT 20",
-                (symbol,),
-            ).fetchall()
-
         results: list[dict[str, Any]] = []
-        for row in rows:
-            entry: dict[str, Any] = {
-                "name": row["name"],
-                "kind": row["kind"],
-                "file": row["file_path"],
-                "language": row["language"],
-                "line": row["line"],
-                "end_line": row["end_line"],
-            }
-            sig = self._get_signature(conn, row["file_path"], row["name"], row["line"])
+        for definition in self._backend.resolve_definitions(symbol):
+            if file_path and definition.get("file") != file_path:
+                continue
+            entry = dict(definition)
+            sig = self._get_signature(
+                conn,
+                str(entry.get("file", "")),
+                str(entry.get("name", "")),
+                int(entry.get("line", 0) or 0),
+            )
             if sig:
                 entry["signature"] = sig
             results.append(entry)
-        return results
-
-    def _linear_definitions(
-        self,
-        conn: sqlite3.Connection,
-        symbol: str,
-        file_path: str | None,
-    ) -> list[dict[str, Any]]:
-        if file_path:
-            rows = conn.execute(
-                "SELECT symbols_json, language FROM ast_index WHERE file_path = ?",
-                (file_path,),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                "SELECT file_path, symbols_json, language FROM ast_index"
-            ).fetchall()
-
-        results: list[dict[str, Any]] = []
-        symbol_lower = symbol.lower()
-        for row in rows:
-            fp = row["file_path"] if "file_path" in row.keys() else file_path
-            syms = json.loads(row["symbols_json"])
-            for sym in syms.get("symbols", []):
-                name = sym.get("name", "")
-                if name.lower() == symbol_lower:
-                    entry = {
-                        "name": name,
-                        "kind": sym.get("kind", "unknown"),
-                        "file": fp,
-                        "language": row["language"],
-                        "line": sym.get("line", 0),
-                        "end_line": sym.get("end_line", 0),
-                    }
-                    if sym.get("params"):
-                        entry["signature"] = sym["params"]
-                    results.append(entry)
-                    if len(results) >= 20:
-                        return results
+            if len(results) >= 20:
+                break
         return results
 
     def _get_signature(

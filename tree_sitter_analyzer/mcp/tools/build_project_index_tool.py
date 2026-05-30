@@ -16,9 +16,106 @@ from ..utils.project_index import ProjectIndex, ProjectIndexManager
 from .base_tool import BaseMCPTool, mirror_summary_line
 from .get_project_summary_tool import _make_quick_start
 
+_INPUT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "roots": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Directories to index. Defaults to project root.",
+            "default": ["."],
+        },
+        "add_notes": {
+            "type": "string",
+            "description": (
+                "Optional architecture notes to store with the index. "
+                "E.g. 'Monorepo: packages/ contains 3 services. "
+                "Entry point is packages/api/main.py'"
+            ),
+            "default": "",
+        },
+    },
+    "additionalProperties": False,
+}
+
+
+def _boundary_error_msg(root: str, resolved: Path, project_abs: Path) -> str:
+    return (
+        f"Refusing to index outside project: {root!r} "
+        f"resolves to {resolved}, which is outside "
+        f"project root {project_abs}"
+    )
+
+
+def _validate_one_root(
+    root: str,
+    project_root: str | None,
+    resolve_fn: Any,
+) -> None:
+    if not isinstance(root, str) or not root.strip():
+        raise ValueError(f"roots entries must be non-empty strings; got {root!r}")
+    if os.path.isabs(root):
+        resolved = Path(root).resolve()
+    else:
+        base = project_root or os.getcwd()
+        resolved = Path(base, root).resolve()
+    if project_root:
+        project_abs = Path(project_root).resolve()
+        try:
+            resolved.relative_to(project_abs)
+        except ValueError as boundary_err:
+            raise ValueError(
+                _boundary_error_msg(root, resolved, project_abs)
+            ) from boundary_err
+    try:
+        resolve_fn(str(resolved))
+    except ValueError as exc:
+        raise ValueError(f"Invalid root {root!r}: {exc}") from exc
+
+
+def _security_error_response(exc: Exception) -> dict[str, Any]:
+    summary_line = f"build_project_index refused: {exc}"
+    return {
+        "success": False,
+        "error": str(exc),
+        "error_type": "security",
+        "summary_line": summary_line,
+        "verdict": "ERROR",
+        "agent_summary": {
+            "summary_line": summary_line,
+            "next_step": "Pass roots within the project boundary.",
+            "verdict": "ERROR",
+        },
+    }
+
+
+def _internal_error_response(exc: Exception) -> dict[str, Any]:
+    summary_line = f"build_project_index internal error: {exc}"
+    return {
+        "success": False,
+        "error": str(exc),
+        "error_type": "internal",
+        "summary_line": summary_line,
+        "verdict": "ERROR",
+        "agent_summary": {
+            "summary_line": summary_line,
+            "next_step": "Check server logs for details.",
+            "verdict": "ERROR",
+        },
+    }
+
+
+def _make_abs_root(r: str, project_root: str) -> str:
+    if os.path.isabs(r):
+        return r
+    return os.path.join(project_root, r)
+
 
 class BuildProjectIndexTool(BaseMCPTool):
     """MCP tool that rebuilds and persists the project structure index."""
+
+    def get_tool_schema(self) -> dict[str, Any]:
+        return _INPUT_SCHEMA
 
     def get_tool_definition(self) -> dict[str, Any]:
         return {
@@ -43,29 +140,7 @@ class BuildProjectIndexTool(BaseMCPTool):
                 "Returns: build_duration_ms, files_scanned, languages_found, "
                 "index_saved_to path."
             ),
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "roots": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": (
-                            "Directories to index. Defaults to project root."
-                        ),
-                        "default": ["."],
-                    },
-                    "add_notes": {
-                        "type": "string",
-                        "description": (
-                            "Optional architecture notes to store with the index. "
-                            "E.g. 'Monorepo: packages/ contains 3 services. "
-                            "Entry point is packages/api/main.py'"
-                        ),
-                        "default": "",
-                    },
-                },
-                "additionalProperties": False,
-            },
+            "inputSchema": self.get_tool_schema(),
             # destructive depending on mode (rebuild/warm/sync write the cache)
             "annotations": {
                 "readOnlyHint": False,
@@ -111,37 +186,11 @@ class BuildProjectIndexTool(BaseMCPTool):
             raise ValueError("roots must be an array of strings")
 
         for root in roots:
-            if not isinstance(root, str) or not root.strip():
-                raise ValueError(
-                    f"roots entries must be non-empty strings; got {root!r}"
-                )
-
-            # Resolve to absolute path so boundary check is unambiguous.
-            if os.path.isabs(root):
-                resolved = Path(root).resolve()
-            else:
-                base = self.project_root or os.getcwd()
-                resolved = Path(base, root).resolve()
-
-            # Boundary check: resolved path must be within project_root.
-            if self.project_root:
-                project_abs = Path(self.project_root).resolve()
-                # Allow the project root itself and any sub-path.
-                try:
-                    resolved.relative_to(project_abs)
-                except ValueError as boundary_err:
-                    raise ValueError(
-                        f"Refusing to index outside project: {root!r} "
-                        f"resolves to {resolved}, which is outside "
-                        f"project root {project_abs}"
-                    ) from boundary_err
-
-            # Existence + directory check (delegates to SecurityValidator
-            # via the base-class helper, preserving the established pattern).
-            try:
-                self.resolve_and_validate_directory_path(str(resolved))
-            except ValueError as exc:
-                raise ValueError(f"Invalid root {root!r}: {exc}") from exc
+            _validate_one_root(
+                root,
+                self.project_root,
+                self.resolve_and_validate_directory_path,
+            )
 
         return True
 
@@ -150,36 +199,12 @@ class BuildProjectIndexTool(BaseMCPTool):
         try:
             self.validate_arguments(arguments)
         except ValueError as exc:
-            summary_line = f"build_project_index refused: {exc}"
-            return {
-                "success": False,
-                "error": str(exc),
-                "error_type": "security",
-                "summary_line": summary_line,
-                "verdict": "ERROR",
-                "agent_summary": {
-                    "summary_line": summary_line,
-                    "next_step": "Pass roots within the project boundary.",
-                    "verdict": "ERROR",
-                },
-            }
+            return _security_error_response(exc)
 
         try:
             return await self._do_execute(arguments)
         except Exception as exc:  # noqa: BLE001
-            summary_line = f"build_project_index internal error: {exc}"
-            return {
-                "success": False,
-                "error": str(exc),
-                "error_type": "internal",
-                "summary_line": summary_line,
-                "verdict": "ERROR",
-                "agent_summary": {
-                    "summary_line": summary_line,
-                    "next_step": "Check server logs for details.",
-                    "verdict": "ERROR",
-                },
-            }
+            return _internal_error_response(exc)
 
     async def _do_execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Core build logic — called only after validate_arguments passes."""
@@ -190,13 +215,7 @@ class BuildProjectIndexTool(BaseMCPTool):
         manager = ProjectIndexManager(project_root)
 
         # Resolve roots relative to project_root when not absolute.
-        roots: list[str] = []
-        for r in roots_raw:
-            r_str = str(r)
-            if os.path.isabs(r_str):
-                roots.append(r_str)
-            else:
-                roots.append(os.path.join(project_root, r_str))
+        roots: list[str] = [_make_abs_root(str(r), project_root) for r in roots_raw]
 
         start_ms = time.time() * 1000
         index: ProjectIndex = manager.build(roots=roots)

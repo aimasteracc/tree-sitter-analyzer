@@ -1,3 +1,4 @@
+<!-- HISTORICAL RECORD — file paths in this document reflect the codebase as of 2026. Some paths may no longer exist. Do not update them; they are intentional historical references. -->
 # Postmortem — v1.13.0 / v1.13.1 Release Lifecycle
 
 **Window**: PR #133 (feat/consolidated → main) merge through v1.13.1 publish.

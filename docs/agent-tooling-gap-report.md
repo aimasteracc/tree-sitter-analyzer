@@ -1,3 +1,4 @@
+<!-- HISTORICAL RECORD — file paths in this document reflect the codebase as of 2026-05. Some paths may no longer exist. Do not update them; they are intentional historical references. -->
 # Agent Tooling Gap Report
 
 Last updated: 2026-05-23 JST

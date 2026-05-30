@@ -89,15 +89,18 @@ Categories of CLI surface:
 - `--ast-path FILE:LINE` — "what is at file:line?"
 - `--codegraph-symbol-search QUERY` — FTS5 symbol search
 - `--codegraph-explore QUERY` — bulk-fetch N related symbols + relmap (CodeGraph parity)
-- `--codegraph-query CHAIN` — jQuery-style chained graph query (`search(['A','B']).explore().include(callers=True).sort(by='fan_in').answer(compact=True)`)
+- `--codegraph-query CHAIN` — jQuery-style chained graph query (`semantic('auth handler').has(callees=True, name='auth').uml(direction='TD').answer(compact=True)`)
 - `--codegraph-query-compact` — trim duplicate source payloads and empty relationship fields in chained query answers
 - `--affected FILE [FILE...]` — list test files transitively affected by changes (CodeGraph parity; closes the last CLI surface gap)
 - `--dead-code` — transitive dead functions / unused imports
+- `--doc-sync` — scan markdown docs for stale file-path references (add `--doc-sync-patterns GLOB...` to scope)
 - `--class-hierarchy` / `--dependency-matrix` / `--import-graph` — structural
+- `--class-inspect CLASS_NAME` — list all methods defined directly on a class with override detection (`is_override`, `overrides_from`)
 - `--codegraph-xref` — multi-dimension cross-reference
 - `--codegraph-complexity-heatmap` — cyclomatic complexity heatmap
 - `--codegraph-sitemap` — hierarchical project code map
 - `--codegraph-visualize` — Mermaid flowchart export
+- `--uml class|package|component|sequence` — UML-style Mermaid diagram export
 - `--code-similarity` — AST-structural clone detection
 - `--pr-review` — AST diff + semantic classify + blast-radius PR review
 
@@ -139,7 +142,7 @@ or `git diff --check` for non-code edits.
 
 ## See Also
 
-- [`docs/cli-reference.md`](../cli-reference.md) — Full CLI reference (226 unique flags total — this codemap is intentionally categorical, not exhaustive)
+- [`docs/cli-reference.md`](../cli-reference.md) — Full CLI reference (252 unique flags total — this codemap is intentionally categorical, not exhaustive)
 - [`docs/CODEMAPS/mcp-tools.md`](./mcp-tools.md) — MCP-side counterpart
 - [`tests/unit/cli/test_mcp_commands.py`](../../tests/unit/cli/test_mcp_commands.py) — Parity contract tests
-- [`scripts/codemap-sync-check.sh`](../../scripts/codemap-sync-check.sh) — pre-commit gate that blocks `argument_parser_builder.py` changes without a `cli.md` update
+- [`scripts/codemap-sync-check.sh`](../../scripts/codemap-sync-check.sh) — pre-commit gate that blocks `cli/argument_parser_builder.py` changes without a `cli.md` update

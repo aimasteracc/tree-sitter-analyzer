@@ -291,10 +291,7 @@ python tests/integration/formatters/update_baselines.py --confirm
 
 ## 📚 関連ドキュメント
 
-- [フォーマット仕様書](./format-specifications.md)
-- [テスト戦略詳細](./testing-strategy.md)
-- [CI/CD設定ガイド](./cicd-setup.md)
-- [トラブルシューティングガイド](./troubleshooting.md)
+- [フォーマット仕様書](./format_specifications.md)
 
 ## 🎉 まとめ
 

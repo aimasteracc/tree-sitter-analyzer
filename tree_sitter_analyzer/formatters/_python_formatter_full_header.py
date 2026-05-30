@@ -30,7 +30,7 @@ def _is_script(functions: list[dict[str, Any]]) -> bool:
 def append_module_docstring(
     lines: list[str], formatter: Any, data: dict[str, Any]
 ) -> None:
-    module_docstring = formatter._extract_module_docstring(data)
+    module_docstring = formatter.extract_module_docstring(data)
     if module_docstring:
         lines.append("## Description")
         lines.append(f'"{module_docstring}"')

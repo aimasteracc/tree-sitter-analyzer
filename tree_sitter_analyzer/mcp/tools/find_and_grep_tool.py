@@ -54,6 +54,9 @@ class FindAndGrepTool(FindAndGrepRespondMixin, BaseMCPTool):
     def _on_project_root_changed(self, project_root: str | None) -> None:
         self.file_output_manager = FileOutputManager.get_managed_instance(project_root)
 
+    def get_tool_schema(self) -> dict[str, Any]:
+        return _TOOL_SCHEMA
+
     def get_tool_definition(self) -> dict[str, Any]:
         """Return the MCP tool name, description, and input schema."""
         return {
@@ -82,7 +85,7 @@ class FindAndGrepTool(FindAndGrepRespondMixin, BaseMCPTool):
                 "- For semantic / symbol-level queries — use query or "
                 "trace_impact"
             ),
-            "inputSchema": _TOOL_SCHEMA,
+            "inputSchema": self.get_tool_schema(),
             "annotations": {
                 "readOnlyHint": True,
                 "destructiveHint": False,

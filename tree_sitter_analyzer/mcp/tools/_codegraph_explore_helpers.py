@@ -161,7 +161,7 @@ def concept_search(
     if not terms:
         return []
 
-    conn = cache._get_conn()
+    conn = cache.get_conn()
     rows = conn.execute(
         "SELECT file_path, language, file_size, symbols_json FROM ast_index"
     ).fetchall()
@@ -230,15 +230,24 @@ def _concept_candidate_paths(
                 (f"%{token.lower()}%", max_paths),
             )
         for term in terms:
-            pattern = f"%{term.lower()}%"
-            _add_rows(
-                "SELECT DISTINCT file_path FROM ast_symbol_rows "
-                "WHERE lower(name) LIKE ? LIMIT ?",
-                (pattern, max_paths),
-            )
+            # Prefer FTS5 index (O(1) via inverted index); fall back to LIKE scan.
+            fts_query = f'"{term}"'
+            try:
+                _add_rows(
+                    "SELECT DISTINCT r.file_path FROM ast_symbols_fts f "
+                    "JOIN ast_symbol_rows r ON f.rowid = r.id "
+                    "WHERE ast_symbols_fts MATCH ? LIMIT ?",
+                    (fts_query, max_paths),
+                )
+            except Exception:
+                _add_rows(
+                    "SELECT DISTINCT file_path FROM ast_symbol_rows "
+                    "WHERE lower(name) LIKE ? LIMIT ?",
+                    (f"%{term.lower()}%", max_paths),
+                )
             _add_rows(
                 "SELECT file_path FROM ast_index WHERE lower(file_path) LIKE ? LIMIT ?",
-                (pattern, max_paths),
+                (f"%{term.lower()}%", max_paths),
             )
             if len(candidates) >= max_paths:
                 break
@@ -578,9 +587,9 @@ def _concept_rank(entry: dict[str, Any], terms: list[str]) -> int:
     if path.startswith("src/"):
         rank += 40
     if any(part in path for part in ("/test/", "/tests/", "/fixtures/", "/gen/")):
-        rank -= 80
+        rank -= 500
     if _is_test_like_path(path):
-        rank -= 80
+        rank -= 500
     if "/copilot/" in path:
         rank -= 40
     return rank

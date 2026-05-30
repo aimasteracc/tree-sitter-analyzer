@@ -16,12 +16,192 @@ from __future__ import annotations
 
 import sqlite3
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
 from .utils import setup_logger
 
 logger = setup_logger(__name__)
+
+# ---------------------------------------------------------------------------
+# Direction helpers — forward (callee) direction
+# ---------------------------------------------------------------------------
+
+
+def _fwd_state(row: dict[str, Any]) -> tuple[str, str | None]:
+    """Extract the next (name, file) state from a forward-edge row."""
+    callee_file = row.get("callee_resolved_file") or row.get("file_path", "")
+    return (row["callee_name"], callee_file or None)
+
+
+def _fwd_hop(
+    current_name: str, current_file: str | None, row: dict[str, Any]
+) -> dict[str, Any]:
+    """Build a hop dict for a forward (callee direction) step."""
+    callee_file = row.get("callee_resolved_file") or row.get("file_path", "")
+    return {
+        "caller": current_name,
+        "caller_file": current_file or "",
+        "callee": row["callee_name"],
+        "callee_file": callee_file,
+        "line": row.get("callee_line", 0),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Direction helpers — backward (caller) direction
+# ---------------------------------------------------------------------------
+
+
+def _bwd_state(row: dict[str, Any]) -> tuple[str, str | None]:
+    """Extract the next (name, file) state from a backward-edge row."""
+    return (row["caller_name"], row.get("caller_file") or None)
+
+
+def _bwd_hop(
+    current_name: str, current_file: str | None, row: dict[str, Any]
+) -> dict[str, Any]:
+    """Build a hop dict for a backward (caller direction) step."""
+    return {
+        "caller": row["caller_name"],
+        "caller_file": row.get("caller_file", ""),
+        "callee": current_name,
+        "callee_file": current_file or "",
+        "line": row.get("caller_line", 0),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Direction helpers — forward graph direction
+# ---------------------------------------------------------------------------
+
+
+def _graph_fwd_state(callee: dict[str, Any]) -> tuple[str, str | None]:
+    return (callee.get("name", ""), callee.get("file", "") or None)
+
+
+def _graph_fwd_hop(
+    current_name: str, current_file: str | None, callee: dict[str, Any]
+) -> dict[str, Any]:
+    return {
+        "caller": current_name,
+        "caller_file": current_file or "",
+        "callee": callee.get("name", ""),
+        "callee_file": callee.get("file", ""),
+        "line": callee.get("line", 0),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Direction helpers — backward graph direction
+# ---------------------------------------------------------------------------
+
+
+def _graph_bwd_state(caller: dict[str, Any]) -> tuple[str, str | None]:
+    return (caller.get("name", ""), caller.get("file", "") or None)
+
+
+def _graph_bwd_hop(
+    current_name: str, current_file: str | None, caller: dict[str, Any]
+) -> dict[str, Any]:
+    return {
+        "caller": caller.get("name", ""),
+        "caller_file": caller.get("file", ""),
+        "callee": current_name,
+        "callee_file": current_file or "",
+        "line": caller.get("line", 0),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Shared target-matching predicate
+# ---------------------------------------------------------------------------
+
+
+def _target_match(
+    name: str,
+    file_: str | None,
+    target: tuple[str, str | None],
+) -> bool:
+    """Return True when (name, file_) matches the target (name, file) pair."""
+    target_name, target_file = target
+    if name != target_name:
+        return False
+    if target_file and file_ and file_ != target_file:
+        return False
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Generic BFS engines
+# ---------------------------------------------------------------------------
+
+
+def _bfs_sql_core(
+    conn: sqlite3.Connection,
+    start_name: str,
+    start_file: str | None,
+    target_key: tuple[str, str | None],
+    max_depth: int,
+    max_paths: int,
+    query_fn: Callable,
+    state_fn: Callable,
+    hop_fn: Callable,
+    prepend: bool,
+) -> list[Any]:
+    """BFS over ast_call_edges in one direction (forward or backward)."""
+    queue: deque[tuple[str, str | None, list[dict[str, Any]]]] = deque(
+        [(start_name, start_file, [])]
+    )
+    visited: set[tuple[str, str | None]] = {(start_name, start_file)}
+    paths: list[Any] = []
+    while queue and len(paths) < max_paths:
+        current_name, current_file, path = queue.popleft()
+        if len(path) >= max_depth:
+            continue
+        for row in query_fn(conn, current_name, current_file):
+            hop = hop_fn(current_name, current_file, row)
+            new_path = [hop] + path if prepend else path + [hop]
+            state = state_fn(row)
+            if _target_match(state[0], state[1], target_key):
+                paths.append(_make_chain(new_path))
+            elif state not in visited:
+                visited.add(state)
+                queue.append((*state, new_path))
+    return paths
+
+
+def _bfs_graph_core(
+    get_neighbors: Callable,
+    start_name: str,
+    start_file: str | None,
+    target_key: tuple[str, str | None],
+    max_depth: int,
+    max_paths: int,
+    paths: list[Any],
+    state_fn: Callable,
+    hop_fn: Callable,
+    prepend: bool,
+) -> None:
+    """BFS over an in-memory CallGraph in one direction."""
+    queue: deque[tuple[str, str | None, list[dict[str, Any]]]] = deque(
+        [(start_name, start_file, [])]
+    )
+    visited: set[tuple[str, str | None]] = {(start_name, start_file)}
+    while queue and len(paths) < max_paths:
+        current_name, current_file, path = queue.popleft()
+        if len(path) >= max_depth:
+            continue
+        for neighbor in get_neighbors(current_name, current_file):
+            hop = hop_fn(current_name, current_file, neighbor)
+            new_path = [hop] + path if prepend else path + [hop]
+            state = state_fn(neighbor)
+            if _target_match(state[0], state[1], target_key):
+                paths.append(_make_chain(new_path))
+            elif state not in visited:
+                visited.add(state)
+                queue.append((*state, new_path))
 
 
 @dataclass
@@ -68,6 +248,13 @@ def _files_in_chain(hops: list[dict[str, Any]]) -> int:
         if f:
             seen.add(f)
     return len(seen)
+
+
+def _make_chain(path: list[dict[str, Any]]) -> CallChain:
+    """Construct a CallChain from a hop list."""
+    return CallChain(
+        hops=path, total_hops=len(path), files_crossed=_files_in_chain(path)
+    )
 
 
 class CallPathFinder:
@@ -189,43 +376,18 @@ class CallPathFinder:
         max_depth: int,
         max_paths: int,
     ) -> CallPathResult:
-        conn = cache._get_conn()
-        start_key = (source_function, source_file)
-        target_key = (target_function, target_file)
-        queue: deque[tuple[str, str | None, list[dict[str, Any]]]] = deque()
-        queue.append((source_function, source_file, []))
-        visited: set[tuple[str, str | None]] = {start_key}
-        paths: list[CallChain] = []
-        while queue and len(paths) < max_paths:
-            current_name, current_file, path = queue.popleft()
-            if len(path) >= max_depth:
-                continue
-            rows = self._query_forward_edges(conn, current_name, current_file)
-            for row in rows:
-                callee_name = row["callee_name"]
-                callee_file = row.get("callee_resolved_file") or row.get(
-                    "file_path", ""
-                )
-                hop = {
-                    "caller": current_name,
-                    "caller_file": current_file or "",
-                    "callee": callee_name,
-                    "callee_file": callee_file,
-                    "line": row.get("callee_line", 0),
-                }
-                new_path = path + [hop]
-                if self._matches_target(callee_name, callee_file, target_key):
-                    chain = CallChain(
-                        hops=new_path,
-                        total_hops=len(new_path),
-                        files_crossed=_files_in_chain(new_path),
-                    )
-                    paths.append(chain)
-                    continue
-                state = (callee_name, callee_file or None)
-                if state not in visited:
-                    visited.add(state)
-                    queue.append((callee_name, callee_file or None, new_path))
+        paths = _bfs_sql_core(
+            cache.get_conn(),
+            source_function,
+            source_file,
+            (target_function, target_file),
+            max_depth,
+            max_paths,
+            self._query_forward_edges,
+            _fwd_state,
+            _fwd_hop,
+            prepend=False,
+        )
         return CallPathResult(
             source=source_function,
             target=target_function,
@@ -243,41 +405,18 @@ class CallPathFinder:
         max_depth: int,
         max_paths: int,
     ) -> CallPathResult:
-        conn = cache._get_conn()
-        target_key = (target_function, target_file)
-        start_key = (source_function, source_file)
-        queue: deque[tuple[str, str | None, list[dict[str, Any]]]] = deque()
-        queue.append((target_function, target_file, []))
-        visited: set[tuple[str, str | None]] = {target_key}
-        paths: list[CallChain] = []
-        while queue and len(paths) < max_paths:
-            current_name, current_file, path = queue.popleft()
-            if len(path) >= max_depth:
-                continue
-            rows = self._query_backward_edges(conn, current_name, current_file)
-            for row in rows:
-                caller_name = row["caller_name"]
-                caller_file = row["caller_file"]
-                hop = {
-                    "caller": caller_name,
-                    "caller_file": caller_file,
-                    "callee": current_name,
-                    "callee_file": current_file or "",
-                    "line": row.get("caller_line", 0),
-                }
-                new_path = [hop] + path
-                if self._matches_target(caller_name, caller_file, start_key):
-                    chain = CallChain(
-                        hops=new_path,
-                        total_hops=len(new_path),
-                        files_crossed=_files_in_chain(new_path),
-                    )
-                    paths.append(chain)
-                    continue
-                state = (caller_name, caller_file or None)
-                if state not in visited:
-                    visited.add(state)
-                    queue.append((caller_name, caller_file or None, new_path))
+        paths = _bfs_sql_core(
+            cache.get_conn(),
+            target_function,
+            target_file,
+            (source_function, source_file),
+            max_depth,
+            max_paths,
+            self._query_backward_edges,
+            _bwd_state,
+            _bwd_hop,
+            prepend=True,
+        )
         return CallPathResult(
             source=source_function,
             target=target_function,
@@ -295,7 +434,7 @@ class CallPathFinder:
         max_depth: int,
         max_paths: int,
     ) -> CallPathResult:
-        conn = cache._get_conn()
+        conn = cache.get_conn()
         forward_visited: dict[tuple[str, str | None], list[dict[str, Any]]] = {
             (source_function, source_file): [],
         }
@@ -337,12 +476,7 @@ class CallPathFinder:
                         full_path = forward_visited[state] + list(
                             reversed(backward_visited[state])
                         )
-                        chain = CallChain(
-                            hops=full_path,
-                            total_hops=len(full_path),
-                            files_crossed=_files_in_chain(full_path),
-                        )
-                        paths.append(chain)
+                        paths.append(_make_chain(full_path))
                         continue
                     next_forward.append(state)
             forward_queue = next_forward
@@ -367,12 +501,7 @@ class CallPathFinder:
                         full_path = forward_visited[state] + list(
                             reversed(backward_visited[state])
                         )
-                        chain = CallChain(
-                            hops=full_path,
-                            total_hops=len(full_path),
-                            files_crossed=_files_in_chain(full_path),
-                        )
-                        paths.append(chain)
+                        paths.append(_make_chain(full_path))
                         continue
                     next_backward.append(state)
             backward_queue = next_backward
@@ -444,19 +573,6 @@ class CallPathFinder:
         except sqlite3.OperationalError:
             return []
 
-    @staticmethod
-    def _matches_target(
-        name: str,
-        file: str | None,
-        target: tuple[str, str | None],
-    ) -> bool:
-        target_name, target_file = target
-        if name != target_name:
-            return False
-        if target_file and file and file != target_file:
-            return False
-        return True
-
     def _fallback_graph(
         self,
         source_function: str,
@@ -523,44 +639,18 @@ class CallPathFinder:
         max_paths: int,
         paths: list[CallChain],
     ) -> None:
-        start_key = (source_function, source_file)
-        queue: deque[tuple[str, str | None, list[dict[str, Any]]]] = deque()
-        queue.append((source_function, source_file, []))
-        visited: set[tuple[str, str | None]] = {start_key}
-        while queue and len(paths) < max_paths:
-            current_name, current_file, path = queue.popleft()
-            if len(path) >= max_depth:
-                continue
-            callees = graph.callees_of(current_name, current_file)
-            for callee in callees:
-                callee_name = callee.get("name", "")
-                callee_file = callee.get("file", "")
-                hop = {
-                    "caller": current_name,
-                    "caller_file": current_file or "",
-                    "callee": callee_name,
-                    "callee_file": callee_file,
-                    "line": callee.get("line", 0),
-                }
-                new_path = path + [hop]
-                if callee_name == target_function:
-                    if target_file and callee_file and callee_file != target_file:
-                        state = (callee_name, callee_file or None)
-                        if state not in visited:
-                            visited.add(state)
-                            queue.append((callee_name, callee_file or None, new_path))
-                        continue
-                    chain = CallChain(
-                        hops=new_path,
-                        total_hops=len(new_path),
-                        files_crossed=_files_in_chain(new_path),
-                    )
-                    paths.append(chain)
-                    continue
-                state = (callee_name, callee_file or None)
-                if state not in visited:
-                    visited.add(state)
-                    queue.append((callee_name, callee_file or None, new_path))
+        _bfs_graph_core(
+            graph.callees_of,
+            source_function,
+            source_file,
+            (target_function, target_file),
+            max_depth,
+            max_paths,
+            paths,
+            _graph_fwd_state,
+            _graph_fwd_hop,
+            prepend=False,
+        )
 
     @staticmethod
     def _bfs_graph_backward(
@@ -573,40 +663,15 @@ class CallPathFinder:
         max_paths: int,
         paths: list[CallChain],
     ) -> None:
-        queue: deque[tuple[str, str | None, list[dict[str, Any]]]] = deque()
-        queue.append((target_function, target_file, []))
-        visited: set[tuple[str, str | None]] = {(target_function, target_file)}
-        while queue and len(paths) < max_paths:
-            current_name, current_file, path = queue.popleft()
-            if len(path) >= max_depth:
-                continue
-            callers = graph.callers_of(current_name, current_file)
-            for caller in callers:
-                caller_name = caller.get("name", "")
-                caller_file = caller.get("file", "")
-                hop = {
-                    "caller": caller_name,
-                    "caller_file": caller_file,
-                    "callee": current_name,
-                    "callee_file": current_file or "",
-                    "line": caller.get("line", 0),
-                }
-                new_path = [hop] + path
-                if caller_name == source_function:
-                    if source_file and caller_file and caller_file != source_file:
-                        state = (caller_name, caller_file or None)
-                        if state not in visited:
-                            visited.add(state)
-                            queue.append((caller_name, caller_file or None, new_path))
-                        continue
-                    chain = CallChain(
-                        hops=new_path,
-                        total_hops=len(new_path),
-                        files_crossed=_files_in_chain(new_path),
-                    )
-                    paths.append(chain)
-                    continue
-                state = (caller_name, caller_file or None)
-                if state not in visited:
-                    visited.add(state)
-                    queue.append((caller_name, caller_file or None, new_path))
+        _bfs_graph_core(
+            graph.callers_of,
+            target_function,
+            target_file,
+            (source_function, source_file),
+            max_depth,
+            max_paths,
+            paths,
+            _graph_bwd_state,
+            _graph_bwd_hop,
+            prepend=True,
+        )

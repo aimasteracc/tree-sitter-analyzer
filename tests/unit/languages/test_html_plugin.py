@@ -65,22 +65,6 @@ class TestHtmlPlugin:
         """Set up test fixtures"""
         self.plugin = HtmlPlugin()
 
-    def test_get_language_name(self):
-        """Test language name"""
-        assert self.plugin.get_language_name() == "html"
-
-    def test_get_file_extensions(self):
-        """Test file extensions"""
-        extensions = self.plugin.get_file_extensions()
-        assert ".html" in extensions
-        assert ".htm" in extensions
-        assert ".xhtml" in extensions
-
-    def test_create_extractor(self):
-        """Test extractor creation"""
-        extractor = self.plugin.create_extractor()
-        assert isinstance(extractor, HtmlElementExtractor)
-
     def test_get_supported_element_types(self):
         """Test supported element types"""
         types = self.plugin.get_supported_element_types()

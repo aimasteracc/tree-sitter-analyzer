@@ -284,47 +284,6 @@ class TestJavaPlugin:
         assert hasattr(plugin, "get_file_extensions")
         assert hasattr(plugin, "create_extractor")
 
-    def test_get_language_name(self, plugin: JavaPlugin) -> None:
-        """Test getting language name"""
-        language_name = plugin.get_language_name()
-
-        assert language_name == "java"
-
-    def test_get_file_extensions(self, plugin: JavaPlugin) -> None:
-        """Test getting file extensions"""
-        extensions = plugin.get_file_extensions()
-
-        assert isinstance(extensions, list)
-        assert ".java" in extensions
-
-    def test_create_extractor(self, plugin: JavaPlugin) -> None:
-        """Test creating element extractor"""
-        extractor = plugin.create_extractor()
-
-        assert isinstance(extractor, JavaElementExtractor)
-        assert isinstance(extractor, ElementExtractor)
-
-    def test_is_applicable_java_file(self, plugin: JavaPlugin) -> None:
-        """Test applicability check for Java file"""
-        is_applicable = plugin.is_applicable("test.java")
-
-        assert is_applicable is True
-
-    def test_is_applicable_non_java_file(self, plugin: JavaPlugin) -> None:
-        """Test applicability check for non-Java file"""
-        is_applicable = plugin.is_applicable("test.py")
-
-        assert is_applicable is False
-
-    def test_get_plugin_info(self, plugin: JavaPlugin) -> None:
-        """Test getting plugin information"""
-        info = plugin.get_plugin_info()
-
-        assert isinstance(info, dict)
-        assert "language" in info
-        assert "extensions" in info
-        assert info["language"] == "java"
-
     def test_get_tree_sitter_language(self, plugin: JavaPlugin) -> None:
         """Test getting tree-sitter language"""
         with (

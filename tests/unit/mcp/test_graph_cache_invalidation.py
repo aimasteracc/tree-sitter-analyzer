@@ -103,13 +103,13 @@ class TestCallGraphCacheInvalidatesOnFileChange:
         # Cold build
         r1 = asyncio.run(tool.execute({"mode": "summary", "output_format": "json"}))
         assert r1.get("cache_invalidated_reason") == "cold"
-        cold_graph = tool._call_graph
+        cold_graph = tool.get_call_graph()
         assert cold_graph is not None
 
         # Warm reuse
         r2 = asyncio.run(tool.execute({"mode": "summary", "output_format": "json"}))
         assert r2.get("cache_invalidated_reason") is None
-        assert tool._call_graph is cold_graph
+        assert tool.get_call_graph() is cold_graph
 
         # Touch a source file mtime
         time.sleep(0.05)
@@ -120,7 +120,7 @@ class TestCallGraphCacheInvalidatesOnFileChange:
         assert r3.get("cache_invalidated_reason") == "source_modified", (
             f"expected source_modified, got {r3.get('cache_invalidated_reason')}"
         )
-        assert tool._call_graph is not cold_graph
+        assert tool.get_call_graph() is not cold_graph
 
     def test_call_graph_cache_age_reported(self, project_root: Path) -> None:
         """cache_age_s should be present and grow on warm reuse."""

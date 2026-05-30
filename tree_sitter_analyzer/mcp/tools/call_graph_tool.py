@@ -284,6 +284,15 @@ class CodeGraphCallTool(BaseMCPTool):
         assert self._call_graph is not None  # nosec B101 - just rebuilt above
         return self._call_graph
 
+    def get_call_graph(self) -> CallGraph:
+        """Public alias for _get_call_graph() — use this instead of accessing _call_graph."""
+        return self._get_call_graph()
+
+    @property
+    def call_graph_initialized(self) -> bool:
+        """True if the call graph has been lazily initialized (i.e. cached)."""
+        return self._call_graph is not None
+
     @staticmethod
     def _explain_fingerprint_delta(
         old: GraphFingerprint | None, new: GraphFingerprint
@@ -464,7 +473,7 @@ class CodeGraphCallTool(BaseMCPTool):
             "function": func_name,
             "caller_count": len(callers),
             "callers": callers,
-            "function_indexed": bool(graph._resolve_targets(func_name, file_path)),
+            "function_indexed": bool(graph.resolve_targets(func_name, file_path)),
         }
         hint = _maybe_bare_name_hint(graph, func_name, len(callers), "callers")
         if hint:
@@ -485,7 +494,7 @@ class CodeGraphCallTool(BaseMCPTool):
             "function": func_name,
             "callee_count": len(callees),
             "callees": callees,
-            "function_indexed": bool(graph._resolve_targets(func_name, file_path)),
+            "function_indexed": bool(graph.resolve_targets(func_name, file_path)),
         }
         hint = _maybe_bare_name_hint(graph, func_name, len(callees), "callees")
         if hint:
@@ -506,7 +515,7 @@ class CodeGraphCallTool(BaseMCPTool):
             "depth": depth,
             "edge_count": len(chain),
             "chain": chain,
-            "function_indexed": bool(graph._resolve_targets(func_name, file_path)),
+            "function_indexed": bool(graph.resolve_targets(func_name, file_path)),
         }
         hint = _maybe_bare_name_hint(graph, func_name, len(chain), "chain")
         if hint:

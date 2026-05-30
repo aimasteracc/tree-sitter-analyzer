@@ -69,6 +69,9 @@ class SearchContentTool(BaseMCPTool):
     def _on_project_root_changed(self, project_root: str | None) -> None:
         self.file_output_manager = FileOutputManager.get_managed_instance(project_root)
 
+    def get_tool_schema(self) -> dict[str, Any]:
+        return _TOOL_SCHEMA
+
     # MCP tool metadata - name, description, schema
     def get_tool_definition(self) -> dict[str, Any]:
         """Return the MCP tool name, description, and input schema."""
@@ -97,7 +100,7 @@ class SearchContentTool(BaseMCPTool):
                 "- For symbol-level queries (class X) — use query\n"
                 "- To run multiple searches in parallel — use batch_search"
             ),
-            "inputSchema": _TOOL_SCHEMA,
+            "inputSchema": self.get_tool_schema(),
             "annotations": {
                 "readOnlyHint": True,
                 "destructiveHint": False,

@@ -34,6 +34,10 @@ from .ruby_helpers import (
     extract_require_statement as _extract_require_standalone,
 )
 
+# Type alias for the element cache key — avoids triple-nested generic annotation
+# inside __init__, which would push identifier leaves to AST depth 17.
+_ElementCacheKey = tuple[tuple[int, int], str]
+
 
 class RubyElementExtractor(ElementExtractor):
     """
@@ -68,7 +72,7 @@ class RubyElementExtractor(ElementExtractor):
         # Performance optimization caches - use position-based keys for deterministic caching
         self._node_text_cache: dict[tuple[int, int], str] = {}
         self._processed_nodes: set[tuple[int, int]] = set()
-        self._element_cache: dict[tuple[tuple[int, int], str], Any] = {}
+        self._element_cache: dict[_ElementCacheKey, Any] = {}
 
     def _reset_caches(self) -> None:
         """Reset all internal caches for a new file analysis."""
@@ -99,22 +103,21 @@ class RubyElementExtractor(ElementExtractor):
         self._node_text_cache[cache_key] = text
         return text
 
-    def _determine_visibility(self, node: tree_sitter.Node) -> str:
-        """
-        Determine visibility of a method.
+    _VISIBILITY_KEYWORDS: frozenset[str] = frozenset({"private", "protected", "public"})
 
-        In Ruby, visibility is typically set using private, protected, public keywords.
-        Default is public for methods.
-
-        Args:
-            node: Method node
-
-        Returns:
-            Visibility string ("public", "private", "protected")
-        """
-        # TODO: Implement visibility detection by looking for visibility modifiers
-        # For now, default to public
-        return "public"
+    def _determine_visibility(self, node: tree_sitter.Node | None) -> str:
+        """Determine visibility by scanning preceding siblings for private/protected/public."""
+        if node is None or node.parent is None:
+            return "public"
+        current = "public"
+        for child in node.parent.children:
+            if child.start_byte == node.start_byte:
+                break
+            if child.type == "identifier":
+                text = child.text.decode(errors="replace") if child.text else ""
+                if text in self._VISIBILITY_KEYWORDS:
+                    current = text
+        return current
 
     def extract_classes(self, tree: tree_sitter.Tree, source_code: str) -> list[Class]:
         """
@@ -595,6 +598,12 @@ class RubyPlugin(LanguagePlugin):
             RubyElementExtractor instance
         """
         return RubyElementExtractor()
+
+    def extract_elements(
+        self, tree: tree_sitter.Tree, source_code: str
+    ) -> dict[str, list]:
+        """Unified extraction entry point — delegates to the extractor."""
+        return self.create_extractor().extract_elements(tree, source_code)
 
     async def analyze_file(
         self, file_path: str, request: AnalysisRequest

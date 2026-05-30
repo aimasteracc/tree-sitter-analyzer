@@ -35,7 +35,7 @@ class TestAnalyzeScaleToolCalculateFileMetrics:
     def test_calculate_file_metrics_success(self, tool):
         """Test successful file metrics calculation."""
         with patch(
-            "tree_sitter_analyzer.mcp.tools.analyze_scale_tool.compute_file_metrics"
+            "tree_sitter_analyzer.mcp.tools.analyze_scale_helpers.compute_file_metrics"
         ) as mock_compute:
             mock_compute.return_value = {
                 "total_lines": 100,
@@ -52,7 +52,7 @@ class TestAnalyzeScaleToolCalculateFileMetrics:
     def test_calculate_file_metrics_error_handling(self, tool):
         """Test error handling in file metrics calculation."""
         with patch(
-            "tree_sitter_analyzer.mcp.tools.analyze_scale_tool.compute_file_metrics"
+            "tree_sitter_analyzer.mcp.tools.analyze_scale_helpers.compute_file_metrics"
         ) as mock_compute:
             mock_compute.side_effect = Exception("Test error")
             metrics = tool._calculate_file_metrics("test.py", "python")
@@ -465,5 +465,3 @@ class TestAnalyzeScaleToolExtractStructuralOverviewUniversal:
         assert overview["methods"] == []
         assert overview["fields"] == []
         assert overview["imports"] == []
-
-

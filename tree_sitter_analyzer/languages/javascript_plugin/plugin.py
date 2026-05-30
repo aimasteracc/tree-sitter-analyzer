@@ -26,6 +26,8 @@ from ...plugins.base import ElementExtractor, LanguagePlugin
 from ...utils import log_error
 from .extractor import JavaScriptElementExtractor
 
+_JS_EXTENSIONS = [".js", ".mjs", ".jsx", ".es6", ".es", ".cjs"]
+
 
 class JavaScriptPlugin(LanguagePlugin):
     """Enhanced JavaScript language plugin with comprehensive feature support"""
@@ -37,15 +39,7 @@ class JavaScriptPlugin(LanguagePlugin):
         # Legacy compatibility attributes for tests
         self.language = "javascript"
         self.extractor = self._extractor
-        self.supported_extensions = [".js", ".mjs", ".jsx", ".es6", ".es", ".cjs"]
-
-    @property
-    def language_name(self) -> str:
-        return "javascript"
-
-    @property
-    def file_extensions(self) -> list[str]:
-        return [".js", ".mjs", ".jsx", ".es6", ".es"]
+        self.supported_extensions = _JS_EXTENSIONS
 
     def get_language_name(self) -> str:
         """Return the name of the programming language this plugin supports"""
@@ -53,7 +47,7 @@ class JavaScriptPlugin(LanguagePlugin):
 
     def get_file_extensions(self) -> list[str]:
         """Return list of file extensions this plugin supports"""
-        return [".js", ".mjs", ".jsx", ".es6", ".es"]
+        return _JS_EXTENSIONS
 
     def create_extractor(self) -> ElementExtractor:
         """Create and return an element extractor for this language"""
@@ -98,6 +92,8 @@ class JavaScriptPlugin(LanguagePlugin):
             "name": "JavaScript Plugin",
             "language": self.get_language_name(),
             "extensions": self.get_file_extensions(),
+            "class_name": self.__class__.__name__,
+            "module": self.__class__.__module__,
             "version": "2.0.0",
             "supported_queries": self.get_supported_queries(),
             "features": [
@@ -202,7 +198,7 @@ class JavaScriptPlugin(LanguagePlugin):
         if not TREE_SITTER_AVAILABLE:
             return AnalysisResult(
                 file_path=file_path,
-                language=self.language_name,
+                language=self.get_language_name(),
                 success=False,
                 error_message="Tree-sitter library not available.",
             )
@@ -211,7 +207,7 @@ class JavaScriptPlugin(LanguagePlugin):
         if not language:
             return AnalysisResult(
                 file_path=file_path,
-                language=self.language_name,
+                language=self.get_language_name(),
                 success=False,
                 error_message="Could not load JavaScript language for parsing.",
             )
@@ -251,7 +247,7 @@ class JavaScriptPlugin(LanguagePlugin):
 
             return AnalysisResult(
                 file_path=file_path,
-                language=self.language_name,
+                language=self.get_language_name(),
                 success=True,
                 elements=elements,
                 line_count=len(source_code.splitlines()),
@@ -261,7 +257,7 @@ class JavaScriptPlugin(LanguagePlugin):
             log_error(f"Error analyzing JavaScript file {file_path}: {e}")
             return AnalysisResult(
                 file_path=file_path,
-                language=self.language_name,
+                language=self.get_language_name(),
                 success=False,
                 error_message=str(e),
             )

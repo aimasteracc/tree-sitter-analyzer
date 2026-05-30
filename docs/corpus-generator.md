@@ -405,5 +405,4 @@ Potential improvements for future phases:
 
 - [Grammar Coverage Phase 1: Introspection](../tree_sitter_analyzer/grammar_coverage/introspector.py)
 - [Grammar Coverage Validator](../tree_sitter_analyzer/grammar_coverage/validator.py)
-- [Test Governance Framework](./test-governance-framework.md)
 - [Tree-sitter Documentation](https://tree-sitter.github.io/tree-sitter/)

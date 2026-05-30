@@ -565,12 +565,13 @@ class TestGitignoreDetectorMemoryEdgeCases:
         with tempfile.TemporaryDirectory() as temp_dir:
             dir_path = Path(temp_dir)
 
-            # Create large directory structure
-            for i in range(100):
+            # Create enough files to exercise recursive scanning without
+            # making the unit test itself dominate the per-test time budget.
+            for i in range(25):
                 subdir = dir_path / f"subdir_{i}"
                 subdir.mkdir()
 
-                for j in range(100):
+                for j in range(40):
                     (subdir / f"file_{j}.py").write_text(f"# File {i}_{j}")
 
             # Should handle large scans without excessive memory usage

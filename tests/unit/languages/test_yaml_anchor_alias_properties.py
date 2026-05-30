@@ -80,6 +80,37 @@ alias_use: *{anchor_name}
     return yaml_content.strip(), anchor_name
 
 
+def _yaml_scalar_value_strategy():
+    """Hypothesis strategy for simple YAML scalar values (text or integer string)."""
+    return st.one_of(
+        st.text(
+            alphabet=st.characters(
+                whitelist_categories=("Lu", "Ll", "Nd"),
+                min_codepoint=97,
+                max_codepoint=122,
+            ),
+            min_size=1,
+            max_size=15,
+        ),
+        st.integers(min_value=0, max_value=100).map(str),
+    )
+
+
+def _parse_and_extract_yaml(yaml_content: str) -> list:
+    """Parse YAML with tree-sitter and return extracted elements; skip if unavailable."""
+    try:
+        import tree_sitter
+        import tree_sitter_yaml as ts_yaml
+    except ImportError:
+        pytest.skip("tree-sitter-yaml not available")
+
+    lang = tree_sitter.Language(ts_yaml.language())
+    parser = tree_sitter.Parser()
+    parser.language = lang
+    tree = parser.parse(yaml_content.encode("utf-8"))
+    return YAMLElementExtractor().extract_yaml_elements(tree, yaml_content)
+
+
 @st.composite
 def yaml_with_multiple_anchors(draw):
     """Generate YAML content with multiple anchors and aliases."""
@@ -88,25 +119,9 @@ def yaml_with_multiple_anchors(draw):
     lines = []
 
     for i in range(num_anchors):
-        # Use index to ensure uniqueness
         anchor_name = f"anchor{i}"
         anchors.append(anchor_name)
-
-        value = draw(
-            st.one_of(
-                st.text(
-                    alphabet=st.characters(
-                        whitelist_categories=("Lu", "Ll", "Nd"),
-                        min_codepoint=97,
-                        max_codepoint=122,
-                    ),
-                    min_size=1,
-                    max_size=15,
-                ),
-                st.integers(min_value=0, max_value=100).map(str),
-            )
-        )
-
+        value = draw(_yaml_scalar_value_strategy())
         lines.append(f"key{i}: &{anchor_name} {value}")
 
     # Add some aliases
@@ -169,23 +184,8 @@ class TestYAMLAnchorAliasProperties:
 
         Validates: Requirements 2.2
         """
-        try:
-            import tree_sitter
-            import tree_sitter_yaml as ts_yaml
-        except ImportError:
-            pytest.skip("tree-sitter-yaml not available")
-
         yaml_content, expected_anchor_name = yaml_data
-
-        # Parse the YAML content
-        YAML_LANGUAGE = tree_sitter.Language(ts_yaml.language())
-        parser = tree_sitter.Parser()
-        parser.language = YAML_LANGUAGE
-        tree = parser.parse(yaml_content.encode("utf-8"))
-
-        # Extract elements
-        extractor = YAMLElementExtractor()
-        elements = extractor.extract_yaml_elements(tree, yaml_content)
+        elements = _parse_and_extract_yaml(yaml_content)
 
         # Property: Anchors must be extracted
         anchors = [e for e in elements if e.element_type == "anchor"]
@@ -238,23 +238,8 @@ class TestYAMLAnchorAliasProperties:
 
         Validates: Requirements 2.2
         """
-        try:
-            import tree_sitter
-            import tree_sitter_yaml as ts_yaml
-        except ImportError:
-            pytest.skip("tree-sitter-yaml not available")
-
         yaml_content, expected_target_name = yaml_data
-
-        # Parse the YAML content
-        YAML_LANGUAGE = tree_sitter.Language(ts_yaml.language())
-        parser = tree_sitter.Parser()
-        parser.language = YAML_LANGUAGE
-        tree = parser.parse(yaml_content.encode("utf-8"))
-
-        # Extract elements
-        extractor = YAMLElementExtractor()
-        elements = extractor.extract_yaml_elements(tree, yaml_content)
+        elements = _parse_and_extract_yaml(yaml_content)
 
         # Property: Aliases must be extracted
         aliases = [e for e in elements if e.element_type == "alias"]
@@ -307,23 +292,8 @@ class TestYAMLAnchorAliasProperties:
 
         Validates: Requirements 2.2
         """
-        try:
-            import tree_sitter
-            import tree_sitter_yaml as ts_yaml
-        except ImportError:
-            pytest.skip("tree-sitter-yaml not available")
-
         yaml_content, expected_name = yaml_data
-
-        # Parse the YAML content
-        YAML_LANGUAGE = tree_sitter.Language(ts_yaml.language())
-        parser = tree_sitter.Parser()
-        parser.language = YAML_LANGUAGE
-        tree = parser.parse(yaml_content.encode("utf-8"))
-
-        # Extract elements
-        extractor = YAMLElementExtractor()
-        elements = extractor.extract_yaml_elements(tree, yaml_content)
+        elements = _parse_and_extract_yaml(yaml_content)
 
         # Get anchors and aliases
         anchors = [e for e in elements if e.element_type == "anchor"]
@@ -355,23 +325,8 @@ class TestYAMLAnchorAliasProperties:
 
         Validates: Requirements 2.2
         """
-        try:
-            import tree_sitter
-            import tree_sitter_yaml as ts_yaml
-        except ImportError:
-            pytest.skip("tree-sitter-yaml not available")
-
         yaml_content, expected_anchor_names = yaml_data
-
-        # Parse the YAML content
-        YAML_LANGUAGE = tree_sitter.Language(ts_yaml.language())
-        parser = tree_sitter.Parser()
-        parser.language = YAML_LANGUAGE
-        tree = parser.parse(yaml_content.encode("utf-8"))
-
-        # Extract elements
-        extractor = YAMLElementExtractor()
-        elements = extractor.extract_yaml_elements(tree, yaml_content)
+        elements = _parse_and_extract_yaml(yaml_content)
 
         # Get anchors
         anchors = [e for e in elements if e.element_type == "anchor"]
@@ -414,23 +369,8 @@ class TestYAMLAnchorAliasProperties:
 
         Validates: Requirements 2.2
         """
-        try:
-            import tree_sitter
-            import tree_sitter_yaml as ts_yaml
-        except ImportError:
-            pytest.skip("tree-sitter-yaml not available")
-
         yaml_content, expected_anchor_names = yaml_data
-
-        # Parse the YAML content
-        YAML_LANGUAGE = tree_sitter.Language(ts_yaml.language())
-        parser = tree_sitter.Parser()
-        parser.language = YAML_LANGUAGE
-        tree = parser.parse(yaml_content.encode("utf-8"))
-
-        # Extract elements
-        extractor = YAMLElementExtractor()
-        elements = extractor.extract_yaml_elements(tree, yaml_content)
+        elements = _parse_and_extract_yaml(yaml_content)
 
         # Get aliases
         aliases = [e for e in elements if e.element_type == "alias"]
@@ -463,23 +403,8 @@ class TestYAMLAnchorAliasProperties:
 
         Validates: Requirements 2.2
         """
-        try:
-            import tree_sitter
-            import tree_sitter_yaml as ts_yaml
-        except ImportError:
-            pytest.skip("tree-sitter-yaml not available")
-
         yaml_content, expected_anchor_name = yaml_data
-
-        # Parse the YAML content
-        YAML_LANGUAGE = tree_sitter.Language(ts_yaml.language())
-        parser = tree_sitter.Parser()
-        parser.language = YAML_LANGUAGE
-        tree = parser.parse(yaml_content.encode("utf-8"))
-
-        # Extract elements
-        extractor = YAMLElementExtractor()
-        elements = extractor.extract_yaml_elements(tree, yaml_content)
+        elements = _parse_and_extract_yaml(yaml_content)
 
         # Get anchors
         anchors = [e for e in elements if e.element_type == "anchor"]
@@ -541,26 +466,8 @@ class TestYAMLAnchorAliasProperties:
 
         Validates: Requirements 2.2
         """
-        try:
-            import tree_sitter
-            import tree_sitter_yaml as ts_yaml
-        except ImportError:
-            pytest.skip("tree-sitter-yaml not available")
-
-        # Create YAML with anchor
         yaml_content = f"key: &{anchor_name} {value}"
-
-        # Parse the YAML content
-        YAML_LANGUAGE = tree_sitter.Language(ts_yaml.language())
-        parser = tree_sitter.Parser()
-        parser.language = YAML_LANGUAGE
-        tree = parser.parse(yaml_content.encode("utf-8"))
-
-        # Extract elements
-        extractor = YAMLElementExtractor()
-        elements = extractor.extract_yaml_elements(tree, yaml_content)
-
-        # Get anchors
+        elements = _parse_and_extract_yaml(yaml_content)
         anchors = [e for e in elements if e.element_type == "anchor"]
 
         # Property: Exactly one anchor should be found
@@ -607,29 +514,8 @@ class TestYAMLAnchorAliasProperties:
 
         Validates: Requirements 2.2
         """
-        try:
-            import tree_sitter
-            import tree_sitter_yaml as ts_yaml
-        except ImportError:
-            pytest.skip("tree-sitter-yaml not available")
-
-        # Create YAML with anchor and alias
-        yaml_content = f"""
-anchor: &{anchor_name} {value}
-alias: *{anchor_name}
-"""
-
-        # Parse the YAML content
-        YAML_LANGUAGE = tree_sitter.Language(ts_yaml.language())
-        parser = tree_sitter.Parser()
-        parser.language = YAML_LANGUAGE
-        tree = parser.parse(yaml_content.encode("utf-8"))
-
-        # Extract elements
-        extractor = YAMLElementExtractor()
-        elements = extractor.extract_yaml_elements(tree, yaml_content)
-
-        # Get aliases
+        yaml_content = f"\nanchor: &{anchor_name} {value}\nalias: *{anchor_name}\n"
+        elements = _parse_and_extract_yaml(yaml_content)
         aliases = [e for e in elements if e.element_type == "alias"]
 
         # Property: Exactly one alias should be found

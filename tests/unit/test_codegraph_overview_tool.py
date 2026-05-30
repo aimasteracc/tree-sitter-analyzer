@@ -1,7 +1,7 @@
 """Unit tests for codegraph_overview_tool.py — CodeGraphOverviewTool MCP tool."""
 
 from pathlib import Path
-from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -37,27 +37,27 @@ class TestCodeGraphOverviewToolInit:
     def test_init_with_project_root(self):
         t = CodeGraphOverviewTool(PY_PROJECT)
         assert t.project_root == PY_PROJECT
-        assert t._call_graph is None
+        assert not t.call_graph_initialized
 
     def test_init_without_project_root(self):
         t = CodeGraphOverviewTool()
         assert t.project_root is None
 
     def test_set_project_path_resets_graph(self, tool):
-        tool._get_call_graph()
-        assert tool._call_graph is not None
+        tool.get_call_graph()
+        assert tool.call_graph_initialized
         tool.set_project_path(PY_PROJECT)
-        assert tool._call_graph is None
+        assert not tool.call_graph_initialized
 
     def test_get_call_graph_caches(self, tool):
-        cg1 = tool._get_call_graph()
-        cg2 = tool._get_call_graph()
+        cg1 = tool.get_call_graph()
+        cg2 = tool.get_call_graph()
         assert cg1 is cg2
 
     def test_get_call_graph_raises_without_root(self):
         t = CodeGraphOverviewTool()
         with pytest.raises(ValueError, match="Project root not set"):
-            t._get_call_graph()
+            t.get_call_graph()
 
 
 # ============================================================
@@ -177,7 +177,7 @@ class TestCodeGraphOverviewToolExecute:
 
 class TestFindEntryPoints:
     def test_finds_entry_points(self, tool):
-        graph = tool._get_call_graph()
+        graph = tool.get_call_graph()
         graph.build()
         eps = _find_entry_points(graph, 100)
         assert isinstance(eps, list)
@@ -186,7 +186,7 @@ class TestFindEntryPoints:
             assert "callee_count" in ep
 
     def test_respects_limit(self, tool):
-        graph = tool._get_call_graph()
+        graph = tool.get_call_graph()
         graph.build()
         eps = _find_entry_points(graph, 1)
         assert len(eps) <= 1
@@ -194,7 +194,7 @@ class TestFindEntryPoints:
 
 class TestFindHubFunctions:
     def test_hubs_have_min_three_callers(self, tool):
-        graph = tool._get_call_graph()
+        graph = tool.get_call_graph()
         graph.build()
         hubs = _find_hub_functions(graph, 100)
         for hub in hubs:
@@ -206,7 +206,10 @@ class TestFindHubFunctions:
             FunctionRef(f"caller_{i}.py", f"caller_{i}", i + 1, "python")
             for i in range(40)
         ]
-        graph = SimpleNamespace(_functions=[hub, *callers], _callers={hub: callers})
+        graph = MagicMock()
+        graph.function_refs.return_value = [hub, *callers]
+        callers_map = {hub: callers, **{c: [] for c in callers}}
+        graph.caller_refs_of.side_effect = lambda f: callers_map.get(f, [])
 
         hubs = _find_hub_functions(graph, 10)
 
@@ -218,7 +221,7 @@ class TestFindHubFunctions:
 
 class TestFindDeadCode:
     def test_dead_code_has_no_callers_or_callees(self, tool):
-        graph = tool._get_call_graph()
+        graph = tool.get_call_graph()
         graph.build()
         dead = _find_dead_code(graph, 100)
         for d in dead:
@@ -228,7 +231,7 @@ class TestFindDeadCode:
 
 class TestComputeDepthDistribution:
     def test_returns_expected_keys(self, tool):
-        graph = tool._get_call_graph()
+        graph = tool.get_call_graph()
         graph.build()
         dist = _compute_depth_distribution(graph)
         assert "max_depth" in dist
@@ -241,15 +244,10 @@ class TestComputeDepthDistribution:
         b = FunctionRef("graph.py", "b", 2, "python")
         c = FunctionRef("graph.py", "c", 3, "python")
         d = FunctionRef("graph.py", "d", 4, "python")
-        graph = SimpleNamespace(
-            _functions=[a, b, c, d],
-            _callees={
-                a: [b, c],
-                b: [d],
-                c: [d],
-                d: [b],
-            },
-        )
+        callees_map = {a: [b, c], b: [d], c: [d], d: [b]}
+        graph = MagicMock()
+        graph.function_refs.return_value = [a, b, c, d]
+        graph.callee_refs_of.side_effect = lambda f: callees_map.get(f, [])
 
         dist = _compute_depth_distribution(graph)
 
@@ -262,10 +260,10 @@ class TestComputeDepthDistribution:
         unrelated = FunctionRef("a.py", "handle", 1, "python")
         target = FunctionRef("b.py", "handle", 1, "python")
         leaf = FunctionRef("b.py", "leaf", 2, "python")
-        graph = SimpleNamespace(
-            _functions=[root, unrelated, target, leaf],
-            _callees={root: [target], target: [leaf]},
-        )
+        callees_map = {root: [target], target: [leaf]}
+        graph = MagicMock()
+        graph.function_refs.return_value = [root, unrelated, target, leaf]
+        graph.callee_refs_of.side_effect = lambda f: callees_map.get(f, [])
 
         dist = _compute_depth_distribution(graph)
 
@@ -275,10 +273,10 @@ class TestComputeDepthDistribution:
 
     def test_caps_deep_call_chains(self):
         funcs = [FunctionRef("chain.py", f"f{i}", i + 1, "python") for i in range(13)]
-        graph = SimpleNamespace(
-            _functions=funcs,
-            _callees={funcs[i]: [funcs[i + 1]] for i in range(len(funcs) - 1)},
-        )
+        callees_map = {funcs[i]: [funcs[i + 1]] for i in range(len(funcs) - 1)}
+        graph = MagicMock()
+        graph.function_refs.return_value = funcs
+        graph.callee_refs_of.side_effect = lambda f: callees_map.get(f, [])
 
         dist = _compute_depth_distribution(graph)
 
@@ -289,7 +287,7 @@ class TestComputeDepthDistribution:
 
 class TestComputeModuleCoupling:
     def test_coupling_cross_file_only(self, tool):
-        graph = tool._get_call_graph()
+        graph = tool.get_call_graph()
         graph.build()
         coupling = _compute_module_coupling(graph, 100)
         for c in coupling:

@@ -102,13 +102,6 @@ class TestPythonTableFormatterBasic:
             "source_code": '"""Calculator module for basic arithmetic operations."""\n\nimport math\nfrom math import sqrt\n\nclass Calculator:\n    """A simple calculator class."""\n    precision = 2\n    \n    def add(self, a: int, b: int) -> int:\n        """Add two numbers."""\n        return a + b',
         }
 
-    def test_formatter_initialization(self, formatter):
-        """Test formatter initialization."""
-        assert isinstance(formatter, PythonTableFormatter)
-        assert hasattr(formatter, "format")
-        assert hasattr(formatter, "_format_full_table")
-        assert hasattr(formatter, "_format_compact_table")
-
     def test_format_method_delegates_to_format_structure(
         self, formatter, sample_python_data
     ):

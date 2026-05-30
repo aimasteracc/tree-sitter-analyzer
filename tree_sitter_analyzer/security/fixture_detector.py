@@ -419,11 +419,12 @@ def _read_cache(cache_path: Path, signature: str) -> dict[str, FixtureFact] | No
         if not isinstance(payload, dict):
             continue
         try:
+            evidence_tuple = tuple(str(e) for e in payload.get("evidence", ()))
             result[path] = FixtureFact(
                 is_fixture=bool(payload["is_fixture"]),
                 confidence=float(payload["confidence"]),
                 source=str(payload["source"]),
-                evidence=tuple(str(e) for e in payload.get("evidence", ())),
+                evidence=evidence_tuple,
                 note=str(payload.get("note", "")),
             )
         except (KeyError, TypeError, ValueError):

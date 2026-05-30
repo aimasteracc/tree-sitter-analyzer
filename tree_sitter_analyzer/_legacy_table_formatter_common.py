@@ -124,3 +124,9 @@ def clean_csv_text(text: str) -> str:
     cleaned = cleaned.replace('"', '""')
 
     return cleaned
+
+
+def trim_trailing_blank_lines(lines: list[str]) -> None:
+    """Remove trailing empty strings from a list of lines in-place."""
+    while lines and lines[-1] == "":
+        lines.pop()

@@ -235,9 +235,10 @@ class BaseTableFormatter(BaseFormatter):
             return "-"
 
         # Remove comment symbols
-        clean_doc = (
-            javadoc.replace("/**", "").replace("*/", "").replace("*", "").strip()
-        )
+        clean_doc = javadoc.replace("/**", "")
+        clean_doc = clean_doc.replace("*/", "")
+        clean_doc = clean_doc.replace("*", "")
+        clean_doc = clean_doc.strip()
 
         # Get first line
         lines = clean_doc.split("\n")
@@ -255,13 +256,16 @@ class BaseTableFormatter(BaseFormatter):
             return ""
 
         # Remove null bytes and normalize whitespace
-        cleaned = (
-            text.replace("\0", "")
-            .replace("\r\n", " ")
-            .replace("\r", " ")
-            .replace("\n", " ")
-        )
+        cleaned = text.replace("\0", "")
+        cleaned = cleaned.replace("\r\n", " ")
+        cleaned = cleaned.replace("\r", " ")
+        cleaned = cleaned.replace("\n", " ")
         cleaned = " ".join(cleaned.split())
         cleaned = cleaned.replace('"', '""')
 
         return cleaned
+
+    # Public aliases used by companion formatter helper modules
+    convert_visibility = _convert_visibility
+    extract_doc_summary = _extract_doc_summary
+    clean_csv_text = _clean_csv_text

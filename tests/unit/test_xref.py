@@ -25,6 +25,58 @@ def indexed_project(tmp_path):
 
 
 class TestXRefEngineSymbol:
+    def test_xref_definitions_use_shared_backend_and_file_filter(self):
+        class MockCursor:
+            def fetchone(self):
+                return None
+
+        class MockConn:
+            def execute(self, *args, **kwargs):
+                return MockCursor()
+
+        class MockCache:
+            def get_conn(self):
+                return MockConn()
+
+            def _get_conn(self):  # backward-compat alias
+                return self.get_conn()
+
+
+        cache = MockCache()
+
+        class FakeBackend:
+            def resolve_definitions(self, symbol):
+                assert symbol == "target"
+                return [
+                    {
+                        "name": "target",
+                        "kind": "function",
+                        "file": "a.py",
+                        "language": "python",
+                        "line": 1,
+                        "end_line": 2,
+                    },
+                    {
+                        "name": "target",
+                        "kind": "function",
+                        "file": "b.py",
+                        "language": "python",
+                        "line": 5,
+                        "end_line": 6,
+                    },
+                ]
+
+        result = XRefEngine(cache, backend=FakeBackend()).xref(
+            "target",
+            file_path="b.py",
+            include_callers=False,
+            include_callees=False,
+            include_imports=False,
+            include_file_deps=False,
+        )
+
+        assert [definition["file"] for definition in result.definitions] == ["b.py"]
+
     def test_xref_alpha(self, indexed_project):
         _, cache = indexed_project
         engine = XRefEngine(cache)

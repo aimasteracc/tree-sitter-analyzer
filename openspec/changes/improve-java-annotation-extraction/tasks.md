@@ -41,9 +41,11 @@ Fix four independent bugs causing complete annotation loss in `analyze_code_stru
   - Add explanatory comment: source data vs lookup cache distinction
   - Ensure `extract_annotations()` itself still clears via `_reset_caches()` → `self.annotations = annotations`
 
-- [x] **T2.3**: Fix `analyze_code_structure_tool.py` to read annotations from model objects
-  - Replace `"annotations": []` with `"annotations": getattr(obj, "annotations", [])`
-  - Apply to classes, methods, and fields
+- [x] **T2.3**: Fix annotation extraction pipeline (T2.3 was marked complete but fix was in wrong file)
+  - Root: actual hardcoding was in `analyze_code_structure_helpers.py`, not `analyze_code_structure_tool.py`
+  - Fixed `_convert_class/_convert_method/_convert_field` to use `getattr(obj, "annotations", [])`
+  - Also fixed: `analyze_file()` never called `extract_annotations()` first (real T2.1 root cause)
+  - Also fixed: class annotation attribution now uses `_extract_node_annotations()` (AST-direct) instead of proximity matching to prevent @Override bleed (Bug 2 root cause)
 
 - [x] **T2.4**: Add `"field_declaration"` to `container_node_types` (`java_plugin.py`)
   - Add with explanatory comment: field annotations live in field_declaration > modifiers
@@ -65,8 +67,8 @@ Fix four independent bugs causing complete annotation loss in `analyze_code_stru
 
 - [x] **T4.1**: Write `proposal.md` (this change's problem statement + root causes)
 - [x] **T4.2**: Write `tasks.md` (this file)
-- [ ] **T4.3**: Write `design.md` (architecture of annotation extraction pipeline)
-- [ ] **T4.4**: Update CHANGELOG.md
+- [x] **T4.3**: Write `design.md` (architecture of annotation extraction pipeline)
+- [x] **T4.4**: Update CHANGELOG.md
 
 ## Next Java Quality Issues (Backlog)
 
@@ -85,6 +87,8 @@ From spring-petclinic scan — additional items to address in future specs:
 
 ## Completed Status
 
-All T1, T2, T3 tasks: COMPLETE (2026-04-09)
-T4.1, T4.2: COMPLETE
-T4.3, T4.4: PENDING
+All T1, T2, T3, T4 tasks: COMPLETE (2026-05-28)
+
+Note: T2.3 root fix was deeper than initially scoped — actual fix landed in
+analyze_file() (extract_annotations call order) and _java_element_helpers.py
+(_extract_node_annotations for AST-direct class annotation attribution).

@@ -13,22 +13,48 @@ _MAX_LIST_ARGS = 8
 _MAX_STRING_ARG_LENGTH = 160
 _SUPPORTED_STEPS = {
     "search",
+    "semantic",
     "explore",
     "callers",
     "callees",
     "related",
+    "filter",
+    "where",
+    "exclude",
+    "not",
+    "has",
     "take",
     "sort",
     "include",
     "with",
+    "uml",
     "answer",
 }
+_FILTER_KWARGS = frozenset(
+    {
+        "name",
+        "kind",
+        "file",
+        "path",
+        "language",
+        "test",
+        "generated",
+        "regex",
+        "case",
+    }
+)
 _ALLOWED_KWARGS: dict[str, frozenset[str]] = {
     "search": frozenset({"query", "limit"}),
+    "semantic": frozenset({"query", "limit"}),
     "explore": frozenset({"query", "max_files", "max_symbols", "include_code"}),
     "callers": frozenset({"depth", "limit"}),
     "callees": frozenset({"depth", "limit"}),
     "related": frozenset({"depth", "limit"}),
+    "filter": _FILTER_KWARGS,
+    "where": _FILTER_KWARGS,
+    "exclude": _FILTER_KWARGS,
+    "not": _FILTER_KWARGS,
+    "has": _FILTER_KWARGS | frozenset({"callers", "callees", "depth", "limit"}),
     "take": frozenset({"limit"}),
     "sort": frozenset({"by", "desc"}),
     "include": frozenset(
@@ -61,6 +87,7 @@ _ALLOWED_KWARGS: dict[str, frozenset[str]] = {
             "limit",
         }
     ),
+    "uml": frozenset({"direction", "limit", "max_edges"}),
     "answer": frozenset({"compact"}),
 }
 

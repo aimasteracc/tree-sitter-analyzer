@@ -60,48 +60,43 @@ def validate_deployment_job(workflow: dict[str, Any]) -> bool:
     """Validate that deployment job depends on test job."""
     jobs = workflow.get("jobs", {})
 
-    if "build-and-deploy" not in jobs:
-        print("❌ Build-and-deploy job not found")
+    if "build" not in jobs:
+        print("❌ Build job not found")
+        return False
+    if "publish" not in jobs:
+        print("❌ Publish job not found")
         return False
 
-    deploy_job = jobs["build-and-deploy"]
+    build_job = jobs["build"]
+    publish_job = jobs["publish"]
 
-    if "needs" not in deploy_job:
-        print("❌ Deploy job does not have needs dependency")
+    build_needs = build_job.get("needs")
+    if isinstance(build_needs, str):
+        build_needs = [build_needs]
+    if "test" not in (build_needs or []):
+        print("❌ Build job does not depend on test job")
         return False
 
-    needs = deploy_job["needs"]
-    if isinstance(needs, str):
-        needs = [needs]
-
-    if "test" not in needs:
-        print("❌ Deploy job does not depend on test job")
+    publish_needs = publish_job.get("needs")
+    if isinstance(publish_needs, str):
+        publish_needs = [publish_needs]
+    if "build" not in (publish_needs or []):
+        print("❌ Publish job does not depend on build job")
         return False
 
-    # Check for PyPI deployment steps
-    steps = deploy_job.get("steps", [])
-
-    has_build = any(
-        "build" in step.get("name", "").lower()
-        or "python -m build" in step.get("run", "")
-        for step in steps
-    )
-
-    has_upload = any(
-        "deploy" in step.get("name", "").lower()
-        or "twine upload" in step.get("run", "")
-        for step in steps
-    )
-
-    if not has_build:
-        print("❌ Deploy job missing build step")
+    if "reusable-build.yml" not in build_job.get("uses", ""):
+        print("❌ Build job does not reference reusable-build.yml")
         return False
 
-    if not has_upload:
-        print("❌ Deploy job missing PyPI upload step")
+    if "reusable-publish.yml" not in publish_job.get("uses", ""):
+        print("❌ Publish job does not reference reusable-publish.yml")
         return False
 
-    print("✅ Deployment job correctly configured")
+    if "PYPI_API_TOKEN" not in str(publish_job.get("secrets", {})):
+        print("❌ Publish job does not receive PYPI_API_TOKEN")
+        return False
+
+    print("✅ Build/publish jobs correctly configured")
     return True
 
 
@@ -123,38 +118,24 @@ def validate_pr_creation_job(workflow: dict[str, Any]) -> bool:
     if isinstance(needs, str):
         needs = [needs]
 
-    if "test" not in needs or "build-and-deploy" not in needs:
-        print("❌ PR job does not depend on both test and build-and-deploy")
-        return False
-
-    # Check for PR creation action
-    steps = pr_job.get("steps", [])
-    has_pr_action = any(
-        "peter-evans/create-pull-request" in step.get("uses", "") for step in steps
-    )
-
-    if not has_pr_action:
-        print("❌ PR job missing create-pull-request action")
-        return False
-
-    # Verify PR targets main branch
-    pr_step = next(
-        (
-            step
-            for step in steps
-            if "peter-evans/create-pull-request" in step.get("uses", "")
-        ),
-        None,
-    )
-
-    if pr_step:
-        with_config = pr_step.get("with", {})
-        if with_config.get("base") != "main":
-            print("❌ PR does not target main branch")
+    for required_job in ("test", "build", "publish"):
+        if required_job not in needs:
+            print(f"❌ PR job does not depend on {required_job}")
             return False
-        if with_config.get("branch") != "hotfix-to-main":
-            print("❌ PR does not use hotfix-to-main branch")
-            return False
+
+    run_blocks = "\n".join(str(step.get("run", "")) for step in pr_job.get("steps", []))
+    if "gh pr create" not in run_blocks:
+        print("❌ PR job missing gh pr create command")
+        return False
+    if "--base main" not in run_blocks:
+        print("❌ PR does not target main branch")
+        return False
+    if '--head "${GITHUB_REF_NAME}"' not in run_blocks:
+        print("❌ PR does not use the current hotfix branch as head")
+        return False
+    if "peter-evans/create-pull-request" in str(pr_job):
+        print("❌ PR job must not create a synthetic hotfix-to-main branch")
+        return False
 
     print("✅ PR creation job correctly configured")
     return True
@@ -209,8 +190,12 @@ def validate_consistency_with_release(
         print("❌ Python version mismatch between hotfix and release")
         return False
 
-    if hotfix_inputs.get("upload-coverage") != release_inputs.get("upload-coverage"):
-        print("❌ Coverage upload setting mismatch between hotfix and release")
+    if release_inputs.get("upload-coverage") is not True:
+        print("❌ Release workflow should upload coverage")
+        return False
+
+    if hotfix_inputs.get("upload-coverage") is not False:
+        print("❌ Hotfix workflow should skip duplicate coverage upload")
         return False
 
     print("✅ Hotfix workflow matches release workflow structure")

@@ -286,6 +286,7 @@ def _arrow_signature_parts(
         elif child.type == "identifier":
             parameters = [get_node_text(child)]
         elif child.type == "type_annotation":
-            return_type = get_node_text(child).lstrip(": ")
+            node_text = get_node_text(child)
+            return_type = node_text.lstrip(": ")
 
     return parameters, return_type

@@ -36,11 +36,43 @@ logger = logging.getLogger(__name__)
 # total file count when the user-supplied limit truncated the first pass.
 _RECOUNT_BUDGET_MS = 500
 
+
+def _decode_error(err: bytes) -> str:
+    """Decode fd error bytes to a displayable string."""
+    return err.decode("utf-8", "replace").strip() or "fd failed"
+
+
+def _is_string_list(val: Any) -> bool:
+    """Return True iff val is a list of strings."""
+    return isinstance(val, list) and all(isinstance(x, str) for x in val)
+
+
+def _check_str(key: str, arguments: dict[str, Any]) -> None:
+    """Raise ValueError if arguments[key] is present but not a str."""
+    if key in arguments and not isinstance(arguments[key], str):
+        raise ValueError(f"{key} must be a string")
+
+
+def _check_bool(key: str, arguments: dict[str, Any]) -> None:
+    """Raise ValueError if arguments[key] is present but not a bool."""
+    if key in arguments and not isinstance(arguments[key], bool):
+        raise ValueError(f"{key} must be a boolean")
+
+
+def _check_str_list(arr: str, arguments: dict[str, Any]) -> None:
+    """Raise ValueError if arguments[arr] is present but not a list of strings."""
+    if arr in arguments and not _is_string_list(arguments[arr]):
+        raise ValueError(f"{arr} must be an array of strings")
+
+
 __all__ = ["ListFilesTool", "_build_agent_summary"]
 
 
 class ListFilesTool(BaseMCPTool):
     """MCP tool that wraps fd to list files with safety limits."""
+
+    def get_tool_schema(self) -> dict[str, Any]:
+        return TOOL_SCHEMA
 
     def get_tool_definition(self) -> dict[str, Any]:
         """Return the MCP tool name, description, and input schema."""
@@ -61,7 +93,7 @@ class ListFilesTool(BaseMCPTool):
                 "- To analyse a single file's structure — use get_code_outline\n"
                 "- To get a semantic project map — use project_overview"
             ),
-            "inputSchema": TOOL_SCHEMA,
+            "inputSchema": self.get_tool_schema(),
             "annotations": {
                 "readOnlyHint": True,
                 "destructiveHint": False,
@@ -69,6 +101,15 @@ class ListFilesTool(BaseMCPTool):
                 "openWorldHint": False,
             },
         }
+
+    def _validate_single_root(self, r: str) -> str:
+        """Validate and resolve one root directory path."""
+        if not isinstance(r, str) or not r.strip():
+            raise ValueError("root entries must be non-empty strings")
+        try:
+            return self.resolve_and_validate_directory_path(r)
+        except ValueError as e:
+            raise ValueError(f"Invalid root '{r}': {e}") from e
 
     def _validate_roots(self, roots: list[str]) -> list[str]:
         """Resolve and validate each root directory path.
@@ -80,16 +121,7 @@ class ListFilesTool(BaseMCPTool):
         """
         if not roots or not isinstance(roots, list):
             raise ValueError("roots must be a non-empty array of strings")
-        validated: list[str] = []
-        for r in roots:
-            if not isinstance(r, str) or not r.strip():
-                raise ValueError("root entries must be non-empty strings")
-            try:
-                resolved = self.resolve_and_validate_directory_path(r)
-                validated.append(resolved)
-            except ValueError as e:
-                raise ValueError(f"Invalid root '{r}': {e}") from e
-        return validated
+        return [self._validate_single_root(r) for r in roots]
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         """Validate roots and all option types.
@@ -119,8 +151,7 @@ class ListFilesTool(BaseMCPTool):
         if not isinstance(roots, list):
             raise ValueError("roots must be an array")
         for key in ["pattern", "changed_within", "changed_before"]:
-            if key in arguments and not isinstance(arguments[key], str):
-                raise ValueError(f"{key} must be a string")
+            _check_str(key, arguments)
         for key in [
             "glob",
             "follow_symlinks",
@@ -129,18 +160,13 @@ class ListFilesTool(BaseMCPTool):
             "full_path_match",
             "absolute",
         ]:
-            if key in arguments and not isinstance(arguments[key], bool):
-                raise ValueError(f"{key} must be a boolean")
+            _check_bool(key, arguments)
         if "depth" in arguments and not isinstance(arguments["depth"], int):
             raise ValueError("depth must be an integer")
         if "limit" in arguments and not isinstance(arguments["limit"], int):
             raise ValueError("limit must be an integer")
         for arr in ["types", "extensions", "exclude", "size"]:
-            if arr in arguments and not (
-                isinstance(arguments[arr], list)
-                and all(isinstance(x, str) for x in arguments[arr])
-            ):
-                raise ValueError(f"{arr} must be an array of strings")
+            _check_str_list(arr, arguments)
         return True
 
     @handle_mcp_errors("list_files")
@@ -165,11 +191,12 @@ class ListFilesTool(BaseMCPTool):
 
         started = time.time()
         rc, out, err = await fd_rg_utils.run_command_capture(cmd)
-        elapsed_ms = int((time.time() - started) * 1000)
+        t1 = time.time()
+        diff_s = t1 - started
+        elapsed_ms = int(diff_s * 1000)
 
         if rc != 0:
-            message = err.decode("utf-8", errors="replace").strip() or "fd failed"
-            return {"success": False, "error": message, "returncode": rc}
+            return {"success": False, "error": _decode_error(err), "returncode": rc}
 
         lines = _decode_lines(out)
 
@@ -240,7 +267,9 @@ class ListFilesTool(BaseMCPTool):
                 unbounded_cmd,
                 timeout_ms=_RECOUNT_BUDGET_MS,
             )
-            recount_ms = int((time.perf_counter() - started) * 1000)
+            t_end = time.perf_counter()
+            elapsed = t_end - started
+            recount_ms = int(elapsed * 1000)
 
             if rc != 0:
                 logger.debug("list_files recount rc=%s in %sms", rc, recount_ms)
@@ -273,7 +302,8 @@ class ListFilesTool(BaseMCPTool):
                 original_roots, self.project_root
             )
             logger.info(
-                f"Auto-enabled --no-ignore due to .gitignore interference: {detection_info['reason']}"
+                "Auto-enabled --no-ignore due to .gitignore interference: %s",
+                detection_info["reason"],
             )
             return True
         return False

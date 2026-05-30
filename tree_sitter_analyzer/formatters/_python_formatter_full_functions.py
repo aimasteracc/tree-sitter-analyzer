@@ -18,7 +18,7 @@ def append_module_functions(
     lines.append("|--------|-----------|-----|-------|----|----| ")
 
     for method in module_functions:
-        lines.append(formatter._format_class_method_row(method))
+        lines.append(formatter.format_class_method_row(method))
     lines.append("")
 
 

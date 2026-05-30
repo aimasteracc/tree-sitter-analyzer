@@ -13,6 +13,7 @@ description: |
   - Planning refactor of a function/class (need full fanout)
   - "Where is this symbol defined" / "find all references to X"
   - "Show me the path from handler → DB"
+  - "Draw a UML class/package/component/sequence diagram"
 
   Replaces: grep + read + manual chain-following (~10-30k tokens) with
   2-4 MCP calls (~1-3k tokens).
@@ -30,9 +31,11 @@ allowed-tools:
   - mcp__tree-sitter-analyzer__codegraph_explore
   - mcp__tree-sitter-analyzer__codegraph_impact
   - mcp__tree-sitter-analyzer__codegraph_class_hierarchy
+  - mcp__tree-sitter-analyzer__codegraph_class_inspect
   - mcp__tree-sitter-analyzer__codegraph_dependency_matrix
   - mcp__tree-sitter-analyzer__codegraph_similarity
   - mcp__tree-sitter-analyzer__codegraph_visualize
+  - mcp__tree-sitter-analyzer__codegraph_uml
   - mcp__tree-sitter-analyzer__symbol_lineage
   - mcp__tree-sitter-analyzer__detect_routes
   - Bash
@@ -58,6 +61,7 @@ Pick the right tool by question shape:
 | What references SYMBOL anywhere?      | `codegraph_xref`              |
 | Path from CALLER to CALLEE?           | `codegraph_call_path`         |
 | Resolve "Path" in file X (project or stdlib?) | `codegraph_resolve`   |
+| Need architecture diagram output?     | `codegraph_uml`               |
 
 **Don't use** when:
 - You need the actual *body* of the function → use `extract_code_section`

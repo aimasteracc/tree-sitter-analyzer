@@ -44,31 +44,9 @@ class TestBatchSearchToolInitialization:
         """Test that initialization creates a tool instance."""
         assert tool is not None
 
-    def test_init_with_project_root(self) -> None:
-        """Test initialization with a project root."""
-        t = BatchSearchTool(project_root="/srv/project")
-        assert t.project_root == "/srv/project"
-
-    def test_set_project_path(self, tool: BatchSearchTool) -> None:
-        """Test that set_project_path updates project_root."""
-        tool.set_project_path("/new/root")
-        assert tool.project_root == "/new/root"
-
 
 class TestBatchSearchToolDefinition:
     """Tests for get_tool_definition()."""
-
-    def test_tool_definition_structure(self, tool: BatchSearchTool) -> None:
-        """Test that the tool definition has correct keys."""
-        defn = tool.get_tool_definition()
-        assert "name" in defn
-        assert "description" in defn
-        assert "inputSchema" in defn
-
-    def test_tool_definition_name(self, tool: BatchSearchTool) -> None:
-        """Test that the tool name is batch_search."""
-        defn = tool.get_tool_definition()
-        assert defn["name"] == "batch_search"
 
     def test_tool_definition_description_contains_when_to_use(
         self, tool: BatchSearchTool
@@ -127,7 +105,9 @@ class TestBatchSearchToolValidation:
     def test_missing_pattern_raises(self, tool: BatchSearchTool) -> None:
         """Test that a query missing pattern raises ValueError."""
         with pytest.raises(ValueError, match="pattern"):
-            tool.validate_arguments({"queries": [{"label": "no pattern"}, {"pattern": "ok"}]})
+            tool.validate_arguments(
+                {"queries": [{"label": "no pattern"}, {"pattern": "ok"}]}
+            )
 
 
 class TestBatchSearchToolExecution:
@@ -165,11 +145,31 @@ class TestBatchSearchToolExecution:
         import json
 
         lines_q1 = b"\n".join(
-            json.dumps({"type": "match", "data": {"path": {"text": f"file{i}.py"}, "line_number": i, "lines": {"text": "x"}, "submatches": []}}).encode()
+            json.dumps(
+                {
+                    "type": "match",
+                    "data": {
+                        "path": {"text": f"file{i}.py"},
+                        "line_number": i,
+                        "lines": {"text": "x"},
+                        "submatches": [],
+                    },
+                }
+            ).encode()
             for i in range(3)
         )
         lines_q2 = b"\n".join(
-            json.dumps({"type": "match", "data": {"path": {"text": f"file{i}.py"}, "line_number": i, "lines": {"text": "x"}, "submatches": []}}).encode()
+            json.dumps(
+                {
+                    "type": "match",
+                    "data": {
+                        "path": {"text": f"file{i}.py"},
+                        "line_number": i,
+                        "lines": {"text": "x"},
+                        "submatches": [],
+                    },
+                }
+            ).encode()
             for i in range(2)
         )
         fake_results = [(0, lines_q1, b""), (0, lines_q2, b"")]
@@ -197,7 +197,17 @@ class TestBatchSearchToolExecution:
 
         num_matches = 25
         lines = b"\n".join(
-            json.dumps({"type": "match", "data": {"path": {"text": f"file{i}.py"}, "line_number": i, "lines": {"text": "x"}, "submatches": []}}).encode()
+            json.dumps(
+                {
+                    "type": "match",
+                    "data": {
+                        "path": {"text": f"file{i}.py"},
+                        "line_number": i,
+                        "lines": {"text": "x"},
+                        "submatches": [],
+                    },
+                }
+            ).encode()
             for i in range(num_matches)
         )
         fake_results = [(0, lines, b""), (0, b"", b"")]

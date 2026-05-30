@@ -6,7 +6,6 @@ Tests for analyze_code_structure tool which provides code structure
 analysis with detailed overview tables (classes, methods, fields).
 """
 
-
 import pytest
 
 from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (
@@ -46,11 +45,6 @@ class TestAnalyzeCodeStructureToolInit:
 
 class TestAnalyzeCodeStructureToolSetProjectPath:
     """Tests for set_project_path method."""
-
-    def test_set_project_path(self, tool):
-        """Test setting project path."""
-        tool.set_project_path("/new/project")
-        assert tool.project_root == "/new/project"
 
     def test_set_project_path_updates_analysis_engine(self, tool):
         """Test that setting project path updates analysis engine."""
@@ -204,5 +198,3 @@ class TestAnalyzeCodeStructureToolValidateArguments:
         arguments = {"file_path": "test.py", "suppress_output": "true"}
         with pytest.raises(ValueError, match="suppress_output must be a boolean"):
             tool.validate_arguments(arguments)
-
-

@@ -69,7 +69,7 @@ def extract_java_class(
             implements_interfaces,
             modifiers,
             determine_visibility(modifiers),
-            find_annotations_for_line(start_line),
+            _extract_node_annotations(node, get_node_text),
             is_nested,
             find_parent_class(node) if is_nested else None,
         )
@@ -197,11 +197,89 @@ def _node_line_span(node: Any) -> tuple[int, int]:
     return node.start_point[0] + 1, node.end_point[0] + 1
 
 
+_ANNOTATION_NODE_TYPES = frozenset({"annotation", "marker_annotation"})
+
+
+def _extract_node_annotations(
+    node: Any, get_node_text: Callable[..., str]
+) -> list[dict[str, Any]]:
+    """Extract annotations directly from a node's modifiers subtree.
+
+    Reads only the direct ``modifiers`` child of *node* — so only annotations
+    that actually belong to this declaration are returned, not annotations that
+    happen to be nearby (which the proximity-based fallback can confuse).
+    """
+    annotations: list[dict[str, Any]] = []
+    for child in node.children:
+        if child.type != "modifiers":
+            continue
+        for modifier in child.children:
+            if modifier.type not in _ANNOTATION_NODE_TYPES:
+                continue
+            ann_text = get_node_text(modifier)
+            ann_name = None
+            for sub in modifier.children:
+                if sub.type == "identifier":
+                    ann_name = get_node_text(sub)
+                    break
+            if not ann_name:
+                import re as _re
+
+                m = _re.search(r"@(\w+)", ann_text)
+                if m:
+                    ann_name = m.group(1)
+            if ann_name:
+                annotations.append(
+                    {
+                        "name": ann_name,
+                        "line": modifier.start_point[0] + 1,
+                        "text": ann_text,
+                        "type": "annotation",
+                    }
+                )
+        break  # only one modifiers child per declaration
+    return annotations
+
+
 def _extract_identifier(node: Any, get_node_text: Callable[..., str]) -> str | None:
     for child in node.children:
         if child.type == "identifier":
             return get_node_text(child)
     return None
+
+
+def _split_respecting_generics(text: str) -> list[str]:
+    """Split a comma-separated interface list while preserving generic type arguments.
+
+    'LocalCache<K, V>, Runnable' → ['LocalCache<K, V>', 'Runnable']
+    Naive re.findall(r'\\b[A-Z]\\w*') would split '<K, V>' into separate items.
+    """
+    depth = 0
+    current: list[str] = []
+    parts: list[str] = []
+    for ch in text:
+        if ch == "<":
+            depth += 1
+        elif ch == ">":
+            depth -= 1
+        if ch == "," and depth == 0:
+            token = "".join(current).strip()
+            if token:
+                parts.append(token)
+            current = []
+        else:
+            current.append(ch)
+    token = "".join(current).strip()
+    if token:
+        parts.append(token)
+    # Each part may still contain leading 'implements ' keyword text from the node;
+    # strip everything before the first capital-letter word start.
+    result = []
+    for part in parts:
+        m = re.search(r"[A-Z]\w*.*", part, re.DOTALL)
+        if m:
+            result.append(m.group(0).strip())
+    return result
 
 
 def _extract_class_relationships(
@@ -214,7 +292,17 @@ def _extract_class_relationships(
         if child.type == "superclass":
             extends_class = _extract_superclass(child, get_node_text)
         elif child.type == "super_interfaces":
-            implements_interfaces = re.findall(r"\b[A-Z]\w*", get_node_text(child))
+            raw = get_node_text(child)
+            # Strip the leading 'implements' keyword before splitting.
+            body = re.sub(r"^\s*implements\s*", "", raw)
+            implements_interfaces = _split_respecting_generics(body)
+        elif child.type == "extends_interfaces":
+            # interface Foo extends Bar, Baz<T> — uses extends_interfaces node,
+            # not super_interfaces. Store in implements_interfaces so callers
+            # find all extended types in one place regardless of class/interface.
+            raw = get_node_text(child)
+            body = re.sub(r"^\s*extends\s*", "", raw)
+            implements_interfaces = _split_respecting_generics(body)
     return extends_class, implements_interfaces
 
 

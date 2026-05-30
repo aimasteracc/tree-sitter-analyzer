@@ -9,70 +9,12 @@ This is the unified entry point for all formatter operations in the project.
 """
 
 import logging
-from abc import ABC, abstractmethod
 from typing import Any
 
 from ..models import CodeElement
+from ._formatter_interface import IFormatter, IStructureFormatter  # noqa: F401
 
 logger = logging.getLogger(__name__)
-
-
-class IFormatter(ABC):
-    """
-    Interface for code element formatters.
-
-    All formatters must implement this interface to be compatible
-    with the FormatterRegistry system.
-    """
-
-    @staticmethod
-    @abstractmethod
-    # Format data for output: get_format_name
-    def get_format_name() -> str:
-        """
-        Return the format name this formatter supports.
-
-        Returns:
-            Format name (e.g., "json", "csv", "markdown")
-        """
-        pass
-
-    @abstractmethod
-    # Format data for output: format
-    def format(self, elements: list[CodeElement]) -> str:
-        """
-        Format a list of CodeElements into a string representation.
-
-        Args:
-            elements: List of CodeElement objects to format
-
-        Returns:
-            Formatted string representation
-        """
-        pass
-
-
-class IStructureFormatter(ABC):
-    """
-    Interface for structure-based formatters (legacy compatibility).
-
-    These formatters accept dict-based structure data instead of CodeElement lists.
-    Used for backward compatibility with v1.6.1.4 format output.
-    """
-
-    @abstractmethod
-    # Format data for output: format_structure
-    def format_structure(self, structure_data: dict[str, Any]) -> str:
-        """
-        Format structure data dictionary into a string representation.
-
-        Args:
-            structure_data: Dictionary containing analysis results
-
-        Returns:
-            Formatted string representation
-        """
-        pass
 
 
 class FormatterRegistry:
@@ -88,7 +30,7 @@ class FormatterRegistry:
     """
 
     _formatters: dict[str, type[IFormatter]] = {}
-    _language_formatters: dict[str, dict[str, type[Any]]] = {}
+    _language_formatters: dict[str, Any] = {}
     _default_language_formatter: type[Any] | None = None
 
     @classmethod
@@ -111,7 +53,8 @@ class FormatterRegistry:
             raise ValueError("Formatter must provide a non-empty format name")
 
         if format_name in cls._formatters:
-            logger.warning(f"Overriding existing formatter for format: {format_name}")
+            warn_msg = f"Overriding existing formatter for format: {format_name}"
+            logger.warning(warn_msg)
 
         cls._formatters[format_name] = formatter_class
         logger.debug(f"Registered formatter for format: {format_name}")
@@ -131,14 +74,13 @@ class FormatterRegistry:
         Raises:
             ValueError: If format is not supported
         """
-        if format_name not in cls._formatters:
-            available_formats = list(cls._formatters.keys())
-            raise ValueError(
-                f"Unsupported format: {format_name}. "
-                f"Available formats: {available_formats}"
-            )
+        formatters = cls._formatters
+        if format_name not in formatters:
+            available_formats = list(formatters)
+            err_msg = f"Unsupported format: {format_name}. Available formats: {available_formats}"
+            raise ValueError(err_msg)
 
-        formatter_class = cls._formatters[format_name]
+        formatter_class = formatters[format_name]
         return formatter_class()
 
     @classmethod
@@ -180,7 +122,8 @@ class FormatterRegistry:
         """
         if format_name in cls._formatters:
             del cls._formatters[format_name]
-            logger.debug(f"Unregistered formatter for format: {format_name}")
+            dbg_msg = f"Unregistered formatter for format: {format_name}"
+            logger.debug(dbg_msg)
             return True
         return False
 
@@ -222,10 +165,11 @@ class FormatterRegistry:
             cls._language_formatters[lang_key] = {}
 
         cls._language_formatters[lang_key][format_type] = formatter_class
-        logger.debug(
-            f"Registered language formatter: {language}/{format_type} -> "
-            f"{formatter_class.__name__}"
+        cls_name = formatter_class.__name__
+        dbg_msg = (
+            f"Registered language formatter: {language}/{format_type} -> {cls_name}"
         )
+        logger.debug(dbg_msg)
 
     @classmethod
     # Format data for output: set_default_language_formatter
@@ -270,13 +214,12 @@ class FormatterRegistry:
         format_key = format_type.lower()
 
         # Check for language-specific formatter first
-        if lang_key in cls._language_formatters:
-            lang_formatters = cls._language_formatters[lang_key]
-            if format_key in lang_formatters:
-                formatter_class = lang_formatters[format_key]
-                return cls._create_formatter_instance(
-                    formatter_class, format_key, language, **kwargs
-                )
+        lang_formatters = cls._language_formatters.get(lang_key, {})
+        if lang_key in cls._language_formatters and format_key in lang_formatters:
+            formatter_class = lang_formatters[format_key]
+            return cls._create_formatter_instance(
+                formatter_class, format_key, language, **kwargs
+            )
 
         # Fall back to default language formatter if set
         if cls._default_language_formatter is not None:
@@ -309,21 +252,27 @@ class FormatterRegistry:
 
         Handles different formatter constructor signatures gracefully.
         """
+        # Extract kwargs before try to reduce nesting depth
+        include_javadoc = kwargs.get("include_javadoc", False)
         try:
             # Try full signature first (for TableFormatter-style classes)
-            include_javadoc = kwargs.get("include_javadoc", False)
             return formatter_class(
                 format_type=format_type,
                 language=language,
                 include_javadoc=include_javadoc,
             )
         except TypeError:
-            try:
-                # Try format_type only
-                return formatter_class(format_type=format_type)
-            except TypeError:
-                # Fall back to no-arg constructor
-                return formatter_class()
+            return cls._try_format_type_or_bare(formatter_class, format_type)
+
+    @classmethod
+    def _try_format_type_or_bare(
+        cls, formatter_class: type[Any], format_type: str
+    ) -> Any:
+        """Fallback: try format_type-only constructor, then bare constructor."""
+        try:
+            return formatter_class(format_type=format_type)
+        except TypeError:
+            return formatter_class()
 
     @classmethod
     def get_supported_languages(cls) -> list[str]:
@@ -360,39 +309,39 @@ class JsonFormatter(IFormatter):
     def get_format_name() -> str:
         return "json"
 
+    @staticmethod
+    def _element_to_dict(element: Any) -> dict[str, Any]:
+        """Convert one element to a JSON-serialisable dict."""
+        elem_type = getattr(element, "element_type", "unknown")
+        d: dict[str, Any] = {
+            "name": element.name,
+            "type": elem_type,
+            "start_line": element.start_line,
+            "end_line": element.end_line,
+            "language": element.language,
+        }
+        if hasattr(element, "parameters"):
+            d["parameters"] = element.parameters
+        if hasattr(element, "return_type"):
+            d["return_type"] = element.return_type
+        if hasattr(element, "visibility"):
+            d["visibility"] = element.visibility
+        if hasattr(element, "modifiers"):
+            d["modifiers"] = element.modifiers
+        if hasattr(element, "tag_name"):
+            d["tag_name"] = element.tag_name
+        if hasattr(element, "selector"):
+            d["selector"] = element.selector
+        if hasattr(element, "element_class"):
+            d["element_class"] = element.element_class
+        return d
+
     # Format data for output: format
     def format(self, elements: list[CodeElement]) -> str:
         """Format elements as JSON"""
         import json
 
-        result = []
-        for element in elements:
-            element_dict = {
-                "name": element.name,
-                "type": getattr(element, "element_type", "unknown"),
-                "start_line": element.start_line,
-                "end_line": element.end_line,
-                "language": element.language,
-            }
-
-            # Add type-specific attributes
-            if hasattr(element, "parameters"):
-                element_dict["parameters"] = getattr(element, "parameters", [])
-            if hasattr(element, "return_type"):
-                element_dict["return_type"] = getattr(element, "return_type", None)
-            if hasattr(element, "visibility"):
-                element_dict["visibility"] = getattr(element, "visibility", "unknown")
-            if hasattr(element, "modifiers"):
-                element_dict["modifiers"] = getattr(element, "modifiers", [])
-            if hasattr(element, "tag_name"):
-                element_dict["tag_name"] = getattr(element, "tag_name", "")
-            if hasattr(element, "selector"):
-                element_dict["selector"] = getattr(element, "selector", "")
-            if hasattr(element, "element_class"):
-                element_dict["element_class"] = getattr(element, "element_class", "")
-
-            result.append(element_dict)
-
+        result = [JsonFormatter._element_to_dict(el) for el in elements]
         return json.dumps(result, indent=2, ensure_ascii=False)
 
 
@@ -430,17 +379,24 @@ class CsvFormatter(IFormatter):
 
         # Write data rows
         for element in elements:
+            elem_type = getattr(element, "element_type", "unknown")
+            visibility = getattr(element, "visibility", "")
+            return_type = getattr(element, "return_type", "")
+            params_raw = getattr(element, "parameters", [])
+            mods_raw = getattr(element, "modifiers", [])
+            params_str = str(params_raw)
+            mods_str = str(mods_raw)
             writer.writerow(
                 [
-                    getattr(element, "element_type", "unknown"),
+                    elem_type,
                     element.name,
                     element.start_line,
                     element.end_line,
                     element.language,
-                    getattr(element, "visibility", ""),
-                    str(getattr(element, "parameters", [])),
-                    getattr(element, "return_type", ""),
-                    str(getattr(element, "modifiers", [])),
+                    visibility,
+                    params_str,
+                    return_type,
+                    mods_str,
                 ]
             )
 
@@ -462,11 +418,10 @@ def _append_full_element_lines(lines: list[str], element: CodeElement) -> None:
     lines.append(f"    Language: {element.language}")
 
     if hasattr(element, "visibility"):
-        lines.append(f"    Visibility: {getattr(element, 'visibility', 'unknown')}")
-    if hasattr(element, "parameters"):
-        params = getattr(element, "parameters", [])
-        if params:
-            lines.append(f"    Parameters: {', '.join(str(p) for p in params)}")
+        lines.append(f"    Visibility: {element.visibility}")
+    if hasattr(element, "parameters") and (params := element.parameters):
+        params_str = ", ".join(map(str, params))
+        lines.append(f"    Parameters: {params_str}")
     if hasattr(element, "return_type"):
         ret_type = getattr(element, "return_type", None)
         if ret_type:
@@ -495,7 +450,7 @@ class FullFormatter(IFormatter):
         lines.append("")
 
         # Group elements by type
-        element_groups: dict[str, list[CodeElement]] = {}
+        element_groups: dict[str, Any] = {}
         for element in elements:
             element_type = getattr(element, "element_type", "unknown")
             if element_type not in element_groups:
@@ -504,7 +459,9 @@ class FullFormatter(IFormatter):
 
         # Format each group
         for element_type, group_elements in element_groups.items():
-            lines.append(f"{element_type.upper()}S ({len(group_elements)})")
+            type_label = element_type.upper()
+            group_count = len(group_elements)
+            lines.append(f"{type_label}S ({group_count})")
             lines.append("-" * 40)
             for element in group_elements:
                 # r37cl (dogfood): extracted to flatten nesting 7 → 3.
@@ -537,10 +494,7 @@ class CompactFormatter(IFormatter):
             visibility = getattr(element, "visibility", "")
             vis_symbol = self._get_visibility_symbol(visibility)
 
-            line = (
-                f"{vis_symbol} {element.name} ({element_type}) "
-                f"[{element.start_line}-{element.end_line}]"
-            )
+            line = f"{vis_symbol} {element.name} ({element_type}) [{element.start_line}-{element.end_line}]"
             lines.append(line)
 
         return "\n".join(lines)

@@ -53,6 +53,9 @@ class QueryTool(BaseMCPTool):
         self.query_service = QueryService(project_root)
         self.file_output_manager = FileOutputManager.get_managed_instance(project_root)
 
+    def get_tool_schema(self) -> dict[str, Any]:
+        return _TOOL_SCHEMA
+
     # get_tool_definition: implementation
     def get_tool_definition(self) -> dict[str, Any]:
         """Return the MCP tool name, description, and input schema."""
@@ -80,7 +83,7 @@ class QueryTool(BaseMCPTool):
                 "- For a hierarchical file outline — use get_code_outline\n"
                 "- To search file names — use list_files"
             ),
-            "inputSchema": _TOOL_SCHEMA,
+            "inputSchema": self.get_tool_schema(),
             "annotations": {
                 "readOnlyHint": True,
                 "destructiveHint": False,
@@ -93,31 +96,30 @@ class QueryTool(BaseMCPTool):
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Execute a single-file query or cross-file symbol search."""
         try:
-            if not arguments:
-                raise _analysis_error("file_path or symbol is required")
-
-            # Cross-file symbol search
-            symbol = arguments.get("symbol")
-            if symbol and not arguments.get("file_path"):
-                if arguments.get("find_references"):
-                    return await self._execute_find_references(arguments)
-                return await self._execute_symbol_search(arguments)
-
-            return await self._execute_file_query(arguments)
-
+            return await self._dispatch(arguments)
         except Exception as e:
             from ..utils.error_handler import AnalysisError
 
             if isinstance(e, AnalysisError):
                 raise
-            logger.error(f"Query execution failed: {e}")
-            return {
-                "success": False,
-                "error": safe_error_message(e, self.project_root),
-                "file_path": arguments.get("file_path", "unknown"),
-                "language": arguments.get("language", "unknown"),
-                "output_format": arguments.get("output_format", "json"),
-            }
+            logger.error("Query execution failed: %s", e)
+            return _build_query_error_response(e, self.project_root, arguments)
+
+    async def _dispatch(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Route to cross-file search or single-file query."""
+        if not arguments:
+            raise _analysis_error("file_path or symbol is required")
+        symbol = arguments.get("symbol")
+        is_cross_file = symbol and not arguments.get("file_path")
+        if is_cross_file:
+            return await self._execute_cross_file(arguments)
+        return await self._execute_file_query(arguments)
+
+    async def _execute_cross_file(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Dispatch cross-file query: symbol search or find-references."""
+        if arguments.get("find_references"):
+            return await self._execute_find_references(arguments)
+        return await self._execute_symbol_search(arguments)
 
     async def _execute_file_query(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Execute a single-file query.
@@ -156,12 +158,14 @@ class QueryTool(BaseMCPTool):
         if unknown_key is not None:
             return unknown_key
 
+        filter_val = arguments.get("filter")
         started = time.perf_counter()
         results = await self.query_service.execute_query(
-            resolved, language, query_key, query_string, arguments.get("filter")
+            resolved, language, query_key, query_string, filter_val
         )
         elapsed_ms = (time.perf_counter() - started) * 1000.0
 
+        output_format = arguments.get("output_format", "json")
         if not results:
             return await self._empty_result(
                 file_path,
@@ -170,14 +174,14 @@ class QueryTool(BaseMCPTool):
                 query_string,
                 resolved,
                 elapsed_ms=elapsed_ms,
-                output_format=arguments.get("output_format", "json"),
+                output_format=output_format,
             )
 
         results, truncated, total_results = _apply_max_count_cap(
             results, arguments.get("max_count")
         )
         query_used = query_key or query_string or ""
-        formatted = self._format_query_results(
+        formatted = _format_query_results(
             results, arguments, file_path, language, query_used
         )
         _attach_query_envelope_extras(
@@ -202,13 +206,14 @@ class QueryTool(BaseMCPTool):
         """Reject missing / mutually-exclusive ``query_key`` + ``query_string``."""
         query_key = arguments.get("query_key")
         query_string = arguments.get("query_string")
+        output_fmt = arguments.get("output_format", "json")
         if not query_key and not query_string:
             raise _analysis_error("Either query_key or query_string must be provided")
         if query_key and query_string:
             return {
                 "success": False,
                 "error": "Cannot provide both query_key and query_string",
-                "output_format": arguments.get("output_format", "json"),
+                "output_format": output_fmt,
             }
         return None
 
@@ -246,53 +251,22 @@ class QueryTool(BaseMCPTool):
         available = self.query_service.get_available_queries(language)
         if query_key in available:
             return None
+        err = f"Query key '{query_key}' not found for {language}. Available: {sorted(available)}"
         return {
             "success": False,
-            "error": (
-                f"Query key '{query_key}' not found for {language}. "
-                f"Available: {sorted(available)}"
-            ),
+            "error": err,
             "available_queries": categorize_queries(available, language),
             "language": language,
-            "hint": (
-                "Use one of the available query keys, or provide query_string "
-                "for a custom tree-sitter query."
-            ),
-        }
-
-    @staticmethod
-    def _format_query_results(
-        results: list[Any],
-        arguments: dict[str, Any],
-        file_path: str,
-        language: str,
-        query_used: str,
-    ) -> dict[str, Any]:
-        """Pick the result envelope shape based on ``result_format``."""
-        result_format = arguments.get("result_format", "json")
-        if result_format == "summary":
-            formatted: dict[str, Any] = format_summary(
-                results, arguments.get("query_key") or "custom", language
-            )
-            formatted.setdefault("results", results)
-            return formatted
-        return {
-            "success": True,
-            "results": results,
-            "count": len(results),
-            "file_path": file_path,
-            "language": language,
-            "query": query_used,
+            "hint": "Use one of the available query keys, or provide query_string for a custom tree-sitter query.",
         }
 
     # _detect_language: implementation
     def _detect_language(self, resolved: str, arguments: dict[str, Any]) -> str | None:
         """Detect language from file or argument."""
         language = arguments.get("language")
+        project_root = self.project_root
         if not language:
-            language = detect_language_from_file(
-                resolved, project_root=self.project_root
-            )
+            language = detect_language_from_file(resolved, project_root=project_root)
         return language
 
     # _empty_result: implementation
@@ -340,17 +314,13 @@ class QueryTool(BaseMCPTool):
     # _find_productive_queries: implementation
     async def _find_productive_queries(self, resolved: str, language: str) -> list[str]:
         """Find which common queries produce results for a file."""
-        productive = []
         try:
-            for qk in ["classes", "methods", "functions", "imports", "variables"]:
-                results = await self.query_service.execute_query(
-                    resolved, language, query_key=qk
-                )
-                if results:
-                    productive.append(qk)
+            return await _probe_query_keys(
+                self.query_service, resolved, language, _PROBE_QUERY_KEYS
+            )
         except Exception:
             logger.debug("Failed to scan productive queries for empty result context")
-        return productive
+        return []
 
     # _handle_output: delegates to shared helper
     def _handle_output(
@@ -368,7 +338,7 @@ class QueryTool(BaseMCPTool):
 
     # Delegates to helpers for backward-compatible test access
     def _format_summary(
-        self, results: list[dict[str, Any]], query_type: str, language: str
+        self, results: list[Any], query_type: str, language: str
     ) -> dict[str, Any]:
         return format_summary(results, query_type, language)
 
@@ -380,7 +350,7 @@ class QueryTool(BaseMCPTool):
 
     # _build_next_steps: implementation
     def _build_next_steps(
-        self, results: list[dict[str, Any]], file_path: str, query_used: str
+        self, results: list[Any], file_path: str, query_used: str
     ) -> list[str]:
         return build_next_steps(results, file_path, query_used)
 
@@ -404,6 +374,28 @@ class QueryTool(BaseMCPTool):
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         """Validate file_path/symbol, query_key/query_string, and options."""
         return validate_query_arguments(arguments)
+
+
+_PROBE_QUERY_KEYS: tuple[str, ...] = (
+    "classes",
+    "methods",
+    "functions",
+    "imports",
+    "variables",
+)
+
+
+def _build_query_error_response(
+    exc: Exception, project_root: str | None, arguments: dict[str, Any]
+) -> dict[str, Any]:
+    """Build a standardised error response dict for a query execution failure."""
+    return {
+        "success": False,
+        "error": safe_error_message(exc, project_root),
+        "file_path": arguments.get("file_path", "unknown"),
+        "language": arguments.get("language", "unknown"),
+        "output_format": arguments.get("output_format", "json"),
+    }
 
 
 def _apply_max_count_cap(
@@ -444,6 +436,46 @@ def _attach_query_envelope_extras(
     if steps:
         formatted["next_steps"] = steps
     normalize_envelope(formatted, total_count=total_results)
+
+
+async def _probe_query_keys(
+    query_service: Any,
+    resolved: str,
+    language: str,
+    keys: tuple[str, ...],
+) -> list[str]:
+    """Return which query keys produce non-empty results for a file."""
+    found = []
+    for qk in keys:
+        results = await query_service.execute_query(resolved, language, query_key=qk)
+        if results:
+            found.append(qk)
+    return found
+
+
+def _format_query_results(
+    results: list[Any],
+    arguments: dict[str, Any],
+    file_path: str,
+    language: str,
+    query_used: str,
+) -> dict[str, Any]:
+    """Pick the result envelope shape based on ``result_format``."""
+    result_format = arguments.get("result_format", "json")
+    if result_format == "summary":
+        qk_raw = arguments.get("query_key")
+        qk_used = qk_raw if qk_raw else "custom"
+        formatted = format_summary(results, qk_used, language)
+        formatted.setdefault("results", results)
+        return formatted
+    return {
+        "success": True,
+        "results": results,
+        "count": len(results),
+        "file_path": file_path,
+        "language": language,
+        "query": query_used,
+    }
 
 
 # _analysis_error: implementation

@@ -307,6 +307,59 @@ class TestCSharpClassExtraction:
         order_class = next((c for c in classes if c.name == "Order"), None)
         assert order_class is not None
 
+    def test_class_attribute_names_extracted(self):
+        """[TDD] Class attribute names must be populated — not empty list.
+
+        [Serializable] on BaseEntity and [Obsolete] on Order must appear
+        in .annotations so callers can filter by attribute name.
+        Bug: extract_attributes() used prev_sibling — attribute_list nodes
+        are direct children of class_declaration, not siblings.
+        """
+        plugin = CSharpPlugin()
+        tree = get_tree_for_code(COMPLEX_CLASS_CODE, plugin)
+        classes = plugin.extractor.extract_classes(tree, COMPLEX_CLASS_CODE)
+
+        base = next((c for c in classes if c.name == "BaseEntity"), None)
+        assert base is not None
+        ann_names = {a.get("name") for a in base.annotations}
+        assert "Serializable" in ann_names, (
+            f"[Serializable] missing from BaseEntity.annotations. Got: {ann_names}"
+        )
+
+        order = next((c for c in classes if c.name == "Order"), None)
+        assert order is not None
+        order_ann_names = {a.get("name") for a in order.annotations}
+        assert "Obsolete" in order_ann_names, (
+            f"[Obsolete] missing from Order.annotations. Got: {order_ann_names}"
+        )
+
+    def test_method_attribute_names_extracted(self):
+        """[TDD] Method attribute names must be populated — not empty list.
+
+        Uses ASP.NET sample: [HttpGet] on GetAll must appear in annotations.
+        """
+        src = """\
+using Microsoft.AspNetCore.Mvc;
+public class Ctrl : ControllerBase {
+    [HttpGet]
+    [Authorize]
+    public IActionResult GetAll() { return Ok(); }
+}
+"""
+        plugin = CSharpPlugin()
+        tree = get_tree_for_code(src, plugin)
+        methods = plugin.extractor.extract_functions(tree, src)
+
+        get_all = next((m for m in methods if m.name == "GetAll"), None)
+        assert get_all is not None
+        ann_names = {a.get("name") for a in get_all.annotations}
+        assert "HttpGet" in ann_names, (
+            f"[HttpGet] missing from GetAll.annotations. Got: {ann_names}"
+        )
+        assert "Authorize" in ann_names, (
+            f"[Authorize] missing from GetAll.annotations. Got: {ann_names}"
+        )
+
     def test_extract_abstract_class(self):
         """Test extraction of abstract class."""
         plugin = CSharpPlugin()

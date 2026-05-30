@@ -125,11 +125,11 @@ class TestVisualizeToolNoProject:
     @pytest.mark.asyncio
     async def test_mocked_full_mode(self) -> None:
         tool = CodeGraphVisualizeTool(_PROJECT_ROOT)
-        with patch.object(tool, "_get_call_graph") as mock_cg:
+        with patch.object(tool, "get_call_graph") as mock_cg:
             cg = MagicMock()
-            cg._functions = []
-            cg._callers = {}
-            cg._callees = {}
+            cg.function_refs.return_value = []
+            cg.caller_refs_of.return_value = []
+            cg.callee_refs_of.return_value = []
             mock_cg.return_value = cg
             result = await tool.execute({"mode": "full", "output_format": "json"})
         assert result["success"] is True
@@ -145,10 +145,12 @@ class TestVisualizeToolNoProject:
         fn_a = FunctionRef("a.py", "alpha", 1, "python")
         fn_b = FunctionRef("b.py", "beta", 5, "python")
         cg = MagicMock()
-        cg._resolve_targets.return_value = [fn_a]
-        cg._callees = {fn_a: [fn_b]}
-        cg._callers = {}
-        with patch.object(tool, "_get_call_graph", return_value=cg):
+        cg.resolve_targets.return_value = [fn_a]
+        callees_map = {fn_a: [fn_b], fn_b: []}
+        callers_map: dict = {}
+        cg.callee_refs_of.side_effect = lambda f: callees_map.get(f, [])
+        cg.caller_refs_of.side_effect = lambda f: callers_map.get(f, [])
+        with patch.object(tool, "get_call_graph", return_value=cg):
             result = await tool.execute(
                 {
                     "mode": "function",
@@ -170,10 +172,12 @@ class TestVisualizeToolNoProject:
         fn_a = FunctionRef("a.py", "alpha", 1, "python")
         fn_b = FunctionRef("b.py", "beta", 5, "python")
         cg = MagicMock()
-        cg._func_by_file = {"a.py": [fn_a]}
-        cg._callees = {fn_a: [fn_b]}
-        cg._callers = {}
-        with patch.object(tool, "_get_call_graph", return_value=cg):
+        cg.function_refs_in_file.return_value = [fn_a]
+        callees_map = {fn_a: [fn_b], fn_b: []}
+        callers_map: dict = {}
+        cg.callee_refs_of.side_effect = lambda f: callees_map.get(f, [])
+        cg.caller_refs_of.side_effect = lambda f: callers_map.get(f, [])
+        with patch.object(tool, "get_call_graph", return_value=cg):
             result = await tool.execute(
                 {
                     "mode": "file",
@@ -188,6 +192,7 @@ class TestVisualizeToolNoProject:
 
 class TestVisualizeRealProject:
     @pytest.mark.asyncio
+    @pytest.mark.slow_ok  # full-mode scan of real project; ~7s on CI hardware
     async def test_full_mode_on_self(self) -> None:
         tool = CodeGraphVisualizeTool(_PROJECT_ROOT)
         result = await tool.execute(
@@ -203,6 +208,7 @@ class TestVisualizeRealProject:
         assert result["stats"]["edge_count"] <= 10
 
     @pytest.mark.asyncio
+    @pytest.mark.slow_ok  # function-mode graph walk on real project; ~13s on CI hardware
     async def test_function_mode_on_real_func(self) -> None:
         tool = CodeGraphVisualizeTool(_PROJECT_ROOT)
         result = await tool.execute(

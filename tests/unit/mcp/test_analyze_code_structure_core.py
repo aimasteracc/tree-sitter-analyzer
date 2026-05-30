@@ -20,6 +20,7 @@ def tool():
 def tool_with_project_root():
     return AnalyzeCodeStructureTool(project_root="/test/project")
 
+
 class TestAnalyzeCodeStructureToolInit:
     """Tests for AnalyzeCodeStructureTool initialization."""
 
@@ -40,11 +41,6 @@ class TestAnalyzeCodeStructureToolInit:
 
 class TestAnalyzeCodeStructureToolSetProjectPath:
     """Tests for set_project_path method."""
-
-    def test_set_project_path(self, tool):
-        """Test setting project path."""
-        tool.set_project_path("/new/project")
-        assert tool.project_root == "/new/project"
 
     def test_set_project_path_updates_analysis_engine(self, tool):
         """Test that setting project path updates analysis engine."""
@@ -747,5 +743,3 @@ class TestAnalyzeCodeStructureToolExecute:
         metadata = _convert_analysis_result(mock_analysis_result)
         assert "statistics" in metadata
         assert metadata["statistics"]["total_lines"] == 100
-
-

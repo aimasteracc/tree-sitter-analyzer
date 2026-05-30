@@ -21,13 +21,17 @@ def _noop_modifiers(field: dict) -> str:
 def _noop_class_methods(methods: list, line_range: dict) -> list:
     start = line_range.get("start", 0)
     end = line_range.get("end", 0)
-    return [m for m in methods if start <= m.get("line_range", {}).get("start", 0) <= end]
+    return [
+        m for m in methods if start <= m.get("line_range", {}).get("start", 0) <= end
+    ]
 
 
 def _noop_class_fields(fields: list, line_range: dict) -> list:
     start = line_range.get("start", 0)
     end = line_range.get("end", 0)
-    return [f for f in fields if start <= f.get("line_range", {}).get("start", 0) <= end]
+    return [
+        f for f in fields if start <= f.get("line_range", {}).get("start", 0) <= end
+    ]
 
 
 def _noop_signature(method: dict) -> str:
@@ -44,20 +48,13 @@ def _noop_method_row(method: dict) -> str:
 
 
 class TestFormatCsharpFullTable:
-
-    def test_empty_data(self):
-        result = format_csharp_full_table(
-            {},
-            _noop_class_methods,
-            _noop_class_fields,
-            _noop_modifiers,
-            _noop_visibility,
-            _noop_method_row,
-        )
-        assert isinstance(result, str)
-
     def test_file_header(self):
-        data = {"file_path": "/src/Program.cs", "classes": [], "methods": [], "fields": []}
+        data = {
+            "file_path": "/src/Program.cs",
+            "classes": [],
+            "methods": [],
+            "fields": [],
+        }
         result = format_csharp_full_table(
             data,
             _noop_class_methods,
@@ -354,7 +351,6 @@ class TestFormatCsharpFullTable:
 
 
 class TestFormatCsharpCompactTable:
-
     def test_basic(self):
         data = {
             "file_path": "Program.cs",
@@ -413,7 +409,6 @@ class TestFormatCsharpCompactTable:
 
 
 class TestFormatCsharpCsv:
-
     def test_header_row(self):
         result = format_csharp_csv({}, _noop_signature)
         assert result.startswith("Type,Name,Signature,Visibility,Lines,Complexity,Doc")

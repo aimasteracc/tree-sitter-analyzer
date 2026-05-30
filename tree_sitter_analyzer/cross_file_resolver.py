@@ -23,6 +23,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .callee_resolution import CalleeResolver
+
 logger = logging.getLogger(__name__)
 
 _PY_FROM_IMPORT_RE = re.compile(r"^from\s+([\w.]+)\s+import\s+(.+)$", re.MULTILINE)
@@ -33,6 +35,11 @@ _JS_IMPORT_RE = re.compile(
 )
 _JAVA_IMPORT_RE = re.compile(r"^import\s+([\w.]+);", re.MULTILINE)
 _GO_IMPORT_RE = re.compile(r'"([^"]+)"', re.MULTILINE)
+
+
+def _alias_name(s: str) -> str:
+    """Extract the local alias from 'name as alias', or return the stripped name."""
+    return s.strip().split(" as ")[-1].strip()
 
 
 @dataclass
@@ -109,6 +116,7 @@ class CrossFileResolver:
         self._functions_by_file: dict[str, list[FunctionDef]] = {}
         self._imports_by_file: dict[str, list[ImportEntry]] = {}
         self._name_to_source: dict[str, dict[str, str]] = {}
+        self._callee_resolver: CalleeResolver | None = None
         self._built = False
 
     def build(self) -> None:
@@ -118,6 +126,11 @@ class CrossFileResolver:
         self._build_function_index()
         self._build_import_index()
         self._build_name_resolution_map()
+        self._callee_resolver = CalleeResolver(
+            functions_by_name=self._functions_by_name,
+            functions_by_file=self._functions_by_file,
+            name_to_source=self._name_to_source,
+        )
         self._built = True
 
     def resolve_callee(
@@ -130,46 +143,13 @@ class CrossFileResolver:
         Returns list of (file_path, confidence) tuples sorted by confidence.
         """
         self.build()
-
-        dot_parts = callee_name.rsplit(".", 1)
-        base_name = callee_name
-        if len(dot_parts) == 2:
-            base_name = dot_parts[1]
-
-        results: list[tuple[str, float]] = []
-        seen: set[str] = set()
-
-        same_file = self._functions_by_file.get(source_file, [])
-        for func in same_file:
-            if func.name == base_name:
-                if func.file not in seen:
-                    seen.add(func.file)
-                    results.append((func.file, 1.0))
-
-        name_sources = self._name_to_source.get(source_file, {})
-        target_file = name_sources.get(base_name) or name_sources.get(
-            dot_parts[0] if len(dot_parts) == 2 else base_name
+        if self._callee_resolver is None:
+            return []
+        return self._callee_resolver.resolve_files(
+            callee_name,
+            source_file,
+            include_unmatched_import=True,
         )
-        if target_file and target_file not in seen:
-            candidates = self._functions_by_file.get(target_file, [])
-            for func in candidates:
-                if func.name == base_name:
-                    seen.add(target_file)
-                    results.append((target_file, 0.9))
-                    break
-            else:
-                if target_file not in seen:
-                    seen.add(target_file)
-                    results.append((target_file, 0.7))
-
-        if not results:
-            global_candidates = self._functions_by_name.get(base_name, [])
-            for func in global_candidates:
-                if func.file not in seen:
-                    seen.add(func.file)
-                    results.append((func.file, 0.5))
-
-        return results
 
     def find_caller_function(
         self,
@@ -245,7 +225,7 @@ class CrossFileResolver:
         return resolved
 
     def _build_module_map(self) -> None:
-        conn = self._cache._get_conn()
+        conn = self._cache.get_conn()
         rows = conn.execute("SELECT file_path, language FROM ast_index").fetchall()
         for row in rows:
             fp = row["file_path"]
@@ -256,7 +236,7 @@ class CrossFileResolver:
         parts = fp.replace(os.sep, "/")
         if language == "python":
             if parts.endswith("/__init__.py"):
-                mod = parts[: -len("/__init__.py")].replace("/", ".")
+                mod = parts.removesuffix("/__init__.py").replace("/", ".")
                 self._module_to_file[mod] = fp
             elif parts.endswith(".py"):
                 mod = parts[:-3].replace("/", ".")
@@ -267,9 +247,10 @@ class CrossFileResolver:
         elif language in ("javascript", "typescript"):
             for ext in (".js", ".jsx", ".ts", ".tsx"):
                 if parts.endswith(ext):
-                    mod = parts[: -len(ext)].replace("/", ".")
+                    ext_len = len(ext)
+                    mod = parts[:-ext_len].replace("/", ".")
                     self._module_to_file[mod] = fp
-                    short = parts.rsplit("/", 1)[-1][: -len(ext)]
+                    short = parts.rsplit("/", 1)[-1][:-ext_len]
                     if short not in self._module_to_file:
                         self._module_to_file[short] = fp
                     break
@@ -285,7 +266,7 @@ class CrossFileResolver:
                     self._module_to_file[short] = fp
 
     def _build_function_index(self) -> None:
-        conn = self._cache._get_conn()
+        conn = self._cache.get_conn()
         rows = conn.execute(
             "SELECT file_path, symbols_json, language FROM ast_index"
         ).fetchall()
@@ -308,7 +289,7 @@ class CrossFileResolver:
                 self._functions_by_file.setdefault(fp, []).append(func)
 
     def _build_import_index(self) -> None:
-        conn = self._cache._get_conn()
+        conn = self._cache.get_conn()
         rows = conn.execute(
             "SELECT file_path, imports_json, language FROM ast_index"
         ).fetchall()
@@ -379,10 +360,7 @@ class CrossFileResolver:
             import_match = re.match(r"import\s+(?:\{([^}]+)\}|(\w+))", text)
             if import_match:
                 if import_match.group(1):
-                    names = [
-                        n.strip().split(" as ")[-1].strip()
-                        for n in import_match.group(1).split(",")
-                    ]
+                    names = [_alias_name(n) for n in import_match.group(1).split(",")]
                 elif import_match.group(2):
                     names = [import_match.group(2)]
             if module.startswith("."):

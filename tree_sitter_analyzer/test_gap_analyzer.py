@@ -55,8 +55,20 @@ _EXCLUDE_DIRS = {
 }
 
 _SOURCE_EXTENSIONS = {
-    ".py", ".js", ".ts", ".jsx", ".tsx", ".java", ".go", ".c", ".cpp",
-    ".rs", ".rb", ".swift", ".kt", ".scala",
+    ".py",
+    ".js",
+    ".ts",
+    ".jsx",
+    ".tsx",
+    ".java",
+    ".go",
+    ".c",
+    ".cpp",
+    ".rs",
+    ".rb",
+    ".swift",
+    ".kt",
+    ".scala",
 }
 
 _TEST_FILE_PATTERNS = re.compile(
@@ -66,8 +78,18 @@ _TEST_FILE_PATTERNS = re.compile(
 
 _FUNCTION_NODE_TYPES: dict[str, set[str]] = {
     "python": {"function_definition"},
-    "javascript": {"function_declaration", "arrow_function", "method_definition", "generator_function_declaration"},
-    "typescript": {"function_declaration", "arrow_function", "method_definition", "generator_function_declaration"},
+    "javascript": {
+        "function_declaration",
+        "arrow_function",
+        "method_definition",
+        "generator_function_declaration",
+    },
+    "typescript": {
+        "function_declaration",
+        "arrow_function",
+        "method_definition",
+        "generator_function_declaration",
+    },
     "java": {"method_declaration", "constructor_declaration"},
     "go": {"function_declaration", "method_declaration"},
     "c": {"function_definition"},
@@ -78,7 +100,11 @@ _FUNCTION_NODE_TYPES: dict[str, set[str]] = {
 _CLASS_NODE_TYPES: dict[str, set[str]] = {
     "python": {"class_definition"},
     "javascript": {"class_declaration"},
-    "typescript": {"class_declaration", "interface_declaration", "type_alias_declaration"},
+    "typescript": {
+        "class_declaration",
+        "interface_declaration",
+        "type_alias_declaration",
+    },
     "java": {"class_declaration", "interface_declaration", "enum_declaration"},
     "go": {"type_declaration"},
     "c": {"struct_specifier"},
@@ -87,8 +113,12 @@ _CLASS_NODE_TYPES: dict[str, set[str]] = {
 }
 
 _NAME_CHILD_TYPES = {
-    "identifier", "name", "property_identifier", "field_identifier",
-    "type_identifier", "word",
+    "identifier",
+    "name",
+    "property_identifier",
+    "field_identifier",
+    "type_identifier",
+    "word",
 }
 
 
@@ -146,7 +176,9 @@ def _extract_name(node: Any) -> str:
     return "<unknown>"
 
 
-def _extract_symbols_from_tree(tree: Any, language: str, file_path: str) -> list[ProductionSymbol]:
+def _extract_symbols_from_tree(
+    tree: Any, language: str, file_path: str
+) -> list[ProductionSymbol]:
     func_types = _FUNCTION_NODE_TYPES.get(language, set())
     class_types = _CLASS_NODE_TYPES.get(language, set())
     if not func_types and not class_types:
@@ -209,7 +241,9 @@ def _collect_files(
 ) -> list[tuple[str, str, bool]]:
     results: list[tuple[str, str, bool]] = []
     for dirpath, dirnames, filenames in os.walk(project_root):
-        dirnames[:] = [d for d in dirnames if d not in _EXCLUDE_DIRS and not d.startswith(".")]
+        dirnames[:] = [
+            d for d in dirnames if d not in _EXCLUDE_DIRS and not d.startswith(".")
+        ]
         for fname in sorted(filenames):
             ext = os.path.splitext(fname)[1]
             if ext not in _SOURCE_EXTENSIONS:
@@ -225,29 +259,42 @@ def _collect_files(
     return results
 
 
+_TEST_PREFIXES = ["test_", "test", "should_", "should", "it_", "it", "given_", "given"]
+_KW_SEPARATORS = (
+    "_returns_",
+    "_raises_",
+    "_handles_",
+    "_when_",
+    "_with_",
+    "_and_",
+    "_or_",
+    "_but_",
+)
+
+
+def _strip_prefix(name: str) -> str | None:
+    """Remove a test prefix from *name*; return stripped remainder, or None if no match."""
+    for p in _TEST_PREFIXES:
+        if name.lower().startswith(p) and len(name) > len(p):
+            rem = name[len(p) :]
+            return rem[1:] if rem.startswith("_") else rem
+    return None
+
+
 def _extract_test_targets(test_name: str) -> list[str]:
     targets: list[str] = []
     name = test_name
 
-    prefixes = ["test_", "test", "should_", "should", "it_", "it", "given_", "given"]
-    for p in prefixes:
-        if name.lower().startswith(p) and len(name) > len(p):
-            remainder = name[len(p):]
-            if remainder[0] == "_":
-                remainder = remainder[1:]
-            targets.append(remainder.lower())
-            targets.append(remainder)
-            break
+    rem = _strip_prefix(name)
+    if rem:
+        targets.extend([rem.lower(), rem])
 
-    for kw in ("_returns_", "_raises_", "_handles_", "_when_", "_with_", "_and_", "_or_", "_but_"):
+    for kw in _KW_SEPARATORS:
         if kw in name.lower():
             base = name.lower().split(kw)[0]
-            for p in prefixes:
-                if base.startswith(p):
-                    base = base[len(p):]
-                    if base.startswith("_"):
-                        base = base[1:]
-                    break
+            stripped = _strip_prefix(base)
+            if stripped is not None:
+                base = stripped
             if base:
                 targets.append(base)
             break
@@ -264,14 +311,28 @@ def _extract_test_targets(test_name: str) -> list[str]:
 
 def _compute_complexity(node: Any, language: str) -> int:
     complexity_nodes = {
-        "if_statement", "elif_clause", "for_statement", "while_statement",
-        "except_clause", "boolean_operator", "conditional_expression",
-        "match_statement", "case_clause", "else_clause",
-        "for_in_statement", "for_of_statement", "do_statement",
-        "catch_clause", "ternary_expression", "switch_case",
-        "logical_expression", "enhanced_for_statement",
-        "switch_block_statement_group", "expression_switch_case",
-        "if_expression", "expression_case",
+        "if_statement",
+        "elif_clause",
+        "for_statement",
+        "while_statement",
+        "except_clause",
+        "boolean_operator",
+        "conditional_expression",
+        "match_statement",
+        "case_clause",
+        "else_clause",
+        "for_in_statement",
+        "for_of_statement",
+        "do_statement",
+        "catch_clause",
+        "ternary_expression",
+        "switch_case",
+        "logical_expression",
+        "enhanced_for_statement",
+        "switch_block_statement_group",
+        "expression_switch_case",
+        "if_expression",
+        "expression_case",
     }
     count = 0
     stack = [node]
@@ -311,6 +372,162 @@ def _priority_score(symbol: ProductionSymbol) -> int:
     return score
 
 
+def _build_test_symbols(
+    test_files: list[tuple[str, str]],
+) -> tuple[list[TestSymbol], set[str]]:
+    """Scan test files and return (test_symbols, covered_test_names)."""
+    test_symbols: list[TestSymbol] = []
+    for fpath, lang in test_files:
+        for s in _scan_file(fpath, lang):
+            targets = _extract_test_targets(s.name)
+            test_symbols.append(
+                TestSymbol(
+                    name=s.name,
+                    file_path=s.file_path,
+                    language=s.language,
+                    line=s.line,
+                    likely_targets=targets,
+                )
+            )
+    covered: set[str] = {target for ts in test_symbols for target in ts.likely_targets}
+    return test_symbols, covered
+
+
+def _build_file_class_map(
+    prod_symbols: list[ProductionSymbol],
+    project_root: str,
+) -> dict[str, set[str]]:
+    """Build map: rel_path -> set of class names (lowercased)."""
+    result: dict[str, set[str]] = defaultdict(set)
+    for s in prod_symbols:
+        if s.kind == "class":
+            rel = os.path.relpath(s.file_path, project_root)
+            result[rel].add(s.name.lower())
+    return result
+
+
+def _is_covered(
+    sym: ProductionSymbol,
+    covered_test_names: set[str],
+    file_class_map: dict[str, set[str]],
+    project_root: str,
+) -> bool:
+    """Return True if *sym* has matching test coverage."""
+    if sym.name.lower() in covered_test_names:
+        return True
+    if sym.class_name and sym.class_name.lower() in covered_test_names:
+        return True
+    rel = os.path.relpath(sym.file_path, project_root)
+    rel_stem = os.path.splitext(os.path.basename(rel))[0].lower()
+    if rel_stem in covered_test_names:
+        return True
+    return any(cls in covered_test_names for cls in file_class_map.get(rel, set()))
+
+
+def _get_complexity_cached(
+    sym: ProductionSymbol,
+    parser_cache: dict[str, Any],
+) -> int:
+    """Return cyclomatic complexity of *sym*, using *parser_cache* to avoid re-parsing."""
+    if sym.complexity > 0:
+        return sym.complexity
+    fpath = sym.file_path
+    if fpath not in parser_cache:
+        r = Parser().parse_file(fpath, sym.language)
+        parser_cache[fpath] = r.tree if r.success else None
+    tree = parser_cache[fpath]
+    if tree is None:
+        return 1
+    func_types = _FUNCTION_NODE_TYPES.get(sym.language, set())
+    stack = [tree.root_node]
+    while stack:
+        node = stack.pop()
+        if node.type in func_types:
+            if (
+                _extract_name(node) == sym.name
+                and (node.start_point[0] + 1) == sym.line
+            ):
+                return _compute_complexity(node, sym.language)
+        stack.extend(node.children)
+    return 1
+
+
+def _classify_priority(score: int) -> str:
+    """Map a numeric priority score to a band label."""
+    if score >= 10:
+        return "critical"
+    if score >= 7:
+        return "high"
+    if score >= 3:
+        return "medium"
+    return "low"
+
+
+def _classify_gaps(
+    prod_symbols: list[ProductionSymbol],
+    covered_test_names: set[str],
+    file_class_map: dict[str, set[str]],
+    project_root: str,
+) -> tuple[list[CoverageGap], list[ProductionSymbol]]:
+    """Partition *prod_symbols* into gaps and covered lists."""
+    gaps: list[CoverageGap] = []
+    covered: list[ProductionSymbol] = []
+    for sym in prod_symbols:
+        if _is_covered(sym, covered_test_names, file_class_map, project_root):
+            covered.append(sym)
+        else:
+            priority = _classify_priority(_priority_score(sym))
+            gaps.append(
+                CoverageGap(
+                    symbol=sym,
+                    priority=priority,
+                    reason=_make_reason(sym),
+                    suggestion=_make_suggestion(sym),
+                )
+            )
+    return gaps, covered
+
+
+def _build_coverage_summary(
+    prod_symbols: list[ProductionSymbol],
+    gaps: list[CoverageGap],
+    project_root: str,
+    prod_files: list[tuple[str, str]],
+    test_files: list[tuple[str, str]],
+) -> dict[str, Any]:
+    """Compute summary statistics for *CoverageGapResult*."""
+    total = len(prod_symbols)
+    gap_count = len(gaps)
+    covered_count = total - gap_count
+    coverage_pct = round((covered_count / total) * 100, 1) if total else 0.0
+
+    priority_dist: dict[str, int] = defaultdict(int)
+    by_file: dict[str, int] = defaultdict(int)
+    for g in gaps:
+        priority_dist[g.priority] += 1
+        by_file[os.path.relpath(g.symbol.file_path, project_root)] += 1
+
+    worst_files = sorted(by_file.items(), key=lambda x: x[1], reverse=True)[:10]
+
+    by_language: dict[str, dict[str, int]] = defaultdict(
+        lambda: {"total": 0, "gaps": 0}
+    )
+    for sym in prod_symbols:
+        by_language[sym.language]["total"] += 1
+    for g in gaps:
+        by_language[g.symbol.language]["gaps"] += 1
+
+    return {
+        "total": total,
+        "gap_count": gap_count,
+        "covered_count": covered_count,
+        "coverage_pct": coverage_pct,
+        "priority_dist": dict(priority_dist),
+        "worst_files": worst_files,
+        "by_language": dict(by_language),
+    }
+
+
 def analyze_coverage_gaps(
     project_root: str,
     *,
@@ -327,142 +544,36 @@ def analyze_coverage_gaps(
     for fpath, lang in prod_files:
         prod_symbols.extend(_scan_file(fpath, lang))
 
-    test_symbols: list[TestSymbol] = []
-    for fpath, lang in test_files:
-        syms = _scan_file(fpath, lang)
-        for s in syms:
-            targets = _extract_test_targets(s.name)
-            test_symbols.append(
-                TestSymbol(
-                    name=s.name,
-                    file_path=s.file_path,
-                    language=s.language,
-                    line=s.line,
-                    likely_targets=targets,
-                )
-            )
-
-    covered_test_names: set[str] = set()
-    for ts in test_symbols:
-        for target in ts.likely_targets:
-            covered_test_names.add(target)
-
-    file_class_map: dict[str, set[str]] = defaultdict(set)
-    for s in prod_symbols:
-        if s.kind == "class":
-            rel = os.path.relpath(s.file_path, project_root)
-            file_class_map[rel].add(s.name.lower())
-
-    def _is_covered(sym: ProductionSymbol) -> bool:
-        name_lower = sym.name.lower()
-        if name_lower in covered_test_names:
-            return True
-        if sym.class_name and sym.class_name.lower() in covered_test_names:
-            return True
-        rel = os.path.relpath(sym.file_path, project_root)
-        rel_stem = os.path.splitext(os.path.basename(rel))[0].lower()
-        if rel_stem in covered_test_names:
-            return True
-        for cls_name in file_class_map.get(rel, set()):
-            if cls_name in covered_test_names:
-                return True
-        return False
+    test_symbols, covered_test_names = _build_test_symbols(test_files)
+    file_class_map = _build_file_class_map(prod_symbols, project_root)
 
     parser_cache: dict[str, Any] = {}
-
-    def _get_complexity(sym: ProductionSymbol) -> int:
-        if sym.complexity > 0:
-            return sym.complexity
-        fpath = sym.file_path
-        if fpath not in parser_cache:
-            p = Parser()
-            r = p.parse_file(fpath, sym.language)
-            parser_cache[fpath] = r.tree if r.success else None
-        tree = parser_cache[fpath]
-        if tree is None:
-            return 1
-        root = tree.root_node
-        func_types = _FUNCTION_NODE_TYPES.get(sym.language, set())
-        stack = [root]
-        while stack:
-            node = stack.pop()
-            if node.type in func_types:
-                name = _extract_name(node)
-                line_match = (node.start_point[0] + 1) == sym.line
-                if name == sym.name and line_match:
-                    return _compute_complexity(node, sym.language)
-            for child in node.children:
-                stack.append(child)
-        return 1
-
     for sym in prod_symbols:
         if sym.kind == "function":
-            sym.complexity = _get_complexity(sym)
+            sym.complexity = _get_complexity_cached(sym, parser_cache)
             sym.risk = _risk_band(sym.complexity)
 
-    gaps: list[CoverageGap] = []
-    covered: list[ProductionSymbol] = []
-
-    for sym in prod_symbols:
-        if _is_covered(sym):
-            covered.append(sym)
-        else:
-            priority_score = _priority_score(sym)
-            if priority_score >= 10:
-                priority = "critical"
-            elif priority_score >= 7:
-                priority = "high"
-            elif priority_score >= 3:
-                priority = "medium"
-            else:
-                priority = "low"
-
-            suggestion = _make_suggestion(sym)
-            reason = _make_reason(sym)
-
-            gaps.append(
-                CoverageGap(
-                    symbol=sym,
-                    priority=priority,
-                    reason=reason,
-                    suggestion=suggestion,
-                )
-            )
-
+    gaps, covered = _classify_gaps(
+        prod_symbols, covered_test_names, file_class_map, project_root
+    )
     gaps.sort(key=lambda g: _priority_score(g.symbol), reverse=True)
 
-    total = len(prod_symbols)
-    gap_count = len(gaps)
-    covered_count = total - gap_count
-    coverage_pct = round((covered_count / total) * 100, 1) if total else 0.0
-
-    priority_dist: dict[str, int] = defaultdict(int)
-    for g in gaps:
-        priority_dist[g.priority] += 1
-
-    by_file: dict[str, int] = defaultdict(int)
-    for g in gaps:
-        by_file[os.path.relpath(g.symbol.file_path, project_root)] += 1
-    worst_files = sorted(by_file.items(), key=lambda x: x[1], reverse=True)[:10]
-
-    by_language: dict[str, dict[str, int]] = defaultdict(lambda: {"total": 0, "gaps": 0})
-    for sym in prod_symbols:
-        by_language[sym.language]["total"] += 1
-    for g in gaps:
-        by_language[g.symbol.language]["gaps"] += 1
+    stats = _build_coverage_summary(
+        prod_symbols, gaps, project_root, prod_files, test_files
+    )
 
     return CoverageGapResult(
-        total_production_symbols=total,
+        total_production_symbols=stats["total"],
         total_test_symbols=len(test_symbols),
-        covered_count=covered_count,
-        gap_count=gap_count,
-        coverage_pct=coverage_pct,
+        covered_count=stats["covered_count"],
+        gap_count=stats["gap_count"],
+        coverage_pct=stats["coverage_pct"],
         gaps=gaps[:max_gaps],
         covered=covered if include_covered else [],
         summary={
-            "priority_distribution": dict(priority_dist),
-            "worst_files": worst_files,
-            "by_language": dict(by_language),
+            "priority_distribution": stats["priority_dist"],
+            "worst_files": stats["worst_files"],
+            "by_language": stats["by_language"],
             "production_files": len(prod_files),
             "test_files": len(test_files),
         },
@@ -474,7 +585,11 @@ def _make_reason(sym: ProductionSymbol) -> str:
     if sym.kind == "class":
         parts.append(f"class '{sym.name}' has no test class")
     else:
-        prefix = f"method '{sym.name}' in class '{sym.class_name}'" if sym.class_name else f"function '{sym.name}'"
+        prefix = (
+            f"method '{sym.name}' in class '{sym.class_name}'"
+            if sym.class_name
+            else f"function '{sym.name}'"
+        )
         parts.append(f"{prefix} has no matching test")
     if sym.risk in ("high", "critical"):
         parts.append(f"complexity={sym.complexity} ({sym.risk} risk)")

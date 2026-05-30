@@ -80,15 +80,17 @@ def _is_word_boundary(text: str, pos: int) -> bool:
 def _find_identifier_at_or_near(
     line_text: str, column: int, target_name: str
 ) -> int | None:
-    start = max(0, column - len(target_name))
-    for offset in range(len(target_name) + 5):
+    name_len = len(target_name)
+    start = max(0, column - name_len)
+    for offset in range(name_len + 5):
         pos = start + offset
-        if pos < 0 or pos + len(target_name) > len(line_text):
+        end_pos = pos + name_len
+        if pos < 0 or end_pos > len(line_text):
             continue
-        candidate = line_text[pos : pos + len(target_name)]
+        candidate = line_text[pos:end_pos]
         if candidate == target_name:
             before_ok = _is_word_boundary(line_text, pos - 1)
-            after_ok = _is_word_boundary(line_text, pos + len(target_name))
+            after_ok = _is_word_boundary(line_text, end_pos)
             if before_ok and after_ok:
                 return pos
     return None
@@ -109,81 +111,82 @@ def _scan_line_for_name(line_text: str, name: str) -> list[int]:
     return positions
 
 
+def _sites_from_defn(defn: Any, old_name: str, project_root: str) -> list[RenameSite]:
+    """Collect rename sites for a single definition entry."""
+    fpath = (
+        defn.file if os.path.isabs(defn.file) else os.path.join(project_root, defn.file)
+    )
+    if not os.path.isfile(fpath):
+        return []
+    try:
+        with open(fpath) as f:
+            lines = f.readlines()
+    except OSError:
+        return []
+    line_idx = defn.line - 1
+    if 0 <= line_idx < len(lines):
+        line_text = lines[line_idx]
+        positions = _scan_line_for_name(line_text, old_name)
+        return [
+            RenameSite(
+                file=defn.file,
+                line=defn.line,
+                column=col,
+                old_text=old_name,
+                site_type="definition",
+            )
+            for col in positions
+        ]
+    return []
+
+
+def _sites_from_ref(ref: Any, old_name: str, project_root: str) -> list[RenameSite]:
+    """Collect rename sites for a single reference entry."""
+    fpath = (
+        ref.file if os.path.isabs(ref.file) else os.path.join(project_root, ref.file)
+    )
+    if not os.path.isfile(fpath):
+        return []
+    try:
+        with open(fpath) as f:
+            lines = f.readlines()
+    except OSError:
+        return []
+    if ref.line <= 0:
+        return [
+            RenameSite(
+                file=ref.file,
+                line=0,
+                column=0,
+                old_text=old_name,
+                site_type=ref.reference_type,
+            )
+        ]
+    line_idx = ref.line - 1
+    if 0 <= line_idx < len(lines):
+        line_text = lines[line_idx]
+        positions = _scan_line_for_name(line_text, old_name)
+        return [
+            RenameSite(
+                file=ref.file,
+                line=ref.line,
+                column=col,
+                old_text=old_name,
+                site_type=ref.reference_type,
+            )
+            for col in positions
+        ]
+    return []
+
+
 def _collect_rename_sites_from_resolver(
     resolve_result: Any, old_name: str, project_root: str
 ) -> list[RenameSite]:
     sites: list[RenameSite] = []
-
     for defn in resolve_result.definitions:
-        fpath = (
-            defn.file
-            if os.path.isabs(defn.file)
-            else os.path.join(project_root, defn.file)
-        )
-        if not os.path.isfile(fpath):
-            continue
-        try:
-            with open(fpath) as f:
-                lines = f.readlines()
-        except OSError:
-            continue
-
-        line_idx = defn.line - 1
-        if 0 <= line_idx < len(lines):
-            line_text = lines[line_idx]
-            positions = _scan_line_for_name(line_text, old_name)
-            for col in positions:
-                sites.append(
-                    RenameSite(
-                        file=defn.file,
-                        line=defn.line,
-                        column=col,
-                        old_text=old_name,
-                        site_type="definition",
-                    )
-                )
-
+        sites.extend(_sites_from_defn(defn, old_name, project_root))
     for ref in resolve_result.references:
-        fpath = (
-            ref.file
-            if os.path.isabs(ref.file)
-            else os.path.join(project_root, ref.file)
-        )
-        if not os.path.isfile(fpath):
-            continue
-        try:
-            with open(fpath) as f:
-                lines = f.readlines()
-        except OSError:
-            continue
-
-        if ref.line <= 0:
-            sites.append(
-                RenameSite(
-                    file=ref.file,
-                    line=0,
-                    column=0,
-                    old_text=old_name,
-                    site_type=ref.reference_type,
-                )
-            )
-            continue
-
-        line_idx = ref.line - 1
-        if 0 <= line_idx < len(lines):
-            line_text = lines[line_idx]
-            positions = _scan_line_for_name(line_text, old_name)
-            for col in positions:
-                sites.append(
-                    RenameSite(
-                        file=ref.file,
-                        line=ref.line,
-                        column=col,
-                        old_text=old_name,
-                        site_type=ref.reference_type,
-                    )
-                )
-
+        sites.extend(_sites_from_ref(ref, old_name, project_root))
     return sites
 
 
@@ -207,6 +210,24 @@ def _group_sites_by_file(
     return groups
 
 
+def _has_unknown_cols(line_sites: list[Any]) -> bool:
+    """Return True if any site has an unknown column or line position."""
+    return any(s.column < 0 or s.line <= 0 for s in line_sites)
+
+
+def _apply_col_rename(
+    line_text: str, col: int, name_len: int, old_name: str, new_name: str
+) -> str:
+    """Apply a single-column rename to line_text if the candidate matches."""
+    if col + name_len > len(line_text):
+        return line_text
+    before = line_text[:col]
+    after = line_text[col + name_len :]
+    if line_text[col : col + name_len] == old_name:
+        return before + new_name + after
+    return line_text
+
+
 def _apply_rename_to_file(
     file_path: str, sites: list[RenameSite], old_name: str, new_name: str
 ) -> bool:
@@ -218,31 +239,25 @@ def _apply_rename_to_file(
         return False
 
     lines = content.split("\n")
+    name_len = len(old_name)
     site_by_line: dict[int, list[RenameSite]] = {}
     for s in sites:
-        if s.line <= 0:
-            site_by_line.setdefault(0, []).append(s)
-        else:
-            site_by_line.setdefault(s.line - 1, []).append(s)
+        key = 0 if s.line <= 0 else s.line - 1
+        site_by_line.setdefault(key, []).append(s)
 
     for line_idx, line_sites in site_by_line.items():
         if line_idx < 0 or line_idx >= len(lines):
             continue
         line_text = lines[line_idx]
-        columns = sorted({s.column for s in line_sites if s.column >= 0}, reverse=True)
-        if not columns and any(s.column < 0 or s.line <= 0 for s in line_sites):
-            positions = sorted(
-                set(_scan_line_for_name(line_text, old_name)), reverse=True
-            )
-            columns = positions
+        col_set = {s.column for s in line_sites if s.column >= 0}
+        columns = sorted(col_set, reverse=True)
+        if not columns and _has_unknown_cols(line_sites):
+            raw_positions = _scan_line_for_name(line_text, old_name)
+            unique_positions = set(raw_positions)
+            columns = sorted(unique_positions, reverse=True)
 
         for col in columns:
-            if col + len(old_name) <= len(line_text):
-                before = line_text[:col]
-                after = line_text[col + len(old_name) :]
-                candidate = line_text[col : col + len(old_name)]
-                if candidate == old_name:
-                    line_text = before + new_name + after
+            line_text = _apply_col_rename(line_text, col, name_len, old_name, new_name)
         lines[line_idx] = line_text
 
     new_content = "\n".join(lines)
@@ -252,6 +267,25 @@ def _apply_rename_to_file(
         return True
     except OSError:
         return False
+
+
+def _read_backup(abs_path: str) -> str | None:
+    """Read file content for rollback backup; return None on OSError."""
+    try:
+        with open(abs_path) as f:
+            return f.read()
+    except OSError:
+        return None
+
+
+def _rollback_file(fpath: str, orig_content: str, root: str) -> None:
+    """Restore a single file to its original content during rollback."""
+    abs_path = fpath if os.path.isabs(fpath) else os.path.join(root, fpath)
+    try:
+        with open(abs_path, "w") as f:
+            f.write(orig_content)
+    except OSError:
+        pass
 
 
 def rename_symbol(
@@ -290,27 +324,21 @@ def rename_symbol(
 
     for fpath, file_sites in by_file.items():
         abs_path = fpath if os.path.isabs(fpath) else os.path.join(root, fpath)
-        try:
-            with open(abs_path) as f:
-                backup[fpath] = f.read()
-        except OSError as exc:
-            errors.append(f"Cannot read {fpath}: {exc}")
+        content = _read_backup(abs_path)
+        if content is None:
+            errors.append(f"Cannot read {fpath}")
             continue
+        backup[fpath] = content
 
         ok = _apply_rename_to_file(abs_path, file_sites, old_name, new_name)
         if ok:
             files_changed += 1
-        else:
+        if not ok:
             errors.append(f"Failed to write {fpath}")
 
     if errors:
         for fpath, orig_content in backup.items():
-            abs_path = fpath if os.path.isabs(fpath) else os.path.join(root, fpath)
-            try:
-                with open(abs_path, "w") as f:
-                    f.write(orig_content)
-            except OSError:
-                pass
+            _rollback_file(fpath, orig_content, root)
 
     result.files_changed = files_changed
     result.sites_renamed = sum(len(s) for s in by_file.values())

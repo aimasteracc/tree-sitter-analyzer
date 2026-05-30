@@ -35,7 +35,7 @@ def _compute_transitive_callers(
     file_path: str | None = None,
     max_depth: int = _MAX_DEPTH,
 ) -> list[dict[str, Any]]:
-    targets = graph._resolve_targets(func_name, file_path)
+    targets = graph.resolve_targets(func_name, file_path)
     visited: set[str] = set()
     result: list[dict[str, Any]] = []
     queue: deque[tuple[FunctionRef, int]] = deque((t, 0) for t in targets)
@@ -44,7 +44,7 @@ def _compute_transitive_callers(
         current, d = queue.popleft()
         if d >= max_depth:
             continue
-        for caller in graph._callers.get(current, []):
+        for caller in graph.caller_refs_of(current):
             key = caller.qualified_name()
             if key not in visited:
                 visited.add(key)
@@ -63,7 +63,7 @@ def _compute_transitive_callees(
     file_path: str | None = None,
     max_depth: int = _MAX_DEPTH,
 ) -> list[dict[str, Any]]:
-    targets = graph._resolve_targets(func_name, file_path)
+    targets = graph.resolve_targets(func_name, file_path)
     visited: set[str] = set()
     result: list[dict[str, Any]] = []
     queue: deque[tuple[FunctionRef, int]] = deque((t, 0) for t in targets)
@@ -72,7 +72,7 @@ def _compute_transitive_callees(
         current, d = queue.popleft()
         if d >= max_depth:
             continue
-        for callee in graph._callees.get(current, []):
+        for callee in graph.callee_refs_of(current):
             key = callee.qualified_name()
             if key not in visited:
                 visited.add(key)
@@ -90,13 +90,13 @@ def _compute_risk_score(
     func_name: str,
     file_path: str | None = None,
 ) -> dict[str, Any]:
-    targets = graph._resolve_targets(func_name, file_path)
+    targets = graph.resolve_targets(func_name, file_path)
     if not targets:
         return {"score": 0, "level": "unknown", "factors": {}}
 
     target = targets[0]
-    direct_callers = graph._callers.get(target, [])
-    direct_callees = graph._callees.get(target, [])
+    direct_callers = graph.caller_refs_of(target)
+    direct_callees = graph.callee_refs_of(target)
     fan_in = len(direct_callers)
     fan_out = len(direct_callees)
     caller_files = {c.file_path for c in direct_callers}
@@ -170,7 +170,7 @@ def _blast_radius_for_functions(
     files_at_risk: dict[str, set[str]] = {}
 
     for func_name in function_names:
-        targets = graph._resolve_targets(func_name, file_path)
+        targets = graph.resolve_targets(func_name, file_path)
         for target in targets:
             start_key = target.qualified_name()
             all_affected.add(start_key)
@@ -182,36 +182,38 @@ def _blast_radius_for_functions(
                 current, d = queue.popleft()
                 if d >= depth:
                     continue
-                for caller in graph._callers.get(current, []):
+                for caller in graph.caller_refs_of(current):
                     key = caller.qualified_name()
                     if key not in visited:
                         visited.add(key)
                         all_affected.add(key)
-                        files_at_risk.setdefault(caller.file_path, set()).add(
-                            caller.name
-                        )
+                        caller_set = files_at_risk.setdefault(caller.file_path, set())
+                        caller_set.add(caller.name)
+                        from_dict = current.to_dict()
+                        to_dict = caller.to_dict()
                         propagation_chains.append(
                             {
-                                "from": current.to_dict(),
-                                "to": caller.to_dict(),
+                                "from": from_dict,
+                                "to": to_dict,
                                 "direction": "upstream",
                                 "depth": d + 1,
                             }
                         )
                         queue.append((caller, d + 1))
 
-                for callee in graph._callees.get(current, []):
+                for callee in graph.callee_refs_of(current):
                     key = callee.qualified_name()
                     if key not in visited:
                         visited.add(key)
                         all_affected.add(key)
-                        files_at_risk.setdefault(callee.file_path, set()).add(
-                            callee.name
-                        )
+                        callee_set = files_at_risk.setdefault(callee.file_path, set())
+                        callee_set.add(callee.name)
+                        from_dict = current.to_dict()
+                        to_dict = callee.to_dict()
                         propagation_chains.append(
                             {
-                                "from": current.to_dict(),
-                                "to": callee.to_dict(),
+                                "from": from_dict,
+                                "to": to_dict,
                                 "direction": "downstream",
                                 "depth": d + 1,
                             }
@@ -265,6 +267,15 @@ class CodeGraphImpactTool(BaseMCPTool):
             else:
                 self._call_graph = CallGraph(self.project_root)
         return self._call_graph
+
+    def get_call_graph(self) -> CallGraph:
+        """Public alias for _get_call_graph() — use this instead of accessing _call_graph."""
+        return self._get_call_graph()
+
+    @property
+    def call_graph_initialized(self) -> bool:
+        """True if the call graph has been lazily initialized (i.e. cached)."""
+        return self._call_graph is not None
 
     def get_tool_definition(self) -> dict[str, Any]:
         return {
@@ -350,7 +361,7 @@ class CodeGraphImpactTool(BaseMCPTool):
         depth = arguments.get("depth", 5)
         output_format = arguments.get("output_format", "toon")
 
-        graph = self._get_call_graph()
+        graph = self.get_call_graph()
         graph.build()
 
         if mode == "function_impact":
@@ -403,7 +414,7 @@ class CodeGraphImpactTool(BaseMCPTool):
 
         caller_files = {c.get("file", "") for c in direct_callers}
         callee_files = {c.get("file", "") for c in direct_callees}
-        targets = graph._resolve_targets(func_name, file_path)
+        targets = graph.resolve_targets(func_name, file_path)
         self_file = targets[0].file_path if targets else ""
         cross_file_callers = len(caller_files - {self_file})
         cross_file_callees = len(callee_files - {self_file})

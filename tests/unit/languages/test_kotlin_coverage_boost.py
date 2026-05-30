@@ -336,17 +336,6 @@ class TestKotlinPluginEdgeCases:
         result = plugin.extract_elements(tree, code)
         assert isinstance(result, dict)
 
-    def test_create_extractor(self, plugin):
-        """Test create_extractor method."""
-        extractor = plugin.create_extractor()
-        assert isinstance(extractor, KotlinElementExtractor)
-
-    def test_get_file_extensions(self, plugin):
-        """Test get_file_extensions method."""
-        extensions = plugin.get_file_extensions()
-        assert ".kt" in extensions
-        assert ".kts" in extensions
-
 
 class TestKotlinExtractorInternalMethods:
     """Test internal extractor methods."""

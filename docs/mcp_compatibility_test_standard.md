@@ -1,3 +1,4 @@
+<!-- HISTORICAL RECORD — file paths in this document reflect the codebase as of 2026. Some paths may no longer exist. Do not update them; they are intentional historical references. -->
 # MCP互換性テスト標準化プロセス
 
 ## 1. はじめに

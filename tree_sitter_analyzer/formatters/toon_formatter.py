@@ -79,13 +79,13 @@ class ToonFormatter(BaseFormatter):
             logger.error(f"TOON formatting failed: {e}")
             if self.fallback_to_json:
                 logger.warning("Falling back to JSON format")
-                return self.encoder._fallback_to_json(data)
+                return self.encoder.encode_to_json(data)
             raise
         except Exception as e:
             logger.error(f"Unexpected error during TOON formatting: {e}", exc_info=True)
             if self.fallback_to_json:
                 logger.warning("Falling back to JSON format")
-                return self.encoder._fallback_to_json(data)
+                return self.encoder.encode_to_json(data)
             raise ToonEncodeError("Formatting failed", data=data, cause=e) from e
 
     def _format_internal(self, data: Any) -> str:

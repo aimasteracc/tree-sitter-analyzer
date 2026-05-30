@@ -1,5 +1,103 @@
 # Changelog
 
+## [1.16.0] - 2026-05-30
+
+BM25 ranked search, C# language support, and code-intelligence architecture
+consolidation. This is the largest feature release since v1.15.0 — 216 commits
+spanning new language analysis, semantic search improvements, CodeGraph DSL
+extensions, and a full-stack code-quality sweep that promoted 20+ modules from
+B/C → A grade.
+
+### Added
+
+- **FTS5 BM25 ranked symbol search** (G1–G6). All six search paths — `execute_symbol_search`,
+  `ast_cache_tool mode=search`, `symbol_search_tool`, `ASTCache.search_symbols`,
+  `_fts_fast_path`, and `codegraph_query_backend._fts_definitions` — now return
+  results with a `relevance_score` in `[0.0, 1.0]` (best match = 1.0) and a
+  `ranking_method="fts5_bm25"` envelope field. Short queries (`< 2 chars`)
+  fall back to the existing linear scan automatically.
+- **C# language support**. `csharp_helpers.py` parses classes, methods,
+  constructors, properties, fields, enums, interfaces, and attributes. Attribute
+  extraction reads direct `attribute_list` children (not `prev_sibling`),
+  correctly attributing decorators to the symbol they annotate.
+- **Mermaid UML architecture diagram export** via `codegraph_query` `uml(...)`
+  DSL step. Agents can now request architecture diagrams inline in a query chain.
+- **Relation-aware `has(...)` query step** in `codegraph_query`. Filters
+  symbols by whether they have callers, callees, or cross-file references —
+  e.g. `find("Foo").has(callers=True)` returns only Foo symbols that are
+  actually called somewhere.
+- **Chain query selection filters** (`#194`). `select(kind=..., language=...)`
+  post-filter in query chains reduces result noise without a second tool call.
+- **`sort(by='confidence')` in `codegraph_query` DSL**. Works for both
+  `semantic(...)` results (maps `semantic_score` → `confidence`) and FTS5
+  results (maps `relevance_score` → `confidence`).
+- **`total_edges` in `codegraph_status`** for graph density monitoring
+  (per mycelium RFC-0010).
+- **Ruby visibility detection**. `ruby_plugin` now detects `private`,
+  `protected`, and `public` visibility from preceding sibling keywords,
+  matching the Ruby idiom of scope modifiers applied to groups of methods.
+- **`TableFormatter`** at the canonical `formatters/` location (Phase 7 of
+  formatter-architecture unification).
+- **`CallGraph` public adjacency API** (`all_function_refs`, `callers_map`,
+  `callees_map`, `resolve_targets`, `functions_by_file`). MCP tool layer can
+  now access graph internals without crossing the `_private` boundary.
+- **`callee_resolved_file`** exposed in `codegraph_callees` SQL path and
+  `enrich_caller` arg fixed.
+
+### Improved
+
+- **Semantic search 133× faster** via BM25 pre-filter. Symbol candidates are
+  now narrowed with FTS5 before the embedding similarity pass, eliminating the
+  quadratic scan for large repos.
+- **BM25 normalization is now min-max** (`best match = 1.0, worst = 0.0`)
+  instead of the previous `raw / worst` formula. Strong matches are clearly
+  separated from weak ones across all ranked paths.
+- **FTS5 column weights tuned** — name matches are preferred over doc/kind
+  matches, reducing noise in short-query results.
+- **`_concept_candidate_paths` uses FTS5 index** instead of LIKE scan for
+  symbol lookups in `codegraph_query` context resolution.
+- **`codegraph_explore` deprioritizes test files** (`#191`), surfacing
+  production symbols first when exploring an area.
+- **20+ modules promoted from B/C → A grade** through targeted AST-depth
+  reduction and helper extraction (zero behaviour change; all tests pass).
+
+### Fixed
+
+- **Java annotation attribution**. `_reset_caches()` no longer clears
+  `self.annotations`, fixing a pipeline stage where annotations were silently
+  dropped between extraction passes.
+- **Java `implements` generics splitting**. Generic type arguments (`Foo<Bar>`)
+  no longer corrupt the interface list.
+- **Java `interface extends` clause** now extracted into `implements_interfaces`
+  (matching class semantics), instead of being silently dropped.
+- **C# attribute extraction** reads `node.children` instead of
+  `node.prev_sibling`, correctly associating `[Attribute]` decorators with the
+  symbol that follows.
+- **Class visibility no longer hardcoded `"public"`**. `_convert_class` now
+  reads the actual `visibility` attribute from the parsed class node.
+- **Go method call-edge indexing** (`#190`). Method receivers are now
+  registered in the `CallGraph`, fixing missing edges for Go receiver methods.
+- **Dead-code analyzer AST traversal restored** after refactor regression.
+- **MCP server no longer crashes** on an unreadable `SKILL.md` (`OSError`
+  caught) or a corrupt `pyproject.toml` (malformed TOML caught in
+  `parser_readiness`).
+- **`callees` SQL path** now exposes `callee_resolved_file`; `enrich_caller`
+  argument ordering fixed.
+- **SLF001 private-attribute violations eliminated** (144 → 0). All MCP tool
+  tests and plugin code now use public APIs only.
+- **`--full-index-mode` CLI choices** aligned with MCP tool valid modes.
+- **`health_scorer`** excludes `examples/` from project health scoring to avoid
+  inflating the C-grade bucket with demo files.
+
+### Validation
+
+- Local full suite: `18602 passed, 100 skipped, 0 failed` (40.9 s on Apple M-series).
+- Golden-master regression: 78/78 passed.
+- ruff / SLF001 / mypy clean.
+- All 216 commits on `feature/code-intelligence-architecture` branch.
+
+---
+
 ## [1.15.3] - 2026-05-27
 
 CodeGraph query-chain reliability and benchmark-evidence release. This
@@ -540,6 +638,46 @@ in `docs/internal/CODEGRAPH_BENCHMARK_FINAL_2026-05-24.md`.
 - **100 % coverage on the 5-language unblock regression suite**.
 
 ## [Unreleased]
+
+### Fixed
+
+- **Java annotation extraction — full pipeline fix** — Six independent bugs caused annotations
+  to be empty for all Java classes, methods, and fields. Root causes (in order of discovery):
+  1. `_reset_caches()` incorrectly cleared `self.annotations` (raw AST data, not a cache).
+  2. `extract_annotations()` called after `extract_classes()`/`extract_functions()` in
+     `extract_elements()`, so proximity cache was empty at lookup time.
+  3. `analyze_code_structure_helpers.py` hardcoded `"annotations": []` in `_convert_class()`,
+     `_convert_method()`, `_convert_field()` instead of reading from model objects.
+  4. `field_declaration` was missing from `container_node_types`, so field annotations
+     (`@ManyToMany`, `@Column`, `@Id`) were never traversed.
+  5. `analyze_file()` never called `extract_annotations()` at all — `self.annotations` was
+     always `[]` for the MCP analyze path (only `extract_elements()` had the annotation call).
+  6. Class annotation attribution used ±2-line proximity matching. `@Override` on a method
+     2 lines below a class declaration incorrectly bled into that class. Replaced with
+     `_extract_node_annotations()` — reads only the class node's direct modifiers subtree
+     in the AST, making attribution exact and immune to nearby-annotation confusion.
+  All six bugs fixed; 18 004 tests pass. Validated via synthetic MCP test
+  (`TestBoundedLocalCacheSynthetic`) and full Java suite (1046 tests, 0 failures). See
+  `openspec/changes/improve-java-annotation-extraction/` for full writeup.
+
+- **Java `implements` generic preservation** — Interface list parsing split on commas inside
+  generic type arguments (`LocalCache<K, V>, Runnable` was misread as three interfaces). Fixed
+  with a depth-counter-based splitter in `_split_respecting_generics()`. Validated against
+  netty (T3.3): `AddressedEnvelope<M, A>`, `ChannelFactory<T>` correctly preserved.
+
+- **Java interface `extends` clause extraction** — Java `interface Foo extends Bar, Baz<T>`
+  uses a different tree-sitter node (`extends_interfaces`) than class `implements`
+  (`super_interfaces`). Previously ignored, so all interfaces showed `implements_interfaces=[]`.
+  Fixed by adding `extends_interfaces` handler in `_extract_class_relationships()`. Validated
+  against netty `Channel extends AttributeMap, ChannelOutboundInvoker, Comparable<Channel>`.
+
+- **C# attribute extraction** — All C# classes and methods returned `annotations=[]` because
+  `extract_attributes()` walked `node.prev_sibling` to find `[ApiController]` / `[HttpGet]`
+  style attributes. In the tree-sitter-c-sharp grammar, `attribute_list` nodes are **direct
+  children** of the declaration node (not siblings), so `prev_sibling` always returned `None`.
+  Fixed by iterating `node.children` and extracting names from the `attribute → identifier`
+  subtree. Affected: all C# classes, methods, fields, properties with any `[Attribute]`
+  decorator. Now `UsersController` correctly shows `annotations=[ApiController, Route, Authorize]`.
 
 ### Removed
 

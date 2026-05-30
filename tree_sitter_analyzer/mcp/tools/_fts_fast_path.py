@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import os
 import re
-from typing import Any, cast
+from typing import Any
 
 _SIMPLE_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -79,6 +79,36 @@ def _extensions_to_language(arguments: dict[str, Any]) -> str | None:
     return _EXTS_TO_LANG_SUFFIX.get(exts[0])
 
 
+def _aggregate_by_file(fts_results: list) -> dict[str, int]:
+    """Count FTS results per file path."""
+    by_file: dict[str, int] = {}
+    for r in fts_results:
+        fp = r["file"]
+        by_file[fp] = by_file.get(fp, 0) + 1
+    return by_file
+
+
+def _build_symbol_groups(fts_results: list) -> list[dict]:
+    """Group FTS results into per-file symbol lists, preserving sorted order."""
+    symbols: dict[str, list] = {}
+    for r in fts_results:
+        fp = r["file"]
+        if fp not in symbols:
+            symbols[fp] = []
+        entry: dict = {
+            "name": r.get("name", ""),
+            "kind": r.get("kind", ""),
+            "line": r.get("line", 0),
+        }
+        if "relevance_score" in r:
+            entry["relevance_score"] = round(float(r["relevance_score"]), 3)
+        symbols[fp].append(entry)
+    return [
+        {"file": fp, "count": len(syms), "symbols": syms}
+        for fp, syms in sorted(symbols.items())
+    ]
+
+
 def _match_line_from_fts(file_path: str, line: int, source_root: str) -> str:
     """Best-effort extraction of the matching line text from the source file."""
     abs_path = os.path.join(source_root, file_path)
@@ -120,7 +150,7 @@ def try_fts5_fast_path(
     except Exception:
         return None
 
-    if not cache._fts5_available:
+    if not cache.fts5_available:
         cache.close()
         return None
 
@@ -131,7 +161,8 @@ def try_fts5_fast_path(
 
     query = arguments["query"]
     language = _extensions_to_language(arguments)
-    fts_results = cache.fts_search(query, language=language, limit=200)
+    # G5: use ranked search for BM25-ordered results (≥2 chars path via wrapper).
+    fts_results = cache.fts_search_ranked(query, language=language, limit=200)
     cache.close()
 
     if not fts_results:
@@ -145,10 +176,7 @@ def try_fts5_fast_path(
         }
 
     if requested_format == "count_only":
-        by_file: dict[str, int] = {}
-        for r in fts_results:
-            fp = r["file"]
-            by_file[fp] = by_file.get(fp, 0) + 1
+        by_file = _aggregate_by_file(fts_results)
         file_counts = [{"file": fp, "count": c} for fp, c in sorted(by_file.items())]
         return {
             "success": True,
@@ -160,17 +188,17 @@ def try_fts5_fast_path(
 
     formatted: list[dict[str, Any]] = []
     for r in fts_results:
-        match_line = _match_line_from_fts(r["file"], r.get("line", 0), project_root)
-        formatted.append(
-            {
-                "file": r["file"],
-                "line": r.get("line", 0),
-                "kind": r.get("kind", ""),
-                "name": r.get("name", ""),
-                "language": r.get("language", ""),
-                "match": match_line,
-            }
-        )
+        entry: dict[str, Any] = {
+            "file": r["file"],
+            "line": r.get("line", 0),
+            "kind": r.get("kind", ""),
+            "name": r.get("name", ""),
+            "language": r.get("language", ""),
+            "match": _match_line_from_fts(r["file"], r.get("line", 0), project_root),
+        }
+        if "relevance_score" in r:
+            entry["relevance_score"] = round(float(r["relevance_score"]), 3)
+        formatted.append(entry)
 
     response: dict[str, Any] = {
         "success": True,
@@ -180,30 +208,13 @@ def try_fts5_fast_path(
         "results": formatted[:100],
         "data_source": "fts5",
     }
-
+    # Indicate BM25 ranking when ranked path was used (queries >= 2 chars).
+    if len(query) >= 2 and fts_results and "relevance_score" in fts_results[0]:
+        response["ranking_method"] = "fts5_bm25"
     if language:
         response["language_filter"] = language
 
     if requested_format == "summary":
-        by_file_summary: dict[str, int] = {}
-        for r in fts_results:
-            fp = r["file"]
-            by_file_summary[fp] = by_file_summary.get(fp, 0) + 1
-        summary_items = [
-            {"file": fp, "count": c, "symbols": []}
-            for fp, c in sorted(by_file_summary.items())
-        ]
-        for r in fts_results:
-            for item in summary_items:
-                if item["file"] == r["file"]:
-                    cast(list[dict[str, Any]], item["symbols"]).append(
-                        {
-                            "name": r.get("name", ""),
-                            "kind": r.get("kind", ""),
-                            "line": r.get("line", 0),
-                        }
-                    )
-        response["files"] = summary_items[:50]
-        return response
+        response["files"] = _build_symbol_groups(fts_results)[:50]
 
     return response

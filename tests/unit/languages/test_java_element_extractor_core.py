@@ -356,7 +356,14 @@ class UserConfig {
         assert isinstance(extractor.annotations, list)
 
     def test_reset_caches(self, extractor):
-        """Test cache reset functionality"""
+        """Test cache reset functionality.
+
+        _reset_caches() clears performance caches (node-text, processed-nodes,
+        element-cache, annotation-cache, signature-cache) but deliberately
+        preserves self.annotations — that list is extracted data, not a cache,
+        and must survive across calls so annotations populated by
+        extract_annotations() remain available during extract_classes().
+        """
         # Populate caches
         extractor._node_text_cache[1] = "test"
         extractor._processed_nodes.add(1)
@@ -368,13 +375,14 @@ class UserConfig {
         # Reset caches
         extractor._reset_caches()
 
-        # Verify caches are empty
+        # Verify performance caches are empty
         assert len(extractor._node_text_cache) == 0
         assert len(extractor._processed_nodes) == 0
         assert len(extractor._element_cache) == 0
         assert len(extractor._annotation_cache) == 0
         assert len(extractor._signature_cache) == 0
-        assert len(extractor.annotations) == 0
+        # annotations are preserved — they are extracted data, not a cache
+        assert len(extractor.annotations) == 1
 
     def test_extract_functions_basic(self, extractor, mock_tree, sample_java_code):
         """Test basic method extraction"""
@@ -593,5 +601,3 @@ class UserConfig {
             # Should fallback to simple extraction
             result = extractor._get_node_text_optimized(mock_node)
             assert result == "test conte"  # Characters 0-10 from first line
-
-

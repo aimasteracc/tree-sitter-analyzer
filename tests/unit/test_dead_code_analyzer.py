@@ -4,9 +4,15 @@ from __future__ import annotations
 
 import pytest
 
+from tree_sitter_analyzer.call_graph import CallGraph
 from tree_sitter_analyzer.dead_code_analyzer import (
+    DeadCodeResult,
     _is_known_entry,
     _is_test_file,
+    analyze_dead_code,
+    find_transitive_dead_code,
+    find_unreferenced_variables,
+    find_unused_imports,
 )
 
 # ---------------------------------------------------------------------------
@@ -73,28 +79,53 @@ class TestFindTransitiveDeadCode:
     @pytest.fixture()
     def simple_graph(self, tmp_path):
         """Create a project with two files: one calling the other."""
-        # TODO: build a minimal CallGraph fixture
-        # main.py defines caller(), which calls callee()
-        # callee.py defines callee(), nobody calls it externally
-        pass
+        source = tmp_path / "main.py"
+        source.write_text(
+            "def caller():\n"
+            "    return callee()\n\n"
+            "def callee():\n"
+            "    return 1\n\n"
+            "def main():\n"
+            "    return live_helper()\n\n"
+            "def live_helper():\n"
+            "    return 2\n"
+        )
+        return CallGraph(str(tmp_path))
 
     def test_finds_root_dead_function(self, simple_graph) -> None:
         """Functions never called from outside should be flagged dead."""
-        # TODO: assert DeadFunction with reason='unreachable'
-        pass
+        dead = find_transitive_dead_code(simple_graph)
+        by_name = {item.function.name: item for item in dead}
+
+        assert by_name["caller"].reason == "no_callers_has_dead_callees"
+        assert "main" not in by_name
 
     def test_propagates_to_callees(self, simple_graph) -> None:
         """Functions only called from dead functions should also be dead."""
-        # TODO: verify transitive depth > 0
-        pass
+        dead = find_transitive_dead_code(simple_graph)
+        by_name = {item.function.name: item for item in dead}
 
-    def test_excludes_test_files_when_flag_set(self, simple_graph) -> None:
+        assert by_name["callee"].reason == "unreachable_from_entry"
+        assert by_name["caller"].dead_callees == ["callee"]
+        assert "live_helper" not in by_name
+
+    def test_excludes_test_files_when_flag_set(self, tmp_path) -> None:
         """When include_test_files=False, test-file functions are excluded."""
-        pass
+        test_file = tmp_path / "test_helper.py"
+        test_file.write_text("def helper():\n    return 1\n")
 
-    def test_entry_points_are_not_dead(self, simple_graph) -> None:
+        dead = find_transitive_dead_code(CallGraph(str(tmp_path)))
+
+        assert dead == []
+
+    def test_entry_points_are_not_dead(self, tmp_path) -> None:
         """Known entry-point names should not be flagged."""
-        pass
+        source = tmp_path / "app.py"
+        source.write_text("def main():\n    return 1\n")
+
+        dead = find_transitive_dead_code(CallGraph(str(tmp_path)))
+
+        assert dead == []
 
 
 # ---------------------------------------------------------------------------
@@ -105,28 +136,53 @@ class TestFindTransitiveDeadCode:
 class TestFindUnusedImports:
     def test_detects_unused_import(self, tmp_path) -> None:
         """A file importing `os` but never referencing it should report unused."""
+        helper = tmp_path / "helper.py"
+        helper.write_text("def unused():\n    return 1\n")
         py = tmp_path / "a.py"
-        py.write_text("import os\n\ndef foo():\n    pass\n")
-        # TODO: call find_unused_imports and assert UnusedImport for 'os'
-        pass
+        py.write_text("from helper import unused\n\ndef foo():\n    pass\n")
+
+        unused = find_unused_imports(str(tmp_path))
+
+        assert [(item.file, item.line, item.unused_names) for item in unused] == [
+            ("a.py", 1, ["unused"])
+        ]
 
     def test_used_import_not_flagged(self, tmp_path) -> None:
         """An import that IS referenced in code should not be flagged."""
+        helper = tmp_path / "helper.py"
+        helper.write_text("def used():\n    return 1\n")
         py = tmp_path / "b.py"
-        py.write_text("import os\n\ndef foo():\n    return os.path.join('a', 'b')\n")
-        pass
+        py.write_text("from helper import used\n\ndef foo():\n    return used()\n")
+
+        assert find_unused_imports(str(tmp_path)) == []
 
     def test_multiple_unused_names(self, tmp_path) -> None:
         """`from x import a, b, c` where only a is used should flag b, c."""
+        helper = tmp_path / "helper.py"
+        helper.write_text(
+            "def used():\n    return 1\n"
+            "def unused_a():\n    return 2\n"
+            "def unused_b():\n    return 3\n"
+        )
         py = tmp_path / "c.py"
         py.write_text(
-            "from os.path import join, exists, isfile\n\ndef f():\n    return join('a')\n"
+            "from helper import used, unused_a, unused_b\n\n"
+            "def f():\n"
+            "    return used()\n"
         )
-        pass
+
+        unused = find_unused_imports(str(tmp_path))
+
+        assert [(item.file, item.unused_names) for item in unused] == [
+            ("c.py", ["unused_a", "unused_b"])
+        ]
 
     def test_unreadable_file_returns_empty(self, tmp_path) -> None:
         """A binary or unreadable file should produce an empty list, not crash."""
-        pass
+        binary = tmp_path / "binary.py"
+        binary.write_bytes(b"\x00\xff\x00")
+
+        assert find_unused_imports(str(tmp_path)) == []
 
 
 # ---------------------------------------------------------------------------
@@ -137,15 +193,28 @@ class TestFindUnusedImports:
 class TestFindUnreferencedVariables:
     def test_detects_unreferenced_assignment(self, tmp_path) -> None:
         """A module-level variable never referenced should be flagged."""
-        pass
+        py = tmp_path / "vars.py"
+        py.write_text("UNUSED = 1\n\ndef foo():\n    return 2\n")
+
+        variables = find_unreferenced_variables(str(tmp_path))
+
+        assert [(item.file, item.name, item.line) for item in variables] == [
+            ("vars.py", "UNUSED", 1)
+        ]
 
     def test_referenced_variable_not_flagged(self, tmp_path) -> None:
         """A variable used in a function body should NOT be flagged."""
-        pass
+        py = tmp_path / "vars.py"
+        py.write_text("USED = 1\n\ndef foo():\n    return USED\n")
+
+        assert find_unreferenced_variables(str(tmp_path)) == []
 
     def test_class_attribute_not_flagged_as_unreferenced(self, tmp_path) -> None:
         """Class body assignments are NOT module-level variables."""
-        pass
+        py = tmp_path / "klass.py"
+        py.write_text("class Example:\n    value = 1\n")
+
+        assert find_unreferenced_variables(str(tmp_path)) == []
 
 
 # ---------------------------------------------------------------------------
@@ -158,17 +227,38 @@ class TestAnalyzeDeadCode:
         """Top-level entry should return a DeadCodeResult."""
         py = tmp_path / "simple.py"
         py.write_text("import os\n\ndef dead():\n    pass\n")
-        # TODO: result = analyze_dead_code(tmp_path, ...)
-        # assert isinstance(result, DeadCodeResult)
-        pass
+
+        result = analyze_dead_code(str(tmp_path))
+
+        assert isinstance(result, DeadCodeResult)
+        assert result.stats["dead_functions"] == 1
 
     def test_stats_populated(self, tmp_path) -> None:
         """The stats dict should contain file/function counts."""
-        pass
+        py = tmp_path / "simple.py"
+        py.write_text("def dead():\n    pass\n")
+
+        result = analyze_dead_code(str(tmp_path))
+
+        assert result.stats == {
+            "total_functions": 1,
+            "dead_functions": 1,
+            "unused_imports": 0,
+            "unreferenced_variables": 0,
+            "total_call_edges": 0,
+        }
 
     def test_excludes_dirs(self, tmp_path) -> None:
         """node_modules/.git etc. should be excluded from analysis."""
-        pass
+        excluded = tmp_path / "node_modules"
+        excluded.mkdir()
+        (excluded / "ignored.py").write_text("def dead():\n    pass\n")
+        (tmp_path / "kept.py").write_text("def main():\n    return 1\n")
+
+        result = analyze_dead_code(str(tmp_path))
+
+        assert result.stats["total_functions"] == 1
+        assert result.dead_functions == []
 
 
 # ---------------------------------------------------------------------------
@@ -179,12 +269,29 @@ class TestAnalyzeDeadCode:
 class TestDeadCodeErrorHandling:
     def test_nonexistent_directory_returns_empty(self) -> None:
         """Passing a path that does not exist should not crash."""
-        pass
+        result = analyze_dead_code("/path/that/does/not/exist")
+
+        assert result.stats["total_functions"] == 0
+        assert result.dead_functions == []
+        assert result.unused_imports == []
+        assert result.unreferenced_variables == []
 
     def test_binary_file_skipped(self, tmp_path) -> None:
         """Binary files should be silently skipped."""
-        pass
+        binary = tmp_path / "binary.py"
+        binary.write_bytes(b"\x00\xff\x00")
+
+        result = analyze_dead_code(str(tmp_path))
+
+        assert result.stats["total_functions"] == 0
 
     def test_symlink_handled(self, tmp_path) -> None:
         """Symlinked files should not cause infinite loops."""
-        pass
+        target = tmp_path / "target.py"
+        target.write_text("def main():\n    return 1\n")
+        link = tmp_path / "link.py"
+        link.symlink_to(target)
+
+        result = analyze_dead_code(str(tmp_path), max_files=10)
+
+        assert result.stats["total_functions"] >= 1

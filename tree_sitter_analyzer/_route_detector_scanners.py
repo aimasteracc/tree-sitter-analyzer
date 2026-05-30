@@ -55,6 +55,12 @@ _REFERENCE_HANDLER_TYPES = frozenset(
     }
 )
 
+# HTTP verbs that Express registers routes on; module-level to avoid
+# rebuilding the set on every scan_express_routes call.
+_EXPRESS_HTTP_METHODS = frozenset(
+    {"get", "post", "put", "delete", "patch", "head", "options", "all", "use"}
+)
+
 if TYPE_CHECKING:
     pass
 
@@ -174,6 +180,67 @@ def _append_flask_routes(
         )
 
 
+def _flask_route_from_match(
+    m: re.Match,
+    node: Any,
+    route_info_cls: type,
+    file_path: str,
+    routes: list[Any],
+) -> None:
+    """Append Flask @app.route(...) entries extracted from *m* to *routes*."""
+    url_pattern = m.group(1)
+    methods_str = m.group(2)
+    methods = parse_methods_list(methods_str) if methods_str else ["GET"]
+    handler = function_name_after_decorator(node)
+    _append_flask_routes(
+        routes,
+        route_info_cls,
+        methods=methods,
+        url_pattern=url_pattern,
+        handler=handler,
+        file_path=file_path,
+        line_number=node.start_point[0] + 1,
+    )
+
+
+def _scan_handler_args(
+    rest: list[Any],
+) -> tuple[Any | None, bool]:
+    """Scan *rest* positional args; return (last_callable_node, saw_object)."""
+    last_callable: Any | None = None
+    saw_object = False
+    for arg in rest:
+        node_type = arg.type
+        if node_type in _INLINE_HANDLER_TYPES or node_type in _REFERENCE_HANDLER_TYPES:
+            last_callable = arg
+        elif node_type in _OBJECT_HANDLER_TYPES:
+            saw_object = True
+        elif node_type in ("string", "template_string"):
+            last_callable = arg
+        # "array" and unknowns: skip
+    return last_callable, saw_object
+
+
+def _resolve_handler_text(last_callable: Any) -> str:
+    """Convert a callable AST node to a handler name string."""
+    node_type = last_callable.type
+    if node_type in _INLINE_HANDLER_TYPES:
+        return "<inline>"
+    if node_type in ("string", "template_string"):
+        return last_callable.text.decode().strip("\"'`")[:80]
+    return last_callable.text.decode()[:80]
+
+
+def _extract_express_url(args_node: Any) -> str | None:
+    """Return the URL pattern from the first string/template_string arg, or None."""
+    for child in args_node.children:
+        if child.type == "template_string":
+            return extract_template_string(child)
+        if child.type == "string":
+            return unquote(child.text.decode())
+    return None
+
+
 def scan_flask_decorators(
     root: Any, file_path: str, _source: str, route_info_cls: type
 ) -> list[Any]:
@@ -191,20 +258,7 @@ def scan_flask_decorators(
             text,
         )
         if m:
-            # r37dv (dogfood): flatten nesting 6 → 4 via _append_flask_routes.
-            url_pattern = m.group(1)
-            methods_str = m.group(2)
-            methods = parse_methods_list(methods_str) if methods_str else ["GET"]
-            handler = function_name_after_decorator(node)
-            _append_flask_routes(
-                routes,
-                route_info_cls,
-                methods=methods,
-                url_pattern=url_pattern,
-                handler=handler,
-                file_path=file_path,
-                line_number=node.start_point[0] + 1,
-            )
+            _flask_route_from_match(m, node, route_info_cls, file_path, routes)
             continue
         # K1: ``@app.get('/x')`` / ``@app.post('/x')`` are the Flask 2.0+
         # shortcut decorators (also FastAPI). Only emit a flask route here
@@ -432,37 +486,10 @@ def _extract_express_handler_name(args_node: Any) -> str:
         return "<unknown>"
     rest = positional[1:]
 
-    last_callable: Any | None = None
-    saw_object = False
-    for arg in rest:
-        node_type = arg.type
-        if node_type in _INLINE_HANDLER_TYPES:
-            last_callable = arg
-        elif node_type in _REFERENCE_HANDLER_TYPES:
-            last_callable = arg
-        elif node_type in _OBJECT_HANDLER_TYPES:
-            saw_object = True
-        elif node_type == "array":
-            # Middleware list — not the handler itself; ignored.
-            continue
-        elif node_type in ("string", "template_string"):
-            # A literal-string handler is legal in some routers; treat it
-            # the same way extract_js_handler did: strip quotes, cap length.
-            last_callable = arg
-        # Anything else (numbers, booleans, ``null``, ``undefined``) is
-        # ignored — they cannot be real handlers and we'd rather report
-        # ``<unknown>`` than something misleading.
+    last_callable, saw_object = _scan_handler_args(rest)
 
     if last_callable is not None:
-        node_type = last_callable.type
-        if node_type in _INLINE_HANDLER_TYPES:
-            return "<inline>"
-        if node_type == "call_expression":
-            return last_callable.text.decode()[:80]
-        if node_type in ("string", "template_string"):
-            return last_callable.text.decode().strip("\"'`")[:80]
-        # identifier / member_expression / subscript_expression
-        return last_callable.text.decode()[:80]
+        return _resolve_handler_text(last_callable)
 
     if saw_object:
         return "<object>"
@@ -473,17 +500,6 @@ def scan_express_routes(
     root: Any, file_path: str, language: str, route_info_cls: type
 ) -> list[Any]:
     routes: list[Any] = []
-    http_methods = {
-        "get",
-        "post",
-        "put",
-        "delete",
-        "patch",
-        "head",
-        "options",
-        "all",
-        "use",
-    }
     file_imports_express = _file_imports_express(root)
     for node in walk(root):
         if node.type != "call_expression":
@@ -496,7 +512,7 @@ def scan_express_routes(
         if len(parts) != 2:
             continue
         receiver, method_name = parts[0], parts[1].lower()
-        if method_name not in http_methods:
+        if method_name not in _EXPRESS_HTTP_METHODS:
             continue
         # Finding 3: skip non-Express receivers (apiClient.post,
         # fetcher.get, etc.). Require both signals — receiver shape
@@ -509,17 +525,7 @@ def scan_express_routes(
         args_node = node.child_by_field_name("arguments")
         if args_node is None:
             continue
-        first_arg = None
-        for child in args_node.children:
-            if child.type in ("string", "template_string"):
-                first_arg = child
-                break
-        if first_arg is None:
-            continue
-        if first_arg.type == "template_string":
-            url_pattern = extract_template_string(first_arg)
-        else:
-            url_pattern = unquote(first_arg.text.decode())
+        url_pattern = _extract_express_url(args_node)
         if not url_pattern or not url_pattern.startswith("/"):
             continue
         http_method = method_name.upper() if method_name != "use" else "USE"

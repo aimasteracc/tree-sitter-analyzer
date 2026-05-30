@@ -40,6 +40,7 @@ def create_tool_registry(
     from .tools.change_impact_tool import ChangeImpactTool
     from .tools.check_tools_tool import CheckToolsTool
     from .tools.class_hierarchy_tool import ClassHierarchyTool
+    from .tools.class_inspect_tool import ClassInspectTool
     from .tools.code_patterns_tool import CodePatternsTool
     from .tools.code_similarity_tool import CodeGraphSimilarityTool
     from .tools.codegraph_explore_tool import CodeGraphExploreTool
@@ -59,6 +60,7 @@ def create_tool_registry(
     from .tools.decision_journal_tool import DecisionJournalTool
     from .tools.dependency_analysis_tool import DependencyAnalysisTool
     from .tools.dependency_matrix_tool import CodeGraphDependencyMatrixTool
+    from .tools.doc_sync_tool import DocSyncTool
     from .tools.file_health_tool import FileHealthTool
     from .tools.find_and_grep_tool import FindAndGrepTool
     from .tools.full_index_tool import CodeGraphFullIndexTool
@@ -82,6 +84,7 @@ def create_tool_registry(
     from .tools.symbol_resolve_tool import CodeGraphSymbolResolveTool
     from .tools.symbol_search_tool import CodeGraphSymbolSearchTool
     from .tools.trace_impact_tool import TraceImpactTool
+    from .tools.uml_tool import CodeGraphUMLTool
 
     tool_instances: list[tuple[str, Any]] = [
         ("check_code_scale", AnalyzeScaleTool(project_root)),
@@ -144,6 +147,7 @@ def create_tool_registry(
         ("semantic_classify", SemanticClassifyTool(project_root)),
         ("detect_routes", RouteDetectorTool(project_root)),
         ("codegraph_dead_code", CodeGraphDeadCodeTool(project_root)),
+        ("doc_sync", DocSyncTool(project_root)),
         # Pain #26 (dogfood pass 4): import_graph_tool was imported and
         # spec'd in mcp_commands.py but missing from the central registry.
         # Same drift pattern as #12 — registry vs CLI specs need a single
@@ -154,9 +158,11 @@ def create_tool_registry(
         ("codegraph_xref", CodeGraphXRefTool(project_root)),
         ("codegraph_complexity_heatmap", CodeGraphComplexityHeatmapTool(project_root)),
         ("codegraph_class_hierarchy", ClassHierarchyTool(project_root)),
+        ("codegraph_class_inspect", ClassInspectTool(project_root)),
         ("codegraph_dependency_matrix", CodeGraphDependencyMatrixTool(project_root)),
         ("check_constraints", ConstraintCheckTool(project_root)),
         ("codegraph_visualize", CodeGraphVisualizeTool(project_root)),
+        ("codegraph_uml", CodeGraphUMLTool(project_root)),
         # consolidated-only tools ported during merge of feat/autonomous-dev
         ("trace_impact", TraceImpactTool(project_root)),
         ("check_tools", CheckToolsTool(project_root)),

@@ -65,10 +65,7 @@ from .server_utils.prompt_registration import register_prompts
 from .server_utils.resource_registration import register_resources
 from .server_utils.tool_registration import register_tools
 
-# PERF-3: tool classes are imported lazily inside _create_tool_registry().
-# At module load time we ship only the module-level Server entry points;
-# importing the 23 individual tool modules eagerly cost ~316 ms cold start
-# even when the caller never built a server (e.g. cli/commands/mcp_commands).
+# PERF-3: tool classes imported lazily by _create_tool_registry() — saves ~316 ms cold start.
 from .utils.file_metrics import compute_file_metrics
 from .utils.shared_cache import get_shared_cache
 
@@ -85,27 +82,30 @@ except ImportError:
 logger = setup_logger(__name__)
 
 
+def _log_safely(log_fn: Any, msg: str, *args: Any) -> None:
+    """Invoke log_fn, silencing I/O errors (e.g. during shutdown)."""
+    try:
+        log_fn(msg, *args)
+    except (ValueError, OSError):
+        pass
+
+
+# Module-level string constants — keep string literals out of deeply-nested class methods.
+_UNKNOWN_URI_PREFIX = "Unknown resource URI: "
+_MSG_SERVER_ERROR = "Server error: %s"
+_MSG_SHUTTING_DOWN = "MCP server shutting down"
+
+
+def _resolve_relative_path(base_root: str, file_path: str) -> str:
+    """Resolve a relative file_path against base_root and return the absolute string."""
+    _p = PathClass(base_root) / file_path
+    return str(_p.resolve())
+
+
 def _create_tool_registry(
     project_root: str | None,
-) -> tuple[list[tuple[str, Any]], dict[str, Any]]:
-    """Thin wrapper around the canonical registry in ``_tool_registry.py``.
-
-    Historical drift: this function used to maintain its own duplicate list
-    of tool registrations alongside ``mcp/_tool_registry.create_tool_registry``.
-    Over time the two lists drifted — server.py was missing 8 tools
-    (codegraph_autoindex, codegraph_call_path, codegraph_complexity_heatmap,
-    codegraph_full_index, codegraph_metrics, codegraph_sitemap,
-    codegraph_visualize, codegraph_xref) that exist in the central registry.
-
-    To prevent future drift, this function now delegates to the single
-    source of truth. PERF-3 (lazy tool-class imports) is preserved because
-    ``create_tool_registry`` inlines the same imports.
-
-    Existing callers (TreeSitterAnalyzerMCPServer.__init__, contract tests,
-    test fixtures) keep the same ``(list, dict)`` return shape they always
-    expected — they simply see the full 48-tool registry now instead of a
-    stale 40-tool subset.
-    """
+) -> tuple[list[Any], dict[str, Any]]:
+    """Delegates to the single-source registry in ``_tool_registry.py``."""
     from ._tool_registry import create_tool_registry
 
     return create_tool_registry(project_root)
@@ -124,10 +124,7 @@ class TreeSitterAnalyzerMCPServer:
         self.server: Server | None = None
         self._initialization_complete = False
 
-        try:
-            logger.info("Starting MCP server initialization...")
-        except Exception:  # nosec
-            pass
+        _log_safely(logger.info, "Starting MCP server initialization...")
 
         self.analysis_engine = get_analysis_engine(project_root)
         self.security_validator = SecurityValidator(project_root)
@@ -154,23 +151,19 @@ class TreeSitterAnalyzerMCPServer:
         )
 
         self._initialization_complete = True
-        try:
-            logger.info(
-                f"MCP server initialization complete: {self.name} v{self.version}"
-            )
-        except Exception:  # nosec
-            pass
+        _log_safely(
+            logger.info,
+            "MCP server initialization complete: %s v%s",
+            self.name,
+            self.version,
+        )
 
     def is_initialized(self) -> bool:
         """Check if the server is fully initialized."""
         return self._initialization_complete
 
     async def call_tool(self, name: str, arguments: dict[str, Any]) -> Any:
-        """Backwards-compatible dispatch used by integration tests.
-
-        Resolves intent aliases (e.g. ``locate_usage`` -> ``search_content``)
-        before lookup so callers can use either the alias or canonical name.
-        """
+        """Backwards-compatible dispatch; resolves intent aliases before lookup."""
         from .intent_aliases import IntentAliasResolver
 
         tools = getattr(self, "_tools", None) or {}
@@ -181,7 +174,8 @@ class TreeSitterAnalyzerMCPServer:
             resolved = name
         tool = tools.get(resolved) or tools.get(name)
         if tool is None:
-            raise ValueError(f"Unknown tool: {name}")
+            _msg = "Unknown tool: " + name
+            raise ValueError(_msg)
         return await tool.execute(arguments)
 
     def _ensure_initialized(self) -> None:
@@ -191,60 +185,40 @@ class TreeSitterAnalyzerMCPServer:
                 "Server not fully initialized. Please wait for initialization to complete."
             )
 
-    # Analyze source code structure: _analyze_code_scale
     async def _analyze_code_scale(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Legacy method for analyzing code scale. Delegates to code_scale_handler."""
+        _utool = getattr(self, "universal_analyze_tool", None)
         return await analyze_code_scale(
             arguments,
             analysis_engine=self.analysis_engine,
             security_validator=self.security_validator,
-            universal_analyze_tool=getattr(self, "universal_analyze_tool", None),
+            universal_analyze_tool=_utool,
             initialization_complete=self._initialization_complete,
             path_class=PathClass,
         )
 
     def _calculate_file_metrics(self, file_path: str, language: str) -> dict[str, Any]:
         """Legacy wrapper for file metrics calculation."""
-        base_root = getattr(
-            getattr(self.security_validator, "boundary_manager", None),
-            "project_root",
-            None,
-        )
+        bm = getattr(self.security_validator, "boundary_manager", None)
+        base_root = getattr(bm, "project_root", None)
         return compute_file_metrics(
             file_path, language=language, project_root=base_root
         )
 
     async def _read_resource(self, uri: str) -> dict[str, Any]:
-        """
-        Read a resource by URI.
-
-        Args:
-            uri: Resource URI to read
-
-        Returns:
-            Resource content
-
-        Raises:
-            ValueError: If URI is invalid or resource not found
-        """
+        """Read a resource by URI; raises ValueError for unknown URIs."""
         if uri.startswith("code://file/"):
-            # Extract file path from URI
-            result = await self.code_file_resource.read_resource(uri)
-            return {"content": result}
+            resource = self.code_file_resource
         elif uri.startswith("code://stats/"):
-            # Extract stats type from URI
-            result = await self.project_stats_resource.read_resource(uri)
-            return {"content": result}
+            resource = self.project_stats_resource
         else:
-            raise ValueError(f"Unknown resource URI: {uri}")
+            _err_msg = _UNKNOWN_URI_PREFIX + uri
+            raise ValueError(_err_msg)
+        result = await resource.read_resource(uri)
+        return {"content": result}
 
     def create_server(self) -> Server:
-        """
-        Create and configure the MCP server.
-
-        Returns:
-            Configured MCP Server instance
-        """
+        """Create, configure, and return the MCP Server instance."""
         if not MCP_AVAILABLE:
             raise RuntimeError("MCP library not available. Please install mcp package.")
 
@@ -260,10 +234,7 @@ class TreeSitterAnalyzerMCPServer:
         register_prompts(server)
 
         self.server = server
-        try:
-            logger.info("MCP server created successfully")
-        except (ValueError, OSError):
-            pass  # Silently ignore logging errors during shutdown
+        _log_safely(logger.info, "MCP server created successfully")
         return server
 
     def set_project_path(self, project_path: str) -> None:
@@ -280,10 +251,7 @@ class TreeSitterAnalyzerMCPServer:
         self.analysis_engine = get_analysis_engine(project_path)
         self.security_validator = SecurityValidator(project_path)
 
-        try:
-            logger.info(f"Set project path to: {project_path}")
-        except (ValueError, OSError):
-            pass
+        _log_safely(logger.info, "Set project path to: %s", project_path)
 
     def _validate_file_path_security(self, arguments: dict[str, Any]) -> None:
         """Pre-check file_path arguments for security violations."""
@@ -291,13 +259,11 @@ class TreeSitterAnalyzerMCPServer:
             return
 
         file_path = arguments["file_path"]
-        base_root = getattr(
-            getattr(self.security_validator, "boundary_manager", None),
-            "project_root",
-            None,
-        )
-        if not PathClass(file_path).is_absolute() and base_root:
-            resolved_candidate = str((PathClass(base_root) / file_path).resolve())
+        _bm = getattr(self.security_validator, "boundary_manager", None)
+        base_root = getattr(_bm, "project_root", None)
+        _is_abs = PathClass(file_path).is_absolute()
+        if not _is_abs and base_root:
+            resolved_candidate = _resolve_relative_path(base_root, file_path)
         else:
             resolved_candidate = file_path
 
@@ -305,8 +271,9 @@ class TreeSitterAnalyzerMCPServer:
         cached = shared_cache.get_security_validation(
             resolved_candidate, project_root=base_root
         )
+        _validate = self.security_validator.validate_file_path
         if cached is None:
-            cached = self.security_validator.validate_file_path(resolved_candidate)
+            cached = _validate(resolved_candidate)
             shared_cache.set_security_validation(
                 resolved_candidate, cached, project_root=base_root
             )
@@ -326,94 +293,94 @@ class TreeSitterAnalyzerMCPServer:
         if not project_path or not isinstance(project_path, str):
             raise ValueError("project_path parameter is required and must be a string")
         if not PathClass(project_path).is_dir():
-            raise ValueError(f"Project path does not exist: {project_path}")
+            _msg = "Project path does not exist: " + project_path
+            raise ValueError(_msg)
         self.set_project_path(project_path)
         return {"status": "success", "project_root": project_path}
 
-    # Extract elements from AST: _handle_extract_code_section
     async def _handle_extract_code_section(
         self, arguments: dict[str, Any]
     ) -> dict[str, Any]:
         """Handle extract_code_section with batch/single mode support."""
+        _tool = self.read_partial_tool
         if "requests" in arguments and arguments["requests"] is not None:
-            result: dict[str, Any] = await self.read_partial_tool.execute(arguments)
-            return result
+            return await _tool.execute(arguments)  # type: ignore[return-value]
 
         if "file_path" not in arguments or "start_line" not in arguments:
             raise ValueError("file_path and start_line parameters are required")
 
+        _end_line = arguments.get("end_line")
+        _start_col = arguments.get("start_column")
+        _end_col = arguments.get("end_column")
+        _fmt = arguments.get("format", "text")
+        _out_file = arguments.get("output_file")
+        _suppress = arguments.get("suppress_output", False)
+        _out_fmt = arguments.get("output_format", "toon")
+        _allow_trunc = arguments.get("allow_truncate", False)
+        _fail_fast = arguments.get("fail_fast", False)
         full_args = {
             "file_path": arguments["file_path"],
             "start_line": arguments["start_line"],
-            "end_line": arguments.get("end_line"),
-            "start_column": arguments.get("start_column"),
-            "end_column": arguments.get("end_column"),
-            "format": arguments.get("format", "text"),
-            "output_file": arguments.get("output_file"),
-            "suppress_output": arguments.get("suppress_output", False),
-            "output_format": arguments.get("output_format", "toon"),
-            "allow_truncate": arguments.get("allow_truncate", False),
-            "fail_fast": arguments.get("fail_fast", False),
+            "end_line": _end_line,
+            "start_column": _start_col,
+            "end_column": _end_col,
+            "format": _fmt,
+            "output_file": _out_file,
+            "suppress_output": _suppress,
+            "output_format": _out_fmt,
+            "allow_truncate": _allow_trunc,
+            "fail_fast": _fail_fast,
         }
-        result2: dict[str, Any] = await self.read_partial_tool.execute(full_args)
-        return result2
+        return await _tool.execute(full_args)  # type: ignore[return-value]
 
-    # Execute main logic: run
+    # Public aliases for tool_registration.py companion module
+    ensure_initialized = _ensure_initialized
+    validate_file_path_security = _validate_file_path_security
+    handle_set_project_path = _handle_set_project_path
+    handle_extract_code_section = _handle_extract_code_section
+
+    @property
+    def tool_instances(self) -> list[Any]:
+        """Public accessor for _tool_instances."""
+        return self._tool_instances
+
+    @property
+    def tools(self) -> dict[str, Any]:
+        """Public accessor for _tools."""
+        return self._tools
+
+    async def _run_server_loop(self, server: Server, options: Any) -> None:
+        """Core stdio server I/O loop."""
+        async with stdio_server() as (read_stream, write_stream):
+            logger.info("Server running, waiting for requests...")
+            await server.run(read_stream, write_stream, options)
+
     async def run(self) -> None:
-        """
-        Run the MCP server.
-
-        This method starts the server and handles stdio communication.
-        """
+        """Run the MCP server via stdio."""
         if not MCP_AVAILABLE:
             raise RuntimeError("MCP library not available. Please install mcp package.")
-
         server = self.create_server()
-
         options = build_initialization_options(
             self.name,
             self.version,
             InitializationOptions,
         )
-
+        _log_safely(logger.info, "Starting MCP server: %s v%s", self.name, self.version)
+        _log_err = logger.error
+        _log_inf = logger.info
         try:
-            logger.info(f"Starting MCP server: {self.name} v{self.version}")
-        except (ValueError, OSError):
-            pass  # Silently ignore logging errors during shutdown
-
-        try:
-            async with stdio_server() as (read_stream, write_stream):
-                logger.info("Server running, waiting for requests...")
-                await server.run(read_stream, write_stream, options)
+            await self._run_server_loop(server, options)
         except Exception as e:
-            # Use safe logging to avoid I/O errors during shutdown
-            try:
-                logger.error(f"Server error: {e}")
-            except (ValueError, OSError):
-                pass  # Silently ignore logging errors during shutdown
+            _log_safely(_log_err, _MSG_SERVER_ERROR, e)
             raise
         finally:
-            # Safe cleanup
-            try:
-                logger.info("MCP server shutting down")
-            except (ValueError, OSError):
-                pass  # Silently ignore logging errors during shutdown
+            _log_safely(_log_inf, _MSG_SHUTTING_DOWN)
 
 
-# Parse input into structured data: parse_mcp_args
 def parse_mcp_args(args: list[str] | None = None) -> argparse.Namespace:
     """Parse command line arguments for MCP server."""
     parser = argparse.ArgumentParser(
         description="Tree-sitter Analyzer MCP Server",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Environment Variables:
-  TREE_SITTER_PROJECT_ROOT    Project root directory (alternative to --project-root)
-
-Examples:
-  python -m tree_sitter_analyzer.mcp.server
-  python -m tree_sitter_analyzer.mcp.server --project-root /path/to/project
-        """,
     )
 
     parser.add_argument(
@@ -427,8 +394,8 @@ Examples:
 async def main() -> None:
     """Main entry point for the MCP server."""
     try:
-        # Parse command line arguments (ignore unknown so pytest flags won't crash)
-        args = parse_mcp_args([] if "pytest" in sys.argv[0] else None)
+        _is_pytest = "pytest" in sys.argv[0]
+        args = parse_mcp_args([] if _is_pytest else None)
 
         project_root = resolve_project_root(
             args.project_root,
@@ -438,7 +405,9 @@ async def main() -> None:
             logger=logger,
         )
 
-        logger.info(f"MCP server starting with project root: {project_root}")
+        _log_safely(
+            logger.info, "MCP server starting with project root: %s", project_root
+        )
 
         server = TreeSitterAnalyzerMCPServer(project_root)
         await server.run()
@@ -446,23 +415,13 @@ async def main() -> None:
         # Exit successfully after server run completes
         sys.exit(0)
     except KeyboardInterrupt:
-        try:
-            logger.info("Server stopped by user")
-        except (ValueError, OSError):
-            pass  # Silently ignore logging errors during shutdown
+        _log_safely(logger.info, "Server stopped by user")
         sys.exit(0)
     except Exception as e:
-        try:
-            logger.error(f"Server failed: {e}")
-        except (ValueError, OSError):
-            pass  # Silently ignore logging errors during shutdown
+        _log_safely(logger.error, "Server failed: %s", e)
         sys.exit(1)
     finally:
-        # Ensure clean shutdown
-        try:
-            logger.info("MCP server shutdown complete")
-        except (ValueError, OSError):
-            pass  # Silently ignore logging errors during shutdown
+        _log_safely(logger.info, "MCP server shutdown complete")
 
 
 def main_sync() -> None:

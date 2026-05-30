@@ -12,7 +12,7 @@ class TestASTCacheToolInit:
 
     def test_default_init(self):
         tool = ASTCacheTool()
-        assert tool._cache is None
+        assert not tool.cache_initialized
 
     def test_init_with_project_root(self):
         tool = ASTCacheTool(project_root="/tmp/project")
@@ -20,28 +20,28 @@ class TestASTCacheToolInit:
 
     def test_set_project_path_resets_cache(self, tmp_path):
         tool = ASTCacheTool(project_root=str(tmp_path))
-        tool._cache = MagicMock()
+        tool._cache = MagicMock()  # noqa: SLF001 — test setup write
         tool.set_project_path(str(tmp_path / "sub"))
-        assert tool._cache is None
+        assert not tool.cache_initialized
 
 
 class TestGetCache:
-    """Tests for _get_cache lazy initialization."""
+    """Tests for get_cache lazy initialization."""
 
     def test_raises_without_project_root(self):
         tool = ASTCacheTool()
         with pytest.raises(ValueError, match="Project root not set"):
-            tool._get_cache()
+            tool.get_cache()
 
     def test_creates_cache_with_project_root(self, tmp_path):
         tool = ASTCacheTool(project_root=str(tmp_path))
-        cache = tool._get_cache()
+        cache = tool.get_cache()
         assert cache is not None
 
     def test_reuses_existing_cache(self, tmp_path):
         tool = ASTCacheTool(project_root=str(tmp_path))
-        cache1 = tool._get_cache()
-        cache2 = tool._get_cache()
+        cache1 = tool.get_cache()
+        cache2 = tool.get_cache()
         assert cache1 is cache2
 
 
@@ -141,7 +141,7 @@ class TestExecute:
     def tool_with_mock_cache(self, tmp_path):
         tool = ASTCacheTool(project_root=str(tmp_path))
         mock_cache = MagicMock()
-        tool._cache = mock_cache
+        tool._cache = mock_cache  # noqa: SLF001 — test setup write
         return tool, mock_cache
 
     @pytest.mark.asyncio
@@ -180,9 +180,12 @@ class TestExecute:
         # J1: ``search`` is now backed by ``fts_search`` (which delegates
         # to a LIKE scan when FTS5 is unavailable). Stub both so the test
         # works regardless of the runtime implementation.
+        # G2: when fts5_available=True and query >= 2 chars, the ranked path
+        # is used — stub fts_search_ranked as well.
         mock_cache.fts_search.return_value = [{"name": "MyClass"}]
+        mock_cache.fts_search_ranked.return_value = [{"name": "MyClass"}]
         mock_cache.search_symbols.return_value = [{"name": "MyClass"}]
-        mock_cache._fts5_available = True
+        mock_cache.fts5_available = True
         result = await tool.execute({"mode": "search", "query": "MyClass"})
         assert result["count"] == 1
         assert result["query"] == "MyClass"
@@ -191,7 +194,7 @@ class TestExecute:
     async def test_fts_search_mode(self, tool_with_mock_cache):
         tool, mock_cache = tool_with_mock_cache
         mock_cache.fts_search.return_value = [{"name": "MyClass", "rank": -1.0}]
-        mock_cache._fts5_available = True
+        mock_cache.fts5_available = True
         result = await tool.execute(
             {"mode": "fts_search", "query": "MyClass", "limit": 10}
         )

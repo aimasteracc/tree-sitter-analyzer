@@ -198,6 +198,15 @@ class ASTCacheTool(BaseMCPTool):
             self._cache = ASTCache(self.project_root)
         return self._cache
 
+    def get_cache(self) -> ASTCache:
+        """Public alias for _get_cache() — use this instead of accessing _cache directly."""
+        return self._get_cache()
+
+    @property
+    def cache_initialized(self) -> bool:
+        """True if the AST cache has been lazily initialized (i.e. cached)."""
+        return self._cache is not None
+
     def _get_sync(self) -> IncrementalSync:
         if self._sync is None:
             self._sync = IncrementalSync(self._get_cache())
@@ -397,10 +406,10 @@ class ASTCacheTool(BaseMCPTool):
                 force=force,
                 include_activation=include_activation,
             )
-            indexed_files = int(
-                result.get("indexed", result.get("files_indexed", 0)) or 0
-            )
-            symbols = int(result.get("symbol_count", result.get("symbols", 0)) or 0)
+            files_indexed_fallback = result.get("files_indexed", 0)
+            indexed_files = int(result.get("indexed", files_indexed_fallback) or 0)
+            symbols_fallback = result.get("symbols", 0)
+            symbols = int(result.get("symbol_count", symbols_fallback) or 0)
             summary_line = (
                 f"ast_cache index project files={indexed_files} "
                 f"symbols={symbols} force={bool(force)}"
@@ -443,10 +452,15 @@ class ASTCacheTool(BaseMCPTool):
         query = arguments.get("query", "")
         language = arguments.get("language")
         limit = arguments.get("limit", 100)
-        raw_results = cache.fts_search(query, language=language, limit=limit)
+        fts5_available = cache.fts5_available
+        # G2: use BM25-ranked search for queries >= 2 chars when FTS5 is available.
+        use_ranked = fts5_available and len(query) >= 2 and mode != "fts_search"
+        if use_ranked:
+            raw_results = cache.fts_search_ranked(query, language=language, limit=limit)
+        else:
+            raw_results = cache.fts_search(query, language=language, limit=limit)
         # K7: defensively split legacy multi-symbol import rows.
         results = _apply_legacy_import_split(raw_results)
-        fts5_available = cache._fts5_available
         summary_line = (
             f"ast_cache {mode} query={query!r} "
             f"results={len(results)} fts5={fts5_available}"
@@ -462,6 +476,9 @@ class ASTCacheTool(BaseMCPTool):
             "count": len(results),
             "fts5_available": fts5_available,
         }
+        if use_ranked and results:
+            payload["ranked"] = True
+            payload["ranking_method"] = "fts5_bm25"
         if mode == "fts_search":
             payload["deprecated_alias"] = (
                 "use mode='search' — 'fts_search' is a deprecated alias"
@@ -596,8 +613,8 @@ class ASTCacheTool(BaseMCPTool):
         """
         # Already running? Don't double-start.
         if self._watcher is not None and self._watcher.is_running():
-            poll_interval = float(self._watcher._poll_interval)
-            backend = str(self._watcher._backend)
+            poll_interval = float(self._watcher.poll_interval)
+            backend = str(self._watcher.backend)
             summary_line = (
                 f"ast_cache watch_start status=already_running "
                 f"backend={backend} poll_interval={poll_interval}"
@@ -629,8 +646,8 @@ class ASTCacheTool(BaseMCPTool):
 
         # Read back the actual values the daemon enforced (poll_interval
         # has a min of 1.0 inside the daemon, so echo what was applied).
-        applied_poll = float(self._watcher._poll_interval)
-        applied_backend = str(self._watcher._backend)
+        applied_poll = float(self._watcher.poll_interval)
+        applied_backend = str(self._watcher.backend)
         summary_line = (
             f"ast_cache watch_start status=started "
             f"backend={applied_backend} poll_interval={applied_poll}"

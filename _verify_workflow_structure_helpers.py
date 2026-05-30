@@ -102,6 +102,13 @@ def _check_reusable_test_inputs(
         "boolean",
         errors,
     )
+    _check_input_default_and_type(
+        inputs,
+        "matrix-profile",
+        "full",
+        "string",
+        errors,
+    )
 
 
 def _check_input_default_and_type(
@@ -138,13 +145,19 @@ def _check_reusable_test_secrets(
 
 
 def _check_test_matrix_job(jobs: dict[str, Any], errors: list[str]) -> None:
-    test_job = jobs.get("test-matrix")
-    if not isinstance(test_job, dict):
-        errors.append("Missing test-matrix job")
+    full_job = jobs.get("test-matrix-full")
+    pr_job = jobs.get("test-matrix-pr")
+    if not isinstance(full_job, dict):
+        errors.append("Missing test-matrix-full job")
+        return
+    if not isinstance(pr_job, dict):
+        errors.append("Missing test-matrix-pr job")
         return
 
-    _check_test_matrix(test_job, errors)
-    _check_all_extras_step(test_job, errors)
+    _check_test_matrix(full_job, errors)
+    _check_pr_test_matrix(pr_job, errors)
+    _check_all_extras_step(full_job, errors)
+    _check_all_extras_step(pr_job, errors)
 
 
 def _check_test_matrix(test_job: dict[str, Any], errors: list[str]) -> None:
@@ -168,6 +181,33 @@ def _check_test_matrix(test_job: dict[str, Any], errors: list[str]) -> None:
             "Python version matrix should be "
             f"{expected_versions}, got {matrix.get('python-version')}"
         )
+
+
+def _check_pr_test_matrix(test_job: dict[str, Any], errors: list[str]) -> None:
+    strategy = test_job.get("strategy")
+    if not isinstance(strategy, dict):
+        errors.append("Missing strategy in test-matrix-pr job")
+        return
+
+    matrix = strategy.get("matrix")
+    if not isinstance(matrix, dict):
+        errors.append("Missing matrix in PR strategy")
+        return
+
+    entries = matrix.get("include")
+    if not isinstance(entries, list):
+        errors.append("Missing include matrix in test-matrix-pr job")
+        return
+
+    axes = {(entry.get("os"), entry.get("python-version")) for entry in entries}
+    expected_axes = {
+        ("ubuntu-latest", "3.11"),
+        ("ubuntu-latest", "3.13"),
+        ("windows-latest", "3.11"),
+        ("macos-latest", "3.11"),
+    }
+    if axes != expected_axes:
+        errors.append(f"PR matrix should be {expected_axes}, got {axes}")
 
 
 def _check_all_extras_step(test_job: dict[str, Any], errors: list[str]) -> None:

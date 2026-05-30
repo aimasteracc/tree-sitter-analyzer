@@ -119,6 +119,68 @@ class TestExecuteWithIndex:
         assert result["lag_seconds"] is None
 
     @pytest.mark.asyncio
+    async def test_total_edges_reported_for_graph_density(
+        self, tool_with_root, tmp_path
+    ):
+        """total_edges must be present — README 'ahead' claim vs CodeGraph."""
+        cache_dir = tmp_path / ".ast-cache"
+        cache_dir.mkdir()
+        (cache_dir / "index.db").write_bytes(b"sqlite3-fake")
+
+        mock_cache = MagicMock()
+        mock_cache.get_stats.return_value = {
+            "total_files": 10,
+            "total_symbols": 100,
+            "fts5_available": True,
+            "schema_version": 3,
+        }
+        # get_cross_file_stats provides the edge count used for graph density.
+        mock_cache.get_cross_file_stats.return_value = {"total": 250}
+
+        with patch(
+            "tree_sitter_analyzer.ast_cache.ASTCache",
+            return_value=mock_cache,
+        ):
+            result = await tool_with_root.execute(
+                {"output_format": "json", "include_lag": False}
+            )
+
+        assert result["verdict"] == "INFO"
+        assert "total_edges" in result, (
+            "total_edges must be present (README 'ahead' vs CodeGraph graph density signal)"
+        )
+        assert result["total_edges"] == 250
+
+    @pytest.mark.asyncio
+    async def test_total_edges_zero_when_cross_file_stats_fails(
+        self, tool_with_root, tmp_path
+    ):
+        """total_edges is 0 when get_cross_file_stats raises (graceful fallback)."""
+        cache_dir = tmp_path / ".ast-cache"
+        cache_dir.mkdir()
+        (cache_dir / "index.db").write_bytes(b"sqlite3-fake")
+
+        mock_cache = MagicMock()
+        mock_cache.get_stats.return_value = {
+            "total_files": 5,
+            "total_symbols": 50,
+            "fts5_available": True,
+            "schema_version": 2,
+        }
+        mock_cache.get_cross_file_stats.side_effect = RuntimeError("edge table missing")
+
+        with patch(
+            "tree_sitter_analyzer.ast_cache.ASTCache",
+            return_value=mock_cache,
+        ):
+            result = await tool_with_root.execute(
+                {"output_format": "json", "include_lag": False}
+            )
+
+        assert result["verdict"] == "INFO"
+        assert result["total_edges"] == 0
+
+    @pytest.mark.asyncio
     async def test_indexed_with_lag_computes_seconds(self, tool_with_root, tmp_path):
         cache_dir = tmp_path / ".ast-cache"
         cache_dir.mkdir()

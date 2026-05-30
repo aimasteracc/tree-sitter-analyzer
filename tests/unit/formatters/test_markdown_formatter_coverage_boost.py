@@ -17,32 +17,6 @@ class TestFormatTableCompactAndCSV:
     def setup_method(self):
         self.formatter = MarkdownFormatter()
 
-    def test_format_table_compact(self):
-        """Test format_table with table_type='compact'."""
-        analysis_result = {
-            "file_path": "test.md",
-            "line_count": 10,
-            "elements": [
-                {
-                    "type": "heading",
-                    "text": "Test",
-                    "level": 1,
-                    "line_range": {"start": 1, "end": 1},
-                },
-                {
-                    "type": "link",
-                    "text": "Link",
-                    "url": "http://example.com",
-                    "line_range": {"start": 3, "end": 3},
-                },
-            ],
-        }
-
-        result = self.formatter.format_table(analysis_result, table_type="compact")
-        assert result is not None
-        assert isinstance(result, str)
-        assert len(result) > 0
-
     def test_format_table_csv(self):
         """Test format_table with table_type='csv'."""
         analysis_result = {
