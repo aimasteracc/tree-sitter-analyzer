@@ -51,6 +51,9 @@ from tree_sitter_analyzer.mcp.tools.check_tools_tool import (
 from tree_sitter_analyzer.mcp.tools.class_hierarchy_tool import (
     ClassHierarchyTool,  # noqa: F401
 )
+from tree_sitter_analyzer.mcp.tools.class_inspect_tool import (
+    ClassInspectTool,  # noqa: F401
+)
 from tree_sitter_analyzer.mcp.tools.code_patterns_tool import (
     CodePatternsTool,  # noqa: F401
 )
@@ -863,6 +866,15 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
         },
     ),
     McpCommandSpec(
+        flag_name="class_inspect",
+        tool_attr="ClassInspectTool",
+        label="Inspect a class: list defined methods with override detection",
+        build_tool_args=lambda args, output_format: {
+            "class_name": getattr(args, "class_inspect", None) or "",
+            "output_format": output_format,
+        },
+    ),
+    McpCommandSpec(
         flag_name="dependency_matrix",
         tool_attr="CodeGraphDependencyMatrixTool",
         label="Module coupling analysis: pairwise scores, hotspots, unstable modules (CodeGraph parity)",
@@ -1065,6 +1077,7 @@ _TOOL_CLASS_NAMES: frozenset[str] = frozenset(
         "CodeGraphXRefTool",
         "CodeGraphComplexityHeatmapTool",
         "ClassHierarchyTool",
+        "ClassInspectTool",
         "CodeGraphDependencyMatrixTool",
         "CodeGraphVisualizeTool",
         "CodeGraphUMLTool",

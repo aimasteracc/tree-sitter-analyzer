@@ -40,6 +40,7 @@ def create_tool_registry(
     from .tools.change_impact_tool import ChangeImpactTool
     from .tools.check_tools_tool import CheckToolsTool
     from .tools.class_hierarchy_tool import ClassHierarchyTool
+    from .tools.class_inspect_tool import ClassInspectTool
     from .tools.code_patterns_tool import CodePatternsTool
     from .tools.code_similarity_tool import CodeGraphSimilarityTool
     from .tools.codegraph_explore_tool import CodeGraphExploreTool
@@ -157,6 +158,7 @@ def create_tool_registry(
         ("codegraph_xref", CodeGraphXRefTool(project_root)),
         ("codegraph_complexity_heatmap", CodeGraphComplexityHeatmapTool(project_root)),
         ("codegraph_class_hierarchy", ClassHierarchyTool(project_root)),
+        ("codegraph_class_inspect", ClassInspectTool(project_root)),
         ("codegraph_dependency_matrix", CodeGraphDependencyMatrixTool(project_root)),
         ("check_constraints", ConstraintCheckTool(project_root)),
         ("codegraph_visualize", CodeGraphVisualizeTool(project_root)),

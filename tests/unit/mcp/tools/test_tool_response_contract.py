@@ -319,6 +319,10 @@ class TestExecuteAcrossAllTools:
             # envelope-contract rows.
             "codegraph_similarity": {"mode": "all"},
             "codegraph_class_hierarchy": {"mode": "summary"},
+            "codegraph_class_inspect": {
+                "class_name": "LanguagePlugin",
+                "output_format": "json",
+            },
             "codegraph_dependency_matrix": {"mode": "summary"},
             "check_constraints": {"output_format": "json"},
             # Pain pass 6: server.py registry consolidation surfaced 8

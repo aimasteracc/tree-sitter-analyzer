@@ -149,8 +149,10 @@ class TestSmartContextTool:
 
 class TestExportExtraction:
     def test_extracts_class(self):
+        # models.py was decomposed into models/ package; use base.py as the canonical
+        # file that contains public class definitions (CodeElement, Function, Class, …)
         result = extract_elements(
-            str(PROJECT_ROOT / "tree_sitter_analyzer" / "models.py"), "."
+            str(PROJECT_ROOT / "tree_sitter_analyzer" / "models" / "base.py"), "."
         )
         assert result is not None
         exports = get_all_exports(result)
@@ -159,7 +161,7 @@ class TestExportExtraction:
 
     def test_excludes_private_functions(self):
         result = extract_elements(
-            str(PROJECT_ROOT / "tree_sitter_analyzer" / "models.py"), "."
+            str(PROJECT_ROOT / "tree_sitter_analyzer" / "models" / "base.py"), "."
         )
         assert result is not None
         exports = get_all_exports(result)
@@ -170,7 +172,7 @@ class TestExportExtraction:
 class TestStructureExtraction:
     def test_extracts_structure(self):
         result = extract_elements(
-            str(PROJECT_ROOT / "tree_sitter_analyzer" / "models.py"), "."
+            str(PROJECT_ROOT / "tree_sitter_analyzer" / "models" / "base.py"), "."
         )
         assert result is not None
         structure = get_structure(result)

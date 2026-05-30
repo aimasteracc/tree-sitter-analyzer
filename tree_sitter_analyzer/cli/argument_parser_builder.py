@@ -1341,6 +1341,11 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
         help="Max traversal depth for --class-hierarchy subclasses mode (default: 10)",
     )
     parser.add_argument(
+        "--class-inspect",
+        metavar="CLASS_NAME",
+        help="Inspect a class: list its defined methods with override detection",
+    )
+    parser.add_argument(
         "--dependency-matrix",
         action="store_true",
         help="Module coupling analysis: pairwise dependency scores, hotspots, unstable modules (CodeGraph parity)",

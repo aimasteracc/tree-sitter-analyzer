@@ -31,6 +31,7 @@ allowed-tools:
   - mcp__tree-sitter-analyzer__codegraph_explore
   - mcp__tree-sitter-analyzer__codegraph_impact
   - mcp__tree-sitter-analyzer__codegraph_class_hierarchy
+  - mcp__tree-sitter-analyzer__codegraph_class_inspect
   - mcp__tree-sitter-analyzer__codegraph_dependency_matrix
   - mcp__tree-sitter-analyzer__codegraph_similarity
   - mcp__tree-sitter-analyzer__codegraph_visualize

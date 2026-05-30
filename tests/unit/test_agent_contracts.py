@@ -526,6 +526,7 @@ def test_registered_mcp_tools_have_cli_parity() -> None:
         # their CLI flags use the unprefixed form (--class-hierarchy,
         # --dependency-matrix) to keep the user-facing surface short.
         "codegraph_class_hierarchy": ("main", "--class-hierarchy"),
+        "codegraph_class_inspect": ("main", "--class-inspect"),
         "codegraph_dependency_matrix": ("main", "--dependency-matrix"),
         # Feature 3 (Constraint DSL): MCP tool ``check_constraints`` ships
         # with the CLI flag ``--check-constraints`` for CLI/MCP parity.
