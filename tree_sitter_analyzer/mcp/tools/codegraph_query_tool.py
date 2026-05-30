@@ -56,6 +56,9 @@ from ._codegraph_query_facets import (
 )
 from ._codegraph_query_state import _QueryState
 from ._codegraph_query_symbols import (
+    absolute_path as _absolute_path,  # noqa: F401 — re-exported for tests
+)
+from ._codegraph_query_symbols import (
     build_file_entries as _build_file_entries,
 )
 from ._codegraph_query_symbols import (
@@ -75,6 +78,9 @@ from ._codegraph_query_symbols import (
 )
 from ._codegraph_query_symbols import (
     symbol_key_tuple as _symbol_key_tuple,
+)
+from ._codegraph_query_symbols import (
+    unique_symbol_files as _unique_symbol_files,  # noqa: F401 — re-exported for tests
 )
 from ._response_builder import build_response
 from .base_tool import BaseMCPTool

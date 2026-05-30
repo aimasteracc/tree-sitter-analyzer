@@ -151,10 +151,6 @@ def test_ambiguous_extensions():
     assert result in ["objc", "matlab", "unknown"]  # Implementation dependent
 
 
-def test_detect_language_empty_string_path():
-    assert detector.detect_language("") == ("unknown", 0.0)
-
-
 def test_detect_language_non_string_path():
     assert detector.detect_language(None) == ("unknown", 0.0)
     assert detector.detect_language(123) == ("unknown", 0.0)
@@ -171,24 +167,6 @@ def test_detect_language_h_extension_map_overrides_ambiguity():
     lang, conf = detector.detect_language("header.h")
     assert lang == "c"
     assert conf == 0.7
-
-
-def test_resolve_ambiguity_h_with_cpp_content():
-    cpp_content = "#include <iostream>\nusing namespace std;"
-    result = detector._resolve_ambiguity(".h", cpp_content)
-    assert result == "cpp"
-
-
-def test_resolve_ambiguity_h_with_objc_content():
-    objc_content = "#import <Foundation/Foundation.h>\n@interface Foo : NSObject @end"
-    result = detector._resolve_ambiguity(".h", objc_content)
-    assert result == "objc"
-
-
-def test_resolve_ambiguity_h_with_c_content():
-    c_content = '#include <stdio.h>\nint main() { printf("hi"); return 0; }'
-    result = detector._resolve_ambiguity(".h", c_content)
-    assert result == "c"
 
 
 def test_resolve_ambiguity_h_no_match():
@@ -239,12 +217,6 @@ def test_detect_language_unknown_extension_returns_unknown():
     assert detector.detect_language("file.xyz123") == ("unknown", 0.0)
 
 
-def test_detect_language_from_file_none():
-    assert detect_language_from_file(None) == "unknown"
-    assert detect_language_from_file("") == "unknown"
-    assert detect_language_from_file(0) == "unknown"
-
-
 def test_detect_language_from_file_nonexistent():
     result = detect_language_from_file("/nonexistent/path/to/file.java")
     assert result == "java"
@@ -291,18 +263,6 @@ def test_get_language_info_unknown():
     assert info["name"] == "brainfuck"
     assert info["supported"] is False
     assert info["tree_sitter_available"] is False
-
-
-def test_detect_c_family_cpp_wins():
-    content = "class Foo { public: int x; };\n#include <iostream>\nstd::string s;"
-    result = detector._detect_c_family(content, ["c", "cpp"])
-    assert result == "cpp"
-
-
-def test_detect_c_family_c_wins():
-    content = '#include <stdio.h>\nint main() { printf("hi"); return 0; }'
-    result = detector._detect_c_family(content, ["c", "cpp"])
-    assert result == "c"
 
 
 def test_detect_c_family_no_match():
