@@ -38,8 +38,8 @@ class TestProjectRoot:
         args = _args(project_root="/srv/myproject")
         assert _project_root(args) == "/srv/myproject"
 
-    def test_falls_back_to_cwd_when_none(self, monkeypatch):
-        monkeypatch.chdir("/tmp")
+    def test_falls_back_to_cwd_when_none(self, monkeypatch, tmp_path):
+        monkeypatch.chdir(tmp_path)
         args = _args(project_root=None)
         result = _project_root(args)
         assert result  # truthy, some cwd
@@ -174,9 +174,9 @@ _OUTPUT_FMT = (
 
 
 class TestRunAutoindex:
-    def test_import_error_returns_1(self):
+    def test_import_error_returns_1(self, tmp_path):
         """Module absent from sys.modules → import failure → return 1."""
-        args = _args(project_root="/tmp")
+        args = _args(project_root=str(tmp_path))
         errors: list[str] = []
         with patch.dict(
             "sys.modules",

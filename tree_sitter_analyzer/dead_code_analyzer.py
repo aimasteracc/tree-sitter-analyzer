@@ -121,7 +121,7 @@ class DeadCodeResult:
 
 
 def _is_test_file(file_path: str) -> bool:
-    return bool(_TEST_FILE_PATTERNS.search(file_path))
+    return bool(_TEST_FILE_PATTERNS.search(file_path.replace("\\", "/")))
 
 
 def _is_known_entry(name: str, language: str) -> bool:
