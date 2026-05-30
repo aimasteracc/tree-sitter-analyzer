@@ -297,15 +297,13 @@ class TestFileOutputManagerClassMethods:
 
     def test_get_managed_instance(self):
         """Test get_managed_instance class method."""
+        FileOutputManager._instances.clear()
         with tempfile.TemporaryDirectory() as temp_dir:
-            # Should return managed instance from factory
+            # Should return cached singleton per project root
             manager1 = FileOutputManager.get_managed_instance(temp_dir)
             manager2 = FileOutputManager.get_managed_instance(temp_dir)
             assert manager1 is manager2
-
-            # Should be same as factory direct access
-            manager3 = FileOutputManagerFactory.get_instance(temp_dir)
-            assert manager1 is manager3
+            assert isinstance(manager1, FileOutputManager)
 
     def test_create_instance(self):
         """Test create_instance class method."""
