@@ -1,3 +1,4 @@
+<!-- HISTORICAL RECORD — file paths in this document reflect early project planning. Some paths may no longer exist. -->
 # MCP統合仕様
 
 **文書番号:** SPEC-003  

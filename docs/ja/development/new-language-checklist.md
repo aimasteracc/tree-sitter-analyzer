@@ -1,3 +1,4 @@
+<!-- HISTORICAL RECORD — file paths in this document reflect early project planning. Some paths may no longer exist. -->
 # 新言語サポート追加チェックリスト
 
 ## 📋 概要

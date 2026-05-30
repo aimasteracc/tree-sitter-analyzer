@@ -73,7 +73,6 @@ Format changes are tracked by:
 - `docs/format_specifications.md` — canonical schema
 - `docs/SMART_JSON_COMPARISON_SYSTEM.md` — diff tooling
 - `tests/regression/` — Golden Master tests
-- `format_changes.db` (sqlite) — format change history
 
 Breaking a format requires updating golden masters and tagging it in the changelog as a
 major version bump (semver).

@@ -43,7 +43,14 @@ class StaleRef:
 
 def _has_validatable_ext(text: str) -> bool:
     _, ext = os.path.splitext(text)
-    return ext.lower() in _VALIDATABLE_EXTS
+    if ext.lower() not in _VALIDATABLE_EXTS:
+        return False
+    # For data/config extensions (.json, .db), require a path prefix — bare filenames
+    # like `grammar.json` or `profile.json` are typically runtime outputs or external
+    # package files, not project-relative paths worth validating.
+    if ext.lower() in {".json", ".db"} and "/" not in text and "\\" not in text:
+        return False
+    return True
 
 
 def _is_skippable(text: str) -> bool:
@@ -57,6 +64,13 @@ def _is_skippable(text: str) -> bool:
     if text.endswith("/"):
         return True
     if " " in text or "\n" in text:
+        return True
+    # OS-specific user paths (~/… or %APPDATA%\…) — valid on the user's machine,
+    # not project-relative paths.
+    if text.startswith("~/") or text.startswith("%") or text.startswith("~\\"):
+        return True
+    # Template placeholders with curly braces like `{language}_plugin.py`
+    if "{" in text or "}" in text:
         return True
     # Template placeholders like `<lang>` or `<name>_tool.py`
     if "<" in text or ">" in text:

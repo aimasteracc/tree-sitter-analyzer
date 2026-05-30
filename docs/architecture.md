@@ -43,7 +43,7 @@ This document describes the architecture of Tree-sitter Analyzer, including its 
 
 The analyzer engine is the central component that orchestrates code analysis.
 
-**Location**: `tree_sitter_analyzer/core/analyzer.py`
+**Location**: `tree_sitter_analyzer/core/analysis_engine.py`
 
 **Responsibilities**:
 - Parse source code using tree-sitter
@@ -120,7 +120,7 @@ The query engine enables targeted code element extraction.
 
 The cache service optimizes repeated operations.
 
-**Location**: `tree_sitter_analyzer/services/cache_service.py`
+**Location**: `tree_sitter_analyzer/core/cache_service.py`
 
 **Capabilities**:
 - Analysis result caching
@@ -175,13 +175,13 @@ The cache service optimizes repeated operations.
 
 | Tool | File | Purpose |
 |------|------|---------|
-| `check_code_scale` | `scale_tool.py` | File size and complexity assessment |
-| `analyze_code_structure` | `table_format_tool.py` | Structured code analysis |
-| `extract_code_section` | `partial_tool.py` | Line-range code extraction |
-| `query_code` | `query_tool.py` | Element-specific queries |
-| `list_files` | `list_files_tool.py` | File discovery (fd) |
-| `search_content` | `search_content_tool.py` | Content search (ripgrep) |
-| `find_and_grep` | `find_grep_tool.py` | Combined search |
+| `check_code_scale` | `mcp/tools/analyze_scale_tool.py` | File size and complexity assessment |
+| `analyze_code_structure` | `mcp/tools/ast_cache_tool.py` | Structured code analysis |
+| `extract_code_section` | `mcp/tools/read_partial_tool.py` | Line-range code extraction |
+| `query_code` | `mcp/tools/query_tool.py` | Element-specific queries |
+| `list_files` | `mcp/tools/list_files_tool.py` | File discovery (fd) |
+| `search_content` | `mcp/tools/search_content_tool.py` | Content search (ripgrep) |
+| `find_and_grep` | `mcp/tools/find_and_grep_tool.py` | Combined search |
 | `set_project_path` | Various | Project boundary setting |
 
 ### External Tool Integration
@@ -335,7 +335,7 @@ Five levels of token optimization:
 
 ### Adding a New Language
 
-1. Create plugin file: `plugins/new_language_plugin.py`
+1. Create plugin file: `languages/`
 2. Implement `BasePlugin` interface
 3. Define tree-sitter queries
 4. Register with `PluginRegistry`
@@ -368,7 +368,8 @@ tree_sitter_analyzer/
 ├── __init__.py
 ├── __main__.py              # CLI entry point
 ├── core/
-│   ├── analyzer.py          # Main analyzer
+│   ├── analysis_engine.py   # Main analyzer
+│   ├── cache_service.py     # Caching
 │   ├── query.py             # Query engine
 │   └── language_detector.py # Language detection
 ├── models/
@@ -390,7 +391,6 @@ tree_sitter_analyzer/
 │   ├── tools/               # MCP tool implementations
 │   └── resources/           # MCP resource handlers
 ├── services/
-│   ├── cache_service.py     # Caching
 │   ├── file_service.py      # File operations
 │   └── security_service.py  # Security validation
 └── tools/

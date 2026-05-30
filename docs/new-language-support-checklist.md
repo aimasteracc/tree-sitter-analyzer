@@ -1,3 +1,4 @@
+<!-- HISTORICAL RECORD — file paths in this document reflect early project planning. Some paths may no longer exist. -->
 # New Language Support Checklist
 
 This document outlines the steps required to add support for a new programming language to Tree-sitter Analyzer.
@@ -137,8 +138,8 @@ uv run pytest tests/ -v
 Use these language implementations as references:
 
 - **Java**: `tree_sitter_analyzer/languages/java_plugin.py` - Most complete implementation
-- **Python**: `tree_sitter_analyzer/languages/python_plugin.py` - Simple implementation
-- **SQL**: `tree_sitter_analyzer/languages/sql_plugin.py` - With dedicated formatter
+- **Python**: `tree_sitter_analyzer/languages/python_plugin/` - Simple implementation
+- **SQL**: `tree_sitter_analyzer/languages/sql_plugin/` - With dedicated formatter
 - **YAML**: `tree_sitter_analyzer/languages/yaml_plugin.py` - Async parsing example
 - **HTML/CSS**: `tree_sitter_analyzer/languages/html_plugin.py` - Markup language example
 
@@ -149,8 +150,8 @@ Use these language implementations as references:
 **Problem**: Language-specific formatter not called with `--table` command
 
 **Solution**: 
-- Register formatter in `formatter_registry.py`
-- Add language to `LANGUAGE_FORMATTER_CONFIG` in `table_command.py`
+- Register formatter in `tree_sitter_analyzer/formatters/formatter_registry.py`
+- Add language to `LANGUAGE_FORMATTER_CONFIG` in `cli/commands/mcp_commands.py`
 
 ### 2. Golden Master Tests Failing
 

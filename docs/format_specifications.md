@@ -397,6 +397,3 @@ field,logger,Logger,,private,true,true,12
 ```
 
 ### 関連ドキュメント
-- [API仕様書](api_specifications.md)
-- [テスト戦略](testing_strategy.md)
-- [開発ガイドライン](development_guidelines.md)
