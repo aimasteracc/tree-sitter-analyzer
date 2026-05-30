@@ -464,6 +464,14 @@ class CallGraph:
         self.build()
         return self._call_edges
 
+    def all_call_edges(self) -> list[tuple["FunctionRef", "FunctionRef", int]]:
+        """Return all call edges as (caller, callee, line) tuples.
+
+        Returns an independent copy so callers can mutate the list without
+        affecting the internal graph state.
+        """
+        return list(self.call_edges())
+
     def function_refs(self) -> list["FunctionRef"]:
         """Return all discovered functions as ``FunctionRef`` objects.
 
@@ -597,17 +605,6 @@ class CallGraph:
             "call_edge_count": len(self._call_edges),
             "file_count": len({f.file_path for f in self._functions}),
         }
-
-    def resolve_targets(
-        self, func_name: str, file_path: str | None = None
-    ) -> list["FunctionRef"]:
-        """Public alias for :meth:`_resolve_targets`.
-
-        Resolves a function name (and optional file path) to the matching
-        :class:`FunctionRef` objects in the call graph.  See
-        :meth:`_resolve_targets` for the full semantics.
-        """
-        return self._resolve_targets(func_name, file_path)
 
     # ------------------------------------------------------------------
     # Public aliases for internal helper methods (exposed for testing and

@@ -180,7 +180,10 @@ class TestExecute:
         # J1: ``search`` is now backed by ``fts_search`` (which delegates
         # to a LIKE scan when FTS5 is unavailable). Stub both so the test
         # works regardless of the runtime implementation.
+        # G2: when fts5_available=True and query >= 2 chars, the ranked path
+        # is used — stub fts_search_ranked as well.
         mock_cache.fts_search.return_value = [{"name": "MyClass"}]
+        mock_cache.fts_search_ranked.return_value = [{"name": "MyClass"}]
         mock_cache.search_symbols.return_value = [{"name": "MyClass"}]
         mock_cache.fts5_available = True
         result = await tool.execute({"mode": "search", "query": "MyClass"})

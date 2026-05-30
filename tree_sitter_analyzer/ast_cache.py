@@ -122,11 +122,6 @@ class ASTCache:
         return bool(self._fts5_available)
 
     @property
-    def fts5_available(self) -> bool | None:
-        """Public accessor for _fts5_available flag."""
-        return self._fts5_available
-
-    @property
     def parser(self) -> "Parser":
         """Public accessor for the tree-sitter Parser instance."""
         return self._parser

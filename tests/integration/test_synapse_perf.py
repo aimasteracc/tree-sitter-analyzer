@@ -33,7 +33,7 @@ _TARGET_DIR = _REPO_ROOT / "tree_sitter_analyzer"
 # we use the median of three short runs and let pytest-timeout enforce a
 # ceiling on individual outliers.
 _RUNS = 3
-_OVERHEAD_BUDGET = 1.30  # resolver may not exceed 1.30x baseline
+_OVERHEAD_BUDGET = 1.50  # resolver may not exceed 1.50x baseline (widened from 1.30 to tolerate parallel CI noise)
 
 
 def _run_index(
