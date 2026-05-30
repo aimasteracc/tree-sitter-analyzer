@@ -3,6 +3,10 @@
 from collections.abc import Callable
 from typing import Any
 
+from .._legacy_table_formatter_common import (
+    trim_trailing_blank_lines as _trim_trailing_blank_lines,
+)
+
 
 def format_cpp_full_table(formatter: Any, data: dict[str, Any]) -> str:
     """Full table format for C/C++."""
@@ -382,8 +386,3 @@ def _line_range_text(line_range: dict[str, Any]) -> str:
 
 def _file_name(file_path: Any) -> str:
     return file_path.split("/")[-1].split("\\")[-1]
-
-
-def _trim_trailing_blank_lines(lines: list[str]) -> None:
-    while lines and lines[-1] == "":
-        lines.pop()

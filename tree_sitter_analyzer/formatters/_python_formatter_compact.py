@@ -2,6 +2,10 @@
 
 from typing import Any
 
+from .._legacy_table_formatter_common import (
+    trim_trailing_blank_lines as _trim_trailing_blank_lines,
+)
+
 
 def format_python_compact_table(formatter: Any, data: dict[str, Any]) -> str:
     """Compact table format for Python"""
@@ -96,8 +100,3 @@ def _compact_method_row(formatter: Any, method: dict[str, Any]) -> str:
     return (
         f"| {name} | {signature} | {visibility} | {lines_str} | {complexity} | {doc} |"
     )
-
-
-def _trim_trailing_blank_lines(lines: list[str]) -> None:
-    while lines and lines[-1] == "":
-        lines.pop()
