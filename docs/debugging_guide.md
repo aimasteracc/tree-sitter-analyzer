@@ -46,7 +46,8 @@ export TREE_SITTER_ANALYZER_FILE_LOG_LEVEL=WARNING
 
 #### Claude Desktopでのデバッグ設定
 
-`claude_desktop_config.json`に以下を追加：
+`~/Library/Application Support/Claude/claude_desktop_config.json`に以下を追加
+（Windows: `%APPDATA%\Claude\claude_desktop_config.json`、Linux: `~/.config/claude/claude_desktop_config.json`）：
 
 ```json
 {

@@ -449,19 +449,15 @@ class TestJavaScriptPluginExtended:
         """Test JavaScript plugin properties"""
         plugin = JavaScriptPlugin()
 
-        assert plugin.language_name == "javascript"
         assert plugin.get_language_name() == "javascript"
-        assert ".js" in plugin.file_extensions
-        assert ".mjs" in plugin.file_extensions
-        assert ".jsx" in plugin.file_extensions
-        assert plugin.get_file_extensions() == [".js", ".mjs", ".jsx", ".es6", ".es"]
-
-    def test_create_extractor(self):
-        """Test extractor creation"""
-        plugin = JavaScriptPlugin()
-        extractor = plugin.create_extractor()
-
-        assert isinstance(extractor, JavaScriptElementExtractor)
+        assert plugin.get_file_extensions() == [
+            ".js",
+            ".mjs",
+            ".jsx",
+            ".es6",
+            ".es",
+            ".cjs",
+        ]
 
     def test_get_extractor(self):
         """Test get extractor method"""

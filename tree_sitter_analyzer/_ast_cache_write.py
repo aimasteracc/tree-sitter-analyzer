@@ -1,0 +1,231 @@
+"""Write helper functions for ASTCache indexing pipeline.
+
+Pure functions extracted from ASTCache._write_* methods to reduce
+ast_cache.py line count. Each takes explicit parameters instead of self.
+
+ASTCache keeps thin wrapper methods that delegate here.
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+import sqlite3
+from typing import Any
+
+logger = logging.getLogger(__name__)
+
+
+def write_fts5_symbols(
+    conn: sqlite3.Connection,
+    rel_path: str,
+    language: str,
+    symbols: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Replace FTS5 symbol rows for ``rel_path``. Returns inserted row list."""
+    conn.execute("DELETE FROM ast_symbol_rows WHERE file_path = ?", (rel_path,))
+    conn.execute("DELETE FROM ast_symbols_fts WHERE file_path = ?", (rel_path,))
+    inserted: list[dict[str, Any]] = []
+    for sym in symbols.get("symbols", []):
+        sym_name = sym.get("name") or sym.get("text", "")
+        sym_kind = sym.get("kind", "unknown")
+        sym_line = sym.get("line", 0)
+        sym_end = sym.get("end_line", 0)
+        row_id = conn.execute(
+            "INSERT INTO ast_symbol_rows (name, kind, file_path, language, line, end_line) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (sym_name, sym_kind, rel_path, language, sym_line, sym_end),
+        ).lastrowid
+        conn.execute(
+            "INSERT INTO ast_symbols_fts (rowid, name, kind, file_path, language) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (row_id, sym_name, sym_kind, rel_path, language),
+        )
+        inserted.append({"id": int(row_id or 0), "line": sym_line, "end_line": sym_end})
+    return inserted
+
+
+def write_call_edges(
+    conn: sqlite3.Connection,
+    rel_path: str,
+    language: str,
+    call_edges: list[dict[str, Any]],
+) -> None:
+    """Replace call-edge rows for ``rel_path``."""
+    conn.execute("DELETE FROM ast_call_edges WHERE file_path = ?", (rel_path,))
+    for edge in call_edges:
+        conn.execute(
+            "INSERT INTO ast_call_edges "
+            "(caller_name, caller_file, caller_line, callee_name, callee_full, callee_line, "
+            "file_path, language) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                edge["caller_name"],
+                rel_path,
+                edge["caller_line"],
+                edge["callee_name"],
+                edge["callee_full"],
+                edge["callee_line"],
+                rel_path,
+                language,
+            ),
+        )
+
+
+def write_fts5_symbols_from_tuples(
+    conn: sqlite3.Connection,
+    rel_path: str,
+    language: str,
+    symbol_rows: list[tuple[str, str, int, int]],
+) -> list[dict[str, Any]]:
+    """Insert FTS5 symbols from worker-serialised tuples (name, kind, line, end_line)."""
+    conn.execute("DELETE FROM ast_symbol_rows WHERE file_path = ?", (rel_path,))
+    conn.execute("DELETE FROM ast_symbols_fts WHERE file_path = ?", (rel_path,))
+    inserted: list[dict[str, Any]] = []
+    for sym_name, sym_kind, sym_line, sym_end in symbol_rows:
+        row_id = conn.execute(
+            "INSERT INTO ast_symbol_rows (name, kind, file_path, language, line, end_line) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (sym_name, sym_kind, rel_path, language, sym_line, sym_end),
+        ).lastrowid
+        conn.execute(
+            "INSERT INTO ast_symbols_fts (rowid, name, kind, file_path, language) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (row_id, sym_name, sym_kind, rel_path, language),
+        )
+        inserted.append(
+            {
+                "id": int(row_id) if row_id is not None else 0,
+                "line": sym_line,
+                "end_line": sym_end,
+            }
+        )
+    return inserted
+
+
+def _parse_import_raw(raw: Any) -> tuple[str, int]:
+    """Extract (text, line) from a raw import entry (str or dict)."""
+    if isinstance(raw, dict):
+        text = raw.get("text") or raw.get("statement") or ""
+        line = int(raw.get("line", 0) or 0)
+    else:
+        text = str(raw)
+        line = 0
+    return text, line
+
+
+def _insert_import_entry(
+    conn: sqlite3.Connection,
+    rel_path: str,
+    language: str,
+    entry: Any,
+) -> bool:
+    """Insert one parsed import entry into ast_imports.
+
+    Returns True on success, False when a fatal OperationalError fires.
+    """
+    try:
+        conn.execute(
+            """INSERT INTO ast_imports
+               (file_path, language, module_path, local_name,
+                is_relative, is_star, alias_of)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (
+                rel_path,
+                language,
+                entry.module_path,
+                entry.local_name,
+                1 if entry.is_relative else 0,
+                1 if entry.is_star else 0,
+                entry.alias_of,
+            ),
+        )
+        return True
+    except sqlite3.OperationalError as exc:
+        logger.debug("ast_imports write failed for %s: %s", rel_path, exc)
+        return False
+
+
+def write_activation_for_file(
+    conn: sqlite3.Connection,
+    rel_path: str,
+    inserted_symbol_rows: list[dict[str, Any]],
+    project_root: str,
+) -> None:
+    """Refresh ast_symbol_activation rows for a single file."""
+    if not inserted_symbol_rows:
+        try:
+            conn.execute(
+                "DELETE FROM ast_symbol_activation WHERE file_path = ?",
+                (rel_path,),
+            )
+        except sqlite3.OperationalError:
+            pass
+        return
+    try:
+        from . import git_activation
+    except Exception as exc:  # pragma: no cover
+        logger.debug("git_activation import failed: %s", exc)
+        return
+    if git_activation._activation_disabled():  # noqa: SLF001
+        return
+    try:
+        rows = git_activation.compute_symbol_activation(
+            file_path=os.path.join(project_root, rel_path),
+            symbols=inserted_symbol_rows,
+            repo_root=project_root,
+        )
+    except Exception as exc:  # pragma: no cover
+        logger.debug("compute_symbol_activation failed for %s: %s", rel_path, exc)
+        return
+    try:
+        conn.execute(
+            "DELETE FROM ast_symbol_activation WHERE file_path = ?",
+            (rel_path,),
+        )
+        for r in rows:
+            conn.execute(
+                """INSERT OR REPLACE INTO ast_symbol_activation (
+                    symbol_id, file_path,
+                    last_modified_commit, last_modified_at,
+                    mod_count_30d, mod_count_90d, mod_count_all,
+                    computed_at, git_state
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    int(r.symbol_id),
+                    rel_path,
+                    r.last_modified_commit,
+                    r.last_modified_at,
+                    int(r.mod_count_30d),
+                    int(r.mod_count_90d),
+                    int(r.mod_count_all),
+                    int(r.computed_at),
+                    r.git_state,
+                ),
+            )
+    except sqlite3.OperationalError as exc:
+        logger.debug("activation write failed for %s: %s", rel_path, exc)
+
+
+def write_imports_for_file(
+    conn: sqlite3.Connection,
+    rel_path: str,
+    language: str,
+    imports: list[str] | list[dict[str, Any]],
+) -> None:
+    """Refresh ast_imports rows for rel_path."""
+    try:
+        from .synapse_resolver import parse_imports
+    except Exception as exc:  # pragma: no cover
+        logger.debug("synapse_resolver import failed: %s", exc)
+        return
+    try:
+        conn.execute("DELETE FROM ast_imports WHERE file_path = ?", (rel_path,))
+    except sqlite3.OperationalError:
+        return
+    for raw in imports or []:
+        text, line = _parse_import_raw(raw)
+        if not text:
+            continue
+        for entry in parse_imports(text, language, rel_path, line):
+            if not _insert_import_entry(conn, rel_path, language, entry):
+                return

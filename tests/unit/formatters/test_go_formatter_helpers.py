@@ -31,13 +31,6 @@ def _noop_method_row(method: dict) -> str:
 
 
 class TestFormatGoFullTable:
-
-    def test_empty_data(self):
-        result = format_go_full_table(
-            {}, _noop_package, _noop_visibility, _noop_doc, _noop_func_row, _noop_method_row
-        )
-        assert isinstance(result, str)
-
     def test_file_header_with_package(self):
         data = {
             "file_path": "/pkg/handler.go",
@@ -47,7 +40,12 @@ class TestFormatGoFullTable:
             "variables": [],
         }
         result = format_go_full_table(
-            data, _noop_package, _noop_visibility, _noop_doc, _noop_func_row, _noop_method_row
+            data,
+            _noop_package,
+            _noop_visibility,
+            _noop_doc,
+            _noop_func_row,
+            _noop_method_row,
         )
         assert "# handler/handler.go" in result
 
@@ -60,7 +58,12 @@ class TestFormatGoFullTable:
             "variables": [],
         }
         result = format_go_full_table(
-            data, _noop_package, _noop_visibility, _noop_doc, _noop_func_row, _noop_method_row
+            data,
+            _noop_package,
+            _noop_visibility,
+            _noop_doc,
+            _noop_func_row,
+            _noop_method_row,
         )
         assert "# main.go" in result
 
@@ -74,7 +77,12 @@ class TestFormatGoFullTable:
             "variables": [],
         }
         result = format_go_full_table(
-            data, _noop_package, _noop_visibility, _noop_doc, _noop_func_row, _noop_method_row
+            data,
+            _noop_package,
+            _noop_visibility,
+            _noop_doc,
+            _noop_func_row,
+            _noop_method_row,
         )
         assert "## Package Info" in result
         assert "| Package | main |" in result
@@ -95,7 +103,12 @@ class TestFormatGoFullTable:
             "variables": [],
         }
         result = format_go_full_table(
-            data, _noop_package, _noop_visibility, _noop_doc, _noop_func_row, _noop_method_row
+            data,
+            _noop_package,
+            _noop_visibility,
+            _noop_doc,
+            _noop_func_row,
+            _noop_method_row,
         )
         assert "## Imports" in result
         assert "```go" in result
@@ -112,7 +125,12 @@ class TestFormatGoFullTable:
             "variables": [],
         }
         result = format_go_full_table(
-            data, _noop_package, _noop_visibility, _noop_doc, _noop_func_row, _noop_method_row
+            data,
+            _noop_package,
+            _noop_visibility,
+            _noop_doc,
+            _noop_func_row,
+            _noop_method_row,
         )
         assert 'import "fmt"' in result
 
@@ -125,7 +143,12 @@ class TestFormatGoFullTable:
             "variables": [],
         }
         result = format_go_full_table(
-            data, _noop_package, _noop_visibility, _noop_doc, _noop_func_row, _noop_method_row
+            data,
+            _noop_package,
+            _noop_visibility,
+            _noop_doc,
+            _noop_func_row,
+            _noop_method_row,
         )
         assert "## Imports" not in result
 
@@ -146,7 +169,12 @@ class TestFormatGoFullTable:
             "variables": [],
         }
         result = format_go_full_table(
-            data, _noop_package, _noop_visibility, _noop_doc, _noop_func_row, _noop_method_row
+            data,
+            _noop_package,
+            _noop_visibility,
+            _noop_doc,
+            _noop_func_row,
+            _noop_method_row,
         )
         assert "## Structs" in result
         assert "| Server | exported | 10-30 | Handler | HTTP server |" in result
@@ -167,7 +195,12 @@ class TestFormatGoFullTable:
             "variables": [],
         }
         result = format_go_full_table(
-            data, _noop_package, _noop_visibility, _noop_doc, _noop_func_row, _noop_method_row
+            data,
+            _noop_package,
+            _noop_visibility,
+            _noop_doc,
+            _noop_func_row,
+            _noop_method_row,
         )
         assert "## Interfaces" in result
         assert "| Reader | exported | 5-10 | Read interface |" in result
@@ -187,7 +220,12 @@ class TestFormatGoFullTable:
             "variables": [],
         }
         result = format_go_full_table(
-            data, _noop_package, _noop_visibility, _noop_doc, _noop_func_row, _noop_method_row
+            data,
+            _noop_package,
+            _noop_visibility,
+            _noop_doc,
+            _noop_func_row,
+            _noop_method_row,
         )
         assert "## Type Aliases" in result
         assert "| Alias |" in result
@@ -212,7 +250,12 @@ class TestFormatGoFullTable:
             "variables": [],
         }
         result = format_go_full_table(
-            data, _noop_package, _noop_visibility, _noop_doc, _noop_func_row, _noop_method_row
+            data,
+            _noop_package,
+            _noop_visibility,
+            _noop_doc,
+            _noop_func_row,
+            _noop_method_row,
         )
         assert "## Functions" in result
         assert "HandleRequest" in result
@@ -234,7 +277,12 @@ class TestFormatGoFullTable:
             "variables": [],
         }
         result = format_go_full_table(
-            data, _noop_package, _noop_visibility, _noop_doc, _noop_func_row, _noop_method_row
+            data,
+            _noop_package,
+            _noop_visibility,
+            _noop_doc,
+            _noop_func_row,
+            _noop_method_row,
         )
         assert "## Methods" in result
         assert "Server" in result
@@ -255,7 +303,12 @@ class TestFormatGoFullTable:
             ],
         }
         result = format_go_full_table(
-            data, _noop_package, _noop_visibility, _noop_doc, _noop_func_row, _noop_method_row
+            data,
+            _noop_package,
+            _noop_visibility,
+            _noop_doc,
+            _noop_func_row,
+            _noop_method_row,
         )
         assert "## Constants" in result
         assert "MaxRetries" in result
@@ -276,7 +329,12 @@ class TestFormatGoFullTable:
             ],
         }
         result = format_go_full_table(
-            data, _noop_package, _noop_visibility, _noop_doc, _noop_func_row, _noop_method_row
+            data,
+            _noop_package,
+            _noop_visibility,
+            _noop_doc,
+            _noop_func_row,
+            _noop_method_row,
         )
         assert "## Variables" in result
         assert "timeout" in result
@@ -303,7 +361,12 @@ class TestFormatGoFullTable:
             ],
         }
         result = format_go_full_table(
-            data, _noop_package, _noop_visibility, _noop_doc, _noop_func_row, _noop_method_row
+            data,
+            _noop_package,
+            _noop_visibility,
+            _noop_doc,
+            _noop_func_row,
+            _noop_method_row,
         )
         assert "## Constants" in result
         assert "## Variables" in result
@@ -320,7 +383,12 @@ class TestFormatGoFullTable:
             "variables": [],
         }
         result = format_go_full_table(
-            data, _noop_package, _noop_visibility, _noop_doc, _noop_func_row, _noop_method_row
+            data,
+            _noop_package,
+            _noop_visibility,
+            _noop_doc,
+            _noop_func_row,
+            _noop_method_row,
         )
         assert not result.endswith("\n\n")
 
@@ -339,7 +407,12 @@ class TestFormatGoFullTable:
             "variables": [],
         }
         result = format_go_full_table(
-            data, _noop_package, _noop_visibility, _noop_doc, _noop_func_row, _noop_method_row
+            data,
+            _noop_package,
+            _noop_visibility,
+            _noop_doc,
+            _noop_func_row,
+            _noop_method_row,
         )
         assert "| Config |" in result
         assert "| - |" in result
@@ -353,7 +426,12 @@ class TestFormatGoFullTable:
             "variables": [],
         }
         result = format_go_full_table(
-            data, _noop_package, _noop_visibility, _noop_doc, _noop_func_row, _noop_method_row
+            data,
+            _noop_package,
+            _noop_visibility,
+            _noop_doc,
+            _noop_func_row,
+            _noop_method_row,
         )
         assert "## Structs" not in result
 
@@ -366,7 +444,12 @@ class TestFormatGoFullTable:
             "variables": [],
         }
         result = format_go_full_table(
-            data, _noop_package, _noop_visibility, _noop_doc, _noop_func_row, _noop_method_row
+            data,
+            _noop_package,
+            _noop_visibility,
+            _noop_doc,
+            _noop_func_row,
+            _noop_method_row,
         )
         assert "## Interfaces" not in result
 
@@ -386,7 +469,12 @@ class TestFormatGoFullTable:
             ],
         }
         result = format_go_full_table(
-            data, _noop_package, _noop_visibility, _noop_doc, _noop_func_row, _noop_method_row
+            data,
+            _noop_package,
+            _noop_visibility,
+            _noop_doc,
+            _noop_func_row,
+            _noop_method_row,
         )
         assert "| x | int |" in result
 
@@ -405,7 +493,12 @@ class TestFormatGoFullTable:
             "variables": [],
         }
         result = format_go_full_table(
-            data, _noop_package, _noop_visibility, _noop_doc, _noop_func_row, _noop_method_row
+            data,
+            _noop_package,
+            _noop_visibility,
+            _noop_doc,
+            _noop_func_row,
+            _noop_method_row,
         )
         assert "Run" in result
 
@@ -425,6 +518,11 @@ class TestFormatGoFullTable:
             ],
         }
         result = format_go_full_table(
-            data, _noop_package, _noop_visibility, _noop_doc, _noop_func_row, _noop_method_row
+            data,
+            _noop_package,
+            _noop_visibility,
+            _noop_doc,
+            _noop_func_row,
+            _noop_method_row,
         )
         assert "val" in result

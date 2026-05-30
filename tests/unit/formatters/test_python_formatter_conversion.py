@@ -66,6 +66,13 @@ class FakeFormatter:
     def _process_python_parameters(self, params):
         return process_python_parameters(params)
 
+    # Public aliases matching PythonTableFormatter
+    convert_class_element_for_python = _convert_class_element_for_python
+    convert_function_element_for_python = _convert_function_element_for_python
+    convert_variable_element_for_python = _convert_variable_element_for_python
+    convert_import_element_for_python = _convert_import_element_for_python
+    process_python_parameters = _process_python_parameters
+
 
 def _make_element(**kwargs):
     return FakeElement(**kwargs)

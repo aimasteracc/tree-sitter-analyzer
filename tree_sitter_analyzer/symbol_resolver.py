@@ -146,6 +146,45 @@ def _build_module_to_file_map(cache: Any) -> dict[str, str]:
     return module_map
 
 
+def _apply_confidence(
+    defs: list[DefinitionLocation], confidence: float = 0.8
+) -> list[DefinitionLocation]:
+    """Set confidence on every DefinitionLocation in *defs* and return *defs*.
+
+    Extracted to module level to keep the import-resolution loops from adding
+    a for-loop nesting level at an already deeply-nested call site.
+    """
+    for d in defs:
+        d.confidence = confidence
+    return defs
+
+
+def _collect_import_refs_from_list(
+    imported_names: list,
+    name: str,
+    file_path: str,
+    imp_line: int,
+    refs: list[ReferenceLocation],
+) -> None:
+    """Append import ReferenceLocations to *refs* for each matching name in *imported_names*.
+
+    Module-level extraction to avoid two extra nesting levels (for + if) at the
+    deeply-nested _find_import_references call site.
+    """
+    for iname in imported_names:
+        if isinstance(iname, str) and iname.split(".")[-1] == name:
+            ref = ReferenceLocation(
+                file=file_path,
+                name=name,
+                kind="import",
+                line=imp_line,
+                end_line=imp_line,
+                language="",
+                reference_type="import",
+            )
+            refs.append(ref)
+
+
 def _definition_location(item: dict[str, Any]) -> DefinitionLocation:
     return DefinitionLocation(
         file=str(item.get("file", "")),
@@ -254,6 +293,19 @@ class SymbolResolver:
         ).fetchone()
         return row2 is not None
 
+    def _lookup_by_module(self, module: str, name: str) -> list[DefinitionLocation]:
+        """Resolve *module* to a file and return definitions of *name* with confidence 0.8.
+
+        Returns [] when *module* is empty or absent from the module map.
+        Consolidates the repeated source_module→source_file→find→apply pattern so
+        _resolve_from_imports doesn't carry three nested ``if`` layers at each call site.
+        """
+        if not module or module not in self._module_to_file:  # type: ignore[operator]
+            return []
+        source_file = self._module_to_file[module]  # type: ignore[index]
+        defs = self._find_defs_in_file(source_file, name)
+        return _apply_confidence(defs) if defs else []
+
     def _resolve_from_imports(self, name: str) -> list[DefinitionLocation]:
         if self._import_map is None:
             self._import_map = _build_import_map(self._cache)
@@ -263,39 +315,28 @@ class SymbolResolver:
             for imp in imports:
                 if isinstance(imp, str):
                     if imp.split(".")[-1] == name:
-                        module_name = imp
-                        if module_name in self._module_to_file:
-                            source_file = self._module_to_file[module_name]
-                            defs = self._find_defs_in_file(source_file, name)
-                            if defs:
-                                for d in defs:
-                                    d.confidence = 0.8
-                                return defs
+                        defs = self._lookup_by_module(imp, name)
+                        if defs:
+                            return defs
                     continue
                 imported_names = imp.get("names", [])
                 if isinstance(imported_names, list):
+                    source_module = imp.get("module", "")
                     for iname in imported_names:
-                        if isinstance(iname, str) and iname.split(".")[-1] == name:
-                            source_module = imp.get("module", "")
-                            if source_module and source_module in self._module_to_file:
-                                source_file = self._module_to_file[source_module]
-                                defs = self._find_defs_in_file(source_file, name)
-                                if defs:
-                                    for d in defs:
-                                        d.confidence = 0.8
-                                    return defs
+                        if not isinstance(iname, str):
+                            continue
+                        if iname.split(".")[-1] == name:
+                            defs = self._lookup_by_module(source_module, name)
+                            if defs:
+                                return defs
                 elif (
                     isinstance(imported_names, str)
                     and imported_names.split(".")[-1] == name
                 ):
                     source_module = imp.get("module", "")
-                    if source_module and source_module in self._module_to_file:
-                        source_file = self._module_to_file[source_module]
-                        defs = self._find_defs_in_file(source_file, name)
-                        if defs:
-                            for d in defs:
-                                d.confidence = 0.8
-                            return defs
+                    defs = self._lookup_by_module(source_module, name)
+                    if defs:
+                        return defs
         return []
 
     def _find_defs_in_file(self, file_path: str, name: str) -> list[DefinitionLocation]:
@@ -326,19 +367,22 @@ class SymbolResolver:
             ).fetchone()
             if row:
                 symbols = json.loads(row["symbols_json"])
+                row_lang = row["language"]
                 for sym in symbols.get("symbols", []):
                     if sym.get("name") == name and sym.get("kind") in _DEFINITION_KINDS:
-                        results.append(
-                            DefinitionLocation(
-                                file=file_path,
-                                name=name,
-                                kind=sym["kind"],
-                                line=sym.get("line", 0),
-                                end_line=sym.get("end_line", 0),
-                                language=row["language"],
-                                confidence=0.9,
-                            )
+                        sym_line = sym.get("line", 0)
+                        sym_end = sym.get("end_line", 0)
+                        sym_kind = sym["kind"]
+                        loc = DefinitionLocation(
+                            file=file_path,
+                            name=name,
+                            kind=sym_kind,
+                            line=sym_line,
+                            end_line=sym_end,
+                            language=row_lang,
+                            confidence=0.9,
                         )
+                        results.append(loc)
         return results
 
     def _find_references(self, symbol: str, short_name: str) -> list[ReferenceLocation]:
@@ -386,31 +430,21 @@ class SymbolResolver:
             for imp in imports:
                 if isinstance(imp, str):
                     if imp.split(".")[-1] == name:
-                        refs.append(
-                            ReferenceLocation(
-                                file=file_path,
-                                name=name,
-                                kind="import",
-                                line=0,
-                                end_line=0,
-                                language="",
-                                reference_type="import",
-                            )
+                        ref = ReferenceLocation(
+                            file=file_path,
+                            name=name,
+                            kind="import",
+                            line=0,
+                            end_line=0,
+                            language="",
+                            reference_type="import",
                         )
+                        refs.append(ref)
                     continue
                 imported_names = imp.get("names", [])
                 if isinstance(imported_names, list):
-                    for iname in imported_names:
-                        if isinstance(iname, str) and iname.split(".")[-1] == name:
-                            refs.append(
-                                ReferenceLocation(
-                                    file=file_path,
-                                    name=name,
-                                    kind="import",
-                                    line=imp.get("line", 0),
-                                    end_line=imp.get("line", 0),
-                                    language="",
-                                    reference_type="import",
-                                )
-                            )
+                    imp_line = imp.get("line", 0)
+                    _collect_import_refs_from_list(
+                        imported_names, name, file_path, imp_line, refs
+                    )
         return refs

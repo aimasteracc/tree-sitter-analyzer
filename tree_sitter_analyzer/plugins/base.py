@@ -399,6 +399,17 @@ class LanguagePlugin(ABC):
             "module": self.__class__.__module__,
         }
 
+    def get_tree_sitter_language(self) -> "Any":
+        """Return the tree-sitter Language object for this plugin.
+
+        Every concrete plugin must override this; the base returns None so
+        that subclasses which forget to override fail loudly at parse time
+        rather than silently producing empty results.  Declared here so the
+        method is part of the formal LanguagePlugin contract and not an
+        invisible informal requirement.
+        """
+        return None
+
 
 class DefaultExtractor(DefaultTraverseMixin, ElementExtractor):
     """

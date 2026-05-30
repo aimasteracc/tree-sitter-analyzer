@@ -101,7 +101,7 @@ def _append_fields_section(
 
 
 def _field_row(formatter: Any, field: dict[str, Any]) -> str:
-    visibility = formatter._convert_visibility(str(field.get("visibility", "public")))
+    visibility = formatter.convert_visibility(str(field.get("visibility", "public")))
     line_range = field.get("line_range", {})
     return (
         f"| {str(field.get('name', ''))} | {field_type(field)} | {visibility} | "

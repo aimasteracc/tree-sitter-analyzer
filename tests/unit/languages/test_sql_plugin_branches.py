@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Additional SQL plugin coverage tests targeting uncovered branches."""
 
+from unittest.mock import Mock, patch
+
 import pytest
 
 from tree_sitter_analyzer.languages.sql_plugin import (
@@ -9,6 +11,7 @@ from tree_sitter_analyzer.languages.sql_plugin import (
 )
 from tree_sitter_analyzer.models import (
     SQLElementType,
+    SQLFunction,
     SQLTable,
     SQLTrigger,
 )
@@ -688,3 +691,95 @@ CREATE TABLE logs (
         tree = parser.parse(code.encode("utf-8"))
         result = plugin.extract_elements(tree, code)
         assert isinstance(result, dict)
+
+
+class TestSQLPluginInitBranches:
+    """Test plugin initialization edge cases."""
+
+    def test_plugin_init_without_tree_sitter(self) -> None:
+        """Test plugin initialization when tree-sitter is not available."""
+        with patch.dict("sys.modules", {"tree_sitter_sql": None}):
+            plugin = SQLPlugin()
+            assert plugin is not None
+
+    def test_extractor_reset_caches(self) -> None:
+        """Test cache reset functionality."""
+        extractor = SQLElementExtractor()
+        extractor._node_text_cache = {"key": "value"}
+        extractor._reset_caches()
+        assert extractor._node_text_cache == {}
+
+    def test_set_adapter(self) -> None:
+        """Test setting adapter on extractor."""
+        extractor = SQLElementExtractor()
+        mock_adapter = Mock()
+        extractor.set_adapter(mock_adapter)
+        assert extractor.adapter is mock_adapter
+
+
+class TestSQLValidationAdvanced:
+    """Test advanced _validate_and_fix_elements paths."""
+
+    def test_garbage_function_name_corrected(self) -> None:
+        """Garbage function name (AUTO_INCREMENT) gets corrected via regex on raw_text."""
+        ext = SQLElementExtractor()
+        ext.source_code = "CREATE FUNCTION real_name RETURNS INT BEGIN RETURN 1; END"
+        ext.content_lines = ext.source_code.split("\n")
+        func = SQLFunction(
+            name="AUTO_INCREMENT",
+            start_line=1,
+            end_line=3,
+            raw_text="CREATE FUNCTION real_name RETURNS INT BEGIN RETURN 1; END",
+            language="sql",
+        )
+        result = ext._validate_and_fix_elements([func])
+        assert any(e.name == "real_name" for e in result)
+
+    def test_trigger_name_corrected(self) -> None:
+        """Trigger with wrong name gets corrected from raw_text."""
+        ext = SQLElementExtractor()
+        sql = "CREATE TRIGGER trg_before_insert BEFORE INSERT ON users FOR EACH ROW BEGIN END;"
+        ext.source_code = sql
+        ext.content_lines = sql.split("\n")
+        trigger = SQLTrigger(
+            name="wrong_name",
+            start_line=1,
+            end_line=1,
+            raw_text=sql,
+            language="sql",
+        )
+        result = ext._validate_and_fix_elements([trigger])
+        assert len(result) == 1
+        assert result[0].name == "trg_before_insert"
+
+    def test_view_recovered_from_source(self) -> None:
+        """View recovered from source when not present in elements."""
+        ext = SQLElementExtractor()
+        sql = "CREATE VIEW my_view AS SELECT * FROM users;"
+        ext.source_code = sql
+        ext.content_lines = sql.split("\n")
+        result = ext._validate_and_fix_elements([])
+        assert any(e.name == "my_view" for e in result)
+
+
+class TestSQLProcedureParameterDirection:
+    """Test procedure parameter direction detection."""
+
+    def test_out_parameter(self) -> None:
+        """OUT parameter direction detected correctly."""
+        ext = SQLElementExtractor()
+        params = []
+        proc_text = "PROCEDURE my_proc(OUT result INT) BEGIN SET result = 1; END;"
+        ext._extract_procedure_parameters(proc_text, params)
+        assert len(params) > 0
+        assert params[0].direction == "OUT"
+
+    def test_default_in_parameter(self) -> None:
+        """Default (no direction keyword) is treated as IN."""
+        ext = SQLElementExtractor()
+        params = []
+        proc_text = "PROCEDURE my_proc(p_id INT) BEGIN SET x = p_id; END;"
+        ext._extract_procedure_parameters(proc_text, params)
+        assert len(params) > 0
+        assert params[0].direction == "IN"
+        assert params[0].name == "p_id"

@@ -67,6 +67,13 @@ class TestParseChain:
         assert steps[1].kwargs == {"callers": True, "source": True}
         assert steps[3].kwargs == {"compact": True}
 
+    def test_parses_sort_by_confidence(self):
+        """sort(by='confidence') is the BM25-relevance sort — README 'ahead' claim."""
+        steps = parse_chain("search('User').sort(by='confidence', desc=True)")
+
+        assert [step.name for step in steps] == ["search", "sort"]
+        assert steps[1].kwargs == {"by": "confidence", "desc": True}
+
     def test_parses_selection_filter_steps(self):
         steps = parse_chain(
             "search('run').filter(kind='function', path='src/', test=False)"

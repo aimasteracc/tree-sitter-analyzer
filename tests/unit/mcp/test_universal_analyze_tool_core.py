@@ -41,11 +41,6 @@ class TestUniversalAnalyzeToolInit:
 class TestUniversalAnalyzeToolSetProjectPath:
     """Tests for set_project_path method."""
 
-    def test_set_project_path(self, tool):
-        """Test setting project path."""
-        tool.set_project_path("/new/project")
-        assert tool.project_root == "/new/project"
-
     def test_set_project_path_updates_analysis_engine(self, tool):
         """Test that setting project path updates analysis engine."""
         tool.set_project_path("/new/project")

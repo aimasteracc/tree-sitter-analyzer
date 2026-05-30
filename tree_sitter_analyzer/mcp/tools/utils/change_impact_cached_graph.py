@@ -49,6 +49,10 @@ class CachedDependencyGraph:
     def nodes(self) -> list[str]:
         return sorted(self._nodes)
 
+    def all_nodes(self) -> frozenset[str]:
+        """Return all nodes as frozenset — mirrors DependencyGraph.all_nodes()."""
+        return frozenset(self._nodes)
+
     def edges(self) -> list[tuple[str, str]]:
         return sorted(self._edges)
 

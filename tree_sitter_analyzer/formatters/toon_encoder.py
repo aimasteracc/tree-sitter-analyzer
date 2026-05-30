@@ -759,3 +759,13 @@ class ToonEncoder:
                     stack.extend(current)
 
         return False
+
+    # Public aliases for companion module _toon_encoder_task_helpers.py
+    handle_dict_start = _handle_dict_start
+    handle_dict_key = _handle_dict_key
+    handle_list_start = _handle_list_start
+    handle_list_item = _handle_list_item
+    handle_array_table = _handle_array_table
+    # Public alias for toon_formatter.py
+    # NOTE: cannot use 'fallback_to_json' — that name is taken by the constructor bool attr
+    encode_to_json = _fallback_to_json

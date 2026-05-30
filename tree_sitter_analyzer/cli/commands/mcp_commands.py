@@ -102,6 +102,9 @@ from tree_sitter_analyzer.mcp.tools.dependency_analysis_tool import (
 from tree_sitter_analyzer.mcp.tools.dependency_matrix_tool import (
     CodeGraphDependencyMatrixTool,  # noqa: F401
 )
+from tree_sitter_analyzer.mcp.tools.doc_sync_tool import (
+    DocSyncTool,  # noqa: F401
+)
 from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool  # noqa: F401
 from tree_sitter_analyzer.mcp.tools.get_code_outline_tool import (
     GetCodeOutlineTool,  # noqa: F401
@@ -362,6 +365,72 @@ def _build_build_project_index_tool_args(
     return tool_args
 
 
+def _build_change_impact_tool_args(args: Any, output_format: str) -> dict[str, Any]:
+    return {
+        "mode": getattr(args, "change_impact_mode", "diff") or "diff",
+        "pr_url": getattr(args, "pr_url", "") or "",
+        "include_tests": bool(getattr(args, "change_impact_include_tests", True)),
+        "output_format": output_format,
+        "scope_paths": getattr(args, "change_impact_scope", None) or [],
+        "agent_summary_only": not bool(getattr(args, "change_impact_full", False)),
+    }
+
+
+def _build_codegraph_status_tool_args(args: Any, output_format: str) -> dict[str, Any]:
+    return {
+        "include_lag": not bool(getattr(args, "codegraph_status_no_lag", False)),
+        "output_format": output_format,
+    }
+
+
+def _build_codegraph_explore_tool_args(args: Any, output_format: str) -> dict[str, Any]:
+    return {
+        "query": getattr(args, "codegraph_explore", "") or "",
+        "maxFiles": getattr(args, "codegraph_explore_max_files", 12),
+        "maxSymbols": getattr(args, "codegraph_explore_max_symbols", 20),
+        "includeCode": not bool(getattr(args, "codegraph_explore_outline_only", False)),
+        "output_format": output_format,
+    }
+
+
+def _build_codegraph_query_tool_args(args: Any, output_format: str) -> dict[str, Any]:
+    return {
+        "query": getattr(args, "codegraph_query", "") or "",
+        "max_symbols": getattr(args, "codegraph_query_max_symbols", 20),
+        "max_files": getattr(args, "codegraph_query_max_files", 8),
+        "include_code": not bool(getattr(args, "codegraph_query_outline_only", False)),
+        "compact": bool(getattr(args, "codegraph_query_compact", False)),
+        "output_format": output_format,
+    }
+
+
+def _build_code_similarity_tool_args(args: Any, output_format: str) -> dict[str, Any]:
+    return {
+        "mode": getattr(args, "code_similarity_mode", "all") or "all",
+        "min_lines": getattr(args, "code_similarity_min_lines", 5) or 5,
+        "min_group_size": getattr(args, "code_similarity_min_group", 2) or 2,
+        "max_groups": getattr(args, "code_similarity_max_groups", 20) or 20,
+        "use_cache": not bool(getattr(args, "code_similarity_no_cache", False)),
+        "output_format": output_format,
+    }
+
+
+def _build_uml_tool_args(args: Any, output_format: str) -> dict[str, Any]:
+    return {
+        "diagram": getattr(args, "uml", "class") or "class",
+        "source": getattr(args, "uml_source", None),
+        "target": getattr(args, "uml_target", None),
+        "max_edges": getattr(args, "uml_max_edges", 200),
+        "max_depth": getattr(args, "uml_max_depth", 8),
+        "max_paths": getattr(args, "uml_max_paths", 3),
+        "package_depth": getattr(args, "uml_package_depth", 2),
+        "include_external_bases": not bool(
+            getattr(args, "uml_no_external_bases", False)
+        ),
+        "output_format": output_format,
+    }
+
+
 MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
     McpCommandSpec(
         flag_name="file_health",
@@ -411,14 +480,7 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
         # of JSON, agents had to add --agent-summary-only every time).
         # ``--change-impact-full`` is the explicit opt-out; the older
         # ``--agent-summary-only`` is still accepted but is now redundant.
-        build_tool_args=lambda args, output_format: {
-            "mode": getattr(args, "change_impact_mode", "diff") or "diff",
-            "pr_url": getattr(args, "pr_url", "") or "",
-            "include_tests": bool(getattr(args, "change_impact_include_tests", True)),
-            "output_format": output_format,
-            "scope_paths": getattr(args, "change_impact_scope", None) or [],
-            "agent_summary_only": not bool(getattr(args, "change_impact_full", False)),
-        },
+        build_tool_args=_build_change_impact_tool_args,
     ),
     McpCommandSpec(
         flag_name="parser_readiness",
@@ -654,10 +716,7 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
         flag_name="codegraph_status",
         tool_attr="CodeGraphStatusTool",
         label="Index health at-a-glance (CodeGraph parity)",
-        build_tool_args=lambda args, output_format: {
-            "include_lag": not bool(getattr(args, "codegraph_status_no_lag", False)),
-            "output_format": output_format,
-        },
+        build_tool_args=_build_codegraph_status_tool_args,
     ),
     # CodeGraph parity gap-closure (2026-05-24): codegraph_explore replaces
     # ~8 chained codegraph_node / analyze_code_structure calls with one
@@ -666,30 +725,13 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
         flag_name="codegraph_explore",
         tool_attr="CodeGraphExploreTool",
         label="Bulk-fetch N related symbols' source + relationship map",
-        build_tool_args=lambda args, output_format: {
-            "query": getattr(args, "codegraph_explore", "") or "",
-            "maxFiles": getattr(args, "codegraph_explore_max_files", 12),
-            "maxSymbols": getattr(args, "codegraph_explore_max_symbols", 20),
-            "includeCode": not bool(
-                getattr(args, "codegraph_explore_outline_only", False)
-            ),
-            "output_format": output_format,
-        },
+        build_tool_args=_build_codegraph_explore_tool_args,
     ),
     McpCommandSpec(
         flag_name="codegraph_query",
         tool_attr="CodeGraphQueryTool",
         label="jQuery-style chained code graph query",
-        build_tool_args=lambda args, output_format: {
-            "query": getattr(args, "codegraph_query", "") or "",
-            "max_symbols": getattr(args, "codegraph_query_max_symbols", 20),
-            "max_files": getattr(args, "codegraph_query_max_files", 8),
-            "include_code": not bool(
-                getattr(args, "codegraph_query_outline_only", False)
-            ),
-            "compact": bool(getattr(args, "codegraph_query_compact", False)),
-            "output_format": output_format,
-        },
+        build_tool_args=_build_codegraph_query_tool_args,
     ),
     McpCommandSpec(
         flag_name="ast_path",
@@ -753,17 +795,19 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
         },
     ),
     McpCommandSpec(
+        flag_name="doc_sync",
+        tool_attr="DocSyncTool",
+        label="Doc-sync: scan markdown docs for stale file-path references",
+        build_tool_args=lambda args, output_format: {
+            "doc_patterns": getattr(args, "doc_sync_patterns", None) or None,
+            "output_format": output_format,
+        },
+    ),
+    McpCommandSpec(
         flag_name="code_similarity",
         tool_attr="CodeGraphSimilarityTool",
         label="AST-structural clone detection: finds duplicate and near-duplicate functions (CodeGraph parity)",
-        build_tool_args=lambda args, output_format: {
-            "mode": getattr(args, "code_similarity_mode", "all") or "all",
-            "min_lines": getattr(args, "code_similarity_min_lines", 5) or 5,
-            "min_group_size": getattr(args, "code_similarity_min_group", 2) or 2,
-            "max_groups": getattr(args, "code_similarity_max_groups", 20) or 20,
-            "use_cache": not bool(getattr(args, "code_similarity_no_cache", False)),
-            "output_format": output_format,
-        },
+        build_tool_args=_build_code_similarity_tool_args,
     ),
     McpCommandSpec(
         flag_name="codegraph_sitemap",
@@ -848,19 +892,7 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
         flag_name="uml",
         tool_attr="CodeGraphUMLTool",
         label="UML Mermaid export: class, package, component, sequence diagrams",
-        build_tool_args=lambda args, output_format: {
-            "diagram": getattr(args, "uml", "class") or "class",
-            "source": getattr(args, "uml_source", None),
-            "target": getattr(args, "uml_target", None),
-            "max_edges": getattr(args, "uml_max_edges", 200),
-            "max_depth": getattr(args, "uml_max_depth", 8),
-            "max_paths": getattr(args, "uml_max_paths", 3),
-            "package_depth": getattr(args, "uml_package_depth", 2),
-            "include_external_bases": not bool(
-                getattr(args, "uml_no_external_bases", False)
-            ),
-            "output_format": output_format,
-        },
+        build_tool_args=_build_uml_tool_args,
     ),
     # consolidated-only dispatchers ported during merge of feat/autonomous-dev
     McpCommandSpec(
@@ -1044,6 +1076,7 @@ _TOOL_CLASS_NAMES: frozenset[str] = frozenset(
         "ModificationGuardTool",
         "DecisionJournalTool",
         "BatchSearchTool",
+        "DocSyncTool",
     }
 )
 

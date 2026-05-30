@@ -51,7 +51,15 @@ def build_parser_readiness_advice(
                 },
             }
     root = Path(project_root).expanduser().resolve()
-    inputs = collect_readiness_inputs(root)
+    try:
+        inputs = collect_readiness_inputs(root)
+    except ValueError as exc:
+        return {
+            "success": False,
+            "error_type": "validation",
+            "error": str(exc),
+            "agent_summary": {"verdict": "ERROR", "next_step": str(exc)},
+        }
     requested_language = normalize_language(language) if language else None
     report_languages = select_report_languages(
         inputs["parser_packages"],

@@ -6,6 +6,8 @@ import json
 import sqlite3
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from tree_sitter_analyzer.codegraph_query_backend import CodeGraphQueryBackend
 
 
@@ -66,9 +68,16 @@ def test_backend_resolves_definitions_without_symbol_resolver() -> None:
 
 def test_backend_prefers_fts_definition_rows() -> None:
     cache = MagicMock()
-    cache.fts5_available = True
-    cache.fts_search.return_value = [
-        {"name": "run", "kind": "reference", "file": "ref.py", "line": 1},
+    cache._fts5_available = True
+    # G6: _fts_definitions now uses fts_search_ranked; rows carry relevance_score.
+    cache.fts_search_ranked.return_value = [
+        {
+            "name": "run",
+            "kind": "reference",
+            "file": "ref.py",
+            "line": 1,
+            "relevance_score": 0.8,
+        },
         {
             "name": "run",
             "kind": "function",
@@ -76,6 +85,7 @@ def test_backend_prefers_fts_definition_rows() -> None:
             "line": 3,
             "end_line": 4,
             "language": "python",
+            "relevance_score": 1.0,
         },
     ]
     backend = CodeGraphQueryBackend(cache)
@@ -83,7 +93,8 @@ def test_backend_prefers_fts_definition_rows() -> None:
     results = backend.resolve_definitions("run")
 
     assert [item["file"] for item in results] == ["main.py"]
-    cache.fts_search.assert_called_once_with("run", limit=50)
+    assert results[0]["confidence"] == pytest.approx(1.0)
+    cache.fts_search_ranked.assert_called_once_with("run", limit=50)
 
 
 def test_backend_falls_back_to_symbols_json() -> None:
@@ -157,6 +168,42 @@ def test_backend_semantic_symbols_rank_token_vector_matches() -> None:
 
     assert results[0]["name"] == "format_user"
     assert results[0]["semantic_score"] > 0
+
+
+def test_backend_semantic_symbols_maps_semantic_score_to_confidence() -> None:
+    """semantic_symbols must populate 'confidence' from semantic_score.
+
+    This ensures sort(by='confidence') in the DSL works on semantic()
+    results the same way it works on search/explore results.
+    """
+    conn = _connect()
+    conn.execute(
+        """CREATE TABLE ast_symbol_rows (
+            name TEXT,
+            kind TEXT,
+            file_path TEXT,
+            language TEXT,
+            line INTEGER,
+            end_line INTEGER
+        )"""
+    )
+    conn.executemany(
+        "INSERT INTO ast_symbol_rows VALUES (?, ?, ?, ?, ?, ?)",
+        [
+            ("handle_request", "function", "server.py", "python", 1, 3),
+            ("validate", "function", "util.py", "python", 5, 8),
+        ],
+    )
+    backend = CodeGraphQueryBackend(RowCache(conn))
+
+    results = backend.semantic_symbols("handle request", limit=3)
+
+    assert len(results) >= 1
+    for r in results:
+        assert "confidence" in r, (
+            "semantic_symbols must map semantic_score → confidence"
+        )
+        assert r["confidence"] == r["semantic_score"]
 
 
 def test_backend_normalizes_callers_and_callees_from_cache_rows() -> None:

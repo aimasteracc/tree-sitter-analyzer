@@ -104,6 +104,13 @@ def _build_recommended_fix(cmd: str, failure_mode: str, detail: str = "") -> str
 class CheckToolsTool(BaseMCPTool):
     """MCP tool that checks whether fd and ripgrep are available."""
 
+    def get_tool_schema(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": False,
+        }
+
     def get_tool_definition(self) -> dict[str, Any]:
         return {
             "name": "check_tools",
@@ -143,11 +150,7 @@ class CheckToolsTool(BaseMCPTool):
                 "the next call can proceed. Legal vocabulary: SAFE / CAUTION / "
                 "REVIEW / UNSAFE / INFO / WARN / ERROR / NOT_FOUND."
             ),
-            "inputSchema": {
-                "type": "object",
-                "properties": {},
-                "additionalProperties": False,
-            },
+            "inputSchema": self.get_tool_schema(),
             "annotations": {
                 "readOnlyHint": True,
                 "destructiveHint": False,

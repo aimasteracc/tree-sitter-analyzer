@@ -128,8 +128,8 @@ class ResolverContext:
         built = build_resolver_context(self.cache)
         self._file_symbols = built.file_symbols
         self._name_to_source = built.name_to_source
-        self._file_class_methods = built._file_class_methods
-        self._file_class_methods_loaded = built._file_class_methods_loaded
+        self._file_class_methods = built._file_class_methods  # noqa: SLF001 — same class, different instance
+        self._file_class_methods_loaded = built._file_class_methods_loaded  # noqa: SLF001
         self._global_name_table = built.global_name_table
         self._import_alias_target = built.import_alias_target
         self._imports_by_file = built.imports_by_file

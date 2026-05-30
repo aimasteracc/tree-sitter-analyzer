@@ -54,7 +54,7 @@ def _append_methods(
 
 
 def _method_row(formatter: Any, method: dict[str, Any]) -> str:
-    visibility = formatter._convert_visibility(str(method.get("visibility", "public")))
+    visibility = formatter.convert_visibility(str(method.get("visibility", "public")))
     line_range = method.get("line_range", {})
     return (
         f"| {str(method.get('name', ''))} | {create_compact_signature(method)} | "

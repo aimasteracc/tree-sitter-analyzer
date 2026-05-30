@@ -390,6 +390,12 @@ class YAMLPlugin(LanguagePlugin):
         }
 
     # Analyze source code structure: analyze_file
+    def extract_elements(
+        self, tree: tree_sitter.Tree, source_code: str
+    ) -> dict[str, list]:
+        """Unified extraction entry point — delegates to the extractor."""
+        return self.create_extractor().extract_elements(tree, source_code)
+
     async def analyze_file(
         self, file_path: str, request: AnalysisRequest
     ) -> AnalysisResult:

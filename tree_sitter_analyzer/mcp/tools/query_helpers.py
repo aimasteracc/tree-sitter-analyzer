@@ -91,6 +91,47 @@ TOOL_SCHEMA: dict[str, Any] = {
 }
 
 
+def _query_risk_and_step(
+    count: int,
+    file_path: str,
+    truncated: bool,
+) -> tuple[str, str]:
+    """Return (risk, next_step) based on query result count and truncation status."""
+    if count == 0:
+        return (
+            "low",
+            "Try a broader query_key, or use search_content to find the symbol by text.",
+        )
+    if truncated:
+        return (
+            "high",
+            f"Tighten the query (add filter=) before opening {count} results.",
+        )
+    if count == 1:
+        _msg = (
+            f"extract_code_section(file_path='{file_path}', ...) to read the one match."
+        )
+        return "low", _msg
+    if count > 50:
+        return (
+            "medium",
+            "Add filter (e.g., 'name=~pattern') to narrow before opening all matches.",
+        )
+    return (
+        "low",
+        "Inspect listed start_line/end_line ranges, then read_partial for details.",
+    )
+
+
+def _risk_to_verdict(risk: str) -> str:
+    """Map risk level to canonical verdict string (low→INFO, medium→CAUTION, high→REVIEW)."""
+    if risk == "high":
+        return "REVIEW"
+    if risk == "medium":
+        return "CAUTION"
+    return "INFO"
+
+
 def build_query_agent_summary(
     *,
     file_path: str,
@@ -107,43 +148,12 @@ def build_query_agent_summary(
     from pathlib import Path as _Path
 
     file_name = _Path(file_path).name if file_path else "<unknown>"
-    truncated_part = " (truncated)" if truncated else ""
+    _trunc_part = " (truncated)" if truncated else ""
     summary_line = (
-        f"{language} query '{query}': {count} results in {file_name}{truncated_part}"
+        f"{language} query '{query}': {count} results in {file_name}{_trunc_part}"
     )
-    if count == 0:
-        next_step = (
-            "Try a broader query_key, or use search_content to find the symbol by text."
-        )
-        risk = "low"
-    elif truncated:
-        next_step = f"Tighten the query (add filter=) before opening {count} results."
-        risk = "high"
-    elif count == 1:
-        next_step = (
-            f"extract_code_section(file_path='{file_path}', ...) to read the one match."
-        )
-        risk = "low"
-    elif count > 50:
-        next_step = (
-            "Add filter (e.g., 'name=~pattern') to narrow before opening all matches."
-        )
-        risk = "medium"
-    else:
-        next_step = (
-            "Inspect listed start_line/end_line ranges, then read_partial for details."
-        )
-        risk = "low"
-    # T4 (round-37f): canonical envelope contract — every agent_summary
-    # must have ``verdict``. query is informational (it just returns
-    # matches), so map risk → verdict using the same vocabulary as
-    # safe_to_edit / modification_guard (low→INFO, high→REVIEW).
-    if risk == "high":
-        verdict = "REVIEW"
-    elif risk == "medium":
-        verdict = "CAUTION"
-    else:
-        verdict = "INFO"
+    risk, next_step = _query_risk_and_step(count, file_path, truncated)
+    verdict = _risk_to_verdict(risk)
     return {
         "risk": risk,
         "verdict": verdict,
@@ -156,6 +166,20 @@ def build_query_agent_summary(
         "file": file_name,
         "next_step": next_step,
         "summary_line": summary_line,
+    }
+
+
+def _format_capture_item(item: dict[str, Any]) -> dict[str, Any]:
+    """Build a single summary entry for one query-result item."""
+    name = item.get("name") or extract_name_from_content(item["content"])
+    _span = item["end_line"] - item["start_line"] + 1
+    lines = item.get("line_span", _span)
+    line_range = f"{item['start_line']}-{item['end_line']}"
+    return {
+        "name": name,
+        "line_range": line_range,
+        "lines": lines,
+        "node_type": item["node_type"],
     }
 
 
@@ -176,20 +200,10 @@ def format_summary(
         "captures": {},
     }
     for capture_name, items in by_capture.items():
+        all_items = [_format_capture_item(item) for item in items]
         summary["captures"][capture_name] = {
             "count": len(items),
-            "items": [
-                {
-                    "name": item.get("name")
-                    or extract_name_from_content(item["content"]),
-                    "line_range": f"{item['start_line']}-{item['end_line']}",
-                    "lines": item.get(
-                        "line_span", item["end_line"] - item["start_line"] + 1
-                    ),
-                    "node_type": item["node_type"],
-                }
-                for item in items
-            ],
+            "items": all_items,
         }
     return summary
 
@@ -205,13 +219,13 @@ _NAME_PATTERNS = [
 # extract_name_from_content: implementation
 def extract_name_from_content(content: str) -> str:
     """Extract name from code content using common declaration patterns."""
-    first_line = content.strip().split("\n")[0].strip()
-    # Loop iteration
+    stripped = content.strip()
+    first_line = stripped.split("\n")[0].strip()
     for pattern in _NAME_PATTERNS:
         match = re.search(pattern, first_line)
-        # Conditional check
         if match:
-            return match.group(1).strip()
+            raw = match.group(1)
+            return raw.strip()
     return "unnamed"
 
 
@@ -220,7 +234,6 @@ def build_next_steps(
     results: list[dict[str, Any]], file_path: str, query_used: str
 ) -> list[str]:
     """Build actionable next-step suggestions based on query results."""
-    # Conditional check
     if not results:
         return []
 
@@ -230,24 +243,24 @@ def build_next_steps(
         for r in results
         if "start_line" in r and "end_line" in r and r["end_line"] > r["start_line"]
     ]
-    # Conditional check
     if extractable:
         first = extractable[0]
         name = first.get("name", first.get("capture_name", "element"))
+        _sl = first["start_line"]
+        _el = first["end_line"]
         steps.append(
             f"extract_code_section(file_path='{file_path}', "
-            f"start_line={first['start_line']}, end_line={first['end_line']}) to read '{name}'"
+            f"start_line={_sl}, end_line={_el}) to read '{name}'"
         )
 
-    # Conditional check
     if len(results) == 1:
         steps.append("Try other query keys to discover more elements in this file")
     elif len(results) > 3:
         steps.append("Add filter (e.g., 'name=~pattern') to narrow results")
 
     named = [r for r in results if r.get("name")]
-    # Conditional check
-    if named and query_used in ("methods", "functions", "method", "function"):
+    _query_types = ("methods", "functions", "method", "function")
+    if named and query_used in _query_types:
         names = [r["name"] for r in named[:3]]
         steps.append(
             f"search_content(query='{'|'.join(names)}') to find callers of these elements"
@@ -298,6 +311,74 @@ def validate_query_arguments(arguments: dict[str, Any]) -> bool:
     return True
 
 
+def _copy_agent_summary_to(
+    source: dict[str, Any],
+    target: dict[str, Any],
+) -> None:
+    """Copy agent_summary (and summary_line) from source dict into target envelope."""
+    if "agent_summary" not in source:
+        return
+    target["agent_summary"] = source["agent_summary"]
+    agent_summary = source["agent_summary"]
+    _is_dict = isinstance(agent_summary, dict)
+    _has_line = _is_dict and isinstance(agent_summary.get("summary_line"), str)
+    if _has_line:
+        target["summary_line"] = agent_summary["summary_line"]
+
+
+def _build_suppress_envelope(
+    formatted: dict[str, Any],
+    file_path: str,
+    language: str,
+    query: str | None,
+) -> dict[str, Any]:
+    """Build the minimal suppress envelope returned when suppress_output=True."""
+    _count_raw = formatted.get("count", 0)
+    _total_count = int(_count_raw or 0)
+    minimal: dict[str, Any] = {
+        "success": formatted.get("success", True),
+        "count": formatted.get("count", 0),
+        "file_path": file_path,
+        "language": language,
+        "query": query,
+        "elapsed_ms": formatted.get("elapsed_ms", 0.0),
+        "truncated": formatted.get("truncated", False),
+        "displayed_count": 0,
+        "total_count": _total_count,
+    }
+    _copy_agent_summary_to(formatted, minimal)
+    for key in ("next_steps", "output_file_path", "file_saved", "file_save_error"):
+        if key in formatted:
+            minimal[key] = formatted[key]
+    return minimal
+
+
+def _save_query_output(
+    formatted: dict[str, Any],
+    output_file: str,
+    file_path: str,
+    query: str | None,
+    output_format: str,
+    file_output_manager: Any,
+) -> None:
+    """Save formatted query output to a file and record metadata in formatted."""
+    from pathlib import Path as _Path
+
+    from ..utils.format_helper import format_for_file_output as _format_for_file
+
+    try:
+        _stem = _Path(file_path).stem
+        _default = f"{_stem}_query_{query or 'custom'}"
+        base_name = output_file if output_file.strip() else _default
+        content, _ = _format_for_file(formatted, output_format)
+        saved = file_output_manager.save_to_file(content=content, base_name=base_name)
+        formatted["output_file_path"] = saved
+        formatted["file_saved"] = True
+    except Exception as e:
+        formatted["file_save_error"] = str(e)
+        formatted["file_saved"] = False
+
+
 # handle_query_output: extracted from QueryTool._handle_output
 # Manages file saving and output suppression for large result sets
 def handle_query_output(
@@ -309,62 +390,18 @@ def handle_query_output(
     file_output_manager: Any,
 ) -> dict[str, Any]:
     """Handle file output and suppress logic for query results."""
-    from pathlib import Path as _Path
-
     from ..utils.format_helper import apply_toon_format_to_response as _apply_toon
-    from ..utils.format_helper import format_for_file_output as _format_for_file
 
     output_file = arguments.get("output_file")
     suppress_output = arguments.get("suppress_output", False)
     output_format = arguments.get("output_format", "toon")
 
     if output_file:
-        try:
-            base_name = (
-                output_file
-                if output_file.strip()
-                else f"{_Path(file_path).stem}_query_{query or 'custom'}"
-            )
-            content, _ = _format_for_file(formatted, output_format)
-            saved = file_output_manager.save_to_file(
-                content=content, base_name=base_name
-            )
-            formatted["output_file_path"] = saved
-            formatted["file_saved"] = True
-        except Exception as e:
-            formatted["file_save_error"] = str(e)
-            formatted["file_saved"] = False
+        _save_query_output(
+            formatted, output_file, file_path, query, output_format, file_output_manager
+        )
 
     if suppress_output and output_file:
-        # Minimal envelope: existing callers/tests expect ``results`` absent
-        # here, so we keep the contract intact. Canonical aliases that don't
-        # require ``results`` are added below.
-        minimal: dict[str, Any] = {
-            "success": formatted.get("success", True),
-            "count": formatted.get("count", 0),
-            "file_path": file_path,
-            "language": language,
-            "query": query,
-            "elapsed_ms": formatted.get("elapsed_ms", 0.0),
-            "truncated": formatted.get("truncated", False),
-            "displayed_count": 0,
-            "total_count": int(formatted.get("count", 0) or 0),
-        }
-        if "agent_summary" in formatted:
-            minimal["agent_summary"] = formatted["agent_summary"]
-            agent_summary = formatted["agent_summary"]
-            if isinstance(agent_summary, dict) and isinstance(
-                agent_summary.get("summary_line"), str
-            ):
-                minimal["summary_line"] = agent_summary["summary_line"]
-        if "next_steps" in formatted:
-            minimal["next_steps"] = formatted["next_steps"]
-        if "output_file_path" in formatted:
-            minimal["output_file_path"] = formatted["output_file_path"]
-        if "file_saved" in formatted:
-            minimal["file_saved"] = formatted["file_saved"]
-        if "file_save_error" in formatted:
-            minimal["file_save_error"] = formatted["file_save_error"]
-        return minimal
+        return _build_suppress_envelope(formatted, file_path, language, query)
 
     return _apply_toon(formatted, output_format)

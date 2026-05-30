@@ -95,13 +95,14 @@ def _build_symbol_groups(fts_results: list) -> list[dict]:
         fp = r["file"]
         if fp not in symbols:
             symbols[fp] = []
-        symbols[fp].append(
-            {
-                "name": r.get("name", ""),
-                "kind": r.get("kind", ""),
-                "line": r.get("line", 0),
-            }
-        )
+        entry: dict = {
+            "name": r.get("name", ""),
+            "kind": r.get("kind", ""),
+            "line": r.get("line", 0),
+        }
+        if "relevance_score" in r:
+            entry["relevance_score"] = round(float(r["relevance_score"]), 3)
+        symbols[fp].append(entry)
     return [
         {"file": fp, "count": len(syms), "symbols": syms}
         for fp, syms in sorted(symbols.items())
@@ -160,7 +161,8 @@ def try_fts5_fast_path(
 
     query = arguments["query"]
     language = _extensions_to_language(arguments)
-    fts_results = cache.fts_search(query, language=language, limit=200)
+    # G5: use ranked search for BM25-ordered results (≥2 chars path via wrapper).
+    fts_results = cache.fts_search_ranked(query, language=language, limit=200)
     cache.close()
 
     if not fts_results:
@@ -184,8 +186,9 @@ def try_fts5_fast_path(
             "data_source": "fts5",
         }
 
-    formatted: list[dict[str, Any]] = [
-        {
+    formatted: list[dict[str, Any]] = []
+    for r in fts_results:
+        entry: dict[str, Any] = {
             "file": r["file"],
             "line": r.get("line", 0),
             "kind": r.get("kind", ""),
@@ -193,8 +196,9 @@ def try_fts5_fast_path(
             "language": r.get("language", ""),
             "match": _match_line_from_fts(r["file"], r.get("line", 0), project_root),
         }
-        for r in fts_results
-    ]
+        if "relevance_score" in r:
+            entry["relevance_score"] = round(float(r["relevance_score"]), 3)
+        formatted.append(entry)
 
     response: dict[str, Any] = {
         "success": True,
@@ -204,6 +208,9 @@ def try_fts5_fast_path(
         "results": formatted[:100],
         "data_source": "fts5",
     }
+    # Indicate BM25 ranking when ranked path was used (queries >= 2 chars).
+    if len(query) >= 2 and fts_results and "relevance_score" in fts_results[0]:
+        response["ranking_method"] = "fts5_bm25"
     if language:
         response["language_filter"] = language
 

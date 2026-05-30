@@ -396,3 +396,4 @@ coverage.json
 # Understand-Anything dashboard artifacts (UA writes knowledge-graph.json + intermediate/ + tmp/)
 .understand-anything/
 **/.understand-anything/
+.mycelium/

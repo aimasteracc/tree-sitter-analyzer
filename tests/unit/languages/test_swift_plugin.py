@@ -8,7 +8,6 @@ from unittest.mock import Mock, patch
 import pytest
 
 from tree_sitter_analyzer.languages.swift_plugin import (
-    SwiftElementExtractor,
     SwiftPlugin,
 )
 
@@ -74,18 +73,6 @@ def plugin() -> SwiftPlugin:
 
 class TestSwiftPluginBasics:
     """Swift plugin interface tests."""
-
-    def test_plugin_metadata(self, plugin: SwiftPlugin) -> None:
-        assert plugin.get_language_name() == "swift"
-        # ``.swiftinterface`` is module-interface emitted by
-        # ``swiftc -emit-module-interface`` — issue #131.
-        assert plugin.get_file_extensions() == [".swift", ".swiftinterface"]
-        assert plugin.supports_file("Sources/App.swift")
-        assert plugin.supports_file("SDK/Foundation.swiftinterface")
-        assert not plugin.supports_file("Sources/App.kt")
-
-    def test_create_extractor(self, plugin: SwiftPlugin) -> None:
-        assert isinstance(plugin.create_extractor(), SwiftElementExtractor)
 
     def test_tree_sitter_language_missing_package(self, plugin: SwiftPlugin) -> None:
         with patch.dict(sys.modules, {"tree_sitter_swift": None}):

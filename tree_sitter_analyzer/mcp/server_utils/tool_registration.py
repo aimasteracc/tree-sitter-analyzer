@@ -48,7 +48,7 @@ def register_tools(server: Any, server_instance: Any) -> None:
         """List all available tools."""
         logger.info("Client requesting tools list")
         tools = [
-            Tool(**t.get_tool_definition()) for _, t in server_instance._tool_instances
+            Tool(**t.get_tool_definition()) for _, t in server_instance.tool_instances
         ]
         tools.append(Tool(**_SET_PROJECT_PATH_TOOL))
         logger.info(f"Returning {len(tools)} tools: {[t.name for t in tools]}")
@@ -57,9 +57,9 @@ def register_tools(server: Any, server_instance: Any) -> None:
     @server.call_tool()  # type: ignore[untyped-decorator]
     async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
         try:
-            server_instance._ensure_initialized()
+            server_instance.ensure_initialized()
             logger.info(f"MCP tool call: {name} with args: {list(arguments.keys())}")
-            server_instance._validate_file_path_security(arguments)
+            server_instance.validate_file_path_security(arguments)
             result = await _dispatch_tool(server_instance, name, arguments)
             # Central envelope normalization: tools that return their own
             # ``{success: False, ...}`` dicts (find_and_grep, refactoring_suggestions,
@@ -116,13 +116,13 @@ async def _dispatch_tool(
         enforce_strict_params(
             name, schema if isinstance(schema, dict) else None, arguments
         )
-        return server_instance._handle_set_project_path(arguments)
+        return server_instance.handle_set_project_path(arguments)
     if name == "extract_code_section":
-        return await server_instance._handle_extract_code_section(arguments)
+        return await server_instance.handle_extract_code_section(arguments)
     if name == "analyze_code_structure":
         return await server_instance.table_format_tool.execute(arguments)
-    if name in server_instance._tools:
-        return await server_instance._tools[name].execute(arguments)
+    if name in server_instance.tools:
+        return await server_instance.tools[name].execute(arguments)
     raise ValueError(f"Unknown tool: {name}")
 
 

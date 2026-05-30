@@ -15,7 +15,6 @@ from ._analysis_engine_code_mixin import UnifiedAnalysisEngineCodeMixin
 from ._analysis_engine_errors import UnsupportedLanguageError
 from ._analysis_engine_file_mixin import UnifiedAnalysisEngineFileMixin
 from ._analysis_engine_runtime_mixin import UnifiedAnalysisEngineRuntimeMixin
-from .performance import PerformanceMonitor
 from .request import AnalysisRequest
 
 __all__ = [
@@ -24,6 +23,25 @@ __all__ = [
     "UnifiedAnalysisEngine",
     "UnsupportedLanguageError",
 ]
+
+
+def _ensure_plugin_manager(plugin_manager: Any) -> Any:
+    """Return existing manager or lazily construct a new PluginManager."""
+    if plugin_manager is not None:
+        return plugin_manager
+    from ..plugins.manager import PluginManager
+
+    return PluginManager()
+
+
+def _run_plugin_discovery(plugin_manager: Any) -> None:
+    """Call load_plugins() and log any exception via %s (avoids f-string depth)."""
+    from ..utils import log_error
+
+    try:
+        plugin_manager.load_plugins()
+    except Exception as e:
+        log_error("Failed to discover plugins: %s", e)
 
 
 class LanguagePlugin(Protocol):
@@ -49,6 +67,18 @@ class UnifiedAnalysisEngine(
     _instances: dict[str, "UnifiedAnalysisEngine"] = {}
     _lock: threading.Lock = threading.Lock()
 
+    @classmethod
+    def _get_or_create(cls, instance_key: str) -> "UnifiedAnalysisEngine":
+        """Singleton factory: get or create an instance for the given key."""
+        _instances = cls._instances
+        instance = _instances.get(instance_key)
+        if instance is not None:
+            return instance
+        instance = object.__new__(cls)
+        _instances[instance_key] = instance
+        instance._initialized = False  # noqa: SLF001
+        return instance
+
     def __new__(cls, project_root: str | None = None) -> "UnifiedAnalysisEngine":
         """Singleton instance management (backward compatible)"""
         instance_key = project_root or "default"
@@ -57,7 +87,7 @@ class UnifiedAnalysisEngine(
             return instance
 
         with cls._lock:
-            return _get_or_create_engine_instance(cls, instance_key)
+            return cls._get_or_create(instance_key)
 
     def __init__(self, project_root: str | None = None) -> None:
         """Initialize the engine"""
@@ -89,6 +119,7 @@ class UnifiedAnalysisEngine(
         from ..security import SecurityValidator
         from .cache_service import CacheService
         from .parser import Parser
+        from .performance import PerformanceMonitor
         from .query import QueryExecutor
 
         self._cache_service = CacheService()
@@ -108,25 +139,18 @@ class UnifiedAnalysisEngine(
     def clear_cache(self) -> None:
         """Clear the analysis cache (compatibility method)"""
         self._ensure_initialized()
-        if self._cache_service:
-            self._cache_service.clear()
+        _svc = self._cache_service
+        if _svc:
+            _svc.clear()
 
     # Handler: _load_plugins
     def _load_plugins(self) -> None:
         """Discover available plugins (fast metadata scan)"""
-        from ..utils import log_debug, log_error
+        from ..utils import log_debug
 
-        # Minimal init for discovery
-        if self._plugin_manager is None:
-            from ..plugins.manager import PluginManager
-
-            self._plugin_manager = PluginManager()
-
+        self._plugin_manager = _ensure_plugin_manager(self._plugin_manager)
         log_debug("Discovering plugins using PluginManager...")
-        try:
-            self._plugin_manager.load_plugins()
-        except Exception as e:
-            log_error(f"Failed to discover plugins: {e}")
+        _run_plugin_discovery(self._plugin_manager)
 
 
 # Simple plugin implementation (for testing)
@@ -166,16 +190,3 @@ class MockLanguagePlugin:
 def get_analysis_engine(project_root: str | None = None) -> UnifiedAnalysisEngine:
     """Get unified analysis engine instance"""
     return UnifiedAnalysisEngine(project_root)
-
-
-def _get_or_create_engine_instance(
-    engine_cls: type[UnifiedAnalysisEngine], instance_key: str
-) -> UnifiedAnalysisEngine:
-    instance = engine_cls._instances.get(instance_key)
-    if instance is not None:
-        return instance
-
-    instance = object.__new__(engine_cls)
-    engine_cls._instances[instance_key] = instance
-    instance._initialized = False
-    return instance

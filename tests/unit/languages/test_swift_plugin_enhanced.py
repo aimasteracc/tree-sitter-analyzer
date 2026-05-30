@@ -200,25 +200,33 @@ def plugin() -> SwiftPlugin:
 class TestSwiftExtensionExtraction:
     def test_extension_types(self, plugin: SwiftPlugin) -> None:
         tree = _swift_parser().parse(SWIFT_EXTENSIONS_SAMPLE.encode("utf-8"))
-        classes = plugin.create_extractor().extract_classes(tree, SWIFT_EXTENSIONS_SAMPLE)
+        classes = plugin.create_extractor().extract_classes(
+            tree, SWIFT_EXTENSIONS_SAMPLE
+        )
         ext_classes = [c for c in classes if c.class_type == "extension"]
         assert len(ext_classes) >= 1
 
     def test_extension_functions(self, plugin: SwiftPlugin) -> None:
         tree = _swift_parser().parse(SWIFT_EXTENSIONS_SAMPLE.encode("utf-8"))
-        functions = plugin.create_extractor().extract_functions(tree, SWIFT_EXTENSIONS_SAMPLE)
+        functions = plugin.create_extractor().extract_functions(
+            tree, SWIFT_EXTENSIONS_SAMPLE
+        )
         names = {f.name for f in functions}
         assert "formatted" in names or "save" in names
 
     def test_extension_variables(self, plugin: SwiftPlugin) -> None:
         tree = _swift_parser().parse(SWIFT_EXTENSIONS_SAMPLE.encode("utf-8"))
-        variables = plugin.create_extractor().extract_variables(tree, SWIFT_EXTENSIONS_SAMPLE)
+        variables = plugin.create_extractor().extract_variables(
+            tree, SWIFT_EXTENSIONS_SAMPLE
+        )
         var_names = {v.name for v in variables}
         assert "displayName" in var_names
 
     def test_import_with_submodule(self, plugin: SwiftPlugin) -> None:
         tree = _swift_parser().parse(SWIFT_EXTENSIONS_SAMPLE.encode("utf-8"))
-        imports = plugin.create_extractor().extract_imports(tree, SWIFT_EXTENSIONS_SAMPLE)
+        imports = plugin.create_extractor().extract_imports(
+            tree, SWIFT_EXTENSIONS_SAMPLE
+        )
         modules = {imp.module_name for imp in imports}
         assert "UIKit" in modules
         assert any("CoreData" in m for m in modules)
@@ -240,11 +248,16 @@ class TestSwiftEnumExtraction:
         classes = plugin.create_extractor().extract_classes(tree, SWIFT_ENUMS_SAMPLE)
         error_enum = next((c for c in classes if c.name == "NetworkError"), None)
         assert error_enum is not None
-        assert "Error" in error_enum.interfaces or "CustomStringConvertible" in error_enum.interfaces
+        assert (
+            "Error" in error_enum.interfaces
+            or "CustomStringConvertible" in error_enum.interfaces
+        )
 
     def test_enum_properties(self, plugin: SwiftPlugin) -> None:
         tree = _swift_parser().parse(SWIFT_ENUMS_SAMPLE.encode("utf-8"))
-        variables = plugin.create_extractor().extract_variables(tree, SWIFT_ENUMS_SAMPLE)
+        variables = plugin.create_extractor().extract_variables(
+            tree, SWIFT_ENUMS_SAMPLE
+        )
         var_names = {v.name for v in variables}
         assert "description" in var_names
         assert "isFatal" in var_names
@@ -271,41 +284,53 @@ class TestSwiftNestedDeclarations:
 
     def test_private_property(self, plugin: SwiftPlugin) -> None:
         tree = _swift_parser().parse(SWIFT_NESTED_SAMPLE.encode("utf-8"))
-        variables = plugin.create_extractor().extract_variables(tree, SWIFT_NESTED_SAMPLE)
+        variables = plugin.create_extractor().extract_variables(
+            tree, SWIFT_NESTED_SAMPLE
+        )
         service_var = next((v for v in variables if v.name == "service"), None)
         assert service_var is not None
         assert service_var.is_constant is True
 
     def test_private_set_property(self, plugin: SwiftPlugin) -> None:
         tree = _swift_parser().parse(SWIFT_NESTED_SAMPLE.encode("utf-8"))
-        variables = plugin.create_extractor().extract_variables(tree, SWIFT_NESTED_SAMPLE)
+        variables = plugin.create_extractor().extract_variables(
+            tree, SWIFT_NESTED_SAMPLE
+        )
         loading_var = next((v for v in variables if v.name == "isLoading"), None)
         assert loading_var is not None
         assert loading_var.is_constant is False
 
     def test_async_function(self, plugin: SwiftPlugin) -> None:
         tree = _swift_parser().parse(SWIFT_NESTED_SAMPLE.encode("utf-8"))
-        functions = plugin.create_extractor().extract_functions(tree, SWIFT_NESTED_SAMPLE)
+        functions = plugin.create_extractor().extract_functions(
+            tree, SWIFT_NESTED_SAMPLE
+        )
         fetch_fn = next((f for f in functions if f.name == "fetch"), None)
         assert fetch_fn is not None
         assert fetch_fn.is_async is True
 
     def test_init_extraction(self, plugin: SwiftPlugin) -> None:
         tree = _swift_parser().parse(SWIFT_NESTED_SAMPLE.encode("utf-8"))
-        functions = plugin.create_extractor().extract_functions(tree, SWIFT_NESTED_SAMPLE)
+        functions = plugin.create_extractor().extract_functions(
+            tree, SWIFT_NESTED_SAMPLE
+        )
         inits = [f for f in functions if f.is_constructor]
         assert len(inits) >= 1
 
     def test_private_function(self, plugin: SwiftPlugin) -> None:
         tree = _swift_parser().parse(SWIFT_NESTED_SAMPLE.encode("utf-8"))
-        functions = plugin.create_extractor().extract_functions(tree, SWIFT_NESTED_SAMPLE)
+        functions = plugin.create_extractor().extract_functions(
+            tree, SWIFT_NESTED_SAMPLE
+        )
         handle_fn = next((f for f in functions if f.name == "handle"), None)
         assert handle_fn is not None
         assert handle_fn.is_private is True
 
     def test_static_property(self, plugin: SwiftPlugin) -> None:
         tree = _swift_parser().parse(SWIFT_NESTED_SAMPLE.encode("utf-8"))
-        variables = plugin.create_extractor().extract_variables(tree, SWIFT_NESTED_SAMPLE)
+        variables = plugin.create_extractor().extract_variables(
+            tree, SWIFT_NESTED_SAMPLE
+        )
         default_var = next((v for v in variables if v.name == "default"), None)
         if default_var is not None:
             assert default_var.is_static is True
@@ -318,20 +343,26 @@ class TestSwiftNestedDeclarations:
 class TestSwiftProtocols:
     def test_protocol_declaration(self, plugin: SwiftPlugin) -> None:
         tree = _swift_parser().parse(SWIFT_PROTOCOLS_SAMPLE.encode("utf-8"))
-        classes = plugin.create_extractor().extract_classes(tree, SWIFT_PROTOCOLS_SAMPLE)
+        classes = plugin.create_extractor().extract_classes(
+            tree, SWIFT_PROTOCOLS_SAMPLE
+        )
         protocols = [c for c in classes if c.class_type == "protocol"]
         assert len(protocols) >= 1
 
     def test_protocol_properties(self, plugin: SwiftPlugin) -> None:
         tree = _swift_parser().parse(SWIFT_PROTOCOLS_SAMPLE.encode("utf-8"))
-        variables = plugin.create_extractor().extract_variables(tree, SWIFT_PROTOCOLS_SAMPLE)
+        variables = plugin.create_extractor().extract_variables(
+            tree, SWIFT_PROTOCOLS_SAMPLE
+        )
         var_names = {v.name for v in variables}
         assert "color" in var_names
         assert "area" in var_names
 
     def test_protocol_functions(self, plugin: SwiftPlugin) -> None:
         tree = _swift_parser().parse(SWIFT_PROTOCOLS_SAMPLE.encode("utf-8"))
-        functions = plugin.create_extractor().extract_functions(tree, SWIFT_PROTOCOLS_SAMPLE)
+        functions = plugin.create_extractor().extract_functions(
+            tree, SWIFT_PROTOCOLS_SAMPLE
+        )
         names = {f.name for f in functions}
         assert "draw" in names
         assert "resize" in names
@@ -339,7 +370,9 @@ class TestSwiftProtocols:
 
     def test_protocol_inheritance(self, plugin: SwiftPlugin) -> None:
         tree = _swift_parser().parse(SWIFT_PROTOCOLS_SAMPLE.encode("utf-8"))
-        classes = plugin.create_extractor().extract_classes(tree, SWIFT_PROTOCOLS_SAMPLE)
+        classes = plugin.create_extractor().extract_classes(
+            tree, SWIFT_PROTOCOLS_SAMPLE
+        )
         modern = next((c for c in classes if c.name == "ModernFeature"), None)
         if modern is not None:
             assert "Drawable" in modern.interfaces or len(modern.interfaces) >= 1
@@ -366,14 +399,18 @@ class TestSwiftGenerics:
 
     def test_generic_functions(self, plugin: SwiftPlugin) -> None:
         tree = _swift_parser().parse(SWIFT_GENERICS_SAMPLE.encode("utf-8"))
-        functions = plugin.create_extractor().extract_functions(tree, SWIFT_GENERICS_SAMPLE)
+        functions = plugin.create_extractor().extract_functions(
+            tree, SWIFT_GENERICS_SAMPLE
+        )
         names = {f.name for f in functions}
         assert "contains" in names
         assert "append" in names
 
     def test_generic_properties(self, plugin: SwiftPlugin) -> None:
         tree = _swift_parser().parse(SWIFT_GENERICS_SAMPLE.encode("utf-8"))
-        variables = plugin.create_extractor().extract_variables(tree, SWIFT_GENERICS_SAMPLE)
+        variables = plugin.create_extractor().extract_variables(
+            tree, SWIFT_GENERICS_SAMPLE
+        )
         var_names = {v.name for v in variables}
         assert "items" in var_names
         assert "capacity" in var_names
@@ -406,20 +443,26 @@ class TestSwiftEmptyAndMinimal:
 class TestSwiftPropertyWrappers:
     def test_property_wrapper_struct(self, plugin: SwiftPlugin) -> None:
         tree = _swift_parser().parse(SWIFT_PROPERTY_WRAPPERS_SAMPLE.encode("utf-8"))
-        classes = plugin.create_extractor().extract_classes(tree, SWIFT_PROPERTY_WRAPPERS_SAMPLE)
+        classes = plugin.create_extractor().extract_classes(
+            tree, SWIFT_PROPERTY_WRAPPERS_SAMPLE
+        )
         clamped = next((c for c in classes if c.name == "Clamped"), None)
         assert clamped is not None
         assert clamped.class_type == "struct"
 
     def test_property_wrapper_init(self, plugin: SwiftPlugin) -> None:
         tree = _swift_parser().parse(SWIFT_PROPERTY_WRAPPERS_SAMPLE.encode("utf-8"))
-        functions = plugin.create_extractor().extract_functions(tree, SWIFT_PROPERTY_WRAPPERS_SAMPLE)
+        functions = plugin.create_extractor().extract_functions(
+            tree, SWIFT_PROPERTY_WRAPPERS_SAMPLE
+        )
         inits = [f for f in functions if f.is_constructor]
         assert len(inits) >= 1
 
     def test_property_wrapper_computed(self, plugin: SwiftPlugin) -> None:
         tree = _swift_parser().parse(SWIFT_PROPERTY_WRAPPERS_SAMPLE.encode("utf-8"))
-        variables = plugin.create_extractor().extract_variables(tree, SWIFT_PROPERTY_WRAPPERS_SAMPLE)
+        variables = plugin.create_extractor().extract_variables(
+            tree, SWIFT_PROPERTY_WRAPPERS_SAMPLE
+        )
         var_names = {v.name for v in variables}
         assert "wrappedValue" in var_names
         assert "value" in var_names
@@ -429,7 +472,12 @@ class TestSwiftPropertyWrappers:
 class TestSwiftModuleLevelFunctions:
     def test_empty_elements(self) -> None:
         result = _empty_elements()
-        assert result == {"functions": [], "classes": [], "variables": [], "imports": []}
+        assert result == {
+            "functions": [],
+            "classes": [],
+            "variables": [],
+            "imports": [],
+        }
 
     def test_flatten_elements(self) -> None:
         elements = {
@@ -506,7 +554,9 @@ class TestSwiftModuleLevelFunctions:
 )
 class TestSwiftAnalyzerIntegration:
     @pytest.mark.asyncio
-    async def test_analyze_file_with_nested_types(self, plugin: SwiftPlugin, tmp_path) -> None:
+    async def test_analyze_file_with_nested_types(
+        self, plugin: SwiftPlugin, tmp_path
+    ) -> None:
         source = tmp_path / "Nested.swift"
         source.write_text(SWIFT_NESTED_SAMPLE, encoding="utf-8")
         result = await plugin.analyze_file(str(source), Mock())
@@ -517,7 +567,9 @@ class TestSwiftAnalyzerIntegration:
         assert "ViewModel" in element_names
 
     @pytest.mark.asyncio
-    async def test_analyze_file_with_generics(self, plugin: SwiftPlugin, tmp_path) -> None:
+    async def test_analyze_file_with_generics(
+        self, plugin: SwiftPlugin, tmp_path
+    ) -> None:
         source = tmp_path / "Generic.swift"
         source.write_text(SWIFT_GENERICS_SAMPLE, encoding="utf-8")
         result = await plugin.analyze_file(str(source), Mock())
@@ -551,14 +603,9 @@ class TestSwiftAnalyzerIntegration:
 
 
 class TestSwiftPluginInterface:
-    def test_supports_swift_extension(self, plugin: SwiftPlugin) -> None:
-        assert plugin.supports_file("Sources/App.swift") is True
-        assert plugin.supports_file("Sources/App.kt") is False
-        assert plugin.supports_file("Package.swift") is True
-        assert plugin.supports_file("Sources/App.java") is False
-
     def test_get_tree_sitter_language_import_error(self, plugin: SwiftPlugin) -> None:
         import sys
+
         original = sys.modules.get("tree_sitter_swift")
         sys.modules["tree_sitter_swift"] = None
         try:

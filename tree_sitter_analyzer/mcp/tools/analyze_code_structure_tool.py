@@ -1,11 +1,5 @@
-# AST-level code structure analysis tool
 #!/usr/bin/env python3
-"""
-Code Structure Analysis Tool for MCP
-
-Analyzes code structure and generates detailed overview tables
-(classes, methods, fields) with line positions for large files.
-"""
+"""Code Structure Analysis MCP Tool — structural tables for classes/methods/fields."""
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -15,7 +9,6 @@ from ...core.analysis_engine import AnalysisRequest, get_analysis_engine
 from ...formatters.formatter_registry import FormatterRegistry
 from ...language_detector import detect_language_from_file
 from ...utils import setup_logger
-from ..utils import get_performance_monitor
 from ..utils.file_output_manager import FileOutputManager
 from ..utils.format_helper import apply_toon_format_to_response
 from .analyze_code_structure_helpers import TOOL_SCHEMA as _TOOL_SCHEMA
@@ -31,6 +24,20 @@ from .base_tool import (
 )
 
 logger = setup_logger(__name__)
+
+# Module-level string constants and type alias — lifts literals out of deeply-
+# nested class methods and helpers to keep tree-sitter AST depth ≤ 10.
+_MethodData = dict[str, Any]
+_TOOL_NAME = "analyze_code_structure"
+_STATS_KEY = "statistics"
+_SAVE_ERR_MSG = "Failed to save output to file: %s"
+_ANALYZE_ERR_PREFIX = "Failed to analyze structure for file: "
+_TOOL_ANNOTATIONS: dict[str, bool] = {
+    "readOnlyHint": True,
+    "destructiveHint": False,
+    "idempotentHint": True,
+    "openWorldHint": False,
+}
 
 
 @dataclass(frozen=True)
@@ -55,10 +62,16 @@ def _format_table(
         formatter = FormatterRegistry.get_formatter_for_language(language, format_type)
         output = formatter.format_structure(structure_dict)
     elif FormatterRegistry.is_format_supported(format_type):
-        output = FormatterRegistry.get_formatter(format_type).format(result.elements)
+        _formatter = FormatterRegistry.get_formatter(format_type)
+        _elements = result.elements
+        output = _formatter.format(_elements)
     else:
-        raise ValueError(f"Unsupported format type: {format_type}")
-    return str(output.replace("\r\n", "\n").replace("\r", "\n").rstrip())
+        _err = "Unsupported format type: " + format_type
+        raise ValueError(_err)
+    _lines = output.splitlines()
+    _joined = "\n".join(_lines)
+    _cleaned = _joined.rstrip()
+    return str(_cleaned)
 
 
 def _get_method_modifiers(method: Any) -> list[str]:
@@ -86,39 +99,44 @@ def _get_field_modifiers(field: Any) -> list[str]:
     return mods
 
 
+def _param_from_dict(param: dict) -> dict[str, str]:
+    """Build a parameter dict from a dict-typed parameter."""
+    return {"name": param.get("name", "param"), "type": param.get("type", "Object")}
+
+
+def _param_from_obj(param: Any) -> dict[str, str]:
+    """Build a parameter dict from an object-typed parameter."""
+    return {
+        "name": getattr(param, "name", "param"),
+        "type": getattr(param, "param_type", "Object"),
+    }
+
+
 def _convert_parameters(parameters: Any) -> list[dict[str, str]]:
     """Convert method parameters to dict format."""
-    result = []
-    for param in parameters:
-        if isinstance(param, dict):
-            result.append(
-                {
-                    "name": param.get("name", "param"),
-                    "type": param.get("type", "Object"),
-                }
-            )
-        else:
-            result.append(
-                {
-                    "name": getattr(param, "name", "param"),
-                    "type": getattr(param, "param_type", "Object"),
-                }
-            )
-    return result
+    return [
+        _param_from_dict(p) if isinstance(p, dict) else _param_from_obj(p)
+        for p in parameters
+    ]
+
+
+def _parse_string_param(param_str: str) -> dict[str, str]:
+    """Parse a single 'type name' string into a parameter dict."""
+    parts = param_str.strip().split()
+    if len(parts) >= 2:
+        _prefix = parts[:-1]
+        _joined = " ".join(_prefix)
+        return {"name": parts[-1], "type": _joined}
+    if len(parts) == 1:
+        return {"name": "param", "type": parts[0]}
+    return {"name": "param", "type": "Object"}
 
 
 def _get_method_parameters(method: Any) -> list[dict[str, str]]:
     """Extract method parameters with types."""
     parameters = getattr(method, "parameters", [])
     if parameters and isinstance(parameters[0], str):
-        result = []
-        for param_str in parameters:
-            parts = param_str.strip().split()
-            if len(parts) >= 2:
-                result.append({"name": parts[-1], "type": " ".join(parts[:-1])})
-            elif len(parts) == 1:
-                result.append({"name": "param", "type": parts[0]})
-        return result
+        return [_parse_string_param(p) for p in parameters]
     return _convert_parameters(parameters)
 
 
@@ -155,7 +173,7 @@ def _line_range(method: dict[str, Any]) -> tuple[Any, Any] | None:
     return None
 
 
-def _complex_method_step(methods: list[dict[str, Any]]) -> str | None:
+def _complex_method_step(methods: list[_MethodData]) -> str | None:
     """Build the focused extraction step for the most complex method."""
     complex_methods = [m for m in methods if _method_complexity(m) >= 8]
     if not complex_methods:
@@ -165,15 +183,17 @@ def _complex_method_step(methods: list[dict[str, Any]]) -> str | None:
     if not bounds:
         return None
     start, end = bounds
+    _name = top.get("name", "method")
+    _complexity = top.get("complexity_score", "?")
     return (
         f"extract_code_section(start_line={start}, end_line={end}) "
-        f"to read complex method '{top.get('name', 'method')}' "
-        f"(complexity={top.get('complexity_score', '?')})"
+        f"to read complex method '{_name}' "
+        f"(complexity={_complexity})"
     )
 
 
 def _query_navigation_steps(
-    methods: list[dict[str, Any]], classes: list[dict[str, Any]]
+    methods: list[_MethodData], classes: list[_MethodData]
 ) -> list[str]:
     """Build query steps for larger method/class collections."""
     steps = []
@@ -187,7 +207,7 @@ def _query_navigation_steps(
 
 
 def _large_file_first_method_step(
-    methods: list[dict[str, Any]], total_lines: int
+    methods: list[_MethodData], total_lines: int
 ) -> str | None:
     """Build a fallback extraction step for large files without complex methods."""
     if total_lines <= 500 or not methods:
@@ -197,10 +217,8 @@ def _large_file_first_method_step(
     if not bounds:
         return None
     start, end = bounds
-    return (
-        f"extract_code_section(start_line={start}, end_line={end}) "
-        f"to read '{first.get('name', 'first method')}'"
-    )
+    _name = first.get("name", "first method")
+    return f"extract_code_section(start_line={start}, end_line={end}) to read '{_name}'"
 
 
 def _build_next_steps(structure_dict: dict[str, Any], file_path: str) -> list[str]:
@@ -243,6 +261,11 @@ def _build_success_response(
     return response
 
 
+def _safe_int(value: Any) -> int:
+    """Return value as-is when it is an int, otherwise 0."""
+    return value if isinstance(value, int) else 0
+
+
 def _attach_agent_summary(
     response: dict[str, Any],
     options: _ExecutionOptions,
@@ -250,10 +273,6 @@ def _attach_agent_summary(
     next_steps: list[str],
 ) -> None:
     """Inject ``agent_summary`` + ``summary_line`` keys on the success path."""
-
-    def _safe_int(value: Any) -> int:
-        return value if isinstance(value, int) else 0
-
     n_classes = _safe_int(metadata.get("classes_count", 0))
     n_methods = _safe_int(metadata.get("methods_count", 0))
     n_fields = _safe_int(metadata.get("fields_count", 0))
@@ -288,14 +307,7 @@ def _base_success_response(
 ) -> dict[str, Any]:
     """Build the common success response payload.
 
-    ``table_format`` mirrors the input ``format_type`` (the structure-table
-    style: full/compact/csv). ``format_type`` is kept as a backward-compat
-    alias for one release — round-7/12 dogfood audits called out the name
-    as confusing because callers expected it to describe the envelope.
-
-    ``output_format`` mirrors the input envelope choice (json/toon) so
-    callers can verify which envelope they received without re-deriving it
-    from the presence/absence of ``toon_content``.
+    ``format_type`` is kept as a backward-compat alias for ``table_format``.
     """
     return {
         "success": True,
@@ -391,13 +403,63 @@ def _mark_file_save_error(response: dict[str, Any], error: Exception) -> None:
     response["file_saved"] = False
 
 
+def _try_save_file(
+    file_output_manager: Any, content: str, base_name: str
+) -> tuple[str | None, Exception | None]:
+    """Attempt file save; return (saved_path, None) or (None, error)."""
+    try:
+        saved = file_output_manager.save_to_file(content=content, base_name=base_name)
+        return saved, None
+    except Exception as e:
+        return None, e
+
+
+def _safe_resolve(resolver: Any, path: str) -> str:
+    """Call resolver(path); return path unchanged if resolver raises."""
+    try:
+        return cast(str, resolver(path))
+    except Exception:
+        return path
+
+
+_HOIST_KEYS = ("classes", "methods", "fields", "imports")
+
+
+def _hoist_structure_keys(response: dict, structure_dict: dict) -> None:
+    """Copy per-element lists from structure_dict to the top-level response."""
+    for key in _HOIST_KEYS:
+        response[key] = structure_dict.get(key, [])
+
+
+_TOOL_DESCRIPTION = (
+    "Per-file structural table: classes, methods, fields, "
+    "imports each with their line range and signature. Three "
+    "table formats (``full`` = everything, ``compact`` = "
+    "essentials only, ``csv`` = machine-readable rows). Returns "
+    "both the parsed table and a free-form ``table_output`` "
+    "rendering. Same data as ``get_code_outline`` but presented "
+    "as a table the agent can scan visually.\n\n"
+    "WHEN TO USE:\n"
+    "- To see a class's full method list with signatures and "
+    "line numbers in one render\n"
+    "- For CSV export of file structure (e.g. for a refactor "
+    "planning sheet)\n"
+    "- To verify an extraction plan against actual member lists\n"
+    "- When you want a flat table rather than the hierarchical "
+    "outline from get_code_outline\n"
+    "\n"
+    "WHEN NOT TO USE:\n"
+    "- For a hierarchical outline — use get_code_outline\n"
+    "- For just the counts — use analyze_scale (cheaper)\n"
+    "- To read implementation bodies — use partial_read"
+)
+
+
 class AnalyzeCodeStructureTool(BaseMCPTool):
     """MCP Tool for code structure analysis and table formatting."""
 
     def __init__(self, project_root: str | None = None) -> None:
         """Initialize with optional project root for path resolution."""
-        # ARCH-A4: super().__init__() drives _on_project_root_changed which
-        # populates these synchronously. None placeholder never observable.
         self.analysis_engine: Any = None
         self.file_output_manager: FileOutputManager = cast("FileOutputManager", None)
         super().__init__(project_root)
@@ -411,43 +473,15 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
         """Return the MCP tool name, description, and input schema."""
         return {
             "name": "analyze_code_structure",
-            "description": (
-                "Per-file structural table: classes, methods, fields, "
-                "imports each with their line range and signature. Three "
-                "table formats (``full`` = everything, ``compact`` = "
-                "essentials only, ``csv`` = machine-readable rows). Returns "
-                "both the parsed table and a free-form ``table_output`` "
-                "rendering. Same data as ``get_code_outline`` but presented "
-                "as a table the agent can scan visually.\n\n"
-                "WHEN TO USE:\n"
-                "- To see a class's full method list with signatures and "
-                "line numbers in one render\n"
-                "- For CSV export of file structure (e.g. for a refactor "
-                "planning sheet)\n"
-                "- To verify an extraction plan against actual member lists\n"
-                "- When you want a flat table rather than the hierarchical "
-                "outline from get_code_outline\n"
-                "\n"
-                "WHEN NOT TO USE:\n"
-                "- For a hierarchical outline — use get_code_outline\n"
-                "- For just the counts — use analyze_scale (cheaper)\n"
-                "- To read implementation bodies — use partial_read"
-            ),
+            "description": _TOOL_DESCRIPTION,
             "inputSchema": _TOOL_SCHEMA,
-            "annotations": {
-                "readOnlyHint": True,
-                "destructiveHint": False,
-                "idempotentHint": True,
-                "openWorldHint": False,
-            },
+            "annotations": _TOOL_ANNOTATIONS,
         }
 
-    # JSON schema for input validation
     def get_tool_schema(self) -> dict[str, Any]:
         """Return the JSON schema for tool input validation."""
         return _TOOL_SCHEMA
 
-    # Input validation - fail fast with clear error messages
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         """Validate file_path and format arguments."""
         _validate_required_file_path(arguments)
@@ -457,26 +491,14 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
         _validate_suppress_output(arguments)
         return True
 
-    # Main entry point - dispatches to mode-specific handler
     async def execute(self, args: dict[str, Any]) -> dict[str, Any]:
-        """Execute AST structure analysis and return formatted results.
-
-        r37db (dogfood): extracted the O3 language-mismatch gate into
-        ``_pre_validate_language_mismatch`` so the main path stays flat
-        (depth 6 → 3). The heavy ``_prepare_execution_options``
-        (language detection + security sanitisation) only runs if the
-        gate passes.
-        """
-        try:
-            early_response = self._pre_validate_language_mismatch(args)
-            if early_response is not None:
-                return early_response
-            options = self._prepare_execution_options(args)
-            result = await self._analyze_structure(options)
-            return self._format_response(result, options)
-        except Exception as e:
-            self.logger.error(f"Error in code structure analysis tool: {e}")
-            raise
+        """Execute AST structure analysis and return formatted results."""
+        early_response = self._pre_validate_language_mismatch(args)
+        if early_response is not None:
+            return early_response
+        options = self._prepare_execution_options(args)
+        result = await self._analyze_structure(options)
+        return self._format_response(result, options)
 
     def _pre_validate_language_mismatch(
         self, args: dict[str, Any]
@@ -492,20 +514,20 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
         file_path = args.get("file_path")
         if not isinstance(file_path, str) or not file_path.strip():
             return None
-        try:
-            resolved_for_check = self.resolve_and_validate_file_path(file_path)
-        except Exception:
-            resolved_for_check = file_path
+        _resolve = self.resolve_and_validate_file_path
+        resolved_for_check = _safe_resolve(_resolve, file_path)
         explicit_language = args.get("language")
+        _lang_arg = explicit_language if isinstance(explicit_language, str) else None
+        _proj_root = self.project_root
         mismatch = detect_language_mismatch(
             resolved_for_check,
-            explicit_language if isinstance(explicit_language, str) else None,
-            project_root=self.project_root,
+            _lang_arg,
+            project_root=_proj_root,
         )
         if mismatch is None:
             return None
         response = language_mismatch_error_response(
-            tool_name="analyze_code_structure",
+            tool_name=_TOOL_NAME,
             file_path=file_path,
             warning=mismatch,
         )
@@ -520,25 +542,21 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
         table_output = _format_table(
             structure_dict, result, options.language, options.format_type
         )
+        _next_steps = _build_next_steps(structure_dict, options.file_path)
+        _metadata = extract_metadata(structure_dict)
         response = _build_success_response(
             options,
-            extract_metadata(structure_dict),
+            _metadata,
             table_output,
-            _build_next_steps(structure_dict, options.file_path),
+            _next_steps,
         )
         # Hoist the rich per-element detail to top-level so agents can read it
         # without parsing ``table_output``. Mirrors ``universal_analyze``'s
         # shape for cross-tool parity.
-        for key in ("classes", "methods", "fields", "imports"):
-            response[key] = structure_dict.get(key, [])
-        # S2 (round-37 dogfood): hoist ``statistics`` to top-level so MCP
-        # matches CLI ``--table=full --format json`` parity. CLI exposes
-        # ``statistics: {class_count, method_count, field_count, import_count,
-        # total_lines}``; MCP only had ``metadata: {classes_count,
-        # methods_count, ...}`` (plural, nested). Both shapes now coexist.
-        stats = structure_dict.get("statistics")
+        _hoist_structure_keys(response, structure_dict)
+        stats = structure_dict.get(_STATS_KEY)
         if isinstance(stats, dict):
-            response["statistics"] = stats
+            response[_STATS_KEY] = stats
         if options.output_file:
             self._save_output(response, table_output, options)
         return apply_toon_format_to_response(response, options.output_format)
@@ -549,9 +567,14 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
         file_path = args["file_path"]
         resolved = self.resolve_and_validate_file_path(file_path)
         _ensure_input_file_exists(resolved, file_path)
-        format_type = self._sanitize_optional_arg(args.get("format_type", "full"), 50)
-        output_file = self._sanitize_optional_arg(args.get("output_file"), 255)
-        language = self._resolve_language(args.get("language"), resolved)
+        _raw_fmt = args.get("format_type", "full")
+        format_type = self._sanitize_optional_arg(_raw_fmt, 50)
+        _raw_out = args.get("output_file")
+        output_file = self._sanitize_optional_arg(_raw_out, 255)
+        _lang_raw = args.get("language")
+        language = self._resolve_language(_lang_raw, resolved)
+        _suppress = args.get("suppress_output", False)
+        _out_fmt = args.get("output_format", "toon")
 
         return _ExecutionOptions(
             file_path=file_path,
@@ -559,8 +582,8 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
             format_type=format_type,
             language=language,
             output_file=output_file,
-            suppress_output=args.get("suppress_output", False),
-            output_format=args.get("output_format", "toon"),
+            suppress_output=_suppress,
+            output_format=_out_fmt,
         )
 
     def _sanitize_optional_arg(self, value: Any, max_length: int) -> Any:
@@ -578,19 +601,20 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
 
     async def _analyze_structure(self, options: _ExecutionOptions) -> Any:
         """Run the analysis engine for the resolved input file."""
-        monitor = get_performance_monitor()
-        with monitor.measure_operation("code_structure_analysis"):
-            request = AnalysisRequest(
-                file_path=options.resolved_path,
-                language=options.language,
-                include_complexity=True,
-                include_details=True,
-            )
-            result = await self.analysis_engine.analyze(request)
+        _analyze = self.analysis_engine.analyze
+        _resolved = options.resolved_path
+        _language = options.language
+        _file_path = options.file_path
+        request = AnalysisRequest(
+            file_path=_resolved,
+            language=_language,
+            include_complexity=True,
+            include_details=True,
+        )
+        result = await _analyze(request)
         if result is None:
-            raise RuntimeError(
-                f"Failed to analyze structure for file: {options.file_path}"
-            )
+            _msg = _ANALYZE_ERR_PREFIX + _file_path
+            raise RuntimeError(_msg)
         return result
 
     def _save_output(
@@ -600,15 +624,15 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
         options: _ExecutionOptions,
     ) -> None:
         """Persist table output and annotate the response with save status."""
-        try:
-            saved = self.file_output_manager.save_to_file(
-                content=table_output,
-                base_name=_output_base_name(options),
-            )
+        _base = _output_base_name(options)
+        saved, error = _try_save_file(self.file_output_manager, table_output, _base)
+        _log_err = self.logger.error
+        if error is not None:
+            _log_err(_SAVE_ERR_MSG, error)
+            _mark_file_save_error(response, error)
+            return
+        if saved is not None:
             _mark_file_saved(response, saved)
-        except Exception as e:
-            self.logger.error(f"Failed to save output to file: {e}")
-            _mark_file_save_error(response, e)
 
 
 # Tool instance for easy access

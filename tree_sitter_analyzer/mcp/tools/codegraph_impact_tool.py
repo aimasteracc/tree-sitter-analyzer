@@ -187,13 +187,14 @@ def _blast_radius_for_functions(
                     if key not in visited:
                         visited.add(key)
                         all_affected.add(key)
-                        files_at_risk.setdefault(caller.file_path, set()).add(
-                            caller.name
-                        )
+                        caller_set = files_at_risk.setdefault(caller.file_path, set())
+                        caller_set.add(caller.name)
+                        from_dict = current.to_dict()
+                        to_dict = caller.to_dict()
                         propagation_chains.append(
                             {
-                                "from": current.to_dict(),
-                                "to": caller.to_dict(),
+                                "from": from_dict,
+                                "to": to_dict,
                                 "direction": "upstream",
                                 "depth": d + 1,
                             }
@@ -205,13 +206,14 @@ def _blast_radius_for_functions(
                     if key not in visited:
                         visited.add(key)
                         all_affected.add(key)
-                        files_at_risk.setdefault(callee.file_path, set()).add(
-                            callee.name
-                        )
+                        callee_set = files_at_risk.setdefault(callee.file_path, set())
+                        callee_set.add(callee.name)
+                        from_dict = current.to_dict()
+                        to_dict = callee.to_dict()
                         propagation_chains.append(
                             {
-                                "from": current.to_dict(),
-                                "to": callee.to_dict(),
+                                "from": from_dict,
+                                "to": to_dict,
                                 "direction": "downstream",
                                 "depth": d + 1,
                             }

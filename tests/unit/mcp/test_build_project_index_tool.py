@@ -23,16 +23,12 @@ from tree_sitter_analyzer.mcp.utils.project_index import ProjectIndexManager
 def project_dir(tmp_path: Path) -> Path:
     """Create a minimal project directory for testing."""
     (tmp_path / "src").mkdir()
-    (tmp_path / "src" / "__init__.py").write_text(
-        '"""Source package."""\n'
-    )
+    (tmp_path / "src" / "__init__.py").write_text('"""Source package."""\n')
     (tmp_path / "src" / "app.py").write_text("def run():\n    pass\n")
     (tmp_path / "tests").mkdir()
     (tmp_path / "tests" / "test_app.py").write_text("def test_run(): pass\n")
     (tmp_path / "README.md").write_text("# Test project\n")
-    (tmp_path / "pyproject.toml").write_text(
-        "[tool.poetry]\nname = 'testproject'\n"
-    )
+    (tmp_path / "pyproject.toml").write_text("[tool.poetry]\nname = 'testproject'\n")
     return tmp_path
 
 
@@ -49,34 +45,9 @@ class TestBuildProjectIndexToolInitialization:
         """Test that initialization creates a tool instance."""
         assert tool is not None
 
-    def test_init_with_project_root(self, project_dir: Path) -> None:
-        """Test initialization with a project root sets project_root."""
-        t = BuildProjectIndexTool(project_root=str(project_dir))
-        assert t.project_root == str(project_dir)
-
-    def test_set_project_path(
-        self, tool: BuildProjectIndexTool, project_dir: Path
-    ) -> None:
-        """Test that set_project_path updates project_root."""
-        new = str(project_dir / "subdir")
-        tool.set_project_path(new)
-        assert tool.project_root == new
-
 
 class TestBuildProjectIndexToolDefinition:
     """Tests for get_tool_definition()."""
-
-    def test_tool_definition_structure(self, tool: BuildProjectIndexTool) -> None:
-        """Test that the tool definition has correct keys."""
-        defn = tool.get_tool_definition()
-        assert "name" in defn
-        assert "description" in defn
-        assert "inputSchema" in defn
-
-    def test_tool_definition_name(self, tool: BuildProjectIndexTool) -> None:
-        """Test that the tool name is build_project_index."""
-        defn = tool.get_tool_definition()
-        assert defn["name"] == "build_project_index"
 
     def test_description_contains_when_to_use(
         self, tool: BuildProjectIndexTool

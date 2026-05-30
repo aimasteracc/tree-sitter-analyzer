@@ -1,3 +1,4 @@
+<!-- HISTORICAL RECORD — file paths in this document reflect the codebase as of 2026-05. Some paths may no longer exist. Do not update them; they are intentional historical references. -->
 # Phase 3 Auto-Discovery 可行性报告
 
 **日期**: 2026-03-31

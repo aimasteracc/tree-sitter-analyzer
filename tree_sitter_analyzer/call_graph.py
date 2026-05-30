@@ -464,6 +464,14 @@ class CallGraph:
         self.build()
         return self._call_edges
 
+    def all_call_edges(self) -> list[tuple["FunctionRef", "FunctionRef", int]]:
+        """Return all call edges as (caller, callee, line) tuples.
+
+        Returns an independent copy so callers can mutate the list without
+        affecting the internal graph state.
+        """
+        return list(self.call_edges())
+
     def function_refs(self) -> list["FunctionRef"]:
         """Return all discovered functions as ``FunctionRef`` objects.
 
@@ -495,6 +503,52 @@ class CallGraph:
         """
         self.build()
         return list(self._callers.get(func, []))
+
+    def all_function_refs(self) -> list["FunctionRef"]:
+        """Return all discovered FunctionRef objects (not serialised dicts).
+
+        Use ``all_functions()`` when you need JSON-serialisable dicts.
+        Use this method when you need to walk the adjacency maps returned
+        by ``callers_map()`` / ``callees_map()``.
+        """
+        self.build()
+        return list(self._functions)
+
+    def callers_map(self) -> dict["FunctionRef", list["FunctionRef"]]:
+        """Return a shallow copy of the caller adjacency map.
+
+        Keys are callee FunctionRefs; values are lists of their callers.
+        Mutating the returned dict does not affect internal state.
+        """
+        self.build()
+        return dict(self._callers)
+
+    def callees_map(self) -> dict["FunctionRef", list["FunctionRef"]]:
+        """Return a shallow copy of the callee adjacency map.
+
+        Keys are caller FunctionRefs; values are lists of their callees.
+        Mutating the returned dict does not affect internal state.
+        """
+        self.build()
+        return dict(self._callees)
+
+    def functions_by_file(self) -> dict[str, list["FunctionRef"]]:
+        """Return a shallow copy of the file → FunctionRef list mapping."""
+        self.build()
+        return dict(self._func_by_file)
+
+    def resolve_targets(
+        self, func_name: str, file_path: str | None = None
+    ) -> list["FunctionRef"]:
+        """Public alias for _resolve_targets() — resolve name to FunctionRef(s).
+
+        Accepts the same forms as the private method:
+        - bare name: ``"foo"``
+        - qualified: ``"ClassName.method"``
+        - file-scoped: ``func_name="foo", file_path="src/bar.py"``
+        """
+        self.build()
+        return self._resolve_targets(func_name, file_path)
 
     def functions_in_file(self, file_path: str) -> list[dict[str, Any]]:
         """Return all functions defined in the given file."""
@@ -551,17 +605,6 @@ class CallGraph:
             "call_edge_count": len(self._call_edges),
             "file_count": len({f.file_path for f in self._functions}),
         }
-
-    def resolve_targets(
-        self, func_name: str, file_path: str | None = None
-    ) -> list["FunctionRef"]:
-        """Public alias for :meth:`_resolve_targets`.
-
-        Resolves a function name (and optional file path) to the matching
-        :class:`FunctionRef` objects in the call graph.  See
-        :meth:`_resolve_targets` for the full semantics.
-        """
-        return self._resolve_targets(func_name, file_path)
 
     # ------------------------------------------------------------------
     # Public aliases for internal helper methods (exposed for testing and
@@ -718,6 +761,7 @@ class CachedCallGraph(CallGraph):
                 start_line=func["line"],
                 language=func["language"],
                 end_line=func.get("end_line", func["line"]),
+                receiver=func.get("class"),
             )
             self._functions.append(ref)
             self._func_by_name[func["name"]].append(ref)

@@ -556,3 +556,61 @@ class TestConceptSearchHelpers:
         assert not helpers._is_definition_like_match(
             "export class MarkerService {}", ["route"]
         )
+
+
+class TestConceptCandidatePathsFts5Path:
+    """Tests for the FTS5 fast path in _concept_candidate_paths (GE optimization)."""
+
+    _SCHEMA = """
+        CREATE TABLE ast_index (file_path TEXT);
+        CREATE TABLE ast_symbol_rows (id INTEGER PRIMARY KEY, name TEXT, file_path TEXT);
+        CREATE VIRTUAL TABLE ast_symbols_fts
+            USING fts5(name, kind, file_path, language, content='');
+    """
+
+    def _make_conn(self, symbols: list[tuple[str, str]]) -> object:
+        import sqlite3
+
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        for stmt in self._SCHEMA.split(";"):
+            stmt = stmt.strip()
+            if stmt:
+                conn.execute(stmt)
+        for name, file_path in symbols:
+            row_id = conn.execute(
+                "INSERT INTO ast_symbol_rows(name, file_path) VALUES(?, ?)",
+                (name, file_path),
+            ).lastrowid
+            conn.execute(
+                "INSERT INTO ast_symbols_fts(rowid, name, kind, file_path, language)"
+                " VALUES(?, ?, ?, ?, ?)",
+                (row_id, name, "function", file_path, "python"),
+            )
+            conn.execute("INSERT INTO ast_index VALUES(?)", (file_path,))
+        conn.commit()
+        return conn
+
+    def test_fts5_path_returns_candidate_file(self):
+        conn = self._make_conn([("execute_search", "src/search.py")])
+
+        paths = helpers._concept_candidate_paths(conn, ["execute"], [], max_paths=5)
+
+        assert "src/search.py" in paths
+
+    def test_fts5_path_falls_back_when_no_match(self):
+        conn = self._make_conn([("completely_unrelated", "src/other.py")])
+
+        paths = helpers._concept_candidate_paths(
+            conn, ["zzznonexistent"], [], max_paths=5
+        )
+
+        assert paths == set()
+
+    def test_fts5_path_honours_max_paths(self):
+        symbols = [(f"execute_{i}", f"src/f{i}.py") for i in range(10)]
+        conn = self._make_conn(symbols)
+
+        paths = helpers._concept_candidate_paths(conn, ["execute"], [], max_paths=3)
+
+        assert len(paths) <= 3

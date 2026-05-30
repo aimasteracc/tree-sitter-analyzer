@@ -382,20 +382,6 @@ fixturelang = ["tree-sitter-fixturelang>=0.1.0"]
     )
 
 
-@pytest.mark.xfail(
-    reason=(
-        "r37fC bug: cli/parser_readiness_sources._load_pyproject opens "
-        "pyproject.toml and calls tomllib.load() with no try/except. A "
-        "corrupted pyproject.toml raises tomllib.TOMLDecodeError that "
-        "bubbles all the way through build_parser_readiness_advice and "
-        "out of the MCP execute boundary, leaving the caller with an "
-        "uncaught exception instead of a clean ERROR envelope. Fix: "
-        "catch TOMLDecodeError in _load_pyproject and surface it as a "
-        "validation error in the readiness response."
-    ),
-    raises=Exception,  # tomllib.TOMLDecodeError, but tomllib only in 3.11+
-    strict=True,
-)
 @pytest.mark.asyncio
 async def test_parser_readiness_handles_corrupted_pyproject(tmp_path):
     """A malformed pyproject.toml must produce a clean error envelope.

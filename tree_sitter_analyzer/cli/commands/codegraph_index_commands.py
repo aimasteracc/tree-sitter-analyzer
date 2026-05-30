@@ -51,6 +51,41 @@ def _exit_code_for(result: dict[str, Any]) -> int:
     return 0 if result.get("success", False) else 1
 
 
+def _autoindex_payload(args: Any, output_format: str) -> dict[str, Any]:
+    return {
+        "mode": getattr(args, "autoindex_mode", "status") or "status",
+        "max_files": int(getattr(args, "autoindex_max_files", 20_000)),
+        "output_format": output_format,
+    }
+
+
+def _full_index_payload(args: Any, output_format: str) -> dict[str, Any]:
+    return {
+        "mode": getattr(args, "full_index_mode", "incremental") or "incremental",
+        "max_files": int(getattr(args, "full_index_max_files", 20_000)),
+        "include_activation": bool(
+            getattr(args, "full_index_include_activation", False)
+        ),
+        "output_format": output_format,
+    }
+
+
+def _incremental_sync_payload(args: Any, output_format: str) -> dict[str, Any]:
+    return {
+        "mode": getattr(args, "incremental_sync_mode", "sync") or "sync",
+        "max_files": int(getattr(args, "incremental_sync_max_files", 20_000)),
+        "output_format": output_format,
+    }
+
+
+def _metrics_payload(args: Any, output_format: str) -> dict[str, Any]:
+    payload: dict[str, Any] = {"output_format": output_format}
+    sections = getattr(args, "codegraph_metrics_sections", None)
+    if sections:
+        payload["sections"] = list(sections)
+    return payload
+
+
 def run_autoindex(args: Any, output_error: OutputErrorFn) -> int:
     """Dispatch ``--autoindex`` → ``codegraph_autoindex`` MCP tool."""
     try:
@@ -62,15 +97,7 @@ def run_autoindex(args: Any, output_error: OutputErrorFn) -> int:
     output_format = _output_format(args)
     tool = CodeGraphAutoIndexTool(project_root=_project_root(args))
     try:
-        result = asyncio.run(
-            tool.execute(
-                {
-                    "mode": getattr(args, "autoindex_mode", "status") or "status",
-                    "max_files": int(getattr(args, "autoindex_max_files", 20_000)),
-                    "output_format": output_format,
-                }
-            )
-        )
+        result = asyncio.run(tool.execute(_autoindex_payload(args, output_format)))
     except Exception as exc:  # noqa: BLE001
         output_error(f"--autoindex failed: {exc}")
         return 1
@@ -90,18 +117,7 @@ def run_full_index(args: Any, output_error: OutputErrorFn) -> int:
     output_format = _output_format(args)
     tool = CodeGraphFullIndexTool(project_root=_project_root(args))
     try:
-        result = asyncio.run(
-            tool.execute(
-                {
-                    "mode": getattr(args, "full_index_mode", "rebuild") or "rebuild",
-                    "max_files": int(getattr(args, "full_index_max_files", 20_000)),
-                    "include_activation": bool(
-                        getattr(args, "full_index_include_activation", False)
-                    ),
-                    "output_format": output_format,
-                }
-            )
-        )
+        result = asyncio.run(tool.execute(_full_index_payload(args, output_format)))
     except Exception as exc:  # noqa: BLE001
         output_error(f"--full-index failed: {exc}")
         return 1
@@ -122,15 +138,7 @@ def run_incremental_sync(args: Any, output_error: OutputErrorFn) -> int:
     tool = CodeGraphIncrementalSyncTool(project_root=_project_root(args))
     try:
         result = asyncio.run(
-            tool.execute(
-                {
-                    "mode": getattr(args, "incremental_sync_mode", "sync") or "sync",
-                    "max_files": int(
-                        getattr(args, "incremental_sync_max_files", 20_000)
-                    ),
-                    "output_format": output_format,
-                }
-            )
+            tool.execute(_incremental_sync_payload(args, output_format))
         )
     except Exception as exc:  # noqa: BLE001
         output_error(f"--incremental-sync failed: {exc}")
@@ -150,12 +158,8 @@ def run_codegraph_metrics(args: Any, output_error: OutputErrorFn) -> int:
 
     output_format = _output_format(args)
     tool = CodeGraphMetricsTool(project_root=_project_root(args))
-    payload: dict[str, Any] = {"output_format": output_format}
-    sections = getattr(args, "codegraph_metrics_sections", None)
-    if sections:
-        payload["sections"] = list(sections)
     try:
-        result = asyncio.run(tool.execute(payload))
+        result = asyncio.run(tool.execute(_metrics_payload(args, output_format)))
     except Exception as exc:  # noqa: BLE001
         output_error(f"--codegraph-metrics failed: {exc}")
         return 1

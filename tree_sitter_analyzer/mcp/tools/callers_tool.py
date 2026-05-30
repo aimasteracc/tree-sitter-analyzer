@@ -97,8 +97,20 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         output_format = arguments.get("output_format", "toon")
         include_activation = bool(arguments.get("include_activation", False))
 
+        # Detect "ClassName.method_name" qualified lookup.  The SQL fast-path
+        # stores bare callee names and can't filter by receiver class, so we
+        # fall through to the in-memory CallGraph which does handle qualified
+        # names via the FunctionRef.receiver field.
+        is_qualified = (
+            "." in func_name
+            and ":" not in func_name
+            and "/" not in func_name
+            and "\\" not in func_name
+            and func_name.rpartition(".")[0]  # non-empty class part
+        )
+
         cache = self._try_get_cache()
-        if cache is not None and cache.has_call_edges():
+        if cache is not None and cache.has_call_edges() and not is_qualified:
             callers = self._sql_native_callers(
                 cache, func_name, file_path, include_activation
             )

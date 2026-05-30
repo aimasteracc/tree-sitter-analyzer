@@ -490,54 +490,6 @@ class TestVisibilityConversion:
 class TestFormatTable:
     """Test format_table method"""
 
-    def test_format_table_full(self):
-        """Test format_table with full type"""
-        formatter = JavaTableFormatter()
-        data = {
-            "package": {"name": "com.example"},
-            "classes": [
-                {
-                    "name": "Test",
-                    "type": "class",
-                    "visibility": "public",
-                    "line_range": {"start": 1, "end": 10},
-                }
-            ],
-            "imports": [],
-            "methods": [],
-            "fields": [],
-            "statistics": {"method_count": 0, "field_count": 0},
-        }
-
-        result = formatter.format_table(data, table_type="full")
-
-        assert isinstance(result, str)
-        assert len(result) > 0
-
-    def test_format_table_compact(self):
-        """Test format_table with compact type"""
-        formatter = JavaTableFormatter()
-        data = {
-            "package": {"name": "com.example"},
-            "classes": [
-                {
-                    "name": "Test",
-                    "type": "class",
-                    "visibility": "public",
-                    "line_range": {"start": 1, "end": 10},
-                }
-            ],
-            "imports": [],
-            "methods": [],
-            "fields": [],
-            "statistics": {"method_count": 0, "field_count": 0},
-        }
-
-        result = formatter.format_table(data, table_type="compact")
-
-        assert isinstance(result, str)
-        assert len(result) > 0
-
     def test_format_table_json(self):
         """Test format_table with json type"""
         formatter = JavaTableFormatter()

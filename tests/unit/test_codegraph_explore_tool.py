@@ -11,11 +11,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from tree_sitter_analyzer.mcp.tools.codegraph_explore_tool import (
-    CodeGraphExploreTool,
-    _extract_snippet,
-    _split_query,
+from tree_sitter_analyzer.mcp.tools._codegraph_explore_helpers import (
+    extract_snippet as _extract_snippet,
 )
+from tree_sitter_analyzer.mcp.tools._codegraph_explore_helpers import (
+    split_query as _split_query,
+)
+from tree_sitter_analyzer.mcp.tools.codegraph_explore_tool import CodeGraphExploreTool
 from tree_sitter_analyzer.symbol_resolver import DefinitionLocation, ResolveResult
 
 

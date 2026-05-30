@@ -553,6 +553,7 @@ def test_registered_mcp_tools_have_cli_parity() -> None:
         "build_project_index": ("main", "--build-project-index"),
         "check_tools": ("main", "--check-tools"),
         "decision_journal": ("main", "--decision-journal"),
+        "doc_sync": ("main", "--doc-sync"),
     }
 
     tool_names = {name for name, _tool in _create_tool_registry(str(PROJECT_ROOT))[0]}
@@ -810,6 +811,7 @@ def test_warning_prone_python_api_patterns_are_blocked() -> None:
         r"\blanguage\.query\(": "use tree_sitter.Query(language, query)",
     }
 
+    newline = "\n"
     violations: list[str] = []
     for dirpath, dirnames, filenames in os.walk(PROJECT_ROOT):
         dirnames[:] = [
@@ -821,15 +823,14 @@ def test_warning_prone_python_api_patterns_are_blocked() -> None:
             if not filename.endswith(".py"):
                 continue
             path = Path(dirpath) / filename
-
+            rel = str(path.relative_to(PROJECT_ROOT))
             text = path.read_text(encoding="utf-8")
             for pattern, replacement in blocked_patterns.items():
                 for match in re.finditer(pattern, text):
-                    line_number = text.count("\n", 0, match.start()) + 1
-                    relative_path = path.relative_to(PROJECT_ROOT)
-                    violations.append(
-                        f"{relative_path}:{line_number} matches {pattern}; {replacement}"
-                    )
+                    match_start = match.start()
+                    line_number = text.count(newline, 0, match_start) + 1
+                    msg = f"{rel}:{line_number} matches {pattern}; {replacement}"
+                    violations.append(msg)
 
     assert violations == []
 
@@ -863,6 +864,7 @@ def test_every_plugin_class_inherits_language_plugin() -> None:
     for _lang, path in _discover_plugin_files():
         source = path.read_text(encoding="utf-8")
         tree = ast.parse(source)
+        rel = str(path.relative_to(PROJECT_ROOT))
         for node in ast.walk(tree):
             if isinstance(node, ast.ClassDef) and "Plugin" in node.name:
                 base_names = [
@@ -870,10 +872,8 @@ def test_every_plugin_class_inherits_language_plugin() -> None:
                     for b in node.bases
                 ]
                 if "ElementExtractor" in base_names:
-                    violations.append(
-                        f"{path.relative_to(PROJECT_ROOT)}:{node.lineno} "
-                        f"{node.name} inherits ElementExtractor (should only inherit LanguagePlugin)"
-                    )
+                    msg = f"{rel}:{node.lineno} {node.name} inherits ElementExtractor (should only inherit LanguagePlugin)"
+                    violations.append(msg)
     assert violations == [], "\n".join(violations)
 
 
@@ -883,6 +883,7 @@ def test_extract_elements_returns_dict() -> None:
     for _lang, path in _discover_plugin_files():
         source = path.read_text(encoding="utf-8")
         tree = ast.parse(source)
+        rel = str(path.relative_to(PROJECT_ROOT))
         for node in ast.walk(tree):
             if isinstance(node, ast.FunctionDef) and node.name == "extract_elements":
                 ret = node.returns
@@ -890,10 +891,8 @@ def test_extract_elements_returns_dict() -> None:
                     continue
                 ret_str = ast.unparse(ret)
                 if ret_str.startswith("list") and "dict" not in ret_str:
-                    violations.append(
-                        f"{path.relative_to(PROJECT_ROOT)}:{node.lineno} "
-                        f"extract_elements returns {ret_str} (must be dict[str, list[...]])"
-                    )
+                    msg = f"{rel}:{node.lineno} extract_elements returns {ret_str} (must be dict[str, list[...]])"
+                    violations.append(msg)
     assert violations == [], "\n".join(violations)
 
 
@@ -909,6 +908,7 @@ def test_plugin_has_required_abstract_methods() -> None:
     for _lang, path in _discover_plugin_files():
         source = path.read_text(encoding="utf-8")
         tree = ast.parse(source)
+        rel = str(path.relative_to(PROJECT_ROOT))
         for node in ast.walk(tree):
             if isinstance(node, ast.ClassDef) and "Plugin" in node.name:
                 methods = {
@@ -918,10 +918,8 @@ def test_plugin_has_required_abstract_methods() -> None:
                 }
                 missing = REQUIRED - methods
                 if missing:
-                    violations.append(
-                        f"{path.relative_to(PROJECT_ROOT)}:{node.lineno} "
-                        f"{node.name} missing methods: {missing}"
-                    )
+                    msg = f"{rel}:{node.lineno} {node.name} missing methods: {missing}"
+                    violations.append(msg)
     assert violations == [], "\n".join(violations)
 
 
@@ -1031,6 +1029,15 @@ def test_no_mcp_tool_imports_from_cli() -> None:
     )
 
 
+def _class_overrides_set_project_path(node: ast.ClassDef) -> bool:
+    """Return True if the class body contains a ``set_project_path`` method."""
+    return any(
+        isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and item.name == "set_project_path"
+        for item in node.body
+    )
+
+
 def test_no_mcp_tool_overrides_set_project_path() -> None:
     """ARCH-A4 regression: ``BaseMCPTool.set_project_path`` is final by
     convention; tools that need to react to a project-root rebind must
@@ -1049,19 +1056,17 @@ def test_no_mcp_tool_overrides_set_project_path() -> None:
     for path in sorted(tools_dir.glob("*.py")):
         if path.name == "base_tool.py":
             continue  # the base class itself is allowed to define it
+        pname = path.name
         source = path.read_text(encoding="utf-8")
         try:
             tree = ast.parse(source)
         except SyntaxError:
             continue
         for node in ast.walk(tree):
-            if isinstance(node, ast.ClassDef):
-                for item in node.body:
-                    if (
-                        isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
-                        and item.name == "set_project_path"
-                    ):
-                        offenders.append(f"{path.name}::{node.name}.set_project_path")
+            if not isinstance(node, ast.ClassDef):
+                continue
+            if _class_overrides_set_project_path(node):
+                offenders.append(f"{pname}::{node.name}.set_project_path")
     assert offenders == [], (
         "These tools override BaseMCPTool.set_project_path. Move the body "
         "into _on_project_root_changed instead (ARCH-A4):\n  " + "\n  ".join(offenders)

@@ -66,11 +66,6 @@ class TestGetCodeOutlineToolInit:
         assert tool.project_root is None
         assert tool.analysis_engine is not None
 
-    def test_init_with_project_root(self):
-        """带 project_root 时可正常初始化。"""
-        tool = GetCodeOutlineTool(project_root="/test/project")
-        assert tool.project_root == "/test/project"
-
     def test_set_project_path_updates_engine(self):
         """set_project_path 后 analysis_engine 应被更新。"""
         tool = GetCodeOutlineTool()
@@ -613,11 +608,6 @@ class TestGetCodeOutlineToolDefinition:
 
     def setup_method(self):
         self.tool = GetCodeOutlineTool()
-
-    def test_tool_name(self):
-        """工具名称应为 get_code_outline。"""
-        defn = self.tool.get_tool_definition()
-        assert defn["name"] == "get_code_outline"
 
     def test_tool_description_mentions_outline(self):
         """工具描述应提及 outline。"""

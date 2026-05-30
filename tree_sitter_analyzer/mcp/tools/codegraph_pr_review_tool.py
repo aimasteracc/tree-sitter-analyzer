@@ -227,6 +227,15 @@ class CodeGraphPRReviewTool(BaseMCPTool):
                 self._call_graph = CallGraph(self.project_root)
         return self._call_graph
 
+    def get_call_graph(self) -> CallGraph:
+        """Public alias for _get_call_graph() — use this instead of accessing _call_graph."""
+        return self._get_call_graph()
+
+    @property
+    def call_graph_initialized(self) -> bool:
+        """True if the call graph has been lazily initialized (i.e. cached)."""
+        return self._call_graph is not None
+
     def get_tool_definition(self) -> dict[str, Any]:
         return {
             "name": "codegraph_pr_review",
@@ -444,24 +453,30 @@ class CodeGraphPRReviewTool(BaseMCPTool):
                 key = f"{func.get('file', '')}:{func.get('name', '')}"
                 if key not in seen:
                     seen.add(key)
+                    func_name = func.get("name", "")
+                    func_file = func.get("file", "")
+                    func_line = func.get("line", 0)
                     affected.append(
                         {
-                            "function": func.get("name", ""),
-                            "file": func.get("file", ""),
+                            "function": func_name,
+                            "file": func_file,
                             "direction": "upstream",
-                            "line": func.get("line", 0),
+                            "line": func_line,
                         }
                     )
             for func in impact.get("downstream", [])[:5]:
                 key = f"{func.get('file', '')}:{func.get('name', '')}"
                 if key not in seen:
                     seen.add(key)
+                    func_name = func.get("name", "")
+                    func_file = func.get("file", "")
+                    func_line = func.get("line", 0)
                     affected.append(
                         {
-                            "function": func.get("name", ""),
-                            "file": func.get("file", ""),
+                            "function": func_name,
+                            "file": func_file,
                             "direction": "downstream",
-                            "line": func.get("line", 0),
+                            "line": func_line,
                         }
                     )
         return affected

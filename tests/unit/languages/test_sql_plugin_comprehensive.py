@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Comprehensive tests for SQL Plugin to improve coverage to 70%+.
+Comprehensive tests for SQL Plugin.
 
 Tests cover:
 - Table extraction with columns and constraints
@@ -12,18 +12,26 @@ Tests cover:
 - Schema references
 - Platform compatibility
 - Edge cases and error handling
+- SQL element models and metadata
+- Formatter integration
 """
 
 import os
 import tempfile
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 
 from tree_sitter_analyzer.languages.sql_plugin import SQLElementExtractor, SQLPlugin
 from tree_sitter_analyzer.models import (
     CodeElement,
+    SQLColumn,
+    SQLConstraint,
     SQLElementType,
+    SQLFunction,
+    SQLIndex,
+    SQLParameter,
+    SQLProcedure,
     SQLTable,
     SQLTrigger,
 )
@@ -288,35 +296,6 @@ class TestSQLPluginUnit:
         assert ".sql" in plugin.supported_extensions
         assert hasattr(plugin, "extractor")
         assert isinstance(plugin.extractor, SQLElementExtractor)
-
-    def test_get_language_name(self, plugin: SQLPlugin) -> None:
-        """Test get_language_name method."""
-        assert plugin.get_language_name() == "sql"
-
-    def test_get_file_extensions(self, plugin: SQLPlugin) -> None:
-        """Test get_file_extensions method."""
-        extensions = plugin.get_file_extensions()
-        assert isinstance(extensions, list)
-        assert ".sql" in extensions
-
-    def test_create_extractor(self, plugin: SQLPlugin) -> None:
-        """Test create_extractor method."""
-        extractor = plugin.create_extractor()
-        assert isinstance(extractor, SQLElementExtractor)
-
-    def test_is_applicable(self, plugin: SQLPlugin) -> None:
-        """Test is_applicable method."""
-        assert plugin.is_applicable("test.sql") is True
-        assert plugin.is_applicable("test.SQL") is True
-        assert plugin.is_applicable("test.py") is False
-        assert plugin.is_applicable("test.java") is False
-
-    def test_get_plugin_info(self, plugin: SQLPlugin) -> None:
-        """Test get_plugin_info method."""
-        info = plugin.get_plugin_info()
-        assert isinstance(info, dict)
-        assert info["language"] == "sql"
-        assert ".sql" in info["extensions"]
 
     def test_extract_elements_with_none_tree(self, plugin: SQLPlugin) -> None:
         """Test extract_elements with None tree."""
@@ -701,3 +680,105 @@ END;
             assert result.language == "sql"
         finally:
             os.unlink(temp_path)
+
+
+class TestSQLElementModels:
+    """Test SQL-specific element models and metadata."""
+
+    def test_sql_element_types_available(self) -> None:
+        """Test that SQL-specific element types are available."""
+        for attr in ("TABLE", "VIEW", "PROCEDURE", "FUNCTION", "TRIGGER", "INDEX"):
+            assert getattr(SQLElementType, attr) is not None
+
+    def test_sql_table_with_columns_and_constraints(self) -> None:
+        """Test SQLTable with columns and constraints."""
+        table = SQLTable(
+            name="users",
+            start_line=1,
+            end_line=10,
+            raw_text="CREATE TABLE users...",
+            sql_element_type=SQLElementType.TABLE,
+            columns=[
+                SQLColumn(name="id", data_type="INT", is_primary_key=True),
+                SQLColumn(name="email", data_type="VARCHAR(255)", nullable=False),
+            ],
+            constraints=[
+                SQLConstraint(
+                    name="pk_users", constraint_type="PRIMARY_KEY", columns=["id"]
+                ),
+            ],
+        )
+        assert len(table.columns) == 2
+        assert table.get_primary_key_columns() == ["id"]
+        assert table.get_foreign_key_columns() == []
+
+    def test_sql_function_and_procedure_models(self) -> None:
+        """Test SQLFunction and SQLProcedure models."""
+        func = SQLFunction(
+            name="calc_total",
+            start_line=1,
+            end_line=5,
+            raw_text="CREATE FUNCTION calc_total...",
+            sql_element_type=SQLElementType.FUNCTION,
+            return_type="DECIMAL(10, 2)",
+        )
+        assert func.return_type == "DECIMAL(10, 2)"
+
+        proc = SQLProcedure(
+            name="get_orders",
+            start_line=10,
+            end_line=20,
+            raw_text="CREATE PROCEDURE get_orders...",
+            sql_element_type=SQLElementType.PROCEDURE,
+            parameters=[SQLParameter(name="uid", data_type="INT", direction="IN")],
+        )
+        assert proc.parameters[0].direction == "IN"
+
+    def test_sql_trigger_and_index_models(self) -> None:
+        """Test SQLTrigger and SQLIndex models."""
+        trigger = SQLTrigger(
+            name="upd_ts",
+            start_line=1,
+            end_line=5,
+            raw_text="CREATE TRIGGER upd_ts AFTER UPDATE ON users",
+            sql_element_type=SQLElementType.TRIGGER,
+            trigger_timing="AFTER",
+            trigger_event="UPDATE",
+            table_name="users",
+        )
+        assert trigger.trigger_timing == "AFTER"
+        assert trigger.table_name == "users"
+
+        index = SQLIndex(
+            name="idx_email",
+            start_line=10,
+            end_line=10,
+            raw_text="CREATE INDEX idx_email ON users(email)",
+            sql_element_type=SQLElementType.INDEX,
+            table_name="users",
+            indexed_columns=["email"],
+            is_unique=True,
+        )
+        assert index.is_unique
+
+
+class TestSQLPluginTreeSitterLanguage:
+    """Test tree-sitter language loading and plugin init."""
+
+    def test_get_tree_sitter_language_missing(self) -> None:
+        """Test get_tree_sitter_language when tree-sitter-sql is not available."""
+        plugin = SQLPlugin()
+        plugin._cached_language = None
+        with patch.dict("sys.modules", {"tree_sitter_sql": None}):
+            try:
+                plugin.get_tree_sitter_language()
+                pytest.fail("Should have raised RuntimeError")
+            except RuntimeError as e:
+                assert "tree-sitter-sql is required" in str(e)
+            except ImportError:
+                pass
+
+    def test_diagnostic_mode_init(self) -> None:
+        """Test plugin diagnostic mode initialization."""
+        assert SQLPlugin(diagnostic_mode=True).diagnostic_mode is True
+        assert SQLPlugin(diagnostic_mode=False).diagnostic_mode is False

@@ -60,7 +60,7 @@ Every path is validated against `TREE_SITTER_PROJECT_ROOT` by `security/validato
 ### Caching layers
 1. `ast_cache.py` — persistent SQLite store of parsed AST symbols/imports/structure
 2. `_route_cache.py` — SQLite store of detected routes (Flask/Django/Express/Spring)
-3. `services/cache_service.py` — in-process LRU for formatter outputs
+3. `core/cache_service.py` — in-process LRU for formatter outputs
 4. `mcp/utils/search_cache.py` — fd/ripgrep result cache
 
 ### MCP / CLI parity

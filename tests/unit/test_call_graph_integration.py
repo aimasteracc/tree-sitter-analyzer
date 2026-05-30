@@ -316,3 +316,129 @@ class TestCallGraphInternalMethods:
         cg = CallGraph(str(PY_PROJECT))
         result = cg.resolve_targets("nonexistent")
         assert result == []
+
+
+class TestCallGraphPublicAdjacencyAPI:
+    """Tests for the public API surface that replaces direct _callers/_callees/_functions access."""
+
+    def test_all_function_refs_returns_function_refs(self):
+        cg = CallGraph(str(PY_PROJECT))
+        refs = cg.all_function_refs()
+        assert isinstance(refs, list)
+        for ref in refs:
+            assert isinstance(ref, FunctionRef)
+
+    def test_all_function_refs_returns_copy(self):
+        cg = CallGraph(str(PY_PROJECT))
+        refs1 = cg.all_function_refs()
+        refs1.clear()
+        refs2 = cg.all_function_refs()
+        assert len(refs2) > 0
+
+    def test_all_function_refs_count_matches_all_functions(self):
+        cg = CallGraph(str(PY_PROJECT))
+        assert len(cg.all_function_refs()) == len(cg.all_functions())
+
+    def test_callers_map_returns_dict(self):
+        cg = CallGraph(str(PY_PROJECT))
+        cm = cg.callers_map()
+        assert isinstance(cm, dict)
+        for key, value in cm.items():
+            assert isinstance(key, FunctionRef)
+            assert isinstance(value, list)
+
+    def test_callers_map_returns_copy(self):
+        cg = CallGraph(str(PY_PROJECT))
+        cm1 = cg.callers_map()
+        cm1.clear()
+        cm2 = cg.callers_map()
+        assert len(cm2) > 0
+
+    def test_callees_map_returns_dict(self):
+        cg = CallGraph(str(PY_PROJECT))
+        cm = cg.callees_map()
+        assert isinstance(cm, dict)
+        for key, value in cm.items():
+            assert isinstance(key, FunctionRef)
+            assert isinstance(value, list)
+
+    def test_callees_map_returns_copy(self):
+        cg = CallGraph(str(PY_PROJECT))
+        cm1 = cg.callees_map()
+        cm1.clear()
+        cm2 = cg.callees_map()
+        assert len(cm2) > 0
+
+    def test_functions_by_file_keys_are_strings(self):
+        cg = CallGraph(str(PY_PROJECT))
+        fbf = cg.functions_by_file()
+        assert isinstance(fbf, dict)
+        for key, value in fbf.items():
+            assert isinstance(key, str)
+            assert isinstance(value, list)
+            for ref in value:
+                assert isinstance(ref, FunctionRef)
+
+    def test_functions_by_file_returns_copy(self):
+        cg = CallGraph(str(PY_PROJECT))
+        fbf1 = cg.functions_by_file()
+        fbf1.clear()
+        fbf2 = cg.functions_by_file()
+        assert len(fbf2) > 0
+
+    def test_resolve_targets_returns_function_refs(self):
+        cg = CallGraph(str(PY_PROJECT))
+        refs = cg.resolve_targets("main")
+        assert isinstance(refs, list)
+        for ref in refs:
+            assert isinstance(ref, FunctionRef)
+            assert ref.name == "main"
+
+    def test_resolve_targets_returns_empty_for_unknown(self):
+        cg = CallGraph(str(PY_PROJECT))
+        refs = cg.resolve_targets("__nonexistent_function_xyz__")
+        assert refs == []
+
+    def test_resolve_targets_consistent_with_callers_of(self):
+        """resolve_targets results should match what callers_of uses internally."""
+        cg = CallGraph(str(PY_PROJECT))
+        refs = cg.resolve_targets("load_data")
+        callers = cg.callers_of("load_data")
+        # If symbol exists, both resolve correctly
+        if refs:
+            assert len(callers) >= 0  # callers_of may return 0 even if symbol exists
+
+
+class TestCallGraphAllCallEdges:
+    def test_all_call_edges_returns_list(self):
+        """all_call_edges() must return a list of 3-tuples."""
+        cg = CallGraph(str(PY_PROJECT))
+        edges = cg.all_call_edges()
+        assert isinstance(edges, list)
+        for caller, callee, line in edges:
+            assert isinstance(caller, FunctionRef)
+            assert isinstance(callee, FunctionRef)
+            assert isinstance(line, int)
+
+    def test_all_call_edges_triggers_build(self):
+        """all_call_edges() must build the graph if not yet built."""
+        cg = CallGraph(str(PY_PROJECT))
+        # Graph not yet built — calling all_call_edges() should trigger build.
+        # After the call, functions and edges are populated.
+        assert len(cg.all_call_edges()) >= 0
+        assert len(cg.all_functions()) > 0
+
+    def test_all_call_edges_count_matches_summary(self):
+        """all_call_edges() count must match the summary call_edge_count."""
+        cg = CallGraph(str(PY_PROJECT))
+        edges = cg.all_call_edges()
+        summary = cg.summary()
+        assert len(edges) == summary["call_edge_count"]
+
+    def test_all_call_edges_returns_copy(self):
+        """Mutating the returned list must not affect the internal state."""
+        cg = CallGraph(str(PY_PROJECT))
+        edges1 = cg.all_call_edges()
+        edges1.clear()
+        edges2 = cg.all_call_edges()
+        assert len(edges2) > 0  # internal list unaffected

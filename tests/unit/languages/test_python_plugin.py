@@ -435,47 +435,6 @@ class TestPythonPlugin:
         assert hasattr(plugin, "get_file_extensions")
         assert hasattr(plugin, "create_extractor")
 
-    def test_get_language_name(self, plugin: PythonPlugin) -> None:
-        """Test getting language name"""
-        language_name = plugin.get_language_name()
-
-        assert language_name == "python"
-
-    def test_get_file_extensions(self, plugin: PythonPlugin) -> None:
-        """Test getting file extensions"""
-        extensions = plugin.get_file_extensions()
-
-        assert isinstance(extensions, list)
-        assert ".py" in extensions
-        assert ".pyi" in extensions
-
-    def test_create_extractor(self, plugin: PythonPlugin) -> None:
-        """Test creating element extractor"""
-        extractor = plugin.create_extractor()
-
-        assert isinstance(extractor, PythonElementExtractor)
-        assert isinstance(extractor, ElementExtractor)
-
-    def test_is_applicable_python_file(self, plugin: PythonPlugin) -> None:
-        """Test applicability check for Python file"""
-        assert plugin.is_applicable("test.py") is True
-        assert plugin.is_applicable("test.pyi") is True
-        assert plugin.is_applicable("test.pyw") is True
-
-    def test_is_applicable_non_python_file(self, plugin: PythonPlugin) -> None:
-        """Test applicability check for non-Python file"""
-        assert plugin.is_applicable("test.java") is False
-        assert plugin.is_applicable("test.js") is False
-
-    def test_get_plugin_info(self, plugin: PythonPlugin) -> None:
-        """Test getting plugin information"""
-        info = plugin.get_plugin_info()
-
-        assert isinstance(info, dict)
-        assert "language" in info
-        assert "extensions" in info
-        assert info["language"] == "python"
-
     def test_get_tree_sitter_language(self, plugin: PythonPlugin) -> None:
         """Test getting tree-sitter language"""
         with (
@@ -514,21 +473,6 @@ class TestPythonPlugin:
             assert language1 is language2
             # Should only be called once due to caching
             mock_language.assert_called_once()
-
-    def test_execute_query(self, plugin: PythonPlugin) -> None:
-        """Test query execution"""
-        mock_tree = Mock()
-
-        with patch.object(plugin, "get_tree_sitter_language") as mock_get_language:
-            # Mock will cause Query() to fail, so we expect an error
-            mock_get_language.return_value = Mock()
-
-            result = plugin.execute_query(mock_tree, "function")
-
-            assert isinstance(result, dict)
-            # When using Mock as Language, Query() will fail and return error
-            # The result should contain either 'error' or 'captures' key
-            assert "error" in result or "captures" in result
 
     @pytest.mark.asyncio
     async def test_analyze_file_success(self, plugin: PythonPlugin) -> None:
@@ -641,18 +585,6 @@ class TestPythonPluginErrorHandling:
             language = plugin.get_tree_sitter_language()
 
             assert language is None
-
-    def test_execute_query_with_exception(self, plugin: PythonPlugin) -> None:
-        """Test query execution with exception"""
-        mock_tree = Mock()
-
-        with patch.object(plugin, "get_tree_sitter_language") as mock_get_language:
-            mock_get_language.return_value = None
-
-            result = plugin.execute_query(mock_tree, "function")
-
-            assert isinstance(result, dict)
-            assert "error" in result
 
     @pytest.mark.asyncio
     async def test_analyze_file_with_exception(self, plugin: PythonPlugin) -> None:

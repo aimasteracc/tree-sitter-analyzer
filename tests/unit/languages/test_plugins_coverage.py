@@ -12,7 +12,7 @@ import pytest
 # Add project root to path
 sys.path.insert(0, ".")
 
-from tree_sitter_analyzer.plugins import DefaultExtractor, DefaultLanguagePlugin
+from tree_sitter_analyzer.plugins import DefaultExtractor
 from tree_sitter_analyzer.plugins.manager import PluginManager
 
 
@@ -20,12 +20,6 @@ from tree_sitter_analyzer.plugins.manager import PluginManager
 def default_extractor():
     """Fixture for DefaultExtractor"""
     return DefaultExtractor()
-
-
-@pytest.fixture
-def default_language_plugin():
-    """Fixture for DefaultLanguagePlugin"""
-    return DefaultLanguagePlugin()
 
 
 @pytest.fixture
@@ -257,31 +251,6 @@ class TestDefaultExtractor:
         name = default_extractor._extract_node_name(mock_node)
 
         assert name is None
-
-
-class TestDefaultLanguagePlugin:
-    """Test DefaultLanguagePlugin functionality"""
-
-    def test_get_language_name(self, default_language_plugin):
-        """Test language name"""
-        assert default_language_plugin.get_language_name() == "generic"
-
-    def test_get_file_extensions(self, default_language_plugin):
-        """Test file extensions"""
-        extensions = default_language_plugin.get_file_extensions()
-        assert ".txt" in extensions
-        assert ".md" in extensions
-
-    def test_create_extractor(self, default_language_plugin):
-        """Test extractor creation"""
-        extractor = default_language_plugin.create_extractor()
-        assert isinstance(extractor, DefaultExtractor)
-
-    def test_is_applicable(self, default_language_plugin):
-        """Test file applicability"""
-        assert default_language_plugin.is_applicable("test.txt") is True
-        assert default_language_plugin.is_applicable("README.md") is True
-        assert default_language_plugin.is_applicable("test.py") is False
 
 
 class TestPluginManagerAdvanced:

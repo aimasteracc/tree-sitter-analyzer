@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """SearchContentTool initialization, path, definition, and format determination tests."""
 
-
 import pytest
 
 from tree_sitter_analyzer.mcp.tools.search_content_tool import (
@@ -21,10 +20,6 @@ class TestSearchContentToolInitialization:
         assert tool is not None
         assert hasattr(tool, "cache")
         assert hasattr(tool, "file_output_manager")
-
-    def test_init_with_project_root(self):
-        tool = SearchContentTool(project_root="/test/path")
-        assert tool.project_root == "/test/path"
 
     def test_init_with_cache_disabled(self):
         tool = SearchContentTool(enable_cache=False)
@@ -52,17 +47,6 @@ class TestSetProjectPath:
 
 class TestGetToolDefinition:
     """Tests for get_tool_definition method."""
-
-    def test_tool_definition_structure(self, tool):
-        definition = tool.get_tool_definition()
-        assert isinstance(definition, dict)
-        assert "name" in definition
-        assert "description" in definition
-        assert "inputSchema" in definition
-
-    def test_tool_definition_name(self, tool):
-        definition = tool.get_tool_definition()
-        assert definition["name"] == "search_content"
 
     def test_required_fields(self, tool):
         definition = tool.get_tool_definition()

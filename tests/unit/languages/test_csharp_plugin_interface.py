@@ -3,7 +3,6 @@
 import tree_sitter
 
 from tree_sitter_analyzer.languages.csharp_plugin import (
-    CSharpElementExtractor,
     CSharpPlugin,
 )
 
@@ -268,18 +267,6 @@ class TestCSharpPluginInterface:
         plugin = CSharpPlugin()
         assert plugin is not None
 
-    def test_get_language_name(self):
-        """Test language name."""
-        plugin = CSharpPlugin()
-        assert plugin.get_language_name() == "csharp"
-
-    def test_get_file_extensions(self):
-        """Test file extensions."""
-        plugin = CSharpPlugin()
-        extensions = plugin.get_file_extensions()
-        assert ".cs" in extensions
-        assert isinstance(extensions, list)
-
     def test_get_tree_sitter_language(self):
         """Test tree-sitter language retrieval."""
         plugin = CSharpPlugin()
@@ -292,12 +279,6 @@ class TestCSharpPluginInterface:
         lang1 = plugin.get_tree_sitter_language()
         lang2 = plugin.get_tree_sitter_language()
         assert lang1 is lang2
-
-    def test_create_extractor(self):
-        """Test extractor creation."""
-        plugin = CSharpPlugin()
-        extractor = plugin.create_extractor()
-        assert isinstance(extractor, CSharpElementExtractor)
 
     def test_get_queries(self):
         """Test query retrieval."""

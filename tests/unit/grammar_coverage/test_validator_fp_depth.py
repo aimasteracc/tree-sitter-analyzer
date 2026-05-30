@@ -15,6 +15,54 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from tests.unit.grammar_coverage.conftest import _make_parser_mock
+
+_PM_PATCH = "tree_sitter_analyzer.plugins.manager.PluginManager"
+_PARSER_PATCH = "tree_sitter_analyzer.language_loader.loader.create_parser_safely"
+
+
+def _make_deep_nodes(n: int, *, name_prefix: str = "node_level") -> tuple:
+    """Create a linear chain of *n* MagicMock AST nodes.
+
+    Returns (nodes, root, tree) where root.children = [nodes[0]] and
+    nodes[i].children = [nodes[i+1]] (last node has children=[]).
+    Each node has start_point=(i, 0), end_point=(n, 0).
+    """
+    nodes = []
+    for i in range(n):
+        node = MagicMock()
+        node.is_named = True
+        node.type = f"{name_prefix}_{i}"
+        node.start_point = (i, 0)
+        node.end_point = (n, 0)
+        nodes.append(node)
+    for i in range(n - 1):
+        nodes[i].children = [nodes[i + 1]]
+    nodes[-1].children = []
+
+    root = MagicMock()
+    root.is_named = True
+    root.type = "root"
+    root.children = [nodes[0]]
+
+    tree = MagicMock()
+    tree.root_node = root
+    return nodes, root, tree
+
+
+def _make_plugin_mock(start_line: int, end_line: int) -> MagicMock:
+    """Return a mock PluginManager with one element covering start_line..end_line."""
+    element = MagicMock()
+    element.start_line = start_line
+    element.end_line = end_line
+    result = MagicMock()
+    result.elements = [element]
+    plugin = AsyncMock()
+    plugin.analyze_file.return_value = result
+    manager = MagicMock()
+    manager.get_plugin.return_value = plugin
+    return manager
+
 
 class TestDepthLimitFalsePositives:
     """
@@ -33,62 +81,19 @@ class TestDepthLimitFalsePositives:
             _get_covered_node_types_from_plugin,
         )
 
-        # Create 99-layer deep nesting
-        nodes = []
-        for i in range(99):
-            node = MagicMock()
-            node.is_named = True
-            node.type = f"node_level_{i}"
-            node.start_point = (i, 0)
-            node.end_point = (99, 0)
-            nodes.append(node)
-
-        # Wire up parent-child relationships
-        for i in range(98):
-            nodes[i].children = [nodes[i + 1]]
-        nodes[98].children = []
-
-        root = MagicMock()
-        root.is_named = True
-        root.type = "root"
-        root.children = [nodes[0]]
-
-        tree = MagicMock()
-        tree.root_node = root
-
-        mock_parser = MagicMock()
-        mock_parser.parse.return_value = tree
-
-        mock_element = MagicMock()
-        mock_element.start_line = 1
-        mock_element.end_line = 100
-
-        mock_result = MagicMock()
-        mock_result.elements = [mock_element]
-
-        mock_plugin = AsyncMock()
-        mock_plugin.analyze_file.return_value = mock_result
-
-        mock_plugin_manager = MagicMock()
-        mock_plugin_manager.get_plugin.return_value = mock_plugin
+        nodes, _, tree = _make_deep_nodes(99)
+        mock_parser = _make_parser_mock(tree)
+        mock_plugin_manager = _make_plugin_mock(start_line=1, end_line=100)
 
         with (
-            patch(
-                "tree_sitter_analyzer.plugins.manager.PluginManager",
-                return_value=mock_plugin_manager,
-            ),
-            patch(
-                "tree_sitter_analyzer.language_loader.loader.create_parser_safely",
-                return_value=mock_parser,
-            ),
+            patch(_PM_PATCH, return_value=mock_plugin_manager),
+            patch(_PARSER_PATCH, return_value=mock_parser),
             patch.object(Path, "read_text", return_value="deep nesting"),
         ):
-            # Should not raise RecursionError
             covered = await _get_covered_node_types_from_plugin(
                 Path("/fake/test.txt"), "generic"
             )
 
-        # 行号匹配：node_level_0(0-99) 与 element(0-99) 精确匹配；其余层起始行不同
         assert "node_level_0" in covered
 
     @pytest.mark.asyncio
@@ -98,61 +103,19 @@ class TestDepthLimitFalsePositives:
             _get_covered_node_types_from_plugin,
         )
 
-        # Create 100-layer deep nesting
-        nodes = []
-        for i in range(100):
-            node = MagicMock()
-            node.is_named = True
-            node.type = f"node_level_{i}"
-            node.start_point = (i, 0)
-            node.end_point = (100, 0)
-            nodes.append(node)
-
-        for i in range(99):
-            nodes[i].children = [nodes[i + 1]]
-        nodes[99].children = []
-
-        root = MagicMock()
-        root.is_named = True
-        root.type = "root"
-        root.children = [nodes[0]]
-
-        tree = MagicMock()
-        tree.root_node = root
-
-        mock_parser = MagicMock()
-        mock_parser.parse.return_value = tree
-
-        mock_element = MagicMock()
-        mock_element.start_line = 1
-        mock_element.end_line = 101
-
-        mock_result = MagicMock()
-        mock_result.elements = [mock_element]
-
-        mock_plugin = AsyncMock()
-        mock_plugin.analyze_file.return_value = mock_result
-
-        mock_plugin_manager = MagicMock()
-        mock_plugin_manager.get_plugin.return_value = mock_plugin
+        nodes, _, tree = _make_deep_nodes(100)
+        mock_parser = _make_parser_mock(tree)
+        mock_plugin_manager = _make_plugin_mock(start_line=1, end_line=101)
 
         with (
-            patch(
-                "tree_sitter_analyzer.plugins.manager.PluginManager",
-                return_value=mock_plugin_manager,
-            ),
-            patch(
-                "tree_sitter_analyzer.language_loader.loader.create_parser_safely",
-                return_value=mock_parser,
-            ),
+            patch(_PM_PATCH, return_value=mock_plugin_manager),
+            patch(_PARSER_PATCH, return_value=mock_parser),
             patch.object(Path, "read_text", return_value="deep nesting"),
         ):
-            # TODO: If Agent 1 implements depth limit, this should trigger warning
             covered = await _get_covered_node_types_from_plugin(
                 Path("/fake/test.txt"), "generic"
             )
 
-        # Current behavior: should still work
         assert isinstance(covered, set)
 
     @pytest.mark.asyncio
@@ -162,52 +125,13 @@ class TestDepthLimitFalsePositives:
             _get_covered_node_types_from_plugin,
         )
 
-        nodes = []
-        for i in range(101):
-            node = MagicMock()
-            node.is_named = True
-            node.type = f"node_level_{i}"
-            node.start_point = (i, 0)
-            node.end_point = (101, 0)
-            nodes.append(node)
-
-        for i in range(100):
-            nodes[i].children = [nodes[i + 1]]
-        nodes[100].children = []
-
-        root = MagicMock()
-        root.is_named = True
-        root.type = "root"
-        root.children = [nodes[0]]
-
-        tree = MagicMock()
-        tree.root_node = root
-
-        mock_parser = MagicMock()
-        mock_parser.parse.return_value = tree
-
-        mock_element = MagicMock()
-        mock_element.start_line = 1
-        mock_element.end_line = 102
-
-        mock_result = MagicMock()
-        mock_result.elements = [mock_element]
-
-        mock_plugin = AsyncMock()
-        mock_plugin.analyze_file.return_value = mock_result
-
-        mock_plugin_manager = MagicMock()
-        mock_plugin_manager.get_plugin.return_value = mock_plugin
+        nodes, _, tree = _make_deep_nodes(101)
+        mock_parser = _make_parser_mock(tree)
+        mock_plugin_manager = _make_plugin_mock(start_line=1, end_line=102)
 
         with (
-            patch(
-                "tree_sitter_analyzer.plugins.manager.PluginManager",
-                return_value=mock_plugin_manager,
-            ),
-            patch(
-                "tree_sitter_analyzer.language_loader.loader.create_parser_safely",
-                return_value=mock_parser,
-            ),
+            patch(_PM_PATCH, return_value=mock_plugin_manager),
+            patch(_PARSER_PATCH, return_value=mock_parser),
             patch.object(Path, "read_text", return_value="extreme nesting"),
         ):
             covered = await _get_covered_node_types_from_plugin(
@@ -248,41 +172,18 @@ class TestDepthLimitFalsePositives:
         tree = MagicMock()
         tree.root_node = root
 
-        mock_parser = MagicMock()
-        mock_parser.parse.return_value = tree
-
-        mock_element = MagicMock()
-        mock_element.start_line = 1
-        mock_element.end_line = 11
-
-        mock_result = MagicMock()
-        mock_result.elements = [mock_element]
-
-        mock_plugin = AsyncMock()
-        mock_plugin.analyze_file.return_value = mock_result
-
-        mock_plugin_manager = MagicMock()
-        mock_plugin_manager.get_plugin.return_value = mock_plugin
+        mock_parser = _make_parser_mock(tree)
+        mock_plugin_manager = _make_plugin_mock(start_line=1, end_line=11)
 
         with (
-            patch(
-                "tree_sitter_analyzer.plugins.manager.PluginManager",
-                return_value=mock_plugin_manager,
-            ),
-            patch(
-                "tree_sitter_analyzer.language_loader.loader.create_parser_safely",
-                return_value=mock_parser,
-            ),
+            patch(_PM_PATCH, return_value=mock_plugin_manager),
+            patch(_PARSER_PATCH, return_value=mock_parser),
             patch.object(Path, "read_text", return_value="circular"),
         ):
-            # Should handle gracefully without infinite loop
-            # Implementation has recursion limit防护，不会抛出 RecursionError
             covered = await _get_covered_node_types_from_plugin(
                 Path("/fake/test.txt"), "generic"
             )
-        # 行号匹配：node1(0-10) 与 element(0-10) 精确匹配；深度限制防止无限循环
         assert "node1" in covered
-        # node2(1-10) 起始行不同，不匹配（无 false positive）
         assert "node2" not in covered
 
     @pytest.mark.asyncio
@@ -292,58 +193,16 @@ class TestDepthLimitFalsePositives:
             _get_covered_node_types_from_plugin,
         )
 
-        # This should trigger recursion limit in Python
-        nodes = []
-        for i in range(1000):
-            node = MagicMock()
-            node.is_named = True
-            node.type = f"node_{i}"
-            node.start_point = (i, 0)
-            node.end_point = (1000, 0)
-            nodes.append(node)
-
-        for i in range(999):
-            nodes[i].children = [nodes[i + 1]]
-        nodes[999].children = []
-
-        root = MagicMock()
-        root.is_named = True
-        root.type = "root"
-        root.children = [nodes[0]]
-
-        tree = MagicMock()
-        tree.root_node = root
-
-        mock_parser = MagicMock()
-        mock_parser.parse.return_value = tree
-
-        mock_element = MagicMock()
-        mock_element.start_line = 1
-        mock_element.end_line = 1001
-
-        mock_result = MagicMock()
-        mock_result.elements = [mock_element]
-
-        mock_plugin = AsyncMock()
-        mock_plugin.analyze_file.return_value = mock_result
-
-        mock_plugin_manager = MagicMock()
-        mock_plugin_manager.get_plugin.return_value = mock_plugin
+        nodes, _, tree = _make_deep_nodes(1000, name_prefix="node")
+        mock_parser = _make_parser_mock(tree)
+        mock_plugin_manager = _make_plugin_mock(start_line=1, end_line=1001)
 
         with (
-            patch(
-                "tree_sitter_analyzer.plugins.manager.PluginManager",
-                return_value=mock_plugin_manager,
-            ),
-            patch(
-                "tree_sitter_analyzer.language_loader.loader.create_parser_safely",
-                return_value=mock_parser,
-            ),
+            patch(_PM_PATCH, return_value=mock_plugin_manager),
+            patch(_PARSER_PATCH, return_value=mock_parser),
             patch.object(Path, "read_text", return_value="extreme"),
         ):
-            # 递归限制保护，不会触发 RecursionError
             covered = await _get_covered_node_types_from_plugin(
                 Path("/fake/test.txt"), "generic"
             )
-        # 行号匹配：node_0(0-1000) 与 element(0-1000) 精确匹配（深度限制内的第一个节点）
         assert "node_0" in covered

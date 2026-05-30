@@ -44,7 +44,7 @@ If you encounter parsing issues on a specific setup, you can record a new behavi
 python -m tree_sitter_analyzer.platform_compat.record --output-dir my_profiles
 ```
 
-This will generate a `profile.json` file that captures how the parser behaves on your machine. You can then submit this profile to the development team or use it to develop new adaptation rules.
+This will generate a `profile.json` file (written to the current directory) that captures how the parser behaves on your machine. You can then submit this profile to the development team or use it to develop new adaptation rules.
 
 ## Troubleshooting
 

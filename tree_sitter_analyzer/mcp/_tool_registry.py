@@ -59,6 +59,7 @@ def create_tool_registry(
     from .tools.decision_journal_tool import DecisionJournalTool
     from .tools.dependency_analysis_tool import DependencyAnalysisTool
     from .tools.dependency_matrix_tool import CodeGraphDependencyMatrixTool
+    from .tools.doc_sync_tool import DocSyncTool
     from .tools.file_health_tool import FileHealthTool
     from .tools.find_and_grep_tool import FindAndGrepTool
     from .tools.full_index_tool import CodeGraphFullIndexTool
@@ -145,6 +146,7 @@ def create_tool_registry(
         ("semantic_classify", SemanticClassifyTool(project_root)),
         ("detect_routes", RouteDetectorTool(project_root)),
         ("codegraph_dead_code", CodeGraphDeadCodeTool(project_root)),
+        ("doc_sync", DocSyncTool(project_root)),
         # Pain #26 (dogfood pass 4): import_graph_tool was imported and
         # spec'd in mcp_commands.py but missing from the central registry.
         # Same drift pattern as #12 — registry vs CLI specs need a single

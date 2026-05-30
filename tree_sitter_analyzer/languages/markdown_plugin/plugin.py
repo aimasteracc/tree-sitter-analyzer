@@ -21,7 +21,6 @@ except ImportError:
 from ...models import AnalysisResult, CodeElement
 from ...plugins.base import ElementExtractor, LanguagePlugin
 from ...utils import log_error
-from ...utils.tree_sitter_compat import TreeSitterQueryCompat
 from .extractor import MarkdownElementExtractor
 
 # Canonical query-key → node-types mapping for Markdown.
@@ -135,78 +134,6 @@ class MarkdownPlugin(LanguagePlugin):
         """Get the cached extractor instance, creating it if necessary"""
         return self._extractor
 
-    def get_language(self) -> str:
-        """Get the language name for Markdown (legacy compatibility)"""
-        return "markdown"
-
-    def extract_functions(
-        self, tree: tree_sitter.Tree, source_code: str
-    ) -> list[CodeElement]:
-        """Extract functions from the tree (legacy compatibility)"""
-        extractor = self.get_extractor()
-        functions = extractor.extract_functions(tree, source_code)
-        return [
-            CodeElement(
-                name=f.name,
-                start_line=f.start_line,
-                end_line=f.end_line,
-                raw_text=f.raw_text,
-                language=f.language,
-            )
-            for f in functions
-        ]
-
-    def extract_classes(
-        self, tree: tree_sitter.Tree, source_code: str
-    ) -> list[CodeElement]:
-        """Extract classes from the tree (legacy compatibility)"""
-        extractor = self.get_extractor()
-        classes = extractor.extract_classes(tree, source_code)
-        return [
-            CodeElement(
-                name=c.name,
-                start_line=c.start_line,
-                end_line=c.end_line,
-                raw_text=c.raw_text,
-                language=c.language,
-            )
-            for c in classes
-        ]
-
-    def extract_variables(
-        self, tree: tree_sitter.Tree, source_code: str
-    ) -> list[CodeElement]:
-        """Extract variables from the tree (legacy compatibility)"""
-        extractor = self.get_extractor()
-        variables = extractor.extract_variables(tree, source_code)
-        return [
-            CodeElement(
-                name=v.name,
-                start_line=v.start_line,
-                end_line=v.end_line,
-                raw_text=v.raw_text,
-                language=v.language,
-            )
-            for v in variables
-        ]
-
-    def extract_imports(
-        self, tree: tree_sitter.Tree, source_code: str
-    ) -> list[CodeElement]:
-        """Extract imports from the tree (legacy compatibility)"""
-        extractor = self.get_extractor()
-        imports = extractor.extract_imports(tree, source_code)
-        return [
-            CodeElement(
-                name=i.name,
-                start_line=i.start_line,
-                end_line=i.end_line,
-                raw_text=i.raw_text,
-                language=i.language,
-            )
-            for i in imports
-        ]
-
     def get_tree_sitter_language(self) -> tree_sitter.Language | None:
         """Get the Tree-sitter language object for Markdown"""
         if self._language_cache is None:
@@ -263,6 +190,8 @@ class MarkdownPlugin(LanguagePlugin):
             "name": "Markdown Plugin",
             "language": self.get_language_name(),
             "extensions": self.get_file_extensions(),
+            "class_name": self.__class__.__name__,
+            "module": self.__class__.__module__,
             "version": "1.0.0",
             "supported_queries": self.get_supported_queries(),
             "features": [
@@ -400,35 +329,6 @@ class MarkdownPlugin(LanguagePlugin):
         elements.extend(extractor.extract_text_formatting(tree, source_code))
         elements.extend(extractor.extract_footnotes(tree, source_code))
         return elements
-
-    def execute_query(self, tree: tree_sitter.Tree, query_name: str) -> dict:
-        """Execute a specific query on the tree"""
-        try:
-            language = self.get_tree_sitter_language()
-            if not language:
-                return {"error": "Language not available"}
-
-            # Import query definitions
-            from ...queries.markdown import get_query
-
-            try:
-                query_string = get_query(query_name)
-            except KeyError:
-                return {"error": f"Unknown query: {query_name}"}
-
-            # Use tree-sitter API with modern handling
-            captures = TreeSitterQueryCompat.safe_execute_query(
-                language, query_string, tree.root_node, fallback_result=[]
-            )
-            return {
-                "captures": captures,
-                "query": query_string,
-                "matches": len(captures),
-            }
-
-        except Exception as e:
-            log_error(f"Query execution failed: {e}")
-            return {"error": str(e)}
 
     def extract_elements(
         self, tree: tree_sitter.Tree, source_code: str

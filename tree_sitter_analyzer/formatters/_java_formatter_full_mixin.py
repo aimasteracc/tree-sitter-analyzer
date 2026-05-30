@@ -2,6 +2,17 @@
 
 from typing import Any
 
+from .._legacy_table_formatter_common import (
+    trim_trailing_blank_lines as _trim_trailing_blank_lines,
+)
+from ._java_formatter_class_mixin import (
+    get_class_fields,
+    get_class_methods,
+    get_inner_classes,
+    is_in_range,
+    is_inner_class,
+)
+
 
 class JavaTableFormatterFullMixin:
     """Full-format rendering helpers."""
@@ -17,9 +28,7 @@ class JavaTableFormatterFullMixin:
         _append_package(lines, package_name)
         _append_imports(lines, data.get("imports", []))
 
-        top_level_classes = [
-            cls for cls in classes if not self._is_inner_class(cls, classes)
-        ]
+        top_level_classes = [cls for cls in classes if not is_inner_class(cls, classes)]
         if len(top_level_classes) == 1:
             _append_single_class(lines, top_level_classes[0], data, package_name, self)
         else:
@@ -43,9 +52,7 @@ def _java_title(
     if not classes:
         return "Unknown"
 
-    main_classes = [
-        cls for cls in classes if not formatter._is_inner_class(cls, classes)
-    ]
+    main_classes = [cls for cls in classes if not is_inner_class(cls, classes)]
     main_class = main_classes[0] if main_classes else classes[0]
     class_name = main_class.get("name", "Unknown")
     return f"{package_name}.{class_name}" if package_name else str(class_name)
@@ -100,7 +107,7 @@ def _append_single_class(
     lines.append(f"| Total Fields | {stats.get('field_count', 0)} |")
     lines.append("")
     lines.extend(
-        formatter._format_class_section(single_class, data, data.get("classes", []))
+        formatter.format_class_section(single_class, data, data.get("classes", []))
     )
 
 
@@ -119,7 +126,7 @@ def _append_multi_class(
         lines.append("")
 
     for class_info in classes:
-        lines.extend(formatter._format_class_section(class_info, data, classes))
+        lines.extend(formatter.format_class_section(class_info, data, classes))
 
 
 def _class_overview_row(
@@ -133,8 +140,8 @@ def _class_overview_row(
     visibility = str(class_info.get("visibility", "package"))
     line_range = class_info.get("line_range", {})
     lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
-    class_methods = formatter._get_class_methods(data.get("methods", []), line_range)
-    class_fields = formatter._get_class_fields(data.get("fields", []), line_range)
+    class_methods = get_class_methods(data.get("methods", []), line_range)
+    class_fields = get_class_fields(data.get("fields", []), line_range)
     class_methods, class_fields = _exclude_inner_members(
         formatter, class_info, classes, class_methods, class_fields
     )
@@ -152,21 +159,16 @@ def _exclude_inner_members(
     class_methods: list[dict[str, Any]],
     class_fields: list[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    for inner in formatter._get_inner_classes(class_info, classes):
+    for inner in get_inner_classes(class_info, classes):
         inner_range = inner.get("line_range", {})
         class_methods = [
             method
             for method in class_methods
-            if not formatter._is_in_range(method.get("line_range", {}), inner_range)
+            if not is_in_range(method.get("line_range", {}), inner_range)
         ]
         class_fields = [
             field
             for field in class_fields
-            if not formatter._is_in_range(field.get("line_range", {}), inner_range)
+            if not is_in_range(field.get("line_range", {}), inner_range)
         ]
     return class_methods, class_fields
-
-
-def _trim_trailing_blank_lines(lines: list[str]) -> None:
-    while lines and lines[-1] == "":
-        lines.pop()

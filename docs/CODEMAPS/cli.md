@@ -93,6 +93,7 @@ Categories of CLI surface:
 - `--codegraph-query-compact` — trim duplicate source payloads and empty relationship fields in chained query answers
 - `--affected FILE [FILE...]` — list test files transitively affected by changes (CodeGraph parity; closes the last CLI surface gap)
 - `--dead-code` — transitive dead functions / unused imports
+- `--doc-sync` — scan markdown docs for stale file-path references (add `--doc-sync-patterns GLOB...` to scope)
 - `--class-hierarchy` / `--dependency-matrix` / `--import-graph` — structural
 - `--codegraph-xref` — multi-dimension cross-reference
 - `--codegraph-complexity-heatmap` — cyclomatic complexity heatmap
@@ -143,4 +144,4 @@ or `git diff --check` for non-code edits.
 - [`docs/cli-reference.md`](../cli-reference.md) — Full CLI reference (252 unique flags total — this codemap is intentionally categorical, not exhaustive)
 - [`docs/CODEMAPS/mcp-tools.md`](./mcp-tools.md) — MCP-side counterpart
 - [`tests/unit/cli/test_mcp_commands.py`](../../tests/unit/cli/test_mcp_commands.py) — Parity contract tests
-- [`scripts/codemap-sync-check.sh`](../../scripts/codemap-sync-check.sh) — pre-commit gate that blocks `argument_parser_builder.py` changes without a `cli.md` update
+- [`scripts/codemap-sync-check.sh`](../../scripts/codemap-sync-check.sh) — pre-commit gate that blocks `cli/argument_parser_builder.py` changes without a `cli.md` update

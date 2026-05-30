@@ -15,6 +15,7 @@ import fnmatch
 import os
 from typing import Any
 
+from ..._ast_cache_query import _normalize_bm25 as _norm_bm25
 from ...utils import setup_logger
 from .base_tool import BaseMCPTool
 
@@ -172,7 +173,15 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
         limit: int,
     ) -> list[dict[str, Any]]:
         if cache.fts5_available:
-            fts_results = cache.fts_search(query, language=language, limit=limit * 3)
+            # G3: use ranked search for queries >= 2 chars (BM25 ordering).
+            if len(query) >= 2:
+                fts_results = cache.fts_search_ranked(
+                    query, language=language, limit=limit * 3
+                )
+            else:
+                fts_results = cache.fts_search(
+                    query, language=language, limit=limit * 3
+                )
             if fts_results:
                 return self._fts_to_results(fts_results, kind, limit)
         return self._linear_search(cache, query, language, kind, limit)
@@ -194,36 +203,50 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
                 fts_query = " OR ".join(f'"{t}"' for t in terms)
 
                 conn = cache.get_conn()
+                # Weighted BM25 (name col 10x) — hardcoded constant, no injection risk.
+                _SQL_FUZZY_LANG = (
+                    "SELECT r.name, r.kind, r.file_path, r.language, r.line, r.end_line, "
+                    "bm25(ast_symbols_fts, 10.0, 0.5, 0.5, 0.1) AS bm25_raw "
+                    "FROM ast_symbols_fts f JOIN ast_symbol_rows r ON f.rowid = r.id "
+                    "WHERE ast_symbols_fts MATCH ? AND r.language = ? "
+                    "ORDER BY bm25_raw LIMIT ?"
+                )
+                _SQL_FUZZY_ANY = (
+                    "SELECT r.name, r.kind, r.file_path, r.language, r.line, r.end_line, "
+                    "bm25(ast_symbols_fts, 10.0, 0.5, 0.5, 0.1) AS bm25_raw "
+                    "FROM ast_symbols_fts f JOIN ast_symbol_rows r ON f.rowid = r.id "
+                    "WHERE ast_symbols_fts MATCH ? "
+                    "ORDER BY bm25_raw LIMIT ?"
+                )
                 if language:
                     rows = conn.execute(
-                        """SELECT r.name, r.kind, r.file_path, r.language, r.line, r.end_line
-                           FROM ast_symbols_fts f
-                           JOIN ast_symbol_rows r ON f.rowid = r.id
-                           WHERE ast_symbols_fts MATCH ? AND r.language = ?
-                           ORDER BY rank LIMIT ?""",
+                        _SQL_FUZZY_LANG,
                         (fts_query, language, limit * 5),
                     ).fetchall()
                 else:
                     rows = conn.execute(
-                        """SELECT r.name, r.kind, r.file_path, r.language, r.line, r.end_line
-                           FROM ast_symbols_fts f
-                           JOIN ast_symbol_rows r ON f.rowid = r.id
-                           WHERE ast_symbols_fts MATCH ?
-                           ORDER BY rank LIMIT ?""",
+                        _SQL_FUZZY_ANY,
                         (fts_query, limit * 5),
                     ).fetchall()
+                # Min-max normalize BM25 scores across this result set.
+                raw_scores = [row["bm25_raw"] for row in rows if row["bm25_raw"] < 0]
+                worst = max(raw_scores) if raw_scores else -1.0
+                best = min(raw_scores) if raw_scores else worst
                 for row in rows:
                     if sub_lower in row["name"].lower():
-                        all_results.append(
-                            {
-                                "name": row["name"],
-                                "kind": row["kind"],
-                                "file": row["file_path"],
-                                "language": row["language"],
-                                "line": row["line"],
-                                "end_line": row["end_line"],
-                            }
+                        entry: dict[str, Any] = {
+                            "name": row["name"],
+                            "kind": row["kind"],
+                            "file": row["file_path"],
+                            "language": row["language"],
+                            "line": row["line"],
+                            "end_line": row["end_line"],
+                        }
+                        raw = row["bm25_raw"]
+                        entry["relevance_score"] = round(
+                            _norm_bm25(raw, worst, best), 3
                         )
+                        all_results.append(entry)
                     if len(all_results) >= limit:
                         return all_results
                 if all_results:
@@ -294,16 +317,17 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
     ) -> list[dict[str, Any]]:
         results: list[dict[str, Any]] = []
         for r in fts_results:
-            results.append(
-                {
-                    "name": r.get("name", ""),
-                    "kind": r.get("kind", ""),
-                    "file": r.get("file", ""),
-                    "language": r.get("language", ""),
-                    "line": r.get("line", 0),
-                    "end_line": r.get("end_line", 0),
-                }
-            )
+            entry: dict[str, Any] = {
+                "name": r.get("name", ""),
+                "kind": r.get("kind", ""),
+                "file": r.get("file", ""),
+                "language": r.get("language", ""),
+                "line": r.get("line", 0),
+                "end_line": r.get("end_line", 0),
+            }
+            if "relevance_score" in r:
+                entry["relevance_score"] = r["relevance_score"]
+            results.append(entry)
             if len(results) >= limit:
                 break
         return self._apply_kind_filter(results, kind)

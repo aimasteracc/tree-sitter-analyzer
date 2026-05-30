@@ -117,6 +117,13 @@ class PythonTableFormatter(BaseTableFormatter):
         """Process parameters for Python formatter"""
         return process_python_parameters(params)
 
+    # Public aliases for companion module _python_formatter_conversion.py
+    convert_class_element_for_python = _convert_class_element_for_python
+    convert_function_element_for_python = _convert_function_element_for_python
+    convert_variable_element_for_python = _convert_variable_element_for_python
+    convert_import_element_for_python = _convert_import_element_for_python
+    process_python_parameters = _process_python_parameters
+
     def _format_full_table(self, data: dict[str, Any]) -> str:
         """Full table format for Python"""
         return format_python_full_table(self, data)
@@ -160,3 +167,12 @@ class PythonTableFormatter(BaseTableFormatter):
     def _format_python_signature_compact(self, method: dict[str, Any]) -> str:
         """Create compact Python method signature for class sections"""
         return format_python_signature_compact(method)
+
+    # Public aliases for companion formatter helper modules
+    create_compact_signature = _create_compact_signature
+    extract_module_docstring = _extract_module_docstring
+    format_python_signature = _format_python_signature
+    get_python_visibility_symbol = _get_python_visibility_symbol
+    format_decorators = _format_decorators
+    format_class_method_row = _format_class_method_row
+    format_python_signature_compact = _format_python_signature_compact

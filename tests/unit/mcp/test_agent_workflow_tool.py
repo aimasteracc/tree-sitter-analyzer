@@ -25,6 +25,31 @@ from tree_sitter_analyzer.cli import agent_workflow
 from tree_sitter_analyzer.mcp.tools.agent_workflow_tool import AgentWorkflowTool
 
 
+def _assert_envelope_holds(
+    result: dict, target_path: str | None, output_format: str
+) -> None:
+    """Assert core envelope invariants for one (target_path, format) combination."""
+    assert result["success"] is True, (
+        f"failed for target={target_path!r} format={output_format}"
+    )
+    agent_summary = result["agent_summary"]
+    next_step = agent_summary["next_step"]
+    assert isinstance(next_step, str) and next_step.strip(), (
+        f"next_step empty for target={target_path!r} format={output_format}"
+    )
+    assert next_step.startswith("uv run tree-sitter-analyzer")
+    expected_phase = "analyze" if target_path else "set"
+    assert agent_summary["current_phase"] == expected_phase
+    assert result["current_phase"] == expected_phase
+
+
+def _assert_path_in_step_commands(result: dict, step_name: str, path: str) -> None:
+    """Assert every CLI command for *step_name* contains *path*."""
+    step = next(s for s in result["steps"] if s["step"] == step_name)
+    for cmd in step["cli_commands"]:
+        assert path in cmd, f"step {step_name!r} cli_command missing path: {cmd!r}"
+
+
 def _assert_step_handoffs(result: dict) -> None:
     """Assert that every step's handoff matches the PHASE_ROUTING table."""
     handoff_by_step = {route["from"]: route for route in agent_workflow.PHASE_ROUTING}
@@ -313,11 +338,7 @@ async def test_agent_workflow_tool_handles_long_target_path(tmp_path):
 
     assert result["success"] is True
     for step_name in ("analyze", "retrieve", "trace"):
-        step = next(s for s in result["steps"] if s["step"] == step_name)
-        for cmd in step["cli_commands"]:
-            assert "a/b/c/d/service.py" in cmd, (
-                f"step {step_name!r} cli_command missing path: {cmd!r}"
-            )
+        _assert_path_in_step_commands(result, step_name, "a/b/c/d/service.py")
     assert "a/b/c/d/service.py" in result["agent_summary"]["next_step"]
 
 
@@ -429,17 +450,4 @@ async def test_agent_workflow_tool_envelope_holds_for_both_formats(tmp_path):
             if target_path is not None:
                 args["target_path"] = target_path
             result = await tool.execute(args)
-
-            assert result["success"] is True, (
-                f"failed for target={target_path!r} format={output_format}"
-            )
-            agent_summary = result["agent_summary"]
-            next_step = agent_summary["next_step"]
-            assert isinstance(next_step, str) and next_step.strip(), (
-                f"next_step empty for target={target_path!r} format={output_format}"
-            )
-            assert next_step.startswith("uv run tree-sitter-analyzer")
-            # Phase invariants: targeted -> analyze, untargeted -> set.
-            expected_phase = "analyze" if target_path else "set"
-            assert agent_summary["current_phase"] == expected_phase
-            assert result["current_phase"] == expected_phase
+            _assert_envelope_holds(result, target_path, output_format)

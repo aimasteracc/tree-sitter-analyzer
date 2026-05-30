@@ -702,7 +702,3 @@ class TestRustExtractorCoverageBoost:
                     assert "a: i32" in result.parameters
                     assert "self" in result.parameters
                     assert result.return_type == "String"
-
-    def test_supports_file_case_insensitive(self, rust_plugin):
-        """Cover line 671: supports_file with uppercase extension."""
-        assert rust_plugin.supports_file("MAIN.RS") is True

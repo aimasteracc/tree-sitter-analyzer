@@ -17,15 +17,11 @@ from tree_sitter_analyzer.mcp.resources.project_stats_resource import (
 
 
 class TestProjectStatsResourceInit:
-    """Test ProjectStatsResource initialization"""
+    """Test ProjectStatsResource initialization — stats-specific fields.
 
-    def test_initialization(self):
-        """Test resource initialization"""
-        resource = ProjectStatsResource()
-        assert resource is not None
-        assert resource._uri_pattern is not None
-        assert resource._project_path is None
-        assert resource.analysis_engine is not None
+    Cross-resource invariants (test_initialization) live in
+    test_base_resource_contract.py.
+    """
 
     def test_supported_stats_types(self):
         """Test supported statistics types"""
@@ -35,35 +31,24 @@ class TestProjectStatsResourceInit:
         assert "complexity" in resource._supported_stats_types
         assert "files" in resource._supported_stats_types
 
-
-class TestGetResourceInfo:
-    """Test get_resource_info method"""
-
-    def test_get_resource_info(self):
-        """Test getting resource information"""
+    def test_project_path_initially_none(self):
+        """Test that _project_path is None on init and analysis_engine is set."""
         resource = ProjectStatsResource()
-        info = resource.get_resource_info()
-
-        assert info["name"] == "project_stats"
-        assert "project statistics" in info["description"].lower()
-        assert info["uri_template"] == "code://stats/{stats_type}"
-        assert info["mime_type"] == "application/json"
+        assert resource._project_path is None
+        assert resource.analysis_engine is not None
 
 
 class TestMatchesUri:
-    """Test matches_uri method"""
+    """Test matches_uri method — resource-specific edge cases.
+
+    Cross-resource invariants (test_matches_valid_uri, test_rejects_invalid_scheme,
+    test_rejects_malformed_uri) live in test_base_resource_contract.py.
+    """
 
     @pytest.fixture
     def resource(self):
         """Create resource instance"""
         return ProjectStatsResource()
-
-    def test_matches_valid_uri(self, resource):
-        """Test matching valid URIs"""
-        assert resource.matches_uri("code://stats/overview")
-        assert resource.matches_uri("code://stats/languages")
-        assert resource.matches_uri("code://stats/complexity")
-        assert resource.matches_uri("code://stats/files")
 
     def test_matches_uri_with_anyurl_type(self, resource):
         """Test matching URI with AnyUrl type (string conversion)"""
@@ -74,18 +59,6 @@ class TestMatchesUri:
                 return "code://stats/overview"
 
         assert resource.matches_uri(MockAnyUrl())
-
-    def test_rejects_invalid_scheme(self, resource):
-        """Test rejecting URIs with wrong scheme"""
-        assert not resource.matches_uri("stats://overview")
-        assert not resource.matches_uri("http://example.com/stats")
-        assert not resource.matches_uri("data://stats/overview")
-
-    def test_rejects_malformed_uri(self, resource):
-        """Test rejecting malformed URIs"""
-        assert not resource.matches_uri("code://stats/")
-        assert not resource.matches_uri("code://stats")
-        assert not resource.matches_uri("invalid")
 
 
 class TestExtractStatsType:

@@ -335,5 +335,5 @@ class SQLElementType(Enum):
 ## 関連ドキュメント
 
 - [README.md](../README.md) - 基本的な使用方法
-- [format-specifications.md](./format-specifications.md) - 全フォーマット仕様
+- [format-specifications.md](./format_specifications.md) - 全フォーマット仕様
 - [testing-guide.md](./testing-guide.md) - テスト方法

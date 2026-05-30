@@ -181,8 +181,11 @@ class Parser:
             return result
 
         except Exception as e:
+            err_str = str(e)
             logger.error(f"Unexpected error parsing file {file_path_str}: {e}")
-            return _failed_parse(language, file_path_str, f"Unexpected error: {str(e)}")
+            return _failed_parse(
+                language, file_path_str, f"Unexpected error: {err_str}"
+            )
 
     def _cache_lookup(
         self, file_path_str: str, language: str
@@ -240,12 +243,14 @@ class Parser:
             logger.debug(f"Read file {file_path_str} with encoding {detected_encoding}")
             return source_code
         except PermissionError as e:
+            err_str = str(e)
             return _failed_parse(
-                language, file_path_str, f"Permission denied: {str(e)}"
+                language, file_path_str, f"Permission denied: {err_str}"
             )
         except Exception as e:
+            err_str = str(e)
             return _failed_parse(
-                language, file_path_str, f"Error reading file: {str(e)}"
+                language, file_path_str, f"Error reading file: {err_str}"
             )
 
     def parse_code(
@@ -265,25 +270,27 @@ class Parser:
         try:
             # Check if language is supported
             if not self.is_language_supported(language):
+                err_msg = f"Unsupported language: {language}"
                 return ParseResult(
                     tree=None,
                     source_code=source_code,
                     language=language,
                     file_path=filename,
                     success=False,
-                    error_message=f"Unsupported language: {language}",
+                    error_message=err_msg,
                 )
 
             # Create parser for the language
             parser = self._loader.create_parser_safely(language)
             if parser is None:
+                err_msg = f"Failed to create parser for language: {language}"
                 return ParseResult(
                     tree=None,
                     source_code=source_code,
                     language=language,
                     file_path=filename,
                     success=False,
-                    error_message=f"Failed to create parser for language: {language}",
+                    error_message=err_msg,
                 )
 
             # Parse the code
@@ -302,13 +309,14 @@ class Parser:
 
         except Exception as e:
             # logger.error(f"Error parsing {language} code: {e}")
+            err_msg = str(e)
             return ParseResult(
                 tree=None,
                 source_code=source_code,
                 language=language,
                 file_path=filename,
                 success=False,
-                error_message=f"Parsing error: {str(e)}",
+                error_message=f"Parsing error: {err_msg}",
             )
 
     def is_language_supported(self, language: str) -> bool:

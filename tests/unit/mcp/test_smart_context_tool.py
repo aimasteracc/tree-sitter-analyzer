@@ -53,10 +53,6 @@ def _run(coro):
 
 
 class TestSmartContextTool:
-    def test_tool_definition(self, tool):
-        defn = tool.get_tool_definition()
-        assert defn["name"] == "smart_context"
-
     def test_validate_arguments_missing_path(self, tool):
         with pytest.raises(ValueError, match="file_path is required"):
             tool.validate_arguments({})

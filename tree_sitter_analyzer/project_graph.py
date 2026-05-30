@@ -406,9 +406,7 @@ class DependencyGraph:
             os.stat(project_root)
         except OSError:
             return None
-        # Local import to avoid a hard dependency cycle (mcp.tools imports
-        # project_graph, so we can't import it at module level).
-        from .mcp.tools._graph_cache_fingerprint import compute_graph_fingerprint
+        from ._graph_cache_fingerprint import compute_graph_fingerprint
 
         fp = compute_graph_fingerprint(project_root)
         return f"{project_root}:{fp.file_count}:{fp.max_mtime_ns}"
@@ -563,9 +561,34 @@ class DependencyGraph:
         """Return all nodes (relative file paths) in the graph."""
         return sorted(self._nodes)
 
+    def all_nodes(self) -> frozenset[str]:
+        """Return all nodes as an immutable frozenset.
+
+        Unlike :meth:`nodes` (which returns a sorted list), this returns a
+        frozenset for O(1) membership tests and immutable sharing.
+        """
+        return frozenset(self._nodes)
+
     def edges(self) -> list[tuple[str, str]]:
         """Return all directed edges (from_file, to_file) in the graph."""
         return sorted(self._edges)
+
+    def all_edges(self) -> frozenset[tuple[str, str]]:
+        """Return all directed edges as an immutable frozenset.
+
+        Unlike :meth:`edges` (which returns a sorted list), this returns a
+        frozenset for O(1) membership tests and immutable sharing.
+        """
+        return frozenset(self._edges)
+
+    def all_deps(self) -> dict[str, set[str]]:
+        """Return the full dependency map as a shallow copy.
+
+        Returns ``{file: set_of_dependencies}`` for every node that has at
+        least one outgoing edge.  The returned dict and its value sets are
+        independent copies — mutating them does not affect the graph.
+        """
+        return {k: set(v) for k, v in self._deps.items()}
 
     def has_node(self, file_rel: str) -> bool:
         """Return True if *file_rel* is a node in the graph (O(1) set lookup)."""

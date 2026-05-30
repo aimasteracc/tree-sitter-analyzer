@@ -40,6 +40,7 @@ All tools default to **TOON output** (locked — see `CLAUDE.md`).
 | `ast_diff` | `--ast-diff` | Structural AST diff (signature vs body vs new/removed symbol) |
 | `check_constraints` | `--check-constraints` | Evaluate architectural-constraints.yml against the tree |
 | `decision_journal` | `--decision-journal` | Persistent log of architectural decisions |
+| `doc_sync` | `--doc-sync` | Scan markdown docs for stale file-path references — backtick spans and link targets that no longer exist |
 | `semantic_classify` | `--semantic-classify` | Classify code changes (risk + category) |
 | **CodeGraph parity — symbol navigation** | | |
 | `codegraph_navigate` | `--codegraph-navigate` | PRIMARY symbol navigation hub (def + refs + hierarchy) |

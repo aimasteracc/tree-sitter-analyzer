@@ -29,11 +29,6 @@ class TestPythonPlugin:
         assert ".py" in plugin.get_file_extensions()
         assert ".pyw" in plugin.get_file_extensions()
 
-    def test_create_extractor(self, plugin):
-        """エクストラクタ作成テスト"""
-        extractor = plugin.create_extractor()
-        assert isinstance(extractor, PythonElementExtractor)
-
     def test_is_applicable_method(self, plugin):
         """is_applicableメソッドテスト"""
         # Python関連ファイル
@@ -52,14 +47,6 @@ class TestPythonElementExtractor:
     def extractor(self):
         """Extractorインスタンスを提供"""
         return PythonElementExtractor()
-
-    def test_extractor_creation(self, extractor):
-        """エクストラクタ作成テスト"""
-        assert extractor is not None
-        assert hasattr(extractor, "extract_functions")
-        assert hasattr(extractor, "extract_classes")
-        assert hasattr(extractor, "extract_variables")
-        assert hasattr(extractor, "extract_imports")
 
     def test_extract_methods_return_lists(self, extractor):
         """抽出メソッドがリストを返すことを確認"""

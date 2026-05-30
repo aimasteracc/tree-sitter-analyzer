@@ -27,6 +27,24 @@ _FD_AVAILABLE = shutil.which("fd") is not None
 _RG_AVAILABLE = shutil.which("rg") is not None
 
 
+def _assert_honest_total_count(result: dict, displayed: int, total: int) -> None:
+    """H2/H3 contract: truncated response must carry honest count or explicit uncertainty."""
+    if result.get("total_count_known", True):
+        assert total > displayed, (
+            f"truncated=True but total_count={total} == displayed_count="
+            f"{displayed}; total_count_known is True so this lies"
+        )
+    else:
+        assert result.get("total_count_at_least") == displayed
+
+
+def _assert_non_truncated_known(result: dict) -> None:
+    """A non-truncated response must mark total_count as known and exact."""
+    assert result.get("truncated") is False
+    assert result.get("total_count_known") is True
+    assert result["total_count"] == result["displayed_count"]
+
+
 def _make_repo_with_many_def_lines(root: Path, n_files: int = 50) -> None:
     """Populate ``root`` with files that collectively contain >>1 'def' line.
 
@@ -72,16 +90,7 @@ class TestSearchContentTotalCountUnderTruncation:
         assert result.get("truncated") is True
         displayed = int(result["displayed_count"])
         total = int(result["total_count"])
-        # Contract: either total is honest (>displayed) OR known=False.
-        if result.get("total_count_known", True):
-            assert total > displayed, (
-                f"truncated=True but total_count={total} == displayed_count="
-                f"{displayed}; total_count_known is True so this lies"
-            )
-        else:
-            # Honest about uncertainty: total_count_at_least must be set
-            # and equal the lower bound (displayed_count).
-            assert result.get("total_count_at_least") == displayed
+        _assert_honest_total_count(result, displayed, total)
 
     def test_non_truncated_response_marks_known(self, big_repo: Path) -> None:
         """When ripgrep didn't truncate, total_count_known must be True."""
@@ -96,9 +105,7 @@ class TestSearchContentTotalCountUnderTruncation:
             )
         )
         assert isinstance(result, dict)
-        assert result.get("truncated") is False
-        assert result.get("total_count_known") is True
-        assert result["total_count"] == result["displayed_count"]
+        _assert_non_truncated_known(result)
 
 
 # ============================================================
@@ -125,13 +132,7 @@ class TestListFilesTotalCountUnderLimit:
         assert result.get("truncated") is True
         displayed = int(result["displayed_count"])
         total = int(result["total_count"])
-        if result.get("total_count_known", True):
-            assert total > displayed, (
-                f"truncated=True but total_count={total} == displayed_count="
-                f"{displayed}; total_count_known is True so this lies"
-            )
-        else:
-            assert result.get("total_count_at_least") == displayed
+        _assert_honest_total_count(result, displayed, total)
 
     def test_non_truncated_response_marks_known(self, big_repo: Path) -> None:
         """Without truncation, total_count == displayed_count and known."""
@@ -147,6 +148,4 @@ class TestListFilesTotalCountUnderLimit:
             )
         )
         assert isinstance(result, dict)
-        assert result.get("truncated") is False
-        assert result.get("total_count_known") is True
-        assert result["total_count"] == result["displayed_count"]
+        _assert_non_truncated_known(result)

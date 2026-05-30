@@ -24,9 +24,7 @@ from tree_sitter_analyzer.mcp.utils.project_index import ProjectIndexManager
 def project_dir(tmp_path: Path) -> Path:
     """Create a minimal project structure for testing."""
     (tmp_path / "src").mkdir()
-    (tmp_path / "src" / "__init__.py").write_text(
-        '"""Core source package."""\n'
-    )
+    (tmp_path / "src" / "__init__.py").write_text('"""Core source package."""\n')
     (tmp_path / "src" / "main.py").write_text("def main():\n    pass\n")
     (tmp_path / "tests").mkdir()
     (tmp_path / "tests" / "__init__.py").write_text("")
@@ -53,32 +51,9 @@ class TestGetProjectSummaryToolInitialization:
         """Test that initialization creates a tool instance."""
         assert tool is not None
 
-    def test_init_with_project_root(self, project_dir: Path) -> None:
-        """Test initialization with a project root sets project_root."""
-        t = GetProjectSummaryTool(project_root=str(project_dir))
-        assert t.project_root == str(project_dir)
-
-    def test_set_project_path(self, tool: GetProjectSummaryTool, project_dir: Path) -> None:
-        """Test that set_project_path updates project_root."""
-        new_path = str(project_dir / "subdir")
-        tool.set_project_path(new_path)
-        assert tool.project_root == new_path
-
 
 class TestGetProjectSummaryToolDefinition:
     """Tests for get_tool_definition()."""
-
-    def test_tool_definition_structure(self, tool: GetProjectSummaryTool) -> None:
-        """Test that the tool definition has correct keys."""
-        defn = tool.get_tool_definition()
-        assert "name" in defn
-        assert "description" in defn
-        assert "inputSchema" in defn
-
-    def test_tool_definition_name(self, tool: GetProjectSummaryTool) -> None:
-        """Test that the tool name is get_project_summary."""
-        defn = tool.get_tool_definition()
-        assert defn["name"] == "get_project_summary"
 
     def test_description_contains_when_to_use(
         self, tool: GetProjectSummaryTool
@@ -134,9 +109,7 @@ class TestGetProjectSummaryToolExecution:
         assert "what:" in result["summary"] or "A great tool" in result["summary"]
 
     @pytest.mark.asyncio
-    async def test_json_format_option(
-        self, tool: GetProjectSummaryTool
-    ) -> None:
+    async def test_json_format_option(self, tool: GetProjectSummaryTool) -> None:
         """Test that format='json' returns a structured dictionary."""
         result = await tool.execute({"format": "json"})
         assert "file_count" in result
@@ -235,9 +208,7 @@ class TestGetProjectSummaryToolExecution:
         assert "This is a monorepo." in result["summary"]
 
     @pytest.mark.asyncio
-    async def test_python_language_detected(
-        self, tool: GetProjectSummaryTool
-    ) -> None:
+    async def test_python_language_detected(self, tool: GetProjectSummaryTool) -> None:
         """Test that Python files are counted in language_distribution."""
         result = await tool.execute({"format": "json"})
         lang_dist = result["language_distribution"]

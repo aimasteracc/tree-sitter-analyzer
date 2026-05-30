@@ -1,3 +1,4 @@
+<!-- HISTORICAL RECORD — file paths in this document reflect early project planning. Some paths may no longer exist. -->
 # 回归测试指南
 
 本文档为tree-sitter-analyzer项目提供全面的回归测试指南，帮助开发者理解和使用Golden Master方法进行回归测试。

@@ -276,18 +276,6 @@ async def test_agent_skills_tool_handles_malformed_yaml_front_matter(tmp_path):
     assert result["agent_summary"]["verdict"] in _LEGAL_VERDICTS
 
 
-@pytest.mark.xfail(
-    reason=(
-        "r37fC bug: cli/agent_skills_metadata.read_skill_metadata uses "
-        "Path.read_text(errors='replace') which only suppresses *decoding* "
-        "errors. A permission-denied read raises PermissionError unhandled "
-        "and crashes the whole inventory build — one bad SKILL.md takes "
-        "down the entire tool. Fix: wrap the read in try/except OSError and "
-        "treat it as 'missing_skill_md'."
-    ),
-    raises=PermissionError,
-    strict=True,
-)
 @pytest.mark.asyncio
 async def test_agent_skills_tool_permission_denied_skill_is_still_listed(tmp_path):
     """One unreadable SKILL.md must not crash the whole inventory build.

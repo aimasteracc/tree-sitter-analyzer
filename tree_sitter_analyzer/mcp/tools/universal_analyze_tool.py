@@ -154,6 +154,9 @@ class UniversalAnalyzeTool(BaseMCPTool):
     def _on_project_root_changed(self, project_root: str | None) -> None:
         self.analysis_engine = get_analysis_engine(project_root)
 
+    def get_tool_schema(self) -> dict[str, Any]:
+        return _TOOL_SCHEMA
+
     def get_tool_definition(self) -> dict[str, Any]:
         """Return the MCP tool name, description, and input schema."""
         return {
@@ -188,7 +191,7 @@ class UniversalAnalyzeTool(BaseMCPTool):
                 "- You want project-wide stats — use ``project_overview`` "
                 "or ``analyze_scale``"
             ),
-            "inputSchema": _TOOL_SCHEMA,
+            "inputSchema": self.get_tool_schema(),
         }
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
@@ -272,8 +275,9 @@ class UniversalAnalyzeTool(BaseMCPTool):
 
         valid_types = ["basic", "detailed", "structure", "metrics"]
         if analysis_type not in valid_types:
+            valid_str = ", ".join(valid_types)
             raise ValueError(
-                f"Invalid analysis_type '{analysis_type}'. Valid: {', '.join(valid_types)}"
+                f"Invalid analysis_type '{analysis_type}'. Valid: {valid_str}"
             )
 
         logger.info(
@@ -460,13 +464,12 @@ class UniversalAnalyzeTool(BaseMCPTool):
         methods = [
             e for e in result.elements if is_element_of_type(e, ELEMENT_TYPE_FUNCTION)
         ]
-        total_cx = sum(getattr(m, "complexity_score", 0) or 0 for m in methods)
+        cx_scores = [getattr(m, "complexity_score", 0) or 0 for m in methods]
+        total_cx = sum(cx_scores)
         data["metrics"]["complexity"] = {
             "total": total_cx,
             "average": round(total_cx / len(methods) if methods else 0, 2),
-            "max": max(
-                (getattr(m, "complexity_score", 0) or 0 for m in methods), default=0
-            ),
+            "max": max(cx_scores, default=0),
         }
         return data
 

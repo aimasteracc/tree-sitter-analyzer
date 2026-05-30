@@ -39,6 +39,7 @@ class SyncResult:
 
     def to_dict(self) -> dict[str, Any]:
         return {
+            "mode_used": "incremental",
             "scanned": self.scanned,
             "new_files": self.new_files,
             "updated_files": self.updated_files,

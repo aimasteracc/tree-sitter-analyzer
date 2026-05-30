@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Callable
+from typing import Any, cast
 
 _CALL_NODE_TYPES = {
     "python": {"call"},
@@ -23,6 +24,126 @@ _FUNC_DEF_TYPES = {
     "c": {"function_definition"},
     "cpp": {"function_definition"},
 }
+
+# ---------------------------------------------------------------------------
+# Per-language function-name extractors
+# ---------------------------------------------------------------------------
+
+_IDENT_TYPES_JS = ("identifier", "property_identifier")
+_IDENT_TYPES_GO = ("identifier", "field_identifier")
+_IDENT_TYPES_C = ("identifier", "field_identifier", "destructor_name")
+
+
+def _func_name_identifier(node: Any) -> str | None:
+    """Python / Java: first ``identifier`` child."""
+    for child in node.children:
+        if child.type == "identifier":
+            return _node_text_value(child)
+    return None
+
+
+def _func_name_js(node: Any) -> str | None:
+    """JavaScript / TypeScript: identifier or property_identifier child."""
+    for child in node.children:
+        if child.type in _IDENT_TYPES_JS:
+            return _node_text_value(child)
+    return None
+
+
+def _func_name_go(node: Any) -> str | None:
+    """Go: prefer named field, fall back to identifier/field_identifier child."""
+    name_node = node.child_by_field_name("name")
+    if name_node is not None:
+        return _node_text_value(name_node)
+    for child in node.children:
+        if child.type in _IDENT_TYPES_GO:
+            return _node_text_value(child)
+    return None
+
+
+def _declarator_name(declarator_node: Any) -> str | None:
+    """Find the first identifier inside a ``function_declarator`` node."""
+    for sub in declarator_node.children:
+        if sub.type in ("identifier", "field_identifier"):
+            return _node_text_value(sub)
+    return None
+
+
+def _func_name_c(node: Any) -> str | None:
+    """C / C++: direct identifier types, or recurse into function_declarator."""
+    for child in node.children:
+        if child.type in _IDENT_TYPES_C:
+            return _node_text_value(child)
+        if child.type == "function_declarator":
+            result = _declarator_name(child)
+            if result:
+                return result
+    return None
+
+
+_FUNC_NAME_DISPATCH: dict[str, Callable] = {
+    "python": _func_name_identifier,
+    "javascript": _func_name_js,
+    "typescript": _func_name_js,
+    "java": _func_name_identifier,
+    "go": _func_name_go,
+    "c": _func_name_c,
+    "cpp": _func_name_c,
+}
+
+# ---------------------------------------------------------------------------
+# Per-language call-info extractors
+# ---------------------------------------------------------------------------
+
+
+def _call_info_field(node: Any, source: str) -> dict[str, Any] | None:
+    """Python / JS / TS / Go: extract call target from the ``function`` field."""
+    func_node = node.child_by_field_name("function")
+    if func_node is None:
+        return None
+    return _call_from_text(_node_text(func_node, source), node)
+
+
+def _call_info_java(node: Any, source: str) -> dict[str, Any] | None:
+    """Java: identifier or field_access/method_reference child."""
+    for child in node.children:
+        if child.type == "identifier":
+            return _call_from_text(_node_text(child, source), node)
+        if child.type in ("field_access", "method_reference"):
+            return _call_from_text(_node_text(child, source), node)
+    return None
+
+
+def _call_info_c(node: Any, source: str) -> dict[str, Any] | None:
+    """C / C++: prefer function field, fall back to first identifier child."""
+    func_node = node.child_by_field_name("function")
+    if func_node is not None:
+        name = _node_text(func_node, source)
+        return {
+            "name": name,
+            "full_name": name,
+            "line": node.start_point[0] + 1,
+            "receiver": None,
+        }
+    for child in node.children:
+        if child.type == "identifier":
+            return _call_from_text(_node_text(child, source), node)
+    return None
+
+
+_CALL_DISPATCH: dict[str, Callable] = {
+    "python": _call_info_field,
+    "javascript": _call_info_field,
+    "typescript": _call_info_field,
+    "go": _call_info_field,
+    "java": _call_info_java,
+    "c": _call_info_c,
+    "cpp": _call_info_c,
+}
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
 
 
 def walk_tree(node: Any, source: str, language: str) -> tuple[list[dict], list[dict]]:
@@ -81,75 +202,24 @@ def _extract_recursive(
 
 def get_func_name(node: Any, language: str) -> str | None:
     """Extract a function or method name from a definition node."""
+    handler = _FUNC_NAME_DISPATCH.get(language)
+    if handler is None:
+        return None
     try:
-        if language == "python":
-            for child in node.children:
-                if child.type == "identifier":
-                    return _node_text_value(child)
-        elif language in ("javascript", "typescript"):
-            for child in node.children:
-                if child.type in ("identifier", "property_identifier"):
-                    return _node_text_value(child)
-        elif language == "java":
-            for child in node.children:
-                if child.type == "identifier":
-                    return _node_text_value(child)
-        elif language == "go":
-            name_node = node.child_by_field_name("name")
-            if name_node is not None:
-                return _node_text_value(name_node)
-            for child in node.children:
-                if child.type in ("identifier", "field_identifier"):
-                    return _node_text_value(child)
-        elif language in ("c", "cpp"):
-            for child in node.children:
-                if child.type in (
-                    "identifier",
-                    "field_identifier",
-                    "destructor_name",
-                ):
-                    return _node_text_value(child)
-                if child.type == "function_declarator":
-                    for sub in child.children:
-                        if sub.type in ("identifier", "field_identifier"):
-                            return _node_text_value(sub)
+        return cast("str | None", handler(node))
     except Exception:  # nosec B110
-        pass
-    return None
+        return None
 
 
 def extract_call(node: Any, source: str, language: str) -> dict[str, Any] | None:
     """Extract call target info from a call node."""
+    handler = _CALL_DISPATCH.get(language)
+    if handler is None:
+        return None
     try:
-        if language in ("python", "javascript", "typescript", "go"):
-            func_node = node.child_by_field_name("function")
-            if func_node is None:
-                return None
-            return _call_from_text(_node_text(func_node, source), node)
-        if language == "java":
-            for child in node.children:
-                if child.type == "identifier":
-                    return _call_from_text(_node_text(child, source), node)
-                if child.type in ("field_access", "method_reference"):
-                    return _call_from_text(_node_text(child, source), node)
-            return None
-        if language in ("c", "cpp"):
-            func_node = node.child_by_field_name("function")
-            if func_node is None:
-                for child in node.children:
-                    if child.type == "identifier":
-                        return _call_from_text(_node_text(child, source), node)
-                return None
-            name = _node_text(func_node, source)
-            return {
-                "name": name,
-                "full_name": name,
-                "line": node.start_point[0] + 1,
-                "receiver": None,
-            }
+        return cast("dict[str, Any] | None", handler(node, source))
     except Exception:  # nosec B110
-        pass
-    return None
+        return None
 
 
 def _call_from_text(text: str, node: Any) -> dict[str, Any]:

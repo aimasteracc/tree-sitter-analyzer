@@ -1,4 +1,4 @@
-<!-- Generated: 2026-05-22 -->
+<!-- Generated: 2026-05-30 -->
 # Formatters Codemap
 
 Output formats supported by both CLI and MCP. Located in `tree_sitter_analyzer/formatters/`.
@@ -7,11 +7,11 @@ Output formats supported by both CLI and MCP. Located in `tree_sitter_analyzer/f
 
 | Format | Module | Default for | Use case |
 |---|---|---|---|
-| `toon` | `toon_formatter.py` | **MCP** | LLM agents — 73% smaller than JSON |
-| `json` | `json_formatter.py` | **CLI** | `jq` piping, programmatic ingestion |
+| `toon` | `formatters/toon_formatter.py` | **MCP** | LLM agents — 73% smaller than JSON |
+| `json` | `formatters/json_formatter.py` | **CLI** | `jq` piping, programmatic ingestion |
 | `table` | `formatters/table_formatter.py` (canonical, re-exports `LegacyTableFormatter`) + `tree_sitter_analyzer/default_table_formatter.py` + `legacy_table_formatter.py` | `--table` flag | Terminal viewing with box-drawing chars |
 | `csv` | via `tree_sitter_analyzer/_legacy_table_formatter_csv.py` | `--table csv` | Spreadsheet ingestion |
-| `yaml` | `yaml_formatter.py` | explicit `--format yaml` | Human-readable structured |
+| `yaml` | `formatters/yaml_formatter.py` | explicit `--format yaml` | Human-readable structured |
 
 ## Why TOON for MCP, JSON for CLI?
 
@@ -28,6 +28,19 @@ Output formats supported by both CLI and MCP. Located in `tree_sitter_analyzer/f
 → CLI callers are humans / shells → `jq` & readability win → JSON wins.
 
 **Do NOT propose flipping MCP default from `toon` to `json`** — the cost analysis is settled.
+
+## Formatter Interfaces
+
+Interfaces live in `formatters/_formatter_interface.py` (no upward imports — breaks cycle):
+
+| Interface | Implementors | Purpose |
+|---|---|---|
+| `IFormatter` | `HtmlFormatter`, `JsonFormatter`, `CsvFormatter`, … | `format(elements)` → str |
+| `IStructureFormatter` | legacy adapters | `format_structure(dict)` → str |
+
+`formatter_registry.py` re-exports both for backward compat.
+`html_formatter.py` imports directly from `_formatter_interface.py` to avoid the
+`formatter_registry ↔ html_formatter` import cycle (fixed 2026-05-30).
 
 ## Formatter Architecture
 
@@ -73,7 +86,6 @@ Format changes are tracked by:
 - `docs/format_specifications.md` — canonical schema
 - `docs/SMART_JSON_COMPARISON_SYSTEM.md` — diff tooling
 - `tests/regression/` — Golden Master tests
-- `format_changes.db` (sqlite) — format change history
 
 Breaking a format requires updating golden masters and tagging it in the changelog as a
 major version bump (semver).

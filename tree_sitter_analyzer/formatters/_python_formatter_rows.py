@@ -14,16 +14,16 @@ _VISIBILITY_SYMBOLS = {
 def format_python_method_row(formatter: Any, method: dict[str, Any]) -> str:
     """Format a method table row for Python"""
     name = str(method.get("name", ""))
-    signature = formatter._format_python_signature(method)
+    signature = formatter.format_python_signature(method)
     visibility = _method_visibility(method, name)
-    vis_symbol = formatter._get_python_visibility_symbol(visibility)
+    vis_symbol = formatter.get_python_visibility_symbol(visibility)
     lines_str = _method_lines(method)
     complexity = method.get("complexity_score", 0)
-    doc = formatter._clean_csv_text(
-        formatter._extract_doc_summary(str(method.get("docstring", "")))
+    doc = formatter.clean_csv_text(
+        formatter.extract_doc_summary(str(method.get("docstring", "")))
     )
     decorators = method.get("modifiers", []) or method.get("decorators", [])
-    decorator_str = formatter._format_decorators(decorators)
+    decorator_str = formatter.format_decorators(decorators)
     async_indicator = "🔄" if method.get("is_async", False) else ""
 
     return f"| {name}{async_indicator} | {signature} | {vis_symbol} | {lines_str} | 5-6 | {complexity} | {decorator_str} | {doc} |"
@@ -52,7 +52,7 @@ def get_python_visibility_symbol(visibility: str) -> str:
 def format_python_class_method_row(formatter: Any, method: dict[str, Any]) -> str:
     """Format a method table row for class-specific sections"""
     name = str(method.get("name", ""))
-    signature = formatter._format_python_signature_compact(method)
+    signature = formatter.format_python_signature_compact(method)
     vis_symbol = _class_method_visibility_symbol(method, name)
     lines_str = _class_method_lines(method)
     complexity = method.get("complexity_score", 0)
@@ -82,7 +82,7 @@ def _class_method_doc(formatter: Any, method: dict[str, Any]) -> str:
     docstring_text = str(docstring).strip()
     if method_name == "__init__" and _looks_like_other_method_doc(docstring_text):
         return "-"
-    return formatter._extract_doc_summary(docstring_text)
+    return formatter.extract_doc_summary(docstring_text)
 
 
 def _has_docstring_text(docstring: Any) -> bool:

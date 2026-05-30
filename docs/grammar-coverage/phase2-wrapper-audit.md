@@ -1,3 +1,4 @@
+<!-- HISTORICAL RECORD — file paths in this document reflect the codebase as of 2026-05. Some paths may no longer exist. Do not update them; they are intentional historical references. -->
 # Phase 2 Wrapper Node Audit Report
 
 **Date:** 2025-02-28

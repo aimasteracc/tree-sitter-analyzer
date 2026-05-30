@@ -436,7 +436,7 @@ logging.basicConfig(level=logging.WARNING)
 
 ## 関連ドキュメント
 
-- [CLI リファレンス](cli-reference.md)
+- [CLI リファレンス](../cli-reference.md)
 - [API ドキュメント](../api/)
 - [サンプル](../../examples/)
 

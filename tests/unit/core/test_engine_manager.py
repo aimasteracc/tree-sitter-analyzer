@@ -1,55 +1,275 @@
 #!/usr/bin/env python3
 """Manager-level engine tests extracted from consolidated `test_engine.py`."""
 
+import os
+import threading
+
 import pytest
 
-from tests.unit.core._test_engine_manager_test_mixin import (
-    TestEngineManagerEdgeCasesTestMixin,
-    TestEngineManagerGetInstanceTestMixin,
-    TestEngineManagerResetInstancesTestMixin,
-    TestEngineManagerThreadSafetyTestMixin,
-    TestEngineSecurityRegressionTestMixin,
+from tree_sitter_analyzer.core.analysis_engine import (
+    AnalysisRequest,
+    UnifiedAnalysisEngine,
+    UnsupportedLanguageError,
+    get_analysis_engine,
 )
+from tree_sitter_analyzer.core.engine_manager import EngineManager
 
 
-class TestEngineManagerGetInstance(TestEngineManagerGetInstanceTestMixin):
+class TestEngineManagerGetInstance:
     """Test cases for get_instance method."""
 
     __test__ = True
 
-    pass
+    def test_get_instance_default_project_root(self):
+        """Test get_instance with default project root."""
+        EngineManager.reset_instances()
+
+        instance1 = EngineManager.get_instance(UnifiedAnalysisEngine)
+        instance2 = EngineManager.get_instance(UnifiedAnalysisEngine)
+
+        assert instance1 is instance2
+
+        EngineManager.reset_instances()
+
+    def test_get_instance_with_project_root(self):
+        """Test get_instance with specific project root."""
+        EngineManager.reset_instances()
+
+        instance1 = EngineManager.get_instance(
+            UnifiedAnalysisEngine, project_root="/path/to/project1"
+        )
+        instance2 = EngineManager.get_instance(
+            UnifiedAnalysisEngine, project_root="/path/to/project1"
+        )
+
+        assert instance1 is instance2
+
+        EngineManager.reset_instances()
+
+    def test_get_instance_different_project_roots(self):
+        """Test get_instance with different project roots."""
+        EngineManager.reset_instances()
+
+        instance1 = EngineManager.get_instance(
+            UnifiedAnalysisEngine, project_root="/path/to/project1"
+        )
+        instance2 = EngineManager.get_instance(
+            UnifiedAnalysisEngine, project_root="/path/to/project2"
+        )
+
+        assert instance1 is not instance2
+
+        EngineManager.reset_instances()
+
+    def test_get_instance_none_project_root(self):
+        """Test get_instance with None project root."""
+        EngineManager.reset_instances()
+
+        instance1 = EngineManager.get_instance(UnifiedAnalysisEngine, project_root=None)
+        instance2 = EngineManager.get_instance(UnifiedAnalysisEngine, project_root=None)
+
+        assert instance1 is instance2
+        EngineManager.reset_instances()
 
 
-class TestEngineManagerThreadSafety(TestEngineManagerThreadSafetyTestMixin):
+class TestEngineManagerThreadSafety:
     """Test cases for thread safety."""
 
     __test__ = True
 
-    pass
+    def test_concurrent_get_instance(self):
+        """Test concurrent calls to get_instance."""
+        EngineManager.reset_instances()
+        instances = []
+        lock = threading.Lock()
+
+        def create_instance():
+            instance = EngineManager.get_instance(UnifiedAnalysisEngine)
+            with lock:
+                instances.append(instance)
+
+        threads = [threading.Thread(target=create_instance) for _ in range(10)]
+
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        assert len(instances) == 10
+        assert all(inst is instances[0] for inst in instances)
+        EngineManager.reset_instances()
+
+    def test_double_checked_locking(self):
+        """Test concurrent access does not create duplicate instances."""
+        EngineManager.reset_instances()
+        instances = []
+
+        def create_instance():
+            instance = EngineManager.get_instance(UnifiedAnalysisEngine)
+            instances.append(instance)
+
+        threads = [threading.Thread(target=create_instance) for _ in range(5)]
+
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        assert len(instances) == 5
+        assert all(inst is instances[0] for inst in instances)
+        EngineManager.reset_instances()
 
 
-class TestEngineManagerResetInstances(TestEngineManagerResetInstancesTestMixin):
+class TestEngineManagerResetInstances:
     """Test cases for reset_instances method."""
 
     __test__ = True
 
-    pass
+    def test_reset_instances_clears_all(self):
+        """Test that reset_instances clears all instances."""
+        EngineManager.reset_instances()
+
+        EngineManager.get_instance(UnifiedAnalysisEngine, project_root="/path1")
+        EngineManager.get_instance(UnifiedAnalysisEngine, project_root="/path2")
+
+        EngineManager.reset_instances()
+
+        instance3 = EngineManager.get_instance(
+            UnifiedAnalysisEngine, project_root="/path1"
+        )
+        instance4 = EngineManager.get_instance(
+            UnifiedAnalysisEngine, project_root="/path2"
+        )
+
+        assert instance3 is not None
+        assert instance4 is not None
+        EngineManager.reset_instances()
+
+    def test_reset_instances_thread_safety(self):
+        """Test that reset_instances remains safe under concurrent access."""
+        EngineManager.reset_instances()
+        EngineManager.get_instance(UnifiedAnalysisEngine)
+
+        def reset_and_create():
+            EngineManager.reset_instances()
+            EngineManager.get_instance(UnifiedAnalysisEngine)
+
+        threads = [threading.Thread(target=reset_and_create) for _ in range(5)]
+
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        assert True
+        EngineManager.reset_instances()
 
 
-class TestEngineManagerEdgeCases(TestEngineManagerEdgeCasesTestMixin):
+class TestEngineManagerEdgeCases:
     """Test cases for edge cases."""
 
     __test__ = True
 
-    pass
+    def test_instance_key_generation(self):
+        """Test instance key generation for falsy project roots."""
+        EngineManager.reset_instances()
+
+        instance1 = EngineManager.get_instance(UnifiedAnalysisEngine, project_root=None)
+        instance2 = EngineManager.get_instance(UnifiedAnalysisEngine, project_root=None)
+        assert instance1 is instance2
+
+        instance3 = EngineManager.get_instance(UnifiedAnalysisEngine, project_root="")
+        instance4 = EngineManager.get_instance(UnifiedAnalysisEngine, project_root="")
+        assert instance3 is instance4
+
+        assert instance1 is instance3
+        EngineManager.reset_instances()
+
+    def test_multiple_project_roots(self):
+        """Test managing multiple separate project roots."""
+        EngineManager.reset_instances()
+
+        instance1 = EngineManager.get_instance(
+            UnifiedAnalysisEngine, project_root="/path/to/project1"
+        )
+        instance2 = EngineManager.get_instance(
+            UnifiedAnalysisEngine, project_root="/path/to/project2"
+        )
+        instance3 = EngineManager.get_instance(
+            UnifiedAnalysisEngine, project_root="/path/to/project3"
+        )
+
+        assert instance1 is not instance2
+        assert instance2 is not instance3
+        assert instance1 is not instance3
+
+        instance1_again = EngineManager.get_instance(
+            UnifiedAnalysisEngine, project_root="/path/to/project1"
+        )
+        assert instance1 is instance1_again
+        EngineManager.reset_instances()
+
+    def test_reset_clears_all_project_roots(self):
+        """Test reset clears all project-root-scoped instances."""
+        EngineManager.reset_instances()
+
+        EngineManager.get_instance(
+            UnifiedAnalysisEngine, project_root="/path/to/project1"
+        )
+        EngineManager.get_instance(
+            UnifiedAnalysisEngine, project_root="/path/to/project2"
+        )
+        EngineManager.get_instance(
+            UnifiedAnalysisEngine, project_root="/path/to/project3"
+        )
+        EngineManager.reset_instances()
+
+        instance1_new = EngineManager.get_instance(
+            UnifiedAnalysisEngine, project_root="/path/to/project1"
+        )
+        instance2_new = EngineManager.get_instance(
+            UnifiedAnalysisEngine, project_root="/path/to/project2"
+        )
+        instance3_new = EngineManager.get_instance(
+            UnifiedAnalysisEngine, project_root="/path/to/project3"
+        )
+
+        assert instance1_new is not None
+        assert instance2_new is not None
+        assert instance3_new is not None
+        EngineManager.reset_instances()
 
 
-class TestEngineSecurityRegression(TestEngineSecurityRegressionTestMixin):
+class TestEngineSecurityRegression:
     """Regression tests for security boundaries"""
 
     __test__ = True
 
-    pass
+    @pytest.mark.asyncio
+    async def test_path_traversal_prevention(self):
+        """Path traversal attempts should still be blocked."""
+        engine = get_analysis_engine(project_root=os.getcwd())
+        request = AnalysisRequest(file_path="../../../../../etc/passwd")
+
+        with pytest.raises(ValueError) as excinfo:
+            await engine.analyze(request)
+
+        assert "Invalid file path" in str(excinfo.value)
+        assert "traversal" in str(excinfo.value).lower()
+
+    @pytest.mark.asyncio
+    async def test_unsupported_language_handling(self):
+        """Unsupported languages should still surface the expected error."""
+        engine = get_analysis_engine()
+        request = AnalysisRequest(file_path="pyproject.toml", language="brainfuck")
+
+        with pytest.raises(UnsupportedLanguageError):
+            await engine.analyze(request)
+
+    def test_singleton_engine_cleanup(self):
+        """Cleanup should remain safe after refactoring."""
+        engine = get_analysis_engine()
+        engine.cleanup()
 
 
 if __name__ == "__main__":

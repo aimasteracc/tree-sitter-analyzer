@@ -53,23 +53,6 @@ class TestFormatTable:
         result = formatter.format_table(data, "full")
         assert "users" in result
 
-    def test_format_table_compact(self, formatter):
-        """Test format_table with compact type."""
-        data = {
-            "file_path": "test.sql",
-            "elements": [
-                SQLTable(
-                    name="orders",
-                    start_line=1,
-                    end_line=3,
-                    raw_text="CREATE TABLE orders (id INT);",
-                    language="sql",
-                )
-            ],
-        }
-        result = formatter.format_table(data, "compact")
-        assert isinstance(result, str)
-
     def test_format_table_csv(self, formatter):
         """Test format_table with csv type."""
         data = {
@@ -293,27 +276,6 @@ class TestSupportsLanguage:
         assert formatter.supports_language("python") is False
         assert formatter.supports_language("java") is False
         assert formatter.supports_language("javascript") is False
-
-
-class TestFormatSummary:
-    """Test format_summary method."""
-
-    def test_format_summary(self, formatter):
-        """Test format_summary uses compact formatter."""
-        data = {
-            "file_path": "test.sql",
-            "elements": [
-                SQLTable(
-                    name="summary_table",
-                    start_line=1,
-                    end_line=5,
-                    raw_text="CREATE TABLE summary_table (id INT);",
-                    language="sql",
-                )
-            ],
-        }
-        result = formatter.format_summary(data)
-        assert isinstance(result, str)
 
 
 class TestFormatStructure:

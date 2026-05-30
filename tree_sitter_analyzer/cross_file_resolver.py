@@ -37,6 +37,11 @@ _JAVA_IMPORT_RE = re.compile(r"^import\s+([\w.]+);", re.MULTILINE)
 _GO_IMPORT_RE = re.compile(r'"([^"]+)"', re.MULTILINE)
 
 
+def _alias_name(s: str) -> str:
+    """Extract the local alias from 'name as alias', or return the stripped name."""
+    return s.strip().split(" as ")[-1].strip()
+
+
 @dataclass
 class ImportEntry:
     source_file: str
@@ -231,7 +236,7 @@ class CrossFileResolver:
         parts = fp.replace(os.sep, "/")
         if language == "python":
             if parts.endswith("/__init__.py"):
-                mod = parts[: -len("/__init__.py")].replace("/", ".")
+                mod = parts.removesuffix("/__init__.py").replace("/", ".")
                 self._module_to_file[mod] = fp
             elif parts.endswith(".py"):
                 mod = parts[:-3].replace("/", ".")
@@ -242,9 +247,10 @@ class CrossFileResolver:
         elif language in ("javascript", "typescript"):
             for ext in (".js", ".jsx", ".ts", ".tsx"):
                 if parts.endswith(ext):
-                    mod = parts[: -len(ext)].replace("/", ".")
+                    ext_len = len(ext)
+                    mod = parts[:-ext_len].replace("/", ".")
                     self._module_to_file[mod] = fp
-                    short = parts.rsplit("/", 1)[-1][: -len(ext)]
+                    short = parts.rsplit("/", 1)[-1][:-ext_len]
                     if short not in self._module_to_file:
                         self._module_to_file[short] = fp
                     break
@@ -354,10 +360,7 @@ class CrossFileResolver:
             import_match = re.match(r"import\s+(?:\{([^}]+)\}|(\w+))", text)
             if import_match:
                 if import_match.group(1):
-                    names = [
-                        n.strip().split(" as ")[-1].strip()
-                        for n in import_match.group(1).split(",")
-                    ]
+                    names = [_alias_name(n) for n in import_match.group(1).split(",")]
                 elif import_match.group(2):
                     names = [import_match.group(2)]
             if module.startswith("."):

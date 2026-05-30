@@ -22,6 +22,7 @@ allowed-tools:
   - mcp__tree-sitter-analyzer__codegraph_dead_code
   - mcp__tree-sitter-analyzer__codegraph_complexity_heatmap
   - mcp__tree-sitter-analyzer__codegraph_metrics
+  - mcp__tree-sitter-analyzer__doc_sync
   - Bash
   - Read
 ---

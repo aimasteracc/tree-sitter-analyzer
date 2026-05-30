@@ -9,7 +9,6 @@ import json
 import os
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -65,35 +64,32 @@ class TestFileOutputManagerInit:
 
 
 class TestFileOutputManagerGetManagedInstance:
-    """Tests for get_managed_instance factory method."""
+    """Tests for get_managed_instance singleton caching."""
 
-    @patch(
-        "tree_sitter_analyzer.mcp.utils.file_output_factory.FileOutputManagerFactory"
-    )
-    def test_get_managed_instance_uses_factory(self, mock_factory):
-        """Test get_managed_instance uses factory."""
-        mock_instance = MagicMock()
-        mock_factory.get_instance.return_value = mock_instance
+    def setup_method(self):
+        FileOutputManager._instances.clear()
 
-        result = FileOutputManager.get_managed_instance("/test/project")
+    def test_get_managed_instance_returns_file_output_manager(self, tmp_path):
+        """Test get_managed_instance returns a FileOutputManager."""
+        result = FileOutputManager.get_managed_instance(str(tmp_path))
+        assert isinstance(result, FileOutputManager)
+        assert result.project_root == str(tmp_path)
 
-        mock_factory.get_instance.assert_called_once_with("/test/project")
-        assert result == mock_instance
+    def test_get_managed_instance_same_root_returns_same_object(self, tmp_path):
+        """Test same project_root returns cached instance."""
+        a = FileOutputManager.get_managed_instance(str(tmp_path))
+        b = FileOutputManager.get_managed_instance(str(tmp_path))
+        assert a is b
 
-    @patch(
-        "tree_sitter_analyzer.mcp.utils.file_output_factory.FileOutputManagerFactory"
-    )
-    def test_get_managed_instance_fallback_on_import_error(self, mock_factory):
-        """Test get_managed_instance falls back when factory unavailable."""
-        mock_factory.get_instance.side_effect = ImportError("Factory not available")
-
-        with patch.object(
-            FileOutputManager, "__init__", return_value=None
-        ) as mock_init:
-            FileOutputManager.get_managed_instance("/test/project")
-
-            # Should have called __init__ as fallback
-            mock_init.assert_called_once_with("/test/project")
+    def test_get_managed_instance_different_roots_return_different_objects(
+        self, tmp_path
+    ):
+        """Test different project_roots return distinct instances."""
+        root_a = str(tmp_path / "a")
+        root_b = str(tmp_path / "b")
+        a = FileOutputManager.get_managed_instance(root_a)
+        b = FileOutputManager.get_managed_instance(root_b)
+        assert a is not b
 
 
 class TestFileOutputManagerCreateInstance:

@@ -4,6 +4,7 @@ import fnmatch
 from pathlib import Path
 from typing import Any
 
+from ...ast_cache import ASTCache
 from ...utils import setup_logger
 
 logger = setup_logger(__name__)
@@ -130,9 +131,23 @@ async def execute_symbol_search(
     validation + file collection + scatter + assembly. Behaviour
     preserved (max_files=500, batch_size=50, exact/wildcard/fuzzy
     matching, toon formatting).
+    G1: FTS5 BM25 ranked fast-path tried first for plain symbol names >= 2 chars.
     """
     symbol, output_format, language, symbol_type = _parse_symbol_search_args(arguments)
     root = _resolve_project_root(project_root)
+
+    # FTS5 fast path — only for plain names, not wildcards or fuzzy patterns
+    if len(symbol) >= 2 and "*" not in symbol and not symbol.startswith("~"):
+        fts_results = _try_fts_ranked_search(root, symbol, language)
+        if fts_results:
+            return _assemble_symbol_search_response(
+                symbol,
+                output_format,
+                [],
+                fts_results,
+                ranked=True,
+                ranking_method="fts5_bm25",
+            )
 
     match_fn = _build_match_fn(symbol)
     type_filter = _build_type_filter(symbol_type)
@@ -259,11 +274,40 @@ async def _search_one_file_for_symbol(
     return matches
 
 
+def _fts_symbol_to_match(row: dict[str, Any], root: Path) -> dict[str, Any]:
+    """Convert a fts_search_ranked row to the standard match dict shape."""
+    return {
+        "name": row["name"],
+        "type": row["kind"],
+        "file": row["file"],
+        "start_line": row["line"],
+        "end_line": row["end_line"],
+        "relevance_score": row["relevance_score"],
+    }
+
+
+def _try_fts_ranked_search(
+    root: Path,
+    symbol: str,
+    language: str | None,
+) -> list[dict[str, Any]]:
+    """Try the FTS5 BM25 fast path. Returns [] on any failure or miss."""
+    try:
+        cache = ASTCache(str(root))
+        rows = cache.fts_search_ranked(symbol, language=language, limit=500)
+        return [_fts_symbol_to_match(r, root) for r in rows]
+    except Exception:
+        return []
+
+
 def _assemble_symbol_search_response(
     symbol: str,
     output_format: str,
     source_files: list[Path],
     results: list[dict[str, Any]],
+    *,
+    ranked: bool = False,
+    ranking_method: str = "",
 ) -> dict[str, Any]:
     """Build the canonical ``execute_symbol_search`` envelope."""
     pattern_desc = symbol
@@ -288,6 +332,9 @@ def _assemble_symbol_search_response(
             else f"No matches for {pattern_desc}. Try a different pattern."
         ),
     }
+    if ranked:
+        response["ranked"] = True
+        response["ranking_method"] = ranking_method
     from ..utils.format_helper import apply_toon_format_to_response
 
     return apply_toon_format_to_response(response, output_format)

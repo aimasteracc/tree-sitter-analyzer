@@ -52,6 +52,9 @@ class MarkdownExtractorStateMixin:
         if hasattr(self, "_extracted_images"):
             self._extracted_images.clear()
 
+    # Public alias for public_extraction.py companion module
+    reset_caches = _reset_caches
+
     def _get_node_text_optimized(self, node: "tree_sitter.Node") -> str:
         """Get node text with optimized caching using position-based keys."""
         cache_key = (node.start_byte, node.end_byte)

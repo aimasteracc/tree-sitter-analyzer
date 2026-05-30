@@ -151,8 +151,13 @@ def _load_pyproject(project_root: Path) -> dict[str, Any]:
     pyproject_path = project_root / "pyproject.toml"
     if not pyproject_path.exists():
         return {}
-    with pyproject_path.open("rb") as handle:
-        return tomllib.load(handle)
+    try:
+        with pyproject_path.open("rb") as handle:
+            return tomllib.load(handle)
+    except Exception as exc:
+        raise ValueError(
+            f"pyproject.toml is malformed and cannot be parsed: {exc}"
+        ) from exc
 
 
 def _collect_parser_packages(pyproject: dict[str, Any]) -> dict[str, dict[str, Any]]:

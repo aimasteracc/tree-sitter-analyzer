@@ -596,5 +596,4 @@ uv run bandit -r tests/
 - [pytest文档](https://docs.pytest.org/)
 - [hypothesis文档](https://hypothesis.readthedocs.io/)
 - [unittest.mock文档](https://docs.python.org/3/library/unittest.mock.html)
-- [项目测试规范](../TESTING.md)
 - [回归测试指南](./regression-testing-guide.md)

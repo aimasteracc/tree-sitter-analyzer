@@ -1,3 +1,4 @@
+<!-- HISTORICAL RECORD — file paths in this document reflect early project planning. Some paths may no longer exist. -->
 # WBS（Work Breakdown Structure）- 作業分解構造
 
 **文書番号:** PM-003  

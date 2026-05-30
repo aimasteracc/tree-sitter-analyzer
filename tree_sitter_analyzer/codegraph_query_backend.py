@@ -58,11 +58,19 @@ class CodeGraphQueryBackend:
         return [entry for entry in entries if entry["name"]]
 
     def semantic_symbols(self, query: str, *, limit: int) -> list[dict[str, Any]]:
-        return SemanticSymbolSearch(self.cache).search(query, limit=limit)
+        results = SemanticSymbolSearch(self.cache).search(query, limit=limit)
+        # Map semantic_score → confidence so sort(by='confidence') works on
+        # semantic() results the same way it works on search/explore results.
+        for r in results:
+            if "confidence" not in r and "semantic_score" in r:
+                r["confidence"] = r["semantic_score"]
+        return results
 
     def _fts_definitions(self, symbol: str) -> list[dict[str, Any]]:
-        if not getattr(self.cache, "fts5_available", False):
+        if not getattr(self.cache, "_fts5_available", False):
             return []
+        # G6: use fts_search_ranked so confidence carries the BM25 relevance score.
+        rows = self.cache.fts_search_ranked(symbol, limit=50)
         return [
             _definition(
                 file_path=row.get("file", ""),
@@ -71,9 +79,9 @@ class CodeGraphQueryBackend:
                 line=row.get("line", 0),
                 end_line=row.get("end_line", 0),
                 language=row.get("language", ""),
-                confidence=1.0,
+                confidence=row.get("relevance_score", 1.0),
             )
-            for row in self.cache.fts_search(symbol, limit=50)
+            for row in rows
             if row.get("name") == symbol and row.get("kind") in _DEFINITION_KINDS
         ]
 

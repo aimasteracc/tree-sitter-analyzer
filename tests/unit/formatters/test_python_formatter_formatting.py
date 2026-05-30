@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Python formatter formatting tests — decorators, performance, summary, advanced, tables."""
 
-
 import pytest
 
 from tree_sitter_analyzer.formatters.python_formatter import PythonTableFormatter
@@ -595,11 +594,6 @@ class TestPythonFormatterFormatTableMethod:
     def formatter(self):
         return PythonTableFormatter()
 
-    def test_format_table_full(self, formatter):
-        data = {"file_path": "app.py", "classes": [], "functions": [], "variables": []}
-        result = formatter.format_table(data, "full")
-        assert isinstance(result, str)
-
     def test_format_table_restores_format_type(self, formatter):
         data = {"file_path": "app.py", "classes": [], "functions": [], "variables": []}
         original = formatter.format_type
@@ -618,5 +612,3 @@ class TestPythonFormatterFormatJsonError:
         data = {"bad": {1, 2, 3}}
         result = formatter._format_json(data)
         assert "JSON serialization error" in result
-
-
