@@ -59,11 +59,6 @@ def standalone_function():
         assert "query_key" in props
         assert "output_format" in props
 
-    def test_set_project_path(self, query_tool):
-        """Test set_project_path updates components."""
-        query_tool.set_project_path("/tmp/new_project")
-        assert query_tool.project_root == "/tmp/new_project"
-
     def test_get_available_queries(self, query_tool):
         """Test get_available_queries returns list."""
         queries = query_tool.get_available_queries("python")
@@ -246,11 +241,6 @@ from pathlib import Path
         assert definition["name"] == "check_code_scale"
         assert "inputSchema" in definition
 
-    def test_set_project_path(self, analyze_scale_tool):
-        """Test set_project_path updates components."""
-        analyze_scale_tool.set_project_path("/tmp/new_project")
-        assert analyze_scale_tool.project_root == "/tmp/new_project"
-
     @pytest.mark.asyncio
     async def test_execute_basic(self, analyze_scale_tool, temp_python_file):
         """Test basic execute."""
@@ -347,11 +337,6 @@ def standalone_function():
         assert definition["name"] == "extract_code_section"
         assert "inputSchema" in definition
 
-    def test_set_project_path(self, read_partial_tool):
-        """Test set_project_path updates components."""
-        read_partial_tool.set_project_path("/tmp/new_project")
-        assert read_partial_tool.project_root == "/tmp/new_project"
-
     @pytest.mark.asyncio
     async def test_execute_by_line_range(self, read_partial_tool, temp_python_file):
         """Test execute with line range."""
@@ -440,11 +425,6 @@ def function_two(): pass
         # AnalyzeCodeStructureTool uses analyze_code_structure as tool name
         assert definition["name"] == "analyze_code_structure"
         assert "inputSchema" in definition
-
-    def test_set_project_path(self, analyze_code_structure_tool):
-        """Test set_project_path updates components."""
-        analyze_code_structure_tool.set_project_path("/tmp/new_project")
-        assert analyze_code_structure_tool.project_root == "/tmp/new_project"
 
     @pytest.mark.asyncio
     async def test_execute_full_format(

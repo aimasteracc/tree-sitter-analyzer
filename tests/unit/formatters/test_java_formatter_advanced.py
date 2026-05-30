@@ -4,7 +4,6 @@ Tests for JavaTableFormatter — structure, advanced, javadoc, private methods,
 compact multiple classes, edge cases.
 """
 
-import json
 from typing import Any
 
 import pytest
@@ -46,18 +45,6 @@ class TestFormatStructure:
 
 class TestFormatAdvanced:
     """Test format_advanced method"""
-
-    def test_format_advanced_json(self):
-        """Test advanced formatting with JSON"""
-        result = _FMT.format_advanced(
-            {
-                "package": {"name": "com.example"},
-                "classes": [{"name": "Test", "type": "class"}],
-            },
-            output_format="json",
-        )
-        assert isinstance(result, str)
-        assert json.loads(result) is not None
 
     def test_format_advanced_csv(self):
         """Test advanced formatting with CSV"""

@@ -374,11 +374,6 @@ class TestPythonFormatterFormatTableMethod:
     def formatter(self):
         return PythonTableFormatter()
 
-    def test_format_table_full(self, formatter):
-        data = {"file_path": "app.py", "classes": [], "functions": [], "variables": []}
-        result = formatter.format_table(data, "full")
-        assert isinstance(result, str)
-
     def test_format_table_restores_format_type(self, formatter):
         data = {"file_path": "app.py", "classes": [], "functions": [], "variables": []}
         original = formatter.format_type

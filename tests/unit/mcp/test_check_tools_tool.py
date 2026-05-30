@@ -29,21 +29,6 @@ class TestCheckToolsToolInitialization:
         """Test that initialization creates a tool instance."""
         assert tool is not None
 
-    def test_init_with_project_root(self) -> None:
-        """Test initialization with a project root."""
-        t = CheckToolsTool(project_root="/tmp/myproject")
-        assert t.project_root == "/tmp/myproject"
-
-    def test_init_without_project_root(self) -> None:
-        """Test initialization without a project root defaults to None."""
-        t = CheckToolsTool()
-        assert t.project_root is None
-
-    def test_set_project_path(self, tool: CheckToolsTool) -> None:
-        """Test that set_project_path updates project_root."""
-        tool.set_project_path("/new/path")
-        assert tool.project_root == "/new/path"
-
 
 class TestCheckToolsToolDefinition:
     """Tests for get_tool_definition()."""

@@ -14,43 +14,18 @@ import pytest
 from tree_sitter_analyzer.mcp.resources.code_file_resource import CodeFileResource
 
 
-class TestCodeFileResourceInit:
-    """Test CodeFileResource initialization"""
-
-    def test_initialization(self):
-        """Test resource initialization"""
-        resource = CodeFileResource()
-        assert resource is not None
-        assert resource._uri_pattern is not None
-
-
-class TestGetResourceInfo:
-    """Test get_resource_info method"""
-
-    def test_get_resource_info(self):
-        """Test getting resource information"""
-        resource = CodeFileResource()
-        info = resource.get_resource_info()
-
-        assert info["name"] == "code_file"
-        assert "URI-based identification" in info["description"]
-        assert info["uri_template"] == "code://file/{file_path}"
-        assert info["mime_type"] == "text/plain"
-
-
 class TestMatchesUri:
-    """Test matches_uri method"""
+    """Test matches_uri method — resource-specific edge cases.
+
+    Cross-resource invariants (test_initialization, test_get_resource_info,
+    test_matches_valid_uri, test_rejects_invalid_scheme,
+    test_rejects_malformed_uri) live in test_base_resource_contract.py.
+    """
 
     @pytest.fixture
     def resource(self):
         """Create resource instance"""
         return CodeFileResource()
-
-    def test_matches_valid_uri(self, resource):
-        """Test matching valid URI"""
-        assert resource.matches_uri("code://file/src/main.py")
-        assert resource.matches_uri("code://file/test.js")
-        assert resource.matches_uri("code://file/scripts/helper.sh")
 
     def test_matches_uri_with_anyurl_type(self, resource):
         """Test matching URI with AnyUrl type (string conversion)"""
@@ -61,19 +36,6 @@ class TestMatchesUri:
                 return "code://file/src/main.py"
 
         assert resource.matches_uri(MockAnyUrl())
-
-    def test_rejects_invalid_scheme(self, resource):
-        """Test rejecting URIs with wrong scheme"""
-        assert not resource.matches_uri("file://src/main.py")
-        assert not resource.matches_uri("http://example.com/file.py")
-        assert not resource.matches_uri("data://file/test.py")
-
-    def test_rejects_malformed_uri(self, resource):
-        """Test rejecting malformed URIs"""
-        assert not resource.matches_uri("code://file/")
-        assert not resource.matches_uri("code://file")
-        assert not resource.matches_uri("code://")
-        assert not resource.matches_uri("invalid")
 
 
 class TestExtractFilePath:

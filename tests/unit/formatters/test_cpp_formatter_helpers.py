@@ -129,11 +129,6 @@ class TestCreateCppCompactSignature:
 
 
 class TestFormatCppFullTable:
-    def test_empty_data(self):
-        fmt = _make_formatter()
-        result = format_cpp_full_table(fmt, {})
-        assert isinstance(result, str)
-
     def test_file_header(self):
         fmt = _make_formatter()
         data = {

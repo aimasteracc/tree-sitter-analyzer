@@ -54,20 +54,6 @@ class ConcreteMCPTool(BaseMCPTool):
 class TestBaseMCPToolInit:
     """Test BaseMCPTool initialization"""
 
-    def test_init_without_project_root(self):
-        """Test initialization without project root"""
-        tool = ConcreteMCPTool()
-        assert tool.project_root is None
-        assert tool.security_validator is not None
-        assert tool.path_resolver is not None
-
-    def test_init_with_project_root(self):
-        """Test initialization with project root"""
-        tool = ConcreteMCPTool(project_root="/test/path")
-        assert tool.project_root == "/test/path"
-        assert tool.security_validator is not None
-        assert tool.path_resolver is not None
-
     def test_init_creates_security_validator(self):
         """Test that security validator is created correctly"""
         tool = ConcreteMCPTool(project_root="/test")

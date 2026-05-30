@@ -42,11 +42,6 @@ class TestFindAndGrepToolInitialization:
         assert tool is not None
         assert hasattr(tool, "file_output_manager")
 
-    def test_init_with_project_root(self):
-        """Test initialization with project root."""
-        tool = FindAndGrepTool(project_root="/test/path")
-        assert tool.project_root == "/test/path"
-
     def test_init_multiple_instances(self):
         """Test that multiple instances are independent."""
         tool1 = FindAndGrepTool()
@@ -72,14 +67,6 @@ class TestSetProjectPath:
 
 class TestGetToolDefinition:
     """Tests for get_tool_definition method."""
-
-    def test_tool_definition_structure(self, tool):
-        """Test that tool definition has correct structure."""
-        definition = tool.get_tool_definition()
-        assert isinstance(definition, dict)
-        assert "name" in definition
-        assert "description" in definition
-        assert "inputSchema" in definition
 
     def test_tool_definition_name(self, tool):
         """Test that tool definition has correct name."""

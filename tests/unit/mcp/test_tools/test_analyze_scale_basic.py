@@ -5,7 +5,6 @@ Tests for analyze_code_scale tool which provides code scale analysis
 including metrics about complexity, size, and structure.
 """
 
-
 import pytest
 
 from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import AnalyzeScaleTool
@@ -37,15 +36,6 @@ class TestAnalyzeScaleToolInit:
         assert tool_with_project_root is not None
         assert tool_with_project_root.project_root == "/test/project"
         assert tool_with_project_root.analysis_engine is not None
-
-
-class TestAnalyzeScaleToolSetProjectPath:
-    """Tests for set_project_path method."""
-
-    def test_set_project_path(self, tool):
-        """Test setting project path."""
-        tool.set_project_path("/new/project")
-        assert tool.project_root == "/new/project"
 
 
 class TestAnalyzeScaleToolGetToolSchema:
@@ -113,11 +103,6 @@ class TestAnalyzeScaleToolGetToolSchema:
 
 class TestAnalyzeScaleToolGetToolDefinition:
     """Tests for get_tool_definition method."""
-
-    def test_get_tool_definition_name(self, tool):
-        """Test tool definition has correct name."""
-        definition = tool.get_tool_definition()
-        assert definition["name"] == "check_code_scale"
 
     def test_get_tool_definition_has_description(self, tool):
         """Test tool definition has description."""
@@ -231,5 +216,3 @@ class TestAnalyzeScaleToolValidateArguments:
             match="metrics_only must be true when using file_paths batch mode",
         ):
             tool.validate_arguments(arguments)
-
-

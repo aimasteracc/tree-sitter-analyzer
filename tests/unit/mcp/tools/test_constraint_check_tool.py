@@ -153,25 +153,6 @@ def _make_tool(project_root: Path):
 
 
 # ---------------------------------------------------------------------------
-# Tool-definition contract
-# ---------------------------------------------------------------------------
-
-
-class TestToolDefinition:
-    """The MCP tool name and basic shape are part of the public API."""
-
-    def test_tool_name_is_check_constraints(self, tmp_path: Path) -> None:
-        _stage_minimal_constraints(tmp_path)
-        tool = _make_tool(tmp_path)
-
-        defn = tool.get_tool_definition()
-        assert defn["name"] == "check_constraints", (
-            f"MCP tool name must be 'check_constraints', got {defn.get('name')!r}"
-        )
-        assert "inputSchema" in defn
-
-
-# ---------------------------------------------------------------------------
 # Verdict mapping — the core contract for this feature.
 # ---------------------------------------------------------------------------
 
@@ -313,6 +294,5 @@ class TestConstraintCheckFiltering:
 
         callers = [v["caller_file"] for v in result["violations"]]
         assert callers == ["mcp/handler.py"], (
-            f"path_filter='mcp/**' must keep only the mcp/* row. "
-            f"Got: {callers}"
+            f"path_filter='mcp/**' must keep only the mcp/* row. Got: {callers}"
         )

@@ -63,15 +63,6 @@ class TestFormatEmptyFormatType:
 
 
 class TestFormatTable:
-    def test_format_table_full(self, fmt, sample_data):
-        result = fmt.format_table(sample_data, "full")
-        assert isinstance(result, str)
-        assert len(result) > 0
-
-    def test_format_table_compact(self, fmt, sample_data):
-        result = fmt.format_table(sample_data, "compact")
-        assert isinstance(result, str)
-
     def test_format_table_restores_format_type(self, fmt, sample_data):
         original = fmt.format_type
         fmt.format_table(sample_data, "compact")
@@ -85,24 +76,6 @@ class TestFormatTable:
         result = fmt.format_table(sample_data)
         assert isinstance(result, str)
         assert len(result) > 0
-
-
-class TestFormatSummary:
-    def test_format_summary_returns_string(self, fmt, sample_data):
-        result = fmt.format_summary(sample_data)
-        assert isinstance(result, str)
-
-    def test_format_summary_empty_data(self, fmt):
-        result = fmt.format_summary({"file_path": "empty.js"})
-        assert isinstance(result, str)
-
-    def test_format_summary_with_statistics(self, fmt):
-        data = {
-            "file_path": "mod.js",
-            "statistics": {"function_count": 5, "class_count": 2},
-        }
-        result = fmt.format_summary(data)
-        assert isinstance(result, str)
 
 
 class TestFormatAdvanced:

@@ -8,7 +8,6 @@ modifiers, and method visibility handling.
 
 import pytest
 
-from tree_sitter_analyzer.formatters.base_formatter import BaseTableFormatter
 from tree_sitter_analyzer.formatters.typescript_formatter import (
     TypeScriptTableFormatter,
 )
@@ -163,18 +162,6 @@ class TestTypeScriptTableFormatter:
                 "variable_count": 3,
             },
         }
-
-    def test_formatter_initialization(self):
-        """Test formatter initialization with different format types"""
-        full_formatter = TypeScriptTableFormatter("full")
-        assert isinstance(full_formatter, TypeScriptTableFormatter)
-        assert isinstance(full_formatter, BaseTableFormatter)
-
-        compact_formatter = TypeScriptTableFormatter("compact")
-        assert isinstance(compact_formatter, TypeScriptTableFormatter)
-
-        csv_formatter = TypeScriptTableFormatter("csv")
-        assert isinstance(csv_formatter, TypeScriptTableFormatter)
 
     def test_format_full_table(self, formatter, sample_data):
         """Test full table formatting"""

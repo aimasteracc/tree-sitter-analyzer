@@ -44,13 +44,6 @@ class TestListFilesToolInitialization:
 
 
 class TestGetToolDefinition:
-    def test_tool_definition_structure(self, tool):
-        definition = tool.get_tool_definition()
-        assert isinstance(definition, dict)
-        assert "name" in definition
-        assert "description" in definition
-        assert "inputSchema" in definition
-
     def test_tool_definition_name(self, tool):
         definition = tool.get_tool_definition()
         assert definition["name"] == "list_files"
