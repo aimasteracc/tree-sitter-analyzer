@@ -6,6 +6,8 @@ Tree-sitter queries specific to SQL language constructs.
 Covers tables, views, procedures, functions, triggers, indexes, and other SQL-specific elements.
 """
 
+from ._base import make_query_accessors as _make_query_accessors
+
 # SQL-specific comprehensive query library
 SQL_QUERIES: dict[str, str] = {
     # --- Basic DDL Statements ---
@@ -526,23 +528,7 @@ ALL_QUERIES["joins"] = {
 }
 
 
-def get_query(name: str) -> str:
-    """Get a specific query by name."""
-    if name in ALL_QUERIES:
-        return ALL_QUERIES[name]["query"]
-    raise ValueError(
-        f"Query '{name}' not found. Available queries: {list(ALL_QUERIES.keys())}"
-    )
-
-
-def get_all_queries() -> dict:
-    """Get all available queries."""
-    return ALL_QUERIES
-
-
-def list_queries() -> list:
-    """List all available query names."""
-    return list(ALL_QUERIES.keys())
+get_query, get_all_queries, list_queries = _make_query_accessors(ALL_QUERIES)
 
 
 def get_available_sql_queries() -> list[str]:
