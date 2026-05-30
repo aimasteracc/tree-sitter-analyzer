@@ -128,6 +128,9 @@ class CodeGraphImportGraphTool(BaseMCPTool):
                 "verdict": "INFO",
                 "mode": "summary",
                 **graph.summary(),
+                # Always include 'edges' key for schema consistency — empty in summary
+                # mode since the full list is available via mode=deps/dependents.
+                "edges": [],
             }
 
         elif mode == "deps":
