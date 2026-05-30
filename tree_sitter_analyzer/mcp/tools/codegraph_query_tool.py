@@ -40,6 +40,33 @@ from ._codegraph_query_dsl import (
     step_to_dict,
     string_args,
 )
+from ._codegraph_query_symbols import (
+    absolute_path as _absolute_path,
+)
+from ._codegraph_query_symbols import (
+    build_file_entries as _build_file_entries,
+)
+from ._codegraph_query_symbols import (
+    dedupe_symbols as _dedupe_symbols,
+)
+from ._codegraph_query_symbols import (
+    drop_test_shadow_symbols as _drop_test_shadow_symbols,
+)
+from ._codegraph_query_symbols import (
+    source_first_symbols as _source_first_symbols,
+)
+from ._codegraph_query_symbols import (
+    source_preference_key as _source_preference_key,
+)
+from ._codegraph_query_symbols import (
+    symbol_key as _symbol_key,
+)
+from ._codegraph_query_symbols import (
+    symbol_key_tuple as _symbol_key_tuple,
+)
+from ._codegraph_query_symbols import (
+    unique_symbol_files as _unique_symbol_files,
+)
 from ._response_builder import build_response
 from .base_tool import BaseMCPTool
 from .codegraph_visualization_hub import query_flow_uml_facet
@@ -49,8 +76,6 @@ logger = setup_logger(__name__)
 _MAX_SYMBOLS_CAP = 50
 _MAX_FILES_CAP = 30
 _MAX_REL_PER_SYMBOL = 20
-_MAX_SNIPPET_LINES = 160
-_MAX_FILE_BYTES = 1_000_000
 _DECLARATION_QUERY_KINDS = frozenset({"class", "enum", "interface", "type"})
 _RELATION_NOISE_SYMBOLS = frozenset(
     {
@@ -1057,173 +1082,6 @@ def _uml_facet(
         relationships=state.relationships,
         direction=direction,
         max_edges=max_edges,
-    )
-
-
-def _row_symbol(
-    row: dict[str, Any],
-    name_key: str,
-    file_key: str,
-    line_key: str,
-) -> dict[str, Any]:
-    return {
-        "name": row.get(name_key, ""),
-        "kind": "function",
-        "file": row.get(file_key, ""),
-        "line": row.get(line_key, 0),
-        "end_line": row.get(line_key, 0),
-        "language": "",
-        "depth": row.get("depth", 1),
-    }
-
-
-def _build_file_entries(
-    *,
-    project_root: str,
-    symbols: list[dict[str, Any]],
-    max_files: int,
-    include_code: bool,
-) -> list[dict[str, Any]]:
-    by_file: dict[str, list[dict[str, Any]]] = {}
-    for symbol in symbols:
-        file_path = str(symbol.get("file") or "")
-        if not file_path:
-            continue
-        by_file.setdefault(file_path, []).append(symbol)
-
-    entries: list[dict[str, Any]] = []
-    for file_path, file_symbols in list(by_file.items())[:max_files]:
-        abs_path = (
-            file_path
-            if os.path.isabs(file_path)
-            else os.path.join(project_root, file_path)
-        )
-        size = _h.file_size(abs_path) if include_code else 0
-        lines = (
-            _h.read_file_lines(abs_path)
-            if include_code and 0 < size <= _MAX_FILE_BYTES
-            else []
-        )
-        symbol_entries: list[dict[str, Any]] = []
-        for symbol in file_symbols:
-            entry = {
-                "name": symbol.get("name", ""),
-                "kind": symbol.get("kind", ""),
-                "start_line": symbol.get("line", 0),
-                "end_line": symbol.get("end_line", 0),
-            }
-            start_line = int(symbol.get("line", 0) or 0)
-            end_line = int(symbol.get("end_line", start_line) or start_line)
-            if include_code and lines:
-                snippet_end = min(
-                    end_line, len(lines), start_line + _MAX_SNIPPET_LINES - 1
-                )
-                code = _h.extract_snippet_from_lines(lines, start_line, snippet_end)
-                if code:
-                    entry["code"] = code
-                if snippet_end < end_line:
-                    entry["code_truncated"] = True
-                    entry["code_lines"] = f"{start_line}-{snippet_end} of {end_line}"
-            symbol_entries.append(entry)
-        entries.append(
-            {
-                "file_path": file_path,
-                "language": next(
-                    (
-                        str(sym.get("language"))
-                        for sym in file_symbols
-                        if sym.get("language")
-                    ),
-                    "",
-                ),
-                "symbols": symbol_entries,
-            }
-        )
-    return entries
-
-
-def _dedupe_symbols(symbols: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    seen: set[tuple[str, int, str]] = set()
-    out: list[dict[str, Any]] = []
-    for symbol in symbols:
-        key = _symbol_key_tuple(symbol)
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append(symbol)
-    return out
-
-
-def _source_first_symbols(symbols: Any) -> list[dict[str, Any]]:
-    return sorted(symbols, key=_source_preference_key)
-
-
-def _drop_test_shadow_symbols(symbols: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    source_names = {
-        str(symbol.get("name") or "").lower()
-        for symbol in symbols
-        if symbol.get("name")
-        and not _is_test_or_fixture_path(str(symbol.get("file") or "").lower())
-    }
-    if not source_names:
-        return symbols
-    return [
-        symbol
-        for symbol in symbols
-        if not (
-            str(symbol.get("name") or "").lower() in source_names
-            and _is_test_or_fixture_path(str(symbol.get("file") or "").lower())
-        )
-    ]
-
-
-def _source_preference_key(symbol: dict[str, Any]) -> tuple[int, int, str, int, str]:
-    path = str(symbol.get("file") or "")
-    normalized = path.replace("\\", "/").lower()
-    return (
-        1 if _is_test_or_fixture_path(normalized) else 0,
-        1 if _is_generated_or_vendor_path(normalized) else 0,
-        normalized,
-        int(symbol.get("line", 0) or 0),
-        str(symbol.get("name") or ""),
-    )
-
-
-def _is_test_or_fixture_path(path: str) -> bool:
-    return _filters.is_test_or_fixture_path(path)
-
-
-def _is_generated_or_vendor_path(path: str) -> bool:
-    return _filters.is_generated_or_vendor_path(path)
-
-
-def _unique_symbol_files(symbols: list[dict[str, Any]]) -> list[str]:
-    files: list[str] = []
-    seen: set[str] = set()
-    for symbol in symbols:
-        file_path = str(symbol.get("file") or "")
-        if not file_path or file_path in seen:
-            continue
-        seen.add(file_path)
-        files.append(file_path)
-    return files
-
-
-def _absolute_path(project_root: str, file_path: str) -> str:
-    if os.path.isabs(file_path):
-        return file_path
-    return os.path.join(project_root, file_path)
-
-
-def _symbol_key(symbol: dict[str, Any]) -> str:
-    return f"{symbol.get('file', '')}:{symbol.get('line', 0)}:{symbol.get('name', '')}"
-
-
-def _symbol_key_tuple(symbol: dict[str, Any]) -> tuple[str, int, str]:
-    return (
-        str(symbol.get("file") or ""),
-        int(symbol.get("line", 0) or 0),
-        str(symbol.get("name") or ""),
     )
 
 
