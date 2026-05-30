@@ -39,6 +39,55 @@ These look like inconsistencies in a dogfood pass, but they are intentional and 
 - **Why**: r34 Q4 narrowed `PROJECT_HEALTH_SOURCE_EXTS` to code-only. `.md` files no longer count for code-quality grading. Re-adding markdown would re-inflate the C-grade bucket with golden_master fixtures.
 - **Correct action**: if you want to score markdown structure, build a separate `markdown_health` tool. Don't merge it back into `project_health`.
 
+## Code intelligence analysis — lessons learned (2026-05-30)
+
+Rules distilled from a full mycelium + call-graph analysis sprint. Violations here cost hours of rework.
+
+### 5. Static call graph ≠ test coverage — do NOT use it as a coverage proxy
+
+**Why**: `conftest.py` has a `reset_global_singletons()` with `autouse=True` that imports ~50 modules and calls methods on them before/after every test. This pollutes the static call graph: every test file appears to call every singleton method, producing meaningless caller counts (e.g., `HealthHistory.append` shows 183 test-file callers; actual direct callers: ~3). `execute()` on any `BaseMCPTool` subclass shows 1511 callers because dynamic dispatch is unresolvable statically.
+
+**Correct action**: Use `pytest-cov` for real coverage data. Use static call graphs only for "zero-coverage detection" (methods with 0 callers are definitely untested) — the false positives only go high, never low.
+
+**Symptom that looks real but isn't**: `test_go_plugin.py` appears to test `PythonPlugin` methods — this is conftest fixture contamination, not actual coverage.
+
+### 6. `--callers "ClassName.method"` requires AST cache to have receiver field populated
+
+**Why**: Three code layers historically dropped the `class` field: `_build_function_entry`, `CachedCallGraph._build_from_cache`, and `CodeGraphCallersTool` used the SQL fast-path which stores bare callee names. Fixed in commit 3ced467a.
+
+**Debug protocol when `--callers "ClassName.method"` returns NOT_FOUND**:
+1. Verify the class is known: `--class-hierarchy mode=subclasses --class-hierarchy-class BaseClass`
+2. Check if the method exists under the qualified receiver in the AST cache
+3. If it returns NOT_FOUND but bare name works: the SQL path is being used (qualified name should now bypass it — verify you're on commit ≥ 3ced467a)
+
+### 7. After changing the LanguagePlugin interface, always test cli/info_commands
+
+**Why**: `cli/info_commands.py` (15 methods: `--show-languages`, `--show-extensions`, etc.) has **zero tests** and reads directly from the plugin registry. Any change to `REQUIRED_PLUGIN_METHODS`, plugin removal, or extractor interface changes can silently break these commands. The call graph won't catch this because the commands are never called by tests.
+
+**Mandatory check**: After any plugin interface change, run:
+```bash
+uv run python -m tree_sitter_analyzer --show-languages
+uv run python -m tree_sitter_analyzer --show-extensions
+```
+and verify the output is sane before committing.
+
+### 8. mycelium: use bare class name for inheritance queries, not file>Class path
+
+**Why**: After the Extends-edge fix (mycelium PR #263/#264), extends edges store the unresolved base name `"LanguagePlugin"`, not the full path. Reverse lookup by full path only finds same-file subclasses.
+
+**Correct**:   `mycelium subclasses-tree "LanguagePlugin"` → finds all 21 plugins  
+**Wrong**:     `mycelium subclasses-tree "plugins/base.py>LanguagePlugin"` → finds only DefaultLanguagePlugin
+
+### 9. mycelium `get-descendants` shows ONLY explicitly-defined methods, NOT inherited ones
+
+**Why**: `--include-inherited` depends on resolved Extends edges pointing to the full-path base class symbol. Cross-file resolution is not yet complete (mycelium issue #261 partially fixed). Using `get-descendants` alone to compare plugin interface compliance will falsely conclude that 16/21 plugins are "missing" methods that are actually inherited from the ABC.
+
+**Correct approach**: Compare explicit-override sets via `get-descendants` then cross-check against the ABC using `mycelium get-all-symbols --prefix "plugins/base.py"` to identify what the base provides by default.
+
+### 10. Before writing custom Python AST scripts, try TSA's own tools first
+
+In order: `--class-hierarchy`, `--callers`, `--callees`, `--call-graph`, `--class-hierarchy mode=tree`. These exist and work. Writing a 50-line Python script to answer "what subclasses does LanguagePlugin have" is wasted effort — `--class-hierarchy mode=subclasses --class-hierarchy-class LanguagePlugin` gives the same answer in one command.
+
 ## Dogfood-finding triage rules (when you receive a list of bugs from a dogfood agent)
 
 Before dispatching a fix agent for any finding, ask:
