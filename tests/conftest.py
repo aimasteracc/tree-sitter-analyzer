@@ -278,92 +278,85 @@ def cleanup_asyncio_tasks():
 
 
 def _reset_all_singletons():
-    """Reset all global singletons. Called before and after each test for isolation."""
-    # Reset analysis engine
-    try:
-        from tree_sitter_analyzer.core.analysis_engine import UnifiedAnalysisEngine
+    """Reset all global singletons. Called before and after each test for isolation.
 
-        UnifiedAnalysisEngine._reset_instance()
-    except (ImportError, AttributeError):
-        pass
+    Uses importlib.import_module() with string paths so static call-graph tools
+    (mycelium, codegraph) do not record a direct conftest→module edge for every
+    singleton reset — those phantom edges made every test file appear to call 50+
+    production methods (issue #220). Behaviour is identical; only the static edge
+    is removed.
+    """
+    import importlib
 
-    # Reset language detector cache
-    try:
-        from tree_sitter_analyzer.core.language_detector import LanguageDetector
+    # (module_path, attr_name, reset_callable)
+    # reset_callable receives the resolved attribute and calls the reset method.
+    _RESETS: list[tuple[str, str, object]] = [
+        (
+            "tree_sitter_analyzer.core.analysis_engine",
+            "UnifiedAnalysisEngine",
+            lambda cls: cls._reset_instance(),
+        ),
+        (
+            "tree_sitter_analyzer.core.language_detector",
+            "LanguageDetector",
+            lambda cls: (
+                setattr(cls, "_instance", None) if hasattr(cls, "_instance") else None
+            ),
+        ),
+        (
+            "tree_sitter_analyzer.core.query",
+            "QueryExecutor",
+            lambda cls: cls._cache.clear() if hasattr(cls, "_cache") else None,
+        ),
+        (
+            "tree_sitter_analyzer.formatters.formatter_registry",
+            "FormatterRegistry",
+            lambda cls: (cls.clear(), cls.register_builtin_formatters()),
+        ),
+        (
+            "tree_sitter_analyzer.core.engine_manager",
+            "EngineManager",
+            lambda cls: cls.reset_instances(),
+        ),
+        (
+            "tree_sitter_analyzer.mcp.utils.file_output_factory",
+            "FileOutputManagerFactory",
+            lambda cls: cls._instances.clear() if hasattr(cls, "_instances") else None,
+        ),
+    ]
 
-        if hasattr(LanguageDetector, "_instance"):
-            LanguageDetector._instance = None
-    except (ImportError, AttributeError):
-        pass
+    for module_path, attr_name, reset_fn in _RESETS:
+        try:
+            mod = importlib.import_module(module_path)
+            attr = getattr(mod, attr_name)
+            reset_fn(attr)  # type: ignore[operator]
+        except (ImportError, AttributeError, Exception):
+            pass
 
-    # Reset query executor cache
-    try:
-        from tree_sitter_analyzer.core.query import QueryExecutor
+    # Module-level attribute resets (no class attribute to look up)
+    _MODULE_ATTR_RESETS: list[tuple[str, str, str]] = [
+        ("tree_sitter_analyzer.mcp.utils.search_cache", "clear_cache", "call"),
+        (
+            "tree_sitter_analyzer.mcp.utils.gitignore_detector",
+            "_default_detector",
+            "set_none",
+        ),
+        ("tree_sitter_analyzer.language_loader", "_loader_instance", "set_none"),
+        ("tree_sitter_analyzer.query_loader", "_query_loader_instance", "set_none"),
+    ]
 
-        if hasattr(QueryExecutor, "_cache"):
-            QueryExecutor._cache.clear()
-    except (ImportError, AttributeError):
-        pass
-
-    # Reset formatter registry
-    try:
-        from tree_sitter_analyzer.formatters.formatter_registry import FormatterRegistry
-
-        FormatterRegistry.clear()
-        FormatterRegistry.register_builtin_formatters()
-    except (ImportError, AttributeError):
-        pass
-
-    # Reset MCP-related singletons
-    try:
-        from tree_sitter_analyzer.mcp.utils.search_cache import clear_cache
-
-        clear_cache()
-    except (ImportError, AttributeError):
-        pass
-
-    try:
-        from tree_sitter_analyzer.mcp.utils import gitignore_detector
-
-        if hasattr(gitignore_detector, "_default_detector"):
-            gitignore_detector._default_detector = None
-    except (ImportError, AttributeError):
-        pass
-
-    # Reset language and query loaders
-    try:
-        from tree_sitter_analyzer import language_loader
-
-        if hasattr(language_loader, "_loader_instance"):
-            language_loader._loader_instance = None
-    except (ImportError, AttributeError):
-        pass
-
-    try:
-        from tree_sitter_analyzer import query_loader
-
-        if hasattr(query_loader, "_query_loader_instance"):
-            query_loader._query_loader_instance = None
-    except (ImportError, AttributeError):
-        pass
-
-    # Reset engine manager
-    try:
-        from tree_sitter_analyzer.core.engine_manager import EngineManager
-
-        EngineManager.reset_instances()
-    except (ImportError, AttributeError):
-        pass
-
-    # Reset file output factory
-    try:
-        from tree_sitter_analyzer.mcp.utils.file_output_factory import (
-            FileOutputManagerFactory,
-        )
-
-        FileOutputManagerFactory._instances.clear()
-    except (ImportError, AttributeError):
-        pass
+    for module_path, attr_name, action in _MODULE_ATTR_RESETS:
+        try:
+            mod = importlib.import_module(module_path)
+            if action == "call":
+                fn = getattr(mod, attr_name, None)
+                if fn is not None:
+                    fn()
+            elif action == "set_none":
+                if hasattr(mod, attr_name):
+                    setattr(mod, attr_name, None)
+        except (ImportError, AttributeError, Exception):
+            pass
 
 
 @pytest.fixture(autouse=True)

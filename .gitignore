@@ -397,3 +397,4 @@ coverage.json
 .understand-anything/
 **/.understand-anything/
 .mycelium/
+.gstack/
