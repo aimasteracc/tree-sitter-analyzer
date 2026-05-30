@@ -1,4 +1,22 @@
-"""Static configuration builders for language detection."""
+"""Static configuration builders and path helpers for language detection.
+
+This module is intentionally kept unified.  Mycelium flagged it as a "covert hub"
+with 8-10 callers, but the actual call graph has exactly **two** consumers:
+  - tree_sitter_analyzer/language_detector.py  (production)
+  - tests/unit/core/test_language_detector_helpers.py  (test)
+
+Both import all six functions.  Splitting into _language_path_helpers.py and
+_language_detector_helpers.py would yield a ~19-line path file with a single
+downstream consumer, adding indirection without reducing coupling.
+
+Logical groups within this file:
+  GROUP 1 — filesystem/path helpers (low-level OS operations):
+      normalize_detection_path, get_path_mtime_ns
+  GROUP 2 — language pattern builders (detection heuristics):
+      build_extension_confidence_map, build_content_pattern_weights
+  GROUP 3 — shared-cache integration:
+      get_cached_language, store_cached_language
+"""
 
 import logging
 import os

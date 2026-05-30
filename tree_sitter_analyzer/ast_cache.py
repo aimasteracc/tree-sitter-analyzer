@@ -16,6 +16,18 @@ from typing import Any
 
 from ._ast_cache_graph import bfs_callees as _bfs_callees_impl
 from ._ast_cache_graph import bfs_callers as _bfs_callers_impl
+from ._ast_cache_query import (
+    backfill_cross_file_edges as _backfill_cross_file_edges,
+    fts_search as _fts_search,
+    fts_search_ranked as _fts_search_ranked,
+    get_cross_file_stats as _get_cross_file_stats,
+    get_stats as _get_stats,
+    invalidate as _invalidate,
+    lookup as _lookup,
+    query_callers_enhanced as _query_callers_enhanced,
+    query_callees_enhanced as _query_callees_enhanced,
+    search_symbols_linear as _search_symbols_linear,
+)
 from ._ast_cache_helpers import (
     _build_function_entry,
     _make_error_entry,
@@ -398,9 +410,7 @@ class ASTCache:
         _clear_activation_for_file_fn(conn, rel_path)
 
     def lookup(self, file_path: str) -> dict[str, Any] | None:
-        from . import _ast_cache_query as _query
-
-        return _query.lookup(self._get_conn(), file_path, self.project_root)
+        return _lookup(self._get_conn(), file_path, self.project_root)
 
     def search_symbols(
         self, query: str, language: str | None = None
@@ -418,9 +428,7 @@ class ASTCache:
     ) -> list[dict[str, Any]]:
         if not self._fts5_available:
             return self._search_symbols_linear(query, language)
-        from . import _ast_cache_query as _query
-
-        return _query.fts_search(self._get_conn(), query, language, limit)
+        return _fts_search(self._get_conn(), query, language, limit)
 
     def fts_search_ranked(
         self,
@@ -435,26 +443,18 @@ class ASTCache:
         """
         if not self._fts5_available or len(query) < 2:
             return self._search_symbols_linear(query, language)
-        from . import _ast_cache_query as _query
-
-        return _query.fts_search_ranked(self._get_conn(), query, language, limit)
+        return _fts_search_ranked(self._get_conn(), query, language, limit)
 
     def _search_symbols_linear(
         self, query: str, language: str | None = None
     ) -> list[dict[str, Any]]:
-        from . import _ast_cache_query as _query
-
-        return _query.search_symbols_linear(self._get_conn(), query, language)
+        return _search_symbols_linear(self._get_conn(), query, language)
 
     def get_stats(self) -> dict[str, Any]:
-        from . import _ast_cache_query as _query
-
-        return _query.get_stats(self._get_conn(), self._fts5_available, self.db_path)
+        return _get_stats(self._get_conn(), self._fts5_available, self.db_path)
 
     def invalidate(self, file_path: str) -> bool:
-        from . import _ast_cache_query as _query
-
-        return _query.invalidate(
+        return _invalidate(
             self._get_conn(), file_path, self.project_root, self._fts5_available
         )
 
@@ -569,9 +569,7 @@ class ASTCache:
         max_depth: int = 1,
     ) -> list[dict[str, Any]]:
         """Enhanced callers lookup with cross-file import resolution."""
-        from . import _ast_cache_query as _query
-
-        return _query.query_callers_enhanced(self, callee_name, callee_file, max_depth)
+        return _query_callers_enhanced(self, callee_name, callee_file, max_depth)
 
     def query_callees_enhanced(
         self,
@@ -580,21 +578,15 @@ class ASTCache:
         max_depth: int = 1,
     ) -> list[dict[str, Any]]:
         """Enhanced callees lookup with cross-file import resolution."""
-        from . import _ast_cache_query as _query
-
-        return _query.query_callees_enhanced(self, caller_name, caller_file, max_depth)
+        return _query_callees_enhanced(self, caller_name, caller_file, max_depth)
 
     def backfill_cross_file_edges(self) -> dict[str, Any]:
         """Resolve cross-file call edges and persist callee_resolved_file."""
-        from . import _ast_cache_query as _query
-
-        return _query.backfill_cross_file_edges(self, self._get_conn())
+        return _backfill_cross_file_edges(self, self._get_conn())
 
     def get_cross_file_stats(self) -> dict[str, Any]:
         """Return cross-file edge resolution statistics."""
-        from . import _ast_cache_query as _query
-
-        return _query.get_cross_file_stats(self._get_conn())
+        return _get_cross_file_stats(self._get_conn())
 
     def close(self) -> None:
         conn = getattr(self._local, "conn", None)

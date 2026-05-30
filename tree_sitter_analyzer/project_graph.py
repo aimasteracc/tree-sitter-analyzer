@@ -406,9 +406,7 @@ class DependencyGraph:
             os.stat(project_root)
         except OSError:
             return None
-        # Local import to avoid a hard dependency cycle (mcp.tools imports
-        # project_graph, so we can't import it at module level).
-        from .mcp.tools._graph_cache_fingerprint import compute_graph_fingerprint
+        from ._graph_cache_fingerprint import compute_graph_fingerprint
 
         fp = compute_graph_fingerprint(project_root)
         return f"{project_root}:{fp.file_count}:{fp.max_mtime_ns}"
