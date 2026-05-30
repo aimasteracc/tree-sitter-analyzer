@@ -60,6 +60,7 @@ All tools default to **TOON output** (locked — see `CLAUDE.md`).
 | `codegraph_sitemap` | `--codegraph-sitemap` | Hierarchical project code map |
 | `codegraph_complexity_heatmap` | `--codegraph-complexity-heatmap` | Cyclomatic complexity heatmap (per fn + project) |
 | `codegraph_class_hierarchy` | `--class-hierarchy` | Class inheritance hierarchy |
+| `codegraph_class_inspect` | `--class-inspect` | Inspect class methods with override detection |
 | `codegraph_dependency_matrix` | `--dependency-matrix` | Module coupling matrix |
 | `codegraph_import_graph` | `--import-graph` | File-level import dependency graph |
 | `codegraph_xref` | `--codegraph-xref` | Multi-dimension cross-reference from AST cache |

@@ -95,6 +95,7 @@ Categories of CLI surface:
 - `--dead-code` — transitive dead functions / unused imports
 - `--doc-sync` — scan markdown docs for stale file-path references (add `--doc-sync-patterns GLOB...` to scope)
 - `--class-hierarchy` / `--dependency-matrix` / `--import-graph` — structural
+- `--class-inspect CLASS_NAME` — list all methods defined directly on a class with override detection (`is_override`, `overrides_from`)
 - `--codegraph-xref` — multi-dimension cross-reference
 - `--codegraph-complexity-heatmap` — cyclomatic complexity heatmap
 - `--codegraph-sitemap` — hierarchical project code map
