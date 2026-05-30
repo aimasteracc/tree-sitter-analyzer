@@ -15,6 +15,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from tests.unit.grammar_coverage.conftest import _make_parser_mock
+
 _PM_PATCH = "tree_sitter_analyzer.plugins.manager.PluginManager"
 _PARSER_PATCH = "tree_sitter_analyzer.language_loader.loader.create_parser_safely"
 
@@ -42,13 +44,6 @@ def _make_empty_plugin_mock() -> MagicMock:
     manager = MagicMock()
     manager.get_plugin.return_value = plugin
     return manager
-
-
-def _make_parser_mock(tree: MagicMock) -> MagicMock:
-    """Return a mock parser that returns *tree* from parse()."""
-    parser = MagicMock()
-    parser.parse.return_value = tree
-    return parser
 
 
 class TestBoundaryCases:
