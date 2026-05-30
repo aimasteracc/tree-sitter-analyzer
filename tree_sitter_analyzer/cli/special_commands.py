@@ -45,6 +45,7 @@ def handle_special_commands(
         lambda: _handle_codegraph_metrics(args, context),
         lambda: _handle_incremental_sync(args, context),
         lambda: _handle_affected(args, context),
+        lambda: _handle_watch_health(args, context),
         lambda: _handle_mcp_commands(args, context),
         lambda: _validate_partial_read_options(args, context.output_error),
         lambda: _handle_query_language_commands(args, context),
@@ -439,6 +440,39 @@ def _handle_affected(
     from .commands.affected_command import run_affected
 
     return run_affected(args, context.output_error)
+
+
+def _handle_watch_health(
+    args: Any,
+    context: SpecialCommandContext,
+) -> int | None:
+    """Start the health-grade watching daemon (--watch-health)."""
+    if not getattr(args, "watch_health", False):
+        return None
+    from tree_sitter_analyzer.health_homeostasis import run_watch_health
+
+    project_root = getattr(args, "project_root", None) or os.getcwd()
+    notify_channels = [
+        ch.strip()
+        for ch in (getattr(args, "notify_channel", None) or "stdout").split(",")
+        if ch.strip()
+    ]
+    try:
+        return run_watch_health(
+            project_root=project_root,
+            threshold_grade=getattr(args, "threshold_grade", "C"),
+            interval=float(getattr(args, "watch_interval", 300)),
+            debounce=float(getattr(args, "watch_debounce", 5.0)),
+            cooldown=float(getattr(args, "watch_cooldown", 120.0)),
+            history_keep=int(getattr(args, "history_keep", 50)),
+            notify_channels=notify_channels,
+            notify_file=getattr(args, "notify_file", None),
+            on_degradation=getattr(args, "on_degradation", None),
+            webhook_url=getattr(args, "notify_webhook", None),
+            backend=getattr(args, "watch_backend", "poll"),
+        )
+    except KeyboardInterrupt:
+        return 0
 
 
 def _handle_mcp_commands(
