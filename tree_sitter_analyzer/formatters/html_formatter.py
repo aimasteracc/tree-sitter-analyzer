@@ -10,6 +10,7 @@ import json
 from typing import Any
 
 from ..models import CodeElement, MarkupElement, StyleElement
+from ._formatter_interface import IFormatter
 from ._html_classification_helpers import classify_html_elements
 from ._html_compact_formatter_helpers import format_compact_html
 from ._html_csv_formatter_helpers import format_html_csv
@@ -22,7 +23,6 @@ from ._html_formatter_helpers import (
 )
 from ._html_json_formatter_helpers import build_html_json_result
 from .base_formatter import BaseFormatter
-from .formatter_registry import IFormatter
 
 
 class HtmlFormatter(BaseFormatter, IFormatter):

@@ -29,6 +29,19 @@ Output formats supported by both CLI and MCP. Located in `tree_sitter_analyzer/f
 
 **Do NOT propose flipping MCP default from `toon` to `json`** — the cost analysis is settled.
 
+## Formatter Interfaces
+
+Interfaces live in `formatters/_formatter_interface.py` (no upward imports — breaks cycle):
+
+| Interface | Implementors | Purpose |
+|---|---|---|
+| `IFormatter` | `HtmlFormatter`, `JsonFormatter`, `CsvFormatter`, … | `format(elements)` → str |
+| `IStructureFormatter` | legacy adapters | `format_structure(dict)` → str |
+
+`formatter_registry.py` re-exports both for backward compat.
+`html_formatter.py` imports directly from `_formatter_interface.py` to avoid the
+`formatter_registry ↔ html_formatter` import cycle (fixed 2026-05-30).
+
 ## Formatter Architecture
 
 Each formatter inherits from `formatters/base_formatter.py`:
