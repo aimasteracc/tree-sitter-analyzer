@@ -312,37 +312,11 @@ CREATE TABLE `user-data` (
 
 
 class TestSQLPluginMethods:
-    """Test SQLPlugin methods."""
+    """Test SQLPlugin-specific behavior (basic contracts covered by TestBasePluginContract)."""
 
     @pytest.fixture
     def plugin(self):
         return SQLPlugin()
-
-    def test_get_language_name(self, plugin):
-        """Test language name."""
-        assert plugin.get_language_name() == "sql"
-
-    def test_get_file_extensions(self, plugin):
-        """Test file extensions."""
-        extensions = plugin.get_file_extensions()
-        assert ".sql" in extensions
-
-    def test_is_applicable(self, plugin):
-        """Test file applicability."""
-        assert plugin.is_applicable("test.sql")
-        assert plugin.is_applicable("TEST.SQL")
-        assert not plugin.is_applicable("test.py")
-
-    def test_get_plugin_info(self, plugin):
-        """Test plugin info."""
-        info = plugin.get_plugin_info()
-        assert info["language"] == "sql"
-        assert ".sql" in info["extensions"]
-
-    def test_create_extractor(self, plugin):
-        """Test extractor creation."""
-        extractor = plugin.create_extractor()
-        assert isinstance(extractor, SQLElementExtractor)
 
     def test_extract_elements_none_tree(self, plugin):
         """Test with None tree."""

@@ -190,6 +190,8 @@ class MarkdownPlugin(LanguagePlugin):
             "name": "Markdown Plugin",
             "language": self.get_language_name(),
             "extensions": self.get_file_extensions(),
+            "class_name": self.__class__.__name__,
+            "module": self.__class__.__module__,
             "version": "1.0.0",
             "supported_queries": self.get_supported_queries(),
             "features": [
