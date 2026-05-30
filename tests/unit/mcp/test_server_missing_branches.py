@@ -235,7 +235,10 @@ class TestCreateServerToolHandlers:
         from tree_sitter_analyzer.mcp.server import TreeSitterAnalyzerMCPServer
 
         server = TreeSitterAnalyzerMCPServer(project_root=str(tmp_path))
-        assert str(tmp_path) in str(server.analysis_engine) or server.analysis_engine is not None
+        assert (
+            str(tmp_path) in str(server.analysis_engine)
+            or server.analysis_engine is not None
+        )
 
     def test_set_project_path_reinit(self, tmp_path):
         from tree_sitter_analyzer.mcp.server import TreeSitterAnalyzerMCPServer
