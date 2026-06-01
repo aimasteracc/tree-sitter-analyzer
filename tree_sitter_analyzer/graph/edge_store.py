@@ -69,7 +69,8 @@ class Subgraph:
         }
 
 
-EDGE_STORE_SCHEMA = """
+EDGE_STORE_SCHEMA_STATEMENTS: tuple[str, ...] = (
+    """
 CREATE TABLE IF NOT EXISTS edges (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     source_node_id TEXT NOT NULL,
@@ -79,17 +80,14 @@ CREATE TABLE IF NOT EXISTS edges (
     provenance TEXT DEFAULT 'tree-sitter',
     metadata TEXT,
     UNIQUE(source_node_id, target_node_id, kind, line)
-);
+)
+""".strip(),
+    "CREATE INDEX IF NOT EXISTS idx_edges_source_kind ON edges(source_node_id, kind)",
+    "CREATE INDEX IF NOT EXISTS idx_edges_target_kind ON edges(target_node_id, kind)",
+    "CREATE INDEX IF NOT EXISTS idx_edges_kind ON edges(kind)",
+)
 
-CREATE INDEX IF NOT EXISTS idx_edges_source_kind
-    ON edges(source_node_id, kind);
-
-CREATE INDEX IF NOT EXISTS idx_edges_target_kind
-    ON edges(target_node_id, kind);
-
-CREATE INDEX IF NOT EXISTS idx_edges_kind
-    ON edges(kind);
-"""
+EDGE_STORE_SCHEMA = ";\n\n".join(EDGE_STORE_SCHEMA_STATEMENTS) + ";"
 
 
 class EdgeStore:
@@ -109,8 +107,9 @@ class EdgeStore:
         return self._conn
 
     def ensure_schema(self) -> None:
-        self._conn.executescript(EDGE_STORE_SCHEMA)
-        self._conn.commit()
+        for statement in EDGE_STORE_SCHEMA_STATEMENTS:
+            self._conn.execute(statement)
+        self._commit_if_owned()
 
     def close(self) -> None:
         if self._owns_conn:
@@ -142,7 +141,11 @@ class EdgeStore:
                     json.dumps(edge.metadata, ensure_ascii=False, sort_keys=True),
                 ),
             )
-        self._conn.commit()
+        self._commit_if_owned()
+
+    def _commit_if_owned(self) -> None:
+        if self._owns_conn:
+            self._conn.commit()
 
     def get_edges(
         self,
