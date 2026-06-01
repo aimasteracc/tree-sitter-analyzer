@@ -120,6 +120,11 @@ def parse_and_write(
         else []
     )
     _write.write_call_edges(conn, rel_path, language, call_edges)
+    from . import _ast_cache_unresolved as _unresolved
+
+    _unresolved.write_unresolved_refs_for_file(
+        conn, rel_path, language, symbols, call_edges
+    )
     cache._write_imports_for_file(conn, rel_path, language, imports)  # noqa: SLF001
     cache._write_activation_for_file(conn, rel_path, inserted)  # noqa: SLF001
     cache._resolve_call_edges_for_file(conn, rel_path)  # noqa: SLF001
@@ -236,6 +241,11 @@ def insert_index_row(
     imports_list = json.loads(r.get("imports_json", "[]"))
     cache._write_imports_for_file(conn, rel_path, r["language"], imports_list)  # noqa: SLF001
     symbols = json.loads(r.get("symbols_json", "{}"))
+    from . import _ast_cache_unresolved as _unresolved
+
+    _unresolved.write_unresolved_refs_for_file(
+        conn, rel_path, r["language"], symbols, call_edges
+    )
     _write.write_graph_edges_for_file(
         conn, rel_path, r["language"], symbols, imports_list, call_edges
     )

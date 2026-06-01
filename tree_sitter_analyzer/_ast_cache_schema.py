@@ -278,6 +278,37 @@ def apply_migration_v8(conn: sqlite3.Connection, record_fn: RecordFn) -> None:
         pass
 
 
+SCHEMA_V9_UNRESOLVED_REFS = """
+CREATE TABLE IF NOT EXISTS unresolved_refs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    from_node_id TEXT NOT NULL,
+    reference_name TEXT NOT NULL,
+    reference_kind TEXT NOT NULL,
+    file_path TEXT NOT NULL,
+    line INTEGER,
+    candidates TEXT,
+    resolved INTEGER DEFAULT 0,
+    UNIQUE(from_node_id, reference_name, reference_kind, line)
+);
+
+CREATE INDEX IF NOT EXISTS idx_unresolved_name
+    ON unresolved_refs(reference_name);
+
+CREATE INDEX IF NOT EXISTS idx_unresolved_resolved
+    ON unresolved_refs(resolved);
+"""
+
+
+def apply_migration_v9(conn: sqlite3.Connection, record_fn: RecordFn) -> None:
+    """Create ``unresolved_refs`` table (v9 — cross-file second pass)."""
+    try:
+        conn.executescript(SCHEMA_V9_UNRESOLVED_REFS)
+        record_fn(conn, 9, "Unresolved reference backfill")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass
+
+
 # ---------------------------------------------------------------------------
 # Schema DDL constants V1 and V2 (moved from ast_cache.py)
 # ---------------------------------------------------------------------------
@@ -427,6 +458,22 @@ EXPECTED_SCHEMA_VERSIONS: list[Any] = [
                 "line",
                 "provenance",
                 "metadata",
+            ],
+        },
+    ),
+    (
+        9,
+        "Unresolved reference backfill",
+        {
+            "tables": ["unresolved_refs"],
+            "unresolved_refs_columns": [
+                "from_node_id",
+                "reference_name",
+                "reference_kind",
+                "file_path",
+                "line",
+                "candidates",
+                "resolved",
             ],
         },
     ),
