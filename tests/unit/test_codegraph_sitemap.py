@@ -1,6 +1,6 @@
 """Tests for codegraph_sitemap MCP tool and CLI parity."""
 
-import contextlib
+import json
 import sys
 from io import StringIO
 
@@ -141,7 +141,7 @@ class TestSitemapTool:
 
 
 class TestSitemapCLI:
-    def test_cli_smoke(self, indexed_project, monkeypatch):
+    def _run_cli(self, indexed_project, monkeypatch, mode):
         from tree_sitter_analyzer.cli_main import main
 
         monkeypatch.setattr(
@@ -149,57 +149,35 @@ class TestSitemapCLI:
             "argv",
             [
                 "tsa",
+                "--project-root",
                 str(indexed_project),
                 "--codegraph-sitemap",
                 "--codegraph-sitemap-mode",
-                "flat",
+                mode,
                 "--format",
                 "json",
             ],
         )
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
-        with contextlib.suppress(SystemExit):
+        with pytest.raises(SystemExit) as exc_info:
             main()
+        assert exc_info.value.code == 0
+        return json.loads(mock_stdout.getvalue())
+
+    def test_cli_smoke(self, indexed_project, monkeypatch):
+        result = self._run_cli(indexed_project, monkeypatch, "flat")
+        assert result["success"] is True
+        assert result["file_count"] == 3
+        assert result["counts"].get("function", 0) > 0
 
     def test_cli_api_mode(self, indexed_project, monkeypatch):
-        from tree_sitter_analyzer.cli_main import main
-
-        monkeypatch.setattr(
-            sys,
-            "argv",
-            [
-                "tsa",
-                str(indexed_project),
-                "--codegraph-sitemap",
-                "--codegraph-sitemap-mode",
-                "api",
-                "--format",
-                "json",
-            ],
-        )
-        mock_stdout = StringIO()
-        monkeypatch.setattr("sys.stdout", mock_stdout)
-        with contextlib.suppress(SystemExit):
-            main()
+        result = self._run_cli(indexed_project, monkeypatch, "api")
+        assert result["success"] is True
+        names = {item["name"] for item in result["public_api"]}
+        assert "public_func" in names
 
     def test_cli_module_mode(self, indexed_project, monkeypatch):
-        from tree_sitter_analyzer.cli_main import main
-
-        monkeypatch.setattr(
-            sys,
-            "argv",
-            [
-                "tsa",
-                str(indexed_project),
-                "--codegraph-sitemap",
-                "--codegraph-sitemap-mode",
-                "module",
-                "--format",
-                "json",
-            ],
-        )
-        mock_stdout = StringIO()
-        monkeypatch.setattr("sys.stdout", mock_stdout)
-        with contextlib.suppress(SystemExit):
-            main()
+        result = self._run_cli(indexed_project, monkeypatch, "module")
+        assert result["success"] is True
+        assert any("app" in module["directory"] for module in result["modules"])
