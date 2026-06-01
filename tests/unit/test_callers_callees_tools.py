@@ -73,9 +73,10 @@ class TestCodeGraphCallersTool:
         assert result["success"] is True
 
     @pytest.mark.asyncio
-    async def test_execute_toon_format(self, callers_tool):
+    async def test_execute_toon_format(self, tiny_project_root):
+        callers_tool = CodeGraphCallersTool(tiny_project_root)
         result = await callers_tool.execute(
-            {"function_name": "main", "output_format": "toon"}
+            {"function_name": "bar", "output_format": "toon"}
         )
         assert result["success"] is True
 
@@ -131,9 +132,10 @@ class TestCodeGraphCalleesTool:
         assert result["success"] is True
 
     @pytest.mark.asyncio
-    async def test_execute_toon_format(self, callees_tool):
+    async def test_execute_toon_format(self, tiny_project_root):
+        callees_tool = CodeGraphCalleesTool(tiny_project_root)
         result = await callees_tool.execute(
-            {"function_name": "main", "output_format": "toon"}
+            {"function_name": "foo", "output_format": "toon"}
         )
         assert result["success"] is True
 
