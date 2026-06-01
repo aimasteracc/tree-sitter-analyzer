@@ -17,6 +17,10 @@ class VersionSynchronizer:
         self.version_patterns = {
             "pyproject.toml": [
                 (r'version = "(\d+\.\d+\.\d+)"', 'version = "{version}"'),
+                (
+                    r'server_version = "(\d+\.\d+\.\d+)"',
+                    'server_version = "{version}"',
+                ),
             ],
             "README.md": [
                 (r"version-(\d+\.\d+\.\d+)-blue\.svg", "version-{version}-blue.svg"),
@@ -119,16 +123,18 @@ class VersionSynchronizer:
         inconsistent_files = []
 
         for file_name, patterns in self.version_patterns.items():
-            if file_name == "pyproject.toml":  # Skip the reference file
-                continue
-
             file_path = self.project_root / file_name
             if not file_path.exists():
                 continue
 
             content = file_path.read_text(encoding="utf-8")
+            patterns_to_check = (
+                patterns[1:] if file_name == "pyproject.toml" else patterns
+            )
+            if not patterns_to_check:
+                continue
 
-            for pattern, _ in patterns:
+            for pattern, _ in patterns_to_check:
                 matches = re.findall(pattern, content)
                 for match in matches:
                     found_version = (
