@@ -43,6 +43,7 @@ def create_tool_registry(
     from .tools.class_inspect_tool import ClassInspectTool
     from .tools.code_patterns_tool import CodePatternsTool
     from .tools.code_similarity_tool import CodeGraphSimilarityTool
+    from .tools.codegraph_context_tool import CodeGraphContextTool
     from .tools.codegraph_explore_tool import CodeGraphExploreTool
     from .tools.codegraph_impact_tool import CodeGraphImpactTool
     from .tools.codegraph_metrics_tool import CodeGraphMetricsTool
@@ -115,6 +116,7 @@ def create_tool_registry(
         ("codegraph_callees", CodeGraphCalleesTool(project_root)),
         ("codegraph_call_path", CodeGraphCallPathTool(project_root)),
         ("codegraph_ast_path", CodeGraphASTPathTool(project_root)),
+        ("codegraph_context", CodeGraphContextTool(project_root)),
         ("codegraph_symbol_search", CodeGraphSymbolSearchTool(project_root)),
         ("codegraph_resolve", CodeGraphSymbolResolveTool(project_root)),
         ("codegraph_impact", CodeGraphImpactTool(project_root)),

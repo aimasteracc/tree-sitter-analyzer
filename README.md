@@ -3,9 +3,9 @@
 **English** | **[日本語](README_ja.md)** | **[简体中文](README_zh.md)**
 
 > **The MCP code-intelligence server for AI agents — fewer tokens, fewer tool calls, 100 % local.**
-> Pre-indexed AST cache + 62 MCP tools + 13 curated agent skills + TOON-compressed output.
+> Pre-indexed AST cache + 63 MCP tools + 13 curated agent skills + TOON-compressed output.
 > Beats CodeGraph on 6-repo head-to-head median (**−11 % cost vs CodeGraph's −4 %**), with a strict CLI superset.
-> Now with **BM25-ranked symbol search** across all 62 tools — results sorted by relevance, not file path.
+> Now with **BM25-ranked symbol search** across all 63 tools — results sorted by relevance, not file path.
 
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
@@ -112,9 +112,9 @@ CodeGraph has zero skills. We ship 13 under `.claude/skills/tsa-*/`:
 
 `tsa-landing`, `tsa-find`, `tsa-graph`, `tsa-structure`, `tsa-deps`, `tsa-index`, `tsa-health-watch`, `tsa-edit-safety`, `tsa-edit-then-verify`, `tsa-constraints`, `tsa-pr-review`, `tsa-refactor-queue`, `tsa-temporal`.
 
-Each skill ships an `allowed-tools` subset + procedure recipe + decision-surface schema, so the agent doesn't have to triage 62 tools on every question.
+Each skill ships an `allowed-tools` subset + procedure recipe + decision-surface schema, so the agent doesn't have to triage 63 tools on every question.
 
-### 255 CLI flags
+### 258 CLI flags
 
 Strict superset of CodeGraph's 15-command CLI. Highlights:
 
@@ -188,7 +188,7 @@ Source code → tree-sitter parse → SQLite + FTS5 index (.ast-cache/index.db)
                               MCP client / CLI consumer
 ```
 
-The index is built lazily on first query, refreshed on file change via a content-hash diff (`codegraph_incremental_sync`). All 62 tools read from the same `.ast-cache/`, so a query and its follow-up share work.
+The index is built lazily on first query, refreshed on file change via a content-hash diff (`codegraph_incremental_sync`). All 63 tools read from the same `.ast-cache/`, so a query and its follow-up share work.
 
 ---
 

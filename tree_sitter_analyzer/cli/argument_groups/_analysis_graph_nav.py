@@ -103,6 +103,26 @@ def _add_mcp_graph_nav_options(parser: argparse.ArgumentParser) -> None:
         help="Skip lag computation in --codegraph-status (faster on huge repos)",
     )
     parser.add_argument(
+        "--codegraph-context",
+        metavar="TASK",
+        help=(
+            "One-call architecture context: entry points, graph nodes, edges, "
+            "and source blocks for a natural-language task"
+        ),
+    )
+    parser.add_argument(
+        "--codegraph-context-max-nodes",
+        type=int,
+        default=30,
+        help="Max nodes returned for --codegraph-context (default: 30)",
+    )
+    parser.add_argument(
+        "--codegraph-context-max-code-blocks",
+        type=int,
+        default=8,
+        help="Max source snippets returned for --codegraph-context (default: 8)",
+    )
+    parser.add_argument(
         "--codegraph-explore",
         metavar="QUERY",
         help="Bulk-fetch N related symbols' source + relationship map in one call. "

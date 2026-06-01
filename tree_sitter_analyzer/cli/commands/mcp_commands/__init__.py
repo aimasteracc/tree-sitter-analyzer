@@ -74,6 +74,9 @@ from tree_sitter_analyzer.mcp.tools.code_patterns_tool import (
 from tree_sitter_analyzer.mcp.tools.code_similarity_tool import (
     CodeGraphSimilarityTool,  # noqa: F401
 )
+from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+    CodeGraphContextTool,  # noqa: F401
+)
 from tree_sitter_analyzer.mcp.tools.codegraph_explore_tool import (
     CodeGraphExploreTool,  # noqa: F401
 )
@@ -212,6 +215,7 @@ _TOOL_CLASS_NAMES: frozenset[str] = frozenset(
         "CodeGraphPRReviewTool",
         "CodeGraphNavigateTool",
         "CodeGraphStatusTool",
+        "CodeGraphContextTool",
         "CodeGraphExploreTool",
         "CodeGraphQueryTool",
         "CodeGraphImportGraphTool",
