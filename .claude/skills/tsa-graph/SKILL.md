@@ -18,6 +18,7 @@ description: |
   Replaces: grep + read + manual chain-following (~10-30k tokens) with
   2-4 MCP calls (~1-3k tokens).
 allowed-tools:
+  - mcp__tree-sitter-analyzer__codegraph_context
   - mcp__tree-sitter-analyzer__codegraph_query
   - mcp__tree-sitter-analyzer__codegraph_callees
   - mcp__tree-sitter-analyzer__codegraph_callers

@@ -344,6 +344,7 @@ class TestExecuteAcrossAllTools:
             "codegraph_metrics": {"mode": "project"},
             "codegraph_incremental_sync": {"mode": "status"},
             "codegraph_status": {},
+            "codegraph_context": {"task": "greet", "output_format": "json"},
             "codegraph_explore": {"query": "greet"},
             "codegraph_query": {"query": "search('greet').explore()"},
             # consolidated-only tools ported during merge of feat/autonomous-dev

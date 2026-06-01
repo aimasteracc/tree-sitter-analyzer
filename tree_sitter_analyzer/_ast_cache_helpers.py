@@ -63,3 +63,28 @@ def _process_one_index_result(
 
 def _make_error_entry(rel_path: str, reason: str) -> dict[str, Any]:
     return {"file": rel_path, "status": "error", "reason": reason}
+
+
+def _commit_index_results(
+    conn: Any,
+    results: list[dict[str, Any]],
+    stats: dict[str, Any],
+    insert_fn: Any,
+    indexed_at: str,
+    activation_enabled: bool,
+) -> None:
+    """Commit all worker results to the DB in a single transaction.
+
+    Iterates *results*, accumulates into *stats* via ``_process_one_index_result``,
+    and rolls back the entire batch on any exception.
+    """
+    conn.execute("BEGIN")
+    try:
+        for r in results:
+            _process_one_index_result(
+                r, stats, insert_fn, indexed_at, activation_enabled
+            )
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise

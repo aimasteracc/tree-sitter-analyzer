@@ -49,7 +49,7 @@ jobs:
     needs: [test, build, publish]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -58,6 +58,27 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+          existing_pr=$(
+            gh pr list \
+              --base main \
+              --head "${GITHUB_REF_NAME}" \
+              --state all \
+              --json number,state,url,mergedAt \
+              --jq '. as $prs | if length == 0 then empty else (sort_by(.number) | reverse | .[0] | [.number, .state, .url, (.mergedAt // "")] | @tsv) end'
+          )
+          if [ -n "${existing_pr}" ]; then
+            IFS=$'\t' read -r pr_number pr_state pr_url pr_merged_at <<< "${existing_pr}"
+            if [ "${pr_state}" = "OPEN" ]; then
+              echo "Release PR already open: ${pr_url}"
+              exit 0
+            fi
+            if [ "${pr_state}" = "MERGED" ] || [ -n "${pr_merged_at}" ]; then
+              echo "Release PR already merged: ${pr_url}"
+              exit 0
+            fi
+            echo "::error::Existing release PR #${pr_number} for ${GITHUB_REF_NAME} -> main is closed without merge: ${pr_url}. Reopen or use a new release version; refusing to treat finalization as successful."
+            exit 1
+          fi
           gh pr create \
             --base main \
             --head "${GITHUB_REF_NAME}" \
@@ -76,5 +97,4 @@ jobs:
           - **Deployment**: Completed
 
           ---
-          *Authoritative CI/CD Pipeline*" \
-            || gh pr view "${GITHUB_REF_NAME}" --json url --jq '.url'
+          *Authoritative CI/CD Pipeline*"

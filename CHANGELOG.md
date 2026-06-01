@@ -1,5 +1,48 @@
 # Changelog
 
+## [1.18.0] - 2026-06-01
+
+GitFlow-compliant production release for the post-v1.17 development line.
+This supersedes the unlanded v1.17.4 production attempt: v1.17.4 reached PyPI,
+but PR #228 was closed without merging to `main`. v1.18.0 carries the work
+forward with a guarded release finalization workflow.
+
+### Added
+
+- **`codegraph_context` MCP/CLI workflow** (`#234`). Agents now have a primary
+  one-call architecture context path for natural-language tasks, including entry
+  points, source blocks, and graph relationships.
+- **MCP initialize routing instructions** (`#231`). The server now gives clients
+  clearer startup/tool-routing guidance during initialization.
+
+### Improved
+
+- **Headless MCP startup latency** (`#235`). Top-level package exports are now
+  lazy, avoiding analysis-engine imports during stdio server startup while
+  preserving legacy import compatibility.
+- **Dependabot now targets `develop`** (`#236`). The pip and GitHub Actions
+  update streams follow the project GitFlow matrix instead of opening bot PRs
+  directly to `main`.
+
+### Fixed
+
+- **Release/hotfix finalization no longer masks closed PRs** (`#237`). The
+  automation now treats an existing open or merged finalization PR as
+  idempotent, but fails on closed-unmerged PRs instead of falling through to
+  `gh pr view` and reporting a false green release.
+- **Release version metadata synchronized**. Package version,
+  `tree_sitter_analyzer.__version__`, and `[tool.mcp].server_version` are all
+  aligned for this release and guarded by an agent contract test.
+
+### Validation
+
+- Local full suite: `17456 passed, 92 skipped` (51.54 s on macOS).
+- Release-finalization fix PR #237 CI passed: GitFlow Guard, PR fast matrix,
+  MCP black-box E2E, SQL platform compatibility, regression tests, build,
+  quality gate, and Codecov patch.
+
+---
+
 ## [1.16.0] - 2026-05-30
 
 BM25 ranked search, C# language support, and code-intelligence architecture

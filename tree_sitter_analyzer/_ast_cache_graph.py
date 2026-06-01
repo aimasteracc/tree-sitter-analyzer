@@ -63,15 +63,29 @@ def _fetch_callee_rows(
     name: str,
     file_: str | None,
 ) -> list[Any]:
-    """Return rows where *name*/*file_* is the caller (i.e. rows with callees)."""
+    """Return rows where *name*/*file_* is the caller (i.e. rows with callees).
+
+    The edge table stores ``caller_name`` as a bare method name without class
+    prefix. When a qualified name like ``"Client.get"`` is supplied, strip the
+    class part so the lookup matches the stored bare name.  This mirrors the
+    ``callee_full`` fallback that ``_fetch_caller_rows`` uses for the reverse
+    direction.
+    """
+    bare = name.split(".")[-1] if "." in name else name
     if file_:
-        return conn.execute(
+        rows = conn.execute(
             _EDGE_SELECT + "WHERE caller_name = ? AND caller_file = ?",
-            (name, file_),
+            (bare, file_),
         ).fetchall()
+        if not rows:
+            rows = conn.execute(
+                _EDGE_SELECT + "WHERE caller_name = ?",
+                (bare,),
+            ).fetchall()
+        return rows
     return conn.execute(
         _EDGE_SELECT + "WHERE caller_name = ?",
-        (name,),
+        (bare,),
     ).fetchall()
 
 

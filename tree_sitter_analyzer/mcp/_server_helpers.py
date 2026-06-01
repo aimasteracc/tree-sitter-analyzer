@@ -40,7 +40,45 @@ def build_initialization_options(
         server_name=server_name,
         server_version=server_version,
         capabilities=capabilities,
+        instructions=_SERVER_INSTRUCTIONS,
     )
+
+
+_SERVER_INSTRUCTIONS = """
+## TSA MCP Routing
+
+Use the codegraph tools first for code-intelligence questions. They are built
+for indexed, cross-file answers and are usually cheaper than grep/read loops.
+
+## Intent -> first tool
+
+| Intent | Tool |
+| --- | --- |
+| Understand an area or trace a flow from a task description | codegraph_context |
+| Find a symbol, class, function, or method | codegraph_symbol_search |
+| Inspect a symbol with definition and references | codegraph_navigate |
+| Understand several related symbols at once | codegraph_explore |
+| Who calls X? | codegraph_callers |
+| What does X call? | codegraph_callees |
+| Trace a path from A to B | codegraph_call_graph |
+| File/module dependency questions | codegraph_import_graph |
+| Is the index ready? | codegraph_status |
+| File discovery | list_files |
+| Text search fallback after graph lookup misses | search_content |
+
+## Default chains
+
+- Understand an area: codegraph_context first; then answer from code_blocks.
+- Trace a flow: codegraph_context first; use callers/callees only for a missing edge.
+- Trace impact: codegraph_callers -> codegraph_import_graph -> synthesize.
+- Unknown name: codegraph_symbol_search with a fuzzy query once, then stop.
+
+## Stop rules
+
+- Prefer 2-3 tool calls, then answer.
+- Do not keep drilling after 4 tool calls for one question.
+- Do not use grep/read loops when a codegraph tool covers the question.
+""".strip()
 
 
 def attach_tool_aliases(target: Any, tools: Mapping[str, Any]) -> None:

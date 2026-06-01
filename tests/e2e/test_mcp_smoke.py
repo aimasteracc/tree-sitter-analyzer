@@ -58,6 +58,45 @@ class TestStartup:
             "'-32601 Method not found' error on every connect."
         )
 
+    def test_initialize_includes_agent_routing_instructions(
+        self, mcp_server: MCPClient
+    ) -> None:
+        """The initialize response should steer agents before any tool call."""
+        response = mcp_server.initialize()
+        assert "error" not in response
+        instructions = response["result"].get("instructions")
+        assert instructions
+        assert "TSA MCP Routing" in instructions
+        assert "codegraph_context" in instructions
+        assert "codegraph_symbol_search" in instructions
+        assert "codegraph_navigate" in instructions
+
+    def test_repeated_headless_initialize_stays_under_budget(
+        self, mcp_server_factory: Any
+    ) -> None:
+        """Repeated stdio spawn→initialize should not leave clients pending."""
+        import time
+
+        elapsed_samples: list[float] = []
+        for _ in range(5):
+            client = mcp_server_factory(REPO_ROOT)
+            started = time.monotonic()
+            response = client.initialize(timeout=10.0 * _CI_FACTOR)
+            elapsed = time.monotonic() - started
+            client.terminate()
+            assert "error" not in response, (
+                f"initialize returned an error: {response.get('error')!r}\n"
+                f"stderr:\n{client.stderr_text()}"
+            )
+            elapsed_samples.append(elapsed)
+
+        budget_sec = 2.0 * _CI_FACTOR
+        assert max(elapsed_samples) < budget_sec, (
+            "MCP spawn→initialize exceeded the headless startup budget: "
+            f"{[round(sample, 3) for sample in elapsed_samples]} "
+            f"(budget {budget_sec:.1f}s)"
+        )
+
     def test_tools_list_returns_expected_minimum(self, mcp_server: MCPClient) -> None:
         """All of TSA's primary tools must be discoverable.
 
