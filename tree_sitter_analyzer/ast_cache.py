@@ -44,6 +44,7 @@ from ._ast_cache_schema import (
     apply_migration_v6 as _apply_migration_v6,
     apply_migration_v7 as _apply_migration_v7,
     apply_migration_v8 as _apply_migration_v8,
+    apply_migration_v9 as _apply_migration_v9,
     backfill_schema_version_row as _backfill_schema_version_row,
     check_schema_expectations as _check_schema_expectations,
     clear_activation_for_file as _clear_activation_for_file_fn,
@@ -136,6 +137,7 @@ class ASTCache:
             (6, _apply_migration_v6),
             (7, _apply_migration_v7),
             (8, _apply_migration_v8),
+            (9, _apply_migration_v9),
         ]
         self._fts5_available = _schema_init_db(
             conn, self._fts5_available, _has_fts5, migrations
@@ -283,6 +285,8 @@ class ASTCache:
         activation_enabled = _project_index_activation_enabled(include_activation)
         if resolve_only:
             synapse = self._run_synapse_backfill()
+            edge_store_refresh = self._refresh_graph_edges_from_cache()
+            unresolved = self._run_unresolved_refs_backfill()
             return {
                 "mode_used": "resolve_only",
                 "resolve_only": True,
@@ -292,7 +296,8 @@ class ASTCache:
                 "skipped": 0,
                 "files": [],
                 "synapse_backfill": synapse,
-                "edge_store_refresh": self._refresh_graph_edges_from_cache(),
+                "edge_store_refresh": edge_store_refresh,
+                "unresolved_refs_backfill": unresolved,
                 "activation_enabled": activation_enabled,
             }
         if force:
@@ -376,6 +381,12 @@ class ASTCache:
             )
         except Exception:
             logger.debug("edge store refresh failed", exc_info=True)
+        try:
+            unresolved = self._run_unresolved_refs_backfill()
+            if unresolved is not None:
+                stats["unresolved_refs_backfill"] = unresolved
+        except Exception:
+            logger.debug("unresolved refs backfill failed", exc_info=True)
 
     def _refresh_graph_edges_from_cache(
         self, file_paths: list[str] | None = None
@@ -419,6 +430,12 @@ class ASTCache:
                 errors += 1
         conn.commit()
         return {"files": refreshed, "errors": errors}
+
+    def _run_unresolved_refs_backfill(self) -> dict[str, int] | None:
+        """Resolve persisted unresolved_refs rows into EdgeStore edges."""
+        from . import _ast_cache_unresolved as _unresolved
+
+        return _unresolved.resolve_unresolved_refs(self._get_conn())
 
     def _index_parallel(
         self, candidates: list[tuple[str, str]], workers: int
