@@ -69,6 +69,15 @@ class Subgraph:
         }
 
 
+@dataclass(frozen=True)
+class NodeRef:
+    """Parsed node id components used by graph read paths."""
+
+    file_path: str
+    name: str
+    line: int
+
+
 EDGE_STORE_SCHEMA_STATEMENTS: tuple[str, ...] = (
     """
 CREATE TABLE IF NOT EXISTS edges (
@@ -93,14 +102,20 @@ EDGE_STORE_SCHEMA = ";\n\n".join(EDGE_STORE_SCHEMA_STATEMENTS) + ";"
 class EdgeStore:
     """CRUD and traversal API for the unified ``edges`` table."""
 
-    def __init__(self, conn_or_db_path: sqlite3.Connection | str) -> None:
+    def __init__(
+        self,
+        conn_or_db_path: sqlite3.Connection | str,
+        *,
+        ensure_schema: bool = True,
+    ) -> None:
         self._owns_conn = isinstance(conn_or_db_path, str)
         if self._owns_conn:
             self._conn = sqlite3.connect(str(conn_or_db_path))
             self._conn.row_factory = sqlite3.Row
         else:
             self._conn = cast(sqlite3.Connection, conn_or_db_path)
-        self.ensure_schema()
+        if ensure_schema:
+            self.ensure_schema()
 
     @property
     def conn(self) -> sqlite3.Connection:
@@ -146,6 +161,18 @@ class EdgeStore:
     def _commit_if_owned(self) -> None:
         if self._owns_conn:
             self._conn.commit()
+
+    def has_edges(self, kind: EdgeKind | str | None = None) -> bool:
+        """Return true when the store contains at least one edge."""
+        kind_value = _kind_value(kind)
+        if kind_value is None:
+            row = self._conn.execute("SELECT 1 FROM edges LIMIT 1").fetchone()
+        else:
+            row = self._conn.execute(
+                "SELECT 1 FROM edges WHERE kind = ? LIMIT 1",
+                (kind_value,),
+            ).fetchone()
+        return row is not None
 
     def get_edges(
         self,
@@ -222,6 +249,36 @@ class EdgeStore:
         ).fetchall()
         return [_edge_from_row(row).to_dict() for row in rows]
 
+    def query_callers(
+        self,
+        callee_name: str,
+        callee_file: str | None = None,
+        max_depth: int = 1,
+    ) -> list[dict[str, Any]]:
+        """Return callers of ``callee_name`` from unified CALLS edges."""
+        return _bfs_call_edges(
+            self._conn,
+            start_name=callee_name,
+            start_file=callee_file,
+            max_depth=max_depth,
+            direction="callers",
+        )
+
+    def query_callees(
+        self,
+        caller_name: str,
+        caller_file: str | None = None,
+        max_depth: int = 1,
+    ) -> list[dict[str, Any]]:
+        """Return callees of ``caller_name`` from unified CALLS edges."""
+        return _bfs_call_edges(
+            self._conn,
+            start_name=caller_name,
+            start_file=caller_file,
+            max_depth=max_depth,
+            direction="callees",
+        )
+
 
 def symbol_node(file_path: str, name: str, line: int | None = None) -> str:
     """Build a stable file-scoped symbol node id."""
@@ -241,6 +298,27 @@ def module_node(module_path: str) -> str:
 
 def class_node(class_name: str) -> str:
     return f"class:{class_name}"
+
+
+def parse_node_id(node_id: str) -> NodeRef:
+    """Parse a stable node id into file/name/line components."""
+    if node_id.startswith("file:"):
+        return NodeRef(file_path=node_id.removeprefix("file:"), name="", line=0)
+    if node_id.startswith("module:"):
+        return NodeRef(file_path="", name=node_id.removeprefix("module:"), line=0)
+    if node_id.startswith("class:"):
+        return NodeRef(file_path="", name=node_id.removeprefix("class:"), line=0)
+    parts = node_id.rsplit(":", 2)
+    if len(parts) == 3:
+        file_path, name, line_text = parts
+        try:
+            return NodeRef(file_path=file_path, name=name, line=int(line_text))
+        except ValueError:
+            pass
+    parts = node_id.rsplit(":", 1)
+    if len(parts) == 2:
+        return NodeRef(file_path=parts[0], name=parts[1], line=0)
+    return NodeRef(file_path="", name=node_id, line=0)
 
 
 def _kind_value(kind: EdgeKind | str | None) -> str | None:
@@ -312,3 +390,118 @@ def _edge_from_row(row: sqlite3.Row) -> Edge:
         provenance=row["provenance"] or "tree-sitter",
         metadata=metadata,
     )
+
+
+def _bfs_call_edges(
+    conn: sqlite3.Connection,
+    start_name: str,
+    start_file: str | None,
+    max_depth: int,
+    direction: str,
+) -> list[dict[str, Any]]:
+    if max_depth <= 0:
+        return []
+    start_file = start_file.replace("\\", "/") if start_file else None
+    visited: set[str] = set()
+    result: list[dict[str, Any]] = []
+    queue: deque[tuple[str, str | None, int]] = deque([(start_name, start_file, 0)])
+    while queue:
+        current_name, current_file, depth = queue.popleft()
+        if depth >= max_depth:
+            continue
+        rows = (
+            _direct_callers(conn, current_name, current_file)
+            if direction == "callers"
+            else _direct_callees(conn, current_name, current_file)
+        )
+        for row in rows:
+            edge = _edge_from_row(row)
+            source = parse_node_id(edge.source_node_id)
+            target = parse_node_id(edge.target_node_id)
+            key = (
+                f"{source.file_path}:{source.name}:{source.line}:"
+                f"{target.file_path}:{target.name}:{target.line}"
+            )
+            if key in visited:
+                continue
+            visited.add(key)
+            result.append(_call_edge_entry(edge, source, target, depth))
+            if max_depth > 1:
+                if direction == "callers":
+                    queue.append((source.name, source.file_path, depth + 1))
+                else:
+                    queue.append((target.name, None, depth + 1))
+    return result
+
+
+def _call_edges(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    return conn.execute(
+        "SELECT * FROM edges WHERE kind = ? ORDER BY source_node_id, target_node_id, line",
+        (EdgeKind.CALLS.value,),
+    ).fetchall()
+
+
+def _direct_callers(
+    conn: sqlite3.Connection,
+    callee_name: str,
+    callee_file: str | None,
+) -> list[sqlite3.Row]:
+    rows: list[sqlite3.Row] = []
+    fallback_rows: list[sqlite3.Row] = []
+    for row in _call_edges(conn):
+        edge = _edge_from_row(row)
+        source = parse_node_id(edge.source_node_id)
+        target = parse_node_id(edge.target_node_id)
+        if not _matches_callee(edge, target, callee_name):
+            continue
+        if callee_file:
+            if target.file_path == callee_file:
+                rows.append(row)
+            elif source.file_path == callee_file:
+                fallback_rows.append(row)
+            continue
+        rows.append(row)
+    return rows or fallback_rows
+
+
+def _direct_callees(
+    conn: sqlite3.Connection,
+    caller_name: str,
+    caller_file: str | None,
+) -> list[sqlite3.Row]:
+    rows: list[sqlite3.Row] = []
+    bare = caller_name.split(".")[-1] if "." in caller_name else caller_name
+    for row in _call_edges(conn):
+        edge = _edge_from_row(row)
+        source = parse_node_id(edge.source_node_id)
+        if source.name not in {caller_name, bare}:
+            continue
+        if caller_file and source.file_path != caller_file:
+            continue
+        rows.append(row)
+    return rows
+
+
+def _matches_callee(edge: Edge, target: NodeRef, callee_name: str) -> bool:
+    names = {target.name, str(edge.metadata.get("callee_full", ""))}
+    return callee_name in names
+
+
+def _call_edge_entry(
+    edge: Edge,
+    source: NodeRef,
+    target: NodeRef,
+    depth: int,
+) -> dict[str, Any]:
+    resolved_file = str(edge.metadata.get("callee_resolved_file", ""))
+    return {
+        "caller_name": source.name,
+        "caller_file": source.file_path,
+        "caller_line": source.line,
+        "callee_name": target.name,
+        "callee_full": str(edge.metadata.get("callee_full", "")),
+        "callee_file": resolved_file or target.file_path,
+        "callee_resolved_file": resolved_file,
+        "callee_line": target.line or edge.line or 0,
+        "depth": depth + 1,
+    }

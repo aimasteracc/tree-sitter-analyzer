@@ -98,7 +98,8 @@ class ClassHierarchy:
         if self._built:
             return
         self._load_from_cache()
-        self._build_edges()
+        if not self._build_edges_from_edge_store():
+            self._build_edges()
         self._built = True
 
     def _load_from_cache(self) -> None:
@@ -148,6 +149,51 @@ class ClassHierarchy:
 
         for key in self._children:
             self._children[key] = sorted(set(self._children[key]))
+
+    def _build_edges_from_edge_store(self) -> bool:
+        try:
+            from .graph.edge_store import EdgeKind, EdgeStore, parse_node_id
+
+            store = EdgeStore(self._cache.get_conn(), ensure_schema=False)
+            rows = store.conn.execute(
+                "SELECT * FROM edges WHERE kind IN (?, ?)",
+                (EdgeKind.EXTENDS.value, EdgeKind.IMPLEMENTS.value),
+            ).fetchall()
+        except Exception:
+            return False
+        if not rows:
+            return False
+
+        parent_map: dict[str, list[str]] = defaultdict(list)
+        children: dict[str, list[str]] = defaultdict(list)
+        for row in rows:
+            child = parse_node_id(row["source_node_id"]).name
+            parent = str(row["metadata"] or "")
+            try:
+                parent_meta = json.loads(row["metadata"] or "{}")
+                parent = str(parent_meta.get("parent") or "")
+            except (TypeError, json.JSONDecodeError):
+                parent = ""
+            if not parent:
+                parent = parse_node_id(row["target_node_id"]).name
+            if not child or not parent:
+                continue
+            parent_map[child].append(parent)
+            base = parent.rsplit(".", 1)[-1]
+            children[parent].append(child)
+            children[base].append(child)
+
+        if not parent_map:
+            return False
+        self._parent_map = defaultdict(
+            list,
+            {name: sorted(set(parents)) for name, parents in parent_map.items()},
+        )
+        self._children = defaultdict(
+            list,
+            {name: sorted(set(child_names)) for name, child_names in children.items()},
+        )
+        return True
 
     def subclasses_of(
         self,

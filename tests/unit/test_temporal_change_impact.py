@@ -161,8 +161,8 @@ class TestHotZoneBumpsVerdict:
     @pytest.mark.asyncio
     async def test_hot_zone_bumps_verdict_to_caution(self, tmp_path, monkeypatch):
         """A symbol with ``mod_count_30d >= 5`` in a CHANGED file must:
-          * push the run's verdict to ``CAUTION``
-          * surface a ``risk_factors`` entry mentioning ``hot zone``.
+        * push the run's verdict to ``CAUTION``
+        * surface a ``risk_factors`` entry mentioning ``hot zone``.
         """
         repo = tmp_path / "repo"
         repo.mkdir()
@@ -263,15 +263,31 @@ _PROJECT_ROOT = str(Path(__file__).resolve().parent.parent.parent)
 
 
 @pytest.fixture
-def callees_tool():
-    return CodeGraphCalleesTool(_PROJECT_ROOT)
+def indexed_relation_project(tmp_path: Path) -> str:
+    (tmp_path / "helper.py").write_text(
+        "def helper():\n    return 1\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "worker.py").write_text(
+        "from helper import helper\n\n\ndef build():\n    return helper()\n",
+        encoding="utf-8",
+    )
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_project()
+    finally:
+        cache.close()
+    return str(tmp_path)
+
+
+@pytest.fixture
+def callees_tool(indexed_relation_project: str):
+    return CodeGraphCalleesTool(indexed_relation_project)
 
 
 class TestCalleesActivationFlag:
     @pytest.mark.asyncio
-    async def test_callees_tool_includes_activation_when_requested(
-        self, callees_tool
-    ):
+    async def test_callees_tool_includes_activation_when_requested(self, callees_tool):
         """With ``include_activation=True`` every callee entry must expose
         ``activation.mod_count_30d`` and ``activation.last_modified_at``."""
         result = await callees_tool.execute(
@@ -335,9 +351,7 @@ def test_module_imports_cleanly():
     """
     assert ASTCache is not None
     assert CodeGraphCalleesTool is not None
-    assert inspect.iscoroutinefunction(
-        CodeGraphCalleesTool(_PROJECT_ROOT).execute
-    )
+    assert inspect.iscoroutinefunction(CodeGraphCalleesTool(_PROJECT_ROOT).execute)
 
 
 # Ensure os imports used above don't trip linters/CI as "unused".

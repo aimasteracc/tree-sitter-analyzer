@@ -24,6 +24,15 @@ def callees_tool():
     return CodeGraphCalleesTool(_PROJECT_ROOT)
 
 
+@pytest.fixture
+def tiny_project_root(tmp_path):
+    (tmp_path / "sample.py").write_text(
+        "def foo():\n    bar()\n\ndef bar():\n    return 1\n",
+        encoding="utf-8",
+    )
+    return str(tmp_path)
+
+
 class TestCodeGraphCallersTool:
     def test_tool_definition(self, callers_tool):
         defn = callers_tool.get_tool_definition()
@@ -64,13 +73,15 @@ class TestCodeGraphCallersTool:
         assert result["success"] is True
 
     @pytest.mark.asyncio
-    async def test_execute_toon_format(self, callers_tool):
+    async def test_execute_toon_format(self, tiny_project_root):
+        callers_tool = CodeGraphCallersTool(tiny_project_root)
         result = await callers_tool.execute(
-            {"function_name": "main", "output_format": "toon"}
+            {"function_name": "bar", "output_format": "toon"}
         )
         assert result["success"] is True
 
-    def test_project_root_change_resets_cache(self, callers_tool):
+    def test_project_root_change_resets_cache(self, tiny_project_root):
+        callers_tool = CodeGraphCallersTool(tiny_project_root)
         callers_tool.get_call_graph()
         assert callers_tool.call_graph_initialized
         callers_tool._on_project_root_changed(None)
@@ -99,35 +110,39 @@ class TestCodeGraphCalleesTool:
         assert callees_tool.validate_arguments({"function_name": "main"})
 
     @pytest.mark.asyncio
-    async def test_execute_returns_callees(self, callees_tool):
+    async def test_execute_returns_callees(self, tiny_project_root):
+        callees_tool = CodeGraphCalleesTool(tiny_project_root)
         result = await callees_tool.execute(
-            {"function_name": "build", "output_format": "json"}
+            {"function_name": "foo", "output_format": "json"}
         )
         assert result["success"] is True
-        assert result["function"] == "build"
+        assert result["function"] == "foo"
         assert "callees" in result
         assert "callee_count" in result
         assert isinstance(result["callees"], list)
 
     @pytest.mark.asyncio
-    async def test_execute_with_file_path(self, callees_tool):
+    async def test_execute_with_file_path(self, tiny_project_root):
+        callees_tool = CodeGraphCalleesTool(tiny_project_root)
         result = await callees_tool.execute(
             {
-                "function_name": "build",
-                "file_path": "tree_sitter_analyzer/call_graph.py",
+                "function_name": "foo",
+                "file_path": "sample.py",
                 "output_format": "json",
             }
         )
         assert result["success"] is True
 
     @pytest.mark.asyncio
-    async def test_execute_toon_format(self, callees_tool):
+    async def test_execute_toon_format(self, tiny_project_root):
+        callees_tool = CodeGraphCalleesTool(tiny_project_root)
         result = await callees_tool.execute(
-            {"function_name": "main", "output_format": "toon"}
+            {"function_name": "foo", "output_format": "toon"}
         )
         assert result["success"] is True
 
-    def test_project_root_change_resets_cache(self, callees_tool):
+    def test_project_root_change_resets_cache(self, tiny_project_root):
+        callees_tool = CodeGraphCalleesTool(tiny_project_root)
         callees_tool.get_call_graph()
         assert callees_tool.call_graph_initialized
         callees_tool._on_project_root_changed(None)
@@ -146,7 +161,9 @@ class TestCallerCalleeIntegration:
         assert issubclass(CodeGraphCalleesTool, CodeGraphRelationToolMixin)
 
     @pytest.mark.asyncio
-    async def test_unknown_function_returns_empty(self, callers_tool, callees_tool):
+    async def test_unknown_function_returns_empty(self, tiny_project_root):
+        callers_tool = CodeGraphCallersTool(tiny_project_root)
+        callees_tool = CodeGraphCalleesTool(tiny_project_root)
         result = await callers_tool.execute(
             {
                 "function_name": "zzz_nonexistent_function_xyz",
@@ -211,9 +228,10 @@ class TestStaleCacheWarning:
 
     @pytest.mark.asyncio
     async def test_callees_warning_omitted_when_callees_empty(
-        self, callees_tool
+        self, tiny_project_root
     ) -> None:
         # Empty callee list: nothing to be stale about, no warning.
+        callees_tool = CodeGraphCalleesTool(tiny_project_root)
         result = await callees_tool.execute(
             {"function_name": "zzz_nonexistent_function_xyz", "output_format": "json"}
         )
@@ -222,8 +240,9 @@ class TestStaleCacheWarning:
 
     @pytest.mark.asyncio
     async def test_callers_warning_omitted_when_callers_empty(
-        self, callers_tool
+        self, tiny_project_root
     ) -> None:
+        callers_tool = CodeGraphCallersTool(tiny_project_root)
         result = await callers_tool.execute(
             {"function_name": "zzz_nonexistent_function_xyz", "output_format": "json"}
         )

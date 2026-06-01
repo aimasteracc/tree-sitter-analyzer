@@ -121,11 +121,11 @@ def parse_and_write(
     )
     _write.write_call_edges(conn, rel_path, language, call_edges)
     cache._write_imports_for_file(conn, rel_path, language, imports)  # noqa: SLF001
+    cache._write_activation_for_file(conn, rel_path, inserted)  # noqa: SLF001
+    cache._resolve_call_edges_for_file(conn, rel_path)  # noqa: SLF001
     _write.write_graph_edges_for_file(
         conn, rel_path, language, symbols, imports, call_edges
     )
-    cache._write_activation_for_file(conn, rel_path, inserted)  # noqa: SLF001
-    cache._resolve_call_edges_for_file(conn, rel_path)  # noqa: SLF001
     conn.commit()
     return {
         "file": rel_path,

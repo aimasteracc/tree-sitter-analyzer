@@ -282,6 +282,7 @@ class ASTCache:
         """Index every source file under ``self.project_root``."""
         activation_enabled = _project_index_activation_enabled(include_activation)
         if resolve_only:
+            synapse = self._run_synapse_backfill()
             return {
                 "mode_used": "resolve_only",
                 "resolve_only": True,
@@ -290,7 +291,8 @@ class ASTCache:
                 "errors": 0,
                 "skipped": 0,
                 "files": [],
-                "synapse_backfill": self._run_synapse_backfill(),
+                "synapse_backfill": synapse,
+                "edge_store_refresh": self._refresh_graph_edges_from_cache(),
                 "activation_enabled": activation_enabled,
             }
         if force:
@@ -363,6 +365,60 @@ class ASTCache:
                 stats["synapse_backfill"] = synapse
         except Exception:
             logger.debug("synapse backfill failed", exc_info=True)
+        indexed_files = [
+            str(entry["file"])
+            for entry in stats.get("files", [])
+            if entry.get("status") == "indexed"
+        ]
+        try:
+            stats["edge_store_refresh"] = self._refresh_graph_edges_from_cache(
+                indexed_files
+            )
+        except Exception:
+            logger.debug("edge store refresh failed", exc_info=True)
+
+    def _refresh_graph_edges_from_cache(
+        self, file_paths: list[str] | None = None
+    ) -> dict[str, int]:
+        """Refresh unified EdgeStore rows from persisted AST cache rows."""
+        from . import _ast_cache_write as _write
+
+        conn = self._get_conn()
+        if file_paths is None:
+            rows = conn.execute(
+                "SELECT file_path, language, symbols_json, imports_json FROM ast_index"
+            ).fetchall()
+        else:
+            rows = [
+                row
+                for rel_path in file_paths
+                if (
+                    row := conn.execute(
+                        "SELECT file_path, language, symbols_json, imports_json "
+                        "FROM ast_index WHERE file_path = ?",
+                        (rel_path,),
+                    ).fetchone()
+                )
+                is not None
+            ]
+        refreshed = errors = 0
+        for row in rows:
+            try:
+                symbols = json.loads(row["symbols_json"] or "{}")
+                imports = json.loads(row["imports_json"] or "[]")
+                _write.write_graph_edges_for_file(
+                    conn,
+                    row["file_path"],
+                    row["language"],
+                    symbols,
+                    imports,
+                    [],
+                )
+                refreshed += 1
+            except (json.JSONDecodeError, sqlite3.OperationalError):
+                errors += 1
+        conn.commit()
+        return {"files": refreshed, "errors": errors}
 
     def _index_parallel(
         self, candidates: list[tuple[str, str]], workers: int
@@ -504,9 +560,17 @@ class ASTCache:
         callee_file: str | None = None,
         max_depth: int = 1,
     ) -> list[dict[str, Any]]:
-        """SQL-native callers lookup via BFS on ast_call_edges."""
+        """SQL-native callers lookup via BFS on unified edges, with legacy fallback."""
         if callee_file:
             callee_file = callee_file.replace("\\", "/")
+        try:
+            from .graph.edge_store import EdgeKind, EdgeStore
+
+            store = EdgeStore(self._get_conn(), ensure_schema=False)
+            if store.has_edges(EdgeKind.CALLS):
+                return store.query_callers(callee_name, callee_file, max_depth)
+        except sqlite3.OperationalError:
+            pass
         try:
             return _bfs_callers_impl(
                 self._get_conn(), callee_name, callee_file, max_depth
@@ -520,9 +584,17 @@ class ASTCache:
         caller_file: str | None = None,
         max_depth: int = 1,
     ) -> list[dict[str, Any]]:
-        """SQL-native callees lookup via BFS on ast_call_edges."""
+        """SQL-native callees lookup via BFS on unified edges, with legacy fallback."""
         if caller_file:
             caller_file = caller_file.replace("\\", "/")
+        try:
+            from .graph.edge_store import EdgeKind, EdgeStore
+
+            store = EdgeStore(self._get_conn(), ensure_schema=False)
+            if store.has_edges(EdgeKind.CALLS):
+                return store.query_callees(caller_name, caller_file, max_depth)
+        except sqlite3.OperationalError:
+            pass
         try:
             return _bfs_callees_impl(
                 self._get_conn(), caller_name, caller_file, max_depth
@@ -538,7 +610,16 @@ class ASTCache:
                 .execute("SELECT COUNT(*) as c FROM ast_call_edges")
                 .fetchone()
             )
-            return bool(row["c"] > 0)
+            if bool(row["c"] > 0):
+                return True
+        except sqlite3.OperationalError:
+            pass
+        try:
+            from .graph.edge_store import EdgeKind, EdgeStore
+
+            return EdgeStore(self._get_conn(), ensure_schema=False).has_edges(
+                EdgeKind.CALLS
+            )
         except sqlite3.OperationalError:
             return False
 
