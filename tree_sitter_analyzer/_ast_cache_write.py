@@ -256,6 +256,7 @@ def write_graph_edges_for_file(
         return
 
     symbol_items = symbols.get("symbols", [])
+    call_edges = _graph_call_edges(conn, rel_path, call_edges)
     class_nodes = {
         sym.get("name", ""): symbol_node(rel_path, sym.get("name", ""), sym.get("line"))
         for sym in symbol_items
@@ -271,7 +272,9 @@ def write_graph_edges_for_file(
             else file_node(rel_path)
         )
         callee_name = edge.get("callee_name", "")
-        target = symbol_node(rel_path, callee_name, edge.get("callee_line"))
+        resolved_file = str(edge.get("callee_resolved_file") or "")
+        target_file = resolved_file or rel_path
+        target = symbol_node(target_file, callee_name, edge.get("callee_line"))
         edges.append(
             Edge(
                 source,
@@ -284,6 +287,8 @@ def write_graph_edges_for_file(
                     "caller_line": edge.get("caller_line", 0),
                     "callee_name": callee_name,
                     "callee_full": edge.get("callee_full", ""),
+                    "callee_resolution": edge.get("callee_resolution", "unknown"),
+                    "callee_resolved_file": resolved_file,
                 },
             )
         )
@@ -346,3 +351,49 @@ def write_graph_edges_for_file(
         EdgeStore(conn, ensure_schema=False).replace_edges_for_file(rel_path, edges)
     except sqlite3.OperationalError as exc:
         logger.debug("edge store write failed for %s: %s", rel_path, exc)
+
+
+_GRAPH_CALL_EDGE_COLUMNS = (
+    "caller_name",
+    "caller_file",
+    "caller_line",
+    "callee_name",
+    "callee_full",
+    "callee_line",
+    "file_path",
+    "language",
+    "callee_resolution",
+    "callee_resolved_file",
+)
+
+_GRAPH_CALL_EDGE_SELECT = """
+SELECT caller_name, caller_file, caller_line, callee_name, callee_full,
+       callee_line, file_path, language, callee_resolution, callee_resolved_file
+FROM ast_call_edges
+WHERE file_path = ?
+ORDER BY id
+""".strip()
+
+
+def _graph_call_edges(
+    conn: sqlite3.Connection,
+    rel_path: str,
+    fallback: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Return resolved call rows for EdgeStore, falling back to extracted edges."""
+    try:
+        rows = conn.execute(
+            _GRAPH_CALL_EDGE_SELECT,
+            (rel_path,),
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return fallback
+    if not rows:
+        return fallback
+    return [_row_to_dict(row, _GRAPH_CALL_EDGE_COLUMNS) for row in rows]
+
+
+def _row_to_dict(row: Any, columns: tuple[str, ...]) -> dict[str, Any]:
+    if isinstance(row, sqlite3.Row):
+        return dict(row)
+    return dict(zip(columns, row, strict=False))

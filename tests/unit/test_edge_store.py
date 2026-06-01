@@ -231,6 +231,7 @@ def test_edge_store_call_queries_and_node_parser(tmp_path: Path) -> None:
     db_path = tmp_path / "edges.db"
     store = EdgeStore(str(db_path))
     try:
+        assert store.has_edges() is False
         store.upsert_edges(
             [
                 Edge(
@@ -252,6 +253,11 @@ def test_edge_store_call_queries_and_node_parser(tmp_path: Path) -> None:
 
         assert parse_node_id("pkg/a.py:foo:10").name == "foo"
         assert parse_node_id("file:pkg/a.py").file_path == "pkg/a.py"
+        assert parse_node_id("module:pkg.a").name == "pkg.a"
+        assert parse_node_id("class:Thing").name == "Thing"
+        assert parse_node_id("pkg/a.py:foo:not-int").line == 0
+        assert parse_node_id("loose").name == "loose"
+        assert store.has_edges() is True
         assert store.has_edges(EdgeKind.CALLS) is True
         assert store.query_callees("foo", "pkg/a.py") == [
             {
@@ -266,8 +272,40 @@ def test_edge_store_call_queries_and_node_parser(tmp_path: Path) -> None:
                 "depth": 1,
             }
         ]
+        assert store.query_callees("foo", "pkg/other.py") == []
+        assert store.query_callees("foo", "pkg/a.py", max_depth=0) == []
         callers = store.query_callers("bar", max_depth=2)
         assert [entry["caller_name"] for entry in callers] == ["foo", "baz"]
+        assert [
+            entry["caller_name"] for entry in store.query_callers("bar", "pkg/a.py")
+        ] == ["foo"]
+    finally:
+        store.close()
+
+
+def test_edge_store_call_queries_deduplicate_and_fallback_to_call_site_file(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "edges.db"
+    store = EdgeStore(str(db_path))
+    try:
+        source = symbol_node("pkg/a.py", "foo", 10)
+        target = symbol_node("pkg/b.py", "bar", 20)
+        store.upsert_edges(
+            [
+                Edge(source, target, EdgeKind.CALLS, metadata={"callee_full": "bar"}),
+                Edge(source, target, EdgeKind.CALLS, metadata={"callee_full": "bar"}),
+            ]
+        )
+
+        assert len(store.query_callers("bar")) == 1
+        assert [
+            entry["caller_name"] for entry in store.query_callers("bar", "pkg/a.py")
+        ] == ["foo"]
+        assert [
+            entry["caller_name"] for entry in store.query_callers("bar", "pkg/b.py")
+        ] == ["foo"]
+        assert store.query_callers("bar", "pkg/other.py") == []
     finally:
         store.close()
 
@@ -381,6 +419,51 @@ def test_ast_cache_call_queries_read_from_edge_store_when_legacy_edges_missing(
         callees = cache.query_callees("foo", caller_file="sample.py")
         assert [entry["caller_name"] for entry in callers] == ["foo"]
         assert [entry["callee_name"] for entry in callees] == ["bar"]
+    finally:
+        cache.close()
+
+
+def test_ast_cache_get_call_edges_handles_missing_table(tmp_path: Path) -> None:
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.get_conn().execute("DROP TABLE ast_call_edges")
+        cache.get_conn().commit()
+
+        assert cache.get_call_edges() == []
+    finally:
+        cache.close()
+
+
+def test_project_index_refreshes_edge_store_with_resolved_call_metadata(
+    tmp_path: Path,
+) -> None:
+    sample = tmp_path / "sample.py"
+    sample.write_text(
+        "def foo():\n    bar()\n\ndef bar():\n    return 1\n",
+        encoding="utf-8",
+    )
+    cache = ASTCache(str(tmp_path))
+    try:
+        stats = cache.index_project(force=True)
+        assert stats["indexed"] == 1
+
+        cache.get_conn().execute("DELETE FROM ast_call_edges")
+        cache.get_conn().commit()
+
+        callees = cache.query_callees("foo", caller_file="sample.py")
+        assert callees == [
+            {
+                "caller_name": "foo",
+                "caller_file": "sample.py",
+                "caller_line": 1,
+                "callee_name": "bar",
+                "callee_full": "bar",
+                "callee_file": "sample.py",
+                "callee_resolved_file": "sample.py",
+                "callee_line": 2,
+                "depth": 1,
+            }
+        ]
     finally:
         cache.close()
 

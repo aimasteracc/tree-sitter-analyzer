@@ -447,15 +447,21 @@ def _direct_callers(
     callee_file: str | None,
 ) -> list[sqlite3.Row]:
     rows: list[sqlite3.Row] = []
+    fallback_rows: list[sqlite3.Row] = []
     for row in _call_edges(conn):
         edge = _edge_from_row(row)
+        source = parse_node_id(edge.source_node_id)
         target = parse_node_id(edge.target_node_id)
         if not _matches_callee(edge, target, callee_name):
             continue
-        if callee_file and target.file_path != callee_file:
+        if callee_file:
+            if target.file_path == callee_file:
+                rows.append(row)
+            elif source.file_path == callee_file:
+                fallback_rows.append(row)
             continue
         rows.append(row)
-    return rows
+    return rows or fallback_rows
 
 
 def _direct_callees(

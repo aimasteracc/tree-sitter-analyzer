@@ -7,6 +7,16 @@ import json
 import pytest
 
 from tree_sitter_analyzer.ast_cache import ASTCache
+from tree_sitter_analyzer.class_hierarchy import ClassHierarchy
+from tree_sitter_analyzer.graph import edge_store as edge_store_module
+from tree_sitter_analyzer.graph.edge_store import (
+    Edge,
+    EdgeKind,
+    EdgeStore,
+    class_node,
+    file_node,
+    symbol_node,
+)
 from tree_sitter_analyzer.mcp.tools.class_hierarchy_tool import ClassHierarchyTool
 
 
@@ -138,3 +148,102 @@ class TestExecute:
         )
         assert result["success"] is True
         assert [item["name"] for item in result["subclasses"]] == ["Dog"]
+
+
+class TestClassHierarchyEdgeStore:
+    def test_falls_back_to_symbol_parents_when_edge_store_unavailable(
+        self, monkeypatch, tmp_path
+    ):
+        sample = tmp_path / "models.py"
+        sample.write_text(
+            "class Animal:\n    pass\n\nclass Dog(Animal):\n    pass\n",
+            encoding="utf-8",
+        )
+        cache = ASTCache(str(tmp_path))
+
+        class BrokenEdgeStore:
+            def __init__(self, *_args, **_kwargs):
+                raise RuntimeError("edge store unavailable")
+
+        try:
+            assert cache.index_file(str(sample))["status"] == "indexed"
+            monkeypatch.setattr(edge_store_module, "EdgeStore", BrokenEdgeStore)
+
+            hierarchy = ClassHierarchy(cache)
+            hierarchy.build()
+
+            assert [item["name"] for item in hierarchy.subclasses_of("Animal")] == [
+                "Dog"
+            ]
+        finally:
+            cache.close()
+
+    def test_edge_store_metadata_fallbacks_and_empty_parent_map(self, tmp_path):
+        sample = tmp_path / "models.py"
+        sample.write_text(
+            "\n".join(
+                [
+                    "class Animal:",
+                    "    pass",
+                    "",
+                    "class Dog(Animal):",
+                    "    pass",
+                    "",
+                    "class Cat(Animal):",
+                    "    pass",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        cache = ASTCache(str(tmp_path))
+        try:
+            assert cache.index_file(str(sample))["status"] == "indexed"
+            conn = cache.get_conn()
+            conn.execute("DELETE FROM edges")
+            store = EdgeStore(conn, ensure_schema=False)
+            store.upsert_edges(
+                [
+                    Edge(
+                        symbol_node("models.py", "Cat", 7),
+                        symbol_node("models.py", "Animal", 1),
+                        EdgeKind.EXTENDS,
+                        metadata={},
+                    ),
+                    Edge(
+                        file_node("models.py"),
+                        class_node("Animal"),
+                        EdgeKind.EXTENDS,
+                        metadata={},
+                    ),
+                ]
+            )
+            conn.execute(
+                """INSERT INTO edges
+                   (source_node_id, target_node_id, kind, line, provenance, metadata)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (
+                    symbol_node("models.py", "Dog", 4),
+                    symbol_node("models.py", "Animal", 1),
+                    EdgeKind.EXTENDS.value,
+                    4,
+                    "tree-sitter",
+                    "{broken",
+                ),
+            )
+            conn.commit()
+
+            hierarchy = ClassHierarchy(cache)
+            hierarchy.build()
+            assert [item["name"] for item in hierarchy.subclasses_of("Animal")] == [
+                "Cat",
+                "Dog",
+            ]
+
+            conn.execute("DELETE FROM edges")
+            store.upsert_edges(
+                [Edge(file_node("models.py"), class_node("Animal"), EdgeKind.EXTENDS)]
+            )
+            assert ClassHierarchy(cache)._build_edges_from_edge_store() is False
+        finally:
+            cache.close()
