@@ -165,7 +165,7 @@ mcp = [
     "mcp>=1.12.2",
     "anyio>=4.0.0",
     "httpx>=0.27.0,<1.0.0",
-    "pydantic>=2.5.0",
+    "pydantic>=2.13.4",
     "pydantic-settings>=2.2.1",
 ]
 
@@ -243,7 +243,7 @@ full = [
     "mcp>=1.12.2",
     "anyio>=4.0.0",
     "httpx>=0.27.0,<1.0.0",
-    "pydantic>=2.5.0",
+    "pydantic>=2.13.4",
     "pydantic-settings>=2.2.1",
     "pytest>=8.4.1",
     "pytest-cov>=4.0.0",
@@ -279,7 +279,7 @@ all = [
     "mcp>=1.12.2",
     "anyio>=4.0.0",
     "httpx>=0.27.0,<1.0.0",
-    "pydantic>=2.5.0",
+    "pydantic>=2.13.4",
     "pydantic-settings>=2.2.1",
     "pytest>=8.4.1",
     "pytest-cov>=4.0.0",
