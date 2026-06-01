@@ -17,7 +17,6 @@ READMEs, and any Markdown context without a running server.
 
 from __future__ import annotations
 
-from collections import defaultdict
 from typing import Any
 
 from ...call_graph import CallGraph
@@ -198,16 +197,10 @@ class CodeGraphVisualizeTool(BaseMCPTool):
     ) -> list[tuple[str, str, str, str]]:
         cg.build()
         edges: list[tuple[str, str, str, str]] = []
-        file_callers: dict[Any, list[Any]] = defaultdict(list)
-        file_callees: dict[Any, list[Any]] = defaultdict(list)
-        for func in cg.function_refs():
-            for caller in cg.caller_refs_of(func):
-                file_callers[func].append(caller)
-            for callee in cg.callee_refs_of(func):
-                file_callees[func].append(callee)
-
         seen: set[tuple[str, str]] = set()
         for func in cg.function_refs():
+            if len(seen) >= max_edges:
+                break
             for caller in cg.caller_refs_of(func):
                 pair = (
                     _safe_node_id(caller.name, caller.file_path),
@@ -223,6 +216,8 @@ class CodeGraphVisualizeTool(BaseMCPTool):
                             _short_label(func.name, func.file_path),
                         )
                     )
+                if len(seen) >= max_edges:
+                    break
         return edges
 
     def _edges_file(

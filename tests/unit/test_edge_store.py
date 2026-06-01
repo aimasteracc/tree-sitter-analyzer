@@ -7,7 +7,11 @@ from typing import Any
 import pytest
 
 from tree_sitter_analyzer._ast_cache_schema import apply_migration_v8
-from tree_sitter_analyzer._ast_cache_write import write_graph_edges_for_file
+from tree_sitter_analyzer._ast_cache_write import (
+    _GRAPH_CALL_EDGE_COLUMNS,
+    _row_to_dict,
+    write_graph_edges_for_file,
+)
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.graph import edge_store as edge_store_module
 from tree_sitter_analyzer.graph.edge_store import (
@@ -248,6 +252,13 @@ def test_edge_store_call_queries_and_node_parser(tmp_path: Path) -> None:
                     21,
                     metadata={"callee_full": "foo"},
                 ),
+                Edge(
+                    symbol_node("pkg/a.py", "bar", 11),
+                    symbol_node("pkg/c.py", "qux", 30),
+                    EdgeKind.CALLS,
+                    31,
+                    metadata={"callee_full": "qux"},
+                ),
             ]
         )
 
@@ -274,6 +285,11 @@ def test_edge_store_call_queries_and_node_parser(tmp_path: Path) -> None:
         ]
         assert store.query_callees("foo", "pkg/other.py") == []
         assert store.query_callees("foo", "pkg/a.py", max_depth=0) == []
+        callees_depth2 = store.query_callees("foo", "pkg/a.py", max_depth=2)
+        assert [(entry["callee_name"], entry["depth"]) for entry in callees_depth2] == [
+            ("bar", 1),
+            ("qux", 2),
+        ]
         callers = store.query_callers("bar", max_depth=2)
         assert [entry["caller_name"] for entry in callers] == ["foo", "baz"]
         assert [
@@ -423,6 +439,45 @@ def test_ast_cache_call_queries_read_from_edge_store_when_legacy_edges_missing(
         cache.close()
 
 
+def test_ast_cache_call_queries_fall_back_when_edge_store_raises(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    class BrokenStore:
+        def __init__(self, *_args: Any, **_kwargs: Any) -> None:
+            pass
+
+        def has_edges(self, *_args: Any, **_kwargs: Any) -> bool:
+            raise sqlite3.OperationalError("missing edges")
+
+    monkeypatch.setattr(edge_store_module, "EdgeStore", BrokenStore)
+    cache = ASTCache(str(tmp_path))
+    try:
+        assert cache.query_callers("missing") == []
+        assert cache.query_callees("missing") == []
+    finally:
+        cache.close()
+
+
+def test_ast_cache_call_queries_fall_back_when_edge_store_empty(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    class EmptyStore:
+        def __init__(self, *_args: Any, **_kwargs: Any) -> None:
+            pass
+
+        def has_edges(self, *_args: Any, **_kwargs: Any) -> bool:
+            return False
+
+    monkeypatch.setattr(edge_store_module, "EdgeStore", EmptyStore)
+    cache = ASTCache(str(tmp_path))
+    try:
+        assert cache.query_callees("missing") == []
+    finally:
+        cache.close()
+
+
 def test_ast_cache_get_call_edges_handles_missing_table(tmp_path: Path) -> None:
     cache = ASTCache(str(tmp_path))
     try:
@@ -430,6 +485,95 @@ def test_ast_cache_get_call_edges_handles_missing_table(tmp_path: Path) -> None:
         cache.get_conn().commit()
 
         assert cache.get_call_edges() == []
+        assert cache.has_call_edges() is False
+    finally:
+        cache.close()
+
+
+def test_ast_cache_resolve_only_refreshes_edge_store(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    cache = ASTCache(str(tmp_path))
+    try:
+        monkeypatch.setattr(
+            cache,
+            "_run_synapse_backfill",
+            lambda: {"updated": 1},
+        )
+        monkeypatch.setattr(
+            cache,
+            "_refresh_graph_edges_from_cache",
+            lambda: {"files": 2, "errors": 0},
+        )
+
+        stats = cache.index_project(resolve_only=True)
+
+        assert stats["mode_used"] == "resolve_only"
+        assert stats["synapse_backfill"] == {"updated": 1}
+        assert stats["edge_store_refresh"] == {"files": 2, "errors": 0}
+    finally:
+        cache.close()
+
+
+def test_ast_cache_post_index_backfill_swallows_edge_refresh_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    cache = ASTCache(str(tmp_path))
+    try:
+        monkeypatch.setattr(
+            cache,
+            "backfill_cross_file_edges",
+            lambda: {"processed": 1},
+        )
+        monkeypatch.setattr(cache, "_run_synapse_backfill", lambda: None)
+
+        def fail_refresh(file_paths: list[str] | None = None) -> dict[str, int]:
+            assert file_paths == ["sample.py"]
+            raise RuntimeError("refresh failed")
+
+        monkeypatch.setattr(cache, "_refresh_graph_edges_from_cache", fail_refresh)
+        stats: dict[str, Any] = {"files": [{"file": "sample.py", "status": "indexed"}]}
+
+        cache._post_index_backfill(stats)
+
+        assert stats["cross_file_backfill"] == {"processed": 1}
+        assert "edge_store_refresh" not in stats
+    finally:
+        cache.close()
+
+
+def test_ast_cache_refresh_edges_from_all_cached_rows_counts_json_errors(
+    tmp_path: Path,
+) -> None:
+    sample = tmp_path / "sample.py"
+    sample.write_text("def ok():\n    return 1\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    try:
+        assert cache.index_file(str(sample))["status"] == "indexed"
+        cache.get_conn().execute(
+            """INSERT OR REPLACE INTO ast_index
+               (file_path, content_hash, language, mtime_ns, file_size,
+                extractor_version, symbols_json, imports_json, structure_json,
+                indexed_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                "broken.py",
+                "hash",
+                "python",
+                0,
+                0,
+                0,
+                "{broken",
+                "[]",
+                "{}",
+                "now",
+            ),
+        )
+        cache.get_conn().commit()
+
+        assert cache._refresh_graph_edges_from_cache() == {"files": 1, "errors": 1}
     finally:
         cache.close()
 
@@ -503,6 +647,34 @@ def test_write_graph_edges_handles_empty_imports_and_missing_parent(
         assert store.get_inheritance_tree("Base")[0]["target_node_id"] == "class:Base"
     finally:
         conn.close()
+
+
+def test_graph_call_edge_row_mapping_supports_tuple_rows() -> None:
+    row = (
+        "caller",
+        "caller.py",
+        10,
+        "callee",
+        "pkg.callee",
+        20,
+        "caller.py",
+        "python",
+        "project",
+        "callee.py",
+    )
+
+    assert _row_to_dict(row, _GRAPH_CALL_EDGE_COLUMNS) == {
+        "caller_name": "caller",
+        "caller_file": "caller.py",
+        "caller_line": 10,
+        "callee_name": "callee",
+        "callee_full": "pkg.callee",
+        "callee_line": 20,
+        "file_path": "caller.py",
+        "language": "python",
+        "callee_resolution": "project",
+        "callee_resolved_file": "callee.py",
+    }
 
 
 def test_write_graph_edges_logs_operational_error(
