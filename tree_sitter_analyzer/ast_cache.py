@@ -368,9 +368,11 @@ class ASTCache:
         """Dispatch parse+extract to a spawn process pool (safe on macOS/Linux)."""
         from multiprocessing import get_context
 
+        from ._ast_extraction import _init_worker_parser
+
         ctx = get_context("spawn")
         args_iter = [(p, self.project_root, lang) for p, lang in candidates]
-        with ctx.Pool(processes=workers) as pool:
+        with ctx.Pool(processes=workers, initializer=_init_worker_parser) as pool:
             return list(pool.imap_unordered(_worker_index_file, args_iter, chunksize=8))
 
     def _insert_index_row(

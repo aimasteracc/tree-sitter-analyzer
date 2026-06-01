@@ -72,6 +72,13 @@ _EXCLUDE_DIRS = frozenset(
 # Multiprocessing worker — must stay at module level so it is picklable
 # ---------------------------------------------------------------------------
 
+_worker_parser: Parser | None = None
+
+
+def _init_worker_parser() -> None:
+    global _worker_parser
+    _worker_parser = Parser()
+
 
 def _worker_index_file(args: tuple[str, str, str]) -> dict[str, Any]:
     """Worker used by ``ASTCache._index_parallel`` via a process pool.
@@ -81,6 +88,7 @@ def _worker_index_file(args: tuple[str, str, str]) -> dict[str, Any]:
     Tree-sitter ``Tree`` objects are NEVER returned — they are C objects
     that cannot be pickled; the worker discards them after extraction.
     """
+    global _worker_parser
     abs_path, project_root, language = args
     rel_path = os.path.relpath(abs_path, project_root).replace("\\", "/")
     try:
@@ -94,8 +102,9 @@ def _worker_index_file(args: tuple[str, str, str]) -> dict[str, Any]:
             "abs_path": abs_path,
             "reason": str(exc),
         }
-    parser = Parser()
-    result = parser.parse_file(abs_path, language)
+    if _worker_parser is None:
+        _worker_parser = Parser()
+    result = _worker_parser.parse_file(abs_path, language)
     if not result.success:
         return {
             "status": "parse_failed",

@@ -156,6 +156,16 @@ def walk_and_partition(
         "files": [],
         "activation_enabled": activation_enabled,
     }
+    if force:
+        indexed_map: dict[str, tuple[int, int, int]] = {}
+    else:
+        rows = conn.execute(
+            "SELECT file_path, mtime_ns, file_size, extractor_version FROM ast_index"
+        ).fetchall()
+        indexed_map = {
+            r["file_path"]: (r["mtime_ns"], r["file_size"], r["extractor_version"])
+            for r in rows
+        }
     count = 0
     for abs_path in walk_fn(cache.project_root):
         if count >= max_files:
@@ -172,15 +182,12 @@ def walk_and_partition(
             stats["errors"] += 1
             stats["files"].append(make_error_entry(rel_path, str(e)))
             continue
-        row = conn.execute(
-            "SELECT mtime_ns, file_size, extractor_version FROM ast_index WHERE file_path = ?",
-            (rel_path,),
-        ).fetchone()
+        row = indexed_map.get(rel_path)
         if (
             row is not None
-            and row["mtime_ns"] == int(stat.st_mtime_ns)
-            and row["file_size"] == stat.st_size
-            and row["extractor_version"] >= extractor_version
+            and row[0] == int(stat.st_mtime_ns)
+            and row[1] == stat.st_size
+            and row[2] >= extractor_version
         ):
             already_cached.append(
                 {"file": rel_path, "status": "cached", "reason": "unchanged"}
