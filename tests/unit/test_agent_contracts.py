@@ -394,6 +394,35 @@ def test_release_and_hotfix_prs_use_gitflow_branch_heads() -> None:
     assert "hotfix-to-main" not in hotfix_text
 
 
+def test_release_and_hotfix_finalize_prs_do_not_mask_closed_prs() -> None:
+    """A closed, unmerged finalize PR means the release/hotfix is not landed."""
+    workflows = {
+        "release-automation.yml": PROJECT_ROOT
+        / ".github"
+        / "workflows"
+        / "release-automation.yml",
+        "hotfix-automation.yml": PROJECT_ROOT
+        / ".github"
+        / "workflows"
+        / "hotfix-automation.yml",
+    }
+
+    for workflow_name, workflow_path in workflows.items():
+        text = workflow_path.read_text(encoding="utf-8")
+        create_pr = re.search(
+            r"(?ms)^      - name: Create Pull Request to main\n(?P<body>.*?)(?=^      - name:|\Z)",
+            text,
+        )
+
+        assert create_pr is not None, workflow_name
+        body = create_pr.group("body")
+        assert "--state all" in body, workflow_name
+        assert "closed without merge" in body, workflow_name
+        assert "refusing to treat finalization as successful" in body, workflow_name
+        assert "exit 1" in body, workflow_name
+        assert "|| gh pr view" not in body, workflow_name
+
+
 def test_agent_facing_docs_do_not_recommend_bare_pytest() -> None:
     """Agent docs should route pytest through uv for consistent environments."""
     bare_pytest_command = re.compile(r"^(?:\$\s+)?pytest(?:\s|$)")
