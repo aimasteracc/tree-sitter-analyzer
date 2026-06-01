@@ -54,7 +54,7 @@ classifiers = [
 # Includes HTML/CSS support for comprehensive web technology analysis
 dependencies = [
     "tree-sitter>=0.25.0",
-    "chardet>=5.0.0",
+    "chardet>=7.4.3",
     "cachetools>=5.0.0",
     "tree-sitter-java>=0.23.5",
     "tree-sitter-c>=0.20.0",
