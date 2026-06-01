@@ -24,6 +24,15 @@ def callees_tool():
     return CodeGraphCalleesTool(_PROJECT_ROOT)
 
 
+@pytest.fixture
+def tiny_project_root(tmp_path):
+    (tmp_path / "sample.py").write_text(
+        "def foo():\n    bar()\n\ndef bar():\n    return 1\n",
+        encoding="utf-8",
+    )
+    return str(tmp_path)
+
+
 class TestCodeGraphCallersTool:
     def test_tool_definition(self, callers_tool):
         defn = callers_tool.get_tool_definition()
@@ -70,7 +79,8 @@ class TestCodeGraphCallersTool:
         )
         assert result["success"] is True
 
-    def test_project_root_change_resets_cache(self, callers_tool):
+    def test_project_root_change_resets_cache(self, tiny_project_root):
+        callers_tool = CodeGraphCallersTool(tiny_project_root)
         callers_tool.get_call_graph()
         assert callers_tool.call_graph_initialized
         callers_tool._on_project_root_changed(None)
@@ -127,7 +137,8 @@ class TestCodeGraphCalleesTool:
         )
         assert result["success"] is True
 
-    def test_project_root_change_resets_cache(self, callees_tool):
+    def test_project_root_change_resets_cache(self, tiny_project_root):
+        callees_tool = CodeGraphCalleesTool(tiny_project_root)
         callees_tool.get_call_graph()
         assert callees_tool.call_graph_initialized
         callees_tool._on_project_root_changed(None)
