@@ -52,6 +52,7 @@ class TestCodeGraphCallersTool:
         assert isinstance(result["callers"], list)
 
     @pytest.mark.asyncio
+    @pytest.mark.slow_ok  # clean Py3.13 CI may build the full project graph before SQL cache exists
     async def test_execute_with_file_path(self, callers_tool):
         result = await callers_tool.execute(
             {
