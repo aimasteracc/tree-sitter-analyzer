@@ -172,8 +172,13 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
         kind: str,
         limit: int,
     ) -> list[dict[str, Any]]:
+        if cache.fts5_available and hasattr(cache, "search_symbols_cascade"):
+            cascade = cache.search_symbols_cascade(
+                query, language=language, limit=limit * 3
+            )
+            if cascade:
+                return self._fts_to_results(cascade, kind, limit)
         if cache.fts5_available:
-            # G3: use ranked search for queries >= 2 chars (BM25 ordering).
             if len(query) >= 2:
                 fts_results = cache.fts_search_ranked(
                     query, language=language, limit=limit * 3

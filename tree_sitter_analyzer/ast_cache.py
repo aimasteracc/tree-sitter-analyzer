@@ -26,6 +26,7 @@ from ._ast_cache_query import (
     lookup as _lookup,
     query_callers_enhanced as _query_callers_enhanced,
     query_callees_enhanced as _query_callees_enhanced,
+    search_symbols_cascade as _search_symbols_cascade,
     search_symbols_linear as _search_symbols_linear,
 )
 from ._ast_cache_helpers import (
@@ -409,6 +410,25 @@ class ASTCache:
         if self._fts5_available:
             return self.fts_search_ranked(query, language=language)
         return self._search_symbols_linear(query, language)
+
+    def search_symbols_cascade(
+        self,
+        query: str,
+        language: str | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """Three-tier cascading search: exact → FTS5 BM25 → LIKE.
+
+        Returns deduplicated results ordered by relevance with a
+        ``match_tier`` field indicating which tier found each result.
+        """
+        return _search_symbols_cascade(
+            self._get_conn(),
+            query,
+            language,
+            limit,
+            bool(self._fts5_available),
+        )
 
     def fts_search(
         self,
