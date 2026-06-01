@@ -58,6 +58,19 @@ class TestStartup:
             "'-32601 Method not found' error on every connect."
         )
 
+    def test_initialize_includes_agent_routing_instructions(
+        self, mcp_server: MCPClient
+    ) -> None:
+        """The initialize response should steer agents before any tool call."""
+        response = mcp_server.initialize()
+        assert "error" not in response
+        instructions = response["result"].get("instructions")
+        assert instructions
+        assert "TSA MCP Routing" in instructions
+        assert "codegraph_symbol_search" in instructions
+        assert "codegraph_navigate" in instructions
+        assert "codegraph_context" not in instructions
+
     def test_tools_list_returns_expected_minimum(self, mcp_server: MCPClient) -> None:
         """All of TSA's primary tools must be discoverable.
 
