@@ -229,3 +229,117 @@ def write_imports_for_file(
         for entry in parse_imports(text, language, rel_path, line):
             if not _insert_import_entry(conn, rel_path, language, entry):
                 return
+
+
+def write_graph_edges_for_file(
+    conn: sqlite3.Connection,
+    rel_path: str,
+    language: str,
+    symbols: dict[str, Any],
+    imports: list[str] | list[dict[str, Any]],
+    call_edges: list[dict[str, Any]],
+) -> None:
+    """Refresh unified EdgeStore rows derived from one indexed file."""
+    try:
+        from .graph.edge_store import (
+            Edge,
+            EdgeKind,
+            EdgeStore,
+            class_node,
+            file_node,
+            module_node,
+            symbol_node,
+        )
+        from .synapse_resolver import parse_imports
+    except Exception as exc:  # pragma: no cover
+        logger.debug("edge store import failed for %s: %s", rel_path, exc)
+        return
+
+    symbol_items = symbols.get("symbols", [])
+    class_nodes = {
+        sym.get("name", ""): symbol_node(rel_path, sym.get("name", ""), sym.get("line"))
+        for sym in symbol_items
+        if sym.get("kind") == "class" and sym.get("name")
+    }
+    edges: list[Edge] = []
+
+    for edge in call_edges:
+        caller_name = edge.get("caller_name", "")
+        source = (
+            symbol_node(rel_path, caller_name, edge.get("caller_line"))
+            if caller_name
+            else file_node(rel_path)
+        )
+        callee_name = edge.get("callee_name", "")
+        target = symbol_node(rel_path, callee_name, edge.get("callee_line"))
+        edges.append(
+            Edge(
+                source,
+                target,
+                EdgeKind.CALLS,
+                edge.get("callee_line"),
+                metadata={
+                    "language": language,
+                    "callee_full": edge.get("callee_full", ""),
+                },
+            )
+        )
+
+    for raw in imports or []:
+        text, line = _parse_import_raw(raw)
+        if not text:
+            continue
+        for entry in parse_imports(text, language, rel_path, line):
+            target = module_node(entry.module_path)
+            edges.append(
+                Edge(
+                    file_node(rel_path),
+                    target,
+                    EdgeKind.IMPORTS,
+                    line or entry.line,
+                    metadata={
+                        "language": language,
+                        "local_name": entry.local_name,
+                        "is_relative": entry.is_relative,
+                        "is_star": entry.is_star,
+                        "alias_of": entry.alias_of,
+                    },
+                )
+            )
+
+    for sym in symbol_items:
+        if sym.get("kind") == "function" and sym.get("class"):
+            cls_name = sym["class"]
+            edges.append(
+                Edge(
+                    class_nodes.get(cls_name, class_node(cls_name)),
+                    symbol_node(rel_path, sym.get("name", ""), sym.get("line")),
+                    EdgeKind.CONTAINS,
+                    sym.get("line"),
+                    metadata={"language": language},
+                )
+            )
+        elif sym.get("kind") == "class" and sym.get("parents"):
+            source = class_nodes.get(
+                sym.get("name", ""),
+                symbol_node(rel_path, sym.get("name", ""), sym.get("line")),
+            )
+            for parent in sym.get("parents", []):
+                base_parent = str(parent).rsplit(".", 1)[-1]
+                parent_target = class_nodes.get(str(parent)) or class_nodes.get(
+                    base_parent
+                )
+                edges.append(
+                    Edge(
+                        source,
+                        parent_target or class_node(str(parent)),
+                        EdgeKind.EXTENDS,
+                        sym.get("line"),
+                        metadata={"language": language, "parent": str(parent)},
+                    )
+                )
+
+    try:
+        EdgeStore(conn).replace_edges_for_file(rel_path, edges)
+    except sqlite3.OperationalError as exc:
+        logger.debug("edge store write failed for %s: %s", rel_path, exc)

@@ -121,6 +121,9 @@ def parse_and_write(
     )
     _write.write_call_edges(conn, rel_path, language, call_edges)
     cache._write_imports_for_file(conn, rel_path, language, imports)  # noqa: SLF001
+    _write.write_graph_edges_for_file(
+        conn, rel_path, language, symbols, imports, call_edges
+    )
     cache._write_activation_for_file(conn, rel_path, inserted)  # noqa: SLF001
     cache._resolve_call_edges_for_file(conn, rel_path)  # noqa: SLF001
     conn.commit()
@@ -232,6 +235,10 @@ def insert_index_row(
     _write.write_call_edges(conn, rel_path, r["language"], call_edges)
     imports_list = json.loads(r.get("imports_json", "[]"))
     cache._write_imports_for_file(conn, rel_path, r["language"], imports_list)  # noqa: SLF001
+    symbols = json.loads(r.get("symbols_json", "{}"))
+    _write.write_graph_edges_for_file(
+        conn, rel_path, r["language"], symbols, imports_list, call_edges
+    )
     if include_activation:
         cache._write_activation_for_file(conn, rel_path, inserted_symbol_rows)  # noqa: SLF001
     else:

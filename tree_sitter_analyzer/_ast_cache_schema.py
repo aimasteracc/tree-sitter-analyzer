@@ -266,6 +266,18 @@ def apply_migration_v7(conn: sqlite3.Connection, record_fn: RecordFn) -> None:
         pass
 
 
+def apply_migration_v8(conn: sqlite3.Connection, record_fn: RecordFn) -> None:
+    """Create unified ``edges`` table (v8 — EdgeStore)."""
+    try:
+        from .graph.edge_store import EDGE_STORE_SCHEMA
+
+        conn.executescript(EDGE_STORE_SCHEMA)
+        record_fn(conn, 8, "Unified edge store")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass
+
+
 # ---------------------------------------------------------------------------
 # Schema DDL constants V1 and V2 (moved from ast_cache.py)
 # ---------------------------------------------------------------------------
@@ -401,6 +413,21 @@ EXPECTED_SCHEMA_VERSIONS: list[Any] = [
         "Extractor version invalidation",
         {
             "ast_index_columns": ["extractor_version"],
+        },
+    ),
+    (
+        8,
+        "Unified edge store",
+        {
+            "tables": ["edges"],
+            "edges_columns": [
+                "source_node_id",
+                "target_node_id",
+                "kind",
+                "line",
+                "provenance",
+                "metadata",
+            ],
         },
     ),
 ]
