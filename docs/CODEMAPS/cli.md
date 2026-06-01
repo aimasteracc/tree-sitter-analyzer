@@ -83,6 +83,7 @@ Categories of CLI surface:
 - `--parser-readiness` — pre-flight checks
 
 ### CodeGraph parity (cross-file intelligence from pre-indexed AST cache)
+- `--codegraph-context TASK` — one-call architecture context: entry points, graph, and source blocks
 - `--callers SYMBOL` / `--callees SYMBOL` — bidirectional call tracking
 - `--call-path FROM TO` — BFS path between two functions
 - `--symbol-resolve` — go-to-definition / find-all-references

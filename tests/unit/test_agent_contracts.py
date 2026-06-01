@@ -513,6 +513,7 @@ def test_registered_mcp_tools_have_cli_parity() -> None:
         "codegraph_navigate": ("main", "--codegraph-navigate"),
         # CodeGraph parity gap-closure (2026-05-24).
         "codegraph_status": ("main", "--codegraph-status"),
+        "codegraph_context": ("main", "--codegraph-context"),
         "codegraph_explore": ("main", "--codegraph-explore"),
         "codegraph_query": ("main", "--codegraph-query"),
         "codegraph_impact": ("main", "--codegraph-impact"),

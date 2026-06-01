@@ -1,0 +1,448 @@
+"""Focused tests for codegraph_context."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from tree_sitter_analyzer.ast_cache import ASTCache
+
+
+@pytest.fixture
+def indexed_project(tmp_path: Path) -> Path:
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "app.py").write_text(
+        "class UserService:\n"
+        "    def get_user(self, user_id):\n"
+        "        return self._find_user(user_id)\n"
+        "\n"
+        "    def _find_user(self, user_id):\n"
+        "        return {'id': user_id}\n"
+        "\n"
+        "def handle_request(request):\n"
+        "    svc = UserService()\n"
+        "    return svc.get_user(1)\n",
+        encoding="utf-8",
+    )
+    (project / "routes.py").write_text(
+        "from app import handle_request\n"
+        "\n"
+        "def dispatch(request):\n"
+        "    return handle_request(request)\n",
+        encoding="utf-8",
+    )
+
+    cache = ASTCache(str(project))
+    cache.index_project(max_files=20)
+    cache.close()
+    return project
+
+
+def test_codegraph_context_registered() -> None:
+    from tree_sitter_analyzer.mcp._tool_registry import create_tool_registry
+
+    _, lookup = create_tool_registry(project_root=None)
+    assert "codegraph_context" in lookup
+
+
+def test_extract_symbol_candidates_handles_identifiers() -> None:
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        _extract_symbol_candidates,
+    )
+
+    candidates = _extract_symbol_candidates(
+        "trace `UserService.get_user` through handle_request"
+    )
+
+    assert "UserService" in candidates
+    assert "get_user" in candidates
+    assert "handle_request" in candidates
+    assert "trace" not in candidates
+
+
+def test_schema_requires_task() -> None:
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        CodeGraphContextTool,
+    )
+
+    tool = CodeGraphContextTool()
+    with pytest.raises(ValueError, match="task"):
+        tool.validate_arguments({})
+
+
+def test_tool_accessors_require_project_root() -> None:
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        CodeGraphContextTool,
+    )
+
+    tool = CodeGraphContextTool()
+
+    with pytest.raises(ValueError, match="Project root"):
+        tool._get_cache()
+    with pytest.raises(ValueError, match="Project root"):
+        tool._get_call_graph()
+
+
+def test_resolve_entry_points_degrades_and_dedupes() -> None:
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        CodeGraphContextTool,
+    )
+
+    class FallbackCache:
+        def fts_search_ranked(self, candidate: str, limit: int):
+            raise RuntimeError("fts5 unavailable")
+
+        def fts_search(self, candidate: str, limit: int):
+            return [
+                {"name": "", "kind": "function", "file": "x.py", "line": 1},
+                {"name": "os", "kind": "import", "file": "x.py", "line": 2},
+                {"name": "alpha", "kind": "function", "file": "a.py", "line": 3},
+                {"name": "alpha", "kind": "function", "file": "a.py", "line": 3},
+                {"name": "beta", "kind": "class", "file": "tests/b.py", "line": 4},
+            ]
+
+    tool = CodeGraphContextTool(str(Path.cwd()))
+    tool._cache = FallbackCache()
+
+    assert tool._resolve_entry_points([], limit=5) == []
+    hits = tool._resolve_entry_points(["alpha"], limit=5)
+
+    assert [hit["name"] for hit in hits] == ["alpha", "beta"]
+
+
+def test_resolve_entry_points_handles_cache_and_search_errors() -> None:
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        CodeGraphContextTool,
+    )
+
+    class BrokenCache:
+        def fts_search_ranked(self, candidate: str, limit: int):
+            raise RuntimeError("ranked failed")
+
+        def fts_search(self, candidate: str, limit: int):
+            raise RuntimeError("fallback failed")
+
+    tool_without_root = CodeGraphContextTool()
+    assert tool_without_root._resolve_entry_points(["anything"], limit=5) == []
+
+    tool = CodeGraphContextTool(str(Path.cwd()))
+    tool._cache = BrokenCache()
+    assert tool._resolve_entry_points(["anything"], limit=5) == []
+
+
+def test_resolve_entry_points_stops_at_limit() -> None:
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        CodeGraphContextTool,
+    )
+
+    class ManyHitsCache:
+        def fts_search_ranked(self, candidate: str, limit: int):
+            return [
+                {"name": "first", "kind": "function", "file": "a.py", "line": 1},
+                {"name": "second", "kind": "function", "file": "b.py", "line": 2},
+            ]
+
+    tool = CodeGraphContextTool(str(Path.cwd()))
+    tool._cache = ManyHitsCache()
+
+    hits = tool._resolve_entry_points(["first", "second"], limit=1)
+
+    assert [hit["name"] for hit in hits] == ["first"]
+
+
+def test_expand_nodes_handles_graph_limits_and_trace_chain() -> None:
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        CodeGraphContextTool,
+        _node_id,
+    )
+
+    class FakeGraph:
+        def callees_of(self, name: str, file_path: str | None = None):
+            return [
+                {"name": "", "kind": "function", "file": "empty.py", "line": 1},
+                {"name": "callee", "kind": "function", "file": "b.py", "line": 2},
+                {"name": "extra", "kind": "function", "file": "c.py", "line": 3},
+            ]
+
+        def callers_of(self, name: str, file_path: str | None = None):
+            return [{"name": "caller", "kind": "function", "file": "d.py", "line": 4}]
+
+        def call_chain(self, name: str, file_path: str | None = None, depth: int = 4):
+            return [
+                {"callee": "not-a-dict"},
+                {
+                    "callee": {
+                        "name": "chain",
+                        "kind": "function",
+                        "file": "e.py",
+                        "line": 5,
+                    }
+                },
+            ]
+
+    seed = [
+        {
+            "id": _node_id("seed", "a.py", 1),
+            "name": "seed",
+            "kind": "function",
+            "file": "a.py",
+            "line": 1,
+        }
+    ]
+    no_graph = CodeGraphContextTool()
+    assert no_graph._expand_nodes(seed, "trace seed", max_nodes=5) == seed
+
+    limited = CodeGraphContextTool(str(Path.cwd()))
+    limited._call_graph = FakeGraph()
+    assert limited._expand_nodes(seed, "trace seed", max_nodes=1) == seed
+
+    assert [
+        node["name"] for node in limited._expand_nodes(seed, "trace seed", max_nodes=2)
+    ] == [
+        "seed",
+        "callee",
+    ]
+    assert [
+        node["name"] for node in limited._expand_nodes(seed, "plain seed", max_nodes=3)
+    ] == [
+        "seed",
+        "callee",
+        "extra",
+    ]
+
+    expanded = limited._expand_nodes(seed, "trace seed", max_nodes=5)
+
+    assert {node["name"] for node in expanded} == {
+        "seed",
+        "callee",
+        "extra",
+        "caller",
+        "chain",
+    }
+
+
+def test_build_edges_handles_fallback_targets_and_duplicates() -> None:
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        CodeGraphContextTool,
+        _node_id,
+    )
+
+    class EdgeGraph:
+        def callees_of(self, name: str, file_path: str | None = None):
+            if name != "source":
+                return []
+            return [
+                {"name": "target", "kind": "function", "file": "", "line": 2},
+                {"name": "target", "kind": "function", "file": "", "line": 2},
+                {"name": "source", "kind": "function", "file": "a.py", "line": 1},
+                {"name": "missing", "kind": "function", "file": "z.py", "line": 9},
+            ]
+
+    nodes = [
+        {
+            "id": _node_id("source", "a.py", 1),
+            "name": "source",
+            "kind": "function",
+            "file": "a.py",
+            "line": 1,
+        },
+        {
+            "id": _node_id("target", "b.py", 2),
+            "name": "target",
+            "kind": "function",
+            "file": "b.py",
+            "line": 2,
+        },
+    ]
+    no_graph = CodeGraphContextTool()
+    assert no_graph._build_edges(nodes) == []
+
+    tool = CodeGraphContextTool(str(Path.cwd()))
+    tool._call_graph = EdgeGraph()
+
+    assert tool._build_edges(nodes) == [
+        {
+            "source": _node_id("source", "a.py", 1),
+            "target": _node_id("target", "b.py", 2),
+            "kind": "calls",
+            "line": 1,
+        }
+    ]
+
+
+def test_small_helpers_cover_bounds_and_fallbacks(tmp_path: Path) -> None:
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        _bounded_int,
+        _build_code_blocks,
+        _extract_symbol_candidates,
+        _next_step,
+        _node_id,
+        _nodes_from_hits,
+        _safe_chain,
+        _safe_refs,
+    )
+
+    assert _bounded_int("bad", 1, 5) == 1
+    assert _bounded_int(99, 1, 5) == 5
+    assert _extract_symbol_candidates("go -> _ :: ab abc okLong Name Name") == [
+        "okLong",
+        "Name",
+    ]
+    assert _next_step(False, True).startswith("Use the nodes")
+
+    hits = [
+        {"name": "one", "kind": "function", "file": "a.py", "line": 1},
+        {"name": "one", "kind": "function", "file": "a.py", "line": 1},
+        {"name": "two", "kind": "function", "file": "b.py", "line": 2},
+    ]
+    assert [node["name"] for node in _nodes_from_hits(hits, max_nodes=2)] == [
+        "one",
+        "two",
+    ]
+    assert [node["name"] for node in _nodes_from_hits(hits, max_nodes=1)] == ["one"]
+
+    def always_fails(*args):
+        raise RuntimeError("boom")
+
+    def falls_back_to_one_arg(*args):
+        if len(args) == 2:
+            raise RuntimeError("two-arg unavailable")
+        return [{"name": args[0]}]
+
+    assert _safe_refs(lambda name, file_path: [{"name": name}], "x", "x.py") == [
+        {"name": "x"}
+    ]
+    assert _safe_refs(falls_back_to_one_arg, "x", None) == [{"name": "x"}]
+    assert _safe_refs(always_fails, "x", None) == []
+
+    class ChainFallback:
+        def call_chain(self, name: str, file_path: str | None = None, depth: int = 4):
+            if file_path is not None:
+                raise RuntimeError("two-arg unavailable")
+            return [{"callee": {"name": name, "file": "x.py", "line": 1}}]
+
+    class ChainBroken:
+        def call_chain(self, *args, **kwargs):
+            raise RuntimeError("broken")
+
+    assert _safe_chain(ChainFallback(), "x", "x.py", 4)
+    assert _safe_chain(ChainBroken(), "x", "x.py", 4) == []
+
+    rel = tmp_path / "rel.py"
+    rel.write_text(
+        "def alpha():\n    return 1\n\ndef beta():\n    return 2\n", encoding="utf-8"
+    )
+    abs_file = tmp_path / "abs.py"
+    abs_file.write_text("def gamma():\n    return 3\n", encoding="utf-8")
+    nodes = [
+        {"id": "bad-file", "name": "bad", "file": "", "line": 1},
+        {"id": "bad-line", "name": "bad", "file": "rel.py", "line": 0},
+        {"id": "missing", "name": "missing", "file": "missing.py", "line": 1},
+        {"id": "empty", "name": "empty", "file": "rel.py", "line": 99},
+        {
+            "id": _node_id("alpha", "rel.py", 1),
+            "name": "alpha",
+            "file": "rel.py",
+            "line": 1,
+        },
+        {
+            "id": _node_id("alpha", "rel.py", 1),
+            "name": "alpha",
+            "file": "rel.py",
+            "line": 1,
+        },
+        {
+            "id": _node_id("gamma", str(abs_file), 1),
+            "name": "gamma",
+            "file": str(abs_file),
+            "line": 1,
+            "end_line": 50,
+        },
+    ]
+
+    assert _build_code_blocks(nodes, [], 0, str(tmp_path)) == []
+    blocks = _build_code_blocks(
+        nodes,
+        [{"source": "outside", "target": "outside"}],
+        2,
+        str(tmp_path),
+    )
+
+    assert [block["name"] for block in blocks] == ["alpha", "gamma"]
+    assert [
+        block["name"] for block in _build_code_blocks(nodes, [], 1, str(tmp_path))
+    ] == ["alpha"]
+
+
+def test_build_code_blocks_skips_empty_snippets(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import tree_sitter_analyzer.mcp.tools.codegraph_context_tool as context_tool
+
+    source = tmp_path / "source.py"
+    source.write_text("def empty():\n    pass\n", encoding="utf-8")
+    monkeypatch.setattr(context_tool, "extract_snippet_from_lines", lambda *args: "")
+
+    blocks = context_tool._build_code_blocks(
+        [
+            {
+                "id": "source.py:empty:1",
+                "name": "empty",
+                "file": "source.py",
+                "line": 1,
+            }
+        ],
+        [],
+        1,
+        str(tmp_path),
+    )
+
+    assert blocks == []
+
+
+@pytest.mark.asyncio
+async def test_context_returns_entry_points_graph_and_source(
+    indexed_project: Path,
+) -> None:
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        CodeGraphContextTool,
+    )
+
+    tool = CodeGraphContextTool(str(indexed_project))
+    result = await tool.execute(
+        {
+            "task": "trace handle_request to UserService.get_user",
+            "output_format": "json",
+        }
+    )
+
+    assert result["success"] is True
+    assert result["verdict"] == "INFO"
+    assert result["entry_points"]
+    assert result["nodes"]
+    assert result["stats"]["nodes"] == len(result["nodes"])
+    assert result["code_blocks"]
+    names = {node["name"] for node in result["nodes"]}
+    assert {"handle_request", "UserService"} & names
+    assert any("handle_request" in block["content"] for block in result["code_blocks"])
+
+
+@pytest.mark.asyncio
+async def test_context_not_found_is_a_successful_stop_signal(
+    indexed_project: Path,
+) -> None:
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        CodeGraphContextTool,
+    )
+
+    tool = CodeGraphContextTool(str(indexed_project))
+    result = await tool.execute(
+        {"task": "XyzNeverDefinedFlow", "output_format": "json"}
+    )
+
+    assert result["success"] is True
+    assert result["verdict"] == "NOT_FOUND"
+    assert result["entry_points"] == []
+    assert "codegraph_symbol_search" in result["agent_summary"]["next_step"]

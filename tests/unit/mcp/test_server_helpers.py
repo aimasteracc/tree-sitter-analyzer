@@ -19,6 +19,6 @@ def test_build_initialization_options_includes_agent_routing_instructions():
 
     instructions = options.kwargs["instructions"]
     assert "TSA MCP Routing" in instructions
+    assert "codegraph_context" in instructions
     assert "codegraph_symbol_search" in instructions
     assert "codegraph_navigate" in instructions
-    assert "codegraph_context" not in instructions

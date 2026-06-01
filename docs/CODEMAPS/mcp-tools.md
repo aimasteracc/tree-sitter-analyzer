@@ -1,7 +1,7 @@
 <!-- Generated: 2026-05-22 -->
 # MCP Tools Codemap
 
-60 MCP tools registered in [`mcp/_tool_registry.py`](../../tree_sitter_analyzer/mcp/_tool_registry.py).
+63 MCP tools registered in [`mcp/_tool_registry.py`](../../tree_sitter_analyzer/mcp/_tool_registry.py).
 All tools default to **TOON output** (locked — see `CLAUDE.md`).
 
 ## Tool Registry
@@ -43,6 +43,7 @@ All tools default to **TOON output** (locked — see `CLAUDE.md`).
 | `doc_sync` | `--doc-sync` | Scan markdown docs for stale file-path references — backtick spans and link targets that no longer exist |
 | `semantic_classify` | `--semantic-classify` | Classify code changes (risk + category) |
 | **CodeGraph parity — symbol navigation** | | |
+| `codegraph_context` | `--codegraph-context` | PRIMARY one-call architecture context from a natural-language task (entry points + graph + source blocks) |
 | `codegraph_navigate` | `--codegraph-navigate` | PRIMARY symbol navigation hub (def + refs + hierarchy) |
 | `codegraph_explore` | `--codegraph-explore` | BULK fetch N related symbols' source + relationship map |
 | `codegraph_query` | `--codegraph-query` | jQuery-style chained graph query with lexical `search()`, offline `semantic()`, filter/exclude/has selection, cached relationship expansion, Mermaid `uml()` facets, compact answer packs, and evidence facets |
@@ -79,7 +80,7 @@ All tools default to **TOON output** (locked — see `CLAUDE.md`).
 ## Adding a New MCP Tool
 
 1. Create `tree_sitter_analyzer/mcp/tools/<name>_tool.py` extending `BaseMCPTool`.
-2. Register it in `mcp/server.py` `tool_instances` list (the only place).
+2. Register it in `mcp/_tool_registry.py` (the canonical registry).
 3. Add a CLI equivalent in `cli_main.py` or `cli/commands/` — **REQUIRED** by parity contract.
 4. Add tests:
    - Tool envelope contract: `tests/unit/mcp/tools/test_tool_response_contract.py`

@@ -67,9 +67,9 @@ class TestStartup:
         instructions = response["result"].get("instructions")
         assert instructions
         assert "TSA MCP Routing" in instructions
+        assert "codegraph_context" in instructions
         assert "codegraph_symbol_search" in instructions
         assert "codegraph_navigate" in instructions
-        assert "codegraph_context" not in instructions
 
     def test_tools_list_returns_expected_minimum(self, mcp_server: MCPClient) -> None:
         """All of TSA's primary tools must be discoverable.

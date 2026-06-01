@@ -82,6 +82,17 @@ _EXTENDED_SPECS: tuple[McpCommandSpec, ...] = (
         label="Index health at-a-glance (CodeGraph parity)",
         build_tool_args=_build_codegraph_status_tool_args,
     ),
+    McpCommandSpec(
+        flag_name="codegraph_context",
+        tool_attr="CodeGraphContextTool",
+        label="One-call architecture context: entry points + graph + source",
+        build_tool_args=lambda args, output_format: {
+            "task": getattr(args, "codegraph_context", "") or "",
+            "max_nodes": getattr(args, "codegraph_context_max_nodes", 30),
+            "max_code_blocks": getattr(args, "codegraph_context_max_code_blocks", 8),
+            "output_format": output_format,
+        },
+    ),
     # CodeGraph parity gap-closure (2026-05-24): codegraph_explore replaces
     # ~8 chained codegraph_node / analyze_code_structure calls with one
     # capped batch fetch. Value-bearing flag: --codegraph-explore "QUERY".
