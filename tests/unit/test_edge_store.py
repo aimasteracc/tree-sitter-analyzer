@@ -10,7 +10,13 @@ from tree_sitter_analyzer._ast_cache_schema import apply_migration_v8
 from tree_sitter_analyzer._ast_cache_write import write_graph_edges_for_file
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.graph import edge_store as edge_store_module
-from tree_sitter_analyzer.graph.edge_store import Edge, EdgeKind, EdgeStore, symbol_node
+from tree_sitter_analyzer.graph.edge_store import (
+    Edge,
+    EdgeKind,
+    EdgeStore,
+    parse_node_id,
+    symbol_node,
+)
 
 
 def test_edge_kind_covers_unified_relationship_surface() -> None:
@@ -221,6 +227,51 @@ def test_edge_store_inheritance_tree_and_node_helpers(tmp_path: Path) -> None:
         store.close()
 
 
+def test_edge_store_call_queries_and_node_parser(tmp_path: Path) -> None:
+    db_path = tmp_path / "edges.db"
+    store = EdgeStore(str(db_path))
+    try:
+        store.upsert_edges(
+            [
+                Edge(
+                    symbol_node("pkg/a.py", "foo", 10),
+                    symbol_node("pkg/a.py", "bar", 11),
+                    EdgeKind.CALLS,
+                    11,
+                    metadata={"callee_full": "bar"},
+                ),
+                Edge(
+                    symbol_node("pkg/b.py", "baz", 20),
+                    symbol_node("pkg/a.py", "foo", 10),
+                    EdgeKind.CALLS,
+                    21,
+                    metadata={"callee_full": "foo"},
+                ),
+            ]
+        )
+
+        assert parse_node_id("pkg/a.py:foo:10").name == "foo"
+        assert parse_node_id("file:pkg/a.py").file_path == "pkg/a.py"
+        assert store.has_edges(EdgeKind.CALLS) is True
+        assert store.query_callees("foo", "pkg/a.py") == [
+            {
+                "caller_name": "foo",
+                "caller_file": "pkg/a.py",
+                "caller_line": 10,
+                "callee_name": "bar",
+                "callee_full": "bar",
+                "callee_file": "pkg/a.py",
+                "callee_resolved_file": "",
+                "callee_line": 11,
+                "depth": 1,
+            }
+        ]
+        callers = store.query_callers("bar", max_depth=2)
+        assert [entry["caller_name"] for entry in callers] == ["foo", "baz"]
+    finally:
+        store.close()
+
+
 def test_ast_cache_creates_edges_schema(tmp_path: Path) -> None:
     cache = ASTCache(str(tmp_path))
     try:
@@ -311,6 +362,29 @@ def test_ast_cache_writes_calls_imports_contains_and_extends_edges(
         cache.close()
 
 
+def test_ast_cache_call_queries_read_from_edge_store_when_legacy_edges_missing(
+    tmp_path: Path,
+) -> None:
+    sample = tmp_path / "sample.py"
+    sample.write_text(
+        "def foo():\n    bar()\n\ndef bar():\n    return 1\n",
+        encoding="utf-8",
+    )
+    cache = ASTCache(str(tmp_path))
+    try:
+        assert cache.index_file(str(sample))["status"] == "indexed"
+        cache.get_conn().execute("DELETE FROM ast_call_edges")
+        cache.get_conn().commit()
+
+        assert cache.has_call_edges() is True
+        callers = cache.query_callers("bar")
+        callees = cache.query_callees("foo", caller_file="sample.py")
+        assert [entry["caller_name"] for entry in callers] == ["foo"]
+        assert [entry["callee_name"] for entry in callees] == ["bar"]
+    finally:
+        cache.close()
+
+
 def test_write_graph_edges_handles_empty_imports_and_missing_parent(
     tmp_path: Path,
 ) -> None:
@@ -318,6 +392,7 @@ def test_write_graph_edges_handles_empty_imports_and_missing_parent(
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     try:
+        EdgeStore(conn)
         write_graph_edges_for_file(
             conn,
             "pkg/sample.py",
@@ -352,7 +427,7 @@ def test_write_graph_edges_logs_operational_error(
     tmp_path: Path,
 ) -> None:
     class BrokenEdgeStore:
-        def __init__(self, _conn: sqlite3.Connection) -> None:
+        def __init__(self, _conn: sqlite3.Connection, **_kwargs: Any) -> None:
             pass
 
         def replace_edges_for_file(self, _file_path: str, _edges: list[Edge]) -> None:

@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
+from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.mcp.tools.class_hierarchy_tool import ClassHierarchyTool
 
 
@@ -95,3 +98,43 @@ class TestExecute:
         result = await tool_with_root.execute({"mode": "summary"})
         assert result["format"] == "toon"
         assert "toon_content" in result
+
+    async def test_subclasses_mode_reads_edge_store_when_symbol_parents_missing(
+        self, tmp_path
+    ):
+        sample = tmp_path / "models.py"
+        sample.write_text(
+            "class Animal:\n    pass\n\nclass Dog(Animal):\n    pass\n",
+            encoding="utf-8",
+        )
+        cache = ASTCache(str(tmp_path))
+        try:
+            assert cache.index_file(str(sample))["status"] == "indexed"
+            row = (
+                cache.get_conn()
+                .execute(
+                    "SELECT symbols_json FROM ast_index WHERE file_path = ?",
+                    ("models.py",),
+                )
+                .fetchone()
+            )
+            symbols = json.loads(row["symbols_json"])
+            for symbol in symbols["symbols"]:
+                symbol["parents"] = []
+            cache.get_conn().execute(
+                "UPDATE ast_index SET symbols_json = ? WHERE file_path = ?",
+                (json.dumps(symbols), "models.py"),
+            )
+            cache.get_conn().commit()
+        finally:
+            cache.close()
+
+        result = await ClassHierarchyTool(str(tmp_path)).execute(
+            {
+                "mode": "subclasses",
+                "class_name": "Animal",
+                "output_format": "json",
+            }
+        )
+        assert result["success"] is True
+        assert [item["name"] for item in result["subclasses"]] == ["Dog"]

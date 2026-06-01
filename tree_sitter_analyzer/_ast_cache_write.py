@@ -280,6 +280,9 @@ def write_graph_edges_for_file(
                 edge.get("callee_line"),
                 metadata={
                     "language": language,
+                    "caller_name": caller_name,
+                    "caller_line": edge.get("caller_line", 0),
+                    "callee_name": callee_name,
                     "callee_full": edge.get("callee_full", ""),
                 },
             )
@@ -340,6 +343,6 @@ def write_graph_edges_for_file(
                 )
 
     try:
-        EdgeStore(conn).replace_edges_for_file(rel_path, edges)
+        EdgeStore(conn, ensure_schema=False).replace_edges_for_file(rel_path, edges)
     except sqlite3.OperationalError as exc:
         logger.debug("edge store write failed for %s: %s", rel_path, exc)

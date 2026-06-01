@@ -504,9 +504,17 @@ class ASTCache:
         callee_file: str | None = None,
         max_depth: int = 1,
     ) -> list[dict[str, Any]]:
-        """SQL-native callers lookup via BFS on ast_call_edges."""
+        """SQL-native callers lookup via BFS on unified edges, with legacy fallback."""
         if callee_file:
             callee_file = callee_file.replace("\\", "/")
+        try:
+            from .graph.edge_store import EdgeKind, EdgeStore
+
+            store = EdgeStore(self._get_conn(), ensure_schema=False)
+            if store.has_edges(EdgeKind.CALLS):
+                return store.query_callers(callee_name, callee_file, max_depth)
+        except sqlite3.OperationalError:
+            pass
         try:
             return _bfs_callers_impl(
                 self._get_conn(), callee_name, callee_file, max_depth
@@ -520,9 +528,17 @@ class ASTCache:
         caller_file: str | None = None,
         max_depth: int = 1,
     ) -> list[dict[str, Any]]:
-        """SQL-native callees lookup via BFS on ast_call_edges."""
+        """SQL-native callees lookup via BFS on unified edges, with legacy fallback."""
         if caller_file:
             caller_file = caller_file.replace("\\", "/")
+        try:
+            from .graph.edge_store import EdgeKind, EdgeStore
+
+            store = EdgeStore(self._get_conn(), ensure_schema=False)
+            if store.has_edges(EdgeKind.CALLS):
+                return store.query_callees(caller_name, caller_file, max_depth)
+        except sqlite3.OperationalError:
+            pass
         try:
             return _bfs_callees_impl(
                 self._get_conn(), caller_name, caller_file, max_depth
@@ -538,7 +554,16 @@ class ASTCache:
                 .execute("SELECT COUNT(*) as c FROM ast_call_edges")
                 .fetchone()
             )
-            return bool(row["c"] > 0)
+            if bool(row["c"] > 0):
+                return True
+        except sqlite3.OperationalError:
+            pass
+        try:
+            from .graph.edge_store import EdgeKind, EdgeStore
+
+            return EdgeStore(self._get_conn(), ensure_schema=False).has_edges(
+                EdgeKind.CALLS
+            )
         except sqlite3.OperationalError:
             return False
 
