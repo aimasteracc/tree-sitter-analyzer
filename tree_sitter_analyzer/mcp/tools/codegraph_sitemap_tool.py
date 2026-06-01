@@ -20,7 +20,6 @@ CodeGraph parity: equivalent to CodeGraph's code-map / sitemap view.
 from __future__ import annotations
 
 import json
-import os
 from collections import defaultdict
 from typing import Any
 
@@ -30,6 +29,10 @@ from ._response_builder import build_response
 from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
+
+
+def _path_parts(file_path: str) -> list[str]:
+    return [part for part in file_path.replace("\\", "/").split("/") if part]
 
 
 class CodeGraphSitemapTool(BaseMCPTool):
@@ -214,7 +217,7 @@ class CodeGraphSitemapTool(BaseMCPTool):
     def _build_full_map(self, files: list[dict[str, Any]]) -> dict[str, Any]:
         tree: dict[str, Any] = {}
         for f in files:
-            parts = f["file"].split(os.sep)
+            parts = _path_parts(f["file"])
             node = tree
             for part in parts[:-1]:
                 node = node.setdefault(part, {})
@@ -318,7 +321,7 @@ class CodeGraphSitemapTool(BaseMCPTool):
     def _build_module_metrics(self, files: list[dict[str, Any]]) -> dict[str, Any]:
         by_dir: dict[str, list[dict[str, Any]]] = defaultdict(list)
         for f in files:
-            dir_path = str(os.sep).join(f["file"].split(os.sep)[:-1]) or "."
+            dir_path = "/".join(_path_parts(f["file"])[:-1]) or "."
             by_dir[dir_path].append(f)
 
         modules: list[dict[str, Any]] = []

@@ -140,6 +140,29 @@ class TestSitemapTool:
             tool.validate_arguments({"mode": "bogus"})
 
 
+def test_sitemap_builders_normalize_cached_slash_paths(tmp_path):
+    from tree_sitter_analyzer.mcp.tools.codegraph_sitemap_tool import (
+        CodeGraphSitemapTool,
+    )
+
+    tool = CodeGraphSitemapTool(project_root=str(tmp_path))
+    files = [
+        {
+            "file": "app/main.py",
+            "language": "python",
+            "symbols": [],
+            "structure": {},
+            "symbol_count": 1,
+            "functions": [{"kind": "function", "name": "run", "line": 1}],
+            "classes": [],
+            "imports": [],
+        }
+    ]
+
+    assert "main.py" in tool._build_full_map(files)["sitemap"]["app"]
+    assert tool._build_module_metrics(files)["modules"][0]["directory"] == "app"
+
+
 class TestSitemapCLI:
     def _run_cli(self, indexed_project, monkeypatch, mode):
         from tree_sitter_analyzer.cli_main import main

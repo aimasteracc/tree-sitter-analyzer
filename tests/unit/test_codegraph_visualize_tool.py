@@ -233,6 +233,19 @@ class TestVisualizeIndexedProject:
         assert result["stats"]["edge_count"] <= 10
 
     @pytest.mark.asyncio
+    async def test_full_mode_stops_at_edge_limit(self, tiny_call_project: str) -> None:
+        tool = CodeGraphVisualizeTool(tiny_call_project)
+        result = await tool.execute(
+            {
+                "mode": "full",
+                "max_edges": 1,
+                "output_format": "json",
+            }
+        )
+        assert result["success"] is True
+        assert result["stats"]["edge_count"] == 1
+
+    @pytest.mark.asyncio
     async def test_function_mode_on_indexed_project(
         self, tiny_call_project: str
     ) -> None:
