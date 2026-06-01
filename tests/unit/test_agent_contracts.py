@@ -49,6 +49,18 @@ def test_pyproject_pytest_runtime_contract_mirror_is_locked() -> None:
     )
 
 
+def test_package_and_mcp_versions_are_aligned() -> None:
+    """Release prep must keep package and MCP server versions in lockstep."""
+    data = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text())
+    project_version = data["project"]["version"]
+    package_init = (PROJECT_ROOT / "tree_sitter_analyzer" / "__init__.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert data["tool"]["mcp"]["server_version"] == project_version
+    assert f'__version__ = "{project_version}"' in package_init
+
+
 def test_ast_cache_call_edge_extraction_does_not_depend_on_call_graph() -> None:
     """ASTCache and CallGraph must share extraction helpers without a back-edge."""
     path = PROJECT_ROOT / "tree_sitter_analyzer" / "_ast_extraction.py"

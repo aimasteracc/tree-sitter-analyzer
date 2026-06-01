@@ -2705,7 +2705,7 @@ wheels = [
 
 [[package]]
 name = "tree-sitter-analyzer"
-version = "1.17.4"
+version = "1.18.0"
 source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
