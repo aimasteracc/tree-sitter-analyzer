@@ -768,6 +768,7 @@ def test_facade_delegation_routes_each_action_to_expected_inner() -> None:
         ("nav", "callees"): "<bespoke>",
         ("structure", "outline"): "GetCodeOutlineTool",
         ("structure", "analyze"): "AnalyzeCodeStructureTool",
+        ("structure", "signatures"): "<bespoke>",
         ("structure", "ast_path"): "CodeGraphASTPathTool",
         ("structure", "sitemap"): "CodeGraphSitemapTool",
         ("structure", "class_tree"): "ClassHierarchyTool",

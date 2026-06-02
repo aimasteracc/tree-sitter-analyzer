@@ -97,7 +97,7 @@ class DefaultTableFormatter:
         Initialize the legacy table formatter.
 
         Args:
-            format_type: Format type (full, compact, csv)
+            format_type: Format type (full, compact, csv, signatures)
             language: Programming language for syntax highlighting
             include_javadoc: Whether to include JavaDoc/documentation
         """
@@ -144,6 +144,8 @@ class DefaultTableFormatter:
             result = self._format_compact_table(structure_data)
         elif self.format_type == "csv":
             result = self._format_csv(structure_data)
+        elif self.format_type == "signatures":
+            result = self._format_signatures_table(structure_data)
         else:
             raise ValueError(f"Unsupported format type: {self.format_type}")
 
@@ -331,6 +333,53 @@ class DefaultTableFormatter:
             return f"{self._abbreviate_type(base)}[]"
 
         return abbrev_map.get(type_str, type_str[0].upper() if type_str else "?")
+
+    # Format data for output: _format_signatures_table
+    def _format_signatures_table(self, data: dict[str, Any]) -> str:
+        """Lightweight method-directory format.
+
+        Emits one line per method: ``name →returnType(Np) startLine-endLine``.
+        Parameter *count* only (no types) — ~25 % of full-mode tokens.
+        Grouped by class when classes are present.
+        """
+        from .formatters._java_formatter_signatures_mixin import (
+            _append_class_block,
+            _append_method_lines,
+        )
+
+        lines: list[str] = []
+        classes = data.get("classes", []) or []
+        all_methods = data.get("methods", []) or []
+        all_fields = data.get("fields", []) or []
+        package_name = (data.get("package") or {}).get("name", "")
+        stats = data.get("statistics") or {}
+
+        # Header
+        header = _full_table_header_helper(data, classes)
+        lines.append(f"# {header} [signatures]")
+        lines.append("")
+        if package_name:
+            lines.append(f"pkg: {package_name}")
+        total_methods = stats.get("method_count", len(all_methods))
+        total_fields = stats.get("field_count", len(all_fields))
+        lines.append(f"methods: {total_methods}  fields: {total_fields}")
+        lines.append("")
+
+        if classes:
+            for cls in classes:
+                _append_class_block(lines, cls, data, classes, all_methods, all_fields)
+        else:
+            _append_method_lines(lines, all_methods)
+
+        lines.append("")
+        lines.append(
+            "next_step: Pick methods by name, then use "
+            "--partial-read <start>-<end> or batch-read to get bodies."
+        )
+
+        while lines and lines[-1] == "":
+            lines.pop()
+        return "\n".join(lines)
 
     # Format data for output: _format_compact_table
     def _format_compact_table(self, data: dict[str, Any]) -> str:

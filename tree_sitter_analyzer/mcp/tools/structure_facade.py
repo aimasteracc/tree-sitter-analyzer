@@ -62,6 +62,10 @@ _STRUCTURE_DESCRIPTION = (
     "Params: file_path, language, depth.\n"
     "- action=analyze — complexity + structure analysis (cyclomatic, nesting, "
     "cohesion). Params: file_path, language.\n"
+    "- action=signatures — LIGHTWEIGHT method-directory (~25 %% of full tokens). "
+    "Lists every method as 'name →returnType(Np) startLine-endLine' grouped by "
+    "class. Use FIRST for large files (>500 lines) to pick methods by name, then "
+    "action=read to fetch bodies. Params: file_path, language (default java).\n"
     "- action=ast_path — AST path from a specific node up to the file root "
     "(navigate the parse tree, codegraph_ast_path equivalent). "
     "Params: file_path, line, column.\n"
@@ -108,6 +112,29 @@ def build_structure_facade(project_root: str | None = None) -> FacadeTool:
     # can be registered for G3 rebind.
     # ------------------------------------------------------------------
     _read_tool = ReadPartialTool(project_root)
+    _analyze_tool = AnalyzeCodeStructureTool(project_root)
+
+    # ------------------------------------------------------------------
+    # Signatures bespoke route — lightweight method-directory (~25 % tokens)
+    # ------------------------------------------------------------------
+    async def _signatures_route(args: dict[str, Any]) -> Any:
+        """Return signatures-format output for a file.
+
+        Delegates to ``AnalyzeCodeStructureTool`` with ``format_type=signatures``
+        so the full analysis pipeline (security, encoding, plugin dispatch) is
+        preserved.  The tool already supports ``signatures`` after the patch to
+        ``_format_table`` and ``_validate_format_type``.
+        """
+        if "file_path" not in args:
+            raise ValueError("signatures action requires file_path")
+        forward: dict[str, Any] = {
+            "file_path": args["file_path"],
+            "format_type": "signatures",
+            "output_format": args.get("output_format", "toon"),
+        }
+        if "language" in args:
+            forward["language"] = args["language"]
+        return await _analyze_tool.execute(forward)
 
     async def _read_route(args: dict[str, Any]) -> Any:
         """F5 bespoke: single-vs-batch reshape for extract_code_section.
@@ -151,7 +178,7 @@ def build_structure_facade(project_root: str | None = None) -> FacadeTool:
         facade_name="structure",
         action_map={
             "outline": GetCodeOutlineTool(project_root),
-            "analyze": AnalyzeCodeStructureTool(project_root),
+            "analyze": _analyze_tool,
             "ast_path": CodeGraphASTPathTool(project_root),
             "sitemap": CodeGraphSitemapTool(project_root),
             "class_tree": ClassHierarchyTool(project_root),
@@ -160,14 +187,16 @@ def build_structure_facade(project_root: str | None = None) -> FacadeTool:
         },
         bespoke_map={
             "read": _read_route,  # F5: single/batch reshape via ReadPartialTool
+            "signatures": _signatures_route,  # lightweight method-directory
         },
         description=_STRUCTURE_DESCRIPTION,
         annotations=_STRUCTURE_ANNOTATIONS,
         project_root=project_root,
     )
 
-    # G3: register the bespoke ``_read_tool`` so set_project_path reaches it.
+    # G3: register bespoke inners so set_project_path reaches them.
     # FacadeTool auto-rebinds action_map instances; bespoke inners need manual
     # registration.
     facade.register_bespoke_inner(_read_tool)
+    facade.register_bespoke_inner(_analyze_tool)
     return facade

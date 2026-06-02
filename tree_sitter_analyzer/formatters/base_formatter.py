@@ -118,6 +118,15 @@ class BaseTableFormatter(BaseFormatter):
             result = self._format_compact_table(structure_data)
         elif self.format_type == "csv":
             result = self._format_csv(structure_data)
+        elif self.format_type == "signatures":
+            # Lightweight directory mode: name →returnType(Np) L-L per method.
+            # Delegates to the mixin if available; raises if the subclass doesn't
+            # implement it (non-Java formatters can opt in later).
+            if not hasattr(self, "_format_signatures_table"):
+                raise ValueError(
+                    "signatures format not supported for this language formatter"
+                )
+            result = self._format_signatures_table(structure_data)
         else:
             raise ValueError(f"Unsupported format type: {self.format_type}")
 

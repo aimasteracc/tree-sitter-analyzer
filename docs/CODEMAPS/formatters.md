@@ -11,6 +11,7 @@ Output formats supported by both CLI and MCP. Located in `tree_sitter_analyzer/f
 | `json` | `formatters/json_formatter.py` | **CLI** | `jq` piping, programmatic ingestion |
 | `table` | `formatters/table_formatter.py` (canonical, re-exports `LegacyTableFormatter`) + `tree_sitter_analyzer/default_table_formatter.py` + `legacy_table_formatter.py` | `--table` flag | Terminal viewing with box-drawing chars |
 | `csv` | via `tree_sitter_analyzer/_legacy_table_formatter_csv.py` | `--table csv` | Spreadsheet ingestion |
+| `signatures` | `formatters/_java_formatter_signatures_mixin.py` (Java); `default_table_formatter.py` (fallback) | `--table signatures` | Lightweight method-directory for large files — ~25-50% of full tokens; agent-first, then `--partial-read` for bodies |
 | `yaml` | `formatters/yaml_formatter.py` | explicit `--format yaml` | Human-readable structured |
 
 ## Why TOON for MCP, JSON for CLI?
@@ -57,6 +58,12 @@ class BaseFormatter(ABC):
 Per-language formatter mixins live alongside (`_java_formatter_*_mixin.py`,
 `_cpp_formatter_*_mixin.py`, etc.) and are composed into the concrete formatter
 classes via Python's MRO.
+
+Key mixins for the Java formatter:
+- `_java_formatter_full_mixin.py` — `_format_full_table`
+- `_java_formatter_compact_mixin.py` — `_format_compact_table`
+- `_java_formatter_signatures_mixin.py` — `_format_signatures_table` (lightweight
+  method-directory; lists methods as `name →returnType(Np) L-L`, no bodies)
 
 ## TOON Format
 
