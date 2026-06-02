@@ -332,6 +332,8 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
             }
             if "relevance_score" in r:
                 entry["relevance_score"] = r["relevance_score"]
+            if "match_tier" in r:
+                entry["match_tier"] = r["match_tier"]
             results.append(entry)
             if len(results) >= limit:
                 break

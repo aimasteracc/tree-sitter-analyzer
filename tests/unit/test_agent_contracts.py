@@ -49,6 +49,18 @@ def test_pyproject_pytest_runtime_contract_mirror_is_locked() -> None:
     )
 
 
+def test_package_and_mcp_versions_are_aligned() -> None:
+    """Release prep must keep package and MCP server versions in lockstep."""
+    data = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text())
+    project_version = data["project"]["version"]
+    package_init = (PROJECT_ROOT / "tree_sitter_analyzer" / "__init__.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert data["tool"]["mcp"]["server_version"] == project_version
+    assert f'__version__ = "{project_version}"' in package_init
+
+
 def test_ast_cache_call_edge_extraction_does_not_depend_on_call_graph() -> None:
     """ASTCache and CallGraph must share extraction helpers without a back-edge."""
     path = PROJECT_ROOT / "tree_sitter_analyzer" / "_ast_extraction.py"
@@ -392,6 +404,35 @@ def test_release_and_hotfix_prs_use_gitflow_branch_heads() -> None:
 
     assert "release-to-main" not in release_text
     assert "hotfix-to-main" not in hotfix_text
+
+
+def test_release_and_hotfix_finalize_prs_do_not_mask_closed_prs() -> None:
+    """A closed, unmerged finalize PR means the release/hotfix is not landed."""
+    workflows = {
+        "release-automation.yml": PROJECT_ROOT
+        / ".github"
+        / "workflows"
+        / "release-automation.yml",
+        "hotfix-automation.yml": PROJECT_ROOT
+        / ".github"
+        / "workflows"
+        / "hotfix-automation.yml",
+    }
+
+    for workflow_name, workflow_path in workflows.items():
+        text = workflow_path.read_text(encoding="utf-8")
+        create_pr = re.search(
+            r"(?ms)^      - name: Create Pull Request to main\n(?P<body>.*?)(?=^      - name:|\Z)",
+            text,
+        )
+
+        assert create_pr is not None, workflow_name
+        body = create_pr.group("body")
+        assert "--state all" in body, workflow_name
+        assert "closed without merge" in body, workflow_name
+        assert "refusing to treat finalization as successful" in body, workflow_name
+        assert "exit 1" in body, workflow_name
+        assert "|| gh pr view" not in body, workflow_name
 
 
 def test_agent_facing_docs_do_not_recommend_bare_pytest() -> None:

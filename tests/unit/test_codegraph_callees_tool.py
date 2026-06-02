@@ -14,14 +14,31 @@ from pathlib import Path
 
 import pytest
 
+from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.mcp.tools.callees_tool import CodeGraphCalleesTool
-
-_PROJECT_ROOT = str(Path(__file__).resolve().parent.parent.parent)
 
 
 @pytest.fixture
-def callees_tool() -> CodeGraphCalleesTool:
-    return CodeGraphCalleesTool(_PROJECT_ROOT)
+def indexed_call_project(tmp_path: Path) -> str:
+    (tmp_path / "helper.py").write_text(
+        "def helper():\n    return 1\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "worker.py").write_text(
+        "from helper import helper\n\n\ndef build():\n    return helper()\n",
+        encoding="utf-8",
+    )
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_project()
+    finally:
+        cache.close()
+    return str(tmp_path)
+
+
+@pytest.fixture
+def callees_tool(indexed_call_project: str) -> CodeGraphCalleesTool:
+    return CodeGraphCalleesTool(indexed_call_project)
 
 
 class TestCodeGraphCalleesResolutionFields:
@@ -33,14 +50,12 @@ class TestCodeGraphCalleesResolutionFields:
     ) -> None:
         """Each callees[*] entry must have callee_resolution + resolved_file.
 
-        Uses ``score_file`` from health_scorer as the seed function — it is
-        a real method on HealthScorer that calls several siblings (mostly
-        intra-file, with at least one cross-module call), so the response
-        list must be non-empty and must include at least one ``project``
-        entry whose ``callee_resolved_file`` is set.
+        Uses a tiny indexed project where worker.build imports helper.helper,
+        so the response list must be non-empty and include a resolved
+        cross-file project callee without scanning the whole repository.
         """
         result = await callees_tool.execute(
-            {"function_name": "score_file", "output_format": "json"}
+            {"function_name": "build", "output_format": "json"}
         )
         assert result["success"] is True, f"tool errored: {result}"
         callees = result.get("callees", [])
@@ -48,7 +63,7 @@ class TestCodeGraphCalleesResolutionFields:
             f"expected list of callees, got {type(callees).__name__}"
         )
         assert callees, (
-            "score_file is known to call other functions; got an empty "
+            "build is known to call helper; got an empty "
             "callees list, which suggests the cache is stale or the index "
             "missed the file"
         )
@@ -81,12 +96,13 @@ class TestCodeGraphCalleesResolutionFields:
             # resolved_file is a string (possibly empty for unknown/stdlib).
             assert isinstance(entry["callee_resolved_file"], str)
 
-        # And at least one entry must demonstrate cross-file resolution so
-        # the test fails loudly if the resolver silently always emits
-        # 'unknown'. score_file delegates to helpers across the file and
-        # at least one to another module, so we expect 'project' or 'local'.
-        non_unknown = [e for e in callees if e["callee_resolution"] != "unknown"]
-        assert non_unknown, (
-            f"every callee for score_file is 'unknown' — the resolver is "
-            f"either disabled or broken. Sample entries: {callees[:3]}"
+        project_edges = [
+            e
+            for e in callees
+            if e["callee_resolution"] == "project"
+            and e["callee_resolved_file"] == "helper.py"
+        ]
+        assert project_edges, (
+            "expected build -> helper to resolve across files via the EdgeStore "
+            f"read path. Sample entries: {callees[:3]}"
         )

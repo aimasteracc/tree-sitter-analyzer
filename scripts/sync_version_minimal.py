@@ -4,6 +4,7 @@ Minimal Version Synchronization Script
 
 This script only synchronizes version numbers in essential files:
 - pyproject.toml (source of truth)
+- pyproject.toml [tool.mcp].server_version (MCP metadata)
 - tree_sitter_analyzer/__init__.py (main package version)
 
 Other __init__.py files are left unchanged to reduce complexity.
@@ -52,7 +53,9 @@ def get_essential_version_files() -> list[Path]:
     return [f for f in essential_files if f.exists()]
 
 
-def update_version_in_file(file_path: Path, new_version: str) -> tuple[bool, str]:
+def update_version_in_file(
+    file_path: Path, new_version: str, *, check_only: bool = False
+) -> tuple[bool, str]:
     """Update version in a single file"""
     try:
         content = file_path.read_text(encoding="utf-8")
@@ -69,6 +72,8 @@ def update_version_in_file(file_path: Path, new_version: str) -> tuple[bool, str
         # Update existing version
         new_content = re.sub(version_pattern, f'__version__ = "{new_version}"', content)
         if new_content != content:
+            if check_only:
+                return True, f"⚠️  Would update {file_path.relative_to(Path('.'))}"
             try:
                 file_path.write_text(new_content, encoding="utf-8")
                 return True, f"✅ Updated {file_path.relative_to(Path('.'))}"
@@ -83,6 +88,35 @@ def update_version_in_file(file_path: Path, new_version: str) -> tuple[bool, str
         return False, f"⚠️  No __version__ found in {file_path.relative_to(Path('.'))}"
 
 
+def update_mcp_server_version(
+    new_version: str, *, check_only: bool = False
+) -> tuple[bool, str]:
+    """Update [tool.mcp].server_version in pyproject.toml."""
+    pyproject_path = Path("pyproject.toml")
+    try:
+        content = pyproject_path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        try:
+            content = pyproject_path.read_text(encoding="cp1252")
+        except UnicodeDecodeError:
+            content = pyproject_path.read_text(encoding="latin-1")
+
+    server_version_pattern = r'server_version\s*=\s*"([^"]+)"'
+    if not re.search(server_version_pattern, content):
+        return False, "⚠️  No [tool.mcp].server_version found in pyproject.toml"
+
+    new_content = re.sub(
+        server_version_pattern, f'server_version = "{new_version}"', content
+    )
+    if new_content == content:
+        return False, "ℹ️  No changes needed in pyproject.toml [tool.mcp].server_version"
+    if check_only:
+        return True, "⚠️  Would update pyproject.toml [tool.mcp].server_version"
+
+    pyproject_path.write_text(new_content, encoding="utf-8")
+    return True, "✅ Updated pyproject.toml [tool.mcp].server_version"
+
+
 def check_versions(check_only: bool = False) -> None:
     """Check and optionally update essential version numbers only"""
     current_version = get_version_from_pyproject()
@@ -93,8 +127,17 @@ def check_versions(check_only: bool = False) -> None:
 
     updated_files = []
 
+    server_success, server_message = update_mcp_server_version(
+        current_version, check_only=check_only
+    )
+    if server_success:
+        updated_files.append(Path("pyproject.toml"))
+    print(server_message)
+
     for file_path in essential_files:
-        success, message = update_version_in_file(file_path, current_version)
+        success, message = update_version_in_file(
+            file_path, current_version, check_only=check_only
+        )
         if success:
             updated_files.append(file_path)
         print(message)

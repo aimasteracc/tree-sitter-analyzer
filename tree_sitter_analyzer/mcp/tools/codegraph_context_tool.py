@@ -55,7 +55,7 @@ class CodeGraphContextTool(BaseMCPTool):
             from ...graph.edge_store import EdgeStore
 
             cache = self._get_cache()
-            conn = cache._get_conn() if hasattr(cache, "_get_conn") else None
+            conn = cache.get_conn() if hasattr(cache, "get_conn") else None
             if conn is not None:
                 self._edge_store = EdgeStore(conn, ensure_schema=False)
         return self._edge_store
@@ -65,8 +65,10 @@ class CodeGraphContextTool(BaseMCPTool):
             if not self.project_root:
                 raise ValueError("Project root not set. Call set_project_path first.")
             try:
+                from ...graph.edge_store import EdgeKind
+
                 store = self._get_edge_store()
-                if store is not None and store.has_edges():
+                if store is not None and store.has_edges(EdgeKind.CALLS):
                     self._call_graph = store
                     return self._call_graph
             except Exception:
@@ -74,7 +76,7 @@ class CodeGraphContextTool(BaseMCPTool):
             from ...call_graph import CachedCallGraph
 
             cache = self._get_cache()
-            graph = CachedCallGraph(self.project_root, cache=cache)
+            graph = CachedCallGraph(self.project_root, cache=cache, fallback=False)
             graph.build()
             self._call_graph = graph
         return self._call_graph
@@ -257,10 +259,10 @@ class CodeGraphContextTool(BaseMCPTool):
             nodes.append(node)
 
         def _edge_store_callees(
-            name: str, file_path: str | None
+            name: str, file_path: str | None, depth: int = 1
         ) -> list[dict[str, Any]]:
             try:
-                return graph.query_callees(name, file_path) or []
+                return graph.query_callees(name, file_path, max_depth=depth) or []
             except Exception:
                 return []
 
@@ -278,7 +280,8 @@ class CodeGraphContextTool(BaseMCPTool):
             name = node["name"]
             file_path = node.get("file") or None
             if is_edge_store:
-                for ref in _edge_store_callees(name, file_path)[:10]:
+                depth = 4 if trace_mode else 1
+                for ref in _edge_store_callees(name, file_path, depth)[:10]:
                     add_ref(_callee_ref_to_hit(ref))
                 for ref in _edge_store_callers(name, file_path)[:10]:
                     add_ref(_caller_ref_to_hit(ref))

@@ -54,10 +54,10 @@ jobs:
       has_work: ${{ steps.review.outputs.has_work }}
       brief_path: artifacts/brief.md
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
 
@@ -98,7 +98,7 @@ jobs:
 
       - name: Upload brief + plan
         if: steps.review.outputs.has_work == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: auto-sprint-brief
           path: artifacts/
@@ -127,7 +127,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -142,13 +142,13 @@ jobs:
           fi
 
       - name: Download brief
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: auto-sprint-brief
           path: artifacts
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
 
@@ -201,7 +201,7 @@ jobs:
 
       - name: Upload run artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: auto-sprint-execute-run
           path: |
