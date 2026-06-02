@@ -1,5 +1,51 @@
 # Changelog
 
+## [1.19.0] - 2026-06-02
+
+CodeGraph EdgeStore release for faster, more complete agent context after
+v1.18.0. This release promotes the pre-indexed graph store to the primary
+context path and closes the post-release development batch on `develop`.
+
+### Added
+
+- **Unified EdgeStore foundation**. AST cache indexing now persists call and
+  inheritance relationships into a structured edge store for fast graph
+  lookups without reparsing the project on every agent request.
+- **Cross-file unresolved reference recovery**. CodeGraph relation indexing can
+  resolve previously unresolved symbols across files, improving caller/callee
+  and class hierarchy accuracy.
+- **Cascade symbol search**. Symbol lookup now falls through exact, FTS5, LIKE,
+  and bounded fuzzy matching tiers, preserving `match_tier` and rescored
+  relevance metadata for agent routing.
+
+### Improved
+
+- **`codegraph_context` uses EdgeStore first** when CALLS edges are available,
+  avoiding lazy full call-graph parsing while preserving cached fallback
+  behavior for projects without persisted call edges.
+- **Parallel AST indexing parity**. Serial and parallel indexing paths now have
+  focused tests proving symbol rows and call edges remain equivalent.
+- **Dependency floors refreshed** for chardet, isort, pydantic,
+  pytest-asyncio, and pytest-rerunfailures through GitFlow-compliant
+  `develop`-targeted updates.
+
+### Fixed
+
+- **Cascade SQL queries are parameterized**, keeping Bandit clean and avoiding
+  query construction hazards in fallback search paths.
+- **Defensive fallback/error paths are covered** for EdgeStore access,
+  CodeGraph expansion, FTS5 optional metadata, empty FTS batches, and worker
+  parser initialization.
+
+### Validation
+
+- Local full suite: `17511 passed, 92 skipped` (91.30 s on macOS).
+- PR #254 CI passed: GitFlow Guard, PR fast matrix, MCP black-box E2E,
+  locale E2E, real repos E2E, performance benchmarks, build, quality gate, and
+  Codecov patch.
+
+---
+
 ## [1.18.0] - 2026-06-01
 
 GitFlow-compliant production release for the post-v1.17 development line.
