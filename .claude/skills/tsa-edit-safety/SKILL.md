@@ -16,16 +16,10 @@ description: |
   Workflow: 2-3 parallel MCP calls (safe_to_edit + change_impact + file_health),
   fold the verdicts, surface the exact `verification_command` and stop_condition.
 allowed-tools:
-  - mcp__tree-sitter-analyzer__safe_to_edit
-  - mcp__tree-sitter-analyzer__smart_context
-  - mcp__tree-sitter-analyzer__analyze_change_impact
-  - mcp__tree-sitter-analyzer__check_file_health
-  - mcp__tree-sitter-analyzer__refactoring_suggestions
-  - mcp__tree-sitter-analyzer__codegraph_pr_review
-  - mcp__tree-sitter-analyzer__get_agent_workflow
-  - mcp__tree-sitter-analyzer__modification_guard
-  - mcp__tree-sitter-analyzer__trace_impact
-  - mcp__tree-sitter-analyzer__decision_journal
+  - mcp__tree-sitter-analyzer__edit
+  - mcp__tree-sitter-analyzer__health
+  - mcp__tree-sitter-analyzer__project
+  - mcp__tree-sitter-analyzer__nav
   - Bash
   - Read
 ---

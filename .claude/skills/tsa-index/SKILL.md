@@ -15,14 +15,9 @@ description: |
 
   Replaces: manual `rm -rf .ast-cache && reindex` + reading plugin docs.
 allowed-tools:
-  - mcp__tree-sitter-analyzer__ast_cache
-  - mcp__tree-sitter-analyzer__ast_diff
-  - mcp__tree-sitter-analyzer__codegraph_autoindex
-  - mcp__tree-sitter-analyzer__codegraph_full_index
-  - mcp__tree-sitter-analyzer__codegraph_incremental_sync
-  - mcp__tree-sitter-analyzer__codegraph_status
-  - mcp__tree-sitter-analyzer__advise_parser_readiness
-  - mcp__tree-sitter-analyzer__build_project_index
+  - mcp__tree-sitter-analyzer__index
+  - mcp__tree-sitter-analyzer__edit
+  - mcp__tree-sitter-analyzer__project
   - Bash
   - Read
 ---

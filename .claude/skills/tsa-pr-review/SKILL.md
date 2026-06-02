@@ -28,12 +28,8 @@ description: |
   fan-out (safe_to_edit) → per-symbol fan-out (callers + callees) → fold into
   a verdict-ranked report.
 allowed-tools:
-  - mcp__tree-sitter-analyzer__codegraph_pr_review
-  - mcp__tree-sitter-analyzer__analyze_change_impact
-  - mcp__tree-sitter-analyzer__safe_to_edit
-  - mcp__tree-sitter-analyzer__check_constraints
-  - mcp__tree-sitter-analyzer__codegraph_callers
-  - mcp__tree-sitter-analyzer__codegraph_callees
+  - mcp__tree-sitter-analyzer__edit
+  - mcp__tree-sitter-analyzer__nav
   - Bash
   - Read
 ---

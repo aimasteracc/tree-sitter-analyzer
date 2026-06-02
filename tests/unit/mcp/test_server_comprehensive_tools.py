@@ -121,9 +121,14 @@ class TestTreeSitterAnalyzerMCPServerToolHandling:
     async def test_handle_call_tool_analyze_code_structure(
         self, mock_server_with_tools
     ):
-        """Test analyze_code_structure tool call."""
+        """Wave C2: ``analyze_code_structure`` is a deprecated legacy name now
+        routed via the shim → ``structure`` facade, action=analyze. We mock the
+        facade's *inner* analyze tool and assert it is reached."""
         server = mock_server_with_tools
-        server.table_format_tool.execute.return_value = {"table": "formatted"}
+        structure_facade = server.tools["structure"]
+        inner = AsyncMock()
+        inner.execute.return_value = {"success": True, "table": "formatted"}
+        structure_facade.action_map["analyze"] = inner
 
         with patch("tree_sitter_analyzer.mcp.server.Server") as mock_server_class:
             mock_server = Mock()
@@ -149,15 +154,21 @@ class TestTreeSitterAnalyzerMCPServerToolHandling:
             arguments = {"file_path": "test.py", "format_type": "full"}
             result = await call_tool_handler("analyze_code_structure", arguments)
 
-            server.table_format_tool.execute.assert_called_once()
+            inner.execute.assert_called_once()
             assert len(result) == 1
 
     @patch("tree_sitter_analyzer.mcp.server.MCP_AVAILABLE", True)
     @pytest.mark.asyncio
     async def test_handle_call_tool_extract_code_section(self, mock_server_with_tools):
-        """Test extract_code_section tool call."""
+        """Wave C2: ``extract_code_section`` is a deprecated legacy name routed
+        via the shim → ``structure`` facade, bespoke action=read. The bespoke
+        ``_read_tool`` is registered as the facade's only bespoke inner; mock
+        its ``execute`` and assert the single-file reshape path reaches it."""
         server = mock_server_with_tools
-        server.read_partial_tool.execute.return_value = {"content": "extracted"}
+        read_inner = server.tools["structure"]._bespoke_inners[0]
+        read_inner.execute = AsyncMock(
+            return_value={"success": True, "content": "extracted"}
+        )
 
         with patch("tree_sitter_analyzer.mcp.server.Server") as mock_server_class:
             mock_server = Mock()
@@ -183,7 +194,7 @@ class TestTreeSitterAnalyzerMCPServerToolHandling:
             arguments = {"file_path": "test.py", "start_line": 1, "end_line": 10}
             result = await call_tool_handler("extract_code_section", arguments)
 
-            server.read_partial_tool.execute.assert_called_once()
+            read_inner.execute.assert_called_once()
             assert len(result) == 1
 
     @patch("tree_sitter_analyzer.mcp.server.MCP_AVAILABLE", True)
@@ -191,16 +202,20 @@ class TestTreeSitterAnalyzerMCPServerToolHandling:
     async def test_handle_call_tool_extract_code_section_batch_requests(
         self, mock_server_with_tools
     ):
-        """Test extract_code_section tool call with batch requests
-        (no file_path/start_line required at server layer)."""
+        """Wave C2: batch-mode ``extract_code_section`` (``requests`` present)
+        routes via the shim → ``structure`` facade bespoke read inner, which
+        forwards verbatim to ReadPartialTool's batch dispatcher."""
         server = mock_server_with_tools
-        server.read_partial_tool.execute.return_value = {
-            "format": "toon",
-            "toon_content": "BATCH",
-            "success": True,
-            "count_files": 1,
-            "count_sections": 1,
-        }
+        read_inner = server.tools["structure"]._bespoke_inners[0]
+        read_inner.execute = AsyncMock(
+            return_value={
+                "format": "toon",
+                "toon_content": "BATCH",
+                "success": True,
+                "count_files": 1,
+                "count_sections": 1,
+            }
+        )
 
         with patch("tree_sitter_analyzer.mcp.server.Server") as mock_server_class:
             mock_server = Mock()
@@ -233,7 +248,9 @@ class TestTreeSitterAnalyzerMCPServerToolHandling:
             }
             result = await call_tool_handler("extract_code_section", arguments)
 
-            server.read_partial_tool.execute.assert_called_once_with(arguments)
+            # The shim strips its ``action`` control key before the bespoke
+            # read route forwards the (batch) args to the inner verbatim.
+            read_inner.execute.assert_called_once_with(arguments)
             assert len(result) == 1
             response_data = json.loads(result[0].text)
             assert response_data["format"] == "toon"

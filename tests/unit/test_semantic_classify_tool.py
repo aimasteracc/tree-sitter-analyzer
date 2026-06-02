@@ -155,10 +155,16 @@ class TestSemanticClassifyExecution:
 
 class TestSemanticClassifyToolRegistry:
     def test_tool_registered(self):
+        # Wave C2: semantic_classify is now the edit facade action=classify.
         from tree_sitter_analyzer.mcp._tool_registry import create_tool_registry
 
         _, by_name = create_tool_registry(None)
-        assert "semantic_classify" in by_name
+        assert "edit" in by_name
+        assert "classify" in by_name["edit"].action_map
+        assert (
+            type(by_name["edit"].action_map["classify"]).__name__
+            == "SemanticClassifyTool"
+        )
 
     def test_tool_in_cli_class_names(self):
         from tree_sitter_analyzer.cli.commands.mcp_commands import _TOOL_CLASS_NAMES

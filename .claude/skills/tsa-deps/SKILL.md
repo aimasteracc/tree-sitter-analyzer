@@ -16,9 +16,8 @@ description: |
   Replaces: grep-for-import-statements + manual graph walking
   (~5k tokens for non-trivial repos) with 1 MCP call (~500 tokens).
 allowed-tools:
-  - mcp__tree-sitter-analyzer__analyze_dependencies
-  - mcp__tree-sitter-analyzer__codegraph_import_graph
-  - mcp__tree-sitter-analyzer__codegraph_sitemap
+  - mcp__tree-sitter-analyzer__health
+  - mcp__tree-sitter-analyzer__structure
   - Bash
   - Read
 ---

@@ -98,36 +98,35 @@ class TestStartup:
         )
 
     def test_tools_list_returns_expected_minimum(self, mcp_server: MCPClient) -> None:
-        """All of TSA's primary tools must be discoverable.
-
-        We pin a *minimum* set of well-known tools rather than the
-        exact count, because the count drifts as we ship new tools
-        and that drift is healthy. The set below is the public
-        "must always work" surface.
+        """Wave C2: the public ``tools/list`` surface is exactly the 8 domain
+        facades + ``set_project_path``. The legacy 63 tool names are reached via
+        the deprecation shim (server.call_tool), NOT advertised in tools/list —
+        that is the whole point of the cutover (eager-token budget).
         """
         client = initialized(mcp_server)
         tools = client.list_tools()
         names = {tool["name"] for tool in tools}
         required = {
-            "check_project_health",
-            "check_file_health",
-            "safe_to_edit",
-            "analyze_code_structure",
-            "smart_context",
-            "codegraph_overview",
-            "codegraph_status",
-            "codegraph_metrics",
+            "search",
+            "nav",
+            "structure",
+            "health",
+            "edit",
+            "project",
+            "index",
+            "viz",
+            "set_project_path",
         }
         missing = required - names
         assert not missing, (
-            f"Required MCP tools missing from tools/list: {sorted(missing)}\n"
+            f"Required MCP facades missing from tools/list: {sorted(missing)}\n"
             f"Present: {sorted(names)}"
         )
-        # Sanity: at least 50 tools — README says 58 today. Floor
-        # protects against accidental tool-removal regressions.
-        assert len(tools) >= 50, (
-            f"Only {len(tools)} tools discovered; expected ≥ 50. "
-            "Tool count fell below the v1.14 floor — registry drift?"
+        # Exact surface: 8 facades + set_project_path. A regression that
+        # re-registers the discrete tools (re-inflating eager tokens) fails here.
+        assert len(tools) == 9, (
+            f"Expected exactly 9 entries (8 facades + set_project_path), "
+            f"got {len(tools)}: {sorted(names)}"
         )
 
 

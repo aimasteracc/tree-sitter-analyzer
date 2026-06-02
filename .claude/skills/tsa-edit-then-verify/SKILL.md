@@ -23,10 +23,9 @@ description: |
   Workflow: 1 parallel batch pre-edit → edit → 1 parallel batch post-edit →
   run scoped verification_command → only run full pytest if risk remains.
 allowed-tools:
-  - mcp__tree-sitter-analyzer__safe_to_edit
-  - mcp__tree-sitter-analyzer__check_file_health
-  - mcp__tree-sitter-analyzer__smart_context
-  - mcp__tree-sitter-analyzer__analyze_change_impact
+  - mcp__tree-sitter-analyzer__edit
+  - mcp__tree-sitter-analyzer__health
+  - mcp__tree-sitter-analyzer__project
   - Bash
   - Read
 ---

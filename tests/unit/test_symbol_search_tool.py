@@ -311,20 +311,29 @@ class TestCodeGraphSymbolSearchSourceContext:
 
 
 class TestCodeGraphSymbolSearchRegistration:
+    """Wave C2: these capabilities are now facade actions, not top-level tools.
+    symbol_search → search.symbol; callers/callees → nav.callers/callees
+    (bespoke, scope-discriminated)."""
+
     def test_tool_registered_in_server(self):
         from tree_sitter_analyzer.mcp.server import _create_tool_registry
 
         _, tools = _create_tool_registry(None)
-        assert "codegraph_symbol_search" in tools
+        assert "search" in tools
+        assert "symbol" in tools["search"].action_map
+        assert (
+            type(tools["search"].action_map["symbol"]).__name__
+            == "CodeGraphSymbolSearchTool"
+        )
 
     def test_callers_registered_in_server(self):
         from tree_sitter_analyzer.mcp.server import _create_tool_registry
 
         _, tools = _create_tool_registry(None)
-        assert "codegraph_callers" in tools
+        assert "callers" in tools["nav"].bespoke_map
 
     def test_callees_registered_in_server(self):
         from tree_sitter_analyzer.mcp.server import _create_tool_registry
 
         _, tools = _create_tool_registry(None)
-        assert "codegraph_callees" in tools
+        assert "callees" in tools["nav"].bespoke_map

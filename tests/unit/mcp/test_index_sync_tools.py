@@ -262,29 +262,46 @@ class TestCodeGraphIncrementalSyncTool:
 
 
 class TestIndexToolsRegistered:
+    """Wave C2: the three index lifecycle tools are no longer top-level
+    registry entries — they are actions on the ``index`` facade
+    (full/auto/sync). These tests verify the facade exposes those actions
+    and routes them to the original inner tools.
+    """
+
     def test_full_index_registered(self):
         from tree_sitter_analyzer.mcp._tool_registry import create_tool_registry
 
         _, by_name = create_tool_registry(None)
-        assert "codegraph_full_index" in by_name
+        assert "index" in by_name
+        assert "full" in by_name["index"].action_map
+        assert (
+            type(by_name["index"].action_map["full"]).__name__
+            == "CodeGraphFullIndexTool"
+        )
 
     def test_autoindex_registered(self):
         from tree_sitter_analyzer.mcp._tool_registry import create_tool_registry
 
         _, by_name = create_tool_registry(None)
-        assert "codegraph_autoindex" in by_name
+        assert "auto" in by_name["index"].action_map
+        assert (
+            type(by_name["index"].action_map["auto"]).__name__
+            == "CodeGraphAutoIndexTool"
+        )
 
     def test_incremental_sync_registered(self):
         from tree_sitter_analyzer.mcp._tool_registry import create_tool_registry
 
         _, by_name = create_tool_registry(None)
-        assert "codegraph_incremental_sync" in by_name
+        assert "sync" in by_name["index"].action_map
+        assert (
+            type(by_name["index"].action_map["sync"]).__name__
+            == "CodeGraphIncrementalSyncTool"
+        )
 
     def test_registered_tool_count(self):
         from tree_sitter_analyzer.mcp._tool_registry import create_tool_registry
 
-        tools, _ = create_tool_registry(None)
-        registered_names = [name for name, _ in tools]
-        assert "codegraph_full_index" in registered_names
-        assert "codegraph_autoindex" in registered_names
-        assert "codegraph_incremental_sync" in registered_names
+        _, by_name = create_tool_registry(None)
+        index_actions = set(by_name["index"].action_map)
+        assert {"full", "auto", "sync"} <= index_actions
