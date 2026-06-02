@@ -28,6 +28,7 @@ from ._ast_cache_query import (
     query_callees_enhanced as _query_callees_enhanced,
     search_symbols_linear as _search_symbols_linear,
 )
+from ._ast_cache_search import search_symbols_cascade as _search_symbols_cascade
 from ._ast_cache_helpers import (
     _build_function_entry,
     _commit_index_results,
@@ -443,9 +444,11 @@ class ASTCache:
         """Dispatch parse+extract to a spawn process pool (safe on macOS/Linux)."""
         from multiprocessing import get_context
 
+        from ._ast_extraction import _init_worker_parser
+
         ctx = get_context("spawn")
         args_iter = [(p, self.project_root, lang) for p, lang in candidates]
-        with ctx.Pool(processes=workers) as pool:
+        with ctx.Pool(processes=workers, initializer=_init_worker_parser) as pool:
             return list(pool.imap_unordered(_worker_index_file, args_iter, chunksize=8))
 
     def _insert_index_row(
@@ -482,6 +485,25 @@ class ASTCache:
         if self._fts5_available:
             return self.fts_search_ranked(query, language=language)
         return self._search_symbols_linear(query, language)
+
+    def search_symbols_cascade(
+        self,
+        query: str,
+        language: str | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """Three-tier cascading search: exact → FTS5 BM25 → LIKE.
+
+        Returns deduplicated results ordered by relevance with a
+        ``match_tier`` field indicating which tier found each result.
+        """
+        return _search_symbols_cascade(
+            self._get_conn(),
+            query,
+            language,
+            limit,
+            bool(self._fts5_available),
+        )
 
     def fts_search(
         self,

@@ -31,11 +31,13 @@ class CodeGraphContextTool(BaseMCPTool):
     def __init__(self, project_root: str | None = None) -> None:
         self._cache: Any = None
         self._call_graph: Any = None
+        self._edge_store: Any = None
         super().__init__(project_root)
 
     def _on_project_root_changed(self, project_root: str | None) -> None:
         self._cache = None
         self._call_graph = None
+        self._edge_store = None
 
     def _get_cache(self) -> Any:
         if self._cache is None:
@@ -46,13 +48,35 @@ class CodeGraphContextTool(BaseMCPTool):
             self._cache = ASTCache(self.project_root)
         return self._cache
 
+    def _get_edge_store(self) -> Any:
+        if self._edge_store is None:
+            if not self.project_root:
+                raise ValueError("Project root not set. Call set_project_path first.")
+            from ...graph.edge_store import EdgeStore
+
+            cache = self._get_cache()
+            conn = cache.get_conn() if hasattr(cache, "get_conn") else None
+            if conn is not None:
+                self._edge_store = EdgeStore(conn, ensure_schema=False)
+        return self._edge_store
+
     def _get_call_graph(self) -> Any:
         if self._call_graph is None:
             if not self.project_root:
                 raise ValueError("Project root not set. Call set_project_path first.")
-            from ...call_graph import CallGraph
+            try:
+                from ...graph.edge_store import EdgeKind
 
-            graph = CallGraph(self.project_root)
+                store = self._get_edge_store()
+                if store is not None and store.has_edges(EdgeKind.CALLS):
+                    self._call_graph = store
+                    return self._call_graph
+            except Exception:
+                pass
+            from ...call_graph import CachedCallGraph
+
+            cache = self._get_cache()
+            graph = CachedCallGraph(self.project_root, cache=cache, fallback=False)
             graph.build()
             self._call_graph = graph
         return self._call_graph
@@ -220,6 +244,7 @@ class CodeGraphContextTool(BaseMCPTool):
         nodes = list(seed_nodes)
         seen = {(n["name"], n.get("file", "")) for n in nodes}
         trace_mode = _looks_like_trace(task)
+        is_edge_store = hasattr(graph, "query_callees")
 
         def add_ref(ref: dict[str, Any]) -> None:
             if len(nodes) >= max_nodes:
@@ -233,20 +258,43 @@ class CodeGraphContextTool(BaseMCPTool):
             seen.add(key)
             nodes.append(node)
 
+        def _edge_store_callees(
+            name: str, file_path: str | None, depth: int = 1
+        ) -> list[dict[str, Any]]:
+            try:
+                return graph.query_callees(name, file_path, max_depth=depth) or []
+            except Exception:
+                return []
+
+        def _edge_store_callers(
+            name: str, file_path: str | None
+        ) -> list[dict[str, Any]]:
+            try:
+                return graph.query_callers(name, file_path) or []
+            except Exception:
+                return []
+
         for node in list(seed_nodes):
             if len(nodes) >= max_nodes:
                 break
             name = node["name"]
             file_path = node.get("file") or None
-            for ref in _safe_refs(graph.callees_of, name, file_path)[:10]:
-                add_ref(ref)
-            for ref in _safe_refs(graph.callers_of, name, file_path)[:10]:
-                add_ref(ref)
-            if trace_mode:
-                for hop in _safe_chain(graph, name, file_path, depth=4):
-                    callee = hop.get("callee")
-                    if isinstance(callee, dict):
-                        add_ref(callee)
+            if is_edge_store:
+                depth = 4 if trace_mode else 1
+                for ref in _edge_store_callees(name, file_path, depth)[:10]:
+                    add_ref(_callee_ref_to_hit(ref))
+                for ref in _edge_store_callers(name, file_path)[:10]:
+                    add_ref(_caller_ref_to_hit(ref))
+            else:
+                for ref in _safe_refs(graph.callees_of, name, file_path)[:10]:
+                    add_ref(ref)
+                for ref in _safe_refs(graph.callers_of, name, file_path)[:10]:
+                    add_ref(ref)
+                if trace_mode:
+                    for hop in _safe_chain(graph, name, file_path, depth=4):
+                        callee = hop.get("callee")
+                        if isinstance(callee, dict):
+                            add_ref(callee)
 
         return nodes[:max_nodes]
 
@@ -264,28 +312,54 @@ class CodeGraphContextTool(BaseMCPTool):
         edges: list[dict[str, Any]] = []
         seen: set[tuple[str, str]] = set()
         for node in nodes:
-            for ref in _safe_refs(
-                graph.callees_of, node["name"], node.get("file") or None
-            ):
-                callee = _normalise_hit(ref)
-                target = by_key.get((callee["name"], callee["file"]))
-                if target is None:
-                    target_matches = by_name.get(callee["name"], [])
-                    target = target_matches[0] if target_matches else None
-                if target is None or target["id"] == node["id"]:
-                    continue
-                edge_key = (node["id"], target["id"])
-                if edge_key in seen:
-                    continue
-                seen.add(edge_key)
-                edges.append(
-                    {
-                        "source": node["id"],
-                        "target": target["id"],
-                        "kind": "calls",
-                        "line": node.get("line", 0),
-                    }
+            is_edge_store = hasattr(graph, "query_callees")
+            if is_edge_store:
+                callees = (
+                    graph.query_callees(node["name"], node.get("file") or None) or []
                 )
+                for ref in callees:
+                    callee = _callee_ref_to_hit(ref)
+                    target = by_key.get((callee["name"], callee["file"]))
+                    if target is None:
+                        target_matches = by_name.get(callee["name"], [])
+                        target = target_matches[0] if target_matches else None
+                    if target is None or target["id"] == node["id"]:
+                        continue
+                    edge_key = (node["id"], target["id"])
+                    if edge_key in seen:
+                        continue
+                    seen.add(edge_key)
+                    edges.append(
+                        {
+                            "source": node["id"],
+                            "target": target["id"],
+                            "kind": "calls",
+                            "line": ref.get("callee_line", 0),
+                        }
+                    )
+            else:
+                for ref in _safe_refs(
+                    graph.callees_of, node["name"], node.get("file") or None
+                ):
+                    callee = _normalise_hit(ref)
+                    target = by_key.get((callee["name"], callee["file"]))
+                    if target is None:
+                        target_matches = by_name.get(callee["name"], [])
+                        target = target_matches[0] if target_matches else None
+                    if target is None or target["id"] == node["id"]:
+                        continue
+                    edge_key = (node["id"], target["id"])
+                    if edge_key in seen:
+                        continue
+                    seen.add(edge_key)
+                    edges.append(
+                        {
+                            "source": node["id"],
+                            "target": target["id"],
+                            "kind": "calls",
+                            "line": node.get("line", 0),
+                        }
+                    )
         return edges
 
 
@@ -381,6 +455,28 @@ def _safe_refs(
             return callable_obj(name) or []
         except Exception:
             return []
+
+
+def _callee_ref_to_hit(ref: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "name": ref.get("callee_name", ""),
+        "kind": "function",
+        "file": ref.get("callee_file", ""),
+        "line": int(ref.get("callee_line", 0) or 0),
+        "end_line": 0,
+        "language": "",
+    }
+
+
+def _caller_ref_to_hit(ref: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "name": ref.get("caller_name", ""),
+        "kind": "function",
+        "file": ref.get("caller_file", ""),
+        "line": int(ref.get("caller_line", 0) or 0),
+        "end_line": 0,
+        "language": "",
+    }
 
 
 def _safe_chain(

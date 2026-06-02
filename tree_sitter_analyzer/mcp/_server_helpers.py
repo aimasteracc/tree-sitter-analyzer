@@ -78,6 +78,24 @@ for indexed, cross-file answers and are usually cheaper than grep/read loops.
 - Prefer 2-3 tool calls, then answer.
 - Do not keep drilling after 4 tool calls for one question.
 - Do not use grep/read loops when a codegraph tool covers the question.
+
+## Anti-patterns (DO NOT)
+
+- Do NOT chain codegraph_symbol_search -> codegraph_callers -> codegraph_callees
+  for architecture questions — use codegraph_context (one call does all three).
+- Do NOT loop codegraph_navigate over many symbols — use codegraph_explore.
+- Do NOT re-verify codegraph results with grep or file reads — the AST index
+  is the source of truth.
+- Do NOT call codegraph_callers for a symbol found via codegraph_context —
+  it already includes callers and callees.
+- Do NOT call codegraph_context for a simple "where is X defined?" —
+  use codegraph_symbol_search instead.
+
+## Small project mode
+
+When codegraph_status reports fewer than 500 nodes, only the 5 core tools
+are needed: codegraph_context, codegraph_symbol_search, codegraph_navigate,
+codegraph_status, and list_files. Skip batch and heavy-graph tools.
 """.strip()
 
 

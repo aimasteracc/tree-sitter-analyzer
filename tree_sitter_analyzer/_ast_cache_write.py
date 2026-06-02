@@ -25,24 +25,42 @@ def write_fts5_symbols(
     """Replace FTS5 symbol rows for ``rel_path``. Returns inserted row list."""
     conn.execute("DELETE FROM ast_symbol_rows WHERE file_path = ?", (rel_path,))
     conn.execute("DELETE FROM ast_symbols_fts WHERE file_path = ?", (rel_path,))
-    inserted: list[dict[str, Any]] = []
-    for sym in symbols.get("symbols", []):
-        sym_name = sym.get("name") or sym.get("text", "")
-        sym_kind = sym.get("kind", "unknown")
-        sym_line = sym.get("line", 0)
-        sym_end = sym.get("end_line", 0)
-        row_id = conn.execute(
-            "INSERT INTO ast_symbol_rows (name, kind, file_path, language, line, end_line) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (sym_name, sym_kind, rel_path, language, sym_line, sym_end),
-        ).lastrowid
-        conn.execute(
-            "INSERT INTO ast_symbols_fts (rowid, name, kind, file_path, language) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (row_id, sym_name, sym_kind, rel_path, language),
+    sym_list = symbols.get("symbols", [])
+    if not sym_list:
+        return []
+    sym_params = [
+        (
+            sym.get("name") or sym.get("text", ""),
+            sym.get("kind", "unknown"),
+            rel_path,
+            language,
+            sym.get("line", 0),
+            sym.get("end_line", 0),
         )
-        inserted.append({"id": int(row_id or 0), "line": sym_line, "end_line": sym_end})
-    return inserted
+        for sym in sym_list
+    ]
+    conn.executemany(
+        "INSERT INTO ast_symbol_rows (name, kind, file_path, language, line, end_line) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        sym_params,
+    )
+    start_id = conn.execute(
+        "SELECT id FROM ast_symbol_rows WHERE file_path = ? ORDER BY id ASC LIMIT 1",
+        (rel_path,),
+    ).fetchone()
+    base_id = start_id[0] if start_id else 0
+    fts_params = [
+        (base_id + i, p[0], p[1], rel_path, language) for i, p in enumerate(sym_params)
+    ]
+    conn.executemany(
+        "INSERT INTO ast_symbols_fts (rowid, name, kind, file_path, language) "
+        "VALUES (?, ?, ?, ?, ?)",
+        fts_params,
+    )
+    return [
+        {"id": base_id + i, "line": p[4], "end_line": p[5]}
+        for i, p in enumerate(sym_params)
+    ]
 
 
 def write_call_edges(
@@ -53,11 +71,13 @@ def write_call_edges(
 ) -> None:
     """Replace call-edge rows for ``rel_path``."""
     conn.execute("DELETE FROM ast_call_edges WHERE file_path = ?", (rel_path,))
-    for edge in call_edges:
-        conn.execute(
-            "INSERT INTO ast_call_edges "
-            "(caller_name, caller_file, caller_line, callee_name, callee_full, callee_line, "
-            "file_path, language) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    if not call_edges:
+        return
+    conn.executemany(
+        "INSERT INTO ast_call_edges "
+        "(caller_name, caller_file, caller_line, callee_name, callee_full, callee_line, "
+        "file_path, language) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [
             (
                 edge["caller_name"],
                 rel_path,
@@ -67,8 +87,10 @@ def write_call_edges(
                 edge["callee_line"],
                 rel_path,
                 language,
-            ),
-        )
+            )
+            for edge in call_edges
+        ],
+    )
 
 
 def write_fts5_symbols_from_tuples(
@@ -80,23 +102,35 @@ def write_fts5_symbols_from_tuples(
     """Insert FTS5 symbols from worker-serialised tuples (name, kind, line, end_line)."""
     conn.execute("DELETE FROM ast_symbol_rows WHERE file_path = ?", (rel_path,))
     conn.execute("DELETE FROM ast_symbols_fts WHERE file_path = ?", (rel_path,))
+    if not symbol_rows:
+        return []
     inserted: list[dict[str, Any]] = []
-    for sym_name, sym_kind, sym_line, sym_end in symbol_rows:
-        row_id = conn.execute(
-            "INSERT INTO ast_symbol_rows (name, kind, file_path, language, line, end_line) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (sym_name, sym_kind, rel_path, language, sym_line, sym_end),
-        ).lastrowid
-        conn.execute(
-            "INSERT INTO ast_symbols_fts (rowid, name, kind, file_path, language) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (row_id, sym_name, sym_kind, rel_path, language),
-        )
+    sym_params = [(n, k, rel_path, language, ln, el) for n, k, ln, el in symbol_rows]
+    conn.executemany(
+        "INSERT INTO ast_symbol_rows (name, kind, file_path, language, line, end_line) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        sym_params,
+    )
+    start_id = conn.execute(
+        "SELECT id FROM ast_symbol_rows WHERE file_path = ? ORDER BY id ASC LIMIT 1",
+        (rel_path,),
+    ).fetchone()
+    base_id = start_id[0] if start_id else 0
+    fts_params = [
+        (base_id + i, n, k, rel_path, language)
+        for i, (n, k, _ln, _el) in enumerate(symbol_rows)
+    ]
+    conn.executemany(
+        "INSERT INTO ast_symbols_fts (rowid, name, kind, file_path, language) "
+        "VALUES (?, ?, ?, ?, ?)",
+        fts_params,
+    )
+    for i, (_n, _k, ln, el) in enumerate(symbol_rows):
         inserted.append(
             {
-                "id": int(row_id) if row_id is not None else 0,
-                "line": sym_line,
-                "end_line": sym_end,
+                "id": base_id + i,
+                "line": ln,
+                "end_line": el,
             }
         )
     return inserted
