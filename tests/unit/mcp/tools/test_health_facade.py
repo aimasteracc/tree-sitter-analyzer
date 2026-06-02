@@ -2,7 +2,8 @@
 """Tests for the ``health`` facade (Wave B, P0 geode layer).
 
 Covered behaviours (mirrors test_facade_tool.py §5 contract):
-1.  builds & routes — factory returns FacadeTool; all 14 actions present.
+1.  builds & routes — factory returns FacadeTool; all 11 actions present
+    (uml/graph/similarity moved to ``viz`` facade).
 2.  action routing — {"action": X, ...} reaches the right inner.
 3.  arg projection — ``action`` is NOT in the args the inner received.
 4.  sibling-param drop — param for action A doesn't reach action B's inner.
@@ -45,13 +46,13 @@ _ALL_ACTIONS = frozenset(
         "matrix",
         "dead",
         "routes",
-        "uml",
-        "graph",
         "overview",
-        "similarity",
         "deps",
     }
 )
+
+# Actions that moved to the ``viz`` facade — must NOT appear in health.
+_VIZ_ACTIONS = frozenset({"uml", "graph", "similarity"})
 
 # ---------------------------------------------------------------------------
 # Minimal fake inner for isolation tests
@@ -141,10 +142,18 @@ def test_health_facade_builds_and_has_all_actions() -> None:
 
 
 def test_health_facade_total_action_count() -> None:
-    """14 actions total — document for the PRD >12 threshold note."""
+    """11 actions total — uml/graph/similarity moved to the ``viz`` facade."""
     facade = build_health_facade(project_root=None)
     total = len(facade.action_map) + len(facade.bespoke_map)
-    assert total == 14
+    assert total == 11
+
+
+def test_health_facade_does_not_contain_viz_actions() -> None:
+    """uml/graph/similarity must not appear in health — they live in viz."""
+    facade = build_health_facade(project_root=None)
+    present = set(facade.action_map) | set(facade.bespoke_map)
+    leaked = _VIZ_ACTIONS & present
+    assert not leaked, f"viz actions leaked into health facade: {leaked}"
 
 
 def test_health_facade_annotations_read_only() -> None:
@@ -267,18 +276,22 @@ def test_sibling_param_does_not_reach_project_inner() -> None:
 
 
 def test_sibling_param_does_not_reach_scale_inner() -> None:
-    """Param for action=uml (diagram) must not leak to scale inner."""
+    """Param for action=dead (include_test_files) must not leak to scale inner."""
     facade = build_health_facade(project_root=None)
     inner = facade.action_map["scale"]
     with patch.object(inner, "execute", new_callable=AsyncMock) as mock_exec:
         mock_exec.return_value = {"success": True, "verdict": "INFO"}
         asyncio.run(
             facade.execute(
-                {"action": "scale", "file_path": "src/x.py", "diagram": "class"}
+                {
+                    "action": "scale",
+                    "file_path": "src/x.py",
+                    "include_test_files": True,
+                }
             )
         )
         called_args = mock_exec.call_args[0][0]
-        assert "diagram" not in called_args
+        assert "include_test_files" not in called_args
 
 
 # ---------------------------------------------------------------------------
