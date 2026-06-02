@@ -42,12 +42,18 @@ def indexed_project(tmp_path: Path) -> Path:
 
 def test_codegraph_context_registered() -> None:
     # Wave C2: codegraph_context is folded into the nav facade as action=context.
+    # fix 0f3f07d7: context became a BESPOKE route (symbol/query -> task
+    # normalization), so it lives in bespoke_map, not action_map. The closure
+    # delegates to a held CodeGraphContextTool instance after normalizing args.
     from tree_sitter_analyzer.mcp._tool_registry import create_tool_registry
 
     _, lookup = create_tool_registry(project_root=None)
     assert "nav" in lookup
-    assert "context" in lookup["nav"].action_map
-    assert type(lookup["nav"].action_map["context"]).__name__ == "CodeGraphContextTool"
+    assert "context" in lookup["nav"].bespoke_map
+    assert any(
+        type(inner).__name__ == "CodeGraphContextTool"
+        for inner in lookup["nav"]._bespoke_inners
+    )
 
 
 def test_extract_symbol_candidates_handles_identifiers() -> None:
