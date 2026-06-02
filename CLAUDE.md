@@ -71,6 +71,14 @@ uv run python -m tree_sitter_analyzer --show-extensions
 ```
 and verify the output is sane before committing.
 
+### ⚠️ 规则 8/9 事实核查（2026-06-02 — 命令语法已过时，开用前必读）
+
+下方规则 8/9 引用的 `mycelium subclasses-tree` / `get-descendants` / `get-all-symbols --prefix` 命令，在 2026-06-02 实测的 **Rhizome v0.11.6**（github.com/basidiocarp/rhizome，Mycelium 生态当前的 standalone code-intel MCP）中**不存在** —— Rhizome v0.11.6 没有任何专门的继承/层级遍历子命令（recon 实锤，见 memory `tsa-vs-mycelium-rhizome` + `.recon/recon-mycelium.md`）。这两条规则可能引用了已停用/改名的早期 mycelium 工具，或一个不同的工具。
+
+- **不要照抄下方命令语法** —— 先确认你当前使用的工具是否真有这些子命令。
+- 底层*教训*仍可能适用于任意继承查询工具：(8) 用裸类名而非 `file>Class` 路径做反向继承查询；(9) "explicit override" 视图通常不含继承成员，需 cross-check ABC 提供的默认方法。
+- **首选**改用 TSA 自己的工具（见规则 10）：`--class-hierarchy mode=subclasses --class-hierarchy-class LanguagePlugin`。
+
 ### 8. mycelium: use bare class name for inheritance queries, not file>Class path
 
 **Why**: After the Extends-edge fix (mycelium PR #263/#264), extends edges store the unresolved base name `"LanguagePlugin"`, not the full path. Reverse lookup by full path only finds same-file subclasses.
