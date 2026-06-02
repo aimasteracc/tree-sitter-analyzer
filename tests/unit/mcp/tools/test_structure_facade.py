@@ -37,6 +37,7 @@ _EXPECTED_ACTIONS = {
     "class_detail",
     "explore",
     "read",  # bespoke F5
+    "signatures",  # bespoke lightweight method-directory
 }
 
 
@@ -74,7 +75,9 @@ def test_structure_facade_read_is_bespoke() -> None:
 def test_structure_facade_action_map_entries() -> None:
     """All non-read actions are in action_map (plain inner tool delegation)."""
     facade = build_structure_facade(project_root=None)
-    for action in _EXPECTED_ACTIONS - {"read"}:
+    # "read" and "signatures" are bespoke routes — not in action_map
+    _bespoke = {"read", "signatures"}
+    for action in _EXPECTED_ACTIONS - _bespoke:
         assert action in facade.action_map, f"Missing action_map entry: {action}"
 
 
@@ -339,12 +342,18 @@ def test_set_project_path_rebinds_bespoke_inners(tmp_path: Any) -> None:
 
 
 def test_bespoke_inner_is_read_partial_tool_registered() -> None:
-    """Exactly one bespoke inner (ReadPartialTool) must be registered."""
+    """ReadPartialTool and AnalyzeCodeStructureTool must be registered as bespoke inners."""
+    from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (
+        AnalyzeCodeStructureTool,
+    )
     from tree_sitter_analyzer.mcp.tools.read_partial_tool import ReadPartialTool
 
     facade = build_structure_facade(project_root=None)
-    assert len(facade._bespoke_inners) == 1
-    assert isinstance(facade._bespoke_inners[0], ReadPartialTool)
+    inner_types = {type(inner) for inner in facade._bespoke_inners}
+    assert ReadPartialTool in inner_types, "ReadPartialTool not in bespoke inners"
+    assert AnalyzeCodeStructureTool in inner_types, (
+        "AnalyzeCodeStructureTool not in bespoke inners"
+    )
 
 
 # ---------------------------------------------------------------------------
