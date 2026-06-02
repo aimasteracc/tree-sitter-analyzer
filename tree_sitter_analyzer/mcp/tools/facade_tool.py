@@ -69,6 +69,40 @@ BespokeHandler = Callable[[dict[str, Any]], Awaitable[Any]]
 # whose meaning is action-scoped and whose legal set the inner validates.
 _FACADE_CONTROL_KEYS: frozenset[str] = frozenset({"action"})
 
+# Core high-frequency parameters surfaced explicitly on EVERY facade's public
+# inputSchema. Wave D (tool-def token diet): the facade no longer unions every
+# inner param verbatim into its public schema — that re-imported ~50 ripgrep
+# flags into ``search`` alone and blew the tool-def token budget. Instead the
+# public schema declares only these shared, cross-action params plus
+# ``additionalProperties: True``; any inner-specific param (e.g. an rg flag) is
+# accepted via additionalProperties and projected internally by ``_project_args``
+# against the inner's REAL schema whitelist (so F4 strict-param projection is
+# unaffected — it reads ``inner.get_tool_definition()``, never this public
+# schema). Per-action param discovery is carried in the facade ``description``
+# (description-as-discovery, à la Rhizome), not in the schema body.
+#
+# Descriptions are deliberately terse: per-action semantics live in the facade
+# ``description`` text (description-as-discovery), so repeating a long blurb on
+# every core param across all 8 facades is pure token waste. One short clause
+# each keeps the schema body small while still typing the common surface.
+_CORE_FACADE_PARAMS: dict[str, dict[str, Any]] = {
+    "scope": {
+        "type": "string",
+        "description": "Action discriminator (e.g. point|graph).",
+    },
+    "mode": {"type": "string", "description": "Action sub-mode (e.g. summary|cycles)."},
+    "file_path": {"type": "string", "description": "Target file path."},
+    "symbol": {"type": "string", "description": "Symbol/function name."},
+    "function_name": {
+        "type": "string",
+        "description": "Function name (alias of symbol).",
+    },
+    "query": {"type": "string", "description": "Search query/pattern."},
+    "language": {"type": "string", "description": "Language hint (usually auto)."},
+    "limit": {"type": "integer", "description": "Max results."},
+    "output_format": {"type": "string", "description": "Output format (toon|json)."},
+}
+
 
 class FacadeTool(BaseMCPTool):
     """One MCP tool fanning ``action`` out to many inner tools.
@@ -274,16 +308,28 @@ class FacadeTool(BaseMCPTool):
     # -- schema / definition ----------------------------------------------
 
     def get_tool_schema(self) -> dict[str, Any]:
-        """Merged facade schema: ``action`` (required) + control keys + union.
+        """Slim public facade schema: ``action`` (required) + core shared params.
 
-        F4 / R2: the facade-level schema is intentionally lenient
-        (``additionalProperties: True``). It MUST allow ``action`` / ``scope``
-        / ``mode`` and the union of every inner param so the facade's own
-        strict-param guard (from ``__init_subclass__``) does not self-reject a
-        valid action's params. The inner tools keep their own strict schemas;
-        per-action correctness is enforced there. ``mode`` / ``scope`` are
-        free strings — their legal set is action-scoped and only the inner
-        ``validate_arguments`` can honestly enumerate it.
+        Wave D tool-def token diet. The public schema deliberately does NOT
+        union every inner tool's parameters. Unioning re-imported ~50 ripgrep
+        flags into the ``search`` facade alone and pushed the 8-facade tool-def
+        payload to only -56.6% vs the PRD's ~84% target. Instead:
+
+        * ``action`` (required, enum of every routable action) selects the route.
+        * A curated set of high-frequency, cross-action params
+          (``_CORE_FACADE_PARAMS``: scope/mode/file_path/symbol/function_name/
+          query/language/limit/output_format) is declared explicitly so the
+          common surface stays typed and discoverable.
+        * ``additionalProperties: True`` accepts any inner-specific param
+          (e.g. an rg flag, ``mode``-driven sub-param) without listing it.
+        * Per-action parameter discovery lives in the facade ``description``
+          (description-as-discovery), not in the schema body.
+
+        F4 is unaffected: ``_project_args`` projects the caller's args against
+        ``inner.get_tool_definition()`` (the inner's REAL schema), never against
+        this public schema — so slimming the public surface cannot mis-project
+        or leak sibling-action params. The inner tools keep their own strict
+        schemas; per-action correctness is enforced there.
         """
         properties: dict[str, Any] = {
             "action": {
@@ -294,49 +340,18 @@ class FacadeTool(BaseMCPTool):
                     + ", ".join(self._available_actions())
                 ),
             },
-            "scope": {
-                "type": "string",
-                "description": (
-                    "Action-scoped discriminator (e.g. point|graph). "
-                    "Legal values depend on action; the inner tool validates."
-                ),
-            },
-            "mode": {
-                "type": "string",
-                "description": (
-                    "Action-scoped sub-mode (e.g. summary|cycles|blast). "
-                    "Legal values depend on action; the inner tool validates."
-                ),
-            },
         }
-
-        # Union of every inner tool's declared params (F4: agents need the
-        # merged surface; inner strict guards enforce per-action correctness).
-        for inner in self.action_map.values():
-            try:
-                definition = inner.get_tool_definition()
-            except Exception:  # noqa: BLE001
-                continue
-            schema = (
-                definition.get("inputSchema") if isinstance(definition, dict) else None
-            )
-            if not isinstance(schema, dict):
-                continue
-            props = schema.get("properties")
-            if not isinstance(props, dict):
-                continue
-            for key, spec in props.items():
-                # First declaration wins; do not clobber the control keys.
-                if key not in properties:
-                    properties[key] = spec
+        # Core shared params — copy specs so callers can't mutate our constants.
+        for key, spec in _CORE_FACADE_PARAMS.items():
+            properties[key] = dict(spec)
 
         return {
             "type": "object",
             "properties": properties,
             "required": ["action"],
-            # Lenient on purpose: the union cannot capture every possible
-            # bespoke-route param, and self-rejection here would defeat the
-            # facade. Inner tools remain strict.
+            # Lenient on purpose: inner-specific params arrive here and are
+            # projected internally against the inner's real schema. Inner tools
+            # remain strict. Self-rejection here would defeat the facade.
             "additionalProperties": True,
         }
 

@@ -17,8 +17,7 @@ description: |
   Replaces: tribal-knowledge architecture reviews + manual import audits
   (~5-15k tokens) with 1 MCP call (~200 tokens) + a YAML file (the rules).
 allowed-tools:
-  - mcp__tree-sitter-analyzer__check_constraints
-  - mcp__tree-sitter-analyzer__safe_to_edit
+  - mcp__tree-sitter-analyzer__edit
   - Bash
   - Read
   - Edit

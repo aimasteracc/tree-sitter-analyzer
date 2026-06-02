@@ -3,8 +3,12 @@
 **[English](README.md)** | **日本語** | **[简体中文](README_zh.md)**
 
 > **AI エージェントのための MCP コード インテリジェンス サーバー — トークン削減、ツール呼び出し削減、100% ローカル動作。**
-> 事前インデックス AST キャッシュ + 8 MCP ツール + 13 のキュレーション済みエージェント スキル + TOON 圧縮出力。
+> 事前インデックス AST キャッシュ + **8 MCP ツール**（v1.x の 63 から削減）+ 13 のキュレーション済みエージェント スキル + TOON 圧縮出力。
+> **ツール定義オーバーヘッドを約 80% 削減** — rich-output（verdict + TOON）と Roo/Cursor 対応を同時に実現する唯一の code-intel MCP。
 > 6 リポジトリの実測比較で **CodeGraph を上回る**（コスト中央値 **−11% vs CodeGraph の −4%**）、CLI は厳密な上位互換。
+>
+> 競合ツール数: CodeGraph ~12 · Rhizome 1 · **TSA 8（rich-output）** · TSA v1.x は 63。
+> v1.x からの移行は [docs/MIGRATION.md](docs/MIGRATION.md) を参照。
 
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
@@ -186,7 +190,7 @@ uv add "tree-sitter-analyzer[all,mcp]"
                                MCP クライアント / CLI 消費者
 ```
 
-インデックスは最初のクエリで遅延構築され、ファイル変更時はコンテンツ ハッシュ差分で増分更新 (`codegraph_incremental_sync`)。63 ツール全てが同じ `.ast-cache/` を共有し、クエリとフォローアップは作業を共有する。
+インデックスは最初のクエリで遅延構築され、ファイル変更時はコンテンツ ハッシュ差分で増分更新 (`codegraph_incremental_sync`)。8 個のファサード全てが同じ `.ast-cache/` を共有し、クエリとフォローアップは作業を共有する。
 
 ---
 

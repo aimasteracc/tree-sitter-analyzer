@@ -8,8 +8,6 @@ import os
 import re
 from pathlib import Path
 
-import pytest
-
 try:
     import tomllib  # Python 3.11+ stdlib
 except ImportError:  # Python 3.10 — fall back to the tomli back-port
@@ -945,19 +943,6 @@ def test_registered_mcp_tools_have_codemap_parity() -> None:
     )
 
 
-@pytest.mark.xfail(
-    reason=(
-        "Wave D (G1): the 13 tsa-* skill allowed-tools lists still hard-code "
-        "legacy 1.x tool names (mcp__tree-sitter-analyzer__codegraph_callers, "
-        "...). The Wave C2 facade cutover replaced the registry with the 8 "
-        "facades, so no skill yet lists a live facade name. Rewriting the 13 "
-        "skill allowlists to reference the 8 facade names is scoped to Wave D "
-        "per the facade-consolidation plan; the legacy-name shim keeps the old "
-        "skills functional in the interim. Un-xfail this test in the Wave D "
-        "commit that rewrites the skill allowlists."
-    ),
-    strict=False,
-)
 def test_registered_mcp_tools_have_skill_parity() -> None:
     """Every registered MCP tool must appear in at least one tsa-* skill's
     ``allowed-tools`` list.
@@ -971,9 +956,7 @@ def test_registered_mcp_tools_have_skill_parity() -> None:
     Mirrors ``test_registered_mcp_tools_have_cli_parity`` — same idea but
     for the skill layer instead of the CLI layer.
 
-    WAVE C2 / G1: xfail'd — see decorator. The 8-facade cutover landed but the
-    skill allowlist rewrite is deferred to Wave D. The shim keeps legacy
-    skills working meanwhile.
+    Wave D (G1): skill allowlists rewritten to the 8 facade names; xfail removed.
     """
     skills_dir = PROJECT_ROOT / ".claude" / "skills"
     if not skills_dir.exists():

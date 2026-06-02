@@ -14,11 +14,9 @@ description: |
   Workflow: parallel-fan-out 3-4 MCP tools, fold output, return decision_surface.
   Replaces the typical 15k-token bootstrap (read README + ls -R + git log + AGENTS).
 allowed-tools:
-  - mcp__tree-sitter-analyzer__get_project_overview
-  - mcp__tree-sitter-analyzer__check_project_health
-  - mcp__tree-sitter-analyzer__analyze_change_impact
-  - mcp__tree-sitter-analyzer__get_agent_workflow
-  - mcp__tree-sitter-analyzer__list_agent_skills
+  - mcp__tree-sitter-analyzer__project
+  - mcp__tree-sitter-analyzer__health
+  - mcp__tree-sitter-analyzer__edit
   - Bash
   - Read
 ---

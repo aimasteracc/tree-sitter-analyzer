@@ -18,27 +18,11 @@ description: |
   Replaces: grep + read + manual chain-following (~10-30k tokens) with
   2-4 MCP calls (~1-3k tokens).
 allowed-tools:
-  - mcp__tree-sitter-analyzer__codegraph_context
-  - mcp__tree-sitter-analyzer__codegraph_query
-  - mcp__tree-sitter-analyzer__codegraph_callees
-  - mcp__tree-sitter-analyzer__codegraph_callers
-  - mcp__tree-sitter-analyzer__codegraph_symbol_search
-  - mcp__tree-sitter-analyzer__codegraph_xref
-  - mcp__tree-sitter-analyzer__codegraph_call_path
-  - mcp__tree-sitter-analyzer__codegraph_resolve
-  - mcp__tree-sitter-analyzer__codegraph_call_graph
-  - mcp__tree-sitter-analyzer__codegraph_ast_path
-  - mcp__tree-sitter-analyzer__codegraph_navigate
-  - mcp__tree-sitter-analyzer__codegraph_explore
-  - mcp__tree-sitter-analyzer__codegraph_impact
-  - mcp__tree-sitter-analyzer__codegraph_class_hierarchy
-  - mcp__tree-sitter-analyzer__codegraph_class_inspect
-  - mcp__tree-sitter-analyzer__codegraph_dependency_matrix
-  - mcp__tree-sitter-analyzer__codegraph_similarity
-  - mcp__tree-sitter-analyzer__codegraph_visualize
-  - mcp__tree-sitter-analyzer__codegraph_uml
-  - mcp__tree-sitter-analyzer__symbol_lineage
-  - mcp__tree-sitter-analyzer__detect_routes
+  - mcp__tree-sitter-analyzer__nav
+  - mcp__tree-sitter-analyzer__search
+  - mcp__tree-sitter-analyzer__structure
+  - mcp__tree-sitter-analyzer__health
+  - mcp__tree-sitter-analyzer__viz
   - Bash
   - Read
 ---

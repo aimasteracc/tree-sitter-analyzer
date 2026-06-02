@@ -3,9 +3,13 @@
 **English** | **[日本語](README_ja.md)** | **[简体中文](README_zh.md)**
 
 > **The MCP code-intelligence server for AI agents — fewer tokens, fewer tool calls, 100 % local.**
-> Pre-indexed AST cache + 8 MCP tools + 13 curated agent skills + TOON-compressed output.
+> Pre-indexed AST cache + **8 MCP tools** (down from 63) + 13 curated agent skills + TOON-compressed output.
+> **~80% less tool-definition overhead** vs v1.x — the only code-intel MCP that is both rich-output (verdict + TOON) and Roo/Cursor-safe.
 > Beats CodeGraph on 6-repo head-to-head median (**−11 % cost vs CodeGraph's −4 %**), with a strict CLI superset.
-> Now with **BM25-ranked symbol search** across all 63 tools — results sorted by relevance, not file path.
+> **BM25-ranked symbol search** across all 8 facades — results sorted by relevance, not file path.
+>
+> Competing tool count: CodeGraph ~12 · Rhizome 1 · **TSA 8 (rich-output)** · TSA v1.x was 63.
+> Upgrading from v1.x? See [docs/MIGRATION.md](docs/MIGRATION.md).
 
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)

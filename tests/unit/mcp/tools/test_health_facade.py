@@ -439,20 +439,32 @@ def test_deps_action_no_strict_leak(tmp_path: Any) -> None:
     assert "success" in result
 
 
-def test_schema_lists_action_and_union_of_inner_params() -> None:
-    """Facade schema must list ``action`` as required + union of inner params."""
+def test_schema_lists_action_and_core_params() -> None:
+    """Wave D slim schema: ``action`` (required) + core shared params only.
+
+    The facade no longer unions every inner param into its public schema (that
+    re-imported ~50 rg flags into ``search`` and blew the tool-def token
+    budget). Inner-specific params like ``min_grade`` are accepted via
+    ``additionalProperties: True`` and surfaced in the description, not the
+    schema body — projection still uses the inner's REAL schema (F4 intact).
+    """
     facade = build_health_facade(project_root=None)
     schema = facade.get_tool_schema()
     props = schema["properties"]
     assert "action" in props
     assert "action" in schema.get("required", [])
-    # Spot-check a cross-section of inner params from different actions
-    assert "file_path" in props  # file / scale / patterns / heatmap / ...
-    assert "mode" in props  # deps / heatmap / imports / matrix / ...
-    assert "min_grade" in props  # project
-    assert "scope" in props  # facade control key always present
-    # Not strict at facade level (inner tools remain strict)
-    assert schema.get("additionalProperties") is not False
+    # Core shared params are declared explicitly on every facade.
+    assert "file_path" in props  # core
+    assert "mode" in props  # core
+    assert "scope" in props  # core facade control key
+    # Inner-specific params are NOT unioned into the public schema anymore...
+    assert "min_grade" not in props
+    # ...but remain discoverable via the facade description (and accepted via
+    # additionalProperties + internal projection).
+    assert "min_grade" in facade._description
+    # Lenient at facade level so inner-specific params still flow through;
+    # inner tools remain strict.
+    assert schema.get("additionalProperties") is True
 
 
 def test_facade_description_mentions_all_actions() -> None:

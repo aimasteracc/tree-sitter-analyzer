@@ -300,19 +300,65 @@ def test_facade_does_not_override_set_project_path() -> None:
 # --------------------------------------------------------------------------
 
 
-def test_facade_schema_lists_action_and_inner_param_union() -> None:
+def test_facade_schema_lists_action_and_core_params() -> None:
+    """Wave D slim schema: ``action`` + curated core params, NOT a full union.
+
+    The public schema declares ``action`` plus the cross-action core params
+    (query/symbol/function_name/file_path/scope/mode/...) and relies on
+    ``additionalProperties: True`` for everything else. It must NOT verbatim
+    union every inner tool's parameters (that is what blew the token budget).
+    """
     facade = _make_facade()
     schema = facade.get_tool_schema()
     props = schema["properties"]
     assert "action" in props
-    # union of inner params
-    assert "query" in props
-    assert "function_name" in props
+    # Core shared params are declared explicitly.
+    assert "query" in props  # core
+    assert "function_name" in props  # core
     # control keys present so the facade does not self-reject them
     assert "scope" in props
     assert "mode" in props
     # action is required
     assert "action" in schema.get("required", [])
+    # Slim schema: only action + the 9 core params, never a per-inner union.
+    from tree_sitter_analyzer.mcp.tools.facade_tool import _CORE_FACADE_PARAMS
+
+    assert set(props) == {"action"} | set(_CORE_FACADE_PARAMS)
+    # Inner-specific param ``limit`` (declared by _FakeSymbolTool) IS a core
+    # param so it appears — but an arbitrary inner-only param would not be
+    # unioned in. additionalProperties carries those.
+    assert schema.get("additionalProperties") is True
+
+
+def test_facade_schema_does_not_union_inner_only_params() -> None:
+    """A param declared ONLY by an inner tool (not a core param) must NOT be
+    unioned into the public schema — it is accepted via additionalProperties
+    and projected internally against the inner's real schema (F4)."""
+
+    class _InnerWithBespokeParam(BaseMCPTool):
+        def get_tool_schema(self) -> dict[str, Any]:
+            return {
+                "type": "object",
+                "properties": {"rg_flag_xyz": {"type": "boolean"}},
+                "additionalProperties": False,
+            }
+
+        def get_tool_definition(self) -> dict[str, Any]:
+            return {"name": "inner_x", "inputSchema": self.get_tool_schema()}
+
+        def validate_arguments(self, arguments: dict[str, Any]) -> bool:
+            return True
+
+        async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+            return {"success": True, "verdict": "INFO"}
+
+    facade = FacadeTool(facade_name="t", action_map={"x": _InnerWithBespokeParam()})
+    props = facade.get_tool_schema()["properties"]
+    assert "rg_flag_xyz" not in props  # not unioned into public schema
+    # ...but projection still recognises it from the inner's real schema.
+    inner = facade.action_map["x"]
+    projected = facade._project_args(inner, {"action": "x", "rg_flag_xyz": True})
+    assert projected == {"rg_flag_xyz": True}
 
 
 def test_facade_schema_not_strict_additional_properties() -> None:

@@ -3,9 +3,13 @@
 **[English](README.md)** | **[日本語](README_ja.md)** | **简体中文**
 
 > **专为 AI agent 而生的 MCP 代码情报服务 — 更少 token、更少工具调用、100% 本地运行。**
-> 预建 AST 索引 + 8 个 MCP 工具 + 13 个精选 agent 技能 + TOON 压缩输出。
+> 预建 AST 索引 + **8 个 MCP 工具**（从 v1.x 的 63 个精简而来）+ 13 个精选 agent 技能 + TOON 压缩输出。
+> **tool-definition 开销降低约 80%** — 市场上唯一同时具备 rich-output（verdict + TOON）和 Roo/Cursor 兼容的 code-intel MCP。
 > 6 仓库头对头实测**胜过 CodeGraph**（中位数 cost **−11% vs CodeGraph 的 −4%**），CLI 维度严格超集。
-> 全面 **BM25 排名搜索** — 全部 63 个工具的结果按相关性打分排序，不再按文件路径随机排列。
+> **BM25 排名搜索** — 所有 8 个 facade 的结果按相关性打分排序，不再按文件路径随机排列。
+>
+> 竞品工具数对比：CodeGraph ~12 · Rhizome 1 · **TSA 8（rich-output）** · TSA v1.x 为 63。
+> 从 v1.x 升级？见 [docs/MIGRATION.md](docs/MIGRATION.md)。
 
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)

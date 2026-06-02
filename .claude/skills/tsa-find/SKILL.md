@@ -16,13 +16,10 @@ description: |
   Replaces: native find + grep + cat invocations (~3-10k tokens for big repos)
   with single MCP calls (200-500 tokens).
 allowed-tools:
-  - mcp__tree-sitter-analyzer__list_files
-  - mcp__tree-sitter-analyzer__search_content
-  - mcp__tree-sitter-analyzer__find_and_grep
-  - mcp__tree-sitter-analyzer__extract_code_section
-  - mcp__tree-sitter-analyzer__check_code_scale
-  - mcp__tree-sitter-analyzer__batch_search
-  - mcp__tree-sitter-analyzer__check_tools
+  - mcp__tree-sitter-analyzer__search
+  - mcp__tree-sitter-analyzer__project
+  - mcp__tree-sitter-analyzer__structure
+  - mcp__tree-sitter-analyzer__health
   - Bash
   - Read
 ---

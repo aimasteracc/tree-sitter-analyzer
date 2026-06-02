@@ -25,13 +25,10 @@ description: |
   (~25k tokens) with 3 parallel MCP calls + a deterministic rank
   (~3k tokens).
 allowed-tools:
-  - mcp__tree-sitter-analyzer__check_project_health
-  - mcp__tree-sitter-analyzer__codegraph_dead_code
-  - mcp__tree-sitter-analyzer__codegraph_callers
-  - mcp__tree-sitter-analyzer__codegraph_complexity_heatmap
-  - mcp__tree-sitter-analyzer__analyze_code_structure
-  - mcp__tree-sitter-analyzer__refactoring_suggestions
-  - mcp__tree-sitter-analyzer__check_file_health
+  - mcp__tree-sitter-analyzer__health
+  - mcp__tree-sitter-analyzer__nav
+  - mcp__tree-sitter-analyzer__structure
+  - mcp__tree-sitter-analyzer__edit
   - Bash
   - Read
 ---
