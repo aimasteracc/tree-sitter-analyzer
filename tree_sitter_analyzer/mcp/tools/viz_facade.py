@@ -32,13 +32,19 @@ _VIZ_ANNOTATIONS: dict[str, Any] = {
 }
 
 _VIZ_DESCRIPTION = (
-    "Unified code visualization and similarity analysis. Pick a capability via `action`:\n"
-    "- action=uml — UML class or sequence diagrams. "
+    "Code-intelligence (codegraph-compatible) visualization and similarity facade. "
+    "Covers codegraph_uml (UML diagrams), codegraph_visualize (call/dependency "
+    "graph visualizations), and codegraph_similarity (duplicate code detection) "
+    "in one tool. Pick a capability via `action`:\n"
+    "- action=uml — UML class or sequence diagrams "
+    "(codegraph_uml equivalent). "
     "Params: diagram, source, target, max_edges, max_depth, max_paths, "
     "package_depth, include_external_bases.\n"
-    "- action=graph — call/dependency graph visualizations. "
+    "- action=graph — call/dependency graph visualizations "
+    "(codegraph_visualize equivalent). "
     "Params: mode, file_path, function, depth, max_edges, direction.\n"
-    "- action=similarity — duplicate / near-duplicate code detection. "
+    "- action=similarity — duplicate / near-duplicate code detection "
+    "(codegraph_similarity equivalent). "
     "Params: mode, min_lines, min_group_size, max_groups, use_cache.\n"
 )
 

@@ -56,13 +56,16 @@ def test_nav_facade_all_actions_present() -> None:
     assert expected == all_actions
 
 
-def test_nav_facade_bespoke_actions_are_callers_callees() -> None:
+def test_nav_facade_bespoke_actions_are_context_callers_callees() -> None:
     facade = build_nav_facade(project_root=None)
-    assert "callers" in facade.bespoke_map
-    assert "callees" in facade.bespoke_map
-    # They must NOT also appear in action_map (only bespoke)
-    assert "callers" not in facade.action_map
-    assert "callees" not in facade.action_map
+    # context, callers, callees are all bespoke routes (closures, not action_map entries)
+    for bespoke_action in ("context", "callers", "callees"):
+        assert bespoke_action in facade.bespoke_map, (
+            f"Expected '{bespoke_action}' in bespoke_map"
+        )
+        assert bespoke_action not in facade.action_map, (
+            f"'{bespoke_action}' must NOT appear in action_map (only bespoke)"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -309,9 +312,15 @@ def _build_facade_with_mock_inners() -> tuple[FacadeTool, dict[str, AsyncMock]]:
     mocks: dict[str, AsyncMock] = {}
     # The bespoke inners are at specific positions in _bespoke_inners.
     # Instead, patch the execute of each tracked bespoke inner by index.
-    # Order from build_nav_facade: callers_point[0], callers_graph[1],
-    # callees_point[2], callees_graph[3].
-    names = ["callers_point", "callers_graph", "callees_point", "callees_graph"]
+    # Order from build_nav_facade: context_inner[0], callers_point[1],
+    # callers_graph[2], callees_point[3], callees_graph[4].
+    names = [
+        "context_inner",
+        "callers_point",
+        "callers_graph",
+        "callees_point",
+        "callees_graph",
+    ]
     for i, name in enumerate(names):
         m = AsyncMock(
             return_value={
@@ -540,12 +549,13 @@ def test_set_project_path_rebinds_bespoke_inners(tmp_path: Any) -> None:
         )
 
 
-def test_four_bespoke_inners_registered() -> None:
-    """Exactly 4 bespoke inners: callers_point, callers_graph, callees_point,
-    callees_graph — required by G3 for reliable multi-project rebind."""
+def test_five_bespoke_inners_registered() -> None:
+    """Exactly 5 bespoke inners: context_inner, callers_point, callers_graph,
+    callees_point, callees_graph — required by G3 for reliable multi-project rebind.
+    context_inner was added (fix ③) to enable symbol/query → task normalization."""
     facade = build_nav_facade(project_root=None)
-    assert len(facade._bespoke_inners) == 4, (
-        f"Expected 4 registered bespoke inners, got {len(facade._bespoke_inners)}"
+    assert len(facade._bespoke_inners) == 5, (
+        f"Expected 5 registered bespoke inners, got {len(facade._bespoke_inners)}"
     )
 
 
@@ -651,6 +661,93 @@ def test_nav_facade_annotations_read_only() -> None:
     assert ann.get("destructiveHint") is False
     assert ann.get("idempotentHint") is True
     assert ann.get("openWorldHint") is False
+
+
+# ---------------------------------------------------------------------------
+# Fix ② — description discoverability: "codegraph" keyword must be present
+# ---------------------------------------------------------------------------
+
+
+def test_nav_facade_description_contains_codegraph_keyword() -> None:
+    """Fix ②: nav description must contain 'codegraph' so ToolSearch/keyword
+    matching by headless agents lands here when they search for 'codegraph'."""
+    facade = build_nav_facade(project_root=None)
+    defn = facade.get_tool_definition()
+    description = defn.get("description", "")
+    assert "codegraph" in description.lower(), (
+        "nav facade description must contain 'codegraph' for agent discoverability "
+        "(fix ②: headless agents ToolSearch 'codegraph' must find facade tools)"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Fix ③ — context action: symbol/query → task normalization in running loop
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_context_action_with_symbol_normalizes_to_task_no_valueerror(
+    tmp_path: Any,
+) -> None:
+    """Fix ③: nav action=context with symbol= must NOT raise ValueError('task is
+    required') when called inside an already-running event loop (MCP server context).
+
+    Before fix: CodeGraphContextTool validated 'task is required' but the
+    description said 'symbol/query (required)', causing agents to always fail
+    when passing symbol= to action=context.
+    After fix: the bespoke _context_route normalizes symbol/query → task before
+    delegating, so no ValueError is raised.
+    """
+    facade = build_nav_facade(project_root=str(tmp_path))
+    # Passing symbol= instead of task= — this is what agents do per the description.
+    result = await facade.execute(
+        {
+            "action": "context",
+            "symbol": "execute",
+        }
+    )
+    # Must return a dict (success or not — no index in tmp_path is fine).
+    assert isinstance(result, dict), "context action must return a dict"
+    assert "success" in result, "context action result must have 'success' key"
+    # Critically: must NOT raise ValueError("task is required").
+
+
+@pytest.mark.asyncio
+async def test_context_action_with_query_normalizes_to_task_no_valueerror(
+    tmp_path: Any,
+) -> None:
+    """Fix ③: nav action=context with query= (alternate alias) must also work."""
+    facade = build_nav_facade(project_root=str(tmp_path))
+    result = await facade.execute(
+        {
+            "action": "context",
+            "query": "how does execute work",
+        }
+    )
+    assert isinstance(result, dict)
+    assert "success" in result
+
+
+@pytest.mark.asyncio
+async def test_call_path_in_running_event_loop_returns_dict(tmp_path: Any) -> None:
+    """Fix ③: nav action=call_path in an already-running event loop must not
+    raise ValueError or any asyncio error.
+
+    Regression guard for the benchmark-stream diagnosis: 'call_path in MCP
+    async context reports ValueError: task...' — confirmed root cause was
+    action=context being called with symbol= (not call_path itself), but this
+    test guards that call_path itself is also clean in the running-loop context.
+    """
+    facade = build_nav_facade(project_root=str(tmp_path))
+    result = await facade.execute(
+        {
+            "action": "call_path",
+            "source_function": "foo",
+            "target_function": "bar",
+        }
+    )
+    assert isinstance(result, dict)
+    assert result.get("verdict") in {"PATH_FOUND", "NO_PATH", "ERROR", "NOT_FOUND"}
 
 
 if __name__ == "__main__":

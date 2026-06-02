@@ -42,10 +42,14 @@ _INDEX_ANNOTATIONS: dict[str, Any] = {
 }
 
 _INDEX_DESCRIPTION = (
-    "Index lifecycle hub. Pick a capability via `action`:\n"
+    "Code-intelligence (codegraph-compatible) index lifecycle hub. "
+    "Covers codegraph_status, codegraph_full_index, codegraph_autoindex, "
+    "codegraph_incremental_sync, and AST cache query in one tool. "
+    "Pick a capability via `action`:\n"
     "\n"
     "READ-ONLY:\n"
-    "- action=status — check codegraph index health without writing. "
+    "- action=status — check codegraph index health without writing "
+    "(codegraph_status equivalent). "
     "Returns node/edge counts, staleness, and error indicators. "
     "Params: (none).\n"
     "- action=cache — query the raw AST cache for symbols, types, and "
@@ -54,12 +58,12 @@ _INDEX_DESCRIPTION = (
     "WRITES ON-DISK INDEX:\n"
     "- action=build — full (re)build of the project index. Slow; use "
     "when index is absent or corrupt. Params: force.\n"
-    "- action=full — force a complete full reindex (codegraph_full_index). "
-    "Params: (none).\n"
-    "- action=auto — enable/configure background auto-indexing. "
-    "Params: enable, watch.\n"
+    "- action=full — force a complete full reindex "
+    "(codegraph_full_index equivalent). Params: (none).\n"
+    "- action=auto — enable/configure background auto-indexing "
+    "(codegraph_autoindex equivalent). Params: enable, watch.\n"
     "- action=sync — run one incremental sync pass (fast; use after "
-    "editing files). Params: paths.\n"
+    "editing files, codegraph_incremental_sync equivalent). Params: paths.\n"
 )
 
 

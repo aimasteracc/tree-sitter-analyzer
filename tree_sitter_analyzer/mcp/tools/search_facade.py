@@ -47,9 +47,13 @@ _SEARCH_ANNOTATIONS: dict[str, Any] = {
 }
 
 _SEARCH_DESCRIPTION = (
-    "Unified code search. Pick a capability via `action`:\n"
+    "Code-intelligence (codegraph-compatible) search facade. "
+    "Covers codegraph_symbol_search (BM25), codegraph_query (tree-sitter AST), "
+    "codegraph_query chain DSL, and ripgrep/fd text search in one tool. "
+    "Pick a capability via `action`:\n"
     "- action=symbol — BM25 FTS lookup of a symbol by name (fast 'where is X "
-    "defined'). Params: query, language, kind, limit.\n"
+    "defined', codegraph_symbol_search equivalent). "
+    "Params: query, language, kind, limit.\n"
     "- action=query — tree-sitter .scm query DSL (semantic AST match, NOT the "
     "same as symbol). Params: query_key, query_string, filter, file_path.\n"
     "- action=content — ripgrep text/regex search across files. "
@@ -57,9 +61,9 @@ _SEARCH_DESCRIPTION = (
     "- action=grep — two-stage fd (file discovery) + ripgrep search. "
     "Params: query, roots, ...\n"
     "- action=batch — run multiple search queries in one call. Params: queries.\n"
-    "- action=chain — jQuery-style graph chain DSL: compose search → explore → "
-    "callers → callees in one process. Params: chain/program, default_limit, "
-    "include_source."
+    "- action=chain — jQuery-style codegraph chain DSL: compose search → "
+    "explore → callers → callees in one process. "
+    "Params: chain/program, default_limit, include_source."
 )
 
 
