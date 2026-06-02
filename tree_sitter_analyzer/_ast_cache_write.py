@@ -25,24 +25,42 @@ def write_fts5_symbols(
     """Replace FTS5 symbol rows for ``rel_path``. Returns inserted row list."""
     conn.execute("DELETE FROM ast_symbol_rows WHERE file_path = ?", (rel_path,))
     conn.execute("DELETE FROM ast_symbols_fts WHERE file_path = ?", (rel_path,))
-    inserted: list[dict[str, Any]] = []
-    for sym in symbols.get("symbols", []):
-        sym_name = sym.get("name") or sym.get("text", "")
-        sym_kind = sym.get("kind", "unknown")
-        sym_line = sym.get("line", 0)
-        sym_end = sym.get("end_line", 0)
-        row_id = conn.execute(
-            "INSERT INTO ast_symbol_rows (name, kind, file_path, language, line, end_line) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (sym_name, sym_kind, rel_path, language, sym_line, sym_end),
-        ).lastrowid
-        conn.execute(
-            "INSERT INTO ast_symbols_fts (rowid, name, kind, file_path, language) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (row_id, sym_name, sym_kind, rel_path, language),
+    sym_list = symbols.get("symbols", [])
+    if not sym_list:
+        return []
+    sym_params = [
+        (
+            sym.get("name") or sym.get("text", ""),
+            sym.get("kind", "unknown"),
+            rel_path,
+            language,
+            sym.get("line", 0),
+            sym.get("end_line", 0),
         )
-        inserted.append({"id": int(row_id or 0), "line": sym_line, "end_line": sym_end})
-    return inserted
+        for sym in sym_list
+    ]
+    conn.executemany(
+        "INSERT INTO ast_symbol_rows (name, kind, file_path, language, line, end_line) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        sym_params,
+    )
+    start_id = conn.execute(
+        "SELECT id FROM ast_symbol_rows WHERE file_path = ? ORDER BY id ASC LIMIT 1",
+        (rel_path,),
+    ).fetchone()
+    base_id = start_id[0] if start_id else 0
+    fts_params = [
+        (base_id + i, p[0], p[1], rel_path, language) for i, p in enumerate(sym_params)
+    ]
+    conn.executemany(
+        "INSERT INTO ast_symbols_fts (rowid, name, kind, file_path, language) "
+        "VALUES (?, ?, ?, ?, ?)",
+        fts_params,
+    )
+    return [
+        {"id": base_id + i, "line": p[4], "end_line": p[5]}
+        for i, p in enumerate(sym_params)
+    ]
 
 
 def write_call_edges(
@@ -53,11 +71,13 @@ def write_call_edges(
 ) -> None:
     """Replace call-edge rows for ``rel_path``."""
     conn.execute("DELETE FROM ast_call_edges WHERE file_path = ?", (rel_path,))
-    for edge in call_edges:
-        conn.execute(
-            "INSERT INTO ast_call_edges "
-            "(caller_name, caller_file, caller_line, callee_name, callee_full, callee_line, "
-            "file_path, language) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    if not call_edges:
+        return
+    conn.executemany(
+        "INSERT INTO ast_call_edges "
+        "(caller_name, caller_file, caller_line, callee_name, callee_full, callee_line, "
+        "file_path, language) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [
             (
                 edge["caller_name"],
                 rel_path,
@@ -67,8 +87,10 @@ def write_call_edges(
                 edge["callee_line"],
                 rel_path,
                 language,
-            ),
-        )
+            )
+            for edge in call_edges
+        ],
+    )
 
 
 def write_fts5_symbols_from_tuples(
@@ -80,23 +102,35 @@ def write_fts5_symbols_from_tuples(
     """Insert FTS5 symbols from worker-serialised tuples (name, kind, line, end_line)."""
     conn.execute("DELETE FROM ast_symbol_rows WHERE file_path = ?", (rel_path,))
     conn.execute("DELETE FROM ast_symbols_fts WHERE file_path = ?", (rel_path,))
+    if not symbol_rows:
+        return []
     inserted: list[dict[str, Any]] = []
-    for sym_name, sym_kind, sym_line, sym_end in symbol_rows:
-        row_id = conn.execute(
-            "INSERT INTO ast_symbol_rows (name, kind, file_path, language, line, end_line) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (sym_name, sym_kind, rel_path, language, sym_line, sym_end),
-        ).lastrowid
-        conn.execute(
-            "INSERT INTO ast_symbols_fts (rowid, name, kind, file_path, language) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (row_id, sym_name, sym_kind, rel_path, language),
-        )
+    sym_params = [(n, k, rel_path, language, ln, el) for n, k, ln, el in symbol_rows]
+    conn.executemany(
+        "INSERT INTO ast_symbol_rows (name, kind, file_path, language, line, end_line) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        sym_params,
+    )
+    start_id = conn.execute(
+        "SELECT id FROM ast_symbol_rows WHERE file_path = ? ORDER BY id ASC LIMIT 1",
+        (rel_path,),
+    ).fetchone()
+    base_id = start_id[0] if start_id else 0
+    fts_params = [
+        (base_id + i, n, k, rel_path, language)
+        for i, (n, k, _ln, _el) in enumerate(symbol_rows)
+    ]
+    conn.executemany(
+        "INSERT INTO ast_symbols_fts (rowid, name, kind, file_path, language) "
+        "VALUES (?, ?, ?, ?, ?)",
+        fts_params,
+    )
+    for i, (_n, _k, ln, el) in enumerate(symbol_rows):
         inserted.append(
             {
-                "id": int(row_id) if row_id is not None else 0,
-                "line": sym_line,
-                "end_line": sym_end,
+                "id": base_id + i,
+                "line": ln,
+                "end_line": el,
             }
         )
     return inserted
@@ -229,3 +263,171 @@ def write_imports_for_file(
         for entry in parse_imports(text, language, rel_path, line):
             if not _insert_import_entry(conn, rel_path, language, entry):
                 return
+
+
+def write_graph_edges_for_file(
+    conn: sqlite3.Connection,
+    rel_path: str,
+    language: str,
+    symbols: dict[str, Any],
+    imports: list[str] | list[dict[str, Any]],
+    call_edges: list[dict[str, Any]],
+) -> None:
+    """Refresh unified EdgeStore rows derived from one indexed file."""
+    try:
+        from .graph.edge_store import (
+            Edge,
+            EdgeKind,
+            EdgeStore,
+            class_node,
+            file_node,
+            module_node,
+            symbol_node,
+        )
+        from .synapse_resolver import parse_imports
+    except Exception as exc:  # pragma: no cover
+        logger.debug("edge store import failed for %s: %s", rel_path, exc)
+        return
+
+    symbol_items = symbols.get("symbols", [])
+    call_edges = _graph_call_edges(conn, rel_path, call_edges)
+    class_nodes = {
+        sym.get("name", ""): symbol_node(rel_path, sym.get("name", ""), sym.get("line"))
+        for sym in symbol_items
+        if sym.get("kind") == "class" and sym.get("name")
+    }
+    edges: list[Edge] = []
+
+    for edge in call_edges:
+        caller_name = edge.get("caller_name", "")
+        source = (
+            symbol_node(rel_path, caller_name, edge.get("caller_line"))
+            if caller_name
+            else file_node(rel_path)
+        )
+        callee_name = edge.get("callee_name", "")
+        resolved_file = str(edge.get("callee_resolved_file") or "")
+        target_file = resolved_file or rel_path
+        target = symbol_node(target_file, callee_name, edge.get("callee_line"))
+        edges.append(
+            Edge(
+                source,
+                target,
+                EdgeKind.CALLS,
+                edge.get("callee_line"),
+                metadata={
+                    "language": language,
+                    "caller_name": caller_name,
+                    "caller_line": edge.get("caller_line", 0),
+                    "callee_name": callee_name,
+                    "callee_full": edge.get("callee_full", ""),
+                    "callee_resolution": edge.get("callee_resolution", "unknown"),
+                    "callee_resolved_file": resolved_file,
+                },
+            )
+        )
+
+    for raw in imports or []:
+        text, line = _parse_import_raw(raw)
+        if not text:
+            continue
+        for entry in parse_imports(text, language, rel_path, line):
+            target = module_node(entry.module_path)
+            edges.append(
+                Edge(
+                    file_node(rel_path),
+                    target,
+                    EdgeKind.IMPORTS,
+                    line or entry.line,
+                    metadata={
+                        "language": language,
+                        "local_name": entry.local_name,
+                        "is_relative": entry.is_relative,
+                        "is_star": entry.is_star,
+                        "alias_of": entry.alias_of,
+                    },
+                )
+            )
+
+    for sym in symbol_items:
+        if sym.get("kind") == "function" and sym.get("class"):
+            cls_name = sym["class"]
+            edges.append(
+                Edge(
+                    class_nodes.get(cls_name, class_node(cls_name)),
+                    symbol_node(rel_path, sym.get("name", ""), sym.get("line")),
+                    EdgeKind.CONTAINS,
+                    sym.get("line"),
+                    metadata={"language": language},
+                )
+            )
+        elif sym.get("kind") == "class" and sym.get("parents"):
+            source = class_nodes.get(
+                sym.get("name", ""),
+                symbol_node(rel_path, sym.get("name", ""), sym.get("line")),
+            )
+            for parent in sym.get("parents", []):
+                base_parent = str(parent).rsplit(".", 1)[-1]
+                parent_target = class_nodes.get(str(parent)) or class_nodes.get(
+                    base_parent
+                )
+                edges.append(
+                    Edge(
+                        source,
+                        parent_target or class_node(str(parent)),
+                        EdgeKind.EXTENDS,
+                        sym.get("line"),
+                        metadata={"language": language, "parent": str(parent)},
+                    )
+                )
+
+    try:
+        EdgeStore(conn, ensure_schema=False).replace_edges_for_file(rel_path, edges)
+    except sqlite3.OperationalError as exc:
+        logger.debug("edge store write failed for %s: %s", rel_path, exc)
+
+
+_GRAPH_CALL_EDGE_COLUMNS = (
+    "caller_name",
+    "caller_file",
+    "caller_line",
+    "callee_name",
+    "callee_full",
+    "callee_line",
+    "file_path",
+    "language",
+    "callee_resolution",
+    "callee_resolved_file",
+)
+
+_GRAPH_CALL_EDGE_SELECT = """
+SELECT caller_name, caller_file, caller_line, callee_name, callee_full,
+       callee_line, file_path, language, callee_resolution, callee_resolved_file
+FROM ast_call_edges
+WHERE file_path = ?
+ORDER BY id
+""".strip()
+
+
+def _graph_call_edges(
+    conn: sqlite3.Connection,
+    rel_path: str,
+    fallback: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Return resolved call rows for EdgeStore, falling back to extracted edges."""
+    try:
+        rows = conn.execute(
+            _GRAPH_CALL_EDGE_SELECT,
+            (rel_path,),
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return fallback
+    if not rows:
+        return fallback
+    return [_row_to_dict(row, _GRAPH_CALL_EDGE_COLUMNS) for row in rows]
+
+
+def _row_to_dict(row: Any, columns: tuple[str, ...]) -> dict[str, Any]:
+    if isinstance(row, sqlite3.Row):
+        return dict(row)
+    return dict(zip(columns, row, strict=False))

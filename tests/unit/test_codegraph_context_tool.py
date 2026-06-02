@@ -82,7 +82,59 @@ def test_tool_accessors_require_project_root() -> None:
     with pytest.raises(ValueError, match="Project root"):
         tool._get_cache()
     with pytest.raises(ValueError, match="Project root"):
+        tool._get_edge_store()
+    with pytest.raises(ValueError, match="Project root"):
         tool._get_call_graph()
+
+
+def test_edge_store_accessor_degrades_without_cache_connection() -> None:
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        CodeGraphContextTool,
+    )
+
+    tool = CodeGraphContextTool(str(Path.cwd()))
+    tool._cache = object()
+
+    assert tool._get_edge_store() is None
+
+
+def test_call_graph_falls_back_when_edgestore_probe_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import tree_sitter_analyzer.call_graph as call_graph
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        CodeGraphContextTool,
+    )
+
+    class BrokenEdgeStore:
+        def has_edges(self, edge_kind):
+            raise RuntimeError("edge metadata unavailable")
+
+    class FakeCache:
+        pass
+
+    class FakeCachedCallGraph:
+        def __init__(self, project_root, cache=None, fallback=True):
+            self.project_root = project_root
+            self.cache = cache
+            self.fallback = fallback
+            self.built = False
+
+        def build(self):
+            self.built = True
+
+    monkeypatch.setattr(call_graph, "CachedCallGraph", FakeCachedCallGraph)
+
+    tool = CodeGraphContextTool(str(Path.cwd()))
+    tool._cache = FakeCache()
+    tool._edge_store = BrokenEdgeStore()
+
+    graph = tool._get_call_graph()
+
+    assert isinstance(graph, FakeCachedCallGraph)
+    assert graph.cache is tool._cache
+    assert graph.fallback is False
+    assert graph.built is True
 
 
 def test_resolve_entry_points_degrades_and_dedupes() -> None:
@@ -223,6 +275,34 @@ def test_expand_nodes_handles_graph_limits_and_trace_chain() -> None:
     }
 
 
+def test_expand_nodes_handles_edgestore_query_errors() -> None:
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        CodeGraphContextTool,
+        _node_id,
+    )
+
+    class BrokenEdgeGraph:
+        def query_callees(self, name: str, file_path: str | None = None, max_depth=1):
+            raise RuntimeError("callees unavailable")
+
+        def query_callers(self, name: str, file_path: str | None = None):
+            raise RuntimeError("callers unavailable")
+
+    seed = [
+        {
+            "id": _node_id("seed", "a.py", 1),
+            "name": "seed",
+            "kind": "function",
+            "file": "a.py",
+            "line": 1,
+        }
+    ]
+    tool = CodeGraphContextTool(str(Path.cwd()))
+    tool._call_graph = BrokenEdgeGraph()
+
+    assert tool._expand_nodes(seed, "trace seed", max_nodes=5) == seed
+
+
 def test_build_edges_handles_fallback_targets_and_duplicates() -> None:
     from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
         CodeGraphContextTool,
@@ -268,6 +348,55 @@ def test_build_edges_handles_fallback_targets_and_duplicates() -> None:
             "target": _node_id("target", "b.py", 2),
             "kind": "calls",
             "line": 1,
+        }
+    ]
+
+
+def test_build_edges_handles_edgestore_targets_and_duplicates() -> None:
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        CodeGraphContextTool,
+        _node_id,
+    )
+
+    class EdgeStoreGraph:
+        def query_callees(
+            self, name: str, file_path: str | None = None, max_depth: int = 1
+        ):
+            if name != "source":
+                return []
+            return [
+                {"callee_name": "target", "callee_file": "b.py", "callee_line": 2},
+                {"callee_name": "target", "callee_file": "b.py", "callee_line": 2},
+                {"callee_name": "target", "callee_file": "", "callee_line": 2},
+                {"callee_name": "source", "callee_file": "a.py", "callee_line": 1},
+                {"callee_name": "missing", "callee_file": "z.py", "callee_line": 9},
+            ]
+
+    nodes = [
+        {
+            "id": _node_id("source", "a.py", 1),
+            "name": "source",
+            "kind": "function",
+            "file": "a.py",
+            "line": 1,
+        },
+        {
+            "id": _node_id("target", "b.py", 2),
+            "name": "target",
+            "kind": "function",
+            "file": "b.py",
+            "line": 2,
+        },
+    ]
+    tool = CodeGraphContextTool(str(Path.cwd()))
+    tool._call_graph = EdgeStoreGraph()
+
+    assert tool._build_edges(nodes) == [
+        {
+            "source": _node_id("source", "a.py", 1),
+            "target": _node_id("target", "b.py", 2),
+            "kind": "calls",
+            "line": 2,
         }
     ]
 
@@ -427,6 +556,59 @@ async def test_context_returns_entry_points_graph_and_source(
     names = {node["name"] for node in result["nodes"]}
     assert {"handle_request", "UserService"} & names
     assert any("handle_request" in block["content"] for block in result["code_blocks"])
+
+
+@pytest.mark.asyncio
+async def test_context_uses_edgestore_without_lazy_callgraph_parse(
+    indexed_project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tree_sitter_analyzer import call_graph
+    from tree_sitter_analyzer.graph.edge_store import EdgeStore
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        CodeGraphContextTool,
+    )
+
+    def fail_if_lazy_parse_builds(self):
+        raise AssertionError("codegraph_context triggered lazy CallGraph.build()")
+
+    monkeypatch.setattr(call_graph.CallGraph, "build", fail_if_lazy_parse_builds)
+
+    tool = CodeGraphContextTool(str(indexed_project))
+    result = await tool.execute(
+        {
+            "task": "trace handle_request to UserService.get_user",
+            "output_format": "json",
+        }
+    )
+
+    assert result["success"] is True
+    assert isinstance(tool._call_graph, EdgeStore)
+
+
+def test_context_ignores_edgestore_when_only_non_call_edges(tmp_path: Path) -> None:
+    from tree_sitter_analyzer.call_graph import CachedCallGraph
+    from tree_sitter_analyzer.graph.edge_store import EdgeKind, EdgeStore
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        CodeGraphContextTool,
+    )
+
+    (tmp_path / "models.py").write_text(
+        "class Base:\n    pass\n\nclass Child(Base):\n    pass\n",
+        encoding="utf-8",
+    )
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_project(max_files=10)
+    finally:
+        cache.close()
+
+    tool = CodeGraphContextTool(str(tmp_path))
+    store = tool._get_edge_store()
+
+    assert isinstance(store, EdgeStore)
+    assert store.has_edges(EdgeKind.EXTENDS)
+    assert not store.has_edges(EdgeKind.CALLS)
+    assert isinstance(tool._get_call_graph(), CachedCallGraph)
 
 
 @pytest.mark.asyncio

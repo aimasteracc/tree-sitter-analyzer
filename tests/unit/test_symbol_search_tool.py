@@ -177,6 +177,18 @@ class TestCodeGraphSymbolSearchExecution:
             score = hit["relevance_score"]
             assert 0.0 <= score <= 1.0, f"score out of range: {score}"
 
+    async def test_plain_query_cascade_fuzzy_finds_typo(self, indexed_project):
+        tool = CodeGraphSymbolSearchTool(str(indexed_project))
+        result = await tool.execute(
+            {"query": "HandlerRequest", "output_format": "json"}
+        )
+
+        assert result["success"] is True
+        names = [r["name"] for r in result["results"]]
+        assert "handle_request" in names
+        fuzzy_hits = [r for r in result["results"] if r["name"] == "handle_request"]
+        assert fuzzy_hits[0]["match_tier"] == "fuzzy"
+
     async def test_fts5_results_sorted_by_relevance_descending(self, indexed_project):
         """FTS5 results are ordered best-match first, not by file path."""
         tool = CodeGraphSymbolSearchTool(str(indexed_project))
@@ -210,6 +222,74 @@ class TestCodeGraphSymbolSearchNoCache:
 
 
 class TestCodeGraphSymbolSearchSourceContext:
+    def test_exact_search_uses_linear_fallback_without_fts5(self):
+        class LinearOnlyCache:
+            fts5_available = False
+
+            def search_symbols(self, query, language=None):
+                assert query == "UserService"
+                assert language == "python"
+                return [
+                    {
+                        "name": "UserService",
+                        "kind": "class",
+                        "file": "app.py",
+                        "language": "python",
+                        "line": 1,
+                    },
+                    {
+                        "name": "user_service",
+                        "kind": "variable",
+                        "file": "app.py",
+                        "language": "python",
+                        "line": 2,
+                    },
+                ]
+
+        tool = CodeGraphSymbolSearchTool()
+
+        results = tool._exact_search(
+            LinearOnlyCache(),
+            "UserService",
+            language="python",
+            kind="class",
+            limit=5,
+        )
+
+        assert [result["name"] for result in results] == ["UserService"]
+
+    def test_fts_to_results_keeps_optional_metadata_optional(self):
+        tool = CodeGraphSymbolSearchTool()
+
+        results = tool._fts_to_results(
+            [
+                {
+                    "name": "plain",
+                    "kind": "function",
+                    "file": "app.py",
+                    "language": "python",
+                    "line": 1,
+                    "end_line": 3,
+                },
+                {
+                    "name": "tiered",
+                    "kind": "function",
+                    "file": "app.py",
+                    "language": "python",
+                    "line": 5,
+                    "end_line": 8,
+                    "match_tier": "fts5",
+                    "relevance_score": 0.7,
+                },
+            ],
+            kind="any",
+            limit=5,
+        )
+
+        assert "match_tier" not in results[0]
+        assert results[1]["match_tier"] == "fts5"
+        assert results[1]["relevance_score"] == 0.7
+
     def test_add_source_context_skips_invalid_line_numbers(self, indexed_project):
         tool = CodeGraphSymbolSearchTool(str(indexed_project))
         results = [{"file": "app.py", "line": 0}]

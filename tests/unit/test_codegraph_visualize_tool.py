@@ -17,6 +17,32 @@ from tree_sitter_analyzer.mcp.tools.codegraph_visualize_tool import (
 _PROJECT_ROOT = str(Path(__file__).resolve().parent.parent.parent)
 
 
+@pytest.fixture
+def tiny_call_project(tmp_path: Path) -> str:
+    (tmp_path / "helper.py").write_text(
+        "def helper():\n    return 1\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "worker.py").write_text(
+        "from helper import helper\n"
+        "\n\n"
+        "def build():\n"
+        "    return helper()\n"
+        "\n\n"
+        "def wrapper():\n"
+        "    return build()\n",
+        encoding="utf-8",
+    )
+    from tree_sitter_analyzer.ast_cache import ASTCache
+
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_project()
+    finally:
+        cache.close()
+    return str(tmp_path)
+
+
 class TestMermaidRenderer:
     def test_empty_edges(self) -> None:
         result = _render_mermaid([], "TD")
@@ -190,11 +216,10 @@ class TestVisualizeToolNoProject:
         assert result["stats"]["mode"] == "file"
 
 
-class TestVisualizeRealProject:
+class TestVisualizeIndexedProject:
     @pytest.mark.asyncio
-    @pytest.mark.slow_ok  # full-mode scan of real project; ~7s on CI hardware
-    async def test_full_mode_on_self(self) -> None:
-        tool = CodeGraphVisualizeTool(_PROJECT_ROOT)
+    async def test_full_mode_on_indexed_project(self, tiny_call_project: str) -> None:
+        tool = CodeGraphVisualizeTool(tiny_call_project)
         result = await tool.execute(
             {
                 "mode": "full",
@@ -208,13 +233,27 @@ class TestVisualizeRealProject:
         assert result["stats"]["edge_count"] <= 10
 
     @pytest.mark.asyncio
-    @pytest.mark.slow_ok  # function-mode graph walk on real project; ~13s on CI hardware
-    async def test_function_mode_on_real_func(self) -> None:
-        tool = CodeGraphVisualizeTool(_PROJECT_ROOT)
+    async def test_full_mode_stops_at_edge_limit(self, tiny_call_project: str) -> None:
+        tool = CodeGraphVisualizeTool(tiny_call_project)
+        result = await tool.execute(
+            {
+                "mode": "full",
+                "max_edges": 1,
+                "output_format": "json",
+            }
+        )
+        assert result["success"] is True
+        assert result["stats"]["edge_count"] == 1
+
+    @pytest.mark.asyncio
+    async def test_function_mode_on_indexed_project(
+        self, tiny_call_project: str
+    ) -> None:
+        tool = CodeGraphVisualizeTool(tiny_call_project)
         result = await tool.execute(
             {
                 "mode": "function",
-                "function": "parse_file",
+                "function": "build",
                 "depth": 1,
                 "max_edges": 20,
                 "output_format": "json",
@@ -222,3 +261,4 @@ class TestVisualizeRealProject:
         )
         assert result["success"] is True
         assert "mermaid" in result
+        assert "helper" in result["mermaid"]

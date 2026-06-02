@@ -83,6 +83,7 @@ def ensure_indexed(
 
         stats = cache.get_stats()
         if stats.get("total_files", 0) > 0:
+            _resolve_pending_unresolved_refs(cache)
             _indexed_roots[project_root] = True
             return cache
 
@@ -112,6 +113,16 @@ def _open_cache(project_root: str) -> Any:
         return ASTCache(project_root)
     except Exception:
         return None
+
+
+def _resolve_pending_unresolved_refs(cache: Any) -> None:
+    try:
+        from ..._ast_cache_unresolved import pending_unresolved_count
+
+        if pending_unresolved_count(cache.get_conn()) > 0:
+            cache.index_project(resolve_only=True)
+    except Exception:
+        logger.debug("auto-index: unresolved_refs resolve-only failed", exc_info=True)
 
 
 def mark_dirty(project_root: str) -> None:

@@ -50,6 +50,39 @@ class TestContentHash:
         assert _content_hash(b"hello") == _content_hash("hello")
 
 
+class TestAstCacheWriteHelpers:
+    def test_empty_fts5_symbol_batches_return_empty(self):
+        from tree_sitter_analyzer._ast_cache_write import (
+            write_fts5_symbols,
+            write_fts5_symbols_from_tuples,
+        )
+
+        conn = sqlite3.connect(":memory:")
+        conn.execute(
+            "CREATE TABLE ast_symbol_rows ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, kind TEXT, "
+            "file_path TEXT, language TEXT, line INTEGER, end_line INTEGER)"
+        )
+        conn.execute(
+            "CREATE VIRTUAL TABLE ast_symbols_fts "
+            "USING fts5(name, kind, file_path, language, content='')"
+        )
+
+        assert write_fts5_symbols(conn, "empty.py", "python", {"symbols": []}) == []
+        assert write_fts5_symbols_from_tuples(conn, "empty.py", "python", []) == []
+
+
+class TestAstExtractionWorker:
+    def test_init_worker_parser_sets_reusable_parser(self):
+        import tree_sitter_analyzer._ast_extraction as extraction
+
+        extraction._worker_parser = None
+
+        extraction._init_worker_parser()
+
+        assert extraction._worker_parser is not None
+
+
 class TestIndexFile:
     def test_index_python_file(self, cache, tmp_project):
         f = str(tmp_project / "src" / "main.py")
@@ -266,6 +299,23 @@ class TestIndexProject:
             ).fetchall()
         )
         assert s_rows == p_rows
+
+        symbol_sql = (
+            "SELECT name, kind, file_path, language, line, end_line "
+            "FROM ast_symbol_rows ORDER BY file_path, name, kind, line"
+        )
+        assert [tuple(r) for r in serial_conn.execute(symbol_sql).fetchall()] == [
+            tuple(r) for r in parallel_conn.execute(symbol_sql).fetchall()
+        ]
+
+        edge_sql = (
+            "SELECT caller_name, caller_file, caller_line, callee_name, "
+            "callee_full, callee_line, file_path, language "
+            "FROM ast_call_edges ORDER BY file_path, caller_name, callee_name, callee_line"
+        )
+        assert [tuple(r) for r in serial_conn.execute(edge_sql).fetchall()] == [
+            tuple(r) for r in parallel_conn.execute(edge_sql).fetchall()
+        ]
 
     def test_index_project_env_workers_override(self, cache, monkeypatch):
         """PERF-4: TSA_INDEX_WORKERS env var overrides the workers kwarg."""

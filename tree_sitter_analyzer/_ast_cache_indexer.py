@@ -120,9 +120,17 @@ def parse_and_write(
         else []
     )
     _write.write_call_edges(conn, rel_path, language, call_edges)
+    from . import _ast_cache_unresolved as _unresolved
+
+    _unresolved.write_unresolved_refs_for_file(
+        conn, rel_path, language, symbols, call_edges
+    )
     cache._write_imports_for_file(conn, rel_path, language, imports)  # noqa: SLF001
     cache._write_activation_for_file(conn, rel_path, inserted)  # noqa: SLF001
     cache._resolve_call_edges_for_file(conn, rel_path)  # noqa: SLF001
+    _write.write_graph_edges_for_file(
+        conn, rel_path, language, symbols, imports, call_edges
+    )
     conn.commit()
     return {
         "file": rel_path,
@@ -156,6 +164,16 @@ def walk_and_partition(
         "files": [],
         "activation_enabled": activation_enabled,
     }
+    if force:
+        indexed_map: dict[str, tuple[int, int, int]] = {}
+    else:
+        rows = conn.execute(
+            "SELECT file_path, mtime_ns, file_size, extractor_version FROM ast_index"
+        ).fetchall()
+        indexed_map = {
+            r["file_path"]: (r["mtime_ns"], r["file_size"], r["extractor_version"])
+            for r in rows
+        }
     count = 0
     for abs_path in walk_fn(cache.project_root):
         if count >= max_files:
@@ -172,15 +190,12 @@ def walk_and_partition(
             stats["errors"] += 1
             stats["files"].append(make_error_entry(rel_path, str(e)))
             continue
-        row = conn.execute(
-            "SELECT mtime_ns, file_size, extractor_version FROM ast_index WHERE file_path = ?",
-            (rel_path,),
-        ).fetchone()
+        row = indexed_map.get(rel_path)
         if (
             row is not None
-            and row["mtime_ns"] == int(stat.st_mtime_ns)
-            and row["file_size"] == stat.st_size
-            and row["extractor_version"] >= extractor_version
+            and row[0] == int(stat.st_mtime_ns)
+            and row[1] == stat.st_size
+            and row[2] >= extractor_version
         ):
             already_cached.append(
                 {"file": rel_path, "status": "cached", "reason": "unchanged"}
@@ -232,6 +247,15 @@ def insert_index_row(
     _write.write_call_edges(conn, rel_path, r["language"], call_edges)
     imports_list = json.loads(r.get("imports_json", "[]"))
     cache._write_imports_for_file(conn, rel_path, r["language"], imports_list)  # noqa: SLF001
+    symbols = json.loads(r.get("symbols_json", "{}"))
+    from . import _ast_cache_unresolved as _unresolved
+
+    _unresolved.write_unresolved_refs_for_file(
+        conn, rel_path, r["language"], symbols, call_edges
+    )
+    _write.write_graph_edges_for_file(
+        conn, rel_path, r["language"], symbols, imports_list, call_edges
+    )
     if include_activation:
         cache._write_activation_for_file(conn, rel_path, inserted_symbol_rows)  # noqa: SLF001
     else:
