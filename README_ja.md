@@ -3,7 +3,7 @@
 **[English](README.md)** | **日本語** | **[简体中文](README_zh.md)**
 
 > **AI エージェントのための MCP コード インテリジェンス サーバー — トークン削減、ツール呼び出し削減、100% ローカル動作。**
-> 事前インデックス AST キャッシュ + 63 MCP ツール + 13 のキュレーション済みエージェント スキル + TOON 圧縮出力。
+> 事前インデックス AST キャッシュ + 8 MCP ツール + 13 のキュレーション済みエージェント スキル + TOON 圧縮出力。
 > 6 リポジトリの実測比較で **CodeGraph を上回る**（コスト中央値 **−11% vs CodeGraph の −4%**）、CLI は厳密な上位互換。
 
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
@@ -111,7 +111,7 @@ CodeGraph には skill システムが存在しない。本ツールは `.claude
 
 `tsa-landing`、`tsa-find`、`tsa-graph`、`tsa-structure`、`tsa-deps`、`tsa-index`、`tsa-health-watch`、`tsa-edit-safety`、`tsa-edit-then-verify`、`tsa-constraints`、`tsa-pr-review`、`tsa-refactor-queue`、`tsa-temporal`。
 
-各 skill は `allowed-tools` ツール サブセット + 手順レシピ + 決定面スキーマを同梱し、エージェントは 63 個のツールから毎回選別する必要が無い。
+各 skill は `allowed-tools` ツール サブセット + 手順レシピ + 決定面スキーマを同梱し、エージェントは 8 個のツールから毎回選別する必要が無い。
 
 ### 258 の CLI フラグ
 

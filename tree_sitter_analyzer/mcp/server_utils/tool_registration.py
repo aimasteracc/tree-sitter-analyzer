@@ -104,25 +104,29 @@ async def _dispatch_tool(
 ) -> Any:
     """Route a tool call to the appropriate handler.
 
-    F5: legacy non-BaseMCPTool paths (``set_project_path``) get the
-    strict-parameter check here, since they bypass the
-    ``BaseMCPTool.__init_subclass__`` wrapper. BaseMCPTool-backed paths
-    (everything in ``server_instance._tools``, plus ``extract_code_section``
-    and ``analyze_code_structure`` which delegate to BaseMCPTool subclasses)
-    are validated by that wrapper and need no extra gate here.
+    Wave C2 surface:
+      1. ``set_project_path`` — standalone infra entry. It bypasses the
+         ``BaseMCPTool.__init_subclass__`` strict-param wrapper, so the gate is
+         applied explicitly here.
+      2. The 8 facade names — direct ``facade.execute`` (the facade's own
+         arg-projection + strict inner guards own correctness; F4/F5 bespoke
+         routes like ``structure.read`` / ``search.content`` live inside the
+         facades now, so the old server-level special cases are gone).
+      3. Deprecated 1.x tool names — forwarded via the legacy shim (β / G2),
+         which injects the ``deprecation`` envelope field + stderr warning.
     """
+    from ..legacy_shim import dispatch_legacy, is_legacy_name
+
     if name == "set_project_path":
         schema = _SET_PROJECT_PATH_TOOL["inputSchema"]
         enforce_strict_params(
             name, schema if isinstance(schema, dict) else None, arguments
         )
         return server_instance.handle_set_project_path(arguments)
-    if name == "extract_code_section":
-        return await server_instance.handle_extract_code_section(arguments)
-    if name == "analyze_code_structure":
-        return await server_instance.table_format_tool.execute(arguments)
     if name in server_instance.tools:
         return await server_instance.tools[name].execute(arguments)
+    if is_legacy_name(name):
+        return await dispatch_legacy(server_instance, name, arguments)
     raise ValueError(f"Unknown tool: {name}")
 
 

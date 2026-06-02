@@ -49,6 +49,7 @@ def test_nav_facade_all_actions_present() -> None:
         "lineage",
         "impact",
         "trace",
+        "context",
         "callers",
         "callees",
     }
@@ -634,6 +635,7 @@ def test_nav_facade_schema_action_enum_complete() -> None:
         "lineage",
         "impact",
         "trace",
+        "context",
         "callers",
         "callees",
     }

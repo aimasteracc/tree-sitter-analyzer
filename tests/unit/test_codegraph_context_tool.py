@@ -41,10 +41,13 @@ def indexed_project(tmp_path: Path) -> Path:
 
 
 def test_codegraph_context_registered() -> None:
+    # Wave C2: codegraph_context is folded into the nav facade as action=context.
     from tree_sitter_analyzer.mcp._tool_registry import create_tool_registry
 
     _, lookup = create_tool_registry(project_root=None)
-    assert "codegraph_context" in lookup
+    assert "nav" in lookup
+    assert "context" in lookup["nav"].action_map
+    assert type(lookup["nav"].action_map["context"]).__name__ == "CodeGraphContextTool"
 
 
 def test_extract_symbol_candidates_handles_identifiers() -> None:

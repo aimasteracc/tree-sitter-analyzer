@@ -24,29 +24,26 @@ class TestCreateToolRegistry:
             assert name in lookup
 
     def test_expected_tool_count(self):
+        # Wave C2: the public surface is exactly the 8 domain facades.
         tools, _ = create_tool_registry(project_root=None)
-        assert len(tools) >= 20, f"Expected >= 20 tools, got {len(tools)}"
+        assert len(tools) == 8, f"Expected exactly 8 facades, got {len(tools)}"
 
     def test_specific_tools_present(self):
+        # Wave C2: the registry exposes the 8 facade names, not the legacy
+        # 63 discrete tool names (which are reached via the legacy-name shim).
         _, lookup = create_tool_registry(project_root=None)
         expected = [
-            "check_code_scale",
-            "analyze_code_structure",
-            "query_code",
-            "search_content",
-            "find_and_grep",
-            "list_files",
-            "extract_code_section",
-            "codegraph_call_graph",
-            "codegraph_callers",
-            "codegraph_callees",
-            "codegraph_symbol_search",
-            "analyze_change_impact",
-            "safe_to_edit",
-            "detect_routes",
+            "search",
+            "nav",
+            "structure",
+            "health",
+            "edit",
+            "project",
+            "index",
+            "viz",
         ]
         for name in expected:
-            assert name in lookup, f"Missing tool: {name}"
+            assert name in lookup, f"Missing facade: {name}"
 
     def test_tool_instances_have_execute(self):
         tools, _ = create_tool_registry(project_root=None)

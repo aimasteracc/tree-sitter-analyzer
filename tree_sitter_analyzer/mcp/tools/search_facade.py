@@ -56,7 +56,10 @@ _SEARCH_DESCRIPTION = (
     "Params: query, roots, include_globs, ...\n"
     "- action=grep — two-stage fd (file discovery) + ripgrep search. "
     "Params: query, roots, ...\n"
-    "- action=batch — run multiple search queries in one call. Params: queries."
+    "- action=batch — run multiple search queries in one call. Params: queries.\n"
+    "- action=chain — jQuery-style graph chain DSL: compose search → explore → "
+    "callers → callees in one process. Params: chain/program, default_limit, "
+    "include_source."
 )
 
 
@@ -68,6 +71,7 @@ def build_search_facade(project_root: str | None = None) -> FacadeTool:
     ``_tool_registry.py``).
     """
     from .batch_search_tool import BatchSearchTool
+    from .codegraph_query_tool import CodeGraphQueryTool
     from .find_and_grep_tool import FindAndGrepTool
     from .query_tool import QueryTool
     from .search_content_tool import SearchContentTool
@@ -90,6 +94,10 @@ def build_search_facade(project_root: str | None = None) -> FacadeTool:
             "query": QueryTool(project_root),  # F3: tree-sitter .scm DSL
             "grep": FindAndGrepTool(project_root),  # fd + ripgrep (dict|int)
             "batch": BatchSearchTool(project_root),  # multi-query batch
+            # jQuery-style graph chain DSL (search().explore().callees()...),
+            # folded here from the standalone ``codegraph_query`` tool so the
+            # whole 62-row capability surface survives the facade cutover.
+            "chain": CodeGraphQueryTool(project_root),
         },
         bespoke_map={
             "content": _content_route,  # F5: search_content (dict|int)

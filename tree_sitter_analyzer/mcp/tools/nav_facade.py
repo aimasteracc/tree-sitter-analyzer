@@ -70,6 +70,9 @@ _NAV_DESCRIPTION = (
     "function_name, function_names, file_path, depth.\n"
     "- action=trace — full impact trace from a symbol outward. "
     "Params: symbol (required), output_format.\n"
+    "- action=context — one-call focused context for a symbol: composes "
+    "search + definition + callers + callees in a single capped response. "
+    "Params: symbol/query (required), max_nodes, max_snippets, output_format.\n"
     "- action=callers — who calls a function.\n"
     "  scope=point (default) → direct 1-hop callers (fast). "
     "Params: function_name/symbol (required), file_path, output_format.\n"
@@ -94,6 +97,7 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
     from .call_path_tool import CodeGraphCallPathTool
     from .callees_tool import CodeGraphCalleesTool
     from .callers_tool import CodeGraphCallersTool
+    from .codegraph_context_tool import CodeGraphContextTool
     from .codegraph_impact_tool import CodeGraphImpactTool
     from .codegraph_navigate_tool import CodeGraphNavigateTool
     from .codegraph_xref_tool import CodeGraphXRefTool
@@ -167,6 +171,10 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
             "lineage": SymbolLineageTool(project_root),
             "impact": CodeGraphImpactTool(project_root),
             "trace": TraceImpactTool(project_root),
+            # Composed one-call context (search + node + callers + callees).
+            # Folded here from the standalone ``codegraph_context`` tool so the
+            # whole 62-row capability surface survives the facade cutover.
+            "context": CodeGraphContextTool(project_root),
         },
         bespoke_map={
             "callers": _callers_route,
