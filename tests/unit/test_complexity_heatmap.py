@@ -1,6 +1,7 @@
 """Tests for complexity heatmap engine and MCP tool."""
 
 import contextlib
+import json
 import sys
 from io import StringIO
 
@@ -341,10 +342,14 @@ class TestComplexityCLI:
         )
         buf = StringIO()
         monkeypatch.setattr("sys.stdout", buf)
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
+
+        data = json.loads(buf.getvalue())
+        assert data["success"] is True
+        assert data["mode"] == "project"
+        assert data["total_functions"] > 0
+        assert "risk_distribution" in data
 
     def test_cli_file_mode(self, complex_project, monkeypatch):
 
@@ -368,6 +373,12 @@ class TestComplexityCLI:
         monkeypatch.setattr("sys.stdout", buf)
         with contextlib.suppress(SystemExit):
             main()
+
+        data = json.loads(buf.getvalue())
+        assert data["success"] is True
+        assert data["mode"] == "file"
+        assert data["function_count"] > 0
+        assert "deeply_nested" in {f["name"] for f in data["functions"]}
 
     def test_cli_function_mode(self, complex_project, monkeypatch):
 
@@ -393,3 +404,9 @@ class TestComplexityCLI:
         monkeypatch.setattr("sys.stdout", buf)
         with contextlib.suppress(SystemExit):
             main()
+
+        data = json.loads(buf.getvalue())
+        assert data["success"] is True
+        assert data["mode"] == "function"
+        assert data["name"] == "deeply_nested"
+        assert data["complexity"] > 1
