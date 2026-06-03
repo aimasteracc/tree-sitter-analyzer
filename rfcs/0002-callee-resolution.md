@@ -69,23 +69,33 @@ The `edges` table already carries the target columns — this RFC is about
 
 ### Algorithms — scope-aware resolution
 
-For each `calls` edge `(caller, callee_name)`:
+> **Cascade order matters — bindings before builtins (Codex review).** A
+> project/local binding can *shadow* a builtin or stdlib-looking name
+> (`def len(): ...; len()`, or a project import named `Path`). If we classified
+> by bare name *first*, we'd mislabel the call `builtin`/`stdlib` with no
+> `callee_symbol_id` and **regress the resolved graph**. This RFC therefore
+> follows the EXISTING cascade in
+> `tree_sitter_analyzer/synapse_resolver/__init__.py` (local → self/cls →
+> import → stdlib/builtin), which already orders bindings before builtins
+> specifically to preserve shadowing. This RFC extends that cascade's *reach*
+> and *fill rate*, it does not reorder it.
 
-1. **Builtin/stdlib classification first** (cheap, kills the `len`/`str`/`Path`
-   noise): match `callee_name` against a per-language builtin + stdlib table →
-   `builtin` / `stdlib`. This alone reclassifies a large slice of the 62.6%
-   `unknown`.
-2. **Local scope**: a name bound in the caller's own
-   function/module (local def, parameter, assignment) → `local`, resolve to
-   that definition.
-3. **Import-based**: follow the caller file's imports (we already have
-   `ast_imports` + B3 import resolution) to map `callee_name` → an imported
-   module symbol → `project` / `external`.
+For each `calls` edge `(caller, callee_name)`, in priority order:
+
+1. **Local scope**: a name bound in the caller's own function/module (local
+   def, parameter, assignment) → `local`, resolve to that definition.
+2. **self/cls**: `self.X` / `cls.X` on the caller's enclosing class → resolve
+   to that class's member.
+3. **Import-based**: follow the caller file's imports (`ast_imports` + B3 import
+   resolution) → `project` / `external`.
 4. **Receiver-typed method calls** (`obj.method()`): infer the type of `obj`
-   (annotation, constructor assignment, `self` → enclosing class) → resolve
-   `method` to that class's definition. This is what disambiguates the 227
-   `execute` edges.
-5. **Leave `unknown`** only when none of the above resolves — and record *why*
+   (annotation, constructor assignment) → resolve `method` to that class's
+   definition. This disambiguates the 227 same-named `execute` edges.
+5. **Builtin/stdlib classification — LAST, only if nothing above bound the
+   name** (so a shadowing local/import wins): match against a per-language
+   builtin + stdlib table → `builtin` / `stdlib`. This is where the `len`/`str`/
+   `Path` noise gets classified, *after* confirming no binding shadows it.
+6. **Leave `unknown`** only when none of the above resolves — and record *why*
    (so the number is auditable, not silent).
 
 ### Error handling
@@ -141,6 +151,9 @@ receiver field, per CLAUDE.md rule 6) benefits directly.
 
 - Unit: builtin/stdlib classifier (Python `len`/`str` → builtin; `os.path` →
   stdlib).
+- Unit: **shadowing** — `def len(): ...; len()` resolves to the local def
+  (`local` + symbol_id), NOT `builtin`; a project import named `Path` resolves
+  to `project`, not `stdlib` (the cascade-order regression).
 - Unit: receiver-typed resolution — two classes with same-named method, an
   `execute` call resolves to the right one by receiver type.
 - Unit: `absolute_path` vs `_absolute_path` vs `_validate_absolute_path` resolve
@@ -152,7 +165,10 @@ receiver field, per CLAUDE.md rule 6) benefits directly.
 
 ## Acceptance criteria
 
-- [ ] Builtin/stdlib classifier per language; `unknown` rate drops measurably
+- [ ] Builtin/stdlib classifier per language, applied LAST in the cascade;
+      `unknown` rate drops measurably
+- [ ] Shadowing preserved: a local/import binding that shadows a builtin/stdlib
+      name resolves to the binding (local/project + symbol_id), not builtin/stdlib
 - [ ] Receiver-typed method resolution disambiguates same-named methods
 - [ ] `absolute_path`/`_absolute_path`/`_validate_absolute_path` resolve to
       distinct `callee_symbol_id`s (unit regression)
