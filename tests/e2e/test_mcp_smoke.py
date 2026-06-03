@@ -67,9 +67,14 @@ class TestStartup:
         instructions = response["result"].get("instructions")
         assert instructions
         assert "TSA MCP Routing" in instructions
-        assert "codegraph_context" in instructions
-        assert "codegraph_symbol_search" in instructions
-        assert "codegraph_navigate" in instructions
+        # Instructions must name the real v2.0 facade tools + actions, not the
+        # pre-facade codegraph_* names that no longer exist.
+        assert "nav" in instructions
+        assert "search" in instructions
+        assert "action=context" in instructions
+        assert "action=callee_tree" in instructions
+        assert "codegraph_symbol_search" not in instructions
+        assert "codegraph_navigate" not in instructions
 
     def test_repeated_headless_initialize_stays_under_budget(
         self, mcp_server_factory: Any

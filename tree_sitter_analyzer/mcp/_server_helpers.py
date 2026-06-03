@@ -47,55 +47,63 @@ def build_initialization_options(
 _SERVER_INSTRUCTIONS = """
 ## TSA MCP Routing
 
-Use the codegraph tools first for code-intelligence questions. They are built
-for indexed, cross-file answers and are usually cheaper than grep/read loops.
+This server exposes 8 facade tools. Each takes an `action` parameter that
+selects a capability. Use these first for code-intelligence questions — they
+give indexed, cross-file answers and are cheaper than grep/read loops.
 
-## Intent -> first tool
+The 8 tools: nav, search, structure, health, edit, project, index, viz.
 
-| Intent | Tool |
+## Intent -> tool + action (START HERE)
+
+| Intent | Call |
 | --- | --- |
-| Understand an area or trace a flow from a task description | codegraph_context |
-| Find a symbol, class, function, or method | codegraph_symbol_search |
-| Inspect a symbol with definition and references | codegraph_navigate |
-| Understand several related symbols at once | codegraph_explore |
-| Who calls X? | codegraph_callers |
-| What does X call? | codegraph_callees |
-| Trace a path from A to B | codegraph_call_graph |
-| File/module dependency questions | codegraph_import_graph |
-| Is the index ready? | codegraph_status |
-| File discovery | list_files |
-| Text search fallback after graph lookup misses | search_content |
+| Understand an area / trace a flow from a task | nav action=context |
+| What does a function call (whole tree, one call) | nav action=callee_tree |
+| What calls a function (blast radius, one call) | nav action=caller_tree |
+| Path from function A to function B | nav action=call_path |
+| Who calls X / what X calls (single hop) | nav action=callers / action=callees |
+| Go-to-definition + references for a symbol | nav action=navigate |
+| Find a symbol, class, function, or method | search action=symbol |
+| Text/content search | search action=content |
+| Class/file structure, overview, signatures | structure |
+| Is the index ready / how big? | index action=status |
+| File / module dependency questions | nav action=impact / structure |
+| File discovery | project / search |
 
-## Default chains
+## Default chain for "how does X work / trace a flow" (FOLLOW THIS)
 
-- Understand an area: codegraph_context first; then answer from code_blocks.
-- Trace a flow: codegraph_context first; use callers/callees only for a missing edge.
-- Trace impact: codegraph_callers -> codegraph_import_graph -> synthesize.
-- Unknown name: codegraph_symbol_search with a fuzzy query once, then stop.
+1. nav action=context — ONE call returns the task's entry points + definition
+   + callers + callees + source code blocks. This is the primary tool.
+2. nav action=callee_tree (or caller_tree) — the FULL call tree in ONE call,
+   no per-node iteration.
+3. Answer from those two responses. Only Read a file if a specific line is
+   genuinely missing from the code blocks.
+
+This 2-call chain answers most trace/flow questions. Do NOT scatter the work
+across search + structure + navigate — that is the slow path.
 
 ## Stop rules
 
 - Prefer 2-3 tool calls, then answer.
-- Do not keep drilling after 4 tool calls for one question.
-- Do not use grep/read loops when a codegraph tool covers the question.
+- nav action=context already includes callers + callees + source — do not
+  re-fetch them with separate calls.
+- Do NOT loop search or nav action=navigate per symbol — use callee_tree /
+  caller_tree to get the whole tree at once.
+- Do NOT re-verify results with grep or file reads — the AST index is truth.
 
 ## Anti-patterns (DO NOT)
 
-- Do NOT chain codegraph_symbol_search -> codegraph_callers -> codegraph_callees
-  for architecture questions — use codegraph_context (one call does all three).
-- Do NOT loop codegraph_navigate over many symbols — use codegraph_explore.
-- Do NOT re-verify codegraph results with grep or file reads — the AST index
-  is the source of truth.
-- Do NOT call codegraph_callers for a symbol found via codegraph_context —
-  it already includes callers and callees.
-- Do NOT call codegraph_context for a simple "where is X defined?" —
-  use codegraph_symbol_search instead.
+- Do NOT use the `structure` facade to answer a trace/flow question — use
+  nav action=context then nav action=callee_tree.
+- Do NOT chain search -> callers -> callees for an architecture question —
+  nav action=context does all three in one call.
+- Do NOT call nav action=context for a simple "where is X defined?" —
+  use search action=symbol instead.
 
 ## Small project mode
 
-When codegraph_status reports fewer than 500 nodes, only the 5 core tools
-are needed: codegraph_context, codegraph_symbol_search, codegraph_navigate,
-codegraph_status, and list_files. Skip batch and heavy-graph tools.
+When index action=status reports fewer than 500 nodes, only nav, search,
+structure, and index are needed. Skip the heavy-graph and batch capabilities.
 """.strip()
 
 
