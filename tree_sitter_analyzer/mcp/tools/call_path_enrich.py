@@ -111,12 +111,17 @@ def _read_body(
     project_root: str,
     defn: dict[str, Any],
     budget: list[int],
+    max_body_lines: int | None = None,
 ) -> dict[str, Any] | None:
     """Read a verbatim function body, honouring per-body and total caps.
 
     ``budget`` is a single-element mutable list carrying remaining total
-    lines so multiple calls share one global cap.
+    lines so multiple calls share one global cap.  ``max_body_lines`` overrides
+    the per-body cap for callers that want a tighter tier (e.g. P2's neighbour
+    / summary tiers); it defaults to :data:`MAX_BODY_LINES` so the call_path
+    path is unchanged.
     """
+    per_body_cap = MAX_BODY_LINES if max_body_lines is None else max_body_lines
     file_path = defn.get("file", "")
     start = int(defn.get("line", 0) or 0)
     if not file_path or start < 1 or budget[0] <= 0:
@@ -129,12 +134,12 @@ def _read_body(
         return None
     end = int(defn.get("end_line", 0) or 0)
     if end < start:
-        end = start + MAX_BODY_LINES - 1
+        end = start + per_body_cap - 1
     span = end - start + 1
     truncated = False
     # Per-body cap.
-    if span > MAX_BODY_LINES:
-        end = start + MAX_BODY_LINES - 1
+    if span > per_body_cap:
+        end = start + per_body_cap - 1
         truncated = True
     # Total cap.
     allowed = budget[0]

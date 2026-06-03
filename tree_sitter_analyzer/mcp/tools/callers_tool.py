@@ -125,6 +125,10 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         if _is_stale_resolution(callers):
             warnings_list.append(_STALE_CACHE_WARNING)
 
+        # P2: inline each caller's verbatim source body (top-N capped) so the
+        # agent answers from content, not coordinates — no Read per file:line.
+        next_step = self._inline_caller_bodies(cache, callers)
+
         result = build_response(
             verdict="INFO" if callers else "NOT_FOUND",
             warnings=warnings_list or None,
@@ -133,10 +137,39 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             caller_count=len(callers),
             callers=callers,
         )
+        if next_step:
+            result["next_step"] = next_step
 
         from ..utils.format_helper import apply_toon_format_to_response
 
         return apply_toon_format_to_response(result, output_format)
+
+    def _inline_caller_bodies(
+        self,
+        cache: Any,
+        callers: list[dict[str, Any]],
+    ) -> str | None:
+        """P2: attach a body to the top-N callers (in place). Returns deterrent.
+
+        Best-effort: any failure leaves the bare-coordinate list intact and
+        returns ``None`` (no deterrent).
+        """
+        if not callers or not self.project_root:
+            return None
+        try:
+            from . import symbol_body_inline as sbi
+
+            # cache may be None (graph-parse path with no index yet); the
+            # helper only needs it for the end_line fallback, and records on
+            # the graph path already carry end_line, so it degrades cleanly.
+            enriched = sbi.inline_neighbor_bodies(self.project_root, cache, callers)
+            if not any("body" in c for c in enriched):
+                return None
+            callers[:] = enriched
+            return sbi.NEIGHBORS_DETERRENT
+        except Exception as exc:  # best-effort enrichment
+            logger.debug(f"Caller body inlining failed: {exc}")
+            return None
 
     def _sql_native_callers(
         self,
