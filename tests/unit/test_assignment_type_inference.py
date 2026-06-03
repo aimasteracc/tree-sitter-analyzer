@@ -59,10 +59,29 @@ def test_pytest_fixture_return_type_typed_param():
 
 
 def test_fixture_return_via_local_var():
-    # def tool(): t = X(); return t
+    # @pytest.fixture def tool(): t = X(); return t
     code = (
+        "import pytest\n@pytest.fixture\n"
         "def tool():\n    t = QueryTool()\n    return t\n"
         "def test_q(tool):\n    tool.run()\n"
     )
     calls = _calls(code)
     assert calls["run"]["full_name"] == "QueryTool.run"
+
+
+def test_flow_sensitive_pre_binding_not_typed():
+    # pg.execute() BEFORE pg = ProjectGraph() must NOT be typed (P2 flow-sensitive)
+    code = "def f(pg):\n    pg.execute()\n    pg = ProjectGraph()\n    pg.run()\n"
+    calls = _calls(code)
+    assert calls["execute"]["full_name"] == "pg.execute"  # pre-binding: untyped
+    assert calls["run"]["full_name"] == "ProjectGraph.run"  # post-binding: typed
+
+
+def test_non_fixture_function_not_typed():
+    # plain (non-@fixture) def client(): return X(); param client must NOT type
+    code = (
+        "def client():\n    return HttpClient()\n"
+        "def handle(client):\n    client.send()\n"
+    )
+    calls = _calls(code)
+    assert calls["send"]["full_name"] == "client.send"  # not a fixture → untyped

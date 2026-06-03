@@ -142,3 +142,15 @@ def test_class_method_unknown_class_with_ambiguous_method():
     )
     r = resolve_callee("execute", "caller.py", ctx, callee_full="NotAClass.execute")
     assert r.resolution == "unknown"
+
+
+def test_class_method_duplicate_class_stays_unknown():
+    """P2 (Codex): Client defined in two modules → ambiguous, don't guess a file."""
+    ctx = _ctx(
+        file_class_methods={
+            "a.py": {"Client": {"send": 1}},
+            "b.py": {"Client": {"send": 2}},
+        }
+    )
+    r = resolve_callee("send", "caller.py", ctx, callee_full="Client.send")
+    assert r.resolution == "unknown"

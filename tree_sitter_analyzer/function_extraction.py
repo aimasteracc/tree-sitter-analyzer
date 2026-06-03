@@ -159,18 +159,17 @@ def walk_tree(node: Any, source: str, language: str) -> tuple[list[dict], list[d
 
 def _collect_local_var_types(
     func_node: Any, source: str, language: str
-) -> dict[str, str]:
+) -> dict[str, tuple[str, int]]:
     """RFC-0002: infer local variable types from ``var = ClassName(...)``.
 
-    Static receiver-type inference (no runtime): a same-function assignment whose
-    right side constructs a CapitalizedName (PEP8 class convention) binds the
-    left identifier to that class. Lets ``pg = ProjectGraph(); pg.execute()``
-    resolve ``execute`` to ``ProjectGraph.execute`` — disambiguating non-unique
-    methods. Python only for v1.
+    Returns ``{var: (class, assign_line)}``. The line makes typing
+    flow-sensitive (P2, Codex): a call only takes the type if it appears AT or
+    AFTER the binding line — ``pg.execute(); pg = ProjectGraph()`` must NOT type
+    the pre-binding call. Static, Python only.
     """
     if language != "python":
         return {}
-    types: dict[str, str] = {}
+    types: dict[str, tuple[str, int]] = {}
 
     def _walk(n: Any) -> None:
         if getattr(n, "type", None) == "assignment":
@@ -186,7 +185,7 @@ def _collect_local_var_types(
                 if fn is not None and fn.type == "identifier":
                     cls = _node_text(fn, source)
                     if cls and cls[0].isupper():
-                        types[_node_text(left, source)] = cls
+                        types[_node_text(left, source)] = (cls, n.start_point[0] + 1)
         for c in n.children:
             _walk(c)
 
@@ -234,7 +233,7 @@ def _infer_return_class(func_node: Any, source: str) -> str | None:
                 elif c.type == "identifier":
                     v = _node_text(c, source)
                     if v in local:
-                        result = local[v]
+                        result = local[v][0]
         for ch in n.children:
             _walk(ch)
 
@@ -258,11 +257,23 @@ def _collect_fixture_types(
     types: dict[str, str] = {}
 
     def _walk(n: Any) -> None:
-        if getattr(n, "type", None) == "function_definition":
-            fname = get_func_name(n, "python")
-            rcls = _infer_return_class(n, source)
-            if fname and rcls:
-                types[fname] = rcls
+        # P2 (Codex): only treat ACTUAL pytest fixtures as fixtures — a
+        # decorated_definition whose decorator mentions 'fixture'. A plain
+        # ``def client(): return HttpClient()`` is NOT a fixture, so a normal
+        # parameter named ``client`` must not be typed.
+        if getattr(n, "type", None) == "decorated_definition":
+            deco_text = ""
+            inner = None
+            for c in n.children:
+                if c.type == "decorator":
+                    deco_text += _node_text(c, source)
+                elif c.type == "function_definition":
+                    inner = c
+            if inner is not None and "fixture" in deco_text:
+                fname = get_func_name(inner, "python")
+                rcls = _infer_return_class(inner, source)
+                if fname and rcls:
+                    types[fname] = rcls
         for c in n.children:
             _walk(c)
 
@@ -277,7 +288,7 @@ def _extract_recursive(
     definitions: list[dict[str, Any]],
     calls: list[dict[str, Any]],
     enclosing_class: str | None,
-    local_types: dict[str, str] | None,
+    local_types: dict[str, tuple[str, int]] | None,
     fixture_types: dict[str, str] | None = None,
 ) -> None:
     if not hasattr(node, "type"):
@@ -305,11 +316,12 @@ def _extract_recursive(
             )
             func_types = _collect_local_var_types(node, source, language)
             # pytest-fixture typing: a parameter named after a fixture function
-            # that returns a class gets that class's type.
+            # that returns a class gets that class's type. line 0 = valid for the
+            # whole function body (a parameter is bound on entry).
             if language == "python" and fixture_types:
                 for pname in _func_param_names(node, source):
                     if pname in fixture_types:
-                        func_types[pname] = fixture_types[pname]
+                        func_types[pname] = (fixture_types[pname], 0)
             for child in node.children:
                 _extract_recursive(
                     child,
@@ -328,9 +340,11 @@ def _extract_recursive(
         if call_info:
             recv = call_info.get("receiver")
             if local_types and recv in local_types:
-                cls = local_types[recv]
-                call_info["receiver_type"] = cls
-                call_info["full_name"] = f"{cls}.{call_info['name']}"
+                cls, bind_line = local_types[recv]
+                # flow-sensitive (P2): only type calls at/after the binding line
+                if (node.start_point[0] + 1) >= bind_line:
+                    call_info["receiver_type"] = cls
+                    call_info["full_name"] = f"{cls}.{call_info['name']}"
             calls.append(call_info)
 
     for child in node.children:

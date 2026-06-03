@@ -242,12 +242,23 @@ def _try_class_method(
     """
     if not qualifier:
         return None
+    # P2 (Codex): a class name may be defined in multiple modules (Client,
+    # Config, Handler...). Picking the first match could resolve to the wrong
+    # module. Only resolve when the (class, method) is unique project-wide;
+    # otherwise stay unknown rather than guess the wrong file.
+    found: tuple[str, int] | None = None
     for file_path, classes in ctx.file_class_methods.items():
         methods = classes.get(qualifier)
-        if methods is not None:
-            sym_id = methods.get(base)
-            if sym_id is not None:
-                return ResolvedCallee(sym_id, "project", file_path)
+        if methods is None:
+            continue
+        sym_id = methods.get(base)
+        if sym_id is None:
+            continue
+        if found is not None and (file_path, sym_id) != found:
+            return None  # duplicate class name across modules — ambiguous
+        found = (file_path, sym_id)
+    if found is not None:
+        return ResolvedCallee(found[1], "project", found[0])
     return None
 
 
