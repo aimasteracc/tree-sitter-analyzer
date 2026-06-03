@@ -639,6 +639,74 @@ class ASTCache:
         rows = conn.execute("SELECT file_path, imports_json FROM ast_index").fetchall()
         return {row["file_path"]: json.loads(row["imports_json"]) for row in rows}
 
+    def get_symbols_by_kind(
+        self, kind: str, limit: int = 50000
+    ) -> list[dict[str, Any]]:
+        """Return all indexed symbols of a given kind (e.g. 'class', 'variable').
+
+        Reads the flat ``ast_symbol_rows`` table directly. Used by the Hyphae
+        evaluator to enumerate non-function symbols (.class/.struct/.interface)
+        that ``get_functions`` does not cover. Returns ``[]`` if the table is
+        absent (older schema).
+        """
+        import sqlite3 as _sqlite3
+
+        conn = self._get_conn()
+        try:
+            rows = conn.execute(
+                "SELECT name, file_path, line, end_line, language "
+                "FROM ast_symbol_rows WHERE kind = ? LIMIT ?",
+                (kind, limit),
+            ).fetchall()
+        except _sqlite3.OperationalError:
+            return []
+        return [
+            {
+                "name": r["name"],
+                "file": r["file_path"],
+                "line": r["line"],
+                "end_line": r["end_line"],
+                "language": r["language"],
+                "kind": kind,
+            }
+            for r in rows
+        ]
+
+    def query_edges(
+        self,
+        kind: str,
+        caller_name: str | None = None,
+        callee_name: str | None = None,
+        limit: int = 10000,
+    ) -> list[dict[str, Any]]:
+        """Query the unified ``edges`` table by edge kind and endpoint name.
+
+        ``kind`` is one of ``calls`` / ``contains`` / ``extends`` / ``imports``.
+        Filtering by ``caller_name`` (source) or ``callee_name`` (target) lets
+        the Hyphae evaluator drive edge pseudo-classes reverse-style. Returns
+        ``[]`` if the table is absent (older schema).
+        """
+        import sqlite3 as _sqlite3
+
+        sql = (
+            "SELECT caller_name, callee_name, file_path, caller_line, callee_line "
+            "FROM edges WHERE kind = ?"
+        )
+        params: list[Any] = [kind]
+        if caller_name is not None:
+            sql += " AND caller_name = ?"
+            params.append(caller_name)
+        if callee_name is not None:
+            sql += " AND callee_name = ?"
+            params.append(callee_name)
+        sql += " LIMIT ?"
+        params.append(limit)
+        try:
+            rows = self._get_conn().execute(sql, params).fetchall()
+        except _sqlite3.OperationalError:
+            return []
+        return [dict(r) for r in rows]
+
     def query_callers(
         self,
         callee_name: str,

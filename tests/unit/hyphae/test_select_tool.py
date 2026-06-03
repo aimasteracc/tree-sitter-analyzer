@@ -29,18 +29,18 @@ class _FakeCache:
     def search_symbols_cascade(self, query, limit=100):
         return [f for f in self.get_functions() if f["name"] == query]
 
-    def query_callers(self, name, file=None):
-        if name == "UserRepo":
+    def get_symbols_by_kind(self, kind, limit=50000):
+        return []
+
+    def query_edges(self, kind, caller_name=None, callee_name=None, limit=10000):
+        if kind == "calls" and callee_name == "UserRepo":
             return [
                 {
                     "caller_name": "save",
-                    "caller_file": "svc/UserService.java",
-                    "caller_line": 10,
+                    "callee_name": "UserRepo",
+                    "file_path": "svc/UserService.java",
                 }
             ]
-        return []
-
-    def query_callees(self, name, file=None):
         return []
 
 

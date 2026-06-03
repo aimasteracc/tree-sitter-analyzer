@@ -38,11 +38,14 @@ class HyphaeSelectTool(BaseMCPTool):
             "description": (
                 "Run a Hyphae DSL selector (CSS-selector-style graph query) over "
                 "the indexed symbol graph — one call replaces chains of "
-                "navigate/callers/search. Grammar: #name (by name), .kind "
-                "(.function/.method/.class), * (all), :calls(#X) (symbols that "
-                "call X), :callees(#X) (symbols X calls), :not(sel), :in(path), "
-                "[file=p]/[language=l]/[class=C], and combinators A > B / A B. "
-                "Example: '.function:calls(#IndexShard):in(server/)'. "
+                "navigate/callers/search. Grammar: #name; .function/.method/"
+                ".class; * (all); edges :calls(#X) / :callees(#X) / "
+                ":extends(#X) / :implements(#X) / :subclasses(#X) / "
+                ":imports(module); structural :has(#X) / :not(sel) / :in(path) / "
+                ":first-child / :only-child / :nth-child(n); attributes "
+                "[file=]/[language=]/[class=]/[kind=]; combinators A > B / A B / "
+                "A ~ B. Example: '.class:implements(#Writeable):in(server/)'. "
+                "Unknown pseudo-classes raise an error (no silent pass-through). "
                 "Requires ast_cache index (run index action=warm)."
             ),
             "inputSchema": self.get_tool_schema(),

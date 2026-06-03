@@ -2,30 +2,61 @@
 
 Mirrors mycelium-hyphae/src/evaluator.rs semantics over a TSA ``ASTCache``:
 
+Base selectors:
 - ``#name``  → exact symbol lookup (search_symbols_cascade)
-- ``.kind``  → all functions/methods of that kind (get_functions)
-- ``*``      → all functions/methods
-- ``:calls(#X)``   → candidates that call X  (reverse-driven via query_callers)
-- ``:callees(#X)`` → candidates that X calls (reverse-driven via query_callees)
-- ``:not(sel)``    → candidates minus eval(sel)
-- ``:in(path)``    → candidates whose file is under path
-- ``[file=p]`` / ``[language=l]`` / ``[class=C]`` → attribute filters
-- ``A > B`` / ``A B`` (descendant) → B whose containing class is A (via ``class`` field)
+- ``.function`` / ``.method`` → functions (method = function with a class)
+- ``.class`` / ``.struct`` / ``.interface`` → class symbols (get_symbols_by_kind)
+- ``*``      → all functions + classes
 
-The ``:calls`` filter is reverse-driven (one ``query_callers`` per target rather
-than one ``query_callees`` per candidate) so ``.method:calls(#Hub)`` stays a
-couple of queries even on a 16k-symbol index.
+Edge pseudo-classes (reverse-driven via the unified ``edges`` table):
+- ``:calls(#X)``      → candidates that call X
+- ``:callees(#X)``    → candidates that X calls
+- ``:extends(#X)`` / ``:implements(#X)`` → candidates that extend/implement X
+- ``:subclasses(#X)`` → candidates that X is a base of
+- ``:imports(mod)``   → candidates whose file imports module ``mod``
+
+Structural pseudo-classes:
+- ``:has(#X)``        → containers of a member X (via the ``contains`` edge)
+- ``:not(sel)``       → candidates minus eval(sel)
+- ``:in(path)``       → candidates whose file is under path
+- ``:first-child`` / ``:only-child`` / ``:nth-child(n)`` → position within the
+  containing class (ordered by line)
+
+Attributes & combinators:
+- ``[file=p]`` / ``[language=l]`` / ``[class=C]`` / ``[kind=k]``
+- ``A > B`` / ``A B`` (descendant) / ``A ~ B`` (sibling) via the ``class`` field
+
+Edge filters are reverse-driven (one ``query_edges`` per target rather than one
+per candidate) so ``.method:calls(#Hub)`` stays a couple of queries even on a
+16k-symbol index. An unknown pseudo-class raises ``HyphaeSyntaxError`` rather
+than silently passing candidates through.
 """
 
 from __future__ import annotations
 
+from collections import defaultdict
 from typing import Any
 
 from .ast import Combined, PseudoClass, SelectorList, SimpleSelector
+from .parser import HyphaeSyntaxError
 
-# .kind alias → TSA function/method discrimination. TSA stores Java methods as
-# functions with a populated ``class`` field, so we discriminate on that.
+# .kind alias → TSA symbol kind. TSA stores Java methods as functions with a
+# populated ``class`` field, so we discriminate methods on that.
 _FUNCTIONISH = frozenset({"function", "method", "func", "fn"})
+_CLASSISH = frozenset({"class", "struct", "interface", "trait", "enum"})
+
+# Edge pseudo-classes → (edge_kind, target_match_column, returned_column).
+# Reverse-driven: match the target name on one endpoint, keep candidates whose
+# name appears on the other endpoint.
+_EDGE_PSEUDOS: dict[str, tuple[str, str, str]] = {
+    "calls": ("calls", "callee_name", "caller_name"),
+    "callees": ("calls", "caller_name", "callee_name"),
+    "called-by": ("calls", "caller_name", "callee_name"),
+    "extends": ("extends", "callee_name", "caller_name"),
+    "implements": ("extends", "callee_name", "caller_name"),
+    "subclasses": ("extends", "caller_name", "callee_name"),
+}
+_POSITION_PSEUDOS = frozenset({"nth-child", "first-child", "only-child"})
 
 
 def _key(sym: dict[str, Any]) -> tuple[Any, Any, Any]:
@@ -72,23 +103,30 @@ class Evaluator:
     def _eval_base(self, base: tuple[str, str]) -> list[dict[str, Any]]:
         kind, val = base
         if kind == "universal":
-            return self._all_functions()
+            return self._all_functions() + self._symbols_of_kind("class")
         if kind == "name":
             hits = self._cache.search_symbols_cascade(val, limit=self._max) or []
             return [h for h in hits if h.get("name") == val]
         if kind == "kind":
-            funcs = self._all_functions()
             if val in _FUNCTIONISH:
+                funcs = self._all_functions()
                 if val == "method":
                     return [f for f in funcs if f.get("class")]
-                if val == "function":
-                    return funcs
-            # Fall back to matching the symbol's own kind field when present.
-            return [f for f in funcs if (f.get("kind") or "function") == val]
+                return funcs
+            if val in _CLASSISH:
+                return self._symbols_of_kind("class")
+            # variable / field / other → flat symbol-rows lookup.
+            return self._symbols_of_kind(val)
         return []
 
     def _all_functions(self) -> list[dict[str, Any]]:
         return list(self._cache.get_functions() or [])
+
+    def _symbols_of_kind(self, kind: str) -> list[dict[str, Any]]:
+        getter = getattr(self._cache, "get_symbols_by_kind", None)
+        if not callable(getter):
+            return []
+        return list(getter(kind) or [])
 
     # -- attribute filters ---------------------------------------------------
     def _apply_attribute(
@@ -109,49 +147,119 @@ class Evaluator:
         self, cands: list[dict[str, Any]], pc: PseudoClass
     ) -> list[dict[str, Any]]:
         name = pc.name
-        if name == "calls":
-            return self._filter_calls(cands, pc.arg, direction="calls")
-        if name in ("callees", "called-by"):
-            return self._filter_calls(cands, pc.arg, direction="callees")
+        if name in _EDGE_PSEUDOS:
+            return self._filter_edge(cands, pc.arg, *_EDGE_PSEUDOS[name])
+        if name == "imports":
+            return self._filter_imports(cands, pc.arg)
+        if name == "has":
+            return self._filter_has(cands, pc.arg)
         if name == "not":
-            if isinstance(pc.arg, SelectorList):
-                excluded = {_key(s) for s in self.eval(pc.arg)}
-                return [c for c in cands if _key(c) not in excluded]
-            return cands
+            if not isinstance(pc.arg, SelectorList):
+                raise HyphaeSyntaxError(":not requires a selector argument")
+            excluded = {_key(s) for s in self.eval(pc.arg)}
+            return [c for c in cands if _key(c) not in excluded]
         if name == "in":
-            path = pc.arg if isinstance(pc.arg, str) else ""
-            return [c for c in cands if (c.get("file") or "").startswith(path)]
-        # Unknown pseudo-class: be conservative and keep candidates.
-        return cands
+            if not isinstance(pc.arg, str):
+                raise HyphaeSyntaxError(":in requires a path argument")
+            return [c for c in cands if (c.get("file") or "").startswith(pc.arg)]
+        if name in _POSITION_PSEUDOS:
+            return self._filter_position(cands, name, pc.arg)
+        raise HyphaeSyntaxError(f"unknown pseudo-class ':{name}'")
 
-    def _filter_calls(
-        self, cands: list[dict[str, Any]], arg: Any, direction: str
+    def _filter_edge(
+        self,
+        cands: list[dict[str, Any]],
+        arg: Any,
+        edge_kind: str,
+        target_col: str,
+        return_col: str,
     ) -> list[dict[str, Any]]:
-        """Keep candidates that call (or are called by) the target selector.
+        """Keep candidates joined to the target selector by an edge of ``edge_kind``.
 
-        ``direction='calls'``  → candidate calls target  (target's callers)
-        ``direction='callees'``→ target calls candidate  (target's callees)
-
-        Target names are taken directly from ``#name`` bases so the target need
-        not itself be an indexed symbol (e.g. an external class), matching the
-        edge-name semantics of the underlying call graph.
+        Reverse-driven: match each target name on ``target_col`` of the edges
+        table and keep candidates whose name appears on ``return_col`` — one
+        query per target rather than one per candidate.
         """
         if not isinstance(arg, SelectorList):
-            return []
+            raise HyphaeSyntaxError("edge pseudo-class requires a selector argument")
         names = self._target_names(arg)
-        related_names: set[Any] = set()
+        related: set[Any] = set()
         for tname in names:
-            if direction == "calls":
-                rows = self._cache.query_callers(tname, None) or []
-                related_names.update(
-                    r.get("caller_name") for r in rows if r.get("caller_name")
-                )
-            else:
-                rows = self._cache.query_callees(tname, None) or []
-                related_names.update(
-                    r.get("callee_name") for r in rows if r.get("callee_name")
-                )
-        return [c for c in cands if c.get("name") in related_names]
+            rows = self._cache.query_edges(edge_kind, **{target_col: tname}) or []
+            related.update(r.get(return_col) for r in rows if r.get(return_col))
+        return [c for c in cands if c.get("name") in related]
+
+    def _filter_imports(
+        self, cands: list[dict[str, Any]], arg: Any
+    ) -> list[dict[str, Any]]:
+        """Keep candidates whose file imports a module matching the target.
+
+        Imports are file-level (the ``imports`` edge has an empty caller), so a
+        candidate matches when its file carries an import whose module path
+        contains one of the target names.
+        """
+        if isinstance(arg, str):
+            names: set[Any] = {arg}
+        elif isinstance(arg, SelectorList):
+            names = self._target_names(arg)
+        else:
+            raise HyphaeSyntaxError(":imports requires a module path or selector")
+        rows = self._cache.query_edges("imports") or []
+        files = {
+            r.get("file_path")
+            for r in rows
+            if any(n in (r.get("callee_name") or "") for n in names)
+        }
+        return [c for c in cands if c.get("file") in files]
+
+    def _filter_has(
+        self, cands: list[dict[str, Any]], arg: Any
+    ) -> list[dict[str, Any]]:
+        """Keep candidates that contain a member matching the target selector.
+
+        Uses the ``contains`` edge (caller=container, callee=member): a candidate
+        survives when it is the container of a member named by the target.
+        """
+        if not isinstance(arg, SelectorList):
+            raise HyphaeSyntaxError(":has requires a selector argument")
+        names = self._target_names(arg)
+        containers: set[Any] = set()
+        for mname in names:
+            rows = self._cache.query_edges("contains", callee_name=mname) or []
+            containers.update(
+                r.get("caller_name") for r in rows if r.get("caller_name")
+            )
+        return [c for c in cands if c.get("name") in containers]
+
+    def _filter_position(
+        self, cands: list[dict[str, Any]], name: str, arg: Any
+    ) -> list[dict[str, Any]]:
+        """Position filters within each containing class (ordered by line).
+
+        Candidates are grouped by their ``class`` field and ordered by line;
+        ``:first-child`` keeps the first of each group, ``:only-child`` keeps
+        sole members, ``:nth-child(n)`` keeps the 1-based n-th.
+        """
+        groups: dict[Any, list[dict[str, Any]]] = defaultdict(list)
+        for c in cands:
+            groups[c.get("class")].append(c)
+        out: list[dict[str, Any]] = []
+        nth_index: int | None = None
+        if name == "nth-child":
+            if not isinstance(arg, int):
+                raise HyphaeSyntaxError(":nth-child requires a number argument")
+            nth_index = arg - 1
+        for members in groups.values():
+            ordered = sorted(members, key=lambda c: c.get("line") or 0)
+            if name == "first-child":
+                out.append(ordered[0])
+            elif name == "only-child":
+                if len(ordered) == 1:
+                    out.append(ordered[0])
+            elif name == "nth-child" and nth_index is not None:
+                if 0 <= nth_index < len(ordered):
+                    out.append(ordered[nth_index])
+        return out
 
     def _target_names(self, arg: SelectorList) -> set[Any]:
         """Extract target symbol names from a pseudo-class argument selector.
