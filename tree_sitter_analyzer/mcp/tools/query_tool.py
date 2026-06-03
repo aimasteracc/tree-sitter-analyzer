@@ -51,7 +51,8 @@ class QueryTool(BaseMCPTool):
             "description": (
                 "AST symbol search (NOT text grep). Wildcards: *Service, handle_*. "
                 "Fuzzy: ~analyz. Type filter: class/function. "
-                "Cross-file by default. Use instead of Grep for symbol definitions."
+                "Cross-file by default. Use instead of Grep for symbol definitions. "
+                "Add include_body=true to read the symbol's source inline (skips a follow-up read_partial call)."
             ),
             "inputSchema": _TOOL_SCHEMA,
         }

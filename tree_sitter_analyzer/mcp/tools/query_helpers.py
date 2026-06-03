@@ -74,6 +74,11 @@ TOOL_SCHEMA: dict[str, Any] = {
             "default": False,
             "description": "If true with output_file, suppress detailed output and return metadata only",
         },
+        "include_body": {
+            "type": "boolean",
+            "default": False,
+            "description": "Include the symbol's source code body in each result. Requires symbol parameter. Avoids a follow-up read_partial call.",
+        },
     },
 }
 

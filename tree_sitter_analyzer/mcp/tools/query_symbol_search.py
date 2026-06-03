@@ -8,6 +8,28 @@ from ...utils import setup_logger
 
 logger = setup_logger(__name__)
 
+_BODY_MAX_LINES = 200
+
+
+def _read_lines(fp: Path, start_line: int, end_line: int) -> str:
+    """Read lines [start_line, end_line] from fp (1-based, inclusive).
+
+    Returns empty string on any error so a missing body never breaks the
+    symbol search response.  Capped at _BODY_MAX_LINES to avoid flooding
+    context when a class spans thousands of lines.
+    """
+    try:
+        lines = fp.read_text(encoding="utf-8", errors="replace").splitlines()
+        s = max(0, start_line - 1)
+        e = min(len(lines), end_line)
+        chunk = lines[s:e]
+        if len(chunk) > _BODY_MAX_LINES:
+            chunk = chunk[:_BODY_MAX_LINES]
+            chunk.append(f"... ({len(lines[s:e]) - _BODY_MAX_LINES} more lines)")
+        return "\n".join(chunk)
+    except Exception:
+        return ""
+
 _TYPE_MAP = {
     "class": {"class_definition", "class_declaration", "class"},
     "function": {"function_definition", "function_declaration", "function"},
@@ -127,6 +149,7 @@ async def execute_symbol_search(
     output_format = arguments.get("output_format", "toon")
     language = arguments.get("language")
     symbol_type = arguments.get("symbol_type")
+    include_body = bool(arguments.get("include_body", False))
 
     if not project_root:
         raise ValueError("Project root not set. Call set_project_path first.")
@@ -179,15 +202,18 @@ async def execute_symbol_search(
                     continue
                 if type_filter and not type_filter(etype):
                     continue
-                matches.append(
-                    {
-                        "name": name,
-                        "type": etype,
-                        "file": str(fp.relative_to(root)),
-                        "start_line": getattr(e, "start_line", 0),
-                        "end_line": getattr(e, "end_line", 0),
-                    }
-                )
+                entry: dict[str, Any] = {
+                    "name": name,
+                    "type": etype,
+                    "file": str(fp.relative_to(root)),
+                    "start_line": getattr(e, "start_line", 0),
+                    "end_line": getattr(e, "end_line", 0),
+                }
+                if include_body:
+                    entry["body"] = _read_lines(
+                        fp, entry["start_line"], entry["end_line"]
+                    )
+                matches.append(entry)
         except Exception:  # nosec B110
             pass
         return matches
@@ -213,7 +239,12 @@ async def execute_symbol_search(
         "definitions": results[:50],
         "smart_workflow_hint": (
             f"Found {len(results)} match(es) for {pattern_desc}. "
-            "Use extract_code_section to read the implementation, "
+            + (
+                "Body included inline."
+                if include_body
+                else "Re-run with include_body=true to read implementation without a follow-up call."
+            )
+            + " Use find_references=true to find all call sites, "
             "or analyze_dependencies mode=blast_radius to see usage impact."
         )
         if results
