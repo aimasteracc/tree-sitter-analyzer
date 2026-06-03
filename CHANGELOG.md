@@ -1,5 +1,47 @@
 # Changelog
 
+## [1.20.0] - 2026-06-04
+
+Agent-native milestone release: a leaner MCP surface, a CSS-selector graph
+query language, and a static type-inference pass that doubles callee
+resolution — all on top of the consolidated EdgeStore from v1.19.0.
+
+### Added
+
+- **Hyphae DSL — CSS-selector graph queries**. A jQuery-style query language
+  over the code graph: `:calls`, `:callees`, `:extends`, `:implements`,
+  `:subclasses`, `:imports`, plus structural pseudo-classes (`:has`, `:not`,
+  `:in`, `:first-child`, `:nth-child`, `:only-child`). Lexer, parser, and
+  evaluator map selectors directly to resolved edges.
+- **Tree traversal primitives**. `callee_tree` / `caller_tree` return a full
+  call-tree in one call instead of recursive single-hop navigation.
+- **Static type inference for callee resolution**. A mypy/pyright-style pass
+  (no runtime) infers receiver types from `var = ClassName()` assignments
+  (flow-sensitive), class-method dispatch, and pytest-fixture return types —
+  lifting call-edge resolution from 34% to 76% with correctness gates that
+  prefer `unknown` over a wrong resolved edge.
+- **Precise entry-point recall in context**. `codegraph_context` now matches
+  compound and name-based entry points for tighter, more relevant recall.
+
+### Changed
+
+- **MCP surface consolidated to 8 facade tools** (search / nav / structure /
+  health / edit / project / index / viz), down from 60+, cutting tool-
+  definition token cost by ~80%. A legacy shim keeps prior MCP tool calls
+  working, so this is backward compatible.
+- **Unified edge store (B1)**. CALLS scalars promoted to real `edges` columns
+  with SQL pushdown; dropped `ast_call_edges` / `unresolved_refs` in favor of a
+  single `edges` table with an edges-based second-pass resolution.
+- **Synapse second-pass backfill on incremental sync**. `IncrementalSync.sync()`
+  now re-resolves unknown edges once the full-project class map is available —
+  the root-cause fix that lets static type inference actually land.
+
+### Governance
+
+- **RFC process** (`rfcs/`) for substantial changes, plus locked rules: never
+  ignore Codex review, and PR hygiene (one PR = one finished feature, no
+  kitchen-sink PRs).
+
 ## [1.19.0] - 2026-06-02
 
 CodeGraph EdgeStore release for faster, more complete agent context after
