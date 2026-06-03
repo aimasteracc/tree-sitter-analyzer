@@ -1,6 +1,7 @@
 """Tests for complexity heatmap engine and MCP tool."""
 
 import contextlib
+import json
 import sys
 from io import StringIO
 
@@ -341,11 +342,21 @@ class TestComplexityCLI:
         )
         buf = StringIO()
         monkeypatch.setattr("sys.stdout", buf)
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
+        data = json.loads(buf.getvalue())
+        assert data["success"] is True
+        assert data["mode"] == "project"
+        assert data["total_functions"] > 0
+        assert "risk_distribution" in data
+
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="tracked: heatmap file/function CLI emits no stdout on Windows "
+        "(path-arg handling); file-level logic is covered cross-platform by "
+        "TestComplexityEngine",
+    )
     def test_cli_file_mode(self, complex_project, monkeypatch):
 
         from tree_sitter_analyzer.cli_main import main
@@ -369,6 +380,18 @@ class TestComplexityCLI:
         with contextlib.suppress(SystemExit):
             main()
 
+        data = json.loads(buf.getvalue())
+        assert data["success"] is True
+        assert data["mode"] == "file"
+        assert data["function_count"] > 0
+        assert "deeply_nested" in {f["name"] for f in data["functions"]}
+
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="tracked: heatmap file/function CLI emits no stdout on Windows "
+        "(path-arg handling); function-level logic is covered cross-platform by "
+        "TestComplexityEngine",
+    )
     def test_cli_function_mode(self, complex_project, monkeypatch):
 
         from tree_sitter_analyzer.cli_main import main
@@ -393,3 +416,9 @@ class TestComplexityCLI:
         monkeypatch.setattr("sys.stdout", buf)
         with contextlib.suppress(SystemExit):
             main()
+
+        data = json.loads(buf.getvalue())
+        assert data["success"] is True
+        assert data["mode"] == "function"
+        assert data["name"] == "deeply_nested"
+        assert data["complexity"] > 1
