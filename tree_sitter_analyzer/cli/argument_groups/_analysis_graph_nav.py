@@ -250,6 +250,36 @@ def _add_mcp_graph_nav_options(parser: argparse.ArgumentParser) -> None:
         help="File path to disambiguate overloaded functions for --callees",
     )
     parser.add_argument(
+        "--callee-tree",
+        metavar="SYMBOL",
+        help="Depth-limited NESTED callee tree in one call (mycelium RFC-0020 "
+        "parity). Returns the whole transitive call tree so you don't iterate "
+        "--callees per node.",
+    )
+    parser.add_argument(
+        "--caller-tree",
+        metavar="SYMBOL",
+        help="Depth-limited NESTED caller tree in one call (mycelium RFC-0021 "
+        "parity). Returns the whole transitive blast-radius tree.",
+    )
+    parser.add_argument(
+        "--tree-max-depth",
+        type=int,
+        default=3,
+        help="Max depth for --callee-tree / --caller-tree (default: 3, cap 10)",
+    )
+    parser.add_argument(
+        "--tree-max-nodes",
+        type=int,
+        default=150,
+        help="Global node cap for --callee-tree / --caller-tree (default: 150)",
+    )
+    parser.add_argument(
+        "--tree-file",
+        help="File path to disambiguate the root symbol for --callee-tree / "
+        "--caller-tree",
+    )
+    parser.add_argument(
         "--call-path",
         nargs="?",
         const="bidirectional",

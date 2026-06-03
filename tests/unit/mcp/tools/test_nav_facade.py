@@ -52,6 +52,8 @@ def test_nav_facade_all_actions_present() -> None:
         "context",
         "callers",
         "callees",
+        "callee_tree",
+        "caller_tree",
     }
     assert expected == all_actions
 
@@ -648,6 +650,8 @@ def test_nav_facade_schema_action_enum_complete() -> None:
         "context",
         "callers",
         "callees",
+        "callee_tree",
+        "caller_tree",
     }
     assert expected == enum
 
