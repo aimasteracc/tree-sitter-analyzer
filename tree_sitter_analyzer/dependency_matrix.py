@@ -159,10 +159,16 @@ class DependencyMatrix:
                     self._import_edges[source_file][resolved] += 1
 
     def _collect_call_edges(self, cache: Any) -> None:
-        edges = cache.get_call_edges()
+        # Use the resolved-edges reader: ``get_call_edges()`` is frozen to the
+        # legacy key set (no resolved-target file), so the caller's file is
+        # ``caller_file`` and the callee's definition file is the persisted
+        # ``callee_resolved_file`` (empty when the backfill could not resolve
+        # the call cross-file — such edges carry no usable target and are
+        # skipped, as are same-file calls).
+        edges = cache.get_resolved_call_edges()
         for edge in edges:
-            src_file = edge.get("source_file", "")
-            tgt_file = edge.get("target_file", "")
+            src_file = edge.get("caller_file", "")
+            tgt_file = edge.get("callee_resolved_file", "")
             if not src_file or not tgt_file:
                 continue
             if src_file == tgt_file:

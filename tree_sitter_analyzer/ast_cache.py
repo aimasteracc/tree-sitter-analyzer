@@ -577,6 +577,31 @@ class ASTCache:
             return []
         return [dict(row) for row in rows]
 
+    def get_resolved_call_edges(self) -> list[dict[str, Any]]:
+        """Return CALLS edges paired with their cross-file-resolved target file.
+
+        ``get_call_edges()`` deliberately freezes its key set to the legacy
+        ``ast_call_edges`` SELECT (B1.2b byte-for-byte parity) and therefore
+        omits the resolved-target column. This reader instead surfaces the
+        persisted ``callee_resolved_file`` (populated by the synapse /
+        cross-file backfill on full index) so callers can attribute a call to
+        the file that actually defines the callee. Each row is
+        ``{"caller_file": <caller's file>, "callee_resolved_file": <target>}``;
+        ``callee_resolved_file`` is ``""`` for calls the backfill could not
+        resolve cross-file. Like the other unified-edges readers this is an
+        O(1) index-backed read — no re-resolution.
+        """
+        try:
+            _conn = self._get_conn()
+            _cur = _conn.execute(
+                "SELECT file_path AS caller_file, callee_resolved_file "
+                "FROM edges WHERE kind = 'calls'"
+            )
+            rows = _cur.fetchall()
+        except sqlite3.OperationalError:
+            return []
+        return [dict(row) for row in rows]
+
     def get_functions(self) -> list[dict[str, Any]]:
         """Return all indexed function definitions."""
         conn = self._get_conn()
