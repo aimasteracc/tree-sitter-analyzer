@@ -126,16 +126,23 @@ class CodeGraphFullIndexTool(BaseMCPTool):
         if mode == "full":
             mark_dirty(self.project_root)
 
-        phases["ast_cache"] = self._phase_ast_cache(
+        ast_phase = self._phase_ast_cache(
             mode == "full",
             max_files,
             include_activation=include_activation,
         )
+        phases["ast_cache"] = ast_phase
         phases["incremental_sync"] = self._phase_incremental_sync()
         phases["fts5"] = self._phase_fts5_stats()
 
         if resolve_synapse:
-            phases["synapse_resolution"] = self._phase_synapse()
+            # A1: the ast_cache phase already ran the complete backfill chain
+            # (cross-file + synapse + edge-store refresh + unresolved_refs) via
+            # _post_index_backfill. Re-running index_project(resolve_only=True)
+            # here repeated the whole O(edges) chain a second time — on large
+            # Java repos that doubled backfill time and was a primary stall/OOM
+            # cause. Report from the already-computed stats instead of re-running.
+            phases["synapse_resolution"] = self._phase_synapse(ast_phase)
 
         phases["call_edges"] = self._phase_call_edge_stats()
 
@@ -184,6 +191,10 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 "errors": errors,
                 "mode_used": result.get("mode_used", "unknown"),
                 "activation_enabled": result.get("activation_enabled", False),
+                # Surface the backfill counts produced by _post_index_backfill so
+                # the synapse_resolution phase can report without re-running (A1).
+                "synapse_backfill": result.get("synapse_backfill"),
+                "unresolved_refs_backfill": result.get("unresolved_refs_backfill"),
             }
         except Exception as exc:
             return {
@@ -234,27 +245,28 @@ class CodeGraphFullIndexTool(BaseMCPTool):
         except Exception as exc:
             return {"status": "error", "error": str(exc)}
 
-    def _phase_synapse(self) -> dict[str, Any]:
-        t0 = time.monotonic()
-        try:
-            from ...ast_cache import ASTCache
+    def _phase_synapse(self, ast_phase: dict[str, Any]) -> dict[str, Any]:
+        """Report cross-file resolution results.
 
-            cache = ASTCache(self.project_root or ".")
-            result = cache.index_project(resolve_only=True)
-            cache.close()
-            elapsed = round(time.monotonic() - t0, 3)
-            backfill = result.get("synapse_backfill", 0)
-            return {
-                "status": "ok",
-                "elapsed_seconds": elapsed,
-                "resolved_edges": backfill,
-            }
-        except Exception as exc:
-            return {
-                "status": "error",
-                "error": str(exc),
-                "elapsed_seconds": round(time.monotonic() - t0, 3),
-            }
+        A1: cross-file resolution is performed once inside the ast_cache phase
+        (``index_project`` -> ``_post_index_backfill``). This phase no longer
+        re-runs the backfill chain; it summarizes the counts the ast_cache phase
+        already produced. This halves backfill time on large repos and removes
+        the duplicate full EdgeStore rewrite that caused the stall/OOM.
+        """
+        synapse = ast_phase.get("synapse_backfill") or {}
+        unresolved = ast_phase.get("unresolved_refs_backfill") or {}
+        resolved_edges = 0
+        if isinstance(synapse, dict):
+            resolved_edges += int(synapse.get("resolved", 0))
+        if isinstance(unresolved, dict):
+            resolved_edges += int(unresolved.get("resolved", 0))
+        return {
+            "status": "ok",
+            "elapsed_seconds": 0.0,
+            "resolved_edges": resolved_edges,
+            "note": "resolved during ast_cache phase (single-pass backfill)",
+        }
 
     def _phase_call_edge_stats(self) -> dict[str, Any]:
         try:

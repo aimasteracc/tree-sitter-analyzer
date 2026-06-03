@@ -26,6 +26,20 @@ _CALL_ROW_COLUMNS = (
 )
 
 
+def _refs_supported(language: str) -> bool:
+    """Whether unresolved_refs second-pass resolution adds value for a language.
+
+    Only Python has structured import parsing (``synapse_resolver/_imports.py``
+    hard-returns ``[]`` for every other language). Without ``ast_imports`` rows,
+    the second-pass resolver can only fall back to ambiguous name matching, which
+    is rejected ~100% of the time for languages like Java/COBOL/C#/Go. Writing and
+    re-resolving those rows is pure waste (and the dominant cost / OOM trigger on
+    large Java repos). So we skip emitting unresolved_refs rows entirely for
+    non-Python languages. Python behaviour is unchanged.
+    """
+    return language == "python"
+
+
 def write_unresolved_refs_for_file(
     conn: sqlite3.Connection,
     rel_path: str,
@@ -38,6 +52,10 @@ def write_unresolved_refs_for_file(
         conn.execute("DELETE FROM unresolved_refs WHERE file_path = ?", (rel_path,))
     except sqlite3.OperationalError as exc:
         logger.debug("unresolved_refs cleanup failed for %s: %s", rel_path, exc)
+        return
+    if not _refs_supported(language):
+        # Non-Python: no structured imports -> second-pass resolution is pure
+        # waste. Skip writing rows (the DELETE above keeps the table clean).
         return
 
     symbol_items = symbols.get("symbols", [])

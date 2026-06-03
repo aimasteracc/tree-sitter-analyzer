@@ -427,6 +427,68 @@ def test_unresolved_refs_row_and_commit_error_paths() -> None:
     }
 
 
+def test_non_python_skips_unresolved_refs_rows() -> None:
+    """A2: non-Python languages must not emit unresolved_refs rows.
+
+    They have no structured import parsing, so second-pass resolution is pure
+    waste (and the dominant stall/OOM cost on large Java repos). Python keeps
+    writing rows.
+    """
+    assert unresolved._refs_supported("python") is True
+    for lang in ("java", "go", "cobol", "csharp", "javascript"):
+        assert unresolved._refs_supported(lang) is False
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    try:
+        conn.executescript(
+            """
+            CREATE TABLE unresolved_refs (
+                id INTEGER PRIMARY KEY,
+                from_node_id TEXT NOT NULL,
+                reference_name TEXT NOT NULL,
+                reference_kind TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                line INTEGER,
+                candidates TEXT,
+                resolved INTEGER DEFAULT 0
+            );
+            CREATE TABLE ast_call_edges (
+                id INTEGER PRIMARY KEY,
+                caller_name TEXT, caller_file TEXT, caller_line INTEGER,
+                callee_name TEXT, callee_full TEXT, callee_line INTEGER,
+                file_path TEXT, language TEXT,
+                callee_resolution TEXT, callee_resolved_file TEXT
+            );
+            """
+        )
+        java_class = {
+            "symbols": [{"kind": "class", "name": "Foo", "line": 1, "parents": ["Bar"]}]
+        }
+        java_calls = [
+            {
+                "caller_name": "Foo",
+                "caller_line": 5,
+                "callee_name": "doThing",
+                "callee_line": 6,
+            }
+        ]
+        unresolved.write_unresolved_refs_for_file(
+            conn, "Foo.java", "java", java_class, java_calls
+        )
+        rows = conn.execute("SELECT COUNT(*) AS c FROM unresolved_refs").fetchone()
+        assert rows["c"] == 0
+
+        # Python on the same shape DOES write rows.
+        unresolved.write_unresolved_refs_for_file(
+            conn, "foo.py", "python", java_class, java_calls
+        )
+        rows = conn.execute("SELECT COUNT(*) AS c FROM unresolved_refs").fetchone()
+        assert rows["c"] > 0
+    finally:
+        conn.close()
+
+
 def test_unresolved_refs_helper_branches(monkeypatch: pytest.MonkeyPatch) -> None:
     assert (
         unresolved._parent_refs(
