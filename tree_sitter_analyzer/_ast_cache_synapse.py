@@ -50,6 +50,7 @@ def resolve_call_edges_for_file(
                 row["caller_file"],
                 ctx,
                 row["callee_full"],
+                row["caller_name"],
             )
         except Exception as exc:  # pragma: no cover
             logger.debug("resolve_callee crashed on %s: %s", row["callee_name"], exc)
@@ -113,6 +114,7 @@ def run_synapse_backfill(cache: Any, conn: sqlite3.Connection) -> dict[str, int]
                 row["caller_file"],
                 ctx,
                 row["callee_full"],
+                row["caller_name"],
             )
         except Exception as exc:
             logger.debug("resolve_callee failed in backfill: %s", exc)
