@@ -207,9 +207,9 @@ uv run mypy tree_sitter_analyzer/grammar_coverage/validator.py --strict
 
 ## 相关文档
 
-- [Golden Corpus README](../../../tests/golden/README.md) - Golden corpus 文件规范
-- [Grammar Coverage MECE](../../../docs/grammar-coverage-mece.md) - 项目总体计划
-- [AI Coding Rules](../../../docs/ai-coding-rules.md) - CI 质量检查规则
+- [Golden Corpus README](../../tests/golden/README.md) - Golden corpus 文件规范
+- [Grammar Coverage Framework](../../docs/grammar-coverage-framework.md) - 项目总体计划
+- [AI Coding Rules](../../docs/ai-coding-rules.md) - CI 质量检查规则
 
 ## 贡献指南
 
@@ -217,7 +217,7 @@ uv run mypy tree_sitter_analyzer/grammar_coverage/validator.py --strict
 
 1. 在 `_get_tree_sitter_module` 中添加语言模块映射
 2. 在 `_get_language_extension` 中添加文件扩展名映射
-3. 创建 `corpus_<language>.<ext>` 文件（参考 [Golden Corpus README](../../../tests/golden/README.md)）
+3. 创建 `corpus_<language>.<ext>` 文件（参考 [Golden Corpus README](../../tests/golden/README.md)）
 4. 创建 `corpus_<language>_expected.json` 文件
 5. 运行验证：`validate_plugin_coverage_sync("<language>")`
 

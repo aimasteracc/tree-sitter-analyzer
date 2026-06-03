@@ -381,6 +381,18 @@ docs/designs/tree-sitter-analyzer-*.md
 .claude/
 .agents/
 
+# Abandoned AI-tool configs (Cursor / Roo Code / Kiro / OpenSpec — no longer used,
+# removed from the repo in the doc-system cleanup; keep them from creeping back in)
+.cursor/
+.cursorrules
+.roo/
+.roomodes
+.kiro/
+openspec/
+.windsurf/
+.aider*
+.continue/
+
 # Ruflo runtime
 .claude-flow/
 .swarm/

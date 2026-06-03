@@ -1,5 +1,11 @@
 # Tree-sitter Analyzer MCP Tools API Specification
 
+> ⚠️ **OUTDATED — historical reference only.** This document describes the
+> pre-v2.0 surface of 55+ discrete MCP tools. As of v2.0 the server exposes
+> **8 facade tools** (the legacy names still work for one deprecation cycle via
+> a shim). For the current, registry-synced tool surface see
+> **[`../CODEMAPS/mcp-tools.md`](../CODEMAPS/mcp-tools.md)**.
+
 **Version**: 1.13.0
 **Date**: 2026-05-15
 **Protocol**: Model Context Protocol (MCP) v1.0

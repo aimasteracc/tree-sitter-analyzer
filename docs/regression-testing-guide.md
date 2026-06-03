@@ -631,6 +631,6 @@ def test_large_golden_master():
 ## 参考资料
 
 - [测试编写指南](./test-writing-guide.md)
-- [项目测试规范](../TESTING.md)
+- [项目测试规范](./TESTING.md)
 - [pytest文档](https://docs.pytest.org/)
 - [Golden Master模式](https://martinfowler.com/bliki/GoldenMaster)
