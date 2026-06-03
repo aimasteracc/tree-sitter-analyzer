@@ -263,5 +263,3 @@ After successful testing:
 - [GitHub Actions Documentation](https://docs.github.com/en/actions)
 - [Reusable Workflows](https://docs.github.com/en/actions/using-workflows/reusing-workflows)
 - [GitFlow Workflow](https://www.atlassian.com/git/tutorials/comparing-workflows/gitflow-workflow)
-- Design Document: `.kiro/specs/github-actions-consistency/design.md`
-- Requirements Document: `.kiro/specs/github-actions-consistency/requirements.md`

@@ -91,7 +91,6 @@ Serialization helpers: `formatters/toon_formatter.py:_emit_*` (extracted in r37d
 Format changes are tracked by:
 
 - `docs/format_specifications.md` — canonical schema
-- `docs/SMART_JSON_COMPARISON_SYSTEM.md` — diff tooling
 - `tests/regression/` — Golden Master tests
 
 Breaking a format requires updating golden masters and tagging it in the changelog as a

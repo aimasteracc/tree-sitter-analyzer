@@ -2,7 +2,7 @@
 """
 TDD: Project Summary PageRank Enhancement
 
-Tests written BEFORE implementation, per SDD: docs/designs/project_summary_pagerank.md
+Tests written BEFORE implementation (TDD). Design now lives in the RFC process (rfcs/).
 
 Coverage:
   1. _classify_dir — core / context / tooling
