@@ -207,31 +207,60 @@ class CodeGraphContextTool(BaseMCPTool):
         except Exception:
             return []
 
-        seen: set[tuple[str, str, int]] = set()
-        hits: list[dict[str, Any]] = []
-        for candidate in candidates[:10]:
-            try:
-                raw_hits = cache.fts_search_ranked(candidate, limit=limit) or []
-            except Exception:
-                try:
-                    raw_hits = cache.fts_search(candidate, limit=limit) or []
-                except Exception:
-                    raw_hits = []
-            for raw in raw_hits:
+        # Aggregate hits across ALL candidates before ranking. A symbol that
+        # matches more task words (e.g. ``applyIndexOperationOnPrimary`` for
+        # task "IndexShard apply index operation") must outrank one matching a
+        # single generic word (``ScriptedSimilarityProvider.apply``). The old
+        # code broke out of the candidate loop once ``limit`` raw hits were
+        # collected and ranked by file name, so generic same-name symbols won
+        # on alphabetical tie-break — the root cause of the dogfood loss.
+        fetch = max(limit * 3, limit)
+        agg: dict[tuple[str, str, int], dict[str, Any]] = {}
+
+        def _absorb(raw_hits: list[Any]) -> None:
+            for bm25_rank, raw in enumerate(raw_hits):
                 hit = _normalise_hit(raw)
                 if not hit["name"] or hit["kind"] == "import":
                     continue
                 key = (hit["name"], hit["file"], hit["line"])
-                if key in seen:
-                    continue
-                seen.add(key)
-                hits.append(hit)
-                if len(hits) >= limit:
-                    break
-            if len(hits) >= limit:
-                break
+                entry = agg.get(key)
+                if entry is None:
+                    agg[key] = {
+                        "hit": hit,
+                        "matches": 1,
+                        "best_rank": bm25_rank,
+                    }
+                else:
+                    entry["matches"] += 1
+                    if bm25_rank < entry["best_rank"]:
+                        entry["best_rank"] = bm25_rank
 
-        return sorted(hits, key=_entry_rank)[:limit]
+        # Single-word recall: FTS5 BM25 over each task word.
+        for candidate in candidates[:10]:
+            try:
+                raw_hits = cache.fts_search_ranked(candidate, limit=fetch) or []
+            except Exception:
+                try:
+                    raw_hits = cache.fts_search(candidate, limit=fetch) or []
+                except Exception:
+                    raw_hits = []
+            _absorb(raw_hits)
+
+        # Compound recall: camelCase word pairs (applyIndex, indexOperation)
+        # reach multi-word methods that single-word FTS tokenization misses —
+        # the cascade substring tier resolves them. This is the fix for the
+        # dogfood loss where 'apply' only matched generic same-name methods.
+        cascade = getattr(cache, "search_symbols_cascade", None)
+        if callable(cascade):
+            for compound in _compound_candidates(candidates):
+                try:
+                    raw_hits = cascade(compound, limit=limit) or []
+                except Exception:
+                    raw_hits = []
+                _absorb(raw_hits)
+
+        ranked = sorted(agg.values(), key=lambda e: _entry_rank_v2(e, candidates))
+        return [e["hit"] for e in ranked[:limit]]
 
     def _expand_nodes(
         self, seed_nodes: list[dict[str, Any]], task: str, max_nodes: int
@@ -570,6 +599,78 @@ def _entry_rank(hit: dict[str, Any]) -> tuple[int, int, str, int]:
     is_test = int("/tests/" in file_path or file_path.startswith("tests/"))
     kind_rank = 0 if hit.get("kind") in {"class", "function", "method"} else 1
     return (is_test, kind_rank, hit.get("file", ""), int(hit.get("line", 0) or 0))
+
+
+def _name_match_score(name: str, candidates: list[str]) -> int:
+    """Count how many task candidates appear inside a symbol name.
+
+    Relevance signal for entry-point ranking: a symbol matching more task
+    words is more on-topic. ``applyIndexOperationOnPrimary`` matches
+    apply+index+operation (3); ``apply`` matches only apply (1). Case-
+    insensitive substring match; candidates shorter than 3 chars are ignored
+    to avoid spurious hits.
+    """
+    if not name:
+        return 0
+    lowered = name.lower()
+    score = 0
+    for cand in candidates:
+        c = cand.lower()
+        if len(c) >= 3 and c in lowered:
+            score += 1
+    return score
+
+
+def _compound_candidates(candidates: list[str]) -> list[str]:
+    """Build camelCase joins of ordered task-word pairs.
+
+    Single-word FTS tokenizes ``applyIndexOperationOnPrimary`` as one opaque
+    token, so the plain word ``apply`` never recalls it. Joining task words
+    pairwise (``apply`` + ``index`` -> ``applyIndex``) produces substrings the
+    cascade LIKE tier matches precisely against multi-word method names, with
+    far less noise than a bare ``%apply%`` scan. Capped to keep the number of
+    cascade queries bounded on large indexes.
+    """
+    words = [c for c in candidates if len(c) >= 3][:6]
+    out: list[str] = []
+    seen: set[str] = set()
+    existing = {c.lower() for c in candidates}
+    for i, a in enumerate(words):
+        for j, b in enumerate(words):
+            if i == j:
+                continue
+            joined = a[0].lower() + a[1:] + b[0].upper() + b[1:]
+            low = joined.lower()
+            if low in seen or low in existing:
+                continue
+            seen.add(low)
+            out.append(joined)
+    return out[:12]
+
+
+def _entry_rank_v2(
+    entry: dict[str, Any], candidates: list[str]
+) -> tuple[int, int, int, int, int, str, int]:
+    """Relevance-aware ranking key for an aggregated entry-point hit.
+
+    Order of precedence: non-test before test, definition kinds before refs,
+    MORE matched task words first, MORE candidate hits first, better BM25
+    rank, then file/line for a stable tie-break.
+    """
+    hit = entry["hit"]
+    file_path = hit.get("file", "").replace("\\", "/")
+    is_test = int("/tests/" in file_path or file_path.startswith("tests/"))
+    kind_rank = 0 if hit.get("kind") in {"class", "function", "method"} else 1
+    name_match = _name_match_score(hit.get("name", ""), candidates)
+    return (
+        is_test,
+        kind_rank,
+        -name_match,
+        -int(entry.get("matches", 0)),
+        int(entry.get("best_rank", 0)),
+        hit.get("file", ""),
+        int(hit.get("line", 0) or 0),
+    )
 
 
 def _looks_like_trace(task: str) -> bool:

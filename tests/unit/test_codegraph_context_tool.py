@@ -213,6 +213,124 @@ def test_resolve_entry_points_stops_at_limit() -> None:
     assert [hit["name"] for hit in hits] == ["first"]
 
 
+def test_resolve_entry_points_ranks_multiword_name_match_first() -> None:
+    """A symbol whose name matches MORE task words must rank first.
+
+    Regression for the dogfood loss: task 'IndexShard apply index operation'
+    used to surface ScriptedSimilarityProvider.apply (matches 'apply' only)
+    above IndexShard.applyIndexOperationOnPrimary (matches apply+index+
+    operation) because ranking was by file name, not relevance. The file
+    names below are chosen so the OLD alphabetical tie-break would pick the
+    wrong symbol — only name-match weighting yields the correct order.
+    """
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        CodeGraphContextTool,
+    )
+
+    class RankedCache:
+        def fts_search_ranked(self, candidate: str, limit: int):
+            # Both symbols returned for every candidate; correct ordering
+            # must come from name-match weighting, not file/insertion order.
+            return [
+                {
+                    "name": "apply",
+                    "kind": "method",
+                    "file": "a_similarity.py",
+                    "line": 10,
+                },
+                {
+                    "name": "applyIndexOperationOnPrimary",
+                    "kind": "method",
+                    "file": "z_shard.py",
+                    "line": 20,
+                },
+            ]
+
+    tool = CodeGraphContextTool(str(Path.cwd()))
+    tool._cache = RankedCache()
+
+    hits = tool._resolve_entry_points(["apply", "index", "operation"], limit=2)
+
+    assert hits[0]["name"] == "applyIndexOperationOnPrimary"
+
+
+def test_name_match_score_counts_distinct_task_words() -> None:
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        _name_match_score,
+    )
+
+    cands = ["apply", "index", "operation"]
+    assert _name_match_score("applyIndexOperationOnPrimary", cands) == 3
+    assert _name_match_score("apply", cands) == 1
+    assert _name_match_score("unrelatedHelper", cands) == 0
+    assert _name_match_score("", cands) == 0
+
+
+def test_compound_candidates_builds_camelcase_word_pairs() -> None:
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        _compound_candidates,
+    )
+
+    out = _compound_candidates(["apply", "index", "operation"])
+    # Ordered camelCase joins of word pairs surface multi-word method names
+    # that single-word FTS cannot reach (applyIndexOperationOnPrimary).
+    assert "applyIndex" in out
+    assert "indexOperation" in out
+    assert "applyOperation" in out
+    # Single 2-char/stop tokens excluded; no self-joins.
+    assert "applyApply" not in out
+    assert _compound_candidates([]) == []
+    assert _compound_candidates(["x"]) == []
+
+
+def test_resolve_entry_points_uses_compound_recall_for_multiword() -> None:
+    """Compound recall surfaces multi-word methods FTS misses on plain words.
+
+    Simulates the ES dogfood case: single-word FTS only returns generic
+    same-name symbols (apply), while a cascade substring query on the
+    compound 'applyIndex' recalls the real write method. The resolver must
+    merge both and rank the multi-word method first.
+    """
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        CodeGraphContextTool,
+    )
+
+    class CompoundCache:
+        def fts_search_ranked(self, candidate: str, limit: int):
+            # Plain words only ever match the generic same-name method.
+            if candidate in ("apply", "index", "operation"):
+                return [
+                    {
+                        "name": candidate,
+                        "kind": "method",
+                        "file": "generic.py",
+                        "line": 1,
+                    }
+                ]
+            return []
+
+        def search_symbols_cascade(self, query: str, limit: int):
+            # Compound camelCase queries reach the real multi-word method.
+            if query.lower().startswith("applyindex"):
+                return [
+                    {
+                        "name": "applyIndexOperationOnPrimary",
+                        "kind": "method",
+                        "file": "shard.py",
+                        "line": 99,
+                    }
+                ]
+            return []
+
+    tool = CodeGraphContextTool(str(Path.cwd()))
+    tool._cache = CompoundCache()
+
+    hits = tool._resolve_entry_points(["apply", "index", "operation"], limit=5)
+    names = [h["name"] for h in hits]
+    assert "applyIndexOperationOnPrimary" in names
+    assert names[0] == "applyIndexOperationOnPrimary"
+
+
 def test_expand_nodes_handles_graph_limits_and_trace_chain() -> None:
     from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
         CodeGraphContextTool,
