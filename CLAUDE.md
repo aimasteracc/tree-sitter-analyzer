@@ -311,6 +311,31 @@ cd ~/.claude/skills/gstack && ./setup --team
 Skills like /qa, /ship, /review, /investigate, and /browse become available after install.
 Use /browse for all web browsing. Use ~/.claude/skills/gstack/... for gstack file paths.
 
+## PR Review Rules — NEVER ignore Codex review
+
+**🔒 LOCKED BY USER (2026-06-03):** 「每次 PR 之後不可以無視 codex 的 review」。After creating OR updating any PR, you MUST fetch and triage the Codex (`chatgpt-codex-connector[bot]`) review. Ignoring it — even when CI is green or the PR already merged — is a violation of this rule.
+
+### Mandatory workflow after every PR
+
+1. **Fetch the review** (the PR-body summary is just a template — the real findings are inline comments):
+   ```bash
+   gh api repos/aimasteracc/tree-sitter-analyzer/pulls/<N>/comments \
+     | python3 -c "import json,sys; [print(c['path'],c.get('line'),'\n',c['body'][:1500],'\n---') for c in json.load(sys.stdin)]"
+   ```
+   Codex review is triggered on open / ready-for-review / `@codex review` comment. If it hasn't posted yet, wait for it (CI-monitor pattern) before merging.
+
+2. **Triage EVERY comment** — do not skip any. For each, render an explicit verdict:
+   - **Real problem** → fix it (own PR or follow-up PR). Codex P-badges (P1/P2/P3) set priority; P1/P2 must be fixed before or right after merge.
+   - **Already fixed** → Codex often reviews an older commit; verify on the current HEAD and record "already fixed by #X".
+   - **False positive / won't-fix** → state the concrete reason (cross-ref a CLAUDE.md design decision if applicable). Never dismiss silently.
+
+3. **Report the triage to the user** — a table of (comment → verdict → action), so nothing is swept under the rug.
+
+4. **If the PR already merged when the review lands**, still triage; open a follow-up PR for any real finding. A merged PR does NOT exempt its review.
+
+### Why (past incident, 2026-06-03)
+Codex flagged 3 real P2 correctness bugs across #269/#270 (Hyphae file-identity false positives, `:subclasses` wrong endpoint → empty results, `:implements` missing the `implements` edge kind). All three were genuine; ignoring them would have shipped a query DSL that returns wrong graph results to agents. The 4th finding (`.class` empty) was a stale-commit review already fixed by a later PR — which is exactly why each comment needs an explicit verdict, not a blanket dismiss. Fixed via #271.
+
 ## Release Gate Rules
 
 **NEVER merge release branch → main until ALL of these are confirmed:**
