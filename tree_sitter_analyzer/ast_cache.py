@@ -689,8 +689,8 @@ class ASTCache:
         import sqlite3 as _sqlite3
 
         sql = (
-            "SELECT caller_name, callee_name, file_path, caller_line, callee_line "
-            "FROM edges WHERE kind = ?"
+            "SELECT caller_name, callee_name, file_path, caller_line, "
+            "callee_line, callee_resolved_file FROM edges WHERE kind = ?"
         )
         params: list[Any] = [kind]
         if caller_name is not None:
