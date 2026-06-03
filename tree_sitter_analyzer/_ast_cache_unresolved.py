@@ -98,6 +98,11 @@ def resolve_unresolved_refs(conn: sqlite3.Connection) -> dict[str, int] | None:
 
     total = resolved = unchanged = errors = 0
     store = EdgeStore(conn, ensure_schema=False)
+    # Per-run candidate cache keyed by ``(name, kind)``. The candidate set for a
+    # given name/kind is file-independent (see ``_candidates_for_name_kind``), so
+    # the dominant cost — one ``ast_symbol_rows`` SELECT per (name, kind) per ref
+    # — collapses to one SELECT per distinct (name, kind) across the whole pass.
+    candidate_cache: dict[tuple[str, str], list[dict[str, Any]] | None] = {}
     for index_row in index_rows:
         rel_path = str(index_row["file_path"])
         try:
@@ -115,6 +120,7 @@ def resolve_unresolved_refs(conn: sqlite3.Connection) -> dict[str, int] | None:
                     str(ref["file_path"]),
                     str(ref["reference_name"]),
                     str(ref["reference_kind"]),
+                    candidate_cache,
                 )
                 chosen = _choose_candidate(conn, ref, candidates)
                 if chosen is None:
@@ -266,6 +272,7 @@ def _candidate_symbols(
     source_file: str,
     reference_name: str,
     reference_kind: str,
+    cache: dict[tuple[str, str], list[dict[str, Any]] | None] | None = None,
 ) -> list[dict[str, Any]]:
     names = _reference_names(conn, source_file, reference_name)
     kinds = (
@@ -273,23 +280,53 @@ def _candidate_symbols(
         if reference_kind in {EdgeKind.EXTENDS.value, EdgeKind.IMPLEMENTS.value}
         else ["function", "method", "class"]
     )
-    rows: list[Any] = []
+    candidates: list[dict[str, Any]] = []
+    for name in names:
+        for kind in kinds:
+            bucket = _candidates_for_name_kind(conn, name, kind, cache)
+            if bucket is None:
+                # ``ast_symbol_rows`` missing / broken connection — preserve the
+                # legacy whole-call abort so a single failed SELECT yields [].
+                return []
+            candidates.extend(bucket)
+    return candidates
+
+
+def _candidates_for_name_kind(
+    conn: sqlite3.Connection,
+    name: str,
+    kind: str,
+    cache: dict[tuple[str, str], list[dict[str, Any]] | None] | None,
+) -> list[dict[str, Any]] | None:
+    """Built candidate items for one ``(name, kind)``; cached when ``cache`` given.
+
+    The SQL result for a ``(name, kind)`` pair is independent of which file/ref
+    requested it (``_reference_names`` already expanded the file's import
+    aliases into the ``name`` set upstream), and the derived ``node_id`` /
+    ``line`` are pure functions of the row, so the built list is safe to reuse
+    verbatim across refs. On large Python trees the same hot names (``get``,
+    ``run``, ``build`` …) recur across thousands of refs, so caching collapses
+    those duplicate SELECTs. Returns ``None`` to signal the legacy
+    ``OperationalError`` abort path (caller short-circuits to ``[]``); a real
+    empty result is cached/returned as ``[]``.
+    """
+    key = (name, kind)
+    if cache is not None and key in cache:
+        return cache[key]
     try:
-        for name in names:
-            for kind in kinds:
-                rows.extend(
-                    conn.execute(
-                        """SELECT id, name, kind, file_path, language, line
-                           FROM ast_symbol_rows
-                           WHERE name = ? AND kind = ?
-                           ORDER BY file_path, line, name""",
-                        (name, kind),
-                    ).fetchall()
-                )
+        rows = conn.execute(
+            """SELECT id, name, kind, file_path, language, line
+               FROM ast_symbol_rows
+               WHERE name = ? AND kind = ?
+               ORDER BY file_path, line, name""",
+            (name, kind),
+        ).fetchall()
     except sqlite3.OperationalError as exc:
         logger.debug("candidate symbol lookup failed: %s", exc)
-        return []
-    candidates: list[dict[str, Any]] = []
+        if cache is not None:
+            cache[key] = None
+        return None
+    bucket: list[dict[str, Any]] = []
     for row in rows:
         item = _row_to_dict(
             row, ("id", "name", "kind", "file_path", "language", "line")
@@ -300,8 +337,10 @@ def _candidate_symbols(
             str(item["name"]),
             int(item["line"]),
         )
-        candidates.append(item)
-    return candidates
+        bucket.append(item)
+    if cache is not None:
+        cache[key] = bucket
+    return bucket
 
 
 def _reference_names(
