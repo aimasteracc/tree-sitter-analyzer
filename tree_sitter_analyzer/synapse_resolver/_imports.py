@@ -53,16 +53,33 @@ def _split_names_clause(clause: str) -> list[tuple[str, str]]:
 def parse_imports(
     text: str, language: str, file_path: str = "", line: int = 0
 ) -> list[ImportEntry]:
-    """Parse one import statement into structured rows.
+    """Parse one import statement into structured rows (language dispatch).
+
+    Python (``from .b import x, y`` etc.) keeps its original behaviour
+    byte-for-byte via :func:`_parse_python_imports`. Java dispatches to
+    the Java import parser. Any other language returns an empty list,
+    matching the pre-B3 non-Python behaviour (no regression).
+    """
+    if language == "python":
+        return _parse_python_imports(text, file_path, line)
+    if language == "java":
+        from ._java import parse_java_imports
+
+        return parse_java_imports(text, file_path, line)
+    return []
+
+
+def _parse_python_imports(
+    text: str, file_path: str = "", line: int = 0
+) -> list[ImportEntry]:
+    """Parse one Python import statement into structured rows.
 
     ``from .b import x, y`` -> 2 rows with module_path='.b' (relative).
     ``from . import b as bb`` -> 1 row with local_name='bb', alias_of='b'.
     ``from M import *`` -> 1 row with is_star=True, local_name=''.
     ``import a.b as c`` -> 1 row with module_path='a.b', local_name='c'.
-    Non-python languages: empty (Phase 3a focuses on Python).
     """
-    if language != "python":
-        return []
+    language = "python"
     text = text.strip()
     if not text:
         return []
