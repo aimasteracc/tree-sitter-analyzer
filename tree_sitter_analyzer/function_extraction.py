@@ -150,8 +150,45 @@ def walk_tree(node: Any, source: str, language: str) -> tuple[list[dict], list[d
     """Walk an AST and return function definitions plus call sites."""
     definitions: list[dict[str, Any]] = []
     calls: list[dict[str, Any]] = []
-    _extract_recursive(node, source, language, definitions, calls, None)
+    _extract_recursive(node, source, language, definitions, calls, None, None)
     return definitions, calls
+
+
+def _collect_local_var_types(
+    func_node: Any, source: str, language: str
+) -> dict[str, str]:
+    """RFC-0002: infer local variable types from ``var = ClassName(...)``.
+
+    Static receiver-type inference (no runtime): a same-function assignment whose
+    right side constructs a CapitalizedName (PEP8 class convention) binds the
+    left identifier to that class. Lets ``pg = ProjectGraph(); pg.execute()``
+    resolve ``execute`` to ``ProjectGraph.execute`` — disambiguating non-unique
+    methods. Python only for v1.
+    """
+    if language != "python":
+        return {}
+    types: dict[str, str] = {}
+
+    def _walk(n: Any) -> None:
+        if getattr(n, "type", None) == "assignment":
+            left = n.child_by_field_name("left")
+            right = n.child_by_field_name("right")
+            if (
+                left is not None
+                and right is not None
+                and left.type == "identifier"
+                and right.type == "call"
+            ):
+                fn = right.child_by_field_name("function")
+                if fn is not None and fn.type == "identifier":
+                    cls = _node_text(fn, source)
+                    if cls and cls[0].isupper():
+                        types[_node_text(left, source)] = cls
+        for c in n.children:
+            _walk(c)
+
+    _walk(func_node)
+    return types
 
 
 def _extract_recursive(
@@ -161,6 +198,7 @@ def _extract_recursive(
     definitions: list[dict[str, Any]],
     calls: list[dict[str, Any]],
     enclosing_class: str | None,
+    local_types: dict[str, str] | None,
 ) -> None:
     if not hasattr(node, "type"):
         return
@@ -185,19 +223,33 @@ def _extract_recursive(
                     "class": parent_class,
                 }
             )
+            func_types = _collect_local_var_types(node, source, language)
             for child in node.children:
                 _extract_recursive(
-                    child, source, language, definitions, calls, parent_class
+                    child,
+                    source,
+                    language,
+                    definitions,
+                    calls,
+                    parent_class,
+                    func_types,
                 )
             return
 
     if node_type in _CALL_NODE_TYPES.get(language, set()):
         call_info = extract_call(node, source, language)
         if call_info:
+            recv = call_info.get("receiver")
+            if local_types and recv in local_types:
+                cls = local_types[recv]
+                call_info["receiver_type"] = cls
+                call_info["full_name"] = f"{cls}.{call_info['name']}"
             calls.append(call_info)
 
     for child in node.children:
-        _extract_recursive(child, source, language, definitions, calls, enclosing_class)
+        _extract_recursive(
+            child, source, language, definitions, calls, enclosing_class, local_types
+        )
 
 
 def get_func_name(node: Any, language: str) -> str | None:

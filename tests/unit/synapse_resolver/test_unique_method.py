@@ -109,3 +109,36 @@ def test_self_method_resolves_within_enclosing_class():
     r = resolve_callee("g", "caller.py", ctx, callee_full="self.g", caller_name="f")
     assert r.resolution == "local"
     assert r.callee_symbol_id == 3
+
+
+# -- RFC-0002: receiver-type-aware (class.method) resolution ------------------
+def test_class_method_disambiguates_non_unique():
+    """execute defined on A and B; ClassName.execute (receiver type inferred)
+    resolves to the right one — what unique-method can't do (it stays unknown)."""
+    ctx = _ctx(
+        file_class_methods={
+            "a.py": {"A": {"execute": 10}},
+            "b.py": {"B": {"execute": 20}},
+        }
+    )
+    # extractor inferred receiver type → callee_full='A.execute'
+    r = resolve_callee("execute", "caller.py", ctx, callee_full="A.execute")
+    assert r.resolution == "project"
+    assert r.callee_symbol_id == 10
+    assert r.resolved_file == "a.py"
+    # the other class
+    r2 = resolve_callee("execute", "caller.py", ctx, callee_full="B.execute")
+    assert r2.callee_symbol_id == 20
+
+
+def test_class_method_unknown_class_with_ambiguous_method():
+    # NotAClass not known + execute ambiguous (A and B) → neither class-method
+    # nor unique-method resolves → unknown (don't guess)
+    ctx = _ctx(
+        file_class_methods={
+            "a.py": {"A": {"execute": 10}},
+            "b.py": {"B": {"execute": 20}},
+        }
+    )
+    r = resolve_callee("execute", "caller.py", ctx, callee_full="NotAClass.execute")
+    assert r.resolution == "unknown"

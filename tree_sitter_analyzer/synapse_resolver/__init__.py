@@ -228,6 +228,29 @@ def _try_single_global(
     return None
 
 
+def _try_class_method(
+    base: str, qualifier: str, ctx: ResolverContext
+) -> ResolvedCallee | None:
+    """RFC-0002: receiver-type-aware method resolution.
+
+    When the qualifier is a KNOWN CLASS NAME (the extractor inferred the
+    receiver's type from a ``var = ClassName(...)`` assignment and rewrote the
+    callee as ``ClassName.method``), resolve ``base`` to that class's method.
+    This is what disambiguates NON-unique methods (e.g. ``execute`` defined on
+    many classes) that ``_try_unique_method`` deliberately leaves unknown — the
+    receiver type pins down which class.
+    """
+    if not qualifier:
+        return None
+    for file_path, classes in ctx.file_class_methods.items():
+        methods = classes.get(qualifier)
+        if methods is not None:
+            sym_id = methods.get(base)
+            if sym_id is not None:
+                return ResolvedCallee(sym_id, "project", file_path)
+    return None
+
+
 def _try_unique_method(
     base: str, qualifier: str, ctx: ResolverContext
 ) -> ResolvedCallee | None:
@@ -320,6 +343,7 @@ def _resolve_callee_python(
         lambda: _try_stdlib(base, qualifier, caller_file, ctx),
         lambda: _try_builtin(base, qualifier, ctx),
         lambda: _try_single_global(base, qualifier, ctx),
+        lambda: _try_class_method(base, qualifier, ctx),
         lambda: _try_unique_method(base, qualifier, ctx),
     ):
         out = rule()
