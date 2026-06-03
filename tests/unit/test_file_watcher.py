@@ -105,24 +105,35 @@ class TestWatcherStats:
 
 class TestPollingDetection:
     def test_detects_new_file(self, watcher, project, cache):
+        # The watcher snapshots the tree at start(), then detects later changes.
+        # So: start FIRST, let the initial snapshot settle, THEN create the file,
+        # and wait for the INCREMENT (>= 3). The previous version created the file
+        # before start() (already in the snapshot) and asserted >= 2 (true after
+        # trigger_sync regardless) — it never actually exercised detection.
         watcher.trigger_sync()
-        (project / "new_file.py").write_text("def world():\n    pass\n")
+        assert cache.get_stats()["total_files"] == 2
         watcher.start()
-        _wait_until(lambda: cache.get_stats()["total_files"] >= 2)
+        time.sleep(0.3)  # let the initial snapshot complete before mutating
+        (project / "new_file.py").write_text("def world():\n    pass\n")
+        detected = _wait_until(lambda: cache.get_stats()["total_files"] >= 3)
         watcher.stop()
-        stats = cache.get_stats()
-        assert stats["total_files"] >= 2
+        assert detected, "watcher did not detect the newly created file"
+        assert cache.get_stats()["total_files"] >= 3
 
     def test_detects_modified_file(self, watcher, project, cache):
+        # Same ordering requirement: start (snapshot) -> modify -> wait for the
+        # SECOND sync (>= 2) caused by the modification.
         watcher.trigger_sync()
+        assert watcher.get_stats()["syncs_triggered"] == 1
+        watcher.start()
+        time.sleep(0.3)  # let the initial snapshot complete before mutating
         py_file = project / "src" / "main.py"
         py_file.write_text("def hello():\n    return 42\n")
         os.utime(str(py_file), (time.time() + 1, time.time() + 1))
-        watcher.start()
-        _wait_until(lambda: watcher.get_stats()["syncs_triggered"] >= 1)
+        detected = _wait_until(lambda: watcher.get_stats()["syncs_triggered"] >= 2)
         watcher.stop()
-        stats = watcher.get_stats()
-        assert stats["syncs_triggered"] >= 1
+        assert detected, "watcher did not detect the modified file"
+        assert watcher.get_stats()["syncs_triggered"] >= 2
 
 
 class TestOnSyncCallback:
