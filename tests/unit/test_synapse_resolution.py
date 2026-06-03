@@ -82,10 +82,14 @@ def _table_exists(conn: sqlite3.Connection, name: str) -> bool:
 def _edges_for_caller(
     conn: sqlite3.Connection, caller_name: str, pkg_name: str = "synapse_pkg"
 ) -> list[sqlite3.Row]:
-    """ast_call_edges rows for ``caller_name``, scoped to the fixture pkg."""
+    """CALLS edges for ``caller_name`` (unified ``edges`` table), scoped to pkg.
+
+    B1.3: CALLS rows + their resolution columns live in ``edges``; ``file_path``
+    is the caller's file (== legacy ``ast_call_edges.caller_file``).
+    """
     return conn.execute(
-        "SELECT * FROM ast_call_edges "
-        "WHERE caller_name = ? AND file_path LIKE ? "
+        "SELECT * FROM edges "
+        "WHERE kind = 'calls' AND caller_name = ? AND file_path LIKE ? "
         "ORDER BY caller_line, callee_line",
         (caller_name, f"{pkg_name}%"),
     ).fetchall()
@@ -100,23 +104,23 @@ class TestSchemaMigration:
     """The cache DB must surface the new columns / table on first init."""
 
     def test_schema_migration_adds_columns(self, tmp_path: Path) -> None:
-        """ast_call_edges has callee_symbol_id / callee_resolution /
-        callee_resolved_file, and ast_imports table exists."""
+        """The unified ``edges`` table carries callee_symbol_id /
+        callee_resolution / callee_resolved_file (B1.3), and ast_imports exists."""
         cache = ASTCache(str(tmp_path))
         try:
             with _open_db(cache) as conn:
-                # New columns on ast_call_edges.
-                edge_cols = _column_names(conn, "ast_call_edges")
+                # Resolution columns now live on the unified ``edges`` table.
+                edge_cols = _column_names(conn, "edges")
                 assert "callee_symbol_id" in edge_cols, (
-                    "Expected ast_call_edges.callee_symbol_id column "
+                    "Expected edges.callee_symbol_id column "
                     f"(have: {sorted(edge_cols)})"
                 )
                 assert "callee_resolution" in edge_cols, (
-                    "Expected ast_call_edges.callee_resolution column "
+                    "Expected edges.callee_resolution column "
                     f"(have: {sorted(edge_cols)})"
                 )
                 assert "callee_resolved_file" in edge_cols, (
-                    "Expected ast_call_edges.callee_resolved_file column "
+                    "Expected edges.callee_resolved_file column "
                     f"(have: {sorted(edge_cols)})"
                 )
 
@@ -149,17 +153,20 @@ class TestSchemaMigration:
         cache = ASTCache(str(tmp_path))
         try:
             with _open_db(cache) as conn:
-                # Insert minimal row with only the legacy columns set.
+                # Insert a CALLS edge with only the structural columns set; the
+                # resolution columns must default exactly as the resolver's
+                # "unknown" verdict (B1.3 — edges, not ast_call_edges).
                 conn.execute(
-                    "INSERT INTO ast_call_edges "
-                    "(caller_name, caller_file, caller_line, callee_name, "
-                    " callee_full, callee_line, file_path, language) "
-                    "VALUES ('f', 'x.py', 1, 'g', '', 2, 'x.py', 'python')"
+                    "INSERT INTO edges "
+                    "(source_node_id, target_node_id, kind, line, caller_name, "
+                    " callee_name, file_path, caller_line, callee_line, language) "
+                    "VALUES ('x.py:f:1', 'x.py:g:2', 'calls', 2, 'f', 'g', "
+                    " 'x.py', 1, 2, 'python')"
                 )
                 conn.commit()
                 row = conn.execute(
                     "SELECT callee_resolution, callee_resolved_file, "
-                    "callee_symbol_id FROM ast_call_edges"
+                    "callee_symbol_id FROM edges WHERE kind = 'calls'"
                 ).fetchone()
                 assert row["callee_resolution"] == "unknown"
                 assert row["callee_resolved_file"] == ""
@@ -306,8 +313,8 @@ class TestResolveCrossFile:
             cache.index_project()
             with _open_db(cache) as conn:
                 count = conn.execute(
-                    "SELECT COUNT(*) AS c FROM ast_call_edges "
-                    "WHERE callee_resolution = 'project' "
+                    "SELECT COUNT(*) AS c FROM edges "
+                    "WHERE kind = 'calls' AND callee_resolution = 'project' "
                     "AND callee_resolved_file != '' "
                     "AND callee_resolved_file != file_path"
                 ).fetchone()["c"]

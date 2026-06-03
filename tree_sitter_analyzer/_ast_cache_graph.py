@@ -23,12 +23,8 @@ from typing import Any
 # ---------------------------------------------------------------------------
 
 _EDGE_SELECT = (
-    "SELECT caller_name, file_path AS caller_file, "
-    "json_extract(metadata, '$.caller_line') AS caller_line, "
-    "callee_name, "
-    "json_extract(metadata, '$.callee_full') AS callee_full, "
-    "file_path, line AS callee_line, "
-    "json_extract(metadata, '$.callee_resolved_file') AS callee_resolved_file "
+    "SELECT caller_name, file_path AS caller_file, caller_line, "
+    "callee_name, callee_full, file_path, callee_line, callee_resolved_file "
     "FROM edges "
 )
 
@@ -51,8 +47,8 @@ def _fetch_caller_rows(
             _EDGE_SELECT
             + "WHERE "
             + _CALLS_PREDICATE
-            + "(callee_name = ? OR json_extract(metadata, '$.callee_full') = ?) "
-            "AND json_extract(metadata, '$.callee_resolved_file') = ?",
+            + "(callee_name = ? OR callee_full = ?) "
+            "AND callee_resolved_file = ?",
             (name, name, file_),
         ).fetchall()
         if not rows:
@@ -60,7 +56,7 @@ def _fetch_caller_rows(
                 _EDGE_SELECT
                 + "WHERE "
                 + _CALLS_PREDICATE
-                + "(callee_name = ? OR json_extract(metadata, '$.callee_full') = ?) "
+                + "(callee_name = ? OR callee_full = ?) "
                 "AND file_path = ?",
                 (name, name, file_),
             ).fetchall()
@@ -69,7 +65,7 @@ def _fetch_caller_rows(
         _EDGE_SELECT
         + "WHERE "
         + _CALLS_PREDICATE
-        + "(callee_name = ? OR json_extract(metadata, '$.callee_full') = ?)",
+        + "(callee_name = ? OR callee_full = ?)",
         (name, name),
     ).fetchall()
 

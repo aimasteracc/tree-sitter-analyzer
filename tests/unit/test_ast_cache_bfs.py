@@ -25,27 +25,13 @@ from tree_sitter_analyzer.graph.edge_store import EdgeKind, symbol_node
 # scalars in the metadata JSON blob, real name/file columns).
 # ---------------------------------------------------------------------------
 
-_SCHEMA = """\
-CREATE TABLE edges (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    source_node_id TEXT NOT NULL,
-    target_node_id TEXT NOT NULL,
-    kind TEXT NOT NULL,
-    line INTEGER,
-    provenance TEXT DEFAULT 'tree-sitter',
-    metadata TEXT,
-    caller_name TEXT NOT NULL DEFAULT '',
-    callee_name TEXT NOT NULL DEFAULT '',
-    file_path TEXT NOT NULL DEFAULT '',
-    UNIQUE(source_node_id, target_node_id, kind, line)
-);
-"""
-
 
 def _make_conn() -> sqlite3.Connection:
+    from tree_sitter_analyzer.graph.edge_store import EDGE_STORE_SCHEMA
+
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
-    conn.executescript(_SCHEMA)
+    conn.executescript(EDGE_STORE_SCHEMA)
     return conn
 
 
@@ -72,11 +58,14 @@ def _insert_edge(
         "callee_resolution": "unknown",
         "callee_resolved_file": callee_resolved_file,
     }
+    # B1.3: resolution scalars are real columns (the readers no longer
+    # json_extract them); populate both so this fixture matches production rows.
     conn.execute(
         "INSERT OR REPLACE INTO edges "
         "(source_node_id, target_node_id, kind, line, provenance, metadata, "
-        " caller_name, callee_name, file_path) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " caller_name, callee_name, file_path, caller_line, callee_full, "
+        " callee_line, language, callee_resolution, callee_resolved_file) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             source,
             target,
@@ -87,6 +76,12 @@ def _insert_edge(
             caller_name,
             callee_name,
             caller_file,
+            caller_line,
+            callee_full or callee_name,
+            callee_line,
+            "python",
+            "unknown",
+            callee_resolved_file,
         ),
     )
     conn.commit()

@@ -92,23 +92,9 @@ def _build_call_edges_db(
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(db_path))
     try:
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS edges (
-                id             INTEGER PRIMARY KEY AUTOINCREMENT,
-                source_node_id TEXT NOT NULL,
-                target_node_id TEXT NOT NULL,
-                kind           TEXT NOT NULL,
-                line           INTEGER,
-                provenance     TEXT DEFAULT 'tree-sitter',
-                metadata       TEXT,
-                caller_name    TEXT NOT NULL DEFAULT '',
-                callee_name    TEXT NOT NULL DEFAULT '',
-                file_path      TEXT NOT NULL DEFAULT '',
-                UNIQUE(source_node_id, target_node_id, kind, line)
-            )
-            """
-        )
+        from tree_sitter_analyzer.graph.edge_store import EDGE_STORE_SCHEMA
+
+        conn.executescript(EDGE_STORE_SCHEMA)
         params = []
         for (
             caller_name,
@@ -129,6 +115,8 @@ def _build_call_edges_db(
                 "callee_resolution": "project" if callee_file else "unknown",
                 "callee_resolved_file": callee_file,
             }
+            # B1.3: resolution scalars are real columns the evaluator reads
+            # directly (no json_extract), so populate them alongside metadata.
             params.append(
                 (
                     source,
@@ -140,13 +128,20 @@ def _build_call_edges_db(
                     caller_name,
                     callee_name,
                     caller_file,
+                    caller_line,
+                    _callee_full,
+                    0,
+                    "python",
+                    "project" if callee_file else "unknown",
+                    callee_file,
                 )
             )
         conn.executemany(
             "INSERT OR REPLACE INTO edges "
             "(source_node_id, target_node_id, kind, line, provenance, metadata, "
-            " caller_name, callee_name, file_path) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " caller_name, callee_name, file_path, caller_line, callee_full, "
+            " callee_line, language, callee_resolution, callee_resolved_file) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             params,
         )
         conn.commit()

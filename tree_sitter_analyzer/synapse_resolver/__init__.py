@@ -36,7 +36,7 @@ from ._imports import ImportEntry, parse_imports
 
 @dataclass(frozen=True)
 class ResolvedCallee:
-    """One resolution per call edge — written into ``ast_call_edges``."""
+    """One resolution per call edge — written into the unified ``edges`` table."""
 
     callee_symbol_id: int | None
     resolution: str

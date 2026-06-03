@@ -76,8 +76,8 @@ class TestBackfillCrossFileEdges:
         cache.backfill_cross_file_edges()
         conn = cache._get_conn()
         rows = conn.execute(
-            "SELECT callee_name, callee_resolved_file FROM ast_call_edges "
-            "WHERE callee_resolved_file != ''"
+            "SELECT callee_name, callee_resolved_file FROM edges "
+            "WHERE kind = 'calls' AND callee_resolved_file != ''"
         ).fetchall()
         assert len(rows) > 0
         resolved_names = {r["callee_name"] for r in rows}
@@ -114,14 +114,9 @@ class TestBackfillCrossFileEdges:
         project.mkdir()
 
         (project / "a.py").write_text(
-            "from b import helper\n"
-            "def main():\n"
-            "    return helper()\n"
+            "from b import helper\ndef main():\n    return helper()\n"
         )
-        (project / "b.py").write_text(
-            "def helper():\n"
-            "    return 42\n"
-        )
+        (project / "b.py").write_text("def helper():\n    return 42\n")
 
         cache = ASTCache(str(project))
         stats = cache.index_project(max_files=100)

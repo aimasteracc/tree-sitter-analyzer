@@ -36,8 +36,8 @@ def resolve_call_edges_for_file(
         return
     try:
         rows = conn.execute(
-            "SELECT id, caller_name, caller_file, callee_name, callee_full "
-            "FROM ast_call_edges WHERE file_path = ?",
+            "SELECT id, caller_name, file_path AS caller_file, callee_name, "
+            "callee_full FROM edges WHERE kind = 'calls' AND file_path = ?",
             (rel_path,),
         ).fetchall()
     except sqlite3.OperationalError as exc:
@@ -56,9 +56,9 @@ def resolve_call_edges_for_file(
             continue
         try:
             conn.execute(
-                "UPDATE ast_call_edges "
-                "SET callee_symbol_id = ?, callee_resolution = ?, callee_resolved_file = ? "
-                "WHERE id = ?",
+                "UPDATE edges "
+                "SET callee_symbol_id = ?, callee_resolution = ?, "
+                "callee_resolved_file = ? WHERE id = ?",
                 (
                     resolved.callee_symbol_id,
                     resolved.resolution,
@@ -86,11 +86,12 @@ def run_synapse_backfill(cache: Any, conn: sqlite3.Connection) -> dict[str, int]
         # project, no resolved_file by design) — re-selecting them on every
         # backfill is the unknown-> rescan loop B3 is meant to break.
         rows = conn.execute(
-            "SELECT id, caller_name, caller_file, callee_name, callee_full "
-            "FROM ast_call_edges "
-            "WHERE callee_resolution = 'unknown' "
+            "SELECT id, caller_name, file_path AS caller_file, callee_name, "
+            "callee_full FROM edges "
+            "WHERE kind = 'calls' AND ("
+            "callee_resolution = 'unknown' "
             "OR (callee_resolved_file = '' "
-            "    AND callee_resolution NOT IN ('external', 'stdlib'))"
+            "    AND callee_resolution NOT IN ('external', 'stdlib')))"
         ).fetchall()
     except sqlite3.OperationalError as exc:
         logger.debug("synapse backfill select failed: %s", exc)
@@ -131,9 +132,9 @@ def run_synapse_backfill(cache: Any, conn: sqlite3.Connection) -> dict[str, int]
     if updates:
         try:
             conn.executemany(
-                "UPDATE ast_call_edges "
-                "SET callee_symbol_id = ?, callee_resolution = ?, callee_resolved_file = ? "
-                "WHERE id = ?",
+                "UPDATE edges "
+                "SET callee_symbol_id = ?, callee_resolution = ?, "
+                "callee_resolved_file = ? WHERE id = ?",
                 updates,
             )
             resolved += len(updates)

@@ -63,36 +63,6 @@ def write_fts5_symbols(
     ]
 
 
-def write_call_edges(
-    conn: sqlite3.Connection,
-    rel_path: str,
-    language: str,
-    call_edges: list[dict[str, Any]],
-) -> None:
-    """Replace call-edge rows for ``rel_path``."""
-    conn.execute("DELETE FROM ast_call_edges WHERE file_path = ?", (rel_path,))
-    if not call_edges:
-        return
-    conn.executemany(
-        "INSERT INTO ast_call_edges "
-        "(caller_name, caller_file, caller_line, callee_name, callee_full, callee_line, "
-        "file_path, language) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        [
-            (
-                edge["caller_name"],
-                rel_path,
-                edge["caller_line"],
-                edge["callee_name"],
-                edge["callee_full"],
-                edge["callee_line"],
-                rel_path,
-                language,
-            )
-            for edge in call_edges
-        ],
-    )
-
-
 def write_fts5_symbols_from_tuples(
     conn: sqlite3.Connection,
     rel_path: str,
@@ -272,8 +242,16 @@ def write_graph_edges_for_file(
     symbols: dict[str, Any],
     imports: list[str] | list[dict[str, Any]],
     call_edges: list[dict[str, Any]],
+    *,
+    preserve_calls: bool = False,
 ) -> None:
-    """Refresh unified EdgeStore rows derived from one indexed file."""
+    """Refresh unified EdgeStore rows derived from one indexed file.
+
+    ``preserve_calls=True`` rebuilds only the structural edges (EXTENDS /
+    CONTAINS / IMPORTS) and leaves existing CALLS rows — with their second-pass
+    resolution columns — untouched. Used by ``_refresh_graph_edges_from_cache``,
+    which (post-B1.3) has no extracted call-edge source to rebuild calls from.
+    """
     try:
         from .graph.edge_store import (
             Edge,
@@ -290,7 +268,6 @@ def write_graph_edges_for_file(
         return
 
     symbol_items = symbols.get("symbols", [])
-    call_edges = _graph_call_edges(conn, rel_path, call_edges)
     class_nodes = {
         sym.get("name", ""): symbol_node(rel_path, sym.get("name", ""), sym.get("line"))
         for sym in symbol_items
@@ -382,52 +359,8 @@ def write_graph_edges_for_file(
                 )
 
     try:
-        EdgeStore(conn, ensure_schema=False).replace_edges_for_file(rel_path, edges)
+        EdgeStore(conn, ensure_schema=False).replace_edges_for_file(
+            rel_path, edges, preserve_calls=preserve_calls
+        )
     except sqlite3.OperationalError as exc:
         logger.debug("edge store write failed for %s: %s", rel_path, exc)
-
-
-_GRAPH_CALL_EDGE_COLUMNS = (
-    "caller_name",
-    "caller_file",
-    "caller_line",
-    "callee_name",
-    "callee_full",
-    "callee_line",
-    "file_path",
-    "language",
-    "callee_resolution",
-    "callee_resolved_file",
-)
-
-_GRAPH_CALL_EDGE_SELECT = """
-SELECT caller_name, caller_file, caller_line, callee_name, callee_full,
-       callee_line, file_path, language, callee_resolution, callee_resolved_file
-FROM ast_call_edges
-WHERE file_path = ?
-ORDER BY id
-""".strip()
-
-
-def _graph_call_edges(
-    conn: sqlite3.Connection,
-    rel_path: str,
-    fallback: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    """Return resolved call rows for EdgeStore, falling back to extracted edges."""
-    try:
-        rows = conn.execute(
-            _GRAPH_CALL_EDGE_SELECT,
-            (rel_path,),
-        ).fetchall()
-    except sqlite3.OperationalError:
-        return fallback
-    if not rows:
-        return fallback
-    return [_row_to_dict(row, _GRAPH_CALL_EDGE_COLUMNS) for row in rows]
-
-
-def _row_to_dict(row: Any, columns: tuple[str, ...]) -> dict[str, Any]:
-    if isinstance(row, sqlite3.Row):
-        return dict(row)
-    return dict(zip(columns, row, strict=False))

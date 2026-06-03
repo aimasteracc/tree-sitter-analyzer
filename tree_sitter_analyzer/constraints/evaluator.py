@@ -113,24 +113,22 @@ def _is_excepted(caller_file: str, compiled: _CompiledConstraint) -> bool:
 def _build_select_sql(db_conn: sqlite3.Connection) -> str:
     """Build the per-DB SELECT statement over the unified ``edges`` table.
 
-    CALLS edges now live in ``edges`` (B1.2).  The resolved-file scalar lives
-    in the ``metadata`` JSON blob, so the callee file is derived as
-    ``json_extract(metadata, '$.callee_resolved_file')`` with a fall back to
-    the caller's ``file_path`` when the call was never cross-file resolved —
-    preserving the legacy ``CASE WHEN callee_resolved_file != ''`` behaviour.
+    CALLS edges now live in ``edges`` with every resolution scalar promoted to
+    a real column (B1.3). The callee file prefers ``callee_resolved_file`` and
+    falls back to the caller's ``file_path`` when the call was never cross-file
+    resolved — preserving the legacy ``CASE WHEN callee_resolved_file != ''``
+    behaviour.
 
-    The ``db_conn`` argument is retained for signature compatibility; the
-    edges schema always carries ``metadata`` so no per-DB probing is needed.
+    The ``db_conn`` argument is retained for signature compatibility.
     """
     callee_expr = (
-        "CASE WHEN json_extract(metadata, '$.callee_resolved_file') IS NOT NULL "
-        "AND json_extract(metadata, '$.callee_resolved_file') != '' "
-        "THEN json_extract(metadata, '$.callee_resolved_file') "
+        "CASE WHEN callee_resolved_file != '' "
+        "THEN callee_resolved_file "
         "ELSE file_path END"
     )
     return (
         "SELECT caller_name, file_path AS caller_file, "
-        "json_extract(metadata, '$.caller_line') AS caller_line, callee_name, "
+        "caller_line, callee_name, "
         f"{callee_expr} AS callee_file "  # nosec B608 — callee_expr is constructed from internal constants only
         "FROM edges WHERE kind = 'calls'"
     )

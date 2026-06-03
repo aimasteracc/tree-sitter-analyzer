@@ -196,8 +196,8 @@ class ConstraintCheckTool(BaseMCPTool):
         evaluator sees, which is a useful sanity signal even if it
         doesn't perfectly match the rule-count cross-product.
 
-        Cache-then-read contract: if there is no ``ast_call_edges`` table
-        (or it is empty) we DO NOT touch the existing violations table.
+        Cache-then-read contract: if there are no CALLS rows in the unified
+        ``edges`` table we DO NOT touch the existing violations table.
         That preserves rows that were seeded by another producer (the
         ``analyze_change_impact`` indexer, an earlier full run, or — in
         tests — directly by a fixture). Without this guard we'd wipe out
@@ -251,9 +251,11 @@ class ConstraintCheckTool(BaseMCPTool):
 
     @staticmethod
     def _count_edges(conn: sqlite3.Connection) -> int:
-        """Return the row count of ``ast_call_edges``, or 0 when absent."""
+        """Return the CALLS row count of the unified ``edges`` table, or 0."""
         try:
-            row = conn.execute("SELECT COUNT(*) FROM ast_call_edges").fetchone()
+            row = conn.execute(
+                "SELECT COUNT(*) FROM edges WHERE kind = 'calls'"
+            ).fetchone()
             return int(row[0]) if row else 0
         except sqlite3.OperationalError:
             # Table missing — fresh DB or a test fixture that built

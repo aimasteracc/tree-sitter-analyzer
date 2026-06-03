@@ -119,7 +119,7 @@ def parse_java_imports(
 class JavaResolverContext:
     """Per-index Java resolution maps (built once per pass).
 
-    All file keys are project-relative paths, matching ``ast_call_edges``.
+    All file keys are project-relative paths, matching the ``edges`` table.
     """
 
     # package name -> files declaring that package (same-package + wildcard).

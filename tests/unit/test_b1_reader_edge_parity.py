@@ -55,6 +55,13 @@ CREATE TABLE IF NOT EXISTS edges (
     caller_name TEXT NOT NULL DEFAULT '',
     callee_name TEXT NOT NULL DEFAULT '',
     file_path TEXT NOT NULL DEFAULT '',
+    caller_line INTEGER NOT NULL DEFAULT 0,
+    callee_full TEXT NOT NULL DEFAULT '',
+    callee_line INTEGER NOT NULL DEFAULT 0,
+    language TEXT NOT NULL DEFAULT '',
+    callee_resolution TEXT NOT NULL DEFAULT 'unknown',
+    callee_resolved_file TEXT NOT NULL DEFAULT '',
+    callee_symbol_id INTEGER,
     UNIQUE(source_node_id, target_node_id, kind, line)
 )
 """.strip()
@@ -138,8 +145,9 @@ def _build_db(
         conn.execute(
             "INSERT OR REPLACE INTO edges"
             " (source_node_id, target_node_id, kind, line, provenance, metadata,"
-            "  caller_name, callee_name, file_path)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "  caller_name, callee_name, file_path, caller_line, callee_full,"
+            "  callee_line, language, callee_resolution, callee_resolved_file)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 source,
                 target,
@@ -150,6 +158,12 @@ def _build_db(
                 e["caller_name"],
                 e["callee_name"],
                 e["file_path"],
+                e["caller_line"],
+                e["callee_full"],
+                e["callee_line"],
+                e["language"],
+                e["callee_resolution"],
+                e["callee_resolved_file"],
             ),
         )
 
@@ -412,3 +426,94 @@ class TestConstraintEvaluatorParity:
             _build_db(tmp_path / "mig", _SPECS, drop_ast_call_edges=True)
         )
         assert migrated == legacy
+
+
+# ---------------------------------------------------------------------------
+# B1.3 — end-to-end Python resolution must land on the unified ``edges`` table.
+#
+# After dropping ``ast_call_edges`` + ``unresolved_refs``, second-pass
+# resolution (synapse + cross-file + unresolved second pass) writes its results
+# directly onto ``edges`` CALLS/EXTENDS rows. This snapshot pins the Python
+# resolution semantics so they cannot silently regress — Python is the main
+# scenario and its resolution must not degrade.
+# ---------------------------------------------------------------------------
+
+
+class TestB13PythonResolutionOnEdges:
+    @staticmethod
+    def _write_project(root: Path) -> None:
+        pkg = root / "pkg"
+        pkg.mkdir(parents=True)
+        (pkg / "__init__.py").write_text("", encoding="utf-8")
+        (pkg / "base.py").write_text(
+            "class LanguagePlugin:\n    pass\n", encoding="utf-8"
+        )
+        (pkg / "python_plugin.py").write_text(
+            "from .base import LanguagePlugin\n\n"
+            "class PythonPlugin(LanguagePlugin):\n    pass\n",
+            encoding="utf-8",
+        )
+        (pkg / "helper.py").write_text(
+            "def helper():\n    return 'ok'\n", encoding="utf-8"
+        )
+        (pkg / "service.py").write_text(
+            "from .helper import helper\n\ndef build():\n    return helper()\n",
+            encoding="utf-8",
+        )
+
+    def test_cross_file_resolution_lands_on_edges(self, tmp_path: Path) -> None:
+        from tree_sitter_analyzer.ast_cache import ASTCache
+        from tree_sitter_analyzer.graph.edge_store import EdgeKind, symbol_node
+
+        self._write_project(tmp_path)
+        cache = ASTCache(str(tmp_path))
+        try:
+            cache.index_project(max_files=20, workers=0)
+            conn = cache.get_conn()
+
+            # 1) Cross-file CALLS resolution recorded on the edges row itself.
+            call_row = conn.execute(
+                "SELECT callee_resolution, callee_resolved_file, callee_full "
+                "FROM edges WHERE kind = 'calls' AND caller_name = 'build' "
+                "AND callee_name = 'helper'"
+            ).fetchone()
+            assert call_row is not None
+            assert call_row["callee_resolution"] in {"project", "local"}
+            assert call_row["callee_resolved_file"] == "pkg/helper.py"
+
+            # 2) Cross-file EXTENDS resolved into a real edge (was unresolved_refs).
+            extends_row = conn.execute(
+                "SELECT 1 FROM edges WHERE kind = ? "
+                "AND source_node_id = ? AND target_node_id = ?",
+                (
+                    EdgeKind.EXTENDS.value,
+                    symbol_node("pkg/python_plugin.py", "PythonPlugin", 3),
+                    symbol_node("pkg/base.py", "LanguagePlugin", 1),
+                ),
+            ).fetchone()
+            assert extends_row is not None
+
+            # 3) Public reader API reflects the resolution (no ast_call_edges).
+            callees = cache.query_callees("build", "pkg/service.py")
+            assert any(
+                c["callee_name"] == "helper"
+                and c["callee_resolved_file"] == "pkg/helper.py"
+                for c in callees
+            )
+            callers = cache.query_callers("helper", "pkg/helper.py")
+            assert any(
+                c["caller_name"] == "build" and c["caller_file"] == "pkg/service.py"
+                for c in callers
+            )
+
+            # 4) The legacy tables are gone after the v11 migration.
+            tables = {
+                r[0]
+                for r in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                ).fetchall()
+            }
+            assert "ast_call_edges" not in tables
+            assert "unresolved_refs" not in tables
+        finally:
+            cache.close()

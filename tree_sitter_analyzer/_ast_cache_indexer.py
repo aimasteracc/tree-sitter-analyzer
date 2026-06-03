@@ -119,18 +119,14 @@ def parse_and_write(
         if cache.fts5_available
         else []
     )
-    _write.write_call_edges(conn, rel_path, language, call_edges)
-    from . import _ast_cache_unresolved as _unresolved
-
-    _unresolved.write_unresolved_refs_for_file(
-        conn, rel_path, language, symbols, call_edges
-    )
     cache._write_imports_for_file(conn, rel_path, language, imports)  # noqa: SLF001
     cache._write_activation_for_file(conn, rel_path, inserted)  # noqa: SLF001
-    cache._resolve_call_edges_for_file(conn, rel_path)  # noqa: SLF001
+    # CALLS rows live in the unified ``edges`` table (B1.3 — no ast_call_edges).
+    # Write the edges first so synapse resolution can UPDATE them in place.
     _write.write_graph_edges_for_file(
         conn, rel_path, language, symbols, imports, call_edges
     )
+    cache._resolve_call_edges_for_file(conn, rel_path)  # noqa: SLF001
     conn.commit()
     return {
         "file": rel_path,
@@ -244,15 +240,11 @@ def insert_index_row(
         conn, rel_path, r["language"], r["symbol_rows"]
     )
     call_edges = json.loads(r.get("call_edges_json", "[]"))
-    _write.write_call_edges(conn, rel_path, r["language"], call_edges)
     imports_list = json.loads(r.get("imports_json", "[]"))
     cache._write_imports_for_file(conn, rel_path, r["language"], imports_list)  # noqa: SLF001
     symbols = json.loads(r.get("symbols_json", "{}"))
-    from . import _ast_cache_unresolved as _unresolved
-
-    _unresolved.write_unresolved_refs_for_file(
-        conn, rel_path, r["language"], symbols, call_edges
-    )
+    # CALLS rows live in the unified ``edges`` table (B1.3 — no ast_call_edges).
+    # Cross-file / synapse resolution UPDATEs these rows in the post-index pass.
     _write.write_graph_edges_for_file(
         conn, rel_path, r["language"], symbols, imports_list, call_edges
     )

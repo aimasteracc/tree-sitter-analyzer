@@ -1,3 +1,14 @@
+"""Cross-file second-pass resolution tests (B1.3 — unified ``edges`` table).
+
+The ``unresolved_refs`` work-queue table was dropped in B1.3. The second pass
+now recomputes its pending work set in-memory per Python file (the same
+``_parent_refs`` / ``_call_refs`` filtering) and writes results directly onto
+the ``edges`` table: a resolved EXTENDS reference becomes a real EXTENDS edge,
+and a resolved CALLS reference UPDATEs the resolution columns of its existing
+CALLS edge. These tests pin that Python resolution behaviour so it cannot
+regress.
+"""
+
 from __future__ import annotations
 
 import json
@@ -11,7 +22,6 @@ import pytest
 
 from tree_sitter_analyzer import _ast_cache_unresolved as unresolved
 from tree_sitter_analyzer import ast_cache as ast_cache_module
-from tree_sitter_analyzer._ast_cache_schema import apply_migration_v9
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.class_hierarchy import ClassHierarchy
 from tree_sitter_analyzer.graph.edge_store import EdgeKind, symbol_node
@@ -62,88 +72,15 @@ def _rows(
     return [dict(row) for row in cache.get_conn().execute(sql, params).fetchall()]
 
 
-def test_unresolved_refs_schema_created(tmp_path: Path) -> None:
-    cache = ASTCache(str(tmp_path))
-    try:
-        conn = cache.get_conn()
-        columns = {
-            row["name"]
-            for row in conn.execute("PRAGMA table_info(unresolved_refs)").fetchall()
-        }
-        assert {
-            "from_node_id",
-            "reference_name",
-            "reference_kind",
-            "file_path",
-            "line",
-            "candidates",
-            "resolved",
-        }.issubset(columns)
-        indexes = {
-            row["name"]
-            for row in conn.execute("PRAGMA index_list(unresolved_refs)").fetchall()
-        }
-        assert {"idx_unresolved_name", "idx_unresolved_resolved"}.issubset(indexes)
-        version = conn.execute(
-            "SELECT description FROM ast_schema_version WHERE version = 9"
-        ).fetchone()
-        assert version["description"] == "Unresolved reference backfill"
-    finally:
-        cache.close()
-
-
-def test_index_file_records_unresolved_refs_before_second_pass(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _write_project(tmp_path)
-    cache = ASTCache(str(tmp_path))
-    try:
-        assert (
-            cache.index_file(str(tmp_path / "pkg" / "base.py"))["status"] == "indexed"
+def _pending_extends(cache: ASTCache) -> set[tuple[str, str]]:
+    """EXTENDS edges still pointing at an unresolved ``class:`` synthetic node."""
+    return {
+        (row["file_path"], row["target_node_id"].removeprefix("class:"))
+        for row in cache.get_conn().execute(
+            "SELECT file_path, target_node_id FROM edges "
+            "WHERE kind = 'extends' AND target_node_id LIKE 'class:%'"
         )
-        assert (
-            cache.index_file(str(tmp_path / "pkg" / "alias_plugin.py"))["status"]
-            == "indexed"
-        )
-        row = (
-            cache.get_conn()
-            .execute(
-                """SELECT reference_name, reference_kind, resolved
-               FROM unresolved_refs
-               WHERE file_path = 'pkg/alias_plugin.py'"""
-            )
-            .fetchone()
-        )
-        assert dict(row) == {
-            "reference_name": "LP",
-            "reference_kind": EdgeKind.EXTENDS.value,
-            "resolved": 0,
-        }
-
-        calls: list[str] = []
-        real_parse = ast_cache_module.Parser.parse_file
-
-        def counting_parse(self: Any, *args: Any, **kwargs: Any) -> Any:
-            calls.append(str(args[0]) if args else "")
-            return real_parse(self, *args, **kwargs)
-
-        monkeypatch.setattr(ast_cache_module.Parser, "parse_file", counting_parse)
-
-        stats = cache.index_project(resolve_only=True)
-        assert stats["mode_used"] == "resolve_only"
-        assert calls == []
-        resolved = (
-            cache.get_conn()
-            .execute(
-                """SELECT resolved
-               FROM unresolved_refs
-               WHERE file_path = 'pkg/alias_plugin.py'"""
-            )
-            .fetchone()
-        )
-        assert resolved["resolved"] == 1
-    finally:
-        cache.close()
+    }
 
 
 def test_index_project_resolves_cross_file_extends_and_calls(tmp_path: Path) -> None:
@@ -152,27 +89,15 @@ def test_index_project_resolves_cross_file_extends_and_calls(tmp_path: Path) -> 
     try:
         stats = cache.index_project(max_files=20, workers=0)
         assert stats["indexed"] >= 7
-        assert stats["unresolved_refs_backfill"]["resolved"] >= 3
-
-        resolved_refs = _rows(
-            cache,
-            """SELECT reference_name, reference_kind, file_path, resolved
-               FROM unresolved_refs
-               WHERE resolved = 1
-               ORDER BY file_path, reference_name""",
-        )
-        assert {
-            (row["file_path"], row["reference_name"], row["reference_kind"])
-            for row in resolved_refs
-        }.issuperset(
-            {
-                ("pkg/alias_plugin.py", "LP", EdgeKind.EXTENDS.value),
-                ("pkg/python_plugin.py", "LanguagePlugin", EdgeKind.EXTENDS.value),
-                ("pkg/service.py", "helper", EdgeKind.CALLS.value),
-            }
-        )
+        # The second pass resolves the cross-file EXTENDS references (alias_plugin
+        # + python_plugin). Cross-file CALLS resolution is handled earlier by the
+        # cross-file backfill, so it no longer flows through this counter (the
+        # resolved edge data is asserted directly below).
+        assert stats["unresolved_refs_backfill"]["resolved"] >= 2
 
         conn = cache.get_conn()
+        # The cross-file EXTENDS references resolved into real edges pointing at
+        # the resolved base class (provenance unresolved_refs).
         alias_edge = conn.execute(
             """SELECT target_node_id, metadata
                FROM edges
@@ -190,6 +115,26 @@ def test_index_project_resolves_cross_file_extends_and_calls(tmp_path: Path) -> 
         metadata = json.loads(alias_edge["metadata"])
         assert metadata["parent"] == "LanguagePlugin"
         assert metadata["parent_reference"] == "LP"
+
+        python_plugin_edge = conn.execute(
+            """SELECT 1 FROM edges
+               WHERE source_node_id = ? AND target_node_id = ?
+                 AND kind = ? AND provenance = 'unresolved_refs'""",
+            (
+                symbol_node("pkg/python_plugin.py", "PythonPlugin", 3),
+                symbol_node("pkg/base.py", "LanguagePlugin", 1),
+                EdgeKind.EXTENDS.value,
+            ),
+        ).fetchone()
+        assert python_plugin_edge is not None
+
+        # The cross-file CALLS reference resolved in place on the edge's columns.
+        call_row = conn.execute(
+            "SELECT callee_resolution, callee_resolved_file FROM edges "
+            "WHERE kind = 'calls' AND caller_name = 'build' AND callee_name = 'helper'"
+        ).fetchone()
+        assert call_row is not None
+        assert call_row["callee_resolved_file"] == "pkg/helper.py"
 
         hierarchy = ClassHierarchy(cache)
         subclass_names = {
@@ -213,6 +158,51 @@ def test_index_project_resolves_cross_file_extends_and_calls(tmp_path: Path) -> 
         cache.close()
 
 
+def test_resolve_only_does_not_reparse(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A warm cache resolves pending cross-file refs without re-parsing."""
+    _write_project(tmp_path)
+    cache = ASTCache(str(tmp_path))
+    try:
+        assert (
+            cache.index_file(str(tmp_path / "pkg" / "base.py"))["status"] == "indexed"
+        )
+        assert (
+            cache.index_file(str(tmp_path / "pkg" / "alias_plugin.py"))["status"]
+            == "indexed"
+        )
+        # AliasPlugin's parent (LP) is cross-file and not yet resolved.
+        assert ("pkg/alias_plugin.py", "LP") in _pending_extends(cache)
+
+        calls: list[str] = []
+        real_parse = ast_cache_module.Parser.parse_file
+
+        def counting_parse(self: Any, *args: Any, **kwargs: Any) -> Any:
+            calls.append(str(args[0]) if args else "")
+            return real_parse(self, *args, **kwargs)
+
+        monkeypatch.setattr(ast_cache_module.Parser, "parse_file", counting_parse)
+
+        stats = cache.index_project(resolve_only=True)
+        assert stats["mode_used"] == "resolve_only"
+        assert calls == []
+
+        # After the resolve-only pass a real resolved EXTENDS edge exists.
+        resolved = (
+            cache.get_conn()
+            .execute(
+                "SELECT 1 FROM edges WHERE kind = 'extends' "
+                "AND provenance = 'unresolved_refs' AND source_node_id = ?",
+                (symbol_node("pkg/alias_plugin.py", "AliasPlugin", 3),),
+            )
+            .fetchone()
+        )
+        assert resolved is not None
+    finally:
+        cache.close()
+
+
 def test_unknown_parent_stays_unresolved(tmp_path: Path) -> None:
     (tmp_path / "missing.py").write_text(
         "class Orphan(MissingBase):\n    pass\n",
@@ -221,17 +211,19 @@ def test_unknown_parent_stays_unresolved(tmp_path: Path) -> None:
     cache = ASTCache(str(tmp_path))
     try:
         cache.index_project(max_files=5, workers=0)
-        row = (
+        # No project class named MissingBase → the EXTENDS edge stays pointing
+        # at the unresolved ``class:`` synthetic target.
+        assert ("missing.py", "MissingBase") in _pending_extends(cache)
+        resolved = (
             cache.get_conn()
             .execute(
-                """SELECT resolved, candidates
-               FROM unresolved_refs
-               WHERE reference_name = 'MissingBase'"""
+                "SELECT 1 FROM edges WHERE kind = 'extends' "
+                "AND provenance = 'unresolved_refs' "
+                "AND target_node_id LIKE '%MissingBase%'"
             )
             .fetchone()
         )
-        assert row["resolved"] == 0
-        assert json.loads(row["candidates"]) == []
+        assert resolved is None
     finally:
         cache.close()
 
@@ -249,6 +241,8 @@ def test_autoindex_resolves_pending_refs_when_cache_is_already_warm(
             cache.index_file(str(tmp_path / "pkg" / "python_plugin.py"))["status"]
             == "indexed"
         )
+        # python_plugin's cross-file parent is unresolved before warming.
+        assert ("pkg/python_plugin.py", "LanguagePlugin") in _pending_extends(cache)
     finally:
         cache.close()
 
@@ -256,16 +250,16 @@ def test_autoindex_resolves_pending_refs_when_cache_is_already_warm(
     warmed = auto_index_guard.ensure_indexed(str(tmp_path), max_files=20)
     try:
         assert warmed is not None
-        row = (
+        resolved = (
             warmed.get_conn()
             .execute(
-                """SELECT resolved
-               FROM unresolved_refs
-               WHERE file_path = 'pkg/python_plugin.py'"""
+                "SELECT 1 FROM edges WHERE kind = 'extends' "
+                "AND provenance = 'unresolved_refs' AND source_node_id = ?",
+                (symbol_node("pkg/python_plugin.py", "PythonPlugin", 3),),
             )
             .fetchone()
         )
-        assert row["resolved"] == 1
+        assert resolved is not None
     finally:
         if warmed is not None:
             warmed.close()
@@ -307,19 +301,11 @@ def test_class_hierarchy_cli_reads_resolved_cross_file_edge(tmp_path: Path) -> N
     )
 
 
-def test_unresolved_refs_sqlite_error_paths_are_nonfatal(
-    tmp_path: Path,
-) -> None:
+def test_resolve_unresolved_refs_sqlite_error_paths_are_nonfatal() -> None:
+    """Missing schema / broken connections must degrade, not crash."""
     no_schema = sqlite3.connect(":memory:")
     no_schema.row_factory = sqlite3.Row
     try:
-        unresolved.write_unresolved_refs_for_file(
-            no_schema,
-            "broken.py",
-            "python",
-            {"symbols": []},
-            [],
-        )
         assert unresolved.resolve_unresolved_refs(no_schema) is None
         assert unresolved.pending_unresolved_count(no_schema) == 0
         assert unresolved._call_rows(
@@ -339,45 +325,20 @@ def test_unresolved_refs_sqlite_error_paths_are_nonfatal(
     finally:
         no_schema.close()
 
-    bad_insert = sqlite3.connect(":memory:")
-    bad_insert.row_factory = sqlite3.Row
-    try:
-        bad_insert.execute("CREATE TABLE unresolved_refs (file_path TEXT)")
-        unresolved.write_unresolved_refs_for_file(
-            bad_insert,
-            "child.py",
-            "python",
-            {
-                "symbols": [
-                    {
-                        "kind": "class",
-                        "name": "Child",
-                        "line": 1,
-                        "parents": ["Base"],
-                    }
-                ]
-            },
-            [],
-        )
-    finally:
-        bad_insert.close()
 
-
-def test_unresolved_refs_row_and_commit_error_paths() -> None:
+def test_resolve_unresolved_refs_row_and_commit_error_paths() -> None:
+    """A resolvable ref whose UPDATE/upsert fails counts as an error, not a crash."""
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
     try:
+        # ast_index drives the per-file loop; the EXTENDS upsert then fails
+        # because the ``edges`` table is intentionally absent.
         conn.executescript(
             """
-            CREATE TABLE unresolved_refs (
-                id INTEGER PRIMARY KEY,
-                from_node_id TEXT NOT NULL,
-                reference_name TEXT NOT NULL,
-                reference_kind TEXT NOT NULL,
+            CREATE TABLE ast_index (
                 file_path TEXT NOT NULL,
-                line INTEGER,
-                candidates TEXT,
-                resolved INTEGER DEFAULT 0
+                language TEXT NOT NULL,
+                symbols_json TEXT NOT NULL
             );
             CREATE TABLE ast_symbol_rows (
                 id INTEGER PRIMARY KEY,
@@ -387,21 +348,30 @@ def test_unresolved_refs_row_and_commit_error_paths() -> None:
                 language TEXT NOT NULL,
                 line INTEGER NOT NULL
             );
-            CREATE TABLE ast_index (
-                file_path TEXT NOT NULL,
-                language TEXT NOT NULL
-            );
             """
         )
         conn.execute(
-            """INSERT INTO unresolved_refs
-               (id, from_node_id, reference_name, reference_kind, file_path, line)
-               VALUES (1, 'caller.py:caller:1', 'target', 'calls', 'caller.py', 2)"""
+            "INSERT INTO ast_index (file_path, language, symbols_json) VALUES (?, ?, ?)",
+            (
+                "child.py",
+                "python",
+                json.dumps(
+                    {
+                        "symbols": [
+                            {
+                                "kind": "class",
+                                "name": "Child",
+                                "line": 1,
+                                "parents": ["Base"],
+                            }
+                        ]
+                    }
+                ),
+            ),
         )
         conn.execute(
-            """INSERT INTO ast_symbol_rows
-               (id, name, kind, file_path, language, line)
-               VALUES (10, 'target', 'function', 'target.py', 'python', 1)"""
+            """INSERT INTO ast_symbol_rows (id, name, kind, file_path, language, line)
+               VALUES (10, 'Base', 'class', 'base.py', 'python', 1)"""
         )
         stats = unresolved.resolve_unresolved_refs(conn)
         assert stats == {"total": 1, "resolved": 0, "unchanged": 0, "errors": 1}
@@ -427,12 +397,12 @@ def test_unresolved_refs_row_and_commit_error_paths() -> None:
     }
 
 
-def test_non_python_skips_unresolved_refs_rows() -> None:
-    """A2: non-Python languages must not emit unresolved_refs rows.
+def test_non_python_skips_second_pass_refs() -> None:
+    """A2/B1.3: non-Python languages emit no second-pass refs.
 
-    They have no structured import parsing, so second-pass resolution is pure
+    They have no structured import parsing, so cross-file resolution is pure
     waste (and the dominant stall/OOM cost on large Java repos). Python keeps
-    writing rows.
+    producing refs.
     """
     assert unresolved._refs_supported("python") is True
     for lang in ("java", "go", "cobol", "csharp", "javascript"):
@@ -441,55 +411,24 @@ def test_non_python_skips_unresolved_refs_rows() -> None:
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
     try:
-        conn.executescript(
-            """
-            CREATE TABLE unresolved_refs (
-                id INTEGER PRIMARY KEY,
-                from_node_id TEXT NOT NULL,
-                reference_name TEXT NOT NULL,
-                reference_kind TEXT NOT NULL,
-                file_path TEXT NOT NULL,
-                line INTEGER,
-                candidates TEXT,
-                resolved INTEGER DEFAULT 0
-            );
-            CREATE TABLE ast_call_edges (
-                id INTEGER PRIMARY KEY,
-                caller_name TEXT, caller_file TEXT, caller_line INTEGER,
-                callee_name TEXT, callee_full TEXT, callee_line INTEGER,
-                file_path TEXT, language TEXT,
-                callee_resolution TEXT, callee_resolved_file TEXT
-            );
-            """
-        )
         java_class = {
             "symbols": [{"kind": "class", "name": "Foo", "line": 1, "parents": ["Bar"]}]
         }
-        java_calls = [
-            {
-                "caller_name": "Foo",
-                "caller_line": 5,
-                "callee_name": "doThing",
-                "callee_line": 6,
-            }
-        ]
-        unresolved.write_unresolved_refs_for_file(
-            conn, "Foo.java", "java", java_class, java_calls
+        assert (
+            unresolved._pending_refs_for_file(conn, "Foo.java", "java", java_class)
+            == []
         )
-        rows = conn.execute("SELECT COUNT(*) AS c FROM unresolved_refs").fetchone()
-        assert rows["c"] == 0
-
-        # Python on the same shape DOES write rows.
-        unresolved.write_unresolved_refs_for_file(
-            conn, "foo.py", "python", java_class, java_calls
+        # Python on the same shape DOES produce a pending EXTENDS ref.
+        py_refs = unresolved._pending_refs_for_file(
+            conn, "foo.py", "python", java_class
         )
-        rows = conn.execute("SELECT COUNT(*) AS c FROM unresolved_refs").fetchone()
-        assert rows["c"] > 0
+        assert any(r["reference_kind"] == EdgeKind.EXTENDS.value for r in py_refs)
     finally:
         conn.close()
 
 
-def test_unresolved_refs_helper_branches(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_pending_refs_and_helper_branches() -> None:
+    # Local / already-resolved / obvious-external refs are filtered out.
     assert (
         unresolved._parent_refs(
             "child.py",
@@ -545,6 +484,8 @@ def test_unresolved_refs_helper_branches(monkeypatch: pytest.MonkeyPatch) -> Non
         )
         is None
     )
+    # _update_call_edge_resolution tolerates a file: node id and a missing edges
+    # table without raising.
     unresolved._update_call_edge_resolution(
         sqlite3.connect(":memory:"),
         {
@@ -598,21 +539,9 @@ def test_unresolved_refs_helper_branches(monkeypatch: pytest.MonkeyPatch) -> Non
     assert unresolved._row_to_dict(("value",), ("name",)) == {"name": "value"}
 
 
-def test_unresolved_refs_migration_and_orchestration_error_paths(
+def test_orchestration_error_paths(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    broken_schema = sqlite3.connect(":memory:")
-    try:
-        broken_schema.execute("CREATE TABLE unresolved_refs (id INTEGER)")
-        recorded: list[int] = []
-        apply_migration_v9(
-            broken_schema,
-            lambda _conn, version, _description: recorded.append(version),
-        )
-        assert recorded == []
-    finally:
-        broken_schema.close()
-
     cache = ASTCache(str(tmp_path))
     try:
         monkeypatch.setattr(cache, "backfill_cross_file_edges", lambda: {})
