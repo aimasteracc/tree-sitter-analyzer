@@ -305,6 +305,75 @@ class TestSymbolResolverParity:
 
 
 # ---------------------------------------------------------------------------
+# ast_cache.py — ASTCache.get_call_edges  (B1.2b: the 6th content reader)
+# ---------------------------------------------------------------------------
+
+
+class TestGetCallEdgesParity:
+    """``ASTCache.get_call_edges`` must return byte-for-byte identical rows
+    whether sourced from ``ast_call_edges`` or from the unified ``edges`` table.
+    """
+
+    def _run(self, tmp_path: Path, conn: sqlite3.Connection):
+        from tree_sitter_analyzer.ast_cache import ASTCache
+
+        cache = _mock_cache(tmp_path, conn)
+        # Invoke the real, unbound method against the mock's connection so the
+        # parity check exercises the production SQL, not the MagicMock stub.
+        rows = ASTCache.get_call_edges(cache)
+        # Sort for a deterministic comparison independent of row insertion order
+        # / table physical layout (ast_call_edges has an id PK; edges does too,
+        # but the migrated SELECT carries no ORDER BY — matching legacy).
+        return sorted(
+            rows,
+            key=lambda r: (
+                r["caller_name"],
+                r["caller_file"],
+                r["caller_line"],
+                r["callee_name"],
+                r["callee_line"],
+            ),
+        )
+
+    def test_edges_only_matches_legacy(self, tmp_path: Path):
+        legacy = self._run(tmp_path, _build_db(tmp_path / "legacy", _SPECS))
+        migrated = self._run(
+            tmp_path, _build_db(tmp_path / "mig", _SPECS, drop_ast_call_edges=True)
+        )
+        assert migrated == legacy
+
+    def test_returns_all_columns_from_edges_alone(self, tmp_path: Path):
+        """The post-migration reader must surface every legacy column from the
+        ``edges`` table by itself (real columns + json_extract scalars)."""
+        rows = self._run(
+            tmp_path, _build_db(tmp_path / "mig", _SPECS, drop_ast_call_edges=True)
+        )
+        assert len(rows) == len(_SPECS)
+        expected_keys = {
+            "caller_name",
+            "caller_file",
+            "caller_line",
+            "callee_name",
+            "callee_full",
+            "callee_line",
+            "file_path",
+            "language",
+        }
+        for row in rows:
+            assert set(row.keys()) == expected_keys
+        # Spot-check the resolved/qualified-callee row carries its scalars.
+        a_to_b = next(
+            r for r in rows if r["caller_name"] == "main" and r["callee_name"] == "foo"
+        )
+        assert a_to_b["caller_file"] == "a.py"
+        assert a_to_b["caller_line"] == 10
+        assert a_to_b["callee_full"] == "mod.foo"
+        assert a_to_b["callee_line"] == 12
+        assert a_to_b["file_path"] == "a.py"
+        assert a_to_b["language"] == "python"
+
+
+# ---------------------------------------------------------------------------
 # constraints/evaluator.py — evaluate
 # ---------------------------------------------------------------------------
 

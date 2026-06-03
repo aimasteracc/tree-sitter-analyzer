@@ -546,12 +546,30 @@ class ASTCache:
         )
 
     def get_call_edges(self) -> list[dict[str, Any]]:
-        """Return all stored call edges from the cache."""
+        """Return all stored call edges from the cache.
+
+        CALLS rows now live in the unified ``edges`` table (B1.2b). Real
+        columns carry ``caller_name``/``callee_name``/``file_path``; the
+        remaining legacy scalars (``caller_line``, ``callee_full``,
+        ``language``) come from the ``metadata`` JSON blob via ``json_extract``.
+        ``file_path`` is the caller's file (== legacy ``caller_file``) and the
+        ``line`` column is the call-site line (== legacy ``callee_line``).
+        Aliases reproduce the exact dict keys the legacy SELECT yielded, so the
+        three consumers (cross_file_resolver / call_graph / dependency_matrix)
+        see identical rows.
+        """
         try:
             _conn = self._get_conn()
             _cur = _conn.execute(
-                "SELECT caller_name, caller_file, caller_line, "
-                "callee_name, callee_full, callee_line, file_path, language FROM ast_call_edges"
+                "SELECT caller_name, "
+                "file_path AS caller_file, "
+                "json_extract(metadata, '$.caller_line') AS caller_line, "
+                "callee_name, "
+                "json_extract(metadata, '$.callee_full') AS callee_full, "
+                "line AS callee_line, "
+                "file_path, "
+                "json_extract(metadata, '$.language') AS language "
+                "FROM edges WHERE kind = 'calls'"
             )
             rows = _cur.fetchall()
         except sqlite3.OperationalError:

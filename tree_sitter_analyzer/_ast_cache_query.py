@@ -49,6 +49,12 @@ def invalidate(
         conn.execute("DELETE FROM ast_symbols_fts WHERE file_path = ?", (rel,))
         conn.execute("DELETE FROM ast_symbol_rows WHERE file_path = ?", (rel,))
     conn.execute("DELETE FROM ast_call_edges WHERE file_path = ?", (rel,))
+    # CALLS rows now live in the unified ``edges`` table (B1.x). Clear them too
+    # so ``get_call_edges`` — which reads ``edges`` — reflects the invalidation.
+    try:
+        conn.execute("DELETE FROM edges WHERE kind = 'calls' AND file_path = ?", (rel,))
+    except sqlite3.OperationalError:
+        pass
     cursor = conn.execute("DELETE FROM ast_index WHERE file_path = ?", (rel,))
     conn.commit()
     return cursor.rowcount > 0
