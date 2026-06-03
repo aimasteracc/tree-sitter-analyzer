@@ -311,6 +311,15 @@ cd ~/.claude/skills/gstack && ./setup --team
 Skills like /qa, /ship, /review, /investigate, and /browse become available after install.
 Use /browse for all web browsing. Use ~/.claude/skills/gstack/... for gstack file paths.
 
+## RFC Process — substantial changes start as an RFC (not a loose docs/*.md)
+
+**🔒 LOCKED BY USER (2026-06-03):** 「我們出一個 docs 太隨便了，沒有 mycelium 體系化」。Substantial changes go through the RFC process in [`rfcs/`](rfcs/), modeled on the sibling mycelium project. Do NOT drop a one-off `docs/designs/*.md` for a feature design — that is too ad-hoc.
+
+- **What needs an RFC**: public API / MCP facade-or-tool additions & changes, ast_cache schema changes, cross-surface (CLI↔MCP) parity changes, performance/SLA changes, and any change to a locked design decision. See [`rfcs/README.md`](rfcs/README.md) for the full table. Bug fixes and internal refactors do not.
+- **How**: copy `rfcs/0000-template.md` → `rfcs/NNNN-title.md`, PR to develop. The RFC carries a **Status** line (`draft`→`accepted`→`implemented`), checkbox **Acceptance criteria** that flip as the implementation lands, a **Three-Surface (CLI↔MCP) parity** section, and a **RED-first test plan**.
+- **Spec-first pays off**: RFC-0001's Codex review caught an architecture-level dead-end (session inaccessible from `Server.run()`) *before any code* — exactly what a loose docs file would have missed.
+- After merge, RFCs are immutable except status/clarification; to change an accepted RFC, write a superseding one.
+
 ## PR Review Rules — NEVER ignore Codex review
 
 **🔒 LOCKED BY USER (2026-06-03):** 「每次 PR 之後不可以無視 codex 的 review」。After creating OR updating any PR, you MUST fetch and triage the Codex (`chatgpt-codex-connector[bot]`) review. Ignoring it — even when CI is green or the PR already merged — is a violation of this rule.
