@@ -150,8 +150,135 @@ def walk_tree(node: Any, source: str, language: str) -> tuple[list[dict], list[d
     """Walk an AST and return function definitions plus call sites."""
     definitions: list[dict[str, Any]] = []
     calls: list[dict[str, Any]] = []
-    _extract_recursive(node, source, language, definitions, calls, None)
+    fixture_types = _collect_fixture_types(node, source, language)
+    _extract_recursive(
+        node, source, language, definitions, calls, None, None, fixture_types
+    )
     return definitions, calls
+
+
+def _collect_local_var_types(
+    func_node: Any, source: str, language: str
+) -> dict[str, tuple[str, int]]:
+    """RFC-0002: infer local variable types from ``var = ClassName(...)``.
+
+    Returns ``{var: (class, assign_line)}``. The line makes typing
+    flow-sensitive (P2, Codex): a call only takes the type if it appears AT or
+    AFTER the binding line — ``pg.execute(); pg = ProjectGraph()`` must NOT type
+    the pre-binding call. Static, Python only.
+    """
+    if language != "python":
+        return {}
+    types: dict[str, tuple[str, int]] = {}
+
+    def _walk(n: Any) -> None:
+        if getattr(n, "type", None) == "assignment":
+            left = n.child_by_field_name("left")
+            right = n.child_by_field_name("right")
+            if (
+                left is not None
+                and right is not None
+                and left.type == "identifier"
+                and right.type == "call"
+            ):
+                fn = right.child_by_field_name("function")
+                if fn is not None and fn.type == "identifier":
+                    cls = _node_text(fn, source)
+                    if cls and cls[0].isupper():
+                        types[_node_text(left, source)] = (cls, n.start_point[0] + 1)
+        for c in n.children:
+            _walk(c)
+
+    _walk(func_node)
+    return types
+
+
+def _func_param_names(func_node: Any, source: str) -> list[str]:
+    """Parameter identifier names of a Python function def."""
+    params = func_node.child_by_field_name("parameters")
+    if params is None:
+        return []
+    names: list[str] = []
+    for c in params.children:
+        if c.type == "identifier":
+            names.append(_node_text(c, source))
+        elif c.type in (
+            "typed_parameter",
+            "default_parameter",
+            "typed_default_parameter",
+        ):
+            for sub in c.children:
+                if sub.type == "identifier":
+                    names.append(_node_text(sub, source))
+                    break
+    return names
+
+
+def _infer_return_class(func_node: Any, source: str) -> str | None:
+    """Infer the class a Python function returns: ``return ClassName(...)`` or
+    ``v = ClassName(...); return v``. Used for pytest-fixture return types."""
+    local = _collect_local_var_types(func_node, source, "python")
+    result: str | None = None
+
+    def _walk(n: Any) -> None:
+        nonlocal result
+        if getattr(n, "type", None) == "return_statement":
+            for c in n.children:
+                if c.type == "call":
+                    fn = c.child_by_field_name("function")
+                    if fn is not None and fn.type == "identifier":
+                        cls = _node_text(fn, source)
+                        if cls and cls[0].isupper():
+                            result = cls
+                elif c.type == "identifier":
+                    v = _node_text(c, source)
+                    if v in local:
+                        result = local[v][0]
+        for ch in n.children:
+            _walk(ch)
+
+    _walk(func_node)
+    return result
+
+
+def _collect_fixture_types(
+    module_node: Any, source: str, language: str
+) -> dict[str, str]:
+    """RFC-0002: map function name → returned class, for pytest-fixture typing.
+
+    A pytest test parameter is named after a fixture function; if that fixture
+    returns ``ClassName(...)``, the test's parameter has that type. This is the
+    dominant test pattern (``def tool(): return SearchContentTool()`` +
+    ``def test(self, tool): tool.execute()`` → tool: SearchContentTool). Static,
+    no runtime. Python only.
+    """
+    if language != "python":
+        return {}
+    types: dict[str, str] = {}
+
+    def _walk(n: Any) -> None:
+        # P2 (Codex): only treat ACTUAL pytest fixtures as fixtures — a
+        # decorated_definition whose decorator mentions 'fixture'. A plain
+        # ``def client(): return HttpClient()`` is NOT a fixture, so a normal
+        # parameter named ``client`` must not be typed.
+        if getattr(n, "type", None) == "decorated_definition":
+            deco_text = ""
+            inner = None
+            for c in n.children:
+                if c.type == "decorator":
+                    deco_text += _node_text(c, source)
+                elif c.type == "function_definition":
+                    inner = c
+            if inner is not None and "fixture" in deco_text:
+                fname = get_func_name(inner, "python")
+                rcls = _infer_return_class(inner, source)
+                if fname and rcls:
+                    types[fname] = rcls
+        for c in n.children:
+            _walk(c)
+
+    _walk(module_node)
+    return types
 
 
 def _extract_recursive(
@@ -161,6 +288,8 @@ def _extract_recursive(
     definitions: list[dict[str, Any]],
     calls: list[dict[str, Any]],
     enclosing_class: str | None,
+    local_types: dict[str, tuple[str, int]] | None,
+    fixture_types: dict[str, str] | None = None,
 ) -> None:
     if not hasattr(node, "type"):
         return
@@ -185,19 +314,50 @@ def _extract_recursive(
                     "class": parent_class,
                 }
             )
+            func_types = _collect_local_var_types(node, source, language)
+            # pytest-fixture typing: a parameter named after a fixture function
+            # that returns a class gets that class's type. line 0 = valid for the
+            # whole function body (a parameter is bound on entry).
+            if language == "python" and fixture_types:
+                for pname in _func_param_names(node, source):
+                    if pname in fixture_types:
+                        func_types[pname] = (fixture_types[pname], 0)
             for child in node.children:
                 _extract_recursive(
-                    child, source, language, definitions, calls, parent_class
+                    child,
+                    source,
+                    language,
+                    definitions,
+                    calls,
+                    parent_class,
+                    func_types,
+                    fixture_types,
                 )
             return
 
     if node_type in _CALL_NODE_TYPES.get(language, set()):
         call_info = extract_call(node, source, language)
         if call_info:
+            recv = call_info.get("receiver")
+            if local_types and recv in local_types:
+                cls, bind_line = local_types[recv]
+                # flow-sensitive (P2): only type calls at/after the binding line
+                if (node.start_point[0] + 1) >= bind_line:
+                    call_info["receiver_type"] = cls
+                    call_info["full_name"] = f"{cls}.{call_info['name']}"
             calls.append(call_info)
 
     for child in node.children:
-        _extract_recursive(child, source, language, definitions, calls, enclosing_class)
+        _extract_recursive(
+            child,
+            source,
+            language,
+            definitions,
+            calls,
+            enclosing_class,
+            local_types,
+            fixture_types,
+        )
 
 
 def get_func_name(node: Any, language: str) -> str | None:

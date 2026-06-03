@@ -228,6 +228,40 @@ def _try_single_global(
     return None
 
 
+def _try_class_method(
+    base: str, qualifier: str, ctx: ResolverContext
+) -> ResolvedCallee | None:
+    """RFC-0002: receiver-type-aware method resolution.
+
+    When the qualifier is a KNOWN CLASS NAME (the extractor inferred the
+    receiver's type from a ``var = ClassName(...)`` assignment and rewrote the
+    callee as ``ClassName.method``), resolve ``base`` to that class's method.
+    This is what disambiguates NON-unique methods (e.g. ``execute`` defined on
+    many classes) that ``_try_unique_method`` deliberately leaves unknown — the
+    receiver type pins down which class.
+    """
+    if not qualifier:
+        return None
+    # P2 (Codex): a class name may be defined in multiple modules (Client,
+    # Config, Handler...). Picking the first match could resolve to the wrong
+    # module. Only resolve when the (class, method) is unique project-wide;
+    # otherwise stay unknown rather than guess the wrong file.
+    found: tuple[str, int] | None = None
+    for file_path, classes in ctx.file_class_methods.items():
+        methods = classes.get(qualifier)
+        if methods is None:
+            continue
+        sym_id = methods.get(base)
+        if sym_id is None:
+            continue
+        if found is not None and (file_path, sym_id) != found:
+            return None  # duplicate class name across modules — ambiguous
+        found = (file_path, sym_id)
+    if found is not None:
+        return ResolvedCallee(found[1], "project", found[0])
+    return None
+
+
 def _try_unique_method(
     base: str, qualifier: str, ctx: ResolverContext
 ) -> ResolvedCallee | None:
@@ -320,6 +354,7 @@ def _resolve_callee_python(
         lambda: _try_stdlib(base, qualifier, caller_file, ctx),
         lambda: _try_builtin(base, qualifier, ctx),
         lambda: _try_single_global(base, qualifier, ctx),
+        lambda: _try_class_method(base, qualifier, ctx),
         lambda: _try_unique_method(base, qualifier, ctx),
     ):
         out = rule()
