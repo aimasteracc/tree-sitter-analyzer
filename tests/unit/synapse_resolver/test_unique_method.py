@@ -78,3 +78,34 @@ def test_bare_name_without_self_full_unaffected():
     # no callee_full → bare name, stays unknown (not a self call we can see)
     r = resolve_callee("_scan_disk_files", "caller.py", ctx)
     assert r.resolution == "unknown"
+
+
+# -- Codex P2 regressions (PR #274) -------------------------------------------
+def test_unique_method_via_production_callee_full():
+    """P2#1: production rows are callee_name='all_edges' + callee_full='pg.all_edges'.
+    Must split callee_full to recover the `pg` receiver so unique-method fires."""
+    ctx = _ctx(
+        file_class_methods={"project_graph.py": {"ProjectGraph": {"all_edges": 42}}}
+    )
+    r = resolve_callee("all_edges", "caller.py", ctx, callee_full="pg.all_edges")
+    assert r.resolution == "project"
+    assert r.callee_symbol_id == 42
+
+
+def test_self_method_no_cross_class_match():
+    """P2#2: A.f calls self.helper(); only B defines helper → must NOT resolve to B."""
+    ctx = _ctx(file_class_methods={"caller.py": {"A": {"f": 1}, "B": {"helper": 2}}})
+    r = resolve_callee(
+        "helper", "caller.py", ctx, callee_full="self.helper", caller_name="f"
+    )
+    assert r.resolution == "unknown"
+
+
+def test_self_method_resolves_within_enclosing_class():
+    """P2#2: A.f calls self.g(); A defines g → resolve to A.g (not B's anything)."""
+    ctx = _ctx(
+        file_class_methods={"caller.py": {"A": {"f": 1, "g": 3}, "B": {"helper": 2}}}
+    )
+    r = resolve_callee("g", "caller.py", ctx, callee_full="self.g", caller_name="f")
+    assert r.resolution == "local"
+    assert r.callee_symbol_id == 3

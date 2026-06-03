@@ -74,14 +74,30 @@ def _item_file(item: object) -> str:
 
 
 def _try_self_method(
-    base: str, qualifier: str, caller_file: str, ctx: ResolverContext
+    base: str,
+    qualifier: str,
+    caller_file: str,
+    caller_name: str,
+    ctx: ResolverContext,
 ) -> ResolvedCallee | None:
     if qualifier not in ("self", "cls"):
         return None
-    for _cls, methods in ctx.file_class_methods.get(caller_file, {}).items():
-        sym_id = methods.get(base)
-        if sym_id is not None:
-            return ResolvedCallee(sym_id, "local", caller_file)
+    classes = ctx.file_class_methods.get(caller_file, {})
+    # P2 (Codex review): restrict self.X to the CALLER's enclosing class, not
+    # every class in the file. The enclosing class is the one that defines the
+    # caller method (caller_name). Without this, `A.f` calling `self.helper()`
+    # would wrongly resolve to `B.helper` when only B defines it.
+    enclosing = [cls for cls, methods in classes.items() if caller_name in methods]
+    if len(enclosing) == 1:
+        sym_id = classes[enclosing[0]].get(base)
+        return (
+            ResolvedCallee(sym_id, "local", caller_file) if sym_id is not None else None
+        )
+    # Enclosing class unknown/ambiguous → only resolve when base is defined in
+    # exactly ONE class (no cross-class guess).
+    defs = [methods[base] for methods in classes.values() if base in methods]
+    if len(defs) == 1:
+        return ResolvedCallee(defs[0], "local", caller_file)
     return None
 
 
@@ -246,6 +262,7 @@ def resolve_callee(
     caller_file: str,
     ctx: ResolverContext,
     callee_full: str | None = None,
+    caller_name: str = "",
 ) -> ResolvedCallee:
     """Resolve a single callee, dispatching by the caller file's language.
 
@@ -266,7 +283,9 @@ def resolve_callee(
         )
         return ResolvedCallee(sym_id, resolution, resolved_file)
 
-    return _resolve_callee_python(callee_name, caller_file, ctx, callee_full)
+    return _resolve_callee_python(
+        callee_name, caller_file, ctx, callee_full, caller_name
+    )
 
 
 def _resolve_callee_python(
@@ -274,6 +293,7 @@ def _resolve_callee_python(
     caller_file: str,
     ctx: ResolverContext,
     callee_full: str | None = None,
+    caller_name: str = "",
 ) -> ResolvedCallee:
     """Resolve a single callee per the priority cascade above.
 
@@ -284,15 +304,17 @@ def _resolve_callee_python(
     ``callee_full`` carries a ``self``/``cls`` receiver, split on it so those
     method calls resolve.
     """
-    if callee_full and (
-        callee_full.startswith("self.") or callee_full.startswith("cls.")
-    ):
+    # P2 (Codex review): split on callee_full whenever it carries a receiver,
+    # not just self/cls — otherwise `pg.all_edges()` (callee_name='all_edges',
+    # callee_full='pg.all_edges') loses the `pg` qualifier and _try_unique_method
+    # never fires on the production rows it was meant to resolve.
+    if callee_full and "." in callee_full:
         qualifier, base = _split_qualifier(callee_full)
     else:
         qualifier, base = _split_qualifier(callee_name)
 
     for rule in (
-        lambda: _try_self_method(base, qualifier, caller_file, ctx),
+        lambda: _try_self_method(base, qualifier, caller_file, caller_name, ctx),
         lambda: _try_local(base, caller_file, ctx) if not qualifier else None,
         lambda: _try_import(base, qualifier, caller_file, ctx),
         lambda: _try_stdlib(base, qualifier, caller_file, ctx),
