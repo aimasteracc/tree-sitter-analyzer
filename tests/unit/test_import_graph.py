@@ -7,6 +7,8 @@ untested (~14% coverage). These tests exercise that logic directly.
 
 from __future__ import annotations
 
+import os
+
 from tree_sitter_analyzer.import_graph import (
     ImportEdge,
     ImportGraph,
@@ -15,7 +17,16 @@ from tree_sitter_analyzer.import_graph import (
     _resolve_python_import,
 )
 
-ROOT = "/proj"
+ROOT = os.path.normpath("/proj")
+
+
+def _np(path: str) -> str:
+    """Normalize a POSIX-style test path to the host OS separator.
+
+    import_graph resolves via os.path.normpath, so resolved paths use the host
+    separator (backslash on Windows). Tests must compare against the same form.
+    """
+    return os.path.normpath(path)
 
 
 # ---------------------------------------------------------------------------
@@ -25,51 +36,50 @@ ROOT = "/proj"
 
 class TestResolvePythonImport:
     def test_bare_dotted_import_resolves_to_module_file(self) -> None:
-        assert (
-            _resolve_python_import("import pkg.mod", "app.py", {"pkg/mod.py"}, ROOT)
-            == "pkg/mod.py"
-        )
+        assert _resolve_python_import(
+            "import pkg.mod", "app.py", {_np("pkg/mod.py")}, ROOT
+        ) == _np("pkg/mod.py")
 
     def test_from_import_resolves_to_submodule(self) -> None:
-        assert (
-            _resolve_python_import(
-                "from pkg.sub import thing", "app.py", {"pkg/sub.py"}, ROOT
-            )
-            == "pkg/sub.py"
-        )
+        assert _resolve_python_import(
+            "from pkg.sub import thing", "app.py", {_np("pkg/sub.py")}, ROOT
+        ) == _np("pkg/sub.py")
 
     def test_import_resolves_to_package_init(self) -> None:
-        assert (
-            _resolve_python_import("import pkg", "app.py", {"pkg/__init__.py"}, ROOT)
-            == "pkg/__init__.py"
-        )
+        assert _resolve_python_import(
+            "import pkg", "app.py", {_np("pkg/__init__.py")}, ROOT
+        ) == _np("pkg/__init__.py")
 
     def test_stdlib_import_is_not_resolved(self) -> None:
         # Even if a same-named file exists, stdlib top-level is excluded.
-        assert _resolve_python_import("import os", "app.py", {"os.py"}, ROOT) is None
+        assert (
+            _resolve_python_import("import os", "app.py", {_np("os.py")}, ROOT) is None
+        )
 
     def test_unresolvable_import_returns_none(self) -> None:
         assert (
-            _resolve_python_import("import totally_missing", "app.py", {"a.py"}, ROOT)
+            _resolve_python_import(
+                "import totally_missing", "app.py", {_np("a.py")}, ROOT
+            )
             is None
         )
 
     def test_relative_import_with_module_resolves_to_sibling(self) -> None:
         result = _resolve_python_import(
             "from .sibling import thing",
-            "pkg/mod.py",
-            {"pkg/sibling.py", "pkg/__init__.py"},
+            _np("pkg/mod.py"),
+            {_np("pkg/sibling.py"), _np("pkg/__init__.py")},
             ROOT,
         )
-        assert result == "pkg/sibling.py"
+        assert result == _np("pkg/sibling.py")
 
     def test_bare_relative_import_is_unresolved(self) -> None:
         # Known limitation: bare `from . import x` (no module after the dot)
         # is not resolved by the current regex set.
         result = _resolve_python_import(
             "from . import sibling",
-            "pkg/mod.py",
-            {"pkg/sibling.py", "pkg/__init__.py"},
+            _np("pkg/mod.py"),
+            {_np("pkg/sibling.py"), _np("pkg/__init__.py")},
             ROOT,
         )
         assert result is None
@@ -82,36 +92,36 @@ class TestResolvePythonImport:
 
 class TestResolveJsImport:
     def test_require_relative(self) -> None:
-        assert (
-            _resolve_js_import(
-                "const u = require('./util')", "src/app.js", {"src/util.js"}, ROOT
-            )
-            == "src/util.js"
-        )
+        assert _resolve_js_import(
+            "const u = require('./util')",
+            _np("src/app.js"),
+            {_np("src/util.js")},
+            ROOT,
+        ) == _np("src/util.js")
 
     def test_esm_import_relative(self) -> None:
-        assert (
-            _resolve_js_import(
-                "import u from './util'", "src/app.js", {"src/util.ts"}, ROOT
-            )
-            == "src/util.ts"
-        )
+        assert _resolve_js_import(
+            "import u from './util'",
+            _np("src/app.js"),
+            {_np("src/util.ts")},
+            ROOT,
+        ) == _np("src/util.ts")
 
     def test_index_resolution(self) -> None:
-        assert (
-            _resolve_js_import(
-                "import x from './widget'",
-                "src/app.js",
-                {"src/widget/index.js"},
-                ROOT,
-            )
-            == "src/widget/index.js"
-        )
+        assert _resolve_js_import(
+            "import x from './widget'",
+            _np("src/app.js"),
+            {_np("src/widget/index.js")},
+            ROOT,
+        ) == _np("src/widget/index.js")
 
     def test_bare_module_not_resolved(self) -> None:
         assert (
             _resolve_js_import(
-                "import react from 'react'", "src/app.js", {"src/util.js"}, ROOT
+                "import react from 'react'",
+                _np("src/app.js"),
+                {_np("src/util.js")},
+                ROOT,
             )
             is None
         )
