@@ -46,6 +46,7 @@ from ._ast_cache_schema import (
     apply_migration_v7 as _apply_migration_v7,
     apply_migration_v8 as _apply_migration_v8,
     apply_migration_v9 as _apply_migration_v9,
+    apply_migration_v10 as _apply_migration_v10,
     backfill_schema_version_row as _backfill_schema_version_row,
     check_schema_expectations as _check_schema_expectations,
     clear_activation_for_file as _clear_activation_for_file_fn,
@@ -139,6 +140,7 @@ class ASTCache:
             (7, _apply_migration_v7),
             (8, _apply_migration_v8),
             (9, _apply_migration_v9),
+            (10, _apply_migration_v10),
         ]
         self._fts5_available = _schema_init_db(
             conn, self._fts5_available, _has_fts5, migrations

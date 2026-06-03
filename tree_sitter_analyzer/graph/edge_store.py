@@ -88,15 +88,73 @@ CREATE TABLE IF NOT EXISTS edges (
     line INTEGER,
     provenance TEXT DEFAULT 'tree-sitter',
     metadata TEXT,
+    caller_name TEXT NOT NULL DEFAULT '',
+    callee_name TEXT NOT NULL DEFAULT '',
+    file_path TEXT NOT NULL DEFAULT '',
     UNIQUE(source_node_id, target_node_id, kind, line)
 )
 """.strip(),
     "CREATE INDEX IF NOT EXISTS idx_edges_source_kind ON edges(source_node_id, kind)",
     "CREATE INDEX IF NOT EXISTS idx_edges_target_kind ON edges(target_node_id, kind)",
     "CREATE INDEX IF NOT EXISTS idx_edges_kind ON edges(kind)",
+    "CREATE INDEX IF NOT EXISTS idx_edges_callee_name ON edges(callee_name, kind)",
+    "CREATE INDEX IF NOT EXISTS idx_edges_caller_name ON edges(caller_name, kind)",
 )
 
 EDGE_STORE_SCHEMA = ";\n\n".join(EDGE_STORE_SCHEMA_STATEMENTS) + ";"
+
+# Real columns promoted from the JSON ``metadata`` blob (B1.1). ALTER TABLE has
+# no IF NOT EXISTS form, so these are added only when a legacy ``edges`` table
+# (v8/v9 shape) is missing them.
+_EDGE_NAME_COLUMNS: tuple[tuple[str, str], ...] = (
+    (
+        "caller_name",
+        "ALTER TABLE edges ADD COLUMN caller_name TEXT NOT NULL DEFAULT ''",
+    ),
+    (
+        "callee_name",
+        "ALTER TABLE edges ADD COLUMN callee_name TEXT NOT NULL DEFAULT ''",
+    ),
+    ("file_path", "ALTER TABLE edges ADD COLUMN file_path TEXT NOT NULL DEFAULT ''"),
+)
+
+
+def ensure_edge_schema(conn: sqlite3.Connection) -> None:
+    """Create the ``edges`` table + indexes; ALTER legacy tables for new columns.
+
+    The table is created first (no-op if present), then the promoted name/file
+    columns are added on legacy (v8/v9) tables before the name-column indexes
+    are created — ``CREATE INDEX ON edges(callee_name, ...)`` would otherwise
+    fail on a table that predates the column.
+    """
+    conn.execute(EDGE_STORE_SCHEMA_STATEMENTS[0])
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(edges)").fetchall()}
+    for column, ddl in _EDGE_NAME_COLUMNS:
+        if column not in existing:
+            conn.execute(ddl)
+    for statement in EDGE_STORE_SCHEMA_STATEMENTS[1:]:
+        conn.execute(statement)
+
+
+def backfill_edge_name_columns(conn: sqlite3.Connection) -> None:
+    """Populate caller_name/callee_name/file_path for pre-v10 rows.
+
+    Re-parses existing node ids so legacy ``edges`` rows (written before the
+    columns existed) become queryable via the name indexes. Idempotent: only
+    touches rows where all three promoted columns are still empty.
+    """
+    rows = conn.execute(
+        "SELECT id, source_node_id, target_node_id FROM edges "
+        "WHERE caller_name = '' AND callee_name = '' AND file_path = ''"
+    ).fetchall()
+    for row in rows:
+        source = parse_node_id(row[1])
+        target = parse_node_id(row[2])
+        conn.execute(
+            "UPDATE edges SET caller_name = ?, callee_name = ?, file_path = ? "
+            "WHERE id = ?",
+            (source.name, target.name, source.file_path, row[0]),
+        )
 
 
 class EdgeStore:
@@ -122,8 +180,7 @@ class EdgeStore:
         return self._conn
 
     def ensure_schema(self) -> None:
-        for statement in EDGE_STORE_SCHEMA_STATEMENTS:
-            self._conn.execute(statement)
+        ensure_edge_schema(self._conn)
         self._commit_if_owned()
 
     def close(self) -> None:
@@ -141,12 +198,19 @@ class EdgeStore:
         )
         self.upsert_edges(edges)
 
+    def backfill_name_columns(self) -> None:
+        """Populate caller_name/callee_name/file_path for pre-v10 rows."""
+        backfill_edge_name_columns(self._conn)
+        self._commit_if_owned()
+
     def upsert_edges(self, edges: list[Edge]) -> None:
         for edge in edges:
+            caller_name, callee_name, file_path = _edge_name_columns(edge)
             self._conn.execute(
                 """INSERT OR REPLACE INTO edges
-                   (source_node_id, target_node_id, kind, line, provenance, metadata)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
+                   (source_node_id, target_node_id, kind, line, provenance,
+                    metadata, caller_name, callee_name, file_path)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     edge.source_node_id,
                     edge.target_node_id,
@@ -154,6 +218,9 @@ class EdgeStore:
                     edge.line,
                     edge.provenance,
                     json.dumps(edge.metadata, ensure_ascii=False, sort_keys=True),
+                    caller_name,
+                    callee_name,
+                    file_path,
                 ),
             )
         self._commit_if_owned()
@@ -321,6 +388,18 @@ def parse_node_id(node_id: str) -> NodeRef:
     return NodeRef(file_path="", name=node_id, line=0)
 
 
+def _edge_name_columns(edge: Edge) -> tuple[str, str, str]:
+    """Derive the (caller_name, callee_name, file_path) real-column values.
+
+    Values mirror what ``parse_node_id`` extracts from the source/target node
+    ids, so SQL pushdown over these columns returns the same rows the legacy
+    Python-side filter did. ``file_path`` is the caller (source) file.
+    """
+    source = parse_node_id(edge.source_node_id)
+    target = parse_node_id(edge.target_node_id)
+    return source.name, target.name, source.file_path
+
+
 def _kind_value(kind: EdgeKind | str | None) -> str | None:
     if kind is None:
         return None
@@ -434,10 +513,43 @@ def _bfs_call_edges(
     return result
 
 
-def _call_edges(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+def _callers_by_name(conn: sqlite3.Connection, callee_name: str) -> list[sqlite3.Row]:
+    """CALLS rows whose callee matches ``callee_name`` (index-backed pushdown).
+
+    The ``callee_name`` column holds the *bare* callee name (target node name).
+    A query may pass a fully-qualified name (e.g. ``engine.handleHTTPRequest``)
+    that only matches via ``metadata.callee_full``; in that case the candidate
+    set is narrowed by the bare suffix and ``_matches_callee`` confirms the full
+    match in Python. Either way the SQL stays on ``idx_edges_callee_name``.
+    """
+    bare = callee_name.split(".")[-1] if "." in callee_name else callee_name
+    if callee_name == bare:
+        return conn.execute(
+            "SELECT * FROM edges WHERE kind = ? AND callee_name = ? "
+            "ORDER BY source_node_id, target_node_id, line",
+            (EdgeKind.CALLS.value, callee_name),
+        ).fetchall()
     return conn.execute(
-        "SELECT * FROM edges WHERE kind = ? ORDER BY source_node_id, target_node_id, line",
-        (EdgeKind.CALLS.value,),
+        "SELECT * FROM edges WHERE kind = ? AND callee_name IN (?, ?) "
+        "ORDER BY source_node_id, target_node_id, line",
+        (EdgeKind.CALLS.value, callee_name, bare),
+    ).fetchall()
+
+
+def _callees_by_name(
+    conn: sqlite3.Connection, caller_name: str, bare: str
+) -> list[sqlite3.Row]:
+    """CALLS rows whose caller matches ``caller_name``/``bare`` (index-backed)."""
+    if caller_name == bare:
+        return conn.execute(
+            "SELECT * FROM edges WHERE kind = ? AND caller_name = ? "
+            "ORDER BY source_node_id, target_node_id, line",
+            (EdgeKind.CALLS.value, caller_name),
+        ).fetchall()
+    return conn.execute(
+        "SELECT * FROM edges WHERE kind = ? AND caller_name IN (?, ?) "
+        "ORDER BY source_node_id, target_node_id, line",
+        (EdgeKind.CALLS.value, caller_name, bare),
     ).fetchall()
 
 
@@ -448,7 +560,7 @@ def _direct_callers(
 ) -> list[sqlite3.Row]:
     rows: list[sqlite3.Row] = []
     fallback_rows: list[sqlite3.Row] = []
-    for row in _call_edges(conn):
+    for row in _callers_by_name(conn, callee_name):
         edge = _edge_from_row(row)
         source = parse_node_id(edge.source_node_id)
         target = parse_node_id(edge.target_node_id)
@@ -471,7 +583,7 @@ def _direct_callees(
 ) -> list[sqlite3.Row]:
     rows: list[sqlite3.Row] = []
     bare = caller_name.split(".")[-1] if "." in caller_name else caller_name
-    for row in _call_edges(conn):
+    for row in _callees_by_name(conn, caller_name, bare):
         edge = _edge_from_row(row)
         source = parse_node_id(edge.source_node_id)
         if source.name not in {caller_name, bare}:

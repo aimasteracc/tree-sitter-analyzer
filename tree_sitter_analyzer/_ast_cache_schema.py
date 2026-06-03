@@ -309,6 +309,34 @@ def apply_migration_v9(conn: sqlite3.Connection, record_fn: RecordFn) -> None:
         pass
 
 
+def apply_migration_v10(conn: sqlite3.Connection, record_fn: RecordFn) -> None:
+    """Promote caller/callee/file scalars to real ``edges`` columns (v10 — B1.1).
+
+    Non-breaking first step of the single edge-table consolidation: the CALLS
+    scalars that previously only lived in the JSON ``metadata`` blob become
+    indexed real columns so callers/callees/call_path can push the name filter
+    down to SQL instead of full-scanning ``kind='calls'`` in Python.
+
+    Uses the EdgeStore schema/backfill helpers directly (not the ``EdgeStore``
+    class) so it is unaffected by tests that monkeypatch ``EdgeStore``. It
+    idempotently adds the ``caller_name`` / ``callee_name`` / ``file_path``
+    columns (ALTER for legacy v8/v9 tables) plus the supporting indexes, then
+    backfills the new columns from the existing node ids.
+    """
+    try:
+        from .graph.edge_store import (
+            backfill_edge_name_columns,
+            ensure_edge_schema,
+        )
+
+        ensure_edge_schema(conn)
+        backfill_edge_name_columns(conn)
+        record_fn(conn, 10, "Edge name columns + pushdown indexes")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass
+
+
 # ---------------------------------------------------------------------------
 # Schema DDL constants V1 and V2 (moved from ast_cache.py)
 # ---------------------------------------------------------------------------
@@ -474,6 +502,18 @@ EXPECTED_SCHEMA_VERSIONS: list[Any] = [
                 "line",
                 "candidates",
                 "resolved",
+            ],
+        },
+    ),
+    (
+        10,
+        "Edge name columns + pushdown indexes",
+        {
+            "tables": ["edges"],
+            "edges_columns": [
+                "caller_name",
+                "callee_name",
+                "file_path",
             ],
         },
     ),
