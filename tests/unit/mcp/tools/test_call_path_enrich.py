@@ -91,6 +91,44 @@ def _build_cache(tmp_path: Path) -> MagicMock:
                 "python",
             ),
         )
+    # B1: the path-finder reads the unified ``edges`` table (kind='calls'),
+    # not the legacy ``ast_call_edges`` table.  Mirror the same edges here so
+    # CallPathFinder finds the alpha->beta->gamma chain on this branch.
+    db.execute(
+        "CREATE TABLE edges ("
+        " id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        " source_node_id TEXT NOT NULL DEFAULT '',"
+        " target_node_id TEXT NOT NULL DEFAULT '',"
+        " kind TEXT NOT NULL,"
+        " line INTEGER,"
+        " metadata TEXT,"
+        " caller_name TEXT NOT NULL DEFAULT '',"
+        " callee_name TEXT NOT NULL DEFAULT '',"
+        " file_path TEXT NOT NULL DEFAULT '',"
+        " callee_resolved_file TEXT NOT NULL DEFAULT '')"
+    )
+    for e in _EDGES:
+        db.execute(
+            "INSERT INTO edges (source_node_id, target_node_id, kind, line,"
+            " metadata, caller_name, callee_name, file_path,"
+            " callee_resolved_file) VALUES (?,?,?,?,?,?,?,?,?)",
+            (
+                f"{e['caller_file']}>{e['caller_name']}",
+                f"{e['callee_resolved_file']}>{e['callee_name']}",
+                "calls",
+                e["callee_line"],
+                json.dumps(
+                    {
+                        "caller_line": e["caller_line"],
+                        "callee_resolved_file": e["callee_resolved_file"],
+                    }
+                ),
+                e["caller_name"],
+                e["callee_name"],
+                e["caller_file"],
+                e["callee_resolved_file"],
+            ),
+        )
     db.execute(
         "CREATE TABLE ast_index ("
         " file_path TEXT PRIMARY KEY, symbols_json TEXT, language TEXT)"
