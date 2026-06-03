@@ -193,8 +193,8 @@ print(f'Warnings: {result.warnings}')
 ## 📚 詳細ドキュメント
 
 詳細な情報については以下を参照してください：
-- [包括的活用ガイド](../../docs/format-testing-guide.md)
-- [フォーマット仕様書](../../docs/format-specifications.md)
+- [包括的活用ガイド](../../../docs/format-testing-guide.md)
+- [フォーマット仕様書](../../../docs/format_specifications.md)
 - [CI/CD設定](../../.github/workflows/format-regression-testing.yml)
 
 ---

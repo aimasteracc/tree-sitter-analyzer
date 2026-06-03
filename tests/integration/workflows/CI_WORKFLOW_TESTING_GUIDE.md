@@ -214,6 +214,5 @@ After successful testing:
 
 - [Reusable Test Workflow](.github/workflows/reusable-test.yml)
 - [Composite Setup Action](.github/actions/setup-system/action.yml)
-- [Develop Workflow Testing Guide](tests/test_workflows/DEVELOP_WORKFLOW_TESTING_GUIDE.md)
-- [Release Workflow Testing Guide](tests/test_workflows/RELEASE_WORKFLOW_TESTING_GUIDE.md)
-- [Hotfix Workflow Testing Guide](tests/test_workflows/HOTFIX_WORKFLOW_TESTING_GUIDE.md)
+- [Release Workflow Testing Guide](./RELEASE_WORKFLOW_TESTING_GUIDE.md)
+- [Hotfix Workflow Testing Guide](./HOTFIX_WORKFLOW_TESTING_GUIDE.md)

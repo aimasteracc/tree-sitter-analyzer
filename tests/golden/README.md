@@ -141,5 +141,5 @@ Golden corpus 文件将在 CI 中自动验证：
 
 ## 相关文档
 
-- [docs/grammar-coverage-mece.md](../../docs/grammar-coverage-mece.md) - Grammar Coverage MECE 项目计划
+- [docs/grammar-coverage-framework.md](../../docs/grammar-coverage-framework.md) - Grammar Coverage 框架
 - [docs/ai-coding-rules.md](../../docs/ai-coding-rules.md) - AI 编码规范
