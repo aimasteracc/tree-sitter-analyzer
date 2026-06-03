@@ -252,3 +252,51 @@ def test_unknown_pseudo_raises():
 def test_nth_child_requires_number():
     with pytest.raises(HyphaeSyntaxError):
         _fixture().eval(parse(".method:nth-child(#x)"))
+
+
+# -- codex review fixes --------------------------------------------------------
+def test_subclasses_returns_children():
+    # :subclasses(#Base) must match the parent endpoint (callee) and return
+    # children (caller) — same direction as :extends.
+    got = _names(_fixture().eval(parse(".class:subclasses(#BaseService)")))
+    assert got == ["UserService"]
+
+
+def test_calls_distinguishes_same_name_across_files():
+    # Two methods named 'save' in different files; only one calls 'find'.
+    functions = [
+        {"name": "save", "file": "a/A.java", "line": 10, "class": "A"},
+        {"name": "save", "file": "b/B.java", "line": 20, "class": "B"},
+    ]
+    edges = [
+        {
+            "kind": "calls",
+            "caller_name": "save",
+            "callee_name": "find",
+            "file_path": "a/A.java",
+            "callee_resolved_file": "r/R.java",
+        },
+    ]
+    ev = Evaluator(FakeCache(functions, [], edges))
+    got = ev.eval(parse(".method:calls(#find)"))
+    # file identity: only a/A.java's save, not b/B.java's.
+    assert len(got) == 1
+    assert got[0]["file"] == "a/A.java"
+
+
+def test_implements_queries_implements_edge_kind():
+    # An indexer that emits a distinct 'implements' edge must be matched.
+    classes = [
+        {"name": "JsonWriter", "file": "JsonWriter.java", "line": 1, "kind": "class"},
+    ]
+    edges = [
+        {
+            "kind": "implements",
+            "caller_name": "JsonWriter",
+            "callee_name": "Writeable",
+            "file_path": "JsonWriter.java",
+        },
+    ]
+    ev = Evaluator(FakeCache([], classes, edges))
+    got = _names(ev.eval(parse(".class:implements(#Writeable)")))
+    assert got == ["JsonWriter"]

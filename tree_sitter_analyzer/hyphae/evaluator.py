@@ -45,16 +45,23 @@ from .parser import HyphaeSyntaxError
 _FUNCTIONISH = frozenset({"function", "method", "func", "fn"})
 _CLASSISH = frozenset({"class", "struct", "interface", "trait", "enum"})
 
-# Edge pseudo-classes → (edge_kind, target_match_column, returned_column).
+# Edge pseudo-classes → (edge_kinds, target_match_column, returned_column).
 # Reverse-driven: match the target name on one endpoint, keep candidates whose
-# name appears on the other endpoint.
-_EDGE_PSEUDOS: dict[str, tuple[str, str, str]] = {
-    "calls": ("calls", "callee_name", "caller_name"),
-    "callees": ("calls", "caller_name", "callee_name"),
-    "called-by": ("calls", "caller_name", "callee_name"),
-    "extends": ("extends", "callee_name", "caller_name"),
-    "implements": ("extends", "callee_name", "caller_name"),
-    "subclasses": ("extends", "caller_name", "callee_name"),
+# name appears on the other endpoint. Inheritance pseudo-classes span BOTH the
+# ``extends`` and ``implements`` edge kinds, because some indexers store class
+# inheritance and interface implementation separately while others (e.g. Java)
+# fold both into ``extends`` (per edge_store's inheritance-tree readers).
+_INHERIT_KINDS = ("extends", "implements")
+_EDGE_PSEUDOS: dict[str, tuple[tuple[str, ...], str, str]] = {
+    "calls": (("calls",), "callee_name", "caller_name"),
+    "callees": (("calls",), "caller_name", "callee_name"),
+    "called-by": (("calls",), "caller_name", "callee_name"),
+    # candidate extends/implements the target → candidate is the caller (child),
+    # target is the callee (parent/interface).
+    "extends": (_INHERIT_KINDS, "callee_name", "caller_name"),
+    "implements": (_INHERIT_KINDS, "callee_name", "caller_name"),
+    # target's subclasses → also children of the target, same direction.
+    "subclasses": (_INHERIT_KINDS, "callee_name", "caller_name"),
 }
 _POSITION_PSEUDOS = frozenset({"nth-child", "first-child", "only-child"})
 
@@ -170,24 +177,48 @@ class Evaluator:
         self,
         cands: list[dict[str, Any]],
         arg: Any,
-        edge_kind: str,
+        edge_kinds: tuple[str, ...],
         target_col: str,
         return_col: str,
     ) -> list[dict[str, Any]]:
-        """Keep candidates joined to the target selector by an edge of ``edge_kind``.
+        """Keep candidates joined to the target selector by any ``edge_kinds`` edge.
 
-        Reverse-driven: match each target name on ``target_col`` of the edges
-        table and keep candidates whose name appears on ``return_col`` — one
-        query per target rather than one per candidate.
+        Reverse-driven: match each target name on ``target_col`` and collect the
+        ``return_col`` endpoint with its file, so candidates are matched on
+        (name, file) — not name alone. This avoids false positives when two
+        symbols share a name across different files (overloads / duplicate
+        names). When the edge row lacks a resolved file, the endpoint falls back
+        to name-only matching so recall is preserved.
         """
         if not isinstance(arg, SelectorList):
             raise HyphaeSyntaxError("edge pseudo-class requires a selector argument")
+        # The returned endpoint's file lives in a different column depending on
+        # whether we return the caller (source = file_path) or the callee
+        # (target = callee_resolved_file).
+        file_col = (
+            "file_path" if return_col == "caller_name" else "callee_resolved_file"
+        )
         names = self._target_names(arg)
-        related: set[Any] = set()
+        related_nf: set[tuple[Any, Any]] = set()
+        related_name_only: set[Any] = set()
         for tname in names:
-            rows = self._cache.query_edges(edge_kind, **{target_col: tname}) or []
-            related.update(r.get(return_col) for r in rows if r.get(return_col))
-        return [c for c in cands if c.get("name") in related]
+            for kind in edge_kinds:
+                rows = self._cache.query_edges(kind, **{target_col: tname}) or []
+                for r in rows:
+                    nm = r.get(return_col)
+                    if not nm:
+                        continue
+                    f = r.get(file_col)
+                    if f:
+                        related_nf.add((nm, f))
+                    else:
+                        related_name_only.add(nm)
+        return [
+            c
+            for c in cands
+            if (c.get("name"), c.get("file")) in related_nf
+            or c.get("name") in related_name_only
+        ]
 
     def _filter_imports(
         self, cands: list[dict[str, Any]], arg: Any
