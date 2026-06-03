@@ -53,32 +53,43 @@ _NAV_ANNOTATIONS: dict[str, Any] = {
 }
 
 _NAV_DESCRIPTION = (
-    "Unified code-navigation facade. Pick a capability via `action`:\n"
-    "- action=navigate — go-to-definition / symbol navigation. "
+    "Code-intelligence (codegraph-compatible) navigation facade. "
+    "Covers codegraph_navigate, codegraph_callers, codegraph_callees, "
+    "codegraph_call_path, codegraph_xref, codegraph_impact, codegraph_context, "
+    "codegraph_trace, and symbol lineage/resolve in one tool. "
+    "Pick a capability via `action`:\n"
+    "- action=navigate — go-to-definition / symbol navigation "
+    "(codegraph_navigate equivalent). "
     "Params: symbol (required), mode (full|references|callers|callees).\n"
     "- action=call_path — BFS execution path between two functions "
-    "('how does A reach B?'). "
-    "Params: source_function, target_function, source_file, target_file, strategy.\n"
-    "- action=xref — cross-reference lookup (who uses this symbol or file). "
+    "('how does A reach B?', codegraph_call_path equivalent). "
+    "Params: source_function, target_function, source_file, target_file, "
+    "direction (forward|backward|bidirectional), max_depth, max_paths.\n"
+    "- action=xref — cross-reference lookup (who uses this symbol or file, "
+    "codegraph_xref equivalent). "
     "Params: symbol, mode (symbol|file), file_path.\n"
     "- action=resolve — go-to-definition + find-all-references for a symbol. "
     "Params: symbol (required), mode (resolve|references), output_format.\n"
     "- action=lineage — class/function inheritance and override lineage. "
     "Params: symbol (required), output_format.\n"
     "- action=impact — blast-radius / risk scoring for a function or set of "
-    "functions. Params: mode (function_impact|blast_radius|risk_score), "
+    "functions (codegraph_impact equivalent). "
+    "Params: mode (function_impact|blast_radius|risk_score), "
     "function_name, function_names, file_path, depth.\n"
-    "- action=trace — full impact trace from a symbol outward. "
+    "- action=trace — full impact trace from a symbol outward "
+    "(codegraph_trace equivalent). "
     "Params: symbol (required), output_format.\n"
-    "- action=context — one-call focused context for a symbol: composes "
-    "search + definition + callers + callees in a single capped response. "
-    "Params: symbol/query (required), max_nodes, max_snippets, output_format.\n"
-    "- action=callers — who calls a function.\n"
+    "- action=context — one-call focused context for a task/symbol: composes "
+    "search + definition + callers + callees in a single capped response "
+    "(codegraph_context equivalent). "
+    "Params: task (required — natural-language description or symbol name), "
+    "max_nodes, max_code_blocks, output_format.\n"
+    "- action=callers — who calls a function (codegraph_callers equivalent).\n"
     "  scope=point (default) → direct 1-hop callers (fast). "
     "Params: function_name/symbol (required), file_path, output_format.\n"
     "  scope=graph → full call-graph traversal (callers mode). "
     "Params: function_name/symbol (required), file_path, depth, output_format.\n"
-    "- action=callees — what a function calls.\n"
+    "- action=callees — what a function calls (codegraph_callees equivalent).\n"
     "  scope=point (default) → direct 1-hop callees (fast). "
     "Params: function_name/symbol (required), file_path, output_format.\n"
     "  scope=graph → full call-graph traversal (callees mode). "
@@ -122,6 +133,30 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
     callers_graph = CodeGraphCallTool(project_root)
     callees_point = CodeGraphCalleesTool(project_root)
     callees_graph = CodeGraphCallTool(project_root)
+    context_inner = CodeGraphContextTool(project_root)
+
+    async def _context_route(args: dict[str, Any]) -> Any:
+        """Bespoke context route: normalize symbol/query → task (fix ③).
+
+        ``CodeGraphContextTool`` requires ``task`` (a natural-language string).
+        The nav description exposes ``symbol``/``query`` as convenience aliases
+        because callers naturally think in symbol names. This bespoke closure
+        applies the normalization BEFORE delegating to the inner so callers
+        passing ``symbol="MyClass"`` or ``query="execute"`` don't trip the
+        ``ValueError: task is required`` guard.
+        Resolution order: explicit ``task`` > ``symbol`` > ``query``.
+        """
+        # Build the projected args set that context inner accepts.
+        inner_keys = ("task", "max_nodes", "max_code_blocks", "output_format")
+        context_args: dict[str, Any] = {
+            k: v for k, v in args.items() if k in inner_keys
+        }
+        # Normalize: if ``task`` not provided, fall back to ``symbol`` or ``query``.
+        if not context_args.get("task"):
+            fallback = args.get("symbol") or args.get("query")
+            if fallback:
+                context_args["task"] = str(fallback)
+        return await context_inner.execute(context_args)
 
     async def _callers_route(args: dict[str, Any]) -> Any:
         """R4: scope=point → direct callers; scope=graph → call-graph traversal."""
@@ -171,12 +206,13 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
             "lineage": SymbolLineageTool(project_root),
             "impact": CodeGraphImpactTool(project_root),
             "trace": TraceImpactTool(project_root),
-            # Composed one-call context (search + node + callers + callees).
-            # Folded here from the standalone ``codegraph_context`` tool so the
-            # whole 62-row capability surface survives the facade cutover.
-            "context": CodeGraphContextTool(project_root),
         },
         bespoke_map={
+            # Composed one-call context (search + node + callers + callees).
+            # Bespoke so we can normalize symbol/query → task before delegating
+            # to CodeGraphContextTool (which requires ``task``). Moved from
+            # action_map so the normalization closure fires on every call.
+            "context": _context_route,
             "callers": _callers_route,
             "callees": _callees_route,
         },
@@ -186,6 +222,7 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
     )
 
     # G3: register all bespoke inners so set_project_path reaches them.
+    facade.register_bespoke_inner(context_inner)
     facade.register_bespoke_inner(callers_point)
     facade.register_bespoke_inner(callers_graph)
     facade.register_bespoke_inner(callees_point)

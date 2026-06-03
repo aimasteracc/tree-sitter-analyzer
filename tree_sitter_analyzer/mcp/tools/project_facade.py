@@ -48,7 +48,11 @@ _PROJECT_ANNOTATIONS: dict[str, Any] = {
 }
 
 _PROJECT_DESCRIPTION = (
-    "Unified project-intelligence hub. Pick a capability via `action`:\n"
+    "Code-intelligence (codegraph-compatible) project-intelligence hub. "
+    "Covers codegraph_metrics (graph-level stats), project overview, "
+    "file enumeration, smart task-focused context, parser readiness, "
+    "agent skills/workflow, decision journal, and doc sync in one tool. "
+    "Pick a capability via `action`:\n"
     "\n"
     "PROJECT INFO (read-only):\n"
     "- action=overview — high-level summary of languages, entry points, and "
@@ -63,7 +67,7 @@ _PROJECT_DESCRIPTION = (
     "- action=tools — verify availability of CLI tools (ripgrep, fd, etc.). "
     "Params: (none).\n"
     "- action=metrics — codegraph graph-level statistics (node/edge counts, "
-    "top hubs). Params: format.\n"
+    "top hubs, codegraph_metrics equivalent). Params: format.\n"
     "- action=skills — enumerate available agent skills for this project. "
     "Params: format.\n"
     "- action=workflow — recommended agent workflow for the current task type. "

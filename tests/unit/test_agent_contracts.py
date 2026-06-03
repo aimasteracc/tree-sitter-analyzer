@@ -702,6 +702,31 @@ def test_facade_discovery_exposes_exactly_eight_facades() -> None:
         assert action_schema.get("enum"), f"{_name} facade exposes no action enum"
 
 
+def test_all_facade_descriptions_contain_codegraph_keyword() -> None:
+    """Fix ② discoverability contract: every facade description must contain
+    the keyword 'codegraph' so headless agents searching 'codegraph' via
+    ToolSearch land on a TSA facade instead of falling back to 2-3 wasted turns.
+
+    This keyword is intentional and LOCKED (CLAUDE.md §1) — do NOT remove it
+    from facade descriptions or revert this test.
+    """
+    from tree_sitter_analyzer.mcp._tool_registry import create_tool_registry
+
+    _tools, lookup = create_tool_registry(str(PROJECT_ROOT))
+    missing: list[str] = []
+    for facade_name, facade in lookup.items():
+        defn = facade.get_tool_definition()
+        description = defn.get("description", "")
+        if "codegraph" not in description.lower():
+            missing.append(facade_name)
+
+    assert missing == [], (
+        "These facades are missing 'codegraph' in their description — agents "
+        "searching for codegraph tools will not find them (fix ② regression): "
+        + repr(missing)
+    )
+
+
 def test_facade_delegation_routes_each_action_to_expected_inner() -> None:
     """Delegation contract (PRD §5/§7): every (facade, action) reaches the
     expected inner tool instance.
@@ -738,11 +763,12 @@ def test_facade_delegation_routes_each_action_to_expected_inner() -> None:
         ("nav", "lineage"): "SymbolLineageTool",
         ("nav", "impact"): "CodeGraphImpactTool",
         ("nav", "trace"): "TraceImpactTool",
-        ("nav", "context"): "CodeGraphContextTool",
+        ("nav", "context"): "<bespoke>",
         ("nav", "callers"): "<bespoke>",
         ("nav", "callees"): "<bespoke>",
         ("structure", "outline"): "GetCodeOutlineTool",
         ("structure", "analyze"): "AnalyzeCodeStructureTool",
+        ("structure", "signatures"): "<bespoke>",
         ("structure", "ast_path"): "CodeGraphASTPathTool",
         ("structure", "sitemap"): "CodeGraphSitemapTool",
         ("structure", "class_tree"): "ClassHierarchyTool",

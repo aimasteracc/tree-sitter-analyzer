@@ -35,8 +35,12 @@ def _add_output_options(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--table",
-        choices=["full", "compact", "csv", "json", "toon"],
-        help="Output in table format (toon format provides 50-70%% token reduction)",
+        choices=["full", "compact", "csv", "json", "toon", "signatures"],
+        help=(
+            "Output in table format. "
+            "'signatures' = lightweight method-directory (~25%% of full tokens); "
+            "toon = 50-70%% token reduction"
+        ),
     )
     parser.add_argument(
         "--include-javadoc",

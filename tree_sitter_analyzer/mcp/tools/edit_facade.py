@@ -51,7 +51,11 @@ _EDIT_ANNOTATIONS: dict[str, Any] = {
 }
 
 _EDIT_DESCRIPTION = (
-    "Unified code-safety and change-management facade. Pick a capability via `action`:\n"
+    "Code-intelligence (codegraph-compatible) safety and change-management facade. "
+    "Covers codegraph_pr_review (PR analysis via codegraph), safe-to-edit gates, "
+    "blast-radius guards, change impact scanning, refactoring suggestions, "
+    "constraint checks, semantic classification, and AST diff in one tool. "
+    "Pick a capability via `action`:\n"
     "- action=safe — pre-edit safety gate: is this file safe to edit right now? "
     "Returns SAFE/UNSAFE verdict. Params: file_path, edit_type, output_format.\n"
     "- action=guard — blast-radius guard BEFORE touching a symbol: how many callers, "
@@ -64,8 +68,9 @@ _EDIT_DESCRIPTION = (
     "max_suggestions, include_extractions, include_skeleton, output_format.\n"
     "- action=constraints — scan the project for constraint/rule violations "
     "(architecture, naming, coupling). Params: severity_min, output_format.\n"
-    "- action=pr — AI review of a PR diff via CodeGraph: structural issues, "
-    "blast-radius, test-coverage gaps. Params: pr_url or diff (see inner schema).\n"
+    "- action=pr — AI review of a PR diff via codegraph: structural issues, "
+    "blast-radius, test-coverage gaps (codegraph_pr_review equivalent). "
+    "Params: pr_url or diff (see inner schema).\n"
     "- action=classify — semantic classification of a symbol or file: domain, "
     "layer, responsibility. Params: file_path or symbol, output_format.\n"
     "- action=ast_diff — structural AST diff between two snapshots/versions of "
