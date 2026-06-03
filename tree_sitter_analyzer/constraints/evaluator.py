@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """Edge-stream evaluator for architectural constraints.
 
-Given a list of loaded :class:`Constraint` rules and an open
-``ast_call_edges`` SQLite connection, yields one :class:`Violation`
-per offending edge.
+Given a list of loaded :class:`Constraint` rules and an open SQLite
+connection holding the unified ``edges`` table, yields one
+:class:`Violation` per offending CALLS edge.
 
 Design contract:
 
-* T1's ``callee_resolved_file`` column is preferred when present and
-  populated, so we benefit from import-aware resolution. Edges where
-  the column is empty or absent fall back to ``file_path`` (the legacy
-  callee location column). Edges with no callee location at all are
-  skipped — they would generate false positives on unresolved calls.
+* The callee's resolved file (``metadata.callee_resolved_file`` on the
+  ``edges`` row) is preferred when present and populated, so we benefit
+  from import-aware resolution. Edges where it is empty fall back to
+  ``file_path`` (the caller's file). Edges with no callee location at all
+  are skipped — they would generate false positives on unresolved calls.
 
 * Performance is load-bearing: this is called on every change_impact /
   safe_to_edit invocation. We compile globs once, batch the SELECT into
@@ -38,7 +38,7 @@ def evaluate(
     constraints: list[Constraint],
     db_conn: sqlite3.Connection,
 ) -> list[Violation]:
-    """Evaluate constraints against the ``ast_call_edges`` table.
+    """Evaluate constraints against the unified ``edges`` table (CALLS rows).
 
     Returns a list (materialised; downstream code wants a length-check
     and the row count is bounded by the rule × edge cross-product, which
@@ -111,35 +111,26 @@ def _is_excepted(caller_file: str, compiled: _CompiledConstraint) -> bool:
 
 
 def _build_select_sql(db_conn: sqlite3.Connection) -> str:
-    """Build the per-DB SELECT statement.
+    """Build the per-DB SELECT statement over the unified ``edges`` table.
 
-    Prefers ``callee_resolved_file`` when the column exists on
-    ``ast_call_edges`` (T1's Synapse migration) and falls back to
-    ``file_path`` when it does not (test-only minimal schema or
-    pre-T1 caches that never indexed cross-file resolution).
+    CALLS edges now live in ``edges`` (B1.2).  The resolved-file scalar lives
+    in the ``metadata`` JSON blob, so the callee file is derived as
+    ``json_extract(metadata, '$.callee_resolved_file')`` with a fall back to
+    the caller's ``file_path`` when the call was never cross-file resolved —
+    preserving the legacy ``CASE WHEN callee_resolved_file != ''`` behaviour.
 
-    The COALESCE between the two columns is also defensive against a
-    partially-migrated DB where the column exists but is empty for some
-    rows (T1's resolver may not have run on legacy data yet).
+    The ``db_conn`` argument is retained for signature compatibility; the
+    edges schema always carries ``metadata`` so no per-DB probing is needed.
     """
-    callee_expr = "file_path"
-    try:
-        columns = {
-            row[1]
-            for row in db_conn.execute("PRAGMA table_info(ast_call_edges)").fetchall()
-        }
-    except sqlite3.OperationalError:
-        columns = set()
-
-    if "callee_resolved_file" in columns:
-        # Prefer the resolved column, but fall back to file_path so
-        # legacy unresolved rows still contribute.
-        callee_expr = (
-            "CASE WHEN callee_resolved_file != '' "
-            "THEN callee_resolved_file ELSE file_path END"
-        )
+    callee_expr = (
+        "CASE WHEN json_extract(metadata, '$.callee_resolved_file') IS NOT NULL "
+        "AND json_extract(metadata, '$.callee_resolved_file') != '' "
+        "THEN json_extract(metadata, '$.callee_resolved_file') "
+        "ELSE file_path END"
+    )
     return (
-        "SELECT caller_name, caller_file, caller_line, callee_name, "
+        "SELECT caller_name, file_path AS caller_file, "
+        "json_extract(metadata, '$.caller_line') AS caller_line, callee_name, "
         f"{callee_expr} AS callee_file "  # nosec B608 — callee_expr is constructed from internal constants only
-        "FROM ast_call_edges"
+        "FROM edges WHERE kind = 'calls'"
     )

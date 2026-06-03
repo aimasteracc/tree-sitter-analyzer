@@ -199,22 +199,21 @@ class XRefEngine:
         symbol: str,
         file_path: str | None,
     ) -> list[dict[str, Any]]:
+        callers_sql = (
+            "SELECT caller_name, file_path AS caller_file, "
+            "json_extract(metadata, '$.caller_line') AS caller_line, "
+            "callee_name, "
+            "json_extract(metadata, '$.callee_full') AS callee_full "
+            "FROM edges "
+            "WHERE kind = 'calls' "
+            "AND (callee_name = ? "
+            "OR json_extract(metadata, '$.callee_full') LIKE ?) "
+            "ORDER BY caller_file, caller_line LIMIT 50"
+        )
         if file_path:
-            rows = conn.execute(
-                "SELECT caller_name, caller_file, caller_line, callee_name, callee_full "
-                "FROM ast_call_edges "
-                "WHERE callee_name = ? OR callee_full LIKE ? "
-                "ORDER BY caller_file, caller_line LIMIT 50",
-                (symbol, f"%{symbol}%"),
-            ).fetchall()
+            rows = conn.execute(callers_sql, (symbol, f"%{symbol}%")).fetchall()
         else:
-            rows = conn.execute(
-                "SELECT caller_name, caller_file, caller_line, callee_name, callee_full "
-                "FROM ast_call_edges "
-                "WHERE callee_name = ? OR callee_full LIKE ? "
-                "ORDER BY caller_file, caller_line LIMIT 50",
-                (symbol, f"%{symbol}%"),
-            ).fetchall()
+            rows = conn.execute(callers_sql, (symbol, f"%{symbol}%")).fetchall()
 
         seen: set[str] = set()
         results: list[dict[str, Any]] = []
@@ -239,19 +238,23 @@ class XRefEngine:
         symbol: str,
         file_path: str | None,
     ) -> list[dict[str, Any]]:
+        callee_cols = (
+            "SELECT callee_name, "
+            "json_extract(metadata, '$.callee_full') AS callee_full, "
+            "line AS callee_line, file_path, "
+            "json_extract(metadata, '$.language') AS language "
+            "FROM edges "
+        )
         if file_path:
             rows = conn.execute(
-                "SELECT callee_name, callee_full, callee_line, file_path, language "
-                "FROM ast_call_edges "
-                "WHERE caller_name = ? AND file_path = ? "
+                callee_cols
+                + "WHERE kind = 'calls' AND caller_name = ? AND file_path = ? "
                 "ORDER BY callee_line LIMIT 50",
                 (symbol, file_path),
             ).fetchall()
         else:
             rows = conn.execute(
-                "SELECT callee_name, callee_full, callee_line, file_path, language "
-                "FROM ast_call_edges "
-                "WHERE caller_name = ? "
+                callee_cols + "WHERE kind = 'calls' AND caller_name = ? "
                 "ORDER BY file_path, callee_line LIMIT 50",
                 (symbol,),
             ).fetchall()
@@ -311,9 +314,10 @@ class XRefEngine:
         file_path: str,
     ) -> list[dict[str, Any]]:
         rows = conn.execute(
-            "SELECT caller_file, callee_name, callee_full "
-            "FROM ast_call_edges "
-            "WHERE file_path = ? "
+            "SELECT file_path AS caller_file, callee_name, "
+            "json_extract(metadata, '$.callee_full') AS callee_full "
+            "FROM edges "
+            "WHERE kind = 'calls' AND file_path = ? "
             "GROUP BY caller_file LIMIT 50",
             (file_path,),
         ).fetchall()
@@ -358,9 +362,10 @@ class XRefEngine:
         file_path: str,
     ) -> list[dict[str, Any]]:
         rows = conn.execute(
-            "SELECT DISTINCT caller_name, caller_file, caller_line "
-            "FROM ast_call_edges "
-            "WHERE file_path = ? AND caller_file != ? "
+            "SELECT DISTINCT caller_name, file_path AS caller_file, "
+            "json_extract(metadata, '$.caller_line') AS caller_line "
+            "FROM edges "
+            "WHERE kind = 'calls' AND file_path = ? AND file_path != ? "
             "LIMIT 50",
             (file_path, file_path),
         ).fetchall()
@@ -372,9 +377,11 @@ class XRefEngine:
         file_path: str,
     ) -> list[dict[str, Any]]:
         rows = conn.execute(
-            "SELECT DISTINCT callee_name, callee_full, callee_line "
-            "FROM ast_call_edges "
-            "WHERE file_path = ? "
+            "SELECT DISTINCT callee_name, "
+            "json_extract(metadata, '$.callee_full') AS callee_full, "
+            "line AS callee_line "
+            "FROM edges "
+            "WHERE kind = 'calls' AND file_path = ? "
             "LIMIT 50",
             (file_path,),
         ).fetchall()

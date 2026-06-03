@@ -391,10 +391,14 @@ class SymbolResolver:
         conn = self._cache.get_conn()
         try:
             rows = conn.execute(
-                """SELECT callee_name, callee_full, caller_name, caller_file,
-                          caller_line, file_path, language
-                   FROM ast_call_edges
-                   WHERE callee_name = ?""",
+                """SELECT callee_name,
+                          json_extract(metadata, '$.callee_full') AS callee_full,
+                          caller_name, file_path AS caller_file,
+                          json_extract(metadata, '$.caller_line') AS caller_line,
+                          file_path,
+                          json_extract(metadata, '$.language') AS language
+                   FROM edges
+                   WHERE kind = 'calls' AND callee_name = ?""",
                 (short_name,),
             ).fetchall()
             for row in rows:

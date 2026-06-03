@@ -23,10 +23,17 @@ from typing import Any
 # ---------------------------------------------------------------------------
 
 _EDGE_SELECT = (
-    "SELECT caller_name, caller_file, caller_line, "
-    "callee_name, callee_full, file_path, callee_line, callee_resolved_file "
-    "FROM ast_call_edges "
+    "SELECT caller_name, file_path AS caller_file, "
+    "json_extract(metadata, '$.caller_line') AS caller_line, "
+    "callee_name, "
+    "json_extract(metadata, '$.callee_full') AS callee_full, "
+    "file_path, line AS callee_line, "
+    "json_extract(metadata, '$.callee_resolved_file') AS callee_resolved_file "
+    "FROM edges "
 )
+
+# All CALLS queries below filter on this single edge kind.
+_CALLS_PREDICATE = "kind = 'calls' AND "
 
 # ---------------------------------------------------------------------------
 # Direction-specific row fetchers
@@ -42,18 +49,27 @@ def _fetch_caller_rows(
     if file_:
         rows = conn.execute(
             _EDGE_SELECT
-            + "WHERE (callee_name = ? OR callee_full = ?) AND callee_resolved_file = ?",
+            + "WHERE "
+            + _CALLS_PREDICATE
+            + "(callee_name = ? OR json_extract(metadata, '$.callee_full') = ?) "
+            "AND json_extract(metadata, '$.callee_resolved_file') = ?",
             (name, name, file_),
         ).fetchall()
         if not rows:
             rows = conn.execute(
                 _EDGE_SELECT
-                + "WHERE (callee_name = ? OR callee_full = ?) AND file_path = ?",
+                + "WHERE "
+                + _CALLS_PREDICATE
+                + "(callee_name = ? OR json_extract(metadata, '$.callee_full') = ?) "
+                "AND file_path = ?",
                 (name, name, file_),
             ).fetchall()
         return rows
     return conn.execute(
-        _EDGE_SELECT + "WHERE callee_name = ? OR callee_full = ?",
+        _EDGE_SELECT
+        + "WHERE "
+        + _CALLS_PREDICATE
+        + "(callee_name = ? OR json_extract(metadata, '$.callee_full') = ?)",
         (name, name),
     ).fetchall()
 
@@ -74,17 +90,20 @@ def _fetch_callee_rows(
     bare = name.split(".")[-1] if "." in name else name
     if file_:
         rows = conn.execute(
-            _EDGE_SELECT + "WHERE caller_name = ? AND caller_file = ?",
+            _EDGE_SELECT
+            + "WHERE "
+            + _CALLS_PREDICATE
+            + "caller_name = ? AND file_path = ?",
             (bare, file_),
         ).fetchall()
         if not rows:
             rows = conn.execute(
-                _EDGE_SELECT + "WHERE caller_name = ?",
+                _EDGE_SELECT + "WHERE " + _CALLS_PREDICATE + "caller_name = ?",
                 (bare,),
             ).fetchall()
         return rows
     return conn.execute(
-        _EDGE_SELECT + "WHERE caller_name = ?",
+        _EDGE_SELECT + "WHERE " + _CALLS_PREDICATE + "caller_name = ?",
         (bare,),
     ).fetchall()
 
@@ -154,7 +173,7 @@ def _bfs_traverse(
     make_entry: Callable,
     next_hop: Callable,
 ) -> list[dict[str, Any]]:
-    """BFS traversal over ``ast_call_edges`` in either direction.
+    """BFS traversal over the unified ``edges`` table in either direction.
 
     Args:
         conn: Live SQLite connection.
@@ -199,7 +218,7 @@ def bfs_callers(
     """BFS traversal returning all callers of ``callee_name``.
 
     Args:
-        conn: Live SQLite connection with ``ast_call_edges`` table.
+        conn: Live SQLite connection with the ``edges`` table.
         callee_name: Name of the function/method being looked up.
         callee_file: Optional resolved file path to narrow the match.
         max_depth: Maximum BFS hops (0 → empty, 1 → direct callers only).
@@ -230,7 +249,7 @@ def bfs_callees(
     """BFS traversal returning all callees of ``caller_name``.
 
     Args:
-        conn: Live SQLite connection with ``ast_call_edges`` table.
+        conn: Live SQLite connection with the ``edges`` table.
         caller_name: Name of the calling function/method.
         caller_file: Optional file path to narrow the match.
         max_depth: Maximum BFS hops (0 → empty, 1 → direct callees only).
