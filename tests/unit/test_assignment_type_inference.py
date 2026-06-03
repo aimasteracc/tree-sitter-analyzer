@@ -40,3 +40,29 @@ def test_inference_is_function_scoped():
     calls = _calls(code)
     assert calls["run"]["full_name"] == "ProjectGraph.run"
     assert calls["other"]["full_name"] == "pg.other"  # g's pg untyped
+
+
+def test_pytest_fixture_return_type_typed_param():
+    # def tool(): return X(); def test(tool): tool.execute() → X.execute
+    code = (
+        "import pytest\n"
+        "@pytest.fixture\n"
+        "def tool(project):\n"
+        "    return SearchContentTool(project)\n"
+        "class TestX:\n"
+        "    def test_execute(self, tool):\n"
+        "        tool.execute(args)\n"
+    )
+    calls = _calls(code)
+    assert calls["execute"]["full_name"] == "SearchContentTool.execute"
+    assert calls["execute"]["receiver_type"] == "SearchContentTool"
+
+
+def test_fixture_return_via_local_var():
+    # def tool(): t = X(); return t
+    code = (
+        "def tool():\n    t = QueryTool()\n    return t\n"
+        "def test_q(tool):\n    tool.run()\n"
+    )
+    calls = _calls(code)
+    assert calls["run"]["full_name"] == "QueryTool.run"
