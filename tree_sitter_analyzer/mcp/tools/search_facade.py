@@ -63,7 +63,13 @@ _SEARCH_DESCRIPTION = (
     "- action=batch — run multiple search queries in one call. Params: queries.\n"
     "- action=chain — jQuery-style codegraph chain DSL: compose search → "
     "explore → callers → callees in one process. "
-    "Params: chain/program, default_limit, include_source."
+    "Params: chain/program, default_limit, include_source.\n"
+    "- action=select — Hyphae DSL, a CSS-selector-style graph query (RFC-0003). "
+    "ONE selector replaces chains of navigate/callers/search: #name, .kind "
+    "(.function/.method/.class), *, :calls(#X), :callees(#X), :not(sel), "
+    ":in(path), [file=p]/[language=l]/[class=C], combinators A > B / A B. "
+    "Example: '.function:calls(#IndexShard):in(server/)'. Params: selector "
+    "(required), max_results, output_format."
 )
 
 
@@ -77,6 +83,7 @@ def build_search_facade(project_root: str | None = None) -> FacadeTool:
     from .batch_search_tool import BatchSearchTool
     from .codegraph_query_tool import CodeGraphQueryTool
     from .find_and_grep_tool import FindAndGrepTool
+    from .hyphae_select_tool import HyphaeSelectTool
     from .query_tool import QueryTool
     from .search_content_tool import SearchContentTool
     from .symbol_search_tool import CodeGraphSymbolSearchTool
@@ -102,6 +109,10 @@ def build_search_facade(project_root: str | None = None) -> FacadeTool:
             # folded here from the standalone ``codegraph_query`` tool so the
             # whole 62-row capability surface survives the facade cutover.
             "chain": CodeGraphQueryTool(project_root),
+            # Hyphae DSL — CSS-selector-style graph query (RFC-0003 port).
+            # One selector replaces chains of navigate/callers/search, e.g.
+            # ".function:calls(#IndexShard):in(server/)".
+            "select": HyphaeSelectTool(project_root),
         },
         bespoke_map={
             "content": _content_route,  # F5: search_content (dict|int)
