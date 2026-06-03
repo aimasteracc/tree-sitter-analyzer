@@ -58,3 +58,4 @@ number; if two RFCs collide on a number in flight, the later-merged one renames.
 | RFC | Title | Status |
 |---|---|---|
 | [0001](0001-reactive-push.md) | Reactive push — virtual-DOM last mile | draft |
+| [0002](0002-callee-resolution.md) | Callee resolution — bare names to resolved symbols | draft |
