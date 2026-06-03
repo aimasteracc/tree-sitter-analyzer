@@ -3,12 +3,12 @@
 Call Path Finder — BFS-based execution path discovery between two functions.
 
 Finds all call chains from a source function to a target function using
-the SQL-backed ``ast_call_edges`` table.  This is distinct from
+the SQL-backed unified ``edges`` table (CALLS rows).  This is distinct from
 callers (all X that call Y) and callees (all Y that X calls) — it
 answers "how does execution reach from A to B?"
 
 Two backends:
-  - SQL-native: queries ``ast_call_edges`` directly — O(k) per hop
+  - SQL-native: queries the ``edges`` table directly — O(k) per hop
   - In-memory: builds a :class:`CallGraph` and walks ``_callees`` / ``_callers`` maps
 """
 
@@ -23,6 +23,34 @@ from typing import Any
 from .utils import setup_logger
 
 logger = setup_logger(__name__)
+
+# ---------------------------------------------------------------------------
+# Unified edge-table SELECTs (B1.2)
+#
+# CALLS rows now live in the single ``edges`` table.  Real columns carry
+# caller_name/callee_name/file_path; the remaining scalars (caller_line,
+# callee_resolved_file) are read from the metadata JSON blob.  ``file_path`` is
+# the caller's file (== legacy ``ast_call_edges.caller_file``), and ``line`` is
+# the call-site line (== legacy ``callee_line``).  Aliases preserve the exact
+# dict keys the BFS code downstream expects, so behaviour is unchanged.
+# ---------------------------------------------------------------------------
+
+_FORWARD_EDGE_SELECT = (
+    "SELECT caller_name, file_path AS caller_file, callee_name, "
+    "line AS callee_line, "
+    "json_extract(metadata, '$.callee_resolved_file') AS callee_resolved_file, "
+    "file_path "
+    "FROM edges "
+)
+
+_BACKWARD_EDGE_SELECT = (
+    "SELECT caller_name, file_path AS caller_file, "
+    "json_extract(metadata, '$.caller_line') AS caller_line, "
+    "callee_name, "
+    "json_extract(metadata, '$.callee_resolved_file') AS callee_resolved_file, "
+    "file_path "
+    "FROM edges "
+)
 
 # ---------------------------------------------------------------------------
 # Direction helpers — forward (callee) direction
@@ -150,7 +178,7 @@ def _bfs_sql_core(
     hop_fn: Callable,
     prepend: bool,
 ) -> list[Any]:
-    """BFS over ast_call_edges in one direction (forward or backward)."""
+    """BFS over the unified ``edges`` table in one direction (forward/backward)."""
     queue: deque[tuple[str, str | None, list[dict[str, Any]]]] = deque(
         [(start_name, start_file, [])]
     )
@@ -522,17 +550,13 @@ class CallPathFinder:
         try:
             if caller_file:
                 rows = conn.execute(
-                    "SELECT caller_name, caller_file, callee_name, "
-                    "callee_line, callee_resolved_file, file_path "
-                    "FROM ast_call_edges "
-                    "WHERE caller_name = ? AND caller_file = ?",
+                    _FORWARD_EDGE_SELECT
+                    + "WHERE kind = 'calls' AND caller_name = ? AND file_path = ?",
                     (caller_name, caller_file),
                 ).fetchall()
             else:
                 rows = conn.execute(
-                    "SELECT caller_name, caller_file, callee_name, "
-                    "callee_line, callee_resolved_file, file_path "
-                    "FROM ast_call_edges WHERE caller_name = ?",
+                    _FORWARD_EDGE_SELECT + "WHERE kind = 'calls' AND caller_name = ?",
                     (caller_name,),
                 ).fetchall()
             return [dict(r) for r in rows]
@@ -548,25 +572,20 @@ class CallPathFinder:
         try:
             if callee_file:
                 rows = conn.execute(
-                    "SELECT caller_name, caller_file, caller_line, "
-                    "callee_name, callee_resolved_file, file_path "
-                    "FROM ast_call_edges "
-                    "WHERE callee_name = ? AND callee_resolved_file = ?",
+                    _BACKWARD_EDGE_SELECT + "WHERE kind = 'calls' AND callee_name = ? "
+                    "AND json_extract(metadata, '$.callee_resolved_file') = ?",
                     (callee_name, callee_file),
                 ).fetchall()
                 if not rows:
                     rows = conn.execute(
-                        "SELECT caller_name, caller_file, caller_line, "
-                        "callee_name, callee_resolved_file, file_path "
-                        "FROM ast_call_edges "
-                        "WHERE callee_name = ? AND file_path = ?",
+                        _BACKWARD_EDGE_SELECT
+                        + "WHERE kind = 'calls' AND callee_name = ? "
+                        "AND file_path = ?",
                         (callee_name, callee_file),
                     ).fetchall()
             else:
                 rows = conn.execute(
-                    "SELECT caller_name, caller_file, caller_line, "
-                    "callee_name, callee_resolved_file, file_path "
-                    "FROM ast_call_edges WHERE callee_name = ?",
+                    _BACKWARD_EDGE_SELECT + "WHERE kind = 'calls' AND callee_name = ?",
                     (callee_name,),
                 ).fetchall()
             return [dict(r) for r in rows]

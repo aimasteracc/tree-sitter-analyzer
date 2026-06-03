@@ -419,10 +419,17 @@ class TestRunAndPersist:
         return db
 
     def _db_with_edges(self, tmp_path: Path) -> Path:
+        from tree_sitter_analyzer.graph.edge_store import EDGE_STORE_SCHEMA
+
         db = tmp_path / "index.db"
         conn = sqlite3.connect(str(db))
-        conn.execute("CREATE TABLE ast_call_edges (id INTEGER PRIMARY KEY, c TEXT)")
-        conn.execute("INSERT INTO ast_call_edges VALUES (1, 'a')")
+        # B1.3: the edge-count gate counts CALLS rows in the unified ``edges``
+        # table (ast_call_edges was dropped).
+        conn.executescript(EDGE_STORE_SCHEMA)
+        conn.execute(
+            "INSERT INTO edges (source_node_id, target_node_id, kind) "
+            "VALUES ('a.py:f:1', 'b.py:g:1', 'calls')"
+        )
         conn.commit()
         conn.close()
         return db

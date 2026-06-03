@@ -73,58 +73,76 @@ def _stage_constraints_file(tmp_path: Path, fixture_name: str) -> Path:
 def _build_call_edges_db(
     db_path: Path, rows: list[tuple[str, str, int, str, str, str]]
 ) -> None:
-    """Create a minimal sqlite db with the ``ast_call_edges`` schema.
+    """Create a minimal sqlite db with the unified ``edges`` schema.
 
-    The schema mirrors ``ast_cache.py:_SCHEMA_V3_CALL_EDGES`` so the
-    evaluator can run against a real on-disk db without pulling in the
-    full ``ASTCache`` indexer.
+    B1.2 moved the constraint evaluator's read source from ``ast_call_edges``
+    to the single ``edges`` table.  The CALLS rows are written in the
+    production shape (node ids via ``symbol_node``, scalars in metadata JSON,
+    real name/file columns); the callee's resolved file lives in
+    ``metadata.callee_resolved_file`` so the evaluator's COALESCE-to-file_path
+    logic behaves exactly as it did against the legacy resolution columns.
 
     Each row tuple is (caller_name, caller_file, caller_line, callee_name,
     callee_full, callee_file).
     """
+    import json as _json
+
+    from tree_sitter_analyzer.graph.edge_store import EdgeKind, symbol_node
+
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(db_path))
     try:
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS ast_call_edges (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                caller_name TEXT NOT NULL,
-                caller_file TEXT NOT NULL,
-                caller_line INTEGER NOT NULL,
-                callee_name TEXT NOT NULL,
-                callee_full TEXT NOT NULL DEFAULT '',
-                callee_line INTEGER NOT NULL DEFAULT 0,
-                file_path   TEXT NOT NULL,
-                language    TEXT NOT NULL
-            )
-            """
-        )
-        conn.executemany(
-            "INSERT INTO ast_call_edges "
-            "(caller_name, caller_file, caller_line, callee_name, "
-            " callee_full, callee_line, file_path, language) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            [
+        from tree_sitter_analyzer.graph.edge_store import EDGE_STORE_SCHEMA
+
+        conn.executescript(EDGE_STORE_SCHEMA)
+        params = []
+        for (
+            caller_name,
+            caller_file,
+            caller_line,
+            callee_name,
+            _callee_full,
+            callee_file,
+        ) in rows:
+            source = symbol_node(caller_file, caller_name, caller_line)
+            target = symbol_node(callee_file or caller_file, callee_name, 0)
+            metadata = {
+                "language": "python",
+                "caller_name": caller_name,
+                "caller_line": caller_line,
+                "callee_name": callee_name,
+                "callee_full": _callee_full,
+                "callee_resolution": "project" if callee_file else "unknown",
+                "callee_resolved_file": callee_file,
+            }
+            # B1.3: resolution scalars are real columns the evaluator reads
+            # directly (no json_extract), so populate them alongside metadata.
+            params.append(
                 (
-                    caller_name,
-                    caller_file,
-                    caller_line,
-                    callee_name,
-                    "",
+                    source,
+                    target,
+                    EdgeKind.CALLS.value,
                     0,
-                    callee_file,  # callee_file goes into file_path column
-                    "python",
-                )
-                for (
+                    "tree-sitter",
+                    _json.dumps(metadata, ensure_ascii=False, sort_keys=True),
                     caller_name,
+                    callee_name,
                     caller_file,
                     caller_line,
-                    callee_name,
                     _callee_full,
+                    0,
+                    "python",
+                    "project" if callee_file else "unknown",
                     callee_file,
-                ) in rows
-            ],
+                )
+            )
+        conn.executemany(
+            "INSERT OR REPLACE INTO edges "
+            "(source_node_id, target_node_id, kind, line, provenance, metadata, "
+            " caller_name, callee_name, file_path, caller_line, callee_full, "
+            " callee_line, language, callee_resolution, callee_resolved_file) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            params,
         )
         conn.commit()
     finally:

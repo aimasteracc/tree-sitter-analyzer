@@ -119,6 +119,9 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
 
         results = self._apply_kind_filter(raw_results, kind)
         self._add_source_context(results)
+        # P2: inline a short verbatim body for the top matches so the agent
+        # judges relevance from content, not coordinates — no Read per hit.
+        search_deterrent = self._inline_match_bodies(cache, results)
 
         by_file: dict[str, int] = {}
         for r in results:
@@ -137,10 +140,13 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
             "data_source": "fts5" if cache.fts5_available else "linear_scan",
         }
         if results:
-            result["next_step"] = (
-                f"Run codegraph_explore query={query!r} before raw grep/read "
-                "to bulk-fetch related symbols and concept matches."
-            )
+            if search_deterrent:
+                result["next_step"] = search_deterrent
+            else:
+                result["next_step"] = (
+                    f"Run codegraph_explore query={query!r} before raw grep/read "
+                    "to bulk-fetch related symbols and concept matches."
+                )
         if language:
             result["language_filter"] = language
         if kind != "any":
@@ -345,6 +351,30 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
         if kind == "any":
             return results
         return [r for r in results if r.get("kind", "") == kind]
+
+    def _inline_match_bodies(
+        self,
+        cache: Any,
+        results: list[dict[str, Any]],
+    ) -> str | None:
+        """P2: attach a short body summary to the top matches (in place).
+
+        Returns the deterrent ``next_step`` when at least one body inlined,
+        else ``None``.  Best-effort: any failure leaves results coordinate-only.
+        """
+        if not results or cache is None or not self.project_root:
+            return None
+        try:
+            from . import symbol_body_inline as sbi
+
+            enriched = sbi.inline_search_summaries(self.project_root, cache, results)
+            if not any("body" in r for r in enriched):
+                return None
+            results[:] = enriched
+            return sbi.SEARCH_DETERRENT
+        except Exception as exc:  # best-effort enrichment
+            logger.debug(f"Search body inlining failed: {exc}")
+            return None
 
     def _add_source_context(self, results: list[dict[str, Any]]) -> None:
         for r in results:

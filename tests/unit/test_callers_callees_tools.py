@@ -80,6 +80,19 @@ class TestCodeGraphCallersTool:
         )
         assert result["success"] is True
 
+    @pytest.mark.asyncio
+    async def test_caller_inlines_source_body(self, tiny_project_root):
+        """P2: each caller carries its inlined verbatim source body (no Read)."""
+        callers_tool = CodeGraphCallersTool(tiny_project_root)
+        result = await callers_tool.execute(
+            {"function_name": "bar", "output_format": "json"}
+        )
+        foo = next((c for c in result["callers"] if c["name"] == "foo"), None)
+        assert foo is not None, "foo should call bar in the fixture"
+        assert "body" in foo, "caller must carry inlined body"
+        assert "def foo" in foo["body"]["content"]
+        assert "no Read needed" in result["next_step"]
+
     def test_project_root_change_resets_cache(self, tiny_project_root):
         callers_tool = CodeGraphCallersTool(tiny_project_root)
         callers_tool.get_call_graph()
@@ -132,6 +145,19 @@ class TestCodeGraphCalleesTool:
             }
         )
         assert result["success"] is True
+
+    @pytest.mark.asyncio
+    async def test_callee_inlines_source_body(self, tiny_project_root):
+        """P2: each callee carries its inlined verbatim source body (no Read)."""
+        callees_tool = CodeGraphCalleesTool(tiny_project_root)
+        result = await callees_tool.execute(
+            {"function_name": "foo", "output_format": "json"}
+        )
+        bar = next((c for c in result["callees"] if c["name"] == "bar"), None)
+        assert bar is not None, "foo should call bar in the fixture"
+        assert "body" in bar, "callee must carry inlined body"
+        assert "def bar" in bar["body"]["content"]
+        assert "no Read needed" in result["next_step"]
 
     @pytest.mark.asyncio
     async def test_execute_toon_format(self, tiny_project_root):

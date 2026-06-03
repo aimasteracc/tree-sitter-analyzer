@@ -184,6 +184,10 @@ class CodeGraphNavigateTool(BaseMCPTool):
         if mode in ("hierarchy", "full"):
             result["hierarchy"] = self._call_hierarchy(symbol, file_path, depth)
 
+        # P2: inline verbatim definition bodies so the agent answers from
+        # content, not coordinates — no follow-up Read per file:line.
+        self._inline_definition_bodies(result)
+
         # Pain #16 (dogfood pass 3): codegraph_navigate emitted no verdict.
         # NOT_FOUND when nothing matched (definition/references/hierarchy
         # all empty), INFO otherwise. Agents that branch on verdict
@@ -205,6 +209,41 @@ class CodeGraphNavigateTool(BaseMCPTool):
                 )
 
         return apply_toon_format_to_response(result, output_format)
+
+    def _inline_definition_bodies(self, result: dict[str, Any]) -> None:
+        """P2: attach a verbatim source body to each definition record.
+
+        Best-effort: any failure leaves the bare-coordinate response intact.
+        Adds a deterrent ``next_step`` only when at least one body inlined.
+        """
+        definition = result.get("definition")
+        if not isinstance(definition, dict) or not definition.get("found"):
+            return
+        defs = definition.get("definitions")
+        if not isinstance(defs, list) or not defs:
+            return
+        try:
+            from . import symbol_body_inline as sbi
+
+            cache = self.get_cache()
+            if cache is None or not self.project_root:
+                return
+            inlined = False
+            new_defs: list[dict[str, Any]] = []
+            for d in defs:
+                if not isinstance(d, dict):
+                    new_defs.append(d)
+                    continue
+                body = sbi.inline_symbol_body(self.project_root, cache, d)
+                if body is not None:
+                    d = {**d, "body": body}
+                    inlined = True
+                new_defs.append(d)
+            if inlined:
+                definition["definitions"] = new_defs
+                result.setdefault("next_step", sbi.NAVIGATE_DETERRENT)
+        except Exception as exc:  # best-effort enrichment
+            logger.debug(f"Definition body inlining failed: {exc}")
 
     def _resolve_definition(self, symbol: str) -> dict[str, Any]:
         cache = self.get_cache()

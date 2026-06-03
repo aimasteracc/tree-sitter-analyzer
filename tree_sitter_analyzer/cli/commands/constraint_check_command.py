@@ -202,7 +202,9 @@ def _run_and_persist(
         conn.execute(_violations_ddl())
         try:
             edge_count = int(
-                conn.execute("SELECT COUNT(*) FROM ast_call_edges").fetchone()[0]
+                conn.execute(
+                    "SELECT COUNT(*) FROM edges WHERE kind = 'calls'"
+                ).fetchone()[0]
             )
         except sqlite3.OperationalError:
             edge_count = 0

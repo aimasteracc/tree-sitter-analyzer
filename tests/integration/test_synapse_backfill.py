@@ -52,8 +52,8 @@ def _reset_resolution_columns(cache: ASTCache) -> None:
     """
     conn = cache._get_conn()
     conn.execute(
-        "UPDATE ast_call_edges SET callee_resolution = 'unknown', "
-        "callee_resolved_file = '', callee_symbol_id = NULL"
+        "UPDATE edges SET callee_resolution = 'unknown', "
+        "callee_resolved_file = '', callee_symbol_id = NULL WHERE kind = 'calls'"
     )
     conn.commit()
 
@@ -87,8 +87,8 @@ def test_backfill_no_reparse(
         # Spec: the resolver wrote at least one non-'unknown' row.
         conn = cache._get_conn()
         row = conn.execute(
-            "SELECT COUNT(*) AS c FROM ast_call_edges "
-            "WHERE callee_resolution != 'unknown'"
+            "SELECT COUNT(*) AS c FROM edges "
+            "WHERE kind = 'calls' AND callee_resolution != 'unknown'"
         ).fetchone()
         assert row["c"] > 0, (
             "resolve_only=True must populate at least one edge's "
@@ -98,7 +98,7 @@ def test_backfill_no_reparse(
         # Spec: the cross-file edge specifically resolved to b.py.
         edge = conn.execute(
             "SELECT callee_resolution, callee_resolved_file "
-            "FROM ast_call_edges WHERE callee_name = 'baz'"
+            "FROM edges WHERE kind = 'calls' AND callee_name = 'baz'"
         ).fetchone()
         assert edge is not None
         assert edge["callee_resolution"] == "project"

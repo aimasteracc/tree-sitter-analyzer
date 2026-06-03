@@ -145,6 +145,7 @@ class CodeGraphCallPathTool(BaseMCPTool):
             direction=direction,
         )
 
+        paths = [p.to_dict() for p in result.paths]
         result_dict: dict[str, Any] = {
             "success": True,
             "verdict": "PATH_FOUND" if result.paths else "NO_PATH",
@@ -153,9 +154,99 @@ class CodeGraphCallPathTool(BaseMCPTool):
             "target": target_function,
             "path_count": len(result.paths),
             "truncated": result.truncated,
-            "paths": [p.to_dict() for p in result.paths],
+            "paths": paths,
         }
+
+        # ------------------------------------------------------------------
+        # Enrich coordinates -> content (turn-saving): inline verbatim source
+        # bodies so the consuming agent can answer without per-hop Read calls.
+        # See call_path_enrich for the cost rationale and output caps.
+        # ------------------------------------------------------------------
+        self._enrich_with_bodies(
+            result_dict,
+            paths,
+            source_function,
+            target_function,
+            source_file,
+            target_file,
+        )
 
         from ..utils.format_helper import apply_toon_format_to_response
 
         return apply_toon_format_to_response(result_dict, output_format)
+
+    def _enrich_with_bodies(
+        self,
+        result_dict: dict[str, Any],
+        paths: list[dict[str, Any]],
+        source_function: str,
+        target_function: str,
+        source_file: str | None,
+        target_file: str | None,
+    ) -> None:
+        """Inline source bodies + a deterrent ``next_step`` into the envelope.
+
+        Best-effort: any failure leaves the bare-coordinate response intact
+        rather than crashing the tool. The cache is reused from the finder.
+        """
+        from . import call_path_enrich as enrich
+
+        finder = self._finder
+        cache = None
+        if finder is not None:
+            try:
+                cache = finder._try_get_cache()
+            except Exception:
+                cache = None
+
+        project_root = self.project_root or "."
+
+        if paths:
+            bodies: list[dict[str, Any]] = []
+            truncated_body = False
+            if cache is not None:
+                endpoint_hints: dict[str, str] = {}
+                if source_file:
+                    endpoint_hints[source_function] = source_file
+                if target_file:
+                    endpoint_hints[target_function] = target_file
+                try:
+                    bodies, truncated_body = enrich.inline_path_bodies(
+                        project_root, cache, paths, endpoint_hints
+                    )
+                except Exception:  # pragma: no cover - defensive
+                    bodies, truncated_body = [], False
+            result_dict["source_bodies"] = bodies
+            result_dict["bodies_truncated"] = truncated_body
+            n = result_dict.get("path_count", 0)
+            suffix = (
+                " Some bodies truncated (see full_at) — Read only those if needed."
+                if truncated_body
+                else ""
+            )
+            result_dict["next_step"] = (
+                f"Path: {n} path(s), {len(bodies)} function bodies inlined in "
+                "source_bodies below — answer directly, no Read needed." + suffix
+            )
+            return
+
+        # Dead end: no static path (dynamic dispatch or missing edge).
+        dead_end: dict[str, Any] = {}
+        if cache is not None:
+            try:
+                dead_end = enrich.build_dead_end(
+                    project_root,
+                    cache,
+                    source_function,
+                    target_function,
+                    source_file,
+                    target_file,
+                )
+            except Exception:  # pragma: no cover - defensive
+                dead_end = {}
+        result_dict["dead_end"] = dead_end
+        result_dict["next_step"] = (
+            "No static path (dynamic dispatch or missing edge). Both endpoints' "
+            "bodies + their direct callers/callees are inlined in dead_end — "
+            "answer from these, no Read needed."
+        )

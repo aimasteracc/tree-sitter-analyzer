@@ -36,7 +36,7 @@ from ._imports import ImportEntry, parse_imports
 
 @dataclass(frozen=True)
 class ResolvedCallee:
-    """One resolution per call edge — written into ``ast_call_edges``."""
+    """One resolution per call edge — written into the unified ``edges`` table."""
 
     callee_symbol_id: int | None
     resolution: str
@@ -213,6 +213,34 @@ def _try_single_global(
 
 
 def resolve_callee(
+    callee_name: str,
+    caller_file: str,
+    ctx: ResolverContext,
+    callee_full: str | None = None,
+) -> ResolvedCallee:
+    """Resolve a single callee, dispatching by the caller file's language.
+
+    Python keeps the original cascade verbatim. Java routes to the Java
+    resolver (when a Java context is present), using ``callee_full`` to
+    recover the receiver. Any other language falls through to the Python
+    cascade exactly as before B3 (no behaviour change for them).
+    """
+    language = ctx.file_languages.get(caller_file)
+    if language == "java" and ctx.java_context is not None:
+        from ._java import resolve_java_callee
+
+        sym_id, resolution, resolved_file = resolve_java_callee(
+            callee_name,
+            callee_full if callee_full is not None else callee_name,
+            caller_file,
+            ctx.java_context,
+        )
+        return ResolvedCallee(sym_id, resolution, resolved_file)
+
+    return _resolve_callee_python(callee_name, caller_file, ctx)
+
+
+def _resolve_callee_python(
     callee_name: str, caller_file: str, ctx: ResolverContext
 ) -> ResolvedCallee:
     """Resolve a single callee per the priority cascade above."""

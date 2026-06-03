@@ -46,6 +46,8 @@ from ._ast_cache_schema import (
     apply_migration_v7 as _apply_migration_v7,
     apply_migration_v8 as _apply_migration_v8,
     apply_migration_v9 as _apply_migration_v9,
+    apply_migration_v10 as _apply_migration_v10,
+    apply_migration_v11 as _apply_migration_v11,
     backfill_schema_version_row as _backfill_schema_version_row,
     check_schema_expectations as _check_schema_expectations,
     clear_activation_for_file as _clear_activation_for_file_fn,
@@ -139,6 +141,8 @@ class ASTCache:
             (7, _apply_migration_v7),
             (8, _apply_migration_v8),
             (9, _apply_migration_v9),
+            (10, _apply_migration_v10),
+            (11, _apply_migration_v11),
         ]
         self._fts5_available = _schema_init_db(
             conn, self._fts5_available, _has_fts5, migrations
@@ -425,6 +429,7 @@ class ASTCache:
                     symbols,
                     imports,
                     [],
+                    preserve_calls=True,
                 )
                 refreshed += 1
             except (json.JSONDecodeError, sqlite3.OperationalError):
@@ -544,12 +549,28 @@ class ASTCache:
         )
 
     def get_call_edges(self) -> list[dict[str, Any]]:
-        """Return all stored call edges from the cache."""
+        """Return all stored call edges from the cache.
+
+        CALLS rows now live in the unified ``edges`` table. Every legacy scalar
+        is a real promoted column (B1.3): ``caller_name``/``callee_name``/
+        ``file_path``/``caller_line``/``callee_full``/``callee_line``/
+        ``language``. ``file_path`` is the caller's file (== legacy
+        ``caller_file``). Aliases reproduce the exact dict keys the legacy SELECT
+        yielded, so the three consumers (cross_file_resolver / call_graph /
+        dependency_matrix) see identical rows.
+        """
         try:
             _conn = self._get_conn()
             _cur = _conn.execute(
-                "SELECT caller_name, caller_file, caller_line, "
-                "callee_name, callee_full, callee_line, file_path, language FROM ast_call_edges"
+                "SELECT caller_name, "
+                "file_path AS caller_file, "
+                "caller_line, "
+                "callee_name, "
+                "callee_full, "
+                "callee_line, "
+                "file_path, "
+                "language "
+                "FROM edges WHERE kind = 'calls'"
             )
             rows = _cur.fetchall()
         except sqlite3.OperationalError:
@@ -642,17 +663,11 @@ class ASTCache:
             return []
 
     def has_call_edges(self) -> bool:
-        """Check whether the cache contains any call edge data."""
-        try:
-            row = (
-                self._get_conn()
-                .execute("SELECT COUNT(*) as c FROM ast_call_edges")
-                .fetchone()
-            )
-            if bool(row["c"] > 0):
-                return True
-        except sqlite3.OperationalError:
-            pass
+        """Check whether the cache contains any call edge data.
+
+        CALLS rows live in the unified ``edges`` table (B1.3 — no
+        ast_call_edges), so this is a single index-backed kind probe.
+        """
         try:
             from .graph.edge_store import EdgeKind, EdgeStore
 
