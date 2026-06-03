@@ -1,6 +1,5 @@
 """Tests for FileWatcherDaemon (file_watcher module)."""
 
-
 import os
 import time
 
@@ -8,6 +7,21 @@ import pytest
 
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.file_watcher import FileWatcherDaemon
+
+
+def _wait_until(predicate, timeout: float = 3.0, interval: float = 0.05) -> bool:
+    """Poll predicate until true or timeout. Returns the final predicate value.
+
+    Replaces fixed time.sleep() waits for watcher events: returns as soon as the
+    condition holds (typically ~1 poll interval) instead of always blocking for
+    the worst-case duration.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        time.sleep(interval)
+    return bool(predicate())
 
 
 @pytest.fixture
@@ -94,19 +108,18 @@ class TestPollingDetection:
         watcher.trigger_sync()
         (project / "new_file.py").write_text("def world():\n    pass\n")
         watcher.start()
-        time.sleep(3.0)
+        _wait_until(lambda: cache.get_stats()["total_files"] >= 2)
         watcher.stop()
         stats = cache.get_stats()
         assert stats["total_files"] >= 2
 
     def test_detects_modified_file(self, watcher, project, cache):
         watcher.trigger_sync()
-        time.sleep(0.1)
         py_file = project / "src" / "main.py"
         py_file.write_text("def hello():\n    return 42\n")
         os.utime(str(py_file), (time.time() + 1, time.time() + 1))
         watcher.start()
-        time.sleep(3.0)
+        _wait_until(lambda: watcher.get_stats()["syncs_triggered"] >= 1)
         watcher.stop()
         stats = watcher.get_stats()
         assert stats["syncs_triggered"] >= 1

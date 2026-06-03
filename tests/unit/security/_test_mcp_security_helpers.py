@@ -202,14 +202,20 @@ async def assert_external_path_blocked_or_temp_allowed(
     tool: FindAndGrepTool, external_path: str
 ) -> None:
     """Assert an external root is blocked unless it is an allowed temp path."""
+    # Allowed-temp paths pass by the pure predicate. Short-circuit BEFORE running
+    # the tool: every path in this suite lives under the system temp dir, so the
+    # old code actually ran FindAndGrep over huge dirs like /tmp (~277s) only to
+    # discard the result and return on the temp check below. The search never
+    # affected the assertion — skip it.
+    if path_is_allowed_temp(external_path):
+        return
+
     try:
         result = await tool.execute({"roots": [external_path], "query": "test"})
     except (SecurityError, ValidationError, ValueError, AnalysisError):
         return
 
     if isinstance(result, dict) and not result.get("success", True):
-        return
-    if path_is_allowed_temp(external_path):
         return
 
     pytest.fail(f"Expected security block for external path: {external_path}")
