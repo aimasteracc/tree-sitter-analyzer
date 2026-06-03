@@ -1,10 +1,35 @@
-<!-- Generated: 2026-05-22 -->
+<!-- Generated: 2026-05-22; Wave C2 facade cutover: 2026-06-02 -->
 # MCP Tools Codemap
 
-63 MCP tools registered in [`mcp/_tool_registry.py`](../../tree_sitter_analyzer/mcp/_tool_registry.py).
+**8 facade tools** registered in [`mcp/_tool_registry.py`](../../tree_sitter_analyzer/mcp/_tool_registry.py)
+(v2.0 β cutover — was 63 discrete tools). Each facade fans an `action` parameter
+out to the unchanged inner tools; the 63 legacy names still work for one
+deprecation cycle via the legacy-name shim
+([`mcp/legacy_shim.py`](../../tree_sitter_analyzer/mcp/legacy_shim.py)).
 All tools default to **TOON output** (locked — see `CLAUDE.md`).
 
-## Tool Registry
+## Facade Surface (public, eager — the only 8 tools clients see)
+
+| MCP name | action= | Purpose |
+|---|---|---|
+| `search` | symbol / query / content / grep / batch / chain | Code search: BM25 symbol lookup, tree-sitter .scm DSL, ripgrep, fd+rg, batch, graph-chain DSL |
+| `nav` | navigate / call_path / xref / resolve / lineage / impact / trace / context / callers / callees | Call-graph navigation + one-call symbol context |
+| `structure` | outline / analyze / ast_path / sitemap / class_tree / class_detail / explore / read | Structural AST analysis + partial file read |
+| `health` | project / file / scale / patterns / heatmap / imports / matrix / dead / routes / overview / deps | Code health, complexity, dependency analysis |
+| `edit` | safe / guard / impact / refactor / constraints / pr / classify / ast_diff | Edit-safety, blast-radius, refactor, PR review |
+| `project` | overview / files / smart / parser / tools / metrics / skills / workflow / journal / doc_sync | Project-intelligence hub |
+| `index` | status / cache / build / full / auto / sync | CodeGraph index lifecycle |
+| `viz` | uml / graph / similarity | UML / graph diagrams + similarity |
+
+> `set_project_path` remains a standalone infrastructure entry (not a facade
+> action) because it mutates server-level state. Final client surface = **8
+> facades + set_project_path**.
+
+## Legacy Capability → Facade Crosswalk (deprecated names, still shimmed)
+
+The table below documents the 62 legacy capabilities and their CLI flags. Each
+legacy MCP name is now reached via its facade (`old_name` →
+`facade action=<...>`); see [`mcp/facade_map.py`](../../tree_sitter_analyzer/mcp/facade_map.py).
 
 | MCP name | CLI flag / handler | Purpose |
 |---|---|---|

@@ -309,6 +309,63 @@ def apply_migration_v9(conn: sqlite3.Connection, record_fn: RecordFn) -> None:
         pass
 
 
+def apply_migration_v10(conn: sqlite3.Connection, record_fn: RecordFn) -> None:
+    """Promote caller/callee/file scalars to real ``edges`` columns (v10 — B1.1).
+
+    Non-breaking first step of the single edge-table consolidation: the CALLS
+    scalars that previously only lived in the JSON ``metadata`` blob become
+    indexed real columns so callers/callees/call_path can push the name filter
+    down to SQL instead of full-scanning ``kind='calls'`` in Python.
+
+    Uses the EdgeStore schema/backfill helpers directly (not the ``EdgeStore``
+    class) so it is unaffected by tests that monkeypatch ``EdgeStore``. It
+    idempotently adds the ``caller_name`` / ``callee_name`` / ``file_path``
+    columns (ALTER for legacy v8/v9 tables) plus the supporting indexes, then
+    backfills the new columns from the existing node ids.
+    """
+    try:
+        from .graph.edge_store import (
+            backfill_edge_name_columns,
+            ensure_edge_schema,
+        )
+
+        ensure_edge_schema(conn)
+        backfill_edge_name_columns(conn)
+        record_fn(conn, 10, "Edge name columns + pushdown indexes")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass
+
+
+def apply_migration_v11(conn: sqlite3.Connection, record_fn: RecordFn) -> None:
+    """Consolidate to a single edge table — drop ast_call_edges + unresolved_refs.
+
+    B1.3, the terminal step of the edge consolidation. By v11 every reader and
+    every write/resolution path operates on the unified ``edges`` table:
+
+    * ``ensure_edge_schema`` promotes the remaining resolution scalars
+      (``caller_line`` / ``callee_full`` / ``callee_line`` / ``language`` /
+      ``callee_resolution`` / ``callee_resolved_file`` / ``callee_symbol_id``)
+      to real, indexable columns so the second pass can UPDATE them in place.
+    * ``ast_call_edges`` (raw extract + Synapse truth) and ``unresolved_refs``
+      (the second-pass work queue) are dropped — their data is now derived
+      data carried by ``edges`` columns + recomputed in-memory from the index.
+
+    Breaking: an ``.ast-cache`` built by an older version is rebuilt on the next
+    ``--full-index`` (call-graph is pure derived data; the source is intact).
+    """
+    try:
+        from .graph.edge_store import ensure_edge_schema
+
+        ensure_edge_schema(conn)
+        conn.execute("DROP TABLE IF EXISTS ast_call_edges")
+        conn.execute("DROP TABLE IF EXISTS unresolved_refs")
+        record_fn(conn, 11, "Single edge table (drop ast_call_edges + unresolved_refs)")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass
+
+
 # ---------------------------------------------------------------------------
 # Schema DDL constants V1 and V2 (moved from ast_cache.py)
 # ---------------------------------------------------------------------------
@@ -370,21 +427,9 @@ LARGE_REPO_INDEXES: tuple[tuple[str, str], ...] = (
         "CREATE INDEX IF NOT EXISTS idx_sym_rows_file_name_kind_line "
         "ON ast_symbol_rows(file_path, name, kind, line)",
     ),
-    (
-        "ast_call_edges",
-        "CREATE INDEX IF NOT EXISTS idx_ce_callee_name_resolved_file "
-        "ON ast_call_edges(callee_name, callee_resolved_file)",
-    ),
-    (
-        "ast_call_edges",
-        "CREATE INDEX IF NOT EXISTS idx_ce_callee_name_file_path "
-        "ON ast_call_edges(callee_name, file_path)",
-    ),
-    (
-        "ast_call_edges",
-        "CREATE INDEX IF NOT EXISTS idx_ce_caller_name_file "
-        "ON ast_call_edges(caller_name, caller_file)",
-    ),
+    # B1.3: ast_call_edges hot-path indexes removed — CALLS rows + their
+    # caller_name/callee_name/file_path/callee_resolved_file columns are now in
+    # ``edges`` (indexed by ``EDGE_STORE_SCHEMA_STATEMENTS``).
 )
 
 SCHEMA_VERSIONS_DDL = """
@@ -396,33 +441,14 @@ CREATE TABLE IF NOT EXISTS ast_schema_version (
 """
 
 EXPECTED_SCHEMA_VERSIONS: list[Any] = [
-    (
-        3,
-        "ast_call_edges + indices",
-        {
-            "tables": ["ast_call_edges"],
-            "ast_call_edges_columns": [
-                "caller_name",
-                "caller_file",
-                "caller_line",
-                "callee_name",
-                "callee_full",
-                "callee_line",
-                "file_path",
-                "language",
-            ],
-        },
-    ),
+    # v3 (ast_call_edges) and v9 (unresolved_refs) are intentionally absent:
+    # both tables are dropped by the v11 consolidation. The post-init schema
+    # self-check would otherwise report them as missing.
     (
         4,
         "Synapse: callee_resolution + ast_imports",
         {
             "tables": ["ast_imports"],
-            "ast_call_edges_columns": [
-                "callee_symbol_id",
-                "callee_resolution",
-                "callee_resolved_file",
-            ],
         },
     ),
     (
@@ -462,18 +488,30 @@ EXPECTED_SCHEMA_VERSIONS: list[Any] = [
         },
     ),
     (
-        9,
-        "Unresolved reference backfill",
+        10,
+        "Edge name columns + pushdown indexes",
         {
-            "tables": ["unresolved_refs"],
-            "unresolved_refs_columns": [
-                "from_node_id",
-                "reference_name",
-                "reference_kind",
+            "tables": ["edges"],
+            "edges_columns": [
+                "caller_name",
+                "callee_name",
                 "file_path",
-                "line",
-                "candidates",
-                "resolved",
+            ],
+        },
+    ),
+    (
+        11,
+        "Single edge table (drop ast_call_edges + unresolved_refs)",
+        {
+            "tables": ["edges"],
+            "edges_columns": [
+                "caller_line",
+                "callee_full",
+                "callee_line",
+                "language",
+                "callee_resolution",
+                "callee_resolved_file",
+                "callee_symbol_id",
             ],
         },
     ),
@@ -485,20 +523,9 @@ EXPECTED_SCHEMA_VERSIONS: list[Any] = [
 
 SQL_TABLE_EXISTS = "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?"
 SQL_GET_SCHEMA_VERSION = "SELECT version FROM ast_schema_version WHERE version = ?"
-SQL_UPDATE_CALLEE_RESOLVED = (
-    "UPDATE ast_call_edges SET callee_resolved_file = ? "
-    "WHERE caller_file = ? AND caller_line = ? "
-    "AND callee_name = ? AND callee_line = ?"
-)
 SQL_COUNT_SYMBOL_ROWS = "SELECT COUNT(*) as c FROM ast_symbol_rows"
-SQL_COUNT_RESOLVED_EDGES = (
-    "SELECT COUNT(*) as c FROM ast_call_edges WHERE callee_resolved_file != ''"
-)
-SQL_COUNT_CROSS_FILE_EDGES = (
-    "SELECT COUNT(*) as c FROM ast_call_edges "
-    "WHERE callee_resolved_file != '' "
-    "AND callee_resolved_file != file_path"
-)
+# Resolution count / update SQL lives in ``_ast_cache_query.py`` and now targets
+# the unified ``edges`` table (B1.3); the ast_call_edges variants were removed.
 
 # ---------------------------------------------------------------------------
 # Pure schema helper functions (moved from ASTCache static methods)

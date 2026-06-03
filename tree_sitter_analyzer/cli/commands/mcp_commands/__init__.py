@@ -27,6 +27,10 @@ from tree_sitter_analyzer.cli.commands.mcp_command_helpers import (
     find_selected_mcp_command,
     validate_mcp_command_args,
 )
+from tree_sitter_analyzer.mcp.tools._call_tree_tool import (  # noqa: F401
+    CodeGraphCalleeTreeTool,
+    CodeGraphCallerTreeTool,
+)
 
 # ---------------------------------------------------------------------------
 # Tool class imports — consumed via globals() inside _get_tool_class so that
@@ -202,6 +206,8 @@ _TOOL_CLASS_NAMES: frozenset[str] = frozenset(
         "CodeGraphCallTool",
         "CodeGraphCallersTool",
         "CodeGraphCalleesTool",
+        "CodeGraphCalleeTreeTool",
+        "CodeGraphCallerTreeTool",
         "CodeGraphCallPathTool",
         "CodeGraphOverviewTool",
         "ASTCacheTool",

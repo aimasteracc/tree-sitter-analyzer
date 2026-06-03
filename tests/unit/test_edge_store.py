@@ -8,8 +8,6 @@ import pytest
 
 from tree_sitter_analyzer._ast_cache_schema import apply_migration_v8
 from tree_sitter_analyzer._ast_cache_write import (
-    _GRAPH_CALL_EDGE_COLUMNS,
-    _row_to_dict,
     write_graph_edges_for_file,
 )
 from tree_sitter_analyzer.ast_cache import ASTCache
@@ -427,9 +425,7 @@ def test_ast_cache_call_queries_read_from_edge_store_when_legacy_edges_missing(
     cache = ASTCache(str(tmp_path))
     try:
         assert cache.index_file(str(sample))["status"] == "indexed"
-        cache.get_conn().execute("DELETE FROM ast_call_edges")
-        cache.get_conn().commit()
-
+        # B1.3: CALLS rows live only in the unified ``edges`` table.
         assert cache.has_call_edges() is True
         callers = cache.query_callers("bar")
         callees = cache.query_callees("foo", caller_file="sample.py")
@@ -481,7 +477,9 @@ def test_ast_cache_call_queries_fall_back_when_edge_store_empty(
 def test_ast_cache_get_call_edges_handles_missing_table(tmp_path: Path) -> None:
     cache = ASTCache(str(tmp_path))
     try:
-        cache.get_conn().execute("DROP TABLE ast_call_edges")
+        # B1.3: CALLS rows live in the unified ``edges`` table. Dropping it
+        # exercises the missing-table degrade path for both readers.
+        cache.get_conn().execute("DROP TABLE edges")
         cache.get_conn().commit()
 
         assert cache.get_call_edges() == []
@@ -591,9 +589,8 @@ def test_project_index_refreshes_edge_store_with_resolved_call_metadata(
         stats = cache.index_project(force=True)
         assert stats["indexed"] == 1
 
-        cache.get_conn().execute("DELETE FROM ast_call_edges")
-        cache.get_conn().commit()
-
+        # B1.3: CALLS rows live only in the unified ``edges`` table; querying
+        # callees reads them directly (no ast_call_edges to clear).
         callees = cache.query_callees("foo", caller_file="sample.py")
         assert callees == [
             {
@@ -649,34 +646,6 @@ def test_write_graph_edges_handles_empty_imports_and_missing_parent(
         conn.close()
 
 
-def test_graph_call_edge_row_mapping_supports_tuple_rows() -> None:
-    row = (
-        "caller",
-        "caller.py",
-        10,
-        "callee",
-        "pkg.callee",
-        20,
-        "caller.py",
-        "python",
-        "project",
-        "callee.py",
-    )
-
-    assert _row_to_dict(row, _GRAPH_CALL_EDGE_COLUMNS) == {
-        "caller_name": "caller",
-        "caller_file": "caller.py",
-        "caller_line": 10,
-        "callee_name": "callee",
-        "callee_full": "pkg.callee",
-        "callee_line": 20,
-        "file_path": "caller.py",
-        "language": "python",
-        "callee_resolution": "project",
-        "callee_resolved_file": "callee.py",
-    }
-
-
 def test_write_graph_edges_logs_operational_error(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -685,7 +654,9 @@ def test_write_graph_edges_logs_operational_error(
         def __init__(self, _conn: sqlite3.Connection, **_kwargs: Any) -> None:
             pass
 
-        def replace_edges_for_file(self, _file_path: str, _edges: list[Edge]) -> None:
+        def replace_edges_for_file(
+            self, _file_path: str, _edges: list[Edge], **_kwargs: Any
+        ) -> None:
             raise sqlite3.OperationalError("boom")
 
     monkeypatch.setattr(edge_store_module, "EdgeStore", BrokenEdgeStore)

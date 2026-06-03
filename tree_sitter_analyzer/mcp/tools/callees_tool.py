@@ -115,6 +115,10 @@ class CodeGraphCalleesTool(CodeGraphRelationToolMixin, BaseMCPTool):
         if _is_stale_resolution(callees):
             warnings_list.append(_STALE_CACHE_WARNING)
 
+        # P2: inline each callee's verbatim source body (top-N capped) so the
+        # agent answers from content, not coordinates — no Read per file:line.
+        next_step = self._inline_callee_bodies(cache, callees)
+
         result = build_response(
             verdict="INFO" if callees else "NOT_FOUND",
             warnings=warnings_list or None,
@@ -123,10 +127,39 @@ class CodeGraphCalleesTool(CodeGraphRelationToolMixin, BaseMCPTool):
             callee_count=len(callees),
             callees=callees,
         )
+        if next_step:
+            result["next_step"] = next_step
 
         from ..utils.format_helper import apply_toon_format_to_response
 
         return apply_toon_format_to_response(result, output_format)
+
+    def _inline_callee_bodies(
+        self,
+        cache: Any,
+        callees: list[dict[str, Any]],
+    ) -> str | None:
+        """P2: attach a body to the top-N callees (in place). Returns deterrent.
+
+        Best-effort: any failure leaves the bare-coordinate list intact and
+        returns ``None`` (no deterrent).
+        """
+        if not callees or not self.project_root:
+            return None
+        try:
+            from . import symbol_body_inline as sbi
+
+            # cache may be None (graph-parse path with no index yet); the
+            # helper only needs it for the end_line fallback, and records on
+            # the graph path already carry end_line, so it degrades cleanly.
+            enriched = sbi.inline_neighbor_bodies(self.project_root, cache, callees)
+            if not any("body" in c for c in enriched):
+                return None
+            callees[:] = enriched
+            return sbi.NEIGHBORS_DETERRENT
+        except Exception as exc:  # best-effort enrichment
+            logger.debug(f"Callee body inlining failed: {exc}")
+            return None
 
     def _sql_native_callees(
         self,

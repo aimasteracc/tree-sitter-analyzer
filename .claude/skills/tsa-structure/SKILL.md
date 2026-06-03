@@ -16,11 +16,10 @@ description: |
   Replaces: reading the whole file (~20k tokens for big files) with structural
   views (200-1000 tokens).
 allowed-tools:
-  - mcp__tree-sitter-analyzer__analyze_code_structure
-  - mcp__tree-sitter-analyzer__get_code_outline
-  - mcp__tree-sitter-analyzer__query_code
-  - mcp__tree-sitter-analyzer__code_patterns
-  - mcp__tree-sitter-analyzer__semantic_classify
+  - mcp__tree-sitter-analyzer__structure
+  - mcp__tree-sitter-analyzer__search
+  - mcp__tree-sitter-analyzer__health
+  - mcp__tree-sitter-analyzer__edit
   - Bash
   - Read
 ---

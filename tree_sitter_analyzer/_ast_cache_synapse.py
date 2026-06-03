@@ -36,8 +36,8 @@ def resolve_call_edges_for_file(
         return
     try:
         rows = conn.execute(
-            "SELECT id, caller_name, caller_file, callee_name "
-            "FROM ast_call_edges WHERE file_path = ?",
+            "SELECT id, caller_name, file_path AS caller_file, callee_name, "
+            "callee_full FROM edges WHERE kind = 'calls' AND file_path = ?",
             (rel_path,),
         ).fetchall()
     except sqlite3.OperationalError as exc:
@@ -45,15 +45,21 @@ def resolve_call_edges_for_file(
         return
     for row in rows:
         try:
-            resolved = resolve_callee(row["callee_name"], row["caller_file"], ctx)
+            resolved = resolve_callee(
+                row["callee_name"],
+                row["caller_file"],
+                ctx,
+                row["callee_full"],
+                row["caller_name"],
+            )
         except Exception as exc:  # pragma: no cover
             logger.debug("resolve_callee crashed on %s: %s", row["callee_name"], exc)
             continue
         try:
             conn.execute(
-                "UPDATE ast_call_edges "
-                "SET callee_symbol_id = ?, callee_resolution = ?, callee_resolved_file = ? "
-                "WHERE id = ?",
+                "UPDATE edges "
+                "SET callee_symbol_id = ?, callee_resolution = ?, "
+                "callee_resolved_file = ? WHERE id = ?",
                 (
                     resolved.callee_symbol_id,
                     resolved.resolution,
@@ -76,9 +82,17 @@ def run_synapse_backfill(cache: Any, conn: sqlite3.Connection) -> dict[str, int]
     if not is_enabled():
         return None
     try:
+        # Re-scan only edges that are still genuinely unresolved. ``external``
+        # and ``stdlib`` are *terminal* resolutions (target lives outside the
+        # project, no resolved_file by design) — re-selecting them on every
+        # backfill is the unknown-> rescan loop B3 is meant to break.
         rows = conn.execute(
-            "SELECT id, caller_name, caller_file, callee_name FROM ast_call_edges "
-            "WHERE callee_resolution = 'unknown' OR callee_resolved_file = ''"
+            "SELECT id, caller_name, file_path AS caller_file, callee_name, "
+            "callee_full FROM edges "
+            "WHERE kind = 'calls' AND ("
+            "callee_resolution = 'unknown' "
+            "OR (callee_resolved_file = '' "
+            "    AND callee_resolution NOT IN ('external', 'stdlib')))"
         ).fetchall()
     except sqlite3.OperationalError as exc:
         logger.debug("synapse backfill select failed: %s", exc)
@@ -95,7 +109,13 @@ def run_synapse_backfill(cache: Any, conn: sqlite3.Connection) -> dict[str, int]
     updates: list[tuple[Any, str, str, int]] = []
     for row in rows:
         try:
-            result = resolve_callee(row["callee_name"], row["caller_file"], ctx)
+            result = resolve_callee(
+                row["callee_name"],
+                row["caller_file"],
+                ctx,
+                row["callee_full"],
+                row["caller_name"],
+            )
         except Exception as exc:
             logger.debug("resolve_callee failed in backfill: %s", exc)
             errors += 1
@@ -114,9 +134,9 @@ def run_synapse_backfill(cache: Any, conn: sqlite3.Connection) -> dict[str, int]
     if updates:
         try:
             conn.executemany(
-                "UPDATE ast_call_edges "
-                "SET callee_symbol_id = ?, callee_resolution = ?, callee_resolved_file = ? "
-                "WHERE id = ?",
+                "UPDATE edges "
+                "SET callee_symbol_id = ?, callee_resolution = ?, "
+                "callee_resolved_file = ? WHERE id = ?",
                 updates,
             )
             resolved += len(updates)

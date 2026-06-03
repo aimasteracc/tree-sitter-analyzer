@@ -252,122 +252,24 @@ class TestExecuteAcrossAllTools:
     def test_every_tool_response_honours_envelope(
         self, registered_tools, tiny_project: Path
     ) -> None:
-        # Per-tool smoke arguments. Cover every tool with the cheapest
-        # call that the tool actually accepts.
+        # Wave C2: the registry now exposes the 8 facades. Each facade is
+        # smoke-called with the cheapest valid ``action`` so the delegated
+        # inner's envelope is still validated end-to-end through the facade
+        # dispatch + arg-projection path.
         sample_file = str(tiny_project / "sample.py")
-        per_tool_args: dict[str, dict] = {
-            "check_code_scale": {"file_path": sample_file},
-            "analyze_code_structure": {"file_path": sample_file, "format_type": "json"},
-            "get_code_outline": {"file_path": sample_file},
-            "extract_code_section": {
-                "file_path": sample_file,
-                "start_line": 1,
-                "end_line": 1,
-            },
-            "query_code": {"file_path": sample_file, "query_key": "functions"},
-            "list_files": {"roots": [str(tiny_project)]},
-            "search_content": {"query": "greet", "roots": [str(tiny_project)]},
-            "find_and_grep": {"query": "greet", "roots": [str(tiny_project)]},
-            "list_agent_skills": {},
-            "get_agent_workflow": {"file_path": sample_file},
-            "advise_parser_readiness": {"language": "python"},
-            "get_project_overview": {},
-            "check_project_health": {},
-            "check_file_health": {"file_path": sample_file},
-            "analyze_dependencies": {"mode": "summary"},
-            "ast_cache": {"mode": "stats"},
-            "codegraph_call_graph": {"mode": "summary"},
-            "analyze_change_impact": {"mode": "diff"},
-            "refactoring_suggestions": {"file_path": sample_file},
-            "safe_to_edit": {"file_path": sample_file},
-            "smart_context": {"file_path": sample_file},
-            "symbol_lineage": {"symbol": "greet"},
-            "code_patterns": {"file_path": sample_file},
-            "detect_routes": {"mode": "summary"},
-            "ast_diff": {
-                "mode": "diff_strings",
-                "old_source": "a = 1",
-                "new_source": "a = 2",
-                "language": "python",
-            },
-            "codegraph_callers": {"function_name": "greet"},
-            "codegraph_callees": {"function_name": "greet"},
-            "codegraph_symbol_search": {"query": "greet"},
-            "codegraph_resolve": {"symbol": "greet"},
-            "codegraph_ast_path": {"mode": "outline", "file_path": sample_file},
-            "codegraph_overview": {},
-            # Pain pass 2: 4 new tools were registered without being added
-            # to this envelope-contract table, which made the suite fail
-            # on a contract-coverage check.
-            "codegraph_impact": {
-                "mode": "risk_score",
-                "function_name": "greet",
-            },
-            "codegraph_navigate": {"mode": "outline", "file_path": sample_file},
-            "codegraph_pr_review": {"mode": "diff"},
-            "semantic_classify": {
-                "mode": "classify_string",
-                "old_source": "a = 1",
-                "new_source": "a = 2",
-                "language": "python",
-            },
-            # Pain pass 4: 2 more tools shipped without coverage rows.
-            "codegraph_import_graph": {"mode": "summary"},
-            "codegraph_dead_code": {"mode": "summary"},
-            # Pain pass 5: clone detector + class hierarchy + dependency
-            # matrix + Feature 3 constraint DSL — registered without
-            # envelope-contract rows.
-            "codegraph_similarity": {"mode": "all"},
-            "codegraph_class_hierarchy": {"mode": "summary"},
-            "codegraph_class_inspect": {
-                "class_name": "LanguagePlugin",
-                "output_format": "json",
-            },
-            "codegraph_dependency_matrix": {"mode": "summary"},
-            "check_constraints": {"output_format": "json"},
-            # Pain pass 6: server.py registry consolidation surfaced 8
-            # tools that were in the central registry but missing from
-            # server.py's stale copy. They lack envelope-contract rows
-            # for the same reason — server.py never instantiated them so
-            # the contract sweep never saw them.
-            "codegraph_call_path": {
-                "mode": "forward",
-                "source_function": "greet",
-            },
-            "codegraph_xref": {"symbol": "greet"},
-            "codegraph_sitemap": {"mode": "module"},
-            "codegraph_complexity_heatmap": {"mode": "project"},
-            "codegraph_visualize": {"mode": "full"},
-            "codegraph_uml": {"diagram": "class"},
-            "codegraph_autoindex": {"mode": "status"},
-            "codegraph_full_index": {"mode": "stats"},
-            "codegraph_metrics": {"mode": "project"},
-            "codegraph_incremental_sync": {"mode": "status"},
-            "codegraph_status": {},
-            "codegraph_context": {"task": "greet", "output_format": "json"},
-            "codegraph_explore": {"query": "greet"},
-            "codegraph_query": {"query": "search('greet').explore()"},
-            # consolidated-only tools ported during merge of feat/autonomous-dev
-            "trace_impact": {"symbol": "greet", "mode": "callers"},
-            "modification_guard": {"file_path": sample_file, "symbol": "greet"},
-            "batch_search": {
-                "queries": [{"query": "greet", "roots": [str(tiny_project)]}]
-            },
-            "build_project_index": {"roots": [str(tiny_project)]},
-            "check_tools": {},
-            # r37fG: persistent decision journal. Search with a no-match
-            # query exercises the canonical envelope without needing
-            # pre-existing rows in the contract fixture.
-            "decision_journal": {
-                "mode": "search",
-                "query": "contract-test-no-match",
-                "output_format": "json",
-            },
-            "doc_sync": {"output_format": "json"},
+        per_facade_args: dict[str, dict] = {
+            "search": {"action": "symbol", "query": "greet"},
+            "nav": {"action": "callers", "function_name": "greet"},
+            "structure": {"action": "outline", "file_path": sample_file},
+            "health": {"action": "file", "file_path": sample_file},
+            "edit": {"action": "safe", "file_path": sample_file},
+            "project": {"action": "tools"},
+            "index": {"action": "status"},
+            "viz": {"action": "uml", "diagram": "class"},
         }
         skipped: list[str] = []
         for name, tool in registered_tools:
-            args = per_tool_args.get(name)
+            args = per_facade_args.get(name)
             if args is None:
                 skipped.append(name)
                 continue
@@ -379,5 +281,5 @@ class TestExecuteAcrossAllTools:
                 continue
             validate_tool_response(result, name)
         assert skipped == [], (
-            f"Tools missing from per_tool_args (add a row above): {skipped}"
+            f"Facades missing from per_facade_args (add a row above): {skipped}"
         )

@@ -166,6 +166,30 @@ _CORE_SPECS: tuple[McpCommandSpec, ...] = (
         },
     ),
     McpCommandSpec(
+        flag_name="callee_tree",
+        tool_attr="CodeGraphCalleeTreeTool",
+        label="Depth-limited nested callee tree (mycelium RFC-0020 parity)",
+        build_tool_args=lambda args, output_format: {
+            "symbol": getattr(args, "callee_tree", "") or "",
+            "file_path": getattr(args, "tree_file", None),
+            "max_depth": getattr(args, "tree_max_depth", 3),
+            "max_nodes": getattr(args, "tree_max_nodes", 150),
+            "output_format": output_format,
+        },
+    ),
+    McpCommandSpec(
+        flag_name="caller_tree",
+        tool_attr="CodeGraphCallerTreeTool",
+        label="Depth-limited nested caller tree (mycelium RFC-0021 parity)",
+        build_tool_args=lambda args, output_format: {
+            "symbol": getattr(args, "caller_tree", "") or "",
+            "file_path": getattr(args, "tree_file", None),
+            "max_depth": getattr(args, "tree_max_depth", 3),
+            "max_nodes": getattr(args, "tree_max_nodes", 150),
+            "output_format": output_format,
+        },
+    ),
+    McpCommandSpec(
         flag_name="ast_cache",
         tool_attr="ASTCacheTool",
         label="Pre-indexed AST cache (CodeGraph parity)",

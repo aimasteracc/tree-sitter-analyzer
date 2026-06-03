@@ -148,6 +148,30 @@ class TestCodeGraphSymbolSearchExecution:
         result = await tool.execute({"query": "UserService", "output_format": "json"})
         assert "codegraph_explore" in result["next_step"]
 
+    async def test_top_match_inlines_source_body(self, indexed_project):
+        """P2: top matches carry an inlined verbatim source body (no Read)."""
+        tool = CodeGraphSymbolSearchTool(str(indexed_project))
+        result = await tool.execute({"query": "get_user", "output_format": "json"})
+        assert result["match_count"] >= 1
+        hit = next(r for r in result["results"] if r["name"] == "get_user")
+        assert "body" in hit, "top match must carry inlined body"
+        assert "content" in hit["body"]
+        assert "def get_user" in hit["body"]["content"]
+        assert "_find_user" in hit["body"]["content"]
+
+    async def test_search_deterrent_next_step(self, indexed_project):
+        """P2: a deterrent tells the agent to answer from inlined bodies."""
+        tool = CodeGraphSymbolSearchTool(str(indexed_project))
+        result = await tool.execute({"query": "get_user", "output_format": "json"})
+        assert "no Read needed" in result["next_step"]
+
+    async def test_search_body_survives_toon(self, indexed_project):
+        """P2: inlined body survives TOON serialization (MCP default)."""
+        tool = CodeGraphSymbolSearchTool(str(indexed_project))
+        result = await tool.execute({"query": "get_user", "output_format": "toon"})
+        assert result.get("format") == "toon"
+        assert "def get_user" in result["toon_content"]
+
     async def test_toon_output_format(self, indexed_project):
         tool = CodeGraphSymbolSearchTool(str(indexed_project))
         result = await tool.execute({"query": "UserService", "output_format": "toon"})
@@ -311,20 +335,29 @@ class TestCodeGraphSymbolSearchSourceContext:
 
 
 class TestCodeGraphSymbolSearchRegistration:
+    """Wave C2: these capabilities are now facade actions, not top-level tools.
+    symbol_search → search.symbol; callers/callees → nav.callers/callees
+    (bespoke, scope-discriminated)."""
+
     def test_tool_registered_in_server(self):
         from tree_sitter_analyzer.mcp.server import _create_tool_registry
 
         _, tools = _create_tool_registry(None)
-        assert "codegraph_symbol_search" in tools
+        assert "search" in tools
+        assert "symbol" in tools["search"].action_map
+        assert (
+            type(tools["search"].action_map["symbol"]).__name__
+            == "CodeGraphSymbolSearchTool"
+        )
 
     def test_callers_registered_in_server(self):
         from tree_sitter_analyzer.mcp.server import _create_tool_registry
 
         _, tools = _create_tool_registry(None)
-        assert "codegraph_callers" in tools
+        assert "callers" in tools["nav"].bespoke_map
 
     def test_callees_registered_in_server(self):
         from tree_sitter_analyzer.mcp.server import _create_tool_registry
 
         _, tools = _create_tool_registry(None)
-        assert "codegraph_callees" in tools
+        assert "callees" in tools["nav"].bespoke_map

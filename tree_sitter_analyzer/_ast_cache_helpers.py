@@ -65,6 +65,13 @@ def _make_error_entry(rel_path: str, reason: str) -> dict[str, Any]:
     return {"file": rel_path, "status": "error", "reason": reason}
 
 
+# A4: write the index in bounded transactions instead of one giant BEGIN…COMMIT.
+# On large repos (e.g. 7.9k Java files / 884k edges) accumulating every insert in
+# a single transaction pushed RSS high enough to trigger OOM/swap and the apparent
+# "stall". Committing every _COMMIT_BATCH_SIZE files caps the dirty-page set.
+_COMMIT_BATCH_SIZE = 500
+
+
 def _commit_index_results(
     conn: Any,
     results: list[dict[str, Any]],
@@ -72,18 +79,27 @@ def _commit_index_results(
     insert_fn: Any,
     indexed_at: str,
     activation_enabled: bool,
+    batch_size: int = _COMMIT_BATCH_SIZE,
 ) -> None:
-    """Commit all worker results to the DB in a single transaction.
+    """Commit worker results to the DB in bounded-size transactions.
 
     Iterates *results*, accumulates into *stats* via ``_process_one_index_result``,
-    and rolls back the entire batch on any exception.
+    committing every *batch_size* files so the dirty-page set (and RSS) stays
+    bounded on large repos. A failure rolls back only the current batch and
+    re-raises; previously committed batches persist.
     """
+    pending = 0
     conn.execute("BEGIN")
     try:
         for r in results:
             _process_one_index_result(
                 r, stats, insert_fn, indexed_at, activation_enabled
             )
+            pending += 1
+            if pending >= batch_size:
+                conn.execute("COMMIT")
+                pending = 0
+                conn.execute("BEGIN")
         conn.execute("COMMIT")
     except Exception:
         conn.execute("ROLLBACK")

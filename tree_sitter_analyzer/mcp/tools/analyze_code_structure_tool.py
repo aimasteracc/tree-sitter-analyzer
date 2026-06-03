@@ -58,7 +58,7 @@ def _format_table(
     format_type: str,
 ) -> str:
     """Format analysis result as a compact or full table."""
-    if format_type in ["full", "compact", "csv"]:
+    if format_type in {"full", "compact", "csv", "signatures"}:
         formatter = FormatterRegistry.get_formatter_for_language(language, format_type)
         output = formatter.format_structure(structure_dict)
     elif FormatterRegistry.is_format_supported(format_type):
@@ -347,14 +347,17 @@ def _validate_required_file_path(arguments: dict[str, Any]) -> None:
         raise ValueError("file_path cannot be empty")
 
 
+_VALID_FORMAT_TYPES = frozenset({"full", "compact", "csv", "signatures"})
+
+
 def _validate_format_type(arguments: dict[str, Any]) -> None:
     """Validate the optional structure table format."""
     if "format_type" not in arguments:
         return
     if not isinstance(arguments["format_type"], str):
         raise ValueError("format_type must be a string")
-    if arguments["format_type"] not in ["full", "compact", "csv"]:
-        raise ValueError("format_type must be one of: csv, compact, full")
+    if arguments["format_type"] not in _VALID_FORMAT_TYPES:
+        raise ValueError("format_type must be one of: csv, compact, full, signatures")
 
 
 def _validate_optional_string(

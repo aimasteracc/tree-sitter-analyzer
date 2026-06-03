@@ -398,3 +398,11 @@ coverage.json
 **/.understand-anything/
 .mycelium/
 .gstack/
+
+# Local validation / benchmark / dogfood artifacts — NEVER commit
+.codegraph/
+.rhizome/
+agentdb.rvf
+agentdb.rvf.lock
+/elasticsearch/
+/benchmark-repos/

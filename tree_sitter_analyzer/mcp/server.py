@@ -131,7 +131,7 @@ class TreeSitterAnalyzerMCPServer:
 
         self._tool_instances, self._tools = _create_tool_registry(project_root)
 
-        attach_tool_aliases(self, self._tools)
+        attach_tool_aliases(self, self._tools, project_root)
 
         self.universal_analyze_tool = init_universal_tool(
             project_root,
@@ -163,20 +163,41 @@ class TreeSitterAnalyzerMCPServer:
         return self._initialization_complete
 
     async def call_tool(self, name: str, arguments: dict[str, Any]) -> Any:
-        """Backwards-compatible dispatch; resolves intent aliases before lookup."""
+        """Backwards-compatible dispatch.
+
+        Resolution order:
+          1. Live facade name (``search`` / ``nav`` / ... ) → direct execute.
+          2. Deprecated 1.x tool name → legacy shim → facade.execute (β / G2).
+          3. Intent alias (``locate_usage`` etc.) → resolve, then retry 1/2.
+        """
         from .intent_aliases import IntentAliasResolver
+        from .legacy_shim import dispatch_legacy, is_legacy_name
 
         tools = getattr(self, "_tools", None) or {}
+
+        # 1. Live facade name.
+        tool = tools.get(name)
+        if tool is not None:
+            return await tool.execute(arguments)
+
+        # 2. Deprecated legacy tool name → shim forward.
+        if is_legacy_name(name):
+            return await dispatch_legacy(self, name, arguments)
+
+        # 3. Intent alias → resolves to a legacy/canonical name, then re-route.
         resolver = IntentAliasResolver()
         try:
             resolved = resolver.resolve(name)
         except (TypeError, ValueError):
             resolved = name
-        tool = tools.get(resolved) or tools.get(name)
-        if tool is None:
-            _msg = "Unknown tool: " + name
-            raise ValueError(_msg)
-        return await tool.execute(arguments)
+        tool = tools.get(resolved)
+        if tool is not None:
+            return await tool.execute(arguments)
+        if is_legacy_name(resolved):
+            return await dispatch_legacy(self, resolved, arguments)
+
+        _msg = "Unknown tool: " + name
+        raise ValueError(_msg)
 
     def _ensure_initialized(self) -> None:
         """Ensure the server is initialized before processing requests."""
@@ -243,6 +264,12 @@ class TreeSitterAnalyzerMCPServer:
         self.project_stats_resource.set_project_path(project_path)
 
         for tool in self._tools.values():
+            tool.set_project_path(project_path)
+
+        # G3: rebind the legacy direct-access inner instances too. They are not
+        # in ``self._tools`` (which now holds only the 8 facades) but back the
+        # ``read_partial_tool`` / ``table_format_tool`` bespoke paths + tests.
+        for tool in getattr(self, "_legacy_alias_tools", []):
             tool.set_project_path(project_path)
 
         if hasattr(self, "universal_analyze_tool") and self.universal_analyze_tool:

@@ -43,9 +43,13 @@ class ResolverContext:
         builtins: dict[str, frozenset[str]] | None = None,
         stdlib_modules: dict[str, frozenset[str]] | None = None,
         callee_resolver: CalleeResolver | None = None,
+        file_languages: dict[str, str] | None = None,
+        java_context: Any | None = None,
     ) -> None:
         self.project_root = project_root
         self.cache = cache
+        self._file_languages = file_languages or {}
+        self._java_context = java_context
         self._file_symbols = file_symbols or {}
         self._name_to_source = name_to_source or {}
         self._file_class_methods = file_class_methods or {}
@@ -68,8 +72,20 @@ class ResolverContext:
                 builtins,
                 stdlib_modules,
                 callee_resolver,
+                file_languages,
+                java_context,
             )
         )
+
+    @property
+    def file_languages(self) -> dict[str, str]:
+        self._ensure_loaded()
+        return self._file_languages
+
+    @property
+    def java_context(self) -> Any | None:
+        self._ensure_loaded()
+        return self._java_context
 
     @property
     def file_symbols(self) -> dict[str, list[tuple[str, str, int]]]:
@@ -136,6 +152,8 @@ class ResolverContext:
         self._builtins = built.builtins
         self._stdlib_modules = built.stdlib_modules
         self._callee_resolver = built.callee_resolver
+        self._file_languages = built._file_languages  # noqa: SLF001
+        self._java_context = built._java_context  # noqa: SLF001
         self._loaded = True
 
 
@@ -434,10 +452,15 @@ def _build_resolver_context_uncached(cache: ASTCache) -> ResolverContext:
         )
         imports_by_file.setdefault(entry.file_path, []).append(entry)
 
-    file_paths = [
-        r["file_path"]
-        for r in conn.execute("SELECT file_path FROM ast_index").fetchall()
-    ]
+    file_paths: list[str] = []
+    file_languages: dict[str, str] = {}
+    try:
+        idx_rows = conn.execute("SELECT file_path, language FROM ast_index").fetchall()
+    except Exception:  # nosec B110
+        idx_rows = []
+    for r in idx_rows:
+        file_paths.append(r["file_path"])
+        file_languages[r["file_path"]] = r["language"]
     module_to_file = _build_module_to_file(file_paths)
     name_to_source, alias_target = _build_import_maps(imports_by_file, module_to_file)
     callee_resolver = _build_callee_resolver(
@@ -445,6 +468,15 @@ def _build_resolver_context_uncached(cache: ASTCache) -> ResolverContext:
         global_name_table=global_name_table,
         name_to_source=name_to_source,
         alias_target=alias_target,
+    )
+
+    java_context = _maybe_build_java_context(
+        imports_by_file=imports_by_file,
+        file_languages=file_languages,
+        file_symbols=file_symbols,
+        global_name_table=global_name_table,
+        conn=conn,
+        line_idx=line_idx,
     )
 
     return ResolverContext(
@@ -458,6 +490,42 @@ def _build_resolver_context_uncached(cache: ASTCache) -> ResolverContext:
         builtins={"python": BUILTINS_PY},
         stdlib_modules={"python": STDLIB_NAMES_PY},
         callee_resolver=callee_resolver,
+        file_languages=file_languages,
+        java_context=java_context,
+    )
+
+
+def _maybe_build_java_context(
+    *,
+    imports_by_file: dict[str, list[ImportEntry]],
+    file_languages: dict[str, str],
+    file_symbols: dict[str, list[tuple[str, str, int]]],
+    global_name_table: dict[str, list[tuple[str, int]]],
+    conn: Any,
+    line_idx: dict[tuple[str, str, int], int],
+) -> Any | None:
+    """Build the Java resolver context, or ``None`` for non-Java projects.
+
+    Zero cost for Python-only projects: we only build when at least one
+    indexed file is Java. Java needs the class→method map (for this/super
+    resolution), so we build it here once and share it.
+    """
+    has_java = any(lang == "java" for lang in file_languages.values())
+    if not has_java:
+        return None
+    from ._java import build_java_context
+
+    java_imports: dict[str, list[ImportEntry]] = {
+        fp: entries
+        for fp, entries in imports_by_file.items()
+        if file_languages.get(fp) == "java"
+    }
+    file_class_methods = _build_file_class_methods(conn, line_idx)
+    return build_java_context(
+        imports_by_file=java_imports,
+        file_symbols=file_symbols,
+        file_class_methods=file_class_methods,
+        global_name_table=global_name_table,
     )
 
 

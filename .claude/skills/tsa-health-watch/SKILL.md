@@ -16,13 +16,8 @@ description: |
   Replaces: 5-10 grep/read calls + manual heuristics + spreadsheet (~20k
   tokens) with 2-3 MCP calls (~2k tokens).
 allowed-tools:
-  - mcp__tree-sitter-analyzer__check_project_health
-  - mcp__tree-sitter-analyzer__check_file_health
-  - mcp__tree-sitter-analyzer__codegraph_overview
-  - mcp__tree-sitter-analyzer__codegraph_dead_code
-  - mcp__tree-sitter-analyzer__codegraph_complexity_heatmap
-  - mcp__tree-sitter-analyzer__codegraph_metrics
-  - mcp__tree-sitter-analyzer__doc_sync
+  - mcp__tree-sitter-analyzer__health
+  - mcp__tree-sitter-analyzer__project
   - Bash
   - Read
 ---

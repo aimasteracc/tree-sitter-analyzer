@@ -36,7 +36,7 @@ from ._imports import ImportEntry, parse_imports
 
 @dataclass(frozen=True)
 class ResolvedCallee:
-    """One resolution per call edge — written into ``ast_call_edges``."""
+    """One resolution per call edge — written into the unified ``edges`` table."""
 
     callee_symbol_id: int | None
     resolution: str
@@ -74,14 +74,30 @@ def _item_file(item: object) -> str:
 
 
 def _try_self_method(
-    base: str, qualifier: str, caller_file: str, ctx: ResolverContext
+    base: str,
+    qualifier: str,
+    caller_file: str,
+    caller_name: str,
+    ctx: ResolverContext,
 ) -> ResolvedCallee | None:
     if qualifier not in ("self", "cls"):
         return None
-    for _cls, methods in ctx.file_class_methods.get(caller_file, {}).items():
-        sym_id = methods.get(base)
-        if sym_id is not None:
-            return ResolvedCallee(sym_id, "local", caller_file)
+    classes = ctx.file_class_methods.get(caller_file, {})
+    # P2 (Codex review): restrict self.X to the CALLER's enclosing class, not
+    # every class in the file. The enclosing class is the one that defines the
+    # caller method (caller_name). Without this, `A.f` calling `self.helper()`
+    # would wrongly resolve to `B.helper` when only B defines it.
+    enclosing = [cls for cls, methods in classes.items() if caller_name in methods]
+    if len(enclosing) == 1:
+        sym_id = classes[enclosing[0]].get(base)
+        return (
+            ResolvedCallee(sym_id, "local", caller_file) if sym_id is not None else None
+        )
+    # Enclosing class unknown/ambiguous → only resolve when base is defined in
+    # exactly ONE class (no cross-class guess).
+    defs = [methods[base] for methods in classes.values() if base in methods]
+    if len(defs) == 1:
+        return ResolvedCallee(defs[0], "local", caller_file)
     return None
 
 
@@ -212,19 +228,134 @@ def _try_single_global(
     return None
 
 
+def _try_class_method(
+    base: str, qualifier: str, ctx: ResolverContext
+) -> ResolvedCallee | None:
+    """RFC-0002: receiver-type-aware method resolution.
+
+    When the qualifier is a KNOWN CLASS NAME (the extractor inferred the
+    receiver's type from a ``var = ClassName(...)`` assignment and rewrote the
+    callee as ``ClassName.method``), resolve ``base`` to that class's method.
+    This is what disambiguates NON-unique methods (e.g. ``execute`` defined on
+    many classes) that ``_try_unique_method`` deliberately leaves unknown — the
+    receiver type pins down which class.
+    """
+    if not qualifier:
+        return None
+    # P2 (Codex): a class name may be defined in multiple modules (Client,
+    # Config, Handler...). Picking the first match could resolve to the wrong
+    # module. Only resolve when the (class, method) is unique project-wide;
+    # otherwise stay unknown rather than guess the wrong file.
+    found: tuple[str, int] | None = None
+    for file_path, classes in ctx.file_class_methods.items():
+        methods = classes.get(qualifier)
+        if methods is None:
+            continue
+        sym_id = methods.get(base)
+        if sym_id is None:
+            continue
+        if found is not None and (file_path, sym_id) != found:
+            return None  # duplicate class name across modules — ambiguous
+        found = (file_path, sym_id)
+    if found is not None:
+        return ResolvedCallee(found[1], "project", found[0])
+    return None
+
+
+def _try_unique_method(
+    base: str, qualifier: str, ctx: ResolverContext
+) -> ResolvedCallee | None:
+    """RFC-0002 Phase 1: receiver method call where the method name is unique.
+
+    For ``obj.method()`` whose receiver type we cannot infer, if ``method`` is
+    defined on exactly ONE class across the whole project, resolve to it. If it
+    is defined on multiple classes (e.g. ``execute``), return ``None`` and stay
+    ``unknown`` rather than guess. Requires a qualifier (a receiver); ``self``/
+    ``cls`` are already handled by ``_try_self_method``, and bare names by the
+    global rules above — so this only fires for true receiver method calls the
+    earlier rules left unresolved.
+    """
+    if not qualifier or qualifier in ("self", "cls"):
+        return None
+    found: tuple[str, int] | None = None
+    for file_path, classes in ctx.file_class_methods.items():
+        for _cls, methods in classes.items():
+            sym_id = methods.get(base)
+            if sym_id is None:
+                continue
+            if found is not None and (file_path, sym_id) != found:
+                return None  # defined on >1 class — ambiguous, don't guess
+            found = (file_path, sym_id)
+    if found is not None:
+        return ResolvedCallee(found[1], "project", found[0])
+    return None
+
+
 def resolve_callee(
-    callee_name: str, caller_file: str, ctx: ResolverContext
+    callee_name: str,
+    caller_file: str,
+    ctx: ResolverContext,
+    callee_full: str | None = None,
+    caller_name: str = "",
 ) -> ResolvedCallee:
-    """Resolve a single callee per the priority cascade above."""
-    qualifier, base = _split_qualifier(callee_name)
+    """Resolve a single callee, dispatching by the caller file's language.
+
+    Python keeps the original cascade verbatim. Java routes to the Java
+    resolver (when a Java context is present), using ``callee_full`` to
+    recover the receiver. Any other language falls through to the Python
+    cascade exactly as before B3 (no behaviour change for them).
+    """
+    language = ctx.file_languages.get(caller_file)
+    if language == "java" and ctx.java_context is not None:
+        from ._java import resolve_java_callee
+
+        sym_id, resolution, resolved_file = resolve_java_callee(
+            callee_name,
+            callee_full if callee_full is not None else callee_name,
+            caller_file,
+            ctx.java_context,
+        )
+        return ResolvedCallee(sym_id, resolution, resolved_file)
+
+    return _resolve_callee_python(
+        callee_name, caller_file, ctx, callee_full, caller_name
+    )
+
+
+def _resolve_callee_python(
+    callee_name: str,
+    caller_file: str,
+    ctx: ResolverContext,
+    callee_full: str | None = None,
+    caller_name: str = "",
+) -> ResolvedCallee:
+    """Resolve a single callee per the priority cascade above.
+
+    ``callee_name`` is the bare name (receiver stripped); ``callee_full`` keeps
+    the receiver (e.g. ``self._scan_disk_files``). The bare name loses the
+    ``self``/``cls`` qualifier, so ``self.X`` calls would never reach
+    ``_try_self_method`` — the #1 source of ``unknown`` edges. When
+    ``callee_full`` carries a ``self``/``cls`` receiver, split on it so those
+    method calls resolve.
+    """
+    # P2 (Codex review): split on callee_full whenever it carries a receiver,
+    # not just self/cls — otherwise `pg.all_edges()` (callee_name='all_edges',
+    # callee_full='pg.all_edges') loses the `pg` qualifier and _try_unique_method
+    # never fires on the production rows it was meant to resolve.
+    if callee_full and "." in callee_full:
+        qualifier, base = _split_qualifier(callee_full)
+    else:
+        qualifier, base = _split_qualifier(callee_name)
 
     for rule in (
-        lambda: _try_self_method(base, qualifier, caller_file, ctx),
+        lambda: _try_self_method(base, qualifier, caller_file, caller_name, ctx),
         lambda: _try_local(base, caller_file, ctx) if not qualifier else None,
         lambda: _try_import(base, qualifier, caller_file, ctx),
         lambda: _try_stdlib(base, qualifier, caller_file, ctx),
         lambda: _try_builtin(base, qualifier, ctx),
         lambda: _try_single_global(base, qualifier, ctx),
+        lambda: _try_class_method(base, qualifier, ctx),
+        lambda: _try_unique_method(base, qualifier, ctx),
     ):
         out = rule()
         if out is not None:

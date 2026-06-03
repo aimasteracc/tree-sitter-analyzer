@@ -71,6 +71,14 @@ uv run python -m tree_sitter_analyzer --show-extensions
 ```
 and verify the output is sane before committing.
 
+### ⚠️ 规则 8/9 事实核查（2026-06-02 — 命令语法已过时，开用前必读）
+
+下方规则 8/9 引用的 `mycelium subclasses-tree` / `get-descendants` / `get-all-symbols --prefix` 命令，在 2026-06-02 实测的 **Rhizome v0.11.6**（github.com/basidiocarp/rhizome，Mycelium 生态当前的 standalone code-intel MCP）中**不存在** —— Rhizome v0.11.6 没有任何专门的继承/层级遍历子命令（recon 实锤，见 memory `tsa-vs-mycelium-rhizome` + `.recon/recon-mycelium.md`）。这两条规则可能引用了已停用/改名的早期 mycelium 工具，或一个不同的工具。
+
+- **不要照抄下方命令语法** —— 先确认你当前使用的工具是否真有这些子命令。
+- 底层*教训*仍可能适用于任意继承查询工具：(8) 用裸类名而非 `file>Class` 路径做反向继承查询；(9) "explicit override" 视图通常不含继承成员，需 cross-check ABC 提供的默认方法。
+- **首选**改用 TSA 自己的工具（见规则 10）：`--class-hierarchy mode=subclasses --class-hierarchy-class LanguagePlugin`。
+
 ### 8. mycelium: use bare class name for inheritance queries, not file>Class path
 
 **Why**: After the Extends-edge fix (mycelium PR #263/#264), extends edges store the unresolved base name `"LanguagePlugin"`, not the full path. Reverse lookup by full path only finds same-file subclasses.
@@ -302,6 +310,50 @@ cd ~/.claude/skills/gstack && ./setup --team
 
 Skills like /qa, /ship, /review, /investigate, and /browse become available after install.
 Use /browse for all web browsing. Use ~/.claude/skills/gstack/... for gstack file paths.
+
+## PR Hygiene — no kitchen-sink, no half-baked PRs
+
+**🔒 LOCKED BY USER (2026-06-04):** 「以後不要出這麼多半成品或者垃圾」. Every PR must be **focused** and **finished**. This applies to autonomous-agent output too — same bar.
+
+- **One PR = one feature.** The title must match the actual diff. A PR titled `include_body` must NOT also carry `code_patterns`, `symbol_lineage`, `find_references`, test splits, and 33 skill files. If a branch accumulated unrelated commits, split them into separate `feature/*` → develop PRs, one per feature.
+- **Finished, not half-baked.** Before opening a PR: tests green, `ruff`/`mypy` clean, and the change actually works end-to-end (re-index / dogfood verified where relevant). No "Sprint N" dumps of WIP.
+- **GitFlow, every time.** Base = `develop` (never `main`); branch = `feature/*` (never `feat/*` — the GitFlow check rejects it). Verify both before opening.
+- **A kitchen-sink PR is closed, not merged.** If you receive (or an agent produces) a PR with >1 feature, a misleading title, or a 100-file diff, **close it** and re-open focused PRs. Keep the branch so commits can be cherry-picked. Codex can only meaningfully review a focused diff.
+- **Past incident (2026-06-04):** PR #276 ("include_body") bundled 10+ unrelated commits + 33 `.agents/skills` files (100 files). Closed; the rule above is the response.
+
+## RFC Process — substantial changes start as an RFC (not a loose docs/*.md)
+
+**🔒 LOCKED BY USER (2026-06-03):** 「我們出一個 docs 太隨便了，沒有 mycelium 體系化」。Substantial changes go through the RFC process in [`rfcs/`](rfcs/), modeled on the sibling mycelium project. Do NOT drop a one-off `docs/designs/*.md` for a feature design — that is too ad-hoc.
+
+- **What needs an RFC**: public API / MCP facade-or-tool additions & changes, ast_cache schema changes, cross-surface (CLI↔MCP) parity changes, performance/SLA changes, and any change to a locked design decision. See [`rfcs/README.md`](rfcs/README.md) for the full table. Bug fixes and internal refactors do not.
+- **How**: copy `rfcs/0000-template.md` → `rfcs/NNNN-title.md`, PR to develop. The RFC carries a **Status** line (`draft`→`accepted`→`implemented`), checkbox **Acceptance criteria** that flip as the implementation lands, a **Three-Surface (CLI↔MCP) parity** section, and a **RED-first test plan**.
+- **Spec-first pays off**: RFC-0001's Codex review caught an architecture-level dead-end (session inaccessible from `Server.run()`) *before any code* — exactly what a loose docs file would have missed.
+- After merge, RFCs are immutable except status/clarification; to change an accepted RFC, write a superseding one.
+
+## PR Review Rules — NEVER ignore Codex review
+
+**🔒 LOCKED BY USER (2026-06-03):** 「每次 PR 之後不可以無視 codex 的 review」。After creating OR updating any PR, you MUST fetch and triage the Codex (`chatgpt-codex-connector[bot]`) review. Ignoring it — even when CI is green or the PR already merged — is a violation of this rule.
+
+### Mandatory workflow after every PR
+
+1. **Fetch the review** (the PR-body summary is just a template — the real findings are inline comments):
+   ```bash
+   gh api repos/aimasteracc/tree-sitter-analyzer/pulls/<N>/comments \
+     | python3 -c "import json,sys; [print(c['path'],c.get('line'),'\n',c['body'][:1500],'\n---') for c in json.load(sys.stdin)]"
+   ```
+   Codex review is triggered on open / ready-for-review / `@codex review` comment. If it hasn't posted yet, wait for it (CI-monitor pattern) before merging.
+
+2. **Triage EVERY comment** — do not skip any. For each, render an explicit verdict:
+   - **Real problem** → fix it (own PR or follow-up PR). Codex P-badges (P1/P2/P3) set priority; P1/P2 must be fixed before or right after merge.
+   - **Already fixed** → Codex often reviews an older commit; verify on the current HEAD and record "already fixed by #X".
+   - **False positive / won't-fix** → state the concrete reason (cross-ref a CLAUDE.md design decision if applicable). Never dismiss silently.
+
+3. **Report the triage to the user** — a table of (comment → verdict → action), so nothing is swept under the rug.
+
+4. **If the PR already merged when the review lands**, still triage; open a follow-up PR for any real finding. A merged PR does NOT exempt its review.
+
+### Why (past incident, 2026-06-03)
+Codex flagged 3 real P2 correctness bugs across #269/#270 (Hyphae file-identity false positives, `:subclasses` wrong endpoint → empty results, `:implements` missing the `implements` edge kind). All three were genuine; ignoring them would have shipped a query DSL that returns wrong graph results to agents. The 4th finding (`.class` empty) was a stale-commit review already fixed by a later PR — which is exactly why each comment needs an explicit verdict, not a blanket dismiss. Fixed via #271.
 
 ## Release Gate Rules
 

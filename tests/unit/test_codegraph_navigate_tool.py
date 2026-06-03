@@ -229,3 +229,47 @@ class TestProjectRootChanged:
         tool_with_root._on_project_root_changed(None)
         assert not tool_with_root.call_graph_initialized
         assert not tool_with_root.cache_initialized
+
+
+class TestDefinitionBodyInlining:
+    """P2: nav navigate inlines the definition body (coordinates -> content)."""
+
+    @pytest.fixture
+    def indexed(self, tmp_path):
+        from tree_sitter_analyzer.ast_cache import ASTCache
+
+        (tmp_path / "svc.py").write_text(
+            "class UserService:\n"
+            "    def get_user(self, user_id):\n"
+            "        return self._find(user_id)\n"
+            "\n"
+            "    def _find(self, user_id):\n"
+            "        return 'FOUND_MARKER'\n",
+            encoding="utf-8",
+        )
+        cache = ASTCache(str(tmp_path))
+        cache.index_project(max_files=100)
+        cache.close()
+        return str(tmp_path)
+
+    @pytest.mark.asyncio
+    async def test_definition_inlines_body(self, indexed):
+        tool = CodeGraphNavigateTool(indexed)
+        result = await tool.execute(
+            {"symbol": "_find", "mode": "definition", "output_format": "json"}
+        )
+        assert result["definition"]["found"] is True
+        defs = result["definition"]["definitions"]
+        bodied = [d for d in defs if "body" in d]
+        assert bodied, "definition must carry an inlined body"
+        assert "FOUND_MARKER" in bodied[0]["body"]["content"]
+        assert "no Read needed" in result["next_step"]
+
+    @pytest.mark.asyncio
+    async def test_definition_body_survives_toon(self, indexed):
+        tool = CodeGraphNavigateTool(indexed)
+        result = await tool.execute(
+            {"symbol": "_find", "mode": "definition", "output_format": "toon"}
+        )
+        assert result.get("format") == "toon"
+        assert "FOUND_MARKER" in result["toon_content"]

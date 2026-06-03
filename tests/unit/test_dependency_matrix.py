@@ -1,4 +1,3 @@
-
 from unittest.mock import MagicMock, patch
 
 from tree_sitter_analyzer.dependency_matrix import (
@@ -21,7 +20,9 @@ class TestPairKey:
 
 class TestCouplingEntry:
     def test_to_dict(self):
-        e = CouplingEntry(file_a="a.py", file_b="b.py", import_count=3, call_count=2, score=8.0)
+        e = CouplingEntry(
+            file_a="a.py", file_b="b.py", import_count=3, call_count=2, score=8.0
+        )
         d = e.to_dict()
         assert d["file_a"] == "a.py"
         assert d["import_count"] == 3
@@ -30,7 +31,9 @@ class TestCouplingEntry:
 
 class TestModuleStats:
     def test_to_dict(self):
-        s = ModuleStats(file="mod.py", afferent_coupling=5, efferent_coupling=3, instability=0.375)
+        s = ModuleStats(
+            file="mod.py", afferent_coupling=5, efferent_coupling=3, instability=0.375
+        )
         d = s.to_dict()
         assert d["afferent_coupling"] == 5
         assert d["instability"] == 0.375
@@ -56,8 +59,8 @@ class TestDependencyMatrixBuild:
             "a.py": ["from b import foo"],
             "b.py": [],
         }
-        mock_cache.get_call_edges.return_value = [
-            {"source_file": "a.py", "target_file": "b.py"},
+        mock_cache.get_resolved_call_edges.return_value = [
+            {"caller_file": "a.py", "callee_resolved_file": "b.py"},
         ]
         mock_cache.close.return_value = None
 
@@ -69,11 +72,12 @@ class TestDependencyMatrixBuild:
         assert "b.py" in result.modules
         assert len(result.coupling_pairs) >= 1
         assert result.coupling_pairs[0].import_count >= 1
+        assert result.coupling_pairs[0].call_count >= 1
 
     def test_build_empty_cache(self, tmp_path):
         mock_cache = MagicMock()
         mock_cache.get_imports.return_value = {}
-        mock_cache.get_call_edges.return_value = []
+        mock_cache.get_resolved_call_edges.return_value = []
         mock_cache.close.return_value = None
 
         with patch("tree_sitter_analyzer.ast_cache.ASTCache", return_value=mock_cache):
@@ -84,7 +88,9 @@ class TestDependencyMatrixBuild:
         assert len(result.coupling_pairs) == 0
 
     def test_build_cache_failure(self, tmp_path):
-        with patch("tree_sitter_analyzer.ast_cache.ASTCache", side_effect=Exception("no db")):
+        with patch(
+            "tree_sitter_analyzer.ast_cache.ASTCache", side_effect=Exception("no db")
+        ):
             dm = DependencyMatrix(str(tmp_path))
             result = dm.build()
 
@@ -96,7 +102,7 @@ class TestDependencyMatrixBuild:
             "a.py": ["from b import x"],
             "b.py": ["from a import y"],
         }
-        mock_cache.get_call_edges.return_value = []
+        mock_cache.get_resolved_call_edges.return_value = []
         mock_cache.close.return_value = None
 
         with patch("tree_sitter_analyzer.ast_cache.ASTCache", return_value=mock_cache):
@@ -109,7 +115,7 @@ class TestDependencyMatrixBuild:
     def test_coupling_between_not_found(self, tmp_path):
         mock_cache = MagicMock()
         mock_cache.get_imports.return_value = {"a.py": []}
-        mock_cache.get_call_edges.return_value = []
+        mock_cache.get_resolved_call_edges.return_value = []
         mock_cache.close.return_value = None
 
         with patch("tree_sitter_analyzer.ast_cache.ASTCache", return_value=mock_cache):
@@ -125,10 +131,10 @@ class TestDependencyMatrixBuild:
             "b.py": ["from c import z"],
             "c.py": [],
         }
-        mock_cache.get_call_edges.return_value = [
-            {"source_file": "a.py", "target_file": "b.py"},
-            {"source_file": "a.py", "target_file": "b.py"},
-            {"source_file": "b.py", "target_file": "c.py"},
+        mock_cache.get_resolved_call_edges.return_value = [
+            {"caller_file": "a.py", "callee_resolved_file": "b.py"},
+            {"caller_file": "a.py", "callee_resolved_file": "b.py"},
+            {"caller_file": "b.py", "callee_resolved_file": "c.py"},
         ]
         mock_cache.close.return_value = None
 
@@ -148,7 +154,7 @@ class TestDependencyMatrixBuild:
             "c.py": [],
             "d.py": [],
         }
-        mock_cache.get_call_edges.return_value = []
+        mock_cache.get_resolved_call_edges.return_value = []
         mock_cache.close.return_value = None
 
         with patch("tree_sitter_analyzer.ast_cache.ASTCache", return_value=mock_cache):
@@ -163,7 +169,7 @@ class TestDependencyMatrixBuild:
             "a.py": ["from b import x"],
             "b.py": [],
         }
-        mock_cache.get_call_edges.return_value = []
+        mock_cache.get_resolved_call_edges.return_value = []
         mock_cache.close.return_value = None
 
         with patch("tree_sitter_analyzer.ast_cache.ASTCache", return_value=mock_cache):
@@ -181,8 +187,9 @@ class TestDependencyMatrixBuild:
             imports[src] = [f"from b import x{j}" for j in range(5)]
         imports["b.py"] = []
         mock_cache.get_imports.return_value = imports
-        mock_cache.get_call_edges.return_value = [
-            {"source_file": f"a{i}.py", "target_file": "b.py"} for i in range(5)
+        mock_cache.get_resolved_call_edges.return_value = [
+            {"caller_file": f"a{i}.py", "callee_resolved_file": "b.py"}
+            for i in range(5)
         ]
         mock_cache.close.return_value = None
 
@@ -199,8 +206,8 @@ class TestDependencyMatrixSelfCallFilter:
         mock_cache.get_imports.return_value = {
             "a.py": ["from a import helper"],
         }
-        mock_cache.get_call_edges.return_value = [
-            {"source_file": "a.py", "target_file": "a.py"},
+        mock_cache.get_resolved_call_edges.return_value = [
+            {"caller_file": "a.py", "callee_resolved_file": "a.py"},
         ]
         mock_cache.close.return_value = None
 
@@ -209,3 +216,70 @@ class TestDependencyMatrixSelfCallFilter:
             result = dm.build()
 
         assert len(result.coupling_pairs) == 0
+
+
+class TestDependencyMatrixCallEdges:
+    """Regression for the latent call-edge dead-dimension bug.
+
+    Pre-fix, ``_collect_call_edges`` read non-existent ``source_file`` /
+    ``target_file`` keys from ``get_call_edges()`` output, so every call edge
+    hit the empty-key guard and ``self._call_edges`` was always empty — the
+    call-edge dimension of the matrix was dead. The fix reads resolved edges
+    (``caller_file`` + ``callee_resolved_file``) via
+    ``ASTCache.get_resolved_call_edges()``.
+    """
+
+    def test_resolved_call_edges_counted(self, tmp_path):
+        mock_cache = MagicMock()
+        mock_cache.get_imports.return_value = {"a.py": [], "b.py": []}
+        mock_cache.get_resolved_call_edges.return_value = [
+            {"caller_file": "a.py", "callee_resolved_file": "b.py"},
+            {"caller_file": "a.py", "callee_resolved_file": "b.py"},
+        ]
+        mock_cache.close.return_value = None
+
+        with patch("tree_sitter_analyzer.ast_cache.ASTCache", return_value=mock_cache):
+            dm = DependencyMatrix(str(tmp_path))
+            dm.build()
+            entry = dm.coupling_between("a.py", "b.py")
+
+        assert entry is not None
+        assert entry.call_count == 2
+
+    def test_unresolved_call_edge_skipped(self, tmp_path):
+        mock_cache = MagicMock()
+        mock_cache.get_imports.return_value = {"a.py": []}
+        mock_cache.get_resolved_call_edges.return_value = [
+            {"caller_file": "a.py", "callee_resolved_file": ""},
+        ]
+        mock_cache.close.return_value = None
+
+        with patch("tree_sitter_analyzer.ast_cache.ASTCache", return_value=mock_cache):
+            dm = DependencyMatrix(str(tmp_path))
+            result = dm.build()
+
+        assert len(result.coupling_pairs) == 0
+
+
+class TestDependencyMatrixCrossFileIntegration:
+    """End-to-end: a real cross-file Python project must produce a non-empty
+    call-edge dimension after indexing (synapse backfill resolves the callee)."""
+
+    def test_call_count_nonempty_for_cross_file_project(self, tmp_path):
+        (tmp_path / "b.py").write_text("def foo():\n    return 1\n")
+        (tmp_path / "a.py").write_text(
+            "from b import foo\n\n\ndef bar():\n    return foo()\n"
+        )
+
+        from tree_sitter_analyzer.ast_cache import ASTCache
+
+        cache = ASTCache(str(tmp_path))
+        cache.index_project(force=True)
+        cache.close()
+
+        dm = DependencyMatrix(str(tmp_path))
+        dm.build()
+        entry = dm.coupling_between("a.py", "b.py")
+
+        assert entry is not None
+        assert entry.call_count >= 1, "cross-file call edge must be counted"

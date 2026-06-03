@@ -584,7 +584,8 @@ def _register_language_formatters_safe() -> None:
         }
 
         # Register each language with all format types
-        format_types = ["full", "compact", "csv"]
+        # "signatures" is the lightweight method-directory mode (~25 % of full tokens).
+        format_types = ["full", "compact", "csv", "signatures"]
         for lang, formatter_class in language_formatters.items():
             for fmt in format_types:
                 FormatterRegistry.register_language_formatter(

@@ -308,10 +308,13 @@ class TestIndexProject:
             tuple(r) for r in parallel_conn.execute(symbol_sql).fetchall()
         ]
 
+        # B1.3: CALLS rows live in the unified ``edges`` table; ``file_path`` is
+        # the caller's file (== legacy caller_file), ``callee_line`` the call site.
         edge_sql = (
-            "SELECT caller_name, caller_file, caller_line, callee_name, "
+            "SELECT caller_name, file_path AS caller_file, caller_line, callee_name, "
             "callee_full, callee_line, file_path, language "
-            "FROM ast_call_edges ORDER BY file_path, caller_name, callee_name, callee_line"
+            "FROM edges WHERE kind = 'calls' "
+            "ORDER BY file_path, caller_name, callee_name, callee_line"
         )
         assert [tuple(r) for r in serial_conn.execute(edge_sql).fetchall()] == [
             tuple(r) for r in parallel_conn.execute(edge_sql).fetchall()
@@ -474,9 +477,10 @@ class TestLargeRepoHotPathIndexes:
 
         assert "idx_sym_rows_name_kind_path_line" in index_names
         assert "idx_sym_rows_file_name_kind_line" in index_names
-        assert "idx_ce_callee_name_resolved_file" in index_names
-        assert "idx_ce_callee_name_file_path" in index_names
-        assert "idx_ce_caller_name_file" in index_names
+        # B1.3: CALLS hot-path indexes live on the unified ``edges`` table.
+        assert "idx_edges_callee_name" in index_names
+        assert "idx_edges_caller_name" in index_names
+        assert "idx_edges_file_path" in index_names
 
     def test_symbol_resolver_hot_queries_use_composite_indexes(self, cache):
         if not cache.fts5_available:
@@ -504,36 +508,35 @@ class TestLargeRepoHotPathIndexes:
         assert "idx_sym_rows_file_name_kind_line" in scoped_symbol_plan
 
     def test_call_graph_hot_queries_use_composite_indexes(self, cache):
+        # B1.3: CALLS rows + their name/file/resolution columns are in the
+        # unified ``edges`` table, served by the EdgeStore name/file indexes.
         conn = cache._get_conn()
 
         callers_plan = _query_plan(
             conn,
-            """SELECT caller_name, caller_file, caller_line,
-                      callee_name, file_path, callee_line, callee_resolved_file
-               FROM ast_call_edges
-               WHERE callee_name = ? AND callee_resolved_file = ?""",
-            ("render", "src/view.py"),
-        )
-        callers_fallback_plan = _query_plan(
-            conn,
-            """SELECT caller_name, caller_file, caller_line,
-                      callee_name, file_path, callee_line, callee_resolved_file
-               FROM ast_call_edges
-               WHERE callee_name = ? AND file_path = ?""",
-            ("render", "src/view.py"),
+            """SELECT caller_name, file_path, caller_line, callee_name,
+                      callee_line, callee_resolved_file
+               FROM edges
+               WHERE kind = 'calls' AND callee_name = ?""",
+            ("render",),
         )
         callees_plan = _query_plan(
             conn,
-            """SELECT caller_name, caller_file, caller_line,
-                      callee_name, callee_full, file_path, callee_line, callee_resolved_file
-               FROM ast_call_edges
-               WHERE caller_name = ? AND caller_file = ?""",
-            ("handle", "src/handler.py"),
+            """SELECT caller_name, file_path, caller_line, callee_name,
+                      callee_full, callee_line, callee_resolved_file
+               FROM edges
+               WHERE kind = 'calls' AND caller_name = ?""",
+            ("handle",),
+        )
+        file_scope_plan = _query_plan(
+            conn,
+            "SELECT id FROM edges WHERE kind = 'calls' AND file_path = ?",
+            ("src/handler.py",),
         )
 
-        assert "idx_ce_callee_name_resolved_file" in callers_plan
-        assert "idx_ce_callee_name_file_path" in callers_fallback_plan
-        assert "idx_ce_caller_name_file" in callees_plan
+        assert "idx_edges_callee_name" in callers_plan
+        assert "idx_edges_caller_name" in callees_plan
+        assert "idx_edges_file_path" in file_scope_plan
 
     def test_large_repo_index_helper_skips_missing_tables(self):
         conn = sqlite3.connect(":memory:")
@@ -549,8 +552,11 @@ class TestLargeRepoHotPathIndexes:
         conn.close()
 
     def test_large_repo_index_helper_tolerates_legacy_partial_tables(self):
+        # B1.3: ast_call_edges hot-path indexes were removed; the helper now
+        # only builds the ast_symbol_rows composites and tolerates a partial
+        # legacy table without erroring.
         conn = sqlite3.connect(":memory:")
-        conn.execute("CREATE TABLE ast_call_edges (callee_name TEXT)")
+        conn.execute("CREATE TABLE ast_symbol_rows (name TEXT)")
 
         ASTCache._ensure_large_repo_indexes(conn)
 

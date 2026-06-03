@@ -157,21 +157,22 @@ class TestSelfCheckDetection:
         reason="Windows-specific incompatibility — tracked separately",
     )
     def test_self_check_detects_missing_column(self, tmp_path: Path) -> None:
-        """Drop callee_resolution from ast_call_edges → SchemaIntegrityError.
+        """Drop callee_resolution from the unified ``edges`` table → error.
 
-        The exact bug being closed: a missing ALTER TABLE leaves
-        ast_call_edges without callee_resolution. The check must catch
-        this on open instead of letting query-time fail downstream.
+        The exact bug being closed: a missing ALTER TABLE leaves ``edges``
+        without callee_resolution (B1.3 promoted it to a real column). The
+        check must catch this on open instead of failing downstream at query
+        time.
         """
         proj_root, db_path = _make_proj(tmp_path)
         _seed_healthy_db(str(db_path))
-        _drop_column_raw(str(db_path), "ast_call_edges", "callee_resolution")
+        _drop_column_raw(str(db_path), "edges", "callee_resolution")
 
         with pytest.raises(SchemaIntegrityError) as exc_info:
             ASTCache(str(proj_root), db_path=str(db_path))
 
         err_msg = str(exc_info.value)
-        assert "ast_call_edges.callee_resolution" in err_msg, (
+        assert "edges.callee_resolution" in err_msg, (
             f"Expected error to name the missing column (got: {err_msg!r})"
         )
         assert str(db_path) in err_msg, (
@@ -201,8 +202,8 @@ class TestSelfCheckDetection:
         _seed_healthy_db(str(db_path))
         # Raw helpers so migrations never run between drops (which would
         # heal the first drop before we could stage the second).
-        _drop_column_raw(str(db_path), "ast_call_edges", "callee_resolution")
-        _drop_column_raw(str(db_path), "ast_call_edges", "callee_resolved_file")
+        _drop_column_raw(str(db_path), "edges", "callee_resolution")
+        _drop_column_raw(str(db_path), "edges", "callee_resolved_file")
         _drop_table_raw(str(db_path), "ast_symbol_activation")
 
         with pytest.raises(SchemaIntegrityError) as exc_info:
@@ -210,8 +211,8 @@ class TestSelfCheckDetection:
 
         err_msg = str(exc_info.value)
         for needle in (
-            "ast_call_edges.callee_resolution",
-            "ast_call_edges.callee_resolved_file",
+            "edges.callee_resolution",
+            "edges.callee_resolved_file",
             "ast_symbol_activation",
         ):
             assert needle in err_msg, (

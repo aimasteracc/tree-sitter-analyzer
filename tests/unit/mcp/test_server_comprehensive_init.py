@@ -394,19 +394,21 @@ class TestTreeSitterAnalyzerMCPServerCreation:
             list_tools_handler = captured_handlers["list_tools"]
             tools = await list_tools_handler()
 
-            assert len(tools) >= 8  # At least 8 tools
+            # Wave C2: the listed surface is the 8 facades + set_project_path.
+            assert len(tools) == 9
             tool_names = [tool.name for tool in tools]
-            assert "check_code_scale" in tool_names
-            assert "analyze_code_structure" in tool_names
-            assert "extract_code_section" in tool_names
+            for facade in (
+                "search",
+                "nav",
+                "structure",
+                "health",
+                "edit",
+                "project",
+                "index",
+                "viz",
+            ):
+                assert facade in tool_names, facade
             assert "set_project_path" in tool_names
-            assert "query_code" in tool_names
-            assert "list_files" in tool_names
-            assert "search_content" in tool_names
-            assert "find_and_grep" in tool_names
-            assert "list_agent_skills" in tool_names
-            assert "get_agent_workflow" in tool_names
-            assert "advise_parser_readiness" in tool_names
 
     @patch("tree_sitter_analyzer.mcp.server.MCP_AVAILABLE", True)
     @pytest.mark.asyncio

@@ -17,17 +17,22 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# SQL constants re-used by multiple query helpers.
+# SQL constants re-used by multiple query helpers. CALLS rows live in the
+# unified ``edges`` table (B1.3): ``file_path`` is the caller's file (== legacy
+# ``caller_file``), ``callee_line`` is the call-site line.
 _SQL_COUNT_RESOLVED_EDGES = (
-    "SELECT COUNT(*) as c FROM ast_call_edges WHERE callee_resolved_file != ''"
+    "SELECT COUNT(*) as c FROM edges "
+    "WHERE kind = 'calls' AND callee_resolved_file != ''"
 )
 _SQL_COUNT_CROSS_FILE_EDGES = (
-    "SELECT COUNT(*) as c FROM ast_call_edges "
-    "WHERE callee_resolved_file != '' AND callee_resolved_file != file_path"
+    "SELECT COUNT(*) as c FROM edges "
+    "WHERE kind = 'calls' AND callee_resolved_file != '' "
+    "AND callee_resolved_file != file_path"
 )
 _SQL_UPDATE_CALLEE_RESOLVED = (
-    "UPDATE ast_call_edges SET callee_resolved_file = ? "
-    "WHERE caller_file = ? AND caller_line = ? AND caller_name = ? AND callee_line = ?"
+    "UPDATE edges SET callee_resolved_file = ? "
+    "WHERE kind = 'calls' AND file_path = ? AND caller_line = ? "
+    "AND caller_name = ? AND callee_line = ?"
 )
 
 
@@ -48,7 +53,12 @@ def invalidate(
     if fts5_available:
         conn.execute("DELETE FROM ast_symbols_fts WHERE file_path = ?", (rel,))
         conn.execute("DELETE FROM ast_symbol_rows WHERE file_path = ?", (rel,))
-    conn.execute("DELETE FROM ast_call_edges WHERE file_path = ?", (rel,))
+    # CALLS rows live in the unified ``edges`` table (B1.3 — no ast_call_edges).
+    # Clear them so ``get_call_edges`` reflects the invalidation.
+    try:
+        conn.execute("DELETE FROM edges WHERE kind = 'calls' AND file_path = ?", (rel,))
+    except sqlite3.OperationalError:
+        pass
     cursor = conn.execute("DELETE FROM ast_index WHERE file_path = ?", (rel,))
     conn.commit()
     return cursor.rowcount > 0
@@ -284,7 +294,9 @@ def get_stats(
 def get_cross_file_stats(conn: sqlite3.Connection) -> dict[str, Any]:
     """Return cross-file edge resolution statistics."""
     try:
-        total = conn.execute("SELECT COUNT(*) as c FROM ast_call_edges").fetchone()["c"]
+        total = conn.execute(
+            "SELECT COUNT(*) as c FROM edges WHERE kind = 'calls'"
+        ).fetchone()["c"]
         resolved = conn.execute(_SQL_COUNT_RESOLVED_EDGES).fetchone()["c"]
         cross_file = conn.execute(_SQL_COUNT_CROSS_FILE_EDGES).fetchone()["c"]
     except sqlite3.OperationalError:

@@ -16,10 +16,9 @@ description: |
   Replaces: `git log --follow --stat` + manual counting per-symbol
   (~10k tokens for non-trivial files) with 1 MCP call (~500 tokens).
 allowed-tools:
-  - mcp__tree-sitter-analyzer__codegraph_callees
-  - mcp__tree-sitter-analyzer__codegraph_callers
-  - mcp__tree-sitter-analyzer__analyze_change_impact
-  - mcp__tree-sitter-analyzer__check_file_health
+  - mcp__tree-sitter-analyzer__nav
+  - mcp__tree-sitter-analyzer__edit
+  - mcp__tree-sitter-analyzer__health
   - Bash
   - Read
 ---

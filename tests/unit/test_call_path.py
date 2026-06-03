@@ -1,5 +1,6 @@
 """Unit tests for call_path.py — CallPathFinder, CallChain, CallPathResult."""
 
+import json
 import sqlite3
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -10,9 +11,16 @@ from tree_sitter_analyzer.call_path import (
     CallPathResult,
     _files_in_chain,
 )
+from tree_sitter_analyzer.graph.edge_store import EdgeKind, symbol_node
 
 
 def _make_cache_with_edges(tmp_path: Path, edges: list[dict]) -> MagicMock:
+    """Build a cache whose DB holds the call edges in the unified ``edges`` table.
+
+    B1.2 moved the CALLS read path from ``ast_call_edges`` to ``edges``, so the
+    fixture populates ``edges`` CALLS rows in the production shape (node ids via
+    ``symbol_node``, scalars in metadata JSON, real name/file columns).
+    """
     cache_dir = tmp_path / ".ast-cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
     db_path = str(cache_dir / "index.db")
@@ -24,41 +32,58 @@ def _make_cache_with_edges(tmp_path: Path, edges: list[dict]) -> MagicMock:
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     conn.execute(
-        "CREATE TABLE IF NOT EXISTS ast_call_edges ("
+        "CREATE TABLE IF NOT EXISTS edges ("
         "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
-        "  caller_name TEXT NOT NULL,"
-        "  caller_file TEXT NOT NULL,"
-        "  caller_line INTEGER NOT NULL,"
-        "  callee_name TEXT NOT NULL,"
-        "  callee_full TEXT NOT NULL DEFAULT '',"
-        "  callee_line INTEGER NOT NULL DEFAULT 0,"
-        "  callee_resolved_file TEXT NOT NULL DEFAULT '',"
-        "  file_path TEXT NOT NULL,"
-        "  language TEXT NOT NULL"
+        "  source_node_id TEXT NOT NULL,"
+        "  target_node_id TEXT NOT NULL,"
+        "  kind TEXT NOT NULL,"
+        "  line INTEGER,"
+        "  provenance TEXT DEFAULT 'tree-sitter',"
+        "  metadata TEXT,"
+        "  caller_name TEXT NOT NULL DEFAULT '',"
+        "  callee_name TEXT NOT NULL DEFAULT '',"
+        "  file_path TEXT NOT NULL DEFAULT '',"
+        "  UNIQUE(source_node_id, target_node_id, kind, line)"
         ")"
     )
     conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_ce_callee_name ON ast_call_edges(callee_name)"
+        "CREATE INDEX IF NOT EXISTS idx_edges_callee_name ON edges(callee_name, kind)"
     )
     conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_ce_caller_name ON ast_call_edges(caller_name)"
+        "CREATE INDEX IF NOT EXISTS idx_edges_caller_name ON edges(caller_name, kind)"
     )
     for e in edges:
+        caller_name = e["caller_name"]
+        caller_file = e["caller_file"]
+        caller_line = e.get("caller_line", 1)
+        callee_name = e["callee_name"]
+        callee_line = e.get("callee_line", 1)
+        resolved = e.get("callee_resolved_file", "")
+        source = symbol_node(caller_file, caller_name, caller_line)
+        target = symbol_node(resolved or caller_file, callee_name, callee_line)
+        metadata = {
+            "language": e.get("language", "python"),
+            "caller_name": caller_name,
+            "caller_line": caller_line,
+            "callee_name": callee_name,
+            "callee_full": e.get("callee_full", callee_name),
+            "callee_resolution": "unknown",
+            "callee_resolved_file": resolved,
+        }
         conn.execute(
-            "INSERT INTO ast_call_edges (caller_name, caller_file, caller_line,"
-            "  callee_name, callee_full, callee_line, callee_resolved_file,"
-            "  file_path, language)"
+            "INSERT OR REPLACE INTO edges (source_node_id, target_node_id, kind,"
+            "  line, provenance, metadata, caller_name, callee_name, file_path)"
             " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
-                e["caller_name"],
-                e["caller_file"],
-                e.get("caller_line", 1),
-                e["callee_name"],
-                e.get("callee_full", e["callee_name"]),
-                e.get("callee_line", 1),
-                e.get("callee_resolved_file", ""),
-                e["caller_file"],
-                e.get("language", "python"),
+                source,
+                target,
+                EdgeKind.CALLS.value,
+                callee_line,
+                "tree-sitter",
+                json.dumps(metadata, ensure_ascii=False, sort_keys=True),
+                caller_name,
+                callee_name,
+                caller_file,
             ),
         )
     conn.commit()

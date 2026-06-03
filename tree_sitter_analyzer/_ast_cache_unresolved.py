@@ -1,4 +1,19 @@
-"""Second-pass unresolved reference handling for ASTCache."""
+"""Second-pass cross-file reference resolution for ASTCache.
+
+B1.3 removed the ``unresolved_refs`` work-queue table. The second pass now runs
+directly over the unified ``edges`` table + the indexed symbol/import data:
+
+* The pending work set is recomputed in-memory per Python file from the same
+  sources the queue was derived from (the file's symbols give EXTENDS parents,
+  the file's CALLS edges give unresolved calls). The exact filtering logic that
+  used to gate queue insertion (``_parent_refs`` / ``_call_refs`` — skip local
+  names, skip obvious externals, skip already-resolved) is preserved verbatim,
+  so Python resolution semantics are byte-for-byte unchanged.
+* A resolved EXTENDS reference is upserted as a real ``edges`` row (provenance
+  ``unresolved_refs``); a resolved CALLS reference UPDATEs the resolution
+  columns of its existing ``edges`` CALLS row. No separate queue table, no
+  double-write into ``ast_call_edges``.
+"""
 
 from __future__ import annotations
 
@@ -26,94 +41,106 @@ _CALL_ROW_COLUMNS = (
 )
 
 
-def write_unresolved_refs_for_file(
+def _refs_supported(language: str) -> bool:
+    """Whether second-pass resolution adds value for a language.
+
+    Only Python has structured import parsing (``synapse_resolver/_imports.py``
+    hard-returns ``[]`` for every other language). Without ``ast_imports`` rows,
+    the second-pass resolver can only fall back to ambiguous name matching, which
+    is rejected ~100% of the time for languages like Java/COBOL/C#/Go. Resolving
+    those refs is pure waste (and the dominant cost / OOM trigger on large Java
+    repos). So we skip non-Python languages entirely. Python is unchanged.
+    """
+    return language == "python"
+
+
+def _pending_refs_for_file(
     conn: sqlite3.Connection,
     rel_path: str,
     language: str,
     symbols: dict[str, Any],
-    call_edges: list[dict[str, Any]],
-) -> None:
-    """Refresh unresolved_refs emitted while indexing one file."""
-    try:
-        conn.execute("DELETE FROM unresolved_refs WHERE file_path = ?", (rel_path,))
-    except sqlite3.OperationalError as exc:
-        logger.debug("unresolved_refs cleanup failed for %s: %s", rel_path, exc)
-        return
+) -> list[dict[str, Any]]:
+    """Recompute the pending second-pass refs for one Python file.
 
+    Returns ref dicts ``{from_node_id, reference_name, reference_kind,
+    file_path, line}`` — the in-memory equivalent of the rows the old
+    ``unresolved_refs`` queue persisted, derived from the file's symbols
+    (EXTENDS parents) and its ``edges`` CALLS rows (unresolved calls).
+    """
+    if not _refs_supported(language):
+        return []
     symbol_items = symbols.get("symbols", [])
     local_classes = _local_names(symbol_items, {"class"})
     local_callables = _local_names(symbol_items, {"class", "function", "method"})
-    rows: list[tuple[str, str, str, str, int, str, int]] = []
-    rows.extend(_parent_refs(rel_path, symbol_items, local_classes))
-    rows.extend(
-        _call_refs(
-            conn,
-            rel_path,
-            language,
-            call_edges,
-            local_callables,
-        )
-    )
-    if not rows:
-        return
-    try:
-        conn.executemany(
-            """INSERT OR REPLACE INTO unresolved_refs
-               (from_node_id, reference_name, reference_kind, file_path,
-                line, candidates, resolved)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            rows,
-        )
-    except sqlite3.OperationalError as exc:
-        logger.debug("unresolved_refs insert failed for %s: %s", rel_path, exc)
+    refs: list[dict[str, Any]] = []
+    refs.extend(_parent_refs(rel_path, symbol_items, local_classes))
+    refs.extend(_call_refs(conn, rel_path, language, [], local_callables))
+    return refs
 
 
 def resolve_unresolved_refs(conn: sqlite3.Connection) -> dict[str, int] | None:
-    """Resolve pending unresolved_refs rows into unified EdgeStore edges."""
+    """Resolve pending cross-file refs into unified ``edges`` rows.
+
+    Iterates Python files from ``ast_index``, recomputes each file's pending
+    refs in-memory, and either upserts a resolved EXTENDS edge or UPDATEs a
+    CALLS edge's resolution columns. The aggregate ``total/resolved/unchanged/
+    errors`` shape matches the legacy queue-based pass so callers/stats are
+    unchanged.
+    """
     try:
-        rows = conn.execute(
-            """SELECT id, from_node_id, reference_name, reference_kind,
-                      file_path, line
-               FROM unresolved_refs
-               WHERE resolved = 0
-               ORDER BY id"""
+        index_rows = conn.execute(
+            "SELECT file_path, language, symbols_json FROM ast_index "
+            "WHERE language = 'python' ORDER BY file_path"
         ).fetchall()
     except sqlite3.OperationalError as exc:
-        logger.debug("unresolved_refs select failed: %s", exc)
+        logger.debug("unresolved second-pass index select failed: %s", exc)
         return None
 
-    total = len(rows)
-    resolved = unchanged = errors = 0
+    total = resolved = unchanged = errors = 0
     store = EdgeStore(conn, ensure_schema=False)
-    for row in rows:
+    # Per-run candidate cache keyed by ``(name, kind)``. The candidate set for a
+    # given name/kind is file-independent (see ``_candidates_for_name_kind``), so
+    # the dominant cost — one ``ast_symbol_rows`` SELECT per (name, kind) per ref
+    # — collapses to one SELECT per distinct (name, kind) across the whole pass.
+    candidate_cache: dict[tuple[str, str], list[dict[str, Any]] | None] = {}
+    for index_row in index_rows:
+        rel_path = str(index_row["file_path"])
         try:
-            row_dict = dict(row)
-            candidates = _candidate_symbols(
-                conn,
-                str(row_dict["file_path"]),
-                str(row_dict["reference_name"]),
-                str(row_dict["reference_kind"]),
-            )
-            chosen = _choose_candidate(conn, row_dict, candidates)
-            payload = _candidate_payload(candidates)
-            if chosen is None:
-                unchanged += 1
-                conn.execute(
-                    "UPDATE unresolved_refs SET candidates = ? WHERE id = ?",
-                    (json.dumps(payload, ensure_ascii=False), row_dict["id"]),
+            symbols = json.loads(index_row["symbols_json"] or "{}")
+        except (TypeError, json.JSONDecodeError):
+            continue
+        refs = _pending_refs_for_file(
+            conn, rel_path, str(index_row["language"]), symbols
+        )
+        for ref in refs:
+            total += 1
+            try:
+                candidates = _candidate_symbols(
+                    conn,
+                    str(ref["file_path"]),
+                    str(ref["reference_name"]),
+                    str(ref["reference_kind"]),
+                    candidate_cache,
                 )
-                continue
-            edge = _resolved_edge(conn, row_dict, chosen, len(candidates))
-            store.upsert_edges([edge])
-            _update_call_edge_resolution(conn, row_dict, chosen)
-            conn.execute(
-                "UPDATE unresolved_refs SET candidates = ?, resolved = 1 WHERE id = ?",
-                (json.dumps(payload, ensure_ascii=False), row_dict["id"]),
-            )
-            resolved += 1
-        except (sqlite3.OperationalError, TypeError, ValueError) as exc:
-            logger.debug("unresolved_refs row failed: %s", exc)
-            errors += 1
+                chosen = _choose_candidate(conn, ref, candidates)
+                if chosen is None:
+                    unchanged += 1
+                    continue
+                if ref["reference_kind"] == EdgeKind.CALLS.value:
+                    # CALLS resolution is recorded in place on the existing edge
+                    # row's resolution columns — no separate edge, so callees
+                    # aren't double-counted (B1.3). The resolved file makes the
+                    # call cross-file-queryable via ``callee_resolved_file``.
+                    _update_call_edge_resolution(conn, ref, chosen)
+                else:
+                    # EXTENDS/IMPLEMENTS: upsert a real edge pointing at the
+                    # resolved base class so class_hierarchy can traverse it.
+                    edge = _resolved_edge(conn, ref, chosen, len(candidates))
+                    store.upsert_edges([edge])
+                resolved += 1
+            except (sqlite3.OperationalError, TypeError, ValueError) as exc:
+                logger.debug("unresolved ref failed: %s", exc)
+                errors += 1
     try:
         conn.commit()
     except sqlite3.OperationalError:
@@ -127,22 +154,48 @@ def resolve_unresolved_refs(conn: sqlite3.Connection) -> dict[str, int] | None:
 
 
 def pending_unresolved_count(conn: sqlite3.Connection) -> int:
-    """Return unresolved_refs rows still awaiting a second-pass attempt."""
+    """Return a cheap count of references still awaiting cross-file resolution.
+
+    Replaces the ``unresolved_refs WHERE resolved = 0`` gate (B1.3). Counts
+    EXTENDS edges that still point at an unresolved ``class:`` synthetic target
+    — the genuine cross-file work the second pass resolves into real edges.
+    Unknown CALLS edges are *not* counted: most are terminal externals (stdlib /
+    builtins) that never resolve, so counting them would keep this gate
+    permanently > 0 and re-trigger the resolve-only pass on every warm access.
+    Used only as a boolean ``> 0`` trigger; the resolve-only pass is idempotent.
+    """
     try:
         row = conn.execute(
-            "SELECT COUNT(*) AS c FROM unresolved_refs WHERE resolved = 0"
+            "SELECT COUNT(*) AS c FROM edges "
+            "WHERE kind = 'extends' AND target_node_id LIKE 'class:%'"
         ).fetchone()
     except sqlite3.OperationalError:
         return 0
     return int(row["c"] if isinstance(row, sqlite3.Row) else row[0])
 
 
+def _ref(
+    from_node_id: str,
+    reference_name: str,
+    reference_kind: str,
+    file_path: str,
+    line: int,
+) -> dict[str, Any]:
+    return {
+        "from_node_id": from_node_id,
+        "reference_name": reference_name,
+        "reference_kind": reference_kind,
+        "file_path": file_path,
+        "line": line,
+    }
+
+
 def _parent_refs(
     rel_path: str,
     symbol_items: list[dict[str, Any]],
     local_classes: set[str],
-) -> list[tuple[str, str, str, str, int, str, int]]:
-    rows: list[tuple[str, str, str, str, int, str, int]] = []
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
     for sym in symbol_items:
         if sym.get("kind") != "class" or not sym.get("parents"):
             continue
@@ -161,15 +214,7 @@ def _parent_refs(
             ):
                 continue
             rows.append(
-                (
-                    source,
-                    parent_name,
-                    EdgeKind.EXTENDS.value,
-                    rel_path,
-                    line,
-                    "[]",
-                    0,
-                )
+                _ref(source, parent_name, EdgeKind.EXTENDS.value, rel_path, line)
             )
     return rows
 
@@ -180,8 +225,8 @@ def _call_refs(
     language: str,
     fallback_edges: list[dict[str, Any]],
     local_callables: set[str],
-) -> list[tuple[str, str, str, str, int, str, int]]:
-    rows: list[tuple[str, str, str, str, int, str, int]] = []
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
     for edge in _call_rows(conn, rel_path, fallback_edges):
         if _call_is_resolved(edge):
             continue
@@ -195,17 +240,7 @@ def _call_refs(
         caller_line = _line(edge.get("caller_line"))
         source = symbol_node(rel_path, caller_name, caller_line)
         ref_line = _line(edge.get("callee_line")) or caller_line
-        rows.append(
-            (
-                source,
-                callee_name,
-                EdgeKind.CALLS.value,
-                rel_path,
-                ref_line,
-                "[]",
-                0,
-            )
-        )
+        rows.append(_ref(source, callee_name, EdgeKind.CALLS.value, rel_path, ref_line))
     return rows
 
 
@@ -214,13 +249,14 @@ def _call_rows(
     rel_path: str,
     fallback_edges: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
+    """Return this file's CALLS rows from the unified ``edges`` table (B1.3)."""
     try:
         rows = conn.execute(
-            """SELECT caller_name, caller_file, caller_line, callee_name,
-                      callee_full, callee_line, file_path, language,
+            """SELECT caller_name, file_path AS caller_file, caller_line,
+                      callee_name, callee_full, callee_line, file_path, language,
                       callee_resolution, callee_resolved_file
-               FROM ast_call_edges
-               WHERE file_path = ?
+               FROM edges
+               WHERE kind = 'calls' AND file_path = ?
                ORDER BY id""",
             (rel_path,),
         ).fetchall()
@@ -236,6 +272,7 @@ def _candidate_symbols(
     source_file: str,
     reference_name: str,
     reference_kind: str,
+    cache: dict[tuple[str, str], list[dict[str, Any]] | None] | None = None,
 ) -> list[dict[str, Any]]:
     names = _reference_names(conn, source_file, reference_name)
     kinds = (
@@ -243,23 +280,53 @@ def _candidate_symbols(
         if reference_kind in {EdgeKind.EXTENDS.value, EdgeKind.IMPLEMENTS.value}
         else ["function", "method", "class"]
     )
-    rows: list[Any] = []
+    candidates: list[dict[str, Any]] = []
+    for name in names:
+        for kind in kinds:
+            bucket = _candidates_for_name_kind(conn, name, kind, cache)
+            if bucket is None:
+                # ``ast_symbol_rows`` missing / broken connection — preserve the
+                # legacy whole-call abort so a single failed SELECT yields [].
+                return []
+            candidates.extend(bucket)
+    return candidates
+
+
+def _candidates_for_name_kind(
+    conn: sqlite3.Connection,
+    name: str,
+    kind: str,
+    cache: dict[tuple[str, str], list[dict[str, Any]] | None] | None,
+) -> list[dict[str, Any]] | None:
+    """Built candidate items for one ``(name, kind)``; cached when ``cache`` given.
+
+    The SQL result for a ``(name, kind)`` pair is independent of which file/ref
+    requested it (``_reference_names`` already expanded the file's import
+    aliases into the ``name`` set upstream), and the derived ``node_id`` /
+    ``line`` are pure functions of the row, so the built list is safe to reuse
+    verbatim across refs. On large Python trees the same hot names (``get``,
+    ``run``, ``build`` …) recur across thousands of refs, so caching collapses
+    those duplicate SELECTs. Returns ``None`` to signal the legacy
+    ``OperationalError`` abort path (caller short-circuits to ``[]``); a real
+    empty result is cached/returned as ``[]``.
+    """
+    key = (name, kind)
+    if cache is not None and key in cache:
+        return cache[key]
     try:
-        for name in names:
-            for kind in kinds:
-                rows.extend(
-                    conn.execute(
-                        """SELECT id, name, kind, file_path, language, line
-                           FROM ast_symbol_rows
-                           WHERE name = ? AND kind = ?
-                           ORDER BY file_path, line, name""",
-                        (name, kind),
-                    ).fetchall()
-                )
+        rows = conn.execute(
+            """SELECT id, name, kind, file_path, language, line
+               FROM ast_symbol_rows
+               WHERE name = ? AND kind = ?
+               ORDER BY file_path, line, name""",
+            (name, kind),
+        ).fetchall()
     except sqlite3.OperationalError as exc:
         logger.debug("candidate symbol lookup failed: %s", exc)
-        return []
-    candidates: list[dict[str, Any]] = []
+        if cache is not None:
+            cache[key] = None
+        return None
+    bucket: list[dict[str, Any]] = []
     for row in rows:
         item = _row_to_dict(
             row, ("id", "name", "kind", "file_path", "language", "line")
@@ -270,8 +337,10 @@ def _candidate_symbols(
             str(item["name"]),
             int(item["line"]),
         )
-        candidates.append(item)
-    return candidates
+        bucket.append(item)
+    if cache is not None:
+        cache[key] = bucket
+    return bucket
 
 
 def _reference_names(
@@ -381,10 +450,11 @@ def _update_call_edge_resolution(
     line = _line(row.get("line"))
     try:
         conn.execute(
-            """UPDATE ast_call_edges
+            """UPDATE edges
                SET callee_symbol_id = ?, callee_resolution = 'project',
                    callee_resolved_file = ?
-               WHERE file_path = ?
+               WHERE kind = 'calls'
+                 AND file_path = ?
                  AND caller_name = ?
                  AND caller_line = ?
                  AND callee_name = ?
@@ -401,20 +471,7 @@ def _update_call_edge_resolution(
             ),
         )
     except sqlite3.OperationalError as exc:
-        logger.debug("call edge unresolved_refs update failed: %s", exc)
-
-
-def _candidate_payload(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return [
-        {
-            "node_id": str(item["node_id"]),
-            "name": str(item["name"]),
-            "kind": str(item["kind"]),
-            "file_path": str(item["file_path"]),
-            "line": int(item["line"]),
-        }
-        for item in candidates[:20]
-    ]
+        logger.debug("call edge cross-file update failed: %s", exc)
 
 
 def _import_target_hints(
