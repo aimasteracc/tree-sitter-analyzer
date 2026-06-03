@@ -311,6 +311,16 @@ cd ~/.claude/skills/gstack && ./setup --team
 Skills like /qa, /ship, /review, /investigate, and /browse become available after install.
 Use /browse for all web browsing. Use ~/.claude/skills/gstack/... for gstack file paths.
 
+## PR Hygiene — no kitchen-sink, no half-baked PRs
+
+**🔒 LOCKED BY USER (2026-06-04):** 「以後不要出這麼多半成品或者垃圾」. Every PR must be **focused** and **finished**. This applies to autonomous-agent output too — same bar.
+
+- **One PR = one feature.** The title must match the actual diff. A PR titled `include_body` must NOT also carry `code_patterns`, `symbol_lineage`, `find_references`, test splits, and 33 skill files. If a branch accumulated unrelated commits, split them into separate `feature/*` → develop PRs, one per feature.
+- **Finished, not half-baked.** Before opening a PR: tests green, `ruff`/`mypy` clean, and the change actually works end-to-end (re-index / dogfood verified where relevant). No "Sprint N" dumps of WIP.
+- **GitFlow, every time.** Base = `develop` (never `main`); branch = `feature/*` (never `feat/*` — the GitFlow check rejects it). Verify both before opening.
+- **A kitchen-sink PR is closed, not merged.** If you receive (or an agent produces) a PR with >1 feature, a misleading title, or a 100-file diff, **close it** and re-open focused PRs. Keep the branch so commits can be cherry-picked. Codex can only meaningfully review a focused diff.
+- **Past incident (2026-06-04):** PR #276 ("include_body") bundled 10+ unrelated commits + 33 `.agents/skills` files (100 files). Closed; the rule above is the response.
+
 ## RFC Process — substantial changes start as an RFC (not a loose docs/*.md)
 
 **🔒 LOCKED BY USER (2026-06-03):** 「我們出一個 docs 太隨便了，沒有 mycelium 體系化」。Substantial changes go through the RFC process in [`rfcs/`](rfcs/), modeled on the sibling mycelium project. Do NOT drop a one-off `docs/designs/*.md` for a feature design — that is too ad-hoc.
