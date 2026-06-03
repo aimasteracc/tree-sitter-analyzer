@@ -56,20 +56,37 @@ supported by the transport — the work is wiring, not protocol invention.
   `delta = { added: [...], removed: [...] }`.
 - Push only when `delta` is non-empty. Update `last_result_keys`.
 
-### 3.4 Session lifecycle
+### 3.4 Session lifecycle — capture at subscribe time
 
-- `server.run()` owns the active `ServerSession`. The registry stores a
-  **weak reference** to it to avoid leaking sessions after disconnect.
-- A subscription is GC'd when: (a) its session is gone, (b) a send raises
-  (dead client), or (c) a TTL elapses with no client read (defence-in-depth,
-  mirrors RFC-0107 D3).
+> **Constraint (Codex review, MCP SDK 1.17.0):** `Server.run()` constructs the
+> `ServerSession` as a *local* and TSA's `_run_server_loop` just awaits that
+> black-box call (`server.py` `_run_server_loop`). Neither the watcher callback
+> nor a resource handler is handed a session object — so the registry CANNOT
+> obtain the session from the run loop. A naïve "weakref from `server.run()`"
+> is unimplementable.
+
+- **Resolution — capture from the request context, not the run loop.** The
+  `subscribe` call IS a tool-call request, so inside its handler
+  `server.request_context.session` is populated (per-request contextvar). The
+  session object is **per-connection** (all requests on one connection share
+  it), so capturing it once at subscribe time yields a reference valid for the
+  whole connection. Store that reference (weakref) + the running loop
+  (`asyncio.get_running_loop()`, also captured in-handler) on the subscription.
+- A subscription is GC'd when: (a) its captured session is gone / closed,
+  (b) a send raises (dead client), or (c) a TTL elapses with no client read
+  (defence-in-depth, mirrors RFC-0107 D3).
+- If `server.request_context.session` is ever unavailable at subscribe time,
+  `subscribe` fails fast with a clear error rather than registering a
+  push-incapable subscription.
 
 ### 3.5 Watch → push bridge (the risk surface)
 
 - `FileWatcherDaemon` runs on a background thread; MCP runs on an asyncio loop.
-- Bridge: the watch callback schedules the push coroutine onto the MCP loop via
-  `asyncio.run_coroutine_threadsafe(push_coro, loop)`. The loop reference is
-  captured at `server.run()` start.
+- Bridge: the watch callback schedules the push coroutine onto the **loop
+  captured at subscribe time** (§3.4) via
+  `asyncio.run_coroutine_threadsafe(push_coro, loop)`, calling
+  `send_resource_updated` on the **session captured at subscribe time**. This
+  sidesteps the run-loop's inaccessible local session entirely.
 - Alternative considered: rewrite the watcher as a native asyncio task. Deferred
   — the threaded daemon already works; threadsafe scheduling is the smaller,
   lower-risk change.
