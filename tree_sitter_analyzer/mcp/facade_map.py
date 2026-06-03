@@ -73,6 +73,9 @@ LEGACY_TOOL_MAP: dict[str, tuple[str, str]] = {
     "codegraph_context": ("nav", "context"),
     "codegraph_callers": ("nav", "callers"),  # scope=point default
     "codegraph_callees": ("nav", "callees"),  # scope=point default
+    # Tree primitives (mycelium RFC-0020/0021 parity): one call → nested tree.
+    "codegraph_callee_tree": ("nav", "callee_tree"),
+    "codegraph_caller_tree": ("nav", "caller_tree"),
     # R4: the call-graph tool is reachable via scope=graph on callers/callees.
     # The shim forwards the legacy name to callers scope=graph (mode=callers is
     # the historical default behaviour of codegraph_call_graph for an agent

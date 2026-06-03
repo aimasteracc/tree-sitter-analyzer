@@ -545,6 +545,9 @@ def test_registered_mcp_tools_have_cli_parity() -> None:
         "codegraph_call_graph": ("main", "--call-graph"),
         "codegraph_callers": ("main", "--call-graph"),
         "codegraph_callees": ("main", "--call-graph"),
+        # Tree primitives (mycelium RFC-0020/0021 parity).
+        "codegraph_callee_tree": ("main", "--callee-tree"),
+        "codegraph_caller_tree": ("main", "--caller-tree"),
         "codegraph_symbol_search": ("main", "--symbol-search"),
         "codegraph_resolve": ("main", "--symbol-resolve"),
         "ast_cache": ("main", "--ast-cache"),
@@ -766,6 +769,8 @@ def test_facade_delegation_routes_each_action_to_expected_inner() -> None:
         ("nav", "context"): "<bespoke>",
         ("nav", "callers"): "<bespoke>",
         ("nav", "callees"): "<bespoke>",
+        ("nav", "callee_tree"): "CodeGraphCalleeTreeTool",
+        ("nav", "caller_tree"): "CodeGraphCallerTreeTool",
         ("structure", "outline"): "GetCodeOutlineTool",
         ("structure", "analyze"): "AnalyzeCodeStructureTool",
         ("structure", "signatures"): "<bespoke>",

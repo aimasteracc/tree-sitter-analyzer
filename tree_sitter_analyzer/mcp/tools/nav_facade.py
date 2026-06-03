@@ -93,7 +93,14 @@ _NAV_DESCRIPTION = (
     "  scope=point (default) → direct 1-hop callees (fast). "
     "Params: function_name/symbol (required), file_path, output_format.\n"
     "  scope=graph → full call-graph traversal (callees mode). "
-    "Params: function_name/symbol (required), file_path, depth, output_format."
+    "Params: function_name/symbol (required), file_path, depth, output_format.\n"
+    "- action=callee_tree — depth-limited NESTED tree of everything a function "
+    "transitively calls, in ONE call (no per-node iteration). Prefer this over "
+    "looping action=callees. Params: symbol (required), file_path, max_depth "
+    "(default 3, cap 10), max_nodes (default 150), output_format.\n"
+    "- action=caller_tree — depth-limited NESTED tree of everything that "
+    "transitively calls a function (blast radius), in ONE call. Params: symbol "
+    "(required), file_path, max_depth, max_nodes, output_format."
 )
 
 
@@ -104,6 +111,7 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
     that don't build the facade (matches the lazy-import convention used across
     the tool registry).
     """
+    from ._call_tree_tool import CodeGraphCalleeTreeTool, CodeGraphCallerTreeTool
     from .call_graph_tool import CodeGraphCallTool
     from .call_path_tool import CodeGraphCallPathTool
     from .callees_tool import CodeGraphCalleesTool
@@ -206,6 +214,11 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
             "lineage": SymbolLineageTool(project_root),
             "impact": CodeGraphImpactTool(project_root),
             "trace": TraceImpactTool(project_root),
+            # Tree primitives (mycelium RFC-0020/0021 parity): one call →
+            # depth-limited NESTED tree, so the agent stops iterating
+            # callees/callers per node (the IndexShard dogfood loss root cause).
+            "callee_tree": CodeGraphCalleeTreeTool(project_root),
+            "caller_tree": CodeGraphCallerTreeTool(project_root),
         },
         bespoke_map={
             # Composed one-call context (search + node + callers + callees).
