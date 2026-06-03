@@ -212,6 +212,35 @@ def _try_single_global(
     return None
 
 
+def _try_unique_method(
+    base: str, qualifier: str, ctx: ResolverContext
+) -> ResolvedCallee | None:
+    """RFC-0002 Phase 1: receiver method call where the method name is unique.
+
+    For ``obj.method()`` whose receiver type we cannot infer, if ``method`` is
+    defined on exactly ONE class across the whole project, resolve to it. If it
+    is defined on multiple classes (e.g. ``execute``), return ``None`` and stay
+    ``unknown`` rather than guess. Requires a qualifier (a receiver); ``self``/
+    ``cls`` are already handled by ``_try_self_method``, and bare names by the
+    global rules above — so this only fires for true receiver method calls the
+    earlier rules left unresolved.
+    """
+    if not qualifier or qualifier in ("self", "cls"):
+        return None
+    found: tuple[str, int] | None = None
+    for file_path, classes in ctx.file_class_methods.items():
+        for _cls, methods in classes.items():
+            sym_id = methods.get(base)
+            if sym_id is None:
+                continue
+            if found is not None and (file_path, sym_id) != found:
+                return None  # defined on >1 class — ambiguous, don't guess
+            found = (file_path, sym_id)
+    if found is not None:
+        return ResolvedCallee(found[1], "project", found[0])
+    return None
+
+
 def resolve_callee(
     callee_name: str,
     caller_file: str,
@@ -237,14 +266,30 @@ def resolve_callee(
         )
         return ResolvedCallee(sym_id, resolution, resolved_file)
 
-    return _resolve_callee_python(callee_name, caller_file, ctx)
+    return _resolve_callee_python(callee_name, caller_file, ctx, callee_full)
 
 
 def _resolve_callee_python(
-    callee_name: str, caller_file: str, ctx: ResolverContext
+    callee_name: str,
+    caller_file: str,
+    ctx: ResolverContext,
+    callee_full: str | None = None,
 ) -> ResolvedCallee:
-    """Resolve a single callee per the priority cascade above."""
-    qualifier, base = _split_qualifier(callee_name)
+    """Resolve a single callee per the priority cascade above.
+
+    ``callee_name`` is the bare name (receiver stripped); ``callee_full`` keeps
+    the receiver (e.g. ``self._scan_disk_files``). The bare name loses the
+    ``self``/``cls`` qualifier, so ``self.X`` calls would never reach
+    ``_try_self_method`` — the #1 source of ``unknown`` edges. When
+    ``callee_full`` carries a ``self``/``cls`` receiver, split on it so those
+    method calls resolve.
+    """
+    if callee_full and (
+        callee_full.startswith("self.") or callee_full.startswith("cls.")
+    ):
+        qualifier, base = _split_qualifier(callee_full)
+    else:
+        qualifier, base = _split_qualifier(callee_name)
 
     for rule in (
         lambda: _try_self_method(base, qualifier, caller_file, ctx),
@@ -253,6 +298,7 @@ def _resolve_callee_python(
         lambda: _try_stdlib(base, qualifier, caller_file, ctx),
         lambda: _try_builtin(base, qualifier, ctx),
         lambda: _try_single_global(base, qualifier, ctx),
+        lambda: _try_unique_method(base, qualifier, ctx),
     ):
         out = rule()
         if out is not None:
