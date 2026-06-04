@@ -301,6 +301,41 @@ def test_class_hierarchy_cli_reads_resolved_cross_file_edge(tmp_path: Path) -> N
     )
 
 
+def test_call_does_not_bind_across_languages(tmp_path: Path) -> None:
+    """A Python call must not resolve to a same-named symbol in another language.
+
+    Regression: ``_choose_candidate`` scored candidates by import/path/name only,
+    with no language gate. A Python ``config.get(...)`` (bare name ``get``) with no
+    Python ``get`` definition in the tree fell through to *any* repo symbol named
+    ``get`` ordered by file path — binding to a JavaScript ``get`` and inlining its
+    JS body into the Python callee list (wrong AND token-bloat). The call must stay
+    unresolved rather than cross the language boundary.
+    """
+    (tmp_path / "service.py").write_text(
+        "def use_config(config):\n    return config.get('key')\n",
+        encoding="utf-8",
+    )
+    # Only definition of ``get`` anywhere in the tree is this JS method.
+    (tmp_path / "widget.js").write_text(
+        "class Api {\n    get(endpoint) {\n        return fetch(endpoint);\n    }\n}\n",
+        encoding="utf-8",
+    )
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_project(max_files=10, workers=0)
+        callees = cache.query_callees("use_config", "service.py")
+        get_callees = [c for c in callees if c.get("callee_name") == "get"]
+        # The ``get`` call may stay unresolved, but it must NEVER resolve to a
+        # JavaScript file.
+        for callee in get_callees:
+            resolved = str(callee.get("callee_resolved_file") or "")
+            assert not resolved.endswith(".js"), (
+                f"Python call bound across languages to {resolved!r}: {callee}"
+            )
+    finally:
+        cache.close()
+
+
 def test_resolve_unresolved_refs_sqlite_error_paths_are_nonfatal() -> None:
     """Missing schema / broken connections must degrade, not crash."""
     no_schema = sqlite3.connect(":memory:")

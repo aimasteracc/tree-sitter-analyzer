@@ -381,6 +381,20 @@ def _choose_candidate(
     base = _base_name(reference_name)
     import_hints = _import_target_hints(conn, source_file, reference_name)
     eligible = [item for item in candidates if item.get("node_id") != source_node]
+    # Language gate: a reference in a Python file must not bind to a same-named
+    # symbol defined in another language. ``ast_symbol_rows`` is cross-language,
+    # so a Python ``config.get(...)`` with no Python ``get`` in the tree would
+    # otherwise fall through to a JavaScript/Swift ``get`` ordered by file path
+    # (cross-language false callee + foreign body inlined into the response).
+    # Drop foreign-language candidates; if none remain, leave it unresolved.
+    source_lang = _file_language(conn, source_file)
+    if source_lang:
+        eligible = [
+            item
+            for item in eligible
+            if not str(item.get("language") or "")
+            or str(item.get("language")) == source_lang
+        ]
     if not eligible:
         return None
     source_dir = os.path.dirname(source_file)

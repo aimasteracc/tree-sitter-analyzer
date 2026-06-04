@@ -347,6 +347,7 @@ def _resolve_callee_python(
     else:
         qualifier, base = _split_qualifier(callee_name)
 
+    caller_lang = ctx.file_languages.get(caller_file, "")
     for rule in (
         lambda: _try_self_method(base, qualifier, caller_file, caller_name, ctx),
         lambda: _try_local(base, caller_file, ctx) if not qualifier else None,
@@ -358,10 +359,29 @@ def _resolve_callee_python(
         lambda: _try_unique_method(base, qualifier, ctx),
     ):
         out = rule()
-        if out is not None:
+        if out is not None and not _is_cross_language(out, caller_lang, ctx):
             return out
 
     return ResolvedCallee(None, "unknown", "")
+
+
+def _is_cross_language(
+    out: ResolvedCallee, caller_lang: str, ctx: ResolverContext
+) -> bool:
+    """True when a project bind crosses a language boundary.
+
+    The project-wide rules (``_try_single_global`` / ``_try_class_method`` /
+    ``_try_unique_method``) scan every file regardless of language, so a Python
+    ``config.get(...)`` whose ``get`` is defined only on a JavaScript class would
+    bind to that JS file — a wrong callee with a foreign-language body inlined
+    into the response. Reject such binds so the cascade falls through to
+    ``unknown`` rather than crossing languages. ``local``/``stdlib`` binds resolve
+    to the caller file or carry no file, so they never trip this.
+    """
+    if not caller_lang or not out.resolved_file:
+        return False
+    target_lang = ctx.file_languages.get(out.resolved_file, "")
+    return bool(target_lang) and target_lang != caller_lang
 
 
 __all__ = [

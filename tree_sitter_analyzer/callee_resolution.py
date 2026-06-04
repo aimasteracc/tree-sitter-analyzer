@@ -159,10 +159,29 @@ class CalleeResolver:
                 _append_file_resolution(results, seen, target_file, 0.7)
 
         if include_global and not results:
+            # Global fallback is a last-resort bare-name match across the whole
+            # project. Gate it to the caller file's own language: a Python
+            # ``config.get(...)`` must never bind to a JavaScript ``get`` just
+            # because no Python ``get`` exists — that produced cross-language
+            # false callees (and inlined foreign-language bodies into the
+            # response, both wrong and token-bloat). When the source language is
+            # unknown, keep the un-gated behaviour.
+            source_lang = self._source_language(source_file)
             for func in self._functions_by_name.get(base_name, []):
+                func_lang = _item_language(func)
+                if source_lang and func_lang and func_lang != source_lang:
+                    continue
                 _append_resolution(results, seen, func, 0.5, keep_items=keep_items)
 
         return results
+
+    def _source_language(self, source_file: str) -> str:
+        """Best-effort language of ``source_file`` from its indexed functions."""
+        for func in self._functions_by_file.get(source_file, []):
+            lang = _item_language(func)
+            if lang:
+                return lang
+        return ""
 
     def _import_target(
         self,
@@ -193,6 +212,12 @@ def _item_file(item: Any) -> str:
     if isinstance(item, dict):
         return str(item.get("file", item.get("file_path", "")))
     return str(getattr(item, "file", getattr(item, "file_path", "")))
+
+
+def _item_language(item: Any) -> str:
+    if isinstance(item, dict):
+        return str(item.get("language", "") or "")
+    return str(getattr(item, "language", "") or "")
 
 
 def _append_resolution(
