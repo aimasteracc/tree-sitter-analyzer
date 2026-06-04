@@ -8,6 +8,12 @@ from __future__ import annotations
 
 import argparse
 
+# Keep the CLI default in lock-step with the tool's runtime default (MCP/CLI
+# parity — Codex P2 on #297).
+from ...mcp.tools.symbol_search_tool import (
+    DEFAULT_SYMBOL_SEARCH_LIMIT as _DEFAULT_SYMBOL_SEARCH_LIMIT,
+)
+
 
 def _add_mcp_codegraph_map_options(parser: argparse.ArgumentParser) -> None:
     """Add sitemap, xref, complexity, symbol-search, class-hierarchy, visualize, and UML flags."""
@@ -95,8 +101,11 @@ def _add_mcp_codegraph_map_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--symbol-search-limit",
         type=int,
-        default=50,
-        help="Max results for --symbol-search (default: 50)",
+        default=_DEFAULT_SYMBOL_SEARCH_LIMIT,
+        help=(
+            "Max results for --symbol-search "
+            f"(default: {_DEFAULT_SYMBOL_SEARCH_LIMIT})"
+        ),
     )
     parser.add_argument(
         "--symbol-resolve",

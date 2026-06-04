@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from tree_sitter_analyzer.cli.commands.mcp_command_helpers import McpCommandSpec
 
+from ....mcp.tools._call_tree import DEFAULT_MAX_NODES as _DEFAULT_TREE_MAX_NODES
+from ....mcp.tools.symbol_search_tool import (
+    DEFAULT_SYMBOL_SEARCH_LIMIT as _DEFAULT_SYMBOL_SEARCH_LIMIT,
+)
 from ._builders import (
     _build_change_impact_tool_args,
     _build_dependency_tool_args,
@@ -173,7 +177,7 @@ _CORE_SPECS: tuple[McpCommandSpec, ...] = (
             "symbol": getattr(args, "callee_tree", "") or "",
             "file_path": getattr(args, "tree_file", None),
             "max_depth": getattr(args, "tree_max_depth", 3),
-            "max_nodes": getattr(args, "tree_max_nodes", 150),
+            "max_nodes": getattr(args, "tree_max_nodes", _DEFAULT_TREE_MAX_NODES),
             "output_format": output_format,
         },
     ),
@@ -185,7 +189,7 @@ _CORE_SPECS: tuple[McpCommandSpec, ...] = (
             "symbol": getattr(args, "caller_tree", "") or "",
             "file_path": getattr(args, "tree_file", None),
             "max_depth": getattr(args, "tree_max_depth", 3),
-            "max_nodes": getattr(args, "tree_max_nodes", 150),
+            "max_nodes": getattr(args, "tree_max_nodes", _DEFAULT_TREE_MAX_NODES),
             "output_format": output_format,
         },
     ),
@@ -241,7 +245,7 @@ _CORE_SPECS: tuple[McpCommandSpec, ...] = (
             "query": getattr(args, "symbol_search", "") or "",
             "language": getattr(args, "symbol_search_language", None),
             "kind": getattr(args, "symbol_search_kind", "any") or "any",
-            "limit": getattr(args, "symbol_search_limit", 50),
+            "limit": getattr(args, "symbol_search_limit", _DEFAULT_SYMBOL_SEARCH_LIMIT),
             "output_format": output_format,
         },
     ),
