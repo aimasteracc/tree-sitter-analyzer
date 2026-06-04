@@ -89,7 +89,7 @@ Telling an agent that a Python function *calls a Swift method*, or that a produc
 tree-sitter-analyzer --callees _resolve_entry_points --format json
 ```
 
-> Reproduce the cost numbers: `benchmarks/codegraph_compare/run.py phase full-warm`. Raw envelopes + the harness fix live in that directory.
+> Reproduce the cost numbers: `uv run python benchmarks/codegraph_compare/run.py phase full-warm --repos gin,django`. Raw envelopes + the harness fix live in that directory.
 
 ---
 
