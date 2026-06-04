@@ -76,6 +76,18 @@ def _record_span(
     if not name or line < 1:
         return None
 
+    # An unresolved callee (resolver could not bind it — a builtin, a dynamic
+    # dispatch, or a truly unknown name) has no real definition. Any body here
+    # would come from the bare-name def-index fallback, i.e. a guess — that is
+    # exactly how a Swift ``func sorted`` body reached a Python ``sorted()``
+    # callee. Skip the body so an unresolved callee stays coordinate-only
+    # (correct, and trims the response). navigate/search records carry no
+    # ``callee_resolution`` key, so they are unaffected.
+    if record.get("callee_resolution") == "unknown" and not record.get(
+        "callee_resolved_file"
+    ):
+        return None
+
     end_line = int(record.get("end_line", 0) or 0)
     if end_line >= line:
         return {
@@ -87,8 +99,12 @@ def _record_span(
         }
 
     # No usable end_line — resolve via the def-index (cap to this one name).
+    # Gate on the record's language so a Python builtin call (no real Python
+    # def) cannot inline a same-named definition from another language (e.g. a
+    # Swift ``func sorted`` body under a Python ``sorted()`` callee).
+    lang_hint = str(record.get("language") or "") or None
     index = _build_def_index(cache, {name})
-    defn = _resolve_def(index, name, file_hint)
+    defn = _resolve_def(index, name, file_hint, lang_hint)
     if defn is None:
         return None
     return {**defn, "name": name}

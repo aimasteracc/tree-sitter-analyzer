@@ -301,6 +301,127 @@ def test_class_hierarchy_cli_reads_resolved_cross_file_edge(tmp_path: Path) -> N
     )
 
 
+def test_call_does_not_bind_across_languages(tmp_path: Path) -> None:
+    """A Python call must not resolve to a same-named symbol in another language.
+
+    Regression: ``_choose_candidate`` scored candidates by import/path/name only,
+    with no language gate. A Python ``config.get(...)`` (bare name ``get``) with no
+    Python ``get`` definition in the tree fell through to *any* repo symbol named
+    ``get`` ordered by file path — binding to a JavaScript ``get`` and inlining its
+    JS body into the Python callee list (wrong AND token-bloat). The call must stay
+    unresolved rather than cross the language boundary.
+    """
+    (tmp_path / "service.py").write_text(
+        "def use_config(config):\n    return config.get('key')\n",
+        encoding="utf-8",
+    )
+    # Only definition of ``get`` anywhere in the tree is this JS method.
+    (tmp_path / "widget.js").write_text(
+        "class Api {\n    get(endpoint) {\n        return fetch(endpoint);\n    }\n}\n",
+        encoding="utf-8",
+    )
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_project(max_files=10, workers=0)
+        callees = cache.query_callees("use_config", "service.py")
+        get_callees = [c for c in callees if c.get("callee_name") == "get"]
+        # The ``get`` call may stay unresolved, but it must NEVER resolve to a
+        # JavaScript file.
+        for callee in get_callees:
+            resolved = str(callee.get("callee_resolved_file") or "")
+            assert not resolved.endswith(".js"), (
+                f"Python call bound across languages to {resolved!r}: {callee}"
+            )
+    finally:
+        cache.close()
+
+
+def _choose_candidate_conn() -> sqlite3.Connection:
+    """Minimal conn for ``_choose_candidate`` (ast_index + ast_imports only)."""
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.executescript(
+        """
+        CREATE TABLE ast_index (file_path TEXT PRIMARY KEY, language TEXT);
+        CREATE TABLE ast_imports (
+            file_path TEXT, module_path TEXT, local_name TEXT, alias_of TEXT
+        );
+        INSERT INTO ast_index VALUES ('app/main.py', 'python');
+        INSERT INTO ast_index VALUES ('zsrc/real.py', 'python');
+        INSERT INTO ast_index VALUES ('tests/test_cache.py', 'python');
+        """
+    )
+    return conn
+
+
+def test_choose_candidate_prefers_source_over_test_shadow() -> None:
+    """A non-test caller must bind to the source def, not the test mock.
+
+    Regression: ``_choose_candidate`` broke ties on ``file_path`` alphabetically,
+    so ``tests/...`` sorted before the source tree and a real method
+    (``fts_search``) bound to its test mock. The test def is now demoted when the
+    caller is not itself a test file.
+    """
+    conn = _choose_candidate_conn()
+    try:
+        row = {
+            "file_path": "app/main.py",
+            "from_node_id": "app/main.py:use_cache:5",
+            "reference_name": "fts_search",
+        }
+        # Test def sorts first alphabetically ('tests/' < 'zsrc/'); source must
+        # still win via the test-demotion tier.
+        candidates = [
+            {
+                "node_id": "tests/test_cache.py:fts_search:2",
+                "id": 1,
+                "name": "fts_search",
+                "file_path": "tests/test_cache.py",
+                "line": 2,
+                "language": "python",
+            },
+            {
+                "node_id": "zsrc/real.py:fts_search:9",
+                "id": 2,
+                "name": "fts_search",
+                "file_path": "zsrc/real.py",
+                "line": 9,
+                "language": "python",
+            },
+        ]
+        chosen = unresolved._choose_candidate(conn, row, candidates)
+        assert chosen is not None
+        assert chosen["file_path"] == "zsrc/real.py", chosen
+    finally:
+        conn.close()
+
+
+def test_choose_candidate_allows_test_target_for_test_caller() -> None:
+    """A test caller may still bind to a test definition (no demotion)."""
+    conn = _choose_candidate_conn()
+    try:
+        row = {
+            "file_path": "tests/test_cache.py",
+            "from_node_id": "tests/test_cache.py:test_fetch:1",
+            "reference_name": "helper",
+        }
+        candidates = [
+            {
+                "node_id": "tests/test_cache.py:helper:2",
+                "id": 1,
+                "name": "helper",
+                "file_path": "tests/test_cache.py",
+                "line": 2,
+                "language": "python",
+            },
+        ]
+        chosen = unresolved._choose_candidate(conn, row, candidates)
+        assert chosen is not None
+        assert chosen["file_path"] == "tests/test_cache.py"
+    finally:
+        conn.close()
+
+
 def test_resolve_unresolved_refs_sqlite_error_paths_are_nonfatal() -> None:
     """Missing schema / broken connections must degrade, not crash."""
     no_schema = sqlite3.connect(":memory:")

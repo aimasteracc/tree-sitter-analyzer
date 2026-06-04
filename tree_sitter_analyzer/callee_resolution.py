@@ -5,6 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from ._language_family import language_from_path, languages_compatible
+from .utils.test_detection import is_test_file
+
 
 @dataclass(frozen=True)
 class CalleeResolution:
@@ -159,10 +162,50 @@ class CalleeResolver:
                 _append_file_resolution(results, seen, target_file, 0.7)
 
         if include_global and not results:
-            for func in self._functions_by_name.get(base_name, []):
+            # Global fallback is a last-resort bare-name match across the whole
+            # project. Gate it to the caller file's own language: a Python
+            # ``config.get(...)`` must never bind to a JavaScript ``get`` just
+            # because no Python ``get`` exists — that produced cross-language
+            # false callees (and inlined foreign-language bodies into the
+            # response, both wrong and token-bloat). When the source language is
+            # unknown, keep the un-gated behaviour.
+            source_lang = self._source_language(source_file)
+            globals_ = [
+                func
+                for func in self._functions_by_name.get(base_name, [])
+                if not (
+                    source_lang
+                    and _item_language(func)
+                    and not languages_compatible(source_lang, _item_language(func))
+                )
+            ]
+            # Demote test-only shadows for a non-test caller: a production call
+            # must not bind to a test mock (e.g. ``fts_search`` -> FallbackCache)
+            # just because the test def is enumerated first. A test caller may
+            # legitimately reference a test helper, so only filter for non-test
+            # callers and only when a non-test def actually exists.
+            if not is_test_file(source_file):
+                non_test = [f for f in globals_ if not is_test_file(_item_file(f))]
+                if non_test:
+                    globals_ = non_test
+            for func in globals_:
                 _append_resolution(results, seen, func, 0.5, keep_items=keep_items)
 
         return results
+
+    def _source_language(self, source_file: str) -> str:
+        """Best-effort language of ``source_file``.
+
+        Prefer an indexed function's language; fall back to the file extension
+        so module-level calls in a file with no function symbols are still gated
+        (Codex P2 #301 — an empty language here would re-open the ungated
+        cross-language fallback).
+        """
+        for func in self._functions_by_file.get(source_file, []):
+            lang = _item_language(func)
+            if lang:
+                return lang
+        return language_from_path(source_file)
 
     def _import_target(
         self,
@@ -193,6 +236,12 @@ def _item_file(item: Any) -> str:
     if isinstance(item, dict):
         return str(item.get("file", item.get("file_path", "")))
     return str(getattr(item, "file", getattr(item, "file_path", "")))
+
+
+def _item_language(item: Any) -> str:
+    if isinstance(item, dict):
+        return str(item.get("language", "") or "")
+    return str(getattr(item, "language", "") or "")
 
 
 def _append_resolution(
