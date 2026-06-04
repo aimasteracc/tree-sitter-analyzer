@@ -327,6 +327,64 @@ def test_entry_rank_v2_sinks_test_file_below_impl() -> None:
     assert hits[0]["file"] == "response_writer.go"
 
 
+def test_task_wants_tests_detects_test_intent() -> None:
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        _task_wants_tests,
+    )
+
+    assert _task_wants_tests("response writer tests") is True
+    assert _task_wants_tests("how is routing tested") is True
+    assert _task_wants_tests("the spec for the parser") is True
+    assert _task_wants_tests("router benchmark") is True
+    # No test intent → False (and no false positive on 'latest'/'contest').
+    assert _task_wants_tests("how does route matching work") is False
+    assert _task_wants_tests("latest contest results parser") is False
+    assert _task_wants_tests("") is False
+
+
+def test_resolve_entry_points_keeps_tests_when_task_wants_tests() -> None:
+    """When the task asks about tests, test symbols must NOT be demoted.
+
+    Codex P2 on #291: unconditional test demotion (is_test as the first sort
+    tier) pushes the relevant test past the limit for a test-intent query like
+    'response writer tests'. With wants_tests set, the stronger name match
+    wins and the test symbol ranks first.
+    """
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        CodeGraphContextTool,
+    )
+
+    class TestIntentCache:
+        def fts_search_ranked(self, candidate: str, limit: int):
+            return [
+                {
+                    "name": "TestResponseWriterWrite",
+                    "kind": "function",
+                    "file": "response_writer_test.go",
+                    "line": 10,
+                },
+                {
+                    "name": "ResponseWriter",
+                    "kind": "class",
+                    "file": "response_writer.go",
+                    "line": 20,
+                },
+            ]
+
+    tool = CodeGraphContextTool(str(Path.cwd()))
+    tool._cache = TestIntentCache()
+
+    # Default (no test intent): impl wins.
+    impl_first = tool._resolve_entry_points(["ResponseWriter"], limit=5)
+    assert impl_first[0]["name"] == "ResponseWriter"
+
+    # Test intent: the test symbol (stronger name match) is kept on top.
+    test_first = tool._resolve_entry_points(
+        ["ResponseWriter"], limit=5, wants_tests=True
+    )
+    assert test_first[0]["name"] == "TestResponseWriterWrite"
+
+
 def test_compound_candidates_builds_camelcase_word_pairs() -> None:
     from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
         _compound_candidates,
