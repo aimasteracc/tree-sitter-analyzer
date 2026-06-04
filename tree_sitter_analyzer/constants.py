@@ -128,9 +128,13 @@ EXCLUDE_DIRS: frozenset[str] = frozenset(
         ".next",
         ".nuxt",
         "bower_components",
-        # Build artifacts — compiled languages (the index-full hang fix)
-        "bin",  # C#/.NET, also generic
-        "obj",  # C#/.NET
+        # Build artifacts — compiled languages (the index-full hang fix).
+        # NOTE: "bin" is intentionally NOT here. Rust uses src/bin/*.rs for
+        # first-party binary-target SOURCES; excluding "bin" at any depth would
+        # prune them. C#/Eclipse "bin" holds .dll/.class (which TSA never indexes
+        # anyway); their generated SOURCES live in obj/ (C#) and target/ (Java),
+        # both excluded below — so dropping "bin" keeps the hang fixed.
+        "obj",  # C#/.NET (incl. obj/**/*.g.cs generated sources)
         "packages",  # C#/.NET (NuGet)
         "target",  # Rust, Java (Maven)
         ".gradle",  # Java (Gradle)
