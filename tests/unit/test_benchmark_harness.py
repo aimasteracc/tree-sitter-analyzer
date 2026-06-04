@@ -295,9 +295,7 @@ class TestCodeGraphCompareToolPolicy:
 
             # The TSA MCP facade tools are available (index-first path).
             assert "mcp__tree-sitter-analyzer__nav" in allowed
-            assert any(
-                t.startswith("mcp__tree-sitter-analyzer__") for t in allowed
-            )
+            assert any(t.startswith("mcp__tree-sitter-analyzer__") for t in allowed)
             # The competing index and escape hatches are blocked for a fair,
             # isolated TSA-vs-CodeGraph comparison.
             assert "mcp__codegraph__*" in disallowed
@@ -325,6 +323,32 @@ class TestCodeGraphCompareToolPolicy:
         assert "AST index is the source of truth" in prompt
         # No stale CLI-DSL references from the old CLI-based arm.
         assert "--codegraph-query" not in prompt
+
+    def test_tsa_mcp_config_pins_target_repo_as_project_root(self, tmp_path: Path):
+        """The TSA MCP server must get --project-root <target repo>.
+
+        Without it the server auto-detects and resolves to the ANALYZER repo
+        (where its package lives), so every query analyzes tree-sitter-analyzer
+        instead of the benchmark target — the agent then calls set_project_path,
+        re-queries, and Reads the analyzer tree, inflating cost ~2.5x and
+        invalidating the comparison.
+        """
+        import json as _json
+
+        from benchmarks.codegraph_compare.adapters.claude_runner import (
+            _write_arm_mcp_config,
+        )
+
+        repo = tmp_path / "gin"
+        repo.mkdir()
+        cfg_path = _write_arm_mcp_config("tsa-warm", repo)
+        cfg = _json.loads(cfg_path.read_text())
+        args = cfg["mcpServers"]["tree-sitter-analyzer"]["args"]
+
+        assert "--project-root" in args
+        assert str(repo) in args
+        # The flag value must be the repo, immediately after the flag.
+        assert args[args.index("--project-root") + 1] == str(repo)
 
 
 class TestCodeGraphComparePhases:

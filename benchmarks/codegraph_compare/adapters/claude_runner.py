@@ -295,19 +295,32 @@ _ANALYZER_ROOT = Path(__file__).resolve().parents[3]
 _MCP_CONFIG_DIR = Path(tempfile.gettempdir()) / "tsa_bench_mcp_configs"
 
 
-def _write_arm_mcp_config(arm_id: str) -> Path:
+def _write_arm_mcp_config(arm_id: str, repo_path: Path) -> Path:
     """Write a per-arm MCP config so each arm sees ONLY its own MCP server.
 
     Used with ``--strict-mcp-config`` so the developer's global MCP servers
     (Context7, Gmail, codegraph, ruflo, vercel, ...) do NOT leak into the
     benchmark agent — their tool definitions otherwise bloat the context by
     millions of tokens and pollute every arm. native-only gets an empty set.
+
+    CRITICAL: the TSA server is given ``--project-root <repo_path>`` explicitly.
+    Without it the server auto-detects its root and resolves to the ANALYZER
+    repo (where its package lives), NOT the benchmark target repo — so every
+    nav/structure query analyzes tree-sitter-analyzer's own code instead of
+    e.g. gin. The agent then calls set_project_path, re-queries, and falls back
+    to raw Reads of the analyzer tree, inflating cost ~2.5x and invalidating
+    the comparison. (Found by dogfooding the TSA arm transcript.)
     """
     if arm_id.startswith("tsa"):
         servers = {
             "tree-sitter-analyzer": {
                 "command": str(_ANALYZER_ROOT / ".venv" / "bin" / "python"),
-                "args": ["-m", "tree_sitter_analyzer.mcp.server"],
+                "args": [
+                    "-m",
+                    "tree_sitter_analyzer.mcp.server",
+                    "--project-root",
+                    str(repo_path),
+                ],
             }
         }
     elif arm_id.startswith("codegraph"):
@@ -350,7 +363,7 @@ def _build_agent_cmd(
         if disallowed_tools_str:
             cmd += ["--disallowed-tools", disallowed_tools_str]
         # Isolate MCP: each arm sees only its own server (no global MCP leak).
-        mcp_cfg = _write_arm_mcp_config(arm_id)
+        mcp_cfg = _write_arm_mcp_config(arm_id, repo_path)
         cmd += ["--strict-mcp-config", "--mcp-config", str(mcp_cfg)]
         return cmd
     # codex backend: the MCP arms (tsa*, codegraph*) need their server wired in
