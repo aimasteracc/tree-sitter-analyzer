@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from tree_sitter_analyzer.cli.commands.mcp_command_helpers import McpCommandSpec
 
+from ...mcp.tools._call_tree import DEFAULT_MAX_NODES as _DEFAULT_TREE_MAX_NODES
+from ...mcp.tools.symbol_search_tool import (
+    DEFAULT_SYMBOL_SEARCH_LIMIT as _DEFAULT_SYMBOL_SEARCH_LIMIT,
+)
 from ._builders import (
     _build_change_impact_tool_args,
     _build_dependency_tool_args,
