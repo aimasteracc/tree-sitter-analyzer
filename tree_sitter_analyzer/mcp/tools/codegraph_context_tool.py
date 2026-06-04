@@ -624,9 +624,52 @@ def _unique_files(nodes: list[dict[str, Any]]) -> list[str]:
     return out
 
 
+# Test-file path conventions across languages. Detected by FILE path (robust)
+# rather than symbol name (``TestRunner`` may be production code) so we never
+# demote a real symbol. Without this, a concept query whose substring-cascade
+# hits land in test files (Go ``*_test.go``, JS ``*.spec.ts``, ...) surfaces
+# ``TestResponseWriterWrite`` ABOVE the real ``ResponseWriter`` implementation,
+# degrading the inline source and pushing the agent back to raw Reads.
+_TEST_PATH_DIRS = ("/tests/", "/test/", "/__tests__/", "/spec/", "/testdata/")
+_TEST_FILE_SUFFIXES = (
+    "_test.go",  # Go
+    "_test.py",  # Python (pytest/unittest)
+    "_test.rs",  # Rust
+    "_test.cc",
+    "_test.cpp",  # C++
+    "_spec.rb",  # Ruby
+    ".test.js",
+    ".test.jsx",
+    ".test.ts",
+    ".test.tsx",  # JS/TS
+    ".spec.js",
+    ".spec.jsx",
+    ".spec.ts",
+    ".spec.tsx",
+)
+
+
+def _is_test_file(file_path: str) -> int:
+    """Return 1 when ``file_path`` is a test file, else 0 (for rank tiers).
+
+    Path-based only — see ``_TEST_PATH_DIRS`` rationale above.
+    """
+    p = file_path.replace("\\", "/").lower()
+    base = p.rsplit("/", 1)[-1]
+    if p.startswith(("tests/", "test/", "spec/", "__tests__/", "testdata/")):
+        return 1
+    if any(d in p for d in _TEST_PATH_DIRS):
+        return 1
+    if base.endswith(_TEST_FILE_SUFFIXES):
+        return 1
+    if base.startswith("test_") and base.endswith(".py"):
+        return 1
+    return 0
+
+
 def _entry_rank(hit: dict[str, Any]) -> tuple[int, int, str, int]:
-    file_path = hit.get("file", "").replace("\\", "/")
-    is_test = int("/tests/" in file_path or file_path.startswith("tests/"))
+    file_path = hit.get("file", "")
+    is_test = _is_test_file(file_path)
     kind_rank = 0 if hit.get("kind") in {"class", "function", "method"} else 1
     return (is_test, kind_rank, hit.get("file", ""), int(hit.get("line", 0) or 0))
 
@@ -688,8 +731,7 @@ def _entry_rank_v2(
     rank, then file/line for a stable tie-break.
     """
     hit = entry["hit"]
-    file_path = hit.get("file", "").replace("\\", "/")
-    is_test = int("/tests/" in file_path or file_path.startswith("tests/"))
+    is_test = _is_test_file(hit.get("file", ""))
     kind_rank = 0 if hit.get("kind") in {"class", "function", "method"} else 1
     name_match = _name_match_score(hit.get("name", ""), candidates)
     return (

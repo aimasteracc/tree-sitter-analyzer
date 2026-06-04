@@ -266,6 +266,67 @@ def test_name_match_score_counts_distinct_task_words() -> None:
     assert _name_match_score("", cands) == 0
 
 
+def test_is_test_file_detects_cross_language_test_paths() -> None:
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import _is_test_file
+
+    # Test files across languages → 1
+    assert _is_test_file("response_writer_test.go") == 1  # Go
+    assert _is_test_file("pkg/router_test.go") == 1
+    assert _is_test_file("foo.spec.ts") == 1  # TS
+    assert _is_test_file("src/app/foo.test.tsx") == 1
+    assert _is_test_file("tests/test_thing.py") == 1  # Python dir + prefix
+    assert _is_test_file("test_thing.py") == 1
+    assert _is_test_file("thing_test.py") == 1
+    assert _is_test_file("src/test/java/FooTest.java") == 1  # Maven layout
+    assert _is_test_file("__tests__/comp.jsx") == 1
+    assert _is_test_file("project/testdata/sample.go") == 1
+    # Production files → 0 (no false positives on test-like names)
+    assert _is_test_file("response_writer.go") == 0
+    assert _is_test_file("src/TestRunner.java") == 0  # production class
+    assert _is_test_file("latest.java") == 0  # not '*test.java' substring trap
+    assert _is_test_file("contest.py") == 0
+    assert _is_test_file("") == 0
+
+
+def test_entry_rank_v2_sinks_test_file_below_impl() -> None:
+    """A test-file hit must rank BELOW an implementation hit of equal relevance.
+
+    Concept queries whose substring-cascade lands in Go ``*_test.go`` (or
+    ``*.spec.ts`` etc.) used to surface ``TestResponseWriterWrite`` above the
+    real ``ResponseWriter`` because is_test only matched ``/tests/`` paths.
+    """
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        CodeGraphContextTool,
+    )
+
+    class TestVsImplCache:
+        def fts_search_ranked(self, candidate: str, limit: int):
+            # Test symbol has the STRONGER name match, but lives in a test file;
+            # the impl must still win on the non-test tier.
+            return [
+                {
+                    "name": "TestResponseWriterWrite",
+                    "kind": "function",
+                    "file": "response_writer_test.go",
+                    "line": 10,
+                },
+                {
+                    "name": "ResponseWriter",
+                    "kind": "class",
+                    "file": "response_writer.go",
+                    "line": 20,
+                },
+            ]
+
+    tool = CodeGraphContextTool(str(Path.cwd()))
+    tool._cache = TestVsImplCache()
+
+    hits = tool._resolve_entry_points(["ResponseWriter"], limit=5)
+
+    assert hits[0]["name"] == "ResponseWriter"
+    assert hits[0]["file"] == "response_writer.go"
+
+
 def test_compound_candidates_builds_camelcase_word_pairs() -> None:
     from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
         _compound_candidates,
