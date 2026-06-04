@@ -120,19 +120,43 @@ class TreeSitterAnalyzerMCPServer:
     """
 
     def __init__(self, project_root: str | None = None) -> None:
-        """Initialize the MCP server with analyzer components."""
+        """Initialize the MCP server with analyzer components.
+
+        Startup fix: the tool registry (``_create_tool_registry`` +
+        ``attach_tool_aliases`` + ``init_universal_tool``) costs ~54ms and is
+        NOT needed to answer the MCP ``initialize`` handshake — only the later
+        ``tools/list`` / ``tools/call`` requests touch it. Building it eagerly
+        here pushed spawn→initialize to the edge of the client's connect
+        window, so a loaded machine intermittently saw the server stuck at
+        ``status: pending``. We now defer that work to ``_ensure_components()``,
+        triggered lazily on first registry access (via the ``tools`` /
+        ``tool_instances`` properties or ``__getattr__`` for the legacy alias
+        attributes). ``register_tools`` only reads the registry inside its
+        handler bodies, so ``create_server()`` no longer materialises it and
+        ``initialize`` returns before the 54ms is paid.
+        """
         self.server: Server | None = None
         self._initialization_complete = False
+        self._project_root = project_root
+        self._registry_built = False
+        self._tool_instances: list[Any] | None = None
+        self._tools: dict[str, Any] | None = None
 
         _log_safely(logger.info, "Starting MCP server initialization...")
 
+        # Eager components are all cheap (~7ms total): the analysis engine and
+        # security validator back legacy code-scale paths and the per-call
+        # security pre-check; the legacy alias tools and the optional universal
+        # tool are lightweight constructions that do NOT touch the AST index.
+        # The ONE expensive piece — ``_create_tool_registry`` (~54ms) — is the
+        # only thing deferred (see ``_ensure_registry``); it is needed solely
+        # for ``tools/list`` / ``tools/call``, never for the ``initialize``
+        # handshake. ``attach_tool_aliases`` does not read the registry, so it
+        # is safe to run before the registry exists.
         self.analysis_engine = get_analysis_engine(project_root)
         self.security_validator = SecurityValidator(project_root)
 
-        self._tool_instances, self._tools = _create_tool_registry(project_root)
-
-        attach_tool_aliases(self, self._tools, project_root)
-
+        attach_tool_aliases(self, {}, project_root)
         self.universal_analyze_tool = init_universal_tool(
             project_root,
             universal_tool_available=UNIVERSAL_TOOL_AVAILABLE,
@@ -153,10 +177,25 @@ class TreeSitterAnalyzerMCPServer:
         self._initialization_complete = True
         _log_safely(
             logger.info,
-            "MCP server initialization complete: %s v%s",
+            "MCP server initialization complete (registry deferred): %s v%s",
             self.name,
             self.version,
         )
+
+    def _ensure_registry(self) -> None:
+        """Build the deferred facade tool registry exactly once (idempotent).
+
+        Runs the ~54ms ``_create_tool_registry`` the first time the registry is
+        accessed (``tools`` / ``tool_instances`` / ``call_tool`` /
+        ``set_project_path``). Synchronous and guard-checked, so a second call
+        in the single-threaded stdio loop is a no-op. Deferring this keeps the
+        MCP ``initialize`` response below the client connect window — the
+        registry is only needed once the client asks for ``tools/list``.
+        """
+        if self._registry_built:
+            return
+        self._tool_instances, self._tools = _create_tool_registry(self._project_root)
+        self._registry_built = True
 
     def is_initialized(self) -> bool:
         """Check if the server is fully initialized."""
@@ -173,7 +212,7 @@ class TreeSitterAnalyzerMCPServer:
         from .intent_aliases import IntentAliasResolver
         from .legacy_shim import dispatch_legacy, is_legacy_name
 
-        tools = getattr(self, "_tools", None) or {}
+        tools = self.tools or {}
 
         # 1. Live facade name.
         tool = tools.get(name)
@@ -261,9 +300,14 @@ class TreeSitterAnalyzerMCPServer:
     def set_project_path(self, project_path: str) -> None:
         """Set the project path for all components."""
         get_shared_cache().clear()
+        # Keep the deferred-build root in sync so a not-yet-built registry is
+        # constructed against the new path; already-built tools are rebound
+        # below.
+        self._project_root = project_path
         self.project_stats_resource.set_project_path(project_path)
 
-        for tool in self._tools.values():
+        # ``self.tools`` builds the registry on demand if it was deferred.
+        for tool in self.tools.values():
             tool.set_project_path(project_path)
 
         # G3: rebind the legacy direct-access inner instances too. They are not
@@ -368,13 +412,15 @@ class TreeSitterAnalyzerMCPServer:
 
     @property
     def tool_instances(self) -> list[Any]:
-        """Public accessor for _tool_instances."""
-        return self._tool_instances
+        """Public accessor for _tool_instances (builds the registry on demand)."""
+        self._ensure_registry()
+        return self._tool_instances  # type: ignore[return-value]
 
     @property
     def tools(self) -> dict[str, Any]:
-        """Public accessor for _tools."""
-        return self._tools
+        """Public accessor for _tools (builds the registry on demand)."""
+        self._ensure_registry()
+        return self._tools  # type: ignore[return-value]
 
     async def _run_server_loop(self, server: Server, options: Any) -> None:
         """Core stdio server I/O loop."""
