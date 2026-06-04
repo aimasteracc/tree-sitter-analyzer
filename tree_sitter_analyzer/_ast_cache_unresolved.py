@@ -176,6 +176,64 @@ def pending_unresolved_count(conn: sqlite3.Connection) -> int:
     return int(row["c"] if isinstance(row, sqlite3.Row) else row[0])
 
 
+def index_resolution_fingerprint(conn: sqlite3.Connection) -> str:
+    """Cheap fingerprint of the indexed-file set: ``"<count>:<max indexed_at>"``.
+
+    Changes whenever any file is (re)indexed (``indexed_at`` moves) or a file is
+    added/removed (count moves). Used to detect that the cross-file resolve pass
+    has already converged for the *current* index state, so a cold
+    ``ensure_indexed`` can skip a redundant ~40 s resolve-only pass (the pending
+    EXTENDS/CALLS refs that survive a pass are terminal — external bases,
+    dynamic dispatch — and never resolve, so re-running is pure waste).
+    """
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*) AS c, COALESCE(MAX(indexed_at), '') AS m FROM ast_index"
+        ).fetchone()
+    except sqlite3.OperationalError:
+        return ""
+    count = row["c"] if isinstance(row, sqlite3.Row) else row[0]
+    stamp = row["m"] if isinstance(row, sqlite3.Row) else row[1]
+    return f"{count}:{stamp}"
+
+
+def resolution_converged(conn: sqlite3.Connection) -> bool:
+    """True when the resolve pass already ran for the current index state."""
+    fingerprint = index_resolution_fingerprint(conn)
+    if not fingerprint:
+        return False
+    try:
+        row = conn.execute(
+            "SELECT fingerprint FROM ast_resolve_state WHERE id = 1"
+        ).fetchone()
+    except sqlite3.OperationalError:
+        return False
+    if row is None:
+        return False
+    stored = row["fingerprint"] if isinstance(row, sqlite3.Row) else row[0]
+    return bool(stored) and stored == fingerprint
+
+
+def mark_resolution_converged(conn: sqlite3.Connection) -> None:
+    """Persist that the resolve pass has converged for the current index state."""
+    fingerprint = index_resolution_fingerprint(conn)
+    if not fingerprint:
+        return
+    try:
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS ast_resolve_state "
+            "(id INTEGER PRIMARY KEY, fingerprint TEXT NOT NULL)"
+        )
+        conn.execute(
+            "INSERT INTO ast_resolve_state (id, fingerprint) VALUES (1, ?) "
+            "ON CONFLICT(id) DO UPDATE SET fingerprint = excluded.fingerprint",
+            (fingerprint,),
+        )
+        conn.commit()
+    except sqlite3.OperationalError:
+        logger.debug("could not persist resolution fingerprint", exc_info=True)
+
+
 def _ref(
     from_node_id: str,
     reference_name: str,

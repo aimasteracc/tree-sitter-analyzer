@@ -83,7 +83,16 @@ def ensure_indexed(
 
         stats = cache.get_stats()
         if stats.get("total_files", 0) > 0:
-            _resolve_pending_unresolved_refs(cache)
+            # Cold-start fast path: a fully-indexed cache is already queryable.
+            # The cross-file resolve pass converges in one pass and is re-run by
+            # the indexing path on every file change, so re-running it here when
+            # the index is UNCHANGED is a ~40 s no-op (the surviving pending refs
+            # are terminal — external bases / dynamic dispatch). Skip it when the
+            # resolve already converged for this exact index state; the first
+            # retrieval then returns in ms instead of blocking for ~40 s.
+            if not _resolution_converged(cache):
+                _resolve_pending_unresolved_refs(cache)
+                _mark_resolution_converged(cache)
             _indexed_roots[project_root] = True
             return cache
 
@@ -123,6 +132,24 @@ def _resolve_pending_unresolved_refs(cache: Any) -> None:
             cache.index_project(resolve_only=True)
     except Exception:
         logger.debug("auto-index: unresolved_refs resolve-only failed", exc_info=True)
+
+
+def _resolution_converged(cache: Any) -> bool:
+    try:
+        from ..._ast_cache_unresolved import resolution_converged
+
+        return bool(resolution_converged(cache.get_conn()))
+    except Exception:
+        return False
+
+
+def _mark_resolution_converged(cache: Any) -> None:
+    try:
+        from ..._ast_cache_unresolved import mark_resolution_converged
+
+        mark_resolution_converged(cache.get_conn())
+    except Exception:
+        logger.debug("auto-index: could not mark resolution converged", exc_info=True)
 
 
 def mark_dirty(project_root: str) -> None:

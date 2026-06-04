@@ -399,6 +399,15 @@ class ASTCache:
                 stats["unresolved_refs_backfill"] = unresolved
         except Exception:
             logger.debug("unresolved refs backfill failed", exc_info=True)
+        # Record that resolution has converged for this index state so a later
+        # cold ensure_indexed() can skip a redundant resolve-only pass (~40 s
+        # no-op) instead of blocking the first retrieval.
+        try:
+            from ._ast_cache_unresolved import mark_resolution_converged
+
+            mark_resolution_converged(self._get_conn())
+        except Exception:
+            logger.debug("could not mark resolution converged", exc_info=True)
 
     def _refresh_graph_edges_from_cache(
         self, file_paths: list[str] | None = None
