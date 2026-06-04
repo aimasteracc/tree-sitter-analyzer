@@ -89,7 +89,7 @@ _EXTENDED_SPECS: tuple[McpCommandSpec, ...] = (
         build_tool_args=lambda args, output_format: {
             "task": getattr(args, "codegraph_context", "") or "",
             "max_nodes": getattr(args, "codegraph_context_max_nodes", 30),
-            "max_code_blocks": getattr(args, "codegraph_context_max_code_blocks", 8),
+            "max_code_blocks": getattr(args, "codegraph_context_max_code_blocks", 5),
             "output_format": output_format,
         },
     ),
