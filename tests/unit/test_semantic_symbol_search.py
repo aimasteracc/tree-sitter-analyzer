@@ -233,3 +233,37 @@ class TestSemanticSymbolSearchFallbackSchema:
         results = SemanticSymbolSearch(cache).search("route handler", limit=5)
 
         assert any(r["name"] == "route_handler" for r in results)
+
+
+class TestSemanticSymbolSearchTestDeprioritization:
+    """Impl symbols must rank above test symbols (shared utils.test_detection)."""
+
+    def test_impl_ranks_above_test_for_concept_query(self):
+        cache = _make_cache(
+            [
+                ("TestRenderJSON", "function", "render_test.go", "go"),
+                ("Render", "method", "render.go", "go"),
+            ]
+        )
+
+        results = SemanticSymbolSearch(cache).search("render", limit=5)
+        names = [r["name"] for r in results]
+
+        assert "Render" in names and "TestRenderJSON" in names
+        # Implementation must come first despite the test's strong name match.
+        assert names.index("Render") < names.index("TestRenderJSON")
+
+    def test_test_intent_query_keeps_tests_on_top(self):
+        cache = _make_cache(
+            [
+                ("TestRenderJSON", "function", "render_test.go", "go"),
+                ("Render", "method", "render.go", "go"),
+            ]
+        )
+
+        # "render tests" expresses test intent → tests are NOT demoted.
+        results = SemanticSymbolSearch(cache).search("render tests", limit=5)
+        names = [r["name"] for r in results]
+
+        assert "TestRenderJSON" in names
+        assert names.index("TestRenderJSON") < names.index("Render")
