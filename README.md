@@ -66,7 +66,7 @@ Both indexer tools make the same number of calls; TSA's per-call payload is rich
 ### Where TSA leads
 
 - **Index build speed.** Removing a redundant post-index edge-refresh pass cut a cold django index (~2 950 files) from **181 s → 97 s (−46 %)**; the win grows with repo size. Re-index of unchanged files is a content-hash lookup.
-- **Strict CLI superset.** Every MCP tool has a CLI equivalent (CodeGraph's CLI is thinner); defaults are kept in lock-step between the two surfaces.
+- **Strict CLI superset.** Every MCP tool has a CLI equivalent (CodeGraph's CLI is thinner); *behavioural* defaults (ranking, limits, truncation) are kept in lock-step between the two surfaces. Output format is the one intentional divergence — MCP defaults to TOON (token-efficient for agents), the CLI to JSON (human/`jq`-friendly).
 - **One-call expressiveness.** A jQuery-style chain DSL — `search('X').callees(depth=2).explore(include_code=true).answer(compact=true)` — returns an entire flow's subgraph + source in a single call, with JS-style `true`/`false` so agents can write it naturally.
 - **Output is structured + token-aware.** TOON default for MCP (50–70 % smaller than JSON), per-call truncation hints, consistent test-file de-prioritisation across every ranking path.
 - **Breadth.** Health scoring, safe-to-edit / change-impact gating, 13 curated Skills, and broad language coverage.

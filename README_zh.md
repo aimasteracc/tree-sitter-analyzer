@@ -66,7 +66,7 @@ claude mcp add tree-sitter-analyzer \
 ### TSA 领先之处
 
 - **索引构建速度。** 移除 commit 后冗余的 edge-refresh pass，django 冷索引（约 2,950 文件）从 **181 秒 → 97 秒（−46%）**；仓库越大收益越大。未变更文件的重索引是 content-hash 查表。
-- **严格的 CLI 超集。** 每个 MCP 工具都有 CLI 等价物（CodeGraph 的 CLI 更薄）；两个界面的默认值保持同步。
+- **严格的 CLI 超集。** 每个 MCP 工具都有 CLI 等价物（CodeGraph 的 CLI 更薄）；*行为*默认值（排名、上限、截断）在两个界面保持同步。唯一刻意分歧的是输出格式 —— MCP 默认 TOON（对 agent 省 token），CLI 默认 JSON（人类/`jq` 友好）。
 - **一次调用的表达力。** jQuery 风格 chain DSL —— `search('X').callees(depth=2).explore(include_code=true).answer(compact=true)` —— 一次调用返回整条流程的子图 + 源码，支持 JS 风格 `true`/`false`，agent 可自然书写。
 - **结构化 + token 友好的输出。** MCP 默认 TOON（比 JSON 小 50–70%）、per-call 截断提示、全排序路径一致的测试文件降权。
 - **广度。** 健康评分、safe-to-edit / change-impact 门控、13 个 curated Skills、广泛语言支持。

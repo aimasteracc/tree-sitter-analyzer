@@ -65,7 +65,7 @@ claude mcp add tree-sitter-analyzer \
 ### TSA が優る点
 
 - **インデックス構築速度。** commit 後の冗長な edge-refresh パスを除去し、django のコールド index(約 2,950 ファイル)を **181 秒 → 97 秒(−46%)**に短縮。大規模リポジトリほど効果大。変更なしファイルの再 index は content-hash ルックアップ。
-- **厳密な CLI 上位互換。** すべての MCP ツールに CLI 等価物がある(CodeGraph の CLI はより薄い)。デフォルト値は両サーフェスで同期。
+- **厳密な CLI 上位互換。** すべての MCP ツールに CLI 等価物がある(CodeGraph の CLI はより薄い)。*振る舞い*のデフォルト(ランキング・上限・切り詰め)は両サーフェスで同期。出力フォーマットだけは意図的に分岐 ── MCP は TOON(エージェント向けトークン効率)、CLI は JSON(人間/`jq` 向け)。
 - **一発クエリの表現力。** jQuery 風 chain DSL ── `search('X').callees(depth=2).explore(include_code=true).answer(compact=true)` ── がフロー全体のサブグラフ + source を 1 コールで返す。JS 風の `true`/`false` でエージェントが自然に書ける。
 - **構造化 + トークン意識の出力。** MCP は TOON デフォルト(JSON より 50–70% 小)、per-call 切り詰めヒント、全ランキングで一貫した test ファイル降格。
 - **広さ。** ヘルス採点、safe-to-edit / change-impact ゲート、13 の curated Skills、広い言語対応。
