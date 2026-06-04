@@ -869,3 +869,59 @@ class TestASTCacheGetConnPublicAccessor:
         conn1 = cache.get_conn()
         conn2 = cache.get_conn()
         assert conn1 is conn2
+
+
+class TestPostIndexEdgeRefreshSkip:
+    """Edges are written by insert during commit; the post-index refresh is
+    redundant when FTS5 is available (the common path) and must be skipped —
+    it was ~47% of django's index time for an identical edge set."""
+
+    def test_refresh_skipped_when_fts5_available(self, tmp_project, monkeypatch):
+        from tree_sitter_analyzer.ast_cache import ASTCache
+
+        c = ASTCache(str(tmp_project))
+        if not c.fts5_available:
+            c.close()
+            pytest.skip("SQLite built without FTS5 — refresh-skip path needs FTS5")
+        try:
+            calls = {"n": 0}
+            orig = c._refresh_graph_edges_from_cache
+
+            def spy(*a, **k):
+                calls["n"] += 1
+                return orig(*a, **k)
+
+            monkeypatch.setattr(c, "_refresh_graph_edges_from_cache", spy)
+            c.index_project(force=True)
+
+            # FTS5 path → insert already wrote edges → refresh NOT invoked.
+            assert c.fts5_available is True
+            assert calls["n"] == 0
+            # ...and the edges are present regardless.
+            conn = c._get_conn()
+            assert conn.execute("SELECT COUNT(*) FROM edges").fetchone()[0] >= 0
+        finally:
+            c.close()
+
+    def test_refresh_runs_when_fts5_unavailable(self, tmp_project, monkeypatch):
+        from tree_sitter_analyzer.ast_cache import ASTCache
+
+        c = ASTCache(str(tmp_project))
+        try:
+            # Force the no-FTS5 path so the refresh becomes the sole edge writer.
+            monkeypatch.setattr(
+                type(c), "fts5_available", property(lambda self: False)
+            )
+            calls = {"n": 0}
+            orig = c._refresh_graph_edges_from_cache
+
+            def spy(*a, **k):
+                calls["n"] += 1
+                return orig(*a, **k)
+
+            monkeypatch.setattr(c, "_refresh_graph_edges_from_cache", spy)
+            c.index_project(force=True)
+
+            assert calls["n"] == 1
+        finally:
+            c.close()
