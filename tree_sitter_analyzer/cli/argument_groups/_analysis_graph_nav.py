@@ -119,8 +119,8 @@ def _add_mcp_graph_nav_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--codegraph-context-max-code-blocks",
         type=int,
-        default=8,
-        help="Max source snippets returned for --codegraph-context (default: 8)",
+        default=5,
+        help="Max source snippets returned for --codegraph-context (default: 5)",
     )
     parser.add_argument(
         "--codegraph-explore",

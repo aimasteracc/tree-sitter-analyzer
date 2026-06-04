@@ -27,15 +27,26 @@ _STOP_WORDS = frozenset(
 )
 
 # Inline-body cap per code block. A full function body (the old 40-line window)
-# bloated nav context responses 2-4x vs peer tools for little added value; the
-# agent gets signature + head and reads the exact range only if needed.
-_MAX_BLOCK_LINES = 24
+# bloated nav context responses vs peer tools for little added value; the agent
+# gets the signature + head and reads the exact range only if it must.
+_MAX_BLOCK_LINES = 16
 
 # Cap on edges echoed in the response. Edges are graph wiring for visualization;
 # an answering agent rarely needs the full adjacency list, and 60+ raw edge
 # tuples were a large fraction of the response. The full set is still used to
 # RANK code blocks before the cap is applied.
-_MAX_INLINE_EDGES = 30
+_MAX_INLINE_EDGES = 12
+
+# Cap on nodes echoed in the response. The full expanded node set (used for
+# call-graph ranking + code-block selection) does not all need to be echoed —
+# the agent answers from entry_points + code_blocks, and a long flat node dump
+# was a large fraction of the payload vs peers that return a compact related-
+# symbol list.
+_MAX_INLINE_NODES = 12
+
+# Cap on entry_points echoed. They overlap the node set; a focused handful of
+# the best-ranked entry points is enough to orient the agent.
+_MAX_INLINE_ENTRY_POINTS = 6
 
 
 class CodeGraphContextTool(BaseMCPTool):
@@ -131,8 +142,8 @@ class CodeGraphContextTool(BaseMCPTool):
                 },
                 "max_code_blocks": {
                     "type": "integer",
-                    "description": "Maximum source snippets to return (default: 8)",
-                    "default": 8,
+                    "description": "Maximum source snippets to return (default: 5)",
+                    "default": 5,
                 },
                 "output_format": {
                     "type": "string",
@@ -158,7 +169,7 @@ class CodeGraphContextTool(BaseMCPTool):
 
         task = str(arguments["task"]).strip()
         max_nodes = _bounded_int(arguments.get("max_nodes", 30), 1, 100)
-        max_code_blocks = _bounded_int(arguments.get("max_code_blocks", 8), 0, 25)
+        max_code_blocks = _bounded_int(arguments.get("max_code_blocks", 5), 0, 25)
         output_format = arguments.get("output_format", "toon")
 
         candidates = _extract_symbol_candidates(task)
@@ -180,12 +191,25 @@ class CodeGraphContextTool(BaseMCPTool):
             project_root=self.project_root or "",
         )
         related_files = _unique_files(nodes)
-        # Cap edges echoed to the response. The FULL edge set above already
-        # ranked the code blocks (via _edge_degrees); the response only needs a
-        # bounded sample, not the whole adjacency list (60+ raw tuples were a
-        # large, low-value fraction of the payload).
+        # Echo a bounded, self-consistent subgraph. The FULL node+edge set above
+        # already drove call-graph ranking and code-block selection; the
+        # response only needs the most-relevant slice. Nodes are kept in
+        # relevance order (entry points first), capped to _MAX_INLINE_NODES;
+        # edges are then filtered to those WITHIN the echoed node set (so no
+        # dangling endpoints) and capped to _MAX_INLINE_EDGES. This stops a long
+        # flat node/edge dump from dominating the payload vs peer tools.
+        total_nodes = len(nodes)
         total_edges = len(edges)
-        edges = edges[:_MAX_INLINE_EDGES]
+        total_entry_points = len(entry_points)
+        # entry_points overlap the node set; echo only the best-ranked handful.
+        entry_points = entry_points[:_MAX_INLINE_ENTRY_POINTS]
+        nodes = nodes[:_MAX_INLINE_NODES]
+        _echoed_ids = {n.get("id") for n in nodes}
+        edges = [
+            e
+            for e in edges
+            if e.get("source") in _echoed_ids and e.get("target") in _echoed_ids
+        ][:_MAX_INLINE_EDGES]
         verdict = "INFO" if entry_points else "NOT_FOUND"
         result: dict[str, Any] = {
             "success": True,
@@ -199,7 +223,9 @@ class CodeGraphContextTool(BaseMCPTool):
             "related_files": related_files,
             "stats": {
                 "entry_points": len(entry_points),
+                "entry_points_total": total_entry_points,
                 "nodes": len(nodes),
+                "nodes_total": total_nodes,
                 "edges": len(edges),
                 "edges_total": total_edges,
                 "code_blocks": len(code_blocks),
