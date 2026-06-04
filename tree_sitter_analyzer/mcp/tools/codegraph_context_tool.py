@@ -217,11 +217,21 @@ class CodeGraphContextTool(BaseMCPTool):
         fetch = max(limit * 3, limit)
         agg: dict[tuple[str, str, int], dict[str, Any]] = {}
 
-        def _absorb(raw_hits: list[Any]) -> None:
+        def _absorb(raw_hits: list[Any]) -> int:
+            """Merge raw hits into ``agg``; return the count of USABLE hits.
+
+            A usable hit is one that is not skipped (non-empty name, not an
+            ``import``). The count drives the cascade fallback below: raw FTS
+            rows may be non-empty yet entirely unusable (e.g. only import-path
+            rows), which would otherwise suppress the substring fallback and
+            still yield NOT_FOUND.
+            """
+            usable = 0
             for bm25_rank, raw in enumerate(raw_hits):
                 hit = _normalise_hit(raw)
                 if not hit["name"] or hit["kind"] == "import":
                     continue
+                usable += 1
                 key = (hit["name"], hit["file"], hit["line"])
                 entry = agg.get(key)
                 if entry is None:
@@ -234,11 +244,12 @@ class CodeGraphContextTool(BaseMCPTool):
                     entry["matches"] += 1
                     if bm25_rank < entry["best_rank"]:
                         entry["best_rank"] = bm25_rank
+            return usable
 
         cascade = getattr(cache, "search_symbols_cascade", None)
 
         # Single-word recall: FTS5 BM25 over each task word. When a word yields
-        # NO FTS hits, fall back to the substring cascade. This is the cost
+        # no USABLE hits, fall back to the substring cascade. This is the cost
         # root cause: FTS5 tokenizes camelCase/compound identifiers as ONE
         # token, so a natural-language word like ``route`` matches neither
         # ``addRoute`` nor ``updateRouteTree``. Without this fallback the whole
@@ -246,6 +257,11 @@ class CodeGraphContextTool(BaseMCPTool):
         # files (the gin file_r=5-vs-2 gap). The substring cascade resolves
         # ``route`` -> {addRoute, updateRouteTree, NoRoute, Routes}, so a
         # conceptual query still returns inline source from the index.
+        #
+        # The fallback is gated on USABLE hits, not raw FTS rows (Codex P2 on
+        # #288): FTS can return only ``kind == "import"`` rows that ``_absorb``
+        # discards — a non-empty-but-useless result that must NOT suppress the
+        # cascade.
         for candidate in candidates[:10]:
             try:
                 raw_hits = cache.fts_search_ranked(candidate, limit=fetch) or []
@@ -254,12 +270,12 @@ class CodeGraphContextTool(BaseMCPTool):
                     raw_hits = cache.fts_search(candidate, limit=fetch) or []
                 except Exception:
                     raw_hits = []
-            if not raw_hits and callable(cascade):
+            if _absorb(raw_hits) == 0 and callable(cascade):
                 try:
-                    raw_hits = cascade(candidate, limit=fetch) or []
+                    cascade_hits = cascade(candidate, limit=fetch) or []
                 except Exception:
-                    raw_hits = []
-            _absorb(raw_hits)
+                    cascade_hits = []
+                _absorb(cascade_hits)
 
         # Compound recall: camelCase word pairs (applyIndex, indexOperation)
         # reach multi-word methods that single-word FTS tokenization misses —

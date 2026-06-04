@@ -417,6 +417,48 @@ def test_resolve_entry_points_skips_cascade_when_fts_has_hits() -> None:
     assert "Engine" not in cascade_calls
 
 
+def test_resolve_entry_points_falls_back_when_fts_only_returns_imports() -> None:
+    """Cascade must run when FTS rows are non-empty but all UNUSABLE.
+
+    Codex P2 on #288: gating the fallback on ``raw_hits`` being non-empty is
+    wrong — FTS can return only ``kind == "import"`` rows, which ``_absorb``
+    discards, so the candidate adds no entry point yet the cascade is
+    suppressed and the query still ends NOT_FOUND, missing camelCase symbols.
+    The fallback must trigger on zero USABLE hits, not zero raw rows.
+    """
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        CodeGraphContextTool,
+    )
+
+    class ImportOnlyCache:
+        def fts_search_ranked(self, candidate: str, limit: int):
+            # Non-empty, but every row is an import → all discarded by _absorb.
+            return [
+                {"name": "route", "kind": "import", "file": "imp.go", "line": 1},
+                {"name": "", "kind": "function", "file": "x.go", "line": 2},
+            ]
+
+        def search_symbols_cascade(self, query: str, limit: int):
+            if query.lower() == "route":
+                return [
+                    {
+                        "name": "addRoute",
+                        "kind": "function",
+                        "file": "router.go",
+                        "line": 10,
+                    }
+                ]
+            return []
+
+    tool = CodeGraphContextTool(str(Path.cwd()))
+    tool._cache = ImportOnlyCache()
+
+    hits = tool._resolve_entry_points(["route"], limit=5)
+    names = {h["name"] for h in hits}
+
+    assert names == {"addRoute"}
+
+
 def test_expand_nodes_handles_graph_limits_and_trace_chain() -> None:
     from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
         CodeGraphContextTool,
