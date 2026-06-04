@@ -70,7 +70,25 @@ claude mcp add tree-sitter-analyzer \
 - **構造化 + トークン意識の出力。** MCP は TOON デフォルト(JSON より 50–70% 小)、per-call 切り詰めヒント、全ランキングで一貫した test ファイル降格。
 - **広さ。** ヘルス採点、safe-to-edit / change-impact ゲート、13 の curated Skills、広い言語対応。
 
-> 再現: `benchmarks/codegraph_compare/run.py phase full-warm`。原始エンベロープとハーネス修正は同ディレクトリ。
+### コールグラフの正確さ — CodeGraph が誤配線する箇所を TSA は正しく解決
+
+トークンコストは一つの軸にすぎません。コードインテリジェンスツールの*第一の*仕事は**正しいグラフ**です。両ツールのライブ index をこのリポジトリでドッグフードしたところ、CodeGraph が呼び出しを同名の誤った定義に束縛する一群の誤解決が判明し、TSA のリゾルバはそれを避けるよう修正されました:
+
+| 呼び出し(Python `_resolve_entry_points` / `build_response`) | CodeGraph | TSA |
+|---|---|---|
+| `sorted()`(Python 組み込み) | ❌ callee = **`tests/golden/corpus_swift.swift` の Swift `func sorted`**(唯一の Swift 定義がリポジトリ全体で**約 293** 関数の callee として配線される) | ✅ `unknown` のまま ── 言語をまたぐ edge を作らない |
+| `fts_search()` / `fts_search_ranked()` | ❌ 実メソッドではなく**テストモック**(`FallbackCache`)に束縛 | ✅ source メソッド(`_ast_cache_query.py` / `ast_cache.py`)に解決 |
+
+Python 関数が *Swift メソッドを呼ぶ*、あるいは本番コードの呼び出しがテストモックを指す、というのは誤った構造データです。TSA のリゾルバは全解決パスで、束縛を**言語ファミリ**でゲートし(JS/TS は同一ファミリ、Python は Swift/JS に決して束縛しない)、非テスト呼び出し元に対して**テスト専用定義を降格**します。両ツールが index 済みの任意リポジトリで再現:
+
+```bash
+# CodeGraph: 言語またぎ / test-shadow の callee を返す
+#   (例: `sorted` → corpus_swift.swift, `fts_search` → テストモック)
+# リゾルバ修正後の TSA: 言語的に正しく、source を優先
+tree-sitter-analyzer --callees _resolve_entry_points --format json
+```
+
+> コスト数値の再現: `benchmarks/codegraph_compare/run.py phase full-warm`。原始エンベロープとハーネス修正は同ディレクトリ。
 
 ---
 

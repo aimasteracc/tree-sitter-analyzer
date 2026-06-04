@@ -71,7 +71,25 @@ Both indexer tools make the same number of calls; TSA's per-call payload is rich
 - **Output is structured + token-aware.** TOON default for MCP (50–70 % smaller than JSON), per-call truncation hints, consistent test-file de-prioritisation across every ranking path.
 - **Breadth.** Health scoring, safe-to-edit / change-impact gating, 13 curated Skills, and broad language coverage.
 
-> Reproduce: `benchmarks/codegraph_compare/run.py phase full-warm`. Raw envelopes + the harness fix live in that directory.
+### Call-graph correctness — TSA resolves what CodeGraph mis-wires
+
+Token cost is one axis; a code-intelligence tool's *first* job is a **correct graph**. Dogfooding both tools' live indexes on this repository surfaced a class of mis-resolution where CodeGraph binds a call to the wrong same-name definition — and TSA's resolver was fixed to avoid it:
+
+| call (Python `_resolve_entry_points` / `build_response`) | CodeGraph | TSA |
+|---|---|---|
+| `sorted()` (Python builtin) | ❌ callee = **`tests/golden/corpus_swift.swift` — a Swift `func sorted`** (the one Swift def is wired as a callee of **~293** functions repo-wide) | ✅ left `unknown` — no cross-language edge |
+| `fts_search()` / `fts_search_ranked()` | ❌ bound to the **test mock** (`FallbackCache`) instead of the real method | ✅ resolves to the source method (`_ast_cache_query.py` / `ast_cache.py`) |
+
+Telling an agent that a Python function *calls a Swift method*, or that a production call targets a test mock, is wrong structural data. TSA's resolver now gates every binding by **language family** (JS/TS are one family; Python never binds to Swift/JS) and **demotes test-only definitions** for non-test callers, across all of its resolution paths. Reproduce on any repo both tools have indexed:
+
+```bash
+# CodeGraph: emits the cross-language / test-shadow callee
+#   (e.g. `sorted` → corpus_swift.swift, `fts_search` → test mock)
+# TSA after the resolver fix: language-correct, source-preferring
+tree-sitter-analyzer --callees _resolve_entry_points --format json
+```
+
+> Reproduce the cost numbers: `benchmarks/codegraph_compare/run.py phase full-warm`. Raw envelopes + the harness fix live in that directory.
 
 ---
 

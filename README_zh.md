@@ -71,7 +71,25 @@ claude mcp add tree-sitter-analyzer \
 - **结构化 + token 友好的输出。** MCP 默认 TOON（比 JSON 小 50–70%）、per-call 截断提示、全排序路径一致的测试文件降权。
 - **广度。** 健康评分、safe-to-edit / change-impact 门控、13 个 curated Skills、广泛语言支持。
 
-> 复现：`benchmarks/codegraph_compare/run.py phase full-warm`。原始 envelope 与 harness 修复在该目录。
+### 调用图正确性 —— TSA 正确解析 CodeGraph 错连的调用
+
+token 成本只是一个维度；代码情报工具的**首要**职责是**正确的图**。在本仓库上用两个工具的实时索引对拍，暴露出一类误解析：CodeGraph 把一次调用绑到同名的错误定义上 —— 而 TSA 的解析器已修复以避免它：
+
+| 调用（Python `_resolve_entry_points` / `build_response`） | CodeGraph | TSA |
+|---|---|---|
+| `sorted()`（Python 内建） | ❌ callee = **`tests/golden/corpus_swift.swift` 里的 Swift `func sorted`**（这一个 Swift 定义被全仓**约 293** 个函数当作 callee 连上） | ✅ 保持 `unknown` —— 不产生跨语言边 |
+| `fts_search()` / `fts_search_ranked()` | ❌ 绑到**测试 mock**（`FallbackCache`）而非真实方法 | ✅ 解析到源码方法（`_ast_cache_query.py` / `ast_cache.py`） |
+
+告诉 agent 一个 Python 函数*调用了 Swift 方法*，或者生产代码调用指向测试 mock，都是错误的结构数据。TSA 的解析器在所有解析路径上，按**语言族**给绑定设闸（JS/TS 同族；Python 绝不绑到 Swift/JS），并对非测试调用方**降权测试专用定义**。在两个工具都已索引的任意仓库复现：
+
+```bash
+# CodeGraph：返回跨语言 / test-shadow 的 callee
+#   （如 `sorted` → corpus_swift.swift，`fts_search` → 测试 mock）
+# 解析器修复后的 TSA：语言正确、优先源码
+tree-sitter-analyzer --callees _resolve_entry_points --format json
+```
+
+> 复现成本数值：`benchmarks/codegraph_compare/run.py phase full-warm`。原始 envelope 与 harness 修复在该目录。
 
 ---
 
