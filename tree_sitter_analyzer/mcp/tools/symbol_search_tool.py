@@ -111,7 +111,11 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
         query = arguments["query"]
         language = arguments.get("language")
         kind = arguments.get("kind", "any")
-        limit = arguments.get("limit", 50)
+        # Default 50 results, each carrying inline source context, made symbol
+        # search ~8 KB/call — peers return location-only results. 15 source-rich
+        # hits are plenty to judge relevance; callers raise ``limit`` for a
+        # wider sweep.
+        limit = arguments.get("limit", 15)
         output_format = arguments.get("output_format", "toon")
         cache = self._get_cache()
 
