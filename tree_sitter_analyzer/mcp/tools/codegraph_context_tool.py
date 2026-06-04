@@ -16,6 +16,8 @@ import re
 import time
 from typing import Any
 
+from ...utils.test_detection import is_test_file as _shared_is_test_file
+from ...utils.test_detection import query_wants_tests as _task_wants_tests
 from ._codegraph_explore_helpers import extract_snippet_from_lines, read_file_lines
 from .base_tool import BaseMCPTool
 
@@ -630,47 +632,15 @@ def _unique_files(nodes: list[dict[str, Any]]) -> list[str]:
     return out
 
 
-# Test-file path conventions across languages. Detected by FILE path (robust)
-# rather than symbol name (``TestRunner`` may be production code) so we never
-# demote a real symbol. Without this, a concept query whose substring-cascade
-# hits land in test files (Go ``*_test.go``, JS ``*.spec.ts``, ...) surfaces
-# ``TestResponseWriterWrite`` ABOVE the real ``ResponseWriter`` implementation,
-# degrading the inline source and pushing the agent back to raw Reads.
-_TEST_PATH_DIRS = ("/tests/", "/test/", "/__tests__/", "/spec/", "/testdata/")
-_TEST_FILE_SUFFIXES = (
-    "_test.go",  # Go
-    "_test.py",  # Python (pytest/unittest)
-    "_test.rs",  # Rust
-    "_test.cc",
-    "_test.cpp",  # C++
-    "_spec.rb",  # Ruby
-    ".test.js",
-    ".test.jsx",
-    ".test.ts",
-    ".test.tsx",  # JS/TS
-    ".spec.js",
-    ".spec.jsx",
-    ".spec.ts",
-    ".spec.tsx",
-)
-
-
 def _is_test_file(file_path: str) -> int:
-    """Return 1 when ``file_path`` is a test file, else 0 (for rank tiers).
+    """Rank-tier wrapper: 1 for test files, 0 otherwise.
 
-    Path-based only — see ``_TEST_PATH_DIRS`` rationale above.
+    Thin shim over the shared, canonical ``utils.test_detection.is_test_file``
+    so every ranking path agrees on what counts as a test (see that module).
+    Detected by FILE path only, never by symbol name, so a production class
+    named ``TestRunner`` is never demoted.
     """
-    p = file_path.replace("\\", "/").lower()
-    base = p.rsplit("/", 1)[-1]
-    if p.startswith(("tests/", "test/", "spec/", "__tests__/", "testdata/")):
-        return 1
-    if any(d in p for d in _TEST_PATH_DIRS):
-        return 1
-    if base.endswith(_TEST_FILE_SUFFIXES):
-        return 1
-    if base.startswith("test_") and base.endswith(".py"):
-        return 1
-    return 0
+    return 1 if _shared_is_test_file(file_path) else 0
 
 
 def _entry_rank(hit: dict[str, Any]) -> tuple[int, int, str, int]:
@@ -725,22 +695,6 @@ def _compound_candidates(candidates: list[str]) -> list[str]:
             seen.add(low)
             out.append(joined)
     return out[:12]
-
-
-# Words in the TASK that signal the user actually wants test code. When any
-# appears, the test-file demotion tier is switched off so a query like
-# "response writer tests" / "how is X tested" keeps its test symbols (Codex
-# P2 on #291). Whole-word matched against the raw task, case-insensitively.
-_TEST_INTENT_RE = re.compile(
-    r"\b(tests?|testing|tested|test[_-]?cases?|spec|specs|unit[_-]?tests?|"
-    r"benchmarks?|fixtures?)\b",
-    re.IGNORECASE,
-)
-
-
-def _task_wants_tests(task: str) -> bool:
-    """True when the task explicitly asks about test/spec/benchmark code."""
-    return bool(_TEST_INTENT_RE.search(task or ""))
 
 
 def _entry_rank_v2(
