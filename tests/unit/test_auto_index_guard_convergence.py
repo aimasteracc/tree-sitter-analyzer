@@ -9,6 +9,7 @@ convergence fingerprint + skip behaviour.
 
 from __future__ import annotations
 
+import sqlite3
 import time
 from pathlib import Path
 from typing import Any
@@ -17,10 +18,34 @@ import pytest
 
 from tree_sitter_analyzer._ast_cache_unresolved import (
     index_resolution_fingerprint,
+    mark_resolution_converged,
     resolution_converged,
 )
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.mcp.utils import auto_index_guard
+
+
+def test_resolution_helpers_degrade_on_missing_tables() -> None:
+    """No ast_index / ast_resolve_state → helpers return safe defaults, no raise."""
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    try:
+        # ast_index absent → empty fingerprint, not converged, mark is a no-op.
+        assert index_resolution_fingerprint(conn) == ""
+        assert resolution_converged(conn) is False
+        mark_resolution_converged(conn)  # must not raise
+
+        # ast_index present but ast_resolve_state absent → converged False, then
+        # mark creates the table and persists; a second call reports converged.
+        conn.execute("CREATE TABLE ast_index (file_path TEXT, indexed_at TEXT)")
+        conn.execute("INSERT INTO ast_index VALUES ('a.py', '2026-01-01T00:00:00Z')")
+        conn.commit()
+        assert index_resolution_fingerprint(conn) == "1:2026-01-01T00:00:00Z"
+        assert resolution_converged(conn) is False
+        mark_resolution_converged(conn)
+        assert resolution_converged(conn) is True
+    finally:
+        conn.close()
 
 
 def _project(root: Path) -> None:
