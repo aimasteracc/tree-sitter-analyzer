@@ -29,6 +29,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .._language_family import languages_compatible
 from ._constants import BUILTINS_PY, STDLIB_NAMES_PY
 from ._context import ResolverContext, build_resolver_context, is_enabled
 from ._imports import ImportEntry, parse_imports
@@ -381,7 +382,7 @@ def _is_cross_language(
     if not caller_lang or not out.resolved_file:
         return False
     target_lang = ctx.file_languages.get(out.resolved_file, "")
-    return bool(target_lang) and target_lang != caller_lang
+    return bool(target_lang) and not languages_compatible(caller_lang, target_lang)
 
 
 __all__ = [

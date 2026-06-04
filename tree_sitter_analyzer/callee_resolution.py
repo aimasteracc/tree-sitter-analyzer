@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from ._language_family import language_from_path, languages_compatible
+
 
 @dataclass(frozen=True)
 class CalleeResolution:
@@ -169,19 +171,29 @@ class CalleeResolver:
             source_lang = self._source_language(source_file)
             for func in self._functions_by_name.get(base_name, []):
                 func_lang = _item_language(func)
-                if source_lang and func_lang and func_lang != source_lang:
+                if (
+                    source_lang
+                    and func_lang
+                    and not languages_compatible(source_lang, func_lang)
+                ):
                     continue
                 _append_resolution(results, seen, func, 0.5, keep_items=keep_items)
 
         return results
 
     def _source_language(self, source_file: str) -> str:
-        """Best-effort language of ``source_file`` from its indexed functions."""
+        """Best-effort language of ``source_file``.
+
+        Prefer an indexed function's language; fall back to the file extension
+        so module-level calls in a file with no function symbols are still gated
+        (Codex P2 #301 — an empty language here would re-open the ungated
+        cross-language fallback).
+        """
         for func in self._functions_by_file.get(source_file, []):
             lang = _item_language(func)
             if lang:
                 return lang
-        return ""
+        return language_from_path(source_file)
 
     def _import_target(
         self,

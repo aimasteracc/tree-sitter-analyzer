@@ -29,6 +29,7 @@ import json
 import os
 from typing import Any
 
+from ..._language_family import languages_compatible
 from ._codegraph_explore_helpers import extract_snippet_from_lines, read_file_lines
 
 # ---------------------------------------------------------------------------
@@ -116,7 +117,8 @@ def _resolve_def(
         same_lang = [
             cand
             for cand in candidates
-            if not cand.get("language") or cand.get("language") == lang_hint
+            if not cand.get("language")
+            or languages_compatible(lang_hint, str(cand.get("language") or ""))
         ]
         if not same_lang:
             return None

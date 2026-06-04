@@ -118,3 +118,34 @@ def test_resolver_first_match_helpers_avoid_collecting_all_candidates() -> None:
         )
         is None
     )
+
+
+def test_global_fallback_gated_by_language_for_function_less_file() -> None:
+    """Codex P2 #301: a caller file with no indexed functions is still gated.
+
+    The caller language is derived from the file extension, so a Python module
+    -level call must not fall through to a same-named JavaScript symbol.
+    """
+    js = {"name": "get", "file": "widget.js", "language": "javascript", "line": 1}
+    resolver = CalleeResolver(
+        functions_by_name={"get": [js]},
+        functions_by_file={},  # caller.py has no indexed functions
+        name_to_source={},
+    )
+    # ``caller.py`` -> python (by extension); the JS ``get`` must be gated out.
+    assert resolver.resolve_items("get", "caller.py") == []
+
+
+def test_global_fallback_allows_js_ts_family() -> None:
+    """Codex P2 #301: JavaScript and TypeScript are one interop family.
+
+    A ``.js`` caller resolving to a ``.ts`` definition (gradual migration) is
+    valid and must NOT be rejected by the cross-language gate.
+    """
+    ts_target = {"name": "foo", "file": "lib.ts", "language": "typescript", "line": 1}
+    resolver = CalleeResolver(
+        functions_by_name={"foo": [ts_target]},
+        functions_by_file={},
+        name_to_source={},
+    )
+    assert resolver.resolve_items("foo", "app.js") == [(ts_target, 0.5)]

@@ -23,6 +23,7 @@ import os
 import sqlite3
 from typing import Any
 
+from ._language_family import languages_compatible
 from .graph.edge_store import Edge, EdgeKind, EdgeStore, parse_node_id, symbol_node
 
 logger = logging.getLogger(__name__)
@@ -393,7 +394,7 @@ def _choose_candidate(
             item
             for item in eligible
             if not str(item.get("language") or "")
-            or str(item.get("language")) == source_lang
+            or languages_compatible(source_lang, str(item.get("language")))
         ]
     if not eligible:
         return None
