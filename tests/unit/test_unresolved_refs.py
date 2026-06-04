@@ -336,6 +336,92 @@ def test_call_does_not_bind_across_languages(tmp_path: Path) -> None:
         cache.close()
 
 
+def _choose_candidate_conn() -> sqlite3.Connection:
+    """Minimal conn for ``_choose_candidate`` (ast_index + ast_imports only)."""
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.executescript(
+        """
+        CREATE TABLE ast_index (file_path TEXT PRIMARY KEY, language TEXT);
+        CREATE TABLE ast_imports (
+            file_path TEXT, module_path TEXT, local_name TEXT, alias_of TEXT
+        );
+        INSERT INTO ast_index VALUES ('app/main.py', 'python');
+        INSERT INTO ast_index VALUES ('zsrc/real.py', 'python');
+        INSERT INTO ast_index VALUES ('tests/test_cache.py', 'python');
+        """
+    )
+    return conn
+
+
+def test_choose_candidate_prefers_source_over_test_shadow() -> None:
+    """A non-test caller must bind to the source def, not the test mock.
+
+    Regression: ``_choose_candidate`` broke ties on ``file_path`` alphabetically,
+    so ``tests/...`` sorted before the source tree and a real method
+    (``fts_search``) bound to its test mock. The test def is now demoted when the
+    caller is not itself a test file.
+    """
+    conn = _choose_candidate_conn()
+    try:
+        row = {
+            "file_path": "app/main.py",
+            "from_node_id": "app/main.py:use_cache:5",
+            "reference_name": "fts_search",
+        }
+        # Test def sorts first alphabetically ('tests/' < 'zsrc/'); source must
+        # still win via the test-demotion tier.
+        candidates = [
+            {
+                "node_id": "tests/test_cache.py:fts_search:2",
+                "id": 1,
+                "name": "fts_search",
+                "file_path": "tests/test_cache.py",
+                "line": 2,
+                "language": "python",
+            },
+            {
+                "node_id": "zsrc/real.py:fts_search:9",
+                "id": 2,
+                "name": "fts_search",
+                "file_path": "zsrc/real.py",
+                "line": 9,
+                "language": "python",
+            },
+        ]
+        chosen = unresolved._choose_candidate(conn, row, candidates)
+        assert chosen is not None
+        assert chosen["file_path"] == "zsrc/real.py", chosen
+    finally:
+        conn.close()
+
+
+def test_choose_candidate_allows_test_target_for_test_caller() -> None:
+    """A test caller may still bind to a test definition (no demotion)."""
+    conn = _choose_candidate_conn()
+    try:
+        row = {
+            "file_path": "tests/test_cache.py",
+            "from_node_id": "tests/test_cache.py:test_fetch:1",
+            "reference_name": "helper",
+        }
+        candidates = [
+            {
+                "node_id": "tests/test_cache.py:helper:2",
+                "id": 1,
+                "name": "helper",
+                "file_path": "tests/test_cache.py",
+                "line": 2,
+                "language": "python",
+            },
+        ]
+        chosen = unresolved._choose_candidate(conn, row, candidates)
+        assert chosen is not None
+        assert chosen["file_path"] == "tests/test_cache.py"
+    finally:
+        conn.close()
+
+
 def test_resolve_unresolved_refs_sqlite_error_paths_are_nonfatal() -> None:
     """Missing schema / broken connections must degrade, not crash."""
     no_schema = sqlite3.connect(":memory:")
