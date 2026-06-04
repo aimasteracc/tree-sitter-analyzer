@@ -38,6 +38,28 @@ class TestParseChain:
         with pytest.raises(ValueError, match="unsupported chain step"):
             parse_chain("search('x').delete()")
 
+    def test_accepts_js_style_bare_booleans(self):
+        """LLM agents naturally write true/false/null in this jQuery-style DSL.
+
+        Python's literal_eval only knows True/False/None, so before this the
+        agent's natural ``answer(compact=true)`` failed with a cryptic
+        "malformed node or string" error and pushed it off the cheap one-call
+        chain. The parser now accepts JS/JSON-style bare words (any case).
+        """
+        steps = parse_chain(
+            "search('x').include(callers=true, source=false).answer(compact=true)"
+        )
+        assert steps[1].kwargs == {"callers": True, "source": False}
+        assert steps[2].kwargs == {"compact": True}
+
+        # Capitalised Python literals still work (back-compat).
+        py = parse_chain("search('x').answer(compact=True)")
+        assert py[1].kwargs == {"compact": True}
+
+        # null / None coerce to None.
+        nul = parse_chain("search('x').explore(max_files=null)")
+        assert nul[1].kwargs == {"max_files": None}
+
     def test_parses_semantic_search_step(self):
         steps = parse_chain("semantic('user formatting', limit=5)")
 
