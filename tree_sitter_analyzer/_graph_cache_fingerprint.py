@@ -25,34 +25,15 @@ import os
 from collections.abc import Iterable
 from typing import NamedTuple
 
-# Mirrors the EXCLUDE_DIRS used by CallGraph and DependencyGraph so the
-# fingerprint scope matches the graphs being invalidated.
-_EXCLUDE_DIRS: frozenset[str] = frozenset(
-    {
-        "node_modules",
-        ".git",
-        ".hg",
-        ".svn",
-        "__pycache__",
-        ".venv",
-        "venv",
-        ".tox",
-        ".mypy_cache",
-        ".pytest_cache",
-        ".ruff_cache",
-        "dist",
-        "build",
-        "htmlcov",
-        ".cache",
-        ".eggs",
-        ".idea",
-        ".vscode",
-        ".claude",
-        # Project-specific caches that produce churn but aren't source.
-        ".ast-cache",
-        ".tree-sitter-cache",
-    }
-)
+from .constants import EXCLUDE_DIRS
+
+# Use the shared exclude set so the fingerprint scope matches the graph walkers
+# being invalidated — and, critically, so fingerprinting (which runs BEFORE the
+# graph build) also skips build-artifact trees (target/obj/packages/...). Codex
+# P2 on #286: previously this had its own list without build dirs, so dependency
+# fingerprinting still descended huge build trees and the hang persisted on
+# graph/dependency paths. EXCLUDE_DIRS already includes .ast-cache/.tree-sitter-cache.
+_EXCLUDE_DIRS: frozenset[str] = EXCLUDE_DIRS
 
 # Source file extensions handled by call_graph + project_graph + most plugins.
 # We cast a wide net so the same fingerprint can serve every graph kind.
