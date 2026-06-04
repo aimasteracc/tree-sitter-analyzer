@@ -140,6 +140,40 @@ def test_inline_neighbor_body_does_not_cross_languages(tmp_path):
     )
 
 
+def test_inline_neighbor_body_skipped_for_unknown_callee(tmp_path):
+    """An unresolved callee gets no inlined body (it would be a bare-name guess).
+
+    A callee the resolver left ``unknown`` (builtin / dynamic / truly unknown)
+    has no real definition; the def-index fallback could only attach a
+    same-named symbol from elsewhere. Such records stay coordinate-only — both
+    correct and leaner. Resolved callees are unaffected.
+    """
+    cache = _build_cache(tmp_path)
+    neighbors = [
+        # Resolved callee → keeps its body.
+        {
+            "name": "small",
+            "file": "small.py",
+            "line": 1,
+            "callee_resolution": "local",
+            "callee_resolved_file": "small.py",
+        },
+        # Unresolved callee that happens to share the name of a real def.
+        {
+            "name": "small",
+            "file": "small.py",
+            "line": 1,
+            "callee_resolution": "unknown",
+            "callee_resolved_file": "",
+        },
+    ]
+    enriched = sbi.inline_neighbor_bodies(str(tmp_path), cache, neighbors)
+    assert "body" in enriched[0]
+    assert "body" not in enriched[1], (
+        f"unknown callee should stay body-less: {enriched[1].get('body')}"
+    )
+
+
 def test_inline_neighbor_bodies_caps_at_top_n(tmp_path):
     cache = _build_cache(tmp_path)
     neighbors = [{"name": "small", "file": "small.py", "line": 1} for _ in range(50)]
