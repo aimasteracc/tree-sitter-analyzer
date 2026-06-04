@@ -28,6 +28,10 @@ def test_is_test_file_detects_cross_language_conventions() -> None:
     assert is_test_file("__tests__/comp.jsx")
     assert is_test_file("project/testdata/sample.go")
     assert is_test_file("pkg/fixtures/data.go")
+    # Repo-root fixture/test trees (prefix, no leading slash) — Codex P2 #294.
+    assert is_test_file("fixtures/data.go")
+    assert is_test_file("testdata/sample.go")
+    assert is_test_file("spec/thing_spec.rb")
 
 
 def test_is_test_file_no_false_positives() -> None:

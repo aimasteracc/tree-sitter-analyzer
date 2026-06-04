@@ -28,13 +28,16 @@ _TEST_DIR_SEGMENTS: tuple[str, ...] = (
     "/testdata/",
 )
 
-# Path prefixes (repo-root-relative) that mark a test tree.
+# Path prefixes (repo-root-relative) that mark a test tree. Must mirror the
+# ``/segment/`` entries above so a repo-root ``fixtures/data.go`` is detected
+# the same as a nested ``pkg/fixtures/data.go`` (Codex P2 on #294).
 _TEST_DIR_PREFIXES: tuple[str, ...] = (
     "test/",
     "tests/",
     "__tests__/",
     "spec/",
     "specs/",
+    "fixtures/",
     "testdata/",
 )
 
