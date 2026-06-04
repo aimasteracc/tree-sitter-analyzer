@@ -353,6 +353,22 @@ def _build_agent_cmd(
         mcp_cfg = _write_arm_mcp_config(arm_id)
         cmd += ["--strict-mcp-config", "--mcp-config", str(mcp_cfg)]
         return cmd
+    # codex backend: the MCP arms (tsa*, codegraph*) need their server wired in
+    # with the SAME per-arm isolation the claude branch gets via
+    # --strict-mcp-config. `codex exec` has no equivalent strict flag here, so
+    # it would either miss the server entirely or silently inherit the
+    # developer's global ~/.codex MCP config — both invalidate the
+    # TSA-vs-CodeGraph comparison. Fail loudly rather than emit wrong numbers
+    # (Codex P2 on #290). Use --agent-backend claude for MCP arms until codex
+    # MCP wiring (codex -c mcp_servers.*) is implemented and verified.
+    if arm_id.startswith(("tsa", "codegraph")):
+        raise NotImplementedError(
+            f"Per-arm MCP isolation is not wired for the codex backend, but arm "
+            f"{arm_id!r} requires its own MCP server. Running `codex exec` here "
+            f"would miss the server or inherit the global ~/.codex MCP config, "
+            f"invalidating the comparison. Use --agent-backend claude for MCP "
+            f"arms, or wire `codex -c mcp_servers.*` before enabling this path."
+        )
     sandbox = _codex_sandbox_for_arm(arm_id)
     return [
         "codex",
