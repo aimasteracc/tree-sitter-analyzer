@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ._language_family import language_from_path, languages_compatible
+from .utils.test_detection import is_test_file
 
 
 @dataclass(frozen=True)
@@ -169,14 +170,25 @@ class CalleeResolver:
             # response, both wrong and token-bloat). When the source language is
             # unknown, keep the un-gated behaviour.
             source_lang = self._source_language(source_file)
-            for func in self._functions_by_name.get(base_name, []):
-                func_lang = _item_language(func)
-                if (
+            globals_ = [
+                func
+                for func in self._functions_by_name.get(base_name, [])
+                if not (
                     source_lang
-                    and func_lang
-                    and not languages_compatible(source_lang, func_lang)
-                ):
-                    continue
+                    and _item_language(func)
+                    and not languages_compatible(source_lang, _item_language(func))
+                )
+            ]
+            # Demote test-only shadows for a non-test caller: a production call
+            # must not bind to a test mock (e.g. ``fts_search`` -> FallbackCache)
+            # just because the test def is enumerated first. A test caller may
+            # legitimately reference a test helper, so only filter for non-test
+            # callers and only when a non-test def actually exists.
+            if not is_test_file(source_file):
+                non_test = [f for f in globals_ if not is_test_file(_item_file(f))]
+                if non_test:
+                    globals_ = non_test
+            for func in globals_:
                 _append_resolution(results, seen, func, 0.5, keep_items=keep_items)
 
         return results
