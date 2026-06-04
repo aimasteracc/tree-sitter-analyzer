@@ -9,6 +9,10 @@ from __future__ import annotations
 
 import argparse
 
+# Keep CLI defaults in lock-step with the canonical runtime defaults so the
+# CLI surface never drifts from MCP (Codex P2 on #297 — MCP/CLI parity).
+from ...mcp.tools._call_tree import DEFAULT_MAX_NODES as _DEFAULT_TREE_MAX_NODES
+
 
 def _add_mcp_graph_nav_options(parser: argparse.ArgumentParser) -> None:
     """Add ast-path, codegraph-overview/navigate/explore/query, callers, call-path,
@@ -271,8 +275,11 @@ def _add_mcp_graph_nav_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--tree-max-nodes",
         type=int,
-        default=150,
-        help="Global node cap for --callee-tree / --caller-tree (default: 150)",
+        default=_DEFAULT_TREE_MAX_NODES,
+        help=(
+            "Global node cap for --callee-tree / --caller-tree "
+            f"(default: {_DEFAULT_TREE_MAX_NODES})"
+        ),
     )
     parser.add_argument(
         "--tree-file",

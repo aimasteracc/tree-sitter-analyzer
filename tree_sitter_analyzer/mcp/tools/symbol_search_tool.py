@@ -21,6 +21,11 @@ from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
 
+# Default result cap. 50 source-rich hits made symbol search ~8 KB/call; 15 is
+# plenty to judge relevance. Exported so the CLI (`--symbol-search-limit`) and
+# the tool schema stay in sync — MCP/CLI parity (Codex P2 on #297).
+DEFAULT_SYMBOL_SEARCH_LIMIT = 15
+
 
 class CodeGraphSymbolSearchTool(BaseMCPTool):
     """MCP Tool for FTS5-powered instant symbol search (CodeGraph parity)."""
@@ -86,8 +91,8 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
                 },
                 "limit": {
                     "type": "integer",
-                    "description": "Max results (default: 50)",
-                    "default": 50,
+                    "description": "Max results (default: 15)",
+                    "default": DEFAULT_SYMBOL_SEARCH_LIMIT,
                 },
                 "output_format": {
                     "type": "string",
@@ -115,7 +120,7 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
         # search ~8 KB/call — peers return location-only results. 15 source-rich
         # hits are plenty to judge relevance; callers raise ``limit`` for a
         # wider sweep.
-        limit = arguments.get("limit", 15)
+        limit = arguments.get("limit", DEFAULT_SYMBOL_SEARCH_LIMIT)
         output_format = arguments.get("output_format", "toon")
         cache = self._get_cache()
 
