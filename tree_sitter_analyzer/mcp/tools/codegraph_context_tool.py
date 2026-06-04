@@ -235,7 +235,17 @@ class CodeGraphContextTool(BaseMCPTool):
                     if bm25_rank < entry["best_rank"]:
                         entry["best_rank"] = bm25_rank
 
-        # Single-word recall: FTS5 BM25 over each task word.
+        cascade = getattr(cache, "search_symbols_cascade", None)
+
+        # Single-word recall: FTS5 BM25 over each task word. When a word yields
+        # NO FTS hits, fall back to the substring cascade. This is the cost
+        # root cause: FTS5 tokenizes camelCase/compound identifiers as ONE
+        # token, so a natural-language word like ``route`` matches neither
+        # ``addRoute`` nor ``updateRouteTree``. Without this fallback the whole
+        # query returns NOT_FOUND and the agent abandons the index to Read raw
+        # files (the gin file_r=5-vs-2 gap). The substring cascade resolves
+        # ``route`` -> {addRoute, updateRouteTree, NoRoute, Routes}, so a
+        # conceptual query still returns inline source from the index.
         for candidate in candidates[:10]:
             try:
                 raw_hits = cache.fts_search_ranked(candidate, limit=fetch) or []
@@ -244,13 +254,17 @@ class CodeGraphContextTool(BaseMCPTool):
                     raw_hits = cache.fts_search(candidate, limit=fetch) or []
                 except Exception:
                     raw_hits = []
+            if not raw_hits and callable(cascade):
+                try:
+                    raw_hits = cascade(candidate, limit=fetch) or []
+                except Exception:
+                    raw_hits = []
             _absorb(raw_hits)
 
         # Compound recall: camelCase word pairs (applyIndex, indexOperation)
         # reach multi-word methods that single-word FTS tokenization misses —
         # the cascade substring tier resolves them. This is the fix for the
         # dogfood loss where 'apply' only matched generic same-name methods.
-        cascade = getattr(cache, "search_symbols_cascade", None)
         if callable(cascade):
             for compound in _compound_candidates(candidates):
                 try:
