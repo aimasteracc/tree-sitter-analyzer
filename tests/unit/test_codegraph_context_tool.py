@@ -331,6 +331,134 @@ def test_resolve_entry_points_uses_compound_recall_for_multiword() -> None:
     assert names[0] == "applyIndexOperationOnPrimary"
 
 
+def test_resolve_entry_points_single_word_falls_back_to_substring_cascade() -> None:
+    """A plain concept word with NO FTS hits must fall back to the cascade.
+
+    Cost root cause: FTS5 tokenizes a camelCase identifier (``addRoute``) as
+    ONE token, so a natural-language word like ``route`` returns zero FTS
+    hits and the whole query collapses to NOT_FOUND — forcing the agent to
+    abandon the index and Read raw files (the gin file_r=5-vs-2 gap). The
+    resolver must run the substring cascade for any single word that FTS
+    cannot resolve, so ``route`` recalls {addRoute, updateRouteTree, ...}.
+    """
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        CodeGraphContextTool,
+    )
+
+    class CamelCaseCache:
+        def fts_search_ranked(self, candidate: str, limit: int):
+            # FTS5 whole-token match: the plain word never hits camelCase names.
+            return []
+
+        def search_symbols_cascade(self, query: str, limit: int):
+            if query.lower() == "route":
+                return [
+                    {
+                        "name": "addRoute",
+                        "kind": "function",
+                        "file": "router.go",
+                        "line": 10,
+                    },
+                    {
+                        "name": "updateRouteTree",
+                        "kind": "function",
+                        "file": "tree.go",
+                        "line": 20,
+                    },
+                ]
+            return []
+
+    tool = CodeGraphContextTool(str(Path.cwd()))
+    tool._cache = CamelCaseCache()
+
+    hits = tool._resolve_entry_points(["route"], limit=5)
+    names = {h["name"] for h in hits}
+
+    assert names == {"addRoute", "updateRouteTree"}
+
+
+def test_resolve_entry_points_skips_cascade_when_fts_has_hits() -> None:
+    """The substring cascade is a FALLBACK — it must not run when FTS hits.
+
+    Guards against double-querying (and over-broad substring noise) on the
+    common exact-match path: an exact symbol word that FTS resolves should
+    return the FTS hit without invoking the cascade at all.
+    """
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        CodeGraphContextTool,
+    )
+
+    cascade_calls: list[str] = []
+
+    class ExactCache:
+        def fts_search_ranked(self, candidate: str, limit: int):
+            return [
+                {
+                    "name": "Engine",
+                    "kind": "class",
+                    "file": "gin.go",
+                    "line": 1,
+                }
+            ]
+
+        def search_symbols_cascade(self, query: str, limit: int):
+            cascade_calls.append(query)
+            return [{"name": "EngineNoise", "kind": "class", "file": "x.go", "line": 9}]
+
+    tool = CodeGraphContextTool(str(Path.cwd()))
+    tool._cache = ExactCache()
+
+    hits = tool._resolve_entry_points(["Engine"], limit=5)
+    names = {h["name"] for h in hits}
+
+    # Single-word cascade NOT triggered for "Engine" (FTS already hit). The
+    # compound-recall tier never fires for a single candidate either.
+    assert "Engine" in names
+    assert "Engine" not in cascade_calls
+
+
+def test_resolve_entry_points_falls_back_when_fts_only_returns_imports() -> None:
+    """Cascade must run when FTS rows are non-empty but all UNUSABLE.
+
+    Codex P2 on #288: gating the fallback on ``raw_hits`` being non-empty is
+    wrong — FTS can return only ``kind == "import"`` rows, which ``_absorb``
+    discards, so the candidate adds no entry point yet the cascade is
+    suppressed and the query still ends NOT_FOUND, missing camelCase symbols.
+    The fallback must trigger on zero USABLE hits, not zero raw rows.
+    """
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        CodeGraphContextTool,
+    )
+
+    class ImportOnlyCache:
+        def fts_search_ranked(self, candidate: str, limit: int):
+            # Non-empty, but every row is an import → all discarded by _absorb.
+            return [
+                {"name": "route", "kind": "import", "file": "imp.go", "line": 1},
+                {"name": "", "kind": "function", "file": "x.go", "line": 2},
+            ]
+
+        def search_symbols_cascade(self, query: str, limit: int):
+            if query.lower() == "route":
+                return [
+                    {
+                        "name": "addRoute",
+                        "kind": "function",
+                        "file": "router.go",
+                        "line": 10,
+                    }
+                ]
+            return []
+
+    tool = CodeGraphContextTool(str(Path.cwd()))
+    tool._cache = ImportOnlyCache()
+
+    hits = tool._resolve_entry_points(["route"], limit=5)
+    names = {h["name"] for h in hits}
+
+    assert names == {"addRoute"}
+
+
 def test_expand_nodes_handles_graph_limits_and_trace_chain() -> None:
     from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
         CodeGraphContextTool,
