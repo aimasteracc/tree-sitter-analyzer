@@ -14,6 +14,7 @@ import os
 import sqlite3
 from typing import Any
 
+from .constants import EXCLUDE_DIRS
 from .core.parser import Parser
 
 # ---------------------------------------------------------------------------
@@ -40,32 +41,10 @@ def _has_fts5(conn: sqlite3.Connection) -> bool:
 # File-walk constants
 # ---------------------------------------------------------------------------
 
-_EXCLUDE_DIRS = frozenset(
-    {
-        "node_modules",
-        ".git",
-        ".hg",
-        ".svn",
-        "__pycache__",
-        ".venv",
-        "venv",
-        ".tox",
-        ".mypy_cache",
-        ".pytest_cache",
-        ".ruff_cache",
-        "dist",
-        "build",
-        "htmlcov",
-        ".cache",
-        ".eggs",
-        ".idea",
-        ".vscode",
-        ".claude",
-        ".swarm",
-        ".claude-flow",
-        ".opencode",
-    }
-)
+# Shared exclude set (incl. C#/Java/Rust/Go build-artifact dirs) — see
+# constants.EXCLUDE_DIRS. Indexing must skip bin/obj/packages/target/etc or
+# `index full` hangs on compiled-language projects.
+_EXCLUDE_DIRS = EXCLUDE_DIRS
 
 
 # ---------------------------------------------------------------------------
