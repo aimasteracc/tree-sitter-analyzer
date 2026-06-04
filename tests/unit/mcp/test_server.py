@@ -208,6 +208,58 @@ class TestServerCreation:
                 server.create_server()
 
 
+class TestRegistryDeferral:
+    """Startup fix: the ~54ms facade tool registry is built lazily.
+
+    The MCP ``initialize`` handshake never needs the registry — only
+    ``tools/list`` / ``tools/call`` do. Building it during ``__init__`` /
+    ``create_server`` pushed spawn→initialize to the edge of the client's
+    connect window, causing intermittent ``status: pending``. These tests
+    pin the contract that the registry is NOT materialised until first access.
+    """
+
+    @pytest.fixture
+    def server(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            yield TreeSitterAnalyzerMCPServer(project_root=str(tmp))
+
+    def test_registry_not_built_at_init(self, server):
+        """Construction must not build the facade registry."""
+        assert server._registry_built is False
+        assert server.__dict__["_tools"] is None
+        assert server.__dict__["_tool_instances"] is None
+
+    def test_create_server_does_not_build_registry(self, server):
+        """create_server registers handlers but must not touch the registry.
+
+        This is the property that keeps the initialize handshake fast: the
+        list/call handlers read the registry only inside their bodies (on a
+        later tools/list), never at registration time.
+        """
+        server.create_server()
+        assert server._registry_built is False
+        assert server.__dict__["_tools"] is None
+
+    def test_accessing_tools_builds_registry_once(self, server):
+        """First ``.tools`` access builds the 8 facades; second is a no-op."""
+        assert server._registry_built is False
+        tools = server.tools
+        assert server._registry_built is True
+        assert len(tools) == 8
+        built = server._tools
+        # Idempotent: a second access does not rebuild.
+        assert server.tools is built
+
+    def test_eager_components_available_before_registry(self, server):
+        """Cheap eager components must exist without triggering the build."""
+        assert server.analysis_engine is not None
+        assert server.security_validator is not None
+        # Legacy alias tools + universal tool are eager (registry-independent).
+        assert server.read_partial_tool is not None
+        assert hasattr(server, "universal_analyze_tool")
+        assert server._registry_built is False
+
+
 class TestProjectStatsResource:
     """Test project_stats_resource initialization"""
 
