@@ -87,8 +87,12 @@ def _record_span(
         }
 
     # No usable end_line — resolve via the def-index (cap to this one name).
+    # Gate on the record's language so a Python builtin call (no real Python
+    # def) cannot inline a same-named definition from another language (e.g. a
+    # Swift ``func sorted`` body under a Python ``sorted()`` callee).
+    lang_hint = str(record.get("language") or "") or None
     index = _build_def_index(cache, {name})
-    defn = _resolve_def(index, name, file_hint)
+    defn = _resolve_def(index, name, file_hint, lang_hint)
     if defn is None:
         return None
     return {**defn, "name": name}

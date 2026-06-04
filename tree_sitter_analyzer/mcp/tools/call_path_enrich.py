@@ -60,7 +60,9 @@ def _build_def_index(cache: Any, names: set[str]) -> dict[str, list[dict[str, An
         return index
     try:
         conn = cache.get_conn()
-        rows = conn.execute("SELECT file_path, symbols_json FROM ast_index").fetchall()
+        rows = conn.execute(
+            "SELECT file_path, language, symbols_json FROM ast_index"
+        ).fetchall()
     except Exception:
         return index
     for row in rows:
@@ -68,6 +70,11 @@ def _build_def_index(cache: Any, names: set[str]) -> dict[str, list[dict[str, An
             symbols = json.loads(row["symbols_json"]).get("symbols", [])
         except Exception:
             continue
+        row_language = ""
+        try:
+            row_language = str(row["language"] or "")
+        except (IndexError, KeyError):
+            row_language = ""
         for sym in symbols:
             name = sym.get("name")
             if name not in names:
@@ -77,6 +84,7 @@ def _build_def_index(cache: Any, names: set[str]) -> dict[str, list[dict[str, An
             index.setdefault(name, []).append(
                 {
                     "file": row["file_path"],
+                    "language": row_language,
                     "line": int(sym.get("line", 0) or 0),
                     "end_line": int(sym.get("end_line", 0) or 0),
                     "class": sym.get("class"),
@@ -89,11 +97,30 @@ def _resolve_def(
     index: dict[str, list[dict[str, Any]]],
     name: str,
     file_hint: str | None,
+    lang_hint: str | None = None,
 ) -> dict[str, Any] | None:
-    """Pick the best definition span for ``name``, preferring ``file_hint``."""
+    """Pick the best definition span for ``name``, preferring ``file_hint``.
+
+    When ``lang_hint`` is given, a candidate in a *different* language is never
+    returned. The call-site ``file_hint`` is the caller file, so for a callee
+    defined elsewhere the exact-file match misses and the fallback would
+    otherwise return ``candidates[0]`` regardless of language — that is how a
+    Python ``sorted()`` builtin call (no Python def) grabbed a Swift
+    ``func sorted`` body. Gate the fallback so an unresolved/builtin call stays
+    body-less rather than inlining a foreign-language definition.
+    """
     candidates = index.get(name)
     if not candidates:
         return None
+    if lang_hint:
+        same_lang = [
+            cand
+            for cand in candidates
+            if not cand.get("language") or cand.get("language") == lang_hint
+        ]
+        if not same_lang:
+            return None
+        candidates = same_lang
     if file_hint:
         hint = file_hint.replace("\\", "/")
         for cand in candidates:
