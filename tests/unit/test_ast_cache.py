@@ -880,6 +880,9 @@ class TestPostIndexEdgeRefreshSkip:
         from tree_sitter_analyzer.ast_cache import ASTCache
 
         c = ASTCache(str(tmp_project))
+        if not c.fts5_available:
+            c.close()
+            pytest.skip("SQLite built without FTS5 — refresh-skip path needs FTS5")
         try:
             calls = {"n": 0}
             orig = c._refresh_graph_edges_from_cache
