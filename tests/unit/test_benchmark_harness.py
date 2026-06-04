@@ -248,11 +248,14 @@ class TestCodeGraphCompareTSAAdapter:
         assert result.file_count == 1
         build_cache.assert_not_called()
 
-    def test_parse_tool_metrics_counts_multiple_annotated_bash_calls_once(self):
+    def test_parse_tool_metrics_counts_mcp_calls_as_index_queries(self):
+        # The TSA arm now runs through its MCP facade tools (not the CLI), so
+        # mcp__tree-sitter-analyzer__* calls count as index queries, Bash as
+        # search, Read as file reads — mirroring the CodeGraph MCP adapter.
         transcript = textwrap.dedent(
             """
-            Tool: Bash
-            uv run --project /repo python -m tree_sitter_analyzer --codegraph-query "search('Router')"
+            Tool: mcp__tree-sitter-analyzer__nav
+            {"action": "context", "query": "Router"}
             Tool: Bash
             rg Router
             Tool: Read
@@ -267,15 +270,17 @@ class TestCodeGraphCompareTSAAdapter:
         assert result.search_calls == 1
         assert result.file_reads == 1
 
-    def test_run_config_promotes_chain_query_first(self, tmp_path: Path):
+    def test_run_config_promotes_mcp_nav_context_first(self, tmp_path: Path):
         config = TSAAdapter().build_run_config(tmp_path, "Where is routing handled?")
 
-        assert "--codegraph-query" in config.extra_context
-        assert "search('<symbol-or-concept>').explore" in config.extra_context
+        # Steer the agent to the one-call MCP context entry point, not the CLI.
+        assert "mcp__tree-sitter-analyzer__nav" in config.extra_context
+        assert "action=context" in config.extra_context
+        assert "--codegraph-query" not in config.extra_context
 
 
 class TestCodeGraphCompareToolPolicy:
-    def test_tsa_arms_are_index_first(self):
+    def test_tsa_arms_expose_mcp_tools_and_block_competitors(self):
         from benchmarks.codegraph_compare.adapters.claude_runner import (
             _ARM_ALLOWED_TOOLS,
             _ARM_DISALLOWED_TOOLS,
@@ -284,26 +289,27 @@ class TestCodeGraphCompareToolPolicy:
             _ALLOWED_TOOLS,
         )
 
-        raw_tools = {
-            "Read",
-            "Glob",
-            "Grep",
-            "Bash(grep *)",
-            "Bash(rg *)",
-            "Bash(find *)",
-            "Bash(ls *)",
-        }
         for arm in ("tsa-warm", "tsa-cold"):
             allowed = set(_ARM_ALLOWED_TOOLS[arm])
             disallowed = set(_ARM_DISALLOWED_TOOLS[arm])
 
-            assert allowed
-            assert all("tree_sitter_analyzer" in tool for tool in allowed)
-            assert raw_tools.isdisjoint(allowed)
-            assert raw_tools <= disallowed
-        assert _ALLOWED_TOOLS == ["Bash"]
+            # The TSA MCP facade tools are available (index-first path).
+            assert "mcp__tree-sitter-analyzer__nav" in allowed
+            assert any(
+                t.startswith("mcp__tree-sitter-analyzer__") for t in allowed
+            )
+            # The competing index and escape hatches are blocked for a fair,
+            # isolated TSA-vs-CodeGraph comparison.
+            assert "mcp__codegraph__*" in disallowed
+            assert "ToolSearch" in disallowed
+            assert "Agent" in disallowed
 
-    def test_tsa_prompt_rejects_filesystem_discovery(self):
+        # The adapter exposes the TSA MCP facade tools (alongside raw discovery,
+        # which the prompt steers the agent away from).
+        assert "mcp__tree-sitter-analyzer__nav" in _ALLOWED_TOOLS
+        assert "mcp__tree-sitter-analyzer__search" in _ALLOWED_TOOLS
+
+    def test_tsa_prompt_is_mcp_index_first(self):
         prompt_path = (
             Path(__file__).resolve().parents[2]
             / "benchmarks"
@@ -313,11 +319,12 @@ class TestCodeGraphCompareToolPolicy:
         )
         prompt = prompt_path.read_text(encoding="utf-8")
 
-        assert "TSA is the index" in prompt
-        assert "invalidates the benchmark" in prompt
-        assert "--codegraph-query" in prompt
-        assert "flow(" not in prompt
-        assert ".answer(compact=True)" in prompt
+        # MCP-arm prompt: nav action=context first, index is source of truth.
+        assert "mcp__tree-sitter-analyzer__nav" in prompt
+        assert "action=context" in prompt
+        assert "AST index is the source of truth" in prompt
+        # No stale CLI-DSL references from the old CLI-based arm.
+        assert "--codegraph-query" not in prompt
 
 
 class TestCodeGraphComparePhases:
