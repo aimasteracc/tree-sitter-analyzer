@@ -88,9 +88,22 @@ Resolution order for "is symbol S tested?":
 
 1. **coverage source** (preferred): if a `coverage.json` is found (explicit
    arg → `coverage.json` in project root → `.coverage` via `coverage.py` API),
-   a symbol is *tested* iff ≥1 executable line in its `[start_line, end_line]`
-   range is marked executed for its file. This is line-precise and immune to
-   both fake-test and indirect-dispatch errors.
+   a symbol is *tested* iff ≥1 **body** line in its range is marked executed —
+   **excluding the declaration lines** (the `def`/`class` line and any decorator
+   lines).
+
+   > **Why exclude declaration lines (Codex P1 on #284):** coverage.py records
+   > the `def`/`class` *statement* line as executed on mere **import**. If we
+   > counted any executed line in `[start_line, end_line]`, a function that is
+   > imported but whose body is never called would read as *tested* — hiding
+   > exactly the fake / missing tests this RFC exists to expose. So a symbol is
+   > covered only when an executed line lies strictly inside its body. For
+   > Python, body lines = the symbol's range minus the signature/decorator span
+   > (derivable from the AST node already extracted by the parser). A symbol
+   > with **only** its `def` line executed is a GAP, not covered.
+
+   This is line-precise and immune to both fake-test and indirect-dispatch
+   errors.
 2. **naming fallback** (current behavior): when no coverage data is present,
    keep the prefix-matching heuristic, but stamp `source="naming"` so the
    result is clearly labeled lower-confidence.
@@ -185,6 +198,10 @@ The failing tests this RFC will be implemented against:
   the fix over naming, which would hide it).
 - **unit (indirect-dispatch immunity)**: a symbol covered only indirectly (no
   `test_<name>`) but executed in coverage ⇒ NOT a gap under coverage source.
+- **unit (declaration-line immunity, Codex P1)**: a symbol whose ONLY executed
+  line is its `def`/`class` declaration (imported, body never run) ⇒ reported
+  as a GAP, not covered. Guards against import-time def-line execution masking
+  untested bodies.
 - **unit (fallback)**: no coverage.json ⇒ `source=="naming"`, current behavior
   preserved.
 - **unit (graceful degradation)**: malformed coverage.json ⇒ warning +
@@ -197,6 +214,7 @@ The failing tests this RFC will be implemented against:
 ## Acceptance criteria
 
 - [ ] `analyze_coverage_gaps` accepts `coverage_json` and prefers it as ground truth
+- [ ] Coverage verdict requires an executed **body** line (declaration/decorator lines excluded) — Codex P1
 - [ ] `CoverageGapResult.source` distinguishes `"coverage"` vs `"naming"`
 - [ ] Auto-discovery of `coverage.json` (project root) + explicit override
 - [ ] Graceful fallback to naming on missing/malformed coverage data
