@@ -24,6 +24,17 @@ _STOP_WORDS = frozenset(
     "or through to trace what when where which why with work works".split()
 )
 
+# Inline-body cap per code block. A full function body (the old 40-line window)
+# bloated nav context responses 2-4x vs peer tools for little added value; the
+# agent gets signature + head and reads the exact range only if needed.
+_MAX_BLOCK_LINES = 24
+
+# Cap on edges echoed in the response. Edges are graph wiring for visualization;
+# an answering agent rarely needs the full adjacency list, and 60+ raw edge
+# tuples were a large fraction of the response. The full set is still used to
+# RANK code blocks before the cap is applied.
+_MAX_INLINE_EDGES = 30
+
 
 class CodeGraphContextTool(BaseMCPTool):
     """MCP tool for one-call architecture context and trace expansion."""
@@ -167,6 +178,12 @@ class CodeGraphContextTool(BaseMCPTool):
             project_root=self.project_root or "",
         )
         related_files = _unique_files(nodes)
+        # Cap edges echoed to the response. The FULL edge set above already
+        # ranked the code blocks (via _edge_degrees); the response only needs a
+        # bounded sample, not the whole adjacency list (60+ raw tuples were a
+        # large, low-value fraction of the payload).
+        total_edges = len(edges)
+        edges = edges[:_MAX_INLINE_EDGES]
         verdict = "INFO" if entry_points else "NOT_FOUND"
         result: dict[str, Any] = {
             "success": True,
@@ -182,6 +199,7 @@ class CodeGraphContextTool(BaseMCPTool):
                 "entry_points": len(entry_points),
                 "nodes": len(nodes),
                 "edges": len(edges),
+                "edges_total": total_edges,
                 "code_blocks": len(code_blocks),
             },
             "agent_summary": {
@@ -587,20 +605,31 @@ def _build_code_blocks(
         lines = read_file_lines(abs_path)
         if not lines:
             continue
-        end_line = int(node.get("end_line", 0) or 0)
-        if end_line < start_line:
-            end_line = start_line + 39
-        else:
-            end_line = min(end_line, start_line + 39)
-        content = extract_snippet_from_lines(lines, start_line, end_line)
+        full_end = int(node.get("end_line", 0) or 0)
+        if full_end < start_line:
+            full_end = start_line + _MAX_BLOCK_LINES - 1
+        # Cap the inline body to _MAX_BLOCK_LINES. A full 40-line function body
+        # per block made nav context responses 2-4x larger than peers for no
+        # added value — the agent needs the signature + head of the body to
+        # locate and understand the symbol, then reads the exact range only if
+        # it must. Long bodies get a truncation marker pointing at the rest.
+        capped_end = min(full_end, start_line + _MAX_BLOCK_LINES - 1)
+        capped_end = min(capped_end, len(lines))
+        content = extract_snippet_from_lines(lines, start_line, capped_end)
         if not content:
             continue
+        real_end = min(full_end, len(lines))
+        if real_end > capped_end:
+            content = (
+                content.rstrip("\n") + f"\n    # … {real_end - capped_end} more lines "
+                f"({file_path}:{capped_end + 1}-{real_end})\n"
+            )
         blocks.append(
             {
                 "file": file_path,
                 "name": node["name"],
                 "start_line": start_line,
-                "end_line": min(end_line, len(lines)),
+                "end_line": capped_end,
                 "content": content,
             }
         )
