@@ -5,7 +5,7 @@
 > **专为 AI agent 而生的 MCP 代码情报服务 — 更少 token、更少工具调用、100% 本地运行。**
 > 预建 AST 索引 + **8 个 MCP 工具**（从 v1.x 的 63 个精简而来）+ 13 个精选 agent 技能 + TOON 压缩输出。
 > **tool-definition 开销降低约 80%** — 市场上唯一同时具备 rich-output（verdict + TOON）和 Roo/Cursor 兼容的 code-intel MCP。
-> 6 仓库头对头实测**胜过 CodeGraph**（中位数 cost **−11% vs CodeGraph 的 −4%**），CLI 维度严格超集。
+> CodeGraph 的**严格 CLI 超集**、更快的索引、一次调用的 jQuery 风格查询 DSL。（诚实成本说明：一次性 agent 任务上 CodeGraph 约便宜 1.5× —— 见[与 CodeGraph 的对比](#与-codegraph-的对比)。）
 > **BM25 排名搜索** — 所有 8 个 facade 的结果按相关性打分排序，不再按文件路径随机排列。
 >
 > 竞品工具数对比：CodeGraph ~12 · Rhizome 1 · **TSA 8（rich-output）** · TSA v1.x 为 63。
@@ -43,29 +43,35 @@ claude mcp add tree-sitter-analyzer \
 * **项目级 A-F 健康评级**。其他开源工具都没有 — 一次调用从体积、复杂度、覆盖率、重复度、依赖、结构、git-热点 7 个维度给整个项目打分。
 * **13 个精选工作流（Skills）**。预包装好的工具子集，对应 "查找符号"、"追踪调用链"、"评估健康"、"重构前安全检查"、"PR 评审" 等典型场景。
 * **5 层安全防护**。`safe_to_edit` + `modification_guard` + 架构约束 DSL + `change_impact` + verdict 信封 — 让 agent 在动手前 *知道* 风险。
-* **多个 head-to-head benchmark 上击败领先竞品 CodeGraph**。见下文实测。
+* **CodeGraph 的严格 CLI 超集、更快索引、一次调用查询 DSL** —— 诚实成本对比见[下文](#与-codegraph-的对比)。
 
 ---
 
-## Benchmark 实测
+## 与 CodeGraph 的对比
 
-headless Claude Code（Haiku 4.5）每仓库问一个架构问题。3 个 arm：无 MCP / CodeGraph MCP / Tree-sitter Analyzer MCP。每 arm 单次运行 — 指示性数据，非统计严格。
+> **更正（2026-06）。** 此前本节声称「中位数成本 −11% 胜过 CodeGraph」。那次 benchmark 有 harness bug：TSA arm 的 MCP server 启动时未指定项目根，分析的是 **tree-sitter-analyzer 自身的源码**而非目标仓库，数据无意义。该 bug 已修复（harness 现在传 `--project-root`），夸大的结论予以撤回，下面是诚实的对比。
 
-| 仓库 | 语言/文件数 | 无 MCP 基线 | CodeGraph | **TSA** | 胜者 |
-|---|---|---|---|---|---|
-| **Gin** | Go / 99 | $0.164 | $0.094 (−43 %) | **$0.080 (−51 %)** | **TSA** ⭐ |
-| **Alamofire** | Swift / 98 | $0.201 | $0.219 (+9 %) | **$0.147 (−27 %)** | **TSA** ⭐ |
-| **Excalidraw** | TS / 603 | $0.204 | **$0.179 (−12 %)** | $0.212 (+4 %) | CodeGraph |
-| **Django** | Py / 2 910 | $0.162 | **$0.106 (−35 %)** | $0.205 (+27 %) | CodeGraph |
-| **Tokio** | Rust / 778 | **$0.214** | $0.285 (+33 %) | $0.303 (+42 %) | 两者皆输 |
-| **OkHttp** | Java / 596 | **$0.169** | $0.200 (+18 %) | $0.178 (+5 %) | 两者皆输 |
-| **中位数 Δ vs 基线** | | | **−4 %** | **−11 %** | **TSA** |
+### Agent token 成本 —— CodeGraph 每任务约便宜 1.5×
 
-TSA 在 **6 个仓库中 2 个完胜**，**中位数成本节省（−11%）超过 CodeGraph 的 −4%**，并在 indexer-class 工具应当发挥作用的仓库上方向上与 CodeGraph 一致。
+在修复后的 harness 上（Claude Sonnet，gin + django，MCP arm，零错误），每任务**中位数成本**：
 
-> 我们的中位数为何与 CodeGraph 公布的 −35% 不同：我们为控制成本用了 Haiku；他们用 Opus + 4 次中位。完整原始 envelope 和复现脚本见 `docs/internal/CODEGRAPH_BENCHMARK_FINAL_2026-05-24.md`。
->
-> **Benchmark 后的改进（2026-05-30）：** (1) BM25 预过滤器将 40k 符号收窄至 ~400 再做余弦重排 — 语义搜索加速 133×。(2) Min-max BM25 标准化：relevance_score 现在正确区分强匹配（1.0）和弱匹配（0.0）。(3) `semantic().sort(by='confidence')` 现在端到端可用。这些改进未纳入上述 benchmark；大符号量仓库（Django / Excalidraw）在复跑时预计会有更好的 token 效率表现。
+| arm | 中位数成本 | tool calls | file reads |
+|---|---|---|---|
+| CodeGraph MCP | **约 $0.27** | 7 | 2 |
+| Tree-sitter Analyzer MCP | 约 $0.42 | 7 | 1 |
+| 无 MCP（grep/read） | 约 $0.34 | 14 | 7 |
+
+两个 indexer 工具调用次数相同；TSA 每次调用的响应更丰富（更多图 + 内联源码），因而在 cache-write token 上贵约 1.5×。我们大幅削减了每个工具的默认输出（nav context、call tree、symbol search、chain DSL），把差距从约 2–4× 降到约 1.5×，但**就一次性问答的 token 效率而言，CodeGraph 仍是更省的 indexer**，我们如实报告。
+
+### TSA 领先之处
+
+- **索引构建速度。** 移除 commit 后冗余的 edge-refresh pass，django 冷索引（约 2,950 文件）从 **181 秒 → 97 秒（−46%）**；仓库越大收益越大。未变更文件的重索引是 content-hash 查表。
+- **严格的 CLI 超集。** 每个 MCP 工具都有 CLI 等价物（CodeGraph 的 CLI 更薄）；两个界面的默认值保持同步。
+- **一次调用的表达力。** jQuery 风格 chain DSL —— `search('X').callees(depth=2).explore(include_code=true).answer(compact=true)` —— 一次调用返回整条流程的子图 + 源码，支持 JS 风格 `true`/`false`，agent 可自然书写。
+- **结构化 + token 友好的输出。** MCP 默认 TOON（比 JSON 小 50–70%）、per-call 截断提示、全排序路径一致的测试文件降权。
+- **广度。** 健康评分、safe-to-edit / change-impact 门控、13 个 curated Skills、广泛语言支持。
+
+> 复现：`benchmarks/codegraph_compare/run.py phase full-warm`。原始 envelope 与 harness 修复在该目录。
 
 ---
 

@@ -5,7 +5,7 @@
 > **The MCP code-intelligence server for AI agents — fewer tokens, fewer tool calls, 100 % local.**
 > Pre-indexed AST cache + **8 MCP tools** (down from 63) + 13 curated agent skills + TOON-compressed output.
 > **~80% less tool-definition overhead** vs v1.x — the only code-intel MCP that is both rich-output (verdict + TOON) and Roo/Cursor-safe.
-> Beats CodeGraph on 6-repo head-to-head median (**−11 % cost vs CodeGraph's −4 %**), with a strict CLI superset.
+> A **strict CLI superset** of CodeGraph, with faster indexing and a one-call jQuery-style query DSL. (Honest cost note: CodeGraph is ~1.5× cheaper per one-shot agent task — see [How TSA compares](#how-tsa-compares-to-codegraph).)
 > **BM25-ranked symbol search** across all 8 facades — results sorted by relevance, not file path.
 >
 > Competing tool count: CodeGraph ~12 · Rhizome 1 · **TSA 8 (rich-output)** · TSA v1.x was 63.
@@ -43,29 +43,35 @@ Restart your agent, then say: *"Set the project root to my repo and run codegrap
 * **Project health grading (A–F).** No other open-source tool grades your whole project on size / complexity / coverage / duplication / dependencies / structure / git-hotspots in one call.
 * **13 curated workflows (Skills).** Pre-baked tool subsets for "find symbol", "trace call chain", "score health", "safe-to-edit before refactor", "PR review", etc.
 * **5 layers of safety.** `safe_to_edit` + `modification_guard` + constraint DSL + `change_impact` + verdict envelopes — designed so agents *know* before they touch.
-* **Beats the leading competitor (CodeGraph) on multiple head-to-head benchmarks.** See below.
+* **Strict CLI superset of CodeGraph, faster indexing, and a one-call query DSL** — with an honest cost comparison ([below](#how-tsa-compares-to-codegraph)).
 
 ---
 
-## Benchmark Results
+## How TSA compares to CodeGraph
 
-Headless Claude Code (Haiku 4.5) asked one architecture question per repo. 3 arms: no-MCP / CodeGraph MCP / Tree-sitter Analyzer MCP. Single run per arm — indicative, not statistically settled.
+> **Correction (2026-06).** An earlier version of this section claimed TSA beat CodeGraph on agent token cost (a "−11 % median" table). That benchmark had a harness bug: the TSA arm's MCP server was started without an explicit project root and analysed *tree-sitter-analyzer's own source* instead of the target repo, so its numbers were meaningless. The bug is fixed (the harness now passes `--project-root`), the inflated claim is withdrawn, and the honest picture is below.
 
-| Codebase | Lang / files | Baseline | CodeGraph | **TSA** | Winner |
-|---|---|---|---|---|---|
-| **Gin** | Go / 99 | $0.164 | $0.094 (−43 %) | **$0.080 (−51 %)** | **TSA** ⭐ |
-| **Alamofire** | Swift / 98 | $0.201 | $0.219 (+9 %) | **$0.147 (−27 %)** | **TSA** ⭐ |
-| **Excalidraw** | TS / 603 | $0.204 | **$0.179 (−12 %)** | $0.212 (+4 %) | CodeGraph |
-| **Django** | Py / 2 910 | $0.162 | **$0.106 (−35 %)** | $0.205 (+27 %) | CodeGraph |
-| **Tokio** | Rust / 778 | **$0.214** | $0.285 (+33 %) | $0.303 (+42 %) | both lose |
-| **OkHttp** | Java / 596 | **$0.169** | $0.200 (+18 %) | $0.178 (+5 %) | both lose |
-| **Median Δ vs baseline** | | | **−4 %** | **−11 %** | **TSA** |
+### Agent token cost — CodeGraph is ~1.5× cheaper per task
 
-TSA wins outright on **2 of 6 repos**, has a lower **median cost saving (−11 %)**, and matches CodeGraph's reported direction on every repo where the indexer-class tools should help.
+On the corrected harness (Claude Sonnet, gin + django, MCP arms, no errors), per-task **median cost**:
 
-> Why the median diverges from CodeGraph's published −35 % claim: we used Haiku for cost control; they used Opus + 4-run median. See `docs/internal/CODEGRAPH_BENCHMARK_FINAL_2026-05-24.md` for raw envelopes + reproducer scripts.
->
-> **Post-benchmark improvements (2026-05-30):** (1) BM25 pre-filter narrows 40k symbols to ~400 before cosine rerank — a 133× speedup in semantic search. (2) Min-max BM25 normalization: relevance_score now properly differentiates strong matches (1.0) from weak (0.0) across all search paths. (3) `semantic().sort(by='confidence')` now works end-to-end. These improvements were not in the benchmark run; repos with large symbol counts (Django, Excalidraw) should see improved token efficiency in re-runs.
+| arm | median cost | tool calls | file reads |
+|---|---|---|---|
+| CodeGraph MCP | **~$0.27** | 7 | 2 |
+| Tree-sitter Analyzer MCP | ~$0.42 | 7 | 1 |
+| no-MCP (grep/read) | ~$0.34 | 14 | 7 |
+
+Both indexer tools make the same number of calls; TSA's per-call payload is richer (more graph + inline source), which costs ~1.5× more in cache-write tokens. We trimmed every tool's default output aggressively (nav context, call trees, symbol search, the chain DSL) — that took the gap from ~2–4× down to ~1.5×, but **CodeGraph remains the more token-efficient indexer for one-shot Q&A**, and we report that straight.
+
+### Where TSA leads
+
+- **Index build speed.** Removing a redundant post-index edge-refresh pass cut a cold django index (~2 950 files) from **181 s → 97 s (−46 %)**; the win grows with repo size. Re-index of unchanged files is a content-hash lookup.
+- **Strict CLI superset.** Every MCP tool has a CLI equivalent (CodeGraph's CLI is thinner); defaults are kept in lock-step between the two surfaces.
+- **One-call expressiveness.** A jQuery-style chain DSL — `search('X').callees(depth=2).explore(include_code=true).answer(compact=true)` — returns an entire flow's subgraph + source in a single call, with JS-style `true`/`false` so agents can write it naturally.
+- **Output is structured + token-aware.** TOON default for MCP (50–70 % smaller than JSON), per-call truncation hints, consistent test-file de-prioritisation across every ranking path.
+- **Breadth.** Health scoring, safe-to-edit / change-impact gating, 13 curated Skills, and broad language coverage.
+
+> Reproduce: `benchmarks/codegraph_compare/run.py phase full-warm`. Raw envelopes + the harness fix live in that directory.
 
 ---
 
