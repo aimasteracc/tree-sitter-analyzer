@@ -905,6 +905,136 @@ def test_build_code_blocks_skips_empty_snippets(
     assert blocks == []
 
 
+def test_build_code_blocks_truncates_long_bodies(tmp_path: Path) -> None:
+    """A long function body is capped to _MAX_BLOCK_LINES with a marker.
+
+    Full 40-line bodies made nav context 2-4x larger than peer tools for no
+    added value. The block keeps the signature + head and points at the rest.
+    """
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        _MAX_BLOCK_LINES,
+        _build_code_blocks,
+        _node_id,
+    )
+
+    body = "def big():\n" + "".join(f"    x{i} = {i}\n" for i in range(60))
+    src = tmp_path / "big.py"
+    src.write_text(body, encoding="utf-8")
+
+    blocks = _build_code_blocks(
+        [
+            {
+                "id": _node_id("big", "big.py", 1),
+                "name": "big",
+                "file": "big.py",
+                "line": 1,
+                "end_line": 61,
+            }
+        ],
+        [],
+        5,
+        str(tmp_path),
+    )
+
+    assert len(blocks) == 1
+    content = blocks[0]["content"]
+    # Body proper is capped to _MAX_BLOCK_LINES; the marker line is extra.
+    assert blocks[0]["end_line"] == _MAX_BLOCK_LINES
+    assert "more lines" in content
+    assert "big.py:" in content  # marker points at the remaining range
+    # The full 60-line body is NOT inlined.
+    assert "x59 = 59" not in content
+
+
+def test_build_code_blocks_hints_when_end_unknown(tmp_path: Path) -> None:
+    """A call-graph node with no end_line still gets an 'end unknown' hint.
+
+    Codex P2 on #293: callee/caller nodes have end_line=0, so the cap-window
+    fallback equalled capped_end and NO marker was emitted — lines past the cap
+    were silently dropped. Now an explicit hint is added when the snippet is
+    capped before EOF with an unknown end.
+    """
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        _build_code_blocks,
+        _node_id,
+    )
+
+    body = "func big() {\n" + "".join(f"    line{i}();\n" for i in range(40)) + "}\n"
+    src = tmp_path / "big.go"
+    src.write_text(body, encoding="utf-8")
+
+    blocks = _build_code_blocks(
+        [
+            {
+                "id": _node_id("big", "big.go", 1),
+                "name": "big",
+                "file": "big.go",
+                "line": 1,
+                # No end_line key → simulates a call-graph-expansion node.
+            }
+        ],
+        [],
+        5,
+        str(tmp_path),
+    )
+
+    assert len(blocks) == 1
+    content = blocks[0]["content"]
+    assert "end unknown" in content
+    assert "big.go:" in content
+    assert "line39();" not in content  # full body NOT inlined
+
+
+def test_build_code_blocks_keeps_short_bodies_untruncated(tmp_path: Path) -> None:
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        _build_code_blocks,
+        _node_id,
+    )
+
+    src = tmp_path / "small.py"
+    src.write_text("def small():\n    return 1\n", encoding="utf-8")
+
+    blocks = _build_code_blocks(
+        [
+            {
+                "id": _node_id("small", "small.py", 1),
+                "name": "small",
+                "file": "small.py",
+                "line": 1,
+                "end_line": 2,
+            }
+        ],
+        [],
+        5,
+        str(tmp_path),
+    )
+
+    assert len(blocks) == 1
+    assert "more lines" not in blocks[0]["content"]
+    assert "return 1" in blocks[0]["content"]
+
+
+@pytest.mark.asyncio
+async def test_context_caps_inline_edges(indexed_project: Path) -> None:
+    """execute() caps echoed edges to _MAX_INLINE_EDGES and records the total."""
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        _MAX_INLINE_EDGES,
+        CodeGraphContextTool,
+    )
+
+    tool = CodeGraphContextTool(str(indexed_project))
+    result = await tool.execute(
+        {
+            "task": "trace handle_request to UserService.get_user",
+            "output_format": "json",
+        }
+    )
+
+    assert len(result["edges"]) <= _MAX_INLINE_EDGES
+    assert result["stats"]["edges"] == len(result["edges"])
+    assert result["stats"]["edges_total"] >= result["stats"]["edges"]
+
+
 @pytest.mark.asyncio
 async def test_context_returns_entry_points_graph_and_source(
     indexed_project: Path,
