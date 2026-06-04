@@ -151,3 +151,51 @@ def test_ensure_indexed_resolves_when_not_converged(
         assert resolution_converged(cache.get_conn()) is True
     finally:
         auto_index_guard.reset()
+
+
+def test_resolution_converged_false_when_state_table_empty() -> None:
+    """ast_resolve_state exists but has no rows → resolution_converged returns False (row is None)."""
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    try:
+        conn.execute("CREATE TABLE ast_index (file_path TEXT, indexed_at TEXT)")
+        conn.execute("INSERT INTO ast_index VALUES ('a.py', '2026-01-01T00:00:00Z')")
+        conn.execute(
+            "CREATE TABLE ast_resolve_state "
+            "(id INTEGER PRIMARY KEY, fingerprint TEXT NOT NULL)"
+        )
+        conn.commit()
+        assert resolution_converged(conn) is False
+    finally:
+        conn.close()
+
+
+def test_mark_resolution_converged_handles_operational_error(tmp_path: Path) -> None:
+    """Read-only connection → mark_resolution_converged hits OperationalError handler without raising."""
+    dbfile = tmp_path / "test.db"
+    conn = sqlite3.connect(str(dbfile))
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, indexed_at TEXT)")
+    conn.execute("INSERT INTO ast_index VALUES ('a.py', '2026-01-01T00:00:00Z')")
+    conn.commit()
+    conn.close()
+    ro_conn = sqlite3.connect(f"file:{dbfile}?mode=ro", uri=True)
+    ro_conn.row_factory = sqlite3.Row
+    try:
+        mark_resolution_converged(ro_conn)  # must not raise
+    finally:
+        ro_conn.close()
+
+
+def test_resolution_converged_helpers_degrade_on_broken_cache() -> None:
+    """_resolution_converged/_mark_resolution_converged swallow exceptions from a broken cache."""
+    from tree_sitter_analyzer.mcp.utils.auto_index_guard import (
+        _mark_resolution_converged,
+        _resolution_converged,
+    )
+
+    class BrokenCache:
+        def get_conn(self) -> None:
+            raise RuntimeError("broken")
+
+    assert _resolution_converged(BrokenCache()) is False
+    _mark_resolution_converged(BrokenCache())  # must not raise
