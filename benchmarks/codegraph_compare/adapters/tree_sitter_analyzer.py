@@ -59,17 +59,27 @@ _ANALYZER_ROOT = Path(__file__).resolve().parents[3]
 _CACHE_DIR = ".ast-cache"
 _CACHE_INDEX = ".ast-cache/index.db"
 
-# Tools Claude is allowed in this arm (TSA is invoked via Bash)
-_ALLOWED_TOOLS = ["Bash"]
+# Tools Claude is allowed in this arm (TSA via its MCP facade tools)
+_ALLOWED_TOOLS = [
+    "Read",
+    "Bash(grep *)",
+    "Bash(find *)",
+    "Bash(ls *)",
+    "Glob",
+    "Grep",
+    "mcp__tree-sitter-analyzer__nav",
+    "mcp__tree-sitter-analyzer__search",
+    "mcp__tree-sitter-analyzer__structure",
+    "mcp__tree-sitter-analyzer__health",
+    "mcp__tree-sitter-analyzer__index",
+    "mcp__tree-sitter-analyzer__project",
+]
 
 # Patterns used for parse_tool_metrics
 _FILE_READ_TOOLS = frozenset({"read"})
-_SEARCH_TOOLS = frozenset({"grep", "glob"})
-# Bash tool calls that mention the TSA module count as index queries
-_TSA_PATTERNS = re.compile(
-    r"tree[_\-]sitter[_\-]analyzer|python\s+-m\s+tree_sitter_analyzer|\btsa\b",
-    re.IGNORECASE,
-)
+_SEARCH_TOOLS = frozenset({"grep", "glob", "bash"})
+# MCP tool calls to the TSA server count as index queries
+_TSA_MCP_PREFIX = "mcp__tree-sitter-analyzer__"
 
 
 class TSAAdapter(BenchmarkAdapter):
@@ -134,19 +144,14 @@ class TSAAdapter(BenchmarkAdapter):
 
     def build_run_config(self, repo_path: Path, question_prompt: str) -> RunConfig:
         system_prompt = _load_prompt(_PROMPT_FILE, _DEFAULT_SYSTEM_PROMPT)
-        command_prefix = (
-            f"uv run --project {_ANALYZER_ROOT} python -m tree_sitter_analyzer"
-        )
         extra_context = (
-            "tree-sitter-analyzer is available through this command prefix: "
-            f"`{command_prefix}`. "
-            "Run it from the benchmark repo root with `--project-root .`. "
-            "Useful query: `--codegraph-query \"search('<symbol-or-concept>').explore(max_files=5, max_symbols=8, include_code=True).include(source=True, callers=True, callees=True, complexity=True, health=True, affected_tests=True, risk=True, max_files=5, limit=8).sort(by='fan_in', desc=True).answer(compact=True)\"`. "
-            "Fallbacks: "
-            "`--symbol-search <name>`, `--codegraph-explore <query>`, "
-            "`--codegraph-overview`, and `--call-graph callers|callees "
-            "--call-graph-function <name>`. "
-            f"The AST cache is at {repo_path}/.ast-cache/"
+            "The tree-sitter-analyzer (TSA) MCP server is connected. Use its "
+            "facade tools: mcp__tree-sitter-analyzer__nav / search / structure / "
+            "index. Call `nav` with action=context and query='<concept>' FIRST — "
+            "one call returns entry points + definition + callers + callees + "
+            "inline source. Use `nav` action=callee_tree for a full call tree in "
+            "one call. Stop after 1-3 calls; do not loop per symbol. The AST "
+            f"index is pre-built at {repo_path}/.ast-cache/ (warm)."
         )
 
         return RunConfig(
@@ -165,90 +170,35 @@ class TSAAdapter(BenchmarkAdapter):
     def parse_tool_metrics(self, transcript_text: str) -> ToolMetrics:
         """Count tool invocations from raw transcript text.
 
-        Bash lines that contain ``tree_sitter_analyzer``, ``tsa``, or
-        ``python -m tree_sitter_analyzer`` count as index_queries.
-        Read counts as file_reads. Grep/Glob count as search_calls.
-        Plain Bash calls count as search_calls unless they reference TSA.
+        mcp__tree-sitter-analyzer__* tool calls count as index_queries.
+        Read counts as file_reads. Bash/Grep/Glob count as search_calls.
+        Mirrors the CodeGraph adapter's MCP-arm parsing for a fair comparison.
         """
         tool_calls = 0
         file_reads = 0
         search_calls = 0
         index_queries = 0
 
-        # Split transcript into lines for per-line context
-        lines = transcript_text.splitlines()
-
-        # Track whether we are inside a Bash tool invocation so we can
-        # classify the call once we see the command text.
-        in_bash_call = False
-        pending_bash_lines: list[str] = []
-
-        def flush_bash_call() -> None:
-            nonlocal search_calls, index_queries, in_bash_call, pending_bash_lines
-            if not in_bash_call:
-                return
-            bash_body = "\n".join(pending_bash_lines)
-            if _TSA_PATTERNS.search(bash_body):
+        def classify(name: str) -> None:
+            nonlocal tool_calls, file_reads, search_calls, index_queries
+            tool_calls += 1
+            if _TSA_MCP_PREFIX in name:
                 index_queries += 1
-            else:
+            elif name in _FILE_READ_TOOLS:
+                file_reads += 1
+            elif name in _SEARCH_TOOLS:
                 search_calls += 1
-            in_bash_call = False
-            pending_bash_lines = []
 
-        for line in lines:
-            # Detect "Tool: <name>" annotation lines
-            tool_match = re.match(r"\s*Tool:\s*(\S+)", line, re.IGNORECASE)
-            if tool_match:
-                # Flush any pending bash call first
-                flush_bash_call()
+        for match in re.finditer(r"Tool:\s*(\S+)", transcript_text, re.IGNORECASE):
+            classify(match.group(1).lower().rstrip("()"))
 
-                name = tool_match.group(1).lower().rstrip("()")
-                tool_calls += 1
-
-                if name == "bash":
-                    in_bash_call = True
-                    pending_bash_lines = []
-                elif name in _FILE_READ_TOOLS:
-                    file_reads += 1
-                elif name in _SEARCH_TOOLS:
-                    search_calls += 1
-                continue
-
-            # If we are collecting a bash invocation, gather the line
-            if in_bash_call:
-                pending_bash_lines.append(line)
-
-        # Flush trailing bash call
-        flush_bash_call()
-
-        # Fallback: bracket notation [ToolName] for transcripts that don't
-        # use "Tool:" prefix
-        for match in re.finditer(r"\[(\w+)\]", transcript_text):
+        for match in re.finditer(r"\[([\w-]+)\]", transcript_text):
             name = match.group(1).lower()
             line_start = transcript_text.rfind("\n", 0, match.start()) + 1
             line_text = transcript_text[line_start : match.end()]
             if "Tool:" in line_text or "tool:" in line_text:
                 continue
-            tool_calls += 1
-            if name in _FILE_READ_TOOLS:
-                file_reads += 1
-            elif name == "bash":
-                # Can't determine context; count generically as search
-                search_calls += 1
-            elif name in _SEARCH_TOOLS:
-                search_calls += 1
-
-        if tool_calls == 0:
-            # Also scan transcripts that only include raw command blocks without
-            # tool annotations. Annotated transcripts were already counted above.
-            for match in _TSA_PATTERNS.finditer(transcript_text):
-                line_start = transcript_text.rfind("\n", 0, match.start()) + 1
-                line_end = transcript_text.find("\n", match.end())
-                if line_end == -1:
-                    line_end = len(transcript_text)
-                cmd_line = transcript_text[line_start:line_end].strip()
-                if cmd_line.startswith(("$", "python", "uv run")):
-                    index_queries += 1
+            classify(name)
 
         return ToolMetrics(
             tool_calls=tool_calls,

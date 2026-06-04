@@ -12,8 +12,10 @@ Writes:
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
+import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -41,16 +43,19 @@ _CODEGRAPH_TOOLS = [
     "mcp__codegraph__codegraph_impact",
 ]
 _TSA_TOOLS = [
-    "Bash(python -m tree_sitter_analyzer *)",
-    "Bash(uv run python -m tree_sitter_analyzer *)",
-    "Bash(uv run --project * python -m tree_sitter_analyzer *)",
+    "mcp__tree-sitter-analyzer__nav",
+    "mcp__tree-sitter-analyzer__search",
+    "mcp__tree-sitter-analyzer__structure",
+    "mcp__tree-sitter-analyzer__health",
+    "mcp__tree-sitter-analyzer__index",
+    "mcp__tree-sitter-analyzer__project",
 ]
 
 # Tools explicitly blocked per arm (prevents Claude from discovering and using them via ToolSearch)
 _ARM_ALLOWED_TOOLS: dict[str, list[str]] = {
     "native-only": _BASE_TOOLS,
-    "tsa-warm": _TSA_TOOLS,
-    "tsa-cold": _TSA_TOOLS,
+    "tsa-warm": _BASE_TOOLS + _TSA_TOOLS,
+    "tsa-cold": _BASE_TOOLS + _TSA_TOOLS,
     "codegraph-warm": _BASE_TOOLS + _CODEGRAPH_TOOLS,
     "codegraph-cold": _BASE_TOOLS + _CODEGRAPH_TOOLS,
 }
@@ -66,44 +71,12 @@ _ARM_DISALLOWED_TOOLS: dict[str, list[str]] = {
         "ToolSearch",
         "Agent",
     ],
-    "tsa-warm": [
-        "Read",
-        "Glob",
-        "Grep",
-        "Bash(grep *)",
-        "Bash(rg *)",
-        "Bash(find *)",
-        "Bash(fd *)",
-        "Bash(ls *)",
-        "Bash(cat *)",
-        "Bash(sed *)",
-        "Bash(nl *)",
-        "Bash(head *)",
-        "Bash(tail *)",
-        "Bash(codegraph *)",
-        "mcp__codegraph__*",
-        "ToolSearch",
-        "Agent",
-    ],
-    "tsa-cold": [
-        "Read",
-        "Glob",
-        "Grep",
-        "Bash(grep *)",
-        "Bash(rg *)",
-        "Bash(find *)",
-        "Bash(fd *)",
-        "Bash(ls *)",
-        "Bash(cat *)",
-        "Bash(sed *)",
-        "Bash(nl *)",
-        "Bash(head *)",
-        "Bash(tail *)",
-        "Bash(codegraph *)",
-        "mcp__codegraph__*",
-        "ToolSearch",
-        "Agent",
-    ],
+    # Symmetric with the codegraph arm: allow base file tools + TSA MCP, block
+    # only the OTHER tool's MCP + ToolSearch/Agent. (Previously this arm was CLI
+    # and force-blocked Read/grep, which was both asymmetric vs codegraph and
+    # measured the CLI — not the MCP — surface.)
+    "tsa-warm": ["Bash(codegraph *)", "mcp__codegraph__*", "ToolSearch", "Agent"],
+    "tsa-cold": ["Bash(codegraph *)", "mcp__codegraph__*", "ToolSearch", "Agent"],
     "codegraph-warm": ["ToolSearch", "Agent"],
     "codegraph-cold": ["ToolSearch", "Agent"],
 }
@@ -176,7 +149,11 @@ def _parse_tool_calls_from_stream(lines: list[str]) -> tuple[int, int, int, int]
             name_lower = name.lower()
             if name_lower in ("read", "readfile"):
                 file_reads += 1
-            elif "codegraph" in name_lower or "tree_sitter" in name_lower:
+            elif (
+                "codegraph" in name_lower
+                or "tree_sitter" in name_lower
+                or "tree-sitter" in name_lower  # TSA MCP: mcp__tree-sitter-analyzer__*
+            ):
                 index_queries += 1
             elif name_lower == "bash":
                 inp = block.get("input", {})
@@ -314,6 +291,35 @@ def _parse_claude_result_from_stream(
     return answer, error, raw_result
 
 
+_ANALYZER_ROOT = Path(__file__).resolve().parents[3]
+_MCP_CONFIG_DIR = Path(tempfile.gettempdir()) / "tsa_bench_mcp_configs"
+
+
+def _write_arm_mcp_config(arm_id: str) -> Path:
+    """Write a per-arm MCP config so each arm sees ONLY its own MCP server.
+
+    Used with ``--strict-mcp-config`` so the developer's global MCP servers
+    (Context7, Gmail, codegraph, ruflo, vercel, ...) do NOT leak into the
+    benchmark agent — their tool definitions otherwise bloat the context by
+    millions of tokens and pollute every arm. native-only gets an empty set.
+    """
+    if arm_id.startswith("tsa"):
+        servers = {
+            "tree-sitter-analyzer": {
+                "command": str(_ANALYZER_ROOT / ".venv" / "bin" / "python"),
+                "args": ["-m", "tree_sitter_analyzer.mcp.server"],
+            }
+        }
+    elif arm_id.startswith("codegraph"):
+        servers = {"codegraph": {"command": "codegraph", "args": ["serve", "--mcp"]}}
+    else:
+        servers = {}  # native-only: no MCP at all
+    _MCP_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    path = _MCP_CONFIG_DIR / f"{arm_id}.json"
+    path.write_text(json.dumps({"mcpServers": servers}))
+    return path
+
+
 def _build_agent_cmd(
     arm_id: str,
     model: str,
@@ -343,6 +349,9 @@ def _build_agent_cmd(
         ]
         if disallowed_tools_str:
             cmd += ["--disallowed-tools", disallowed_tools_str]
+        # Isolate MCP: each arm sees only its own server (no global MCP leak).
+        mcp_cfg = _write_arm_mcp_config(arm_id)
+        cmd += ["--strict-mcp-config", "--mcp-config", str(mcp_cfg)]
         return cmd
     sandbox = _codex_sandbox_for_arm(arm_id)
     return [
@@ -496,6 +505,16 @@ def run_one(
                 errors="replace",
                 timeout=timeout_seconds,
                 cwd=str(repo_path),
+                # Extend the MCP startup window. A python MCP server spawns in
+                # ~300-400ms (python + mcp lib import), which is at the edge of
+                # claude's default connect window → load-dependent "pending"
+                # (TSA arm then falls back to Read). 30s removes the race so the
+                # MCP arm is measured fairly. Verified: 3/3 stable connects.
+                env={
+                    **os.environ,
+                    "MCP_TIMEOUT": "30000",
+                    "MCP_TOOL_TIMEOUT": "30000",
+                },
             )
             stream_lines = [ln for ln in proc.stdout.splitlines() if ln.strip()]
 
