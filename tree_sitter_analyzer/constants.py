@@ -92,3 +92,70 @@ def is_element_of_type(element: Any, element_type: str) -> bool:
         True if element is of the specified type
     """
     return get_element_type(element) == element_type
+
+
+# ---------------------------------------------------------------------------
+# Directories excluded from filesystem walks (indexing, health scoring, graph
+# analysis). Shared so every walker agrees — previously each module defined its
+# own near-duplicate set and they drifted.
+#
+# Covers VCS, language caches, AND build-artifact dirs for COMPILED languages
+# (C#/.NET, Java, Rust, Go, Swift, C++). These hold generated/compiled output
+# that must never be indexed and can be enormous: a C# project's bin/obj or a
+# NuGet `packages/` dir makes `index full` appear to hang on an otherwise small
+# project. (Dot-prefixed dirs like .vs/.git are skipped separately via a
+# `name.startswith(".")` check at each call site, so they are not all listed.)
+# ---------------------------------------------------------------------------
+EXCLUDE_DIRS: frozenset[str] = frozenset(
+    {
+        # Version control
+        ".git",
+        ".hg",
+        ".svn",
+        # Python caches / envs
+        "__pycache__",
+        ".venv",
+        "venv",
+        ".tox",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".eggs",
+        "htmlcov",
+        ".cache",
+        # JS / TS
+        "node_modules",
+        ".next",
+        ".nuxt",
+        "bower_components",
+        # Build artifacts — compiled languages (the index-full hang fix)
+        "bin",  # C#/.NET, also generic
+        "obj",  # C#/.NET
+        "packages",  # C#/.NET (NuGet)
+        "target",  # Rust, Java (Maven)
+        ".gradle",  # Java (Gradle)
+        "vendor",  # Go, PHP
+        "Pods",  # Swift / iOS (CocoaPods)
+        "DerivedData",  # Swift / Xcode
+        "cmake-build-debug",  # C++ (CLion)
+        "cmake-build-release",  # C++ (CLion)
+        # Generic build output
+        "dist",
+        "build",
+        "out",
+        # Editors / IDE
+        ".idea",
+        ".vscode",
+        ".vs",
+        # AI tooling
+        ".claude",
+        ".swarm",
+        ".claude-flow",
+        ".opencode",
+        ".agents",
+        ".recon",
+        # TSA's own caches
+        ".ast-cache",
+        ".tree-sitter-cache",
+    }
+)

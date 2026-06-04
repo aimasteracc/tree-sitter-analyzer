@@ -24,6 +24,7 @@ from ._health_scorer_helpers import (
     read_source_file,
     round_available_scores,
 )
+from .constants import EXCLUDE_DIRS
 from .core.parser import Parser
 
 logger = logging.getLogger(__name__)
@@ -417,26 +418,10 @@ class HealthScorer:
     # unit test that explicitly scores a fixture sub-tree
     # (e.g. ``score_project(tests/fixtures/project_graph/health_project)``)
     # is not broken by the broader project-level filter.
-    _EXCLUDE_DIRS = {
-        "node_modules",
-        ".git",
-        ".hg",
-        ".svn",
-        "__pycache__",
-        ".venv",
-        "venv",
-        ".tox",
-        ".mypy_cache",
-        ".pytest_cache",
-        ".ruff_cache",
-        "dist",
-        "build",
-        "htmlcov",
-        ".cache",
-        ".eggs",
-        ".idea",
-        ".vscode",
-        ".claude",
+    # Shared build/cache excludes (constants.EXCLUDE_DIRS — incl. C#/Java/Rust
+    # bin/obj/packages/target) PLUS health-scoring-specific excludes (test data
+    # / fixtures must not count toward a project's code-quality grade).
+    _EXCLUDE_DIRS = EXCLUDE_DIRS | {
         "golden_masters",
         "golden",
         "fixtures",
