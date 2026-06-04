@@ -149,7 +149,10 @@ class CodeGraphContextTool(BaseMCPTool):
         output_format = arguments.get("output_format", "toon")
 
         candidates = _extract_symbol_candidates(task)
-        entry_points = self._resolve_entry_points(candidates, max(5, max_nodes // 3))
+        wants_tests = _task_wants_tests(task)
+        entry_points = self._resolve_entry_points(
+            candidates, max(5, max_nodes // 3), wants_tests
+        )
         nodes = _nodes_from_hits(entry_points, max_nodes)
         edges: list[dict[str, Any]] = []
 
@@ -198,7 +201,7 @@ class CodeGraphContextTool(BaseMCPTool):
         return apply_toon_format_to_response(result, output_format)
 
     def _resolve_entry_points(
-        self, candidates: list[str], limit: int
+        self, candidates: list[str], limit: int, wants_tests: bool = False
     ) -> list[dict[str, Any]]:
         if not candidates:
             return []
@@ -289,7 +292,10 @@ class CodeGraphContextTool(BaseMCPTool):
                     raw_hits = []
                 _absorb(raw_hits)
 
-        ranked = sorted(agg.values(), key=lambda e: _entry_rank_v2(e, candidates))
+        ranked = sorted(
+            agg.values(),
+            key=lambda e: _entry_rank_v2(e, candidates, wants_tests),
+        )
         return [e["hit"] for e in ranked[:limit]]
 
     def _expand_nodes(
@@ -624,9 +630,52 @@ def _unique_files(nodes: list[dict[str, Any]]) -> list[str]:
     return out
 
 
+# Test-file path conventions across languages. Detected by FILE path (robust)
+# rather than symbol name (``TestRunner`` may be production code) so we never
+# demote a real symbol. Without this, a concept query whose substring-cascade
+# hits land in test files (Go ``*_test.go``, JS ``*.spec.ts``, ...) surfaces
+# ``TestResponseWriterWrite`` ABOVE the real ``ResponseWriter`` implementation,
+# degrading the inline source and pushing the agent back to raw Reads.
+_TEST_PATH_DIRS = ("/tests/", "/test/", "/__tests__/", "/spec/", "/testdata/")
+_TEST_FILE_SUFFIXES = (
+    "_test.go",  # Go
+    "_test.py",  # Python (pytest/unittest)
+    "_test.rs",  # Rust
+    "_test.cc",
+    "_test.cpp",  # C++
+    "_spec.rb",  # Ruby
+    ".test.js",
+    ".test.jsx",
+    ".test.ts",
+    ".test.tsx",  # JS/TS
+    ".spec.js",
+    ".spec.jsx",
+    ".spec.ts",
+    ".spec.tsx",
+)
+
+
+def _is_test_file(file_path: str) -> int:
+    """Return 1 when ``file_path`` is a test file, else 0 (for rank tiers).
+
+    Path-based only — see ``_TEST_PATH_DIRS`` rationale above.
+    """
+    p = file_path.replace("\\", "/").lower()
+    base = p.rsplit("/", 1)[-1]
+    if p.startswith(("tests/", "test/", "spec/", "__tests__/", "testdata/")):
+        return 1
+    if any(d in p for d in _TEST_PATH_DIRS):
+        return 1
+    if base.endswith(_TEST_FILE_SUFFIXES):
+        return 1
+    if base.startswith("test_") and base.endswith(".py"):
+        return 1
+    return 0
+
+
 def _entry_rank(hit: dict[str, Any]) -> tuple[int, int, str, int]:
-    file_path = hit.get("file", "").replace("\\", "/")
-    is_test = int("/tests/" in file_path or file_path.startswith("tests/"))
+    file_path = hit.get("file", "")
+    is_test = _is_test_file(file_path)
     kind_rank = 0 if hit.get("kind") in {"class", "function", "method"} else 1
     return (is_test, kind_rank, hit.get("file", ""), int(hit.get("line", 0) or 0))
 
@@ -678,22 +727,44 @@ def _compound_candidates(candidates: list[str]) -> list[str]:
     return out[:12]
 
 
+# Words in the TASK that signal the user actually wants test code. When any
+# appears, the test-file demotion tier is switched off so a query like
+# "response writer tests" / "how is X tested" keeps its test symbols (Codex
+# P2 on #291). Whole-word matched against the raw task, case-insensitively.
+_TEST_INTENT_RE = re.compile(
+    r"\b(tests?|testing|tested|test[_-]?cases?|spec|specs|unit[_-]?tests?|"
+    r"benchmarks?|fixtures?)\b",
+    re.IGNORECASE,
+)
+
+
+def _task_wants_tests(task: str) -> bool:
+    """True when the task explicitly asks about test/spec/benchmark code."""
+    return bool(_TEST_INTENT_RE.search(task or ""))
+
+
 def _entry_rank_v2(
-    entry: dict[str, Any], candidates: list[str]
+    entry: dict[str, Any],
+    candidates: list[str],
+    wants_tests: bool = False,
 ) -> tuple[int, int, int, int, int, str, int]:
     """Relevance-aware ranking key for an aggregated entry-point hit.
 
     Order of precedence: non-test before test, definition kinds before refs,
     MORE matched task words first, MORE candidate hits first, better BM25
     rank, then file/line for a stable tie-break.
+
+    When ``wants_tests`` is set (the task itself asks about tests/specs), the
+    test-demotion tier is disabled so relevant test symbols are not pushed
+    past the result limit — codegraph_context takes natural-language tasks,
+    and "X tests" must be allowed to return test code (Codex P2 #291).
     """
     hit = entry["hit"]
-    file_path = hit.get("file", "").replace("\\", "/")
-    is_test = int("/tests/" in file_path or file_path.startswith("tests/"))
+    test_tier = 0 if wants_tests else _is_test_file(hit.get("file", ""))
     kind_rank = 0 if hit.get("kind") in {"class", "function", "method"} else 1
     name_match = _name_match_score(hit.get("name", ""), candidates)
     return (
-        is_test,
+        test_tier,
         kind_rank,
         -name_match,
         -int(entry.get("matches", 0)),
