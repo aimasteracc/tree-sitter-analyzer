@@ -12,6 +12,8 @@ import logging
 import sqlite3
 from typing import TYPE_CHECKING, Any, cast
 
+from .utils.test_detection import query_wants_tests, rank_tier
+
 if TYPE_CHECKING:
     pass
 
@@ -170,13 +172,20 @@ def fts_search_ranked(
     language: str | None = None,
     limit: int = 100,
 ) -> list[dict[str, Any]]:
-    """BM25-ranked FTS5 symbol search with kind-priority tie-breaking.
+    """BM25-ranked FTS5 symbol search with kind-priority and test-file demotion.
 
     Returns dicts with keys: name, kind, file, language, line, end_line, relevance_score.
     relevance_score is in [0.0, 1.0] — 1.0 = best match in this result set.
     After BM25 normalization, a kind-weight multiplier is applied so that
     class/function/method definitions rank above import statements even when
     their raw BM25 score is identical.
+
+    Test-file demotion (consistent with semantic_search.SemanticSymbolSearch):
+    Production symbols always rank above test/spec/fixture symbols unless the
+    query itself contains test-intent keywords (``query_wants_tests``). Within
+    each tier the sort is by relevance_score descending, then file + line for
+    determinism.
+
     Returns [] for queries shorter than 2 characters or on SQLite errors.
     """
     if len(query) < 2:
@@ -225,7 +234,20 @@ def fts_search_ranked(
         }
         for r in rows
     ]
-    results.sort(key=lambda x: x["relevance_score"], reverse=True)
+    # Primary: test-file demotion tier (0 = production, 1 = test/fixture).
+    # Production symbols always rank first unless the query asks about tests.
+    # Secondary: relevance_score descending (BM25 + kind weight, best first).
+    # Tertiary: file + line for a fully deterministic stable order.
+    wants_tests = query_wants_tests(query)
+    results.sort(
+        key=lambda x: (
+            rank_tier(str(x["file"]), wants_tests=wants_tests),
+            -x["relevance_score"],
+            str(x["file"]),
+            int(x["line"] or 0),
+            str(x["name"]),
+        )
+    )
     return results
 
 
