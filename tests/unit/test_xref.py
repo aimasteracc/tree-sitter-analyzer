@@ -41,7 +41,6 @@ class TestXRefEngineSymbol:
             def _get_conn(self):  # backward-compat alias
                 return self.get_conn()
 
-
         cache = MockCache()
 
         class FakeBackend:
@@ -177,6 +176,31 @@ class TestXRefEngineFile:
         engine = XRefEngine(cache)
         result = engine.file_xref("nonexistent.py")
         assert result["symbol_count"] == 0
+
+    def test_file_xref_includes_methods(self, tmp_path):
+        """Codex P2 on #314: class methods (kind='method') must appear in file
+        xref, not be dropped by a function/class-only filter. A file with only
+        a class + methods must report the methods, not just symbol_count=1."""
+        project = tmp_path / "proj_methods"
+        project.mkdir()
+        (project / "svc.py").write_text(
+            "class Service:\n"
+            "    def handle(self):\n"
+            "        pass\n\n"
+            "    def process(self):\n"
+            "        pass\n"
+        )
+        cache = ASTCache(str(project))
+        cache.index_project(max_files=100)
+
+        engine = XRefEngine(cache)
+        result = engine.file_xref("svc.py")
+        names = [s["name"] for s in result["symbols"]]
+        assert "handle" in names, f"method missing from xref: {names}"
+        assert "process" in names, f"method missing from xref: {names}"
+        assert "Service" in names
+        # class + 2 methods, all surfaced.
+        assert result["symbol_count"] >= 3
 
 
 class TestXRefResult:
