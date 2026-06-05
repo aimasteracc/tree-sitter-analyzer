@@ -60,7 +60,7 @@ def test_indexed_class_name_is_not_byte_shifted(utf8_project: Path) -> None:
     conn = sqlite3.connect(cache.db_path)
     rows = conn.execute(
         "SELECT name, kind FROM ast_symbol_rows "
-        "WHERE kind IN ('class','function') ORDER BY line"
+        "WHERE kind IN ('class','function','method') ORDER BY line"
     ).fetchall()
     cache.close()
     conn.close()

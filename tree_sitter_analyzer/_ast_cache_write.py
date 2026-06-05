@@ -327,7 +327,7 @@ def write_graph_edges_for_file(
             )
 
     for sym in symbol_items:
-        if sym.get("kind") == "function" and sym.get("class"):
+        if sym.get("kind") in ("function", "method") and sym.get("class"):
             cls_name = sym["class"]
             edges.append(
                 Edge(

@@ -207,7 +207,9 @@ class CodeGraphSitemapTool(BaseMCPTool):
                     "symbols": syms,
                     "structure": structure,
                     "symbol_count": len(syms),
-                    "functions": [s for s in syms if s.get("kind") == "function"],
+                    "functions": [
+                        s for s in syms if s.get("kind") in ("function", "method")
+                    ],
                     "classes": [s for s in syms if s.get("kind") == "class"],
                     "imports": [s for s in syms if s.get("kind") == "import"],
                 }
@@ -371,9 +373,9 @@ class CodeGraphSitemapTool(BaseMCPTool):
                     "line": sym.get("line", 0),
                     "language": f["language"],
                 }
-                if kind == "function" and sym.get("params"):
+                if kind in ("function", "method") and sym.get("params"):
                     entry["params"] = sym["params"]
-                if kind == "function" and sym.get("class"):
+                if kind in ("function", "method") and sym.get("class"):
                     entry["class"] = sym["class"]
                 by_kind[kind].append(entry)
 

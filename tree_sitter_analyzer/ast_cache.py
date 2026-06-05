@@ -631,7 +631,7 @@ class ASTCache:
             _build_function_entry(sym, row["file_path"], row["language"])
             for row in rows
             for sym in json.loads(row["symbols_json"]).get("symbols", [])
-            if sym.get("kind") == "function"
+            if sym.get("kind") in ("function", "method")
         ]
 
     def get_functions_by_file(self, file_path: str) -> list[dict[str, Any]]:
@@ -649,7 +649,7 @@ class ASTCache:
         return [
             _build_function_entry(sym, file_path, row["language"])
             for sym in json.loads(row["symbols_json"]).get("symbols", [])
-            if sym.get("kind") == "function"
+            if sym.get("kind") in ("function", "method")
         ]
 
     def get_imports(self) -> dict[str, Any]:

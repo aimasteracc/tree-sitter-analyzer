@@ -88,7 +88,7 @@ class ClassInspectTool(BaseMCPTool):
             except (json.JSONDecodeError, TypeError):
                 continue
             for sym in symbols.get("symbols", []):
-                if sym.get("kind") != "function":
+                if sym.get("kind") not in ("function", "method"):
                     continue
                 if sym.get("class") != class_name:
                     continue
@@ -125,7 +125,7 @@ class ClassInspectTool(BaseMCPTool):
             except (json.JSONDecodeError, TypeError):
                 continue
             for sym in symbols.get("symbols", []):
-                if sym.get("kind") != "function":
+                if sym.get("kind") not in ("function", "method"):
                     continue
                 if sym.get("class") in ancestor_names:
                     parent_methods.add(sym["name"])
@@ -159,7 +159,7 @@ class ClassInspectTool(BaseMCPTool):
             except (json.JSONDecodeError, TypeError):
                 continue
             for sym in symbols.get("symbols", []):
-                if sym.get("kind") != "function":
+                if sym.get("kind") not in ("function", "method"):
                     continue
                 cls = sym.get("class")
                 if cls in ancestor_names:

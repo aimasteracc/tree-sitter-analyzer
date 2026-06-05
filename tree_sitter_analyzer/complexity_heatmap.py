@@ -340,7 +340,7 @@ def analyze_file_complexity_from_cache(
     lang = row.get("language", "python")
     results: list[FunctionComplexity] = []
     for sym in sym_list:
-        if sym.get("kind") != "function":
+        if sym.get("kind") not in ("function", "method"):
             continue
         dp: dict[str, int] = sym.get("decision_points", {})
         if not dp:
