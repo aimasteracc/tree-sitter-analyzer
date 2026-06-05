@@ -8,7 +8,7 @@ from collections import OrderedDict
 from typing import TYPE_CHECKING, Any
 
 from ..callee_resolution import CalleeResolver
-from ._constants import BUILTINS_PY, STDLIB_NAMES_PY
+from ._constants import BUILTINS_PY, STDLIB_METHODS_PY, STDLIB_NAMES_PY
 from ._imports import ImportEntry
 
 if TYPE_CHECKING:
@@ -42,6 +42,7 @@ class ResolverContext:
         imports_by_file: dict[str, list[ImportEntry]] | None = None,
         builtins: dict[str, frozenset[str]] | None = None,
         stdlib_modules: dict[str, frozenset[str]] | None = None,
+        stdlib_methods: dict[str, frozenset[str]] | None = None,
         callee_resolver: CalleeResolver | None = None,
         file_languages: dict[str, str] | None = None,
         java_context: Any | None = None,
@@ -59,6 +60,7 @@ class ResolverContext:
         self._imports_by_file = imports_by_file or {}
         self._builtins = builtins or {}
         self._stdlib_modules = stdlib_modules or {}
+        self._stdlib_methods = stdlib_methods or {}
         self._callee_resolver = callee_resolver
         self._loaded = any(
             value is not None
@@ -131,6 +133,11 @@ class ResolverContext:
         return self._stdlib_modules
 
     @property
+    def stdlib_methods(self) -> dict[str, frozenset[str]]:
+        self._ensure_loaded()
+        return self._stdlib_methods
+
+    @property
     def callee_resolver(self) -> CalleeResolver | None:
         self._ensure_loaded()
         return self._callee_resolver
@@ -151,6 +158,7 @@ class ResolverContext:
         self._imports_by_file = built.imports_by_file
         self._builtins = built.builtins
         self._stdlib_modules = built.stdlib_modules
+        self._stdlib_methods = built.stdlib_methods
         self._callee_resolver = built.callee_resolver
         self._file_languages = built._file_languages  # noqa: SLF001
         self._java_context = built._java_context  # noqa: SLF001
@@ -489,6 +497,7 @@ def _build_resolver_context_uncached(cache: ASTCache) -> ResolverContext:
         imports_by_file=imports_by_file,
         builtins={"python": BUILTINS_PY},
         stdlib_modules={"python": STDLIB_NAMES_PY},
+        stdlib_methods={"python": STDLIB_METHODS_PY},
         callee_resolver=callee_resolver,
         file_languages=file_languages,
         java_context=java_context,

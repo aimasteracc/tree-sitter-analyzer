@@ -199,4 +199,88 @@ BUILTINS_PY: frozenset[str] = frozenset(
 )
 
 
-__all__ = ["BUILTINS_PY", "STDLIB_NAMES_PY"]
+# ---------------------------------------------------------------------------
+# RFC-0004: well-known stdlib/builtin METHOD names.
+#
+# The builtin/stdlib classifier above keys on *function* names (``len``) and
+# top-level *module* names (``os``); it never matches a bare *method* name like
+# ``write_text`` or ``strip``, so those call edges fall through to ``unknown``.
+# This curated table is consulted by the cascade's FINAL tier
+# (``_try_stdlib_method``) — AFTER every project-binding rule — to classify such
+# names as ``stdlib`` when (and only when) the project defines no method of that
+# name. Grouped by owning type for auditability. High-recall, not exhaustive.
+# ---------------------------------------------------------------------------
+_STR_METHODS = frozenset(
+    {
+        "strip", "lstrip", "rstrip", "lower", "upper", "title", "capitalize",
+        "casefold", "swapcase", "split", "rsplit", "splitlines", "join",
+        "startswith", "endswith", "replace", "find", "rfind", "index", "rindex",
+        "count", "format", "format_map", "encode", "decode", "zfill", "ljust",
+        "rjust", "center", "partition", "rpartition", "expandtabs", "translate",
+        "maketrans", "removeprefix", "removesuffix", "isdigit", "isalpha",
+        "isalnum", "isspace", "isupper", "islower", "istitle", "isnumeric",
+        "isdecimal", "isidentifier", "isprintable", "isascii",
+    }
+)
+_PATH_METHODS = frozenset(
+    {
+        "write_text", "read_text", "write_bytes", "read_bytes", "mkdir",
+        "exists", "is_file", "is_dir", "is_symlink", "is_absolute", "glob",
+        "rglob", "resolve", "absolute", "relative_to", "with_suffix",
+        "with_name", "with_stem", "iterdir", "unlink", "rmdir", "touch",
+        "rename", "replace", "samefile", "expanduser", "as_posix", "as_uri",
+        "joinpath", "stat", "lstat", "chmod", "lchmod", "symlink_to",
+        "hardlink_to", "owner", "group", "readlink", "match",
+    }
+)
+_DICT_LIST_SET_METHODS = frozenset(
+    {
+        "items", "keys", "values", "get", "setdefault", "update", "pop",
+        "popitem", "fromkeys", "append", "extend", "insert", "remove", "sort",
+        "reverse", "add", "discard", "union", "intersection", "difference",
+        "symmetric_difference", "issubset", "issuperset", "isdisjoint",
+        "copy", "clear", "count", "index",
+    }
+)
+_REGEX_METHODS = frozenset(
+    {
+        "group", "groups", "groupdict", "match", "fullmatch", "search",
+        "findall", "finditer", "sub", "subn", "split", "span", "start", "end",
+        "expand",
+    }
+)
+_ARGPARSE_METHODS = frozenset(
+    {
+        "add_argument", "add_subparsers", "add_parser", "parse_args",
+        "parse_known_args", "set_defaults", "get_default",
+        "add_argument_group", "add_mutually_exclusive_group", "print_help",
+        "print_usage", "error", "format_help",
+    }
+)
+_DATETIME_METHODS = frozenset(
+    {
+        "isoformat", "strftime", "strptime", "total_seconds", "timestamp",
+        "astimezone", "replace", "date", "time", "weekday", "isoweekday",
+        "fromtimestamp", "fromisoformat", "utcnow", "now", "today",
+    }
+)
+_MISC_METHODS = frozenset(
+    {
+        # contextlib / io / common protocol methods that recur as bare names.
+        "write", "writelines", "read", "readline", "readlines", "seek", "tell",
+        "flush", "close", "fileno", "getvalue",
+    }
+)
+
+STDLIB_METHODS_PY: frozenset[str] = (
+    _STR_METHODS
+    | _PATH_METHODS
+    | _DICT_LIST_SET_METHODS
+    | _REGEX_METHODS
+    | _ARGPARSE_METHODS
+    | _DATETIME_METHODS
+    | _MISC_METHODS
+)
+
+
+__all__ = ["BUILTINS_PY", "STDLIB_METHODS_PY", "STDLIB_NAMES_PY"]
