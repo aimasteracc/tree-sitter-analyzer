@@ -48,6 +48,7 @@ _ALL_ACTIONS = frozenset(
         "routes",
         "overview",
         "deps",
+        "test_gap",  # RFC-0003 pre-req: wired from orphaned CodeGraphTestGapTool
     }
 )
 
@@ -142,10 +143,10 @@ def test_health_facade_builds_and_has_all_actions() -> None:
 
 
 def test_health_facade_total_action_count() -> None:
-    """11 actions total — uml/graph/similarity moved to the ``viz`` facade."""
+    """12 actions total — uml/graph/similarity moved to viz; test_gap wired (RFC-0003)."""
     facade = build_health_facade(project_root=None)
     total = len(facade.action_map) + len(facade.bespoke_map)
-    assert total == 11
+    assert total == 12
 
 
 def test_health_facade_does_not_contain_viz_actions() -> None:
