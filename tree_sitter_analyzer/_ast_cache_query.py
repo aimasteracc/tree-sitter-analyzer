@@ -316,17 +316,25 @@ def get_stats(
     # GROUP-BY queries are effectively free.  Degrade to {} if the table is
     # absent (no-edges build) without raising.
     edges_by_kind: dict[str, int] = {}
+    total_edges = 0
     try:
         edge_kind_rows = conn.execute(
             "SELECT kind, COUNT(*) as c FROM edges GROUP BY kind"
         ).fetchall()
         edges_by_kind = {r["kind"]: r["c"] for r in edge_kind_rows}
+        # ``total_edges`` sums ALL kinds so it reconciles with ``edges_by_kind``
+        # (Codex P2 on #315): consumers can treat status as an all-edge summary
+        # where total_edges == sum(edges_by_kind). The call-edge-only count
+        # (graph-density / resolution signal) stays in get_cross_file_stats.
+        total_edges = sum(edges_by_kind.values())
     except sqlite3.OperationalError:
         edges_by_kind = {}
+        total_edges = 0
 
     stats: dict[str, Any] = {
         "total_files": total,
         "total_symbols": total_symbols,
+        "total_edges": total_edges,
         "by_language": {r["language"]: r["c"] for r in by_lang},
         "symbols_by_kind": symbols_by_kind,
         "symbols_by_language": symbols_by_language,

@@ -199,12 +199,12 @@ class CodeGraphStatusTool(BaseMCPTool):
             return None
         try:
             stats = cache.get_stats()
-            # Enrich with call-edge count for graph density signal.
-            try:
-                edge_stats = cache.get_cross_file_stats()
-                stats["total_edges"] = edge_stats.get("total", 0)
-            except Exception:
-                stats["total_edges"] = 0
+            # ``get_stats`` already reports ``total_edges`` as the sum across
+            # ALL edge kinds, reconciling with ``edges_by_kind`` (Codex P2 #315).
+            # Do NOT override it with the call-edge-only count, which made
+            # total_edges disagree with the breakdown. The call-edge resolution
+            # signal lives in get_cross_file_stats for callers that want it.
+            stats.setdefault("total_edges", 0)
             return stats
         except Exception as exc:
             logger.debug(f"ASTCache.get_stats failed: {exc}")

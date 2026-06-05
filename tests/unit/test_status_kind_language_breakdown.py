@@ -215,6 +215,31 @@ class TestGetStatsBreakdowns:
         assert stats["edges_by_kind"].get("calls") == 2
         assert stats["edges_by_kind"].get("imports") == 1
 
+    def test_total_edges_reconciles_with_edges_by_kind(self) -> None:
+        """Codex P2 #315: total_edges must equal sum(edges_by_kind) — it counts
+        ALL edge kinds, not only call edges, so the status reads as a coherent
+        all-edge summary."""
+        rows = [("ClassA", "class", "python")]
+        conn = _make_conn_with_symbols(rows)
+        _add_edges(
+            conn,
+            [("A", "calls"), ("B", "calls"), ("C", "imports"), ("D", "contains")],
+        )
+        stats = get_stats(conn, fts5_available=True, db_path=":memory:")
+        assert "total_edges" in stats, "total_edges must be present"
+        assert stats["total_edges"] == 4
+        assert stats["total_edges"] == sum(stats["edges_by_kind"].values()), (
+            "total_edges must equal the sum of the edges_by_kind breakdown"
+        )
+
+    def test_total_edges_zero_when_edges_table_absent(self) -> None:
+        """total_edges degrades to 0 (not raising) when the edges table is gone."""
+        conn = _make_conn_with_symbols([("ClassA", "class", "python")])
+        conn.execute("DROP TABLE edges")
+        conn.commit()
+        stats = get_stats(conn, fts5_available=True, db_path=":memory:")
+        assert stats.get("total_edges") == 0
+
     def test_edges_by_kind_empty_dict_when_edges_table_absent(self) -> None:
         """If edges table is absent, edges_by_kind degrades to {}."""
         conn = _make_conn_with_symbols([("ClassA", "class", "python")])
