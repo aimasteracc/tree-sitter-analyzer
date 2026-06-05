@@ -164,6 +164,14 @@ class CodeGraphStatusTool(BaseMCPTool):
             total_files=int(stats.get("total_files", 0)) if stats else 0,
             total_symbols=int(stats.get("total_symbols", 0)) if stats else 0,
             total_edges=int(stats.get("total_edges", 0)) if stats else 0,
+            # CodeGraph parity: per-kind and per-language symbol breakdowns
+            # + edges_by_kind (beyond CodeGraph — CG has no edge breakdown).
+            # Degrade to empty dicts when the underlying stats omit them.
+            symbols_by_kind=dict(stats.get("symbols_by_kind") or {}) if stats else {},
+            symbols_by_language=dict(stats.get("symbols_by_language") or {})
+            if stats
+            else {},
+            edges_by_kind=dict(stats.get("edges_by_kind") or {}) if stats else {},
             schema_version=stats.get("schema_version") if stats else None,
             fts5_available=bool(stats.get("fts5_available")) if stats else False,
             lag_seconds=lag_seconds,

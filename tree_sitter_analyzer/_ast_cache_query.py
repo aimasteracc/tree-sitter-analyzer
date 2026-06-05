@@ -261,7 +261,16 @@ def get_stats(
     fts5_available: bool | None,
     db_path: str,
 ) -> dict[str, Any]:
-    """Return aggregate index statistics."""
+    """Return aggregate index statistics.
+
+    Extended with per-kind and per-language symbol breakdowns
+    (CodeGraph parity + edges_by_kind lead).
+
+    New fields added (never raise — degrade to empty dicts):
+    - ``symbols_by_kind``     dict[str, int] — from ast_symbol_rows GROUP BY kind
+    - ``symbols_by_language`` dict[str, int] — from ast_symbol_rows GROUP BY language
+    - ``edges_by_kind``       dict[str, int] — from edges GROUP BY kind (if table exists)
+    """
     total = conn.execute("SELECT COUNT(*) as c FROM ast_index").fetchone()["c"]
     by_lang = conn.execute(
         "SELECT language, COUNT(*) as c FROM ast_index GROUP BY language ORDER BY c DESC"
@@ -279,10 +288,49 @@ def get_stats(
             len(json.loads(r["symbols_json"]).get("symbols", []))
             for r in conn.execute("SELECT symbols_json FROM ast_index").fetchall()
         )
+
+    # -- CodeGraph parity: per-kind and per-language breakdowns ---------------
+    # Both queries target ast_symbol_rows which is only populated when FTS5
+    # is available.  If the table is absent (legacy build or FTS5 disabled),
+    # or if fts5_available is falsy, we degrade to empty dicts without raising.
+    symbols_by_kind: dict[str, int] = {}
+    symbols_by_language: dict[str, int] = {}
+    if fts5_available:
+        try:
+            kind_rows = conn.execute(
+                "SELECT kind, COUNT(*) as c FROM ast_symbol_rows GROUP BY kind"
+            ).fetchall()
+            symbols_by_kind = {r["kind"]: r["c"] for r in kind_rows}
+        except sqlite3.OperationalError:
+            symbols_by_kind = {}
+        try:
+            lang_rows = conn.execute(
+                "SELECT language, COUNT(*) as c FROM ast_symbol_rows GROUP BY language"
+            ).fetchall()
+            symbols_by_language = {r["language"]: r["c"] for r in lang_rows}
+        except sqlite3.OperationalError:
+            symbols_by_language = {}
+
+    # -- Beyond CodeGraph: edge-kind breakdown --------------------------------
+    # ``edges`` has an indexed ``kind`` column (idx_edges_kind).  Two
+    # GROUP-BY queries are effectively free.  Degrade to {} if the table is
+    # absent (no-edges build) without raising.
+    edges_by_kind: dict[str, int] = {}
+    try:
+        edge_kind_rows = conn.execute(
+            "SELECT kind, COUNT(*) as c FROM edges GROUP BY kind"
+        ).fetchall()
+        edges_by_kind = {r["kind"]: r["c"] for r in edge_kind_rows}
+    except sqlite3.OperationalError:
+        edges_by_kind = {}
+
     stats: dict[str, Any] = {
         "total_files": total,
         "total_symbols": total_symbols,
         "by_language": {r["language"]: r["c"] for r in by_lang},
+        "symbols_by_kind": symbols_by_kind,
+        "symbols_by_language": symbols_by_language,
+        "edges_by_kind": edges_by_kind,
         "db_path": db_path,
         "fts5_available": bool(fts5_available),
     }
