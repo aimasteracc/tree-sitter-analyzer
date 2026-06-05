@@ -315,4 +315,17 @@ _EXTENDED_SPECS: tuple[McpCommandSpec, ...] = (
         label="Batch ripgrep search (2-10 queries via JSON file)",
         build_tool_args=_build_batch_search_tool_args,
     ),
+    McpCommandSpec(
+        flag_name="test_gap",
+        tool_attr="CodeGraphTestGapTool",
+        label="Test coverage gap analysis: untested symbols ranked by cyclomatic complexity (RFC-0003)",
+        build_tool_args=lambda args, output_format: {
+            "mode": getattr(args, "test_gap_mode", "gaps") or "gaps",
+            "file_path": getattr(args, "test_gap_file", None),
+            "language": getattr(args, "test_gap_language", None),
+            "max_files": getattr(args, "test_gap_max_files", 1000) or 1000,
+            "max_gaps": getattr(args, "test_gap_max_gaps", 50) or 50,
+            "output_format": output_format,
+        },
+    ),
 )
