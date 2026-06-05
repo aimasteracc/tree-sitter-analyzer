@@ -600,6 +600,7 @@ def test_registered_mcp_tools_have_cli_parity() -> None:
         "check_tools": ("main", "--check-tools"),
         "decision_journal": ("main", "--decision-journal"),
         "doc_sync": ("main", "--doc-sync"),
+        "codegraph_test_gap": ("main", "--test-gap"),
     }
 
     # ------------------------------------------------------------------

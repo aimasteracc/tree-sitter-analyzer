@@ -416,3 +416,35 @@ def _add_mcp_graph_nav_options(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Skip AST cache and do full project scan for --code-similarity",
     )
+    # RFC-0003: test-gap analysis
+    parser.add_argument(
+        "--test-gap",
+        action="store_true",
+        help="Test coverage gap analysis: untested symbols ranked by complexity",
+    )
+    parser.add_argument(
+        "--test-gap-mode",
+        choices=["summary", "gaps", "file"],
+        default="gaps",
+        help="Mode for --test-gap (default: gaps)",
+    )
+    parser.add_argument(
+        "--test-gap-file",
+        help="Source file for --test-gap mode=file (relative path)",
+    )
+    parser.add_argument(
+        "--test-gap-language",
+        help="Filter --test-gap to a single language (e.g. python)",
+    )
+    parser.add_argument(
+        "--test-gap-max-files",
+        type=int,
+        default=1000,
+        help="Max source files to scan for --test-gap (default: 1000)",
+    )
+    parser.add_argument(
+        "--test-gap-max-gaps",
+        type=int,
+        default=50,
+        help="Max gap results for --test-gap (default: 50)",
+    )
