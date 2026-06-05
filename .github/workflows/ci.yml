@@ -70,12 +70,16 @@ jobs:
         run: uv python install 3.11
       - name: Install (all extras)
         run: uv sync --all-extras
-      # Docs-only change: skip the heavy matrix, but still guard README count
-      # drift + structure so a prose edit can't desync the documented numbers.
-      - name: README count + structure guard
+      # Docs-only change: skip the heavy matrix, but still run EVERY doc-anchor
+      # contract — the full agent-contract suite guards README counts AND the
+      # AGENTS.md / GITFLOW.md / CLAUDE.md anchors (deleting the GitFlow link
+      # from AGENTS.md must still fail), plus the README structure test. These
+      # are fast file-read assertions, so a prose edit is validated against all
+      # documented contracts without the Win/macOS matrix.
+      - name: Doc contract + structure guard
         run: |
           uv run pytest -q \
-            tests/unit/test_agent_contracts.py::test_readme_counts_match_registry \
+            tests/unit/test_agent_contracts.py \
             tests/integration/docs/test_readme_structure.py
 
   quality-check:
