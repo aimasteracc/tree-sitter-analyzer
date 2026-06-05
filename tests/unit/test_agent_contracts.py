@@ -792,6 +792,7 @@ def test_facade_delegation_routes_each_action_to_expected_inner() -> None:
         ("health", "routes"): "RouteDetectorTool",
         ("health", "overview"): "CodeGraphOverviewTool",
         ("health", "deps"): "DependencyAnalysisTool",
+        ("health", "test_gap"): "CodeGraphTestGapTool",
         ("edit", "safe"): "SafeToEditTool",
         ("edit", "guard"): "ModificationGuardTool",
         ("edit", "impact"): "ChangeImpactTool",
