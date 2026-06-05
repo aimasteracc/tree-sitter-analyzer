@@ -1,6 +1,6 @@
 """Resource handler registration for MCP server — extracted from server.py create_server."""
 
-from typing import Any
+from typing import Any, cast
 
 from ...utils import setup_logger
 
@@ -32,7 +32,7 @@ def register_resources(server: Any, server_instance: Any) -> None:
                 mimeType=project_stats_resource.get_resource_info()["mime_type"],
             ),
             Resource(
-                uri="tsa://hyphae/{selector}",
+                uri=cast(Any, "tsa://hyphae/{selector}"),
                 name="Hyphae selector result",
                 description=(
                     "Re-evaluate a Hyphae selector expression and return the "

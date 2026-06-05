@@ -200,9 +200,13 @@ def _capture_session_obj() -> Any:
     Returns None if unavailable — the bridge degrades gracefully.
     """
     try:
-        from mcp.server import Server
+        # The current request context lives in a module-level contextvar in the
+        # MCP low-level server; accessing ``Server.request_context`` on the class
+        # returns the property descriptor, not the live context. Read the
+        # contextvar directly (populated for the duration of a tool-call handler).
+        from mcp.server.lowlevel.server import request_ctx
 
-        return Server.request_context.session
+        return request_ctx.get().session
     except Exception:
         return None
 
