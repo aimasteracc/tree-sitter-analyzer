@@ -386,13 +386,7 @@ class ASTCache:
         # time) for an IDENTICAL edge set (244,590 rows either way, verified).
         # Only refresh when insert could NOT have written them (no FTS5), where
         # this pass is the sole edge writer.
-        if not self.fts5_available:
-            try:
-                stats["edge_store_refresh"] = self._refresh_graph_edges_from_cache(
-                    indexed_files
-                )
-            except Exception:
-                logger.debug("edge store refresh failed", exc_info=True)
+        self._maybe_refresh_edge_store(stats, indexed_files)
         try:
             unresolved = self._run_unresolved_refs_backfill()
             if unresolved is not None:
@@ -409,6 +403,18 @@ class ASTCache:
         except Exception:
             logger.debug("could not mark resolution converged", exc_info=True)
 
+    def _maybe_refresh_edge_store(
+        self, stats: dict[str, Any], indexed_files: list[str]
+    ) -> None:
+        if self.fts5_available:
+            return
+        try:
+            stats["edge_store_refresh"] = self._refresh_graph_edges_from_cache(
+                indexed_files
+            )
+        except Exception:
+            logger.debug("edge store refresh failed", exc_info=True)
+
     def _refresh_graph_edges_from_cache(
         self, file_paths: list[str] | None = None
     ) -> dict[str, int]:
@@ -421,18 +427,15 @@ class ASTCache:
                 "SELECT file_path, language, symbols_json, imports_json FROM ast_index"
             ).fetchall()
         else:
-            rows = [
-                row
-                for rel_path in file_paths
-                if (
-                    row := conn.execute(
-                        "SELECT file_path, language, symbols_json, imports_json "
-                        "FROM ast_index WHERE file_path = ?",
-                        (rel_path,),
-                    ).fetchone()
-                )
-                is not None
-            ]
+            rows = []
+            for rel_path in file_paths:
+                row = conn.execute(
+                    "SELECT file_path, language, symbols_json, imports_json "
+                    "FROM ast_index WHERE file_path = ?",
+                    (rel_path,),
+                ).fetchone()
+                if row is not None:
+                    rows.append(row)
         refreshed = errors = 0
         for row in rows:
             try:
