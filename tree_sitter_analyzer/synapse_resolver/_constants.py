@@ -509,4 +509,42 @@ EXTERNAL_METHODS_PY: frozenset[str] = (
 )
 
 
-__all__ = ["BUILTINS_PY", "EXTERNAL_METHODS_PY", "STDLIB_METHODS_PY", "STDLIB_NAMES_PY"]
+# ---------------------------------------------------------------------------
+# RFC-0007: Python builtin names that legitimately appear WITH a qualifier.
+#
+# ``_try_builtin`` classifies bare builtins (no qualifier), so
+# ``setattr(obj, 'x', 1)`` → builtin.  But ``monkeypatch.setattr(...)`` has
+# a qualifier, causing ``_try_builtin`` to return None and the edge to fall
+# through to ``unknown``.
+#
+# This frozenset covers builtin names whose QUALIFIED usage (receiver.name)
+# is still overwhelmingly the Python builtin — NOT a method defined by the
+# project.  Only names whose qualified form is almost exclusively the builtin
+# are included; generic names that projects commonly define as methods are
+# deliberately EXCLUDED.
+#
+# Consulted by ``_try_builtin_method``, placed AFTER ``_try_external_method``
+# in the cascade, gated by the same language-aware project-ownership check
+# as RFC-0004/0005 tiers.
+#
+# Conservative by design — four attribute-inspection builtins dominate the
+# 688-edge residual (setattr alone is 688); anything else would risk
+# mis-classifying legitimate project methods.
+# ---------------------------------------------------------------------------
+BUILTIN_QUALIFIED_PY: frozenset[str] = frozenset(
+    {
+        "setattr",  # monkeypatch.setattr(obj, 'attr', val) — 688 edges
+        "getattr",  # obj.getattr(name, default) — receiver-qualified variant
+        "hasattr",  # obj.hasattr(name) — receiver-qualified variant
+        "delattr",  # obj.delattr(name) — receiver-qualified variant
+    }
+)
+
+
+__all__ = [
+    "BUILTIN_QUALIFIED_PY",
+    "BUILTINS_PY",
+    "EXTERNAL_METHODS_PY",
+    "STDLIB_METHODS_PY",
+    "STDLIB_NAMES_PY",
+]
