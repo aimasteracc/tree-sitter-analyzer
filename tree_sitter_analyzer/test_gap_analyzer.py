@@ -14,11 +14,12 @@ Uses the pre-indexed AST cache when available; falls back to on-demand parsing.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 from .core.parser import Parser
 from .project_graph import _language_from_ext
@@ -162,6 +163,7 @@ class CoverageGapResult:
     gaps: list[CoverageGap]
     covered: list[ProductionSymbol]
     summary: dict[str, Any] = field(default_factory=dict)
+    source: Literal["coverage", "naming"] = "naming"
 
 
 def _is_test_file(file_path: str) -> bool:
@@ -528,14 +530,113 @@ def _build_coverage_summary(
     }
 
 
+def _load_coverage_json(path: str) -> dict[str, Any] | None:
+    """Load and parse a coverage.py JSON report. Returns None on failure."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict) or "files" not in data:
+            logger.debug("coverage.json at %s has no 'files' key — ignoring", path)
+            return None
+        return data
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.debug("could not load coverage.json at %s: %s", path, exc)
+        return None
+
+
+def _discover_coverage_json(project_root: str) -> str | None:
+    """Auto-discover coverage.json at the project root. Returns path or None."""
+    candidate = os.path.join(project_root, "coverage.json")
+    return candidate if os.path.isfile(candidate) else None
+
+
+def _build_executed_lines_index(
+    coverage_data: dict[str, Any], project_root: str
+) -> dict[str, frozenset[int]]:
+    """Build {relative_file_path: frozenset(executed_line_numbers)} from coverage.json.
+
+    coverage.py stores paths relative to the working directory (usually the
+    project root). We normalise both sides to a common relative form so lookups
+    work regardless of how the coverage was recorded.
+    """
+    index: dict[str, frozenset[int]] = {}
+    abs_root = os.path.realpath(project_root)
+    for raw_path, file_info in coverage_data.get("files", {}).items():
+        executed: list[int] = file_info.get("executed_lines", [])
+        # Normalise to a path relative to the project root
+        if os.path.isabs(raw_path):
+            try:
+                rel = os.path.relpath(os.path.realpath(raw_path), abs_root)
+            except ValueError:
+                rel = raw_path
+        else:
+            rel = raw_path
+        index[rel] = frozenset(executed)
+        # Also index the final path component for short-form lookups
+        index[os.path.basename(raw_path)] = frozenset(executed)
+    return index
+
+
+def _symbol_covered_by_coverage(
+    sym: ProductionSymbol,
+    executed_index: dict[str, frozenset[int]],
+    project_root: str,
+) -> bool:
+    """True when at least one **body** line of the symbol is in executed_lines.
+
+    RFC-0003 criterion 2: the declaration/decorator line alone is not enough —
+    at least one statement inside the function body must have been executed.
+    A function whose first line is the ``def`` statement is not counted as
+    covered if only that line executed (it means the function was defined but
+    never called).
+    """
+    if sym.end_line <= sym.line:
+        return False
+    rel = os.path.relpath(sym.file_path, project_root)
+    executed = executed_index.get(rel) or executed_index.get(
+        os.path.basename(sym.file_path)
+    )
+    if not executed:
+        return False
+    # Body starts at line+1 (first line is the def/class declaration)
+    body_start = sym.line + 1
+    return any(ln in executed for ln in range(body_start, sym.end_line + 1))
+
+
 def analyze_coverage_gaps(
     project_root: str,
     *,
+    coverage_json: str | None = None,
     language_filter: str | None = None,
     max_files: int = 1000,
     max_gaps: int = 50,
     include_covered: bool = False,
 ) -> CoverageGapResult:
+    """Analyse test coverage gaps.
+
+    When *coverage_json* is provided (or auto-discovered at the project root),
+    the function uses runtime coverage data as the ground truth for whether a
+    symbol is covered. Falls back to naming-convention matching when coverage
+    data is absent or malformed (RFC-0003 criteria 1,2,3,4,5).
+    """
+    # RFC-0003 criterion 4: auto-discover coverage.json at project root
+    if coverage_json is None:
+        coverage_json = _discover_coverage_json(project_root)
+
+    # RFC-0003 criterion 5: graceful fallback — try to load, fall back on failure
+    coverage_data: dict[str, Any] | None = None
+    if coverage_json:
+        coverage_data = _load_coverage_json(coverage_json)
+        if coverage_data is None:
+            logger.debug("coverage.json unavailable; falling back to naming convention")
+
+    source: Literal["coverage", "naming"] = "coverage" if coverage_data else "naming"
+    executed_index = (
+        _build_executed_lines_index(coverage_data, project_root)
+        if coverage_data
+        else {}
+    )
+
     all_files = _collect_files(project_root, language_filter, max_files)
     prod_files = [(f, lang) for f, lang, t in all_files if not t]
     test_files = [(f, lang) for f, lang, t in all_files if t]
@@ -544,17 +645,37 @@ def analyze_coverage_gaps(
     for fpath, lang in prod_files:
         prod_symbols.extend(_scan_file(fpath, lang))
 
-    test_symbols, covered_test_names = _build_test_symbols(test_files)
-    file_class_map = _build_file_class_map(prod_symbols, project_root)
-
     parser_cache: dict[str, Any] = {}
     for sym in prod_symbols:
         if sym.kind == "function":
             sym.complexity = _get_complexity_cached(sym, parser_cache)
             sym.risk = _risk_band(sym.complexity)
 
-    gaps, covered = _classify_gaps(
-        prod_symbols, covered_test_names, file_class_map, project_root
+    if coverage_data:
+        # RFC-0003 criterion 1+2: coverage.json is ground truth.
+        # A symbol is covered when ≥1 body line was executed (criterion 2).
+        gaps = []
+        covered = []
+        for sym in prod_symbols:
+            if _symbol_covered_by_coverage(sym, executed_index, project_root):
+                covered.append(sym)
+            else:
+                gap = CoverageGap(
+                    symbol=sym,
+                    priority=sym.risk or "low",
+                    reason="No body line executed per coverage.json",
+                    suggestion=f"Add a test that invokes {sym.name}",
+                )
+                gaps.append(gap)
+    else:
+        test_symbols, covered_test_names = _build_test_symbols(test_files)
+        file_class_map = _build_file_class_map(prod_symbols, project_root)
+        gaps, covered = _classify_gaps(
+            prod_symbols, covered_test_names, file_class_map, project_root
+        )
+
+    test_symbols_count = (
+        len(_build_test_symbols(test_files)[0]) if not coverage_data else 0
     )
     gaps.sort(key=lambda g: _priority_score(g.symbol), reverse=True)
 
@@ -564,7 +685,7 @@ def analyze_coverage_gaps(
 
     return CoverageGapResult(
         total_production_symbols=stats["total"],
-        total_test_symbols=len(test_symbols),
+        total_test_symbols=test_symbols_count,
         covered_count=stats["covered_count"],
         gap_count=stats["gap_count"],
         coverage_pct=stats["coverage_pct"],
@@ -576,7 +697,9 @@ def analyze_coverage_gaps(
             "by_language": stats["by_language"],
             "production_files": len(prod_files),
             "test_files": len(test_files),
+            "coverage_source": source,
         },
+        source=source,
     )
 
 

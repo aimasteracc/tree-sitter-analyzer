@@ -1,6 +1,6 @@
 # RFC-0003: Coverage-aware test-gap analysis
 
-- **Status**: draft
+- **Status**: in-progress
 - **Author(s)**: @aimasteracc
 - **Created**: 2026-06-04
 - **Last updated**: 2026-06-04
@@ -213,11 +213,11 @@ The failing tests this RFC will be implemented against:
 
 ## Acceptance criteria
 
-- [ ] `analyze_coverage_gaps` accepts `coverage_json` and prefers it as ground truth
-- [ ] Coverage verdict requires an executed **body** line (declaration/decorator lines excluded) — Codex P1
-- [ ] `CoverageGapResult.source` distinguishes `"coverage"` vs `"naming"`
-- [ ] Auto-discovery of `coverage.json` (project root) + explicit override
-- [ ] Graceful fallback to naming on missing/malformed coverage data
+- [x] `analyze_coverage_gaps` accepts `coverage_json` and prefers it as ground truth
+- [x] Coverage verdict requires an executed **body** line (declaration/decorator lines excluded) — Codex P1
+- [x] `CoverageGapResult.source` distinguishes `"coverage"` vs `"naming"`
+- [x] Auto-discovery of `coverage.json` (project root) + explicit override
+- [x] Graceful fallback to naming on missing/malformed coverage data
 - [ ] Static-graph enrichment (who-tests / impact / priority) attached to gaps
 - [ ] `CodeGraphTestGapTool` wired into the `health` facade (`action="test_gap"`)
 - [ ] CLI `--test-gap` flag added
