@@ -20,6 +20,10 @@ jobs:
     name: Route CI
     runs-on: ubuntu-latest
     outputs:
+      run_quality: ${{ steps.route.outputs.run_quality }}
+      run_test_matrix: ${{ steps.route.outputs.run_test_matrix }}
+      run_build: ${{ steps.route.outputs.run_build }}
+      run_docs_check: ${{ steps.route.outputs.run_docs_check }}
       run_e2e_smoke: ${{ steps.route.outputs.run_e2e_smoke }}
       run_regression: ${{ steps.route.outputs.run_regression }}
       regression_scope: ${{ steps.route.outputs.regression_scope }}
@@ -48,15 +52,43 @@ jobs:
         run: python3 scripts/ci_route.py --files changed-files.txt --github-output "$GITHUB_OUTPUT"
         shell: bash
 
+  docs-check:
+    name: Docs Check
+    needs: route
+    if: needs.route.outputs.run_docs_check == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+      - name: Install (all extras)
+        run: uv sync --all-extras
+      # Docs-only change: skip the heavy matrix, but still guard README count
+      # drift + structure so a prose edit can't desync the documented numbers.
+      - name: README count + structure guard
+        run: |
+          uv run pytest -q \
+            tests/unit/test_agent_contracts.py::test_readme_counts_match_registry \
+            tests/integration/docs/test_readme_structure.py
+
   quality-check:
     name: Code Quality
     needs: route
+    if: needs.route.outputs.run_quality == 'true'
     uses: ./.github/workflows/reusable-quality.yml
     secrets: inherit  # pragma: allowlist secret
 
   test:
     name: Test Suite
-    needs: quality-check
+    needs: [route, quality-check]
+    if: needs.route.outputs.run_test_matrix == 'true'
     uses: ./.github/workflows/reusable-test.yml
     with:
       matrix-profile: ${{ github.event_name == 'pull_request' && 'pr' || 'full' }}
@@ -64,7 +96,8 @@ jobs:
 
   build:
     name: Build Verification
-    needs: test
+    needs: [route, test]
+    if: needs.route.outputs.run_build == 'true'
     uses: ./.github/workflows/reusable-build.yml
 
   e2e:
@@ -130,7 +163,7 @@ jobs:
 
   quality-gate:
     name: Quality Gate
-    needs: [route, test, quality-check, build, e2e, regression, sql-platform-compat]
+    needs: [route, docs-check, test, quality-check, build, e2e, regression, sql-platform-compat]
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -148,7 +181,9 @@ jobs:
             fi
           }
 
-          check_optional() {
+          # Routed jobs: a deliberate ``skipped`` (the route turned the job off)
+          # is acceptable; only ``failure``/``cancelled`` rejects the gate.
+          check_routed() {
             local name="$1"
             local result="$2"
             if [[ "$result" == "failure" || "$result" == "cancelled" ]]; then
@@ -159,13 +194,32 @@ jobs:
             fi
           }
 
-          check_required "Route CI" "${{ needs.route.result }}"
-          check_required "Quality Checks" "${{ needs.quality-check.result }}"
-          check_required "Test Suite" "${{ needs.test.result }}"
-          check_required "Build Verification" "${{ needs.build.result }}"
+          check_optional() {
+            check_routed "$1" "$2"
+          }
+
+          ROUTE="${{ needs.route.result }}"
+          DOCS="${{ needs.docs-check.result }}"
+          TEST="${{ needs.test.result }}"
+
+          check_required "Route CI" "$ROUTE"
+          # quality/test/build are skipped on a docs-only change; docs-check
+          # runs instead. Each is rejected only on a real failure.
+          check_routed "Docs Check" "$DOCS"
+          check_routed "Quality Checks" "${{ needs.quality-check.result }}"
+          check_routed "Test Suite" "$TEST"
+          check_routed "Build Verification" "${{ needs.build.result }}"
           check_optional "E2E Tests" "${{ needs.e2e.result }}"
           check_optional "Regression Tests" "${{ needs.regression.result }}"
           check_optional "SQL Platform Compatibility" "${{ needs.sql-platform-compat.result }}"
+
+          # Belt-and-suspenders: SOMETHING substantive must have run. Reject a
+          # run where neither the test matrix nor the docs-check executed (guards
+          # against a route misfire that skips everything).
+          if [[ "$TEST" == "skipped" && "$DOCS" == "skipped" ]]; then
+            echo "❌ Neither Test Suite nor Docs Check ran — route misfire?" >> $GITHUB_STEP_SUMMARY
+            SUCCESS=false
+          fi
 
           if [ "$SUCCESS" = true ]; then
             echo "✅ All systems go! This version meets our authority standards." >> $GITHUB_STEP_SUMMARY

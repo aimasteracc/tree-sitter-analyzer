@@ -8,6 +8,17 @@ always:
   upload_coverage: true
   full_language_once: true
 
+# A change whose files ALL match these globs (and none trip full_suite) is
+# "docs-only": skip the heavy Win/macOS test matrix + build, and run only the
+# lightweight docs-check (README count/structure tests). README count drift is
+# still caught because docs-check runs test_readme_counts_match_registry.
+docs_only:
+  - "*.md"
+  - "**/*.md"
+  - "docs/**"
+  - "rfcs/**"
+  - "LICENSE"
+
 full_suite:
   - ".github/workflows/ci.yml"
   - ".github/workflows/reusable-test.yml"
