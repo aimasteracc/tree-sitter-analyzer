@@ -212,63 +212,201 @@ BUILTINS_PY: frozenset[str] = frozenset(
 # ---------------------------------------------------------------------------
 _STR_METHODS = frozenset(
     {
-        "strip", "lstrip", "rstrip", "lower", "upper", "title", "capitalize",
-        "casefold", "swapcase", "split", "rsplit", "splitlines", "join",
-        "startswith", "endswith", "replace", "find", "rfind", "index", "rindex",
-        "count", "format", "format_map", "encode", "decode", "zfill", "ljust",
-        "rjust", "center", "partition", "rpartition", "expandtabs", "translate",
-        "maketrans", "removeprefix", "removesuffix", "isdigit", "isalpha",
-        "isalnum", "isspace", "isupper", "islower", "istitle", "isnumeric",
-        "isdecimal", "isidentifier", "isprintable", "isascii",
+        "strip",
+        "lstrip",
+        "rstrip",
+        "lower",
+        "upper",
+        "title",
+        "capitalize",
+        "casefold",
+        "swapcase",
+        "split",
+        "rsplit",
+        "splitlines",
+        "join",
+        "startswith",
+        "endswith",
+        "replace",
+        "find",
+        "rfind",
+        "index",
+        "rindex",
+        "count",
+        "format",
+        "format_map",
+        "encode",
+        "decode",
+        "zfill",
+        "ljust",
+        "rjust",
+        "center",
+        "partition",
+        "rpartition",
+        "expandtabs",
+        "translate",
+        "maketrans",
+        "removeprefix",
+        "removesuffix",
+        "isdigit",
+        "isalpha",
+        "isalnum",
+        "isspace",
+        "isupper",
+        "islower",
+        "istitle",
+        "isnumeric",
+        "isdecimal",
+        "isidentifier",
+        "isprintable",
+        "isascii",
     }
 )
 _PATH_METHODS = frozenset(
     {
-        "write_text", "read_text", "write_bytes", "read_bytes", "mkdir",
-        "exists", "is_file", "is_dir", "is_symlink", "is_absolute", "glob",
-        "rglob", "resolve", "absolute", "relative_to", "with_suffix",
-        "with_name", "with_stem", "iterdir", "unlink", "rmdir", "touch",
-        "rename", "replace", "samefile", "expanduser", "as_posix", "as_uri",
-        "joinpath", "stat", "lstat", "chmod", "lchmod", "symlink_to",
-        "hardlink_to", "owner", "group", "readlink", "match",
+        "write_text",
+        "read_text",
+        "write_bytes",
+        "read_bytes",
+        "mkdir",
+        "exists",
+        "is_file",
+        "is_dir",
+        "is_symlink",
+        "is_absolute",
+        "glob",
+        "rglob",
+        "resolve",
+        "absolute",
+        "relative_to",
+        "with_suffix",
+        "with_name",
+        "with_stem",
+        "iterdir",
+        "unlink",
+        "rmdir",
+        "touch",
+        "rename",
+        "replace",
+        "samefile",
+        "expanduser",
+        "as_posix",
+        "as_uri",
+        "joinpath",
+        "stat",
+        "lstat",
+        "chmod",
+        "lchmod",
+        "symlink_to",
+        "hardlink_to",
+        "owner",
+        "group",
+        "readlink",
+        "match",
     }
 )
 _DICT_LIST_SET_METHODS = frozenset(
     {
-        "items", "keys", "values", "get", "setdefault", "update", "pop",
-        "popitem", "fromkeys", "append", "extend", "insert", "remove", "sort",
-        "reverse", "add", "discard", "union", "intersection", "difference",
-        "symmetric_difference", "issubset", "issuperset", "isdisjoint",
-        "copy", "clear", "count", "index",
+        "items",
+        "keys",
+        "values",
+        "get",
+        "setdefault",
+        "update",
+        "pop",
+        "popitem",
+        "fromkeys",
+        "append",
+        "extend",
+        "insert",
+        "remove",
+        "sort",
+        "reverse",
+        "add",
+        "discard",
+        "union",
+        "intersection",
+        "difference",
+        "symmetric_difference",
+        "issubset",
+        "issuperset",
+        "isdisjoint",
+        "copy",
+        "clear",
+        "count",
+        "index",
     }
 )
 _REGEX_METHODS = frozenset(
     {
-        "group", "groups", "groupdict", "match", "fullmatch", "search",
-        "findall", "finditer", "sub", "subn", "split", "span", "start", "end",
+        "group",
+        "groups",
+        "groupdict",
+        "match",
+        "fullmatch",
+        "search",
+        "findall",
+        "finditer",
+        "sub",
+        "subn",
+        "split",
+        "span",
+        "start",
+        "end",
         "expand",
     }
 )
 _ARGPARSE_METHODS = frozenset(
     {
-        "add_argument", "add_subparsers", "add_parser", "parse_args",
-        "parse_known_args", "set_defaults", "get_default",
-        "add_argument_group", "add_mutually_exclusive_group", "print_help",
-        "print_usage", "error", "format_help",
+        "add_argument",
+        "add_subparsers",
+        "add_parser",
+        "parse_args",
+        "parse_known_args",
+        "set_defaults",
+        "get_default",
+        "add_argument_group",
+        "add_mutually_exclusive_group",
+        "print_help",
+        "print_usage",
+        "error",
+        "format_help",
     }
 )
 _DATETIME_METHODS = frozenset(
     {
-        "isoformat", "strftime", "strptime", "total_seconds", "timestamp",
-        "astimezone", "replace", "date", "time", "weekday", "isoweekday",
-        "fromtimestamp", "fromisoformat", "utcnow", "now", "today",
+        "isoformat",
+        "strftime",
+        "strptime",
+        "total_seconds",
+        "timestamp",
+        "astimezone",
+        "replace",
+        "date",
+        "time",
+        "weekday",
+        "isoweekday",
+        "fromtimestamp",
+        "fromisoformat",
+        "utcnow",
+        "now",
+        "today",
     }
 )
 _MISC_METHODS = frozenset(
     {
         # contextlib / io / common protocol methods that recur as bare names.
-        "write", "writelines", "read", "readline", "readlines", "seek", "tell",
-        "flush", "close", "fileno", "getvalue",
+        "write",
+        "writelines",
+        "read",
+        "readline",
+        "readlines",
+        "seek",
+        "tell",
+        "flush",
+        "close",
+        "fileno",
+        "getvalue",
     }
 )
 
@@ -283,4 +421,92 @@ STDLIB_METHODS_PY: frozenset[str] = (
 )
 
 
-__all__ = ["BUILTINS_PY", "STDLIB_METHODS_PY", "STDLIB_NAMES_PY"]
+# ---------------------------------------------------------------------------
+# RFC-0005: well-known EXTERNAL (third-party) library METHOD names.
+#
+# These are method names that are overwhelmingly associated with test-framework
+# libraries (pytest, hypothesis, unittest.mock) and whose appearance as bare
+# call edges almost certainly means the caller is invoking a third-party library,
+# not a project-defined method.
+#
+# Consulted by the cascade's ``_try_external_method`` tier — placed AFTER
+# ``_try_stdlib_method`` — to classify such names as ``external`` when (and only
+# when) the project defines no compatible-language method of that name.  Grouped
+# by owning library for auditability.  High-recall, conservative — only names
+# that are overwhelmingly test-framework.  Ambiguous/generic names (``settings``,
+# ``debug``, ``draw``, ``execute``, ``language``) that projects commonly define
+# are deliberately EXCLUDED; the project-ownership gate protects other names.
+#
+# Rationale on ``setattr`` (688 occurrences in the gap): it is the BUILTIN
+# ``setattr`` called as ``monkeypatch.setattr(...)`` — the qualifier makes
+# ``_try_builtin`` (which requires no qualifier) skip it.  Since ``setattr``
+# is genuinely a Python builtin (already in BUILTINS_PY), classifying it
+# ``external`` here would be misleading.  It is therefore left as a known
+# residual for a future ``_try_builtin_method`` tier or receiver-type inference.
+# ---------------------------------------------------------------------------
+
+# pytest — fixture methods and helpers
+_PYTEST_METHODS = frozenset(
+    {
+        "raises",  # pytest.raises(...)
+        "skip",  # pytest.skip(...)
+        "skipif",  # pytest.mark.skipif / @pytest.mark.skipif
+        "parametrize",  # @pytest.mark.parametrize
+        "fixture",  # @pytest.fixture
+        "mark",  # pytest.mark
+        "approx",  # pytest.approx(...)
+        "warns",  # pytest.warns(...)
+        "deprecated_call",  # pytest.deprecated_call(...)
+        "readouterr",  # capsys.readouterr() / capfd.readouterr()
+        "monkeypatch",  # monkeypatch fixture (as receiver name)
+    }
+)
+
+# hypothesis — core strategies and decorators
+_HYPOTHESIS_METHODS = frozenset(
+    {
+        "given",  # @given(...)
+        "integers",  # st.integers(...)
+        "sampled_from",  # st.sampled_from(...)
+        "characters",  # st.characters(...)
+        "text",  # st.text(...)
+        "floats",  # st.floats(...)
+        "lists",  # st.lists(...)
+        "dictionaries",  # st.dictionaries(...)
+        "tuples",  # st.tuples(...)
+        "booleans",  # st.booleans(...)
+        "composite",  # @st.composite
+        "assume",  # assume(...)
+        "note",  # note(...)
+        "target",  # target(...)
+        "event",  # event(...)
+        "reproduce_failure",  # @reproduce_failure(...)
+    }
+)
+
+# unittest.mock — mock assertion and configuration methods
+_MOCK_METHODS = frozenset(
+    {
+        "assert_called_once_with",  # mock.assert_called_once_with(...)
+        "assert_called_once",  # mock.assert_called_once()
+        "assert_called_with",  # mock.assert_called_with(...)
+        "assert_called",  # mock.assert_called()
+        "assert_not_called",  # mock.assert_not_called()
+        "assert_any_call",  # mock.assert_any_call(...)
+        "assert_has_calls",  # mock.assert_has_calls(...)
+        "call_args_list",  # mock.call_args_list
+        "mock_calls",  # mock.mock_calls
+        "reset_mock",  # mock.reset_mock()
+        "configure_mock",  # mock.configure_mock(...)
+        "MagicMock",  # MagicMock(...) — constructor but used as call
+        "patch",  # @patch(...) / patch(...)
+        "call",  # call(...) — mock call object
+    }
+)
+
+EXTERNAL_METHODS_PY: frozenset[str] = (
+    _PYTEST_METHODS | _HYPOTHESIS_METHODS | _MOCK_METHODS
+)
+
+
+__all__ = ["BUILTINS_PY", "EXTERNAL_METHODS_PY", "STDLIB_METHODS_PY", "STDLIB_NAMES_PY"]
