@@ -91,6 +91,10 @@ _EXTENDED_SPECS: tuple[McpCommandSpec, ...] = (
             "max_nodes": getattr(args, "codegraph_context_max_nodes", 30),
             "max_code_blocks": getattr(args, "codegraph_context_max_code_blocks", 5),
             "output_format": output_format,
+            # RFC-0006: expose include_graph flag for CLI parity with MCP default.
+            "include_graph": bool(
+                getattr(args, "codegraph_context_include_graph", False)
+            ),
         },
     ),
     # CodeGraph parity gap-closure (2026-05-24): codegraph_explore replaces

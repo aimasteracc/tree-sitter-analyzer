@@ -161,7 +161,14 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
         Resolution order: explicit ``task`` > ``symbol`` > ``query``.
         """
         # Build the projected args set that context inner accepts.
-        inner_keys = ("task", "max_nodes", "max_code_blocks", "output_format")
+        # RFC-0006: include_graph added for progressive disclosure opt-in.
+        inner_keys = (
+            "task",
+            "max_nodes",
+            "max_code_blocks",
+            "output_format",
+            "include_graph",
+        )
         context_args: dict[str, Any] = {
             k: v for k, v in args.items() if k in inner_keys
         }

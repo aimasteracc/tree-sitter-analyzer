@@ -138,6 +138,7 @@ def _args(**overrides: Any) -> Namespace:
                 "max_nodes": 30,
                 "max_code_blocks": 8,
                 "output_format": "json",
+                "include_graph": False,  # RFC-0006: lean default
             },
         ),
         (

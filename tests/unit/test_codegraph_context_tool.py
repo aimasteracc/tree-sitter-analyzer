@@ -1016,7 +1016,10 @@ def test_build_code_blocks_keeps_short_bodies_untruncated(tmp_path: Path) -> Non
 
 @pytest.mark.asyncio
 async def test_context_caps_inline_edges(indexed_project: Path) -> None:
-    """execute() caps echoed edges to _MAX_INLINE_EDGES and records the total."""
+    """execute() with include_graph=true caps echoed edges and records totals.
+
+    RFC-0006: edges are only present in the full-graph path (include_graph=true).
+    """
     from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
         _MAX_INLINE_EDGES,
         CodeGraphContextTool,
@@ -1027,6 +1030,7 @@ async def test_context_caps_inline_edges(indexed_project: Path) -> None:
         {
             "task": "trace handle_request to UserService.get_user",
             "output_format": "json",
+            "include_graph": True,
         }
     )
 
@@ -1039,6 +1043,7 @@ async def test_context_caps_inline_edges(indexed_project: Path) -> None:
 async def test_context_returns_entry_points_graph_and_source(
     indexed_project: Path,
 ) -> None:
+    """include_graph=true returns entry points, nodes, edges, and source blocks."""
     from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
         CodeGraphContextTool,
     )
@@ -1048,6 +1053,7 @@ async def test_context_returns_entry_points_graph_and_source(
         {
             "task": "trace handle_request to UserService.get_user",
             "output_format": "json",
+            "include_graph": True,
         }
     )
 
@@ -1132,3 +1138,249 @@ async def test_context_not_found_is_a_successful_stop_signal(
     assert result["verdict"] == "NOT_FOUND"
     assert result["entry_points"] == []
     assert "codegraph_symbol_search" in result["agent_summary"]["next_step"]
+
+
+# ---------------------------------------------------------------------------
+# RFC-0006: Progressive disclosure — lean default, opt-in full graph
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_context_lean_default_omits_nodes_edges(
+    indexed_project: Path,
+) -> None:
+    """Default call (no include_graph) must omit nodes/edges, include related_symbols.
+
+    RED on current code — current code always returns nodes and edges keys.
+    After RFC-0006 implementation: default omits the verbose adjacency dump.
+    """
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        CodeGraphContextTool,
+    )
+
+    tool = CodeGraphContextTool(str(indexed_project))
+    # Default: include_graph not passed (defaults to False)
+    lean_result = await tool.execute(
+        {
+            "task": "trace handle_request to UserService.get_user",
+            "output_format": "json",
+        }
+    )
+    full_result = await tool.execute(
+        {
+            "task": "trace handle_request to UserService.get_user",
+            "output_format": "json",
+            "include_graph": True,
+        }
+    )
+
+    # Lean result must NOT have nodes/edges keys
+    assert "nodes" not in lean_result, "lean default must omit 'nodes'"
+    assert "edges" not in lean_result, "lean default must omit 'edges'"
+
+    # Lean result MUST have related_symbols and code_blocks
+    assert "related_symbols" in lean_result
+    assert "code_blocks" in lean_result
+    assert lean_result["success"] is True
+
+    # Full result must still have nodes and edges
+    assert "nodes" in full_result
+    assert "edges" in full_result
+
+    # Lean payload must be materially smaller.
+    # The ≥40% threshold applies at real-world scale (30 nodes / 37 edges).
+    # The test fixture is tiny (5 symbols), so the minimum threshold is lower
+    # here — but the lean path MUST still be strictly smaller because nodes/edges
+    # are omitted even when small.
+    import json
+
+    lean_chars = len(json.dumps(lean_result))
+    full_chars = len(json.dumps(full_result))
+    assert lean_chars < full_chars, (
+        f"lean payload must be smaller than full; got lean={lean_chars}, full={full_chars}"
+    )
+    reduction = (full_chars - lean_chars) / full_chars
+    # On a realistic project with 30+ nodes/37+ edges the reduction exceeds 40%.
+    # The fixture is a 5-symbol project, so we assert ≥20% to confirm savings.
+    assert reduction >= 0.20, (
+        f"RFC-0006 requires meaningful payload reduction; got {reduction:.1%} "
+        f"(lean={lean_chars}, full={full_chars})"
+    )
+
+
+@pytest.mark.asyncio
+async def test_context_include_graph_true_returns_full_nodes_edges(
+    indexed_project: Path,
+) -> None:
+    """include_graph=true must return the full nodes + edges (back-compat)."""
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        CodeGraphContextTool,
+    )
+
+    tool = CodeGraphContextTool(str(indexed_project))
+    result = await tool.execute(
+        {
+            "task": "trace handle_request to UserService.get_user",
+            "output_format": "json",
+            "include_graph": True,
+        }
+    )
+
+    assert result["success"] is True
+    assert "nodes" in result
+    assert isinstance(result["nodes"], list)
+    assert len(result["nodes"]) > 0
+    assert "edges" in result
+    assert isinstance(result["edges"], list)
+    # Back-compat: stats still has per-inline counts
+    assert "nodes" in result["stats"]
+    assert "edges" in result["stats"]
+
+
+@pytest.mark.asyncio
+async def test_context_include_graph_string_false_stays_lean(
+    indexed_project: Path,
+) -> None:
+    """Codex P2 #320: include_graph='false' / '0' (JS-style string) must stay
+    lean, not take the full-graph path (bool('false') is True)."""
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        CodeGraphContextTool,
+    )
+
+    tool = CodeGraphContextTool(str(indexed_project))
+    for falsey in ("false", "0", "no", "off"):
+        result = await tool.execute(
+            {
+                "task": "trace handle_request to UserService.get_user",
+                "output_format": "json",
+                "include_graph": falsey,
+            }
+        )
+        assert result["success"] is True
+        # Lean path: no bulky edges echoed for a string-falsey value.
+        assert not result.get("edges"), (
+            f"include_graph={falsey!r} must stay lean, got edges"
+        )
+    # And a string-truthy value still opens the graph.
+    result_true = await tool.execute(
+        {
+            "task": "trace handle_request to UserService.get_user",
+            "output_format": "json",
+            "include_graph": "true",
+        }
+    )
+    assert result_true.get("nodes"), "include_graph='true' must return the graph"
+
+
+@pytest.mark.asyncio
+async def test_context_lean_stats_advertise_graph_totals(
+    indexed_project: Path,
+) -> None:
+    """Lean response stats must expose nodes_total and edges_total.
+
+    The agent needs to know more graph is available before deciding to
+    re-request with include_graph=true — totals are the progressive-disclosure
+    contract.
+    """
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        CodeGraphContextTool,
+    )
+
+    tool = CodeGraphContextTool(str(indexed_project))
+    result = await tool.execute(
+        {
+            "task": "trace handle_request to UserService.get_user",
+            "output_format": "json",
+        }
+    )
+
+    stats = result["stats"]
+    assert "nodes_total" in stats, "lean stats must advertise nodes_total"
+    assert "edges_total" in stats, "lean stats must advertise edges_total"
+    assert isinstance(stats["nodes_total"], int)
+    assert isinstance(stats["edges_total"], int)
+
+    # next_step must mention include_graph so agent knows the opt-in flag
+    next_step = result["agent_summary"]["next_step"]
+    assert "include_graph" in next_step, (
+        f"next_step must mention 'include_graph' flag; got: {next_step!r}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_context_related_symbols_grouped_by_file(
+    indexed_project: Path,
+) -> None:
+    """related_symbols must be a list of {file, symbols:[name:line]} dicts."""
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        CodeGraphContextTool,
+    )
+
+    tool = CodeGraphContextTool(str(indexed_project))
+    result = await tool.execute(
+        {
+            "task": "trace handle_request to UserService.get_user",
+            "output_format": "json",
+        }
+    )
+
+    related = result.get("related_symbols", [])
+    assert isinstance(related, list)
+    # With an indexed project we expect at least one file group
+    assert len(related) > 0
+
+    for group in related:
+        assert "file" in group, f"each group must have 'file'; got {group!r}"
+        assert "symbols" in group, f"each group must have 'symbols'; got {group!r}"
+        assert isinstance(group["symbols"], list)
+        for sym in group["symbols"]:
+            assert isinstance(sym, str)
+            # Format must be "name:line"
+            assert ":" in sym, f"symbol entry must be 'name:line'; got {sym!r}"
+            parts = sym.rsplit(":", 1)
+            assert parts[1].isdigit(), f"symbol line must be a digit; got {sym!r}"
+
+
+def test_build_related_symbols_groups_by_file() -> None:
+    """Unit test for _build_related_symbols pure function."""
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        _build_related_symbols,
+        _node_id,
+    )
+
+    nodes = [
+        {
+            "id": _node_id("alpha", "a.py", 10),
+            "name": "alpha",
+            "file": "a.py",
+            "line": 10,
+        },
+        {
+            "id": _node_id("beta", "b.py", 5),
+            "name": "beta",
+            "file": "b.py",
+            "line": 5,
+        },
+        {
+            "id": _node_id("gamma", "a.py", 20),
+            "name": "gamma",
+            "file": "a.py",
+            "line": 20,
+        },
+        # Node with no file should be skipped
+        {"id": "no-file", "name": "orphan", "file": "", "line": 1},
+    ]
+
+    groups = _build_related_symbols(nodes)
+
+    assert isinstance(groups, list)
+    # Two distinct files: a.py and b.py
+    files = {g["file"] for g in groups}
+    assert files == {"a.py", "b.py"}
+
+    a_group = next(g for g in groups if g["file"] == "a.py")
+    # Sorted by line: alpha:10 before gamma:20
+    assert a_group["symbols"] == ["alpha:10", "gamma:20"]
+
+    b_group = next(g for g in groups if g["file"] == "b.py")
+    assert b_group["symbols"] == ["beta:5"]
