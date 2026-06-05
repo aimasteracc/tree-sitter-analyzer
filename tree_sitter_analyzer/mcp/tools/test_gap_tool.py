@@ -58,6 +58,15 @@ TOOL_SCHEMA: dict[str, Any] = {
             "description": "Include covered symbols in response (default: false).",
             "default": False,
         },
+        "coverage_json": {
+            "type": "string",
+            "description": (
+                "Path to a coverage.py JSON report (coverage.json). "
+                "When provided, runtime coverage is used as ground truth "
+                "instead of naming convention. Auto-discovered at project root "
+                "when not supplied (RFC-0003)."
+            ),
+        },
         "output_format": {
             "type": "string",
             "enum": ["json", "toon", "summary", "total_only"],
@@ -106,10 +115,12 @@ class CodeGraphTestGapTool(BaseMCPTool):
         include_covered = arguments.get("include_covered", False)
         output_format = arguments.get("output_format", "json")
         target_file = arguments.get("file_path") or None
+        coverage_json = arguments.get("coverage_json") or None
 
         try:
             result = analyze_coverage_gaps(
                 self.project_root,
+                coverage_json=coverage_json,
                 language_filter=language_filter,
                 max_files=max_files,
                 max_gaps=max_gaps,
