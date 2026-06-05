@@ -30,7 +30,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .._language_family import languages_compatible
-from ._constants import BUILTINS_PY, STDLIB_METHODS_PY, STDLIB_NAMES_PY
+from ._constants import (
+    BUILTINS_PY,
+    EXTERNAL_METHODS_PY,
+    STDLIB_METHODS_PY,
+    STDLIB_NAMES_PY,
+)
 from ._context import ResolverContext, build_resolver_context, is_enabled
 from ._imports import ImportEntry, parse_imports
 
@@ -242,6 +247,42 @@ def _try_stdlib_method(
     return ResolvedCallee(None, "stdlib", "")
 
 
+def _try_external_method(
+    base: str, qualifier: str, caller_file: str, ctx: ResolverContext
+) -> ResolvedCallee | None:
+    """RFC-0005 FINAL tier: classify a bare third-party library method name as
+    ``external`` — but only when the project owns no compatible-language method
+    of that name.
+
+    Runs AFTER ``_try_stdlib_method`` (itself the last tier before ``unknown``),
+    so stdlib wins over external, and every project-binding rule still wins first.
+    The project-symbol gate is language-aware (same pattern as Codex P2 #319 fix
+    in ``_try_stdlib_method``): an incompatible-language symbol does NOT count as
+    project ownership.
+
+    Covers pytest, hypothesis, and unittest.mock method names that cannot live in
+    the project and would otherwise remain ``unknown``.
+    """
+    if base not in ctx.external_methods.get("python", frozenset()):
+        return None
+    if ctx.callee_resolver is not None:
+        caller_lang = ctx.file_languages.get(caller_file, "")
+        matches = ctx.callee_resolver.resolve_items(
+            base, "", include_local=False, include_import=False
+        )
+        for item, _confidence in matches:
+            item_lang = ctx.file_languages.get(_item_file(item), "")
+            # A project method the caller's language could actually call → the
+            # project owns the name; leave ``unknown`` rather than claim external.
+            if (
+                not caller_lang
+                or not item_lang
+                or languages_compatible(caller_lang, item_lang)
+            ):
+                return None
+    return ResolvedCallee(None, "external", "")
+
+
 def _try_single_global(
     base: str, qualifier: str, ctx: ResolverContext
 ) -> ResolvedCallee | None:
@@ -399,9 +440,13 @@ def _resolve_callee_python(
         lambda: _try_unique_method(base, qualifier, ctx),
         # Builtin is the last NAME resort: only fires when no project binding exists.
         lambda: _try_builtin(base, qualifier, ctx),
-        # RFC-0004: stdlib METHOD names (write_text, strip, items, …) — the true
-        # final tier, gated on the project owning no compatible-language method.
+        # RFC-0004: stdlib METHOD names (write_text, strip, items, …) — gated on
+        # the project owning no compatible-language method.
         lambda: _try_stdlib_method(base, qualifier, caller_file, ctx),
+        # RFC-0005: external (third-party) library method names — pytest, hypothesis,
+        # unittest.mock. Runs AFTER stdlib so stdlib wins, and every project-binding
+        # rule still wins first. Same language-aware project-ownership gate.
+        lambda: _try_external_method(base, qualifier, caller_file, ctx),
     ):
         out = rule()
         if out is not None and not _is_cross_language(out, caller_lang, ctx):
@@ -431,6 +476,7 @@ def _is_cross_language(
 
 __all__ = [
     "BUILTINS_PY",
+    "EXTERNAL_METHODS_PY",
     "STDLIB_METHODS_PY",
     "STDLIB_NAMES_PY",
     "ImportEntry",
