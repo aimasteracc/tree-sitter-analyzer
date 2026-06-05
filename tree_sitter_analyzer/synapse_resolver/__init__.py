@@ -30,7 +30,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .._language_family import languages_compatible
-from ._constants import BUILTINS_PY, STDLIB_NAMES_PY
+from ._constants import BUILTINS_PY, STDLIB_METHODS_PY, STDLIB_NAMES_PY
 from ._context import ResolverContext, build_resolver_context, is_enabled
 from ._imports import ImportEntry, parse_imports
 
@@ -206,6 +206,30 @@ def _try_builtin(
     return None
 
 
+def _try_stdlib_method(
+    base: str, qualifier: str, ctx: ResolverContext
+) -> ResolvedCallee | None:
+    """RFC-0004 FINAL tier: classify a bare stdlib/builtin method name as
+    ``stdlib`` — but only when the project owns no method of that name.
+
+    Runs AFTER every project-binding rule, so a project ``split``/``get``/``items``
+    has already resolved to ``project`` before reaching here. The project-symbol
+    gate additionally leaves AMBIGUOUS project names (two classes define ``get``)
+    as ``unknown`` rather than mislabeling them ``stdlib``.
+    """
+    if base not in ctx.stdlib_methods.get("python", frozenset()):
+        return None
+    if ctx.callee_resolver is not None:
+        # If ANY project symbol carries this name, the project owns it — leave
+        # the edge ``unknown`` rather than claim stdlib.
+        matches = ctx.callee_resolver.resolve_items(
+            base, "", include_local=False, include_import=False
+        )
+        if matches:
+            return None
+    return ResolvedCallee(None, "stdlib", "")
+
+
 def _try_single_global(
     base: str, qualifier: str, ctx: ResolverContext
 ) -> ResolvedCallee | None:
@@ -361,8 +385,11 @@ def _resolve_callee_python(
         lambda: _try_single_global(base, qualifier, ctx),
         lambda: _try_class_method(base, qualifier, ctx),
         lambda: _try_unique_method(base, qualifier, ctx),
-        # Builtin is the LAST resort: only fires when no project binding exists.
+        # Builtin is the last NAME resort: only fires when no project binding exists.
         lambda: _try_builtin(base, qualifier, ctx),
+        # RFC-0004: stdlib METHOD names (write_text, strip, items, …) — the true
+        # final tier, gated on the project owning no method of that name.
+        lambda: _try_stdlib_method(base, qualifier, ctx),
     ):
         out = rule()
         if out is not None and not _is_cross_language(out, caller_lang, ctx):
@@ -392,6 +419,7 @@ def _is_cross_language(
 
 __all__ = [
     "BUILTINS_PY",
+    "STDLIB_METHODS_PY",
     "STDLIB_NAMES_PY",
     "ImportEntry",
     "ResolvedCallee",
