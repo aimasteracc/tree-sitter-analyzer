@@ -92,14 +92,31 @@ def _drive_subscriptions(
                 "push scheduling failed for session %s", session_id, exc_info=True
             )
 
-    registry.notify_all(
-        evaluate=lambda sid, sel: _evaluate(sid, sel),
-    )
+    # Push ONLY the (session, selector) pairs whose result actually changed.
+    for session_id, selector in collect_changed_pairs(registry, _evaluate):
+        _push(session_id, selector)
 
-    # Fire the push for sessions that got a delta
+
+def collect_changed_pairs(
+    registry: Any,
+    evaluate: Any,
+) -> list[tuple[str, str]]:
+    """Return the ``(session_id, selector)`` pairs whose result changed.
+
+    ``compute_delta`` atomically applies the ``min_interval`` throttle, diffs
+    the snapshot against the stored one, and updates the stored snapshot — so
+    an unrelated file save (or a throttled event) yields an empty delta and the
+    pair is omitted. This honours the RFC-0001 contract: notify only when the
+    selector result actually moves, never on every sync event.
+    """
+    changed: list[tuple[str, str]] = []
     for session_id in registry.all_sessions():
         for selector in registry.subscriptions_for(session_id):
-            _push(session_id, selector)
+            snapshot = evaluate(session_id, selector)
+            added, removed = registry.compute_delta(session_id, selector, snapshot)
+            if added or removed:
+                changed.append((session_id, selector))
+    return changed
 
 
 async def _send_update(session_id: str, uri: str) -> None:

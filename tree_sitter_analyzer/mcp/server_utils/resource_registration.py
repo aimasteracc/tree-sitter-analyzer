@@ -11,7 +11,6 @@ def register_resources(server: Any, server_instance: Any) -> None:
     """Register resource handlers on the MCP server."""
     code_file_resource = server_instance.code_file_resource
     project_stats_resource = server_instance.project_stats_resource
-    project_root = getattr(server_instance, "_project_root", None)
 
     @server.list_resources()  # type: ignore
     async def handle_list_resources() -> list[Any]:
@@ -52,7 +51,12 @@ def register_resources(server: Any, server_instance: Any) -> None:
             )
 
             if is_hyphae_resource_uri(str(uri)):
-                return await read_hyphae_resource(str(uri), project_root)
+                # Read the project root at call time — the client may rebind it
+                # via set_project_path after the server (and this closure) was
+                # created. Following the live value keeps the resource on the
+                # same project-root lifecycle as every tool.
+                live_root = getattr(server_instance, "_project_root", None)
+                return await read_hyphae_resource(str(uri), live_root)
             elif code_file_resource.matches_uri(uri):
                 return await code_file_resource.read_resource(uri)
             elif project_stats_resource.matches_uri(uri):
