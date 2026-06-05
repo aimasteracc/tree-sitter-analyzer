@@ -213,10 +213,10 @@ class TestCodeGraphQueryInternalsFacets:
                         "kind": "function",
                         "start_line": 1,
                         "end_line": 200,
-                        "code": "\n".join(f"line_{idx}" for idx in range(1, 161))
+                        "code": "\n".join(f"line_{idx}" for idx in range(1, 25))
                         + "\n",
                         "code_truncated": True,
-                        "code_lines": "1-160 of 200",
+                        "code_lines": "1-24 of 200",
                     }
                 ],
             }
