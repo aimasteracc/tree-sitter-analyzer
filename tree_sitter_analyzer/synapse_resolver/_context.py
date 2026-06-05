@@ -158,6 +158,7 @@ class ResolverContext:
         self._imports_by_file = built.imports_by_file
         self._builtins = built.builtins
         self._stdlib_modules = built.stdlib_modules
+        self._stdlib_methods = built.stdlib_methods
         self._callee_resolver = built.callee_resolver
         self._file_languages = built._file_languages  # noqa: SLF001
         self._java_context = built._java_context  # noqa: SLF001

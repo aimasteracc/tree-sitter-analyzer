@@ -207,7 +207,7 @@ def _try_builtin(
 
 
 def _try_stdlib_method(
-    base: str, qualifier: str, ctx: ResolverContext
+    base: str, qualifier: str, caller_file: str, ctx: ResolverContext
 ) -> ResolvedCallee | None:
     """RFC-0004 FINAL tier: classify a bare stdlib/builtin method name as
     ``stdlib`` — but only when the project owns no method of that name.
@@ -216,17 +216,29 @@ def _try_stdlib_method(
     has already resolved to ``project`` before reaching here. The project-symbol
     gate additionally leaves AMBIGUOUS project names (two classes define ``get``)
     as ``unknown`` rather than mislabeling them ``stdlib``.
+
+    The gate is LANGUAGE-AWARE (Codex P2): a same-named symbol in an
+    incompatible-language file (e.g. a JavaScript ``split``) must NOT suppress
+    the Python stdlib classification — Python ``'x'.split()`` is still stdlib.
+    Only a same-/compatible-language project method counts as ownership.
     """
     if base not in ctx.stdlib_methods.get("python", frozenset()):
         return None
     if ctx.callee_resolver is not None:
-        # If ANY project symbol carries this name, the project owns it — leave
-        # the edge ``unknown`` rather than claim stdlib.
+        caller_lang = ctx.file_languages.get(caller_file, "")
         matches = ctx.callee_resolver.resolve_items(
             base, "", include_local=False, include_import=False
         )
-        if matches:
-            return None
+        for item, _confidence in matches:
+            item_lang = ctx.file_languages.get(_item_file(item), "")
+            # A project method the caller's language could actually call → the
+            # project owns the name; leave ``unknown`` rather than claim stdlib.
+            if (
+                not caller_lang
+                or not item_lang
+                or languages_compatible(caller_lang, item_lang)
+            ):
+                return None
     return ResolvedCallee(None, "stdlib", "")
 
 
@@ -388,8 +400,8 @@ def _resolve_callee_python(
         # Builtin is the last NAME resort: only fires when no project binding exists.
         lambda: _try_builtin(base, qualifier, ctx),
         # RFC-0004: stdlib METHOD names (write_text, strip, items, …) — the true
-        # final tier, gated on the project owning no method of that name.
-        lambda: _try_stdlib_method(base, qualifier, ctx),
+        # final tier, gated on the project owning no compatible-language method.
+        lambda: _try_stdlib_method(base, qualifier, caller_file, ctx),
     ):
         out = rule()
         if out is not None and not _is_cross_language(out, caller_lang, ctx):

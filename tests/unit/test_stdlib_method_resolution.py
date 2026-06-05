@@ -117,6 +117,44 @@ def test_ambiguous_project_method_stays_unknown(tmp_path: Path) -> None:
     )
 
 
+def test_cross_language_symbol_does_not_suppress_stdlib(tmp_path: Path) -> None:
+    """Codex P2 #319: a JS file defining ``split`` must NOT make a Python
+    ``'x'.split()`` resolve to unknown — Python stdlib classification stands."""
+    _index(
+        tmp_path,
+        {
+            "py_caller.py": ("def caller():\n    'hello'.split(',')\n"),
+            "js_owner.js": ("function split() { return 1; }\n"),
+        },
+    )
+    db = str(tmp_path / ".ast-cache" / "index.db")
+    res = _resolution_for(db, "split")
+    # The Python call must be stdlib despite the JS symbol of the same name.
+    assert "stdlib" in res, (
+        f"cross-language JS split must not suppress Python stdlib; got {res}"
+    )
+
+
+def test_lazy_context_construction_fires_stdlib_method(tmp_path: Path) -> None:
+    """Codex P2 #319: the public lazy form ResolverContext(project_root=, cache=)
+    must populate stdlib_methods (not the constructor default {}), so RFC-0004
+    classification works for direct API users, not only the hot index path."""
+    _index(tmp_path, {"a.py": ("def caller(p):\n    p.write_text('x')\n")})
+
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.synapse_resolver import ResolverContext
+
+    cache = ASTCache(str(tmp_path))
+    try:
+        ctx = ResolverContext(project_root=str(tmp_path), cache=cache)
+        # Touching the property triggers the lazy load; it must carry the table.
+        assert "write_text" in ctx.stdlib_methods.get("python", frozenset()), (
+            "lazy ResolverContext must populate stdlib_methods (Codex P2 #319)"
+        )
+    finally:
+        cache.close()
+
+
 def test_genuinely_unknown_name_stays_unknown(tmp_path: Path) -> None:
     """A name that is neither project nor stdlib stays unknown."""
     _index(
