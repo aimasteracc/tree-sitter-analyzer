@@ -308,7 +308,7 @@ def _build_file_class_methods(
             continue
         per_class: dict[str, dict[str, int]] = {}
         for sym in symbols.get("symbols", []):
-            if sym.get("kind") != "function":
+            if sym.get("kind") not in ("function", "method"):
                 continue
             cls_name = sym.get("class")
             if not cls_name:

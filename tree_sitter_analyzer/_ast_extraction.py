@@ -441,6 +441,7 @@ def _walk_for_symbols(
             sym["decision_points"] = dp
         parent_cls = _find_parent_class(node, source)
         if parent_cls:
+            sym["kind"] = "method"
             sym["class"] = parent_cls
         symbols.append(sym)
     elif node_type in _CLASS_LIKE and name_node is not None:
@@ -497,7 +498,7 @@ def _extract_structure(symbols: dict[str, Any]) -> dict[str, Any]:
     functions = []
     classes = []
     for s in symbols.get("symbols", []):
-        if s["kind"] == "function":
+        if s["kind"] in ("function", "method"):
             functions.append({"name": s["name"], "line": s["line"]})
         elif s["kind"] == "class":
             classes.append({"name": s["name"], "line": s["line"]})

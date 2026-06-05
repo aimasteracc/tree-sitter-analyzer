@@ -218,7 +218,7 @@ def _extract_symbols_from_tree(
             results.append(
                 ProductionSymbol(
                     name=fname,
-                    kind="function",
+                    kind="method" if current_class else "function",
                     file_path=file_path,
                     language=language,
                     line=node.start_point[0] + 1,
@@ -723,7 +723,7 @@ def analyze_coverage_gaps(
 
     parser_cache: dict[str, Any] = {}
     for sym in prod_symbols:
-        if sym.kind == "function":
+        if sym.kind in ("function", "method"):
             sym.complexity = _get_complexity_cached(sym, parser_cache)
             sym.risk = _risk_band(sym.complexity)
 

@@ -275,7 +275,7 @@ class CrossFileResolver:
             lang = row["language"]
             symbols = json.loads(row["symbols_json"])
             for sym in symbols.get("symbols", []):
-                if sym.get("kind") != "function":
+                if sym.get("kind") not in ("function", "method"):
                     continue
                 func = FunctionDef(
                     name=sym["name"],
