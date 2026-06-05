@@ -105,11 +105,15 @@ def _drive_subscriptions(
 async def _send_update(session_id: str, uri: str) -> None:
     """Coroutine that sends resource-updated; runs on the captured loop."""
     try:
-        from mcp.server import Server
+        from pydantic import AnyUrl
 
-        server = Server.current()
-        if server is not None:
-            await server.request_context.session.send_resource_updated(uri)
+        from .tools.hyphae_subscribe_tool import get_session_obj
+
+        session = get_session_obj(session_id)
+        if session is None:
+            logger.debug("no session for %s — push skipped", session_id)
+            return
+        await session.send_resource_updated(AnyUrl(uri))
     except Exception:
         logger.debug("send_resource_updated failed for %s", uri, exc_info=True)
 

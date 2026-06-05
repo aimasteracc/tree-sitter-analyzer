@@ -637,10 +637,13 @@ class ASTCacheTool(BaseMCPTool):
         cache = self._get_cache()
         poll_interval = float(arguments.get("poll_interval", 5.0))
         backend = str(arguments.get("backend", "poll"))
+        from ..watch_push_bridge import make_on_sync_callback
+
         self._watcher = FileWatcherDaemon(
             cache,
             poll_interval=poll_interval,
             backend=backend,
+            on_sync=make_on_sync_callback(self._project_root),
         )
         self._watcher.start()
 

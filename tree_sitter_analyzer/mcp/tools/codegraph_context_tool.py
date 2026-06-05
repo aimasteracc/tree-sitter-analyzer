@@ -201,15 +201,20 @@ class CodeGraphContextTool(BaseMCPTool):
         total_nodes = len(nodes)
         total_edges = len(edges)
         total_entry_points = len(entry_points)
-        # entry_points overlap the node set; echo only the best-ranked handful.
+        # Echo a bounded, self-consistent subgraph. The inline caps scale with
+        # max_nodes so agents that request more nodes actually receive them.
+        # _MAX_INLINE_NODES / _MAX_INLINE_EDGES are the floor defaults for small
+        # requests; larger max_nodes raises the cap proportionally.
+        inline_node_cap = max(_MAX_INLINE_NODES, max_nodes)
+        inline_edge_cap = max(_MAX_INLINE_EDGES, max_nodes * 2)
         entry_points = entry_points[:_MAX_INLINE_ENTRY_POINTS]
-        nodes = nodes[:_MAX_INLINE_NODES]
+        nodes = nodes[:inline_node_cap]
         _echoed_ids = {n.get("id") for n in nodes}
         edges = [
             e
             for e in edges
             if e.get("source") in _echoed_ids and e.get("target") in _echoed_ids
-        ][:_MAX_INLINE_EDGES]
+        ][:inline_edge_cap]
         verdict = "INFO" if entry_points else "NOT_FOUND"
         result: dict[str, Any] = {
             "success": True,

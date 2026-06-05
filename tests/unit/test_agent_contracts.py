@@ -760,6 +760,8 @@ def test_facade_delegation_routes_each_action_to_expected_inner() -> None:
         ("search", "batch"): "BatchSearchTool",
         ("search", "chain"): "CodeGraphQueryTool",
         ("search", "select"): "HyphaeSelectTool",
+        ("search", "subscribe"): "HyphaeSubscribeTool",
+        ("search", "unsubscribe"): "HyphaeUnsubscribeTool",
         ("search", "content"): "<bespoke>",
         ("nav", "navigate"): "CodeGraphNavigateTool",
         ("nav", "call_path"): "CodeGraphCallPathTool",
