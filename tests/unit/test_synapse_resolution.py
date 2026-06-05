@@ -545,3 +545,153 @@ class TestStarImportBookkeeping:
                 assert row["is_relative"] == 1, "from .b import * is a relative import"
         finally:
             cache.close()
+
+
+# ---------------------------------------------------------------------------
+# RFC-0002 — builtin classifier + shadowing contract
+# ---------------------------------------------------------------------------
+
+
+class TestRFC0002BuiltinClassifier:
+    """RFC-0002 criterion 1+2: builtins get ``"builtin"`` (not ``"stdlib"``),
+    applied AFTER local/import bindings so shadowing is preserved."""
+
+    def _make_ctx(
+        self,
+        builtins: frozenset[str],
+        stdlib: frozenset[str] = frozenset(),
+        functions_by_name: dict | None = None,
+    ):
+        from tree_sitter_analyzer.callee_resolution import CalleeResolver
+        from tree_sitter_analyzer.synapse_resolver import ResolverContext
+
+        return ResolverContext(
+            project_root="",
+            cache=None,  # type: ignore[arg-type]
+            builtins={"python": builtins},
+            stdlib_modules={"python": stdlib},
+            callee_resolver=CalleeResolver(
+                functions_by_name=functions_by_name or {},
+                functions_by_file={},
+                name_to_source={},
+            ),
+        )
+
+    def test_builtin_name_resolves_to_builtin(self) -> None:
+        """``len()`` with no local shadow → resolution="builtin" (RFC-0002 criterion 1)."""
+        from tree_sitter_analyzer.synapse_resolver import resolve_callee
+
+        ctx = self._make_ctx(builtins=frozenset({"len", "print", "range"}))
+        result = resolve_callee("len", "module.py", ctx, caller_name="f")
+        assert result.resolution == "builtin", (
+            f"expected 'builtin', got {result.resolution!r} — "
+            "RFC-0002 criterion 1: builtins classified as 'builtin', not 'stdlib'"
+        )
+        assert result.callee_symbol_id is None
+
+    def test_project_binding_shadows_builtin(self) -> None:
+        """A project function named ``len`` shadows the builtin (RFC-0002 criterion 2)."""
+        from tree_sitter_analyzer.synapse_resolver import resolve_callee
+
+        ctx = self._make_ctx(
+            builtins=frozenset({"len"}),
+            functions_by_name={
+                "len": [
+                    {"name": "len", "file": "utils.py", "id": 42, "language": "python"}
+                ]
+            },
+        )
+        result = resolve_callee("len", "utils.py", ctx, caller_name="f")
+        assert result.resolution in ("local", "project"), (
+            f"expected local/project (shadowing), got {result.resolution!r} — "
+            "RFC-0002 criterion 2: project binding shadows builtin"
+        )
+
+    def test_stdlib_import_wins_over_builtin_name_collision(self) -> None:
+        """When a name is both a known builtin and stdlib-imported, stdlib wins (runs earlier)."""
+        from tree_sitter_analyzer.synapse_resolver import (
+            ResolverContext,
+            resolve_callee,
+        )
+        from tree_sitter_analyzer.synapse_resolver._imports import ImportEntry
+
+        # ``path`` treated as a builtin AND imported from stdlib ``os`` module.
+        # ``_try_stdlib`` must fire before ``_try_builtin`` per cascade order.
+        imp = ImportEntry(
+            file_path="module.py",
+            language="python",
+            module_path="os",
+            local_name="path",
+        )
+        ctx = ResolverContext(
+            project_root="",
+            cache=None,  # type: ignore[arg-type]
+            builtins={"python": frozenset({"path"})},
+            stdlib_modules={"python": frozenset({"os"})},
+            imports_by_file={"module.py": [imp]},
+            callee_resolver=None,
+        )
+        result = resolve_callee("path", "module.py", ctx, caller_name="f")
+        assert result.resolution == "stdlib", (
+            f"expected 'stdlib' (stdlib fires before builtin), got {result.resolution!r}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# RFC-0002 criterion 7 — monotonicity: no resolved→unknown regression
+# ---------------------------------------------------------------------------
+
+
+class TestRFC0002Monotonicity:
+    """RFC-0002 criterion 7: a re-index must not regress resolved edges back to unknown.
+
+    Uses a two-file project where the callee is defined in b.py and called from a.py.
+    After two index passes, the edge must still be resolved (or at worst stay at
+    its original resolution — not degrade).
+    """
+
+    def test_reindex_does_not_regress_resolved_edges(self, tmp_path: Path) -> None:
+        (tmp_path / "a.py").write_text(
+            "from b import helper\n\ndef caller():\n    return helper()\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "b.py").write_text(
+            "def helper():\n    return 42\n",
+            encoding="utf-8",
+        )
+        cache = ASTCache(str(tmp_path))
+        try:
+            cache.index_project(max_files=10, workers=0)
+            # Collect resolution after first index
+            conn = cache.get_conn()
+            rows_pass1 = {
+                (r["callee_name"], r["callee_resolution"])
+                for r in conn.execute(
+                    "SELECT callee_name, callee_resolution FROM edges WHERE kind='calls'"
+                ).fetchall()
+                if r["callee_resolution"] not in (None, "unknown")
+            }
+
+            # Re-index (simulates file modification triggering a second pass)
+            (tmp_path / "a.py").write_text(
+                "from b import helper\n\ndef caller():\n    x = 1\n    return helper()\n",
+                encoding="utf-8",
+            )
+            cache.index_project(max_files=10, workers=0)
+
+            rows_pass2 = {
+                (r["callee_name"], r["callee_resolution"])
+                for r in conn.execute(
+                    "SELECT callee_name, callee_resolution FROM edges WHERE kind='calls'"
+                ).fetchall()
+                if r["callee_resolution"] not in (None, "unknown")
+            }
+
+            # Any edge resolved in pass1 must still be resolved in pass2 (or better)
+            regressions = rows_pass1 - rows_pass2
+            assert not regressions, (
+                f"RFC-0002 monotonicity violated: these edges regressed to unknown "
+                f"after reindex: {regressions}"
+            )
+        finally:
+            cache.close()

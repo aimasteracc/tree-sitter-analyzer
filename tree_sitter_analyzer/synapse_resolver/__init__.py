@@ -202,7 +202,7 @@ def _try_builtin(
     if qualifier:
         return None
     if base in ctx.builtins.get("python", frozenset()):
-        return ResolvedCallee(None, "stdlib", "")
+        return ResolvedCallee(None, "builtin", "")
     return None
 
 
@@ -354,10 +354,15 @@ def _resolve_callee_python(
         lambda: _try_local(base, caller_file, ctx) if not qualifier else None,
         lambda: _try_import(base, qualifier, caller_file, ctx),
         lambda: _try_stdlib(base, qualifier, caller_file, ctx),
-        lambda: _try_builtin(base, qualifier, ctx),
+        # Project-wide searches run BEFORE the builtin fallback so that a project
+        # function with the same name as a builtin (e.g. a custom ``len``) is
+        # resolved to the project definition, not mis-classified as ``builtin``
+        # (RFC-0002 criterion 2 — shadowing preserved).
         lambda: _try_single_global(base, qualifier, ctx),
         lambda: _try_class_method(base, qualifier, ctx),
         lambda: _try_unique_method(base, qualifier, ctx),
+        # Builtin is the LAST resort: only fires when no project binding exists.
+        lambda: _try_builtin(base, qualifier, ctx),
     ):
         out = rule()
         if out is not None and not _is_cross_language(out, caller_lang, ctx):

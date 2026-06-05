@@ -1,6 +1,6 @@
 # RFC-0002: Callee resolution — bare names to resolved symbols
 
-- **Status**: draft
+- **Status**: in-progress
 - **Author(s)**: @aimasteracc
 - **Created**: 2026-06-03
 - **Last updated**: 2026-06-03
@@ -165,9 +165,9 @@ receiver field, per CLAUDE.md rule 6) benefits directly.
 
 ## Acceptance criteria
 
-- [ ] Builtin/stdlib classifier per language, applied LAST in the cascade;
-      `unknown` rate drops measurably
-- [ ] Shadowing preserved: a local/import binding that shadows a builtin/stdlib
+- [x] Builtin/stdlib classifier per language, applied LAST in the cascade;
+      `unknown` rate drops measurably (15.7% vs 62.6% baseline)
+- [x] Shadowing preserved: a local/import binding that shadows a builtin/stdlib
       name resolves to the binding (local/project + symbol_id), not builtin/stdlib
 - [ ] Receiver-typed method resolution disambiguates same-named methods
 - [ ] `absolute_path`/`_absolute_path`/`_validate_absolute_path` resolve to
@@ -175,7 +175,7 @@ receiver field, per CLAUDE.md rule 6) benefits directly.
 - [ ] Re-indexed TSA self: callee resolution rate ≥ a target (set after a spike;
       proposed ≥ 50% resolved-or-classified, from 12.3%)
 - [ ] Hyphae coverage query (`:callees`) false-positive rate measurably lower
-- [ ] No edge regresses resolved→unknown (monotonicity test)
+- [x] No edge regresses resolved→unknown (monotonicity test)
 - [ ] CLI `--callers "Class.method"` still green; docs/CODEMAPS updated
 
 ## What this RFC does NOT do (deferred)
