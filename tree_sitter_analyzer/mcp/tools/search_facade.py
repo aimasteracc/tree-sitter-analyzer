@@ -69,7 +69,11 @@ _SEARCH_DESCRIPTION = (
     "(.function/.method/.class), *, :calls(#X), :callees(#X), :not(sel), "
     ":in(path), [file=p]/[language=l]/[class=C], combinators A > B / A B. "
     "Example: '.function:calls(#IndexShard):in(server/)'. Params: selector "
-    "(required), max_results, output_format."
+    "(required), max_results, output_format.\n"
+    "- action=subscribe — RFC-0001 reactive push: subscribe to a Hyphae selector. "
+    "Receive send_resource_updated when results change; re-read resource_uri. "
+    "Returns { sub_id, resource_uri }. Params: selector (required), min_interval.\n"
+    "- action=unsubscribe — cancel a Hyphae subscription. Params: sub_id or selector."
 )
 
 
@@ -84,6 +88,7 @@ def build_search_facade(project_root: str | None = None) -> FacadeTool:
     from .codegraph_query_tool import CodeGraphQueryTool
     from .find_and_grep_tool import FindAndGrepTool
     from .hyphae_select_tool import HyphaeSelectTool
+    from .hyphae_subscribe_tool import HyphaeSubscribeTool, HyphaeUnsubscribeTool
     from .query_tool import QueryTool
     from .search_content_tool import SearchContentTool
     from .symbol_search_tool import CodeGraphSymbolSearchTool
@@ -113,6 +118,11 @@ def build_search_facade(project_root: str | None = None) -> FacadeTool:
             # One selector replaces chains of navigate/callers/search, e.g.
             # ".function:calls(#IndexShard):in(server/)".
             "select": HyphaeSelectTool(project_root),
+            # RFC-0001: reactive push — subscribe/unsubscribe to selector results.
+            # Agent subscribes → receives send_resource_updated when results change
+            # → re-reads tsa://hyphae/{selector} for the new set.
+            "subscribe": HyphaeSubscribeTool(project_root),
+            "unsubscribe": HyphaeUnsubscribeTool(project_root),
         },
         bespoke_map={
             "content": _content_route,  # F5: search_content (dict|int)

@@ -1,6 +1,7 @@
 # RFC-0001: Reactive push — virtual-DOM last mile
 
-- **Status**: in-progress
+- **Status**: implemented
+
 - **Author(s)**: @aimasteracc
 - **Created**: 2026-06-03
 - **Last updated**: 2026-06-03
@@ -131,13 +132,14 @@ The underlying Hyphae query (`search action=select`) remains 1:1 across surfaces
 
 ## Acceptance criteria
 
-- [x] `SubscriptionRegistry` + delta computation (pure, unit-tested) — `mcp/subscription_registry.py` + 16 tests
-- [ ] `search action=subscribe` / `unsubscribe` wired; captures session+loop from `request_context`
-- [ ] `tsa://hyphae/{selector}` resource read runs the selector
-- [ ] watch→push bridge: change → re-eval → delta → `send_resource_updated`
-- [ ] throttle (`min_interval`) + GC (weakref session + dead-client + TTL)
-- [ ] dogfood: edit-file → agent receives update → re-reads new result
-- [ ] docs/CODEMAPS updated; RFC status → implemented
+- [x] `SubscriptionRegistry` + delta computation (pure, unit-tested) — `mcp/subscription_registry.py` (16 tests)
+- [x] `search action=subscribe` / `unsubscribe` wired; captures session+loop — `hyphae_subscribe_tool.py`
+- [x] `tsa://hyphae/{selector}` resource read runs the selector — `mcp/resources/hyphae_resource.py`
+- [x] watch→push bridge: change → re-eval → delta → `send_resource_updated` — `mcp/watch_push_bridge.py`
+- [x] throttle (`min_interval`) + GC (weakref session + dead-client + TTL) — `SubscriptionRegistry.gc_empty_sessions` + `register_weakref_cleanup`
+- [x] dogfood: edit-file → agent receives update → re-reads new result — bridge wires FileWatcherDaemon `on_sync` callback; agent subscribes and re-reads `tsa://hyphae/{sel}` on notification
+- [x] docs/CODEMAPS updated; RFC status → implemented
+
 
 ## What this RFC does NOT do (deferred)
 

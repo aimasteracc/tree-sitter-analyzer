@@ -1,6 +1,6 @@
 # RFC-0003: Coverage-aware test-gap analysis
 
-- **Status**: in-progress
+- **Status**: implemented
 - **Author(s)**: @aimasteracc
 - **Created**: 2026-06-04
 - **Last updated**: 2026-06-04
@@ -218,12 +218,12 @@ The failing tests this RFC will be implemented against:
 - [x] `CoverageGapResult.source` distinguishes `"coverage"` vs `"naming"`
 - [x] Auto-discovery of `coverage.json` (project root) + explicit override
 - [x] Graceful fallback to naming on missing/malformed coverage data
-- [ ] Static-graph enrichment (who-tests / impact / priority) attached to gaps
-- [ ] `CodeGraphTestGapTool` wired into the `health` facade (`action="test_gap"`)
-- [ ] CLI `--test-gap` flag added
-- [ ] CLI↔MCP parity test green
-- [ ] dogfood: false-positive `_markdown_formatter_rendering` gaps gone with coverage source
-- [ ] Docs/CODEMAPS updated
+- [x] Static-graph enrichment (who-tests / impact / priority) attached to gaps — `CoverageGap.who_should_test` + `blast_radius`
+- [x] `CodeGraphTestGapTool` wired into the `health` facade (`action="test_gap"`) — PR #307
+- [x] CLI `--test-gap` flag added — PR #308
+- [x] CLI↔MCP parity test green — PR #308
+- [x] dogfood: false-positive `_markdown_formatter_rendering` gaps gone with coverage source — verified 0 false positives; coverage.json path eliminates indirect-dispatch noise
+- [x] Docs/CODEMAPS updated — health facade action list, search facade subscribe actions
 
 ## What this RFC does NOT do (deferred)
 
