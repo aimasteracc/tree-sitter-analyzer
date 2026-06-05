@@ -164,6 +164,44 @@ class TestFtsSearchRankedTestDemotion:
             f"Expected production implementation first, got {results[0]['file']!r}"
         )
 
+    def test_production_promoted_even_when_buried_past_limit(self) -> None:
+        """Codex P2 on #316: over-fetch so a production hit BM25-ranked outside
+        the caller's ``limit`` window is still promoted above many test matches.
+
+        Insert 30 test-file matches with EARLIER rowids (better raw BM25 tie
+        position) and one production match LAST. With ``limit=5`` and a naive
+        ``LIMIT 5`` in SQL, the production row would never be fetched. The
+        over-fetch band must pull it in so demotion can rank it first.
+        """
+        conn = _make_fts_conn()
+
+        for i in range(30):
+            _insert(
+                conn,
+                "widget",
+                file_path=f"tests/unit/test_widget_{i}.py",
+                kind="function",
+                line=i * 5 + 1,
+            )
+        _insert(
+            conn,
+            "widget",
+            file_path="tree_sitter_analyzer/widget.py",
+            kind="function",
+            line=42,
+        )
+
+        from tree_sitter_analyzer._ast_cache_query import fts_search_ranked
+
+        results = fts_search_ranked(conn, "widget", limit=5)
+
+        assert results, "Expected results"
+        assert len(results) == 5, "Result window must respect the caller's limit"
+        assert results[0]["file"] == "tree_sitter_analyzer/widget.py", (
+            "Production hit must be promoted above test matches even when BM25 "
+            f"ranks it past the limit window; got {results[0]['file']!r}"
+        )
+
     def test_secondary_sort_is_relevance_within_same_tier(self) -> None:
         """Within the production tier, relevance_score is set for all results."""
         conn = _make_fts_conn()

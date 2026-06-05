@@ -165,6 +165,14 @@ _KIND_WEIGHT: dict[str, float] = {
 }
 _KIND_WEIGHT_DEFAULT = 0.85  # fallback for unrecognised kind values
 
+# Test-file demotion runs in Python AFTER the SQL fetch, so a production hit
+# that BM25 ranks just outside the caller's ``limit`` window would be truncated
+# before it can be promoted above test/fixture matches. Over-fetch a wider band
+# of candidates, demote, THEN truncate to ``limit`` — so production symbols that
+# lose the raw BM25 race to many test matches can still surface first.
+_DEMOTION_OVERFETCH_FACTOR = 4
+_DEMOTION_OVERFETCH_FLOOR = 50
+
 
 def fts_search_ranked(
     conn: sqlite3.Connection,
@@ -202,16 +210,21 @@ def fts_search_ranked(
         "FROM ast_symbols_fts f JOIN ast_symbol_rows r ON f.rowid = r.id "
         "WHERE ast_symbols_fts MATCH ? {lang_clause} ORDER BY bm25_raw LIMIT ?"
     )
+    # Over-fetch so the post-fetch test-demotion can promote production hits
+    # that BM25 buried just outside the caller's window (Codex P2 on #316).
+    fetch_limit = max(
+        limit * _DEMOTION_OVERFETCH_FACTOR, limit + _DEMOTION_OVERFETCH_FLOOR
+    )
     try:
         if language:
             rows = conn.execute(
                 join_sql.format(lang_clause="AND r.language = ?"),
-                (fts_query, language, limit),
+                (fts_query, language, fetch_limit),
             ).fetchall()
         else:
             rows = conn.execute(
                 join_sql.format(lang_clause=""),
-                (fts_query, limit),
+                (fts_query, fetch_limit),
             ).fetchall()
     except sqlite3.OperationalError:
         logger.debug("fts_search_ranked: OperationalError — FTS5 table not available")
@@ -248,7 +261,9 @@ def fts_search_ranked(
             str(x["name"]),
         )
     )
-    return results
+    # Truncate to the caller's window only AFTER demotion, so a promoted
+    # production hit is not dropped by the over-fetch band.
+    return results[:limit]
 
 
 def search_symbols_linear(
