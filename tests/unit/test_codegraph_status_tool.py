@@ -128,14 +128,16 @@ class TestExecuteWithIndex:
         (cache_dir / "index.db").write_bytes(b"sqlite3-fake")
 
         mock_cache = MagicMock()
+        # total_edges now sums ALL edge kinds and reconciles with edges_by_kind
+        # (Codex P2 #315): 250 = 200 calls + 40 imports + 10 contains.
         mock_cache.get_stats.return_value = {
             "total_files": 10,
             "total_symbols": 100,
+            "total_edges": 250,
+            "edges_by_kind": {"calls": 200, "imports": 40, "contains": 10},
             "fts5_available": True,
             "schema_version": 3,
         }
-        # get_cross_file_stats provides the edge count used for graph density.
-        mock_cache.get_cross_file_stats.return_value = {"total": 250}
 
         with patch(
             "tree_sitter_analyzer.ast_cache.ASTCache",
@@ -150,24 +152,29 @@ class TestExecuteWithIndex:
             "total_edges must be present (README 'ahead' vs CodeGraph graph density signal)"
         )
         assert result["total_edges"] == 250
+        # total_edges must reconcile with the edges_by_kind breakdown.
+        assert result["total_edges"] == sum(
+            mock_cache.get_stats.return_value["edges_by_kind"].values()
+        )
 
     @pytest.mark.asyncio
-    async def test_total_edges_zero_when_cross_file_stats_fails(
+    async def test_total_edges_zero_when_edges_absent(
         self, tool_with_root, tmp_path
     ):
-        """total_edges is 0 when get_cross_file_stats raises (graceful fallback)."""
+        """total_edges defaults to 0 when get_stats omits it (no edges table)."""
         cache_dir = tmp_path / ".ast-cache"
         cache_dir.mkdir()
         (cache_dir / "index.db").write_bytes(b"sqlite3-fake")
 
         mock_cache = MagicMock()
+        # get_stats degrades to {} edges_by_kind / no total_edges on a no-edges
+        # build; the tool must surface total_edges: 0 without raising.
         mock_cache.get_stats.return_value = {
             "total_files": 5,
             "total_symbols": 50,
             "fts5_available": True,
             "schema_version": 2,
         }
-        mock_cache.get_cross_file_stats.side_effect = RuntimeError("edge table missing")
 
         with patch(
             "tree_sitter_analyzer.ast_cache.ASTCache",
