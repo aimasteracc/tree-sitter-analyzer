@@ -78,3 +78,47 @@ def test_falls_back_to_scan_when_symbol_rows_absent() -> None:
 
 def test_empty_names_returns_empty() -> None:
     assert _build_def_index(MagicMock(), set()) == {}
+
+
+def test_falls_back_to_scan_when_symbol_rows_exist_but_empty_for_requested_names() -> (
+    None
+):
+    """ast_symbol_rows exists but has no rows for the requested names.
+
+    This happens with existing .ast-cache databases after the FTS table is
+    introduced: unchanged files are not rewritten into ast_symbol_rows, so the
+    indexed query succeeds with zero rows. The fallback must scan ast_index for
+    the missing names instead of returning an empty body index.
+    """
+    db = sqlite3.connect(":memory:")
+    db.row_factory = sqlite3.Row
+    # ast_symbol_rows exists but is empty (simulates a cache built before the FTS backfill).
+    db.execute(
+        "CREATE TABLE ast_symbol_rows "
+        "(name TEXT, kind TEXT, file_path TEXT, language TEXT, line INT, end_line INT)"
+    )
+    db.execute(
+        "CREATE TABLE ast_index (file_path TEXT, language TEXT, symbols_json TEXT)"
+    )
+    db.execute(
+        "INSERT INTO ast_index VALUES (?,?,?)",
+        (
+            "a.py",
+            "python",
+            json.dumps(
+                {
+                    "symbols": [
+                        {"name": "foo", "kind": "function", "line": 5, "end_line": 12}
+                    ]
+                }
+            ),
+        ),
+    )
+    db.commit()
+    # ast_symbol_rows has no row for "foo" → must fall back to ast_index scan.
+    index = _build_def_index(_cache(db), {"foo"})
+    assert "foo" in index, (
+        "fallback scan must find foo even when ast_symbol_rows is empty"
+    )
+    assert index["foo"][0]["file"] == "a.py"
+    assert index["foo"][0]["end_line"] == 12

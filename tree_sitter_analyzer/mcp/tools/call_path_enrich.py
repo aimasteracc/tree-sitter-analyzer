@@ -91,6 +91,13 @@ def _build_def_index(cache: Any, names: set[str]) -> dict[str, list[dict[str, An
                 "class": None,
             }
         )
+    # ast_symbol_rows may exist but lack rows for names indexed before the FTS
+    # backfill ran (unchanged files skip check_cache_or_read). Fall back to the
+    # legacy scan for just those missing names so bodies are still inlined.
+    missing = names - index.keys()
+    if missing:
+        for name, defs in _build_def_index_scan(conn, missing).items():
+            index.setdefault(name, defs)
     return index
 
 
