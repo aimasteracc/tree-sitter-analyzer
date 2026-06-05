@@ -51,9 +51,20 @@ Restart your agent, then say: *"Set the project root to my repo and run codegrap
 
 > **Correction (2026-06).** An earlier version of this section claimed TSA beat CodeGraph on agent token cost (a "−11 % median" table). That benchmark had a harness bug: the TSA arm's MCP server was started without an explicit project root and analysed *tree-sitter-analyzer's own source* instead of the target repo, so its numbers were meaningless. The bug is fixed (the harness now passes `--project-root`), the inflated claim is withdrawn, and the honest picture is below.
 
-### Agent token cost — the gap is now small (RFC-0006)
+### Agent token cost — RFC-0006 cut the default context payload 53%
 
-On the corrected harness (Claude Sonnet, gin + django, MCP arms, no errors), the per-task **median cost** measured **before RFC-0006** was:
+Token cost was the one axis where CodeGraph led. [RFC-0006](rfcs/0006-context-progressive-disclosure.md) progressive disclosure closes most of the gap at the source: `nav context` now returns a **lean default** — entry points + a compact `related_symbols` list + code blocks — and moves the flat node/edge graph behind an opt-in `include_graph=true`. Measured on this repo (4 representative queries, TOON):
+
+| context payload | chars |
+|---|---|
+| TSA default, before RFC-0006 | ~13,900 |
+| **TSA default, after (lean)** | **~6,600 (−53%)** |
+| TSA `include_graph=true` (full, opt-in) | ~13,900 |
+| CodeGraph baseline | ~4,400 |
+
+The dominant context call went from **~2.9× CodeGraph's payload to ~1.5×**.
+
+For context, the per-task `$` cost measured **before** RFC-0006 (corrected harness — Claude Sonnet, gin + django, MCP arms, no errors):
 
 | arm | median cost (pre-RFC-0006) | tool calls | file reads |
 |---|---|---|---|
@@ -61,16 +72,7 @@ On the corrected harness (Claude Sonnet, gin + django, MCP arms, no errors), the
 | Tree-sitter Analyzer MCP | ~$0.42 | 7 | 1 |
 | no-MCP (grep/read) | ~$0.34 | 14 | 7 |
 
-The cost driver was TSA's richer per-call payload (more graph + inline source = more cache-write tokens). **[RFC-0006](rfcs/0006-context-progressive-disclosure.md) progressive disclosure** addresses it directly: `nav context` now returns a **lean default** (entry points + a compact `related_symbols` list + code blocks) and moves the flat node/edge graph behind an opt-in `include_graph=true`. Measured on this repo (4 representative queries, TOON):
-
-| context payload | chars |
-|---|---|
-| TSA default **before** RFC-0006 | ~13,900 |
-| TSA default **after** (lean) | **~6,600** (−53%) |
-| TSA `include_graph=true` (full, opt-in) | ~13,900 |
-| CodeGraph baseline | ~4,400 |
-
-The dominant context call dropped from **~2.9× CodeGraph's payload to ~1.5×**. A full per-task `$` re-benchmark is the next measurement; the harness command is below. We report the payload proxy straight rather than restate the old `$` table as if RFC-0006 hadn't shipped.
+A full per-task `$` re-benchmark is the next measurement (harness command below). We report the payload proxy straight rather than restate the old table as if RFC-0006 hadn't shipped.
 
 ### Where TSA leads
 
