@@ -110,8 +110,10 @@ class CodeGraphContextTool(BaseMCPTool):
             "name": "codegraph_context",
             "description": (
                 "PRIMARY for understanding an area or tracing a flow. One call "
-                "returns entry points, related call graph nodes, edges, and source "
-                "code blocks from a natural-language task. Use before chaining "
+                "returns entry points, a compact related-symbols list, and source "
+                "code blocks from a natural-language task (default lean mode). "
+                "Add include_graph=true to also get the full nodes/edges adjacency "
+                "graph for visualization or impact analysis. Use before chaining "
                 "codegraph_symbol_search, callers, callees, and file reads."
             ),
             "inputSchema": self.get_tool_schema(),
@@ -153,6 +155,18 @@ class CodeGraphContextTool(BaseMCPTool):
                     ),
                     "default": "toon",
                 },
+                "include_graph": {
+                    "type": "boolean",
+                    "description": (
+                        "When false (default) return a compact related-symbols list "
+                        "instead of the full nodes/edges graph — ~60% smaller payload. "
+                        "Set true to get the complete nodes + edges adjacency graph "
+                        "for visualization or detailed impact analysis. "
+                        "stats.nodes_total and stats.edges_total are always reported "
+                        "so you know the full graph is available."
+                    ),
+                    "default": False,
+                },
             },
             "required": ["task"],
             "additionalProperties": False,
@@ -171,6 +185,9 @@ class CodeGraphContextTool(BaseMCPTool):
         max_nodes = _bounded_int(arguments.get("max_nodes", 30), 1, 100)
         max_code_blocks = _bounded_int(arguments.get("max_code_blocks", 5), 0, 25)
         output_format = arguments.get("output_format", "toon")
+        # RFC-0006: progressive disclosure. Default lean (no nodes/edges in
+        # response); full graph available via include_graph=true.
+        include_graph = bool(arguments.get("include_graph", False))
 
         candidates = _extract_symbol_candidates(task)
         wants_tests = _task_wants_tests(task)
@@ -191,61 +208,101 @@ class CodeGraphContextTool(BaseMCPTool):
             project_root=self.project_root or "",
         )
         related_files = _unique_files(nodes)
-        # Echo a bounded, self-consistent subgraph. The FULL node+edge set above
-        # already drove call-graph ranking and code-block selection; the
-        # response only needs the most-relevant slice. Nodes are kept in
-        # relevance order (entry points first), capped to _MAX_INLINE_NODES;
-        # edges are then filtered to those WITHIN the echoed node set (so no
-        # dangling endpoints) and capped to _MAX_INLINE_EDGES. This stops a long
-        # flat node/edge dump from dominating the payload vs peer tools.
+
+        # Totals always computed from the FULL set before any capping so the
+        # agent knows how much graph is available even in lean mode.
         total_nodes = len(nodes)
         total_edges = len(edges)
         total_entry_points = len(entry_points)
-        # Echo a bounded, self-consistent subgraph. The inline caps scale with
-        # max_nodes so agents that request more nodes actually receive them.
-        # _MAX_INLINE_NODES / _MAX_INLINE_EDGES are the floor defaults for small
-        # requests; larger max_nodes raises the cap proportionally.
-        inline_node_cap = max(_MAX_INLINE_NODES, max_nodes)
-        inline_edge_cap = max(_MAX_INLINE_EDGES, max_nodes * 2)
-        entry_points = entry_points[:_MAX_INLINE_ENTRY_POINTS]
-        nodes = nodes[:inline_node_cap]
-        _echoed_ids = {n.get("id") for n in nodes}
-        edges = [
-            e
-            for e in edges
-            if e.get("source") in _echoed_ids and e.get("target") in _echoed_ids
-        ][:inline_edge_cap]
+
+        # Compact related-symbols list (RFC-0006): always built, tiny cost.
+        # Groups the full node set by file as "name:line" entries — mirrors
+        # CG's Related Symbols format without the heavy per-node dict.
+        related_symbols = _build_related_symbols(nodes)
+
         verdict = "INFO" if entry_points else "NOT_FOUND"
-        result: dict[str, Any] = {
-            "success": True,
-            "verdict": verdict,
-            "task": task,
-            "candidates": candidates,
-            "entry_points": entry_points,
-            "nodes": nodes,
-            "edges": edges,
-            "code_blocks": code_blocks,
-            "related_files": related_files,
-            "stats": {
-                "entry_points": len(entry_points),
-                "entry_points_total": total_entry_points,
-                "nodes": len(nodes),
-                "nodes_total": total_nodes,
-                "edges": len(edges),
-                "edges_total": total_edges,
-                "code_blocks": len(code_blocks),
-            },
-            "agent_summary": {
-                "summary_line": (
-                    f"codegraph_context: {len(entry_points)} entry points, "
-                    f"{len(nodes)} nodes, {len(edges)} edges, "
-                    f"{len(code_blocks)} code blocks"
-                ),
+
+        # Cap entry_points for echo (same as before).
+        entry_points = entry_points[:_MAX_INLINE_ENTRY_POINTS]
+
+        if include_graph:
+            # Full graph path — identical to old default behaviour.
+            # The inline caps scale with max_nodes so agents that request more
+            # nodes actually receive them. _MAX_INLINE_NODES / _MAX_INLINE_EDGES
+            # are the floor defaults; larger max_nodes raises the cap
+            # proportionally.
+            inline_node_cap = max(_MAX_INLINE_NODES, max_nodes)
+            inline_edge_cap = max(_MAX_INLINE_EDGES, max_nodes * 2)
+            inline_nodes = nodes[:inline_node_cap]
+            _echoed_ids = {n.get("id") for n in inline_nodes}
+            inline_edges = [
+                e
+                for e in edges
+                if e.get("source") in _echoed_ids and e.get("target") in _echoed_ids
+            ][:inline_edge_cap]
+            result: dict[str, Any] = {
+                "success": True,
                 "verdict": verdict,
-                "next_step": _next_step(bool(code_blocks), bool(entry_points)),
-            },
-            "elapsed_ms": int((time.perf_counter() - started) * 1000),
-        }
+                "task": task,
+                "candidates": candidates,
+                "entry_points": entry_points,
+                "nodes": inline_nodes,
+                "edges": inline_edges,
+                "related_symbols": related_symbols,
+                "code_blocks": code_blocks,
+                "related_files": related_files,
+                "stats": {
+                    "entry_points": len(entry_points),
+                    "entry_points_total": total_entry_points,
+                    "nodes": len(inline_nodes),
+                    "nodes_total": total_nodes,
+                    "edges": len(inline_edges),
+                    "edges_total": total_edges,
+                    "code_blocks": len(code_blocks),
+                },
+                "agent_summary": {
+                    "summary_line": (
+                        f"codegraph_context: {len(entry_points)} entry points, "
+                        f"{len(inline_nodes)} nodes, {len(inline_edges)} edges, "
+                        f"{len(code_blocks)} code blocks"
+                    ),
+                    "verdict": verdict,
+                    "next_step": _next_step(bool(code_blocks), bool(entry_points)),
+                },
+                "elapsed_ms": int((time.perf_counter() - started) * 1000),
+            }
+        else:
+            # Lean path (default, RFC-0006): omit nodes/edges, expose totals.
+            # ~60% smaller payload — matches CG's compact related-symbols
+            # format. The agent answers from entry_points + code_blocks; the
+            # full graph is available on re-request with include_graph=true.
+            result = {
+                "success": True,
+                "verdict": verdict,
+                "task": task,
+                "candidates": candidates,
+                "entry_points": entry_points,
+                "related_symbols": related_symbols,
+                "code_blocks": code_blocks,
+                "related_files": related_files,
+                "stats": {
+                    "entry_points": len(entry_points),
+                    "entry_points_total": total_entry_points,
+                    "nodes_total": total_nodes,
+                    "edges_total": total_edges,
+                    "code_blocks": len(code_blocks),
+                },
+                "agent_summary": {
+                    "summary_line": (
+                        f"codegraph_context: {len(entry_points)} entry points, "
+                        f"{total_nodes} symbols, "
+                        f"{len(code_blocks)} code blocks"
+                    ),
+                    "verdict": verdict,
+                    "next_step": _next_step_lean(bool(code_blocks), bool(entry_points)),
+                },
+                "elapsed_ms": int((time.perf_counter() - started) * 1000),
+            }
 
         from ..utils.format_helper import apply_toon_format_to_response
 
@@ -818,3 +875,50 @@ def _next_step(has_code: bool, has_entry_points: bool) -> str:
     if has_entry_points:
         return "Use the nodes and edges to answer; code snippets were not available."
     return "Try codegraph_symbol_search with an exact symbol name or broaden the task."
+
+
+def _next_step_lean(has_code: bool, has_entry_points: bool) -> str:
+    """Next-step hint for the lean (default) response path.
+
+    Always names the ``include_graph=true`` flag so the agent knows the full
+    call graph is available on re-request — the progressive-disclosure contract.
+    """
+    if has_code:
+        return (
+            "Answer from code_blocks now. "
+            "For the full call graph (nodes/edges) add include_graph=true."
+        )
+    if has_entry_points:
+        return (
+            "Entry points found; code snippets were not available. "
+            "For the full call graph add include_graph=true."
+        )
+    return "Try codegraph_symbol_search with an exact symbol name or broaden the task."
+
+
+def _build_related_symbols(
+    nodes: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Build a compact CG-style related-symbols list grouped by file.
+
+    Each entry is ``{"file": str, "symbols": ["name:line", ...]}``, sorted by
+    file path then by line number within each file. Nodes without a file or
+    without a name are skipped. This mirrors CodeGraph's "Related Symbols"
+    format (``file: name:line, name:line``) at a fraction of the per-node
+    dict cost — no language, no kind, no end_line, no id.
+    """
+    by_file: dict[str, list[tuple[int, str]]] = {}
+    for node in nodes:
+        file_path = node.get("file", "")
+        name = node.get("name", "")
+        if not file_path or not name:
+            continue
+        line = int(node.get("line", 0) or 0)
+        by_file.setdefault(file_path, []).append((line, name))
+
+    groups: list[dict[str, Any]] = []
+    for file_path in sorted(by_file):
+        entries = sorted(by_file[file_path])  # sort by (line, name)
+        symbols = [f"{name}:{line}" for line, name in entries]
+        groups.append({"file": file_path, "symbols": symbols})
+    return groups

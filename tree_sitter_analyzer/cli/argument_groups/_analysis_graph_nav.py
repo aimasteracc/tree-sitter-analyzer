@@ -127,6 +127,16 @@ def _add_mcp_graph_nav_options(parser: argparse.ArgumentParser) -> None:
         help="Max source snippets returned for --codegraph-context (default: 5)",
     )
     parser.add_argument(
+        "--codegraph-context-include-graph",
+        action="store_true",
+        default=False,
+        help=(
+            "Include full nodes/edges adjacency graph in --codegraph-context output. "
+            "Default (lean mode) omits graph and returns a compact related-symbols "
+            "list instead (RFC-0006 progressive disclosure)."
+        ),
+    )
+    parser.add_argument(
         "--codegraph-explore",
         metavar="QUERY",
         help="Bulk-fetch N related symbols' source + relationship map in one call. "
