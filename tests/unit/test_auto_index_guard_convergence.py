@@ -191,6 +191,7 @@ def test_resolution_converged_helpers_degrade_on_broken_cache() -> None:
     from tree_sitter_analyzer.mcp.utils.auto_index_guard import (
         _mark_resolution_converged,
         _resolution_converged,
+        _resolve_pending_unresolved_refs,
     )
 
     class BrokenCache:
@@ -198,4 +199,36 @@ def test_resolution_converged_helpers_degrade_on_broken_cache() -> None:
             raise RuntimeError("broken")
 
     assert _resolution_converged(BrokenCache()) is False
+    assert _resolve_pending_unresolved_refs(BrokenCache()) is False
     _mark_resolution_converged(BrokenCache())  # must not raise
+
+
+def test_ensure_indexed_does_not_mark_converged_on_resolve_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """If _resolve_pending_unresolved_refs fails, convergence must NOT be persisted."""
+    _project(tmp_path)
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_project(max_files=10, workers=0)
+        cache.get_conn().execute("DROP TABLE IF EXISTS ast_resolve_state")
+        cache.get_conn().commit()
+    finally:
+        cache.close()
+
+    auto_index_guard.reset()
+
+    def broken_index_project(self: Any, *args: Any, **kwargs: Any) -> Any:
+        if kwargs.get("resolve_only"):
+            raise RuntimeError("disk full, resolve aborted")
+        raise RuntimeError("unexpected call")
+
+    monkeypatch.setattr(ASTCache, "index_project", broken_index_project)
+    try:
+        result = auto_index_guard.ensure_indexed(str(tmp_path), max_files=20)
+        # Cache is pre-indexed so ensure_indexed still returns it.
+        assert result is not None
+        # Resolve failed → convergence must NOT have been marked.
+        assert resolution_converged(result.get_conn()) is False
+    finally:
+        auto_index_guard.reset()

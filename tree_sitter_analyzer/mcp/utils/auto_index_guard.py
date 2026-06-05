@@ -91,8 +91,8 @@ def ensure_indexed(
             # resolve already converged for this exact index state; the first
             # retrieval then returns in ms instead of blocking for ~40 s.
             if not _resolution_converged(cache):
-                _resolve_pending_unresolved_refs(cache)
-                _mark_resolution_converged(cache)
+                if _resolve_pending_unresolved_refs(cache):
+                    _mark_resolution_converged(cache)
             _indexed_roots[project_root] = True
             return cache
 
@@ -124,14 +124,17 @@ def _open_cache(project_root: str) -> Any:
         return None
 
 
-def _resolve_pending_unresolved_refs(cache: Any) -> None:
+def _resolve_pending_unresolved_refs(cache: Any) -> bool:
+    """Attempt the resolve-only pass. Returns True on success, False if it failed."""
     try:
         from ..._ast_cache_unresolved import pending_unresolved_count
 
         if pending_unresolved_count(cache.get_conn()) > 0:
             cache.index_project(resolve_only=True)
+        return True
     except Exception:
         logger.debug("auto-index: unresolved_refs resolve-only failed", exc_info=True)
+        return False
 
 
 def _resolution_converged(cache: Any) -> bool:
