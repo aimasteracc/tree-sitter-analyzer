@@ -306,10 +306,16 @@ def _try_builtin_method(
     if not qualifier:
         # Bare (unqualified) builtins are already handled by _try_builtin; skip.
         return None
+    # This tier only classifies Python builtins.  A caller in a different
+    # language (JS, TypeScript, …) must not be classified as calling a Python
+    # builtin — leave those edges ``unknown``.  An empty/unknown language tag
+    # is treated as compatible (same convention as languages_compatible).
+    caller_lang = ctx.file_languages.get(caller_file, "")
+    if caller_lang and caller_lang != "python":
+        return None
     if base not in ctx.builtin_methods.get("python", frozenset()):
         return None
     if ctx.callee_resolver is not None:
-        caller_lang = ctx.file_languages.get(caller_file, "")
         matches = ctx.callee_resolver.resolve_items(
             base, "", include_local=False, include_import=False
         )

@@ -191,6 +191,37 @@ def test_cross_language_js_symbol_does_not_suppress_builtin_method(
     )
 
 
+def test_js_caller_setattr_stays_unknown_not_python_builtin(
+    tmp_path: Path,
+) -> None:
+    """A JavaScript caller using ``obj.setattr()`` must NOT be classified as
+    calling a Python builtin — the edge should stay ``unknown``.
+
+    Regression test for Codex P2: ``_try_builtin_method`` must gate on the
+    caller being Python before consulting the Python builtin table.  Without
+    the gate, JS files calling ``obj.setattr()`` incorrectly get ``builtin``
+    resolution with no resolved file, corrupting cross-language call graphs.
+    """
+    _index(
+        tmp_path,
+        {
+            "utils.js": (
+                "function patchObject(obj, name, val) {\n"
+                "    obj.setattr(name, val);\n"
+                "}\n"
+            )
+        },
+    )
+    db = str(tmp_path / ".ast-cache" / "index.db")
+
+    res = _resolution_for(db, "setattr")
+    # A JS caller must not be classified as calling a Python builtin.
+    assert "builtin" not in res, (
+        f"JS caller obj.setattr() must NOT be classified as Python builtin "
+        f"(Codex P2 caller-gate); got {res}"
+    )
+
+
 def test_lazy_context_construction_populates_builtin_methods(tmp_path: Path) -> None:
     """The public lazy ResolverContext(project_root=, cache=) must populate
     builtin_methods via _ensure_loaded copy-back.
