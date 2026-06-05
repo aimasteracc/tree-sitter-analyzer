@@ -695,3 +695,57 @@ class TestRFC0002Monotonicity:
             )
         finally:
             cache.close()
+
+
+# ---------------------------------------------------------------------------
+# RFC-0002 criterion 4 — same-named functions → distinct callee_symbol_ids
+# ---------------------------------------------------------------------------
+
+
+class TestRFC0002DistinctSymbolIds:
+    """RFC-0002 criterion 4: similarly-named functions in different files must
+    resolve to distinct callee_symbol_ids, not collapse to one bare name."""
+
+    def test_same_named_functions_in_different_files_get_distinct_ids(
+        self, tmp_path: Path
+    ) -> None:
+        """Two local ``helper()`` functions each called from their own file
+        must resolve to different callee_symbol_ids.
+
+        This is the unit regression the RFC describes for absolute_path vs
+        _validate_absolute_path: identical bare names in different scopes must
+        NOT collapse to a single edge.
+        """
+        (tmp_path / "a.py").write_text(
+            "def helper():\n    return 'a'\n\ndef caller_a():\n    return helper()\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "b.py").write_text(
+            "def helper():\n    return 'b'\n\ndef caller_b():\n    return helper()\n",
+            encoding="utf-8",
+        )
+        cache = ASTCache(str(tmp_path))
+        try:
+            cache.index_project(max_files=10, workers=0)
+            conn = cache.get_conn()
+            rows = conn.execute(
+                "SELECT callee_name, callee_symbol_id, callee_resolved_file "
+                "FROM edges WHERE kind='calls' AND callee_name='helper' "
+                "AND callee_symbol_id IS NOT NULL"
+            ).fetchall()
+            symbol_ids = {r["callee_symbol_id"] for r in rows}
+            resolved_files = {
+                r["callee_resolved_file"] for r in rows if r["callee_resolved_file"]
+            }
+            assert len(rows) >= 2, (
+                f"expected >=2 resolved 'helper' call edges, got {len(rows)}"
+            )
+            assert len(symbol_ids) >= 2, (
+                "RFC-0002 criterion 4: same-named functions in different files "
+                f"must have distinct callee_symbol_ids — got single id: {symbol_ids}"
+            )
+            assert len(resolved_files) >= 2, (
+                f"expected >=2 distinct resolved files, got: {resolved_files}"
+            )
+        finally:
+            cache.close()
