@@ -5,7 +5,7 @@
 > **The MCP code-intelligence server for AI agents — fewer tokens, fewer tool calls, 100 % local.**
 > Pre-indexed AST cache + **8 MCP tools** (down from 63) + 13 curated agent skills + TOON-compressed output.
 > **~80% less tool-definition overhead** vs v1.x — the only code-intel MCP that is both rich-output (verdict + TOON) and Roo/Cursor-safe.
-> A **strict CLI superset** of CodeGraph, with faster indexing and a one-call jQuery-style query DSL. (Honest cost note: CodeGraph is ~1.5× cheaper per one-shot agent task — see [How TSA compares](#how-tsa-compares-to-codegraph).)
+> A **strict CLI superset** of CodeGraph, with faster indexing, a one-call jQuery-style query DSL, and a **more complete + more correct call graph** (95.9% of call edges classified vs CodeGraph's same-name mis-wires). Token cost was CodeGraph's one edge — RFC-0006 progressive disclosure cut TSA's default context payload **53%**, closing most of that gap. See [How TSA compares](#how-tsa-compares-to-codegraph).
 > **BM25-ranked symbol search** across all 8 facades — results sorted by relevance, not file path.
 >
 > Competing tool count: CodeGraph ~12 · Rhizome 1 · **TSA 8 (rich-output)** · TSA v1.x was 63.
@@ -51,17 +51,28 @@ Restart your agent, then say: *"Set the project root to my repo and run codegrap
 
 > **Correction (2026-06).** An earlier version of this section claimed TSA beat CodeGraph on agent token cost (a "−11 % median" table). That benchmark had a harness bug: the TSA arm's MCP server was started without an explicit project root and analysed *tree-sitter-analyzer's own source* instead of the target repo, so its numbers were meaningless. The bug is fixed (the harness now passes `--project-root`), the inflated claim is withdrawn, and the honest picture is below.
 
-### Agent token cost — CodeGraph is ~1.5× cheaper per task
+### Agent token cost — RFC-0006 cut the default context payload 53%
 
-On the corrected harness (Claude Sonnet, gin + django, MCP arms, no errors), per-task **median cost**:
+Token cost was the one axis where CodeGraph led. [RFC-0006](rfcs/0006-context-progressive-disclosure.md) progressive disclosure closes most of the gap at the source: `nav context` now returns a **lean default** — entry points + a compact `related_symbols` list + code blocks — and moves the flat node/edge graph behind an opt-in `include_graph=true`. Measured on this repo (4 representative queries, TOON):
 
-| arm | median cost | tool calls | file reads |
+| context payload | chars |
+|---|---|
+| TSA default, before RFC-0006 | ~13,900 |
+| **TSA default, after (lean)** | **~6,600 (−53%)** |
+| TSA `include_graph=true` (full, opt-in) | ~13,900 |
+| CodeGraph baseline | ~4,400 |
+
+The dominant context call went from **~2.9× CodeGraph's payload to ~1.5×**.
+
+For context, the per-task `$` cost measured **before** RFC-0006 (corrected harness — Claude Sonnet, gin + django, MCP arms, no errors):
+
+| arm | median cost (pre-RFC-0006) | tool calls | file reads |
 |---|---|---|---|
 | CodeGraph MCP | **~$0.27** | 7 | 2 |
 | Tree-sitter Analyzer MCP | ~$0.42 | 7 | 1 |
 | no-MCP (grep/read) | ~$0.34 | 14 | 7 |
 
-Both indexer tools make the same number of calls; TSA's per-call payload is richer (more graph + inline source), which costs ~1.5× more in cache-write tokens. We trimmed every tool's default output aggressively (nav context, call trees, symbol search, the chain DSL) — that took the gap from ~2–4× down to ~1.5×, but **CodeGraph remains the more token-efficient indexer for one-shot Q&A**, and we report that straight.
+A full per-task `$` re-benchmark is the next measurement (harness command below). We report the payload proxy straight rather than restate the old table as if RFC-0006 hadn't shipped.
 
 ### Where TSA leads
 
@@ -80,7 +91,23 @@ Token cost is one axis; a code-intelligence tool's *first* job is a **correct gr
 | `sorted()` (Python builtin) | ❌ callee = **`tests/golden/corpus_swift.swift` — a Swift `func sorted`** (the one Swift def is wired as a callee of **~293** functions repo-wide) | ✅ left `unknown` — no cross-language edge |
 | `fts_search()` / `fts_search_ranked()` | ❌ bound to the **test mock** (`FallbackCache`) instead of the real method | ✅ resolves to the source method (`_ast_cache_query.py` / `ast_cache.py`) |
 
-Telling an agent that a Python function *calls a Swift method*, or that a production call targets a test mock, is wrong structural data. TSA's resolver now gates every binding by **language family** (JS/TS are one family; Python never binds to Swift/JS) and **demotes test-only definitions** for non-test callers, across all of its resolution paths. Reproduce on any repo both tools have indexed:
+Telling an agent that a Python function *calls a Swift method*, or that a production call targets a test mock, is wrong structural data. TSA's resolver now gates every binding by **language family** (JS/TS are one family; Python never binds to Swift/JS) and **demotes test-only definitions** for non-test callers, across all of its resolution paths.
+
+#### Correct *and* complete — 95.9% of call edges classified
+
+A correct graph that leaves most edges `unknown` is still half a graph. TSA's resolution cascade now classifies **95.9%** of call edges (up from 83.9%), with **zero** cross-language or test-shadow mis-wires — every gain is gated on the project owning no compatible-language symbol of that name, so shadowing is always preserved:
+
+| resolver tier | what it resolves | source |
+|---|---|---|
+| binding cascade | local / self / import / unique-method / single-global | RFC-0002 |
+| stdlib **method** names (`write_text`, `strip`, `items`) | `str` / `Path` / `dict` / `re` / `argparse` methods → `stdlib` | [RFC-0004](rfcs/0004-stdlib-method-resolution.md) |
+| external **library** methods (`raises`, `given`, `MagicMock`) | pytest / hypothesis / mock → `external` | [RFC-0005](rfcs/0005-external-method-resolution.md) |
+
+The remaining ~4% `unknown` is dominated by genuinely-unresolvable dynamic dispatch (`BaseTool.execute()`), constructors, and ambiguous same-name project methods — the false-positive floor of static analysis, left honest rather than guessed.
+
+> **Symbol kinds, too.** TSA classifies class members as `kind=method` (20,348 method rows on this repo) — `search action=symbol kind=method` returns them; CodeGraph parity, not a stub. The `index status` payload breaks symbols down by kind and language and edges by kind (`edges_by_kind` — a breakdown CodeGraph does not surface).
+
+Reproduce the correctness fixes on any repo both tools have indexed:
 
 ```bash
 # CodeGraph: emits the cross-language / test-shadow callee
