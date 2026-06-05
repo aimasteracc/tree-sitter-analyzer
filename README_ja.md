@@ -5,7 +5,7 @@
 > **AI エージェントのための MCP コード インテリジェンス サーバー — トークン削減、ツール呼び出し削減、100% ローカル動作。**
 > 事前インデックス AST キャッシュ + **8 MCP ツール**（v1.x の 63 から削減）+ 13 のキュレーション済みエージェント スキル + TOON 圧縮出力。
 > **ツール定義オーバーヘッドを約 80% 削減** — rich-output（verdict + TOON）と Roo/Cursor 対応を同時に実現する唯一の code-intel MCP。
-> 6 リポジトリの実測比較で **CodeGraph を上回る**（コスト中央値 **−11% vs CodeGraph の −4%**）、CLI は厳密な上位互換。
+> CodeGraph の**厳密な CLI 上位互換**、より高速なインデックス、一発 jQuery 風クエリ DSL。(正直なコスト注記: 一発のエージェントタスクでは CodeGraph が約 1.5 倍安い ── [CodeGraph との比較](#codegraph-との比較)参照。)
 >
 > 競合ツール数: CodeGraph ~12 · Rhizome 1 · **TSA 8（rich-output）** · TSA v1.x は 63。
 > v1.x からの移行は [docs/MIGRATION.md](docs/MIGRATION.md) を参照。
@@ -42,29 +42,53 @@ claude mcp add tree-sitter-analyzer \
 * **プロジェクト健全性 A-F グレーディング**。他のオープンソース ツールには無い — サイズ / 複雑度 / カバレッジ / 重複 / 依存 / 構造 / git-ホットスポットの 7 次元でプロジェクト全体を採点。
 * **13 のキュレーション済みワークフロー (Skills)**。「シンボル検索」「コール チェーン追跡」「健全性評価」「リファクター前の安全チェック」「PR レビュー」などの典型シナリオに対応するツール サブセットを事前パッケージ化。
 * **5 層の安全保護**。`safe_to_edit` + `modification_guard` + 制約 DSL + `change_impact` + verdict エンベロープ — エージェントが手を入れる前にリスクを *知る* よう設計。
-* **主要競合 CodeGraph に複数の head-to-head ベンチマークで勝利**。下記参照。
+* **CodeGraph の厳密な CLI 上位互換・高速インデックス・一発クエリ DSL** ── 正直なコスト比較は[下記](#codegraph-との比較)。
 
 ---
 
-## ベンチマーク結果
+## CodeGraph との比較
 
-ヘッドレス Claude Code (Haiku 4.5) にリポジトリごとに 1 つのアーキテクチャ質問を実施。3 アーム: MCP なし / CodeGraph MCP / Tree-sitter Analyzer MCP。各アーム 1 回実行 — 示唆的な数値であり統計的に厳密ではない。
+> **訂正 (2026-06)。** 以前のこの節は「コスト中央値 −11% で CodeGraph に勝つ」と主張していました。そのベンチマークにはハーネスのバグがあり、TSA アームの MCP サーバが明示的なプロジェクトルート無しで起動され、対象リポジトリではなく **tree-sitter-analyzer 自身のソース**を解析していたため、数値は無意味でした。バグは修正済み(ハーネスは `--project-root` を渡す)。誇張した主張は撤回し、正直な比較を以下に示します。
 
-| リポジトリ | 言語/ファイル数 | MCP なし基線 | CodeGraph | **TSA** | 勝者 |
-|---|---|---|---|---|---|
-| **Gin** | Go / 99 | $0.164 | $0.094 (−43 %) | **$0.080 (−51 %)** | **TSA** ⭐ |
-| **Alamofire** | Swift / 98 | $0.201 | $0.219 (+9 %) | **$0.147 (−27 %)** | **TSA** ⭐ |
-| **Excalidraw** | TS / 603 | $0.204 | **$0.179 (−12 %)** | $0.212 (+4 %) | CodeGraph |
-| **Django** | Py / 2 910 | $0.162 | **$0.106 (−35 %)** | $0.205 (+27 %) | CodeGraph |
-| **Tokio** | Rust / 778 | **$0.214** | $0.285 (+33 %) | $0.303 (+42 %) | 両者敗北 |
-| **OkHttp** | Java / 596 | **$0.169** | $0.200 (+18 %) | $0.178 (+5 %) | 両者敗北 |
-| **基線に対する中央値 Δ** | | | **−4 %** | **−11 %** | **TSA** |
+### エージェントのトークンコスト — CodeGraph が 1 タスクあたり約 1.5 倍安い
 
-TSA は **6 リポジトリ中 2 つで完勝**、**コスト中央値節約 (−11%) は CodeGraph の −4% を超え**、indexer-class ツールが機能するべきリポジトリで CodeGraph と同じ方向性を示した。
+修正後のハーネス(Claude Sonnet、gin + django、MCP アーム、エラーなし)でのタスクあたり**中央値コスト**:
 
-> 中央値が CodeGraph 公表の −35% と異なる理由: コスト制御のため Haiku を使用 (彼らは Opus + 4 回中央値)。完全な原始エンベロープと再現スクリプトは `docs/internal/CODEGRAPH_BENCHMARK_FINAL_2026-05-24.md` を参照。
->
-> **ベンチマーク後の改善 (2026-05-30):** (1) BM25 プレフィルターが 40k シンボルを ~400 に絞り込んでからコサイン再ランク — セマンティック検索が 133× 高速化。(2) Min-max BM25 正規化: relevance_score が強い一致 (1.0) と弱い一致 (0.0) を適切に区別。(3) `semantic().sort(by='confidence')` がエンドツーエンドで機能。このベンチマーク実行には含まれない；大規模シンボル数のリポジトリ (Django / Excalidraw) では再実行時にトークン効率の改善が期待される。
+| アーム | 中央値コスト | tool calls | file reads |
+|---|---|---|---|
+| CodeGraph MCP | **約 $0.27** | 7 | 2 |
+| Tree-sitter Analyzer MCP | 約 $0.42 | 7 | 1 |
+| MCP なし (grep/read) | 約 $0.34 | 14 | 7 |
+
+両 indexer ツールはコール数が同じで、TSA の方が 1 コールあたりの応答が richer(グラフ + インライン source が多い)ため、cache-write トークンで約 1.5 倍高くなります。全ツールのデフォルト出力(nav context、call tree、symbol search、chain DSL)を大幅に削減し、差を約 2–4 倍 → 約 1.5 倍に縮めましたが、**一発 Q&A のトークン効率では CodeGraph がより優れた indexer** であり、その事実をそのまま報告します。
+
+### TSA が優る点
+
+- **インデックス構築速度。** commit 後の冗長な edge-refresh パスを除去し、django のコールド index(約 2,950 ファイル)を **181 秒 → 97 秒(−46%)**に短縮。大規模リポジトリほど効果大。変更なしファイルの再 index は content-hash ルックアップ。
+- **厳密な CLI 上位互換。** すべての MCP ツールに CLI 等価物がある(CodeGraph の CLI はより薄い)。*振る舞い*のデフォルト(ランキング・上限・切り詰め)は両サーフェスで同期。出力フォーマットだけは意図的に分岐 ── MCP は TOON(エージェント向けトークン効率)、CLI は JSON(人間/`jq` 向け)。
+- **一発クエリの表現力。** jQuery 風 chain DSL ── `search('X').callees(depth=2).explore(include_code=true).answer(compact=true)` ── がフロー全体のサブグラフ + source を 1 コールで返す。JS 風の `true`/`false` でエージェントが自然に書ける。
+- **構造化 + トークン意識の出力。** MCP は TOON デフォルト(JSON より 50–70% 小)、per-call 切り詰めヒント、全ランキングで一貫した test ファイル降格。
+- **広さ。** ヘルス採点、safe-to-edit / change-impact ゲート、13 の curated Skills、広い言語対応。
+
+### コールグラフの正確さ — CodeGraph が誤配線する箇所を TSA は正しく解決
+
+トークンコストは一つの軸にすぎません。コードインテリジェンスツールの*第一の*仕事は**正しいグラフ**です。両ツールのライブ index をこのリポジトリでドッグフードしたところ、CodeGraph が呼び出しを同名の誤った定義に束縛する一群の誤解決が判明し、TSA のリゾルバはそれを避けるよう修正されました:
+
+| 呼び出し(Python `_resolve_entry_points` / `build_response`) | CodeGraph | TSA |
+|---|---|---|
+| `sorted()`(Python 組み込み) | ❌ callee = **`tests/golden/corpus_swift.swift` の Swift `func sorted`**(唯一の Swift 定義がリポジトリ全体で**約 293** 関数の callee として配線される) | ✅ `unknown` のまま ── 言語をまたぐ edge を作らない |
+| `fts_search()` / `fts_search_ranked()` | ❌ 実メソッドではなく**テストモック**(`FallbackCache`)に束縛 | ✅ source メソッド(`_ast_cache_query.py` / `ast_cache.py`)に解決 |
+
+Python 関数が *Swift メソッドを呼ぶ*、あるいは本番コードの呼び出しがテストモックを指す、というのは誤った構造データです。TSA のリゾルバは全解決パスで、束縛を**言語ファミリ**でゲートし(JS/TS は同一ファミリ、Python は Swift/JS に決して束縛しない)、非テスト呼び出し元に対して**テスト専用定義を降格**します。両ツールが index 済みの任意リポジトリで再現:
+
+```bash
+# CodeGraph: 言語またぎ / test-shadow の callee を返す
+#   (例: `sorted` → corpus_swift.swift, `fts_search` → テストモック)
+# リゾルバ修正後の TSA: 言語的に正しく、source を優先
+tree-sitter-analyzer --callees _resolve_entry_points --format json
+```
+
+> コスト数値の再現: `uv run python benchmarks/codegraph_compare/run.py phase full-warm --repos gin,django`。原始エンベロープとハーネス修正は同ディレクトリ。
 
 ---
 
