@@ -186,8 +186,9 @@ class CodeGraphContextTool(BaseMCPTool):
         max_code_blocks = _bounded_int(arguments.get("max_code_blocks", 5), 0, 25)
         output_format = arguments.get("output_format", "toon")
         # RFC-0006: progressive disclosure. Default lean (no nodes/edges in
-        # response); full graph available via include_graph=true.
-        include_graph = bool(arguments.get("include_graph", False))
+        # response); full graph available via include_graph=true. Coerce
+        # JS-style string booleans so include_graph="false"/"0" stays lean.
+        include_graph = _coerce_bool(arguments.get("include_graph", False))
 
         candidates = _extract_symbol_candidates(task)
         wants_tests = _task_wants_tests(task)
@@ -542,6 +543,26 @@ def _bounded_int(value: Any, minimum: int, maximum: int) -> int:
     except (TypeError, ValueError):
         parsed = minimum
     return max(minimum, min(maximum, parsed))
+
+
+_FALSEY_STRINGS = frozenset({"false", "0", "no", "off", "none", "null", ""})
+
+
+def _coerce_bool(value: Any, default: bool = False) -> bool:
+    """Coerce an MCP/CLI argument to bool, honouring JS-style string booleans.
+
+    Agents (and the chain DSL) may pass ``include_graph`` as the string
+    ``"false"`` / ``"0"`` — ``bool("false")`` is ``True``, which would wrongly
+    take the full-graph path. Recognised falsey tokens map to ``False``; any
+    other non-empty string is truthy. Real bools pass through unchanged.
+    """
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    if isinstance(value, str):
+        return value.strip().lower() not in _FALSEY_STRINGS
+    return bool(value)
 
 
 def _extract_symbol_candidates(task: str) -> list[str]:

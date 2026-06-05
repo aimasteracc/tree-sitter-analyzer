@@ -1238,6 +1238,41 @@ async def test_context_include_graph_true_returns_full_nodes_edges(
 
 
 @pytest.mark.asyncio
+async def test_context_include_graph_string_false_stays_lean(
+    indexed_project: Path,
+) -> None:
+    """Codex P2 #320: include_graph='false' / '0' (JS-style string) must stay
+    lean, not take the full-graph path (bool('false') is True)."""
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        CodeGraphContextTool,
+    )
+
+    tool = CodeGraphContextTool(str(indexed_project))
+    for falsey in ("false", "0", "no", "off"):
+        result = await tool.execute(
+            {
+                "task": "trace handle_request to UserService.get_user",
+                "output_format": "json",
+                "include_graph": falsey,
+            }
+        )
+        assert result["success"] is True
+        # Lean path: no bulky edges echoed for a string-falsey value.
+        assert not result.get("edges"), (
+            f"include_graph={falsey!r} must stay lean, got edges"
+        )
+    # And a string-truthy value still opens the graph.
+    result_true = await tool.execute(
+        {
+            "task": "trace handle_request to UserService.get_user",
+            "output_format": "json",
+            "include_graph": "true",
+        }
+    )
+    assert result_true.get("nodes"), "include_graph='true' must return the graph"
+
+
+@pytest.mark.asyncio
 async def test_context_lean_stats_advertise_graph_totals(
     indexed_project: Path,
 ) -> None:
