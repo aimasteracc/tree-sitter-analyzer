@@ -151,6 +151,11 @@ class CoverageGap:
     priority: str
     reason: str
     suggestion: str
+    # RFC-0003 criterion 6: static-graph enrichment
+    who_should_test: list[str] = field(
+        default_factory=list
+    )  # test files that import the module
+    blast_radius: int = 0  # number of downstream callers (impact if untested)
 
 
 @dataclass
@@ -530,6 +535,77 @@ def _build_coverage_summary(
     }
 
 
+def _enrich_gaps_with_static_graph(
+    gaps: list[CoverageGap],
+    project_root: str,
+    test_files: list[tuple[str, str]],
+) -> None:
+    """RFC-0003 criterion 6: attach static-graph context to each gap.
+
+    Adds:
+    - ``who_should_test``: test files that already import the gap's module
+      (heuristic: the test's file name suggests coverage of this module).
+    - ``blast_radius``: count of distinct callers of the gap's symbol from
+      the AST cache (requires the cache to be indexed; degrades gracefully).
+    """
+    try:
+        from .ast_cache import ASTCache
+
+        cache = ASTCache(project_root)
+        try:
+            _enrich_blast_radius(gaps, cache)
+        finally:
+            cache.close()
+    except Exception:
+        pass
+
+    _enrich_who_should_test(gaps, test_files, project_root)
+
+
+def _enrich_blast_radius(gaps: list[CoverageGap], cache: Any) -> None:
+    """Populate blast_radius from the AST cache's call edges."""
+    try:
+        conn = cache.get_conn()
+        for gap in gaps:
+            name = gap.symbol.name
+            try:
+                row = conn.execute(
+                    "SELECT COUNT(DISTINCT file_path) AS c FROM edges "
+                    "WHERE kind='calls' AND callee_name=? AND callee_resolution != 'unknown'",
+                    (name,),
+                ).fetchone()
+                gap.blast_radius = int(row["c"]) if row else 0
+            except Exception:
+                gap.blast_radius = 0
+    except Exception:
+        pass
+
+
+def _enrich_who_should_test(
+    gaps: list[CoverageGap],
+    test_files: list[tuple[str, str]],
+    project_root: str,
+) -> None:
+    """Suggest test files that are likely responsible for testing each gap.
+
+    Heuristic: test files whose name contains the module name of the gap's file
+    (e.g. test_ast_cache.py → ast_cache.py) or that are co-located.
+    """
+    for gap in gaps:
+        sym_file = os.path.basename(gap.symbol.file_path)
+        module_name = os.path.splitext(sym_file)[0]  # e.g. "ast_cache"
+        candidates: list[str] = []
+        for tfile, _lang in test_files:
+            tname = os.path.basename(tfile)
+            if module_name in tname or tname in (
+                f"test_{module_name}.py",
+                f"{module_name}_test.py",
+            ):
+                rel = os.path.relpath(tfile, project_root)
+                candidates.append(rel)
+        gap.who_should_test = candidates[:5]  # cap at 5 suggestions
+
+
 def _load_coverage_json(path: str) -> dict[str, Any] | None:
     """Load and parse a coverage.py JSON report. Returns None on failure."""
     try:
@@ -678,6 +754,9 @@ def analyze_coverage_gaps(
         len(_build_test_symbols(test_files)[0]) if not coverage_data else 0
     )
     gaps.sort(key=lambda g: _priority_score(g.symbol), reverse=True)
+
+    # RFC-0003 criterion 6: enrich gaps with static-graph context
+    _enrich_gaps_with_static_graph(gaps, project_root, test_files)
 
     stats = _build_coverage_summary(
         prod_symbols, gaps, project_root, prod_files, test_files

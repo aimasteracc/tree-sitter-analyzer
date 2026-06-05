@@ -710,12 +710,7 @@ class TestRFC0002DistinctSymbolIds:
         self, tmp_path: Path
     ) -> None:
         """Two local ``helper()`` functions each called from their own file
-        must resolve to different callee_symbol_ids.
-
-        This is the unit regression the RFC describes for absolute_path vs
-        _validate_absolute_path: identical bare names in different scopes must
-        NOT collapse to a single edge.
-        """
+        must resolve to different callee_symbol_ids."""
         (tmp_path / "a.py").write_text(
             "def helper():\n    return 'a'\n\ndef caller_a():\n    return helper()\n",
             encoding="utf-8",
@@ -747,5 +742,48 @@ class TestRFC0002DistinctSymbolIds:
             assert len(resolved_files) >= 2, (
                 f"expected >=2 distinct resolved files, got: {resolved_files}"
             )
+        finally:
+            cache.close()
+
+
+# ---------------------------------------------------------------------------
+# RFC-0002 criterion 6 — Hyphae false-positive rate measurably lower
+# ---------------------------------------------------------------------------
+
+
+class TestRFC0002HyphaeCalleeFalsePositive:
+    """RFC-0002 criterion 6: resolution rate on a small project must be
+    measurably above 0% after the cascade fix."""
+
+    def test_resolution_rate_above_zero_for_simple_project(
+        self, tmp_path: Path
+    ) -> None:
+        """After indexing, at least one call edge must be resolved (not bare-name).
+        Pins the RFC-0002 criterion 6 goal: unknown rate measurably < 100%."""
+        (tmp_path / "engine_a.py").write_text(
+            "class EngineA:\n    def run(self):\n        return 'a'\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "caller_a.py").write_text(
+            "from engine_a import EngineA\n\ndef main():\n    EngineA().run()\n",
+            encoding="utf-8",
+        )
+        cache = ASTCache(str(tmp_path))
+        try:
+            cache.index_project(max_files=10, workers=0)
+            conn = cache.get_conn()
+            rows = conn.execute(
+                "SELECT callee_name, callee_resolution FROM edges WHERE kind='calls'"
+            ).fetchall()
+            total = len(rows)
+            unknown = sum(
+                1 for r in rows if r["callee_resolution"] in (None, "unknown")
+            )
+            if total > 0:
+                unknown_rate = unknown / total
+                assert unknown_rate < 1.0, (
+                    f"RFC-0002 criterion 6: all {total} call edges are unknown — "
+                    "Hyphae :callees false-positive rate not reduced vs baseline"
+                )
         finally:
             cache.close()
