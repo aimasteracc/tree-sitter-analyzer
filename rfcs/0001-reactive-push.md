@@ -1,6 +1,6 @@
 # RFC-0001: Reactive push — virtual-DOM last mile
 
-- **Status**: draft
+- **Status**: in-progress
 - **Author(s)**: @aimasteracc
 - **Created**: 2026-06-03
 - **Last updated**: 2026-06-03
@@ -131,7 +131,7 @@ The underlying Hyphae query (`search action=select`) remains 1:1 across surfaces
 
 ## Acceptance criteria
 
-- [ ] `SubscriptionRegistry` + delta computation (pure, unit-tested)
+- [x] `SubscriptionRegistry` + delta computation (pure, unit-tested) — `mcp/subscription_registry.py` + 16 tests
 - [ ] `search action=subscribe` / `unsubscribe` wired; captures session+loop from `request_context`
 - [ ] `tsa://hyphae/{selector}` resource read runs the selector
 - [ ] watch→push bridge: change → re-eval → delta → `send_resource_updated`
