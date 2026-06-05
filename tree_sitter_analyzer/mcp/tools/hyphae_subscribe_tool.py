@@ -82,7 +82,7 @@ class HyphaeSubscribeTool(BaseMCPTool):
         self.validate_arguments(arguments)
         selector = arguments["selector"]
         min_interval = float(arguments.get("min_interval", 2.0))
-        output_format = arguments.get("output_format", "json")
+        output_format = arguments.get("output_format", "toon")
 
         # RFC-0001: capture session + loop at subscribe time (the only moment
         # request_context is populated and the event loop is running).
@@ -92,9 +92,11 @@ class HyphaeSubscribeTool(BaseMCPTool):
         registry = get_subscription_registry()
         registry.subscribe(session_id, selector)
 
-        # Store the loop and min_interval so the bridge can use them
+        # Store the loop, session object, and min_interval so the bridge can use them.
+        # Session is captured here because request_context is only valid during a handler.
         _SESSION_LOOPS[session_id] = loop
         _SESSION_MIN_INTERVALS[session_id] = min_interval
+        _SESSION_SESSIONS[session_id] = _capture_session_obj()
 
         resource_uri = _selector_to_uri(selector)
         response = build_response(
@@ -140,7 +142,7 @@ class HyphaeUnsubscribeTool(BaseMCPTool):
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate_arguments(arguments)
-        output_format = arguments.get("output_format", "json")
+        output_format = arguments.get("output_format", "toon")
         session_id = arguments.get("sub_id") or _capture_session_id()
         selector = arguments.get("selector")
 
@@ -152,6 +154,7 @@ class HyphaeUnsubscribeTool(BaseMCPTool):
 
         _SESSION_LOOPS.pop(session_id, None)
         _SESSION_MIN_INTERVALS.pop(session_id, None)
+        _SESSION_SESSIONS.pop(session_id, None)
 
         response = build_response(
             verdict="INFO",
@@ -170,6 +173,8 @@ class HyphaeUnsubscribeTool(BaseMCPTool):
 _SESSION_LOOPS: dict[str, asyncio.AbstractEventLoop] = {}
 # Maps session_id → min_interval_s
 _SESSION_MIN_INTERVALS: dict[str, float] = {}
+# Maps session_id → MCP ServerSession object (captured at subscribe time)
+_SESSION_SESSIONS: dict[str, Any] = {}
 
 
 def _capture_session_id() -> str:
@@ -188,9 +193,28 @@ def _capture_session_id() -> str:
     return "session-default"
 
 
+def _capture_session_obj() -> Any:
+    """Capture the MCP ServerSession from the current request context.
+
+    Must be called inside a tool handler (where request_context is populated).
+    Returns None if unavailable — the bridge degrades gracefully.
+    """
+    try:
+        from mcp.server import Server
+
+        return Server.request_context.session
+    except Exception:
+        return None
+
+
 def get_session_loop(session_id: str) -> asyncio.AbstractEventLoop | None:
     """Return the captured event loop for *session_id*, or None."""
     return _SESSION_LOOPS.get(session_id)
+
+
+def get_session_obj(session_id: str) -> Any:
+    """Return the captured MCP ServerSession for *session_id*, or None."""
+    return _SESSION_SESSIONS.get(session_id)
 
 
 def get_session_min_interval(session_id: str) -> float:

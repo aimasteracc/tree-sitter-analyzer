@@ -135,7 +135,11 @@ EXCLUDE_DIRS: frozenset[str] = frozenset(
         # anyway); their generated SOURCES live in obj/ (C#) and target/ (Java),
         # both excluded below — so dropping "bin" keeps the hang fixed.
         "obj",  # C#/.NET (incl. obj/**/*.g.cs generated sources)
-        "packages",  # C#/.NET (NuGet)
+        # NOTE: "packages" is intentionally NOT here. JS/TS monorepos use
+        # packages/<api>/<src>/ as first-party source directories (Yarn/pnpm
+        # workspaces), so excluding "packages" at any depth prunes real source.
+        # C#/NuGet packages live under obj/ or vendor/ which are already excluded;
+        # TSA also skips .dll/.nupkg files by extension so traversal is safe.
         "target",  # Rust, Java (Maven)
         ".gradle",  # Java (Gradle)
         "vendor",  # Go, PHP
