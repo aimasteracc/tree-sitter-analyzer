@@ -260,8 +260,13 @@ def resolve_java_callee(
             target = ctx.fqn_to_file.get(owner_fqn)
             if target:
                 return _lookup_in_file(ctx, target, simple), "project", target
-            if is_jdk_prefix(owner_fqn):
-                return None, "external", ""
+            # An explicit static import that binds to a non-project owner is a
+            # terminal EXTERNAL resolution — whether JDK or third-party. This
+            # must win BEFORE the RFC-0008 stdlib-method tier (9b), or a static
+            # import of e.g. ``org.apache.commons.lang3.StringUtils.substring``
+            # would be mislabelled ``stdlib`` just because ``substring`` is in
+            # the JDK table (Codex P2 #326).
+            return None, "external", ""
 
     if receiver and receiver not in ("this", "super"):
         # Two candidate type names from the receiver:
@@ -280,8 +285,13 @@ def resolve_java_callee(
             target = ctx.fqn_to_file.get(fqn)
             if target:
                 return _lookup_in_file(ctx, target, simple), "project", target
-            if is_jdk_prefix(fqn):
-                return None, "external", ""
+            # The receiver type is an explicit import that resolves to a
+            # non-project FQN — a terminal EXTERNAL resolution whether JDK or
+            # third-party. This must win BEFORE the RFC-0008 stdlib-method tier
+            # (9b), or ``StringUtils.substring(s)`` (org.apache.commons) would be
+            # mislabelled ``stdlib`` just because ``substring`` is in the JDK
+            # table (Codex P2 #326).
+            return None, "external", ""
 
         # 5. same-package — receiver type defined in the caller's package.
         caller_pkg = ctx.file_package.get(caller_file, "")

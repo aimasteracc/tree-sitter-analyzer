@@ -380,3 +380,69 @@ def test_cross_language_python_external_does_not_classify_java_caller(
     assert "external" not in res, (
         f"a Python external-table name must NOT classify a Java caller; got {res}"
     )
+
+
+# ---------------------------------------------------------------------------
+# external-import preservation (Codex P2 #326, 2nd review)
+# ---------------------------------------------------------------------------
+def test_java_external_import_receiver_not_stdlib(tmp_path: Path) -> None:
+    """``StringUtils.substring(s, 1)`` with ``import
+    org.apache.commons.lang3.StringUtils`` → external, NOT stdlib.
+
+    The receiver type resolves via the type-import to a non-project, non-JDK
+    FQN — a third-party library. The stdlib-method tier (9b) must NOT fire just
+    because ``substring`` is a JDK String name; the explicit external import
+    terminates the resolution as ``external`` first (Codex P2 #326, 2nd review)."""
+    _index(
+        tmp_path,
+        {
+            "Service.java": (
+                "import org.apache.commons.lang3.StringUtils;\n"
+                "class Service {\n"
+                "    void caller(String s) {\n"
+                "        StringUtils.substring(s, 1);\n"
+                "    }\n"
+                "}\n"
+            )
+        },
+    )
+    db = str(tmp_path / ".ast-cache" / "index.db")
+    res = _resolution_for(db, "substring")
+    assert res, "expected a substring() edge"
+    assert "stdlib" not in res, (
+        "StringUtils.substring (Apache Commons, a non-JDK import) must NOT be "
+        f"classified stdlib; the external import terminates it; got {res}"
+    )
+    assert "external" in res, (
+        f"an imported non-JDK receiver type must resolve external; got {res}"
+    )
+
+
+def test_java_external_static_import_not_stdlib(tmp_path: Path) -> None:
+    """``substring(s, 1)`` with ``import static
+    org.apache.commons.lang3.StringUtils.substring`` → external, NOT stdlib.
+
+    The bare name is statically imported from a non-project, non-JDK owner. The
+    static-import stage (3) must terminate it as ``external`` before the
+    RFC-0008 stdlib-method tier (9b) can mislabel it ``stdlib`` (Codex P2 #326,
+    2nd review)."""
+    _index(
+        tmp_path,
+        {
+            "Service.java": (
+                "import static org.apache.commons.lang3.StringUtils.substring;\n"
+                "class Service {\n"
+                "    void caller(String s) {\n"
+                "        substring(s, 1);\n"
+                "    }\n"
+                "}\n"
+            )
+        },
+    )
+    db = str(tmp_path / ".ast-cache" / "index.db")
+    res = _resolution_for(db, "substring")
+    assert res, "expected a substring() edge"
+    assert "stdlib" not in res, (
+        "a statically-imported non-JDK substring must NOT be classified stdlib; "
+        f"got {res}"
+    )
