@@ -446,3 +446,40 @@ def test_java_external_static_import_not_stdlib(tmp_path: Path) -> None:
         "a statically-imported non-JDK substring must NOT be classified stdlib; "
         f"got {res}"
     )
+
+
+def test_java_project_fqn_receiver_wins_over_imported_tail(tmp_path: Path) -> None:
+    """An explicit project FQN receiver must resolve PROJECT even when its simple
+    tail is also bound by an unrelated external import (Codex P2 #326, 3rd
+    review). ``com.proj.Service.doWork()`` resolves to the project class, not
+    ``external``, despite ``import other.lib.Service``."""
+    _index(
+        tmp_path,
+        {
+            "Service.java": (
+                "package com.proj;\n"
+                "class Service {\n"
+                "    static void doWork() {}\n"
+                "}\n"
+            ),
+            "Caller.java": (
+                "package com.app;\n"
+                "import other.lib.Service;\n"
+                "class Caller {\n"
+                "    void run() {\n"
+                "        com.proj.Service.doWork();\n"
+                "    }\n"
+                "}\n"
+            ),
+        },
+    )
+    db = str(tmp_path / ".ast-cache" / "index.db")
+    res = _resolution_for(db, "doWork")
+    assert res, "expected a doWork() edge"
+    assert "external" not in res, (
+        "an explicit project FQN receiver must NOT be classified external by an "
+        f"imported-tail coincidence; got {res}"
+    )
+    assert "project" in res, (
+        f"com.proj.Service.doWork must resolve to the project class; got {res}"
+    )

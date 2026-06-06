@@ -277,6 +277,17 @@ def resolve_java_callee(
         head = receiver.split(".", 1)[0]
         tail = receiver.rsplit(".", 1)[-1] if "." in receiver else receiver
 
+        # 4a. fqn-direct (project) — an explicit fully-qualified PROJECT receiver
+        # (``com.proj.Service.m()``) is unambiguous and must resolve to project
+        # BEFORE the type-import step: its simple tail (``Service``) may also be
+        # bound by an unrelated ``import other.lib.Service``, and the import step
+        # would otherwise terminate it ``external`` by tail coincidence (Codex P2
+        # #326, 3rd review). An import affects simple-name references, never an
+        # already-fully-qualified one.
+        fqn_target = ctx.fqn_to_file.get(receiver)
+        if fqn_target:
+            return _lookup_in_file(ctx, fqn_target, simple), "project", fqn_target
+
         # 4. type-import — receiver head is an imported simple class name.
         for type_name in (head, tail):
             fqn = ctx.simple_to_fqn_by_file.get(caller_file, {}).get(type_name)
@@ -301,11 +312,6 @@ def resolve_java_callee(
                 target = ctx.fqn_to_file.get(same_pkg_fqn)
                 if target:
                     return _lookup_in_file(ctx, target, simple), "project", target
-
-        # 6. fqn-direct — receiver itself is a known project FQN.
-        target = ctx.fqn_to_file.get(receiver)
-        if target:
-            return _lookup_in_file(ctx, target, simple), "project", target
 
         # 7. wildcard — receiver type under an ``import a.b.*`` package.
         type_name = head
