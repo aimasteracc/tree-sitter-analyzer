@@ -200,6 +200,11 @@ def test_prebuilt_context_without_file_languages_keeps_python_tiers() -> None:
 
     stdlib = _try_stdlib_method("write_text", "", "a.py", ctx)
     assert stdlib is not None and stdlib.resolution == "stdlib"
+    # all three RFC-0004/5/7 tiers fall back to the Python table, not just stdlib.
+    ext = _try_external_method(sorted(EXTERNAL_METHODS_PY)[0], "", "a.py", ctx)
+    assert ext is not None and ext.resolution == "external"
+    builtin = _try_builtin_method(sorted(BUILTIN_QUALIFIED_PY)[0], "obj", "a.py", ctx)
+    assert builtin is not None and builtin.resolution == "builtin"
 
     # cross-language gate intact: a POPULATED non-Python caller tag no-ops.
     ctx_js = ResolverContext(
