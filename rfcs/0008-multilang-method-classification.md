@@ -78,6 +78,48 @@ tables alongside Python.
 The **language-aware project-ownership gate** stays: a project method of the same
 name in a compatible-language file wins; ambiguous names stay `unknown`.
 
+#### Java routes through its own resolver cascade (not the Python tiers)
+
+`resolve_callee` dispatches `language == "java"` straight into
+`_java.resolve_java_callee`, which has its **own** 10-stage cascade and returns
+before `_resolve_callee_python` (where `_try_stdlib_method` et al. live) ever
+runs. The Java resolver does **not** read `ResolverContext.stdlib_methods`. So
+generalising the Python tiers + registering `STDLIB_METHODS_JAVA` in the shared
+tables is **necessary but not sufficient** for Java: it would leave `list.add(x)`
+unchanged.
+
+The Java method-classification tiers are therefore added **inside
+`resolve_java_callee`** as new terminal stages (9b stdlib / 9c external), reading
+`STDLIB_METHODS_JAVA` / `EXTERNAL_METHODS_JAVA` directly, with a language-aware
+`_project_owns` ownership gate. The shared-table generalisation (caller_lang
+dispatch in `__init__.py`) still lands — it fixes a latent cross-language bug for
+the languages that *do* route through the generic Python path and registers the
+Java tables for any future unified path — but the **decisive** change for Java is
+the new tiers in `resolve_java_callee`. Go/JS will follow whichever path their
+resolver uses (measure first).
+
+A prerequisite for Java surfaced during implementation: Java
+`method_invocation` call extraction recorded the *receiver* as the callee name
+(`list.add()` → `name="list"`), so the method name never reached any tier. The
+fix (extract the `name` field, carry the `object` as receiver) ships with the
+Java PR.
+
+#### Precision over recall for ambiguous names (curation discipline)
+
+A name tier classifies on the **bare method name** with no receiver-type
+evidence (type inference is deferred — see Alternatives). The only safety net is
+the project-ownership gate, which distinguishes *project* from *not-project* but
+**not** *stdlib* from *external/third-party*. So a generic name that a domain or
+third-party object commonly defines (`get` on a Guava `Cache`, `set` on a
+builder, `map`/`filter` on a domain stream) would be over-claimed as `stdlib`.
+Each language table must therefore be **curated for precision**: include only
+names that are *distinctively* the platform's API (e.g. `substring`,
+`computeIfAbsent`, `containsKey`, `collect`, `orElseThrow`) and exclude bare
+container/accessor verbs that domain objects routinely define (`set`, `put`,
+`map`, `filter`, `peek`, `reduce`, …), mirroring `STDLIB_METHODS_PY`'s exclusion
+list. A false `stdlib` label erodes the "agents can trust the resolved graph"
+thesis more than a missed classification does.
+
 ### Error handling
 
 Best-effort and monotonic: a tier only moves an edge `unknown -> stdlib/external/
