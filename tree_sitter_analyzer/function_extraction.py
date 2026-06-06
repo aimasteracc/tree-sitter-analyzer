@@ -105,7 +105,28 @@ def _call_info_field(node: Any, source: str) -> dict[str, Any] | None:
 
 
 def _call_info_java(node: Any, source: str) -> dict[str, Any] | None:
-    """Java: identifier or field_access/method_reference child."""
+    """Java method_invocation: method name from the ``name`` field, receiver
+    from the ``object`` field.
+
+    ``list.add("x")`` must extract ``name='add'`` with ``receiver='list'`` (so
+    RFC-0008 stdlib/external method tiers can match the method name), NOT the
+    receiver identifier ``list``. tree-sitter-java exposes the method as the
+    ``name`` field and the receiver as the ``object`` field; a bare call
+    ``verify(s)`` has no ``object`` field (receiver is ``None``).
+    """
+    if node.type == "method_invocation":
+        name_node = node.child_by_field_name("name")
+        if name_node is not None:
+            name = _node_text(name_node, source)
+            obj_node = node.child_by_field_name("object")
+            receiver = _node_text(obj_node, source) if obj_node is not None else None
+            full_name = f"{receiver}.{name}" if receiver else name
+            return {
+                "name": name,
+                "full_name": full_name,
+                "line": node.start_point[0] + 1,
+                "receiver": receiver,
+            }
     for child in node.children:
         if child.type == "identifier":
             return _call_from_text(_node_text(child, source), node)

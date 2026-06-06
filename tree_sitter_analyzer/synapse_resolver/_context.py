@@ -16,6 +16,7 @@ from ._constants import (
     STDLIB_NAMES_PY,
 )
 from ._imports import ImportEntry
+from ._java_constants import EXTERNAL_METHODS_JAVA, STDLIB_METHODS_JAVA
 
 if TYPE_CHECKING:
     from ..ast_cache import ASTCache
@@ -519,8 +520,14 @@ def _build_resolver_context_uncached(cache: ASTCache) -> ResolverContext:
         imports_by_file=imports_by_file,
         builtins={"python": BUILTINS_PY},
         stdlib_modules={"python": STDLIB_NAMES_PY},
-        stdlib_methods={"python": STDLIB_METHODS_PY},
-        external_methods={"python": EXTERNAL_METHODS_PY},
+        stdlib_methods={
+            "python": STDLIB_METHODS_PY,
+            "java": STDLIB_METHODS_JAVA,
+        },
+        external_methods={
+            "python": EXTERNAL_METHODS_PY,
+            "java": EXTERNAL_METHODS_JAVA,
+        },
         builtin_methods={"python": BUILTIN_QUALIFIED_PY},
         callee_resolver=callee_resolver,
         file_languages=file_languages,
@@ -559,6 +566,7 @@ def _maybe_build_java_context(
         file_symbols=file_symbols,
         file_class_methods=file_class_methods,
         global_name_table=global_name_table,
+        file_languages=file_languages,
     )
 
 

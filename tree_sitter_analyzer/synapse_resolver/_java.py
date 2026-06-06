@@ -26,7 +26,12 @@ import re
 from dataclasses import dataclass, field
 
 from ._imports import ImportEntry
-from ._java_constants import JAVA_LANG_TYPES, is_jdk_prefix
+from ._java_constants import (
+    EXTERNAL_METHODS_JAVA,
+    JAVA_LANG_TYPES,
+    STDLIB_METHODS_JAVA,
+    is_jdk_prefix,
+)
 
 # A ``package a.b.c;`` declaration. ``module_path`` here is reused to
 # carry the package name; ``local_name`` marks the row as a package row.
@@ -142,6 +147,9 @@ class JavaResolverContext:
     file_symbols: dict[str, list[tuple[str, str, int]]] = field(default_factory=dict)
     # simple name -> [(file, symbol_id), ...] project-wide (single-global).
     global_name_table: dict[str, list[tuple[str, int]]] = field(default_factory=dict)
+    # file -> language tag (so the RFC-0008 ownership gate is language-aware:
+    # a Python ``split`` must NOT count as a Java project owner).
+    file_languages: dict[str, str] = field(default_factory=dict)
 
 
 def build_java_context(
@@ -149,6 +157,7 @@ def build_java_context(
     file_symbols: dict[str, list[tuple[str, str, int]]],
     file_class_methods: dict[str, dict[str, dict[str, int]]],
     global_name_table: dict[str, list[tuple[str, int]]],
+    file_languages: dict[str, str] | None = None,
 ) -> JavaResolverContext:
     """Assemble the Java resolution maps from already-loaded cache data.
 
@@ -159,6 +168,7 @@ def build_java_context(
         file_class_methods=file_class_methods,
         file_symbols=file_symbols,
         global_name_table=global_name_table,
+        file_languages=file_languages or {},
     )
 
     for caller_file, entries in imports_by_file.items():
@@ -313,8 +323,48 @@ def resolve_java_callee(
             target_file, sym_id = cands[0]
             return sym_id, "project", target_file
 
+    # 9b. RFC-0008 stdlib METHOD — a bare JDK method name (``add``, ``substring``,
+    #     ``stream``, …) whose receiver type could not be resolved to a project
+    #     file. Classify ``stdlib`` (a JDK method, mirroring Python's stdlib tier)
+    #     when the project owns NO method of that name. The caller here is Java,
+    #     so any project owner is the same language — ownership is the gate that
+    #     preserves shadowing (a project ``add``) and ambiguity (two ``add``s).
+    if simple in STDLIB_METHODS_JAVA and not _project_owns(ctx, simple):
+        return None, "stdlib", ""
+
+    # 9c. RFC-0008 external METHOD — JUnit / Mockito / AssertJ test-framework
+    #     method names (``verify``, ``mock``, ``assertEquals``, …). Runs AFTER
+    #     the stdlib tier so JDK names win. Same project-ownership gate.
+    if simple in EXTERNAL_METHODS_JAVA and not _project_owns(ctx, simple):
+        return None, "external", ""
+
     # 10. unknown.
     return None, "unknown", ""
+
+
+def _project_owns(ctx: JavaResolverContext, simple: str) -> bool:
+    """True when a COMPATIBLE-LANGUAGE (Java) project symbol of name ``simple``
+    exists.
+
+    The RFC-0008 ownership gate: if the project owns the name in Java — even
+    ambiguously (two classes define ``add``) — the stdlib/external method tiers
+    must NOT claim it, preserving shadowing. The gate is LANGUAGE-AWARE
+    (Codex P2 #319 pattern): a same-named symbol in an incompatible-language
+    file (e.g. a Python ``split``) must NOT count as a Java owner, because
+    ``languages_compatible('java', 'python')`` is False — the Java caller cannot
+    resolve the Python method, so it does not suppress the JDK stdlib
+    classification.
+
+    When a file's language is unknown (no tag), it is treated as a possible
+    owner (conservative — same convention as ``languages_compatible``).
+    """
+    from .._language_family import languages_compatible
+
+    for owner_file, _sym_id in ctx.global_name_table.get(simple, []):
+        owner_lang = ctx.file_languages.get(owner_file, "")
+        if not owner_lang or languages_compatible("java", owner_lang):
+            return True
+    return False
 
 
 __all__ = [
