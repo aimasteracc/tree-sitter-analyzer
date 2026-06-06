@@ -212,6 +212,24 @@ def _try_builtin(
     return None
 
 
+def _table_language(ctx: ResolverContext, caller_file: str) -> str:
+    """Language key for the RFC-0004/5/7 method tables (stdlib/external/builtin).
+
+    Trusts a populated ``file_languages`` map: a tagged non-Python caller (a JS
+    file) looks up its own (absent) table and the tier no-ops, preserving the
+    cross-language gate. Falls back to ``"python"`` ONLY when ``file_languages``
+    is entirely empty — a pre-built / direct-API ``ResolverContext`` whose public
+    constructor does not require it — so Python calls (``path.write_text()``,
+    ``monkeypatch.setattr()``) keep their RFC-0004/5/7 classification instead of
+    regressing to ``unknown`` (Codex P2 #326). The ownership gate keeps using the
+    raw ``caller_lang`` (empty == compatible), so legacy behaviour is unchanged.
+    """
+    lang = ctx.file_languages.get(caller_file, "")
+    if lang:
+        return lang
+    return "python" if not ctx.file_languages else ""
+
+
 def _try_stdlib_method(
     base: str, qualifier: str, caller_file: str, ctx: ResolverContext
 ) -> ResolvedCallee | None:
@@ -234,7 +252,9 @@ def _try_stdlib_method(
     tier never fires (conservative — no false classification).
     """
     caller_lang = ctx.file_languages.get(caller_file, "")
-    if base not in ctx.stdlib_methods.get(caller_lang, frozenset()):
+    if base not in ctx.stdlib_methods.get(
+        _table_language(ctx, caller_file), frozenset()
+    ):
         return None
     if ctx.callee_resolver is not None:
         matches = ctx.callee_resolver.resolve_items(
@@ -274,7 +294,9 @@ def _try_external_method(
     an empty frozenset and the tier never fires.
     """
     caller_lang = ctx.file_languages.get(caller_file, "")
-    if base not in ctx.external_methods.get(caller_lang, frozenset()):
+    if base not in ctx.external_methods.get(
+        _table_language(ctx, caller_file), frozenset()
+    ):
         return None
     if ctx.callee_resolver is not None:
         matches = ctx.callee_resolver.resolve_items(
@@ -322,7 +344,9 @@ def _try_builtin_method(
     # up an empty frozenset and the tier never fires. An empty/unknown language
     # tag also yields an empty table, so untyped callers fall through safely.
     caller_lang = ctx.file_languages.get(caller_file, "")
-    if base not in ctx.builtin_methods.get(caller_lang, frozenset()):
+    if base not in ctx.builtin_methods.get(
+        _table_language(ctx, caller_file), frozenset()
+    ):
         return None
     if ctx.callee_resolver is not None:
         matches = ctx.callee_resolver.resolve_items(

@@ -165,3 +165,47 @@ def test_genuinely_unknown_name_stays_unknown(tmp_path: Path) -> None:
     res = _resolution_for(db, "frobnicate_xyz")
     assert res, "expected a frobnicate_xyz() edge"
     assert set(res) == {"unknown"}, f"expected unknown, got {res}"
+
+
+def test_prebuilt_context_without_file_languages_keeps_python_tiers() -> None:
+    """Codex P2 #326 regression lock: a pre-built ResolverContext constructed
+    via the public direct API WITHOUT ``file_languages`` must still apply the
+    RFC-0004/5/7 Python method tiers.
+
+    The RFC-0008 caller-language dispatch keys the tables on the caller's
+    language; when ``file_languages`` is unpopulated the lookup must fall back to
+    ``python`` (not an empty table), or ``path.write_text()`` /
+    ``monkeypatch.setattr()`` regress to ``unknown``. A POPULATED non-Python tag
+    must still no-op (cross-language gate preserved)."""
+    from tree_sitter_analyzer.synapse_resolver import (
+        _try_builtin_method,
+        _try_external_method,
+        _try_stdlib_method,
+    )
+    from tree_sitter_analyzer.synapse_resolver._constants import (
+        BUILTIN_QUALIFIED_PY,
+        EXTERNAL_METHODS_PY,
+        STDLIB_METHODS_PY,
+    )
+    from tree_sitter_analyzer.synapse_resolver._context import ResolverContext
+
+    ctx = ResolverContext(
+        ".",
+        None,
+        stdlib_methods={"python": STDLIB_METHODS_PY},
+        external_methods={"python": EXTERNAL_METHODS_PY},
+        builtin_methods={"python": BUILTIN_QUALIFIED_PY},
+    )
+    assert not ctx.file_languages  # the pre-built / direct-API path
+
+    stdlib = _try_stdlib_method("write_text", "", "a.py", ctx)
+    assert stdlib is not None and stdlib.resolution == "stdlib"
+
+    # cross-language gate intact: a POPULATED non-Python caller tag no-ops.
+    ctx_js = ResolverContext(
+        ".",
+        None,
+        stdlib_methods={"python": STDLIB_METHODS_PY},
+        file_languages={"a.js": "javascript"},
+    )
+    assert _try_stdlib_method("write_text", "", "a.js", ctx_js) is None
