@@ -330,6 +330,9 @@ local_settings.py
 # Compiled tree-sitter parsers
 parsers/
 
+# TSA dogfood index cache (local, regenerated on demand)
+.tree-sitter-cache/
+
 # Compatibility test results (keep directory structure, ignore content)
 compatibility_test/results/*/
 compatibility_test/reports/*.md
