@@ -212,6 +212,24 @@ def _try_builtin(
     return None
 
 
+def _table_language(ctx: ResolverContext, caller_file: str) -> str:
+    """Language key for the RFC-0004/5/7 method tables (stdlib/external/builtin).
+
+    Trusts a populated ``file_languages`` map: a tagged non-Python caller (a JS
+    file) looks up its own (absent) table and the tier no-ops, preserving the
+    cross-language gate. Falls back to ``"python"`` ONLY when ``file_languages``
+    is entirely empty — a pre-built / direct-API ``ResolverContext`` whose public
+    constructor does not require it — so Python calls (``path.write_text()``,
+    ``monkeypatch.setattr()``) keep their RFC-0004/5/7 classification instead of
+    regressing to ``unknown`` (Codex P2 #326). The ownership gate keeps using the
+    raw ``caller_lang`` (empty == compatible), so legacy behaviour is unchanged.
+    """
+    lang = ctx.file_languages.get(caller_file, "")
+    if lang:
+        return lang
+    return "python" if not ctx.file_languages else ""
+
+
 def _try_stdlib_method(
     base: str, qualifier: str, caller_file: str, ctx: ResolverContext
 ) -> ResolvedCallee | None:
@@ -227,11 +245,18 @@ def _try_stdlib_method(
     incompatible-language file (e.g. a JavaScript ``split``) must NOT suppress
     the Python stdlib classification — Python ``'x'.split()`` is still stdlib.
     Only a same-/compatible-language project method counts as ownership.
+
+    RFC-0008: the table is selected by the CALLER's language, not hard-coded
+    ``"python"``. A Java caller consults the Java stdlib-method table; a caller
+    whose language has no registered table looks up an empty frozenset and the
+    tier never fires (conservative — no false classification).
     """
-    if base not in ctx.stdlib_methods.get("python", frozenset()):
+    caller_lang = ctx.file_languages.get(caller_file, "")
+    if base not in ctx.stdlib_methods.get(
+        _table_language(ctx, caller_file), frozenset()
+    ):
         return None
     if ctx.callee_resolver is not None:
-        caller_lang = ctx.file_languages.get(caller_file, "")
         matches = ctx.callee_resolver.resolve_items(
             base, "", include_local=False, include_import=False
         )
@@ -263,11 +288,17 @@ def _try_external_method(
 
     Covers pytest, hypothesis, and unittest.mock method names that cannot live in
     the project and would otherwise remain ``unknown``.
+
+    RFC-0008: the table is selected by the CALLER's language (Java consults the
+    JUnit/Mockito/AssertJ table); a language with no registered table looks up
+    an empty frozenset and the tier never fires.
     """
-    if base not in ctx.external_methods.get("python", frozenset()):
+    caller_lang = ctx.file_languages.get(caller_file, "")
+    if base not in ctx.external_methods.get(
+        _table_language(ctx, caller_file), frozenset()
+    ):
         return None
     if ctx.callee_resolver is not None:
-        caller_lang = ctx.file_languages.get(caller_file, "")
         matches = ctx.callee_resolver.resolve_items(
             base, "", include_local=False, include_import=False
         )
@@ -306,14 +337,16 @@ def _try_builtin_method(
     if not qualifier:
         # Bare (unqualified) builtins are already handled by _try_builtin; skip.
         return None
-    # This tier only classifies Python builtins.  A caller in a different
-    # language (JS, TypeScript, …) must not be classified as calling a Python
-    # builtin — leave those edges ``unknown``.  An empty/unknown language tag
-    # is treated as compatible (same convention as languages_compatible).
+    # RFC-0008: gate on TABLE PRESENCE, not a hard-coded ``!= "python"``. Only a
+    # caller whose language registers a qualified-builtin table can match here;
+    # a caller language with no such table (e.g. Java — which has no
+    # monkeypatch.setattr equivalent, static methods are import-resolved) looks
+    # up an empty frozenset and the tier never fires. An empty/unknown language
+    # tag also yields an empty table, so untyped callers fall through safely.
     caller_lang = ctx.file_languages.get(caller_file, "")
-    if caller_lang and caller_lang != "python":
-        return None
-    if base not in ctx.builtin_methods.get("python", frozenset()):
+    if base not in ctx.builtin_methods.get(
+        _table_language(ctx, caller_file), frozenset()
+    ):
         return None
     if ctx.callee_resolver is not None:
         matches = ctx.callee_resolver.resolve_items(
