@@ -81,143 +81,85 @@ def is_jdk_prefix(fqn: str) -> bool:
 # ``STDLIB_METHODS_PY``).
 #
 # The Java resolver's name/import tiers key on receiver *types* and FQNs; they
-# never match a bare *method* name like ``add`` or ``substring`` on an inferred
-# JDK receiver, so those call edges fall through to ``unknown``. This curated
-# table is consulted by the cascade's language-aware ``_try_stdlib_method``
-# tier — AFTER every project-binding rule — to classify such names as
-# ``stdlib`` when (and only when) the project defines no compatible-language
-# (Java) method of that name. Grouped by owning type for auditability.
-# High-recall, NOT exhaustive; conservative — generic names that projects
-# commonly define are protected by the project-ownership gate anyway, but names
-# that are almost always project-domain (``execute``, ``build``, ``handle``,
-# ``process``, ``run``) are deliberately EXCLUDED to avoid false positives.
+# never match a bare *method* name like ``substring`` or ``containsKey`` on an
+# inferred JDK receiver, so those call edges fall through to ``unknown``. This
+# curated table is consulted by the cascade's language-aware
+# ``_try_stdlib_method`` tier — AFTER every project-binding rule — to classify
+# such names as ``stdlib`` when (and only when) the project defines no
+# compatible-language (Java) method of that name. Grouped by owning type for
+# auditability.
+#
+# CURATION RULE — PRECISION over recall (Codex P2 #326).
+# The name tiers carry NO receiver-type evidence (type inference deferred), and
+# the project-ownership gate only separates *project* from *not-project* — NOT
+# *stdlib* from *third-party/domain*. So precision must come entirely from
+# CURATION: a name is KEPT only if a domain object or popular third-party
+# library is VERY UNLIKELY to define a method of that exact name — i.e. it is
+# distinctively the JDK String / Map / Stream / Optional API.
+#
+# Bare generic verbs that domain & third-party objects routinely define are
+# DELIBERATELY DROPPED, because the tiers cannot tell ``Cache.get`` (Guava, not
+# JDK), ``builder.set``, ``repo.add`` or ``domainStream.map`` apart from a JDK
+# receiver — they would otherwise be mislabelled ``stdlib``. Dropped names:
+# add, addAll, remove, removeAll, removeIf, retainAll, get, set, put, putAll,
+# contains, containsAll, values, iterator, hasNext, next, forEach, toArray,
+# isEmpty, size, clear, merge, indexOf, lastIndexOf, trim, replace, replaceAll,
+# split, concat, matches, map, filter, reduce, sorted, distinct, limit, skip,
+# peek, count, min, max. This mirrors STDLIB_METHODS_PY, which likewise excludes
+# set / map / filter / put as too-commonly-project-defined.
 # ---------------------------------------------------------------------------
 
-# java.util collections (List / Map / Set / Collection / Iterator)
-_JAVA_COLLECTION_METHODS = frozenset(
-    {
-        "add",
-        "addAll",
-        "remove",
-        "removeAll",
-        "removeIf",
-        "retainAll",
-        "get",
-        "set",
-        "put",
-        "putAll",
-        "putIfAbsent",
-        "getOrDefault",
-        "containsKey",
-        "containsValue",
-        "contains",
-        "containsAll",
-        "indexOf",
-        "lastIndexOf",
-        "keySet",
-        "entrySet",
-        "values",
-        "subList",
-        "iterator",
-        "listIterator",
-        "hasNext",
-        "next",
-        "forEach",
-        "stream",
-        "parallelStream",
-        "toArray",
-        "isEmpty",
-        "size",
-        "clear",
-        "computeIfAbsent",
-        "computeIfPresent",
-        "merge",
-    }
-)
+# INTERFACE-METHOD NAMES ARE EXCLUDED WHOLESALE (Codex P2 #326, review P1).
+# ``stream``/``parallelStream``/``collect``/``map``/``filter``… are
+# ``java.util.stream.Stream`` **interface** methods, and
+# ``containsKey``/``keySet``/``entrySet``/``computeIfAbsent``/``getOrDefault``…
+# are ``java.util.Map`` / ``Collection`` **interface** methods. Every reactive
+# library (Reactor ``Flux``/``Mono``), collection wrapper (Guava
+# ``ImmutableList``, Spring Data ``Streamable``), and domain type that
+# implements those interfaces (a ``Registry<K,V> implements Map``, an
+# ``OrderQueue implements Collection``) defines them — and the AST cache does
+# NOT index inherited methods from external interfaces, so ``_project_owns``
+# returns False and the call would be mislabelled ``stdlib``. Without
+# receiver-type evidence at this tier, the ONLY safe names are those that live
+# on a ``final`` JDK type with no common interface or popular-library twin.
 
-# java.lang.String / CharSequence
+# java.lang.String — a ``final`` class, so a domain type can never *be* a
+# String. Only names that are also distinctively String (not on the
+# ``CharSequence`` interface, not adopted by domain value/protocol objects)
+# survive: ``charAt``/``chars`` (CharSequence interface), ``startsWith``/
+# ``endsWith`` (java.nio.file.Path, domain Url/Version), ``getBytes`` (domain
+# Packet/Buffer), ``isBlank`` (domain FormField), ``lines`` (BufferedReader)
+# are all DROPPED. Also DROPPED (review HIGH/MEDIUM): ``toUpperCase``/
+# ``toLowerCase`` (DDD string value objects — ``Email``/``Username``/``Slug``,
+# Spring Data ``SqlIdentifier`` — routinely define them) and ``repeat`` (domain
+# scheduler/animation/rule builders: ``Schedule.repeat(3)``).
 _JAVA_STRING_METHODS = frozenset(
     {
         "substring",
-        "trim",
-        "strip",
         "stripLeading",
         "stripTrailing",
-        "split",
-        "replace",
-        "replaceAll",
         "replaceFirst",
-        "toUpperCase",
-        "toLowerCase",
-        "charAt",
-        "indexOf",
-        "lastIndexOf",
-        "startsWith",
-        "endsWith",
-        "concat",
-        "matches",
-        "chars",
         "codePointAt",
         "toCharArray",
-        "getBytes",
         "intern",
-        "repeat",
-        "lines",
         "formatted",
-        "isBlank",
     }
 )
 
-# java.util.Optional
+# java.util.Optional — a ``final`` class. Keep only names with no vavr ``Option``
+# / domain ``Maybe``/``Result`` twin: vavr uses ``getOrElse``/``getOrElseThrow``
+# (not ``orElseGet``/``orElseThrow``) and has no ``ifPresentOrElse``. ``orElse``
+# and ``isPresent`` (both on vavr ``Option`` and domain optionals) are DROPPED.
 _JAVA_OPTIONAL_METHODS = frozenset(
     {
-        "orElse",
         "orElseGet",
         "orElseThrow",
-        "isPresent",
-        "isEmpty",
         "ifPresent",
         "ifPresentOrElse",
-        "filter",
-        "flatMap",
     }
 )
 
-# java.util.stream.Stream / Collectors
-_JAVA_STREAM_METHODS = frozenset(
-    {
-        "map",
-        "mapToInt",
-        "mapToLong",
-        "mapToObj",
-        "flatMap",
-        "filter",
-        "collect",
-        "reduce",
-        "sorted",
-        "distinct",
-        "limit",
-        "skip",
-        "peek",
-        "anyMatch",
-        "allMatch",
-        "noneMatch",
-        "findFirst",
-        "findAny",
-        "count",
-        "min",
-        "max",
-        "boxed",
-        "toList",
-    }
-)
-
-STDLIB_METHODS_JAVA: frozenset[str] = (
-    _JAVA_COLLECTION_METHODS
-    | _JAVA_STRING_METHODS
-    | _JAVA_OPTIONAL_METHODS
-    | _JAVA_STREAM_METHODS
-)
+STDLIB_METHODS_JAVA: frozenset[str] = _JAVA_STRING_METHODS | _JAVA_OPTIONAL_METHODS
 
 
 # ---------------------------------------------------------------------------
@@ -230,11 +172,22 @@ STDLIB_METHODS_JAVA: frozenset[str] = (
 # language-aware ``_try_external_method`` tier — placed AFTER
 # ``_try_stdlib_method`` — to classify such names ``external`` when (and only
 # when) the project owns no compatible-language method of that name. Grouped by
-# owning library for auditability. Conservative: generic names projects define
-# (``setUp``, ``run``, ``execute``, ``before``, ``after``) are EXCLUDED.
+# owning library for auditability.
+#
+# Same PRECISION lens as STDLIB_METHODS_JAVA (Codex P2 #326, review P1/P2): keep
+# only the ``assertX`` / ``assumeX`` / ``assertThatX`` family — bare static
+# entry-point calls (``assertEquals(a, b)``) that a domain object essentially
+# never defines as an instance method. Every RECEIVER-style Mockito/AssertJ name
+# is DROPPED because the tier sees no receiver and the names collide with
+# production code: ``verify`` (``Signature.verify``/``Certificate.verify``/JWT
+# ``Token.verify``), ``when`` (Spring Security / rule-DSL ``rule.when``), ``mock``
+# / ``spy`` (custom factories), and the fluent ``isEqualTo``/``isInstanceOf``/
+# ``containsExactly``/``hasSize``/``then*``/``do*``/``will*`` (domain value
+# objects, builders, state machines). ``fail``/``given`` likewise stay dropped.
 # ---------------------------------------------------------------------------
 
-# JUnit (4 + 5 Assertions / Assertions API)
+# JUnit 4/5 + AssertJ static assertion entry points (bare ``assertX(...)`` /
+# ``assumeX(...)`` / ``assertThatX(...)`` calls — distinctively the test stack).
 _JUNIT_METHODS = frozenset(
     {
         "assertEquals",
@@ -250,56 +203,15 @@ _JUNIT_METHODS = frozenset(
         "assertDoesNotThrow",
         "assertAll",
         "assertTimeout",
-        "assertThat",  # JUnit/Hamcrest assertThat
-        "fail",
+        "assertThat",  # JUnit/Hamcrest/AssertJ assertThat entry point
+        "assertThatThrownBy",  # AssertJ
+        "assertThatExceptionOfType",  # AssertJ
         "assumeTrue",
         "assumeFalse",
     }
 )
 
-# Mockito
-_MOCKITO_METHODS = frozenset(
-    {
-        "mock",
-        "spy",
-        "when",
-        "verify",
-        "verifyNoInteractions",
-        "verifyNoMoreInteractions",
-        "thenReturn",
-        "thenThrow",
-        "thenAnswer",
-        "thenCallRealMethod",
-        "doReturn",
-        "doThrow",
-        "doAnswer",
-        "doNothing",
-        "given",  # BDDMockito.given
-        "willReturn",
-        "willThrow",
-    }
-)
-
-# AssertJ (fluent assertions)
-_ASSERTJ_METHODS = frozenset(
-    {
-        "assertThatThrownBy",
-        "assertThatExceptionOfType",
-        "isEqualTo",
-        "isNotEqualTo",
-        "isNull",
-        "isNotNull",
-        "isInstanceOf",
-        "containsExactly",
-        "hasSize",
-        "isTrue",
-        "isFalse",
-    }
-)
-
-EXTERNAL_METHODS_JAVA: frozenset[str] = (
-    _JUNIT_METHODS | _MOCKITO_METHODS | _ASSERTJ_METHODS
-)
+EXTERNAL_METHODS_JAVA: frozenset[str] = _JUNIT_METHODS
 
 
 __all__ = [
