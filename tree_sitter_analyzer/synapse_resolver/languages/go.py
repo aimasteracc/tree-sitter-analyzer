@@ -8,8 +8,10 @@ its only jobs are:
    binding is even possible).
 2. **stdlib** — classify a package-qualified call (``fmt.Println``,
    ``strings.Split``) when the qualifier is a conservative canonical stdlib
-   package name AND the project does not itself define that name (shadowing
-   preserved). See :mod:`._go_constants`.
+   package name, is ACTUALLY IMPORTED under that qualifier in the caller file
+   (import evidence — a variable that merely shares a stdlib package's name is
+   not imported and stays ``unknown``), AND the project does not itself define
+   that name (shadowing preserved). See :mod:`._go_constants`.
 3. **unknown** — everything else: receiver method calls (``s.Run()`` — the
    receiver is a variable whose struct type the edge does not carry, so we
    never guess), third-party package calls, and any unresolved bare name.
@@ -30,7 +32,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .._registry import register_language
-from ._go_constants import STDLIB_PACKAGES_GO
+from ._go_constants import parse_go_import_block
 
 
 @dataclass
@@ -46,6 +48,43 @@ class GoResolverContext:
     # set of names the project defines anywhere — used to let a project symbol
     # SHADOW a stdlib package qualifier (precision over recall).
     project_names: frozenset[str] = field(default_factory=frozenset)
+    # file -> {local package qualifier -> imported stdlib package} for stdlib
+    # imports only. A ``pkg.Func`` call classifies as stdlib ONLY when ``pkg``
+    # is a key here for the CALLER file (import evidence required — a variable
+    # that merely shares a stdlib package's name is NOT imported, so it stays
+    # ``unknown``). Aliases map the alias to the underlying stdlib package;
+    # blank (``_``) and dot (``.``) imports are excluded (not usable as a
+    # qualifier).
+    imported_stdlib_by_file: dict[str, frozenset[str]] = field(default_factory=dict)
+
+
+def _go_import_blocks_from_conn(
+    conn: Any, file_languages: dict[str, str]
+) -> dict[str, str]:
+    """Read each Go file's raw ``import`` text from the AST cache.
+
+    The indexer stores a Go import block (single or grouped) as one
+    ``kind='import'`` symbol whose ``name`` is the verbatim block text. We
+    concatenate all such rows per file so a file with several import blocks is
+    fully covered. Tolerant of a missing/legacy table (returns ``{}``) — the
+    resolver then has no import evidence and conservatively classifies every
+    package-qualified call ``unknown`` (precision over recall).
+    """
+    blocks: dict[str, str] = {}
+    if conn is None:
+        return blocks
+    try:
+        rows = conn.execute(
+            "SELECT file_path, name FROM ast_symbol_rows WHERE kind = 'import'"
+        ).fetchall()
+    except Exception:  # nosec B110 — table-missing tolerance.
+        return blocks
+    for row in rows:
+        file_path = row["file_path"]
+        if file_languages.get(file_path) != "go":
+            continue
+        blocks[file_path] = blocks.get(file_path, "") + "\n" + (row["name"] or "")
+    return blocks
 
 
 def build_go_resolver_context(
@@ -55,6 +94,8 @@ def build_go_resolver_context(
     file_symbols: dict[str, Any],
     global_name_table: dict[str, Any],
     file_class_methods: Any,  # zero-arg thunk -> class->method map (lazy; unused)
+    conn: Any = None,
+    go_import_blocks: dict[str, str] | None = None,
     **_ignored: Any,
 ) -> GoResolverContext | None:
     """Build the Go context, or ``None`` when no Go file is indexed.
@@ -64,6 +105,15 @@ def build_go_resolver_context(
     own entry, so carrying the full map is safe. The class-method thunk is not
     needed (Go receiver types are not inferable from the edge), so it is never
     called — preserving the lazy "pay nothing if you opt out early" property.
+
+    Stdlib classification is gated on **import evidence**: each Go file's raw
+    ``import`` text (a ``kind='import'`` symbol) is parsed into the set of
+    package qualifiers it actually imports. A ``pkg.Func`` call only classifies
+    as stdlib when ``pkg`` is genuinely imported in the caller file — a variable
+    that merely shares a stdlib package's name (``var http Client; http.Get()``
+    with no ``net/http`` import) is NOT imported and stays ``unknown``. Tests may
+    inject ``go_import_blocks`` (file -> raw import text) directly; production
+    reads it from ``conn``.
     """
     if not any(lang == "go" for lang in file_languages.values()):
         return None
@@ -75,9 +125,22 @@ def build_go_resolver_context(
     for symbols in file_symbols.values():
         for name, _kind, _sym_id in symbols:
             project_names.add(name)
+
+    # Per-file imported stdlib qualifiers (import evidence for the stdlib tier).
+    raw_blocks = (
+        go_import_blocks
+        if go_import_blocks is not None
+        else _go_import_blocks_from_conn(conn, file_languages)
+    )
+    imported_stdlib_by_file: dict[str, frozenset[str]] = {
+        file_path: frozenset(parse_go_import_block(raw))
+        for file_path, raw in raw_blocks.items()
+    }
+
     return GoResolverContext(
         file_symbols=file_symbols,
         project_names=frozenset(project_names),
+        imported_stdlib_by_file=imported_stdlib_by_file,
     )
 
 
@@ -128,13 +191,23 @@ def resolve_go_callee(
         # match (could collide across files/languages). Stay unknown.
         return None, "unknown", ""
 
-    # 2. stdlib — a package-qualified call whose package head is a conservative
-    #    canonical stdlib package AND is not shadowed by a project symbol.
+    # 2. stdlib — a package-qualified call whose package head is BOTH a
+    #    conservative canonical stdlib package AND actually imported under that
+    #    qualifier in the CALLER file (import evidence), AND not shadowed by a
+    #    project symbol. Requiring the import distinguishes a real package
+    #    qualifier from a variable receiver that merely shares the name
+    #    (``var http Client; http.Get()`` with no ``net/http`` import → unknown).
     head = qualifier.split(".", 1)[0]
-    if head in STDLIB_PACKAGES_GO and head not in ctx.project_names:
+    # ``imported`` holds the caller file's actually-imported stdlib qualifiers
+    # (plain package names AND aliases). Membership already proves the qualifier
+    # is a stdlib import, so no extra STDLIB_PACKAGES_GO check is needed —
+    # checking it would wrongly reject a valid alias (``strs "strings"``).
+    imported = ctx.imported_stdlib_by_file.get(caller_file, frozenset())
+    if head in imported and head not in ctx.project_names:
         return None, "stdlib", ""
 
     # 3. unknown — receiver method calls (``s.Run`` — type not inferable),
+    #    non-imported names (variables that shadow a stdlib package name),
     #    third-party packages, shadowed names. Never guess.
     return None, "unknown", ""
 

@@ -80,13 +80,39 @@ def test_build_context_built_when_go_file_present() -> None:
 # ---------------------------------------------------------------------------
 # Direct resolver unit tests
 # ---------------------------------------------------------------------------
-def _ctx(symbols: dict[str, list[tuple[str, str, int]]]) -> GoResolverContext:
+def _ctx(
+    symbols: dict[str, list[tuple[str, str, int]]],
+    *,
+    imports: dict[str, str] | None = None,
+) -> GoResolverContext:
+    """Build a Go context for unit tests.
+
+    ``imports`` maps a file path to its raw Go import-block text (exactly the
+    string the indexer stores as a ``kind='import'`` symbol). When omitted, the
+    helper synthesises a permissive import block that imports every stdlib
+    package name referenced by the test as a qualifier — so a test that does
+    NOT care about import-gating keeps classifying stdlib calls as before.
+    """
+    if imports is None:
+        # Permissive default: import every canonical stdlib package so legacy
+        # stdlib-classification tests still see import evidence.
+        from tree_sitter_analyzer.synapse_resolver.languages._go_constants import (
+            STDLIB_PACKAGES_GO,
+        )
+
+        block = (
+            "import (\n"
+            + "".join(f'\t"{p}"\n' for p in sorted(STDLIB_PACKAGES_GO))
+            + ")"
+        )
+        imports = dict.fromkeys(symbols, block)
     built = build_go_resolver_context(
         imports_by_file={},
         file_languages=dict.fromkeys(symbols, "go"),
         file_symbols=symbols,
         global_name_table={},
         file_class_methods=lambda: {},
+        go_import_blocks=imports,
     )
     assert built is not None
     return built
@@ -99,7 +125,10 @@ def test_same_file_func_resolves_local() -> None:
 
 
 def test_stdlib_package_call_classifies_stdlib() -> None:
-    ctx = _ctx({"main.go": [("main", "function", 11)]})
+    ctx = _ctx(
+        {"main.go": [("main", "function", 11)]},
+        imports={"main.go": 'import "fmt"'},
+    )
     sym_id, resolution, resolved = resolve_go_callee(
         "Println", "fmt.Println", "main.go", ctx
     )
@@ -107,9 +136,64 @@ def test_stdlib_package_call_classifies_stdlib() -> None:
 
 
 def test_strings_package_call_classifies_stdlib() -> None:
-    ctx = _ctx({"main.go": [("helper", "function", 7)]})
+    ctx = _ctx(
+        {"main.go": [("helper", "function", 7)]},
+        imports={"main.go": 'import "strings"'},
+    )
     _sym, resolution, _file = resolve_go_callee(
         "ToUpper", "strings.ToUpper", "main.go", ctx
+    )
+    assert resolution == "stdlib"
+
+
+def test_stdlib_qualifier_without_import_stays_unknown() -> None:
+    """Codex P2: a receiver whose name collides with a stdlib package
+    (``var http Client; http.Get()``) but which is NOT imported must stay
+    ``unknown`` — the stdlib tier requires import evidence, never just a
+    name match."""
+    ctx = _ctx(
+        {"main.go": [("main", "function", 11)]},
+        imports={"main.go": 'import "fmt"'},  # http NOT imported
+    )
+    sym_id, resolution, resolved = resolve_go_callee("Get", "http.Get", "main.go", ctx)
+    assert (sym_id, resolution, resolved) == (None, "unknown", "")
+
+
+def test_blank_import_does_not_enable_stdlib_qualifier() -> None:
+    """A blank import (``_ "net/http"``) is side-effect only — the package
+    name is NOT usable as a qualifier, so ``http.Get`` stays ``unknown``."""
+    ctx = _ctx(
+        {"main.go": [("main", "function", 11)]},
+        imports={"main.go": 'import (\n\t_ "net/http"\n)'},
+    )
+    _sym, resolution, _file = resolve_go_callee("Get", "http.Get", "main.go", ctx)
+    assert resolution == "unknown"
+
+
+def test_aliased_stdlib_import_uses_alias_not_package_name() -> None:
+    """``jsonx "encoding/json"`` makes ``jsonx`` the qualifier; a bare
+    ``json.Marshal`` is therefore NOT imported and stays ``unknown`` (json is
+    not in STDLIB set anyway, but the alias must not leak the package name)."""
+    ctx = _ctx(
+        {"main.go": [("main", "function", 11)]},
+        imports={"main.go": 'import (\n\tstrs "strings"\n)'},
+    )
+    # `strs` is the local qualifier; a bare `strings.X` is not imported.
+    _sym, resolution, _file = resolve_go_callee(
+        "ToUpper", "strings.ToUpper", "main.go", ctx
+    )
+    assert resolution == "unknown"
+
+
+def test_aliased_stdlib_import_resolves_under_alias() -> None:
+    """The alias qualifier itself resolves to stdlib when it aliases a stdlib
+    package (``strs "strings"`` → ``strs.ToUpper`` is stdlib)."""
+    ctx = _ctx(
+        {"main.go": [("main", "function", 11)]},
+        imports={"main.go": 'import (\n\tstrs "strings"\n)'},
+    )
+    _sym, resolution, _file = resolve_go_callee(
+        "ToUpper", "strs.ToUpper", "main.go", ctx
     )
     assert resolution == "stdlib"
 
@@ -238,6 +322,42 @@ def test_no_cross_language_mis_wire_end_to_end(tmp_path: Path) -> None:
         # The moat: a Go caller must NEVER bind to the Python helpers.py.
         assert r["callee_resolved_file"] != "py/helpers.py"
         assert r["callee_resolution"] in ("stdlib", "unknown")
+
+
+def test_end_to_end_variable_named_like_stdlib_stays_unknown(tmp_path: Path) -> None:
+    """Codex P2 end-to-end: a local variable named ``http`` (no ``net/http``
+    import) calling ``http.Get`` must NOT be classified as stdlib — only
+    ``fmt`` is imported, so ``http`` is a variable receiver and stays
+    ``unknown``."""
+    (tmp_path / "main.go").write_text(
+        "package main\n\n"
+        'import "fmt"\n\n'
+        "type Client struct{}\n\n"
+        "func (c Client) Get(s string) string { return s }\n\n"
+        "func main() {\n"
+        "\tvar http Client\n"
+        '\tfmt.Println(http.Get("x"))\n'
+        "}\n"
+    )
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_project()
+    finally:
+        cache.close()
+    db = str(tmp_path / ".ast-cache" / "index.db")
+    conn = sqlite3.connect(db)
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute(
+            "SELECT callee_name, callee_resolution FROM edges "
+            "WHERE kind = 'calls' AND language = 'go' AND callee_name = 'Get'"
+        ).fetchall()
+    finally:
+        conn.close()
+    assert rows, "expected a Go http.Get edge"
+    for r in rows:
+        # http is a variable, not the imported package → must stay unknown.
+        assert r["callee_resolution"] == "unknown"
 
 
 def test_end_to_end_go_stdlib_and_local(tmp_path: Path) -> None:
