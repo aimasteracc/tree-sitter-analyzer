@@ -295,3 +295,38 @@ class TestDeadCodeErrorHandling:
         result = analyze_dead_code(str(tmp_path), max_files=10)
 
         assert result.stats["total_functions"] >= 1
+
+
+def test_excludes_dot_prefixed_vendored_dirs(tmp_path):
+    """F2 regression: dead-code analysis must not walk into hidden/vendored
+    dot-dirs (.benchmark-repos, .ast-cache). Cloned target repos there are not
+    the project's own code and were polluting unused-imports / unreferenced
+    variables output."""
+    from tree_sitter_analyzer.dead_code_analyzer import (
+        find_unreferenced_variables,
+        find_unused_imports,
+    )
+
+    # project's own file: an unreferenced module-level variable
+    (tmp_path / "own.py").write_text("UNUSED_VAR = 1\n\n\ndef f():\n    return 2\n")
+    # vendored / hidden tree that must be ignored (its LEAKED_VAR must NOT surface)
+    vendored = tmp_path / ".benchmark-repos" / "excalidraw"
+    vendored.mkdir(parents=True)
+    (vendored / "App.py").write_text("LEAKED_VAR = 9\n\n\ndef g():\n    return 3\n")
+
+    variables = find_unreferenced_variables(str(tmp_path))
+    var_files = {v.file.replace("\\", "/") for v in variables}
+    var_names = {v.name for v in variables}
+
+    # F2: the vendored dot-dir tree must be excluded entirely.
+    assert not any(".benchmark-repos" in f for f in var_files), var_files
+    assert "LEAKED_VAR" not in var_names, var_names
+    # ...but the project's OWN code is still analyzed (analysis not broken).
+    assert any("own.py" in f for f in var_files), var_files
+    assert "UNUSED_VAR" in var_names, var_names
+
+    # also sanity-check the imports walk doesn't surface the vendored tree.
+    imports = find_unused_imports(str(tmp_path))
+    assert not any(".benchmark-repos" in i.file.replace("\\", "/") for i in imports), [
+        i.file for i in imports
+    ]

@@ -51,6 +51,24 @@ _EXCLUDE_DIRS = {
     ".claude",
 }
 
+
+def _is_excluded_path(p: Path, root: Path) -> bool:
+    """True when any path component BELOW ``root`` is an excluded dir or is
+    hidden (dot-prefixed).
+
+    Scoping to below-root (via ``relative_to``) avoids matching a dot-component
+    in the absolute prefix (e.g. a checkout under ``~/.local``). The dot-prefix
+    rule mirrors the indexer's scope so vendored / generated trees the explicit
+    list misses — ``.benchmark-repos`` (cloned target repos), ``.ast-cache`` —
+    don't pollute dead-code analysis with code that isn't the project's own.
+    """
+    try:
+        rel_parts = Path(p).relative_to(root).parts
+    except ValueError:
+        rel_parts = Path(p).parts
+    return any(part in _EXCLUDE_DIRS or part.startswith(".") for part in rel_parts)
+
+
 _KNOWN_ENTRY_PATTERNS = {
     "python": re.compile(
         r"^(main|__main__|setup|run|app|create_app|wsgi|asgi"
@@ -224,7 +242,7 @@ def find_unused_imports(
 
     source_files: list[tuple[Path, str]] = []
     for p in root.rglob("*"):
-        if any(part in _EXCLUDE_DIRS for part in p.parts):
+        if _is_excluded_path(p, root):
             continue
         if p.is_file():
             lang = _language_from_ext(str(p))
@@ -348,7 +366,7 @@ def find_unreferenced_variables(
 
     source_files: list[tuple[Path, str]] = []
     for p in root.rglob("*"):
-        if any(part in _EXCLUDE_DIRS for part in p.parts):
+        if _is_excluded_path(p, root):
             continue
         if p.is_file():
             lang = _language_from_ext(str(p))
