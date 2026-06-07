@@ -43,6 +43,14 @@ def _add_mcp_codegraph_map_options(parser: argparse.ArgumentParser) -> None:
         help="Max files for --codegraph-sitemap (default: 200)",
     )
     parser.add_argument(
+        "--codegraph-sitemap-max-symbols",
+        type=int,
+        default=300,
+        help="Max symbol entries emitted in api/flat modes for "
+        "--codegraph-sitemap (default: 300). When the cap is hit the output "
+        "is marked truncated; raise this to see more.",
+    )
+    parser.add_argument(
         "--codegraph-xref",
         metavar="SYMBOL",
         help="Instant cross-reference: definition + callers + callees + import deps "
@@ -103,8 +111,7 @@ def _add_mcp_codegraph_map_options(parser: argparse.ArgumentParser) -> None:
         type=int,
         default=_DEFAULT_SYMBOL_SEARCH_LIMIT,
         help=(
-            "Max results for --symbol-search "
-            f"(default: {_DEFAULT_SYMBOL_SEARCH_LIMIT})"
+            f"Max results for --symbol-search (default: {_DEFAULT_SYMBOL_SEARCH_LIMIT})"
         ),
     )
     parser.add_argument(

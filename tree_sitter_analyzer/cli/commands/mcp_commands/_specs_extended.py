@@ -197,6 +197,7 @@ _EXTENDED_SPECS: tuple[McpCommandSpec, ...] = (
             "language": getattr(args, "codegraph_sitemap_language", None),
             "directory": getattr(args, "codegraph_sitemap_directory", None),
             "max_files": getattr(args, "codegraph_sitemap_max_files", 200),
+            "max_symbols": getattr(args, "codegraph_sitemap_max_symbols", 300),
             "output_format": output_format,
         },
     ),
