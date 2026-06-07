@@ -29,6 +29,7 @@ def _ctx(
     file_class_methods=None,
     global_name_table=None,
     file_languages=None,
+    shadowed_globals=None,
 ):
     """Build a JS resolver context from explicit maps (thunk-style fcm)."""
     return build_javascript_context(
@@ -37,6 +38,7 @@ def _ctx(
         file_symbols=file_symbols or {},
         global_name_table=global_name_table or {},
         file_class_methods=lambda: file_class_methods or {},
+        js_shadowed_globals=shadowed_globals,
     )
 
 
@@ -46,6 +48,17 @@ def _ctx(
 def test_javascript_is_registered() -> None:
     assert "javascript" in registered_languages()
     assert get_language_resolver("javascript") is not None
+
+
+def test_jsx_is_registered() -> None:
+    """Codex P2 #346: ``.jsx`` files are tagged ``"jsx"`` by the detector, and
+    ``resolve_callee`` looks up the registry by that exact language string. If
+    only ``"javascript"`` is registered, JSX callers bypass this SAFE resolver
+    and fall through to the Python cascade (e.g. a bare ``len()`` in a ``.jsx``
+    file would be mis-classified as a Python builtin). The ``jsx`` dialect must
+    route to the same resolver so it stays conservative."""
+    assert "jsx" in registered_languages()
+    assert get_language_resolver("jsx") is not None
 
 
 # ---------------------------------------------------------------------------
@@ -69,6 +82,38 @@ def test_build_returns_context_when_js_file_indexed() -> None:
     assert ctx is not None
 
 
+def test_build_returns_context_when_only_jsx_file_indexed() -> None:
+    """Codex P2 #346: a project containing only ``.jsx`` files (tagged ``"jsx"``)
+    must still build the JS context — otherwise JSX callers get no resolver."""
+    ctx = _ctx(file_languages={"App.jsx": "jsx"})
+    assert ctx is not None
+
+
+def test_jsx_caller_bare_call_stays_unknown_not_python_builtin() -> None:
+    """Codex P2 #346: the canonical bug — a bare ``len()`` in a JSX file. With
+    the JS resolver active for ``jsx``, an unowned bare name stays ``unknown``
+    (conservative) instead of leaking to the Python cascade as a builtin."""
+    ctx = _ctx(file_languages={"App.jsx": "jsx"})
+    assert resolve_javascript_callee("len", "len", "App.jsx", ctx) == (
+        None,
+        "unknown",
+        "",
+    )
+
+
+def test_jsx_local_resolution_works() -> None:
+    """A same-file bare call inside a ``.jsx`` file resolves ``local``."""
+    ctx = _ctx(
+        file_languages={"App.jsx": "jsx"},
+        file_symbols={"App.jsx": [("renderRow", "function", 12)]},
+    )
+    assert resolve_javascript_callee("renderRow", "renderRow", "App.jsx", ctx) == (
+        12,
+        "local",
+        "App.jsx",
+    )
+
+
 # ---------------------------------------------------------------------------
 # local — same-file resolution
 # ---------------------------------------------------------------------------
@@ -81,6 +126,34 @@ def test_bare_call_to_same_file_function_is_local() -> None:
         7,
         "local",
         "app.js",
+    )
+
+
+def test_self_receiver_does_not_bind_to_same_file_helper() -> None:
+    """Codex P2 #346: in browser/worker JS, ``self`` is the global scope
+    (``Window.self`` / ``WorkerGlobalScope.self``), NOT the current object.
+    ``self.foo()`` must NOT bind to a same-file helper named ``foo`` — that is a
+    concrete wrong edge. The conservative result is ``unknown``."""
+    ctx = _ctx(
+        file_languages={"worker.js": "javascript"},
+        file_symbols={"worker.js": [("postMessage", "function", 4)]},
+    )
+    assert resolve_javascript_callee(
+        "postMessage", "self.postMessage", "worker.js", ctx
+    ) == (None, "unknown", "")
+
+
+def test_self_receiver_does_not_bind_to_same_file_method() -> None:
+    """``self.render()`` must not bind a same-file class method ``render`` —
+    ``self`` is global scope in JS, not ``this``."""
+    ctx = _ctx(
+        file_languages={"app.js": "javascript"},
+        file_class_methods={"app.js": {"Widget": {"render": 11}}},
+    )
+    assert resolve_javascript_callee("render", "self.render", "app.js", ctx) == (
+        None,
+        "unknown",
+        "",
     )
 
 
@@ -150,6 +223,34 @@ def test_project_shadow_of_builtin_receiver_suppresses_builtin() -> None:
     )
     sid, res, _ = resolve_javascript_callee("max", "Math.max", "geo.js", ctx)
     assert res != "builtin"
+
+
+def test_variable_shadow_of_builtin_receiver_suppresses_builtin() -> None:
+    """Codex P2 #346: ``const Math = { max() {} }; Math.max()``. The shadow is a
+    ``kind='variable'`` row, which the shared ``global_name_table`` (built from
+    function/method/class only) never sees. The resolver must consult the
+    JS-family variable shadows too — otherwise ``Math.max`` is wrongly marked
+    terminal ``builtin`` even though the project owns the receiver."""
+    ctx = _ctx(
+        file_languages={"geo.js": "javascript"},
+        shadowed_globals={"Math"},
+    )
+    sid, res, _ = resolve_javascript_callee("max", "Math.max", "geo.js", ctx)
+    assert res != "builtin"
+
+
+def test_variable_shadow_only_blocks_the_shadowed_receiver() -> None:
+    """A variable shadow of ``Math`` must NOT suppress an unrelated builtin
+    (``JSON.parse``) — the gate is per-receiver-name, not global."""
+    ctx = _ctx(
+        file_languages={"app.js": "javascript"},
+        shadowed_globals={"Math"},
+    )
+    assert resolve_javascript_callee("parse", "JSON.parse", "app.js", ctx) == (
+        None,
+        "builtin",
+        "",
+    )
 
 
 # ---------------------------------------------------------------------------
