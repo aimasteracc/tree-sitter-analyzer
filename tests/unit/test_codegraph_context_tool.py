@@ -1540,3 +1540,19 @@ def test_non_dot_qualified_generic_methods_are_kept() -> None:
     assert "dispatch" not in _extract_symbol_candidates(
         "how does resolve_callee dispatch a Java call to resolve_java_callee"
     )
+
+
+def test_lowercase_qualified_anchor_still_drops_bare_verb() -> None:
+    """RFC-0009 C / Codex P2 #333 (5th round): when the only anchor is an
+    explicitly-named ALL-LOWERCASE symbol (``pkg/parser/parse``), the filter must
+    still run and drop a co-occurring bare prose verb. The guard counts
+    explicitly-named tokens as anchors, not just snake_case/CamelCase ones."""
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        _extract_symbol_candidates,
+    )
+
+    cands = _extract_symbol_candidates("trace pkg/parser/parse dispatch")
+    assert "parse" in cands, cands
+    assert "dispatch" not in cands, cands
+    # sole-signal control: no anchor at all -> nothing dropped
+    assert "dispatch" in _extract_symbol_candidates("find the dispatch function")

@@ -640,7 +640,12 @@ def _extract_symbol_candidates(task: str) -> list[str]:
         )
         return bool(re.search(pattern, task, re.IGNORECASE))
 
-    if any(_is_specific(tok) for tok in out):
+    # The filter only runs when the task has a strong anchor — a specific symbol
+    # (snake_case/CamelCase) OR an explicitly-named one (quoted/qualified/called),
+    # even if all-lowercase (Codex P2 #333, 5th round: ``trace pkg/parser/parse
+    # dispatch`` anchors on the qualified ``parse`` yet has no _is_specific token,
+    # so the bare prose ``dispatch`` must still be droppable).
+    if any(_is_specific(tok) or _named_explicitly(tok) for tok in out):
         out = [
             tok
             for tok in out
