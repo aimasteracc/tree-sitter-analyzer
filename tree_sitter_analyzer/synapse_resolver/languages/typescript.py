@@ -23,6 +23,8 @@ resolve_typescript_callee)``.
 
 from __future__ import annotations
 
+import json
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -32,10 +34,10 @@ from ._typescript_constants import TYPESCRIPT_GLOBAL_OBJECTS
 #: ``file_languages`` tag for every ``.ts``/``.tsx``/``.mts``/``.cts`` file.
 _TYPESCRIPT_LANG = "typescript"
 
-#: Instance receivers — a method call on the enclosing object. ``this``/``super``
-#: must resolve WITHIN the caller's class (Codex P2 #347): they never bind a
-#: top-level free function, and never bleed across class boundaries in the file.
-_THIS_RECEIVERS = ("this", "super")
+#: Receivers that mean "the current object" — a class-scoped ``this``/``super``
+#: method call. A *bare* (empty) receiver is handled separately because a bare
+#: ``foo()`` is a module-level function call, not a class-method call.
+_SELF_RECEIVERS = ("this", "super")
 
 
 @dataclass
@@ -56,9 +58,79 @@ class TypeScriptResolverContext:
     global_name_table: dict[str, list[tuple[str, int]]] = field(default_factory=dict)
     # file -> language tag (so the ownership gate is language-aware).
     file_languages: dict[str, str] = field(default_factory=dict)
-    # file -> {local_name, ...} bound by an import in THAT file. A local name
-    # bound here shadows the same-named JS global (Codex P2 #347), per-file.
-    import_locals_by_file: dict[str, frozenset[str]] = field(default_factory=dict)
+    # file -> {names shadowed by a local variable / import binding}. These are
+    # NOT in ``global_name_table`` (which is function/method/class-only), so the
+    # builtin gate consults this map too — ``const Promise = require('bluebird')``
+    # or ``import { Map } from './map'`` must suppress the ``builtin`` claim
+    # (Codex P2 #2/#3). File-scoped: a shadow in one file does not affect another.
+    shadow_locals: dict[str, set[str]] = field(default_factory=dict)
+
+
+#: Binding names introduced by a TS ``import`` statement. The TS plugin stores
+#: the *raw statement text* as the ``import`` symbol's name (``ast_imports`` is
+#: empty for TS — Codex P2 #3), so the resolver extracts the bound locals itself.
+_IMPORT_DEFAULT_RE = re.compile(r"import\s+([A-Za-z_$][\w$]*)\s*(?:,|\s+from\b)")
+_IMPORT_NAMESPACE_RE = re.compile(r"import\s+\*\s+as\s+([A-Za-z_$][\w$]*)")
+_IMPORT_NAMED_BLOCK_RE = re.compile(r"\{([^}]*)\}")
+_IMPORT_NAMED_ITEM_RE = re.compile(
+    r"[A-Za-z_$][\w$]*\s+as\s+([A-Za-z_$][\w$]*)|([A-Za-z_$][\w$]*)"
+)
+
+
+def _import_binding_names(statement: str) -> set[str]:
+    """Extract the local binding names introduced by one TS ``import`` line.
+
+    Handles ``import D from 'm'`` (default), ``import * as N from 'm'``
+    (namespace), and ``import { A, B as C } from 'm'`` (named, honoring ``as``).
+    The *local* name is what shadows a global, so ``B as C`` binds ``C``.
+    """
+    names: set[str] = set()
+    m = _IMPORT_NAMESPACE_RE.search(statement)
+    if m:
+        names.add(m.group(1))
+    m = _IMPORT_DEFAULT_RE.search(statement)
+    if m:
+        names.add(m.group(1))
+    block = _IMPORT_NAMED_BLOCK_RE.search(statement)
+    if block:
+        for item in _IMPORT_NAMED_ITEM_RE.finditer(block.group(1)):
+            names.add(item.group(1) or item.group(2))
+    names.discard("from")
+    names.discard("type")
+    return names
+
+
+def _build_shadow_locals(conn: Any) -> dict[str, set[str]]:
+    """Build file -> {variable / import binding names} for every TS file.
+
+    These names are NOT in ``global_name_table`` (function/method/class-only) yet
+    they legitimately shadow a builtin global (``const Map = ...`` / ``import {
+    Map }``). The builtin gate consults this map so shadowed calls stay
+    ``unknown``/project-owned instead of being mis-classified ``builtin``.
+    """
+    out: dict[str, set[str]] = {}
+    try:
+        rows = conn.execute("SELECT file_path, symbols_json FROM ast_index").fetchall()
+    except Exception:  # nosec B110 — missing-table tolerance, mirrors _context.py.
+        return out
+    for row in rows:
+        try:
+            symbols = json.loads(row["symbols_json"])
+        except (json.JSONDecodeError, TypeError, KeyError):
+            continue
+        names: set[str] = set()
+        for sym in symbols.get("symbols", []):
+            kind = sym.get("kind")
+            if kind == "variable":
+                name = sym.get("name")
+                if name:
+                    names.add(name)
+            elif kind == "import":
+                statement = sym.get("name") or sym.get("source") or ""
+                names |= _import_binding_names(statement)
+        if names:
+            out[row["file_path"]] = names
+    return out
 
 
 def build_typescript_resolver_context(
@@ -68,45 +140,30 @@ def build_typescript_resolver_context(
     file_symbols: dict[str, Any],
     global_name_table: dict[str, Any],
     file_class_methods: Any,  # zero-arg thunk -> class->method map (lazy)
+    conn: Any = None,
+    shadow_locals: dict[str, set[str]] | None = None,
     **_ignored: Any,
 ) -> TypeScriptResolverContext | None:
     """Build the TS context, or ``None`` when no TypeScript file is indexed.
 
     Zero cost for non-TS projects (gated on ``file_languages``). The
     ``file_class_methods`` thunk is only invoked when a TS file is present, so a
-    Python/Java-only project pays nothing.
+    Python/Java-only project pays nothing. ``shadow_locals`` is derived from the
+    DB ``conn`` (TS ``import``/``variable`` rows) at build time; tests may inject
+    it directly.
     """
     if not any(lang == _TYPESCRIPT_LANG for lang in file_languages.values()):
         return None
     fcm = file_class_methods() if callable(file_class_methods) else file_class_methods
+    if shadow_locals is None:
+        shadow_locals = _build_shadow_locals(conn) if conn is not None else {}
     return TypeScriptResolverContext(
         file_symbols=file_symbols,
         file_class_methods=fcm or {},
         global_name_table=global_name_table,
         file_languages=file_languages,
-        import_locals_by_file=_import_locals(imports_by_file),
+        shadow_locals=shadow_locals,
     )
-
-
-def _import_locals(
-    imports_by_file: dict[str, Any],
-) -> dict[str, frozenset[str]]:
-    """Collect, per file, the set of local names bound by an import.
-
-    These names shadow same-named JS/TS globals in that file. The bound local
-    name is recorded — e.g. ``import { Map } from './x'`` binds ``Map`` and
-    ``import { Map as M } from './x'`` binds ``M`` (the ``local_name``). A name
-    appearing as an import local is treated as project-owned for the shadowing
-    gate (Codex P2 #347).
-    """
-    out: dict[str, set[str]] = {}
-    for file_path, entries in (imports_by_file or {}).items():
-        names = out.setdefault(file_path, set())
-        for entry in entries or []:
-            local = getattr(entry, "local_name", "") or ""
-            if local and local != "*":
-                names.add(local)
-    return {fp: frozenset(names) for fp, names in out.items()}
 
 
 def _split_receiver(callee_full: str, callee_name: str) -> tuple[str, str]:
@@ -118,73 +175,59 @@ def _split_receiver(callee_full: str, callee_name: str) -> tuple[str, str]:
     return "", full or callee_name
 
 
-def _lookup_free_symbol(
+def _lookup_in_file(
     ctx: TypeScriptResolverContext, file_path: str, simple: str
 ) -> int | None:
-    """A bare ``foo()`` call: a top-level free ``function`` or ``class`` in the
-    same file. Methods are deliberately excluded — a bare name does not name an
-    instance method without a receiver, and including methods would let a
-    no-receiver call grab an unrelated class's method (Codex P2 #347)."""
     for name, kind, sym_id in ctx.file_symbols.get(file_path, []):
-        if name == simple and kind in ("function", "class"):
+        if name == simple and kind in ("function", "method", "class"):
             return sym_id
     return None
 
 
-def _lookup_this_method(
+def _unique_class_method(
     ctx: TypeScriptResolverContext, file_path: str, simple: str
 ) -> int | None:
-    """Resolve a ``this``/``super`` method call WITHIN the caller's class.
+    """Return the symbol id when EXACTLY ONE class in ``file_path`` defines a
+    method named ``simple``; otherwise ``None``.
 
-    The resolver is not handed the caller's enclosing-class name, so it cannot
-    pick a class directly. It binds ONLY when the method name is UNAMBIGUOUS —
-    exactly one class in the file defines it. When two classes both define
-    ``foo`` (``class A { foo(){} } class B { bar(){ this.foo(); } foo(){} }``),
-    binding either would risk the wrong edge (``B.bar -> A.foo``), so it stays
-    ``unknown`` (Codex P2 #347). It never consults the file-wide free-symbol
-    scan: a ``this.foo()`` is not a free function ``foo``.
-    """
+    For a ``this``/``super`` call the caller's enclosing class is not available
+    to the resolver, so a name defined by two classes in the same file is
+    ambiguous. Conservatively we resolve only the unambiguous (single-owner)
+    case — never the file-wide first match, which would mis-bind ``B.bar ->
+    A.foo`` (Codex P2 #1)."""
     found: int | None = None
     for methods in ctx.file_class_methods.get(file_path, {}).values():
         mid = methods.get(simple)
         if mid is None:
             continue
         if found is not None and found != mid:
-            return None  # ambiguous across classes — conservative unknown.
+            return None  # defined by >1 class — ambiguous, stay unknown.
         found = mid
     return found
 
 
-def _name_is_shadowed(
-    ctx: TypeScriptResolverContext, caller_file: str, simple: str
+def _project_owns(
+    ctx: TypeScriptResolverContext, simple: str, caller_file: str
 ) -> bool:
-    """True when ``simple`` is shadowed for ``caller_file`` so the ``builtin``
-    global-object classification must NOT claim it.
+    """True when a COMPATIBLE-LANGUAGE (TS/JS-family) project symbol named
+    ``simple`` exists, OR the caller file shadows ``simple`` with a local
+    variable / import binding.
 
-    Two shadowing sources are consulted:
+    The shadowing gate: if the project owns the name in a JS/TS-family file, the
+    ``builtin`` global-object classification must NOT claim it. The gate is
+    LANGUAGE-AWARE — a same-named symbol in an incompatible-language file (a
+    Python ``console``) does NOT count, because
+    ``languages_compatible("typescript", "python")`` is False. Files with an
+    unknown language tag are treated as possible owners (conservative).
 
-    * **Project-defined symbols** (``global_name_table``) in a COMPATIBLE-LANGUAGE
-      (TS/JS-family) file. The gate is LANGUAGE-AWARE — a same-named symbol in an
-      incompatible-language file (a Python ``console``) does NOT count, because
-      ``languages_compatible("typescript", "python")`` is False. Files with an
-      unknown language tag are treated as possible owners (conservative). This is
-      THE MOAT: an incompatible-language owner never suppresses or binds.
-    * **Import locals in the caller's own file** (Codex P2 #347): a name bound by
-      an import in this file — ``import { Map } from './map'``,
-      ``import Promise from 'bluebird'`` — rebinds the global LOCALLY, so
-      ``Map.of`` / ``Promise.all`` must stay non-``builtin``. An import in a
-      *different* file does not shadow this file's global.
-
-    The variable case (``const Map = require('./map')``) is not yet detectable —
-    the resolver context carries no variable symbols — and stays a conservative
-    known limitation; it can only over-classify toward ``builtin``, never
-    mis-bind cross-language.
+    Variable / import shadows (``const Promise = ...`` / ``import { Map }``) are
+    file-scoped and never appear in ``global_name_table``, so they are consulted
+    via ``shadow_locals`` for the CALLER file only (Codex P2 #2/#3).
     """
-    if simple in ctx.import_locals_by_file.get(caller_file, frozenset()):
-        return True
-
     from ..._language_family import languages_compatible
 
+    if simple in ctx.shadow_locals.get(caller_file, set()):
+        return True
     for owner_file, _sym_id in ctx.global_name_table.get(simple, []):
         owner_lang = ctx.file_languages.get(owner_file, "")
         if not owner_lang or languages_compatible(_TYPESCRIPT_LANG, owner_lang):
@@ -207,33 +250,36 @@ def resolve_typescript_callee(
     """
     receiver, simple = _split_receiver(callee_full, callee_name)
 
-    # 1. local (instance) — ``this.foo()`` / ``super.foo()``: a method call on the
-    #    enclosing object. Resolve WITHIN the caller's class only — never a
-    #    top-level free function, never another class's same-named method when
-    #    ambiguous (Codex P2 #347). Otherwise ``unknown``.
-    if receiver in _THIS_RECEIVERS:
-        mid = _lookup_this_method(ctx, caller_file, simple)
-        if mid is not None:
-            return mid, "local", caller_file
-        return None, "unknown", ""
-
-    # 2. local (bare) — no receiver: a same-file top-level ``function``/``class``.
+    # 1. local — bare receiver: a same-file top-level function/method/class def.
+    #    A bare ``foo()`` is module-scoped, so the file-wide symbol lookup is
+    #    correct here (it cannot mis-bind to another class — methods on ``this``
+    #    are handled separately below).
     if receiver == "":
-        sym_id = _lookup_free_symbol(ctx, caller_file, simple)
+        sym_id = _lookup_in_file(ctx, caller_file, simple)
         if sym_id is not None:
             return sym_id, "local", caller_file
         # A bare unresolved call stays unknown — NO global single-name binding,
         # because that is exactly where cross-language mis-wires creep in.
         return None, "unknown", ""
 
-    # 3. builtin — receiver head is a distinctive JS/TS global object
-    #    (``console``/``JSON``/``Math``…). Gated on the global name NOT being
-    #    shadowed (a compatible-language project symbol OR an import local in this
-    #    file). The head, not the tail, is the global ("console" in "console.log").
+    # 1b. local — ``this``/``super`` method: class-scoped. The caller's enclosing
+    #     class is NOT available to the resolver, so resolve ONLY when exactly one
+    #     class in the file defines the method. An ambiguous name (two classes) or
+    #     a top-level function (not a method) stays ``unknown`` — never the
+    #     file-wide first match that would mis-bind ``B.bar -> A.foo`` (P2 #1).
+    if receiver in _SELF_RECEIVERS:
+        mid = _unique_class_method(ctx, caller_file, simple)
+        if mid is not None:
+            return mid, "local", caller_file
+        return None, "unknown", ""
+
+    # 2. builtin — receiver head is a distinctive JS/TS global object
+    #    (``console``/``JSON``/``Math``…). Gated on the project NOT owning that
+    #    global name as a compatible-language symbol OR shadowing it with a local
+    #    variable / import binding (shadowing preserved). The head, not the tail,
+    #    is the global ("console" in "console.log").
     head = receiver.split(".", 1)[0]
-    if head in TYPESCRIPT_GLOBAL_OBJECTS and not _name_is_shadowed(
-        ctx, caller_file, head
-    ):
+    if head in TYPESCRIPT_GLOBAL_OBJECTS and not _project_owns(ctx, head, caller_file):
         return None, "builtin", ""
 
     # 3. unknown — no confident same-language resolution. Conservative tiers keep
