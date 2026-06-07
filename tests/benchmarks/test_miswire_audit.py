@@ -73,3 +73,27 @@ def test_render_terminal_and_card_are_honest() -> None:
         assert "CodeGraph would mis-wire" not in term
     finally:
         shutil.rmtree(d, ignore_errors=True)
+
+
+def test_symbols_json_fallback_when_no_ast_symbol_rows() -> None:
+    """Codex #369 L74: on no-FTS5 builds ast_symbol_rows is absent; the audit
+    must fall back to ast_index.symbols_json and still find the collision."""
+    from tree_sitter_analyzer.miswire_audit import _iter_symbol_defs
+
+    d = _planted_polyglot()
+    try:
+        from tree_sitter_analyzer.ast_cache import ASTCache
+
+        cache = ASTCache(d)
+        cache.index_project()
+        conn = cache.get_conn()
+        # simulate a no-FTS5 build: drop the table the primary path uses
+        conn.execute("DROP TABLE IF EXISTS ast_symbol_rows")
+        defs = _iter_symbol_defs(conn)
+        names = {n for n, _f, _l in defs}
+        # the Swift `sorted` def must still be discoverable via symbols_json
+        assert "sorted" in names, names
+        assert any(lang == "swift" for _n, _f, lang in defs)
+        cache.close()
+    finally:
+        shutil.rmtree(d, ignore_errors=True)

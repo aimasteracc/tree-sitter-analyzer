@@ -13,8 +13,8 @@ do from TSA's own index (the same-name heuristic, validated in
 ``benchmarks/codegraph_compare/REPORT-v1.21.0.md``), and contrasts it with what
 TSA actually resolves.
 
-    uv run python -m scripts.miswire_audit .            # audit the current repo
-    uv run python -m scripts.miswire_audit /path/to/repo --card
+    uvx --from tree-sitter-analyzer miswire-audit .       # audit the current repo
+    uv run python -m tree_sitter_analyzer.miswire_audit /path --card
 
 Output: total call edges, how many a name-only resolver WOULD mis-wire across a
 language boundary, how many TSA mis-wires, the multiplier, and the top offending
@@ -24,6 +24,7 @@ edges (file:line, caller-lang → callee-lang).
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -64,31 +65,58 @@ class AuditResult:
         return self.naive_miswires / self.tsa_miswires
 
 
-def _name_to_langs(conn: Any) -> dict[str, set[str]]:
-    """Map each defined symbol name -> the set of languages that define it."""
-    out: dict[str, set[str]] = defaultdict(set)
-    placeholders = ",".join("?" for _ in _DEF_KINDS)
-    rows = conn.execute(
-        f"SELECT name, language FROM ast_symbol_rows WHERE kind IN ({placeholders})",
-        _DEF_KINDS,
-    ).fetchall()
-    for r in rows:
-        out[r["name"]].add(r["language"])
-    return out
+def _iter_symbol_defs(conn: Any) -> list[tuple[str, str, str]]:
+    """Yield ``(name, file_path, language)`` for every function/method/class def.
+
+    Prefers the ``ast_symbol_rows`` table. On SQLite builds WITHOUT FTS5,
+    ``ASTCache`` does not create that table (Codex review #369), so we fall back
+    to parsing ``ast_index.symbols_json`` — which always exists — keeping the
+    audit functional in those supported environments.
+    """
+    import sqlite3
+
+    try:
+        # kinds are module constants, not user input — a literal IN clause keeps
+        # bandit happy (no string-built SQL) and is exactly equivalent.
+        rows = conn.execute(
+            "SELECT name, file_path, language FROM ast_symbol_rows "
+            "WHERE kind IN ('function', 'method', 'class')"
+        ).fetchall()
+        return [(r["name"], r["file_path"], r["language"]) for r in rows]
+    except sqlite3.OperationalError:
+        pass  # ast_symbol_rows absent (no-FTS5 build) — fall back below.
+
+    import json
+
+    defs: list[tuple[str, str, str]] = []
+    for r in conn.execute(
+        "SELECT file_path, language, symbols_json FROM ast_index"
+    ).fetchall():
+        raw = r["symbols_json"]
+        if not raw:
+            continue
+        try:
+            payload = json.loads(raw)
+        except (ValueError, TypeError):
+            continue
+        for sym in payload.get("symbols", []):
+            if sym.get("kind") in _DEF_KINDS and sym.get("name"):
+                defs.append((sym["name"], r["file_path"], r["language"]))
+    return defs
 
 
-def _name_to_file_lang(conn: Any) -> dict[str, list[tuple[str, str]]]:
-    """Map each defined name -> [(file, language), ...] for offender examples."""
-    out: dict[str, list[tuple[str, str]]] = defaultdict(list)
-    placeholders = ",".join("?" for _ in _DEF_KINDS)
-    rows = conn.execute(
-        f"SELECT name, file_path, language FROM ast_symbol_rows "
-        f"WHERE kind IN ({placeholders})",
-        _DEF_KINDS,
-    ).fetchall()
-    for r in rows:
-        out[r["name"]].append((r["file_path"], r["language"]))
-    return out
+def _build_name_maps(
+    conn: Any, present: set[str] | None
+) -> tuple[dict[str, set[str]], dict[str, list[tuple[str, str]]]]:
+    """Build name->languages and name->[(file,lang)] from current-repo defs."""
+    name_langs: dict[str, set[str]] = defaultdict(set)
+    name_files: dict[str, list[tuple[str, str]]] = defaultdict(list)
+    for name, file_path, language in _iter_symbol_defs(conn):
+        if present is not None and file_path not in present:
+            continue  # skip stale rows for files no longer on disk (Codex #369)
+        name_langs[name].add(language)
+        name_files[name].append((file_path, language))
+    return name_langs, name_files
 
 
 def audit(project_root: str, *, reindex: bool = True, top: int = 5) -> AuditResult:
@@ -111,8 +139,17 @@ def audit(project_root: str, *, reindex: bool = True, top: int = 5) -> AuditResu
                 "SELECT file_path, language FROM ast_index"
             ).fetchall()
         }
-        name_langs = _name_to_langs(conn)
-        name_files = _name_to_file_lang(conn)
+        # Codex #369: an incremental reindex does NOT purge rows for files that
+        # were deleted since a prior index, so the cache can carry stale
+        # definitions/edges. Restrict the audit to files that still exist on
+        # disk, so `miswire-audit .` reflects the CURRENT repo regardless of a
+        # stale .ast-cache (the slow alternative — a full clean rebuild — would
+        # punish every run).
+        present = {
+            f for f in file_lang if os.path.exists(os.path.join(project_root, f))
+        }
+        file_lang = {f: lang for f, lang in file_lang.items() if f in present}
+        name_langs, name_files = _build_name_maps(conn, present)
 
         edges = conn.execute(
             "SELECT callee_name, language AS caller_lang, callee_resolved_file, "
@@ -121,6 +158,9 @@ def audit(project_root: str, *, reindex: bool = True, top: int = 5) -> AuditResu
         ).fetchall()
 
         for e in edges:
+            # skip edges whose caller file no longer exists (stale cache rows)
+            if e["caller_file"] not in present:
+                continue
             result.total_call_edges += 1
             caller_lang = e["caller_lang"]
             name = e["callee_name"]
@@ -135,8 +175,14 @@ def audit(project_root: str, *, reindex: bool = True, top: int = 5) -> AuditResu
                     result.tsa_miswires += 1
                     if len(result.tsa_offenders) < top:
                         result.tsa_offenders.append(
-                            Offender(name, e["caller_file"], caller_lang,
-                                     resolved, rlang, e["callee_line"] or 0)
+                            Offender(
+                                name,
+                                e["caller_file"],
+                                caller_lang,
+                                resolved,
+                                rlang,
+                                e["callee_line"] or 0,
+                            )
                         )
 
             # --- Naive name-only model (what CodeGraph-style indexes do): a call
@@ -158,8 +204,14 @@ def audit(project_root: str, *, reindex: bool = True, top: int = 5) -> AuditResu
                         for df, dl in name_files.get(name, []):
                             if not languages_compatible(caller_lang, dl):
                                 result.naive_offenders.append(
-                                    Offender(name, e["caller_file"], caller_lang,
-                                             df, dl, e["callee_line"] or 0)
+                                    Offender(
+                                        name,
+                                        e["caller_file"],
+                                        caller_lang,
+                                        df,
+                                        dl,
+                                        e["callee_line"] or 0,
+                                    )
                                 )
                                 break
         return result
