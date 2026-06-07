@@ -12,7 +12,7 @@ the prioritized path to becoming the default agent code-intelligence layer.
 | FTS production-first | yes | test-mock shadows | TSA ahead |
 | edges_by_kind status | yes | none | TSA exclusive |
 | token / context call | ~6.6k (was 12.7k) | ~4.4k | gap 2.9x to 1.5x; near parity |
-| nav context self-sufficiency | A+B shipped (RFC-0009, #330/#331) | n/a | full entry bodies + entry-first ranking; C + measured turn-drop pending |
+| nav context self-sufficiency | A/B/C shipped (RFC-0009, #330/#331/#333) | n/a | full entry bodies + entry-first ranking + generic-verb candidate filter; measured turn-drop pending (gated on benchmark) |
 | reactive push | implemented (RFC-0001, #336 surfaced) | none | TSA exclusive |
 
 TSA's thesis is now defensible: correct + complete + nearly as cheap, with
@@ -60,6 +60,6 @@ on-thesis ("agents know before they touch").
 - docs-only changes now skip the heavy matrix (CI smart-routing, #323).
 
 ## Next action
-RFC-0008 Java (#326) and RFC-0009 A/B (#330/#331) have landed on develop. Next:
+RFC-0008 Java (#326) and RFC-0009 A/B/C (#330/#331/#333) have landed on develop. Next:
 P0 (benchmark) to retire the "CG is cheaper" caveat with evidence, and continue
 P1 (RFC-0008 Go/JS/TS) for the remaining polyglot reach.

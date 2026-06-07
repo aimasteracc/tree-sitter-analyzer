@@ -65,4 +65,4 @@ number; if two RFCs collide on a number in flight, the later-merged one renames.
 | [0006](0006-context-progressive-disclosure.md) | Context progressive disclosure — lean nav context, opt-in graph | implemented |
 | [0007](0007-builtin-method-resolution.md) | Builtin method resolution — classify qualified-builtin method calls | implemented |
 | [0008](0008-multilang-method-classification.md) | Multi-language method classification — beyond Python | draft (Java implemented #326; Go/JS/TS pending) |
-| [0009](0009-nav-context-self-sufficiency.md) | nav context self-sufficiency — answer in one call | accepted (A/B implemented #330/#331; C + measured turn-drop pending) |
+| [0009](0009-nav-context-self-sufficiency.md) | nav context self-sufficiency — answer in one call | accepted (A/B/C implemented #330/#331/#333; measured turn-drop pending) |
