@@ -98,8 +98,8 @@ Any additional information that reviewers should know about this PR.
 
 ## ✅ Final Checklist
 
-- [ ] I have read the [Contributing Guidelines](CONTRIBUTING.md)
-- [ ] I have read the [Code Style Guide](CODE_STYLE_GUIDE.md)
+- [ ] I have read the [Contributing Guidelines](../docs/CONTRIBUTING.md)
+- [ ] I have read the [AI Coding Rules](../docs/ai-coding-rules.md)
 - [ ] My changes generate no new warnings
 - [ ] I have added tests that prove my fix is effective or that my feature works
 - [ ] New and existing unit tests pass locally with my changes

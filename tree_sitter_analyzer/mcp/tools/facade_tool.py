@@ -54,6 +54,7 @@ truth.
 
 from __future__ import annotations
 
+import difflib
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -255,15 +256,40 @@ class FacadeTool(BaseMCPTool):
     def _available_actions(self) -> list[str]:
         return sorted(set(self.action_map) | set(self.bespoke_map))
 
-    def _action_error(self, message: str) -> dict[str, Any]:
-        """Return a canonical error envelope listing available actions."""
-        available = self._available_actions()
-        summary_line = f"{self.facade_name}: {message}"
-        next_step = (
-            f"Set action to one of: {', '.join(available)}."
-            if available
-            else "No actions are registered on this facade."
+    def _closest_action(self, action: str) -> str | None:
+        """Return the single closest valid action to ``action`` (a likely
+        typo), or ``None`` when nothing is close enough.
+
+        Uses ``difflib.get_close_matches`` over the registered actions so a
+        near-miss like ``navigte`` self-heals to ``navigate`` in-band, saving
+        an agent a wasted discovery turn. A far-off action yields ``None`` (no
+        spurious suggestion)."""
+        matches = difflib.get_close_matches(
+            action, self._available_actions(), n=1, cutoff=0.6
         )
+        return matches[0] if matches else None
+
+    def _action_error(
+        self, message: str, suggestion: str | None = None
+    ) -> dict[str, Any]:
+        """Return a canonical error envelope listing available actions.
+
+        When ``suggestion`` is set (the closest valid action to a typo'd
+        unknown action), it is prepended to the ``error`` message as a
+        ``did you mean: <suggestion>`` hint and surfaced in the envelope under
+        ``suggestion`` for programmatic recovery. The full valid-action list is
+        still enumerated regardless, so a wrong suggestion never strands the
+        agent."""
+        available = self._available_actions()
+        if suggestion is not None:
+            message = f"did you mean: {suggestion}? {message}"
+        summary_line = f"{self.facade_name}: {message}"
+        if suggestion is not None:
+            next_step = f"Did you mean action {suggestion!r}? Else set action to one of: {', '.join(available)}."
+        elif available:
+            next_step = f"Set action to one of: {', '.join(available)}."
+        else:
+            next_step = "No actions are registered on this facade."
         return {
             "success": False,
             "verdict": "ERROR",
@@ -271,6 +297,7 @@ class FacadeTool(BaseMCPTool):
             "error": message,
             "facade": self.facade_name,
             "available_actions": available,
+            "suggestion": suggestion,
             "summary_line": summary_line,
             "agent_summary": {
                 "verdict": "ERROR",
@@ -303,7 +330,13 @@ class FacadeTool(BaseMCPTool):
             projected = self._project_args(inner, arguments)
             return await inner.execute(projected)
 
-        return self._action_error(f"unknown action {action!r}")
+        available = self._available_actions()
+        valid = ", ".join(available) if available else "(none registered)"
+        suggestion = self._closest_action(action)
+        return self._action_error(
+            f"unknown action {action!r}; valid actions are: {valid}",
+            suggestion=suggestion,
+        )
 
     # -- schema / definition ----------------------------------------------
 

@@ -16,13 +16,88 @@ import re
 import time
 from typing import Any
 
+from ...utils.test_detection import is_test_file as _shared_is_test_file
+from ...utils.test_detection import query_wants_tests as _task_wants_tests
 from ._codegraph_explore_helpers import extract_snippet_from_lines, read_file_lines
 from .base_tool import BaseMCPTool
 
 _STOP_WORDS = frozenset(
     "a an and are as at by call calls does flow for from how in into is of on "
-    "or through to trace what when where which why with work works".split()
+    "or through to trace what when where which why with work works "
+    # RFC-0009 C (dogfood-discovered): common English connectives a natural-language
+    # task carries ("how does X dispatch LIKE the Java resolver"). They are not
+    # symbol names but SUBSTRING-match real ones (``like`` -> ``_looks_like_*`` /
+    # ``_like_rows``), spending entry-point slots on noise. Pure function words only
+    # — never legitimate code identifiers (``get``/``make``/``run`` are NOT here).
+    "like the per this that via than then such these those be been also just "
+    "only about after before between within".split()
 )
+
+# RFC-0009 C: generic single-word verbs that frequently appear in trace questions
+# ("how does X dispatch / handle a request") but ALSO name many unrelated symbols
+# (event dispatchers, request handlers). When the task carries a more specific
+# candidate (a snake_case / CamelCase / quoted symbol), these BARE verbs are
+# dropped — they only spend entry-point slots on wrong symbols. They are KEPT
+# when they are the only signal in the task, so "find the dispatch function"
+# still works. Conservative: precision over recall on entry-point selection.
+# Note: snake_case/CamelCase names like ``resolve_callee`` are NOT affected —
+# only bare lowercase verb tokens match this set.
+_GENERIC_VERBS = frozenset(
+    "dispatch dispatcher handle handler process processor run runner execute "
+    "executor get set send receive emit notify invoke route resolve register "
+    "lookup parse load store update fetch".split()
+)
+
+# RFC-0009 C: a file path mentioned to SCOPE a task ("find dispatch in
+# src/parser/utils.py", "tree_sitter_analyzer/mcp_tools.py") is location, NOT a
+# symbol request — but its components ("parser", "tree_sitter_analyzer",
+# "UserService") otherwise look like specific anchors and wrongly trigger the
+# generic-verb filter, dropping the user's real bare verb (Codex #333 6th/7th/8th
+# rounds). This matches a whitespace token that contains a path separator (``/``
+# OR Windows ``\``) or ends in a code file extension; its components are excluded
+# from anchor detection.
+_CODE_FILE_EXT = (
+    "py|pyi|js|jsx|ts|tsx|go|rs|java|kt|kts|c|h|hpp|cpp|cc|cs|rb|php|swift|"
+    "scala|m|mm|sh|sql|lua|dart|ex|exs|clj|hs|ml"
+)
+_PATH_FRAGMENT_RE = re.compile(
+    rf"[\w.\-]*[\\/][\w.\\/\-]*|\b[\w\-]+\.(?:{_CODE_FILE_EXT})\b",
+    re.IGNORECASE,
+)
+# Separators a path fragment is split into components on: ``/`` ``\`` ``.`` ``:``
+# (drive letters) and ``-``.
+_PATH_COMPONENT_SPLIT = re.compile(r"[\\/.:\-]+")
+
+# Inline-body cap per code block for TANGENTIAL nodes (pulled in by call-graph
+# expansion, not the task's named symbols). These get signature + head; the agent
+# rarely needs their full body, so RFC-0006's thrift is preserved where it costs
+# no turn.
+_MAX_BLOCK_LINES = 16
+
+# RFC-0009: ENTRY-POINT / task-relevant symbols get their FULL body inlined up to
+# this budget so the agent answers in ONE call instead of a follow-up Read. The
+# blanket 16-line cap was net-negative — it traded a smaller first response for
+# extra turns, and turns dominate end-to-end cost. 160 covers the motivating
+# target (resolve_java_callee, 127 lines) with headroom; tuned against the
+# turn-count measurement in RFC-0009's acceptance criteria.
+_MAX_ENTRY_BODY_LINES = 160
+
+# Cap on edges echoed in the response. Edges are graph wiring for visualization;
+# an answering agent rarely needs the full adjacency list, and 60+ raw edge
+# tuples were a large fraction of the response. The full set is still used to
+# RANK code blocks before the cap is applied.
+_MAX_INLINE_EDGES = 12
+
+# Cap on nodes echoed in the response. The full expanded node set (used for
+# call-graph ranking + code-block selection) does not all need to be echoed —
+# the agent answers from entry_points + code_blocks, and a long flat node dump
+# was a large fraction of the payload vs peers that return a compact related-
+# symbol list.
+_MAX_INLINE_NODES = 12
+
+# Cap on entry_points echoed. They overlap the node set; a focused handful of
+# the best-ranked entry points is enough to orient the agent.
+_MAX_INLINE_ENTRY_POINTS = 6
 
 
 class CodeGraphContextTool(BaseMCPTool):
@@ -86,8 +161,10 @@ class CodeGraphContextTool(BaseMCPTool):
             "name": "codegraph_context",
             "description": (
                 "PRIMARY for understanding an area or tracing a flow. One call "
-                "returns entry points, related call graph nodes, edges, and source "
-                "code blocks from a natural-language task. Use before chaining "
+                "returns entry points, a compact related-symbols list, and source "
+                "code blocks from a natural-language task (default lean mode). "
+                "Add include_graph=true to also get the full nodes/edges adjacency "
+                "graph for visualization or impact analysis. Use before chaining "
                 "codegraph_symbol_search, callers, callees, and file reads."
             ),
             "inputSchema": self.get_tool_schema(),
@@ -118,8 +195,8 @@ class CodeGraphContextTool(BaseMCPTool):
                 },
                 "max_code_blocks": {
                     "type": "integer",
-                    "description": "Maximum source snippets to return (default: 8)",
-                    "default": 8,
+                    "description": "Maximum source snippets to return (default: 5)",
+                    "default": 5,
                 },
                 "output_format": {
                     "type": "string",
@@ -128,6 +205,18 @@ class CodeGraphContextTool(BaseMCPTool):
                         "Output format: 'toon' (default, token-efficient) or 'json'"
                     ),
                     "default": "toon",
+                },
+                "include_graph": {
+                    "type": "boolean",
+                    "description": (
+                        "When false (default) return a compact related-symbols list "
+                        "instead of the full nodes/edges graph — ~60% smaller payload. "
+                        "Set true to get the complete nodes + edges adjacency graph "
+                        "for visualization or detailed impact analysis. "
+                        "stats.nodes_total and stats.edges_total are always reported "
+                        "so you know the full graph is available."
+                    ),
+                    "default": False,
                 },
             },
             "required": ["task"],
@@ -145,11 +234,18 @@ class CodeGraphContextTool(BaseMCPTool):
 
         task = str(arguments["task"]).strip()
         max_nodes = _bounded_int(arguments.get("max_nodes", 30), 1, 100)
-        max_code_blocks = _bounded_int(arguments.get("max_code_blocks", 8), 0, 25)
+        max_code_blocks = _bounded_int(arguments.get("max_code_blocks", 5), 0, 25)
         output_format = arguments.get("output_format", "toon")
+        # RFC-0006: progressive disclosure. Default lean (no nodes/edges in
+        # response); full graph available via include_graph=true. Coerce
+        # JS-style string booleans so include_graph="false"/"0" stays lean.
+        include_graph = _coerce_bool(arguments.get("include_graph", False))
 
         candidates = _extract_symbol_candidates(task)
-        entry_points = self._resolve_entry_points(candidates, max(5, max_nodes // 3))
+        wants_tests = _task_wants_tests(task)
+        entry_points = self._resolve_entry_points(
+            candidates, max(5, max_nodes // 3), wants_tests
+        )
         nodes = _nodes_from_hits(entry_points, max_nodes)
         edges: list[dict[str, Any]] = []
 
@@ -164,41 +260,108 @@ class CodeGraphContextTool(BaseMCPTool):
             project_root=self.project_root or "",
         )
         related_files = _unique_files(nodes)
+
+        # Totals always computed from the FULL set before any capping so the
+        # agent knows how much graph is available even in lean mode.
+        total_nodes = len(nodes)
+        total_edges = len(edges)
+        total_entry_points = len(entry_points)
+
+        # Compact related-symbols list (RFC-0006): always built, tiny cost.
+        # Groups the full node set by file as "name:line" entries — mirrors
+        # CG's Related Symbols format without the heavy per-node dict.
+        related_symbols = _build_related_symbols(nodes)
+
         verdict = "INFO" if entry_points else "NOT_FOUND"
-        result: dict[str, Any] = {
-            "success": True,
-            "verdict": verdict,
-            "task": task,
-            "candidates": candidates,
-            "entry_points": entry_points,
-            "nodes": nodes,
-            "edges": edges,
-            "code_blocks": code_blocks,
-            "related_files": related_files,
-            "stats": {
-                "entry_points": len(entry_points),
-                "nodes": len(nodes),
-                "edges": len(edges),
-                "code_blocks": len(code_blocks),
-            },
-            "agent_summary": {
-                "summary_line": (
-                    f"codegraph_context: {len(entry_points)} entry points, "
-                    f"{len(nodes)} nodes, {len(edges)} edges, "
-                    f"{len(code_blocks)} code blocks"
-                ),
+
+        # Cap entry_points for echo (same as before).
+        entry_points = entry_points[:_MAX_INLINE_ENTRY_POINTS]
+
+        if include_graph:
+            # Full graph path — identical to old default behaviour.
+            # The inline caps scale with max_nodes so agents that request more
+            # nodes actually receive them. _MAX_INLINE_NODES / _MAX_INLINE_EDGES
+            # are the floor defaults; larger max_nodes raises the cap
+            # proportionally.
+            inline_node_cap = max(_MAX_INLINE_NODES, max_nodes)
+            inline_edge_cap = max(_MAX_INLINE_EDGES, max_nodes * 2)
+            inline_nodes = nodes[:inline_node_cap]
+            _echoed_ids = {n.get("id") for n in inline_nodes}
+            inline_edges = [
+                e
+                for e in edges
+                if e.get("source") in _echoed_ids and e.get("target") in _echoed_ids
+            ][:inline_edge_cap]
+            result: dict[str, Any] = {
+                "success": True,
                 "verdict": verdict,
-                "next_step": _next_step(bool(code_blocks), bool(entry_points)),
-            },
-            "elapsed_ms": int((time.perf_counter() - started) * 1000),
-        }
+                "task": task,
+                "candidates": candidates,
+                "entry_points": entry_points,
+                "nodes": inline_nodes,
+                "edges": inline_edges,
+                "related_symbols": related_symbols,
+                "code_blocks": code_blocks,
+                "related_files": related_files,
+                "stats": {
+                    "entry_points": len(entry_points),
+                    "entry_points_total": total_entry_points,
+                    "nodes": len(inline_nodes),
+                    "nodes_total": total_nodes,
+                    "edges": len(inline_edges),
+                    "edges_total": total_edges,
+                    "code_blocks": len(code_blocks),
+                },
+                "agent_summary": {
+                    "summary_line": (
+                        f"codegraph_context: {len(entry_points)} entry points, "
+                        f"{len(inline_nodes)} nodes, {len(inline_edges)} edges, "
+                        f"{len(code_blocks)} code blocks"
+                    ),
+                    "verdict": verdict,
+                    "next_step": _next_step(bool(code_blocks), bool(entry_points)),
+                },
+                "elapsed_ms": int((time.perf_counter() - started) * 1000),
+            }
+        else:
+            # Lean path (default, RFC-0006): omit nodes/edges, expose totals.
+            # ~60% smaller payload — matches CG's compact related-symbols
+            # format. The agent answers from entry_points + code_blocks; the
+            # full graph is available on re-request with include_graph=true.
+            result = {
+                "success": True,
+                "verdict": verdict,
+                "task": task,
+                "candidates": candidates,
+                "entry_points": entry_points,
+                "related_symbols": related_symbols,
+                "code_blocks": code_blocks,
+                "related_files": related_files,
+                "stats": {
+                    "entry_points": len(entry_points),
+                    "entry_points_total": total_entry_points,
+                    "nodes_total": total_nodes,
+                    "edges_total": total_edges,
+                    "code_blocks": len(code_blocks),
+                },
+                "agent_summary": {
+                    "summary_line": (
+                        f"codegraph_context: {len(entry_points)} entry points, "
+                        f"{total_nodes} symbols, "
+                        f"{len(code_blocks)} code blocks"
+                    ),
+                    "verdict": verdict,
+                    "next_step": _next_step_lean(bool(code_blocks), bool(entry_points)),
+                },
+                "elapsed_ms": int((time.perf_counter() - started) * 1000),
+            }
 
         from ..utils.format_helper import apply_toon_format_to_response
 
         return apply_toon_format_to_response(result, output_format)
 
     def _resolve_entry_points(
-        self, candidates: list[str], limit: int
+        self, candidates: list[str], limit: int, wants_tests: bool = False
     ) -> list[dict[str, Any]]:
         if not candidates:
             return []
@@ -217,11 +380,21 @@ class CodeGraphContextTool(BaseMCPTool):
         fetch = max(limit * 3, limit)
         agg: dict[tuple[str, str, int], dict[str, Any]] = {}
 
-        def _absorb(raw_hits: list[Any]) -> None:
+        def _absorb(raw_hits: list[Any]) -> int:
+            """Merge raw hits into ``agg``; return the count of USABLE hits.
+
+            A usable hit is one that is not skipped (non-empty name, not an
+            ``import``). The count drives the cascade fallback below: raw FTS
+            rows may be non-empty yet entirely unusable (e.g. only import-path
+            rows), which would otherwise suppress the substring fallback and
+            still yield NOT_FOUND.
+            """
+            usable = 0
             for bm25_rank, raw in enumerate(raw_hits):
                 hit = _normalise_hit(raw)
                 if not hit["name"] or hit["kind"] == "import":
                     continue
+                usable += 1
                 key = (hit["name"], hit["file"], hit["line"])
                 entry = agg.get(key)
                 if entry is None:
@@ -234,8 +407,24 @@ class CodeGraphContextTool(BaseMCPTool):
                     entry["matches"] += 1
                     if bm25_rank < entry["best_rank"]:
                         entry["best_rank"] = bm25_rank
+            return usable
 
-        # Single-word recall: FTS5 BM25 over each task word.
+        cascade = getattr(cache, "search_symbols_cascade", None)
+
+        # Single-word recall: FTS5 BM25 over each task word. When a word yields
+        # no USABLE hits, fall back to the substring cascade. This is the cost
+        # root cause: FTS5 tokenizes camelCase/compound identifiers as ONE
+        # token, so a natural-language word like ``route`` matches neither
+        # ``addRoute`` nor ``updateRouteTree``. Without this fallback the whole
+        # query returns NOT_FOUND and the agent abandons the index to Read raw
+        # files (the gin file_r=5-vs-2 gap). The substring cascade resolves
+        # ``route`` -> {addRoute, updateRouteTree, NoRoute, Routes}, so a
+        # conceptual query still returns inline source from the index.
+        #
+        # The fallback is gated on USABLE hits, not raw FTS rows (Codex P2 on
+        # #288): FTS can return only ``kind == "import"`` rows that ``_absorb``
+        # discards — a non-empty-but-useless result that must NOT suppress the
+        # cascade.
         for candidate in candidates[:10]:
             try:
                 raw_hits = cache.fts_search_ranked(candidate, limit=fetch) or []
@@ -244,13 +433,17 @@ class CodeGraphContextTool(BaseMCPTool):
                     raw_hits = cache.fts_search(candidate, limit=fetch) or []
                 except Exception:
                     raw_hits = []
-            _absorb(raw_hits)
+            if _absorb(raw_hits) == 0 and callable(cascade):
+                try:
+                    cascade_hits = cascade(candidate, limit=fetch) or []
+                except Exception:
+                    cascade_hits = []
+                _absorb(cascade_hits)
 
         # Compound recall: camelCase word pairs (applyIndex, indexOperation)
         # reach multi-word methods that single-word FTS tokenization misses —
         # the cascade substring tier resolves them. This is the fix for the
         # dogfood loss where 'apply' only matched generic same-name methods.
-        cascade = getattr(cache, "search_symbols_cascade", None)
         if callable(cascade):
             for compound in _compound_candidates(candidates):
                 try:
@@ -259,7 +452,10 @@ class CodeGraphContextTool(BaseMCPTool):
                     raw_hits = []
                 _absorb(raw_hits)
 
-        ranked = sorted(agg.values(), key=lambda e: _entry_rank_v2(e, candidates))
+        ranked = sorted(
+            agg.values(),
+            key=lambda e: _entry_rank_v2(e, candidates, wants_tests),
+        )
         return [e["hit"] for e in ranked[:limit]]
 
     def _expand_nodes(
@@ -400,6 +596,26 @@ def _bounded_int(value: Any, minimum: int, maximum: int) -> int:
     return max(minimum, min(maximum, parsed))
 
 
+_FALSEY_STRINGS = frozenset({"false", "0", "no", "off", "none", "null", ""})
+
+
+def _coerce_bool(value: Any, default: bool = False) -> bool:
+    """Coerce an MCP/CLI argument to bool, honouring JS-style string booleans.
+
+    Agents (and the chain DSL) may pass ``include_graph`` as the string
+    ``"false"`` / ``"0"`` — ``bool("false")`` is ``True``, which would wrongly
+    take the full-graph path. Recognised falsey tokens map to ``False``; any
+    other non-empty string is truthy. Real bools pass through unchanged.
+    """
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    if isinstance(value, str):
+        return value.strip().lower() not in _FALSEY_STRINGS
+    return bool(value)
+
+
 def _extract_symbol_candidates(task: str) -> list[str]:
     tokens = re.findall(
         r"`[^`]+`|\"[^\"]+\"|'[^']+'|[A-Za-z_][A-Za-z0-9_.]*",
@@ -423,6 +639,71 @@ def _extract_symbol_candidates(task: str) -> list[str]:
             if token not in seen:
                 seen.add(token)
                 out.append(token)
+
+    # RFC-0009 C: when the task names a specific symbol (snake_case / CamelCase),
+    # drop bare generic-verb candidates ("dispatch", "handle") — they only match
+    # unrelated event dispatchers / handlers and waste entry-point slots. Keep
+    # them when they are the ONLY signal, OR when the user named one EXPLICITLY in
+    # the task — quoted (`` `dispatch` ``), qualified (``Foo.handle``, ``C::handle``,
+    # ``obj->fetch``), or called (``dispatch(``). We check the original task text
+    # rather than the fragmented tokens because the tokeniser regex already splits
+    # on ``::`` / ``->`` (Codex P2 #333, three rounds: quoted, dot-qualified, then
+    # ``::`` / ``->`` qualified — one robust check now covers all qualifier syntaxes).
+    def _is_specific(tok: str) -> bool:
+        return "_" in tok or any(ch.isupper() for ch in tok)
+
+    def _named_explicitly(verb: str) -> bool:
+        # A generic verb is "named explicitly" (and kept) when it is preceded by a
+        # quote or an unambiguous symbol-member operator — ``.`` (Foo.handle),
+        # ``::`` (C++/Rust Parser::parse), ``->`` (obj->fetch) — or when it is
+        # called (``verb(``). NOTE: ``/`` is deliberately NOT a qualifier here.
+        # It was tried (Codex #333 4th round, for Go-style pkg/parser/parse) but
+        # ``/`` is dominantly a FILE-PATH separator in real tasks, so it made an
+        # ordinary path like ``src/parser/utils.py`` anchor the filter and wrongly
+        # drop the user's actual bare verb in e.g. "find the dispatch function in
+        # src/parser/utils.py" (Codex #333 6th round — the common case wins over
+        # the rare package-qualified-symbol case).
+        pattern = (
+            r"(?:[`'\"]|\.|::|->)\s*"
+            + re.escape(verb)
+            + r"\b|\b"
+            + re.escape(verb)
+            + r"\s*\("
+        )
+        return bool(re.search(pattern, task, re.IGNORECASE))
+
+    # Components of any file PATH mentioned to scope the task are location, not
+    # symbol anchors (Codex #333 6th/7th rounds) — exclude them so a path like
+    # ``src/UserService.py`` or ``tree_sitter_analyzer/mcp_tools.py`` does not make
+    # the filter run and drop the user's real bare verb.
+    path_tokens: set[str] = set()
+    for match in _PATH_FRAGMENT_RE.finditer(task):
+        for part in _PATH_COMPONENT_SPLIT.split(match.group(0)):
+            cleaned = part.strip("_")
+            if cleaned:
+                path_tokens.add(part)
+                path_tokens.add(cleaned)
+
+    def _is_anchor(tok: str) -> bool:
+        # A real anchor is a specific/explicit symbol that is NOT merely a file
+        # path component.
+        if tok in path_tokens:
+            return False
+        return _is_specific(tok) or _named_explicitly(tok)
+
+    # The filter only runs when the task has a strong anchor — a specific symbol
+    # (snake_case/CamelCase) OR an explicitly-named one (quoted/qualified/called),
+    # even if all-lowercase (Codex P2 #333, 5th round: ``trace obj->parse dispatch``
+    # anchors on the qualified ``parse`` yet has no _is_specific token, so the bare
+    # prose ``dispatch`` must still be droppable).
+    if any(_is_anchor(tok) for tok in out):
+        out = [
+            tok
+            for tok in out
+            if _is_specific(tok)
+            or tok.lower() not in _GENERIC_VERBS
+            or _named_explicitly(tok)
+        ]
     return out
 
 
@@ -446,6 +727,10 @@ def _nodes_from_hits(
         if len(nodes) >= max_nodes:
             break
         node = _node_from_ref(hit)
+        # RFC-0009: these are the task's named entry points (vs nodes added later
+        # by call-graph expansion). Mark them so _build_code_blocks ranks them
+        # first and inlines their full body.
+        node["is_entry"] = True
         key = (node["name"], node.get("file", ""), node.get("line", 0))
         if key in seen:
             continue
@@ -529,7 +814,17 @@ def _build_code_blocks(
     if max_code_blocks <= 0:
         return []
     degrees = _edge_degrees(nodes, edges)
-    ranked = sorted(nodes, key=lambda n: (-degrees.get(n["id"], 0), n.get("line", 0)))
+    # RFC-0009: rank the task's named entry points FIRST (before graph-centrality),
+    # so the answer symbol always gets a block ahead of a high-degree hub like a
+    # cache accessor. Within each tier, fall back to edge-degree then line.
+    ranked = sorted(
+        nodes,
+        key=lambda n: (
+            not n.get("is_entry", False),
+            -degrees.get(n["id"], 0),
+            n.get("line", 0),
+        ),
+    )
     blocks: list[dict[str, Any]] = []
     seen_files_lines: set[tuple[str, int]] = set()
     for node in ranked:
@@ -551,20 +846,46 @@ def _build_code_blocks(
         lines = read_file_lines(abs_path)
         if not lines:
             continue
-        end_line = int(node.get("end_line", 0) or 0)
-        if end_line < start_line:
-            end_line = start_line + 39
-        else:
-            end_line = min(end_line, start_line + 39)
-        content = extract_snippet_from_lines(lines, start_line, end_line)
+        raw_end = int(node.get("end_line", 0) or 0)
+        end_known = raw_end >= start_line
+        # RFC-0009: entry-point / task-relevant symbols inline their FULL body up
+        # to _MAX_ENTRY_BODY_LINES so the agent answers in one call; tangential
+        # (expansion) nodes keep the small _MAX_BLOCK_LINES cap (RFC-0006 thrift).
+        block_cap = _MAX_ENTRY_BODY_LINES if node.get("is_entry") else _MAX_BLOCK_LINES
+        # Nodes from call-graph expansion (callees/callers) often have no
+        # end_line; fall back to the cap window for those.
+        full_end = raw_end if end_known else start_line + block_cap - 1
+        # Long bodies still get a truncation marker pointing at the rest, so the
+        # agent can read on for the rare over-budget function.
+        capped_end = min(full_end, start_line + block_cap - 1)
+        capped_end = min(capped_end, len(lines))
+        content = extract_snippet_from_lines(lines, start_line, capped_end)
         if not content:
             continue
+        if end_known:
+            real_end = min(full_end, len(lines))
+            if real_end > capped_end:
+                content = (
+                    content.rstrip("\n")
+                    + f"\n    # … {real_end - capped_end} more lines "
+                    f"({file_path}:{capped_end + 1}-{real_end})\n"
+                )
+        elif capped_end < len(lines):
+            # End line unknown (call-graph node) AND we stopped at the cap before
+            # EOF — the function may continue. Emit an explicit hint so the agent
+            # knows to read onward rather than assuming the snippet is complete
+            # (Codex P2 on #293: the old fallback silently dropped lines 25+).
+            content = (
+                content.rstrip("\n")
+                + f"\n    # … snippet capped at {block_cap} lines; "
+                f"end unknown — read {file_path}:{capped_end + 1}+ if needed\n"
+            )
         blocks.append(
             {
                 "file": file_path,
                 "name": node["name"],
                 "start_line": start_line,
-                "end_line": min(end_line, len(lines)),
+                "end_line": capped_end,
                 "content": content,
             }
         )
@@ -594,9 +915,20 @@ def _unique_files(nodes: list[dict[str, Any]]) -> list[str]:
     return out
 
 
+def _is_test_file(file_path: str) -> int:
+    """Rank-tier wrapper: 1 for test files, 0 otherwise.
+
+    Thin shim over the shared, canonical ``utils.test_detection.is_test_file``
+    so every ranking path agrees on what counts as a test (see that module).
+    Detected by FILE path only, never by symbol name, so a production class
+    named ``TestRunner`` is never demoted.
+    """
+    return 1 if _shared_is_test_file(file_path) else 0
+
+
 def _entry_rank(hit: dict[str, Any]) -> tuple[int, int, str, int]:
-    file_path = hit.get("file", "").replace("\\", "/")
-    is_test = int("/tests/" in file_path or file_path.startswith("tests/"))
+    file_path = hit.get("file", "")
+    is_test = _is_test_file(file_path)
     kind_rank = 0 if hit.get("kind") in {"class", "function", "method"} else 1
     return (is_test, kind_rank, hit.get("file", ""), int(hit.get("line", 0) or 0))
 
@@ -649,21 +981,27 @@ def _compound_candidates(candidates: list[str]) -> list[str]:
 
 
 def _entry_rank_v2(
-    entry: dict[str, Any], candidates: list[str]
+    entry: dict[str, Any],
+    candidates: list[str],
+    wants_tests: bool = False,
 ) -> tuple[int, int, int, int, int, str, int]:
     """Relevance-aware ranking key for an aggregated entry-point hit.
 
     Order of precedence: non-test before test, definition kinds before refs,
     MORE matched task words first, MORE candidate hits first, better BM25
     rank, then file/line for a stable tie-break.
+
+    When ``wants_tests`` is set (the task itself asks about tests/specs), the
+    test-demotion tier is disabled so relevant test symbols are not pushed
+    past the result limit — codegraph_context takes natural-language tasks,
+    and "X tests" must be allowed to return test code (Codex P2 #291).
     """
     hit = entry["hit"]
-    file_path = hit.get("file", "").replace("\\", "/")
-    is_test = int("/tests/" in file_path or file_path.startswith("tests/"))
+    test_tier = 0 if wants_tests else _is_test_file(hit.get("file", ""))
     kind_rank = 0 if hit.get("kind") in {"class", "function", "method"} else 1
     name_match = _name_match_score(hit.get("name", ""), candidates)
     return (
-        is_test,
+        test_tier,
         kind_rank,
         -name_match,
         -int(entry.get("matches", 0)),
@@ -689,3 +1027,50 @@ def _next_step(has_code: bool, has_entry_points: bool) -> str:
     if has_entry_points:
         return "Use the nodes and edges to answer; code snippets were not available."
     return "Try codegraph_symbol_search with an exact symbol name or broaden the task."
+
+
+def _next_step_lean(has_code: bool, has_entry_points: bool) -> str:
+    """Next-step hint for the lean (default) response path.
+
+    Always names the ``include_graph=true`` flag so the agent knows the full
+    call graph is available on re-request — the progressive-disclosure contract.
+    """
+    if has_code:
+        return (
+            "Answer from code_blocks now. "
+            "For the full call graph (nodes/edges) add include_graph=true."
+        )
+    if has_entry_points:
+        return (
+            "Entry points found; code snippets were not available. "
+            "For the full call graph add include_graph=true."
+        )
+    return "Try codegraph_symbol_search with an exact symbol name or broaden the task."
+
+
+def _build_related_symbols(
+    nodes: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Build a compact CG-style related-symbols list grouped by file.
+
+    Each entry is ``{"file": str, "symbols": ["name:line", ...]}``, sorted by
+    file path then by line number within each file. Nodes without a file or
+    without a name are skipped. This mirrors CodeGraph's "Related Symbols"
+    format (``file: name:line, name:line``) at a fraction of the per-node
+    dict cost — no language, no kind, no end_line, no id.
+    """
+    by_file: dict[str, list[tuple[int, str]]] = {}
+    for node in nodes:
+        file_path = node.get("file", "")
+        name = node.get("name", "")
+        if not file_path or not name:
+            continue
+        line = int(node.get("line", 0) or 0)
+        by_file.setdefault(file_path, []).append((line, name))
+
+    groups: list[dict[str, Any]] = []
+    for file_path in sorted(by_file):
+        entries = sorted(by_file[file_path])  # sort by (line, name)
+        symbols = [f"{name}:{line}" for line, name in entries]
+        groups.append({"file": file_path, "symbols": symbols})
+    return groups

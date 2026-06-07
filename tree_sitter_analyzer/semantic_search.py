@@ -9,6 +9,8 @@ import sqlite3
 from collections import Counter
 from typing import Any
 
+from .utils.test_detection import query_wants_tests, rank_tier
+
 _TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9]*")
 
 
@@ -41,8 +43,14 @@ class SemanticSymbolSearch:
             result["semantic_score"] = round(score, 4)
             scored.append((score, result))
 
+        # Demote test/spec/fixture symbols below implementation symbols so a
+        # concept query like "render" surfaces ``Render``, not ``TestRenderJSON``
+        # — unless the query itself asks about tests. Consistent with nav
+        # context ranking via the shared utils.test_detection helpers.
+        wants_tests = query_wants_tests(query)
         scored.sort(
             key=lambda item: (
+                rank_tier(str(item[1].get("file", "")), wants_tests=wants_tests),
                 -item[0],
                 str(item[1].get("file", "")),
                 int(item[1].get("line", 0) or 0),

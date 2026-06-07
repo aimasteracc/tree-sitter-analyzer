@@ -118,3 +118,79 @@ def test_resolver_first_match_helpers_avoid_collecting_all_candidates() -> None:
         )
         is None
     )
+
+
+def test_global_fallback_gated_by_language_for_function_less_file() -> None:
+    """Codex P2 #301: a caller file with no indexed functions is still gated.
+
+    The caller language is derived from the file extension, so a Python module
+    -level call must not fall through to a same-named JavaScript symbol.
+    """
+    js = {"name": "get", "file": "widget.js", "language": "javascript", "line": 1}
+    resolver = CalleeResolver(
+        functions_by_name={"get": [js]},
+        functions_by_file={},  # caller.py has no indexed functions
+        name_to_source={},
+    )
+    # ``caller.py`` -> python (by extension); the JS ``get`` must be gated out.
+    assert resolver.resolve_items("get", "caller.py") == []
+
+
+def test_global_fallback_allows_js_ts_family() -> None:
+    """Codex P2 #301: JavaScript and TypeScript are one interop family.
+
+    A ``.js`` caller resolving to a ``.ts`` definition (gradual migration) is
+    valid and must NOT be rejected by the cross-language gate.
+    """
+    ts_target = {"name": "foo", "file": "lib.ts", "language": "typescript", "line": 1}
+    resolver = CalleeResolver(
+        functions_by_name={"foo": [ts_target]},
+        functions_by_file={},
+        name_to_source={},
+    )
+    assert resolver.resolve_items("foo", "app.js") == [(ts_target, 0.5)]
+
+
+def test_global_fallback_demotes_test_shadow_for_source_caller() -> None:
+    """Codex/dogfood: a non-test caller must prefer the source def over a test mock.
+
+    ``functions_by_name`` may enumerate the test definition first; a production
+    call must still bind to the real source symbol, not the test shadow.
+    """
+    test_def = {
+        "name": "fts_search",
+        "file": "tests/unit/test_cache.py",
+        "language": "python",
+        "line": 2,
+    }
+    src_def = {
+        "name": "fts_search",
+        "file": "tree_sitter_analyzer/ast_cache.py",
+        "language": "python",
+        "line": 9,
+    }
+    resolver = CalleeResolver(
+        functions_by_name={"fts_search": [test_def, src_def]},  # test enumerated first
+        functions_by_file={},
+        name_to_source={},
+    )
+    files = resolver.resolve_files("fts_search", "tree_sitter_analyzer/mcp/tool.py")
+    assert files, files
+    assert files[0][0] == "tree_sitter_analyzer/ast_cache.py", files
+
+
+def test_global_fallback_keeps_test_target_for_test_caller() -> None:
+    """A test caller may still resolve to a test helper (no demotion)."""
+    test_def = {
+        "name": "fixture_helper",
+        "file": "tests/unit/test_cache.py",
+        "language": "python",
+        "line": 2,
+    }
+    resolver = CalleeResolver(
+        functions_by_name={"fixture_helper": [test_def]},
+        functions_by_file={},
+        name_to_source={},
+    )
+    files = resolver.resolve_files("fixture_helper", "tests/unit/test_other.py")
+    assert files == [("tests/unit/test_cache.py", 0.5)]

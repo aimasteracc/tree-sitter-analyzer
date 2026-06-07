@@ -32,7 +32,11 @@ Expander = Callable[[str, str | None], list[dict[str, Any]]]
 
 DEFAULT_MAX_DEPTH = 3
 MAX_DEPTH_CAP = 10
-DEFAULT_MAX_NODES = 150
+# Default node cap. 150 produced ~45 KB call-tree responses on deep trees
+# (django) — the single largest chunk of nav's agent-side token cost vs peers.
+# 50 nodes orient the agent on the hot path; callers widen with an explicit
+# max_nodes when they actually need the full tree.
+DEFAULT_MAX_NODES = 50
 
 
 def _node_key(name: str, file: str | None) -> str:

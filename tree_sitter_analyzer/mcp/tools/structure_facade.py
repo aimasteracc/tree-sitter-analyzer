@@ -69,9 +69,11 @@ _STRUCTURE_DESCRIPTION = (
     "- action=ast_path — AST path from a specific node up to the file root "
     "(navigate the parse tree, codegraph_ast_path equivalent). "
     "Params: file_path, line, column.\n"
-    "- action=sitemap — high-level symbol sitemap of a file or project "
-    "(what is defined where, codegraph_sitemap equivalent). "
-    "Params: file_path, depth.\n"
+    "- action=sitemap — high-level symbol sitemap of a directory or the whole "
+    "project (what is defined where, codegraph_sitemap equivalent). "
+    "Params: mode (full|api|module|flat), directory (relative path, optional), "
+    "language, max_files. NOTE: takes a directory, not file_path — omit "
+    "directory for the whole project.\n"
     "- action=class_tree — class inheritance/subclass hierarchy "
     "(codegraph_class_hierarchy equivalent). "
     "Params: class_name, mode (subclasses|supers|tree).\n"
@@ -156,12 +158,38 @@ def build_structure_facade(project_root: str | None = None) -> FacadeTool:
         if "file_path" not in args or "start_line" not in args:
             raise ValueError("read action requires file_path and start_line")
 
+        # Coerce line/column bounds to int at the facade boundary. They arrive as
+        # strings when an agent passes them as undeclared additionalProperties
+        # (the flat facade schema does not type them), and the downstream
+        # extract_code_section does ``str < int`` comparisons -> TypeError. This
+        # made the documented single-file read escape hatch fail 100% of the time.
+        def _as_int(value: Any) -> Any:
+            if value is None or isinstance(value, bool):
+                return value
+            if isinstance(value, int):
+                return value
+            # A fractional JSON number (start_line=2.9) is a malformed bound, not
+            # something to silently truncate — enforce the integer-only contract
+            # (Codex P3 on #328). Integral floats (2.0) coerce cleanly.
+            if isinstance(value, float):
+                if value.is_integer():
+                    return int(value)
+                raise ValueError(
+                    f"read action: line/column bounds must be integers, got {value!r}"
+                )
+            try:
+                return int(str(value))  # base-10 integer strings only ("88")
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"read action: line/column bounds must be integers, got {value!r}"
+                ) from exc
+
         full_args: dict[str, Any] = {
             "file_path": args["file_path"],
-            "start_line": args["start_line"],
-            "end_line": args.get("end_line"),
-            "start_column": args.get("start_column"),
-            "end_column": args.get("end_column"),
+            "start_line": _as_int(args["start_line"]),
+            "end_line": _as_int(args.get("end_line")),
+            "start_column": _as_int(args.get("start_column")),
+            "end_column": _as_int(args.get("end_column")),
             "format": args.get("format", "text"),
             "output_file": args.get("output_file"),
             "suppress_output": args.get("suppress_output", False),

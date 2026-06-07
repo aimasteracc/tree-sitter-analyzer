@@ -8,7 +8,12 @@ from typing import Any
 from . import _codegraph_explore_helpers as _h
 from . import _codegraph_query_filters as _filters
 
-_MAX_SNIPPET_LINES = 160
+# Inline-body cap per symbol in chain/explore output. 160 lines made the
+# jQuery-chain explore ~6 KB/symbol — the single biggest driver of the chain
+# arm's per-call payload (and the agent-cost gap vs codegraph). 24 lines gives
+# the signature + head; the response carries a ``code_lines: a-b of N`` hint so
+# the agent reads the exact rest only if it must (matches nav context, #293).
+_MAX_SNIPPET_LINES = 24
 _MAX_FILE_BYTES = 1_000_000
 
 

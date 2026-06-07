@@ -295,3 +295,85 @@ class TestDeadCodeErrorHandling:
         result = analyze_dead_code(str(tmp_path), max_files=10)
 
         assert result.stats["total_functions"] >= 1
+
+
+def test_excludes_dot_prefixed_vendored_dirs(tmp_path):
+    """F2 regression: dead-code analysis must not walk into hidden/vendored
+    dot-dirs (.benchmark-repos, .ast-cache). Cloned target repos there are not
+    the project's own code and were polluting unused-imports / unreferenced
+    variables output."""
+    from tree_sitter_analyzer.dead_code_analyzer import (
+        find_unreferenced_variables,
+        find_unused_imports,
+    )
+
+    # project's own file: an unreferenced module-level variable
+    (tmp_path / "own.py").write_text("UNUSED_VAR = 1\n\n\ndef f():\n    return 2\n")
+    # vendored / hidden tree that must be ignored (its LEAKED_VAR must NOT surface)
+    vendored = tmp_path / ".benchmark-repos" / "excalidraw"
+    vendored.mkdir(parents=True)
+    (vendored / "App.py").write_text("LEAKED_VAR = 9\n\n\ndef g():\n    return 3\n")
+
+    variables = find_unreferenced_variables(str(tmp_path))
+    var_files = {v.file.replace("\\", "/") for v in variables}
+    var_names = {v.name for v in variables}
+
+    # F2: the vendored dot-dir tree must be excluded entirely.
+    assert not any(".benchmark-repos" in f for f in var_files), var_files
+    assert "LEAKED_VAR" not in var_names, var_names
+    # ...but the project's OWN code is still analyzed (analysis not broken).
+    assert any("own.py" in f for f in var_files), var_files
+    assert "UNUSED_VAR" in var_names, var_names
+
+    # also sanity-check the imports walk doesn't surface the vendored tree.
+    imports = find_unused_imports(str(tmp_path))
+    assert not any(".benchmark-repos" in i.file.replace("\\", "/") for i in imports), [
+        i.file for i in imports
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Canonical EXCLUDE_DIRS single-source (centralize-exclude-dirs)
+# ---------------------------------------------------------------------------
+
+
+def test_exclude_dirs_is_canonical_constant() -> None:
+    """dead_code_analyzer must source its excluded-dir set from the single
+    canonical ``constants.EXCLUDE_DIRS`` rather than defining its own private
+    copy that can drift. The module-level name must BE the canonical object."""
+    from tree_sitter_analyzer import dead_code_analyzer
+    from tree_sitter_analyzer.constants import EXCLUDE_DIRS
+
+    assert dead_code_analyzer._EXCLUDE_DIRS is EXCLUDE_DIRS
+
+
+def test_exclude_dirs_covers_previously_excluded_dirs() -> None:
+    """Migrating to the canonical constant must not lose any directory that
+    dead_code_analyzer previously excluded — the canonical set is the union,
+    so every historical entry is still covered (behavior unchanged)."""
+    from tree_sitter_analyzer.dead_code_analyzer import _EXCLUDE_DIRS
+
+    # The exact set dead_code_analyzer carried before centralization.
+    previously_excluded = {
+        "node_modules",
+        ".git",
+        "__pycache__",
+        ".venv",
+        "venv",
+        ".tox",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        "dist",
+        "build",
+        "htmlcov",
+        ".cache",
+        ".eggs",
+        ".idea",
+        ".vscode",
+        ".claude",
+    }
+    missing = previously_excluded - set(_EXCLUDE_DIRS)
+    assert not missing, (
+        f"canonical EXCLUDE_DIRS dropped previously-excluded dirs: {missing}"
+    )

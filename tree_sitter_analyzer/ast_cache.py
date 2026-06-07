@@ -380,18 +380,40 @@ class ASTCache:
             for entry in stats.get("files", [])
             if entry.get("status") == "indexed"
         ]
-        try:
-            stats["edge_store_refresh"] = self._refresh_graph_edges_from_cache(
-                indexed_files
-            )
-        except Exception:
-            logger.debug("edge store refresh failed", exc_info=True)
+        # ``insert_index_row`` already writes every file's graph edges during
+        # commit when FTS5 is available (the common path) — re-deriving them
+        # here is pure duplicate work: ~85 s on django (47 % of total index
+        # time) for an IDENTICAL edge set (244,590 rows either way, verified).
+        # Only refresh when insert could NOT have written them (no FTS5), where
+        # this pass is the sole edge writer.
+        self._maybe_refresh_edge_store(stats, indexed_files)
         try:
             unresolved = self._run_unresolved_refs_backfill()
             if unresolved is not None:
                 stats["unresolved_refs_backfill"] = unresolved
         except Exception:
             logger.debug("unresolved refs backfill failed", exc_info=True)
+        # Record that resolution has converged for this index state so a later
+        # cold ensure_indexed() can skip a redundant resolve-only pass (~40 s
+        # no-op) instead of blocking the first retrieval.
+        try:
+            from ._ast_cache_unresolved import mark_resolution_converged
+
+            mark_resolution_converged(self._get_conn())
+        except Exception:
+            logger.debug("could not mark resolution converged", exc_info=True)
+
+    def _maybe_refresh_edge_store(
+        self, stats: dict[str, Any], indexed_files: list[str]
+    ) -> None:
+        if self.fts5_available:
+            return
+        try:
+            stats["edge_store_refresh"] = self._refresh_graph_edges_from_cache(
+                indexed_files
+            )
+        except Exception:
+            logger.debug("edge store refresh failed", exc_info=True)
 
     def _refresh_graph_edges_from_cache(
         self, file_paths: list[str] | None = None
@@ -405,18 +427,15 @@ class ASTCache:
                 "SELECT file_path, language, symbols_json, imports_json FROM ast_index"
             ).fetchall()
         else:
-            rows = [
-                row
-                for rel_path in file_paths
-                if (
-                    row := conn.execute(
-                        "SELECT file_path, language, symbols_json, imports_json "
-                        "FROM ast_index WHERE file_path = ?",
-                        (rel_path,),
-                    ).fetchone()
-                )
-                is not None
-            ]
+            rows = []
+            for rel_path in file_paths:
+                row = conn.execute(
+                    "SELECT file_path, language, symbols_json, imports_json "
+                    "FROM ast_index WHERE file_path = ?",
+                    (rel_path,),
+                ).fetchone()
+                if row is not None:
+                    rows.append(row)
         refreshed = errors = 0
         for row in rows:
             try:
@@ -612,7 +631,7 @@ class ASTCache:
             _build_function_entry(sym, row["file_path"], row["language"])
             for row in rows
             for sym in json.loads(row["symbols_json"]).get("symbols", [])
-            if sym.get("kind") == "function"
+            if sym.get("kind") in ("function", "method")
         ]
 
     def get_functions_by_file(self, file_path: str) -> list[dict[str, Any]]:
@@ -630,7 +649,7 @@ class ASTCache:
         return [
             _build_function_entry(sym, file_path, row["language"])
             for sym in json.loads(row["symbols_json"]).get("symbols", [])
-            if sym.get("kind") == "function"
+            if sym.get("kind") in ("function", "method")
         ]
 
     def get_imports(self) -> dict[str, Any]:

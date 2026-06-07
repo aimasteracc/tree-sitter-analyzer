@@ -439,7 +439,8 @@ class TestTreeSitterAnalyzerMCPServerCreation:
             list_resources_handler = captured_handlers["list_resources"]
             resources = await list_resources_handler()
 
-            assert len(resources) == 2
+            assert len(resources) == 3
             resource_names = [resource.name for resource in resources]
             assert "code_file" in resource_names
             assert "project_stats" in resource_names
+            assert "Hyphae selector result" in resource_names

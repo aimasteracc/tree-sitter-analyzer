@@ -75,6 +75,10 @@ class TestStartup:
         assert "action=callee_tree" in instructions
         assert "codegraph_symbol_search" not in instructions
         assert "codegraph_navigate" not in instructions
+        # CodeGraph-differentiator capabilities must stay advertised: reactive
+        # push (RFC-0001) and the per-edge-kind index breakdown.
+        assert "action=subscribe" in instructions
+        assert "edges_by_kind" in instructions
 
     def test_repeated_headless_initialize_stays_under_budget(
         self, mcp_server_factory: Any

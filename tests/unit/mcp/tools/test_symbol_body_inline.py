@@ -104,6 +104,76 @@ def test_inline_neighbor_bodies_attaches_body_to_each(tmp_path):
     assert "SMALL_MARKER" in small["body"]["content"]
 
 
+def test_inline_neighbor_body_does_not_cross_languages(tmp_path):
+    """A Python callee with no Python def must not inline a foreign-language body.
+
+    Regression: ``sorted()`` (a Python builtin call, no Python definition) has a
+    call-site ``file`` but no matching def there, so ``_resolve_def`` fell back to
+    ``candidates[0]`` — grabbing a Swift ``func sorted`` body and inlining it
+    under the Python callee. The record carries ``language='python'``; a
+    cross-language body must be suppressed (callee stays body-less).
+    """
+    (tmp_path / "corpus.swift").write_text("func sorted() -> Int {\n    return 1\n}\n")
+    cache = _build_cache(tmp_path)
+    cache.get_conn.return_value.execute(
+        "INSERT INTO ast_index (file_path, symbols_json, language) VALUES (?,?,?)",
+        (
+            "corpus.swift",
+            json.dumps(
+                {
+                    "symbols": [
+                        {"name": "sorted", "kind": "function", "line": 1, "end_line": 3}
+                    ]
+                }
+            ),
+            "swift",
+        ),
+    )
+    cache.get_conn.return_value.commit()
+    # Python callee record: a ``sorted()`` call from a Python file, no end_line.
+    neighbors = [
+        {"name": "sorted", "file": "small.py", "line": 1, "language": "python"}
+    ]
+    enriched = sbi.inline_neighbor_bodies(str(tmp_path), cache, neighbors)
+    assert "body" not in enriched[0], (
+        f"cross-language body inlined: {enriched[0].get('body')}"
+    )
+
+
+def test_inline_neighbor_body_skipped_for_unknown_callee(tmp_path):
+    """An unresolved callee gets no inlined body (it would be a bare-name guess).
+
+    A callee the resolver left ``unknown`` (builtin / dynamic / truly unknown)
+    has no real definition; the def-index fallback could only attach a
+    same-named symbol from elsewhere. Such records stay coordinate-only — both
+    correct and leaner. Resolved callees are unaffected.
+    """
+    cache = _build_cache(tmp_path)
+    neighbors = [
+        # Resolved callee → keeps its body.
+        {
+            "name": "small",
+            "file": "small.py",
+            "line": 1,
+            "callee_resolution": "local",
+            "callee_resolved_file": "small.py",
+        },
+        # Unresolved callee that happens to share the name of a real def.
+        {
+            "name": "small",
+            "file": "small.py",
+            "line": 1,
+            "callee_resolution": "unknown",
+            "callee_resolved_file": "",
+        },
+    ]
+    enriched = sbi.inline_neighbor_bodies(str(tmp_path), cache, neighbors)
+    assert "body" in enriched[0]
+    assert "body" not in enriched[1], (
+        f"unknown callee should stay body-less: {enriched[1].get('body')}"
+    )
+
+
 def test_inline_neighbor_bodies_caps_at_top_n(tmp_path):
     cache = _build_cache(tmp_path)
     neighbors = [{"name": "small", "file": "small.py", "line": 1} for _ in range(50)]

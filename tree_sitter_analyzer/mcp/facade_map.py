@@ -102,6 +102,7 @@ LEGACY_TOOL_MAP: dict[str, tuple[str, str]] = {
     "detect_routes": ("health", "routes"),
     "codegraph_overview": ("health", "overview"),
     "analyze_dependencies": ("health", "deps"),
+    "codegraph_test_gap": ("health", "test_gap"),
     # -- edit --------------------------------------------------------------
     "safe_to_edit": ("edit", "safe"),
     "modification_guard": ("edit", "guard"),

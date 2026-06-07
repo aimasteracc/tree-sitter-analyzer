@@ -12,10 +12,10 @@ All tools default to **TOON output** (locked — see `CLAUDE.md`).
 
 | MCP name | action= | Purpose |
 |---|---|---|
-| `search` | symbol / query / content / grep / batch / chain | Code search: BM25 symbol lookup, tree-sitter .scm DSL, ripgrep, fd+rg, batch, graph-chain DSL |
+| `search` | symbol / query / content / grep / batch / chain / select / subscribe / unsubscribe | Code search: BM25 symbol lookup, tree-sitter .scm DSL, ripgrep, fd+rg, batch, graph-chain DSL, Hyphae DSL, reactive push subscriptions (RFC-0001) |
 | `nav` | navigate / call_path / xref / resolve / lineage / impact / trace / context / callers / callees | Call-graph navigation + one-call symbol context |
 | `structure` | outline / analyze / ast_path / sitemap / class_tree / class_detail / explore / read | Structural AST analysis + partial file read |
-| `health` | project / file / scale / patterns / heatmap / imports / matrix / dead / routes / overview / deps | Code health, complexity, dependency analysis |
+| `health` | project / file / scale / patterns / heatmap / imports / matrix / dead / routes / overview / deps / test_gap | Code health, complexity, dependency analysis, untested symbol discovery |
 | `edit` | safe / guard / impact / refactor / constraints / pr / classify / ast_diff | Edit-safety, blast-radius, refactor, PR review |
 | `project` | overview / files / smart / parser / tools / metrics / skills / workflow / journal / doc_sync | Project-intelligence hub |
 | `index` | status / cache / build / full / auto / sync | CodeGraph index lifecycle |

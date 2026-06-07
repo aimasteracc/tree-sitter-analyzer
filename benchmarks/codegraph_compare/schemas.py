@@ -39,6 +39,23 @@ class RunRecord:
     model: str = ""
     cached_input_tokens: int = 0
     reasoning_output_tokens: int = 0
+    # Real provider accounting pulled verbatim from the agent's result/usage
+    # block (claude --print / codex stream) — NOT estimated. cache_read /
+    # cache_creation split out the prompt-cache mechanics so cost attribution
+    # isn't blurred; total_cost_usd is the provider's own dollar figure (use it
+    # over estimated_cost_usd for cost claims); num_turns is the agent's turn
+    # count (the real lever behind cost divergence, per the cost-analysis-rigor
+    # lesson). All default to 0 so pre-existing runs.jsonl records still validate
+    # under extra='forbid'.
+    cache_read_tokens: int = 0
+    cache_creation_tokens: int = 0
+    total_cost_usd: float = 0.0
+    num_turns: int = 0
+    # Per-invocation id (one per cmd_run / cmd_run_matrix) that uniquifies raw
+    # artifact filenames so repeated runs of the same run_id don't overwrite each
+    # other. run_id stays the logical grouping key; session_id distinguishes
+    # invocations. Optional so older runs.jsonl records still validate.
+    session_id: str = ""
 
     @classmethod
     def make_id(

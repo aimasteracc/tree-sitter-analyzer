@@ -14,6 +14,7 @@ import os
 import sqlite3
 from typing import Any
 
+from .constants import EXCLUDE_DIRS
 from .core.parser import Parser
 
 # ---------------------------------------------------------------------------
@@ -40,32 +41,10 @@ def _has_fts5(conn: sqlite3.Connection) -> bool:
 # File-walk constants
 # ---------------------------------------------------------------------------
 
-_EXCLUDE_DIRS = frozenset(
-    {
-        "node_modules",
-        ".git",
-        ".hg",
-        ".svn",
-        "__pycache__",
-        ".venv",
-        "venv",
-        ".tox",
-        ".mypy_cache",
-        ".pytest_cache",
-        ".ruff_cache",
-        "dist",
-        "build",
-        "htmlcov",
-        ".cache",
-        ".eggs",
-        ".idea",
-        ".vscode",
-        ".claude",
-        ".swarm",
-        ".claude-flow",
-        ".opencode",
-    }
-)
+# Shared exclude set (incl. C#/Java/Rust/Go build-artifact dirs) — see
+# constants.EXCLUDE_DIRS. Indexing must skip bin/obj/packages/target/etc or
+# `index full` hangs on compiled-language projects.
+_EXCLUDE_DIRS = EXCLUDE_DIRS
 
 
 # ---------------------------------------------------------------------------
@@ -462,6 +441,7 @@ def _walk_for_symbols(
             sym["decision_points"] = dp
         parent_cls = _find_parent_class(node, source)
         if parent_cls:
+            sym["kind"] = "method"
             sym["class"] = parent_cls
         symbols.append(sym)
     elif node_type in _CLASS_LIKE and name_node is not None:
@@ -518,7 +498,7 @@ def _extract_structure(symbols: dict[str, Any]) -> dict[str, Any]:
     functions = []
     classes = []
     for s in symbols.get("symbols", []):
-        if s["kind"] == "function":
+        if s["kind"] in ("function", "method"):
             functions.append({"name": s["name"], "line": s["line"]})
         elif s["kind"] == "class":
             classes.append({"name": s["name"], "line": s["line"]})

@@ -17,9 +17,15 @@ from typing import Any
 
 from ..._ast_cache_query import _normalize_bm25 as _norm_bm25
 from ...utils import setup_logger
+from ...utils.test_detection import query_wants_tests, rank_tier
 from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
+
+# Default result cap. 50 source-rich hits made symbol search ~8 KB/call; 15 is
+# plenty to judge relevance. Exported so the CLI (`--symbol-search-limit`) and
+# the tool schema stay in sync — MCP/CLI parity (Codex P2 on #297).
+DEFAULT_SYMBOL_SEARCH_LIMIT = 15
 
 
 class CodeGraphSymbolSearchTool(BaseMCPTool):
@@ -86,8 +92,8 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
                 },
                 "limit": {
                     "type": "integer",
-                    "description": "Max results (default: 50)",
-                    "default": 50,
+                    "description": "Max results (default: 15)",
+                    "default": DEFAULT_SYMBOL_SEARCH_LIMIT,
                 },
                 "output_format": {
                     "type": "string",
@@ -111,7 +117,11 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
         query = arguments["query"]
         language = arguments.get("language")
         kind = arguments.get("kind", "any")
-        limit = arguments.get("limit", 50)
+        # Default 50 results, each carrying inline source context, made symbol
+        # search ~8 KB/call — peers return location-only results. 15 source-rich
+        # hits are plenty to judge relevance; callers raise ``limit`` for a
+        # wider sweep.
+        limit = arguments.get("limit", DEFAULT_SYMBOL_SEARCH_LIMIT)
         output_format = arguments.get("output_format", "toon")
         cache = self._get_cache()
 
@@ -165,10 +175,12 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
         limit: int,
     ) -> list[dict[str, Any]]:
         if query.startswith("~"):
-            return self._fuzzy_search(cache, query[1:], language, kind, limit)
-        if "*" in query:
-            return self._wildcard_search(cache, query, language, kind, limit)
-        return self._exact_search(cache, query, language, kind, limit)
+            raw = self._fuzzy_search(cache, query[1:], language, kind, limit)
+        elif "*" in query:
+            raw = self._wildcard_search(cache, query, language, kind, limit)
+        else:
+            raw = self._exact_search(cache, query, language, kind, limit)
+        return self._demote_test_files(raw, query)
 
     def _exact_search(
         self,
@@ -351,6 +363,33 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
         if kind == "any":
             return results
         return [r for r in results if r.get("kind", "") == kind]
+
+    def _demote_test_files(
+        self,
+        results: list[dict[str, Any]],
+        query: str,
+    ) -> list[dict[str, Any]]:
+        """Apply test-file demotion as primary sort key.
+
+        Consistent with fts_search_ranked and semantic_search.SemanticSymbolSearch.
+        Covers cascade (exact-tier) and FTS5/fuzzy/wildcard paths.
+        PRIMARY: rank_tier (0=prod, 1=test) unless query asks about tests.
+        SECONDARY: relevance_score descending (existing ranking preserved).
+        TERTIARY: file + line + name for a fully deterministic stable order.
+        """
+        if not results:
+            return results
+        wants_tests = query_wants_tests(query)
+        return sorted(
+            results,
+            key=lambda r: (
+                rank_tier(str(r.get("file", "")), wants_tests=wants_tests),
+                -(r.get("relevance_score") or 0.0),
+                str(r.get("file", "")),
+                int(r.get("line") or 0),
+                str(r.get("name", "")),
+            ),
+        )
 
     def _inline_match_bodies(
         self,

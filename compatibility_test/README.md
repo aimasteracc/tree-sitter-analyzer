@@ -20,9 +20,6 @@
 compatibility_test/
 ├── README.md                                    # このファイル
 ├── test_cases.json                              # テストケース定義
-├── troubleshooting_guide.md                     # トラブルシューティングガイド
-├── manual_test_guide.md                         # 手動テストガイド
-├── MCP_DIRECT_EXECUTION_TECHNICAL_BACKGROUND.md # MCP直接実行の技術的背景
 ├── mcp_compatibility_test.py                    # 互換性テストメインスクリプト
 ├── mcp_compatibility_final_report_*.md          # 最終テストレポート（自動生成）
 ├── mcp_test_results_*.json                      # テスト結果JSON（自動生成）
@@ -154,7 +151,7 @@ python compatibility_test/scripts/analyze_differences.py \
 
 ## 🛠️ トラブルシューティング
 
-問題が発生した場合は、[トラブルシューティングガイド](troubleshooting_guide.md) を参照してください。
+問題が発生した場合は、[標準化プロセス詳細](../docs/mcp_compatibility_test_standard.md) を参照してください。
 
 ### よくある問題
 
@@ -208,18 +205,7 @@ graph TD
 
     subgraph "設定と実行"
         C -- "テストケースを読み込む" --> D["test_cases.json"]
-        C -- "手動実行の参考に" --> E["manual_test_guide.md"]
         C -- "スクリプトを実行" --> F["scripts/run_compatibility_test.py"]
-    end
-
-    subgraph "トラブルシューティング"
-        B -- "問題発生時に参照" --> G["troubleshooting_guide.md"]
-        A -- "問題発生時に参照" --> G
-    end
-
-    subgraph "技術文書"
-        F -- "テスト根拠を参照" --> K["MCP_DIRECT_EXECUTION_TECHNICAL_BACKGROUND.md"]
-        B -- "キャッシュ管理を参照" --> L["../docs/CACHE_SYSTEM_ANALYSIS.md"]
     end
 
     subgraph "成果物"
@@ -237,14 +223,6 @@ graph TD
 ### 主要ドキュメント一覧
 
 - **[標準化プロセス詳細](../docs/mcp_compatibility_test_standard.md)**: 完全な標準化プロセスの説明。**最初に読むべき最も重要なドキュメント**です。
-- **[トラブルシューティングガイド](troubleshooting_guide.md)**: 問題解決の手順。
-- **[手動テストガイド](manual_test_guide.md)**: 自動化スクリプトを使わずに手動でテストを実行する手順。
-- **[過去のテスト結果](version_comparison_detailed_analysis_20251021_015957.md)**: v1.6.1.2 vs v1.9.2の詳細分析。
-
-### 技術文書
-
-- **[MCP直接実行の技術的背景](MCP_DIRECT_EXECUTION_TECHNICAL_BACKGROUND.md)**: なぜ互換性テストでMCPサーバーを経由せずに直接ツールクラスを実行できるのか、その技術的根拠を詳しく説明。
-- **[キャッシュシステム設計分析](../docs/CACHE_SYSTEM_ANALYSIS.md)**: 2つのキャッシュシステムの設計妥当性と改善提案。
 
 ## 🎯 今後の展望
 

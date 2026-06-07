@@ -27,6 +27,7 @@ DEFAULT_OUTPUTS = {
     "upload_coverage": True,
     "full_language_once": True,
     "full_suite_required": False,
+    "run_docs_check": False,
     "regression_scope": "all",
     "benchmark_scope": "all",
 }
@@ -136,9 +137,30 @@ def route_changed_files(
 
     if outputs["full_suite_required"]:
         for key in list(outputs):
-            if key.startswith("run_"):
+            # run_docs_check is the LIGHTWEIGHT alternative to the full matrix —
+            # never force it on a full-suite run (the matrix already covers it).
+            if key.startswith("run_") and key != "run_docs_check":
                 outputs[key] = True
         reason_codes.append("force-all-routes")
+
+    # Docs-only short-circuit: a non-empty changeset whose files ALL match the
+    # docs_only globs (and which did NOT trip full_suite) skips the heavy
+    # Win/macOS test matrix + build. A lightweight docs-check still runs so
+    # README count/structure drift is caught. Conservative: empty changeset or
+    # any non-docs file disables the skip.
+    docs_only_patterns = config.get("docs_only", [])
+    if (
+        docs_only_patterns
+        and changed_files
+        and not outputs["full_suite_required"]
+        and all(matches_any(path, docs_only_patterns) for path in changed_files)
+    ):
+        outputs["run_quality"] = False
+        outputs["run_test_matrix"] = False
+        outputs["run_build"] = False
+        outputs["upload_coverage"] = False
+        outputs["run_docs_check"] = True
+        reason_codes.append("docs-only")
 
     outputs["changed_count"] = len(changed_files)
     outputs["changed_files"] = changed_files

@@ -545,3 +545,245 @@ class TestStarImportBookkeeping:
                 assert row["is_relative"] == 1, "from .b import * is a relative import"
         finally:
             cache.close()
+
+
+# ---------------------------------------------------------------------------
+# RFC-0002 — builtin classifier + shadowing contract
+# ---------------------------------------------------------------------------
+
+
+class TestRFC0002BuiltinClassifier:
+    """RFC-0002 criterion 1+2: builtins get ``"builtin"`` (not ``"stdlib"``),
+    applied AFTER local/import bindings so shadowing is preserved."""
+
+    def _make_ctx(
+        self,
+        builtins: frozenset[str],
+        stdlib: frozenset[str] = frozenset(),
+        functions_by_name: dict | None = None,
+    ):
+        from tree_sitter_analyzer.callee_resolution import CalleeResolver
+        from tree_sitter_analyzer.synapse_resolver import ResolverContext
+
+        return ResolverContext(
+            project_root="",
+            cache=None,  # type: ignore[arg-type]
+            builtins={"python": builtins},
+            stdlib_modules={"python": stdlib},
+            callee_resolver=CalleeResolver(
+                functions_by_name=functions_by_name or {},
+                functions_by_file={},
+                name_to_source={},
+            ),
+        )
+
+    def test_builtin_name_resolves_to_builtin(self) -> None:
+        """``len()`` with no local shadow → resolution="builtin" (RFC-0002 criterion 1)."""
+        from tree_sitter_analyzer.synapse_resolver import resolve_callee
+
+        ctx = self._make_ctx(builtins=frozenset({"len", "print", "range"}))
+        result = resolve_callee("len", "module.py", ctx, caller_name="f")
+        assert result.resolution == "builtin", (
+            f"expected 'builtin', got {result.resolution!r} — "
+            "RFC-0002 criterion 1: builtins classified as 'builtin', not 'stdlib'"
+        )
+        assert result.callee_symbol_id is None
+
+    def test_project_binding_shadows_builtin(self) -> None:
+        """A project function named ``len`` shadows the builtin (RFC-0002 criterion 2)."""
+        from tree_sitter_analyzer.synapse_resolver import resolve_callee
+
+        ctx = self._make_ctx(
+            builtins=frozenset({"len"}),
+            functions_by_name={
+                "len": [
+                    {"name": "len", "file": "utils.py", "id": 42, "language": "python"}
+                ]
+            },
+        )
+        result = resolve_callee("len", "utils.py", ctx, caller_name="f")
+        assert result.resolution in ("local", "project"), (
+            f"expected local/project (shadowing), got {result.resolution!r} — "
+            "RFC-0002 criterion 2: project binding shadows builtin"
+        )
+
+    def test_stdlib_import_wins_over_builtin_name_collision(self) -> None:
+        """When a name is both a known builtin and stdlib-imported, stdlib wins (runs earlier)."""
+        from tree_sitter_analyzer.synapse_resolver import (
+            ResolverContext,
+            resolve_callee,
+        )
+        from tree_sitter_analyzer.synapse_resolver._imports import ImportEntry
+
+        # ``path`` treated as a builtin AND imported from stdlib ``os`` module.
+        # ``_try_stdlib`` must fire before ``_try_builtin`` per cascade order.
+        imp = ImportEntry(
+            file_path="module.py",
+            language="python",
+            module_path="os",
+            local_name="path",
+        )
+        ctx = ResolverContext(
+            project_root="",
+            cache=None,  # type: ignore[arg-type]
+            builtins={"python": frozenset({"path"})},
+            stdlib_modules={"python": frozenset({"os"})},
+            imports_by_file={"module.py": [imp]},
+            callee_resolver=None,
+        )
+        result = resolve_callee("path", "module.py", ctx, caller_name="f")
+        assert result.resolution == "stdlib", (
+            f"expected 'stdlib' (stdlib fires before builtin), got {result.resolution!r}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# RFC-0002 criterion 7 — monotonicity: no resolved→unknown regression
+# ---------------------------------------------------------------------------
+
+
+class TestRFC0002Monotonicity:
+    """RFC-0002 criterion 7: a re-index must not regress resolved edges back to unknown.
+
+    Uses a two-file project where the callee is defined in b.py and called from a.py.
+    After two index passes, the edge must still be resolved (or at worst stay at
+    its original resolution — not degrade).
+    """
+
+    def test_reindex_does_not_regress_resolved_edges(self, tmp_path: Path) -> None:
+        (tmp_path / "a.py").write_text(
+            "from b import helper\n\ndef caller():\n    return helper()\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "b.py").write_text(
+            "def helper():\n    return 42\n",
+            encoding="utf-8",
+        )
+        cache = ASTCache(str(tmp_path))
+        try:
+            cache.index_project(max_files=10, workers=0)
+            # Collect resolution after first index
+            conn = cache.get_conn()
+            rows_pass1 = {
+                (r["callee_name"], r["callee_resolution"])
+                for r in conn.execute(
+                    "SELECT callee_name, callee_resolution FROM edges WHERE kind='calls'"
+                ).fetchall()
+                if r["callee_resolution"] not in (None, "unknown")
+            }
+
+            # Re-index (simulates file modification triggering a second pass)
+            (tmp_path / "a.py").write_text(
+                "from b import helper\n\ndef caller():\n    x = 1\n    return helper()\n",
+                encoding="utf-8",
+            )
+            cache.index_project(max_files=10, workers=0)
+
+            rows_pass2 = {
+                (r["callee_name"], r["callee_resolution"])
+                for r in conn.execute(
+                    "SELECT callee_name, callee_resolution FROM edges WHERE kind='calls'"
+                ).fetchall()
+                if r["callee_resolution"] not in (None, "unknown")
+            }
+
+            # Any edge resolved in pass1 must still be resolved in pass2 (or better)
+            regressions = rows_pass1 - rows_pass2
+            assert not regressions, (
+                f"RFC-0002 monotonicity violated: these edges regressed to unknown "
+                f"after reindex: {regressions}"
+            )
+        finally:
+            cache.close()
+
+
+# ---------------------------------------------------------------------------
+# RFC-0002 criterion 4 — same-named functions → distinct callee_symbol_ids
+# ---------------------------------------------------------------------------
+
+
+class TestRFC0002DistinctSymbolIds:
+    """RFC-0002 criterion 4: similarly-named functions in different files must
+    resolve to distinct callee_symbol_ids, not collapse to one bare name."""
+
+    def test_same_named_functions_in_different_files_get_distinct_ids(
+        self, tmp_path: Path
+    ) -> None:
+        """Two local ``helper()`` functions each called from their own file
+        must resolve to different callee_symbol_ids."""
+        (tmp_path / "a.py").write_text(
+            "def helper():\n    return 'a'\n\ndef caller_a():\n    return helper()\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "b.py").write_text(
+            "def helper():\n    return 'b'\n\ndef caller_b():\n    return helper()\n",
+            encoding="utf-8",
+        )
+        cache = ASTCache(str(tmp_path))
+        try:
+            cache.index_project(max_files=10, workers=0)
+            conn = cache.get_conn()
+            rows = conn.execute(
+                "SELECT callee_name, callee_symbol_id, callee_resolved_file "
+                "FROM edges WHERE kind='calls' AND callee_name='helper' "
+                "AND callee_symbol_id IS NOT NULL"
+            ).fetchall()
+            symbol_ids = {r["callee_symbol_id"] for r in rows}
+            resolved_files = {
+                r["callee_resolved_file"] for r in rows if r["callee_resolved_file"]
+            }
+            assert len(rows) >= 2, (
+                f"expected >=2 resolved 'helper' call edges, got {len(rows)}"
+            )
+            assert len(symbol_ids) >= 2, (
+                "RFC-0002 criterion 4: same-named functions in different files "
+                f"must have distinct callee_symbol_ids — got single id: {symbol_ids}"
+            )
+            assert len(resolved_files) >= 2, (
+                f"expected >=2 distinct resolved files, got: {resolved_files}"
+            )
+        finally:
+            cache.close()
+
+
+# ---------------------------------------------------------------------------
+# RFC-0002 criterion 6 — Hyphae false-positive rate measurably lower
+# ---------------------------------------------------------------------------
+
+
+class TestRFC0002HyphaeCalleeFalsePositive:
+    """RFC-0002 criterion 6: resolution rate on a small project must be
+    measurably above 0% after the cascade fix."""
+
+    def test_resolution_rate_above_zero_for_simple_project(
+        self, tmp_path: Path
+    ) -> None:
+        """After indexing, at least one call edge must be resolved (not bare-name).
+        Pins the RFC-0002 criterion 6 goal: unknown rate measurably < 100%."""
+        (tmp_path / "engine_a.py").write_text(
+            "class EngineA:\n    def run(self):\n        return 'a'\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "caller_a.py").write_text(
+            "from engine_a import EngineA\n\ndef main():\n    EngineA().run()\n",
+            encoding="utf-8",
+        )
+        cache = ASTCache(str(tmp_path))
+        try:
+            cache.index_project(max_files=10, workers=0)
+            conn = cache.get_conn()
+            rows = conn.execute(
+                "SELECT callee_name, callee_resolution FROM edges WHERE kind='calls'"
+            ).fetchall()
+            total = len(rows)
+            unknown = sum(
+                1 for r in rows if r["callee_resolution"] in (None, "unknown")
+            )
+            if total > 0:
+                unknown_rate = unknown / total
+                assert unknown_rate < 1.0, (
+                    f"RFC-0002 criterion 6: all {total} call edges are unknown — "
+                    "Hyphae :callees false-positive rate not reduced vs baseline"
+                )
+        finally:
+            cache.close()

@@ -12,6 +12,8 @@ import logging
 import sqlite3
 from typing import TYPE_CHECKING, Any, cast
 
+from .utils.test_detection import query_wants_tests, rank_tier
+
 if TYPE_CHECKING:
     pass
 
@@ -163,6 +165,14 @@ _KIND_WEIGHT: dict[str, float] = {
 }
 _KIND_WEIGHT_DEFAULT = 0.85  # fallback for unrecognised kind values
 
+# Test-file demotion runs in Python AFTER the SQL fetch, so a production hit
+# that BM25 ranks just outside the caller's ``limit`` window would be truncated
+# before it can be promoted above test/fixture matches. Over-fetch a wider band
+# of candidates, demote, THEN truncate to ``limit`` — so production symbols that
+# lose the raw BM25 race to many test matches can still surface first.
+_DEMOTION_OVERFETCH_FACTOR = 4
+_DEMOTION_OVERFETCH_FLOOR = 50
+
 
 def fts_search_ranked(
     conn: sqlite3.Connection,
@@ -170,13 +180,20 @@ def fts_search_ranked(
     language: str | None = None,
     limit: int = 100,
 ) -> list[dict[str, Any]]:
-    """BM25-ranked FTS5 symbol search with kind-priority tie-breaking.
+    """BM25-ranked FTS5 symbol search with kind-priority and test-file demotion.
 
     Returns dicts with keys: name, kind, file, language, line, end_line, relevance_score.
     relevance_score is in [0.0, 1.0] — 1.0 = best match in this result set.
     After BM25 normalization, a kind-weight multiplier is applied so that
     class/function/method definitions rank above import statements even when
     their raw BM25 score is identical.
+
+    Test-file demotion (consistent with semantic_search.SemanticSymbolSearch):
+    Production symbols always rank above test/spec/fixture symbols unless the
+    query itself contains test-intent keywords (``query_wants_tests``). Within
+    each tier the sort is by relevance_score descending, then file + line for
+    determinism.
+
     Returns [] for queries shorter than 2 characters or on SQLite errors.
     """
     if len(query) < 2:
@@ -193,16 +210,21 @@ def fts_search_ranked(
         "FROM ast_symbols_fts f JOIN ast_symbol_rows r ON f.rowid = r.id "
         "WHERE ast_symbols_fts MATCH ? {lang_clause} ORDER BY bm25_raw LIMIT ?"
     )
+    # Over-fetch so the post-fetch test-demotion can promote production hits
+    # that BM25 buried just outside the caller's window (Codex P2 on #316).
+    fetch_limit = max(
+        limit * _DEMOTION_OVERFETCH_FACTOR, limit + _DEMOTION_OVERFETCH_FLOOR
+    )
     try:
         if language:
             rows = conn.execute(
                 join_sql.format(lang_clause="AND r.language = ?"),
-                (fts_query, language, limit),
+                (fts_query, language, fetch_limit),
             ).fetchall()
         else:
             rows = conn.execute(
                 join_sql.format(lang_clause=""),
-                (fts_query, limit),
+                (fts_query, fetch_limit),
             ).fetchall()
     except sqlite3.OperationalError:
         logger.debug("fts_search_ranked: OperationalError — FTS5 table not available")
@@ -225,8 +247,23 @@ def fts_search_ranked(
         }
         for r in rows
     ]
-    results.sort(key=lambda x: x["relevance_score"], reverse=True)
-    return results
+    # Primary: test-file demotion tier (0 = production, 1 = test/fixture).
+    # Production symbols always rank first unless the query asks about tests.
+    # Secondary: relevance_score descending (BM25 + kind weight, best first).
+    # Tertiary: file + line for a fully deterministic stable order.
+    wants_tests = query_wants_tests(query)
+    results.sort(
+        key=lambda x: (
+            rank_tier(str(x["file"]), wants_tests=wants_tests),
+            -x["relevance_score"],
+            str(x["file"]),
+            int(x["line"] or 0),
+            str(x["name"]),
+        )
+    )
+    # Truncate to the caller's window only AFTER demotion, so a promoted
+    # production hit is not dropped by the over-fetch band.
+    return results[:limit]
 
 
 def search_symbols_linear(
@@ -261,7 +298,16 @@ def get_stats(
     fts5_available: bool | None,
     db_path: str,
 ) -> dict[str, Any]:
-    """Return aggregate index statistics."""
+    """Return aggregate index statistics.
+
+    Extended with per-kind and per-language symbol breakdowns
+    (CodeGraph parity + edges_by_kind lead).
+
+    New fields added (never raise — degrade to empty dicts):
+    - ``symbols_by_kind``     dict[str, int] — from ast_symbol_rows GROUP BY kind
+    - ``symbols_by_language`` dict[str, int] — from ast_symbol_rows GROUP BY language
+    - ``edges_by_kind``       dict[str, int] — from edges GROUP BY kind (if table exists)
+    """
     total = conn.execute("SELECT COUNT(*) as c FROM ast_index").fetchone()["c"]
     by_lang = conn.execute(
         "SELECT language, COUNT(*) as c FROM ast_index GROUP BY language ORDER BY c DESC"
@@ -279,10 +325,57 @@ def get_stats(
             len(json.loads(r["symbols_json"]).get("symbols", []))
             for r in conn.execute("SELECT symbols_json FROM ast_index").fetchall()
         )
+
+    # -- CodeGraph parity: per-kind and per-language breakdowns ---------------
+    # Both queries target ast_symbol_rows which is only populated when FTS5
+    # is available.  If the table is absent (legacy build or FTS5 disabled),
+    # or if fts5_available is falsy, we degrade to empty dicts without raising.
+    symbols_by_kind: dict[str, int] = {}
+    symbols_by_language: dict[str, int] = {}
+    if fts5_available:
+        try:
+            kind_rows = conn.execute(
+                "SELECT kind, COUNT(*) as c FROM ast_symbol_rows GROUP BY kind"
+            ).fetchall()
+            symbols_by_kind = {r["kind"]: r["c"] for r in kind_rows}
+        except sqlite3.OperationalError:
+            symbols_by_kind = {}
+        try:
+            lang_rows = conn.execute(
+                "SELECT language, COUNT(*) as c FROM ast_symbol_rows GROUP BY language"
+            ).fetchall()
+            symbols_by_language = {r["language"]: r["c"] for r in lang_rows}
+        except sqlite3.OperationalError:
+            symbols_by_language = {}
+
+    # -- Beyond CodeGraph: edge-kind breakdown --------------------------------
+    # ``edges`` has an indexed ``kind`` column (idx_edges_kind).  Two
+    # GROUP-BY queries are effectively free.  Degrade to {} if the table is
+    # absent (no-edges build) without raising.
+    edges_by_kind: dict[str, int] = {}
+    total_edges = 0
+    try:
+        edge_kind_rows = conn.execute(
+            "SELECT kind, COUNT(*) as c FROM edges GROUP BY kind"
+        ).fetchall()
+        edges_by_kind = {r["kind"]: r["c"] for r in edge_kind_rows}
+        # ``total_edges`` sums ALL kinds so it reconciles with ``edges_by_kind``
+        # (Codex P2 on #315): consumers can treat status as an all-edge summary
+        # where total_edges == sum(edges_by_kind). The call-edge-only count
+        # (graph-density / resolution signal) stays in get_cross_file_stats.
+        total_edges = sum(edges_by_kind.values())
+    except sqlite3.OperationalError:
+        edges_by_kind = {}
+        total_edges = 0
+
     stats: dict[str, Any] = {
         "total_files": total,
         "total_symbols": total_symbols,
+        "total_edges": total_edges,
         "by_language": {r["language"]: r["c"] for r in by_lang},
+        "symbols_by_kind": symbols_by_kind,
+        "symbols_by_language": symbols_by_language,
+        "edges_by_kind": edges_by_kind,
         "db_path": db_path,
         "fts5_available": bool(fts5_available),
     }

@@ -278,19 +278,7 @@ class TestPluginManagerAdvanced:
         result = plugin_manager_instance.get_plugin("test")
         assert result == mock_plugin
 
-    def test_get_plugin_for_file_with_no_applicable_plugin(
-        self, plugin_manager_instance
-    ):
-        """Test getting plugin for file with no applicable plugin"""
-        # PluginManager doesn't have get_plugin_for_file method, skip this test
-        pass
-
     def test_list_supported_languages_empty(self, plugin_manager_instance):
         """Test listing supported languages when empty"""
         languages = plugin_manager_instance.get_supported_languages()
         assert isinstance(languages, list)
-
-    def test_list_supported_extensions_empty(self, plugin_manager_instance):
-        """Test listing supported extensions when empty"""
-        # PluginManager doesn't have list_supported_extensions method, skip this test
-        pass

@@ -30,6 +30,12 @@ from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
 
+#: Default cap on the number of symbol entries emitted by the flat/api modes.
+#: F3 (overview-output-budget): a large repo can otherwise emit a wall of text
+#: (~86k) that is expensive and unreadable for an agent. Callers can raise this
+#: via the ``max_symbols`` argument when they genuinely need the full listing.
+DEFAULT_MAX_SYMBOLS = 300
+
 
 def _path_parts(file_path: str) -> list[str]:
     return [part for part in file_path.replace("\\", "/").split("/") if part]
@@ -103,6 +109,15 @@ class CodeGraphSitemapTool(BaseMCPTool):
                     "description": "Max files to include (default: 200)",
                     "default": 200,
                 },
+                "max_symbols": {
+                    "type": "integer",
+                    "description": (
+                        "Max symbol entries to emit in api/flat modes "
+                        f"(default: {DEFAULT_MAX_SYMBOLS}). When the cap is hit, "
+                        "the response sets truncated=true; raise this to see more."
+                    ),
+                    "default": DEFAULT_MAX_SYMBOLS,
+                },
                 "output_format": {
                     "type": "string",
                     "enum": ["json", "toon"],
@@ -115,8 +130,20 @@ class CodeGraphSitemapTool(BaseMCPTool):
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         mode = arguments.get("mode", "full")
-        if mode not in ("full", "api", "module", "flat"):
-            raise ValueError(f"Invalid mode: {mode}")
+        valid_modes = ("api", "flat", "full", "module")
+        if mode not in valid_modes:
+            raise ValueError(
+                f"Invalid mode: {mode!r}. Valid modes: {', '.join(valid_modes)}"
+            )
+        # Guard the budget params: a non-positive limit would silently apply
+        # Python negative-index slicing (max_symbols=-1 drops the last entry) or
+        # empty everything (max_symbols=0), neither of which is a meaningful cap.
+        for key in ("max_files", "max_symbols"):
+            value = arguments.get(key)
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+                raise ValueError(f"{key} must be a positive integer, got {value!r}")
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -126,31 +153,61 @@ class CodeGraphSitemapTool(BaseMCPTool):
         language = arguments.get("language")
         directory = arguments.get("directory")
         max_files = arguments.get("max_files", 200)
+        max_symbols = arguments.get("max_symbols", DEFAULT_MAX_SYMBOLS)
         output_format = arguments.get("output_format", "toon")
 
         cache = self._get_cache()
 
-        raw_files = self._load_indexed_files(cache, language, directory, max_files)
+        # Probe one row beyond max_files so we can tell whether the file LIMIT
+        # itself truncated the set (Codex P2 #337): otherwise a large repo with
+        # more files than max_files would drop every file past the limit in ALL
+        # modes while reporting truncated=false, so a caller could treat an
+        # incomplete sitemap as complete with no signal to raise max_files.
+        raw_files = self._load_indexed_files(cache, language, directory, max_files + 1)
+        files_truncated = len(raw_files) > max_files
+        if files_truncated:
+            raw_files = raw_files[:max_files]
 
+        # F3: api/flat modes can emit unbounded symbol lists. The hierarchical
+        # full/module modes are not symbol-capped, but ALL modes are now
+        # file-capped, so any mode can report truncated=true via files_truncated.
+        symbols_truncated = False
         if mode == "full":
             payload = self._build_full_map(raw_files)
         elif mode == "api":
-            payload = self._build_api_surface(raw_files)
+            payload, symbols_truncated = self._build_api_surface(raw_files, max_symbols)
         elif mode == "module":
             payload = self._build_module_metrics(raw_files)
         else:
-            payload = self._build_flat(raw_files)
+            payload, symbols_truncated = self._build_flat(raw_files, max_symbols)
 
+        truncated = symbols_truncated or files_truncated
         total_symbols = sum(f["symbol_count"] for f in raw_files)
+
         extra: dict[str, Any] = {}
         if language:
             extra["language_filter"] = language
+
+        # Only emit truncation_note when something was actually truncated — an
+        # empty note on complete responses is schema noise (reviewer P3). Name
+        # the cause(s) so the caller knows which limit to raise.
+        if truncated:
+            causes: list[str] = []
+            if symbols_truncated:
+                causes.append(f"symbol list capped at max_symbols={max_symbols}")
+            if files_truncated:
+                causes.append(f"file list capped at max_files={max_files}")
+            extra["truncation_note"] = (
+                "Output truncated (" + "; ".join(causes) + "). Raise the relevant "
+                "limit, or narrow scope with the directory/language filters."
+            )
 
         result = build_response(
             verdict="INFO" if raw_files else "NOT_FOUND",
             mode=mode,
             file_count=len(raw_files),
             total_symbols=total_symbols,
+            truncated=truncated,
             **payload,
             **extra,
         )
@@ -207,7 +264,9 @@ class CodeGraphSitemapTool(BaseMCPTool):
                     "symbols": syms,
                     "structure": structure,
                     "symbol_count": len(syms),
-                    "functions": [s for s in syms if s.get("kind") == "function"],
+                    "functions": [
+                        s for s in syms if s.get("kind") in ("function", "method")
+                    ],
                     "classes": [s for s in syms if s.get("kind") == "class"],
                     "imports": [s for s in syms if s.get("kind") == "import"],
                 }
@@ -274,7 +333,9 @@ class CodeGraphSitemapTool(BaseMCPTool):
                 out[key] = val
         return out
 
-    def _build_api_surface(self, files: list[dict[str, Any]]) -> dict[str, Any]:
+    def _build_api_surface(
+        self, files: list[dict[str, Any]], max_symbols: int = DEFAULT_MAX_SYMBOLS
+    ) -> tuple[dict[str, Any], bool]:
         api: list[dict[str, Any]] = []
         for f in files:
             for func in f["functions"]:
@@ -310,13 +371,15 @@ class CodeGraphSitemapTool(BaseMCPTool):
                     }
                 )
 
-        return {
-            "public_api": api,
+        # Scalar counts reflect the true totals; only the emitted list is capped.
+        payload = {
+            "public_api": api[:max_symbols],
             "public_function_count": sum(
                 1 for a in api if a["kind"] in ("function", "method")
             ),
             "public_class_count": sum(1 for a in api if a["kind"] == "class"),
         }
+        return payload, len(api) > max_symbols
 
     def _build_module_metrics(self, files: list[dict[str, Any]]) -> dict[str, Any]:
         by_dir: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -359,7 +422,9 @@ class CodeGraphSitemapTool(BaseMCPTool):
 
         return {"modules": modules}
 
-    def _build_flat(self, files: list[dict[str, Any]]) -> dict[str, Any]:
+    def _build_flat(
+        self, files: list[dict[str, Any]], max_symbols: int = DEFAULT_MAX_SYMBOLS
+    ) -> tuple[dict[str, Any], bool]:
         by_kind: dict[str, list[dict[str, Any]]] = defaultdict(list)
         for f in files:
             for sym in f["symbols"]:
@@ -371,11 +436,32 @@ class CodeGraphSitemapTool(BaseMCPTool):
                     "line": sym.get("line", 0),
                     "language": f["language"],
                 }
-                if kind == "function" and sym.get("params"):
+                if kind in ("function", "method") and sym.get("params"):
                     entry["params"] = sym["params"]
-                if kind == "function" and sym.get("class"):
+                if kind in ("function", "method") and sym.get("class"):
                     entry["class"] = sym["class"]
                 by_kind[kind].append(entry)
 
+        # counts report the true (untruncated) totals per kind.
         counts = {k: len(v) for k, v in by_kind.items()}
-        return {"symbols_by_kind": dict(by_kind), "counts": counts}
+
+        # Cap the total number of emitted entries across all kinds, keeping the
+        # per-kind grouping. Kinds are iterated in stable insertion order so the
+        # truncation is deterministic.
+        total = sum(len(v) for v in by_kind.values())
+        truncated = total > max_symbols
+        if truncated:
+            remaining = max_symbols
+            capped: dict[str, list[dict[str, Any]]] = {}
+            for kind, entries in by_kind.items():
+                if remaining <= 0:
+                    break
+                take = entries[:remaining]
+                if take:
+                    capped[kind] = take
+                    remaining -= len(take)
+            emitted_by_kind = capped
+        else:
+            emitted_by_kind = dict(by_kind)
+
+        return {"symbols_by_kind": emitted_by_kind, "counts": counts}, truncated

@@ -2,8 +2,6 @@
 
 Thank you for your interest in contributing! This document provides guidelines for contributing to tree-sitter-analyzer.
 
-> **日本語版**: [CONTRIBUTING_ja.md](ja/CONTRIBUTING_ja.md)
-
 ## Quick Start
 
 ```bash
@@ -247,36 +245,27 @@ See [CI/CD Overview](ci-cd-overview.md) for details.
 
 ### Release Notes
 - Update `CHANGELOG.md`
-- Record significant changes in `openspec/`
+- Substantial changes (public API, MCP tools, `ast_cache` schema, CLI↔MCP parity,
+  or any locked design decision) go through the **RFC process** — see [`rfcs/`](../rfcs/).
+  This supersedes the old `openspec/` and `.kiro/specs/` workflows, which have been removed.
 
 ## Documentation Structure
 
-### Directory Map
+The repository keeps a small, code-aligned doc set. Start from the indexes rather
+than memorizing file paths:
+
+- **[`docs/README.md`](README.md)** — index of every guide (installation, CLI, features, architecture, testing, CI/CD).
+- **[`AGENTS.md`](../AGENTS.md)** + **[`docs/CODEMAPS/`](CODEMAPS/)** — agent-facing topology maps (MCP tools, CLI, languages, formatters, security), kept in sync with the registries by `scripts/codemap-sync-check.sh`.
+- **[`rfcs/`](../rfcs/)** — design proposals for substantial changes.
 
 ```
 tree-sitter-analyzer/
-├── README.md                    # Project entry point
-├── CHANGELOG.md                 # Version history
-├── docs/
-│   ├── installation.md          # Installation guide
-│   ├── cli-reference.md         # CLI reference
-│   ├── smart-workflow.md        # SMART workflow
-│   ├── architecture.md          # Architecture overview
-│   ├── features.md              # Feature list
-│   ├── CONTRIBUTING.md          # This document (English)
-│   ├── new-language-support-checklist.md  # New language checklist ⭐
-│   ├── api/
-│   │   └── mcp_tools_specification.md  # MCP API spec
-│   └── ja/
-│       ├── CONTRIBUTING_ja.md   # Contributing guide (Japanese)
-│       ├── project-management/  # PMP documents
-│       ├── specifications/      # Technical specs
-│       ├── test-management/     # Test management
-│       └── user-guides/         # User guides
-├── openspec/                    # OpenSpec change management
-│   ├── project.md               # Project definition
-│   └── changes/                 # Change proposals
-└── .kiro/specs/                 # AI-assisted development specs
+├── README.md / CHANGELOG.md / CLAUDE.md / AGENTS.md   # entry points & agent rules
+├── GITFLOW.md · SECURITY.md · CODE_OF_CONDUCT.md      # governance (+ _ja / _zh translations)
+├── docs/            # user & developer guides — see docs/README.md
+│   └── CODEMAPS/    # registry-synced topology maps
+├── rfcs/            # design proposals (RFC process)
+└── tests/           # test suite + golden masters
 ```
 
 ## Related Documentation
@@ -288,6 +277,3 @@ tree-sitter-analyzer/
 ### CI/CD
 - [CI/CD Overview](ci-cd-overview.md)
 - [CI/CD Troubleshooting](ci-cd-troubleshooting.md)
-
-### Project Management (Japanese)
-- [PMP Documents](ja/README.md)

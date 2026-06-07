@@ -248,11 +248,14 @@ class TestCodeGraphCompareTSAAdapter:
         assert result.file_count == 1
         build_cache.assert_not_called()
 
-    def test_parse_tool_metrics_counts_multiple_annotated_bash_calls_once(self):
+    def test_parse_tool_metrics_counts_mcp_calls_as_index_queries(self):
+        # The TSA arm now runs through its MCP facade tools (not the CLI), so
+        # mcp__tree-sitter-analyzer__* calls count as index queries, Bash as
+        # search, Read as file reads — mirroring the CodeGraph MCP adapter.
         transcript = textwrap.dedent(
             """
-            Tool: Bash
-            uv run --project /repo python -m tree_sitter_analyzer --codegraph-query "search('Router')"
+            Tool: mcp__tree-sitter-analyzer__nav
+            {"action": "context", "query": "Router"}
             Tool: Bash
             rg Router
             Tool: Read
@@ -267,15 +270,17 @@ class TestCodeGraphCompareTSAAdapter:
         assert result.search_calls == 1
         assert result.file_reads == 1
 
-    def test_run_config_promotes_chain_query_first(self, tmp_path: Path):
+    def test_run_config_promotes_mcp_nav_context_first(self, tmp_path: Path):
         config = TSAAdapter().build_run_config(tmp_path, "Where is routing handled?")
 
-        assert "--codegraph-query" in config.extra_context
-        assert "search('<symbol-or-concept>').explore" in config.extra_context
+        # Steer the agent to the one-call MCP context entry point, not the CLI.
+        assert "mcp__tree-sitter-analyzer__nav" in config.extra_context
+        assert "action=context" in config.extra_context
+        assert "--codegraph-query" not in config.extra_context
 
 
 class TestCodeGraphCompareToolPolicy:
-    def test_tsa_arms_are_index_first(self):
+    def test_tsa_arms_expose_mcp_tools_and_block_competitors(self):
         from benchmarks.codegraph_compare.adapters.claude_runner import (
             _ARM_ALLOWED_TOOLS,
             _ARM_DISALLOWED_TOOLS,
@@ -284,26 +289,25 @@ class TestCodeGraphCompareToolPolicy:
             _ALLOWED_TOOLS,
         )
 
-        raw_tools = {
-            "Read",
-            "Glob",
-            "Grep",
-            "Bash(grep *)",
-            "Bash(rg *)",
-            "Bash(find *)",
-            "Bash(ls *)",
-        }
         for arm in ("tsa-warm", "tsa-cold"):
             allowed = set(_ARM_ALLOWED_TOOLS[arm])
             disallowed = set(_ARM_DISALLOWED_TOOLS[arm])
 
-            assert allowed
-            assert all("tree_sitter_analyzer" in tool for tool in allowed)
-            assert raw_tools.isdisjoint(allowed)
-            assert raw_tools <= disallowed
-        assert _ALLOWED_TOOLS == ["Bash"]
+            # The TSA MCP facade tools are available (index-first path).
+            assert "mcp__tree-sitter-analyzer__nav" in allowed
+            assert any(t.startswith("mcp__tree-sitter-analyzer__") for t in allowed)
+            # The competing index and escape hatches are blocked for a fair,
+            # isolated TSA-vs-CodeGraph comparison.
+            assert "mcp__codegraph__*" in disallowed
+            assert "ToolSearch" in disallowed
+            assert "Agent" in disallowed
 
-    def test_tsa_prompt_rejects_filesystem_discovery(self):
+        # The adapter exposes the TSA MCP facade tools (alongside raw discovery,
+        # which the prompt steers the agent away from).
+        assert "mcp__tree-sitter-analyzer__nav" in _ALLOWED_TOOLS
+        assert "mcp__tree-sitter-analyzer__search" in _ALLOWED_TOOLS
+
+    def test_tsa_prompt_is_mcp_index_first(self):
         prompt_path = (
             Path(__file__).resolve().parents[2]
             / "benchmarks"
@@ -313,11 +317,38 @@ class TestCodeGraphCompareToolPolicy:
         )
         prompt = prompt_path.read_text(encoding="utf-8")
 
-        assert "TSA is the index" in prompt
-        assert "invalidates the benchmark" in prompt
-        assert "--codegraph-query" in prompt
-        assert "flow(" not in prompt
-        assert ".answer(compact=True)" in prompt
+        # MCP-arm prompt: nav action=context first, index is source of truth.
+        assert "mcp__tree-sitter-analyzer__nav" in prompt
+        assert "action=context" in prompt
+        assert "AST index is the source of truth" in prompt
+        # No stale CLI-DSL references from the old CLI-based arm.
+        assert "--codegraph-query" not in prompt
+
+    def test_tsa_mcp_config_pins_target_repo_as_project_root(self, tmp_path: Path):
+        """The TSA MCP server must get --project-root <target repo>.
+
+        Without it the server auto-detects and resolves to the ANALYZER repo
+        (where its package lives), so every query analyzes tree-sitter-analyzer
+        instead of the benchmark target — the agent then calls set_project_path,
+        re-queries, and Reads the analyzer tree, inflating cost ~2.5x and
+        invalidating the comparison.
+        """
+        import json as _json
+
+        from benchmarks.codegraph_compare.adapters.claude_runner import (
+            _write_arm_mcp_config,
+        )
+
+        repo = tmp_path / "gin"
+        repo.mkdir()
+        cfg_path = _write_arm_mcp_config("tsa-warm", repo)
+        cfg = _json.loads(cfg_path.read_text())
+        args = cfg["mcpServers"]["tree-sitter-analyzer"]["args"]
+
+        assert "--project-root" in args
+        assert str(repo) in args
+        # The flag value must be the repo, immediately after the flag.
+        assert args[args.index("--project-root") + 1] == str(repo)
 
 
 class TestCodeGraphComparePhases:
@@ -505,3 +536,216 @@ class TestCodeGraphCompareEvaluator:
 
         assert record["evaluated_with_llm"] is False
         assert record["overall"] == 3.0
+
+
+class TestRunIdUniqueness:
+    """Raw benchmark artifacts must survive re-runs: a per-invocation session_id
+    keeps repeated runs of the same (question, arm, repeat) from overwriting each
+    other's transcript — without it, n>1 cost measurement loses earlier data."""
+
+    def test_session_id_uniquifies_raw_artifacts(self, tmp_path):
+        from benchmarks.codegraph_compare.adapters import RunConfig
+        from benchmarks.codegraph_compare.adapters.claude_runner import run_one
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        results = tmp_path / "results"
+        cfg = RunConfig(arm_id="native-only", repo_path=repo, system_prompt="sys")
+
+        common = {
+            "question_id": "q1",
+            "question_prompt": "trace it",
+            "arm_id": "native-only",
+            "repo_path": repo,
+            "repeat": 0,
+            "run_config": cfg,
+            "results_dir": results,
+            "agent_backend": "claude",
+            "dry_run": True,
+        }
+        r1 = run_one(**common, session_id="SESS_A")
+        r2 = run_one(**common, session_id="SESS_B")
+
+        # Same logical run_id (grouping key) ...
+        assert r1["run_id"] == r2["run_id"]
+        # ... but DISTINCT session ids + distinct raw artifact paths (no overwrite).
+        assert r1["session_id"] == "SESS_A"
+        assert r2["session_id"] == "SESS_B"
+        assert r1["transcript_path"] != r2["transcript_path"]
+        raw = results / "raw"
+        results_files = sorted(p.name for p in raw.glob("*_result.jsonl"))
+        assert len(results_files) == 2, results_files
+        assert any("SESS_A" in n for n in results_files)
+        assert any("SESS_B" in n for n in results_files)
+
+    def test_run_record_with_session_id_validates_against_schema(self, tmp_path):
+        """Codex P2 #332: the new session_id field must NOT break RunRecord's
+        extra='forbid' schema — fresh runner output has to validate."""
+        from benchmarks.codegraph_compare.adapters import RunConfig
+        from benchmarks.codegraph_compare.adapters.claude_runner import run_one
+        from benchmarks.codegraph_compare.schemas import RunRecord
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        cfg = RunConfig(arm_id="native-only", repo_path=repo, system_prompt="sys")
+        record = run_one(
+            question_id="q1",
+            question_prompt="trace it",
+            arm_id="native-only",
+            repo_path=repo,
+            repeat=0,
+            run_config=cfg,
+            results_dir=tmp_path / "results",
+            agent_backend="claude",
+            dry_run=True,
+            session_id="SESS_X",
+        )
+        # Must not raise — session_id is now a declared optional field.
+        validated = RunRecord(**record)
+        assert validated.session_id == "SESS_X"
+
+
+# ---------------------------------------------------------------------------
+# Cost / cache accounting capture (real API numbers, not estimates)
+# ---------------------------------------------------------------------------
+
+
+class TestRunRecordCostCacheColumns:
+    """The benchmark must record the provider's REAL cache/cost accounting so a
+    cost comparison can't be silently contaminated by estimates (see
+    benchmark-cost-analysis-rigor memory). The new columns must be optional with
+    defaults so pre-existing runs.jsonl records still validate under
+    extra='forbid'."""
+
+    def test_run_record_defaults_keep_old_records_loadable(self):
+        from benchmarks.codegraph_compare.schemas import RunRecord
+
+        # An "old" record written before the cost/cache columns existed — it has
+        # none of the new keys. extra='forbid' + defaults must let it validate.
+        old_record = {
+            "run_id": "q1__native-only__claude__00",
+            "repo": "gin",
+            "question_id": "q1",
+            "arm": "native-only",
+            "repeat": 0,
+            "started_at": "2026-06-07T00:00:00+00:00",
+            "ended_at": "2026-06-07T00:00:01+00:00",
+            "elapsed_seconds": 1.0,
+            "input_tokens": 100,
+            "output_tokens": 50,
+            "total_tokens": 150,
+            "estimated_cost_usd": 0.001,
+            "tool_calls": 1,
+            "file_reads": 1,
+            "search_calls": 0,
+            "index_queries": 0,
+            "answer": "ok",
+            "citations": [],
+            "transcript_path": "/tmp/x.jsonl",
+        }
+        validated = RunRecord(**old_record)
+        # Defaults applied — no real accounting present in an old record.
+        assert validated.cache_read_tokens == 0
+        assert validated.cache_creation_tokens == 0
+        assert validated.total_cost_usd == 0.0
+        assert validated.num_turns == 0
+
+    def test_run_record_accepts_real_cost_cache_columns(self):
+        from benchmarks.codegraph_compare.schemas import RunRecord
+
+        record = {
+            "run_id": "q1__tsa-warm__claude__00",
+            "repo": "gin",
+            "question_id": "q1",
+            "arm": "tsa-warm",
+            "repeat": 0,
+            "started_at": "2026-06-07T00:00:00+00:00",
+            "ended_at": "2026-06-07T00:00:01+00:00",
+            "elapsed_seconds": 1.0,
+            "input_tokens": 100,
+            "output_tokens": 50,
+            "total_tokens": 150,
+            "estimated_cost_usd": 0.001,
+            "tool_calls": 1,
+            "file_reads": 0,
+            "search_calls": 0,
+            "index_queries": 1,
+            "answer": "ok",
+            "citations": [],
+            "transcript_path": "/tmp/x.jsonl",
+            "cache_read_tokens": 1234,
+            "cache_creation_tokens": 56,
+            "total_cost_usd": 0.0421,
+            "num_turns": 7,
+        }
+        validated = RunRecord(**record)
+        assert validated.cache_read_tokens == 1234
+        assert validated.cache_creation_tokens == 56
+        assert validated.total_cost_usd == 0.0421
+        assert validated.num_turns == 7
+
+    def test_runner_parses_real_cache_cost_from_claude_usage_block(self):
+        """The runner must pull cache_read/creation, total_cost_usd and num_turns
+        straight from the claude --print result/usage block — not estimate them."""
+        from benchmarks.codegraph_compare.adapters.claude_runner import (
+            _extract_cost_accounting,
+        )
+
+        raw_result = {
+            "total_cost_usd": 0.0421,
+            "num_turns": 7,
+            "usage": {
+                "input_tokens": 100,
+                "output_tokens": 50,
+                "cache_read_input_tokens": 1234,
+                "cache_creation_input_tokens": 56,
+            },
+        }
+        acct = _extract_cost_accounting(raw_result)
+        assert acct["cache_read_tokens"] == 1234
+        assert acct["cache_creation_tokens"] == 56
+        assert acct["total_cost_usd"] == 0.0421
+        assert acct["num_turns"] == 7
+
+    def test_runner_captures_codex_cache_hits(self):
+        """Codex reports prompt-cache hits as `cached_input_tokens`, not Claude's
+        `cache_read_input_tokens` — the backend-neutral cache_read_tokens column
+        must capture them, not record 0 (Codex P2 #342)."""
+        from benchmarks.codegraph_compare.adapters.claude_runner import (
+            _extract_cost_accounting,
+        )
+
+        acct = _extract_cost_accounting(
+            {"usage": {"input_tokens": 100, "cached_input_tokens": 999}}
+        )
+        assert acct["cache_read_tokens"] == 999
+
+    def test_runner_emits_cost_cache_columns_in_record(self, tmp_path):
+        from benchmarks.codegraph_compare.adapters import RunConfig
+        from benchmarks.codegraph_compare.adapters.claude_runner import run_one
+        from benchmarks.codegraph_compare.schemas import RunRecord
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        cfg = RunConfig(arm_id="native-only", repo_path=repo, system_prompt="sys")
+        record = run_one(
+            question_id="q1",
+            question_prompt="trace it",
+            arm_id="native-only",
+            repo_path=repo,
+            repeat=0,
+            run_config=cfg,
+            results_dir=tmp_path / "results",
+            agent_backend="claude",
+            dry_run=True,
+            session_id="SESS_X",
+        )
+        # Keys present on every record (dry-run → zeros) and schema-valid.
+        for key in (
+            "cache_read_tokens",
+            "cache_creation_tokens",
+            "total_cost_usd",
+            "num_turns",
+        ):
+            assert key in record, key
+        RunRecord(**record)  # must not raise

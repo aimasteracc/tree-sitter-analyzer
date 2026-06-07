@@ -7,6 +7,7 @@ import io
 from typing import Any
 
 from ..models import CodeElement, MarkupElement, StyleElement
+from ._csv_safety import csv_safe_row
 
 
 def format_html_csv(elements: list[CodeElement]) -> str:
@@ -27,7 +28,7 @@ def format_html_csv(elements: list[CodeElement]) -> str:
     )
 
     for element in elements:
-        writer.writerow(_csv_row(element))
+        writer.writerow(csv_safe_row(_csv_row(element)))
 
     csv_content = output.getvalue()
     output.close()

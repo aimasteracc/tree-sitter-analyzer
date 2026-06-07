@@ -65,6 +65,18 @@ Key mixins for the Java formatter:
 - `_java_formatter_signatures_mixin.py` — `_format_signatures_table` (lightweight
   method-directory; lists methods as `name →returnType(Np) L-L`, no bodies)
 
+## CSV Control-Char Safety
+
+`formatters/_csv_safety.py` (`csv_safe_row` / `csv_safe_cell`) strips
+C0/DEL control characters (NULL etc.) from CSV cells before they reach
+`csv.writer`. Python 3.10's `csv.writer` raises `_csv.Error: need to escape,
+but no escapechar set` on a NULL byte; setting `escapechar` would silence it
+but double literal backslashes in ordinary fields (a format regression). Tab
+and newline are preserved (the writer quotes them on every version); a bare
+carriage return is **stripped** because Python 3.10 emits it unquoted, yielding
+an unreadable CSV. Used by `CsvFormatter`, `format_html_csv`, and
+`format_csv_output`.
+
 ## TOON Format
 
 TOON (Token-Optimized Object Notation) emits indentation-aware key:value lines without
@@ -91,7 +103,6 @@ Serialization helpers: `formatters/toon_formatter.py:_emit_*` (extracted in r37d
 Format changes are tracked by:
 
 - `docs/format_specifications.md` — canonical schema
-- `docs/SMART_JSON_COMPARISON_SYSTEM.md` — diff tooling
 - `tests/regression/` — Golden Master tests
 
 Breaking a format requires updating golden masters and tagging it in the changelog as a

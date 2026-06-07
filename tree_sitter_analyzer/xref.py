@@ -346,7 +346,10 @@ class XRefEngine:
         syms = json.loads(row["symbols_json"])
         results: list[dict[str, Any]] = []
         for sym in syms.get("symbols", []):
-            if sym.get("kind") in ("function", "class"):
+            # "method" is the in-class callable kind (added with method
+            # classification). Without it, codegraph_xref file mode would omit
+            # every method and undercount files that contain only methods.
+            if sym.get("kind") in ("function", "method", "class"):
                 results.append(
                     {
                         "name": sym.get("name", ""),

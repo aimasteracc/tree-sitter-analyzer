@@ -4,16 +4,18 @@ No separate API key required — uses the current Claude Code session's
 authentication (keychain / OAuth).
 
 Writes:
-  - results_dir/raw/<run_id>_prompt.txt          — the full prompt sent to the agent
-  - results_dir/raw/<run_id>_result.jsonl        — raw JSONL response from the agent CLI
+  - results_dir/raw/<session_id>__<run_id>_prompt.txt    — the full prompt sent to the agent
+  - results_dir/raw/<session_id>__<run_id>_result.jsonl  — raw JSONL response from the agent CLI
   - results_dir/runs.jsonl                       — one JSONL line per trial (appended)
 """
 
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
+import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -41,16 +43,19 @@ _CODEGRAPH_TOOLS = [
     "mcp__codegraph__codegraph_impact",
 ]
 _TSA_TOOLS = [
-    "Bash(python -m tree_sitter_analyzer *)",
-    "Bash(uv run python -m tree_sitter_analyzer *)",
-    "Bash(uv run --project * python -m tree_sitter_analyzer *)",
+    "mcp__tree-sitter-analyzer__nav",
+    "mcp__tree-sitter-analyzer__search",
+    "mcp__tree-sitter-analyzer__structure",
+    "mcp__tree-sitter-analyzer__health",
+    "mcp__tree-sitter-analyzer__index",
+    "mcp__tree-sitter-analyzer__project",
 ]
 
 # Tools explicitly blocked per arm (prevents Claude from discovering and using them via ToolSearch)
 _ARM_ALLOWED_TOOLS: dict[str, list[str]] = {
     "native-only": _BASE_TOOLS,
-    "tsa-warm": _TSA_TOOLS,
-    "tsa-cold": _TSA_TOOLS,
+    "tsa-warm": _BASE_TOOLS + _TSA_TOOLS,
+    "tsa-cold": _BASE_TOOLS + _TSA_TOOLS,
     "codegraph-warm": _BASE_TOOLS + _CODEGRAPH_TOOLS,
     "codegraph-cold": _BASE_TOOLS + _CODEGRAPH_TOOLS,
 }
@@ -66,44 +71,12 @@ _ARM_DISALLOWED_TOOLS: dict[str, list[str]] = {
         "ToolSearch",
         "Agent",
     ],
-    "tsa-warm": [
-        "Read",
-        "Glob",
-        "Grep",
-        "Bash(grep *)",
-        "Bash(rg *)",
-        "Bash(find *)",
-        "Bash(fd *)",
-        "Bash(ls *)",
-        "Bash(cat *)",
-        "Bash(sed *)",
-        "Bash(nl *)",
-        "Bash(head *)",
-        "Bash(tail *)",
-        "Bash(codegraph *)",
-        "mcp__codegraph__*",
-        "ToolSearch",
-        "Agent",
-    ],
-    "tsa-cold": [
-        "Read",
-        "Glob",
-        "Grep",
-        "Bash(grep *)",
-        "Bash(rg *)",
-        "Bash(find *)",
-        "Bash(fd *)",
-        "Bash(ls *)",
-        "Bash(cat *)",
-        "Bash(sed *)",
-        "Bash(nl *)",
-        "Bash(head *)",
-        "Bash(tail *)",
-        "Bash(codegraph *)",
-        "mcp__codegraph__*",
-        "ToolSearch",
-        "Agent",
-    ],
+    # Symmetric with the codegraph arm: allow base file tools + TSA MCP, block
+    # only the OTHER tool's MCP + ToolSearch/Agent. (Previously this arm was CLI
+    # and force-blocked Read/grep, which was both asymmetric vs codegraph and
+    # measured the CLI — not the MCP — surface.)
+    "tsa-warm": ["Bash(codegraph *)", "mcp__codegraph__*", "ToolSearch", "Agent"],
+    "tsa-cold": ["Bash(codegraph *)", "mcp__codegraph__*", "ToolSearch", "Agent"],
     "codegraph-warm": ["ToolSearch", "Agent"],
     "codegraph-cold": ["ToolSearch", "Agent"],
 }
@@ -176,7 +149,11 @@ def _parse_tool_calls_from_stream(lines: list[str]) -> tuple[int, int, int, int]
             name_lower = name.lower()
             if name_lower in ("read", "readfile"):
                 file_reads += 1
-            elif "codegraph" in name_lower or "tree_sitter" in name_lower:
+            elif (
+                "codegraph" in name_lower
+                or "tree_sitter" in name_lower
+                or "tree-sitter" in name_lower  # TSA MCP: mcp__tree-sitter-analyzer__*
+            ):
                 index_queries += 1
             elif name_lower == "bash":
                 inp = block.get("input", {})
@@ -314,6 +291,48 @@ def _parse_claude_result_from_stream(
     return answer, error, raw_result
 
 
+_ANALYZER_ROOT = Path(__file__).resolve().parents[3]
+_MCP_CONFIG_DIR = Path(tempfile.gettempdir()) / "tsa_bench_mcp_configs"
+
+
+def _write_arm_mcp_config(arm_id: str, repo_path: Path) -> Path:
+    """Write a per-arm MCP config so each arm sees ONLY its own MCP server.
+
+    Used with ``--strict-mcp-config`` so the developer's global MCP servers
+    (Context7, Gmail, codegraph, ruflo, vercel, ...) do NOT leak into the
+    benchmark agent — their tool definitions otherwise bloat the context by
+    millions of tokens and pollute every arm. native-only gets an empty set.
+
+    CRITICAL: the TSA server is given ``--project-root <repo_path>`` explicitly.
+    Without it the server auto-detects its root and resolves to the ANALYZER
+    repo (where its package lives), NOT the benchmark target repo — so every
+    nav/structure query analyzes tree-sitter-analyzer's own code instead of
+    e.g. gin. The agent then calls set_project_path, re-queries, and falls back
+    to raw Reads of the analyzer tree, inflating cost ~2.5x and invalidating
+    the comparison. (Found by dogfooding the TSA arm transcript.)
+    """
+    if arm_id.startswith("tsa"):
+        servers = {
+            "tree-sitter-analyzer": {
+                "command": str(_ANALYZER_ROOT / ".venv" / "bin" / "python"),
+                "args": [
+                    "-m",
+                    "tree_sitter_analyzer.mcp.server",
+                    "--project-root",
+                    str(repo_path),
+                ],
+            }
+        }
+    elif arm_id.startswith("codegraph"):
+        servers = {"codegraph": {"command": "codegraph", "args": ["serve", "--mcp"]}}
+    else:
+        servers = {}  # native-only: no MCP at all
+    _MCP_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    path = _MCP_CONFIG_DIR / f"{arm_id}.json"
+    path.write_text(json.dumps({"mcpServers": servers}))
+    return path
+
+
 def _build_agent_cmd(
     arm_id: str,
     model: str,
@@ -343,7 +362,26 @@ def _build_agent_cmd(
         ]
         if disallowed_tools_str:
             cmd += ["--disallowed-tools", disallowed_tools_str]
+        # Isolate MCP: each arm sees only its own server (no global MCP leak).
+        mcp_cfg = _write_arm_mcp_config(arm_id, repo_path)
+        cmd += ["--strict-mcp-config", "--mcp-config", str(mcp_cfg)]
         return cmd
+    # codex backend: the MCP arms (tsa*, codegraph*) need their server wired in
+    # with the SAME per-arm isolation the claude branch gets via
+    # --strict-mcp-config. `codex exec` has no equivalent strict flag here, so
+    # it would either miss the server entirely or silently inherit the
+    # developer's global ~/.codex MCP config — both invalidate the
+    # TSA-vs-CodeGraph comparison. Fail loudly rather than emit wrong numbers
+    # (Codex P2 on #290). Use --agent-backend claude for MCP arms until codex
+    # MCP wiring (codex -c mcp_servers.*) is implemented and verified.
+    if arm_id.startswith(("tsa", "codegraph")):
+        raise NotImplementedError(
+            f"Per-arm MCP isolation is not wired for the codex backend, but arm "
+            f"{arm_id!r} requires its own MCP server. Running `codex exec` here "
+            f"would miss the server or inherit the global ~/.codex MCP config, "
+            f"invalidating the comparison. Use --agent-backend claude for MCP "
+            f"arms, or wire `codex -c mcp_servers.*` before enabling this path."
+        )
     sandbox = _codex_sandbox_for_arm(arm_id)
     return [
         "codex",
@@ -399,6 +437,39 @@ def _extract_usage_metrics(
     )
 
 
+def _extract_cost_accounting(raw_result: dict[str, Any]) -> dict[str, Any]:
+    """Pull the provider's REAL cost/cache accounting from a result block.
+
+    Reads straight from the agent CLI's result/usage JSON — these are the
+    provider's own numbers, never estimated. ``cache_read_tokens`` and
+    ``cache_creation_tokens`` split the prompt-cache mechanics that the single
+    ``cached_input_tokens`` rollup blurs; ``total_cost_usd`` is the provider's
+    dollar figure; ``num_turns`` is the agent's turn count. Missing keys (e.g.
+    the codex stream, which omits per-turn cost) default to 0 so the columns
+    are always present and schema-valid.
+    """
+    usage = raw_result.get("usage", {})
+    if not isinstance(usage, dict):
+        usage = {}
+    return {
+        # Backend-neutral cache-read count: Claude reports prompt-cache hits as
+        # `cache_read_input_tokens`; Codex reports them as `cached_input_tokens`
+        # (Codex P2 #342). Sum both — each backend populates only its own key, so
+        # there is no double-count, and Codex cache hits are no longer dropped.
+        "cache_read_tokens": (
+            _usage_int(usage, "cache_read_input_tokens")
+            + _usage_int(usage, "cached_input_tokens")
+        ),
+        "cache_creation_tokens": _usage_int(usage, "cache_creation_input_tokens"),
+        # Preserve the provider's full cost precision — do NOT round (Codex P3
+        # #342). total_cost_usd is the authoritative figure for cost claims; a
+        # 6-dp round drops sub-microcent precision that matters when summing many
+        # small per-task costs (the cost-analysis-rigor lesson).
+        "total_cost_usd": float(raw_result.get("total_cost_usd", 0.0) or 0.0),
+        "num_turns": int(raw_result.get("num_turns", 0) or 0),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
@@ -416,15 +487,27 @@ def run_one(
     model: str | None = None,
     agent_backend: str = "claude",
     dry_run: bool = False,
+    session_id: str = "",
 ) -> dict:
     """Run one benchmark trial via the configured agent CLI.
 
     Writes prompt + raw result to results_dir/raw/, appends to runs.jsonl.
+
+    ``session_id`` uniquifies the raw artifact filenames so repeated benchmark
+    invocations of the same (question, arm, repeat) do NOT overwrite each other's
+    raw transcripts — without it, cost data from an earlier run was silently lost
+    on re-run, which made n>1 measurement impossible. Generated once per
+    ``cmd_run`` / ``cmd_run_matrix`` invocation and threaded in; defaults to a UTC
+    timestamp when called standalone. ``run_id`` stays the logical grouping key
+    for analysis; ``session_id`` only distinguishes invocations.
     """
     if agent_backend not in {"claude", "codex"}:
         raise ValueError("agent_backend must be one of: claude, codex")
     model = model or _DEFAULT_MODELS[agent_backend]
     run_id = _make_run_id(question_id, arm_id, repeat, agent_backend)
+    if not session_id:
+        session_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    artifact_stem = f"{session_id}__{run_id}"
     started_at = datetime.now(timezone.utc).isoformat()
     started_perf = time.perf_counter()
 
@@ -459,7 +542,7 @@ def run_one(
     # Persist prompt
     raw_dir = results_dir / "raw"
     raw_dir.mkdir(parents=True, exist_ok=True)
-    prompt_path = raw_dir / f"{run_id}_prompt.txt"
+    prompt_path = raw_dir / f"{artifact_stem}_prompt.txt"
     prompt_path.write_text(full_prompt, encoding="utf-8")
 
     # Build agent CLI command. Claude has stronger tool allowlisting; Codex
@@ -482,7 +565,7 @@ def run_one(
     stream_lines: list[str] = []
 
     if dry_run:
-        result_path = raw_dir / f"{run_id}_result.jsonl"
+        result_path = raw_dir / f"{artifact_stem}_result.jsonl"
         answer = "DRY_RUN"
         result_path.write_text("", encoding="utf-8")
     else:
@@ -496,11 +579,21 @@ def run_one(
                 errors="replace",
                 timeout=timeout_seconds,
                 cwd=str(repo_path),
+                # Extend the MCP startup window. A python MCP server spawns in
+                # ~300-400ms (python + mcp lib import), which is at the edge of
+                # claude's default connect window → load-dependent "pending"
+                # (TSA arm then falls back to Read). 30s removes the race so the
+                # MCP arm is measured fairly. Verified: 3/3 stable connects.
+                env={
+                    **os.environ,
+                    "MCP_TIMEOUT": "30000",
+                    "MCP_TOOL_TIMEOUT": "30000",
+                },
             )
             stream_lines = [ln for ln in proc.stdout.splitlines() if ln.strip()]
 
             # Save raw stream
-            result_path = raw_dir / f"{run_id}_result.jsonl"
+            result_path = raw_dir / f"{artifact_stem}_result.jsonl"
             result_path.write_text(proc.stdout, encoding="utf-8")
 
             if proc.returncode != 0 and not proc.stdout.strip():
@@ -544,6 +637,10 @@ def run_one(
             output_tokens / 1_000_000 * 15.0
         )
 
+    # Provider's REAL accounting (cache split, dollar cost, turn count) — kept
+    # alongside the estimate so cost claims can use the un-estimated numbers.
+    cost_accounting = _extract_cost_accounting(raw_result)
+
     # Count tool calls from agent stream events. Claude exposes tool_use blocks;
     # Codex exposes completed shell command events.
     tool_parser = (
@@ -555,6 +652,7 @@ def run_one(
 
     record: dict = {
         "run_id": run_id,
+        "session_id": session_id,
         "repo": repo_path.name,
         "question_id": question_id,
         "arm": arm_id,
@@ -568,13 +666,17 @@ def run_one(
         "reasoning_output_tokens": reasoning_output_tokens,
         "total_tokens": total_tokens,
         "estimated_cost_usd": round(estimated_cost, 6),
+        "cache_read_tokens": cost_accounting["cache_read_tokens"],
+        "cache_creation_tokens": cost_accounting["cache_creation_tokens"],
+        "total_cost_usd": cost_accounting["total_cost_usd"],
+        "num_turns": cost_accounting["num_turns"],
         "tool_calls": tool_calls,
         "file_reads": file_reads,
         "search_calls": search_calls,
         "index_queries": index_queries,
         "answer": answer,
         "citations": _extract_citations(answer, repo_path),
-        "transcript_path": str(raw_dir / f"{run_id}_result.jsonl"),
+        "transcript_path": str(raw_dir / f"{artifact_stem}_result.jsonl"),
         "error": error,
         "agent_backend": agent_backend,
         "model": model,

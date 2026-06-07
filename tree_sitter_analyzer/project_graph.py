@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from .constants import EXCLUDE_DIRS
 from .core.parser import Parser, ParseResult
 from .import_extractors import (
     walk_imports,
@@ -411,27 +412,8 @@ class DependencyGraph:
         fp = compute_graph_fingerprint(project_root)
         return f"{project_root}:{fp.file_count}:{fp.max_mtime_ns}"
 
-    _EXCLUDE_DIRS = {
-        "node_modules",
-        ".git",
-        ".hg",
-        ".svn",
-        "__pycache__",
-        ".venv",
-        "venv",
-        ".tox",
-        ".mypy_cache",
-        ".pytest_cache",
-        ".ruff_cache",
-        "dist",
-        "build",
-        "htmlcov",
-        ".cache",
-        ".eggs",
-        ".idea",
-        ".vscode",
-        ".claude",
-    }
+    # Shared exclude set (incl. C#/Java/Rust build dirs) — constants.EXCLUDE_DIRS
+    _EXCLUDE_DIRS = EXCLUDE_DIRS
 
     def _is_excluded(self, path: Path) -> bool:
         """Check if a path is inside an excluded directory."""

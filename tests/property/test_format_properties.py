@@ -10,10 +10,12 @@ from hypothesis import strategies as st
 from hypothesis.stateful import RuleBasedStateMachine, invariant, rule
 
 from tree_sitter_analyzer.formatters.formatter_registry import (
-    CsvFormatter as CSVFormatter,
+    CompactFormatter,
+    FormatterRegistry,
+    FullFormatter,
 )
 from tree_sitter_analyzer.formatters.formatter_registry import (
-    FormatterRegistry,
+    CsvFormatter as CSVFormatter,
 )
 from tree_sitter_analyzer.formatters.formatter_registry import (
     JsonFormatter as JSONFormatter,
@@ -156,35 +158,6 @@ class TestFormatProperties:
         elements=st.lists(
             st.fixed_dictionaries(
                 {
-                    "name": st.text(min_size=1, max_size=20),
-                    "element_type": st.sampled_from(
-                        ["class", "function", "method", "variable"]
-                    ),
-                    "line_start": st.integers(min_value=1, max_value=1000),
-                    "line_end": st.integers(min_value=1, max_value=1000),
-                }
-            ),
-            min_size=1,
-            max_size=10,
-        )
-    )
-    @settings(max_examples=50)
-    def test_markdown_format_validity(self, elements: list[dict[str, Any]]) -> None:
-        """测试Markdown格式有效性的属性。
-
-        验证：Markdown格式应该包含预期的内容。
-
-        Args:
-            elements: 元素列表
-        """
-        # Markdown formatter expects analysis_result dict, not elements list
-        # So we skip this test for now as it requires different structure
-        pass
-
-    @given(
-        elements=st.lists(
-            st.fixed_dictionaries(
-                {
                     # Use simple alphanumeric names to avoid CSV escaping issues
                     # with NULL bytes and other control characters
                     "name": st.from_regex(
@@ -243,37 +216,8 @@ class TestFormatProperties:
             ),
             min_size=1,
             max_size=10,
-        )
-    )
-    @settings(max_examples=50)
-    def test_toon_format_validity(self, elements: list[dict[str, Any]]) -> None:
-        """测试Toon格式有效性的属性。
-
-        验证：Toon格式应该是有效的。
-
-        Args:
-            elements: 元素列表
-        """
-        # Toon formatter expects analysis_result dict, not elements list
-        # So we skip this test for now as it requires different structure
-        pass
-
-    @given(
-        elements=st.lists(
-            st.fixed_dictionaries(
-                {
-                    "name": st.text(min_size=1, max_size=20),
-                    "element_type": st.sampled_from(
-                        ["class", "function", "method", "variable"]
-                    ),
-                    "line_start": st.integers(min_value=1, max_value=1000),
-                    "line_end": st.integers(min_value=1, max_value=1000),
-                }
-            ),
-            min_size=1,
-            max_size=10,
         ),
-        format_type=st.sampled_from(["json", "markdown", "toon", "csv"]),
+        format_type=st.sampled_from(["json", "csv", "full", "compact"]),
     )
     @settings(max_examples=30)
     def test_format_idempotency(
@@ -281,14 +225,32 @@ class TestFormatProperties:
     ) -> None:
         """测试格式化的幂等性。
 
-        验证：多次格式化相同数据应该返回相同结果。
+        验证：多次格式化相同数据应该返回相同结果（同一formatter对同一输入）。
 
         Args:
             elements: 元素列表
             format_type: 格式类型
         """
-        # Skip idempotency test for now as it requires different structure
-        pass
+        code_elements = [
+            CodeElement(
+                name=elem["name"],
+                element_type=elem.get("element_type", "class"),
+                start_line=elem.get("line_start", 1),
+                end_line=elem.get("line_end", 10),
+                language="python",
+            )
+            for elem in elements
+        ]
+        formatters = {
+            "json": JSONFormatter,
+            "csv": CSVFormatter,
+            "full": FullFormatter,
+            "compact": CompactFormatter,
+        }
+        formatter = formatters[format_type]()
+        first = formatter.format(code_elements)
+        second = formatter.format(code_elements)
+        assert first == second, f"{format_type} formatter is not idempotent"
 
     @given(
         elements=st.lists(
@@ -566,12 +528,6 @@ class TestFormatEdgeCases:
 
         assert isinstance(result, str)
         assert len(result) > 0
-
-    def test_missing_required_fields(self) -> None:
-        """测试缺少必需字段。"""
-        # CodeElement requires all fields, so we can't create one with missing fields
-        # This test is skipped as CodeElement constructor enforces required fields
-        pass
 
     def test_extra_fields(self) -> None:
         """测试额外字段。"""

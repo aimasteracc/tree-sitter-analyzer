@@ -256,6 +256,10 @@ class TestNoExtraExports:
             # .claude_md_frontmatter import load_frontmatter``), so no
             # flat re-export is needed.
             "claude_md_frontmatter",
+            # Canonical test-file detection. Consumers import via the submodule
+            # path (``from tree_sitter_analyzer.utils.test_detection import
+            # is_test_file``); no flat re-export needed.
+            "test_detection",
         ]
 
         for item in public_items:

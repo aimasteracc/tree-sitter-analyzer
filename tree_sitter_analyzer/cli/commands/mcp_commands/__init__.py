@@ -172,6 +172,9 @@ from tree_sitter_analyzer.mcp.tools.symbol_resolve_tool import (
 from tree_sitter_analyzer.mcp.tools.symbol_search_tool import (
     CodeGraphSymbolSearchTool,  # noqa: F401
 )
+from tree_sitter_analyzer.mcp.tools.test_gap_tool import (
+    CodeGraphTestGapTool,  # noqa: F401
+)
 from tree_sitter_analyzer.mcp.tools.trace_impact_tool import (
     TraceImpactTool,  # noqa: F401
 )
@@ -246,6 +249,7 @@ _TOOL_CLASS_NAMES: frozenset[str] = frozenset(
         "DecisionJournalTool",
         "BatchSearchTool",
         "DocSyncTool",
+        "CodeGraphTestGapTool",
     }
 )
 

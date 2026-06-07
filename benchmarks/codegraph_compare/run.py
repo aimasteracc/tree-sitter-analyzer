@@ -32,6 +32,7 @@ import json
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import NoReturn
 
@@ -375,6 +376,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         model=args.model,
         agent_backend=args.agent_backend,
         dry_run=getattr(args, "dry_run", False),
+        session_id=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ"),
     )
 
     # Print result summary
@@ -423,6 +425,10 @@ def cmd_run_matrix(args: argparse.Namespace) -> int:
         from adapters.claude_runner import run_one  # noqa: PLC0415
     except ImportError:
         _die("Could not import adapters or adapters.claude_runner.")
+
+    # One session id per matrix invocation so repeated runs don't overwrite each
+    # other's raw transcripts (cost data must survive re-runs for n>1 analysis).
+    session_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -497,6 +503,7 @@ def cmd_run_matrix(args: argparse.Namespace) -> int:
                             model=args.model,
                             agent_backend=args.agent_backend,
                             dry_run=args.dry_run,
+                            session_id=session_id,
                         )
                         status = "DRY_RUN" if record["answer"] == "DRY_RUN" else "ok"
                         print(

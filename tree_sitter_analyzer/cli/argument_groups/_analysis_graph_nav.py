@@ -9,6 +9,10 @@ from __future__ import annotations
 
 import argparse
 
+# Keep CLI defaults in lock-step with the canonical runtime defaults so the
+# CLI surface never drifts from MCP (Codex P2 on #297 — MCP/CLI parity).
+from ...mcp.tools._call_tree import DEFAULT_MAX_NODES as _DEFAULT_TREE_MAX_NODES
+
 
 def _add_mcp_graph_nav_options(parser: argparse.ArgumentParser) -> None:
     """Add ast-path, codegraph-overview/navigate/explore/query, callers, call-path,
@@ -119,8 +123,18 @@ def _add_mcp_graph_nav_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--codegraph-context-max-code-blocks",
         type=int,
-        default=8,
-        help="Max source snippets returned for --codegraph-context (default: 8)",
+        default=5,
+        help="Max source snippets returned for --codegraph-context (default: 5)",
+    )
+    parser.add_argument(
+        "--codegraph-context-include-graph",
+        action="store_true",
+        default=False,
+        help=(
+            "Include full nodes/edges adjacency graph in --codegraph-context output. "
+            "Default (lean mode) omits graph and returns a compact related-symbols "
+            "list instead (RFC-0006 progressive disclosure)."
+        ),
     )
     parser.add_argument(
         "--codegraph-explore",
@@ -271,8 +285,11 @@ def _add_mcp_graph_nav_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--tree-max-nodes",
         type=int,
-        default=150,
-        help="Global node cap for --callee-tree / --caller-tree (default: 150)",
+        default=_DEFAULT_TREE_MAX_NODES,
+        help=(
+            "Global node cap for --callee-tree / --caller-tree "
+            f"(default: {_DEFAULT_TREE_MAX_NODES})"
+        ),
     )
     parser.add_argument(
         "--tree-file",
@@ -408,4 +425,36 @@ def _add_mcp_graph_nav_options(parser: argparse.ArgumentParser) -> None:
         "--code-similarity-no-cache",
         action="store_true",
         help="Skip AST cache and do full project scan for --code-similarity",
+    )
+    # RFC-0003: test-gap analysis
+    parser.add_argument(
+        "--test-gap",
+        action="store_true",
+        help="Test coverage gap analysis: untested symbols ranked by complexity",
+    )
+    parser.add_argument(
+        "--test-gap-mode",
+        choices=["summary", "gaps", "file"],
+        default="gaps",
+        help="Mode for --test-gap (default: gaps)",
+    )
+    parser.add_argument(
+        "--test-gap-file",
+        help="Source file for --test-gap mode=file (relative path)",
+    )
+    parser.add_argument(
+        "--test-gap-language",
+        help="Filter --test-gap to a single language (e.g. python)",
+    )
+    parser.add_argument(
+        "--test-gap-max-files",
+        type=int,
+        default=1000,
+        help="Max source files to scan for --test-gap (default: 1000)",
+    )
+    parser.add_argument(
+        "--test-gap-max-gaps",
+        type=int,
+        default=50,
+        help="Max gap results for --test-gap (default: 50)",
     )

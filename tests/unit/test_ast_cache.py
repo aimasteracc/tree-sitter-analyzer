@@ -869,3 +869,197 @@ class TestASTCacheGetConnPublicAccessor:
         conn1 = cache.get_conn()
         conn2 = cache.get_conn()
         assert conn1 is conn2
+
+
+class TestPostIndexEdgeRefreshSkip:
+    """Edges are written by insert during commit; the post-index refresh is
+    redundant when FTS5 is available (the common path) and must be skipped —
+    it was ~47% of django's index time for an identical edge set."""
+
+    def test_refresh_skipped_when_fts5_available(self, tmp_project, monkeypatch):
+        from tree_sitter_analyzer.ast_cache import ASTCache
+
+        c = ASTCache(str(tmp_project))
+        if not c.fts5_available:
+            c.close()
+            pytest.skip("SQLite built without FTS5 — refresh-skip path needs FTS5")
+        try:
+            calls = {"n": 0}
+            orig = c._refresh_graph_edges_from_cache
+
+            def spy(*a, **k):
+                calls["n"] += 1
+                return orig(*a, **k)
+
+            monkeypatch.setattr(c, "_refresh_graph_edges_from_cache", spy)
+            c.index_project(force=True)
+
+            # FTS5 path → insert already wrote edges → refresh NOT invoked.
+            assert c.fts5_available is True
+            assert calls["n"] == 0
+            # ...and the edges are present regardless.
+            conn = c._get_conn()
+            assert conn.execute("SELECT COUNT(*) FROM edges").fetchone()[0] >= 0
+        finally:
+            c.close()
+
+    def test_refresh_runs_when_fts5_unavailable(self, tmp_project, monkeypatch):
+        from tree_sitter_analyzer.ast_cache import ASTCache
+
+        c = ASTCache(str(tmp_project))
+        try:
+            # Force the no-FTS5 path so the refresh becomes the sole edge writer.
+            monkeypatch.setattr(type(c), "fts5_available", property(lambda self: False))
+            calls = {"n": 0}
+            orig = c._refresh_graph_edges_from_cache
+
+            def spy(*a, **k):
+                calls["n"] += 1
+                return orig(*a, **k)
+
+            monkeypatch.setattr(c, "_refresh_graph_edges_from_cache", spy)
+            c.index_project(force=True)
+
+            assert calls["n"] == 1
+        finally:
+            c.close()
+
+
+# ---------------------------------------------------------------------------
+# kind="method" classification (RED-first, see feature/kind-method-classification)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def method_project(tmp_path):
+    """A minimal Python project with one class method and one top-level function."""
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "animals.py").write_text(
+        "class Dog:\n"
+        "    def bark(self):\n"
+        "        return 'woof'\n"
+        "\n"
+        "def standalone():\n"
+        "    pass\n"
+    )
+    return tmp_path
+
+
+class TestMethodKindClassification:
+    """Verify that class methods are stored as kind='method', not kind='function'."""
+
+    def test_method_stored_as_kind_method(self, method_project):
+        """After indexing a file with a class method, ast_symbol_rows must have
+        at least one row with kind='method'."""
+        from tree_sitter_analyzer.ast_cache import ASTCache
+
+        c = ASTCache(str(method_project))
+        try:
+            c.index_project()
+            conn = c._get_conn()
+            method_count = conn.execute(
+                "SELECT COUNT(*) FROM ast_symbol_rows WHERE kind='method'"
+            ).fetchone()[0]
+            assert method_count > 0, (
+                "Expected at least one kind='method' row but got 0. "
+                "Class methods are being incorrectly stored as kind='function'."
+            )
+        finally:
+            c.close()
+
+    def test_method_kind_bark_found(self, method_project):
+        """The method 'bark' inside class Dog must be stored with kind='method'."""
+        from tree_sitter_analyzer.ast_cache import ASTCache
+
+        c = ASTCache(str(method_project))
+        try:
+            c.index_project()
+            conn = c._get_conn()
+            row = conn.execute(
+                "SELECT kind FROM ast_symbol_rows WHERE name='bark'"
+            ).fetchone()
+            assert row is not None, "Symbol 'bark' not found in ast_symbol_rows"
+            assert row[0] == "method", (
+                f"Expected kind='method' for 'bark' but got kind='{row[0]}'"
+            )
+        finally:
+            c.close()
+
+    def test_top_level_function_stays_kind_function(self, method_project):
+        """Top-level functions (no parent class) must keep kind='function'."""
+        from tree_sitter_analyzer.ast_cache import ASTCache
+
+        c = ASTCache(str(method_project))
+        try:
+            c.index_project()
+            conn = c._get_conn()
+            row = conn.execute(
+                "SELECT kind FROM ast_symbol_rows WHERE name='standalone'"
+            ).fetchone()
+            assert row is not None, "Symbol 'standalone' not found"
+            assert row[0] == "function", (
+                f"Expected kind='function' for 'standalone' but got kind='{row[0]}'"
+            )
+        finally:
+            c.close()
+
+    @pytest.mark.skipif(
+        not _has_fts5(sqlite3.connect(":memory:")), reason="FTS5 not available"
+    )
+    def test_fts_search_finds_method_by_kind(self, method_project):
+        """fts_search results for 'bark' must include kind='method' entry in FTS."""
+        from tree_sitter_analyzer.ast_cache import ASTCache
+
+        c = ASTCache(str(method_project))
+        try:
+            c.index_project()
+            conn = c._get_conn()
+            rows = conn.execute(
+                "SELECT name, kind FROM ast_symbol_rows WHERE name='bark'"
+            ).fetchall()
+            assert any(r[1] == "method" for r in rows), (
+                "FTS5 / ast_symbol_rows has no kind='method' row for 'bark'"
+            )
+        finally:
+            c.close()
+
+    def test_serial_and_parallel_agree_on_method_kind(self, method_project):
+        """Both the serial (workers=0) and parallel (workers=2) indexing paths
+        must produce the same kind='method' rows (regression guard for the
+        worker tuple serialization path)."""
+        from tree_sitter_analyzer.ast_cache import ASTCache
+
+        db_serial = method_project / "ser.db"
+        db_parallel = method_project / "par.db"
+
+        serial_cache = ASTCache(str(method_project), db_path=str(db_serial))
+        serial_cache.index_project(workers=0)
+
+        parallel_cache = ASTCache(str(method_project), db_path=str(db_parallel))
+        parallel_cache.index_project(workers=2)
+
+        try:
+            symbol_sql = (
+                "SELECT name, kind FROM ast_symbol_rows "
+                "WHERE name IN ('bark', 'standalone') "
+                "ORDER BY name"
+            )
+            s_rows = [
+                tuple(r)
+                for r in serial_cache._get_conn().execute(symbol_sql).fetchall()
+            ]
+            p_rows = [
+                tuple(r)
+                for r in parallel_cache._get_conn().execute(symbol_sql).fetchall()
+            ]
+            assert s_rows == p_rows, (
+                f"Serial and parallel paths disagree on method kind:\n"
+                f"  serial={s_rows}\n  parallel={p_rows}"
+            )
+            assert ("bark", "method") in s_rows, (
+                f"'bark' not classified as method in serial path: {s_rows}"
+            )
+        finally:
+            serial_cache.close()
+            parallel_cache.close()

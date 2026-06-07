@@ -164,6 +164,14 @@ class CodeGraphStatusTool(BaseMCPTool):
             total_files=int(stats.get("total_files", 0)) if stats else 0,
             total_symbols=int(stats.get("total_symbols", 0)) if stats else 0,
             total_edges=int(stats.get("total_edges", 0)) if stats else 0,
+            # CodeGraph parity: per-kind and per-language symbol breakdowns
+            # + edges_by_kind (beyond CodeGraph — CG has no edge breakdown).
+            # Degrade to empty dicts when the underlying stats omit them.
+            symbols_by_kind=dict(stats.get("symbols_by_kind") or {}) if stats else {},
+            symbols_by_language=dict(stats.get("symbols_by_language") or {})
+            if stats
+            else {},
+            edges_by_kind=dict(stats.get("edges_by_kind") or {}) if stats else {},
             schema_version=stats.get("schema_version") if stats else None,
             fts5_available=bool(stats.get("fts5_available")) if stats else False,
             lag_seconds=lag_seconds,
@@ -191,12 +199,12 @@ class CodeGraphStatusTool(BaseMCPTool):
             return None
         try:
             stats = cache.get_stats()
-            # Enrich with call-edge count for graph density signal.
-            try:
-                edge_stats = cache.get_cross_file_stats()
-                stats["total_edges"] = edge_stats.get("total", 0)
-            except Exception:
-                stats["total_edges"] = 0
+            # ``get_stats`` already reports ``total_edges`` as the sum across
+            # ALL edge kinds, reconciling with ``edges_by_kind`` (Codex P2 #315).
+            # Do NOT override it with the call-edge-only count, which made
+            # total_edges disagree with the breakdown. The call-edge resolution
+            # signal lives in get_cross_file_stats for callers that want it.
+            stats.setdefault("total_edges", 0)
             return stats
         except Exception as exc:
             logger.debug(f"ASTCache.get_stats failed: {exc}")

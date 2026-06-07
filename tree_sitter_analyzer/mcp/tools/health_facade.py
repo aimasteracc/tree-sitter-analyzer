@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """``health`` facade — Wave B facade for the FacadeTool framework (P0 geode layer).
 
-Folds 11 health/analysis capabilities behind one ``action`` parameter.
+Folds 12 health/analysis capabilities behind one ``action`` parameter.
 The ``uml`` / ``graph`` / ``similarity`` trio have been split into the
 separate ``viz`` facade (see ``viz_facade.py``).
 
@@ -20,6 +20,7 @@ routes      ``route_detector``  (RouteDetectorTool)      HTTP route discovery
 overview    ``codegraph_overview``                       entry-points / hubs / dead summary
 deps        ``analyze_dependencies`` (R5)                dependency analysis — mode sub-param:
                                                          summary|cycles|blast|file_deps
+test_gap    ``codegraph_test_gap`` (CodeGraphTestGapTool) untested symbol discovery, complexity-ranked
 ==========  ===========================================  ===================================================
 
 R5 (PRD §3): ``deps`` maps to the single ``DependencyAnalysisTool`` whose
@@ -84,6 +85,9 @@ _HEALTH_DESCRIPTION = (
     "  mode=cycles: detect circular dependencies.\n"
     "  mode=blast: blast-radius for a given file_path.\n"
     "  mode=file_deps: file-level dependency details.\n"
+    "- action=test_gap — untested symbol discovery ranked by cyclomatic complexity. "
+    "Params: mode (summary|gaps|file), file_path, language, max_files, max_gaps, "
+    "include_covered, output_format.\n"
     "For UML diagrams, call/dependency graph visualizations, and similarity "
     "analysis, use the ``viz`` facade instead."
 )
@@ -110,6 +114,7 @@ def build_health_facade(project_root: str | None = None) -> FacadeTool:
     from .import_graph_tool import CodeGraphImportGraphTool
     from .project_health_tool import ProjectHealthTool
     from .route_detector_tool import RouteDetectorTool
+    from .test_gap_tool import CodeGraphTestGapTool
 
     facade = FacadeTool(
         facade_name="health",
@@ -128,6 +133,8 @@ def build_health_facade(project_root: str | None = None) -> FacadeTool:
             "overview": CodeGraphOverviewTool(project_root),
             # R5: deps — multi-mode, ``mode`` kept by projection filter automatically
             "deps": DependencyAnalysisTool(project_root),
+            # RFC-0003 pre-requisite: wire orphaned test-gap tool into the facade
+            "test_gap": CodeGraphTestGapTool(project_root),
         },
         bespoke_map={},  # no F5 bespoke routes needed for health
         description=_HEALTH_DESCRIPTION,

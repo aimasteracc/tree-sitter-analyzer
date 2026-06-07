@@ -600,6 +600,7 @@ def test_registered_mcp_tools_have_cli_parity() -> None:
         "check_tools": ("main", "--check-tools"),
         "decision_journal": ("main", "--decision-journal"),
         "doc_sync": ("main", "--doc-sync"),
+        "codegraph_test_gap": ("main", "--test-gap"),
     }
 
     # ------------------------------------------------------------------
@@ -759,6 +760,8 @@ def test_facade_delegation_routes_each_action_to_expected_inner() -> None:
         ("search", "batch"): "BatchSearchTool",
         ("search", "chain"): "CodeGraphQueryTool",
         ("search", "select"): "HyphaeSelectTool",
+        ("search", "subscribe"): "HyphaeSubscribeTool",
+        ("search", "unsubscribe"): "HyphaeUnsubscribeTool",
         ("search", "content"): "<bespoke>",
         ("nav", "navigate"): "CodeGraphNavigateTool",
         ("nav", "call_path"): "CodeGraphCallPathTool",
@@ -792,6 +795,7 @@ def test_facade_delegation_routes_each_action_to_expected_inner() -> None:
         ("health", "routes"): "RouteDetectorTool",
         ("health", "overview"): "CodeGraphOverviewTool",
         ("health", "deps"): "DependencyAnalysisTool",
+        ("health", "test_gap"): "CodeGraphTestGapTool",
         ("edit", "safe"): "SafeToEditTool",
         ("edit", "guard"): "ModificationGuardTool",
         ("edit", "impact"): "ChangeImpactTool",

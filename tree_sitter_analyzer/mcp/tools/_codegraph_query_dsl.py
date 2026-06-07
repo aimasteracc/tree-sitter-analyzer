@@ -233,7 +233,23 @@ def _parse_step(part: str) -> _ChainStep:
     return _ChainStep(name=name, args=args, kwargs=kwargs)
 
 
+# JS/JSON-style bare words LLM agents naturally write in this jQuery-style DSL.
+# Python's ast.literal_eval only knows True/False/None, so ``answer(compact=true)``
+# would otherwise blow up with a cryptic "malformed node or string" error and
+# push the agent off the cheap one-call chain back onto slow multi-call paths.
+_JS_BARE_LITERALS: dict[str, Any] = {
+    "true": True,
+    "false": False,
+    "null": None,
+    "none": None,
+}
+
+
 def _literal(node: ast.AST) -> Any:
+    # Accept bare true/false/null (any case) before literal_eval, which rejects
+    # them as undefined names.
+    if isinstance(node, ast.Name) and node.id.lower() in _JS_BARE_LITERALS:
+        return _JS_BARE_LITERALS[node.id.lower()]
     value = ast.literal_eval(node)
     if isinstance(value, str):
         if len(value) > _MAX_STRING_ARG_LENGTH:

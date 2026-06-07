@@ -89,8 +89,12 @@ _EXTENDED_SPECS: tuple[McpCommandSpec, ...] = (
         build_tool_args=lambda args, output_format: {
             "task": getattr(args, "codegraph_context", "") or "",
             "max_nodes": getattr(args, "codegraph_context_max_nodes", 30),
-            "max_code_blocks": getattr(args, "codegraph_context_max_code_blocks", 8),
+            "max_code_blocks": getattr(args, "codegraph_context_max_code_blocks", 5),
             "output_format": output_format,
+            # RFC-0006: expose include_graph flag for CLI parity with MCP default.
+            "include_graph": bool(
+                getattr(args, "codegraph_context_include_graph", False)
+            ),
         },
     ),
     # CodeGraph parity gap-closure (2026-05-24): codegraph_explore replaces
@@ -193,6 +197,7 @@ _EXTENDED_SPECS: tuple[McpCommandSpec, ...] = (
             "language": getattr(args, "codegraph_sitemap_language", None),
             "directory": getattr(args, "codegraph_sitemap_directory", None),
             "max_files": getattr(args, "codegraph_sitemap_max_files", 200),
+            "max_symbols": getattr(args, "codegraph_sitemap_max_symbols", 300),
             "output_format": output_format,
         },
     ),
@@ -314,5 +319,18 @@ _EXTENDED_SPECS: tuple[McpCommandSpec, ...] = (
         tool_attr="BatchSearchTool",
         label="Batch ripgrep search (2-10 queries via JSON file)",
         build_tool_args=_build_batch_search_tool_args,
+    ),
+    McpCommandSpec(
+        flag_name="test_gap",
+        tool_attr="CodeGraphTestGapTool",
+        label="Test coverage gap analysis: untested symbols ranked by cyclomatic complexity (RFC-0003)",
+        build_tool_args=lambda args, output_format: {
+            "mode": getattr(args, "test_gap_mode", "gaps") or "gaps",
+            "file_path": getattr(args, "test_gap_file", None),
+            "language": getattr(args, "test_gap_language", None),
+            "max_files": getattr(args, "test_gap_max_files", 1000) or 1000,
+            "max_gaps": getattr(args, "test_gap_max_gaps", 50) or 50,
+            "output_format": output_format,
+        },
     ),
 )

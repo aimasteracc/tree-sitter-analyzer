@@ -23,7 +23,9 @@ import os
 import sqlite3
 from typing import Any
 
+from ._language_family import languages_compatible
 from .graph.edge_store import Edge, EdgeKind, EdgeStore, parse_node_id, symbol_node
+from .utils.test_detection import is_test_file
 
 logger = logging.getLogger(__name__)
 
@@ -172,6 +174,64 @@ def pending_unresolved_count(conn: sqlite3.Connection) -> int:
     except sqlite3.OperationalError:
         return 0
     return int(row["c"] if isinstance(row, sqlite3.Row) else row[0])
+
+
+def index_resolution_fingerprint(conn: sqlite3.Connection) -> str:
+    """Cheap fingerprint of the indexed-file set: ``"<count>:<max indexed_at>"``.
+
+    Changes whenever any file is (re)indexed (``indexed_at`` moves) or a file is
+    added/removed (count moves). Used to detect that the cross-file resolve pass
+    has already converged for the *current* index state, so a cold
+    ``ensure_indexed`` can skip a redundant ~40 s resolve-only pass (the pending
+    EXTENDS/CALLS refs that survive a pass are terminal — external bases,
+    dynamic dispatch — and never resolve, so re-running is pure waste).
+    """
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*) AS c, COALESCE(MAX(indexed_at), '') AS m FROM ast_index"
+        ).fetchone()
+    except sqlite3.OperationalError:
+        return ""
+    count = row["c"] if isinstance(row, sqlite3.Row) else row[0]
+    stamp = row["m"] if isinstance(row, sqlite3.Row) else row[1]
+    return f"{count}:{stamp}"
+
+
+def resolution_converged(conn: sqlite3.Connection) -> bool:
+    """True when the resolve pass already ran for the current index state."""
+    fingerprint = index_resolution_fingerprint(conn)
+    if not fingerprint:
+        return False
+    try:
+        row = conn.execute(
+            "SELECT fingerprint FROM ast_resolve_state WHERE id = 1"
+        ).fetchone()
+    except sqlite3.OperationalError:
+        return False
+    if row is None:
+        return False
+    stored = row["fingerprint"] if isinstance(row, sqlite3.Row) else row[0]
+    return bool(stored) and stored == fingerprint
+
+
+def mark_resolution_converged(conn: sqlite3.Connection) -> None:
+    """Persist that the resolve pass has converged for the current index state."""
+    fingerprint = index_resolution_fingerprint(conn)
+    if not fingerprint:
+        return
+    try:
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS ast_resolve_state "
+            "(id INTEGER PRIMARY KEY, fingerprint TEXT NOT NULL)"
+        )
+        conn.execute(
+            "INSERT INTO ast_resolve_state (id, fingerprint) VALUES (1, ?) "
+            "ON CONFLICT(id) DO UPDATE SET fingerprint = excluded.fingerprint",
+            (fingerprint,),
+        )
+        conn.commit()
+    except sqlite3.OperationalError:
+        logger.debug("could not persist resolution fingerprint", exc_info=True)
 
 
 def _ref(
@@ -381,17 +441,48 @@ def _choose_candidate(
     base = _base_name(reference_name)
     import_hints = _import_target_hints(conn, source_file, reference_name)
     eligible = [item for item in candidates if item.get("node_id") != source_node]
+    # Language gate: a reference in a Python file must not bind to a same-named
+    # symbol defined in another language. ``ast_symbol_rows`` is cross-language,
+    # so a Python ``config.get(...)`` with no Python ``get`` in the tree would
+    # otherwise fall through to a JavaScript/Swift ``get`` ordered by file path
+    # (cross-language false callee + foreign body inlined into the response).
+    # Drop foreign-language candidates; if none remain, leave it unresolved.
+    source_lang = _file_language(conn, source_file)
+    if source_lang:
+        eligible = [
+            item
+            for item in eligible
+            if not str(item.get("language") or "")
+            or languages_compatible(source_lang, str(item.get("language")))
+        ]
     if not eligible:
         return None
     source_dir = os.path.dirname(source_file)
+    # A call in production code must not bind to a test-only definition just
+    # because the test file sorts earlier alphabetically. ``fts_search`` /
+    # ``fts_search_ranked`` are real cache methods that were shadowed by their
+    # test mocks (FallbackCache) via the ``file_path`` tiebreak below. Demote
+    # test definitions when the CALLER itself is not a test file (a test caller
+    # may legitimately reference a test helper). Ranks AFTER import/same-file/
+    # same-dir so an explicit local/imported test target still wins.
+    caller_is_source = not is_test_file(source_file)
 
-    def score(item: dict[str, Any]) -> tuple[int, int, int, int, str, int]:
+    def score(item: dict[str, Any]) -> tuple[int, int, int, int, int, str, int]:
         file_path = str(item["file_path"])
         imported = 0 if _matches_import_hint(file_path, import_hints) else 1
         same_file = 0 if file_path == source_file else 1
         same_dir = 0 if os.path.dirname(file_path) == source_dir else 1
+        is_test = 1 if (caller_is_source and is_test_file(file_path)) else 0
         exact = 0 if item["name"] in {reference_name, base} else 1
-        return (imported, same_file, same_dir, exact, file_path, int(item["line"]))
+        return (
+            imported,
+            same_file,
+            same_dir,
+            is_test,
+            exact,
+            file_path,
+            int(item["line"]),
+        )
 
     return sorted(eligible, key=score)[0]
 

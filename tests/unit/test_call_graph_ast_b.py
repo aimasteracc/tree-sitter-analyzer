@@ -108,7 +108,9 @@ class TestGetFuncName:
         source = "def foo():\n    pass\n"
         root, _ = _parse_source(source, "python")
         func_node = root.children[0]
-        assert _get_func_name(func_node, "ruby") is None
+        # "scala" is not in _FUNC_NAME_DISPATCH (ruby/csharp/kotlin/php are now
+        # supported — RFC-0010 activation); an unhandled language returns None.
+        assert _get_func_name(func_node, "scala") is None
 
 
 # ============================================================

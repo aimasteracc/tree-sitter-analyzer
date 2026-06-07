@@ -29,7 +29,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ._constants import BUILTINS_PY, STDLIB_NAMES_PY
+from .._language_family import languages_compatible
+from ._constants import (
+    BUILTIN_QUALIFIED_PY,
+    BUILTINS_PY,
+    EXTERNAL_METHODS_PY,
+    STDLIB_METHODS_PY,
+    STDLIB_NAMES_PY,
+)
 from ._context import ResolverContext, build_resolver_context, is_enabled
 from ._imports import ImportEntry, parse_imports
 
@@ -201,8 +208,161 @@ def _try_builtin(
     if qualifier:
         return None
     if base in ctx.builtins.get("python", frozenset()):
-        return ResolvedCallee(None, "stdlib", "")
+        return ResolvedCallee(None, "builtin", "")
     return None
+
+
+def _table_language(ctx: ResolverContext, caller_file: str) -> str:
+    """Language key for the RFC-0004/5/7 method tables (stdlib/external/builtin).
+
+    Trusts a populated ``file_languages`` map: a tagged non-Python caller (a JS
+    file) looks up its own (absent) table and the tier no-ops, preserving the
+    cross-language gate. Falls back to ``"python"`` ONLY when ``file_languages``
+    is entirely empty — a pre-built / direct-API ``ResolverContext`` whose public
+    constructor does not require it — so Python calls (``path.write_text()``,
+    ``monkeypatch.setattr()``) keep their RFC-0004/5/7 classification instead of
+    regressing to ``unknown`` (Codex P2 #326). The ownership gate keeps using the
+    raw ``caller_lang`` (empty == compatible), so legacy behaviour is unchanged.
+    """
+    lang = ctx.file_languages.get(caller_file, "")
+    if lang:
+        return lang
+    return "python" if not ctx.file_languages else ""
+
+
+def _try_stdlib_method(
+    base: str, qualifier: str, caller_file: str, ctx: ResolverContext
+) -> ResolvedCallee | None:
+    """RFC-0004 FINAL tier: classify a bare stdlib/builtin method name as
+    ``stdlib`` — but only when the project owns no method of that name.
+
+    Runs AFTER every project-binding rule, so a project ``split``/``get``/``items``
+    has already resolved to ``project`` before reaching here. The project-symbol
+    gate additionally leaves AMBIGUOUS project names (two classes define ``get``)
+    as ``unknown`` rather than mislabeling them ``stdlib``.
+
+    The gate is LANGUAGE-AWARE (Codex P2): a same-named symbol in an
+    incompatible-language file (e.g. a JavaScript ``split``) must NOT suppress
+    the Python stdlib classification — Python ``'x'.split()`` is still stdlib.
+    Only a same-/compatible-language project method counts as ownership.
+
+    RFC-0008: the table is selected by the CALLER's language, not hard-coded
+    ``"python"``. A Java caller consults the Java stdlib-method table; a caller
+    whose language has no registered table looks up an empty frozenset and the
+    tier never fires (conservative — no false classification).
+    """
+    caller_lang = ctx.file_languages.get(caller_file, "")
+    if base not in ctx.stdlib_methods.get(
+        _table_language(ctx, caller_file), frozenset()
+    ):
+        return None
+    if ctx.callee_resolver is not None:
+        matches = ctx.callee_resolver.resolve_items(
+            base, "", include_local=False, include_import=False
+        )
+        for item, _confidence in matches:
+            item_lang = ctx.file_languages.get(_item_file(item), "")
+            # A project method the caller's language could actually call → the
+            # project owns the name; leave ``unknown`` rather than claim stdlib.
+            if (
+                not caller_lang
+                or not item_lang
+                or languages_compatible(caller_lang, item_lang)
+            ):
+                return None
+    return ResolvedCallee(None, "stdlib", "")
+
+
+def _try_external_method(
+    base: str, qualifier: str, caller_file: str, ctx: ResolverContext
+) -> ResolvedCallee | None:
+    """RFC-0005 FINAL tier: classify a bare third-party library method name as
+    ``external`` — but only when the project owns no compatible-language method
+    of that name.
+
+    Runs AFTER ``_try_stdlib_method`` (itself the last tier before ``unknown``),
+    so stdlib wins over external, and every project-binding rule still wins first.
+    The project-symbol gate is language-aware (same pattern as Codex P2 #319 fix
+    in ``_try_stdlib_method``): an incompatible-language symbol does NOT count as
+    project ownership.
+
+    Covers pytest, hypothesis, and unittest.mock method names that cannot live in
+    the project and would otherwise remain ``unknown``.
+
+    RFC-0008: the table is selected by the CALLER's language (Java consults the
+    JUnit/Mockito/AssertJ table); a language with no registered table looks up
+    an empty frozenset and the tier never fires.
+    """
+    caller_lang = ctx.file_languages.get(caller_file, "")
+    if base not in ctx.external_methods.get(
+        _table_language(ctx, caller_file), frozenset()
+    ):
+        return None
+    if ctx.callee_resolver is not None:
+        matches = ctx.callee_resolver.resolve_items(
+            base, "", include_local=False, include_import=False
+        )
+        for item, _confidence in matches:
+            item_lang = ctx.file_languages.get(_item_file(item), "")
+            # A project method the caller's language could actually call → the
+            # project owns the name; leave ``unknown`` rather than claim external.
+            if (
+                not caller_lang
+                or not item_lang
+                or languages_compatible(caller_lang, item_lang)
+            ):
+                return None
+    return ResolvedCallee(None, "external", "")
+
+
+def _try_builtin_method(
+    base: str, qualifier: str, caller_file: str, ctx: ResolverContext
+) -> ResolvedCallee | None:
+    """RFC-0007 FINAL tier: classify a qualified Python builtin name as ``builtin``.
+
+    ``_try_builtin`` classifies bare builtin calls (no qualifier) as ``builtin``.
+    But ``monkeypatch.setattr(...)`` has a qualifier, so ``_try_builtin`` skips it
+    (``if qualifier: return None``) and the edge falls through to ``unknown``.
+    This tier recovers those edges for names in BUILTIN_QUALIFIED_PY — builtins
+    that legitimately appear with a receiver qualifier.
+
+    Runs AFTER ``_try_external_method`` so every project-binding rule and every
+    stdlib/external tier wins first.  The project-symbol gate is language-aware
+    (same Codex P2 pattern as RFC-0004/0005): an incompatible-language project
+    symbol does NOT suppress Python builtin classification.
+
+    Returns ``ResolvedCallee(None, "builtin", "")`` — no resolved file, because
+    Python builtins have no project file.
+    """
+    if not qualifier:
+        # Bare (unqualified) builtins are already handled by _try_builtin; skip.
+        return None
+    # RFC-0008: gate on TABLE PRESENCE, not a hard-coded ``!= "python"``. Only a
+    # caller whose language registers a qualified-builtin table can match here;
+    # a caller language with no such table (e.g. Java — which has no
+    # monkeypatch.setattr equivalent, static methods are import-resolved) looks
+    # up an empty frozenset and the tier never fires. An empty/unknown language
+    # tag also yields an empty table, so untyped callers fall through safely.
+    caller_lang = ctx.file_languages.get(caller_file, "")
+    if base not in ctx.builtin_methods.get(
+        _table_language(ctx, caller_file), frozenset()
+    ):
+        return None
+    if ctx.callee_resolver is not None:
+        matches = ctx.callee_resolver.resolve_items(
+            base, "", include_local=False, include_import=False
+        )
+        for item, _confidence in matches:
+            item_lang = ctx.file_languages.get(_item_file(item), "")
+            # A project method the caller's language could actually call → the
+            # project owns the name; leave ``unknown`` rather than claim builtin.
+            if (
+                not caller_lang
+                or not item_lang
+                or languages_compatible(caller_lang, item_lang)
+            ):
+                return None
+    return ResolvedCallee(None, "builtin", "")
 
 
 def _try_single_global(
@@ -305,15 +465,22 @@ def resolve_callee(
     recover the receiver. Any other language falls through to the Python
     cascade exactly as before B3 (no behaviour change for them).
     """
+    # RFC-0010: dispatch to a registered per-language resolver (when one exists
+    # AND its context was built), else fall through to the Python cascade. Java is
+    # now registered via languages/java.py instead of an inline branch; adding a
+    # language requires no edit here.
     language = ctx.file_languages.get(caller_file)
-    if language == "java" and ctx.java_context is not None:
-        from ._java import resolve_java_callee
+    from . import languages as _languages  # noqa: F401, PLC0415 — ensure registration
+    from ._registry import get_language_resolver
 
-        sym_id, resolution, resolved_file = resolve_java_callee(
+    resolver = get_language_resolver(language)
+    lang_ctx = ctx.lang_context(language) if resolver is not None and language else None
+    if resolver is not None and lang_ctx is not None:
+        sym_id, resolution, resolved_file = resolver.resolve_callee(
             callee_name,
             callee_full if callee_full is not None else callee_name,
             caller_file,
-            ctx.java_context,
+            lang_ctx,
         )
         return ResolvedCallee(sym_id, resolution, resolved_file)
 
@@ -347,25 +514,64 @@ def _resolve_callee_python(
     else:
         qualifier, base = _split_qualifier(callee_name)
 
+    caller_lang = ctx.file_languages.get(caller_file, "")
     for rule in (
         lambda: _try_self_method(base, qualifier, caller_file, caller_name, ctx),
         lambda: _try_local(base, caller_file, ctx) if not qualifier else None,
         lambda: _try_import(base, qualifier, caller_file, ctx),
         lambda: _try_stdlib(base, qualifier, caller_file, ctx),
-        lambda: _try_builtin(base, qualifier, ctx),
+        # Project-wide searches run BEFORE the builtin fallback so that a project
+        # function with the same name as a builtin (e.g. a custom ``len``) is
+        # resolved to the project definition, not mis-classified as ``builtin``
+        # (RFC-0002 criterion 2 — shadowing preserved).
         lambda: _try_single_global(base, qualifier, ctx),
         lambda: _try_class_method(base, qualifier, ctx),
         lambda: _try_unique_method(base, qualifier, ctx),
+        # Builtin is the last NAME resort: only fires when no project binding exists.
+        lambda: _try_builtin(base, qualifier, ctx),
+        # RFC-0004: stdlib METHOD names (write_text, strip, items, …) — gated on
+        # the project owning no compatible-language method.
+        lambda: _try_stdlib_method(base, qualifier, caller_file, ctx),
+        # RFC-0005: external (third-party) library method names — pytest, hypothesis,
+        # unittest.mock. Runs AFTER stdlib so stdlib wins, and every project-binding
+        # rule still wins first. Same language-aware project-ownership gate.
+        lambda: _try_external_method(base, qualifier, caller_file, ctx),
+        # RFC-0007: qualified Python builtin names (monkeypatch.setattr, obj.getattr,
+        # …). _try_builtin skips qualified calls; this tier recovers them. Runs LAST
+        # so every project-binding, stdlib, and external rule wins first.
+        lambda: _try_builtin_method(base, qualifier, caller_file, ctx),
     ):
         out = rule()
-        if out is not None:
+        if out is not None and not _is_cross_language(out, caller_lang, ctx):
             return out
 
     return ResolvedCallee(None, "unknown", "")
 
 
+def _is_cross_language(
+    out: ResolvedCallee, caller_lang: str, ctx: ResolverContext
+) -> bool:
+    """True when a project bind crosses a language boundary.
+
+    The project-wide rules (``_try_single_global`` / ``_try_class_method`` /
+    ``_try_unique_method``) scan every file regardless of language, so a Python
+    ``config.get(...)`` whose ``get`` is defined only on a JavaScript class would
+    bind to that JS file — a wrong callee with a foreign-language body inlined
+    into the response. Reject such binds so the cascade falls through to
+    ``unknown`` rather than crossing languages. ``local``/``stdlib`` binds resolve
+    to the caller file or carry no file, so they never trip this.
+    """
+    if not caller_lang or not out.resolved_file:
+        return False
+    target_lang = ctx.file_languages.get(out.resolved_file, "")
+    return bool(target_lang) and not languages_compatible(caller_lang, target_lang)
+
+
 __all__ = [
+    "BUILTIN_QUALIFIED_PY",
     "BUILTINS_PY",
+    "EXTERNAL_METHODS_PY",
+    "STDLIB_METHODS_PY",
     "STDLIB_NAMES_PY",
     "ImportEntry",
     "ResolvedCallee",

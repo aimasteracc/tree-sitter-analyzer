@@ -8,8 +8,15 @@ from collections import OrderedDict
 from typing import TYPE_CHECKING, Any
 
 from ..callee_resolution import CalleeResolver
-from ._constants import BUILTINS_PY, STDLIB_NAMES_PY
+from ._constants import (
+    BUILTIN_QUALIFIED_PY,
+    BUILTINS_PY,
+    EXTERNAL_METHODS_PY,
+    STDLIB_METHODS_PY,
+    STDLIB_NAMES_PY,
+)
 from ._imports import ImportEntry
+from ._java_constants import EXTERNAL_METHODS_JAVA, STDLIB_METHODS_JAVA
 
 if TYPE_CHECKING:
     from ..ast_cache import ASTCache
@@ -42,14 +49,23 @@ class ResolverContext:
         imports_by_file: dict[str, list[ImportEntry]] | None = None,
         builtins: dict[str, frozenset[str]] | None = None,
         stdlib_modules: dict[str, frozenset[str]] | None = None,
+        stdlib_methods: dict[str, frozenset[str]] | None = None,
+        external_methods: dict[str, frozenset[str]] | None = None,
+        builtin_methods: dict[str, frozenset[str]] | None = None,
         callee_resolver: CalleeResolver | None = None,
         file_languages: dict[str, str] | None = None,
         java_context: Any | None = None,
+        lang_contexts: dict[str, Any] | None = None,
     ) -> None:
         self.project_root = project_root
         self.cache = cache
         self._file_languages = file_languages or {}
-        self._java_context = java_context
+        # RFC-0010: per-language resolver contexts keyed by language name. The
+        # legacy ``java_context`` kwarg is folded in for back-compat with callers
+        # that still pass it explicitly.
+        self._lang_contexts: dict[str, Any] = dict(lang_contexts or {})
+        if java_context is not None:
+            self._lang_contexts.setdefault("java", java_context)
         self._file_symbols = file_symbols or {}
         self._name_to_source = name_to_source or {}
         self._file_class_methods = file_class_methods or {}
@@ -59,6 +75,9 @@ class ResolverContext:
         self._imports_by_file = imports_by_file or {}
         self._builtins = builtins or {}
         self._stdlib_modules = stdlib_modules or {}
+        self._stdlib_methods = stdlib_methods or {}
+        self._external_methods = external_methods or {}
+        self._builtin_methods = builtin_methods or {}
         self._callee_resolver = callee_resolver
         self._loaded = any(
             value is not None
@@ -84,8 +103,12 @@ class ResolverContext:
 
     @property
     def java_context(self) -> Any | None:
+        return self.lang_context("java")
+
+    def lang_context(self, language: str) -> Any | None:
+        """Return the per-language resolver context for ``language`` (RFC-0010)."""
         self._ensure_loaded()
-        return self._java_context
+        return self._lang_contexts.get(language)
 
     @property
     def file_symbols(self) -> dict[str, list[tuple[str, str, int]]]:
@@ -131,6 +154,21 @@ class ResolverContext:
         return self._stdlib_modules
 
     @property
+    def stdlib_methods(self) -> dict[str, frozenset[str]]:
+        self._ensure_loaded()
+        return self._stdlib_methods
+
+    @property
+    def external_methods(self) -> dict[str, frozenset[str]]:
+        self._ensure_loaded()
+        return self._external_methods
+
+    @property
+    def builtin_methods(self) -> dict[str, frozenset[str]]:
+        self._ensure_loaded()
+        return self._builtin_methods
+
+    @property
     def callee_resolver(self) -> CalleeResolver | None:
         self._ensure_loaded()
         return self._callee_resolver
@@ -151,9 +189,12 @@ class ResolverContext:
         self._imports_by_file = built.imports_by_file
         self._builtins = built.builtins
         self._stdlib_modules = built.stdlib_modules
+        self._stdlib_methods = built.stdlib_methods
+        self._external_methods = built._external_methods  # noqa: SLF001 — same class, different instance
+        self._builtin_methods = built._builtin_methods  # noqa: SLF001 — same class, different instance
         self._callee_resolver = built.callee_resolver
         self._file_languages = built._file_languages  # noqa: SLF001
-        self._java_context = built._java_context  # noqa: SLF001
+        self._lang_contexts = built._lang_contexts  # noqa: SLF001
         self._loaded = True
 
 
@@ -308,7 +349,7 @@ def _build_file_class_methods(
             continue
         per_class: dict[str, dict[str, int]] = {}
         for sym in symbols.get("symbols", []):
-            if sym.get("kind") != "function":
+            if sym.get("kind") not in ("function", "method"):
                 continue
             cls_name = sym.get("class")
             if not cls_name:
@@ -470,14 +511,36 @@ def _build_resolver_context_uncached(cache: ASTCache) -> ResolverContext:
         alias_target=alias_target,
     )
 
-    java_context = _maybe_build_java_context(
-        imports_by_file=imports_by_file,
-        file_languages=file_languages,
-        file_symbols=file_symbols,
-        global_name_table=global_name_table,
-        conn=conn,
-        line_idx=line_idx,
-    )
+    # RFC-0010: build each registered language's context via the registry. The
+    # class→method map is shared and somewhat costly, so it is computed lazily —
+    # a language that opts out (returns None before touching it) pays nothing,
+    # preserving the prior "zero cost for Python-only projects" property.
+    from . import languages as _languages  # noqa: F401, PLC0415 — triggers registration
+    from ._registry import get_language_resolver, registered_languages
+
+    _fcm_cache: dict[str, dict[str, dict[str, dict[str, int]]]] = {}
+
+    def _file_class_methods_thunk() -> dict[str, dict[str, dict[str, int]]]:
+        if "value" not in _fcm_cache:
+            _fcm_cache["value"] = _build_file_class_methods(conn, line_idx)
+        return _fcm_cache["value"]
+
+    lang_contexts: dict[str, Any] = {}
+    for _lang in registered_languages():
+        _resolver = get_language_resolver(_lang)
+        if _resolver is None:
+            continue
+        _built = _resolver.build_context(
+            imports_by_file=imports_by_file,
+            file_languages=file_languages,
+            file_symbols=file_symbols,
+            global_name_table=global_name_table,
+            file_class_methods=_file_class_methods_thunk,
+            conn=conn,
+            line_idx=line_idx,
+        )
+        if _built is not None:
+            lang_contexts[_lang] = _built
 
     return ResolverContext(
         project_root=cache.project_root,
@@ -489,43 +552,18 @@ def _build_resolver_context_uncached(cache: ASTCache) -> ResolverContext:
         imports_by_file=imports_by_file,
         builtins={"python": BUILTINS_PY},
         stdlib_modules={"python": STDLIB_NAMES_PY},
+        stdlib_methods={
+            "python": STDLIB_METHODS_PY,
+            "java": STDLIB_METHODS_JAVA,
+        },
+        external_methods={
+            "python": EXTERNAL_METHODS_PY,
+            "java": EXTERNAL_METHODS_JAVA,
+        },
+        builtin_methods={"python": BUILTIN_QUALIFIED_PY},
         callee_resolver=callee_resolver,
         file_languages=file_languages,
-        java_context=java_context,
-    )
-
-
-def _maybe_build_java_context(
-    *,
-    imports_by_file: dict[str, list[ImportEntry]],
-    file_languages: dict[str, str],
-    file_symbols: dict[str, list[tuple[str, str, int]]],
-    global_name_table: dict[str, list[tuple[str, int]]],
-    conn: Any,
-    line_idx: dict[tuple[str, str, int], int],
-) -> Any | None:
-    """Build the Java resolver context, or ``None`` for non-Java projects.
-
-    Zero cost for Python-only projects: we only build when at least one
-    indexed file is Java. Java needs the class→method map (for this/super
-    resolution), so we build it here once and share it.
-    """
-    has_java = any(lang == "java" for lang in file_languages.values())
-    if not has_java:
-        return None
-    from ._java import build_java_context
-
-    java_imports: dict[str, list[ImportEntry]] = {
-        fp: entries
-        for fp, entries in imports_by_file.items()
-        if file_languages.get(fp) == "java"
-    }
-    file_class_methods = _build_file_class_methods(conn, line_idx)
-    return build_java_context(
-        imports_by_file=java_imports,
-        file_symbols=file_symbols,
-        file_class_methods=file_class_methods,
-        global_name_table=global_name_table,
+        lang_contexts=lang_contexts,
     )
 
 

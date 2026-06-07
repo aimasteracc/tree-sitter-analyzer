@@ -67,8 +67,21 @@ The 8 tools: nav, search, structure, health, edit, project, index, viz.
 | Text/content search | search action=content |
 | Class/file structure, overview, signatures | structure |
 | Is the index ready / how big? | index action=status |
+| Edge-kind breakdown of the graph | index action=status (edges_by_kind) |
+| Get pushed when results change | search action=subscribe |
 | File / module dependency questions | nav action=impact / structure |
 | File discovery | project / search |
+
+## Differentiators (capabilities grep / one-shot indexers lack)
+
+- **Reactive push (RFC-0001)** — `search action=subscribe` registers a Hyphae
+  selector and hands back a `tsa://hyphae/{selector}` resource URI. When the
+  watched code changes, the server emits a resource-updated notification, so you
+  re-read the resource instead of re-querying on a poll. `search
+  action=unsubscribe` cancels it. This is live subscription, not a snapshot.
+- **`edges_by_kind`** — `index action=status` returns a per-edge-kind count
+  (calls / extends / implements / imports …), not just a single total. Use it to
+  see the graph's shape before drilling in.
 
 ## Default chain for "how does X work / trace a flow" (FOLLOW THIS)
 
