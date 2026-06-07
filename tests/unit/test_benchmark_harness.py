@@ -736,4 +736,3 @@ class TestRunRecordCostCacheColumns:
         ):
             assert key in record, key
         RunRecord(**record)  # must not raise
-
