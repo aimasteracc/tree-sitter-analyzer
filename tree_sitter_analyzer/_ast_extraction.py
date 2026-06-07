@@ -15,6 +15,7 @@ import sqlite3
 from typing import Any
 
 from .core.parser import Parser
+from .function_extraction import get_func_name
 
 # ---------------------------------------------------------------------------
 # FTS5 probe
@@ -170,11 +171,19 @@ _FUNCTION_LIKE = frozenset(
         "anonymous_function",
         "class_method",
         "member_function",
-        "function_declarator",
-        "declaration",
-        "init_declarator",
+        # Ruby: ``method`` / ``singleton_method`` expose a ``name`` field, so the
+        # standard name-field path handles them once they are listed here.
+        "method",
+        "singleton_method",
     }
 )
+# NOTE: ``function_declarator`` / ``declaration`` / ``init_declarator`` were
+# previously listed here but they have NO ``name`` field and so produced zero
+# symbols. They were also the source of a latent double-count risk for C: a C
+# ``function_definition`` nests its name inside a ``function_declarator`` child,
+# so emitting on both would count each function twice. We now resolve the C/C++
+# name via ``get_func_name`` on the ``function_definition`` node only (see
+# ``_walk_for_symbols``), keeping exactly one symbol per function.
 
 _CLASS_LIKE = frozenset(
     {
@@ -445,8 +454,19 @@ def _walk_for_symbols(
         return
     node_type = node.type
     name_node = node.child_by_field_name("name")
-    if node_type in _FUNCTION_LIKE and name_node is not None:
-        name = _node_text(name_node, source)
+    if node_type in _FUNCTION_LIKE:
+        name = _node_text(name_node, source) if name_node is not None else ""
+        if not name and node_type == "function_definition":
+            # C / C++ ``function_definition`` has no ``name`` field — the name is
+            # nested inside ``function_declarator`` -> identifier. Recover it via
+            # the per-language dispatcher (``_func_name_c`` recurses into the
+            # declarator). Gated to ``function_definition`` so name-less nodes of
+            # other types (e.g. arrow functions) are never given spurious names.
+            name = get_func_name(node, language) or ""
+        if not name:
+            for child in node.children:
+                _walk_for_symbols(child, source, symbols, language, depth + 1)
+            return
         params_node = node.child_by_field_name("parameters")
         params = _node_text(params_node, source) if params_node else ""
         dp = _count_decision_points(node, language)

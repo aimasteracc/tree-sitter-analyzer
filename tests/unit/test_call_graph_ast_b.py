@@ -108,7 +108,8 @@ class TestGetFuncName:
         source = "def foo():\n    pass\n"
         root, _ = _parse_source(source, "python")
         func_node = root.children[0]
-        assert _get_func_name(func_node, "ruby") is None
+        # ``cobol`` has no entry in _FUNC_NAME_DISPATCH (ruby is now supported).
+        assert _get_func_name(func_node, "cobol") is None
 
 
 # ============================================================

@@ -13,6 +13,7 @@ _CALL_NODE_TYPES = {
     "go": {"call_expression"},
     "c": {"call_expression"},
     "cpp": {"call_expression"},
+    "ruby": {"call"},
 }
 
 _FUNC_DEF_TYPES = {
@@ -23,6 +24,7 @@ _FUNC_DEF_TYPES = {
     "go": {"function_declaration", "method_declaration"},
     "c": {"function_definition"},
     "cpp": {"function_definition"},
+    "ruby": {"method", "singleton_method"},
 }
 
 # ---------------------------------------------------------------------------
@@ -70,7 +72,14 @@ def _declarator_name(declarator_node: Any) -> str | None:
 
 
 def _func_name_c(node: Any) -> str | None:
-    """C / C++: direct identifier types, or recurse into function_declarator."""
+    """C / C++: direct identifier types, or recurse into (pointer_)declarator.
+
+    A pointer-returning function (``void *malloc(...)``) nests its
+    ``function_declarator`` inside a ``pointer_declarator`` (one level per ``*``),
+    so we recurse through pointer declarators to reach the name. Without this,
+    common libc-style signatures (``malloc``/``strdup``/``calloc``) are silently
+    dropped from the symbol table.
+    """
     for child in node.children:
         if child.type in _IDENT_TYPES_C:
             return _node_text_value(child)
@@ -78,7 +87,19 @@ def _func_name_c(node: Any) -> str | None:
             result = _declarator_name(child)
             if result:
                 return result
+        if child.type == "pointer_declarator":
+            result = _func_name_c(child)
+            if result:
+                return result
     return None
+
+
+def _func_name_field(node: Any) -> str | None:
+    """Languages whose definition node exposes a ``name`` field (Ruby ``method`` /
+    ``singleton_method``). ``def self.create`` is a ``singleton_method`` whose
+    ``name`` field is ``create``."""
+    name_node = node.child_by_field_name("name")
+    return _node_text_value(name_node) if name_node is not None else None
 
 
 _FUNC_NAME_DISPATCH: dict[str, Callable] = {
@@ -89,6 +110,7 @@ _FUNC_NAME_DISPATCH: dict[str, Callable] = {
     "go": _func_name_go,
     "c": _func_name_c,
     "cpp": _func_name_c,
+    "ruby": _func_name_field,
 }
 
 # ---------------------------------------------------------------------------
@@ -131,6 +153,25 @@ def _call_info_c(node: Any, source: str) -> dict[str, Any] | None:
     return None
 
 
+def _call_info_ruby(node: Any, source: str) -> dict[str, Any] | None:
+    """Ruby: a ``call`` node carries a ``method`` field (the callee) and an
+    optional ``receiver`` field. ``helper(a)`` -> method=helper, no receiver;
+    ``Calculator.new`` -> method=new, receiver=Calculator."""
+    method_node = node.child_by_field_name("method")
+    if method_node is None:
+        return None
+    name = _node_text(method_node, source)
+    receiver_node = node.child_by_field_name("receiver")
+    receiver = _node_text(receiver_node, source) if receiver_node is not None else None
+    full_name = f"{receiver}.{name}" if receiver else name
+    return {
+        "name": name,
+        "full_name": full_name,
+        "line": node.start_point[0] + 1,
+        "receiver": receiver,
+    }
+
+
 _CALL_DISPATCH: dict[str, Callable] = {
     "python": _call_info_field,
     "javascript": _call_info_field,
@@ -139,6 +180,7 @@ _CALL_DISPATCH: dict[str, Callable] = {
     "java": _call_info_java,
     "c": _call_info_c,
     "cpp": _call_info_c,
+    "ruby": _call_info_ruby,
 }
 
 # ---------------------------------------------------------------------------
@@ -305,6 +347,8 @@ def _extract_recursive(
                 parent_class = find_parent_class_java(node) or enclosing_class
             elif language == "go" and node.type == "method_declaration":
                 parent_class = find_receiver_type_go(node) or enclosing_class
+            elif language == "ruby":
+                parent_class = find_parent_class_ruby(node) or enclosing_class
 
             definitions.append(
                 {
@@ -443,6 +487,26 @@ def find_parent_class_java(node: Any) -> str | None:
             for child in current.children:
                 if child.type == "identifier":
                     return _node_text_value(child)
+        current = current.parent
+    return None
+
+
+def find_parent_class_ruby(node: Any) -> str | None:
+    """Walk up from a Ruby method/singleton_method node to its enclosing class.
+
+    Matches the symbol-table path (``_ast_extraction._find_parent_class`` over
+    ``_CLASS_LIKE``, which covers ``class``) so the two extraction paths agree on
+    a Ruby method's owning class — required for ``--callers "Class.method"`` to
+    resolve via the call_graph receiver field.
+    """
+    if node is None:
+        return None
+    current = node.parent
+    while current is not None:
+        if current.type == "class":
+            name_node = current.child_by_field_name("name")
+            if name_node is not None:
+                return _node_text_value(name_node)
         current = current.parent
     return None
 
