@@ -108,3 +108,52 @@ def test_no_fts5_renders_clear_unavailable_message_not_misleading_zero() -> None
     out = render_terminal(r)
     assert "FTS5" in out
     assert "cleaner" not in out  # no misleading verdict when there is no data
+
+
+def test_genuine_collisions_exclude_builtins() -> None:
+    """RFC-0011 open Q1 (skeptic-resistance): the GENUINE count excludes the
+    caller language's own builtins. A Python `compute()` (not a builtin) bound to
+    a Swift `compute` IS genuine; a Python `sorted()` (a builtin) is worst-case
+    only — a skeptic can't dismiss the genuine examples as 'obviously a builtin'."""
+    import os
+    import shutil
+    import tempfile
+
+    from tree_sitter_analyzer.miswire_audit import audit, render_terminal
+
+    d = tempfile.mkdtemp()
+    try:
+        with open(os.path.join(d, "app.py"), "w") as f:
+            # `compute` is NOT a Python builtin (genuine); `sorted` IS (worst-case only)
+            f.write("def use():\n    compute()\n    return sorted([1])\n")
+        with open(os.path.join(d, "lib.swift"), "w") as f:
+            f.write(
+                "func compute() -> Int { return 1 }\n"
+                "func sorted(_ a: [Int]) -> [Int] { return a }\n"
+            )
+        r = audit(d, reindex=True)
+        assert r.naive_genuine_miswires >= 1
+        assert any(o.callee_name == "compute" for o in r.genuine_offenders)
+        # `sorted` is a Python builtin -> never a GENUINE offender
+        assert not any(o.callee_name == "sorted" for o in r.genuine_offenders)
+        # but it still counts in the worst-case total
+        assert r.naive_miswires > r.naive_genuine_miswires
+        out = render_terminal(r)
+        assert "GENUINE" in out
+        assert r.tsa_miswires == 0
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def test_js_builtins_excluded_from_genuine() -> None:
+    """Codex #377 P2: a language WITHOUT a builtin set would count its own
+    builtins (JS Map/Promise) as genuine. All 15 languages now have a set, so a
+    JS `Map()` is excluded while a genuine name (`tokenize`) is kept."""
+    from tree_sitter_analyzer.miswire_audit import _CALLER_BUILTINS
+
+    for lang in ("javascript", "typescript", "java", "go", "kotlin", "csharp",
+                 "swift", "c", "cpp", "python", "ruby", "php", "rust"):
+        assert _CALLER_BUILTINS.get(lang), f"{lang} has no builtin set"
+    assert "Map" in _CALLER_BUILTINS["javascript"]
+    assert "Promise" in _CALLER_BUILTINS["javascript"]
+    assert "tokenize" not in _CALLER_BUILTINS["javascript"]

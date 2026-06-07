@@ -36,6 +36,112 @@ from tree_sitter_analyzer.ast_cache import ASTCache
 _DEF_KINDS = ("function", "method", "class")
 
 
+def _caller_builtins() -> dict[str, frozenset[str]]:
+    """Per-caller-language bare builtin names a basic name-only index could
+    special-case (so they are NOT genuine cross-language collisions).
+
+    Reuses TSA's own resolver builtin sets where they exist; a small curated Rust
+    prelude covers its most common bare calls. Languages without a set contribute
+    no exclusions — keeping the 'genuine' count an honest LOWER bound.
+    """
+    out: dict[str, frozenset[str]] = {}
+    try:
+        from .synapse_resolver._constants import BUILTINS_PY
+
+        out["python"] = BUILTINS_PY
+    except Exception:  # pragma: no cover - defensive
+        pass
+    try:
+        from .synapse_resolver.languages._ruby_constants import RUBY_BUILTIN_CALLS
+
+        out["ruby"] = RUBY_BUILTIN_CALLS
+    except Exception:  # pragma: no cover
+        pass
+    try:
+        from .synapse_resolver.languages._php_constants import PHP_BUILTIN_FUNCTIONS
+
+        out["php"] = PHP_BUILTIN_FUNCTIONS
+    except Exception:  # pragma: no cover
+        pass
+    try:
+        from .synapse_resolver.languages._swift_constants import (
+            SWIFT_STDLIB_FUNCTIONS,
+        )
+
+        out["swift"] = SWIFT_STDLIB_FUNCTIONS
+    except Exception:  # pragma: no cover
+        pass
+    try:
+        from .synapse_resolver.languages._c_constants import LIBC_FUNCTIONS_C
+
+        out["c"] = LIBC_FUNCTIONS_C
+        out["cpp"] = LIBC_FUNCTIONS_C
+    except Exception:  # pragma: no cover
+        pass
+    # Curated bare-call builtins for the remaining languages (Codex #377 P2: a
+    # language with no entry would count its OWN builtins -- JS Map()/Promise() --
+    # as "genuine", reintroducing the skeptic-dismissable cases this floor excludes).
+    # These err toward EXCLUDING common names, so genuine stays a conservative,
+    # defensible lower bound.
+    out["rust"] = frozenset(
+        {
+            "Ok", "Err", "Some", "None", "Vec", "Box", "String", "format",
+            "println", "print", "eprintln", "eprint", "vec", "write", "writeln",
+            "clone", "into", "from", "new", "default", "unwrap", "expect", "iter",
+            "collect", "map", "filter", "to_string", "to_owned", "as_ref", "len",
+            "push", "drop", "panic", "assert", "matches", "f",
+        }
+    )
+    _js = frozenset(
+        {
+            "Map", "Set", "Promise", "Array", "Object", "JSON", "Math", "Symbol",
+            "WeakMap", "WeakSet", "Proxy", "Reflect", "Date", "RegExp", "Error",
+            "Number", "String", "Boolean", "BigInt", "Function", "parseInt",
+            "parseFloat", "isNaN", "isFinite", "fetch", "require", "setTimeout",
+            "setInterval", "clearTimeout", "console", "structuredClone", "keys",
+            "values", "entries", "from", "of", "isArray", "assign", "push", "pop",
+            "map", "filter", "forEach", "reduce", "then", "catch", "resolve",
+        }
+    )
+    out["javascript"] = _js
+    out["typescript"] = _js
+    out["jsx"] = _js
+    out["tsx"] = _js
+    out["go"] = frozenset(
+        {
+            "len", "cap", "make", "append", "new", "copy", "delete", "panic",
+            "recover", "print", "println", "close", "complex", "real", "imag",
+            "min", "max", "clear", "Sprintf", "Printf", "Errorf", "Println",
+        }
+    )
+    out["java"] = frozenset(
+        {
+            "toString", "equals", "hashCode", "valueOf", "getClass", "clone",
+            "length", "size", "get", "put", "add", "remove", "contains",
+            "isEmpty", "iterator", "next", "hasNext", "name", "ordinal",
+            "compareTo", "of", "asList", "stream", "collect", "forEach",
+        }
+    )
+    out["kotlin"] = frozenset(
+        {
+            "listOf", "mapOf", "setOf", "mutableListOf", "mutableMapOf", "println",
+            "print", "require", "check", "error", "run", "let", "apply", "also",
+            "with", "to", "arrayOf", "emptyList", "emptyMap", "lazy", "TODO",
+        }
+    )
+    out["csharp"] = frozenset(
+        {
+            "ToString", "Equals", "GetHashCode", "GetType", "Contains", "Add",
+            "Remove", "Count", "Where", "Select", "First", "Any", "All", "ToList",
+            "ToArray", "WriteLine", "Write", "Format",
+        }
+    )
+    return out
+
+
+_CALLER_BUILTINS = _caller_builtins()
+
+
 @dataclass
 class Offender:
     callee_name: str
@@ -59,6 +165,11 @@ class AuditResult:
     # False on SQLite builds without FTS5, where index_project() does not write
     # call edges (Codex #369 L158) — the audit cannot measure mis-wires there.
     call_edges_available: bool = True
+    # The skeptic-resistant floor: naive mis-wires EXCLUDING the caller language's
+    # own builtins (print/range/Ok/…) — i.e. genuine cross-language collisions a
+    # name-only index would still get wrong.
+    naive_genuine_miswires: int = 0
+    genuine_offenders: list[Offender] = field(default_factory=list)
 
     @property
     def multiplier(self) -> float:
@@ -206,23 +317,34 @@ def audit(project_root: str, *, reindex: bool = True, top: int = 5) -> AuditResu
                 )
                 if not has_compatible:
                     result.naive_miswires += 1
-                    # show DISTINCT callee names (not 5× the same one) so the
-                    # breadth of collisions is visible.
-                    seen_names = {o.callee_name for o in result.naive_offenders}
-                    if len(result.naive_offenders) < top and name not in seen_names:
-                        for df, dl in name_files.get(name, []):
-                            if not languages_compatible(caller_lang, dl):
-                                result.naive_offenders.append(
-                                    Offender(
-                                        name,
-                                        e["caller_file"],
-                                        caller_lang,
-                                        df,
-                                        dl,
-                                        e["callee_line"] or 0,
-                                    )
-                                )
-                                break
+                    is_builtin = name in _CALLER_BUILTINS.get(caller_lang, frozenset())
+                    if not is_builtin:
+                        result.naive_genuine_miswires += 1
+                    # pick one concrete cross-language def for the offender example
+                    cross_def = next(
+                        (
+                            (df, dl)
+                            for df, dl in name_files.get(name, [])
+                            if not languages_compatible(caller_lang, dl)
+                        ),
+                        None,
+                    )
+                    if cross_def is None:
+                        continue
+                    off = Offender(
+                        name, e["caller_file"], caller_lang,
+                        cross_def[0], cross_def[1], e["callee_line"] or 0,
+                    )
+                    # DISTINCT names; lead the offender lists with GENUINE (non-
+                    # builtin) collisions — the skeptic-resistant examples.
+                    if not is_builtin and name not in {
+                        o.callee_name for o in result.genuine_offenders
+                    } and len(result.genuine_offenders) < top:
+                        result.genuine_offenders.append(off)
+                    if name not in {
+                        o.callee_name for o in result.naive_offenders
+                    } and len(result.naive_offenders) < top:
+                        result.naive_offenders.append(off)
         return result
     finally:
         cache.close()
@@ -252,10 +374,11 @@ def render_terminal(r: AuditResult) -> str:
     lines.append(f"  call edges analysed: {r.total_call_edges:,}")
     lines.append("")
     lines.append(
-        f"  ❌ a NAME-ONLY resolver would mis-wire up to "
-        f"{r.naive_miswires:,} call edges across a language boundary "
-        f"({_fmt_pct(r.naive_miswires, r.total_call_edges)}) — binding a call to a "
-        f"same-named definition in another language"
+        f"  ❌ a NAME-ONLY resolver would mis-wire {r.naive_miswires:,} call edges "
+        f"across a language boundary "
+        f"({_fmt_pct(r.naive_miswires, r.total_call_edges)}); "
+        f"{r.naive_genuine_miswires:,} are GENUINE collisions — same name in "
+        f"another language, not a builtin a basic index could special-case"
     )
     lines.append(
         f"  ✅ Tree-sitter Analyzer mis-wires {r.tsa_miswires:,} "
@@ -266,15 +389,20 @@ def render_terminal(r: AuditResult) -> str:
         lines.append(f"     → TSA is {r.multiplier:.0f}× cleaner on YOUR code.")
     lines.append("")
     lines.append(
-        "  (the name-only figure is the worst case for a name-only index — the "
-        "design CodeGraph and most indexes use. A live head-to-head vs CodeGraph "
-        "specifically — 745 vs 6 on TSA's repo — is in"
+        "  (worst case for a name-only index — the design most indexes use. The "
+        "live head-to-head vs CodeGraph specifically — 745 vs 6 on TSA's repo — is"
     )
-    lines.append("   benchmarks/codegraph_compare/REPORT-v1.21.0.md.)")
+    lines.append("   in benchmarks/codegraph_compare/REPORT-v1.21.0.md.)")
     lines.append("")
-    if r.naive_offenders:
-        lines.append("  cross-language mis-wires a name-only index would make here:")
-        for o in r.naive_offenders:
+    shown = r.genuine_offenders or r.naive_offenders
+    if shown:
+        label = (
+            "genuine cross-language mis-wires a name-only index would make here:"
+            if r.genuine_offenders
+            else "cross-language mis-wires a name-only index would make here:"
+        )
+        lines.append("  " + label)
+        for o in shown:
             lines.append(
                 f"    • {o.caller_lang} caller `{o.callee_name}()` "
                 f"→ {o.callee_lang} def in {o.callee_file} "
