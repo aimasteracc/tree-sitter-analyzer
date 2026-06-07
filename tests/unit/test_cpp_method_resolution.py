@@ -40,6 +40,10 @@ def _build_ctx() -> CppResolverContext:
             ("Service", "class", 1),
             ("run", "function", 2),
             ("parse", "function", 3),
+            # A real same-file METHOD (member). An explicit-``this`` call MAY
+            # bind to this member; it must NEVER bind to the free functions
+            # (``run`` / ``parse``) or the class above.
+            ("dispatch", "method", 4),
         ],
         helper: [
             ("Helper", "class", 10),
@@ -160,11 +164,27 @@ class TestLocalAndProject:
         assert f == "src/service.cpp"
         assert sym == 2
 
-    def test_this_qualified_is_local(self) -> None:
+    def test_this_qualified_member_is_local(self) -> None:
+        """An explicit ``this->`` call MAY bind to a same-file MEMBER.
+
+        ``dispatch`` is a same-file ``method``; the implicit-/explicit-this
+        receiver proves the target is a member, so binding to it is correct.
+        """
         ctx = _build_ctx()
-        _sym, res, f = resolve_cpp_callee("run", "this->run", "src/service.cpp", ctx)
+        sym, res, f = resolve_cpp_callee(
+            "dispatch", "this->dispatch", "src/service.cpp", ctx
+        )
         assert res == "local"
         assert f == "src/service.cpp"
+        assert sym == 4
+
+    def test_implicit_this_member_is_local(self) -> None:
+        """An unqualified call may also resolve to a same-file member."""
+        ctx = _build_ctx()
+        sym, res, f = resolve_cpp_callee("dispatch", "dispatch", "src/service.cpp", ctx)
+        assert res == "local"
+        assert f == "src/service.cpp"
+        assert sym == 4
 
     def test_single_global_project(self) -> None:
         ctx = _build_ctx()
@@ -197,6 +217,71 @@ class TestLocalAndProject:
             "nonexistent", "nonexistent", "src/service.cpp", ctx
         )
         assert res == "unknown"
+
+
+# ---------------------------------------------------------------------------
+# Explicit self-receiver semantics (Codex PR #348 P2)
+# ---------------------------------------------------------------------------
+
+
+class TestExplicitSelfReceiver:
+    """An explicit ``this->`` / ``self`` receiver asserts the target is a
+    member (or inherited member). The conservative resolver must NOT downgrade
+    that into binding a bare free function (same-file ``local`` via a
+    ``function`` symbol) or a cross-file global (``project``). If it cannot
+    prove a member target, it stays ``unknown`` — an unknown edge is correct;
+    a free-function/global mis-bind is a moat-class failure.
+    """
+
+    def test_this_call_does_not_bind_same_file_free_function(self) -> None:
+        # ``this->run`` — ``run`` is a same-file FREE FUNCTION (kind=function),
+        # not a member. A ``this->`` call can never reach a free function, so
+        # the resolver must stay ``unknown``, not record a false ``local``.
+        ctx = _build_ctx()
+        sym, res, f = resolve_cpp_callee("run", "this->run", "src/service.cpp", ctx)
+        assert res == "unknown"
+        assert f == ""
+        assert sym is None
+
+    def test_this_call_does_not_bind_same_file_class(self) -> None:
+        # ``this->Service`` — a class symbol is not a member method either.
+        ctx = _build_ctx()
+        sym, res, f = resolve_cpp_callee(
+            "Service", "this->Service", "src/service.cpp", ctx
+        )
+        assert res == "unknown"
+        assert sym is None
+
+    def test_this_call_does_not_bind_cross_file_global(self) -> None:
+        # ``this->compute_total`` — ``compute_total`` is a single project-wide
+        # global in ANOTHER file. A member call must not bind a cross-file
+        # global, so the project (single-global) tier is skipped: ``unknown``.
+        ctx = _build_ctx()
+        sym, res, f = resolve_cpp_callee(
+            "compute_total", "this->compute_total", "src/service.cpp", ctx
+        )
+        assert res == "unknown"
+        assert f == ""
+        assert sym is None
+
+    def test_self_receiver_variants_do_not_bind_free_function(self) -> None:
+        # The other self tokens (``self``, ``(*this)``, ``*this``) follow the
+        # same rule — never bind a free function for a member call.
+        ctx = _build_ctx()
+        for recv in ("self", "(*this)", "*this"):
+            sym, res, f = resolve_cpp_callee(
+                "run", f"{recv}->run", "src/service.cpp", ctx
+            )
+            assert res == "unknown", recv
+            assert sym is None, recv
+
+    def test_unqualified_free_function_still_binds_local(self) -> None:
+        # Regression guard: an UNQUALIFIED call (no receiver) may still bind a
+        # same-file free function — only the explicit-self path is tightened.
+        ctx = _build_ctx()
+        sym, res, f = resolve_cpp_callee("run", "run", "src/service.cpp", ctx)
+        assert res == "local"
+        assert sym == 2
 
 
 # ---------------------------------------------------------------------------

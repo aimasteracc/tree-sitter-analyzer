@@ -124,9 +124,24 @@ def _split_qualifier(callee_full: str, callee_name: str) -> tuple[str, str]:
     return qualifier, simple or callee_name
 
 
-def _lookup_in_file(ctx: CppResolverContext, file_path: str, simple: str) -> int | None:
+#: Symbol kinds a bare (no-receiver) call may bind to in its own file: a free
+#: function, a member method, or a class (constructor-style call).
+_LOCAL_KINDS: frozenset[str] = frozenset({"function", "method", "class"})
+#: Symbol kinds an explicit-self (``this->`` / ``self``) call may bind to. The
+#: receiver PROVES the target is a member, so only ``method`` qualifies — a
+#: same-file free function or class is NOT a valid member-call target, and
+#: binding one would be a false ``local`` edge.
+_MEMBER_KINDS: frozenset[str] = frozenset({"method"})
+
+
+def _lookup_in_file(
+    ctx: CppResolverContext,
+    file_path: str,
+    simple: str,
+    kinds: frozenset[str],
+) -> int | None:
     for name, kind, sym_id in ctx.file_symbols.get(file_path, []):
-        if name == simple and kind in ("function", "method", "class"):
+        if name == simple and kind in kinds:
             return sym_id
     return None
 
@@ -159,6 +174,8 @@ def resolve_cpp_callee(
     one of ``local`` / ``project`` / ``stdlib`` / ``external`` / ``unknown``.
     """
     qualifier, simple = _split_qualifier(callee_full, callee_name)
+    is_unqualified = qualifier == ""
+    is_self_receiver = qualifier in _SELF_RECEIVERS
 
     # 1. stdlib qualifier — ``std::...`` and friends are terminal stdlib. This
     #    wins first: the qualifier is unambiguous evidence and never a project
@@ -166,18 +183,25 @@ def resolve_cpp_callee(
     if is_stdlib_qualifier(qualifier):
         return None, "stdlib", ""
 
-    # 2. local — no qualifier (free function / implicit-this member) or an
-    #    explicit self receiver, resolved in the caller's OWN file.
-    if qualifier in ("", *_SELF_RECEIVERS):
-        sym_id = _lookup_in_file(ctx, caller_file, simple)
+    # 2. local — resolved in the caller's OWN file. An UNQUALIFIED call may bind
+    #    any local symbol (free function / member / class). An explicit SELF
+    #    receiver (``this->`` / ``self``) asserts the target is a member, so it
+    #    may bind ONLY a same-file ``method`` — never a free function or class.
+    #    If it cannot prove a member target it must NOT fall through to a free
+    #    function; an ``unknown`` edge is correct, a false ``local`` is not.
+    if is_unqualified or is_self_receiver:
+        kinds = _LOCAL_KINDS if is_unqualified else _MEMBER_KINDS
+        sym_id = _lookup_in_file(ctx, caller_file, simple, kinds)
         if sym_id is not None:
             return sym_id, "local", caller_file
 
     # 3. project (single-global) — exactly one same-language project-wide
-    #    definition of an unqualified name. THE MOAT: gate every candidate by
+    #    definition of an UNQUALIFIED name. THE MOAT: gate every candidate by
     #    language compatibility so a foreign-language same-name symbol is never
     #    bound; if the sole candidate is foreign, fall through to unknown.
-    if qualifier in ("", *_SELF_RECEIVERS):
+    #    An explicit SELF receiver is EXCLUDED here: a ``this->`` member call can
+    #    never reach a cross-file global, so binding one would be a false edge.
+    if is_unqualified:
         compatible = [
             (target_file, sym_id)
             for target_file, sym_id in ctx.global_name_table.get(simple, [])
