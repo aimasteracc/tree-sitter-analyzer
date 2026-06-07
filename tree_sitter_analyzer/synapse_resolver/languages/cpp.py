@@ -48,6 +48,7 @@ fixed (the fix lives in the shared walker, out of this module's scope).
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -86,6 +87,33 @@ class CppResolverContext:
     # file -> language tag (so every project binding is language-gated: the
     # moat — a same-name symbol in another language must NOT be bound).
     file_languages: dict[str, str] = field(default_factory=dict)
+    # LAZY thunk -> {file: {class_name: {method_name: symbol_id}}}. Used only to
+    # disambiguate a member call when a file declares >1 class: if a method name
+    # is owned by more than one class in the file, the resolver cannot prove
+    # which class an implicit-/explicit-this call targets, so it stays unknown
+    # (no caller-class is threaded through the resolver signature). Held as a
+    # thunk so non-C++ projects and member-free workloads pay nothing — it is
+    # materialised at most once, on the first member-call disambiguation.
+    class_methods_thunk: Callable[[], dict[str, Any]] | None = None
+    # Memoised result of ``class_methods_thunk`` (None until first use).
+    _class_methods: dict[str, Any] | None = field(default=None, repr=False)
+
+    def member_owner_class_count(self, file_path: str, method_name: str) -> int:
+        """Return how many classes in ``file_path`` define ``method_name``.
+
+        Drives the conservative member-call gate: a self-/implicit-this call may
+        bind a same-file ``method`` only when this count is exactly 1. A count of
+        0 means the owner-class map did not record it (e.g. a file-scoped symbol
+        or an unpopulated map); callers treat 0 as "no class-ambiguity evidence"
+        and fall back to the plain same-file lookup. The thunk is materialised
+        lazily and memoised, so non-member workloads never pay for it.
+        """
+        if self.class_methods_thunk is None:
+            return 0
+        if self._class_methods is None:
+            self._class_methods = self.class_methods_thunk() or {}
+        per_class = self._class_methods.get(file_path, {})
+        return sum(1 for methods in per_class.values() if method_name in methods)
 
 
 def build_cpp_context(
@@ -94,15 +122,17 @@ def build_cpp_context(
     file_languages: dict[str, str],
     file_symbols: dict[str, Any],
     global_name_table: dict[str, Any],
-    file_class_methods: Any,  # lazy thunk — unused by the conservative cascade
+    file_class_methods: Callable[[], dict[str, Any]],  # lazy thunk
     **_ignored: Any,
 ) -> CppResolverContext | None:
     """Build the C++ context, or ``None`` when no C++ file is indexed.
 
     Zero cost for non-C++ projects (gated on ``file_languages``). The lazy
-    ``file_class_methods`` thunk is deliberately NOT called — the conservative
-    cascade resolves locals from ``file_symbols`` and projects from the single
-    global table, so no class/method map is needed.
+    ``file_class_methods`` thunk is STORED but deliberately NOT called here — it
+    is materialised at most once, on the first member-call that needs owner-class
+    disambiguation (a file declaring >1 class with a colliding method name). The
+    plain local / single-global tiers never touch it, so a project with no such
+    ambiguity still pays nothing for the class/method map.
     """
     if not any(lang in _CPP_LANGS for lang in file_languages.values()):
         return None
@@ -110,6 +140,7 @@ def build_cpp_context(
         file_symbols=file_symbols,
         global_name_table=global_name_table,
         file_languages=file_languages,
+        class_methods_thunk=file_class_methods,
     )
 
 
@@ -156,9 +187,30 @@ def _lookup_in_file(
     simple: str,
     kinds: frozenset[str],
 ) -> int | None:
+    """Resolve ``simple`` to a same-file symbol of an allowed ``kind``.
+
+    OWNER-CLASS GATE (Codex PR #348 P2): when the matched symbol is a
+    ``method`` and the file declares more than one class that defines a method
+    of this name, the resolver cannot prove which class an implicit-/explicit-
+    this call targets (no caller-class is threaded through). Binding either one
+    would be a false ``local`` edge, so the ambiguous method is SKIPPED. A
+    ``function`` / ``class`` symbol is file-scoped (no owning class), so the
+    gate never applies to it. Count 0 (owner-class map silent on this name)
+    means "no ambiguity evidence" and the plain match stands — conservative
+    because a genuinely class-ambiguous method is recorded under >1 class.
+    """
+    ambiguous_method = (
+        "method" in kinds and ctx.member_owner_class_count(file_path, simple) > 1
+    )
     for name, kind, sym_id in ctx.file_symbols.get(file_path, []):
-        if name == simple and kind in kinds:
-            return sym_id
+        if name != simple or kind not in kinds:
+            continue
+        if kind == "method" and ambiguous_method:
+            # Skip the class-ambiguous method, but keep scanning: an unqualified
+            # call may still bind a file-scoped free function / class of the
+            # same name (those are not class-owned, so unaffected by the gate).
+            continue
+        return sym_id
     return None
 
 

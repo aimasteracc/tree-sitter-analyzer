@@ -289,6 +289,98 @@ class TestExplicitSelfReceiver:
 
 
 # ---------------------------------------------------------------------------
+# Multi-class owner scoping (Codex PR #348 P2, cpp.py:210)
+#
+# When ONE .cpp file declares more than one class and both define a method of
+# the same name, a self-receiver / implicit-this member call cannot be proven
+# to target the caller's own class (the resolver is not handed the caller's
+# enclosing class). Binding it to "whichever class happens to be in the file"
+# is a false ``local`` edge — exactly the no-miswire breach Codex flagged. The
+# conservative rule: a member call binds a same-file ``method`` ONLY when that
+# method name is owned by EXACTLY ONE class in the file; otherwise ``unknown``.
+# ---------------------------------------------------------------------------
+
+
+def _build_multiclass_ctx() -> CppResolverContext:
+    """One .cpp file with TWO classes that each define ``dispatch``.
+
+    ``A::dispatch`` (id 2) and ``B::dispatch`` (id 3) collide by simple name.
+    ``A::solo`` (id 4) is owned by exactly one class. The ``file_class_methods``
+    map carries the owner-class breakdown the resolver needs to detect the
+    ambiguity; ``file_symbols`` (name, kind, id) alone cannot.
+    """
+    multi = "src/multi.cpp"
+    file_symbols = {
+        multi: [
+            ("A", "class", 1),
+            ("dispatch", "method", 2),  # A::dispatch
+            ("dispatch", "method", 3),  # B::dispatch — same simple name
+            ("solo", "method", 4),  # A::solo — single owner class
+            ("B", "class", 5),
+            ("free_fn", "function", 6),  # file-scoped free function
+        ],
+    }
+    global_name_table = {
+        "dispatch": [(multi, 2), (multi, 3)],
+        "solo": [(multi, 4)],
+        "free_fn": [(multi, 6)],
+    }
+    file_languages = {multi: "cpp"}
+    file_class_methods = {
+        multi: {
+            "A": {"dispatch": 2, "solo": 4},
+            "B": {"dispatch": 3},
+        }
+    }
+    return build_cpp_context(
+        imports_by_file={},
+        file_languages=file_languages,
+        file_symbols=file_symbols,
+        global_name_table=global_name_table,
+        file_class_methods=lambda: file_class_methods,
+    )
+
+
+class TestMultiClassOwnerScoping:
+    def test_self_call_to_ambiguous_member_stays_unknown(self) -> None:
+        # ``this->dispatch`` — ``dispatch`` is a method in BOTH A and B in this
+        # file. The resolver cannot prove the caller's class, so binding either
+        # one is a false ``local``. It must stay ``unknown``.
+        ctx = _build_multiclass_ctx()
+        sym, res, f = resolve_cpp_callee(
+            "dispatch", "this->dispatch", "src/multi.cpp", ctx
+        )
+        assert res == "unknown"
+        assert f == ""
+        assert sym is None
+
+    def test_implicit_this_call_to_ambiguous_member_stays_unknown(self) -> None:
+        # The same ambiguity applies to an unqualified (implicit-this) call to a
+        # member owned by >1 class: it cannot bind a single ``method``.
+        ctx = _build_multiclass_ctx()
+        sym, res, f = resolve_cpp_callee("dispatch", "dispatch", "src/multi.cpp", ctx)
+        assert res == "unknown"
+        assert sym is None
+
+    def test_self_call_to_single_owner_member_still_binds(self) -> None:
+        # ``this->solo`` — ``solo`` is owned by exactly one class (A), so the
+        # member call is unambiguous and binds ``local`` to that method.
+        ctx = _build_multiclass_ctx()
+        sym, res, f = resolve_cpp_callee("solo", "this->solo", "src/multi.cpp", ctx)
+        assert res == "local"
+        assert f == "src/multi.cpp"
+        assert sym == 4
+
+    def test_unqualified_free_function_unaffected_by_method_ambiguity(self) -> None:
+        # A FREE function is file-scoped (no owning class), so the multi-class
+        # method ambiguity must not suppress it: an unqualified call still binds.
+        ctx = _build_multiclass_ctx()
+        sym, res, f = resolve_cpp_callee("free_fn", "free_fn", "src/multi.cpp", ctx)
+        assert res == "local"
+        assert sym == 6
+
+
+# ---------------------------------------------------------------------------
 # THE MOAT — no cross-language mis-wire (MANDATORY)
 # ---------------------------------------------------------------------------
 
