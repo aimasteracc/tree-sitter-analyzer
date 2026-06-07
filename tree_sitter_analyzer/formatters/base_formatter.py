@@ -8,6 +8,8 @@ import io
 from abc import ABC, abstractmethod
 from typing import Any
 
+from ._csv_safety import csv_safe_row
+
 
 class BaseFormatter(ABC):
     """Base class for language-specific formatters"""
@@ -150,20 +152,26 @@ class BaseTableFormatter(BaseFormatter):
         """CSV format (common implementation).
 
         r37dk (dogfood): flattened nesting 6 → 3 by extracting per-row
-        builders (``_csv_field_row`` / ``_csv_method_row``). Output bytes
-        unchanged — same columns, same order, same escapechar settings.
+        builders (``_csv_field_row`` / ``_csv_method_row``).
+
+        Data rows are sanitized with ``csv_safe_row``: Python 3.10's
+        ``csv.writer`` raises ``_csv.Error: need to escape, but no escapechar
+        set`` on a NULL byte and emits a bare ``\\r`` unquoted (producing an
+        unreadable CSV). The previous ``escapechar="\\"`` silenced the NULL
+        error but doubled literal backslashes in ordinary fields (Windows
+        paths, regex), a format regression. Stripping the unrepresentable
+        controls instead leaves the dialect — and backslashes — untouched.
         """
         output = io.StringIO()
-        # Set escapechar to handle special characters that cannot be quoted (like null bytes in some envs)
-        writer = csv.writer(output, lineterminator="\n", escapechar="\\")
+        writer = csv.writer(output, lineterminator="\n")
 
         writer.writerow(
             ["Type", "Name", "Signature", "Visibility", "Lines", "Complexity", "Doc"]
         )
         for field in data.get("fields", []):
-            writer.writerow(self._csv_field_row(field))
+            writer.writerow(csv_safe_row(self._csv_field_row(field)))
         for method in data.get("methods", []):
-            writer.writerow(self._csv_method_row(method))
+            writer.writerow(csv_safe_row(self._csv_method_row(method)))
 
         csv_content = output.getvalue()
         csv_content = csv_content.replace("\r\n", "\n").replace("\r", "\n")
