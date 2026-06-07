@@ -39,7 +39,11 @@ jobs:
       - name: Publish to PyPI
         run: |
           echo "### 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
-          uv run --with twine twine upload dist/*
+          # --skip-existing makes publish idempotent: a re-triggered release
+          # run (e.g. after merging main into the release branch to resolve a
+          # version conflict for the main PR) won't fail on an already-uploaded
+          # version. PyPI is immutable, so re-uploading the same files is a noop.
+          uv run --with twine twine upload --skip-existing dist/*
           echo "✅ Package published to PyPI successfully" >> $GITHUB_STEP_SUMMARY
         env:
           TWINE_USERNAME: __token__ # pragma: allowlist secret
