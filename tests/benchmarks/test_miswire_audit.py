@@ -97,3 +97,14 @@ def test_symbols_json_fallback_when_no_ast_symbol_rows() -> None:
         cache.close()
     finally:
         shutil.rmtree(d, ignore_errors=True)
+
+
+def test_no_fts5_renders_clear_unavailable_message_not_misleading_zero() -> None:
+    """Codex #369 L158: on no-FTS5 builds TSA writes no call edges; the audit must
+    say so plainly, NOT print a misleading '0 mis-wires / 0× cleaner' verdict."""
+    from tree_sitter_analyzer.miswire_audit import AuditResult, render_terminal
+
+    r = AuditResult(project_root=".", call_edges_available=False)
+    out = render_terminal(r)
+    assert "FTS5" in out
+    assert "cleaner" not in out  # no misleading verdict when there is no data
