@@ -34,6 +34,14 @@ Restart your agent, then say: *"Set the project root to my repo and run the `ind
 
 [Other agents (Cursor, Copilot, Cline, Continue, Claude Desktop, Roo Code) →](#-supported-agents)
 
+**See the correctness edge on your own repo in 30 seconds** — no install, no CodeGraph:
+
+```bash
+uvx --from "tree-sitter-analyzer" miswire-audit .
+```
+
+It prints how many call edges a name-only code index (the design most tools use) *would* mis-wire across a language boundary — e.g. a Python `sorted()` wired to a Swift `func sorted` — versus how many TSA does (≈0). On [HuggingFace `tokenizers`](benchmarks/codegraph_compare/MISWIRE-AUDIT-EXAMPLES.md): **1,259 → 0**.
+
 ---
 
 ## Why Tree-sitter Analyzer
