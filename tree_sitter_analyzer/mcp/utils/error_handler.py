@@ -10,13 +10,28 @@ import asyncio
 import inspect
 import logging
 import traceback
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from datetime import datetime
 from enum import Enum
 from functools import update_wrapper
-from typing import Any
+from typing import Any, NoReturn
 
 logger = logging.getLogger(__name__)
+
+
+def raise_invalid_mode(
+    mode: Any, valid_modes: Iterable[str], *, label: str = "mode"
+) -> NoReturn:
+    """Raise a ``ValueError`` that enumerates the sorted valid modes.
+
+    Mirrors the good pattern in ``call_graph_tool``/``test_gap_tool`` so a
+    bad ``mode`` argument tells the caller exactly which values are accepted.
+    Callers should pass the tool's own schema ``enum`` (e.g.
+    ``self.get_tool_schema()["properties"]["mode"]["enum"]``) so the valid
+    set has a single source of truth rather than a second hardcoded copy.
+    """
+    valid = ", ".join(sorted(valid_modes))
+    raise ValueError(f"Invalid {label} '{mode}'; expected one of: {valid}.")
 
 
 class ErrorSeverity(Enum):

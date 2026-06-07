@@ -25,6 +25,7 @@ from ...complexity_heatmap import (
     analyze_project_heatmap,
 )
 from ...utils import setup_logger
+from ..utils.error_handler import raise_invalid_mode
 from ..utils.format_helper import apply_toon_format_to_response
 from ._response_builder import build_error, build_response
 from .base_tool import BaseMCPTool
@@ -126,8 +127,9 @@ class CodeGraphComplexityHeatmapTool(BaseMCPTool):
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         mode = arguments.get("mode", "project")
-        if mode not in ("project", "file", "function"):
-            raise ValueError(f"Invalid mode: {mode}")
+        valid = self.get_tool_schema()["properties"]["mode"]["enum"]
+        if mode not in valid:
+            raise_invalid_mode(mode, valid)
         if mode in ("file", "function") and not arguments.get("file_path"):
             raise ValueError(f"file_path required for {mode} mode")
         return True

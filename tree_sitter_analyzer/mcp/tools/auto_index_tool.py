@@ -22,6 +22,7 @@ from ..utils.auto_index_guard import (
     is_indexed,
     mark_dirty,
 )
+from ..utils.error_handler import raise_invalid_mode
 from ..utils.format_helper import apply_toon_format_to_response
 from ._response_builder import build_error, build_response
 from .base_tool import BaseMCPTool
@@ -82,8 +83,9 @@ class CodeGraphAutoIndexTool(BaseMCPTool):
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         mode = arguments.get("mode", "status")
-        if mode not in ("status", "warm", "reset"):
-            raise ValueError(f"Invalid mode: {mode}")
+        valid = self.get_tool_schema()["properties"]["mode"]["enum"]
+        if mode not in valid:
+            raise_invalid_mode(mode, valid)
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:

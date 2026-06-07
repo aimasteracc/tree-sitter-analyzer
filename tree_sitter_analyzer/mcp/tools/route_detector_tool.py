@@ -13,6 +13,7 @@ from typing import Any
 
 from ...route_detector import RouteDetector
 from ...utils import setup_logger
+from ..utils.error_handler import raise_invalid_mode
 from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
@@ -134,7 +135,9 @@ class RouteDetectorTool(BaseMCPTool):
                 return file_result
             result = file_result
         else:
-            raise ValueError(f"Unknown mode: {mode}")
+            raise_invalid_mode(
+                mode, self.get_tool_schema()["properties"]["mode"]["enum"]
+            )
 
         _attach_route_summary(result, mode)
         from ..utils.format_helper import apply_toon_format_to_response

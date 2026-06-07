@@ -89,11 +89,16 @@ class TestASTDiffToolExecution:
 
     @pytest.mark.asyncio
     async def test_execute_with_invalid_mode(self, tool):
-        # Unknown mode raises ValueError — the MCP layer wraps it
-        with pytest.raises(ValueError, match="Unknown mode"):
+        # Invalid mode raises ValueError that enumerates the valid modes —
+        # the MCP layer wraps it.
+        with pytest.raises(ValueError) as exc_info:
             await tool.execute(
                 {
                     "file_path": "/src/main.py",
                     "mode": "invalid_mode",
                 }
             )
+        msg = str(exc_info.value)
+        assert "Invalid mode 'invalid_mode'" in msg
+        for valid in ("diff_files", "diff_strings", "diff_git"):
+            assert valid in msg, f"Missing '{valid}' in error: {msg}"

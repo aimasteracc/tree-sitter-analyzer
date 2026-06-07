@@ -13,6 +13,7 @@ from typing import Any
 
 from ...ast_diff import ASTDiffer
 from ...utils import setup_logger
+from ..utils.error_handler import raise_invalid_mode
 from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
@@ -152,7 +153,9 @@ class ASTDiffTool(BaseMCPTool):
         elif mode == "diff_git":
             result = self._diff_git(differ, arguments)
         else:
-            raise ValueError(f"Unknown mode: {mode}")
+            raise_invalid_mode(
+                mode, self.get_tool_schema()["properties"]["mode"]["enum"]
+            )
 
         result_dict = result.to_dict()
         # pain #5 (dogfood): ast-diff had no verdict. NOT_FOUND when the two

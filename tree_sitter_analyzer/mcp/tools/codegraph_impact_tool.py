@@ -21,6 +21,7 @@ from typing import Any
 
 from ...call_graph import CachedCallGraph, CallGraph, FunctionRef
 from ...utils import setup_logger
+from ..utils.error_handler import raise_invalid_mode
 from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
@@ -377,7 +378,9 @@ class CodeGraphImpactTool(BaseMCPTool):
                 raise ValueError("function_name required for risk_score mode")
             result = _compute_risk_score(graph, func_name, file_path)
         else:
-            raise ValueError(f"Unknown mode: {mode}")
+            raise_invalid_mode(
+                mode, self.get_tool_schema()["properties"]["mode"]["enum"]
+            )
 
         # pain #10 (dogfood pass 2): codegraph_impact emitted no verdict.
         # Map the embedded risk level (already computed by _compute_risk_score)

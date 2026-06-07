@@ -16,6 +16,7 @@ from ...ast_diff import ASTDiffer
 from ...project_graph import _language_from_ext
 from ...semantic_change_classifier import SemanticChangeClassifier
 from ...utils import setup_logger
+from ..utils.error_handler import raise_invalid_mode
 from ..utils.format_helper import apply_toon_format_to_response
 from .base_tool import BaseMCPTool
 
@@ -141,7 +142,9 @@ class SemanticClassifyTool(BaseMCPTool):
             file_path = arguments["file_path"]
             diff_result = self._diff_git(differ, arguments)
         else:
-            raise ValueError(f"Unknown mode: {mode}")
+            raise_invalid_mode(
+                mode, self.get_tool_schema()["properties"]["mode"]["enum"]
+            )
 
         classifier = SemanticChangeClassifier(file_path=file_path)
         classification = classifier.classify(diff_result)

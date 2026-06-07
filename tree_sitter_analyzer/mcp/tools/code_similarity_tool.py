@@ -14,6 +14,7 @@ from typing import Any
 
 from ...code_similarity import analyze_code_similarity
 from ...utils import setup_logger
+from ..utils.error_handler import raise_invalid_mode
 from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
@@ -86,8 +87,9 @@ class CodeGraphSimilarityTool(BaseMCPTool):
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         mode = arguments.get("mode", "all")
-        if mode not in ("all", "structural", "textual"):
-            raise ValueError(f"Invalid mode: {mode}")
+        valid = self.get_tool_schema()["properties"]["mode"]["enum"]
+        if mode not in valid:
+            raise_invalid_mode(mode, valid)
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:

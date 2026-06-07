@@ -18,6 +18,7 @@ from typing import Any
 from ...incremental_sync import IncrementalSync
 from ...utils import setup_logger
 from ..utils.auto_index_guard import ensure_indexed, is_indexed
+from ..utils.error_handler import raise_invalid_mode
 from ..utils.format_helper import apply_toon_format_to_response
 from ._response_builder import build_error, build_response
 from .base_tool import BaseMCPTool
@@ -77,8 +78,9 @@ class CodeGraphIncrementalSyncTool(BaseMCPTool):
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         mode = arguments.get("mode", "sync")
-        if mode not in ("sync", "changes", "status"):
-            raise ValueError(f"Invalid mode: {mode}")
+        valid = self.get_tool_schema()["properties"]["mode"]["enum"]
+        if mode not in valid:
+            raise_invalid_mode(mode, valid)
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:

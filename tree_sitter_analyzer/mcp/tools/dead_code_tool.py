@@ -21,6 +21,7 @@ from ...dead_code_analyzer import (
     analyze_dead_code,
 )
 from ...utils import setup_logger
+from ..utils.error_handler import raise_invalid_mode
 from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
@@ -94,8 +95,9 @@ class CodeGraphDeadCodeTool(BaseMCPTool):
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         mode = arguments.get("mode", "all")
-        if mode not in ("all", "dead_functions", "unused_imports", "variables"):
-            raise ValueError(f"Invalid mode: {mode}")
+        valid = self.get_tool_schema()["properties"]["mode"]["enum"]
+        if mode not in valid:
+            raise_invalid_mode(mode, valid)
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:

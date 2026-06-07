@@ -17,6 +17,7 @@ from typing import Any
 
 from ...ast_path import ASTPathNavigator
 from ...utils import setup_logger
+from ..utils.error_handler import raise_invalid_mode
 from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
@@ -130,7 +131,9 @@ class CodeGraphASTPathTool(BaseMCPTool):
             path_result = nav.path_at_line(resolved, line_int, language)
             result = path_result
         else:
-            raise ValueError(f"Unknown mode: {mode}")
+            raise_invalid_mode(
+                mode, self.get_tool_schema()["properties"]["mode"]["enum"]
+            )
 
         # Pain #24 (dogfood pass 3): ast_path emitted no verdict. NOT_FOUND
         # when the result is effectively empty (no nodes/path), INFO when
