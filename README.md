@@ -93,7 +93,15 @@ Token cost is one axis; a code-intelligence tool's *first* job is a **correct gr
 | CodeGraph | **745** | 38,103 | 1.96 % |
 | **Tree-sitter Analyzer** | **6** | 114,160 | **0.005 %** |
 
-**~390× cleaner on cross-language correctness, while resolving 3× more call edges.** CodeGraph's mis-wires span 17 language pairs (python→swift **408**, python→typescript 195, python→ruby 81, …); TSA's 6 are all `java→python/php` from single-word Java method names. Concretely:
+**~390× cleaner on cross-language correctness, while resolving 3× more call edges.** CodeGraph's mis-wires span 17 language pairs (python→swift **408**, python→typescript 195, python→ruby 81, …); TSA's 6 are all `java→python/php` from single-word Java method names.
+
+> **Don't trust this table — run it on your own repo (no CodeGraph install needed):**
+> ```bash
+> uvx --from "tree-sitter-analyzer" miswire-audit .
+> ```
+> It indexes your code and prints how many call edges a name-only resolver (the design most indexes use) *would* mis-wire across a language boundary vs how many TSA does — with the offending edges listed (`Python sorted() → Swift func at file:line`). Add `--card` for a shareable scorecard.
+
+Concretely:
 
 | call (Python `_resolve_entry_points` / `build_response`) | CodeGraph | TSA |
 |---|---|---|
