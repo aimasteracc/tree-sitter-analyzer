@@ -105,6 +105,8 @@ A correct graph that leaves most edges `unknown` is still half a graph. TSA's re
 
 The remaining ~4% `unknown` is dominated by genuinely-unresolvable dynamic dispatch (`BaseTool.execute()`), constructors, and ambiguous same-name project methods — the false-positive floor of static analysis, left honest rather than guessed.
 
+> **Now multi-language (8 languages).** Cross-language-safe resolution is no longer Python-only. A per-language **resolver registry** ([RFC-0010](rfcs/0010-resolver-language-registry.md)) gives **Python · Java · Go · JavaScript · TypeScript · C++ · Rust** (+ JSX) each its own classification cascade with conservative stdlib/external tiers — every one adversarially verified to **never bind across a language boundary**. A C++ caller never resolves to a same-named Python symbol; a Go `sorted()` never wires to a Swift func. The full reproducible audit (CodeGraph wires **299** Python `sorted()` callers to a Swift definition; TSA binds **0**, measured against both indexes) is [`benchmarks/codegraph_compare/REPORT-v1.21.0.md`](benchmarks/codegraph_compare/REPORT-v1.21.0.md). Adding a language is one new file — wave 2 (Kotlin/Scala/PHP/Ruby/C#) follows the same pattern.
+
 > **Symbol kinds, too.** TSA classifies class members as `kind=method` (20,348 method rows on this repo) — `search action=symbol kind=method` returns them; CodeGraph parity, not a stub. The `index status` payload breaks symbols down by kind and language and edges by kind (`edges_by_kind` — a breakdown CodeGraph does not surface).
 
 ### Reactive push + edge-kind breakdown — two things CodeGraph can't do
