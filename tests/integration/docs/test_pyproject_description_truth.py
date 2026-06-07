@@ -18,7 +18,10 @@ import re
 import sys
 from pathlib import Path
 
-import tomllib
+if sys.version_info >= (3, 11):
+    import tomllib
+else:  # Python 3.10 — tomllib landed in 3.11; tomli is a conditional dep.
+    import tomli as tomllib
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 PYPROJECT_PATH = PROJECT_ROOT / "pyproject.toml"
