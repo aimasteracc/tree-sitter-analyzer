@@ -1,6 +1,6 @@
 # RFC-0008: Multi-language method classification — beyond Python
 
-- **Status**: draft — Java implemented (#326, on develop); Go/JS/TS pending
+- **Status**: implemented — Python+Java, and Go/JS/TS/C++/Rust via the RFC-0010 registry (#326, #346-#350)
 - **Author(s)**: @aimasteracc
 - **Created**: 2026-06-06
 - **Last updated**: 2026-06-07

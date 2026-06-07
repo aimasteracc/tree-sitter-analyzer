@@ -64,6 +64,6 @@ number; if two RFCs collide on a number in flight, the later-merged one renames.
 | [0005](0005-external-method-resolution.md) | External-library method resolution — classify bare external method names | implemented |
 | [0006](0006-context-progressive-disclosure.md) | Context progressive disclosure — lean nav context, opt-in graph | implemented |
 | [0007](0007-builtin-method-resolution.md) | Builtin method resolution — classify qualified-builtin method calls | implemented |
-| [0008](0008-multilang-method-classification.md) | Multi-language method classification — beyond Python | draft (Java implemented #326; Go/JS/TS pending) |
+| [0008](0008-multilang-method-classification.md) | Multi-language method classification — beyond Python | implemented (Python+Java; Go/JS/TS/C++/Rust via RFC-0010 #346-#350) |
 | [0009](0009-nav-context-self-sufficiency.md) | nav context self-sufficiency — answer in one call | accepted (A/B/C implemented #330/#331/#333; measured turn-drop pending) |
-| [0010](0010-resolver-language-registry.md) | Resolver language registry — scale the correctness moat to N languages | accepted |
+| [0010](0010-resolver-language-registry.md) | Resolver language registry — scale the correctness moat to N languages | implemented (foundation #345; first wave go/js/ts/cpp/rust #346-#350) |

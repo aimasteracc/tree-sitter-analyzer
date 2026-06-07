@@ -1,6 +1,6 @@
 # RFC-0010: Resolver language registry — scale the correctness moat to N languages
 
-- **Status**: accepted
+- **Status**: implemented — foundation #345; first wave go/js/ts/cpp/rust #346-#350
 - **Author(s)**: @aimasteracc
 - **Created**: 2026-06-07
 - **Last updated**: 2026-06-07
