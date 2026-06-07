@@ -23,6 +23,7 @@ _CALL_NODE_TYPES = {
         "member_call_expression",
         "scoped_call_expression",
     },
+    "swift": {"call_expression"},
 }
 
 _FUNC_DEF_TYPES = {
@@ -38,6 +39,7 @@ _FUNC_DEF_TYPES = {
     "kotlin": {"function_declaration"},
     "ruby": {"method", "singleton_method"},
     "php": {"function_definition", "method_declaration"},
+    "swift": {"function_declaration", "protocol_function_declaration"},
 }
 
 # ---------------------------------------------------------------------------
@@ -123,6 +125,7 @@ _FUNC_NAME_DISPATCH: dict[str, Callable] = {
     "kotlin": _func_name_field,
     "ruby": _func_name_field,
     "php": _func_name_field,
+    "swift": _func_name_field,
 }
 
 # ---------------------------------------------------------------------------
@@ -286,6 +289,9 @@ _CALL_DISPATCH: dict[str, Callable] = {
     "kotlin": _call_info_kotlin,
     "ruby": _call_info_ruby,
     "php": _call_info_php,
+    # Swift call_expression: callee is the first child (simple_identifier or
+    # navigation_expression) — same shape as Kotlin.
+    "swift": _call_info_kotlin,
 }
 
 # ---------------------------------------------------------------------------
