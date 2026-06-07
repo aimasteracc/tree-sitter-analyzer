@@ -360,7 +360,9 @@ class CsvFormatter(IFormatter):
         import io
 
         output = io.StringIO()
-        writer = csv.writer(output, lineterminator="\n")
+        # escapechar handles control chars (e.g. NULL bytes) that Python 3.10's
+        # csv.writer cannot quote — without it, "\x00" raises _csv.Error there.
+        writer = csv.writer(output, lineterminator="\n", escapechar="\\")
 
         # Write header
         writer.writerow(

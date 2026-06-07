@@ -178,7 +178,9 @@ def compact_header_row(header: dict[str, Any]) -> str:
 def format_csv_output(analysis_result: dict[str, Any]) -> str:
     """Format CSV output for Markdown files."""
     output = io.StringIO()
-    writer = csv.writer(output, lineterminator="\n")
+    # escapechar handles control chars (e.g. NULL bytes) that Python 3.10's
+    # csv.writer cannot quote — without it, "\x00" raises _csv.Error there.
+    writer = csv.writer(output, lineterminator="\n", escapechar="\\")
     writer.writerow(
         ["Type", "Text/URL/Language", "Level/Count", "Start Line", "End Line"]
     )
