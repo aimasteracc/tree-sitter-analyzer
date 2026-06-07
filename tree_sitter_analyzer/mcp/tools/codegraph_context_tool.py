@@ -26,10 +26,19 @@ _STOP_WORDS = frozenset(
     "or through to trace what when where which why with work works".split()
 )
 
-# Inline-body cap per code block. A full function body (the old 40-line window)
-# bloated nav context responses vs peer tools for little added value; the agent
-# gets the signature + head and reads the exact range only if it must.
+# Inline-body cap per code block for TANGENTIAL nodes (pulled in by call-graph
+# expansion, not the task's named symbols). These get signature + head; the agent
+# rarely needs their full body, so RFC-0006's thrift is preserved where it costs
+# no turn.
 _MAX_BLOCK_LINES = 16
+
+# RFC-0009: ENTRY-POINT / task-relevant symbols get their FULL body inlined up to
+# this budget so the agent answers in ONE call instead of a follow-up Read. The
+# blanket 16-line cap was net-negative — it traded a smaller first response for
+# extra turns, and turns dominate end-to-end cost. 160 covers the motivating
+# target (resolve_java_callee, 127 lines) with headroom; tuned against the
+# turn-count measurement in RFC-0009's acceptance criteria.
+_MAX_ENTRY_BODY_LINES = 160
 
 # Cap on edges echoed in the response. Edges are graph wiring for visualization;
 # an answering agent rarely needs the full adjacency list, and 60+ raw edge
@@ -611,6 +620,10 @@ def _nodes_from_hits(
         if len(nodes) >= max_nodes:
             break
         node = _node_from_ref(hit)
+        # RFC-0009: these are the task's named entry points (vs nodes added later
+        # by call-graph expansion). Mark them so _build_code_blocks ranks them
+        # first and inlines their full body.
+        node["is_entry"] = True
         key = (node["name"], node.get("file", ""), node.get("line", 0))
         if key in seen:
             continue
@@ -694,7 +707,17 @@ def _build_code_blocks(
     if max_code_blocks <= 0:
         return []
     degrees = _edge_degrees(nodes, edges)
-    ranked = sorted(nodes, key=lambda n: (-degrees.get(n["id"], 0), n.get("line", 0)))
+    # RFC-0009: rank the task's named entry points FIRST (before graph-centrality),
+    # so the answer symbol always gets a block ahead of a high-degree hub like a
+    # cache accessor. Within each tier, fall back to edge-degree then line.
+    ranked = sorted(
+        nodes,
+        key=lambda n: (
+            not n.get("is_entry", False),
+            -degrees.get(n["id"], 0),
+            n.get("line", 0),
+        ),
+    )
     blocks: list[dict[str, Any]] = []
     seen_files_lines: set[tuple[str, int]] = set()
     for node in ranked:
@@ -718,15 +741,16 @@ def _build_code_blocks(
             continue
         raw_end = int(node.get("end_line", 0) or 0)
         end_known = raw_end >= start_line
+        # RFC-0009: entry-point / task-relevant symbols inline their FULL body up
+        # to _MAX_ENTRY_BODY_LINES so the agent answers in one call; tangential
+        # (expansion) nodes keep the small _MAX_BLOCK_LINES cap (RFC-0006 thrift).
+        block_cap = _MAX_ENTRY_BODY_LINES if node.get("is_entry") else _MAX_BLOCK_LINES
         # Nodes from call-graph expansion (callees/callers) often have no
         # end_line; fall back to the cap window for those.
-        full_end = raw_end if end_known else start_line + _MAX_BLOCK_LINES - 1
-        # Cap the inline body to _MAX_BLOCK_LINES. A full 40-line function body
-        # per block made nav context responses 2-4x larger than peers for no
-        # added value — the agent needs the signature + head of the body to
-        # locate and understand the symbol, then reads the exact range only if
-        # it must. Long bodies get a truncation marker pointing at the rest.
-        capped_end = min(full_end, start_line + _MAX_BLOCK_LINES - 1)
+        full_end = raw_end if end_known else start_line + block_cap - 1
+        # Long bodies still get a truncation marker pointing at the rest, so the
+        # agent can read on for the rare over-budget function.
+        capped_end = min(full_end, start_line + block_cap - 1)
         capped_end = min(capped_end, len(lines))
         content = extract_snippet_from_lines(lines, start_line, capped_end)
         if not content:
@@ -746,7 +770,7 @@ def _build_code_blocks(
             # (Codex P2 on #293: the old fallback silently dropped lines 25+).
             content = (
                 content.rstrip("\n")
-                + f"\n    # … snippet capped at {_MAX_BLOCK_LINES} lines; "
+                + f"\n    # … snippet capped at {block_cap} lines; "
                 f"end unknown — read {file_path}:{capped_end + 1}+ if needed\n"
             )
         blocks.append(

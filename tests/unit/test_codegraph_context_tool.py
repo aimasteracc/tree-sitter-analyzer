@@ -1384,3 +1384,72 @@ def test_build_related_symbols_groups_by_file() -> None:
 
     b_group = next(g for g in groups if g["file"] == "b.py")
     assert b_group["symbols"] == ["beta:5"]
+
+
+def test_entry_point_body_inlines_full_under_budget(tmp_path: Path) -> None:
+    """RFC-0009 A: an entry-point symbol whose body fits the entry budget inlines
+    in FULL — no '… more lines' truncation marker — so the agent answers in one
+    call. The old blanket 16-line cap truncated it (RED)."""
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        _build_code_blocks,
+        _node_id,
+    )
+
+    body = "def big():\n" + "".join(f"    x{i} = {i}\n" for i in range(1, 40))
+    f = tmp_path / "big.py"
+    f.write_text(body, encoding="utf-8")  # 'big' spans lines 1..40
+    nodes = [
+        {
+            "id": _node_id("big", "big.py", 1),
+            "name": "big",
+            "file": "big.py",
+            "line": 1,
+            "end_line": 40,
+            "is_entry": True,
+        }
+    ]
+    blocks = _build_code_blocks(nodes, [], 5, str(tmp_path))
+    assert len(blocks) == 1
+    block = blocks[0]
+    assert "more lines" not in block["content"], "entry body was truncated"
+    assert "snippet capped" not in block["content"]
+    assert block["end_line"] == 40, block
+    assert "x39 = 39" in block["content"], "full body not inlined"
+
+
+def test_entry_point_ranked_before_high_degree_noise(tmp_path: Path) -> None:
+    """RFC-0009 B: a task's named entry point gets a code block BEFORE a
+    high-edge-degree non-entry hub (e.g. a cache accessor). The old degree-only
+    ranking put the hub first and could starve the entry of a slot (RED)."""
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        _build_code_blocks,
+        _node_id,
+    )
+
+    f = tmp_path / "m.py"
+    f.write_text(
+        "def answer():\n    return 1\n\n\ndef cache_get():\n    return 2\n",
+        encoding="utf-8",
+    )
+    entry = {
+        "id": _node_id("answer", "m.py", 1),
+        "name": "answer",
+        "file": "m.py",
+        "line": 1,
+        "end_line": 2,
+        "is_entry": True,
+    }
+    noise = {
+        "id": _node_id("cache_get", "m.py", 5),
+        "name": "cache_get",
+        "file": "m.py",
+        "line": 5,
+        "end_line": 6,
+    }
+    # cache_get has high edge degree; answer has none.
+    edges = [{"source": noise["id"], "target": f"x{i}"} for i in range(8)] + [
+        {"source": f"x{i}", "target": noise["id"]} for i in range(8)
+    ]
+    # only ONE block slot — the entry must win it.
+    blocks = _build_code_blocks([noise, entry], edges, 1, str(tmp_path))
+    assert [b["name"] for b in blocks] == ["answer"], blocks
