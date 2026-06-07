@@ -45,17 +45,21 @@ _GENERIC_VERBS = frozenset(
 # src/parser/utils.py", "tree_sitter_analyzer/mcp_tools.py") is location, NOT a
 # symbol request — but its components ("parser", "tree_sitter_analyzer",
 # "UserService") otherwise look like specific anchors and wrongly trigger the
-# generic-verb filter, dropping the user's real bare verb (Codex #333 6th/7th
-# rounds). This matches a whitespace token that contains ``/`` or ends in a code
-# file extension; its components are excluded from anchor detection.
+# generic-verb filter, dropping the user's real bare verb (Codex #333 6th/7th/8th
+# rounds). This matches a whitespace token that contains a path separator (``/``
+# OR Windows ``\``) or ends in a code file extension; its components are excluded
+# from anchor detection.
 _CODE_FILE_EXT = (
     "py|pyi|js|jsx|ts|tsx|go|rs|java|kt|kts|c|h|hpp|cpp|cc|cs|rb|php|swift|"
     "scala|m|mm|sh|sql|lua|dart|ex|exs|clj|hs|ml"
 )
 _PATH_FRAGMENT_RE = re.compile(
-    rf"[\w.\-]*/[\w./\-]*|\b[\w\-]+\.(?:{_CODE_FILE_EXT})\b",
+    rf"[\w.\-]*[\\/][\w.\\/\-]*|\b[\w\-]+\.(?:{_CODE_FILE_EXT})\b",
     re.IGNORECASE,
 )
+# Separators a path fragment is split into components on: ``/`` ``\`` ``.`` ``:``
+# (drive letters) and ``-``.
+_PATH_COMPONENT_SPLIT = re.compile(r"[\\/.:\-]+")
 
 # Inline-body cap per code block for TANGENTIAL nodes (pulled in by call-graph
 # expansion, not the task's named symbols). These get signature + head; the agent
@@ -667,7 +671,7 @@ def _extract_symbol_candidates(task: str) -> list[str]:
     # the filter run and drop the user's real bare verb.
     path_tokens: set[str] = set()
     for match in _PATH_FRAGMENT_RE.finditer(task):
-        for part in re.split(r"[/.\-]+", match.group(0)):
+        for part in _PATH_COMPONENT_SPLIT.split(match.group(0)):
             cleaned = part.strip("_")
             if cleaned:
                 path_tokens.add(part)

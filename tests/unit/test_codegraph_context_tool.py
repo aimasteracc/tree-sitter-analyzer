@@ -1588,3 +1588,19 @@ def test_snake_or_camel_path_components_do_not_anchor_filter() -> None:
     assert "dispatch" not in _extract_symbol_candidates(
         "how does resolve_callee dispatch a call"
     )
+
+
+def test_windows_path_components_do_not_anchor_filter() -> None:
+    """RFC-0009 C / Codex P2 #333 (8th round): Windows-style paths (backslash
+    separators, drive letters) must be recognised as paths too, so their
+    snake_case/CamelCase directory components don't anchor the filter."""
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        _extract_symbol_candidates,
+    )
+
+    assert "dispatch" in _extract_symbol_candidates(
+        r"find dispatch in src\tree_sitter_analyzer\mcp_tools.py"
+    )
+    assert "dispatch" in _extract_symbol_candidates(
+        r"find dispatch in C:\repo\src\UserService\handler.py"
+    )
