@@ -164,6 +164,18 @@ for s in get add fts_search; do
 done
 # → get nodes: 14   add nodes: 12   fts_search nodes: 4
 
+# --- prove the MERGE (not just that N nodes exist): callers really span them ---
+# Edge-level: how many DISTINCT same-name 'get' nodes actually have callers?
+sqlite3 .codegraph/codegraph.db \
+  "SELECT COUNT(DISTINCT n.id) FROM nodes n JOIN edges e ON e.target=n.id \
+   AND e.kind='calls' WHERE n.name='get';"            # → 7  (across Python + C++)
+# And CodeGraph's caller query returns ALL 14 merged — its own note says so:
+#   (MCP) codegraph_callers get  ->  trailing note:
+#   "Aggregated results across 14 symbols named get: ... _route_cache.py:133,
+#    core/cache_service.py:117, examples/sample.cpp:37, corpus_scala.scala:92/295,
+#    Sample.kt:59, corpus_kotlin.kt:605, corpus_java.java:175, ..."
+#   -> one query, 14 defs across Python/C++/Scala/Kotlin/Java, no way to tell them apart.
+
 # --- cross-language caller mis-wires (CodeGraph) ---
 sqlite3 .codegraph/codegraph.db "SELECT COUNT(DISTINCT e.source) FROM edges e \
   JOIN nodes n ON e.source=n.id \
