@@ -225,7 +225,6 @@ surfaces for a fixture in the new language.
 - Receiver-type inference (the path to higher per-language precision) — separate
   RFC; each language ships name-tier classification first.
 - File-level resolution of stdlib/external methods (RFC-0004 phase 2).
-- Auto-discovery of language modules.
 
 ## Open questions
 
