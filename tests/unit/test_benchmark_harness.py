@@ -603,3 +603,149 @@ class TestRunIdUniqueness:
         # Must not raise — session_id is now a declared optional field.
         validated = RunRecord(**record)
         assert validated.session_id == "SESS_X"
+
+
+# ---------------------------------------------------------------------------
+# Cost / cache accounting capture (real API numbers, not estimates)
+# ---------------------------------------------------------------------------
+
+
+class TestRunRecordCostCacheColumns:
+    """The benchmark must record the provider's REAL cache/cost accounting so a
+    cost comparison can't be silently contaminated by estimates (see
+    benchmark-cost-analysis-rigor memory). The new columns must be optional with
+    defaults so pre-existing runs.jsonl records still validate under
+    extra='forbid'."""
+
+    def test_run_record_defaults_keep_old_records_loadable(self):
+        from benchmarks.codegraph_compare.schemas import RunRecord
+
+        # An "old" record written before the cost/cache columns existed — it has
+        # none of the new keys. extra='forbid' + defaults must let it validate.
+        old_record = {
+            "run_id": "q1__native-only__claude__00",
+            "repo": "gin",
+            "question_id": "q1",
+            "arm": "native-only",
+            "repeat": 0,
+            "started_at": "2026-06-07T00:00:00+00:00",
+            "ended_at": "2026-06-07T00:00:01+00:00",
+            "elapsed_seconds": 1.0,
+            "input_tokens": 100,
+            "output_tokens": 50,
+            "total_tokens": 150,
+            "estimated_cost_usd": 0.001,
+            "tool_calls": 1,
+            "file_reads": 1,
+            "search_calls": 0,
+            "index_queries": 0,
+            "answer": "ok",
+            "citations": [],
+            "transcript_path": "/tmp/x.jsonl",
+        }
+        validated = RunRecord(**old_record)
+        # Defaults applied — no real accounting present in an old record.
+        assert validated.cache_read_tokens == 0
+        assert validated.cache_creation_tokens == 0
+        assert validated.total_cost_usd == 0.0
+        assert validated.num_turns == 0
+
+    def test_run_record_accepts_real_cost_cache_columns(self):
+        from benchmarks.codegraph_compare.schemas import RunRecord
+
+        record = {
+            "run_id": "q1__tsa-warm__claude__00",
+            "repo": "gin",
+            "question_id": "q1",
+            "arm": "tsa-warm",
+            "repeat": 0,
+            "started_at": "2026-06-07T00:00:00+00:00",
+            "ended_at": "2026-06-07T00:00:01+00:00",
+            "elapsed_seconds": 1.0,
+            "input_tokens": 100,
+            "output_tokens": 50,
+            "total_tokens": 150,
+            "estimated_cost_usd": 0.001,
+            "tool_calls": 1,
+            "file_reads": 0,
+            "search_calls": 0,
+            "index_queries": 1,
+            "answer": "ok",
+            "citations": [],
+            "transcript_path": "/tmp/x.jsonl",
+            "cache_read_tokens": 1234,
+            "cache_creation_tokens": 56,
+            "total_cost_usd": 0.0421,
+            "num_turns": 7,
+        }
+        validated = RunRecord(**record)
+        assert validated.cache_read_tokens == 1234
+        assert validated.cache_creation_tokens == 56
+        assert validated.total_cost_usd == 0.0421
+        assert validated.num_turns == 7
+
+    def test_runner_parses_real_cache_cost_from_claude_usage_block(self):
+        """The runner must pull cache_read/creation, total_cost_usd and num_turns
+        straight from the claude --print result/usage block — not estimate them."""
+        from benchmarks.codegraph_compare.adapters.claude_runner import (
+            _extract_cost_accounting,
+        )
+
+        raw_result = {
+            "total_cost_usd": 0.0421,
+            "num_turns": 7,
+            "usage": {
+                "input_tokens": 100,
+                "output_tokens": 50,
+                "cache_read_input_tokens": 1234,
+                "cache_creation_input_tokens": 56,
+            },
+        }
+        acct = _extract_cost_accounting(raw_result)
+        assert acct["cache_read_tokens"] == 1234
+        assert acct["cache_creation_tokens"] == 56
+        assert acct["total_cost_usd"] == 0.0421
+        assert acct["num_turns"] == 7
+
+    def test_runner_captures_codex_cache_hits(self):
+        """Codex reports prompt-cache hits as `cached_input_tokens`, not Claude's
+        `cache_read_input_tokens` — the backend-neutral cache_read_tokens column
+        must capture them, not record 0 (Codex P2 #342)."""
+        from benchmarks.codegraph_compare.adapters.claude_runner import (
+            _extract_cost_accounting,
+        )
+
+        acct = _extract_cost_accounting(
+            {"usage": {"input_tokens": 100, "cached_input_tokens": 999}}
+        )
+        assert acct["cache_read_tokens"] == 999
+
+    def test_runner_emits_cost_cache_columns_in_record(self, tmp_path):
+        from benchmarks.codegraph_compare.adapters import RunConfig
+        from benchmarks.codegraph_compare.adapters.claude_runner import run_one
+        from benchmarks.codegraph_compare.schemas import RunRecord
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        cfg = RunConfig(arm_id="native-only", repo_path=repo, system_prompt="sys")
+        record = run_one(
+            question_id="q1",
+            question_prompt="trace it",
+            arm_id="native-only",
+            repo_path=repo,
+            repeat=0,
+            run_config=cfg,
+            results_dir=tmp_path / "results",
+            agent_backend="claude",
+            dry_run=True,
+            session_id="SESS_X",
+        )
+        # Keys present on every record (dry-run → zeros) and schema-valid.
+        for key in (
+            "cache_read_tokens",
+            "cache_creation_tokens",
+            "total_cost_usd",
+            "num_turns",
+        ):
+            assert key in record, key
+        RunRecord(**record)  # must not raise

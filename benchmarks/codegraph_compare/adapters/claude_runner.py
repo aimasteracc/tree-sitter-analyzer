@@ -437,6 +437,39 @@ def _extract_usage_metrics(
     )
 
 
+def _extract_cost_accounting(raw_result: dict[str, Any]) -> dict[str, Any]:
+    """Pull the provider's REAL cost/cache accounting from a result block.
+
+    Reads straight from the agent CLI's result/usage JSON — these are the
+    provider's own numbers, never estimated. ``cache_read_tokens`` and
+    ``cache_creation_tokens`` split the prompt-cache mechanics that the single
+    ``cached_input_tokens`` rollup blurs; ``total_cost_usd`` is the provider's
+    dollar figure; ``num_turns`` is the agent's turn count. Missing keys (e.g.
+    the codex stream, which omits per-turn cost) default to 0 so the columns
+    are always present and schema-valid.
+    """
+    usage = raw_result.get("usage", {})
+    if not isinstance(usage, dict):
+        usage = {}
+    return {
+        # Backend-neutral cache-read count: Claude reports prompt-cache hits as
+        # `cache_read_input_tokens`; Codex reports them as `cached_input_tokens`
+        # (Codex P2 #342). Sum both — each backend populates only its own key, so
+        # there is no double-count, and Codex cache hits are no longer dropped.
+        "cache_read_tokens": (
+            _usage_int(usage, "cache_read_input_tokens")
+            + _usage_int(usage, "cached_input_tokens")
+        ),
+        "cache_creation_tokens": _usage_int(usage, "cache_creation_input_tokens"),
+        # Preserve the provider's full cost precision — do NOT round (Codex P3
+        # #342). total_cost_usd is the authoritative figure for cost claims; a
+        # 6-dp round drops sub-microcent precision that matters when summing many
+        # small per-task costs (the cost-analysis-rigor lesson).
+        "total_cost_usd": float(raw_result.get("total_cost_usd", 0.0) or 0.0),
+        "num_turns": int(raw_result.get("num_turns", 0) or 0),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
@@ -604,6 +637,10 @@ def run_one(
             output_tokens / 1_000_000 * 15.0
         )
 
+    # Provider's REAL accounting (cache split, dollar cost, turn count) — kept
+    # alongside the estimate so cost claims can use the un-estimated numbers.
+    cost_accounting = _extract_cost_accounting(raw_result)
+
     # Count tool calls from agent stream events. Claude exposes tool_use blocks;
     # Codex exposes completed shell command events.
     tool_parser = (
@@ -629,6 +666,10 @@ def run_one(
         "reasoning_output_tokens": reasoning_output_tokens,
         "total_tokens": total_tokens,
         "estimated_cost_usd": round(estimated_cost, 6),
+        "cache_read_tokens": cost_accounting["cache_read_tokens"],
+        "cache_creation_tokens": cost_accounting["cache_creation_tokens"],
+        "total_cost_usd": cost_accounting["total_cost_usd"],
+        "num_turns": cost_accounting["num_turns"],
         "tool_calls": tool_calls,
         "file_reads": file_reads,
         "search_calls": search_calls,
