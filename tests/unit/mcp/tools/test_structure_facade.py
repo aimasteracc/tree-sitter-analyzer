@@ -423,3 +423,56 @@ def test_annotations_set_correctly() -> None:
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-q"]))
+
+
+# ---------------------------------------------------------------------------
+# 12. read coercion — string line/column bounds (undeclared additionalProperties)
+#     must be int-coerced at the facade boundary, not TypeError downstream.
+# ---------------------------------------------------------------------------
+def test_structure_read_coerces_string_bounds(tmp_path: Any) -> None:
+    """Agents pass start_line/end_line as strings (the flat facade schema does
+    not type them). The single-file read route must coerce them to int, not let
+    ``str < int`` TypeError reach the agent — the documented escape hatch must
+    actually work.
+    """
+    f = tmp_path / "sample.py"
+    f.write_text("a = 1\nb = 2\nc = 3\nd = 4\ne = 5\n")
+    facade = build_structure_facade(project_root=str(tmp_path))
+
+    result = asyncio.run(
+        facade.execute(
+            {
+                "action": "read",
+                "file_path": str(f),
+                "start_line": "2",  # STRING, as an MCP client delivers it
+                "end_line": "4",
+                "output_format": "json",
+            }
+        )
+    )
+
+    assert result.get("success") is True, result
+    # Must not be the pre-fix TypeError envelope.
+    assert "'<' not supported" not in str(result.get("error", "")), result
+
+
+def test_structure_read_rejects_non_numeric_bounds(tmp_path: Any) -> None:
+    """A genuinely non-numeric bound raises a CLEAR ValueError (caught at the MCP
+    boundary into an error envelope) rather than a cryptic ``str < int`` TypeError
+    from deep in extract_code_section. Mirrors the existing _read_route raise for
+    missing args."""
+    f = tmp_path / "sample.py"
+    f.write_text("a = 1\nb = 2\n")
+    facade = build_structure_facade(project_root=str(tmp_path))
+
+    with pytest.raises(ValueError, match="must be integers"):
+        asyncio.run(
+            facade.execute(
+                {
+                    "action": "read",
+                    "file_path": str(f),
+                    "start_line": "not-a-number",
+                    "output_format": "json",
+                }
+            )
+        )
