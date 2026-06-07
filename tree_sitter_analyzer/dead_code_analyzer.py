@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any
 
 from .call_graph import CachedCallGraph, CallGraph, FunctionRef
+from .constants import EXCLUDE_DIRS
 from .core.parser import Parser
 from .import_extractors import walk_imports
 from .project_graph import _language_from_ext
@@ -33,25 +34,14 @@ from .utils import setup_logger
 
 logger = setup_logger(__name__)
 
-_EXCLUDE_DIRS = {
-    "node_modules",
-    ".git",
-    "__pycache__",
-    ".venv",
-    "venv",
-    ".tox",
-    ".mypy_cache",
-    ".pytest_cache",
-    ".ruff_cache",
-    "dist",
-    "build",
-    "htmlcov",
-    ".cache",
-    ".eggs",
-    ".idea",
-    ".vscode",
-    ".claude",
-}
+# Single-source the excluded-dir set from the canonical ``constants.EXCLUDE_DIRS``
+# rather than carrying a private near-duplicate that drifts. The canonical set is
+# a strict superset of the dirs this module historically excluded, so every
+# previously-pruned tree is still pruned (behavior unchanged) — it just also
+# covers the vendored/build dirs (vendor, target, obj, Pods, ...) that this
+# walker should skip too. Dot-prefixed dirs are pruned separately via the
+# ``startswith(".")`` check in ``_iter_candidate_files``.
+_EXCLUDE_DIRS = EXCLUDE_DIRS
 
 
 def _iter_candidate_files(root: Path) -> Iterator[Path]:
