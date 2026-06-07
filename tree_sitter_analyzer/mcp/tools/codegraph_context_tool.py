@@ -23,7 +23,14 @@ from .base_tool import BaseMCPTool
 
 _STOP_WORDS = frozenset(
     "a an and are as at by call calls does flow for from how in into is of on "
-    "or through to trace what when where which why with work works".split()
+    "or through to trace what when where which why with work works "
+    # RFC-0009 C (dogfood-discovered): common English connectives a natural-language
+    # task carries ("how does X dispatch LIKE the Java resolver"). They are not
+    # symbol names but SUBSTRING-match real ones (``like`` -> ``_looks_like_*`` /
+    # ``_like_rows``), spending entry-point slots on noise. Pure function words only
+    # — never legitimate code identifiers (``get``/``make``/``run`` are NOT here).
+    "like the per this that via than then such these those be been also just "
+    "only about after before between within".split()
 )
 
 # RFC-0009 C: generic single-word verbs that frequently appear in trace questions

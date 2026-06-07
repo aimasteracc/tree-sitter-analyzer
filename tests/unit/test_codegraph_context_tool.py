@@ -1473,6 +1473,28 @@ def test_generic_verbs_dropped_when_specific_candidate_present() -> None:
     assert "resolve_java_callee" in cands
 
 
+def test_english_connectives_filtered_from_candidates() -> None:
+    """RFC-0009 C (dogfood-discovered): natural-language connectives like 'like',
+    'the', 'per' must not become symbol candidates — they SUBSTRING-match real
+    symbols (`like` -> `_looks_like_*` / `_like_rows`) and spend entry-point slots
+    on noise. The specific symbols are preserved. (RED before the stop-word add.)"""
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        _extract_symbol_candidates,
+    )
+
+    cands = _extract_symbol_candidates(
+        "how does resolve_callee dispatch a call to a per-language resolver "
+        "like the Java or Swift resolver"
+    )
+    lowered = {c.lower() for c in cands}
+    assert "like" not in lowered, cands
+    assert "the" not in lowered, cands
+    assert "per" not in lowered, cands
+    # the real symbols the task is about survive
+    assert "resolve_callee" in cands
+    assert "Java" in cands and "Swift" in cands
+
+
 def test_generic_verb_kept_when_sole_signal() -> None:
     """RFC-0009 C is conservative: when a generic verb is the ONLY signal (no
     specific symbol named), it is KEPT so 'find the dispatch function' still
