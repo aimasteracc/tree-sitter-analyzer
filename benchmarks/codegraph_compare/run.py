@@ -34,7 +34,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import NoReturn
+from typing import Any, NoReturn
 
 # ---------------------------------------------------------------------------
 # Path constants  (all relative to this file so the harness is portable)
@@ -216,6 +216,294 @@ def _repo_local_path(repo_entry: dict) -> Path:
     """Return the local path for a repo: .benchmark-repos/<id>."""
     repo_id: str = repo_entry["id"]
     return (BENCHMARKS_DIR / ".." / ".." / ".benchmark-repos" / repo_id).resolve()
+
+
+# ---------------------------------------------------------------------------
+# Pre-flight live-setup gate
+# ---------------------------------------------------------------------------
+#
+# A dead or empty MCP arm silently contaminates EVERY downstream number — the
+# agent gets "cache empty" / no tools and falls back to raw Read/grep, so the
+# benchmark measures a broken setup instead of the tool. We wasted months on
+# exactly this (validate-setup-before-scale + codegraph-benchmark-fixes
+# memories). preflight() asserts, per arm, that:
+#   1. the index row-count is > 0 (the index is actually populated), and
+#   2. the MCP handshake succeeds, exposes the EXPECTED tool set, and a canary
+#      query returns a NON-empty, tool-sourced response.
+# It writes preflight.json for the audit trail and aborts LOUDLY (SystemExit)
+# if any arm isn't live, so the matrix never runs against a contaminated setup.
+
+# Expected MCP tool sets per arm family. TSA exposes 8 facade tools; CodeGraph
+# exposes codegraph_* tools — the canary probe reports the live tool names and
+# we assert the expected ones are present.
+_EXPECTED_TSA_TOOLS: frozenset[str] = frozenset(
+    {"nav", "search", "structure", "health", "edit", "project", "index", "viz"}
+)
+
+
+def _arm_family(arm_id: str) -> str:
+    """Classify an arm into 'tsa', 'codegraph', or 'native'."""
+    if arm_id.startswith("tsa"):
+        return "tsa"
+    if arm_id.startswith("codegraph"):
+        return "codegraph"
+    return "native"
+
+
+def _index_row_count(arm_id: str, repo_path: Path) -> int:
+    """Return the populated-row count for an arm's index, or 0 if empty/absent.
+
+    TSA: ast_index row count from .ast-cache/index.db (reuses the adapter's own
+    reader). CodeGraph: number of files under .codegraph/ (its on-disk index;
+    an empty/absent dir means 0). native: not index-backed → sentinel -1 so the
+    caller treats it as "no index required".
+    """
+    family = _arm_family(arm_id)
+    if family == "tsa":
+        try:
+            from adapters.tree_sitter_analyzer import (  # noqa: PLC0415
+                _indexed_file_count,
+            )
+        except ImportError:  # imported as a package submodule, not a script
+            from benchmarks.codegraph_compare.adapters.tree_sitter_analyzer import (  # noqa: PLC0415
+                _indexed_file_count,
+            )
+
+        index_db = repo_path / ".ast-cache" / "index.db"
+        if not index_db.exists():
+            return 0
+        return _indexed_file_count(index_db) or 0
+    if family == "codegraph":
+        index_dir = repo_path / ".codegraph"
+        if not index_dir.exists():
+            return 0
+        return sum(1 for f in index_dir.rglob("*") if f.is_file())
+    return -1  # native: no index
+
+
+def _missing_expected_tools(arm_id: str, tools: list[str]) -> list[str]:
+    """Return expected-but-absent tool names for the arm's MCP family."""
+    family = _arm_family(arm_id)
+    present = set(tools)
+    if family == "tsa":
+        return sorted(_EXPECTED_TSA_TOOLS - present)
+    if family == "codegraph":
+        # CodeGraph exposes codegraph_* tools; require at least one to be live.
+        if not any(t.startswith("codegraph_") for t in present):
+            return ["codegraph_*"]
+        return []
+    return []
+
+
+def _preflight_arm(
+    arm_id: str,
+    repo_path: Path,
+    canary_probe: Callable[[str], dict[str, Any]] | None,
+) -> dict[str, Any]:
+    """Assess one arm's liveness. Returns a per-arm report dict (does not raise)."""
+    family = _arm_family(arm_id)
+    row_count = _index_row_count(arm_id, repo_path)
+
+    if family == "native":
+        # native-only is index/MCP-free; it is always live by construction.
+        return {
+            "arm": arm_id,
+            "family": family,
+            "index_row_count": row_count,
+            "handshake_ok": True,
+            "tools": [],
+            "missing_tools": [],
+            "canary_nonempty": True,
+            "live": True,
+            "reasons": [],
+        }
+
+    reasons: list[str] = []
+    index_ok = row_count > 0
+    if not index_ok:
+        reasons.append(f"index empty or absent (row_count={row_count})")
+
+    handshake_ok = False
+    tools: list[str] = []
+    missing_tools: list[str] = []
+    canary_nonempty = False
+
+    if canary_probe is None:
+        reasons.append("no canary probe supplied for an MCP-backed arm")
+    else:
+        probe = canary_probe(arm_id)
+        handshake_ok = bool(probe.get("handshake_ok", False))
+        tools = list(probe.get("tools", []))
+        canary_nonempty = bool(probe.get("canary_nonempty", False))
+        if not handshake_ok:
+            reasons.append("MCP handshake failed")
+        missing_tools = _missing_expected_tools(arm_id, tools)
+        if missing_tools:
+            reasons.append(f"expected tools missing: {', '.join(missing_tools)}")
+        if not canary_nonempty:
+            reasons.append("canary query returned an empty / non-tool-sourced response")
+
+    live = index_ok and handshake_ok and not missing_tools and canary_nonempty
+    return {
+        "arm": arm_id,
+        "family": family,
+        "index_row_count": row_count,
+        "handshake_ok": handshake_ok,
+        "tools": tools,
+        "missing_tools": missing_tools,
+        "canary_nonempty": canary_nonempty,
+        "live": live,
+        "reasons": reasons,
+    }
+
+
+def preflight(
+    arm_ids: list[str],
+    repo_path: Path,
+    results_dir: Path,
+    canary_probe: Callable[[str], dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Assert every arm is live before benchmarking; write preflight.json.
+
+    For each arm, checks index row-count > 0 and (for MCP arms) that the
+    handshake succeeded, the expected tool set is present, and a canary query
+    returned a non-empty tool-sourced response. Writes the full report to
+    ``results_dir/preflight.json`` regardless of outcome, then raises SystemExit
+    (loud abort) if ANY arm is not live — so the matrix never runs against a
+    dead or empty setup and silently produces contaminated numbers.
+
+    ``canary_probe(arm_id) -> {"handshake_ok", "tools", "canary_nonempty"}`` is
+    injected so the gate is testable without a live MCP; the production caller
+    passes a probe that drives the real agent CLI handshake + a canary query.
+    """
+    arms_report: dict[str, Any] = {}
+    for arm_id in arm_ids:
+        arms_report[arm_id] = _preflight_arm(arm_id, repo_path, canary_probe)
+
+    all_live = all(r["live"] for r in arms_report.values())
+    report: dict[str, Any] = {
+        "repo_path": str(repo_path),
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+        "all_live": all_live,
+        "arms": arms_report,
+    }
+
+    results_dir.mkdir(parents=True, exist_ok=True)
+    (results_dir / "preflight.json").write_text(
+        json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+
+    if not all_live:
+        dead = [
+            f"  {arm}: {'; '.join(rep['reasons']) or 'not live'}"
+            for arm, rep in arms_report.items()
+            if not rep["live"]
+        ]
+        _die(
+            "PRE-FLIGHT FAILED — one or more arms are not live. Refusing to run "
+            "the benchmark against a dead/empty setup (it would silently produce "
+            "contaminated numbers). Dead arms:\n" + "\n".join(dead) + "\n"
+            f"See {results_dir / 'preflight.json'} for the full report."
+        )
+
+    return report
+
+
+def _live_canary_probe(
+    repo_path: Path, model: str, timeout_seconds: int
+) -> Callable[[str], dict[str, Any]]:
+    """Build a real canary probe that drives the agent CLI per arm.
+
+    The probe spawns the same per-arm MCP config the benchmark uses, asks a
+    trivial canary question, and inspects the stream for tool_use events that
+    name the arm's MCP server. handshake_ok = the CLI produced a parseable
+    stream with no startup error; tools = the MCP tool short-names it actually
+    invoked or were offered; canary_nonempty = at least one tool-sourced
+    response block came back. Kept here (not in claude_runner) because it is a
+    setup-gate concern, not a measured run.
+    """
+    import os  # noqa: PLC0415
+    import subprocess  # noqa: PLC0415
+
+    from adapters.claude_runner import _write_arm_mcp_config  # noqa: PLC0415
+
+    def probe(arm_id: str) -> dict[str, Any]:
+        family = _arm_family(arm_id)
+        if family == "native":
+            return {"handshake_ok": True, "tools": [], "canary_nonempty": True}
+
+        mcp_cfg = _write_arm_mcp_config(arm_id, repo_path)
+        prefix = (
+            "mcp__tree-sitter-analyzer__" if family == "tsa" else "mcp__codegraph__"
+        )
+        canary_q = (
+            "List the indexed entry points. Use exactly one index tool, then stop."
+        )
+        cmd = [
+            "claude",
+            "--print",
+            "--output-format",
+            "stream-json",
+            "--verbose",
+            "--no-session-persistence",
+            "--model",
+            model,
+            "--add-dir",
+            str(repo_path),
+            "--strict-mcp-config",
+            "--mcp-config",
+            str(mcp_cfg),
+        ]
+        tools: list[str] = []
+        handshake_ok = False
+        canary_nonempty = False
+        try:
+            proc = subprocess.run(
+                cmd,
+                input=canary_q,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=timeout_seconds,
+                cwd=str(repo_path),
+                env={
+                    **os.environ,
+                    "MCP_TIMEOUT": "30000",
+                    "MCP_TOOL_TIMEOUT": "30000",
+                },
+            )
+            handshake_ok = bool(proc.stdout.strip()) and proc.returncode == 0
+            for line in proc.stdout.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if event.get("type") != "assistant":
+                    continue
+                for block in event.get("message", {}).get("content", []):
+                    name = block.get("name", "")
+                    if block.get("type") == "tool_use" and name.startswith(prefix):
+                        short = name[len(prefix) :]
+                        tools.append(short)
+                        canary_nonempty = True
+        except (subprocess.TimeoutExpired, FileNotFoundError) as exc:
+            return {
+                "handshake_ok": False,
+                "tools": [],
+                "canary_nonempty": False,
+                "error": str(exc),
+            }
+        return {
+            "handshake_ok": handshake_ok,
+            "tools": sorted(set(tools)),
+            "canary_nonempty": canary_nonempty,
+        }
+
+    return probe
 
 
 def _phase_to_matrix_args(args: argparse.Namespace) -> argparse.Namespace:
@@ -613,6 +901,47 @@ def cmd_status(_args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_preflight(args: argparse.Namespace) -> int:
+    """Assert every requested arm is live before benchmarking; abort if not."""
+    repos_data = _load_yaml(REPOS_YAML)
+    arms_data = _load_yaml(ARMS_YAML)
+
+    repo_entry = _get_repo(repos_data, args.repo)
+    repo_path = _repo_local_path(repo_entry)
+
+    if not args.arms or args.arms == "all":
+        arm_entries = _all_arms(arms_data)
+    else:
+        arm_entries = [_get_arm(arms_data, aid) for aid in args.arms.split(",")]
+    arm_ids = [a["id"] for a in arm_entries]
+
+    model = args.model or "claude-sonnet-4-6"
+    probe = _live_canary_probe(repo_path, model, args.timeout_seconds)
+
+    print(
+        f"[preflight] repo={args.repo}  arms={','.join(arm_ids)}",
+        file=sys.stderr,
+    )
+    # preflight() aborts via _die (SystemExit) if any arm is not live.
+    report = preflight(
+        arm_ids=arm_ids,
+        repo_path=repo_path,
+        results_dir=RESULTS_DIR,
+        canary_probe=probe,
+    )
+    print(
+        f"[preflight] all arms live. Report: {RESULTS_DIR / 'preflight.json'}",
+        file=sys.stderr,
+    )
+    for arm_id, rep in report["arms"].items():
+        print(
+            f"  {arm_id:18s} live={rep['live']}  "
+            f"rows={rep['index_row_count']}  tools={len(rep['tools'])}",
+            file=sys.stderr,
+        )
+    return 0
+
+
 # ---------------------------------------------------------------------------
 # Argument parser
 # ---------------------------------------------------------------------------
@@ -800,6 +1129,29 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Per-run timeout in seconds (default: 1200).",
     )
 
+    # ---- preflight ----
+    p_preflight = sub.add_parser(
+        "preflight",
+        help="Assert every arm's MCP/index is live before benchmarking.",
+    )
+    p_preflight.add_argument("--repo", required=True, help="Repository ID.")
+    p_preflight.add_argument(
+        "--arms",
+        default="all",
+        help="Comma-separated arm IDs, or 'all' (default).",
+    )
+    p_preflight.add_argument(
+        "--model",
+        default=None,
+        help="Model name for the canary handshake (default: claude-sonnet-4-6).",
+    )
+    p_preflight.add_argument(
+        "--timeout-seconds",
+        type=int,
+        default=120,
+        help="Per-arm canary timeout in seconds (default: 120).",
+    )
+
     # ---- status ----
     sub.add_parser("status", help="Show prepared repos and last run statistics.")
 
@@ -822,6 +1174,7 @@ def main(argv: list[str] | None = None) -> int:
         "run-matrix": cmd_run_matrix,
         "phase": cmd_phase,
         "status": cmd_status,
+        "preflight": cmd_preflight,
     }
 
     handler = dispatch.get(args.command)

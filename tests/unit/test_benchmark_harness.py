@@ -603,3 +603,319 @@ class TestRunIdUniqueness:
         # Must not raise — session_id is now a declared optional field.
         validated = RunRecord(**record)
         assert validated.session_id == "SESS_X"
+
+
+# ---------------------------------------------------------------------------
+# Cost / cache accounting capture (real API numbers, not estimates)
+# ---------------------------------------------------------------------------
+
+
+class TestRunRecordCostCacheColumns:
+    """The benchmark must record the provider's REAL cache/cost accounting so a
+    cost comparison can't be silently contaminated by estimates (see
+    benchmark-cost-analysis-rigor memory). The new columns must be optional with
+    defaults so pre-existing runs.jsonl records still validate under
+    extra='forbid'."""
+
+    def test_run_record_defaults_keep_old_records_loadable(self):
+        from benchmarks.codegraph_compare.schemas import RunRecord
+
+        # An "old" record written before the cost/cache columns existed — it has
+        # none of the new keys. extra='forbid' + defaults must let it validate.
+        old_record = {
+            "run_id": "q1__native-only__claude__00",
+            "repo": "gin",
+            "question_id": "q1",
+            "arm": "native-only",
+            "repeat": 0,
+            "started_at": "2026-06-07T00:00:00+00:00",
+            "ended_at": "2026-06-07T00:00:01+00:00",
+            "elapsed_seconds": 1.0,
+            "input_tokens": 100,
+            "output_tokens": 50,
+            "total_tokens": 150,
+            "estimated_cost_usd": 0.001,
+            "tool_calls": 1,
+            "file_reads": 1,
+            "search_calls": 0,
+            "index_queries": 0,
+            "answer": "ok",
+            "citations": [],
+            "transcript_path": "/tmp/x.jsonl",
+        }
+        validated = RunRecord(**old_record)
+        # Defaults applied — no real accounting present in an old record.
+        assert validated.cache_read_tokens == 0
+        assert validated.cache_creation_tokens == 0
+        assert validated.total_cost_usd == 0.0
+        assert validated.num_turns == 0
+
+    def test_run_record_accepts_real_cost_cache_columns(self):
+        from benchmarks.codegraph_compare.schemas import RunRecord
+
+        record = {
+            "run_id": "q1__tsa-warm__claude__00",
+            "repo": "gin",
+            "question_id": "q1",
+            "arm": "tsa-warm",
+            "repeat": 0,
+            "started_at": "2026-06-07T00:00:00+00:00",
+            "ended_at": "2026-06-07T00:00:01+00:00",
+            "elapsed_seconds": 1.0,
+            "input_tokens": 100,
+            "output_tokens": 50,
+            "total_tokens": 150,
+            "estimated_cost_usd": 0.001,
+            "tool_calls": 1,
+            "file_reads": 0,
+            "search_calls": 0,
+            "index_queries": 1,
+            "answer": "ok",
+            "citations": [],
+            "transcript_path": "/tmp/x.jsonl",
+            "cache_read_tokens": 1234,
+            "cache_creation_tokens": 56,
+            "total_cost_usd": 0.0421,
+            "num_turns": 7,
+        }
+        validated = RunRecord(**record)
+        assert validated.cache_read_tokens == 1234
+        assert validated.cache_creation_tokens == 56
+        assert validated.total_cost_usd == 0.0421
+        assert validated.num_turns == 7
+
+    def test_runner_parses_real_cache_cost_from_claude_usage_block(self):
+        """The runner must pull cache_read/creation, total_cost_usd and num_turns
+        straight from the claude --print result/usage block — not estimate them."""
+        from benchmarks.codegraph_compare.adapters.claude_runner import (
+            _extract_cost_accounting,
+        )
+
+        raw_result = {
+            "total_cost_usd": 0.0421,
+            "num_turns": 7,
+            "usage": {
+                "input_tokens": 100,
+                "output_tokens": 50,
+                "cache_read_input_tokens": 1234,
+                "cache_creation_input_tokens": 56,
+            },
+        }
+        acct = _extract_cost_accounting(raw_result)
+        assert acct["cache_read_tokens"] == 1234
+        assert acct["cache_creation_tokens"] == 56
+        assert acct["total_cost_usd"] == 0.0421
+        assert acct["num_turns"] == 7
+
+    def test_runner_emits_cost_cache_columns_in_record(self, tmp_path):
+        from benchmarks.codegraph_compare.adapters import RunConfig
+        from benchmarks.codegraph_compare.adapters.claude_runner import run_one
+        from benchmarks.codegraph_compare.schemas import RunRecord
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        cfg = RunConfig(arm_id="native-only", repo_path=repo, system_prompt="sys")
+        record = run_one(
+            question_id="q1",
+            question_prompt="trace it",
+            arm_id="native-only",
+            repo_path=repo,
+            repeat=0,
+            run_config=cfg,
+            results_dir=tmp_path / "results",
+            agent_backend="claude",
+            dry_run=True,
+            session_id="SESS_X",
+        )
+        # Keys present on every record (dry-run → zeros) and schema-valid.
+        for key in (
+            "cache_read_tokens",
+            "cache_creation_tokens",
+            "total_cost_usd",
+            "num_turns",
+        ):
+            assert key in record, key
+        RunRecord(**record)  # must not raise
+
+
+# ---------------------------------------------------------------------------
+# Pre-flight live-setup gate (abort before benchmarking a dead/empty MCP setup)
+# ---------------------------------------------------------------------------
+
+
+class TestPreflightLiveSetupGate:
+    """A dead or empty MCP arm silently contaminates every number. preflight()
+    asserts each arm is live BEFORE the matrix runs and aborts loudly otherwise
+    (see validate-setup-before-scale + codegraph-benchmark-fixes memories)."""
+
+    @staticmethod
+    def _make_tsa_index(repo: Path, *, rows: int) -> None:
+        import sqlite3
+
+        cache = repo / ".ast-cache"
+        cache.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(cache / "index.db")
+        conn.execute("CREATE TABLE ast_index (file_path TEXT)")
+        for i in range(rows):
+            conn.execute("INSERT INTO ast_index VALUES (?)", (f"f{i}.py",))
+        conn.commit()
+        conn.close()
+
+    def test_preflight_passes_live_arm_and_writes_json(self, tmp_path):
+        from benchmarks.codegraph_compare.run import preflight
+
+        repo = tmp_path / "gin"
+        repo.mkdir()
+        self._make_tsa_index(repo, rows=12)
+        results = tmp_path / "results"
+
+        def canary(arm_id: str) -> dict:
+            # Simulate a live MCP handshake: expected tools present + non-empty,
+            # tool-sourced canary response.
+            return {
+                "handshake_ok": True,
+                "tools": [
+                    "nav",
+                    "search",
+                    "structure",
+                    "health",
+                    "edit",
+                    "project",
+                    "index",
+                    "viz",
+                ],
+                "canary_nonempty": True,
+            }
+
+        report = preflight(
+            arm_ids=["tsa-warm"],
+            repo_path=repo,
+            results_dir=results,
+            canary_probe=canary,
+        )
+
+        assert report["all_live"] is True
+        arm = report["arms"]["tsa-warm"]
+        assert arm["live"] is True
+        assert arm["index_row_count"] == 12
+        assert arm["handshake_ok"] is True
+        assert arm["canary_nonempty"] is True
+        # Persisted for the audit trail.
+        written = json.loads((results / "preflight.json").read_text(encoding="utf-8"))
+        assert written["arms"]["tsa-warm"]["index_row_count"] == 12
+
+    def test_preflight_aborts_loudly_on_empty_index(self, tmp_path):
+        from benchmarks.codegraph_compare.run import preflight
+
+        repo = tmp_path / "gin"
+        repo.mkdir()
+        self._make_tsa_index(repo, rows=0)  # empty index → dead arm
+        results = tmp_path / "results"
+
+        def canary(arm_id: str) -> dict:
+            return {
+                "handshake_ok": True,
+                "tools": [
+                    "nav",
+                    "search",
+                    "structure",
+                    "health",
+                    "edit",
+                    "project",
+                    "index",
+                    "viz",
+                ],
+                "canary_nonempty": True,
+            }
+
+        with pytest.raises(SystemExit):
+            preflight(
+                arm_ids=["tsa-warm"],
+                repo_path=repo,
+                results_dir=results,
+                canary_probe=canary,
+            )
+        # Even on abort, the report must be written for diagnosis.
+        written = json.loads((results / "preflight.json").read_text(encoding="utf-8"))
+        assert written["all_live"] is False
+        assert written["arms"]["tsa-warm"]["live"] is False
+        assert written["arms"]["tsa-warm"]["index_row_count"] == 0
+
+    def test_preflight_aborts_on_missing_expected_tool(self, tmp_path):
+        from benchmarks.codegraph_compare.run import preflight
+
+        repo = tmp_path / "gin"
+        repo.mkdir()
+        self._make_tsa_index(repo, rows=5)
+        results = tmp_path / "results"
+
+        def canary(arm_id: str) -> dict:
+            # Missing 'viz' — incomplete tool list means the MCP isn't fully live.
+            return {
+                "handshake_ok": True,
+                "tools": ["nav", "search", "structure", "health"],
+                "canary_nonempty": True,
+            }
+
+        with pytest.raises(SystemExit):
+            preflight(
+                arm_ids=["tsa-warm"],
+                repo_path=repo,
+                results_dir=results,
+                canary_probe=canary,
+            )
+        written = json.loads((results / "preflight.json").read_text(encoding="utf-8"))
+        assert written["arms"]["tsa-warm"]["live"] is False
+        assert "viz" in written["arms"]["tsa-warm"]["missing_tools"]
+
+    def test_preflight_aborts_on_empty_canary_response(self, tmp_path):
+        from benchmarks.codegraph_compare.run import preflight
+
+        repo = tmp_path / "gin"
+        repo.mkdir()
+        self._make_tsa_index(repo, rows=5)
+        results = tmp_path / "results"
+
+        def canary(arm_id: str) -> dict:
+            return {
+                "handshake_ok": True,
+                "tools": [
+                    "nav",
+                    "search",
+                    "structure",
+                    "health",
+                    "edit",
+                    "project",
+                    "index",
+                    "viz",
+                ],
+                "canary_nonempty": False,  # tool returned an empty response
+            }
+
+        with pytest.raises(SystemExit):
+            preflight(
+                arm_ids=["tsa-warm"],
+                repo_path=repo,
+                results_dir=results,
+                canary_probe=canary,
+            )
+        written = json.loads((results / "preflight.json").read_text(encoding="utf-8"))
+        assert written["arms"]["tsa-warm"]["canary_nonempty"] is False
+        assert written["arms"]["tsa-warm"]["live"] is False
+
+    def test_preflight_native_arm_needs_no_index_or_mcp(self, tmp_path):
+        from benchmarks.codegraph_compare.run import preflight
+
+        repo = tmp_path / "gin"
+        repo.mkdir()
+        results = tmp_path / "results"
+
+        # native-only has no MCP/index; it is always "live". canary not called.
+        report = preflight(
+            arm_ids=["native-only"],
+            repo_path=repo,
+            results_dir=results,
+            canary_probe=None,
+        )
+        assert report["all_live"] is True
+        assert report["arms"]["native-only"]["live"] is True

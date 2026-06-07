@@ -437,6 +437,28 @@ def _extract_usage_metrics(
     )
 
 
+def _extract_cost_accounting(raw_result: dict[str, Any]) -> dict[str, Any]:
+    """Pull the provider's REAL cost/cache accounting from a result block.
+
+    Reads straight from the agent CLI's result/usage JSON — these are the
+    provider's own numbers, never estimated. ``cache_read_tokens`` and
+    ``cache_creation_tokens`` split the prompt-cache mechanics that the single
+    ``cached_input_tokens`` rollup blurs; ``total_cost_usd`` is the provider's
+    dollar figure; ``num_turns`` is the agent's turn count. Missing keys (e.g.
+    the codex stream, which omits per-turn cost) default to 0 so the columns
+    are always present and schema-valid.
+    """
+    usage = raw_result.get("usage", {})
+    if not isinstance(usage, dict):
+        usage = {}
+    return {
+        "cache_read_tokens": _usage_int(usage, "cache_read_input_tokens"),
+        "cache_creation_tokens": _usage_int(usage, "cache_creation_input_tokens"),
+        "total_cost_usd": round(float(raw_result.get("total_cost_usd", 0.0) or 0.0), 6),
+        "num_turns": int(raw_result.get("num_turns", 0) or 0),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
@@ -604,6 +626,10 @@ def run_one(
             output_tokens / 1_000_000 * 15.0
         )
 
+    # Provider's REAL accounting (cache split, dollar cost, turn count) — kept
+    # alongside the estimate so cost claims can use the un-estimated numbers.
+    cost_accounting = _extract_cost_accounting(raw_result)
+
     # Count tool calls from agent stream events. Claude exposes tool_use blocks;
     # Codex exposes completed shell command events.
     tool_parser = (
@@ -629,6 +655,10 @@ def run_one(
         "reasoning_output_tokens": reasoning_output_tokens,
         "total_tokens": total_tokens,
         "estimated_cost_usd": round(estimated_cost, 6),
+        "cache_read_tokens": cost_accounting["cache_read_tokens"],
+        "cache_creation_tokens": cost_accounting["cache_creation_tokens"],
+        "total_cost_usd": cost_accounting["total_cost_usd"],
+        "num_turns": cost_accounting["num_turns"],
         "tool_calls": tool_calls,
         "file_reads": file_reads,
         "search_calls": search_calls,
