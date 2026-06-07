@@ -219,13 +219,19 @@ to: [`tests/golden/corpus_swift.swift:337`](../../tests/golden/corpus_swift.swif
 
 ---
 
-## Addendum (2026-06-08) — the moat now spans 12 languages
+## Addendum (2026-06-08) — the moat now spans 13 languages
 
 When v1.21.0 shipped, cross-language-safe resolution was Python + Java. RFC-0010
 (a per-language resolver registry) plus call-edge extraction wiring has since
-activated **12 languages**, each with its own conservative classification cascade:
+activated **13 languages**, each with its own conservative classification cascade:
 **Python · Java · Go · JavaScript · TypeScript · C · C++ · Rust · C# · Kotlin ·
-Ruby · PHP**.
+Ruby · PHP · Swift**.
+
+> **Swift closes the loop.** The flagship failure above is a Python `sorted()`
+> wired to a Swift `func sorted`. Swift is now a first-class TSA language: a Swift
+> `sorted()` resolves to its own definition, a Python `sorted()` stays a Python
+> builtin, and neither crosses to the other — the exact mis-wire, refused in both
+> directions.
 
 The moat holds across all of them. On a polyglot fixture (one real source file per
 language) **plus an adversarial `adversary.py` that defines `sorted`, `to_string`,
