@@ -30,7 +30,7 @@ claude mcp add tree-sitter-analyzer \
   -- uvx --from "tree-sitter-analyzer[mcp]" tree-sitter-analyzer-mcp
 ```
 
-Restart your agent, then say: *"Set the project root to my repo and run codegraph_status."*
+Restart your agent, then say: *"Set the project root to my repo and run the `index` tool with action=status."*
 
 [Other agents (Cursor, Copilot, Cline, Continue, Claude Desktop, Roo Code) →](#-supported-agents)
 
@@ -133,13 +133,13 @@ tree-sitter-analyzer --callees _resolve_entry_points --format json
 
 | Capability | TSA tool | Status |
 |---|---|---|
-| Symbol search (FTS5 + **BM25 ranked**) | `codegraph_symbol_search` | **ahead** — results sorted by relevance score, not file path |
-| Go-to-def / find-refs / call hierarchy in one call | `codegraph_navigate` | PRIMARY entry point |
-| Bulk-fetch N related symbols + relationship map | `codegraph_explore` | parity |
-| Function-level blast radius + risk score | `codegraph_impact` | parity + risk score |
-| Who-calls-X / what-X-calls | `codegraph_callers` / `codegraph_callees` | parity |
-| Index health at-a-glance (+ edge count) | `codegraph_status` | **ahead** — reports `total_edges` for graph density signal |
-| Pre-built call graph cache | `codegraph_autoindex` / `codegraph_full_index` / `codegraph_incremental_sync` | parity |
+| Symbol search (FTS5 + **BM25 ranked**) | `search` action=symbol | **ahead** — results sorted by relevance score, not file path |
+| Go-to-def / find-refs / call hierarchy in one call | `nav` action=navigate | PRIMARY entry point |
+| Bulk-fetch N related symbols + relationship map | `structure` action=explore | parity |
+| Function-level blast radius + risk score | `nav` action=impact | parity + risk score |
+| Who-calls-X / what-X-calls | `nav` action=callers / action=callees | parity |
+| Index health at-a-glance (+ edge count) | `index` action=status | **ahead** — reports `total_edges` for graph density signal |
+| Pre-built call graph cache | `index` action=auto / action=full / action=sync | parity |
 | Tests affected by a change (CLI) | `--affected FILE...` | parity |
 
 ### Tree-sitter Analyzer exclusive
@@ -147,26 +147,26 @@ tree-sitter-analyzer --callees _resolve_entry_points --format json
 | Capability | TSA tool | Note |
 |---|---|---|
 | **BM25-ranked symbol search** | all search tools | relevance_score on every result (min-max normalized: best=1.0, weakest=0.0); sort(by='confidence') in DSL |
-| **Semantic search (133× faster)** | `codegraph_query semantic()` | BM25 pre-filter narrows 40k symbols to ~400 before cosine rerank |
-| **Project A–F health grading** | `check_project_health` | 7 dimensions (size/complexity/deps/coverage/duplication/structure/git-hotspot), no competitor offers this |
+| **Semantic search (133× faster)** | `search` action=chain (`semantic()` DSL) | BM25 pre-filter narrows 40k symbols to ~400 before cosine rerank |
+| **Project A–F health grading** | `health` action=project | 7 dimensions (size/complexity/deps/coverage/duplication/structure/git-hotspot), no competitor offers this |
 | **TOON output** | every tool, `output_format: "toon"` (default) | 50-70 % token saving |
 | **Verdict envelopes** | every tool | `SAFE/CAUTION/UNSAFE/INFO/WARN/ERROR/NOT_FOUND` |
-| **Safe-to-edit gate** | `safe_to_edit` + `modification_guard` | refuses high-risk edits before they happen |
-| **Architectural constraint DSL** | `check_constraints` | "module A cannot import B" → enforced |
-| **Code health (file-level)** | `check_file_health` | block/long-method/smell detection |
-| **Class hierarchy** | `codegraph_class_hierarchy` | type-inheritance tree |
-| **Dependency matrix** | `codegraph_dependency_matrix` | module-coupling matrix |
-| **Dead code** | `codegraph_dead_code` | transitive unreachable analysis |
-| **Complexity heatmap** | `codegraph_complexity_heatmap` | per-fn cyclomatic + project view |
-| **AST-structural clone detection** | `codegraph_similarity` | beyond text similarity |
-| **Mermaid call-graph export** | `codegraph_visualize` | paste-ready in docs |
-| **UML Mermaid export** | `codegraph_uml` | class / package / component / sequence diagrams |
-| **PR review** | `codegraph_pr_review` | AST-diff + semantic classify + blast radius |
+| **Safe-to-edit gate** | `edit` action=safe / action=guard | refuses high-risk edits before they happen |
+| **Architectural constraint DSL** | `edit` action=constraints | "module A cannot import B" → enforced |
+| **Code health (file-level)** | `health` action=file | block/long-method/smell detection |
+| **Class hierarchy** | `structure` action=class_tree | type-inheritance tree |
+| **Dependency matrix** | `health` action=matrix | module-coupling matrix |
+| **Dead code** | `health` action=dead | transitive unreachable analysis |
+| **Complexity heatmap** | `health` action=heatmap | per-fn cyclomatic + project view |
+| **AST-structural clone detection** | `viz` action=similarity | beyond text similarity |
+| **Mermaid call-graph export** | `viz` action=graph | paste-ready in docs |
+| **UML Mermaid export** | `viz` action=uml | class / package / component / sequence diagrams |
+| **PR review** | `edit` action=pr | AST-diff + semantic classify + blast radius |
 | **agent_summary** | every response | next-step hint baked into the envelope |
 | **Synapse cross-file resolver** | internal | import-aware, beats regex guessing |
-| **Temporal activation** | `symbol_lineage` | per-symbol git-modification frequency |
-| **One-shot file orientation** | `smart_context` | health + exports + deps + edit-risk in one call (replaces 3-4 calls) |
-| **Architectural decision journal** | `decision_journal` | persists reasoning across sessions — no competitor exposes this |
+| **Temporal activation** | `nav` action=lineage | per-symbol git-modification frequency |
+| **One-shot file orientation** | `project` action=smart | health + exports + deps + edit-risk in one call (replaces 3-4 calls) |
+| **Architectural decision journal** | `project` action=journal | persists reasoning across sessions — no competitor exposes this |
 
 ### Skills (13 curated workflows)
 
@@ -233,7 +233,7 @@ See **[Supported Agents](#-supported-agents)**. Most clients want this MCP serve
 }
 ```
 
-After restart: *"Set the project root to my repo and call codegraph_status."*
+After restart: *"Set the project root to my repo and call the `index` tool with action=status."*
 
 ---
 
@@ -242,7 +242,7 @@ After restart: *"Set the project root to my repo and call codegraph_status."*
 ```
 Source code → tree-sitter parse → SQLite + FTS5 index (.ast-cache/index.db)
                                          ↓
-        codegraph_navigate / codegraph_explore / codegraph_callers / ...
+        nav (navigate) / structure (explore) / nav (callers) / ...
                                          ↓
                             TOON-compressed envelope
                             (verdict + agent_summary + data)
@@ -250,7 +250,7 @@ Source code → tree-sitter parse → SQLite + FTS5 index (.ast-cache/index.db)
                               MCP client / CLI consumer
 ```
 
-The index is built lazily on first query, refreshed on file change via a content-hash diff (`codegraph_incremental_sync`). All 8 tools read from the same `.ast-cache/`, so a query and its follow-up share work.
+The index is built lazily on first query, refreshed on file change via a content-hash diff (`index` action=sync). All 8 tools read from the same `.ast-cache/`, so a query and its follow-up share work.
 
 ---
 
