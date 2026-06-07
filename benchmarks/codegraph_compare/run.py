@@ -376,7 +376,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         model=args.model,
         agent_backend=args.agent_backend,
         dry_run=getattr(args, "dry_run", False),
-        session_id=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"),
+        session_id=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ"),
     )
 
     # Print result summary
@@ -428,7 +428,7 @@ def cmd_run_matrix(args: argparse.Namespace) -> int:
 
     # One session id per matrix invocation so repeated runs don't overwrite each
     # other's raw transcripts (cost data must survive re-runs for n>1 analysis).
-    session_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    session_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 

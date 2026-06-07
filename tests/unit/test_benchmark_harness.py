@@ -577,3 +577,29 @@ class TestRunIdUniqueness:
         assert len(results_files) == 2, results_files
         assert any("SESS_A" in n for n in results_files)
         assert any("SESS_B" in n for n in results_files)
+
+    def test_run_record_with_session_id_validates_against_schema(self, tmp_path):
+        """Codex P2 #332: the new session_id field must NOT break RunRecord's
+        extra='forbid' schema — fresh runner output has to validate."""
+        from benchmarks.codegraph_compare.adapters import RunConfig
+        from benchmarks.codegraph_compare.adapters.claude_runner import run_one
+        from benchmarks.codegraph_compare.schemas import RunRecord
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        cfg = RunConfig(arm_id="native-only", repo_path=repo, system_prompt="sys")
+        record = run_one(
+            question_id="q1",
+            question_prompt="trace it",
+            arm_id="native-only",
+            repo_path=repo,
+            repeat=0,
+            run_config=cfg,
+            results_dir=tmp_path / "results",
+            agent_backend="claude",
+            dry_run=True,
+            session_id="SESS_X",
+        )
+        # Must not raise — session_id is now a declared optional field.
+        validated = RunRecord(**record)
+        assert validated.session_id == "SESS_X"
