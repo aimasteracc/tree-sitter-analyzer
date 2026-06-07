@@ -17,8 +17,10 @@ and the core parser for import/variable extraction.
 
 from __future__ import annotations
 
+import os
 import re
 from collections import deque
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -50,6 +52,28 @@ _EXCLUDE_DIRS = {
     ".vscode",
     ".claude",
 }
+
+
+def _iter_candidate_files(root: Path) -> Iterator[Path]:
+    """Yield files under ``root``, PRUNING excluded and hidden (dot-prefixed)
+    directories so large vendored / generated trees never get walked.
+
+    Uses ``os.walk`` + in-place ``dirnames[:]`` pruning — the same approach as
+    the CallGraph / ASTCache walkers — rather than filtering ``rglob`` results.
+    Filtering rglob still enumerates every descendant of an excluded tree before
+    it can be skipped, so a large cloned repo (``.benchmark-repos/excalidraw``)
+    or cache (``.ast-cache``) made the walk slow/hang on the exact trees this
+    exclusion is meant to skip (Codex P2 #329). Pruning never descends into them.
+    The dot-prefix rule mirrors the indexer's scope; pruning ``dirnames`` is
+    inherently below-root, so the absolute prefix is never matched.
+    """
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [
+            d for d in dirnames if d not in _EXCLUDE_DIRS and not d.startswith(".")
+        ]
+        for filename in filenames:
+            yield Path(dirpath) / filename
+
 
 _KNOWN_ENTRY_PATTERNS = {
     "python": re.compile(
@@ -223,21 +247,18 @@ def find_unused_imports(
     results: list[UnusedImport] = []
 
     source_files: list[tuple[Path, str]] = []
-    for p in root.rglob("*"):
-        if any(part in _EXCLUDE_DIRS for part in p.parts):
-            continue
-        if p.is_file():
-            lang = _language_from_ext(str(p))
-            if lang and lang in (
-                "python",
-                "javascript",
-                "typescript",
-                "go",
-                "java",
-                "c",
-                "cpp",
-            ):
-                source_files.append((p, lang))
+    for p in _iter_candidate_files(root):
+        lang = _language_from_ext(str(p))
+        if lang and lang in (
+            "python",
+            "javascript",
+            "typescript",
+            "go",
+            "java",
+            "c",
+            "cpp",
+        ):
+            source_files.append((p, lang))
         if len(source_files) >= max_files:
             break
 
@@ -347,13 +368,10 @@ def find_unreferenced_variables(
     results: list[UnreferencedVariable] = []
 
     source_files: list[tuple[Path, str]] = []
-    for p in root.rglob("*"):
-        if any(part in _EXCLUDE_DIRS for part in p.parts):
-            continue
-        if p.is_file():
-            lang = _language_from_ext(str(p))
-            if lang and lang in ("python", "javascript", "typescript", "go", "java"):
-                source_files.append((p, lang))
+    for p in _iter_candidate_files(root):
+        lang = _language_from_ext(str(p))
+        if lang and lang in ("python", "javascript", "typescript", "go", "java"):
+            source_files.append((p, lang))
         if len(source_files) >= max_files:
             break
 
