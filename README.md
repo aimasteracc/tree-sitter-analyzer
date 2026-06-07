@@ -84,14 +84,23 @@ A full per-task `$` re-benchmark is the next measurement (harness command below)
 
 ### Call-graph correctness — TSA resolves what CodeGraph mis-wires
 
-Token cost is one axis; a code-intelligence tool's *first* job is a **correct graph**. Dogfooding both tools' live indexes on this repository surfaced a class of mis-resolution where CodeGraph binds a call to the wrong same-name definition — and TSA's resolver was fixed to avoid it:
+Token cost is one axis; a code-intelligence tool's *first* job is a **correct graph**.
+
+**Head-to-head on this repo, both tools' live indexes** (count every call edge whose caller language differs from the callee's — a cross-language mis-wire by construction; [reproducible](benchmarks/codegraph_compare/REPORT-v1.21.0.md)):
+
+| tool | cross-language mis-wires | total call edges | rate |
+|---|---|---|---|
+| CodeGraph | **745** | 38,103 | 1.96 % |
+| **Tree-sitter Analyzer** | **6** | 114,160 | **0.005 %** |
+
+**~390× cleaner on cross-language correctness, while resolving 3× more call edges.** CodeGraph's mis-wires span 17 language pairs (python→swift **408**, python→typescript 195, python→ruby 81, …); TSA's 6 are all `java→python/php` from single-word Java method names. Concretely:
 
 | call (Python `_resolve_entry_points` / `build_response`) | CodeGraph | TSA |
 |---|---|---|
-| `sorted()` (Python builtin) | ❌ callee = **`tests/golden/corpus_swift.swift` — a Swift `func sorted`** (the one Swift def is wired as a callee of **~293** functions repo-wide) | ✅ left `unknown` — no cross-language edge |
+| `sorted()` (Python builtin) | ❌ callee = **`tests/golden/corpus_swift.swift` — a Swift `func sorted`** (wired as a callee of **408** Python functions repo-wide) | ✅ `builtin` — no cross-language edge |
 | `fts_search()` / `fts_search_ranked()` | ❌ bound to the **test mock** (`FallbackCache`) instead of the real method | ✅ resolves to the source method (`_ast_cache_query.py` / `ast_cache.py`) |
 
-Telling an agent that a Python function *calls a Swift method*, or that a production call targets a test mock, is wrong structural data. TSA's resolver now gates every binding by **language family** (JS/TS are one family; Python never binds to Swift/JS) and **demotes test-only definitions** for non-test callers, across all of its resolution paths.
+TSA's per-language resolver gates every binding by **language family** across **13 languages** (Python · Java · Go · JS · TS · C · C++ · Rust · C# · Kotlin · Ruby · PHP · Swift) and **demotes test-only definitions** for non-test callers, across all of its resolution paths. Telling an agent that a Python function *calls a Swift method*, or that a production call targets a test mock, is wrong structural data — and it is the dominant failure mode of a name-only index.
 
 #### Correct *and* complete — 95.9% of call edges classified
 
