@@ -7,14 +7,13 @@ import io
 from typing import Any
 
 from ..models import CodeElement, MarkupElement, StyleElement
+from ._csv_safety import csv_safe_row
 
 
 def format_html_csv(elements: list[CodeElement]) -> str:
     """Format HTML elements as CSV."""
     output = io.StringIO()
-    # escapechar handles control chars (e.g. NULL bytes) that Python 3.10's
-    # csv.writer cannot quote — without it, "\x00" raises _csv.Error there.
-    writer = csv.writer(output, lineterminator="\n", escapechar="\\")
+    writer = csv.writer(output, lineterminator="\n")
     writer.writerow(
         [
             "Name",
@@ -29,7 +28,7 @@ def format_html_csv(elements: list[CodeElement]) -> str:
     )
 
     for element in elements:
-        writer.writerow(_csv_row(element))
+        writer.writerow(csv_safe_row(_csv_row(element)))
 
     csv_content = output.getvalue()
     output.close()

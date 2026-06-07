@@ -4,21 +4,22 @@ Guards a Python 3.10 vs 3.11+ ``csv`` module divergence: on 3.10 a field
 containing a NULL byte (``\\x00``) raises ``_csv.Error: need to escape, but no
 escapechar set`` when the writer has no ``escapechar``; on 3.11+ it does not.
 
-``base_formatter.py`` already set ``escapechar="\\"`` for this exact reason
-("null bytes in some envs"), but three sibling CSV writers
-(``CsvFormatter``, ``format_csv_output``, ``format_html_csv``) did not — so a
-symbol name with a control char (which Hypothesis's ``st.text()`` generates)
-flaked the property suite on the 3.10 CI axis and blocked the v1.21.0 release.
+The control char is stripped (not escaped): setting ``escapechar="\\"`` would
+silence the 3.10 error but double literal backslashes in ordinary fields
+(``C:\\tmp`` -> ``C:\\\\tmp``), a format regression for Windows paths and regex
+strings. So the fix strips CSV-unrepresentable control chars and leaves the
+dialect — and therefore backslashes — untouched.
 
 These tests assert the contract version-independently: every CSV formatter must
-serialize control-character input without raising. They are RED on Python 3.10
-before the fix and GREEN everywhere after it.
+serialize control-character input without raising, AND must preserve literal
+backslashes. They are RED on Python 3.10 before the fix and GREEN after it.
 """
 
 from __future__ import annotations
 
 import pytest
 
+from tree_sitter_analyzer.formatters._csv_safety import csv_safe_cell, csv_safe_row
 from tree_sitter_analyzer.formatters._html_csv_formatter_helpers import (
     format_html_csv,
 )
@@ -90,3 +91,34 @@ def test_markdown_csv_output_handles_control_chars() -> None:
     result = format_csv_output(analysis_result)
     assert isinstance(result, str)
     assert len(result) > 0
+
+
+def test_csv_formatter_preserves_backslashes() -> None:
+    """Literal backslashes (Windows paths, regex) must NOT be doubled.
+
+    Regression guard for the escapechar approach Codex flagged (P2): a field
+    like ``C:\\tmp\\Foo`` must round-trip unchanged, not become ``C:\\\\tmp``.
+    """
+    element = CodeElement(
+        name=r"C:\tmp\Foo",
+        element_type="class",
+        start_line=1,
+        end_line=10,
+        language="python",
+    )
+    result = CsvFormatter().format([element])
+    assert r"C:\tmp\Foo" in result
+    assert r"C:\\tmp" not in result
+
+
+def test_csv_safe_cell_strips_controls_keeps_tab_newline() -> None:
+    """The sanitizer removes C0/DEL controls but keeps tab/newline/CR."""
+    assert csv_safe_cell("a\x00b\x01c") == "abc"
+    assert csv_safe_cell("a\tb\nc\rd") == "a\tb\nc\rd"
+    assert csv_safe_cell(r"C:\tmp") == r"C:\tmp"  # backslash untouched
+    assert csv_safe_cell(42) == 42  # non-str passes through unchanged
+
+
+def test_csv_safe_row_only_touches_string_cells() -> None:
+    """Numeric cells keep their type so csv.writer formats them normally."""
+    assert csv_safe_row(["a\x00", 1, "b\x02", 10]) == ["a", 1, "b", 10]

@@ -359,10 +359,10 @@ class CsvFormatter(IFormatter):
         import csv
         import io
 
+        from ._csv_safety import csv_safe_row
+
         output = io.StringIO()
-        # escapechar handles control chars (e.g. NULL bytes) that Python 3.10's
-        # csv.writer cannot quote — without it, "\x00" raises _csv.Error there.
-        writer = csv.writer(output, lineterminator="\n", escapechar="\\")
+        writer = csv.writer(output, lineterminator="\n")
 
         # Write header
         writer.writerow(
@@ -389,17 +389,19 @@ class CsvFormatter(IFormatter):
             params_str = str(params_raw)
             mods_str = str(mods_raw)
             writer.writerow(
-                [
-                    elem_type,
-                    element.name,
-                    element.start_line,
-                    element.end_line,
-                    element.language,
-                    visibility,
-                    params_str,
-                    return_type,
-                    mods_str,
-                ]
+                csv_safe_row(
+                    [
+                        elem_type,
+                        element.name,
+                        element.start_line,
+                        element.end_line,
+                        element.language,
+                        visibility,
+                        params_str,
+                        return_type,
+                        mods_str,
+                    ]
+                )
             )
 
         csv_content = output.getvalue()
