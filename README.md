@@ -34,7 +34,7 @@ Restart your agent, then say: *"Set the project root to my repo and run the `ind
 
 [Other agents (Cursor, Copilot, Cline, Continue, Claude Desktop, Roo Code) →](#-supported-agents)
 
-**See the correctness edge on your own repo in 30 seconds** — no install, no CodeGraph:
+**See the correctness edge on your own repo** — no install, no CodeGraph (it re-indexes first; seconds on a small repo, a minute or two on a large one):
 
 ```bash
 uvx --from "tree-sitter-analyzer" miswire-audit .
@@ -56,39 +56,6 @@ It prints how many call edges a name-only code index (the design most tools use)
 ---
 
 ## How TSA compares to CodeGraph
-
-> **Correction (2026-06).** An earlier version of this section claimed TSA beat CodeGraph on agent token cost (a "−11 % median" table). That benchmark had a harness bug: the TSA arm's MCP server was started without an explicit project root and analysed *tree-sitter-analyzer's own source* instead of the target repo, so its numbers were meaningless. The bug is fixed (the harness now passes `--project-root`), the inflated claim is withdrawn, and the honest picture is below.
-
-### Agent token cost — RFC-0006 cut the default context payload 53%
-
-Token cost was the one axis where CodeGraph led. [RFC-0006](rfcs/0006-context-progressive-disclosure.md) progressive disclosure closes most of the gap at the source: `nav context` now returns a **lean default** — entry points + a compact `related_symbols` list + code blocks — and moves the flat node/edge graph behind an opt-in `include_graph=true`. Measured on this repo (4 representative queries, TOON):
-
-| context payload | chars |
-|---|---|
-| TSA default, before RFC-0006 | ~13,900 |
-| **TSA default, after (lean)** | **~6,600 (−53%)** |
-| TSA `include_graph=true` (full, opt-in) | ~13,900 |
-| CodeGraph baseline | ~4,400 |
-
-The dominant context call went from **~2.9× CodeGraph's payload to ~1.5×**.
-
-For context, the per-task `$` cost measured **before** RFC-0006 (corrected harness — Claude Sonnet, gin + django, MCP arms, no errors):
-
-| arm | median cost (pre-RFC-0006) | tool calls | file reads |
-|---|---|---|---|
-| CodeGraph MCP | **~$0.27** | 7 | 2 |
-| Tree-sitter Analyzer MCP | ~$0.42 | 7 | 1 |
-| no-MCP (grep/read) | ~$0.34 | 14 | 7 |
-
-A full per-task `$` re-benchmark is the next measurement (harness command below). We report the payload proxy straight rather than restate the old table as if RFC-0006 hadn't shipped.
-
-### Where TSA leads
-
-- **Index build speed.** Removing a redundant post-index edge-refresh pass cut a cold django index (~2 950 files) from **181 s → 97 s (−46 %)**; the win grows with repo size. Re-index of unchanged files is a content-hash lookup.
-- **Strict CLI superset.** Every MCP tool has a CLI equivalent (CodeGraph's CLI is thinner); *behavioural* defaults (ranking, limits, truncation) are kept in lock-step between the two surfaces. Output format is the one intentional divergence — MCP defaults to TOON (token-efficient for agents), the CLI to JSON (human/`jq`-friendly).
-- **One-call expressiveness.** A jQuery-style chain DSL — `search('X').callees(depth=2).explore(include_code=true).answer(compact=true)` — returns an entire flow's subgraph + source in a single call, with JS-style `true`/`false` so agents can write it naturally.
-- **Output is structured + token-aware.** TOON default for MCP (50–70 % smaller than JSON), per-call truncation hints, consistent test-file de-prioritisation across every ranking path.
-- **Breadth.** Health scoring, safe-to-edit / change-impact gating, 13 curated Skills, and broad language coverage.
 
 ### Call-graph correctness — TSA resolves what CodeGraph mis-wires
 
@@ -135,6 +102,39 @@ The remaining ~4% `unknown` is dominated by genuinely-unresolvable dynamic dispa
 > **Now multi-language.** Cross-language-safe resolution is no longer Python-only. A per-language **resolver registry** ([RFC-0010](rfcs/0010-resolver-language-registry.md)) gives each language its own classification cascade with conservative stdlib/external tiers, gated by language family so a binding does not cross into an incompatible language. **Active classified call graph (call-edge extraction + per-language resolver), 13 languages: Python · Java · Go · JavaScript · TypeScript · C · C++ · Rust · C# · Kotlin · Ruby · PHP · Swift.** Each has its own conservative stdlib/external tiers and is adversarially verified to never bind across a language boundary. **Swift is notable**: CodeGraph's flagship mis-wire binds 299 Python `sorted()` callers to a Swift `func sorted` — TSA resolves Swift correctly *and* refuses that exact cross-language bind (verified both directions). Measured on the active set: **~0.01%** cross-language edges (6 of ~57,000 resolved edges, all generic 1-word Java method names) — **~4 orders of magnitude cleaner than CodeGraph**, which wires **299** Python `sorted()` callers to a single Swift `func sorted` (TSA binds **0** of 298). Full reproducible audit: [`benchmarks/codegraph_compare/REPORT-v1.21.0.md`](benchmarks/codegraph_compare/REPORT-v1.21.0.md). Adding a language is one new resolver file (RFC-0010) plus a small call-extraction wiring.
 
 > **Symbol kinds, too.** TSA classifies class members as `kind=method` (20,348 method rows on this repo) — `search action=symbol kind=method` returns them; CodeGraph parity, not a stub. The `index status` payload breaks symbols down by kind and language and edges by kind (`edges_by_kind` — a breakdown CodeGraph does not surface).
+
+### Where TSA leads
+
+- **Index build speed.** Removing a redundant post-index edge-refresh pass cut a cold django index (~2 950 files) from **181 s → 97 s (−46 %)**; the win grows with repo size. Re-index of unchanged files is a content-hash lookup.
+- **Strict CLI superset.** Every MCP tool has a CLI equivalent (CodeGraph's CLI is thinner); *behavioural* defaults (ranking, limits, truncation) are kept in lock-step between the two surfaces. Output format is the one intentional divergence — MCP defaults to TOON (token-efficient for agents), the CLI to JSON (human/`jq`-friendly).
+- **One-call expressiveness.** A jQuery-style chain DSL — `search('X').callees(depth=2).explore(include_code=true).answer(compact=true)` — returns an entire flow's subgraph + source in a single call, with JS-style `true`/`false` so agents can write it naturally.
+- **Output is structured + token-aware.** TOON default for MCP (50–70 % smaller than JSON), per-call truncation hints, consistent test-file de-prioritisation across every ranking path.
+- **Breadth.** Health scoring, safe-to-edit / change-impact gating, 13 curated Skills, and broad language coverage.
+
+### On token cost — and a benchmark we corrected
+
+> **Correction (2026-06).** An earlier version of this section claimed TSA beat CodeGraph on agent token cost (a "−11 % median" table). That benchmark had a harness bug: the TSA arm's MCP server was started without an explicit project root and analysed *tree-sitter-analyzer's own source* instead of the target repo, so its numbers were meaningless. The bug is fixed (the harness now passes `--project-root`), the inflated claim is withdrawn, and the honest picture is below.
+
+Token cost was the one axis where CodeGraph led. [RFC-0006](rfcs/0006-context-progressive-disclosure.md) progressive disclosure closes most of the gap at the source: `nav context` now returns a **lean default** — entry points + a compact `related_symbols` list + code blocks — and moves the flat node/edge graph behind an opt-in `include_graph=true`. Measured on this repo (4 representative queries, TOON):
+
+| context payload | chars |
+|---|---|
+| TSA default, before RFC-0006 | ~13,900 |
+| **TSA default, after (lean)** | **~6,600 (−53%)** |
+| TSA `include_graph=true` (full, opt-in) | ~13,900 |
+| CodeGraph baseline | ~4,400 |
+
+The dominant context call went from **~2.9× CodeGraph's payload to ~1.5×**.
+
+For context, the per-task `$` cost measured **before** RFC-0006 (corrected harness — Claude Sonnet, gin + django, MCP arms, no errors):
+
+| arm | median cost (pre-RFC-0006) | tool calls | file reads |
+|---|---|---|---|
+| CodeGraph MCP | **~$0.27** | 7 | 2 |
+| Tree-sitter Analyzer MCP | ~$0.42 | 7 | 1 |
+| no-MCP (grep/read) | ~$0.34 | 14 | 7 |
+
+A full per-task `$` re-benchmark is the next measurement (harness command below). We report the payload proxy straight rather than restate the old table as if RFC-0006 hadn't shipped.
 
 ### Reactive push + edge-kind breakdown — two things CodeGraph can't do
 
