@@ -15,6 +15,14 @@ _CALL_NODE_TYPES = {
     "cpp": {"call_expression"},
     # RFC-0010 activation (node types verified empirically against each grammar).
     "rust": {"call_expression", "macro_invocation"},
+    "csharp": {"invocation_expression"},
+    "kotlin": {"call_expression", "constructor_invocation"},
+    "ruby": {"call"},
+    "php": {
+        "function_call_expression",
+        "member_call_expression",
+        "scoped_call_expression",
+    },
 }
 
 _FUNC_DEF_TYPES = {
@@ -26,6 +34,10 @@ _FUNC_DEF_TYPES = {
     "c": {"function_definition"},
     "cpp": {"function_definition"},
     "rust": {"function_item"},
+    "csharp": {"method_declaration"},
+    "kotlin": {"function_declaration"},
+    "ruby": {"method", "singleton_method"},
+    "php": {"function_definition", "method_declaration"},
 }
 
 # ---------------------------------------------------------------------------
@@ -105,7 +117,12 @@ _FUNC_NAME_DISPATCH: dict[str, Callable] = {
     "c": _func_name_c,
     "cpp": _func_name_c,
     # RFC-0010 activation: wire call-edge extraction for the resolver-ready langs.
+    # All five expose the definition name in the ``name`` field.
     "rust": _func_name_field,
+    "csharp": _func_name_field,
+    "kotlin": _func_name_field,
+    "ruby": _func_name_field,
+    "php": _func_name_field,
 }
 
 # ---------------------------------------------------------------------------
@@ -192,6 +209,57 @@ def _call_info_rust(node: Any, source: str) -> dict[str, Any] | None:
     return None
 
 
+def _call_info_kotlin(node: Any, source: str) -> dict[str, Any] | None:
+    """Kotlin: ``call_expression`` / ``constructor_invocation`` carry the callee
+    (or constructed type) as the first child — an ``identifier`` (``foo()``), a
+    ``navigation_expression`` (``x.foo()`` → ``x.foo``), or a ``user_type``
+    (``Thing()``). Parse it into name + receiver."""
+    if node.children:
+        first = node.children[0]
+        return _call_from_text(_node_text(first, source), node)
+    return None
+
+
+def _call_info_ruby(node: Any, source: str) -> dict[str, Any] | None:
+    """Ruby ``call``: method name in the ``method`` field, optional ``receiver``
+    field (``obj.foo`` → name=foo, receiver=obj; bare ``puts`` → receiver=None)."""
+    method_node = node.child_by_field_name("method")
+    if method_node is None:
+        return None
+    name = _node_text(method_node, source)
+    recv_node = node.child_by_field_name("receiver")
+    receiver = _node_text(recv_node, source) if recv_node is not None else None
+    full_name = f"{receiver}.{name}" if receiver else name
+    return {
+        "name": name,
+        "full_name": full_name,
+        "line": node.start_point[0] + 1,
+        "receiver": receiver,
+    }
+
+
+def _call_info_php(node: Any, source: str) -> dict[str, Any] | None:
+    """PHP: ``member_call_expression`` / ``scoped_call_expression`` expose the
+    method in the ``name`` field (+ ``object`` receiver); plain
+    ``function_call_expression`` exposes the callee in the ``function`` field."""
+    name_node = node.child_by_field_name("name")
+    if name_node is not None:
+        name = _node_text(name_node, source)
+        obj_node = node.child_by_field_name("object")
+        receiver = _node_text(obj_node, source) if obj_node is not None else None
+        full_name = f"{receiver}.{name}" if receiver else name
+        return {
+            "name": name,
+            "full_name": full_name,
+            "line": node.start_point[0] + 1,
+            "receiver": receiver,
+        }
+    func_node = node.child_by_field_name("function")
+    if func_node is not None:
+        return _call_from_text(_node_text(func_node, source), node)
+    return None
+
+
 _CALL_DISPATCH: dict[str, Callable] = {
     "python": _call_info_field,
     "javascript": _call_info_field,
@@ -201,6 +269,12 @@ _CALL_DISPATCH: dict[str, Callable] = {
     "c": _call_info_c,
     "cpp": _call_info_c,
     "rust": _call_info_rust,
+    # C# invocation_expression exposes the callee in the ``function`` field
+    # (identifier or member_access_expression) — same shape as _call_info_field.
+    "csharp": _call_info_field,
+    "kotlin": _call_info_kotlin,
+    "ruby": _call_info_ruby,
+    "php": _call_info_php,
 }
 
 # ---------------------------------------------------------------------------
