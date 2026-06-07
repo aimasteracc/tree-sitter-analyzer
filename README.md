@@ -101,7 +101,7 @@ Token cost is one axis; a code-intelligence tool's *first* job is a **correct gr
 > ```
 > It indexes your code and prints how many call edges a name-only resolver (the design most indexes use) *would* mis-wire across a language boundary vs how many TSA does — with the offending edges listed (`Python sorted() → Swift func at file:line`). Add `--card` for a shareable scorecard.
 >
-> **Real runs:** on [HuggingFace `tokenizers`](benchmarks/codegraph_compare/results/miswire-audit-examples.md) (Rust+Python+JS+TS) a name-only resolver would mis-wire **1,259** call edges (incl. a JS `tokenize()` → Rust def) — TSA: **0**. On a single-language repo (`gin`, Go) both are **0** — no false positives. [More examples →](benchmarks/codegraph_compare/results/miswire-audit-examples.md)
+> **Real runs:** on [HuggingFace `tokenizers`](benchmarks/codegraph_compare/MISWIRE-AUDIT-EXAMPLES.md) (Rust+Python+JS+TS) a name-only resolver would mis-wire **1,259** call edges (incl. a JS `tokenize()` → Rust def) — TSA: **0**. On a single-language repo (`gin`, Go) both are **0** — no false positives. [More examples →](benchmarks/codegraph_compare/MISWIRE-AUDIT-EXAMPLES.md)
 
 Concretely:
 
