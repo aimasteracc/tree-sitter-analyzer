@@ -413,6 +413,32 @@ def _extract_parent_classes(node: Any, source: str, language: str) -> list[str]:
     return parents
 
 
+def _c_function_def_name(node: Any, source: str) -> str | None:
+    """Recover the name of a C ``function_definition`` node.
+
+    A tree-sitter C ``function_definition`` does NOT expose a ``name`` field —
+    the identifier lives under its ``function_declarator``, which may itself be
+    wrapped in one or more ``pointer_declarator`` / ``parenthesized_declarator``
+    layers for pointer-returning functions (e.g. ``void *malloc(...)``). Walk the
+    ``declarator`` field chain down to the ``function_declarator`` and return its
+    declarator identifier text, or ``None`` when it cannot be recovered.
+
+    This is what lets C free functions reach ``ast_symbol_rows`` so the synapse
+    C resolver's ownership gate (``_project_owns``) sees project-defined libc
+    names (e.g. a custom ``malloc``) and does NOT misclassify them as ``stdlib``.
+    """
+    declarator = node.child_by_field_name("declarator")
+    for _ in range(8):  # bounded descent through pointer/parenthesized wrappers
+        if declarator is None:
+            return None
+        if declarator.type == "function_declarator":
+            inner = declarator.child_by_field_name("declarator")
+            text = _node_text(inner, source) if inner is not None else ""
+            return text or None
+        declarator = declarator.child_by_field_name("declarator")
+    return None
+
+
 def _walk_for_symbols(
     node: Any,
     source: str,
@@ -424,8 +450,18 @@ def _walk_for_symbols(
         return
     node_type = node.type
     name_node = node.child_by_field_name("name")
-    if node_type in _FUNCTION_LIKE and name_node is not None:
-        name = _node_text(name_node, source)
+    # C ``function_definition`` nodes carry their identifier under
+    # ``function_declarator`` (no ``name`` field), so recover it explicitly —
+    # otherwise ordinary C free functions never reach ``ast_symbol_rows`` and the
+    # synapse C resolver's project-ownership gate cannot shadow the libc tier.
+    func_name: str | None = None
+    if node_type in _FUNCTION_LIKE:
+        if name_node is not None:
+            func_name = _node_text(name_node, source)
+        elif node_type == "function_definition" and language == "c":
+            func_name = _c_function_def_name(node, source)
+    if func_name is not None:
+        name = func_name
         params_node = node.child_by_field_name("parameters")
         params = _node_text(params_node, source) if params_node else ""
         dp = _count_decision_points(node, language)
