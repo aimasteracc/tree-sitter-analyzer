@@ -8,7 +8,8 @@ the prioritized path to becoming the default agent code-intelligence layer.
 | axis | TSA | CG | verdict |
 |---|---|---|---|
 | symbol kinds (kind=method) | 20,348 | 20,275 | TSA ahead |
-| callee classification | 96.5% (after #324) | many same-name mis-wires | TSA ahead (correct AND complete) |
+| callee classification | 96.3% (.ast-cache, measured) | many same-name mis-wires | TSA ahead (correct AND complete) |
+| cross-language safety | ~0.01% mis-wires across 8 languages (py/java/go/js/ts/cpp/rust + jsx) | wires 299 Python `sorted()` callers to a Swift func | TSA structurally ahead — never binds across language; see REPORT-v1.21.0 |
 | FTS production-first | yes | test-mock shadows | TSA ahead |
 | edges_by_kind status | yes | none | TSA exclusive |
 | token / context call | ~6.6k (was 12.7k) | ~4.4k | gap 2.9x to 1.5x; near parity |
@@ -29,12 +30,19 @@ If TSA is now within ~1.1x of CG (or cheaper), the "CG is cheaper" caveat can be
 retired with evidence. This converts a hedge into a headline. (Needs API budget;
 user has authorized spend.)
 
-### P1 — RFC-0008 multi-language method classification (Java shipped; Go/JS/TS remaining)
-The 83.9% to 96.5% classification win was Python-only. Extend the cascade tiers to
-Java/Go/JS/TS so polyglot repos get the same resolved-graph completeness. One PR
-per language. **Java shipped** (#326 — stdlib/external tiers + method-call name
-extraction, on develop); Go/JS/TS still pending. Largest single lever for
-non-Python users.
+### P1 — Multi-language correctness moat (RFC-0008 + RFC-0010): FIRST WAVE SHIPPED
+The 83.9% → 96.5% classification win was Python-only; the cross-language-safety
+win generalises only as far as TSA has per-language resolution. **Now shipped for
+8 languages.** RFC-0010 (#345) introduced a language **registry + auto-discovery**
+so a language is a self-contained `languages/<lang>.py` module — added with ZERO
+edits to shared files, in parallel. First wave landed: **Go (#350), JavaScript
+(#346), TypeScript (#347), C++ (#348), Rust (#349)** — on top of Python + Java
+(#326). Every one: conservative stdlib/external tiers, **adversarially verified to
+never cross-language bind** (the moat), Java classification byte-identical (no
+regression), Codex-hardened over 3 precision rounds each. **Wave 2 next**:
+Kotlin / Scala / PHP / Ruby / C# (same new-files-only pattern). This is the
+largest lever for non-Python users and the axis CodeGraph structurally cannot
+match (it name-collides across languages — see REPORT-v1.21.0).
 
 ### P2 — File-level resolution of stdlib/builtin methods (RFC-0004 phase 2)
 Today stdlib/external/builtin methods are classified but not file-resolved.
@@ -60,6 +68,10 @@ on-thesis ("agents know before they touch").
 - docs-only changes now skip the heavy matrix (CI smart-routing, #323).
 
 ## Next action
-RFC-0008 Java (#326) and RFC-0009 A/B/C (#330/#331/#333) have landed on develop. Next:
-P0 (benchmark) to retire the "CG is cheaper" caveat with evidence, and continue
-P1 (RFC-0008 Go/JS/TS) for the remaining polyglot reach.
+Landed on develop: RFC-0009 A/B/C (#330/#331/#333), the correctness report
+(REPORT-v1.21.0, #343), RFC-0010 registry foundation (#345), and the **first-wave
+language resolvers** Go/JS/TS/C++/Rust (#346-#350) — the correctness moat now
+spans 8 languages. Next: **wave 2 languages** (Kotlin/Scala/PHP/Ruby/C#, same
+new-files-only registry pattern); the **N≥5 cost benchmark** (P0) once the
+benchmark setup-validation gate lands; and **surface the moat** (README +
+REPORT-v1.21.0) so the 8-language correctness lead is visible to GitHub.
