@@ -255,3 +255,58 @@ function in another language, etc. — verified here, not asserted. Reproduce by
 indexing any polyglot tree and counting edges whose `callee_resolved_file`
 language is incompatible with the caller's language; the count is 0 by
 construction of the cascade.
+
+---
+
+## Addendum 2 (2026-06-08) — LIVE head-to-head on both tools' production indexes
+
+The measurements above use controlled fixtures. This one queries **both tools'
+live indexes of this very repository** (CodeGraph's `.codegraph/codegraph.db` and
+TSA's `.ast-cache/index.db`), at the same commit, and counts every call edge
+whose caller language differs from the callee-definition's language — a
+cross-language mis-wire by construction (a Python function cannot call a Swift
+method).
+
+| tool | cross-language call edges | total call edges | mis-wire rate |
+|---|---|---|---|
+| **CodeGraph** | **745** | 38,103 | **1.96 %** |
+| **Tree-sitter Analyzer** | **6** | 114,160 | **0.005 %** |
+
+**TSA is ~390× cleaner on cross-language correctness — while resolving 3× more
+call edges total** (114k vs 38k; more complete, not just more conservative).
+
+CodeGraph's mis-wires are not a single fluke — they span the language matrix:
+
+| CodeGraph mis-wire | count |
+|---|---|
+| python → swift | 408 |
+| python → typescript | 195 |
+| python → ruby | 81 |
+| c → go | 13 |
+| kotlin → java | 6 |
+| typescript → python | 5 |
+| scala → python | 4 |
+| … (12 more pairs) | … |
+
+The flagship case is concrete: CodeGraph's only `sorted` node is
+`method | tests/golden/corpus_swift.swift | swift`, and **408 Python callers** of
+the Python builtin `sorted()` are wired to that Swift method. TSA classifies all
+376 of those Python `sorted()` calls as `builtin` and binds **0** to the Swift
+file. TSA's own 6 cross-language edges are all `java → python/php` from
+single-word Java method names (the documented ceiling without receiver-type
+inference).
+
+Reproduce (both DBs are on disk after each tool indexes the repo):
+
+```bash
+# CodeGraph cross-language call edges:
+sqlite3 .codegraph/codegraph.db "SELECT COUNT(*) FROM edges e \
+  JOIN nodes c ON e.source=c.id JOIN nodes t ON e.target=t.id \
+  WHERE e.kind IN ('calls','call') AND c.language!=t.language \
+  AND c.language IS NOT NULL AND t.language IS NOT NULL"   # -> 745
+
+# TSA cross-language call edges:
+sqlite3 .ast-cache/index.db "SELECT COUNT(*) FROM edges e \
+  JOIN ast_index i ON e.callee_resolved_file=i.file_path \
+  WHERE e.kind='calls' AND e.callee_resolved_file!='' AND e.language!=i.language"  # -> 6
+```
