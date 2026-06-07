@@ -1483,3 +1483,16 @@ def test_generic_verb_kept_when_sole_signal() -> None:
 
     cands = _extract_symbol_candidates("find the dispatch function")
     assert "dispatch" in cands, cands
+
+
+def test_quoted_generic_verb_is_kept_as_explicit_symbol() -> None:
+    """RFC-0009 C / Codex P2 #333: a generic verb the user QUOTED (`` `dispatch` ``)
+    is an explicit symbol name and must survive the generic-verb filter even when
+    a snake_case symbol co-occurs — only BARE generic verbs are dropped."""
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        _extract_symbol_candidates,
+    )
+
+    cands = _extract_symbol_candidates("trace resolve_callee through `dispatch`")
+    assert "dispatch" in cands, cands
+    assert "resolve_callee" in cands
