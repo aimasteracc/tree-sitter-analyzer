@@ -536,3 +536,70 @@ class TestCodeGraphCompareEvaluator:
 
         assert record["evaluated_with_llm"] is False
         assert record["overall"] == 3.0
+
+
+class TestRunIdUniqueness:
+    """Raw benchmark artifacts must survive re-runs: a per-invocation session_id
+    keeps repeated runs of the same (question, arm, repeat) from overwriting each
+    other's transcript — without it, n>1 cost measurement loses earlier data."""
+
+    def test_session_id_uniquifies_raw_artifacts(self, tmp_path):
+        from benchmarks.codegraph_compare.adapters import RunConfig
+        from benchmarks.codegraph_compare.adapters.claude_runner import run_one
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        results = tmp_path / "results"
+        cfg = RunConfig(arm_id="native-only", repo_path=repo, system_prompt="sys")
+
+        common = {
+            "question_id": "q1",
+            "question_prompt": "trace it",
+            "arm_id": "native-only",
+            "repo_path": repo,
+            "repeat": 0,
+            "run_config": cfg,
+            "results_dir": results,
+            "agent_backend": "claude",
+            "dry_run": True,
+        }
+        r1 = run_one(**common, session_id="SESS_A")
+        r2 = run_one(**common, session_id="SESS_B")
+
+        # Same logical run_id (grouping key) ...
+        assert r1["run_id"] == r2["run_id"]
+        # ... but DISTINCT session ids + distinct raw artifact paths (no overwrite).
+        assert r1["session_id"] == "SESS_A"
+        assert r2["session_id"] == "SESS_B"
+        assert r1["transcript_path"] != r2["transcript_path"]
+        raw = results / "raw"
+        results_files = sorted(p.name for p in raw.glob("*_result.jsonl"))
+        assert len(results_files) == 2, results_files
+        assert any("SESS_A" in n for n in results_files)
+        assert any("SESS_B" in n for n in results_files)
+
+    def test_run_record_with_session_id_validates_against_schema(self, tmp_path):
+        """Codex P2 #332: the new session_id field must NOT break RunRecord's
+        extra='forbid' schema — fresh runner output has to validate."""
+        from benchmarks.codegraph_compare.adapters import RunConfig
+        from benchmarks.codegraph_compare.adapters.claude_runner import run_one
+        from benchmarks.codegraph_compare.schemas import RunRecord
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        cfg = RunConfig(arm_id="native-only", repo_path=repo, system_prompt="sys")
+        record = run_one(
+            question_id="q1",
+            question_prompt="trace it",
+            arm_id="native-only",
+            repo_path=repo,
+            repeat=0,
+            run_config=cfg,
+            results_dir=tmp_path / "results",
+            agent_backend="claude",
+            dry_run=True,
+            session_id="SESS_X",
+        )
+        # Must not raise — session_id is now a declared optional field.
+        validated = RunRecord(**record)
+        assert validated.session_id == "SESS_X"

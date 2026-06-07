@@ -39,6 +39,11 @@ class RunRecord:
     model: str = ""
     cached_input_tokens: int = 0
     reasoning_output_tokens: int = 0
+    # Per-invocation id (one per cmd_run / cmd_run_matrix) that uniquifies raw
+    # artifact filenames so repeated runs of the same run_id don't overwrite each
+    # other. run_id stays the logical grouping key; session_id distinguishes
+    # invocations. Optional so older runs.jsonl records still validate.
+    session_id: str = ""
 
     @classmethod
     def make_id(
