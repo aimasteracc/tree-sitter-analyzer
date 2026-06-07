@@ -127,8 +127,11 @@ sqlite3 .ast-cache/index.db "
 ```
 
 **Same-language dominance.** Resolved (`project`/`local`) edges stay in-language:
-python→python 56,917 · java→java 64 · typescript→typescript 25 · go→go 13 ·
-javascript→javascript 11.
+python→python 56,917 · java→java **58** · typescript→typescript 25 · go→go 13 ·
+javascript→javascript 11. These sum to **57,024**; adding the 6 cross-language
+Java edges above gives **57,030** = the full `project` + `local` total (44,113 +
+12,917). (Java has 64 resolved edges total — 58 in-language + the 6 cross-language
+ones counted separately above.)
 
 ---
 
