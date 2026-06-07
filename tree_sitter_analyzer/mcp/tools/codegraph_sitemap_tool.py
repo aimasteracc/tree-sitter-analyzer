@@ -30,6 +30,12 @@ from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
 
+#: Default cap on the number of symbol entries emitted by the flat/api modes.
+#: F3 (overview-output-budget): a large repo can otherwise emit a wall of text
+#: (~86k) that is expensive and unreadable for an agent. Callers can raise this
+#: via the ``max_symbols`` argument when they genuinely need the full listing.
+DEFAULT_MAX_SYMBOLS = 300
+
 
 def _path_parts(file_path: str) -> list[str]:
     return [part for part in file_path.replace("\\", "/").split("/") if part]
@@ -103,6 +109,15 @@ class CodeGraphSitemapTool(BaseMCPTool):
                     "description": "Max files to include (default: 200)",
                     "default": 200,
                 },
+                "max_symbols": {
+                    "type": "integer",
+                    "description": (
+                        "Max symbol entries to emit in api/flat modes "
+                        f"(default: {DEFAULT_MAX_SYMBOLS}). When the cap is hit, "
+                        "the response sets truncated=true; raise this to see more."
+                    ),
+                    "default": DEFAULT_MAX_SYMBOLS,
+                },
                 "output_format": {
                     "type": "string",
                     "enum": ["json", "toon"],
@@ -126,31 +141,46 @@ class CodeGraphSitemapTool(BaseMCPTool):
         language = arguments.get("language")
         directory = arguments.get("directory")
         max_files = arguments.get("max_files", 200)
+        max_symbols = arguments.get("max_symbols", DEFAULT_MAX_SYMBOLS)
         output_format = arguments.get("output_format", "toon")
 
         cache = self._get_cache()
 
         raw_files = self._load_indexed_files(cache, language, directory, max_files)
 
+        # F3: api/flat modes can emit unbounded symbol lists. The hierarchical
+        # full/module modes are already bounded by max_files, so they always
+        # report truncated=false for schema consistency.
+        truncated = False
         if mode == "full":
             payload = self._build_full_map(raw_files)
         elif mode == "api":
-            payload = self._build_api_surface(raw_files)
+            payload, truncated = self._build_api_surface(raw_files, max_symbols)
         elif mode == "module":
             payload = self._build_module_metrics(raw_files)
         else:
-            payload = self._build_flat(raw_files)
+            payload, truncated = self._build_flat(raw_files, max_symbols)
 
         total_symbols = sum(f["symbol_count"] for f in raw_files)
         extra: dict[str, Any] = {}
         if language:
             extra["language_filter"] = language
 
+        truncation_note = (
+            f"Output capped at max_symbols={max_symbols}. "
+            "Raise the max_symbols argument to see more, or narrow the scope "
+            "with the directory/language filters."
+            if truncated
+            else ""
+        )
+
         result = build_response(
             verdict="INFO" if raw_files else "NOT_FOUND",
             mode=mode,
             file_count=len(raw_files),
             total_symbols=total_symbols,
+            truncated=truncated,
+            truncation_note=truncation_note,
             **payload,
             **extra,
         )
@@ -276,7 +306,9 @@ class CodeGraphSitemapTool(BaseMCPTool):
                 out[key] = val
         return out
 
-    def _build_api_surface(self, files: list[dict[str, Any]]) -> dict[str, Any]:
+    def _build_api_surface(
+        self, files: list[dict[str, Any]], max_symbols: int = DEFAULT_MAX_SYMBOLS
+    ) -> tuple[dict[str, Any], bool]:
         api: list[dict[str, Any]] = []
         for f in files:
             for func in f["functions"]:
@@ -312,13 +344,15 @@ class CodeGraphSitemapTool(BaseMCPTool):
                     }
                 )
 
-        return {
-            "public_api": api,
+        # Scalar counts reflect the true totals; only the emitted list is capped.
+        payload = {
+            "public_api": api[:max_symbols],
             "public_function_count": sum(
                 1 for a in api if a["kind"] in ("function", "method")
             ),
             "public_class_count": sum(1 for a in api if a["kind"] == "class"),
         }
+        return payload, len(api) > max_symbols
 
     def _build_module_metrics(self, files: list[dict[str, Any]]) -> dict[str, Any]:
         by_dir: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -361,7 +395,9 @@ class CodeGraphSitemapTool(BaseMCPTool):
 
         return {"modules": modules}
 
-    def _build_flat(self, files: list[dict[str, Any]]) -> dict[str, Any]:
+    def _build_flat(
+        self, files: list[dict[str, Any]], max_symbols: int = DEFAULT_MAX_SYMBOLS
+    ) -> tuple[dict[str, Any], bool]:
         by_kind: dict[str, list[dict[str, Any]]] = defaultdict(list)
         for f in files:
             for sym in f["symbols"]:
@@ -379,5 +415,26 @@ class CodeGraphSitemapTool(BaseMCPTool):
                     entry["class"] = sym["class"]
                 by_kind[kind].append(entry)
 
+        # counts report the true (untruncated) totals per kind.
         counts = {k: len(v) for k, v in by_kind.items()}
-        return {"symbols_by_kind": dict(by_kind), "counts": counts}
+
+        # Cap the total number of emitted entries across all kinds, keeping the
+        # per-kind grouping. Kinds are iterated in stable insertion order so the
+        # truncation is deterministic.
+        total = sum(len(v) for v in by_kind.values())
+        truncated = total > max_symbols
+        if truncated:
+            remaining = max_symbols
+            capped: dict[str, list[dict[str, Any]]] = {}
+            for kind, entries in by_kind.items():
+                if remaining <= 0:
+                    break
+                take = entries[:remaining]
+                if take:
+                    capped[kind] = take
+                    remaining -= len(take)
+            emitted_by_kind = capped
+        else:
+            emitted_by_kind = dict(by_kind)
+
+        return {"symbols_by_kind": emitted_by_kind, "counts": counts}, truncated
