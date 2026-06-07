@@ -94,15 +94,17 @@ def _ctx(
     NOT care about import-gating keeps classifying stdlib calls as before.
     """
     if imports is None:
-        # Permissive default: import every canonical stdlib package so legacy
-        # stdlib-classification tests still see import evidence.
+        # Permissive default: import every canonical stdlib path so legacy
+        # stdlib-classification tests still see import evidence. Built from the
+        # FULL canonical paths (``net/http`` …) — the import-evidence gate
+        # validates the whole path, not the final segment (Codex P2 finding 3).
         from tree_sitter_analyzer.synapse_resolver.languages._go_constants import (
-            STDLIB_PACKAGES_GO,
+            STDLIB_IMPORT_PATHS_GO,
         )
 
         block = (
             "import (\n"
-            + "".join(f'\t"{p}"\n' for p in sorted(STDLIB_PACKAGES_GO))
+            + "".join(f'\t"{p}"\n' for p in sorted(STDLIB_IMPORT_PATHS_GO))
             + ")"
         )
         imports = dict.fromkeys(symbols, block)
@@ -245,6 +247,62 @@ def test_commented_import_does_not_enable_stdlib_qualifier() -> None:
         imports={"main.go": 'import (\n\t"fmt"\n\t// "net/http"\n)'},
     )
     _sym, resolution, _file = resolve_go_callee("Get", "http.Get", "main.go", ctx)
+    assert resolution == "unknown"
+
+
+# ---------------------------------------------------------------------------
+# Codex P2 (finding 3): the import-evidence gate must validate the FULL
+# canonical stdlib import path, not just the final path segment. A third-party
+# module whose last segment collides with a stdlib package name
+# (``github.com/acme/json`` ends in ``json``; ``example.com/fmt`` ends in
+# ``fmt``) must NOT count as stdlib import evidence.
+# ---------------------------------------------------------------------------
+def test_third_party_path_ending_in_stdlib_name_is_not_import_evidence() -> None:
+    """``import jsonx "github.com/acme/json"`` must NOT register ``json`` (nor
+    the alias) as stdlib import evidence — the imported path is third-party."""
+    from tree_sitter_analyzer.synapse_resolver.languages._go_constants import (
+        parse_go_import_block,
+    )
+
+    assert parse_go_import_block('import jsonx "github.com/acme/json"') == {}
+
+
+def test_third_party_plain_import_ending_in_stdlib_name_is_not_evidence() -> None:
+    """A plain ``import "example.com/fmt"`` ends in ``fmt`` but is third-party —
+    the full path is not the Go standard library, so no evidence is recorded."""
+    from tree_sitter_analyzer.synapse_resolver.languages._go_constants import (
+        parse_go_import_block,
+    )
+
+    assert parse_go_import_block('import "example.com/fmt"') == {}
+
+
+def test_canonical_stdlib_subpath_is_import_evidence() -> None:
+    """Genuine multi-segment stdlib paths (``net/http``, ``encoding/json``,
+    ``path/filepath``) ARE evidence and map their final segment qualifier."""
+    from tree_sitter_analyzer.synapse_resolver.languages._go_constants import (
+        parse_go_import_block,
+    )
+
+    raw = 'import (\n\t"net/http"\n\t"encoding/json"\n\t"path/filepath"\n)'
+    assert parse_go_import_block(raw) == {
+        "http": "http",
+        "json": "json",
+        "filepath": "filepath",
+    }
+
+
+def test_third_party_subpath_collision_through_resolver_stays_unknown() -> None:
+    """End-to-end of finding 3: a file importing only ``github.com/acme/json``
+    (alias ``jsonx``) calling ``jsonx.Marshal`` must stay ``unknown`` — the
+    third-party path is not stdlib evidence."""
+    ctx = _ctx(
+        {"main.go": [("main", "function", 11)]},
+        imports={"main.go": 'import jsonx "github.com/acme/json"'},
+    )
+    _sym, resolution, _file = resolve_go_callee(
+        "Marshal", "jsonx.Marshal", "main.go", ctx
+    )
     assert resolution == "unknown"
 
 

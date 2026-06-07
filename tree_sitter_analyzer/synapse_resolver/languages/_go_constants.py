@@ -9,10 +9,19 @@ than the function name. An over-broad set would mis-classify third-party or
 domain calls; precision beats recall, so an ``unknown`` edge is correct and a
 mis-classified one is the exact CodeGraph failure this project avoids.
 
-``STDLIB_PACKAGES_GO`` is therefore a small, hand-audited set of canonical
-Go standard-library top-level package names. A ``pkg.Func`` call classifies
-as ``stdlib`` ONLY when ``pkg`` is in this set AND the project does not itself
-define a symbol named ``pkg`` (shadowing preserved).
+``STDLIB_IMPORT_PATHS_GO`` is therefore a small, hand-audited set of *canonical
+full* Go standard-library import paths (``"fmt"``, ``"net/http"``,
+``"encoding/json"`` …). Import evidence is gated on the **full path**, never on
+the final segment alone: a third-party module whose last segment collides with a
+stdlib name (``github.com/acme/json`` ends in ``json``; ``example.com/fmt`` ends
+in ``fmt``) is NOT the standard library and must not register stdlib evidence
+(Codex P2 finding 3). The in-code qualifier is the path's final segment (or the
+import alias). A ``pkg.Func`` call classifies as ``stdlib`` ONLY when ``pkg`` is
+an actually-imported stdlib qualifier AND the project does not itself define a
+symbol named ``pkg`` (shadowing preserved).
+
+``STDLIB_PACKAGES_GO`` is the derived set of final-segment qualifiers (kept for
+back-compat / introspection); the canonical gate is ``STDLIB_IMPORT_PATHS_GO``.
 
 ``EXTERNAL_PACKAGES_GO`` is intentionally EMPTY for the first PR: there is no
 package qualifier that is (near-)exclusively one third-party library and
@@ -24,11 +33,14 @@ from __future__ import annotations
 
 import re
 
-#: Canonical Go standard-library top-level package names. Kept deliberately
-#: small and unambiguous — each is a well-known stdlib package whose short
-#: identifier is very unlikely to collide with a project-defined symbol. When
-#: in doubt a package is LEFT OUT (stays ``unknown``), never guessed in.
-STDLIB_PACKAGES_GO: frozenset[str] = frozenset(
+#: Canonical *full* Go standard-library import paths. The import-evidence gate
+#: validates against these full paths (NOT the final segment alone), so a
+#: third-party module ending in a stdlib name (``github.com/acme/json``,
+#: ``example.com/fmt``) is correctly excluded (Codex P2 finding 3). Kept
+#: deliberately small and unambiguous — each is a well-known stdlib path whose
+#: final-segment qualifier is very unlikely to collide with a project symbol.
+#: When in doubt a path is LEFT OUT (stays ``unknown``), never guessed in.
+STDLIB_IMPORT_PATHS_GO: frozenset[str] = frozenset(
     {
         "fmt",
         "errors",
@@ -38,29 +50,37 @@ STDLIB_PACKAGES_GO: frozenset[str] = frozenset(
         "bufio",
         "sort",
         "unicode",
+        "unicode/utf8",
         "math",
+        "math/bits",
+        "math/rand",
         "time",
         "context",
         "sync",
+        "sync/atomic",
         "regexp",
         "encoding",
-        "json",
+        "encoding/json",
         "io",
         "os",
         "path",
-        "filepath",
+        "path/filepath",
         "reflect",
         "runtime",
         "flag",
         "log",
         "net",
-        "http",
-        "url",
-        "utf8",
-        "atomic",
-        "rand",
-        "bits",
+        "net/http",
+        "net/url",
     }
+)
+
+#: Derived set of final-segment qualifiers (back-compat / introspection only).
+#: The authoritative import-evidence gate is ``STDLIB_IMPORT_PATHS_GO`` above;
+#: this set must NOT be used to validate import paths (its membership would
+#: re-introduce the final-segment-collision false positive this module fixes).
+STDLIB_PACKAGES_GO: frozenset[str] = frozenset(
+    path.rsplit("/", 1)[-1] for path in STDLIB_IMPORT_PATHS_GO
 )
 
 #: Empty for the first PR — see module docstring. No Go third-party package
@@ -133,9 +153,13 @@ def parse_go_import_block(raw: str) -> dict[str, str]:
       classification of a same-named variable.
 
     Non-stdlib imports are excluded too (the stdlib tier is the only consumer).
-    The mapping is conservative by construction: a variable that merely shares
-    a stdlib package's name but is never imported never appears here, so the
-    resolver leaves it ``unknown`` (RFC-0008 precision-over-recall).
+    Inclusion is gated on the **full canonical import path** matching
+    ``STDLIB_IMPORT_PATHS_GO`` — NOT on the final path segment — so a
+    third-party module whose last segment collides with a stdlib name
+    (``github.com/acme/json``, ``example.com/fmt``) yields no evidence (Codex P2
+    finding 3). The mapping is conservative by construction: a variable that
+    merely shares a stdlib package's name but is never imported never appears
+    here, so the resolver leaves it ``unknown`` (RFC-0008 precision-over-recall).
     """
     out: dict[str, str] = {}
     # Strip Go comments FIRST (string-literal aware) so a commented-out spec
@@ -149,10 +173,13 @@ def parse_go_import_block(raw: str) -> dict[str, str]:
         path = m.group("path")
         if not path:
             continue
+        # Gate on the FULL canonical import path, never the final segment — a
+        # third-party path ending in a stdlib name (``github.com/acme/json``)
+        # must NOT count as stdlib evidence (Codex P2 finding 3).
+        if path not in STDLIB_IMPORT_PATHS_GO:
+            continue
         # Final path segment is Go's default package identifier.
         package = path.rsplit("/", 1)[-1]
-        if package not in STDLIB_PACKAGES_GO:
-            continue
         if local in (".", "_"):
             # dot import injects names into file scope (no qualifier); blank
             # import is side-effect only — neither yields a usable ``pkg.Func``.
@@ -164,6 +191,7 @@ def parse_go_import_block(raw: str) -> dict[str, str]:
 
 __all__ = [
     "EXTERNAL_PACKAGES_GO",
+    "STDLIB_IMPORT_PATHS_GO",
     "STDLIB_PACKAGES_GO",
     "parse_go_import_block",
 ]
