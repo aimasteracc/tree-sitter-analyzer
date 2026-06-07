@@ -129,6 +129,27 @@ def test_bare_call_to_same_file_function_is_local() -> None:
     )
 
 
+def test_bare_call_does_not_bind_to_same_file_method() -> None:
+    """A bare ``render()`` (no receiver) in a file whose only same-name symbol is
+    a class METHOD must NOT bind: a method needs an owning receiver, and in a
+    multi-class file the flat ``file_symbols`` scan cannot prove the method
+    belongs to the caller's class. Consistent with the bare-callable-kind gate
+    used by the project tier — a bare same-file call binds only a top-level
+    ``function`` (Codex P2 #346, line 235 follow-through)."""
+    ctx = _ctx(
+        file_languages={"app.js": "javascript"},
+        file_symbols={
+            "app.js": [("run", "method", 1), ("render", "method", 2)],
+        },
+        file_class_methods={"app.js": {"A": {"run": 1}, "B": {"render": 2}}},
+    )
+    assert resolve_javascript_callee("render", "render", "app.js", ctx) == (
+        None,
+        "unknown",
+        "",
+    )
+
+
 def test_self_receiver_does_not_bind_to_same_file_helper() -> None:
     """Codex P2 #346: in browser/worker JS, ``self`` is the global scope
     (``Window.self`` / ``WorkerGlobalScope.self``), NOT the current object.
@@ -185,6 +206,48 @@ def test_this_method_does_not_bind_across_sibling_classes() -> None:
         None,
         "unknown",
         "",
+    )
+
+
+def test_this_method_does_not_bind_sibling_via_file_symbols() -> None:
+    """Codex P2 #346 (line 235): real resolver contexts populate ``file_symbols``
+    with EVERY method in the file, including sibling-class methods. For
+    ``class A { run() { this.render(); } } class B { render() {} }`` the flat
+    ``file_symbols`` scan would find ``B.render`` (kind ``method``) and bind
+    ``this.render`` from ``A.run`` to it as ``local`` — bypassing the
+    single-class ambiguity guard. A ``this.``-qualified call is a METHOD call; it
+    must NOT short-circuit through the flat same-file symbol lookup. With 2+
+    classes it stays ``unknown``."""
+    ctx = _ctx(
+        file_languages={"app.js": "javascript"},
+        # As a real context would: both class methods are present as flat rows.
+        file_symbols={
+            "app.js": [("run", "method", 1), ("render", "method", 2)],
+        },
+        file_class_methods={
+            "app.js": {"A": {"run": 1}, "B": {"render": 2}},
+        },
+    )
+    assert resolve_javascript_callee("render", "this.render", "app.js", ctx) == (
+        None,
+        "unknown",
+        "",
+    )
+
+
+def test_this_method_single_class_binds_even_with_flat_symbols() -> None:
+    """The single-class case must still bind via ``file_class_methods`` even when
+    the flat ``file_symbols`` row for the method is present — proving the bind
+    comes from the unambiguous class path, not the flat scan."""
+    ctx = _ctx(
+        file_languages={"app.js": "javascript"},
+        file_symbols={"app.js": [("render", "method", 11)]},
+        file_class_methods={"app.js": {"Widget": {"render": 11}}},
+    )
+    assert resolve_javascript_callee("render", "this.render", "app.js", ctx) == (
+        11,
+        "local",
+        "app.js",
     )
 
 

@@ -31,13 +31,15 @@ from ..._language_family import languages_compatible
 from .._javascript_constants import JS_BUILTIN_CALLS
 from .._registry import register_language
 
-#: Receivers that denote a same-file call rather than an external object.
-#: ``self`` is DELIBERATELY EXCLUDED — in browser/worker JavaScript ``self`` is
-#: the global scope (``Window.self`` / ``WorkerGlobalScope.self``), not the
-#: current object. Treating ``self.foo()`` as a same-file call would bind it to
-#: any local helper named ``foo`` — a concrete wrong edge. Only ``this`` (and a
-#: bare call) denote the caller's own scope (Codex P2 #346).
-_SELF_RECEIVERS: frozenset[str] = frozenset({"", "this"})
+#: Same-scope receivers handled by the ``local`` tier, each by a DISTINCT path
+#: (see ``resolve_javascript_callee`` step 1):
+#:   * ``""``   — a bare ``foo()`` call: a top-level callable in the caller file.
+#:   * ``this`` — a method call on the caller's own object, bound only through
+#:     the unambiguous single-class gate.
+#: ``self`` is DELIBERATELY ABSENT — in browser/worker JavaScript ``self`` is the
+#: global scope (``Window.self`` / ``WorkerGlobalScope.self``), not the current
+#: object. Treating ``self.foo()`` as a same-file call would bind it to any local
+#: helper named ``foo`` — a concrete wrong edge (Codex P2 #346).
 
 #: JS-family dialects this resolver claims. ``.jsx`` files are tagged ``"jsx"``
 #: by the language detector and ``resolve_callee`` dispatches by that exact
@@ -161,9 +163,19 @@ def _split_receiver(full_name: str, bare_name: str) -> tuple[str, str]:
 def _lookup_in_file(
     ctx: JavaScriptResolverContext, file_path: str, simple: str
 ) -> int | None:
-    """Symbol id of a function/method/class named ``simple`` in ``file_path``."""
+    """Symbol id of a same-file BARE-CALLABLE named ``simple`` in ``file_path``.
+
+    Restricted to a top-level ``function`` (see ``_BARE_CALLABLE_KINDS``): a
+    bare ``foo()`` is the only same-scope form routed here, and a bare call
+    cannot target a class ``method`` (it needs an owning receiver) nor a
+    ``class`` (that is a construction, not a plain call). Real resolver contexts
+    populate ``file_symbols`` with EVERY method in the file, so matching
+    ``method`` here would bind a bare ``render()`` to a sibling class's method —
+    a concrete wrong edge (Codex P2 #346, line 235). ``this.<method>`` is bound
+    separately through the unambiguous single-class gate, not here.
+    """
     for name, kind, sym_id in ctx.file_symbols.get(file_path, []):
-        if name == simple and kind in ("function", "method", "class"):
+        if name == simple and kind in _BARE_CALLABLE_KINDS:
             return sym_id
     return None
 
@@ -226,27 +238,35 @@ def resolve_javascript_callee(
     ctx = lang_ctx
     receiver, simple = _split_receiver(full_name, bare_name)
 
-    # 1. local — no receiver (``foo()``) or ``this`` (``this.foo()``): a call
-    #    into the caller's own file. ``self`` is NOT here — it is the JS global
-    #    scope, not the current object (Codex P2 #346).
-    if receiver in _SELF_RECEIVERS:
+    # 1. local — a call into the caller's own file. ``self`` is NOT here — it is
+    #    the JS global scope, not the current object (Codex P2 #346).
+    #
+    #    The two same-scope forms are resolved by SEPARATE paths because they
+    #    have different binding rules:
+    #
+    #    * bare ``foo()`` (no receiver) — never a method call, so the flat
+    #      ``file_symbols`` scan is safe: it can only legitimately hit a
+    #      same-file ``function``/``class`` (a top-level callable).
+    #    * ``this.foo()`` — a METHOD call. It must NOT go through the flat
+    #      ``file_symbols`` scan: real resolver contexts populate
+    #      ``file_symbols`` with EVERY method in the file (sibling classes
+    #      included), so a flat lookup of ``this.render`` from ``A.run`` would
+    #      find a SIBLING ``B.render`` and bind a concrete wrong edge. It may
+    #      only bind through ``file_class_methods`` AND only when the file
+    #      defines exactly ONE class (so ``this`` is unambiguous). With 2+
+    #      classes we lack the caller's enclosing class → stay ``unknown``
+    #      (Codex P2 #346, line 235).
+    if receiver == "":
         sym_id = _lookup_in_file(ctx, caller_file, simple)
         if sym_id is not None:
             return sym_id, "local", caller_file
-        # ``this.<method>`` may only bind to a class method when the enclosing
-        # class is unambiguous — i.e. the file defines exactly ONE class, so
-        # ``this`` can only be that class. With two+ classes we lack the
-        # caller's enclosing class, and binding ``this.render()`` in ``A`` to a
-        # SIBLING ``B.render`` is a concrete wrong edge; stay ``unknown``
-        # (Codex P2 #346). A bare ``foo()`` (no receiver) is never a method
-        # call, so it never enters this class-method path.
-        if receiver == "this":
-            classes = ctx.file_class_methods.get(caller_file, {})
-            if len(classes) == 1:
-                ((_cls, methods),) = classes.items()
-                mid = methods.get(simple)
-                if mid is not None:
-                    return mid, "local", caller_file
+    elif receiver == "this":
+        classes = ctx.file_class_methods.get(caller_file, {})
+        if len(classes) == 1:
+            ((_cls, methods),) = classes.items()
+            mid = methods.get(simple)
+            if mid is not None:
+                return mid, "local", caller_file
 
     # 2. builtin — a namespaced JS global call matched on the FULL dotted name
     #    (``JSON.parse``, ``Object.keys`` …). Terminal: outside the project.
