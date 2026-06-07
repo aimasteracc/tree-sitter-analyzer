@@ -34,7 +34,7 @@ _FUNC_DEF_TYPES = {
     "c": {"function_definition"},
     "cpp": {"function_definition"},
     "rust": {"function_item"},
-    "csharp": {"method_declaration"},
+    "csharp": {"method_declaration", "constructor_declaration"},
     "kotlin": {"function_declaration"},
     "ruby": {"method", "singleton_method"},
     "php": {"function_definition", "method_declaration"},
@@ -216,7 +216,12 @@ def _call_info_kotlin(node: Any, source: str) -> dict[str, Any] | None:
     (``Thing()``). Parse it into name + receiver."""
     if node.children:
         first = node.children[0]
-        return _call_from_text(_node_text(first, source), node)
+        text = _node_text(first, source)
+        # A generic ``user_type`` (``Result<Nothing>()``) carries type params the
+        # callee name must not include — strip from the first ``<``.
+        if "<" in text:
+            text = text.split("<", 1)[0]
+        return _call_from_text(text, node)
     return None
 
 
@@ -245,7 +250,13 @@ def _call_info_php(node: Any, source: str) -> dict[str, Any] | None:
     name_node = node.child_by_field_name("name")
     if name_node is not None:
         name = _node_text(name_node, source)
+        # member_call uses the ``object`` field; scoped_call_expression
+        # (``Class::method()``, ``parent::__construct()``) uses ``scope``. Without
+        # it, ``Class::method`` collapses to bare ``method`` and the resolver
+        # mis-binds it as a local free function (RFC-0008 receiver-vs-name class).
         obj_node = node.child_by_field_name("object")
+        if obj_node is None:
+            obj_node = node.child_by_field_name("scope")
         receiver = _node_text(obj_node, source) if obj_node is not None else None
         full_name = f"{receiver}.{name}" if receiver else name
         return {
