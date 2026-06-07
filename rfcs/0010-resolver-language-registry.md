@@ -1,6 +1,6 @@
 # RFC-0010: Resolver language registry — scale the correctness moat to N languages
 
-- **Status**: draft
+- **Status**: accepted
 - **Author(s)**: @aimasteracc
 - **Created**: 2026-06-07
 - **Last updated**: 2026-06-07
