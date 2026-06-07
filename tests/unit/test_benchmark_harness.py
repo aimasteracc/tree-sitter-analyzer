@@ -841,7 +841,7 @@ class TestPreflightLiveSetupGate:
         assert written["arms"]["tsa-warm"]["live"] is False
         assert written["arms"]["tsa-warm"]["index_row_count"] == 0
 
-    def test_preflight_aborts_on_missing_expected_tool(self, tmp_path):
+    def test_preflight_aborts_when_no_expected_tool_invoked(self, tmp_path):
         from benchmarks.codegraph_compare.run import preflight
 
         repo = tmp_path / "gin"
@@ -850,10 +850,13 @@ class TestPreflightLiveSetupGate:
         results = tmp_path / "results"
 
         def canary(arm_id: str) -> dict:
-            # Missing 'viz' — incomplete tool list means the MCP isn't fully live.
+            # Canary invoked only a non-TSA tool — NONE of the expected TSA facades
+            # appeared, so the MCP isn't wired. (Codex P2 #342: a PARTIAL list like
+            # ['nav','search'] is NOT a failure — the canary only records the tools
+            # it invoked, not the full offered set — so we require >=1, not all.)
             return {
                 "handshake_ok": True,
-                "tools": ["nav", "search", "structure", "health"],
+                "tools": ["Read"],
                 "canary_nonempty": True,
             }
 
@@ -866,7 +869,29 @@ class TestPreflightLiveSetupGate:
             )
         written = json.loads((results / "preflight.json").read_text(encoding="utf-8"))
         assert written["arms"]["tsa-warm"]["live"] is False
-        assert "viz" in written["arms"]["tsa-warm"]["missing_tools"]
+        assert written["arms"]["tsa-warm"]["missing_tools"]
+
+    def test_preflight_passes_with_partial_tool_list(self, tmp_path):
+        """Codex P2 #342: a single invoked TSA facade proves the MCP is live; a
+        partial tool list must NOT abort."""
+        from benchmarks.codegraph_compare.run import preflight
+
+        repo = tmp_path / "gin"
+        repo.mkdir()
+        self._make_tsa_index(repo, rows=5)
+        results = tmp_path / "results"
+
+        report = preflight(
+            arm_ids=["tsa-warm"],
+            repo_path=repo,
+            results_dir=results,
+            canary_probe=lambda arm: {
+                "handshake_ok": True,
+                "tools": ["nav"],  # only one facade invoked — still live
+                "canary_nonempty": True,
+            },
+        )
+        assert report["arms"]["tsa-warm"]["live"] is True
 
     def test_preflight_aborts_on_empty_canary_response(self, tmp_path):
         from benchmarks.codegraph_compare.run import preflight
@@ -998,3 +1023,52 @@ class TestPreflightWiredIntoMatrix:
         )
         compare_run.cmd_run_matrix(self._args(dry_run=True))
         assert calls == [], "preflight ran in dry-run mode"
+
+
+class TestPreflightColdAndToolDetection:
+    """Codex P2 #342 (re-review): preflight must not false-abort cold arms (their
+    index is built during the run) and must not require the FULL tool set from a
+    canary that only invokes one tool."""
+
+    def test_tsa_arm_live_with_one_tool_invoked(self):
+        from benchmarks.codegraph_compare.run import _missing_expected_tools
+
+        # The canary invokes ONE TSA facade; that proves the MCP is wired.
+        assert _missing_expected_tools("tsa-warm", ["nav"]) == []
+        # Only NONE-invoked should flag a dead arm.
+        assert _missing_expected_tools("tsa-warm", []) != []
+
+    def test_cold_arm_is_live_by_construction_without_canary(self):
+        from pathlib import Path
+
+        from benchmarks.codegraph_compare.run import _preflight_arm
+
+        calls = []
+
+        def probe(arm):
+            calls.append(arm)
+            return {"handshake_ok": True, "tools": [], "canary_nonempty": False}
+
+        # Empty index + a canary that would report 'dead' — yet a cold arm is live
+        # by construction and the canary MUST NOT run (it would warm the index).
+        rep = _preflight_arm("tsa-cold", Path("/nonexistent-repo"), probe)
+        assert rep["live"] is True, rep
+        assert calls == [], "canary probe ran for a cold arm (would warm the index)"
+
+    def test_warm_arm_still_requires_live_index(self):
+        from pathlib import Path
+
+        from benchmarks.codegraph_compare.run import _preflight_arm
+
+        # A WARM arm with an empty index is still dead (regression guard — the
+        # cold short-circuit must not leak to warm arms).
+        rep = _preflight_arm(
+            "tsa-warm",
+            Path("/nonexistent-repo"),
+            lambda arm: {
+                "handshake_ok": True,
+                "tools": ["nav"],
+                "canary_nonempty": True,
+            },
+        )
+        assert rep["live"] is False, rep

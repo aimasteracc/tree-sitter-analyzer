@@ -286,7 +286,14 @@ def _missing_expected_tools(arm_id: str, tools: list[str]) -> list[str]:
     family = _arm_family(arm_id)
     present = set(tools)
     if family == "tsa":
-        return sorted(_EXPECTED_TSA_TOOLS - present)
+        # Require at least ONE expected TSA facade to be live — NOT all of them.
+        # The canary records only the tools it INVOKED (the canary uses one index
+        # tool), not the MCP server's full offered set, so requiring the whole
+        # set would false-flag a perfectly live arm (Codex P2 #342). One TSA tool
+        # successfully invoked proves the MCP is wired.
+        if not (present & _EXPECTED_TSA_TOOLS):
+            return ["mcp__tree-sitter-analyzer__* (none of nav/search/... invoked)"]
+        return []
     if family == "codegraph":
         # CodeGraph exposes codegraph_* tools; require at least one to be live.
         if not any(t.startswith("codegraph_") for t in present):
@@ -316,6 +323,25 @@ def _preflight_arm(
             "canary_nonempty": True,
             "live": True,
             "reasons": [],
+        }
+
+    if arm_id.endswith("-cold"):
+        # A COLD arm builds its index DURING the run (that is the cold-start
+        # measurement). An empty pre-run index is EXPECTED — checking row_count>0
+        # here would falsely abort (Codex P2 #342). And running the canary query
+        # would WARM the index, corrupting the very thing the cold arm measures.
+        # So a cold arm is live by construction; its own run surfaces any real
+        # MCP problem.
+        return {
+            "arm": arm_id,
+            "family": family,
+            "index_row_count": row_count,
+            "handshake_ok": True,
+            "tools": [],
+            "missing_tools": [],
+            "canary_nonempty": True,
+            "live": True,
+            "reasons": ["cold arm — index built during run; preflight query skipped"],
         }
 
     reasons: list[str] = []
