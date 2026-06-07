@@ -5,7 +5,7 @@
 > **AI エージェントのための MCP コード インテリジェンス サーバー — トークン削減、ツール呼び出し削減、100% ローカル動作。**
 > 事前インデックス AST キャッシュ + **8 MCP ツール**（v1.x の 63 から削減）+ 13 のキュレーション済みエージェント スキル + TOON 圧縮出力。
 > **ツール定義オーバーヘッドを約 80% 削減** — rich-output（verdict + TOON）と Roo/Cursor 対応を同時に実現する唯一の code-intel MCP。
-> CodeGraph の**厳密な CLI 上位互換**、より高速なインデックス、一発 jQuery 風クエリ DSL。(正直なコスト注記: 一発のエージェントタスクでは CodeGraph が約 1.5 倍安い ── [CodeGraph との比較](#codegraph-との比較)参照。)
+> CodeGraph の**厳密な CLI 上位互換**で、より高速なインデックス・一発 jQuery 風クエリ DSL・そして **13 言語をまたいで誤結線しないコールグラフ**。同一リポジトリの両ツール実索引で、CodeGraph は **745 件**の異言語誤結線(Python の `sorted()` を Swift の func に結ぶ等)、TSA は **6 件**(約 **390 倍** clean)。コストは CodeGraph の唯一の優位点でしたが RFC-0006 で大半を解消 ── [CodeGraph との比較](#codegraph-との比較)。
 >
 > 競合ツール数: CodeGraph ~12 · Rhizome 1 · **TSA 8（rich-output）** · TSA v1.x は 63。
 > v1.x からの移行は [docs/MIGRATION.md](docs/MIGRATION.md) を参照。
@@ -32,6 +32,14 @@ claude mcp add tree-sitter-analyzer \
 エージェントを再起動し、こう伝える: 「プロジェクト ルートを私のリポジトリに設定して、`index` ツールを action=status で呼んでください。」
 
 [その他のエージェント (Cursor / Copilot / Cline / Continue / Claude Desktop / Roo Code) →](#-対応エージェント)
+
+**自分のリポジトリで correctness の差を 1 コマンドで確認**(インストール不要・CodeGraph 不要、最初に再インデックスします):
+
+```bash
+uvx --from "tree-sitter-analyzer" miswire-audit .
+```
+
+name-only な code index(多くのツールが採る設計)なら、何件の呼び出しを言語をまたいで誤結線するか(例: Python の `sorted()` → Swift の func)vs TSA が何件かを表示します。実証: [HuggingFace `tokenizers`](benchmarks/codegraph_compare/MISWIRE-AUDIT-EXAMPLES.md) で name-only は **1,259 件**(JS `tokenize()` → Rust 等)、TSA は **0**。ruff **7557×**、polars **9016×**。単一言語リポ(gin/Go)は両方 **0** で誤検知なし。
 
 ---
 
