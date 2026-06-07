@@ -36,7 +36,7 @@ claude mcp add tree-sitter-analyzer \
 **自分のリポジトリで correctness の差を 1 コマンドで確認**(インストール不要・CodeGraph 不要、最初に再インデックスします):
 
 ```bash
-uvx --from "git+https://github.com/aimasteracc/tree-sitter-analyzer@develop" miswire-audit .
+uvx --from tree-sitter-analyzer miswire-audit .
 ```
 
 name-only な code index(多くのツールが採る設計)なら、何件の呼び出しを言語をまたいで誤結線するか(例: Python の `sorted()` → Swift の func)vs TSA が何件かを表示します。実証: [HuggingFace `tokenizers`](benchmarks/codegraph_compare/MISWIRE-AUDIT-EXAMPLES.md) で name-only は **1,259 件**(JS `tokenize()` → Rust 等)、TSA は **0**。ruff **7557×**、polars **9016×**。単一言語リポ(gin/Go)は両方 **0** で誤検知なし。

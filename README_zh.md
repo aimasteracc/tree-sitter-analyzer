@@ -37,7 +37,7 @@ claude mcp add tree-sitter-analyzer \
 **用一条命令在你自己的仓库上验证 correctness 优势**（无需安装、无需 CodeGraph，会先重建索引）：
 
 ```bash
-uvx --from "git+https://github.com/aimasteracc/tree-sitter-analyzer@develop" miswire-audit .
+uvx --from tree-sitter-analyzer miswire-audit .
 ```
 
 它会显示一个 name-only 代码索引（多数工具的设计）会把多少调用跨语言错连（例如 Python 的 `sorted()` → Swift 的 func），对比 TSA 的数量。实测：[HuggingFace `tokenizers`](benchmarks/codegraph_compare/MISWIRE-AUDIT-EXAMPLES.md) 上 name-only 为 **1,259 处**（含 JS `tokenize()` → Rust），TSA 为 **0**。ruff **7557×**、polars **9016×**。单语言仓库（gin/Go）两者均为 **0**，无误报。
