@@ -37,8 +37,10 @@ Restart your agent, then say: *"Set the project root to my repo and run the `ind
 **See the correctness edge on your own repo** — no install, no CodeGraph (it re-indexes first; seconds on a small repo, a minute or two on a large one):
 
 ```bash
-uvx --from "tree-sitter-analyzer" miswire-audit .
+uvx --from "git+https://github.com/aimasteracc/tree-sitter-analyzer@develop" miswire-audit .
 ```
+
+_(installs the latest from source until the next PyPI release ships the `miswire-audit` entry point; then `uvx --from tree-sitter-analyzer miswire-audit .`)_
 
 It prints how many call edges a name-only code index (the design most tools use) *would* mis-wire across a language boundary — e.g. a Python `sorted()` wired to a Swift `func sorted` — versus how many TSA does (≈0). On [HuggingFace `tokenizers`](benchmarks/codegraph_compare/MISWIRE-AUDIT-EXAMPLES.md): **1,259 → 0**.
 
@@ -72,7 +74,7 @@ Token cost is one axis; a code-intelligence tool's *first* job is a **correct gr
 
 > **Don't trust this table — run it on your own repo (no CodeGraph install needed):**
 > ```bash
-> uvx --from "tree-sitter-analyzer" miswire-audit .
+> uvx --from "git+https://github.com/aimasteracc/tree-sitter-analyzer@develop" miswire-audit .
 > ```
 > It indexes your code and prints how many call edges a name-only resolver (the design most indexes use) *would* mis-wire across a language boundary vs how many TSA does — with the offending edges listed (`Python sorted() → Swift func at file:line`). Add `--card` for a shareable scorecard.
 >

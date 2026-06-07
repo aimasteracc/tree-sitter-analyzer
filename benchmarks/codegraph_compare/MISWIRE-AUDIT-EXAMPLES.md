@@ -2,7 +2,7 @@
 
 Real `miswire-audit` runs on public repos (no CodeGraph install — TSA models the
 name-only design from its own index). Reproduce on any tree:
-`uvx --from "tree-sitter-analyzer" miswire-audit <path>`.
+`uvx --from "git+https://github.com/aimasteracc/tree-sitter-analyzer@develop" miswire-audit <path>`.
 
 ## Summary
 
