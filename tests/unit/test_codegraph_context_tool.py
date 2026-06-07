@@ -1532,10 +1532,6 @@ def test_non_dot_qualified_generic_methods_are_kept() -> None:
     assert "dispatch" in _extract_symbol_candidates(
         "does resolve_callee invoke dispatch() here"
     )
-    # Go/path-style qualifier (slash) also counts as explicit
-    assert "parse" in _extract_symbol_candidates(
-        "trace pkg/parser/parse alongside resolve_callee"
-    )
     # bare prose verb is still dropped when a specific symbol co-occurs
     assert "dispatch" not in _extract_symbol_candidates(
         "how does resolve_callee dispatch a Java call to resolve_java_callee"
@@ -1551,8 +1547,23 @@ def test_lowercase_qualified_anchor_still_drops_bare_verb() -> None:
         _extract_symbol_candidates,
     )
 
-    cands = _extract_symbol_candidates("trace pkg/parser/parse dispatch")
+    cands = _extract_symbol_candidates("trace obj->parse dispatch")
     assert "parse" in cands, cands
     assert "dispatch" not in cands, cands
     # sole-signal control: no anchor at all -> nothing dropped
     assert "dispatch" in _extract_symbol_candidates("find the dispatch function")
+
+
+def test_file_path_does_not_anchor_filter() -> None:
+    """RFC-0009 C / Codex P2 #333 (6th round): an ordinary file path mentioned in
+    the task ('… in src/parser/utils.py') must NOT count as a symbol anchor — '/'
+    is a path separator, not a qualifier — so a bare verb that is the user's real
+    request is preserved (sole-signal behaviour)."""
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        _extract_symbol_candidates,
+    )
+
+    cands = _extract_symbol_candidates(
+        "find the dispatch function in src/parser/utils.py"
+    )
+    assert "dispatch" in cands, cands

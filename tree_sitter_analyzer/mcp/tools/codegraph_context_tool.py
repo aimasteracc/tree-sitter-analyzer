@@ -627,12 +627,17 @@ def _extract_symbol_candidates(task: str) -> list[str]:
 
     def _named_explicitly(verb: str) -> bool:
         # A generic verb is "named explicitly" (and kept) when it is preceded by a
-        # quote or any qualifier separator — ``.`` (Foo.handle), ``::`` (C++/Rust
-        # Parser::parse), ``->`` (obj->fetch), or ``/`` (Go/path pkg/parser/parse)
-        # — or when it is called (``verb(``). One check over the raw task covers
-        # every qualifier syntax the tokeniser regex fragments (Codex P2 #333).
+        # quote or an unambiguous symbol-member operator — ``.`` (Foo.handle),
+        # ``::`` (C++/Rust Parser::parse), ``->`` (obj->fetch) — or when it is
+        # called (``verb(``). NOTE: ``/`` is deliberately NOT a qualifier here.
+        # It was tried (Codex #333 4th round, for Go-style pkg/parser/parse) but
+        # ``/`` is dominantly a FILE-PATH separator in real tasks, so it made an
+        # ordinary path like ``src/parser/utils.py`` anchor the filter and wrongly
+        # drop the user's actual bare verb in e.g. "find the dispatch function in
+        # src/parser/utils.py" (Codex #333 6th round — the common case wins over
+        # the rare package-qualified-symbol case).
         pattern = (
-            r"(?:[`'\"]|\.|::|->|/)\s*"
+            r"(?:[`'\"]|\.|::|->)\s*"
             + re.escape(verb)
             + r"\b|\b"
             + re.escape(verb)
