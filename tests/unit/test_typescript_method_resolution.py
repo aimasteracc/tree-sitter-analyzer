@@ -72,9 +72,10 @@ def _ctx(
     file_languages: dict[str, str] | None = None,
     global_name_table: dict[str, list[tuple[str, int]]] | None = None,
     file_class_methods: dict[str, dict[str, dict[str, int]]] | None = None,
+    imports_by_file: dict[str, list] | None = None,
 ):
     return build_typescript_resolver_context(
-        imports_by_file={},
+        imports_by_file=imports_by_file or {},
         file_languages=file_languages or {"a.ts": "typescript"},
         file_symbols=file_symbols or {},
         global_name_table=global_name_table or {},
@@ -177,6 +178,135 @@ def test_no_cross_language_bind_for_global_object_owner() -> None:
     )
     assert resolution == "builtin"
     assert resolved_file != "py_console.py"
+
+
+# ---------------------------------------------------------------------------
+# Codex P2 (PR #347): this/super must resolve within the CALLER's class, never
+# bleed across class boundaries in the same file.
+# ---------------------------------------------------------------------------
+def test_this_receiver_does_not_bind_other_class_method() -> None:
+    """``class A { foo(){} } class B { bar(){ this.foo(); } foo(){} }``.
+
+    Two classes in one file each define ``foo``. A ``this.foo()`` in ``B`` is
+    ambiguous from the resolver's seat (no enclosing-class signal is passed), so
+    binding it to *either* class's ``foo`` would risk the wrong edge
+    (``B.bar -> A.foo``). Conservative: stay ``unknown`` rather than mis-wire.
+    """
+    ctx = _ctx(
+        file_symbols={"a.ts": []},
+        file_class_methods={"a.ts": {"A": {"foo": 1}, "B": {"foo": 2, "bar": 3}}},
+    )
+    sym_id, resolution, resolved_file = resolve_typescript_callee(
+        "foo", "this.foo", "a.ts", ctx
+    )
+    assert resolution == "unknown", (
+        f"ambiguous this.foo across two classes must stay unknown; got {resolution}"
+    )
+    assert sym_id is None
+    assert resolved_file == ""
+
+
+def test_this_receiver_does_not_fall_back_to_free_function() -> None:
+    """``this.foo()`` must NOT bind a top-level free function ``foo`` — a
+    method call on the instance is not the same symbol as a module function.
+    The file-wide symbol scan (which would grab the free function) must not run
+    for a ``this``/``super`` receiver."""
+    ctx = _ctx(file_symbols={"a.ts": [("foo", "function", 5)]})
+    sym_id, resolution, _file = resolve_typescript_callee(
+        "foo", "this.foo", "a.ts", ctx
+    )
+    assert resolution == "unknown", (
+        f"this.foo must not bind a free function foo; got {resolution}"
+    )
+    assert sym_id is None
+
+
+def test_this_receiver_single_class_still_resolves() -> None:
+    """When exactly ONE class in the file defines the method, ``this.foo()`` is
+    unambiguous and still resolves ``local`` (no regression of the happy path)."""
+    ctx = _ctx(
+        file_symbols={"a.ts": []},
+        file_class_methods={"a.ts": {"Service": {"run": 11}}},
+    )
+    sym_id, resolution, resolved_file = resolve_typescript_callee(
+        "run", "this.run", "a.ts", ctx
+    )
+    assert (sym_id, resolution, resolved_file) == (11, "local", "a.ts")
+
+
+# ---------------------------------------------------------------------------
+# Codex P2 (PR #347): honor variable/import shadowing for TS globals.
+# ---------------------------------------------------------------------------
+def test_import_shadows_builtin_global_name() -> None:
+    """``import { Map } from './map'; Map.of(...)`` — the imported local name
+    ``Map`` shadows the JS built-in global, so the call must NOT classify
+    ``builtin``. The shadowing gate consults import local-names, not only the
+    function/method/class ``global_name_table``."""
+    from tree_sitter_analyzer.synapse_resolver._imports import ImportEntry
+
+    ctx = _ctx(
+        imports_by_file={
+            "a.ts": [
+                ImportEntry(
+                    file_path="a.ts",
+                    language="typescript",
+                    module_path="./map",
+                    local_name="Map",
+                )
+            ]
+        },
+    )
+    _sym, resolution, _file = resolve_typescript_callee("of", "Map.of", "a.ts", ctx)
+    assert resolution != "builtin", (
+        f"imported Map shadows the global; must not be builtin; got {resolution}"
+    )
+
+
+def test_aliased_import_shadows_builtin_global_name() -> None:
+    """``import Promise from 'bluebird'`` bound under local name ``Promise``
+    shadows the global ``Promise``; ``Promise.all(...)`` stays non-builtin."""
+    from tree_sitter_analyzer.synapse_resolver._imports import ImportEntry
+
+    ctx = _ctx(
+        imports_by_file={
+            "a.ts": [
+                ImportEntry(
+                    file_path="a.ts",
+                    language="typescript",
+                    module_path="bluebird",
+                    local_name="Promise",
+                )
+            ]
+        },
+    )
+    _sym, resolution, _file = resolve_typescript_callee(
+        "all", "Promise.all", "a.ts", ctx
+    )
+    assert resolution != "builtin"
+
+
+def test_import_in_other_file_does_not_shadow() -> None:
+    """An import of ``Map`` in a DIFFERENT file must not suppress the ``builtin``
+    classification in ``a.ts`` (shadowing is per-file/file-local)."""
+    from tree_sitter_analyzer.synapse_resolver._imports import ImportEntry
+
+    ctx = _ctx(
+        file_languages={"a.ts": "typescript", "b.ts": "typescript"},
+        imports_by_file={
+            "b.ts": [
+                ImportEntry(
+                    file_path="b.ts",
+                    language="typescript",
+                    module_path="./map",
+                    local_name="Map",
+                )
+            ]
+        },
+    )
+    _sym, resolution, _file = resolve_typescript_callee("of", "Map.of", "a.ts", ctx)
+    assert resolution == "builtin", (
+        f"an import in b.ts must not shadow a.ts's Map; got {resolution}"
+    )
 
 
 # ---------------------------------------------------------------------------
