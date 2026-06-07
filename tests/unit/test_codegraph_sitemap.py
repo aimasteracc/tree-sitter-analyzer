@@ -324,3 +324,51 @@ class TestSitemapCLI:
         emitted = sum(len(v) for v in result["symbols_by_kind"].values())
         assert emitted <= 50
         assert result["truncated"] is True
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Windows path drift — tracked separately"
+)
+class TestSitemapFileLimitTruncation:
+    """Codex P2 #337 + reviewer P3s: the max_files LIMIT must also flag
+    truncated, and non-positive budgets must be rejected."""
+
+    def _tool(self, project_root):
+        from tree_sitter_analyzer.mcp.tools.codegraph_sitemap_tool import (
+            CodeGraphSitemapTool,
+        )
+
+        return CodeGraphSitemapTool(project_root=str(project_root))
+
+    @pytest.mark.asyncio
+    async def test_file_limit_sets_truncated_in_all_modes(self, large_indexed_project):
+        """When more files exist than max_files, EVERY mode must report
+        truncated=true with a note naming max_files — not silently drop files
+        while claiming completeness (Codex P2 #337). full/module previously
+        always returned truncated=false."""
+        tool = self._tool(large_indexed_project)
+        for mode in ("full", "module", "api", "flat"):
+            result = await tool.execute(
+                {"mode": mode, "max_files": 5, "output_format": "json"}
+            )
+            assert result["truncated"] is True, mode
+            assert "max_files" in result["truncation_note"], (mode, result)
+            assert result["file_count"] == 5, mode
+
+    @pytest.mark.asyncio
+    async def test_truncation_note_absent_when_complete(self, indexed_project):
+        """A complete response must NOT carry an empty truncation_note (reviewer
+        P3 — schema noise)."""
+        tool = self._tool(indexed_project)
+        result = await tool.execute({"mode": "full", "output_format": "json"})
+        assert result["truncated"] is False
+        assert "truncation_note" not in result
+
+    @pytest.mark.asyncio
+    async def test_non_positive_budget_rejected(self, indexed_project):
+        """max_symbols / max_files < 1 must raise, not silently negative-slice
+        (reviewer P3)."""
+        tool = self._tool(indexed_project)
+        for bad in ({"max_symbols": 0}, {"max_symbols": -1}, {"max_files": 0}):
+            with pytest.raises(ValueError, match="positive integer"):
+                await tool.execute({"mode": "flat", **bad, "output_format": "json"})

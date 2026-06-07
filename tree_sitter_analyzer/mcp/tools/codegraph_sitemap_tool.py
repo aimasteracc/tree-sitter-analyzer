@@ -130,8 +130,20 @@ class CodeGraphSitemapTool(BaseMCPTool):
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         mode = arguments.get("mode", "full")
-        if mode not in ("full", "api", "module", "flat"):
-            raise ValueError(f"Invalid mode: {mode}")
+        valid_modes = ("api", "flat", "full", "module")
+        if mode not in valid_modes:
+            raise ValueError(
+                f"Invalid mode: {mode!r}. Valid modes: {', '.join(valid_modes)}"
+            )
+        # Guard the budget params: a non-positive limit would silently apply
+        # Python negative-index slicing (max_symbols=-1 drops the last entry) or
+        # empty everything (max_symbols=0), neither of which is a meaningful cap.
+        for key in ("max_files", "max_symbols"):
+            value = arguments.get(key)
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+                raise ValueError(f"{key} must be a positive integer, got {value!r}")
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -146,33 +158,49 @@ class CodeGraphSitemapTool(BaseMCPTool):
 
         cache = self._get_cache()
 
-        raw_files = self._load_indexed_files(cache, language, directory, max_files)
+        # Probe one row beyond max_files so we can tell whether the file LIMIT
+        # itself truncated the set (Codex P2 #337): otherwise a large repo with
+        # more files than max_files would drop every file past the limit in ALL
+        # modes while reporting truncated=false, so a caller could treat an
+        # incomplete sitemap as complete with no signal to raise max_files.
+        raw_files = self._load_indexed_files(cache, language, directory, max_files + 1)
+        files_truncated = len(raw_files) > max_files
+        if files_truncated:
+            raw_files = raw_files[:max_files]
 
         # F3: api/flat modes can emit unbounded symbol lists. The hierarchical
-        # full/module modes are already bounded by max_files, so they always
-        # report truncated=false for schema consistency.
-        truncated = False
+        # full/module modes are not symbol-capped, but ALL modes are now
+        # file-capped, so any mode can report truncated=true via files_truncated.
+        symbols_truncated = False
         if mode == "full":
             payload = self._build_full_map(raw_files)
         elif mode == "api":
-            payload, truncated = self._build_api_surface(raw_files, max_symbols)
+            payload, symbols_truncated = self._build_api_surface(raw_files, max_symbols)
         elif mode == "module":
             payload = self._build_module_metrics(raw_files)
         else:
-            payload, truncated = self._build_flat(raw_files, max_symbols)
+            payload, symbols_truncated = self._build_flat(raw_files, max_symbols)
 
+        truncated = symbols_truncated or files_truncated
         total_symbols = sum(f["symbol_count"] for f in raw_files)
+
         extra: dict[str, Any] = {}
         if language:
             extra["language_filter"] = language
 
-        truncation_note = (
-            f"Output capped at max_symbols={max_symbols}. "
-            "Raise the max_symbols argument to see more, or narrow the scope "
-            "with the directory/language filters."
-            if truncated
-            else ""
-        )
+        # Only emit truncation_note when something was actually truncated — an
+        # empty note on complete responses is schema noise (reviewer P3). Name
+        # the cause(s) so the caller knows which limit to raise.
+        if truncated:
+            causes: list[str] = []
+            if symbols_truncated:
+                causes.append(f"symbol list capped at max_symbols={max_symbols}")
+            if files_truncated:
+                causes.append(f"file list capped at max_files={max_files}")
+            extra["truncation_note"] = (
+                "Output truncated (" + "; ".join(causes) + "). Raise the relevant "
+                "limit, or narrow scope with the directory/language filters."
+            )
 
         result = build_response(
             verdict="INFO" if raw_files else "NOT_FOUND",
@@ -180,7 +208,6 @@ class CodeGraphSitemapTool(BaseMCPTool):
             file_count=len(raw_files),
             total_symbols=total_symbols,
             truncated=truncated,
-            truncation_note=truncation_note,
             **payload,
             **extra,
         )
