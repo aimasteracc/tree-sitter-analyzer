@@ -11,7 +11,8 @@
   - `tree_sitter_analyzer/synapse_resolver/_context.py` (`ResolverContext`, `build_resolver_context`)
   - `tree_sitter_analyzer/synapse_resolver/_registry.py` (NEW — the registry)
   - `tree_sitter_analyzer/synapse_resolver/_java.py` (migrate to self-register)
-  - `tree_sitter_analyzer/synapse_resolver/_<lang>.py`, `_<lang>_constants.py` (per-language, NEW)
+  - `tree_sitter_analyzer/synapse_resolver/languages/__init__.py` (NEW — auto-discovery)
+  - `tree_sitter_analyzer/synapse_resolver/languages/<lang>.py`, `_<lang>_constants.py` (per-language, NEW)
   - `tests/unit/test_<lang>_method_resolution.py` (per-language, NEW)
 
 ## Summary
@@ -24,8 +25,9 @@ THREE shared files: a `ResolverContext.java_context` field, a
 `if language == "java"` branch in `resolve_callee`. With N concurrent
 language teams those edits guarantee merge conflicts (and, with git worktrees,
 index-corruption races — observed twice). This RFC introduces a **language
-registry**: a new language is one self-contained module that calls
-`register_language(...)`, plus its constants and tests. Zero shared-file edits.
+registry** + a `languages/` auto-discovery subpackage: a new language is one
+self-contained module under `languages/` that calls `register_language(...)`, plus
+its constants and tests. ZERO edits to any existing file.
 
 This directly widens TSA's **only measured competitive lead** — call-graph edge
 correctness (96.3% of `calls` edges classified, ~0.01% cross-language mis-wires,
@@ -99,27 +101,47 @@ def resolve_callee(callee_name, caller_file, ctx, callee_full=None, caller_name=
 
 Python remains the default fallback cascade verbatim (no behaviour change).
 
-### Registration wiring
+### Registration wiring — auto-discovery, ZERO shared edits
 
-Each `_<lang>.py` ends with `register_language("<lang>", build_<lang>_context,
-resolve_<lang>_callee)`. A single `_languages.py` imports every language module so
-registration happens at package load; `__init__.py` imports `_languages`. Adding a
-language touches `_languages.py` by **one append-only import line** — the only
-shared edit, and trivially conflict-free (distinct lines).
+To make parallel language PRs **truly** conflict-free (a single shared
+`_languages.py` append point would still collide when 5 PRs each add a line —
+Codex #344), language modules live in a dedicated subpackage
+`synapse_resolver/languages/` with one module per language
+(`languages/go.py`, `languages/java.py`, …). `languages/__init__.py` auto-imports
+every submodule once at package load:
+
+```python
+# synapse_resolver/languages/__init__.py  (fixed; never edited to add a language)
+import importlib, pkgutil
+for _m in pkgutil.iter_modules(__path__):
+    if not _m.name.startswith("_"):
+        importlib.import_module(f"{__name__}.{_m.name}")
+```
+
+Each `languages/<lang>.py` calls `register_language(...)` at import. The resolver
+package imports `languages` once. **Adding a language = adding ONE new file in
+`languages/` + its constants + its tests. No existing file is edited** — no merge
+conflict, no worktree race, for any number of parallel teams. A discovery test
+asserts every `languages/*.py` module registered a resolver (catches a typo or a
+module that forgot to register).
+
+Constants live next to the module (`languages/_<lang>_constants.py` or inline) so
+they are also new-file-only.
 
 ## The per-language team contract (what each of the ~5 teams ships)
 
-One PR per language, fully isolated except the one `_languages.py` import line:
+One PR per language, **fully isolated — zero edits to any existing file**:
 
-1. `_<lang>_constants.py` — `STDLIB_METHODS_<LANG>`, `EXTERNAL_METHODS_<LANG>`,
-   (and builtin/stdlib-module sets as the language needs). **Conservative tiers
-   only** (see below).
-2. `_<lang>.py` — `build_<lang>_context(**common) -> ctx | None` (gated on the
-   language being present) and `resolve_<lang>_callee(bare, full, file, ctx) ->
+1. `languages/<lang>.py` — `build_<lang>_context(**common) -> ctx | None` (gated on
+   the language being present) and `resolve_<lang>_callee(bare, full, file, ctx) ->
    (sym_id, resolution, resolved_file)`, ending in `register_language(...)`.
+2. `languages/_<lang>_constants.py` (or inline) — `STDLIB_METHODS_<LANG>`,
+   `EXTERNAL_METHODS_<LANG>`, etc. **Conservative tiers only** (see below).
 3. `tests/unit/test_<lang>_method_resolution.py` — RED-first, tests the resolver
    directly + an integration test through `resolve_callee`.
-4. One import line in `_languages.py`.
+
+(The foundation PR provides `languages/__init__.py` auto-discovery + migrates Java
+to `languages/java.py`; from then on, every language PR is new-files-only.)
 
 ### Conservative-tier rule (the RFC-0008 lesson — MANDATORY)
 
@@ -162,8 +184,13 @@ surfaces for a fixture in the new language.
 - **Keep editing the if-chain per language, merge sequentially.** Rejected: the
   investor mandate is parallel teams; sequential merges serialise the moat-widening
   and re-introduce the worktree-race surface.
-- **Plugin auto-discovery (scan `_*.py`).** Rejected as fragile/implicit; an
-  explicit `_languages.py` import list is greppable and review-friendly.
+- **Manual `_languages.py` import list.** Rejected (Codex #344): a single shared
+  append point still collides when N PRs each add a line. Auto-discovery of a
+  `languages/` subpackage is the only design with literally zero shared edits;
+  the fragility concern is closed by a discovery test that asserts every
+  `languages/*.py` registered a resolver.
+- **Sequential merges of an if-chain.** Rejected: serialises the moat-widening and
+  re-introduces the worktree-race surface the investor mandate is trying to avoid.
 
 ## Test plan (RED-first)
 
@@ -183,8 +210,10 @@ surfaces for a fixture in the new language.
 - [ ] `_registry.py` + `register_language`/`get_language_resolver` exist; Java
       migrated to self-register; `_context.py` + `__init__.py` are registry-driven
 - [ ] 401 resolver tests green; Java classification byte-identical (parity test)
-- [ ] Adding a language requires **zero** edits to `_context.py` / `__init__.py`
-      (only a new module + constants + tests + one `_languages.py` import)
+- [ ] `languages/` subpackage with auto-discovery; adding a language requires
+      **zero edits to any existing file** (only new files: `languages/<lang>.py`,
+      its constants, and tests) — verified by a discovery test
+- [ ] Auto-discovery test: every `languages/*.py` module registered a resolver
 - [ ] First-wave languages land one focused PR each, conservative tiers,
       adversarial-reviewed, with a "no cross-language mis-wire" test
 - [ ] The correctness report (REPORT-v1.21.0, PR #343, or a successor) re-measures the classification rate +
