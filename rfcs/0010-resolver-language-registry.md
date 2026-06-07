@@ -28,8 +28,10 @@ registry**: a new language is one self-contained module that calls
 `register_language(...)`, plus its constants and tests. Zero shared-file edits.
 
 This directly widens TSA's **only measured competitive lead** — call-graph edge
-correctness (96.3% classified, ~0.01% cross-language mis-wires; see
-`benchmarks/codegraph_compare/REPORT-v1.21.0.md`). Today that lead is Python +
+correctness (96.3% of `calls` edges classified, ~0.01% cross-language mis-wires,
+measured from `.ast-cache/index.db`; the full repro lands as the correctness
+report in **PR #343**, `benchmarks/codegraph_compare/REPORT-v1.21.0.md`). Today
+that lead is Python +
 Java. Every additional language with classified tiers is correctness CodeGraph
 structurally cannot match (it name-collides across languages; TSA gates by
 language family). The registry is the lever that turns "one language per careful
@@ -37,7 +39,7 @@ RFC" into "five teams in parallel."
 
 ## Motivation
 
-- **The moat is multi-language correctness.** REPORT-v1.21.0 shows CodeGraph wires
+- **The moat is multi-language correctness.** The correctness report (PR #343) shows CodeGraph wires
   299 Python `sorted()` callers to a Swift `func sorted`; TSA refuses. That win
   generalises only as far as TSA has per-language resolution. Python + Java today;
   the registry unlocks Go/JS/TS/C++/Rust/… next.
@@ -185,7 +187,7 @@ surfaces for a fixture in the new language.
       (only a new module + constants + tests + one `_languages.py` import)
 - [ ] First-wave languages land one focused PR each, conservative tiers,
       adversarial-reviewed, with a "no cross-language mis-wire" test
-- [ ] REPORT-v1.21.0 (or a successor) re-measures the classification rate +
+- [ ] The correctness report (REPORT-v1.21.0, PR #343, or a successor) re-measures the classification rate +
       cross-language count across the newly-supported languages
 - [ ] Docs/CODEMAPS updated; RFC status → implemented
 
