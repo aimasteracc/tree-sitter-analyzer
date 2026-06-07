@@ -707,6 +707,19 @@ class TestRunRecordCostCacheColumns:
         assert acct["total_cost_usd"] == 0.0421
         assert acct["num_turns"] == 7
 
+    def test_runner_captures_codex_cache_hits(self):
+        """Codex reports prompt-cache hits as `cached_input_tokens`, not Claude's
+        `cache_read_input_tokens` — the backend-neutral cache_read_tokens column
+        must capture them, not record 0 (Codex P2 #342)."""
+        from benchmarks.codegraph_compare.adapters.claude_runner import (
+            _extract_cost_accounting,
+        )
+
+        acct = _extract_cost_accounting(
+            {"usage": {"input_tokens": 100, "cached_input_tokens": 999}}
+        )
+        assert acct["cache_read_tokens"] == 999
+
     def test_runner_emits_cost_cache_columns_in_record(self, tmp_path):
         from benchmarks.codegraph_compare.adapters import RunConfig
         from benchmarks.codegraph_compare.adapters.claude_runner import run_one

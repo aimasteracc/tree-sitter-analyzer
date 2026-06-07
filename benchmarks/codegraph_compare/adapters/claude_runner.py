@@ -452,7 +452,14 @@ def _extract_cost_accounting(raw_result: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(usage, dict):
         usage = {}
     return {
-        "cache_read_tokens": _usage_int(usage, "cache_read_input_tokens"),
+        # Backend-neutral cache-read count: Claude reports prompt-cache hits as
+        # `cache_read_input_tokens`; Codex reports them as `cached_input_tokens`
+        # (Codex P2 #342). Sum both — each backend populates only its own key, so
+        # there is no double-count, and Codex cache hits are no longer dropped.
+        "cache_read_tokens": (
+            _usage_int(usage, "cache_read_input_tokens")
+            + _usage_int(usage, "cached_input_tokens")
+        ),
         "cache_creation_tokens": _usage_int(usage, "cache_creation_input_tokens"),
         "total_cost_usd": round(float(raw_result.get("total_cost_usd", 0.0) or 0.0), 6),
         "num_turns": int(raw_result.get("num_turns", 0) or 0),
