@@ -465,15 +465,22 @@ def resolve_callee(
     recover the receiver. Any other language falls through to the Python
     cascade exactly as before B3 (no behaviour change for them).
     """
+    # RFC-0010: dispatch to a registered per-language resolver (when one exists
+    # AND its context was built), else fall through to the Python cascade. Java is
+    # now registered via languages/java.py instead of an inline branch; adding a
+    # language requires no edit here.
     language = ctx.file_languages.get(caller_file)
-    if language == "java" and ctx.java_context is not None:
-        from ._java import resolve_java_callee
+    from . import languages as _languages  # noqa: F401, PLC0415 — ensure registration
+    from ._registry import get_language_resolver
 
-        sym_id, resolution, resolved_file = resolve_java_callee(
+    resolver = get_language_resolver(language)
+    lang_ctx = ctx.lang_context(language) if resolver is not None and language else None
+    if resolver is not None and lang_ctx is not None:
+        sym_id, resolution, resolved_file = resolver.resolve_callee(
             callee_name,
             callee_full if callee_full is not None else callee_name,
             caller_file,
-            ctx.java_context,
+            lang_ctx,
         )
         return ResolvedCallee(sym_id, resolution, resolved_file)
 
