@@ -267,6 +267,22 @@ def test_unknown_action_returns_error_envelope() -> None:
     assert "symbol" in str(result)
 
 
+def test_unknown_action_error_string_enumerates_valid_actions() -> None:
+    """F4 DX: the bare ``error`` string itself (not just the envelope's
+    ``available_actions`` list) must enumerate the sorted valid actions so an
+    agent that only logs the message can still recover without a wasted turn."""
+    facade = _make_facade()
+    result = asyncio.run(facade.execute({"action": "nope", "query": "Foo"}))
+    error = result["error"]
+    # The unknown action that was supplied is echoed back...
+    assert "nope" in error
+    # ...and the sorted list of valid actions appears verbatim in the message.
+    assert "func" in error
+    assert "symbol" in error
+    # Sorted order is part of the contract (stable, scannable).
+    assert error.index("func") < error.index("symbol")
+
+
 # --------------------------------------------------------------------------
 # G3 rebind propagation
 # --------------------------------------------------------------------------

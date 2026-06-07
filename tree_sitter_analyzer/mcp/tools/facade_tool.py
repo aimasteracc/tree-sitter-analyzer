@@ -303,7 +303,11 @@ class FacadeTool(BaseMCPTool):
             projected = self._project_args(inner, arguments)
             return await inner.execute(projected)
 
-        return self._action_error(f"unknown action {action!r}")
+        available = self._available_actions()
+        valid = ", ".join(available) if available else "(none registered)"
+        return self._action_error(
+            f"unknown action {action!r}; valid actions are: {valid}"
+        )
 
     # -- schema / definition ----------------------------------------------
 
