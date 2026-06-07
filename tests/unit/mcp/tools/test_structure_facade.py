@@ -476,3 +476,31 @@ def test_structure_read_rejects_non_numeric_bounds(tmp_path: Any) -> None:
                 }
             )
         )
+
+
+def test_structure_read_rejects_fractional_float_bounds(tmp_path: Any) -> None:
+    """Codex P3 #328: a fractional numeric bound (start_line=2.9) must be
+    rejected, not silently truncated to 2. Integral floats (2.0) still coerce."""
+    f = tmp_path / "sample.py"
+    f.write_text("a = 1\nb = 2\nc = 3\n")
+    facade = build_structure_facade(project_root=str(tmp_path))
+
+    # fractional -> clear ValueError, never a truncated read
+    with pytest.raises(ValueError, match="must be integers"):
+        asyncio.run(
+            facade.execute({"action": "read", "file_path": str(f), "start_line": 2.9})
+        )
+
+    # integral float -> coerces cleanly
+    ok = asyncio.run(
+        facade.execute(
+            {
+                "action": "read",
+                "file_path": str(f),
+                "start_line": 2.0,
+                "end_line": 3.0,
+                "output_format": "json",
+            }
+        )
+    )
+    assert ok.get("success") is True, ok

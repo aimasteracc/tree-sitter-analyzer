@@ -164,10 +164,21 @@ def build_structure_facade(project_root: str | None = None) -> FacadeTool:
         # extract_code_section does ``str < int`` comparisons -> TypeError. This
         # made the documented single-file read escape hatch fail 100% of the time.
         def _as_int(value: Any) -> Any:
-            if value is None or isinstance(value, int):
+            if value is None or isinstance(value, bool):
                 return value
+            if isinstance(value, int):
+                return value
+            # A fractional JSON number (start_line=2.9) is a malformed bound, not
+            # something to silently truncate — enforce the integer-only contract
+            # (Codex P3 on #328). Integral floats (2.0) coerce cleanly.
+            if isinstance(value, float):
+                if value.is_integer():
+                    return int(value)
+                raise ValueError(
+                    f"read action: line/column bounds must be integers, got {value!r}"
+                )
             try:
-                return int(value)
+                return int(str(value))  # base-10 integer strings only ("88")
             except (TypeError, ValueError) as exc:
                 raise ValueError(
                     f"read action: line/column bounds must be integers, got {value!r}"
