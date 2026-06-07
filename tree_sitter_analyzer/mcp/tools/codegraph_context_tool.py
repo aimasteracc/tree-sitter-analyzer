@@ -596,19 +596,9 @@ def _extract_symbol_candidates(task: str) -> list[str]:
     )
     seen: set[str] = set()
     out: list[str] = []
-    explicit: set[str] = set()
     for raw in tokens:
-        # A token is EXPLICIT (the user named it deliberately) when it is either
-        # quoted (`` `dispatch` ``, Codex P2 #333) OR part of a qualified symbol
-        # (`UserService.handle` → the method `handle` is named, Codex P2 #333).
-        # Explicit tokens count as specific and are never dropped by the C filter
-        # below — only truly BARE generic verbs are. The regex captures quotes, so
-        # detect before strip; a qualified token is one whose raw splits into >1.
-        was_quoted = bool(raw) and raw[0] in "`\"'"
         raw = raw.strip("`\"'")
-        parts = re.split(r"[.:\->]+", raw)
-        is_qualified = len([p for p in parts if p.strip("_.,;:!?()[]{}")]) > 1
-        for part in parts:
+        for part in re.split(r"[.:\->]+", raw):
             token = part.strip("_.,;:!?()[]{}")
             if not token:
                 continue
@@ -619,23 +609,39 @@ def _extract_symbol_candidates(task: str) -> list[str]:
                 "_" in token or any(ch.isupper() for ch in token) or len(token) >= 4
             ):
                 continue
-            if was_quoted or is_qualified:
-                explicit.add(token)
             if token not in seen:
                 seen.add(token)
                 out.append(token)
 
-    # RFC-0009 C: when the task names a specific symbol (snake_case / CamelCase /
-    # explicitly quoted / qualified method), drop bare generic-verb candidates
-    # ("dispatch", "handle") — they only match unrelated event dispatchers /
-    # handlers and waste entry-point slots. Keep them when they are the ONLY
-    # signal, when quoted, or when qualified (e.g. UserService.handle).
+    # RFC-0009 C: when the task names a specific symbol (snake_case / CamelCase),
+    # drop bare generic-verb candidates ("dispatch", "handle") — they only match
+    # unrelated event dispatchers / handlers and waste entry-point slots. Keep
+    # them when they are the ONLY signal, OR when the user named one EXPLICITLY in
+    # the task — quoted (`` `dispatch` ``), qualified (``Foo.handle``, ``C::handle``,
+    # ``obj->fetch``), or called (``dispatch(``). We check the original task text
+    # rather than the fragmented tokens because the tokeniser regex already splits
+    # on ``::`` / ``->`` (Codex P2 #333, three rounds: quoted, dot-qualified, then
+    # ``::`` / ``->`` qualified — one robust check now covers all qualifier syntaxes).
     def _is_specific(tok: str) -> bool:
-        return "_" in tok or any(ch.isupper() for ch in tok) or tok in explicit
+        return "_" in tok or any(ch.isupper() for ch in tok)
+
+    def _named_explicitly(verb: str) -> bool:
+        pattern = (
+            r"(?:[`'\"]|\.|::|->)\s*"
+            + re.escape(verb)
+            + r"\b|\b"
+            + re.escape(verb)
+            + r"\s*\("
+        )
+        return bool(re.search(pattern, task, re.IGNORECASE))
 
     if any(_is_specific(tok) for tok in out):
         out = [
-            tok for tok in out if _is_specific(tok) or tok.lower() not in _GENERIC_VERBS
+            tok
+            for tok in out
+            if _is_specific(tok)
+            or tok.lower() not in _GENERIC_VERBS
+            or _named_explicitly(tok)
         ]
     return out
 

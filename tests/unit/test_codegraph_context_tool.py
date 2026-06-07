@@ -1511,3 +1511,28 @@ def test_qualified_generic_method_is_kept() -> None:
     assert "handle" in cands, cands
     assert "fetch" in cands, cands
     assert "UserService" in cands
+
+
+def test_non_dot_qualified_generic_methods_are_kept() -> None:
+    """RFC-0009 C / Codex P2 #333 (3rd round): C++/Rust/PHP-style qualifiers
+    (``Class::handle``, ``obj->fetch``) and called verbs (``dispatch()``) name a
+    method explicitly and must survive the generic-verb filter, just like dot
+    qualifiers and quotes. One post-hoc check against the task text covers all
+    qualifier syntaxes."""
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        _extract_symbol_candidates,
+    )
+
+    assert "handle" in _extract_symbol_candidates(
+        "trace MyClass::handle alongside resolve_callee"
+    )
+    assert "fetch" in _extract_symbol_candidates(
+        "trace obj->fetch alongside resolve_callee"
+    )
+    assert "dispatch" in _extract_symbol_candidates(
+        "does resolve_callee invoke dispatch() here"
+    )
+    # bare prose verb is still dropped when a specific symbol co-occurs
+    assert "dispatch" not in _extract_symbol_candidates(
+        "how does resolve_callee dispatch a Java call to resolve_java_callee"
+    )
