@@ -121,14 +121,25 @@ from Java, all generic 1-word callee names (`collect`, `data`×4, `message`) in
 `examples/BigService.java`, `examples/JavaDocTest.java`, and
 `tests/golden/corpus_java.java`.
 
+This counts EVERY caller language (not just Java) — an edge is cross-language
+when the resolved file's extension does not match the caller's language:
+
 ```bash
 sqlite3 .ast-cache/index.db "
   SELECT language, COUNT(*) FROM edges
   WHERE kind='calls' AND callee_resolution IN ('project','local')
-    AND language='java'
-    AND (callee_resolved_file LIKE '%.py' OR callee_resolved_file LIKE '%.php')
+    AND callee_resolved_file != ''
+    AND NOT (
+      (language='python'     AND callee_resolved_file LIKE '%.py')  OR
+      (language='java'       AND callee_resolved_file LIKE '%.java') OR
+      (language='javascript' AND (callee_resolved_file LIKE '%.js'  OR callee_resolved_file LIKE '%.jsx')) OR
+      (language='typescript' AND (callee_resolved_file LIKE '%.ts'  OR callee_resolved_file LIKE '%.tsx')) OR
+      (language='go'         AND callee_resolved_file LIKE '%.go')  OR
+      (language='ruby'       AND callee_resolved_file LIKE '%.rb')  OR
+      (language='rust'       AND callee_resolved_file LIKE '%.rs')
+    )
   GROUP BY language;"
-# → java|6
+# → java|6      (the ONLY language with any cross-language edge; 5→.py, 1→.php)
 ```
 
 **Same-language dominance.** Resolved (`project`/`local`) edges stay in-language:
