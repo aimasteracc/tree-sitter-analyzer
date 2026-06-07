@@ -919,3 +919,82 @@ class TestPreflightLiveSetupGate:
         )
         assert report["all_live"] is True
         assert report["arms"]["native-only"]["live"] is True
+
+
+class TestPreflightWiredIntoMatrix:
+    """Codex P2 #342: preflight() must be in the CRITICAL PATH of run-matrix, not
+    an opt-in subcommand. An operator who forgets it is exactly the failure mode
+    that wasted months of contaminated runs."""
+
+    def _patch_minimal(self, monkeypatch, tmp_path, calls):
+        # cmd_run_matrix lazily does `from adapters import ...` (bare), which only
+        # resolves when the codegraph_compare dir is on sys.path.
+        cg_dir = str(Path(compare_run.__file__).parent)
+        if cg_dir not in sys.path:
+            sys.path.insert(0, cg_dir)
+
+        def fake_load_yaml(path):
+            name = str(path)
+            if "repos" in name:
+                return [{"id": "r"}]
+            if "arms" in name:
+                return [{"id": "native-only"}]
+            return [{"id": "q", "repo": "r", "prompt": "trace it"}]
+
+        monkeypatch.setattr(compare_run, "_load_yaml", fake_load_yaml)
+        monkeypatch.setattr(compare_run, "_repo_local_path", lambda e: tmp_path)
+        monkeypatch.setattr(
+            compare_run, "_live_canary_probe", lambda *a, **k: (lambda arm: {})
+        )
+
+        def fake_preflight(**kwargs):
+            calls.append(kwargs)
+            raise SystemExit("preflight ran")
+
+        monkeypatch.setattr(compare_run, "preflight", fake_preflight)
+
+    def _args(self, **over):
+        base = {
+            "repos": "r",
+            "arms": "native-only",
+            "repeats": 1,
+            "question_limit": None,
+            "dry_run": False,
+            "skip_preflight": False,
+            "agent_backend": "claude",
+            "model": None,
+            "timeout_seconds": 10,
+        }
+        base.update(over)
+        return SimpleNamespace(**base)
+
+    def test_matrix_invokes_preflight_by_default(self, monkeypatch, tmp_path):
+        calls = []
+        self._patch_minimal(monkeypatch, tmp_path, calls)
+        with pytest.raises(SystemExit):
+            compare_run.cmd_run_matrix(self._args())
+        assert len(calls) == 1, "preflight not called in the run-matrix critical path"
+        assert calls[0]["arm_ids"] == ["native-only"]
+
+    def test_skip_preflight_opts_out(self, monkeypatch, tmp_path):
+        calls = []
+        self._patch_minimal(monkeypatch, tmp_path, calls)
+        # stub run_one so the matrix can proceed past the (skipped) gate
+        import adapters.claude_runner as cr
+
+        monkeypatch.setattr(
+            cr, "run_one", lambda **k: {"answer": "x", "elapsed_seconds": 0}
+        )
+        compare_run.cmd_run_matrix(self._args(skip_preflight=True))
+        assert calls == [], "preflight ran despite --skip-preflight"
+
+    def test_dry_run_skips_preflight(self, monkeypatch, tmp_path):
+        calls = []
+        self._patch_minimal(monkeypatch, tmp_path, calls)
+        import adapters.claude_runner as cr
+
+        monkeypatch.setattr(
+            cr, "run_one", lambda **k: {"answer": "DRY_RUN", "elapsed_seconds": 0}
+        )
+        compare_run.cmd_run_matrix(self._args(dry_run=True))
+        assert calls == [], "preflight ran in dry-run mode"

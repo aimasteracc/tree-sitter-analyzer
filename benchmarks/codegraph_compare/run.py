@@ -531,6 +531,7 @@ def _phase_to_matrix_args(args: argparse.Namespace) -> argparse.Namespace:
         repeats=repeats,
         question_limit=question_limit,
         dry_run=args.dry_run,
+        skip_preflight=getattr(args, "skip_preflight", False),
         agent_backend=args.agent_backend,
         model=args.model,
         timeout_seconds=args.timeout_seconds,
@@ -742,6 +743,23 @@ def cmd_run_matrix(args: argparse.Namespace) -> int:
         if not question_entries:
             print(f"[skip] repo={repo_id} has no questions", file=sys.stderr)
             continue
+
+        # PRE-FLIGHT GATE (Codex P2 #342): refuse to benchmark a dead/empty setup.
+        # preflight() aborts loudly (SystemExit) if any arm's MCP isn't live or its
+        # index is empty — the exact failure that wasted months of contaminated
+        # runs. It is in the CRITICAL PATH (not an opt-in subcommand); operators
+        # must explicitly opt OUT with --skip-preflight (CI/dry-run only).
+        if not args.dry_run and not getattr(args, "skip_preflight", False):
+            preflight(
+                arm_ids=[a["id"] for a in arm_entries],
+                repo_path=repo_path,
+                results_dir=RESULTS_DIR,
+                canary_probe=_live_canary_probe(
+                    repo_path,
+                    args.model or "claude-sonnet-4-6",
+                    args.timeout_seconds,
+                ),
+            )
 
         for arm_entry in arm_entries:
             arm_id: str = arm_entry["id"]
@@ -1050,6 +1068,15 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     p_matrix.add_argument(
+        "--skip-preflight",
+        action="store_true",
+        dest="skip_preflight",
+        help=(
+            "Opt OUT of the pre-flight live-setup gate (CI/dry-run only). By "
+            "default the matrix aborts if any arm's MCP/index is not live."
+        ),
+    )
+    p_matrix.add_argument(
         "--agent-backend",
         choices=["claude", "codex"],
         default="claude",
@@ -1110,6 +1137,12 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         dest="dry_run",
         help="Build prompts and record stubs without calling an agent CLI.",
+    )
+    p_phase.add_argument(
+        "--skip-preflight",
+        action="store_true",
+        dest="skip_preflight",
+        help="Opt OUT of the pre-flight live-setup gate (CI/dry-run only).",
     )
     p_phase.add_argument(
         "--agent-backend",
