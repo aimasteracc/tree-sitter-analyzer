@@ -107,6 +107,13 @@ The remaining ~4% `unknown` is dominated by genuinely-unresolvable dynamic dispa
 
 > **Symbol kinds, too.** TSA classifies class members as `kind=method` (20,348 method rows on this repo) — `search action=symbol kind=method` returns them; CodeGraph parity, not a stub. The `index status` payload breaks symbols down by kind and language and edges by kind (`edges_by_kind` — a breakdown CodeGraph does not surface).
 
+### Reactive push + edge-kind breakdown — two things CodeGraph can't do
+
+CodeGraph (and most one-shot indexers) only answer on poll: you ask, it replies with a snapshot, and you re-ask to learn whether anything changed. TSA exposes two capabilities that close that loop:
+
+- **Reactive push / subscription ([RFC-0001](rfcs/0001-reactive-push.md), implemented).** `search action=subscribe` registers a Hyphae selector and returns a `tsa://hyphae/{selector}` MCP resource URI. When the watched code changes, the server emits a resource-updated notification — the agent re-reads the resource instead of polling. `search action=unsubscribe` cancels it. CodeGraph has no push or subscription channel.
+- **`edges_by_kind` in `index action=status`.** Status returns a per-edge-kind count (calls / extends / implements / imports …), not just a single `total_edges` — so an agent can read the graph's shape (how call-heavy vs inheritance-heavy a repo is) before drilling in. CodeGraph surfaces only a flat total.
+
 Reproduce the correctness fixes on any repo both tools have indexed:
 
 ```bash

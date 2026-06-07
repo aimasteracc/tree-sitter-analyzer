@@ -30,6 +30,13 @@ def test_build_initialization_options_includes_agent_routing_instructions():
     assert "codegraph_symbol_search" not in instructions
     assert "codegraph_navigate" not in instructions
 
+    # Differentiators vs CodeGraph that must stay legible in the routing map
+    # (docs-reactive-push-visibility): reactive push / subscription (RFC-0001)
+    # and the per-edge-kind breakdown in the index status output. If these
+    # mentions regress, agents lose the two capabilities CodeGraph lacks.
+    assert "action=subscribe" in instructions
+    assert "edges_by_kind" in instructions
+
     # The 8 real facade tools must never be described by a non-existent name.
     real_facades = {
         "search",
