@@ -461,7 +461,11 @@ def _extract_cost_accounting(raw_result: dict[str, Any]) -> dict[str, Any]:
             + _usage_int(usage, "cached_input_tokens")
         ),
         "cache_creation_tokens": _usage_int(usage, "cache_creation_input_tokens"),
-        "total_cost_usd": round(float(raw_result.get("total_cost_usd", 0.0) or 0.0), 6),
+        # Preserve the provider's full cost precision — do NOT round (Codex P3
+        # #342). total_cost_usd is the authoritative figure for cost claims; a
+        # 6-dp round drops sub-microcent precision that matters when summing many
+        # small per-task costs (the cost-analysis-rigor lesson).
+        "total_cost_usd": float(raw_result.get("total_cost_usd", 0.0) or 0.0),
         "num_turns": int(raw_result.get("num_turns", 0) or 0),
     }
 
