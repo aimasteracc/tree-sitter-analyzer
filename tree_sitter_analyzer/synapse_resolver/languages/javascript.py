@@ -168,6 +168,28 @@ def _lookup_in_file(
     return None
 
 
+#: Symbol kinds that a BARE call (no receiver, no import) can legally target.
+#: A top-level ``function`` is callable as ``foo()``; a class ``method`` is NOT
+#: (it needs an owning receiver), and a ``class`` used bare is a construction,
+#: not a plain call. ``global_name_table`` drops the kind, so the project tier
+#: cross-checks ``file_symbols`` and only binds a bare-callable kind — otherwise
+#: ``render()`` wires to a same-named method elsewhere (Codex P2 #346).
+_BARE_CALLABLE_KINDS: frozenset[str] = frozenset({"function"})
+
+
+def _owner_kind(ctx: JavaScriptResolverContext, owner_file: str, sym_id: int) -> str:
+    """Kind (``function``/``method``/``class``) of ``sym_id`` in ``owner_file``.
+
+    Recovered from ``file_symbols`` because the shared ``global_name_table``
+    carries only ``(file, id)`` and drops the kind. Returns ``""`` when the
+    owner row is not present (so the caller can treat it conservatively).
+    """
+    for _name, kind, sid in ctx.file_symbols.get(owner_file, []):
+        if sid == sym_id:
+            return kind
+    return ""
+
+
 def _js_project_owns(ctx: JavaScriptResolverContext, simple: str) -> bool:
     """True when a JS-FAMILY project symbol is named ``simple``.
 
@@ -211,10 +233,20 @@ def resolve_javascript_callee(
         sym_id = _lookup_in_file(ctx, caller_file, simple)
         if sym_id is not None:
             return sym_id, "local", caller_file
-        for _cls, methods in ctx.file_class_methods.get(caller_file, {}).items():
-            mid = methods.get(simple)
-            if mid is not None:
-                return mid, "local", caller_file
+        # ``this.<method>`` may only bind to a class method when the enclosing
+        # class is unambiguous — i.e. the file defines exactly ONE class, so
+        # ``this`` can only be that class. With two+ classes we lack the
+        # caller's enclosing class, and binding ``this.render()`` in ``A`` to a
+        # SIBLING ``B.render`` is a concrete wrong edge; stay ``unknown``
+        # (Codex P2 #346). A bare ``foo()`` (no receiver) is never a method
+        # call, so it never enters this class-method path.
+        if receiver == "this":
+            classes = ctx.file_class_methods.get(caller_file, {})
+            if len(classes) == 1:
+                ((_cls, methods),) = classes.items()
+                mid = methods.get(simple)
+                if mid is not None:
+                    return mid, "local", caller_file
 
     # 2. builtin — a namespaced JS global call matched on the FULL dotted name
     #    (``JSON.parse``, ``Object.keys`` …). Terminal: outside the project.
@@ -226,8 +258,13 @@ def resolve_javascript_callee(
         if full in JS_BUILTIN_CALLS and not _js_project_owns(ctx, head):
             return None, "builtin", ""
 
-    # 3. project — exactly one JS-family project-wide definition of a BARE name.
-    #    Gated by language so a same-name Python/Java symbol is never bound.
+    # 3. project — exactly one JS-family project-wide definition of a BARE name,
+    #    AND that definition must be a bare-callable kind (a top-level
+    #    ``function``). A class ``method`` is not callable without a receiver and
+    #    a bare ``class`` name is a construction, not a plain call — binding
+    #    ``render()`` to a same-named method elsewhere is a wrong cross-file edge
+    #    (Codex P2 #346). Gated by language so a same-name Python/Java symbol is
+    #    never bound (the MOAT).
     if not receiver:
         js_cands = [
             (owner_file, sym_id)
@@ -235,6 +272,7 @@ def resolve_javascript_callee(
             if languages_compatible(
                 "javascript", ctx.file_languages.get(owner_file, "")
             )
+            and _owner_kind(ctx, owner_file, sym_id) in _BARE_CALLABLE_KINDS
         ]
         if len(js_cands) == 1:
             target_file, sym_id = js_cands[0]

@@ -169,6 +169,39 @@ def test_this_method_call_is_local_via_class_methods() -> None:
     )
 
 
+def test_this_method_does_not_bind_across_sibling_classes() -> None:
+    """Codex P2 #346: ``class A { run() { this.render(); } } class B { render(){} }``.
+    The caller ``A.run`` does NOT define ``render``; only the SIBLING class ``B``
+    does. Without the caller's enclosing class we cannot prove ``this.render`` is
+    a call on ``A``, so binding it to ``B.render`` is a concrete wrong edge. With
+    two+ classes in the file, ``this.<method>`` must stay ``unknown``."""
+    ctx = _ctx(
+        file_languages={"app.js": "javascript"},
+        file_class_methods={
+            "app.js": {"A": {"run": 1}, "B": {"render": 2}},
+        },
+    )
+    assert resolve_javascript_callee("render", "this.render", "app.js", ctx) == (
+        None,
+        "unknown",
+        "",
+    )
+
+
+def test_this_method_single_class_still_binds() -> None:
+    """Sanity: with exactly ONE class in the file, ``this.<method>`` is
+    unambiguous — ``this`` can only be that class — so the local bind holds."""
+    ctx = _ctx(
+        file_languages={"app.js": "javascript"},
+        file_class_methods={"app.js": {"Widget": {"render": 11}}},
+    )
+    assert resolve_javascript_callee("render", "this.render", "app.js", ctx) == (
+        11,
+        "local",
+        "app.js",
+    )
+
+
 # ---------------------------------------------------------------------------
 # builtin — namespaced globals, full-name match only
 # ---------------------------------------------------------------------------
@@ -260,6 +293,7 @@ def test_single_js_global_resolves_to_project() -> None:
     ctx = _ctx(
         file_languages={"a.js": "javascript", "b.js": "javascript"},
         global_name_table={"compute": [("b.js", 99)]},
+        file_symbols={"b.js": [("compute", "function", 99)]},
     )
     assert resolve_javascript_callee("compute", "compute", "a.js", ctx) == (
         99,
@@ -268,11 +302,61 @@ def test_single_js_global_resolves_to_project() -> None:
     )
 
 
+def test_bare_call_does_not_bind_to_a_method_global() -> None:
+    """Codex P2 #346: ``global_name_table`` holds every function/method/class,
+    but a BARE ``render()`` (no receiver/import) cannot call a class METHOD —
+    methods need an owning receiver. The lone JS-family owner of ``render`` here
+    is a *method* on a class in another file, so the bare call must NOT bind to
+    it; it stays ``unknown`` rather than wiring a wrong cross-file edge."""
+    ctx = _ctx(
+        file_languages={"a.js": "javascript", "widget.js": "javascript"},
+        global_name_table={"render": [("widget.js", 50)]},
+        file_symbols={"widget.js": [("render", "method", 50)]},
+    )
+    assert resolve_javascript_callee("render", "render", "a.js", ctx) == (
+        None,
+        "unknown",
+        "",
+    )
+
+
+def test_bare_call_does_not_bind_to_a_class_global() -> None:
+    """A bare ``Widget()`` whose only owner is a *class* is a construction, not a
+    plain function call; conservatively it is not a bare-callable project target,
+    so it stays ``unknown`` rather than binding to the class symbol."""
+    ctx = _ctx(
+        file_languages={"a.js": "javascript", "widget.js": "javascript"},
+        global_name_table={"Widget": [("widget.js", 60)]},
+        file_symbols={"widget.js": [("Widget", "class", 60)]},
+    )
+    assert resolve_javascript_callee("Widget", "Widget", "a.js", ctx) == (
+        None,
+        "unknown",
+        "",
+    )
+
+
+def test_bare_call_binds_to_a_function_global() -> None:
+    """The complement of the above: a bare call whose lone JS-family owner is a
+    top-level *function* IS a valid bare-callable project target and binds."""
+    ctx = _ctx(
+        file_languages={"a.js": "javascript", "util.js": "javascript"},
+        global_name_table={"compute": [("util.js", 70)]},
+        file_symbols={"util.js": [("compute", "function", 70)]},
+    )
+    assert resolve_javascript_callee("compute", "compute", "a.js", ctx) == (
+        70,
+        "project",
+        "util.js",
+    )
+
+
 def test_ts_family_global_is_resolvable_from_js_caller() -> None:
     """JS/TS are one interop family — a single ``.ts`` global is a valid bind."""
     ctx = _ctx(
         file_languages={"a.js": "javascript", "b.ts": "typescript"},
         global_name_table={"compute": [("b.ts", 5)]},
+        file_symbols={"b.ts": [("compute", "function", 5)]},
     )
     sid, res, target = resolve_javascript_callee("compute", "compute", "a.js", ctx)
     assert (sid, res, target) == (5, "project", "b.ts")
@@ -325,6 +409,10 @@ def test_no_cross_language_mis_wire_prefers_js_same_name() -> None:
             "Service.java": "java",
         },
         global_name_table={"handle": [("b.js", 8), ("Service.java", 100)]},
+        file_symbols={
+            "b.js": [("handle", "function", 8)],
+            "Service.java": [("handle", "method", 100)],
+        },
     )
     sid, res, target = resolve_javascript_callee("handle", "handle", "a.js", ctx)
     # Exactly one JS-family owner (b.js) → bound; the Java file is filtered out.
