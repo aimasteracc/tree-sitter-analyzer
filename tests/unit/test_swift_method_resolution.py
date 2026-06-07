@@ -118,6 +118,15 @@ def test_poetic_moat_end_to_end() -> None:
                 assert not str(r["callee_resolved_file"]).endswith(".py")
             if r["language"] == "python":
                 assert not str(r["callee_resolved_file"]).endswith(".swift")
+        # Discriminating: Swift print() must classify 'stdlib' via resolve_swift_callee.
+        # The Python cascade would instead call it 'builtin' (print is in BUILTINS_PY),
+        # so this assertion fails if the Swift resolver is not actually invoked.
+        prints = conn.execute(
+            "SELECT callee_resolution FROM edges "
+            "WHERE kind='calls' AND language='swift' AND callee_name='print'"
+        ).fetchall()
+        assert prints, "no swift print() edge"
+        assert all(r["callee_resolution"] == "stdlib" for r in prints)
         cache.close()
     finally:
         shutil.rmtree(d, ignore_errors=True)

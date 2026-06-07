@@ -39,7 +39,9 @@ _FUNC_DEF_TYPES = {
     "kotlin": {"function_declaration"},
     "ruby": {"method", "singleton_method"},
     "php": {"function_definition", "method_declaration"},
-    "swift": {"function_declaration", "protocol_function_declaration"},
+    # protocol stubs have no body + duplicate the impl name -> last-writer-wins
+    # in file_funcs would steal caller attribution; keep only concrete defs.
+    "swift": {"function_declaration"},
 }
 
 # ---------------------------------------------------------------------------
