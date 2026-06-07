@@ -1453,3 +1453,154 @@ def test_entry_point_ranked_before_high_degree_noise(tmp_path: Path) -> None:
     # only ONE block slot — the entry must win it.
     blocks = _build_code_blocks([noise, entry], edges, 1, str(tmp_path))
     assert [b["name"] for b in blocks] == ["answer"], blocks
+
+
+def test_generic_verbs_dropped_when_specific_candidate_present() -> None:
+    """RFC-0009 C: a bare generic verb ('dispatch') is dropped from candidates
+    when the task also names a specific snake_case/CamelCase symbol — it only
+    matches unrelated event dispatchers and wastes entry-point slots. The old
+    tokeniser kept it (RED)."""
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        _extract_symbol_candidates,
+    )
+
+    cands = _extract_symbol_candidates(
+        "how does resolve_callee dispatch a Java call to resolve_java_callee"
+    )
+    assert "dispatch" not in cands, cands
+    # the specific symbols the task is actually about are preserved
+    assert "resolve_callee" in cands
+    assert "resolve_java_callee" in cands
+
+
+def test_generic_verb_kept_when_sole_signal() -> None:
+    """RFC-0009 C is conservative: when a generic verb is the ONLY signal (no
+    specific symbol named), it is KEPT so 'find the dispatch function' still
+    resolves to the dispatch symbol."""
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        _extract_symbol_candidates,
+    )
+
+    cands = _extract_symbol_candidates("find the dispatch function")
+    assert "dispatch" in cands, cands
+
+
+def test_quoted_generic_verb_is_kept_as_explicit_symbol() -> None:
+    """RFC-0009 C / Codex P2 #333: a generic verb the user QUOTED (`` `dispatch` ``)
+    is an explicit symbol name and must survive the generic-verb filter even when
+    a snake_case symbol co-occurs — only BARE generic verbs are dropped."""
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        _extract_symbol_candidates,
+    )
+
+    cands = _extract_symbol_candidates("trace resolve_callee through `dispatch`")
+    assert "dispatch" in cands, cands
+    assert "resolve_callee" in cands
+
+
+def test_qualified_generic_method_is_kept() -> None:
+    """RFC-0009 C / Codex P2 #333 (re-review): a generic verb that is the METHOD
+    of a qualified symbol (``UserService.handle``, ``Database.fetch``) is named
+    deliberately and must survive the filter — the tokenizer splits the qualified
+    token, so the method part must count as explicit, not bare."""
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        _extract_symbol_candidates,
+    )
+
+    cands = _extract_symbol_candidates("trace UserService.handle to Database.fetch")
+    assert "handle" in cands, cands
+    assert "fetch" in cands, cands
+    assert "UserService" in cands
+
+
+def test_non_dot_qualified_generic_methods_are_kept() -> None:
+    """RFC-0009 C / Codex P2 #333 (3rd round): C++/Rust/PHP-style qualifiers
+    (``Class::handle``, ``obj->fetch``) and called verbs (``dispatch()``) name a
+    method explicitly and must survive the generic-verb filter, just like dot
+    qualifiers and quotes. One post-hoc check against the task text covers all
+    qualifier syntaxes."""
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        _extract_symbol_candidates,
+    )
+
+    assert "handle" in _extract_symbol_candidates(
+        "trace MyClass::handle alongside resolve_callee"
+    )
+    assert "fetch" in _extract_symbol_candidates(
+        "trace obj->fetch alongside resolve_callee"
+    )
+    assert "dispatch" in _extract_symbol_candidates(
+        "does resolve_callee invoke dispatch() here"
+    )
+    # bare prose verb is still dropped when a specific symbol co-occurs
+    assert "dispatch" not in _extract_symbol_candidates(
+        "how does resolve_callee dispatch a Java call to resolve_java_callee"
+    )
+
+
+def test_lowercase_qualified_anchor_still_drops_bare_verb() -> None:
+    """RFC-0009 C / Codex P2 #333 (5th round): when the only anchor is an
+    explicitly-named ALL-LOWERCASE symbol (``pkg/parser/parse``), the filter must
+    still run and drop a co-occurring bare prose verb. The guard counts
+    explicitly-named tokens as anchors, not just snake_case/CamelCase ones."""
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        _extract_symbol_candidates,
+    )
+
+    cands = _extract_symbol_candidates("trace obj->parse dispatch")
+    assert "parse" in cands, cands
+    assert "dispatch" not in cands, cands
+    # sole-signal control: no anchor at all -> nothing dropped
+    assert "dispatch" in _extract_symbol_candidates("find the dispatch function")
+
+
+def test_file_path_does_not_anchor_filter() -> None:
+    """RFC-0009 C / Codex P2 #333 (6th round): an ordinary file path mentioned in
+    the task ('… in src/parser/utils.py') must NOT count as a symbol anchor — '/'
+    is a path separator, not a qualifier — so a bare verb that is the user's real
+    request is preserved (sole-signal behaviour)."""
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        _extract_symbol_candidates,
+    )
+
+    cands = _extract_symbol_candidates(
+        "find the dispatch function in src/parser/utils.py"
+    )
+    assert "dispatch" in cands, cands
+
+
+def test_snake_or_camel_path_components_do_not_anchor_filter() -> None:
+    """RFC-0009 C / Codex P2 #333 (7th round): a file path whose components are
+    snake_case/CamelCase ('tree_sitter_analyzer/mcp_tools.py', 'src/UserService.py')
+    must NOT count those components as symbol anchors — they are scope/location —
+    so a bare verb that is the user's real request survives."""
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        _extract_symbol_candidates,
+    )
+
+    assert "dispatch" in _extract_symbol_candidates(
+        "find dispatch in tree_sitter_analyzer/mcp_tools.py"
+    )
+    assert "dispatch" in _extract_symbol_candidates(
+        "find dispatch in src/UserService.py"
+    )
+    # control: a genuine snake_case symbol (not in a path) DOES anchor + drop bare verb
+    assert "dispatch" not in _extract_symbol_candidates(
+        "how does resolve_callee dispatch a call"
+    )
+
+
+def test_windows_path_components_do_not_anchor_filter() -> None:
+    """RFC-0009 C / Codex P2 #333 (8th round): Windows-style paths (backslash
+    separators, drive letters) must be recognised as paths too, so their
+    snake_case/CamelCase directory components don't anchor the filter."""
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        _extract_symbol_candidates,
+    )
+
+    assert "dispatch" in _extract_symbol_candidates(
+        r"find dispatch in src\tree_sitter_analyzer\mcp_tools.py"
+    )
+    assert "dispatch" in _extract_symbol_candidates(
+        r"find dispatch in C:\repo\src\UserService\handler.py"
+    )

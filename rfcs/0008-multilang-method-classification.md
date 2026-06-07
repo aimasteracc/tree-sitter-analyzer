@@ -1,9 +1,9 @@
 # RFC-0008: Multi-language method classification — beyond Python
 
-- **Status**: draft
+- **Status**: draft — Java implemented (#326, on develop); Go/JS/TS pending
 - **Author(s)**: @aimasteracc
 - **Created**: 2026-06-06
-- **Last updated**: 2026-06-06
+- **Last updated**: 2026-06-07
 - **Tracking issue**: TBD
 - **Affected source paths**:
   - `tree_sitter_analyzer/synapse_resolver/_constants.py` (per-language method tables)
@@ -165,13 +165,13 @@ No surface change. Computed at index time, read identically by CLI and MCP.
 
 ## Acceptance criteria
 
-- [ ] `STDLIB_METHODS_JAVA` / `_GO` / `_JS` (+ external/builtin where apt), grouped + commented
-- [ ] cascade tiers dispatch on `caller_lang` (not hard-coded Python)
-- [ ] language-aware ownership gate preserved per language (shadowing + ambiguity)
-- [ ] per-language RED-first unit tests + cross-language gate test
+- [~] `STDLIB_METHODS_JAVA` / `_GO` / `_JS` (+ external/builtin where apt), grouped + commented — Java done (#326: `STDLIB_METHODS_JAVA`, `EXTERNAL_METHODS_JAVA`); Go/JS pending
+- [x] cascade tiers dispatch on `caller_lang` (not hard-coded Python) — #326
+- [~] language-aware ownership gate preserved per language (shadowing + ambiguity) — Java done (#326); Go/JS pending
+- [~] per-language RED-first unit tests + cross-language gate test — Java done (#326: 7 tests + cross-language gate); Go/JS pending
 - [ ] dogfood on a Java or Go repo shows a measurable classified-share rise
-- [ ] CLI/MCP parity unaffected; full suite green
-- [ ] Docs/CODEMAPS + RFC status -> implemented
+- [x] CLI/MCP parity unaffected; full suite green — #326 (1361 passed)
+- [ ] Docs/CODEMAPS + RFC status -> implemented (flips when Go/JS/TS land)
 
 ## What this RFC does NOT do (deferred)
 

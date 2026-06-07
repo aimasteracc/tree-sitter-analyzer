@@ -1,6 +1,6 @@
 # RFC-0009: `nav context` self-sufficiency — answer in one call, close the turn gap
 
-- **Status**: accepted
+- **Status**: accepted — A/B/C implemented (#330/#331/#333, on develop); measured turn-drop pending (gated on the benchmark integrity fix + N≥5 re-run)
 - **Author(s)**: @aimasteracc
 - **Created**: 2026-06-07
 - **Last updated**: 2026-06-07
@@ -143,10 +143,10 @@ the same task across both surfaces.
   a stale-index artifact — assert freshness in the fixture).
 
 ## Acceptance criteria
-- [ ] Sub-budget entry-point bodies inline in full (A); long tail truncates; the
-      127-line motivating target inlines fully at the chosen budget
-- [ ] Named entry points always get blocks before high-degree noise (B)
-- [ ] Query tokenisation no longer surfaces generic-verb false entry points (C)
+- [x] Sub-budget entry-point bodies inline in full (A); long tail truncates; the
+      127-line motivating target inlines fully at the chosen budget — #331
+- [x] Named entry points always get blocks before high-degree noise (B) — #331
+- [x] Query tokenisation no longer surfaces generic-verb false entry points (C) — #333
 - [ ] **MEASURED turn drop**: re-run the gin routing-trace benchmark
       (symmetric warm cache, n≥5, separate cache_read/cache_creation/output/turns
       columns — per `feedback_benchmark-cost-analysis-rigor`); turns-to-answer

@@ -252,3 +252,41 @@ class TestRequiredSections:
                 missing_sections.append(section)
 
         assert not missing_sections, f"Missing required sections: {missing_sections}"
+
+
+# Matches a stale ``codegraph_<word>`` MCP-tool-name reference (e.g.
+# ``codegraph_status``, ``codegraph_navigate``). Under the current 8-facade
+# schema these tool *names* do not exist — an agent told to call them gets
+# tool-not-found. Legitimate survivors that must NOT match:
+#   * the ``benchmarks/codegraph_compare/`` directory path
+#   * CLI flags like ``--codegraph-impact`` (hyphenated, not a tool name)
+_STALE_TOOL_NAME = re.compile(r"\bcodegraph_(?!compare\b)[a-z][a-z_]*\b")
+
+
+class TestNoStaleFacadeToolNames:
+    """The feature table + quick-start must reference real facade tools.
+
+    The 8 facades are: nav, search, structure, health, edit, project, index,
+    viz. Each takes an ``action=`` parameter. The pre-facade docs referenced
+    ~21 ``codegraph_*`` MCP tool *names* that no longer exist; this test pins
+    them out of all three READMEs.
+    """
+
+    @pytest.mark.parametrize(
+        "readme_path",
+        [README_PATH, README_JA_PATH, README_ZH_PATH],
+        ids=["en", "ja", "zh"],
+    )
+    def test_no_stale_codegraph_tool_names(self, readme_path: Path) -> None:
+        content = get_readme_content(readme_path)
+        hits: list[str] = []
+        for i, line in enumerate(content.splitlines(), 1):
+            for match in _STALE_TOOL_NAME.finditer(line):
+                hits.append(
+                    f"{readme_path.name}:{i}: {match.group(0)} | {line.strip()}"
+                )
+        assert not hits, (
+            "Found stale codegraph_* MCP-tool-name references (these tools no "
+            "longer exist under the 8-facade schema — map each to facade+action, "
+            "e.g. codegraph_status -> index action=status):\n" + "\n".join(hits)
+        )
