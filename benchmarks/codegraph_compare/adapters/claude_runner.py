@@ -4,8 +4,8 @@ No separate API key required — uses the current Claude Code session's
 authentication (keychain / OAuth).
 
 Writes:
-  - results_dir/raw/<run_id>_prompt.txt          — the full prompt sent to the agent
-  - results_dir/raw/<run_id>_result.jsonl        — raw JSONL response from the agent CLI
+  - results_dir/raw/<session_id>__<run_id>_prompt.txt    — the full prompt sent to the agent
+  - results_dir/raw/<session_id>__<run_id>_result.jsonl  — raw JSONL response from the agent CLI
   - results_dir/runs.jsonl                       — one JSONL line per trial (appended)
 """
 
@@ -454,15 +454,27 @@ def run_one(
     model: str | None = None,
     agent_backend: str = "claude",
     dry_run: bool = False,
+    session_id: str = "",
 ) -> dict:
     """Run one benchmark trial via the configured agent CLI.
 
     Writes prompt + raw result to results_dir/raw/, appends to runs.jsonl.
+
+    ``session_id`` uniquifies the raw artifact filenames so repeated benchmark
+    invocations of the same (question, arm, repeat) do NOT overwrite each other's
+    raw transcripts — without it, cost data from an earlier run was silently lost
+    on re-run, which made n>1 measurement impossible. Generated once per
+    ``cmd_run`` / ``cmd_run_matrix`` invocation and threaded in; defaults to a UTC
+    timestamp when called standalone. ``run_id`` stays the logical grouping key
+    for analysis; ``session_id`` only distinguishes invocations.
     """
     if agent_backend not in {"claude", "codex"}:
         raise ValueError("agent_backend must be one of: claude, codex")
     model = model or _DEFAULT_MODELS[agent_backend]
     run_id = _make_run_id(question_id, arm_id, repeat, agent_backend)
+    if not session_id:
+        session_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    artifact_stem = f"{session_id}__{run_id}"
     started_at = datetime.now(timezone.utc).isoformat()
     started_perf = time.perf_counter()
 
@@ -497,7 +509,7 @@ def run_one(
     # Persist prompt
     raw_dir = results_dir / "raw"
     raw_dir.mkdir(parents=True, exist_ok=True)
-    prompt_path = raw_dir / f"{run_id}_prompt.txt"
+    prompt_path = raw_dir / f"{artifact_stem}_prompt.txt"
     prompt_path.write_text(full_prompt, encoding="utf-8")
 
     # Build agent CLI command. Claude has stronger tool allowlisting; Codex
@@ -520,7 +532,7 @@ def run_one(
     stream_lines: list[str] = []
 
     if dry_run:
-        result_path = raw_dir / f"{run_id}_result.jsonl"
+        result_path = raw_dir / f"{artifact_stem}_result.jsonl"
         answer = "DRY_RUN"
         result_path.write_text("", encoding="utf-8")
     else:
@@ -548,7 +560,7 @@ def run_one(
             stream_lines = [ln for ln in proc.stdout.splitlines() if ln.strip()]
 
             # Save raw stream
-            result_path = raw_dir / f"{run_id}_result.jsonl"
+            result_path = raw_dir / f"{artifact_stem}_result.jsonl"
             result_path.write_text(proc.stdout, encoding="utf-8")
 
             if proc.returncode != 0 and not proc.stdout.strip():
@@ -603,6 +615,7 @@ def run_one(
 
     record: dict = {
         "run_id": run_id,
+        "session_id": session_id,
         "repo": repo_path.name,
         "question_id": question_id,
         "arm": arm_id,
@@ -622,7 +635,7 @@ def run_one(
         "index_queries": index_queries,
         "answer": answer,
         "citations": _extract_citations(answer, repo_path),
-        "transcript_path": str(raw_dir / f"{run_id}_result.jsonl"),
+        "transcript_path": str(raw_dir / f"{artifact_stem}_result.jsonl"),
         "error": error,
         "agent_backend": agent_backend,
         "model": model,
