@@ -330,3 +330,50 @@ def test_excludes_dot_prefixed_vendored_dirs(tmp_path):
     assert not any(".benchmark-repos" in i.file.replace("\\", "/") for i in imports), [
         i.file for i in imports
     ]
+
+
+# ---------------------------------------------------------------------------
+# Canonical EXCLUDE_DIRS single-source (centralize-exclude-dirs)
+# ---------------------------------------------------------------------------
+
+
+def test_exclude_dirs_is_canonical_constant() -> None:
+    """dead_code_analyzer must source its excluded-dir set from the single
+    canonical ``constants.EXCLUDE_DIRS`` rather than defining its own private
+    copy that can drift. The module-level name must BE the canonical object."""
+    from tree_sitter_analyzer import dead_code_analyzer
+    from tree_sitter_analyzer.constants import EXCLUDE_DIRS
+
+    assert dead_code_analyzer._EXCLUDE_DIRS is EXCLUDE_DIRS
+
+
+def test_exclude_dirs_covers_previously_excluded_dirs() -> None:
+    """Migrating to the canonical constant must not lose any directory that
+    dead_code_analyzer previously excluded — the canonical set is the union,
+    so every historical entry is still covered (behavior unchanged)."""
+    from tree_sitter_analyzer.dead_code_analyzer import _EXCLUDE_DIRS
+
+    # The exact set dead_code_analyzer carried before centralization.
+    previously_excluded = {
+        "node_modules",
+        ".git",
+        "__pycache__",
+        ".venv",
+        "venv",
+        ".tox",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        "dist",
+        "build",
+        "htmlcov",
+        ".cache",
+        ".eggs",
+        ".idea",
+        ".vscode",
+        ".claude",
+    }
+    missing = previously_excluded - set(_EXCLUDE_DIRS)
+    assert not missing, (
+        f"canonical EXCLUDE_DIRS dropped previously-excluded dirs: {missing}"
+    )
