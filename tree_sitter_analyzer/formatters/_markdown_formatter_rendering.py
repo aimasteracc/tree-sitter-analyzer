@@ -177,13 +177,15 @@ def compact_header_row(header: dict[str, Any]) -> str:
 
 def format_csv_output(analysis_result: dict[str, Any]) -> str:
     """Format CSV output for Markdown files."""
+    from ._csv_safety import csv_safe_row
+
     output = io.StringIO()
     writer = csv.writer(output, lineterminator="\n")
     writer.writerow(
         ["Type", "Text/URL/Language", "Level/Count", "Start Line", "End Line"]
     )
     for element in analysis_result.get("elements", []):
-        writer.writerow(markdown_csv_row(element))
+        writer.writerow(csv_safe_row(markdown_csv_row(element)))
 
     csv_content = output.getvalue()
     output.close()
