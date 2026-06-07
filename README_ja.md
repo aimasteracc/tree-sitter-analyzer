@@ -29,7 +29,7 @@ claude mcp add tree-sitter-analyzer \
   -- uvx --from "tree-sitter-analyzer[mcp]" tree-sitter-analyzer-mcp
 ```
 
-エージェントを再起動し、こう伝える: 「プロジェクト ルートを私のリポジトリに設定して、codegraph_status を呼んでください。」
+エージェントを再起動し、こう伝える: 「プロジェクト ルートを私のリポジトリに設定して、`index` ツールを action=status で呼んでください。」
 
 [その他のエージェント (Cursor / Copilot / Cline / Continue / Claude Desktop / Roo Code) →](#-対応エージェント)
 
@@ -98,13 +98,13 @@ tree-sitter-analyzer --callees _resolve_entry_points --format json
 
 | 能力 | TSA ツール | ステータス |
 |---|---|---|
-| シンボル検索 (FTS5 + **BM25 ランク付け**) | `codegraph_symbol_search` | **優位** — 関連スコア順にソート |
-| go-to-def / find-refs / コール階層を 1 回の呼び出しで | `codegraph_navigate` | PRIMARY エントリポイント |
-| 関連シンボル N 個のソース + 関係マップを一括取得 | `codegraph_explore` | 同等 |
-| 関数レベル blast radius + リスク スコア | `codegraph_impact` | 同等 + リスク スコア |
-| X を呼ぶのは誰 / X は何を呼ぶ | `codegraph_callers` / `codegraph_callees` | 同等 |
-| インデックス健全性 (+ エッジ数) | `codegraph_status` | **優位** — `total_edges` でグラフ密度を把握 |
-| 事前構築コール グラフ キャッシュ | `codegraph_autoindex` / `codegraph_full_index` / `codegraph_incremental_sync` | 同等 |
+| シンボル検索 (FTS5 + **BM25 ランク付け**) | `search` action=symbol | **優位** — 関連スコア順にソート |
+| go-to-def / find-refs / コール階層を 1 回の呼び出しで | `nav` action=navigate | PRIMARY エントリポイント |
+| 関連シンボル N 個のソース + 関係マップを一括取得 | `structure` action=explore | 同等 |
+| 関数レベル blast radius + リスク スコア | `nav` action=impact | 同等 + リスク スコア |
+| X を呼ぶのは誰 / X は何を呼ぶ | `nav` action=callers / action=callees | 同等 |
+| インデックス健全性 (+ エッジ数) | `index` action=status | **優位** — `total_edges` でグラフ密度を把握 |
+| 事前構築コール グラフ キャッシュ | `index` action=auto / action=full / action=sync | 同等 |
 | 変更の影響を受けるテスト (CLI) | `--affected FILE...` | 同等 |
 
 ### Tree-sitter Analyzer 独占機能
@@ -112,26 +112,26 @@ tree-sitter-analyzer --callees _resolve_entry_points --format json
 | 能力 | TSA ツール | 説明 |
 |---|---|---|
 | **BM25 ランク付き検索** | 全検索ツール | min-max 正規化 relevance_score (最適=1.0 / 最弱=0.0); DSL で sort(by='confidence') |
-| **セマンティック検索 (133× 高速化)** | `codegraph_query semantic()` | BM25 で 40k シンボル→約 400 に絞り込んでコサイン再ランク |
-| **プロジェクト A-F 健全性グレーディング** | `check_project_health` | 7 次元 (サイズ/複雑度/依存/カバレッジ/重複/構造/git)、競合に対応無し |
+| **セマンティック検索 (133× 高速化)** | `search` action=chain (`semantic()` DSL) | BM25 で 40k シンボル→約 400 に絞り込んでコサイン再ランク |
+| **プロジェクト A-F 健全性グレーディング** | `health` action=project | 7 次元 (サイズ/複雑度/依存/カバレッジ/重複/構造/git)、競合に対応無し |
 | **TOON 出力** | 全ツール、デフォルト `output_format: "toon"` | 50-70% トークン節約 |
 | **Verdict エンベロープ** | 全ツール | `SAFE/CAUTION/UNSAFE/INFO/WARN/ERROR/NOT_FOUND` |
-| **Safe-to-edit ゲート** | `safe_to_edit` + `modification_guard` | 高リスク編集前に拒否 |
-| **アーキテクチャ制約 DSL** | `check_constraints` | 「モジュール A は B に依存禁止」→ 強制 |
-| **ファイル レベル健全性** | `check_file_health` | ブロック / 長メソッド / コード スメル検出 |
-| **クラス階層** | `codegraph_class_hierarchy` | 型継承ツリー |
-| **依存マトリクス** | `codegraph_dependency_matrix` | モジュール結合マトリクス |
-| **デッド コード** | `codegraph_dead_code` | 推移的到達不能解析 |
-| **複雑度ヒート マップ** | `codegraph_complexity_heatmap` | 関数別循環的複雑度 + プロジェクト ビュー |
-| **AST 構造的クローン検出** | `codegraph_similarity` | テキスト類似度を超える |
-| **Mermaid コール グラフ エクスポート** | `codegraph_visualize` | ドキュメントへ直接貼付 |
-| **UML Mermaid エクスポート** | `codegraph_uml` | class / package / component / sequence 図 |
-| **PR レビュー** | `codegraph_pr_review` | AST diff + セマンティック分類 + blast radius |
+| **Safe-to-edit ゲート** | `edit` action=safe / action=guard | 高リスク編集前に拒否 |
+| **アーキテクチャ制約 DSL** | `edit` action=constraints | 「モジュール A は B に依存禁止」→ 強制 |
+| **ファイル レベル健全性** | `health` action=file | ブロック / 長メソッド / コード スメル検出 |
+| **クラス階層** | `structure` action=class_tree | 型継承ツリー |
+| **依存マトリクス** | `health` action=matrix | モジュール結合マトリクス |
+| **デッド コード** | `health` action=dead | 推移的到達不能解析 |
+| **複雑度ヒート マップ** | `health` action=heatmap | 関数別循環的複雑度 + プロジェクト ビュー |
+| **AST 構造的クローン検出** | `viz` action=similarity | テキスト類似度を超える |
+| **Mermaid コール グラフ エクスポート** | `viz` action=graph | ドキュメントへ直接貼付 |
+| **UML Mermaid エクスポート** | `viz` action=uml | class / package / component / sequence 図 |
+| **PR レビュー** | `edit` action=pr | AST diff + セマンティック分類 + blast radius |
 | **agent_summary** | 全応答 | エンベロープに次ステップ ヒントを内蔵 |
 | **Synapse クロスファイル リゾルバ** | 内部 | import-aware、正規表現推測より強力 |
-| **時間的アクティベーション** | `symbol_lineage` | シンボル別 git 修正頻度 |
-| **1 回のファイル把握** | `smart_context` | 健全性 + エクスポート + 依存 + 編集リスクを 1 コールで (3-4 コールを代替) |
-| **アーキテクチャ意思決定ジャーナル** | `decision_journal` | セッション間で推論を永続化 — 他に提供しているツールは無い |
+| **時間的アクティベーション** | `nav` action=lineage | シンボル別 git 修正頻度 |
+| **1 回のファイル把握** | `project` action=smart | 健全性 + エクスポート + 依存 + 編集リスクを 1 コールで (3-4 コールを代替) |
+| **アーキテクチャ意思決定ジャーナル** | `project` action=journal | セッション間で推論を永続化 — 他に提供しているツールは無い |
 
 ### Skills (13 のキュレーション済みワークフロー)
 
@@ -197,7 +197,7 @@ uv add "tree-sitter-analyzer[all,mcp]"
 }
 ```
 
-再起動後: 「プロジェクト ルートを私のリポジトリに設定して、codegraph_status を呼んでください。」
+再起動後: 「プロジェクト ルートを私のリポジトリに設定して、`index` ツールを action=status で呼んでください。」
 
 ---
 
@@ -206,7 +206,7 @@ uv add "tree-sitter-analyzer[all,mcp]"
 ```
 ソース コード → tree-sitter 解析 → SQLite + FTS5 インデックス (.ast-cache/index.db)
                                           ↓
-       codegraph_navigate / codegraph_explore / codegraph_callers / ...
+       nav (navigate) / structure (explore) / nav (callers) / ...
                                           ↓
                             TOON 圧縮エンベロープ
                             (verdict + agent_summary + データ)
@@ -214,7 +214,7 @@ uv add "tree-sitter-analyzer[all,mcp]"
                                MCP クライアント / CLI 消費者
 ```
 
-インデックスは最初のクエリで遅延構築され、ファイル変更時はコンテンツ ハッシュ差分で増分更新 (`codegraph_incremental_sync`)。8 個のファサード全てが同じ `.ast-cache/` を共有し、クエリとフォローアップは作業を共有する。
+インデックスは最初のクエリで遅延構築され、ファイル変更時はコンテンツ ハッシュ差分で増分更新 (`index` action=sync)。8 個のファサード全てが同じ `.ast-cache/` を共有し、クエリとフォローアップは作業を共有する。
 
 ---
 

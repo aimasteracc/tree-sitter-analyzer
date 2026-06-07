@@ -30,7 +30,7 @@ claude mcp add tree-sitter-analyzer \
   -- uvx --from "tree-sitter-analyzer[mcp]" tree-sitter-analyzer-mcp
 ```
 
-重启 agent，对它说："设置项目根目录到我的仓库，然后调用 codegraph_status。"
+重启 agent，对它说："设置项目根目录到我的仓库，然后用 `index` 工具调用 action=status。"
 
 [其他 agent（Cursor / Copilot / Cline / Continue / Claude Desktop / Roo Code）→](#-支持的-agent)
 
@@ -99,13 +99,13 @@ tree-sitter-analyzer --callees _resolve_entry_points --format json
 
 | 能力 | TSA 工具 | 状态 |
 |---|---|---|
-| 符号搜索（FTS5 + **BM25 排名**） | `codegraph_symbol_search` | **领先** — 结果按相关性分数排序 |
-| go-to-def / find-refs / 调用层级 一次调用 | `codegraph_navigate` | PRIMARY 入口 |
-| 批量获取 N 个相关符号 + 关系图 | `codegraph_explore` | 对位 |
-| 函数级 blast radius + 风险评分 | `codegraph_impact` | 对位 + 风险评分 |
-| 谁调用 X / X 调用谁 | `codegraph_callers` / `codegraph_callees` | 对位 |
-| 索引健康一览（含边数统计） | `codegraph_status` | **领先** — 提供 `total_edges` 图密度信号 |
-| 预建调用图缓存 | `codegraph_autoindex` / `codegraph_full_index` / `codegraph_incremental_sync` | 对位 |
+| 符号搜索（FTS5 + **BM25 排名**） | `search` action=symbol | **领先** — 结果按相关性分数排序 |
+| go-to-def / find-refs / 调用层级 一次调用 | `nav` action=navigate | PRIMARY 入口 |
+| 批量获取 N 个相关符号 + 关系图 | `structure` action=explore | 对位 |
+| 函数级 blast radius + 风险评分 | `nav` action=impact | 对位 + 风险评分 |
+| 谁调用 X / X 调用谁 | `nav` action=callers / action=callees | 对位 |
+| 索引健康一览（含边数统计） | `index` action=status | **领先** — 提供 `total_edges` 图密度信号 |
+| 预建调用图缓存 | `index` action=auto / action=full / action=sync | 对位 |
 | 受变更影响的测试（CLI） | `--affected FILE...` | 对位 |
 
 ### Tree-sitter Analyzer 独占
@@ -113,26 +113,26 @@ tree-sitter-analyzer --callees _resolve_entry_points --format json
 | 能力 | TSA 工具 | 说明 |
 |---|---|---|
 | **BM25 排名搜索** | 所有搜索工具 | min-max 标准化 relevance_score（最佳=1.0/最弱=0.0）；DSL 支持 sort(by='confidence') |
-| **语义搜索（133× 加速）** | `codegraph_query semantic()` | BM25 预过滤将 40k 符号收窄至 ~400 再做余弦重排 |
-| **项目 A-F 健康评级** | `check_project_health` | 7 维度（体积/复杂度/依赖/覆盖率/重复/结构/git热点），竞品无对位 |
+| **语义搜索（133× 加速）** | `search` action=chain（`semantic()` DSL） | BM25 预过滤将 40k 符号收窄至 ~400 再做余弦重排 |
+| **项目 A-F 健康评级** | `health` action=project | 7 维度（体积/复杂度/依赖/覆盖率/重复/结构/git热点），竞品无对位 |
 | **TOON 输出** | 所有工具，默认 `output_format: "toon"` | 50-70% token 节省 |
 | **Verdict 信封** | 所有工具 | `SAFE/CAUTION/UNSAFE/INFO/WARN/ERROR/NOT_FOUND` |
-| **Safe-to-edit 闸门** | `safe_to_edit` + `modification_guard` | 高风险编辑前拒绝 |
-| **架构约束 DSL** | `check_constraints` | "模块 A 不能依赖 B" → 强制执行 |
-| **文件级健康度** | `check_file_health` | 代码块/长方法/坏味道检测 |
-| **类继承层级** | `codegraph_class_hierarchy` | 类型继承树 |
-| **依赖矩阵** | `codegraph_dependency_matrix` | 模块耦合矩阵 |
-| **死代码** | `codegraph_dead_code` | 传递不可达分析 |
-| **复杂度热点** | `codegraph_complexity_heatmap` | 单函数圈复杂度 + 项目视图 |
-| **AST 结构克隆检测** | `codegraph_similarity` | 超越文本相似度 |
-| **Mermaid 调用图导出** | `codegraph_visualize` | 直接粘贴进文档 |
-| **UML Mermaid 导出** | `codegraph_uml` | class / package / component / sequence 图 |
-| **PR 评审** | `codegraph_pr_review` | AST diff + 语义分类 + blast radius |
+| **Safe-to-edit 闸门** | `edit` action=safe / action=guard | 高风险编辑前拒绝 |
+| **架构约束 DSL** | `edit` action=constraints | "模块 A 不能依赖 B" → 强制执行 |
+| **文件级健康度** | `health` action=file | 代码块/长方法/坏味道检测 |
+| **类继承层级** | `structure` action=class_tree | 类型继承树 |
+| **依赖矩阵** | `health` action=matrix | 模块耦合矩阵 |
+| **死代码** | `health` action=dead | 传递不可达分析 |
+| **复杂度热点** | `health` action=heatmap | 单函数圈复杂度 + 项目视图 |
+| **AST 结构克隆检测** | `viz` action=similarity | 超越文本相似度 |
+| **Mermaid 调用图导出** | `viz` action=graph | 直接粘贴进文档 |
+| **UML Mermaid 导出** | `viz` action=uml | class / package / component / sequence 图 |
+| **PR 评审** | `edit` action=pr | AST diff + 语义分类 + blast radius |
 | **agent_summary** | 所有响应 | 下一步提示内嵌于信封 |
 | **Synapse 跨文件解析** | 内部 | import-aware，胜过正则猜测 |
-| **时间激活度** | `symbol_lineage` | 每个符号的 git 修改频率 |
-| **单次文件定向** | `smart_context` | 健康度 + 导出符号 + 依赖 + 编辑风险一次调用（替代 3-4 次调用） |
-| **架构决策日志** | `decision_journal` | 跨会话持久化推理 — 竞品均无此能力 |
+| **时间激活度** | `nav` action=lineage | 每个符号的 git 修改频率 |
+| **单次文件定向** | `project` action=smart | 健康度 + 导出符号 + 依赖 + 编辑风险一次调用（替代 3-4 次调用） |
+| **架构决策日志** | `project` action=journal | 跨会话持久化推理 — 竞品均无此能力 |
 
 ### Skills（13 个精选工作流）
 
@@ -198,7 +198,7 @@ uv add "tree-sitter-analyzer[all,mcp]"
 }
 ```
 
-重启 agent 后："设置项目根目录到我的仓库，然后调用 codegraph_status。"
+重启 agent 后："设置项目根目录到我的仓库，然后用 `index` 工具调用 action=status。"
 
 ---
 
@@ -207,7 +207,7 @@ uv add "tree-sitter-analyzer[all,mcp]"
 ```
 源代码 → tree-sitter 解析 → SQLite + FTS5 索引 (.ast-cache/index.db)
                                     ↓
-   codegraph_navigate / codegraph_explore / codegraph_callers / ...
+   nav (navigate) / structure (explore) / nav (callers) / ...
                                     ↓
                        TOON 压缩信封
                        (verdict + agent_summary + 数据)
@@ -215,7 +215,7 @@ uv add "tree-sitter-analyzer[all,mcp]"
                        MCP 客户端 / CLI 消费者
 ```
 
-索引首次查询时懒构建，文件变更时通过内容哈希增量刷新（`codegraph_incremental_sync`）。所有 8 个工具共享同一份 `.ast-cache/`，查询与跟进调用共享工作量。
+索引首次查询时懒构建，文件变更时通过内容哈希增量刷新（`index` action=sync）。所有 8 个工具共享同一份 `.ast-cache/`，查询与跟进调用共享工作量。
 
 ---
 
