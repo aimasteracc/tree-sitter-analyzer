@@ -119,3 +119,54 @@ class TestExecuteWithCache:
         assert result["cache"]["total_files"] == 42
         assert result["cache"]["total_symbols"] == 1000
         assert result["cache_indexed"] is True
+
+
+class TestCallGraphMetricsSanity:
+    """F1 regression: project metrics must not degenerate to 'every function is
+    both an entry point AND dead code'. Root cause was a key mismatch —
+    all_functions() dicts key the path under 'file', but the metric collector
+    read 'file_path', so every function string had an empty path and never
+    matched the call-edge keys (real paths), making callers/callees maps useless.
+    """
+
+    def _index(self, tmp_path):
+        from tree_sitter_analyzer.ast_cache import ASTCache
+
+        proj = tmp_path / "pkg"
+        proj.mkdir(parents=True, exist_ok=True)
+        (proj / "__init__.py").write_text("# pkg\n")
+        (proj / "a.py").write_text(
+            "def helper():\n    return 1\n\ndef caller():\n    return helper()\n"
+        )
+        (proj / "b.py").write_text("def other():\n    return 2\n")
+        cache = ASTCache(str(tmp_path))
+        cache.index_project()
+        return cache
+
+    def test_dead_code_candidates_never_equals_total(self, tmp_path):
+        cache = self._index(tmp_path)
+        tool = CodeGraphMetricsTool(str(tmp_path))
+        m = tool._collect_call_graph_metrics(cache)
+        assert m["status"] == "computed", m
+        total = m["total_functions"]
+        assert total >= 2, m
+        # The bug made all three equal to total. A real graph with a call edge
+        # (caller -> helper) must classify helper as NON-dead and NON-entry.
+        assert m["dead_code_candidates"] < total, (
+            f"every function flagged dead ({m['dead_code_candidates']}/{total}) "
+            "— F1 key-mismatch regression"
+        )
+        assert m["entry_points"] < total, m
+        assert m["total_call_edges"] > 0, m
+
+    def test_files_with_functions_reflects_real_paths(self, tmp_path):
+        cache = self._index(tmp_path)
+        tool = CodeGraphMetricsTool(str(tmp_path))
+        m = tool._collect_call_graph_metrics(cache)
+        # The bug collapsed every function path to "" -> files_with_functions == 1
+        # regardless of how many files define functions. a.py and b.py both
+        # define functions, so a correct collector reports >= 2 distinct files.
+        assert m["files_with_functions"] >= 2, (
+            f"files_with_functions={m['files_with_functions']} — paths collapsed "
+            "to empty string (F1 key-mismatch regression)"
+        )

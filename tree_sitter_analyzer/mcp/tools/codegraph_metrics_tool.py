@@ -197,8 +197,14 @@ class CodeGraphMetricsTool(BaseMCPTool):
             cg.build()
 
             func_dicts = cg.all_functions()
+            # NOTE: FunctionRef.to_dict() keys the path under "file" (NOT
+            # "file_path"). Reading the wrong key made every function string an
+            # empty path "::name" that never matched the real-path call-edge keys
+            # below, degenerating to entry_points == dead == total_functions and
+            # files_with_functions == 1 (F1 trust-breaker). Keep these keys in
+            # sync with FunctionRef.to_dict() in call_graph.py.
             functions: list[str] = [
-                f"{f.get('file_path', '')}::{f.get('name', '')}" for f in func_dicts
+                f"{f.get('file', '')}::{f.get('name', '')}" for f in func_dicts
             ]
             call_edges: list[tuple[str, str]] = [
                 (
