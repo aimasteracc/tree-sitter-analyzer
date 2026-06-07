@@ -9,7 +9,11 @@ external method tiers, and — MANDATORY — the no-cross-language-mis-wire moat
 
 from __future__ import annotations
 
+import pytest
+
+from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.synapse_resolver import ResolverContext, resolve_callee
+from tree_sitter_analyzer.synapse_resolver._context import build_resolver_context
 from tree_sitter_analyzer.synapse_resolver._registry import get_language_resolver
 from tree_sitter_analyzer.synapse_resolver.languages._cpp_constants import (
     is_stdlib_qualifier,
@@ -417,3 +421,133 @@ class TestRegistrationAndDispatch:
         )
         assert resolved.resolution == "unknown"
         assert resolved.resolved_file == ""
+
+
+# ---------------------------------------------------------------------------
+# Real-index integration (Codex PR #348 P2) — drive the FULL pipeline:
+# write real .cpp/.py files, index them with ASTCache, build the resolver
+# context the way production does, and exercise resolve_cpp_callee against the
+# context the index actually produced (NOT a fabricated map).
+#
+# Why this matters: the unit suites above feed hand-built maps. Codex flagged
+# that the production maps come from ``ast_symbol_rows`` via the generic
+# ``_ast_extraction._walk_for_symbols`` walker, whose ``child_by_field_name
+# ('name')`` gate misses tree-sitter C++ functions/methods (their identifier
+# lives under ``function_declarator``), so the local/single-global tiers could
+# silently never fire in production while the unit tests stayed green. These
+# integration tests assert the behaviour on a REAL parsed index:
+#   * the maps-INDEPENDENT stdlib-qualifier tier works end-to-end, and
+#   * THE MOAT holds on a real index — a same-named foreign-language symbol is
+#     never bound, regardless of how many C++ symbols the walker recovered.
+# A separate xfail nails the current local-tier production gap as an explicit
+# regression target for the extractor fix (root cause lives in the shared
+# walker, out of this resolver's scope).
+# ---------------------------------------------------------------------------
+
+
+def _index_and_build(tmp_path, files: dict[str, str]):
+    """Write ``files`` into ``tmp_path``, index them, return (root, cpp_ctx)."""
+    project = tmp_path / "proj"
+    project.mkdir()
+    for rel, body in files.items():
+        (project / rel).write_text(body)
+    cache = ASTCache(str(project))
+    try:
+        cache.index_project(max_files=100)
+        resolver_ctx = build_resolver_context(cache)
+    finally:
+        cache.close()
+    return project, resolver_ctx.lang_context("cpp")
+
+
+_REAL_CPP = (
+    "#include <algorithm>\n"
+    "int helper() { return 1; }\n"
+    "struct Calc {\n"
+    "    int run() {\n"
+    "        std::sort(nullptr, nullptr);\n"
+    "        return this->helper();\n"
+    "    }\n"
+    "};\n"
+)
+# A Python file defining the SAME bare name ``helper`` — the cross-language
+# collision the moat must never bind a C++ caller to.
+_REAL_PY = "def helper():\n    return 2\n"
+
+
+class TestRealIndexIntegration:
+    def test_cpp_context_is_built_from_real_index(self, tmp_path) -> None:
+        """A parsed ``.cpp`` file yields a non-None C++ resolver context."""
+        _root, cpp_ctx = _index_and_build(tmp_path, {"service.cpp": _REAL_CPP})
+        assert cpp_ctx is not None
+        assert isinstance(cpp_ctx, CppResolverContext)
+        # The language map MUST tag the indexed file as cpp — this is what gates
+        # every project binding (the moat). If it were absent the moat could not
+        # discriminate languages.
+        assert cpp_ctx.file_languages.get("service.cpp") == "cpp"
+
+    def test_stdlib_qualifier_resolves_on_real_index(self, tmp_path) -> None:
+        """``std::sort`` -> ``stdlib`` end-to-end (maps-independent tier).
+
+        This tier reads only the call's qualifier, so it works regardless of
+        whether the symbol walker recovered any C++ definitions — proving the
+        resolver does real, correct work on a production index.
+        """
+        _root, cpp_ctx = _index_and_build(tmp_path, {"service.cpp": _REAL_CPP})
+        sym, res, f = resolve_cpp_callee("sort", "std::sort", "service.cpp", cpp_ctx)
+        assert (sym, res, f) == (None, "stdlib", "")
+
+    def test_moat_holds_on_real_index(self, tmp_path) -> None:
+        """THE MOAT on a REAL index: a C++ caller's ``helper`` call must never
+        bind to the same-named Python ``helper`` definition.
+
+        Whatever the walker recovered for C++, the language-compat gate must
+        keep the Python file out: the result is the C++ same-language def or
+        ``unknown`` — NEVER ``util.py``. This is the CodeGraph failure we beat.
+        """
+        _root, cpp_ctx = _index_and_build(
+            tmp_path, {"service.cpp": _REAL_CPP, "util.py": _REAL_PY}
+        )
+        _sym, _res, f = resolve_cpp_callee("helper", "helper", "service.cpp", cpp_ctx)
+        assert f != "util.py"
+        assert not f.endswith(".py")
+
+    def test_this_member_call_never_mis_binds_on_real_index(self, tmp_path) -> None:
+        """``this->helper`` on a real index resolves to a C++ member or stays
+        ``unknown`` — it must never bind a free function or a foreign file."""
+        _root, cpp_ctx = _index_and_build(
+            tmp_path, {"service.cpp": _REAL_CPP, "util.py": _REAL_PY}
+        )
+        sym, res, f = resolve_cpp_callee(
+            "helper", "this->helper", "service.cpp", cpp_ctx
+        )
+        # Conservative: a same-file member ('method') is the only valid bind;
+        # anything else stays unknown. Either way, never a .py file.
+        assert not f.endswith(".py")
+        if res == "local":
+            # If bound, it must be a same-file member, never the free function.
+            assert f == "service.cpp"
+        else:
+            assert (sym, res, f) == (None, "unknown", "")
+
+    @pytest.mark.xfail(
+        reason=(
+            "Known production gap: the shared generic symbol walker "
+            "(_ast_extraction._walk_for_symbols) gates on "
+            "child_by_field_name('name'), which tree-sitter C++ "
+            "function_definition nodes do not expose (the identifier lives "
+            "under function_declarator), so ordinary C++ free functions are "
+            "absent from ast_symbol_rows and the local/single-global tiers "
+            "cannot fire. Root cause lives in the shared extractor, out of "
+            "this resolver's scope; this xfail is the regression target so the "
+            "tier flips to PASS once the walker recovers C++ symbols."
+        ),
+        strict=True,
+    )
+    def test_local_free_function_resolves_on_real_index(self, tmp_path) -> None:
+        """When the extractor populates C++ symbols, an unqualified call to a
+        same-file free function (``helper``) must resolve ``local``."""
+        _root, cpp_ctx = _index_and_build(tmp_path, {"service.cpp": _REAL_CPP})
+        _sym, res, f = resolve_cpp_callee("helper", "helper", "service.cpp", cpp_ctx)
+        assert res == "local"
+        assert f == "service.cpp"

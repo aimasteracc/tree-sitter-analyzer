@@ -28,6 +28,22 @@ so a Python / Java / Go symbol that merely shares a name resolves to
 ``unknown`` (or a same-language def), never the foreign file. C++ MAY resolve
 ``c`` headers (directional family compat), which is the one legitimate
 cross-tag case.
+
+KNOWN UPSTREAM DEPENDENCY (Codex PR #348 P2): the ``local`` and single-global
+``project`` tiers read ``file_symbols`` / ``global_name_table``, which are
+populated from the ``ast_symbol_rows`` table by the *shared* generic symbol
+walker (``_ast_extraction._walk_for_symbols``). That walker records a
+function-like node only when it exposes ``child_by_field_name('name')`` — but a
+tree-sitter C++ ``function_definition`` exposes its identifier under
+``function_declarator`` instead, so ordinary C++ free functions / methods are
+currently ABSENT from those maps. Until the shared extractor recovers C++
+symbols, the local / single-global tiers stay dormant on a real index and such
+calls fall through to ``unknown`` (SAFE — never a mis-wire). The
+maps-independent stdlib-qualifier tier and THE MOAT hold regardless; both are
+covered by ``TestRealIndexIntegration`` in
+``tests/unit/test_cpp_method_resolution.py``, and the dormant local tier has a
+``strict`` xfail there that flips to a hard PASS the moment the extractor is
+fixed (the fix lives in the shared walker, out of this module's scope).
 """
 
 from __future__ import annotations
