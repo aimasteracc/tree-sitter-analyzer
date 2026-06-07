@@ -12,7 +12,8 @@ the prioritized path to becoming the default agent code-intelligence layer.
 | FTS production-first | yes | test-mock shadows | TSA ahead |
 | edges_by_kind status | yes | none | TSA exclusive |
 | token / context call | ~6.6k (was 12.7k) | ~4.4k | gap 2.9x to 1.5x; near parity |
-| reactive push | wired (RFC-0001) | none | TSA exclusive |
+| nav context self-sufficiency | A+B shipped (RFC-0009, #330/#331) | n/a | full entry bodies + entry-first ranking; C + measured turn-drop pending |
+| reactive push | implemented (RFC-0001, #336 surfaced) | none | TSA exclusive |
 
 TSA's thesis is now defensible: correct + complete + nearly as cheap, with
 capabilities CG lacks. The remaining work is to make each lead decisive and
@@ -28,11 +29,12 @@ If TSA is now within ~1.1x of CG (or cheaper), the "CG is cheaper" caveat can be
 retired with evidence. This converts a hedge into a headline. (Needs API budget;
 user has authorized spend.)
 
-### P1 — RFC-0008 multi-language method classification (spec drafted)
-The 83.9% to 96.5% classification win is Python-only. Extend the cascade tiers to
+### P1 — RFC-0008 multi-language method classification (Java shipped; Go/JS/TS remaining)
+The 83.9% to 96.5% classification win was Python-only. Extend the cascade tiers to
 Java/Go/JS/TS so polyglot repos get the same resolved-graph completeness. One PR
-per language (Java first — _java_constants.py exists). Blocked on #324 merging
-first (shared synapse_resolver). Largest single lever for non-Python users.
+per language. **Java shipped** (#326 — stdlib/external tiers + method-call name
+extraction, on develop); Go/JS/TS still pending. Largest single lever for
+non-Python users.
 
 ### P2 — File-level resolution of stdlib/builtin methods (RFC-0004 phase 2)
 Today stdlib/external/builtin methods are classified but not file-resolved.
@@ -41,9 +43,10 @@ p.write_text() at pathlib, raising the file-resolution rate and enabling
 "jump to the stdlib def" for agents. Precision-sensitive; gate hard.
 
 ### P3 — Reactive push as a demoed differentiator
-RFC-0001 is wired but invisible. Add a CLI watch --subscribe mode + a recorded
-demo (edit a file, agent receives resource_updated, re-reads the changed set).
-No competitor has this; make it legible.
+RFC-0001 is **implemented** (subscription registry + watch→push bridge + resource
+read; #336 surfaced it in the MCP differentiators) but still under-demoed. Add a
+CLI watch --subscribe mode + a recorded demo (edit a file, agent receives
+resource_updated, re-reads the changed set). No competitor has this; make it legible.
 
 ### P4 — Resolution confidence signal
 Expose per-edge callee_resolution + a confidence so agents can trust/distrust a
@@ -57,5 +60,6 @@ on-thesis ("agents know before they touch").
 - docs-only changes now skip the heavy matrix (CI smart-routing, #323).
 
 ## Next action
-Ship v1.21.0 (push release/v1.21.0), merge the 4 in-flight quality PRs after
-Codex triage, then start P0 (benchmark) + P1 (RFC-0008 Java) in parallel.
+RFC-0008 Java (#326) and RFC-0009 A/B (#330/#331) have landed on develop. Next:
+P0 (benchmark) to retire the "CG is cheaper" caveat with evidence, and continue
+P1 (RFC-0008 Go/JS/TS) for the remaining polyglot reach.

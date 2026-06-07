@@ -57,6 +57,12 @@ number; if two RFCs collide on a number in flight, the later-merged one renames.
 
 | RFC | Title | Status |
 |---|---|---|
-| [0001](0001-reactive-push.md) | Reactive push — virtual-DOM last mile | draft |
-| [0002](0002-callee-resolution.md) | Callee resolution — bare names to resolved symbols | draft |
-| [0003](0003-coverage-aware-test-gap.md) | Coverage-aware test-gap analysis — consume coverage.json, graph-enrich gaps | draft |
+| [0001](0001-reactive-push.md) | Reactive push — virtual-DOM last mile | implemented |
+| [0002](0002-callee-resolution.md) | Callee resolution — bare names to resolved symbols | implemented |
+| [0003](0003-coverage-aware-test-gap.md) | Coverage-aware test-gap analysis — consume coverage.json, graph-enrich gaps | implemented |
+| [0004](0004-stdlib-method-resolution.md) | Stdlib method resolution — classify bare stdlib method names | implemented |
+| [0005](0005-external-method-resolution.md) | External-library method resolution — classify bare external method names | implemented |
+| [0006](0006-context-progressive-disclosure.md) | Context progressive disclosure — lean nav context, opt-in graph | implemented |
+| [0007](0007-builtin-method-resolution.md) | Builtin method resolution — classify qualified-builtin method calls | implemented |
+| [0008](0008-multilang-method-classification.md) | Multi-language method classification — beyond Python | draft (Java implemented #326; Go/JS/TS pending) |
+| [0009](0009-nav-context-self-sufficiency.md) | nav context self-sufficiency — answer in one call | accepted (A/B implemented #330/#331; C + measured turn-drop pending) |
