@@ -56,6 +56,9 @@ class AuditResult:
     naive_offenders: list[Offender] = field(default_factory=list)
     tsa_offenders: list[Offender] = field(default_factory=list)
     languages: dict[str, int] = field(default_factory=dict)
+    # False on SQLite builds without FTS5, where index_project() does not write
+    # call edges (Codex #369 L158) — the audit cannot measure mis-wires there.
+    call_edges_available: bool = True
 
     @property
     def multiplier(self) -> float:
@@ -157,6 +160,12 @@ def audit(project_root: str, *, reindex: bool = True, top: int = 5) -> AuditResu
             "FROM edges WHERE kind='calls' AND callee_name != ''"
         ).fetchall()
 
+        # Codex #369 L158: on SQLite builds WITHOUT FTS5, index_project() does not
+        # write call edges, so `edges` is empty and a "0 mis-wires" verdict would
+        # be misleading. Flag it so the renderer can say so plainly instead.
+        if not edges and not bool(getattr(cache, "fts5_available", True)):
+            result.call_edges_available = False
+
         for e in edges:
             # skip edges whose caller file no longer exists (stale cache rows)
             if e["caller_file"] not in present:
@@ -230,6 +239,16 @@ def render_terminal(r: AuditResult) -> str:
     langs = ", ".join(f"{k}:{v}" for k, v in sorted(r.languages.items()))
     lines.append(f"  repo: {r.project_root}")
     lines.append(f"  languages indexed: {langs}")
+    if not r.call_edges_available:
+        lines.append("")
+        lines.append(
+            "  ⚠ this Python's SQLite has no FTS5, so TSA did not produce call "
+            "edges — the mis-wire audit needs them. Use a Python built with "
+            "SQLite FTS5 (the default for python.org / most distros) and re-run."
+        )
+        lines.append("  " + "─" * 60)
+        lines.append("")
+        return "\n".join(lines)
     lines.append(f"  call edges analysed: {r.total_call_edges:,}")
     lines.append("")
     lines.append(
