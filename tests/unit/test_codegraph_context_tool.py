@@ -1567,3 +1567,22 @@ def test_file_path_does_not_anchor_filter() -> None:
         "find the dispatch function in src/parser/utils.py"
     )
     assert "dispatch" in cands, cands
+
+
+def test_snake_or_camel_path_components_do_not_anchor_filter() -> None:
+    """RFC-0009 C / Codex P2 #333 (7th round): a file path whose components are
+    snake_case/CamelCase ('tree_sitter_analyzer/mcp_tools.py', 'src/UserService.py')
+    must NOT count those components as symbol anchors — they are scope/location —
+    so a bare verb that is the user's real request survives."""
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        _extract_symbol_candidates,
+    )
+
+    assert "dispatch" in _extract_symbol_candidates(
+        "find dispatch in tree_sitter_analyzer/mcp_tools.py"
+    )
+    assert "dispatch" in _extract_symbol_candidates("find dispatch in src/UserService.py")
+    # control: a genuine snake_case symbol (not in a path) DOES anchor + drop bare verb
+    assert "dispatch" not in _extract_symbol_candidates(
+        "how does resolve_callee dispatch a call"
+    )

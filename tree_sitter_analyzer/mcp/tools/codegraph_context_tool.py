@@ -41,6 +41,22 @@ _GENERIC_VERBS = frozenset(
     "lookup parse load store update fetch".split()
 )
 
+# RFC-0009 C: a file path mentioned to SCOPE a task ("find dispatch in
+# src/parser/utils.py", "tree_sitter_analyzer/mcp_tools.py") is location, NOT a
+# symbol request — but its components ("parser", "tree_sitter_analyzer",
+# "UserService") otherwise look like specific anchors and wrongly trigger the
+# generic-verb filter, dropping the user's real bare verb (Codex #333 6th/7th
+# rounds). This matches a whitespace token that contains ``/`` or ends in a code
+# file extension; its components are excluded from anchor detection.
+_CODE_FILE_EXT = (
+    "py|pyi|js|jsx|ts|tsx|go|rs|java|kt|kts|c|h|hpp|cpp|cc|cs|rb|php|swift|"
+    "scala|m|mm|sh|sql|lua|dart|ex|exs|clj|hs|ml"
+)
+_PATH_FRAGMENT_RE = re.compile(
+    rf"[\w.\-]*/[\w./\-]*|\b[\w\-]+\.(?:{_CODE_FILE_EXT})\b",
+    re.IGNORECASE,
+)
+
 # Inline-body cap per code block for TANGENTIAL nodes (pulled in by call-graph
 # expansion, not the task's named symbols). These get signature + head; the agent
 # rarely needs their full body, so RFC-0006's thrift is preserved where it costs
@@ -645,12 +661,31 @@ def _extract_symbol_candidates(task: str) -> list[str]:
         )
         return bool(re.search(pattern, task, re.IGNORECASE))
 
+    # Components of any file PATH mentioned to scope the task are location, not
+    # symbol anchors (Codex #333 6th/7th rounds) — exclude them so a path like
+    # ``src/UserService.py`` or ``tree_sitter_analyzer/mcp_tools.py`` does not make
+    # the filter run and drop the user's real bare verb.
+    path_tokens: set[str] = set()
+    for match in _PATH_FRAGMENT_RE.finditer(task):
+        for part in re.split(r"[/.\-]+", match.group(0)):
+            cleaned = part.strip("_")
+            if cleaned:
+                path_tokens.add(part)
+                path_tokens.add(cleaned)
+
+    def _is_anchor(tok: str) -> bool:
+        # A real anchor is a specific/explicit symbol that is NOT merely a file
+        # path component.
+        if tok in path_tokens:
+            return False
+        return _is_specific(tok) or _named_explicitly(tok)
+
     # The filter only runs when the task has a strong anchor — a specific symbol
     # (snake_case/CamelCase) OR an explicitly-named one (quoted/qualified/called),
-    # even if all-lowercase (Codex P2 #333, 5th round: ``trace pkg/parser/parse
-    # dispatch`` anchors on the qualified ``parse`` yet has no _is_specific token,
-    # so the bare prose ``dispatch`` must still be droppable).
-    if any(_is_specific(tok) or _named_explicitly(tok) for tok in out):
+    # even if all-lowercase (Codex P2 #333, 5th round: ``trace obj->parse dispatch``
+    # anchors on the qualified ``parse`` yet has no _is_specific token, so the bare
+    # prose ``dispatch`` must still be droppable).
+    if any(_is_anchor(tok) for tok in out):
         out = [
             tok
             for tok in out
