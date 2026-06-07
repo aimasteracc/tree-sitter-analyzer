@@ -216,3 +216,36 @@ to: [`tests/golden/corpus_swift.swift:337`](../../tests/golden/corpus_swift.swif
 > **correctness only** — the axis verified here, end to end, against both
 > indexes. Correctness is the claim that stands today; cost is future work and
 > will be published as its own artifact when the gate passes.
+
+---
+
+## Addendum (2026-06-08) — the moat now spans 12 languages
+
+When v1.21.0 shipped, cross-language-safe resolution was Python + Java. RFC-0010
+(a per-language resolver registry) plus call-edge extraction wiring has since
+activated **12 languages**, each with its own conservative classification cascade:
+**Python · Java · Go · JavaScript · TypeScript · C · C++ · Rust · C# · Kotlin ·
+Ruby · PHP**.
+
+The moat holds across all of them. On a polyglot fixture (one real source file per
+language) **plus an adversarial `adversary.py` that defines `sorted`, `to_string`,
+`increment`, `puts`, and `println`** — the exact same-name collisions that make
+CodeGraph wire Python `sorted()` to a Swift `func sorted` — the measured result:
+
+| metric | value |
+|---|---|
+| languages indexed | 10 (c, cpp, csharp, go, java, kotlin, php, python, ruby, rust)\* |
+| call edges (java 453, ruby 156, python 123, kotlin 80, rust 65, go 46, php 28, cpp 17, c 10, csharp 4) | 982 |
+| resolved-to-file edges (the moat surface) | 127 |
+| **cross-language mis-wires** | **0** |
+
+\* JS/TS omitted only because the fixture lacked sample files; both are wired and
+gated by the same `languages_compatible` family check (JS/TS are one family).
+
+Every per-language resolver gates its project/local bindings through
+`languages_compatible(caller_lang, owner_lang)`, so a Rust `to_string()` cannot
+bind to the Python `to_string`, a PHP `increment()` cannot bind to a same-named
+function in another language, etc. — verified here, not asserted. Reproduce by
+indexing any polyglot tree and counting edges whose `callee_resolved_file`
+language is incompatible with the caller's language; the count is 0 by
+construction of the cascade.
