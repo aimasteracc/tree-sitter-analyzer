@@ -1,0 +1,245 @@
+"""RFC-0010 first wave: JavaScript per-language callee resolver.
+
+Unit-level tests that drive ``resolve_javascript_callee`` against a hand-built
+context (no full index needed). They assert the four guarantees of a SAFE,
+self-contained resolver:
+
+* same-file ``local`` resolution from ``file_symbols`` / ``file_class_methods``,
+* CONSERVATIVE ``builtin`` classification on the FULL dotted call name only,
+* ``project`` resolution gated to the JS family, and
+* the MOAT: a callee whose name also exists in another language's file must
+  NEVER bind to that file — it stays ``unknown`` (or the JS same-file def).
+"""
+
+from __future__ import annotations
+
+from tree_sitter_analyzer.synapse_resolver._registry import (
+    get_language_resolver,
+    registered_languages,
+)
+from tree_sitter_analyzer.synapse_resolver.languages.javascript import (
+    build_javascript_context,
+    resolve_javascript_callee,
+)
+
+
+def _ctx(
+    *,
+    file_symbols=None,
+    file_class_methods=None,
+    global_name_table=None,
+    file_languages=None,
+):
+    """Build a JS resolver context from explicit maps (thunk-style fcm)."""
+    return build_javascript_context(
+        imports_by_file={},
+        file_languages=file_languages or {},
+        file_symbols=file_symbols or {},
+        global_name_table=global_name_table or {},
+        file_class_methods=lambda: file_class_methods or {},
+    )
+
+
+# ---------------------------------------------------------------------------
+# registration / discovery
+# ---------------------------------------------------------------------------
+def test_javascript_is_registered() -> None:
+    assert "javascript" in registered_languages()
+    assert get_language_resolver("javascript") is not None
+
+
+# ---------------------------------------------------------------------------
+# gating — zero cost for non-JS projects
+# ---------------------------------------------------------------------------
+def test_build_returns_none_when_no_js_file_indexed() -> None:
+    ctx = build_javascript_context(
+        imports_by_file={},
+        file_languages={"a.py": "python", "B.java": "java"},
+        file_symbols={},
+        global_name_table={},
+        file_class_methods=lambda: (_ for _ in ()).throw(
+            AssertionError("thunk must NOT be forced for a non-JS index")
+        ),
+    )
+    assert ctx is None
+
+
+def test_build_returns_context_when_js_file_indexed() -> None:
+    ctx = _ctx(file_languages={"app.js": "javascript"})
+    assert ctx is not None
+
+
+# ---------------------------------------------------------------------------
+# local — same-file resolution
+# ---------------------------------------------------------------------------
+def test_bare_call_to_same_file_function_is_local() -> None:
+    ctx = _ctx(
+        file_languages={"app.js": "javascript"},
+        file_symbols={"app.js": [("helper", "function", 7)]},
+    )
+    assert resolve_javascript_callee("helper", "helper", "app.js", ctx) == (
+        7,
+        "local",
+        "app.js",
+    )
+
+
+def test_this_method_call_is_local_via_class_methods() -> None:
+    ctx = _ctx(
+        file_languages={"app.js": "javascript"},
+        file_class_methods={"app.js": {"Widget": {"render": 11}}},
+    )
+    assert resolve_javascript_callee("render", "this.render", "app.js", ctx) == (
+        11,
+        "local",
+        "app.js",
+    )
+
+
+# ---------------------------------------------------------------------------
+# builtin — namespaced globals, full-name match only
+# ---------------------------------------------------------------------------
+def test_namespaced_builtin_classifies_as_builtin() -> None:
+    ctx = _ctx(file_languages={"app.js": "javascript"})
+    assert resolve_javascript_callee("parse", "JSON.parse", "app.js", ctx) == (
+        None,
+        "builtin",
+        "",
+    )
+    assert resolve_javascript_callee("keys", "Object.keys", "app.js", ctx) == (
+        None,
+        "builtin",
+        "",
+    )
+
+
+def test_bare_builtin_method_name_is_not_builtin() -> None:
+    """A bare ``parse`` / ``keys`` (no namespace) must NOT classify as builtin —
+    every domain object defines such names; only the dotted form is safe."""
+    ctx = _ctx(file_languages={"app.js": "javascript"})
+    assert resolve_javascript_callee("parse", "parse", "app.js", ctx) == (
+        None,
+        "unknown",
+        "",
+    )
+    # ``users.map(...)`` — a domain array method, not Array.from — stays unknown.
+    assert resolve_javascript_callee("map", "users.map", "app.js", ctx) == (
+        None,
+        "unknown",
+        "",
+    )
+
+
+def test_console_log_is_not_builtin() -> None:
+    """``console`` is a commonly shadowed domain logger name; deliberately not
+    in the builtin table, so ``console.log`` stays unknown (conservative)."""
+    ctx = _ctx(file_languages={"app.js": "javascript"})
+    assert resolve_javascript_callee("log", "console.log", "app.js", ctx) == (
+        None,
+        "unknown",
+        "",
+    )
+
+
+def test_project_shadow_of_builtin_receiver_suppresses_builtin() -> None:
+    """If the project owns a JS object literally named ``Math``, ``Math.max``
+    is no longer a safe builtin — it could be the project's Math."""
+    ctx = _ctx(
+        file_languages={"geo.js": "javascript"},
+        global_name_table={"Math": [("geo.js", 3)]},
+    )
+    sid, res, _ = resolve_javascript_callee("max", "Math.max", "geo.js", ctx)
+    assert res != "builtin"
+
+
+# ---------------------------------------------------------------------------
+# project — single JS-family global
+# ---------------------------------------------------------------------------
+def test_single_js_global_resolves_to_project() -> None:
+    ctx = _ctx(
+        file_languages={"a.js": "javascript", "b.js": "javascript"},
+        global_name_table={"compute": [("b.js", 99)]},
+    )
+    assert resolve_javascript_callee("compute", "compute", "a.js", ctx) == (
+        99,
+        "project",
+        "b.js",
+    )
+
+
+def test_ts_family_global_is_resolvable_from_js_caller() -> None:
+    """JS/TS are one interop family — a single ``.ts`` global is a valid bind."""
+    ctx = _ctx(
+        file_languages={"a.js": "javascript", "b.ts": "typescript"},
+        global_name_table={"compute": [("b.ts", 5)]},
+    )
+    sid, res, target = resolve_javascript_callee("compute", "compute", "a.js", ctx)
+    assert (sid, res, target) == (5, "project", "b.ts")
+
+
+def test_ambiguous_global_stays_unknown() -> None:
+    """Two JS definitions of the same bare name → unknown (no guess)."""
+    ctx = _ctx(
+        file_languages={
+            "a.js": "javascript",
+            "b.js": "javascript",
+            "c.js": "javascript",
+        },
+        global_name_table={"compute": [("b.js", 1), ("c.js", 2)]},
+    )
+    assert resolve_javascript_callee("compute", "compute", "a.js", ctx) == (
+        None,
+        "unknown",
+        "",
+    )
+
+
+# ---------------------------------------------------------------------------
+# THE MOAT — mandatory no-cross-language-mis-wire test
+# ---------------------------------------------------------------------------
+def test_no_cross_language_mis_wire_global() -> None:
+    """A bare callee whose ONLY project definition lives in a Python file must
+    NOT bind to that Python file — it stays ``unknown``. (Same name, foreign
+    language: the exact CodeGraph failure this project exists to beat.)"""
+    ctx = _ctx(
+        file_languages={"a.js": "javascript", "util.py": "python"},
+        # ``parse`` is defined ONLY in Python — a JS caller must not bind it.
+        global_name_table={"parse": [("util.py", 42)]},
+    )
+    assert resolve_javascript_callee("parse", "parse", "a.js", ctx) == (
+        None,
+        "unknown",
+        "",
+    )
+
+
+def test_no_cross_language_mis_wire_prefers_js_same_name() -> None:
+    """When the name exists in BOTH a JS file and a foreign file, only the JS
+    definition is eligible — the resolver binds the JS one, never the foreign
+    file, and never reports the foreign file as the target."""
+    ctx = _ctx(
+        file_languages={
+            "a.js": "javascript",
+            "b.js": "javascript",
+            "Service.java": "java",
+        },
+        global_name_table={"handle": [("b.js", 8), ("Service.java", 100)]},
+    )
+    sid, res, target = resolve_javascript_callee("handle", "handle", "a.js", ctx)
+    # Exactly one JS-family owner (b.js) → bound; the Java file is filtered out.
+    assert (sid, res, target) == (8, "project", "b.js")
+    assert target != "Service.java"
+
+
+def test_no_cross_language_builtin_suppression_ignores_foreign_owner() -> None:
+    """A foreign-language symbol named ``Math`` must NOT suppress the JS builtin
+    ``Math.max`` — only a JS-family ``Math`` shadows it."""
+    ctx = _ctx(
+        file_languages={"app.js": "javascript", "Math.java": "java"},
+        global_name_table={"Math": [("Math.java", 1)]},
+    )
+    assert resolve_javascript_callee("max", "Math.max", "app.js", ctx) == (
+        None,
+        "builtin",
+        "",
+    )
