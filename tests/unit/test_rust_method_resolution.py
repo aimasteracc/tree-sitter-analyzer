@@ -192,6 +192,69 @@ def test_bare_free_fn_unaffected_by_method_duplicate() -> None:
     assert sym_id == 30
 
 
+def test_self_method_does_not_bind_to_free_function() -> None:
+    """Codex P2 (#2): a receiver-qualified call ``self.helper()`` must NOT bind to a
+    top-level FREE FUNCTION named ``helper``.
+
+    In Rust's symbol rows, both impl methods and top-level free functions are
+    extracted from ``function_item`` nodes; a free fn lands as ``kind='function'``
+    while an impl/trait method lands as ``kind='method'`` (because
+    ``_find_parent_class`` finds the enclosing ``impl_item``). A ``self.`` /
+    ``Self::`` receiver can only mean an impl/trait method, never a free function,
+    so counting ``function`` rows as candidate methods would corrupt the call edge
+    for valid code where the receiver method simply is not the free fn. The
+    conservative answer is ``unknown``."""
+    ctx = _ctx(
+        file_symbols={"lib.rs": [("helper", "function", 7)]},  # a FREE fn only
+        file_languages={"lib.rs": "rust"},
+    )
+    sym_id, resolution, resolved_file = resolve_rust_callee(
+        "helper", "self.helper", "lib.rs", ctx
+    )
+    assert resolution == "unknown", (
+        "self.helper() must not bind to a top-level free fn named helper; "
+        f"got {resolution} -> sym_id={sym_id}"
+    )
+    assert sym_id is None
+    assert resolved_file == ""
+
+
+def test_selfcap_assoc_does_not_bind_to_free_function() -> None:
+    """The ``Self::helper()`` form has the same hazard: a same-file FREE function
+    named ``helper`` (``kind='function'``) is not a candidate for a receiver-
+    qualified associated call and must stay ``unknown``."""
+    ctx = _ctx(
+        file_symbols={"lib.rs": [("helper", "function", 9)]},
+        file_languages={"lib.rs": "rust"},
+    )
+    sym_id, resolution, _ = resolve_rust_callee("helper", "Self::helper", "lib.rs", ctx)
+    assert resolution == "unknown"
+    assert sym_id is None
+
+
+def test_self_method_binds_method_even_when_free_fn_shares_name() -> None:
+    """When BOTH a free fn ``helper`` and exactly one impl METHOD ``helper`` exist in
+    the file, ``self.helper()`` binds to the METHOD row (the free fn is ignored).
+
+    The method name is unique among ``method`` rows (one impl), so this is an
+    unambiguous, safe bind — and it must pick the method, never the free fn."""
+    ctx = _ctx(
+        file_symbols={
+            "lib.rs": [
+                ("helper", "function", 40),  # free fn — must be ignored
+                ("helper", "method", 41),  # the one impl method — the right target
+            ]
+        },
+        file_languages={"lib.rs": "rust"},
+    )
+    sym_id, resolution, resolved_file = resolve_rust_callee(
+        "helper", "self.helper", "lib.rs", ctx
+    )
+    assert resolution == "local"
+    assert sym_id == 41, "must bind the method row, not the free fn row"
+    assert resolved_file == "lib.rs"
+
+
 def test_unknown_local_name_stays_unknown() -> None:
     """A bare name with no same-file definition and no std signature -> unknown."""
     ctx = _ctx(

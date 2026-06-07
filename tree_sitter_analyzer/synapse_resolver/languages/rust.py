@@ -116,27 +116,33 @@ def _lookup_in_file(
 def _lookup_unique_method_in_file(
     ctx: RustResolverContext, file_path: str, simple: str
 ) -> int | None:
-    """Return the symbol id of a same-file ``simple`` def, but ONLY when exactly one
-    method/function of that name exists in the file; otherwise ``None``.
+    """Return the symbol id of a same-file ``simple`` METHOD def, but ONLY when
+    exactly one ``method`` row of that name exists in the file; otherwise ``None``.
 
-    Codex P2 (owner-context safety): a ``self.helper()`` / ``Self::helper()`` call
-    carries no caller-owner type, so the resolver cannot tell which impl block's
+    Codex P2 (#1 — owner-context safety): a ``self.helper()`` / ``Self::helper()``
+    call carries no caller-owner type, so the resolver cannot tell which impl block's
     ``helper`` the receiver refers to. When two impls in the same file both define
     ``helper`` (``impl A { fn helper }`` + ``impl B { fn helper }``), binding to
     whichever row appears first would corrupt the call edge. The conservative answer
     for an ambiguous receiver-qualified method is therefore ``unknown``.
 
-    Both ``method`` and ``function`` rows are counted: an associated fn called via
-    ``Self::ctor()`` can be extracted under either kind, and either one duplicated
-    across impls is ambiguous. This guard runs ONLY on the receiver-qualified
-    (``self``/``Self``/``this``/``super``) path; a bare free-function call keeps
-    ``_lookup_in_file`` (a Rust module cannot define two free fns of one name, so a
-    bare match is never ambiguous and stays unaffected).
+    Codex P2 (#2 — don't bind receiver calls to free functions): ONLY ``method``
+    rows are candidates here, never ``function`` rows. A ``self.``/``Self::``/
+    ``this``/``super`` receiver can only name an impl/trait method; a top-level free
+    ``fn helper()`` is irrelevant to it. In Rust's symbol rows a free function is
+    ``kind='function'`` while an impl/trait method is ``kind='method'`` (the
+    extractor's ``_find_parent_class`` finds the enclosing ``impl_item``/``trait_item``
+    for the latter). Counting ``function`` rows would let a receiver-qualified call
+    mis-bind to an unrelated free function, the exact corruption Codex flagged.
+
+    This guard runs ONLY on the receiver-qualified path; a bare free-function call
+    keeps ``_lookup_in_file`` (a Rust module cannot define two free fns of one name,
+    so a bare match is never ambiguous and stays unaffected).
     """
     matches = [
         sym_id
         for name, kind, sym_id in ctx.file_symbols.get(file_path, [])
-        if name == simple and kind in ("function", "method")
+        if name == simple and kind == "method"
     ]
     return matches[0] if len(matches) == 1 else None
 
@@ -189,10 +195,12 @@ def resolve_rust_callee(
 
     # 1b. local (receiver-qualified) — ``self.helper`` / ``Self::helper`` /
     #     ``this`` / ``super``. The caller-owner type is NOT available to this
-    #     resolver, so we can only safely bind when the method name is UNIQUE in the
-    #     file. If two impls in the same file both define ``helper``, the receiver is
-    #     ambiguous and we leave it ``unknown`` rather than mis-bind to the first row
-    #     (Codex P2). Resolution stays in the caller's OWN file only → the moat holds.
+    #     resolver, so we only bind to a same-file ``method`` row (never a free
+    #     ``function`` row — Codex P2 #2) AND only when that method name is UNIQUE in
+    #     the file (Codex P2 #1). If two impls both define ``helper`` the receiver is
+    #     ambiguous → ``unknown``; if only a free fn ``helper`` exists the receiver
+    #     can't mean it → ``unknown``. Resolution stays in the caller's OWN file only
+    #     → the moat holds.
     elif receiver in ("self", "Self", "this", "super"):
         sym_id = _lookup_unique_method_in_file(ctx, caller_file, simple)
         if sym_id is not None:
