@@ -13,6 +13,8 @@ _CALL_NODE_TYPES = {
     "go": {"call_expression"},
     "c": {"call_expression"},
     "cpp": {"call_expression"},
+    # RFC-0010 activation (node types verified empirically against each grammar).
+    "rust": {"call_expression", "macro_invocation"},
 }
 
 _FUNC_DEF_TYPES = {
@@ -23,6 +25,7 @@ _FUNC_DEF_TYPES = {
     "go": {"function_declaration", "method_declaration"},
     "c": {"function_definition"},
     "cpp": {"function_definition"},
+    "rust": {"function_item"},
 }
 
 # ---------------------------------------------------------------------------
@@ -81,6 +84,18 @@ def _func_name_c(node: Any) -> str | None:
     return None
 
 
+def _func_name_field(node: Any) -> str | None:
+    """Rust / Kotlin / Ruby / C# / PHP: name lives in the ``name`` field."""
+    name_node = node.child_by_field_name("name")
+    if name_node is not None:
+        return _node_text_value(name_node)
+    # Fallback: first identifier-ish child (grammars vary).
+    for child in node.children:
+        if child.type in ("identifier", "simple_identifier", "name", "constant"):
+            return _node_text_value(child)
+    return None
+
+
 _FUNC_NAME_DISPATCH: dict[str, Callable] = {
     "python": _func_name_identifier,
     "javascript": _func_name_js,
@@ -89,6 +104,8 @@ _FUNC_NAME_DISPATCH: dict[str, Callable] = {
     "go": _func_name_go,
     "c": _func_name_c,
     "cpp": _func_name_c,
+    # RFC-0010 activation: wire call-edge extraction for the resolver-ready langs.
+    "rust": _func_name_field,
 }
 
 # ---------------------------------------------------------------------------
@@ -152,6 +169,29 @@ def _call_info_c(node: Any, source: str) -> dict[str, Any] | None:
     return None
 
 
+def _call_info_rust(node: Any, source: str) -> dict[str, Any] | None:
+    """Rust: ``call_expression`` exposes the callee in the ``function`` field
+    (an identifier like ``foo`` or a ``field_expression`` like ``x.to_string``);
+    ``macro_invocation`` (``println!``, ``format!``) exposes it in the ``macro``
+    field. Never cross-language binds — the resolver gates by language family.
+    """
+    if node.type == "macro_invocation":
+        macro_node = node.child_by_field_name("macro")
+        if macro_node is not None:
+            name = _node_text(macro_node, source)
+            return {
+                "name": name,
+                "full_name": name,
+                "line": node.start_point[0] + 1,
+                "receiver": None,
+            }
+        return None
+    func_node = node.child_by_field_name("function")
+    if func_node is not None:
+        return _call_from_text(_node_text(func_node, source), node)
+    return None
+
+
 _CALL_DISPATCH: dict[str, Callable] = {
     "python": _call_info_field,
     "javascript": _call_info_field,
@@ -160,6 +200,7 @@ _CALL_DISPATCH: dict[str, Callable] = {
     "java": _call_info_java,
     "c": _call_info_c,
     "cpp": _call_info_c,
+    "rust": _call_info_rust,
 }
 
 # ---------------------------------------------------------------------------
