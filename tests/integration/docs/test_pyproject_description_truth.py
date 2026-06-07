@@ -44,8 +44,11 @@ def test_description_advertises_registry_tool_count() -> None:
     """The tool count in the description equals the registry-measured count."""
     description = _description()
     count = _registry_tool_count()
-    assert f"{count} facade MCP tools" in description, (
-        f"Description should advertise '{count} facade MCP tools'; got: {description!r}"
+    # Word-boundary match on the COUNT digit so a stale '18 facade MCP tools'
+    # cannot pass on the substring '8 facade MCP tools' (Codex P3 #339).
+    assert re.search(rf"\b{count} facade MCP tools\b", description), (
+        f"Description should advertise '{count} facade MCP tools' as a whole "
+        f"number; got: {description!r}"
     )
 
 
