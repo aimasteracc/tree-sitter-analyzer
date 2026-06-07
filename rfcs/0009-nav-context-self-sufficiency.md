@@ -10,7 +10,6 @@
 - **Affected source paths** (pin them — reviewers watch for drift here):
   - `tree_sitter_analyzer/mcp/tools/codegraph_context_tool.py` (`_build_code_blocks`, `_MAX_BLOCK_LINES`, ranking)
   - `tree_sitter_analyzer/mcp/tools/_codegraph_explore_helpers.py` (snippet extraction)
-  - the symbol start-line indexing path (TBD — see root cause B)
   - `tests/unit/test_codegraph_context_tool.py`, `benchmarks/codegraph_compare/`
 
 ## Summary
@@ -39,44 +38,48 @@ One `nav context` call returned a response that **does not contain the answer**:
 
 1. **Root cause A — entry-point bodies are truncated.** `_MAX_BLOCK_LINES = 16`
    caps every code block to 16 lines even when the symbol's full range is known
-   (`resolve_java_callee` is 95 lines; the block showed 16 + `# … 80 more lines`).
-   The dispatch logic that answers the question is behind a "read more" pointer,
-   forcing a follow-up. This cap is RFC-0006's per-call token optimisation — but
-   the cost analysis shows it is **net-negative**: it trades a smaller first
-   response for one or more extra turns, and turns cost more than the saved
-   lines.
+   (`resolve_java_callee` is 127 lines — 232-358; the block showed 16 + a
+   `# … N more lines` pointer). The dispatch logic that answers the question is
+   behind a "read more" pointer, forcing a follow-up. This cap is RFC-0006's
+   per-call token optimisation — but the cost analysis shows it is
+   **net-negative**: it trades a smaller first response for one or more extra
+   turns, and turns cost more than the saved lines.
 
-2. **Root cause B — symbol start-lines are mis-indexed.** `search action=symbol
-   resolve_java_callee` (and `nav context`) report `line: 222`, but line 222 is
-   the *previous* function `_lookup_in_file`; `resolve_java_callee` actually
-   starts at line 232. Every block/snippet for an affected symbol is therefore
-   sliced from the wrong window (shows the wrong function). This corrupts both
-   `search` and `nav` — a "trust the graph" violation independent of the cap.
-
-3. **Root cause C — blocks are ranked by graph centrality, not relevance.**
+2. **Root cause B — blocks are ranked by graph centrality, not relevance.**
    `_build_code_blocks` ranks nodes by `-edge_degree` (most-connected first), so
    a high-degree hub like `_route_cache.get` (a SQL cache, irrelevant to callee
    dispatch) wins a code-block slot over the actual `resolve_callee` dispatcher
    in `synapse_resolver/__init__.py` — which got **no block at all**. 2 of 5
    blocks were noise; the answer symbol was absent.
 
-4. **Root cause D — query tokenisation over-matches.** "dispatch" matched
+3. **Root cause C — query tokenisation over-matches.** "dispatch" matched
    unrelated event dispatchers (`file_watcher`, `health_homeostasis`,
    `health_notifier`), spending entry-point slots on wrong symbols.
 
 Net: after the prescribed 2-call chain the agent still lacked the dispatch body
 and the dispatcher function, forcing follow-up reads — the turn explosion.
 
+> **Withdrawn root cause (was "B: mis-indexed start-lines").** An earlier draft
+> claimed `resolve_java_callee` was indexed at line 222 (the previous function).
+> Codex review (#330) correctly identified this as a **stale-index artifact**:
+> the `.ast-cache` lagged the working tree (`_java.py` had un-synced edits).
+> After `index sync`, `search`/`nav` correctly report `line: 232`. There is no
+> start-line indexing bug. Operational lesson — dogfood on a freshly-synced
+> index — but nothing for this RFC to fix.
+
 ## Detailed design
 
 ### A — inline full bodies for relevant symbols, capped only for the long tail
 Replace the blanket 16-line cap with a **two-tier budget**:
 - An **entry-point / task-relevant** symbol gets its FULL body inlined up to a
-  generous per-symbol budget (`_MAX_ENTRY_BODY_LINES`, proposed 120). Most
-  functions fit; the agent answers without a follow-up.
+  generous per-symbol budget (`_MAX_ENTRY_BODY_LINES`). The budget MUST cover the
+  motivating target: `resolve_java_callee` is 127 lines (232-358), so the budget
+  is set at **160** (covers the target with headroom; tuned against the
+  measurement in Acceptance). At 120 the flagship case would still truncate
+  (Codex #330) — defeating the RFC's own example.
 - A symbol over the budget gets head + tail with the existing truncation marker.
 - **Tangential** nodes (not task-relevant, pulled in only by graph expansion)
-  keep a small cap (or are dropped — see C), preserving RFC-0006's thrift where
+  keep a small cap (or are dropped — see B), preserving RFC-0006's thrift where
   it doesn't cost a turn.
 
 Net token framing (to be MEASURED, not assumed): a larger first response that
@@ -84,21 +87,13 @@ removes ≥1 follow-up turn is cheaper end-to-end (output tokens + per-turn
 replayed context dominate; see the cost memory). The acceptance criteria below
 require demonstrating the turn drop, not just the bigger payload.
 
-### B — fix symbol start-line indexing
-Investigate and fix the start-line offset (resolve_java_callee indexed at the
-preceding function's line). Likely in the function-symbol extraction (leading
-decorator/blank-line/comment handling or a node-start vs def-line mismatch).
-This is a prerequisite: a correct cap/ranking on a wrong line still shows the
-wrong function. Ships with a regression test asserting the indexed `line` lands
-on the `def`/signature for a function preceded by another top-level function.
-
-### C — rank code blocks by task-relevance first
+### B — rank code blocks by task-relevance first
 Rank `_build_code_blocks` by: (1) is the node a named entry point / candidate
 match for the task, then (2) edge-degree, then (3) line. Guarantee every named
 entry point that has source gets a block before any purely-high-degree hub.
 Drop nodes that are neither task-relevant nor on a path between relevant nodes.
 
-### D — tighten query tokenisation
+### C — tighten query tokenisation
 Down-weight or stop-word generic verbs ("dispatch", "handle", "run", "get")
 when they also match unrelated symbols, OR require a candidate to co-occur with
 a higher-signal token from the task. Keep it conservative — precision over
@@ -107,8 +102,7 @@ recall on entry-point selection.
 ### MCP surface (facade + action)
 `nav action=context`. No new action; the response shape is unchanged (same keys:
 `entry_points`, `code_blocks`, `related_symbols`, …). Only the CONTENT of
-`code_blocks` (fuller, correctly-aligned, better-ranked) changes. Backward
-compatible.
+`code_blocks` (fuller, better-ranked) changes. Backward compatible.
 
 ## Three-Surface impact (CLI ↔ MCP parity)
 `nav context` mirrors the CLI `--codegraph-context` path; both build blocks via
@@ -129,8 +123,6 @@ the same task across both surfaces.
   rejected — still a second turn; doesn't fix self-sufficiency.
 - **Always inline full bodies, no budget**: rejected — unbounded payload on
   large functions; the long tail genuinely should truncate.
-- **Fix only B (indexing)**: necessary but insufficient — alignment without
-  full bodies + relevance ranking still forces follow-ups.
 
 ## Prior art
 - RFC-0006 (this repo) — the progressive-disclosure cap this RFC re-tunes.
@@ -138,23 +130,23 @@ the same task across both surfaces.
   6-turn answer this aims to match or beat.
 
 ## Test plan (RED-first)
-- **B**: index a file with two adjacent top-level functions; assert the second's
-  indexed `line`/`start_line` is its `def` line, not the first's. (RED today.)
-- **A**: `nav context` on a task whose answer is a ~90-line function returns the
-  FULL body inline (no `# … N more lines` for a sub-budget symbol). (RED today —
-  capped at 16.)
-- **C**: `nav context` for "resolve_callee → java" includes a block for the
+- **A**: `nav context` on a task whose answer is a sub-budget function (e.g.
+  `resolve_java_callee`, 127 lines) returns the FULL body inline (no
+  `# … N more lines` for a sub-budget symbol). (RED today — capped at 16.)
+- **B**: `nav context` for "resolve_callee → java" includes a block for the
   actual `resolve_callee` dispatcher and excludes `_route_cache.get` noise.
   (RED today — dispatcher absent, noise present.)
-- **D**: a task containing "dispatch" does not surface unrelated event
+- **C**: a task containing "dispatch" does not surface unrelated event
   dispatchers as entry points. (RED today.)
 - **Parity**: CLI and MCP return identical blocks for the same task.
+- All tests run against a **freshly-synced index** (the withdrawn root cause was
+  a stale-index artifact — assert freshness in the fixture).
 
 ## Acceptance criteria
-- [ ] Symbol start-line lands on the `def`/signature (B) — regression test green
-- [ ] Sub-budget entry-point bodies inline in full (A); long tail truncates
-- [ ] Named entry points always get blocks before high-degree noise (C)
-- [ ] Query tokenisation no longer surfaces generic-verb false entry points (D)
+- [ ] Sub-budget entry-point bodies inline in full (A); long tail truncates; the
+      127-line motivating target inlines fully at the chosen budget
+- [ ] Named entry points always get blocks before high-degree noise (B)
+- [ ] Query tokenisation no longer surfaces generic-verb false entry points (C)
 - [ ] **MEASURED turn drop**: re-run the gin routing-trace benchmark
       (symmetric warm cache, n≥5, separate cache_read/cache_creation/output/turns
       columns — per `feedback_benchmark-cost-analysis-rigor`); turns-to-answer
@@ -170,7 +162,6 @@ the same task across both surfaces.
   criterion above depends on it, so it lands first.
 
 ## Open questions
-1. `_MAX_ENTRY_BODY_LINES` value — 120? Tune against the measurement.
-2. Is B systemic (all functions preceded by another) or specific? Scope the fix
-   from the regression test's blast radius.
-3. Should tangential blocks be capped-small or dropped entirely? Measure both.
+1. `_MAX_ENTRY_BODY_LINES` — set at 160 to cover the 127-line target; tune
+   against the measurement (does a higher budget net out cheaper or worse?).
+2. Should tangential blocks be capped-small or dropped entirely? Measure both.
