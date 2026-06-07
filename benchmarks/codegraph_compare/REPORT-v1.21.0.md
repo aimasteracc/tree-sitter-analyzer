@@ -6,12 +6,17 @@ When an AI agent asks "who calls `sorted()`?" before refactoring it, the answer
 has to be *correct* — a wrong caller list is worse than no list, because the
 agent acts on it. This report documents a reproducible, AST-grounded difference
 in **edge correctness** between tree-sitter-analyzer (TSA) and CodeGraph on the
-same multi-language corpus. CodeGraph collapses same-named symbols across
-languages into one node and wires hundreds of Python callers to a Swift
-function definition; TSA refuses to bind across language boundaries and reports
-those edges as unresolved rather than wrong. The AST doesn't lie — every claim
-below ships with a one-command repro you can run against the two indexes
-yourself. This is a *correctness* report only. **Cost is measured separately and
+same multi-language corpus, in two distinct failure modes: (1) **cross-language
+edge mis-binding** — CodeGraph wires hundreds of Python callers to a *Swift*
+function node that merely shares the name (`sorted`, `reversed`); and (2)
+**same-name result aggregation** — for names like `get`/`add` that have many
+distinct same-name nodes across languages, a single caller query returns them
+merged with no way to tell which definition each caller targets (the distinct
+nodes still exist in the DB — 14 `get`, 12 `add` — so this is a query/result
+problem, not a DB collapse). TSA refuses to bind across language boundaries and
+reports those edges as unresolved rather than wrong, and keeps same-name results
+language-separated. The AST doesn't lie — every claim below ships with a
+one-command repro you can run against the two indexes yourself. This is a *correctness* report only. **Cost is measured separately and
 is pending** (see the footnote); we make no cost claim here.
 
 Both indexes were built over the same workspace. CodeGraph index:
