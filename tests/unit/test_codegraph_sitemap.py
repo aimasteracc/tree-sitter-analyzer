@@ -163,7 +163,8 @@ def large_indexed_project(tmp_path):
 
 @pytest.mark.skipif(
     sys.platform == "win32",
-    reason="Windows path drift — tracked separately",
+    reason="Windows path drift in sitemap indexed-path fixtures; "
+    "tracked: Windows-path-normalisation",
 )
 class TestSitemapOutputBudget:
     """F3: bound sitemap symbol output so large repos don't emit a wall of text."""
@@ -327,7 +328,9 @@ class TestSitemapCLI:
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32", reason="Windows path drift — tracked separately"
+    sys.platform == "win32",
+    reason="Windows path drift in sitemap indexed-path fixtures; "
+    "tracked: Windows-path-normalisation",
 )
 class TestSitemapFileLimitTruncation:
     """Codex P2 #337 + reviewer P3s: the max_files LIMIT must also flag
