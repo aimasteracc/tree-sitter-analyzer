@@ -626,8 +626,13 @@ def _extract_symbol_candidates(task: str) -> list[str]:
         return "_" in tok or any(ch.isupper() for ch in tok)
 
     def _named_explicitly(verb: str) -> bool:
+        # A generic verb is "named explicitly" (and kept) when it is preceded by a
+        # quote or any qualifier separator — ``.`` (Foo.handle), ``::`` (C++/Rust
+        # Parser::parse), ``->`` (obj->fetch), or ``/`` (Go/path pkg/parser/parse)
+        # — or when it is called (``verb(``). One check over the raw task covers
+        # every qualifier syntax the tokeniser regex fragments (Codex P2 #333).
         pattern = (
-            r"(?:[`'\"]|\.|::|->)\s*"
+            r"(?:[`'\"]|\.|::|->|/)\s*"
             + re.escape(verb)
             + r"\b|\b"
             + re.escape(verb)

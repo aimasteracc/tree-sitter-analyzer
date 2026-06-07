@@ -1532,6 +1532,10 @@ def test_non_dot_qualified_generic_methods_are_kept() -> None:
     assert "dispatch" in _extract_symbol_candidates(
         "does resolve_callee invoke dispatch() here"
     )
+    # Go/path-style qualifier (slash) also counts as explicit
+    assert "parse" in _extract_symbol_candidates(
+        "trace pkg/parser/parse alongside resolve_callee"
+    )
     # bare prose verb is still dropped when a specific symbol co-occurs
     assert "dispatch" not in _extract_symbol_candidates(
         "how does resolve_callee dispatch a Java call to resolve_java_callee"
