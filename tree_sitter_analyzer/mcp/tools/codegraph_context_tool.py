@@ -596,15 +596,19 @@ def _extract_symbol_candidates(task: str) -> list[str]:
     )
     seen: set[str] = set()
     out: list[str] = []
-    quoted: set[str] = set()
+    explicit: set[str] = set()
     for raw in tokens:
-        # A token written in back-ticks / quotes is an EXPLICIT symbol name the
-        # user chose deliberately — even a lowercase generic verb (`` `dispatch` ``)
-        # should then count as specific and never be dropped by the C filter below
-        # (Codex P2 #333). The regex captures the quotes, so detect before strip.
+        # A token is EXPLICIT (the user named it deliberately) when it is either
+        # quoted (`` `dispatch` ``, Codex P2 #333) OR part of a qualified symbol
+        # (`UserService.handle` → the method `handle` is named, Codex P2 #333).
+        # Explicit tokens count as specific and are never dropped by the C filter
+        # below — only truly BARE generic verbs are. The regex captures quotes, so
+        # detect before strip; a qualified token is one whose raw splits into >1.
         was_quoted = bool(raw) and raw[0] in "`\"'"
         raw = raw.strip("`\"'")
-        for part in re.split(r"[.:\->]+", raw):
+        parts = re.split(r"[.:\->]+", raw)
+        is_qualified = len([p for p in parts if p.strip("_.,;:!?()[]{}")]) > 1
+        for part in parts:
             token = part.strip("_.,;:!?()[]{}")
             if not token:
                 continue
@@ -615,19 +619,19 @@ def _extract_symbol_candidates(task: str) -> list[str]:
                 "_" in token or any(ch.isupper() for ch in token) or len(token) >= 4
             ):
                 continue
-            if was_quoted:
-                quoted.add(token)
+            if was_quoted or is_qualified:
+                explicit.add(token)
             if token not in seen:
                 seen.add(token)
                 out.append(token)
 
     # RFC-0009 C: when the task names a specific symbol (snake_case / CamelCase /
-    # explicitly quoted), drop bare generic-verb candidates ("dispatch", "handle")
-    # — they only match unrelated event dispatchers / handlers and waste
-    # entry-point slots. Keep them when they are the ONLY signal (no specific
-    # candidate present) or when the user quoted them explicitly.
+    # explicitly quoted / qualified method), drop bare generic-verb candidates
+    # ("dispatch", "handle") — they only match unrelated event dispatchers /
+    # handlers and waste entry-point slots. Keep them when they are the ONLY
+    # signal, when quoted, or when qualified (e.g. UserService.handle).
     def _is_specific(tok: str) -> bool:
-        return "_" in tok or any(ch.isupper() for ch in tok) or tok in quoted
+        return "_" in tok or any(ch.isupper() for ch in tok) or tok in explicit
 
     if any(_is_specific(tok) for tok in out):
         out = [

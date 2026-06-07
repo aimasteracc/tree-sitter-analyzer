@@ -1496,3 +1496,18 @@ def test_quoted_generic_verb_is_kept_as_explicit_symbol() -> None:
     cands = _extract_symbol_candidates("trace resolve_callee through `dispatch`")
     assert "dispatch" in cands, cands
     assert "resolve_callee" in cands
+
+
+def test_qualified_generic_method_is_kept() -> None:
+    """RFC-0009 C / Codex P2 #333 (re-review): a generic verb that is the METHOD
+    of a qualified symbol (``UserService.handle``, ``Database.fetch``) is named
+    deliberately and must survive the filter — the tokenizer splits the qualified
+    token, so the method part must count as explicit, not bare."""
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        _extract_symbol_candidates,
+    )
+
+    cands = _extract_symbol_candidates("trace UserService.handle to Database.fetch")
+    assert "handle" in cands, cands
+    assert "fetch" in cands, cands
+    assert "UserService" in cands
