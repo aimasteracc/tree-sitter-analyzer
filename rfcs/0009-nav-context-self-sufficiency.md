@@ -1,6 +1,6 @@
 # RFC-0009: `nav context` self-sufficiency — answer in one call, close the turn gap
 
-- **Status**: draft
+- **Status**: accepted
 - **Author(s)**: @aimasteracc
 - **Created**: 2026-06-07
 - **Last updated**: 2026-06-07
