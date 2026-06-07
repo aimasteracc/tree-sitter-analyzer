@@ -30,7 +30,7 @@ correctly reports **0 and 0** — no false positives.
 > EACH language's own builtins (Python `print`, JS `Map`, Java `toString`, …) — and
 > leads its examples with the non-builtin collisions, so the demo survives a
 > skeptic. On this repo: 4,199 worst-case but **762 genuine** (`Counter()`→TS,
-> `sleep()`→Java, `pop()`→Swift, `connect()`→Kotlin). TSA still resolves all (0).
+> `sleep()`→Java, `pop()`→Swift, `connect()`→Kotlin). TSA resolves **0** of these on the four external polyglot repos, and only **6** on its own repo (single-word Java method names — see the live 745-vs-6).
 
 ## Sample offenders (a name-only resolver would make these; TSA does not)
 

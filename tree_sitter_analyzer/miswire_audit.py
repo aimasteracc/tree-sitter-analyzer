@@ -46,25 +46,29 @@ def _caller_builtins() -> dict[str, frozenset[str]]:
     """
     out: dict[str, frozenset[str]] = {}
     try:
-        from .synapse_resolver._constants import BUILTINS_PY
+        from tree_sitter_analyzer.synapse_resolver._constants import BUILTINS_PY
 
         out["python"] = BUILTINS_PY
     except Exception:  # pragma: no cover - defensive
         pass
     try:
-        from .synapse_resolver.languages._ruby_constants import RUBY_BUILTIN_CALLS
+        from tree_sitter_analyzer.synapse_resolver.languages._ruby_constants import (
+            RUBY_BUILTIN_CALLS,
+        )
 
         out["ruby"] = RUBY_BUILTIN_CALLS
     except Exception:  # pragma: no cover
         pass
     try:
-        from .synapse_resolver.languages._php_constants import PHP_BUILTIN_FUNCTIONS
+        from tree_sitter_analyzer.synapse_resolver.languages._php_constants import (
+            PHP_BUILTIN_FUNCTIONS,
+        )
 
         out["php"] = PHP_BUILTIN_FUNCTIONS
     except Exception:  # pragma: no cover
         pass
     try:
-        from .synapse_resolver.languages._swift_constants import (
+        from tree_sitter_analyzer.synapse_resolver.languages._swift_constants import (
             SWIFT_STDLIB_FUNCTIONS,
         )
 
@@ -72,7 +76,9 @@ def _caller_builtins() -> dict[str, frozenset[str]]:
     except Exception:  # pragma: no cover
         pass
     try:
-        from .synapse_resolver.languages._c_constants import LIBC_FUNCTIONS_C
+        from tree_sitter_analyzer.synapse_resolver.languages._c_constants import (
+            LIBC_FUNCTIONS_C,
+        )
 
         out["c"] = LIBC_FUNCTIONS_C
         out["cpp"] = LIBC_FUNCTIONS_C
@@ -85,22 +91,93 @@ def _caller_builtins() -> dict[str, frozenset[str]]:
     # defensible lower bound.
     out["rust"] = frozenset(
         {
-            "Ok", "Err", "Some", "None", "Vec", "Box", "String", "format",
-            "println", "print", "eprintln", "eprint", "vec", "write", "writeln",
-            "clone", "into", "from", "new", "default", "unwrap", "expect", "iter",
-            "collect", "map", "filter", "to_string", "to_owned", "as_ref", "len",
-            "push", "drop", "panic", "assert", "matches", "f",
+            "Ok",
+            "Err",
+            "Some",
+            "None",
+            "Vec",
+            "Box",
+            "String",
+            "format",
+            "println",
+            "print",
+            "eprintln",
+            "eprint",
+            "vec",
+            "write",
+            "writeln",
+            "clone",
+            "into",
+            "from",
+            "new",
+            "default",
+            "unwrap",
+            "expect",
+            "iter",
+            "collect",
+            "map",
+            "filter",
+            "to_string",
+            "to_owned",
+            "as_ref",
+            "len",
+            "push",
+            "drop",
+            "panic",
+            "assert",
+            "matches",
+            "f",
         }
     )
     _js = frozenset(
         {
-            "Map", "Set", "Promise", "Array", "Object", "JSON", "Math", "Symbol",
-            "WeakMap", "WeakSet", "Proxy", "Reflect", "Date", "RegExp", "Error",
-            "Number", "String", "Boolean", "BigInt", "Function", "parseInt",
-            "parseFloat", "isNaN", "isFinite", "fetch", "require", "setTimeout",
-            "setInterval", "clearTimeout", "console", "structuredClone", "keys",
-            "values", "entries", "from", "of", "isArray", "assign", "push", "pop",
-            "map", "filter", "forEach", "reduce", "then", "catch", "resolve",
+            "Map",
+            "Set",
+            "Promise",
+            "Array",
+            "Object",
+            "JSON",
+            "Math",
+            "Symbol",
+            "WeakMap",
+            "WeakSet",
+            "Proxy",
+            "Reflect",
+            "Date",
+            "RegExp",
+            "Error",
+            "Number",
+            "String",
+            "Boolean",
+            "BigInt",
+            "Function",
+            "parseInt",
+            "parseFloat",
+            "isNaN",
+            "isFinite",
+            "fetch",
+            "require",
+            "setTimeout",
+            "setInterval",
+            "clearTimeout",
+            "console",
+            "structuredClone",
+            "keys",
+            "values",
+            "entries",
+            "from",
+            "of",
+            "isArray",
+            "assign",
+            "push",
+            "pop",
+            "map",
+            "filter",
+            "forEach",
+            "reduce",
+            "then",
+            "catch",
+            "resolve",
         }
     )
     out["javascript"] = _js
@@ -109,31 +186,104 @@ def _caller_builtins() -> dict[str, frozenset[str]]:
     out["tsx"] = _js
     out["go"] = frozenset(
         {
-            "len", "cap", "make", "append", "new", "copy", "delete", "panic",
-            "recover", "print", "println", "close", "complex", "real", "imag",
-            "min", "max", "clear", "Sprintf", "Printf", "Errorf", "Println",
+            "len",
+            "cap",
+            "make",
+            "append",
+            "new",
+            "copy",
+            "delete",
+            "panic",
+            "recover",
+            "print",
+            "println",
+            "close",
+            "complex",
+            "real",
+            "imag",
+            "min",
+            "max",
+            "clear",
+            "Sprintf",
+            "Printf",
+            "Errorf",
+            "Println",
         }
     )
     out["java"] = frozenset(
         {
-            "toString", "equals", "hashCode", "valueOf", "getClass", "clone",
-            "length", "size", "get", "put", "add", "remove", "contains",
-            "isEmpty", "iterator", "next", "hasNext", "name", "ordinal",
-            "compareTo", "of", "asList", "stream", "collect", "forEach",
+            "toString",
+            "equals",
+            "hashCode",
+            "valueOf",
+            "getClass",
+            "clone",
+            "length",
+            "size",
+            "get",
+            "put",
+            "add",
+            "remove",
+            "contains",
+            "isEmpty",
+            "iterator",
+            "next",
+            "hasNext",
+            "name",
+            "ordinal",
+            "compareTo",
+            "of",
+            "asList",
+            "stream",
+            "collect",
+            "forEach",
         }
     )
     out["kotlin"] = frozenset(
         {
-            "listOf", "mapOf", "setOf", "mutableListOf", "mutableMapOf", "println",
-            "print", "require", "check", "error", "run", "let", "apply", "also",
-            "with", "to", "arrayOf", "emptyList", "emptyMap", "lazy", "TODO",
+            "listOf",
+            "mapOf",
+            "setOf",
+            "mutableListOf",
+            "mutableMapOf",
+            "println",
+            "print",
+            "require",
+            "check",
+            "error",
+            "run",
+            "let",
+            "apply",
+            "also",
+            "with",
+            "to",
+            "arrayOf",
+            "emptyList",
+            "emptyMap",
+            "lazy",
+            "TODO",
         }
     )
     out["csharp"] = frozenset(
         {
-            "ToString", "Equals", "GetHashCode", "GetType", "Contains", "Add",
-            "Remove", "Count", "Where", "Select", "First", "Any", "All", "ToList",
-            "ToArray", "WriteLine", "Write", "Format",
+            "ToString",
+            "Equals",
+            "GetHashCode",
+            "GetType",
+            "Contains",
+            "Add",
+            "Remove",
+            "Count",
+            "Where",
+            "Select",
+            "First",
+            "Any",
+            "All",
+            "ToList",
+            "ToArray",
+            "WriteLine",
+            "Write",
+            "Format",
         }
     )
     return out
@@ -332,18 +482,26 @@ def audit(project_root: str, *, reindex: bool = True, top: int = 5) -> AuditResu
                     if cross_def is None:
                         continue
                     off = Offender(
-                        name, e["caller_file"], caller_lang,
-                        cross_def[0], cross_def[1], e["callee_line"] or 0,
+                        name,
+                        e["caller_file"],
+                        caller_lang,
+                        cross_def[0],
+                        cross_def[1],
+                        e["callee_line"] or 0,
                     )
                     # DISTINCT names; lead the offender lists with GENUINE (non-
                     # builtin) collisions — the skeptic-resistant examples.
-                    if not is_builtin and name not in {
-                        o.callee_name for o in result.genuine_offenders
-                    } and len(result.genuine_offenders) < top:
+                    if (
+                        not is_builtin
+                        and name
+                        not in {o.callee_name for o in result.genuine_offenders}
+                        and len(result.genuine_offenders) < top
+                    ):
                         result.genuine_offenders.append(off)
-                    if name not in {
-                        o.callee_name for o in result.naive_offenders
-                    } and len(result.naive_offenders) < top:
+                    if (
+                        name not in {o.callee_name for o in result.naive_offenders}
+                        and len(result.naive_offenders) < top
+                    ):
                         result.naive_offenders.append(off)
         return result
     finally:
