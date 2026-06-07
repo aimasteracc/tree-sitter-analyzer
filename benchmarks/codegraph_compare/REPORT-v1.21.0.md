@@ -234,13 +234,13 @@ CodeGraph wire Python `sorted()` to a Swift `func sorted` — the measured resul
 
 | metric | value |
 |---|---|
-| languages indexed | 10 (c, cpp, csharp, go, java, kotlin, php, python, ruby, rust)\* |
-| call edges (java 453, ruby 156, python 123, kotlin 80, rust 65, go 46, php 28, cpp 17, c 10, csharp 4) | 982 |
-| resolved-to-file edges (the moat surface) | 127 |
+| languages indexed | **12 / 12** (c, cpp, csharp, go, java, javascript, kotlin, php, python, ruby, rust, typescript) |
+| total call edges (java 453, ruby 156, python 123, go 103, kotlin 80, rust 65, php 28, cpp 26, ts 23, js 12, c 10, csharp 4) | **1,083** |
+| resolved-to-file edges (the moat surface) | 143 |
 | **cross-language mis-wires** | **0** |
 
-\* JS/TS omitted only because the fixture lacked sample files; both are wired and
-gated by the same `languages_compatible` family check (JS/TS are one family).
+All 12 active languages, one real source file each, plus the adversarial shadow —
+**zero** cross-language mis-wires on 1,083 call edges.
 
 Every per-language resolver gates its project/local bindings through
 `languages_compatible(caller_lang, owner_lang)`, so a Rust `to_string()` cannot
