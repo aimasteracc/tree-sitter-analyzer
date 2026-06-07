@@ -113,6 +113,34 @@ def _lookup_in_file(
     return None
 
 
+def _lookup_unique_method_in_file(
+    ctx: RustResolverContext, file_path: str, simple: str
+) -> int | None:
+    """Return the symbol id of a same-file ``simple`` def, but ONLY when exactly one
+    method/function of that name exists in the file; otherwise ``None``.
+
+    Codex P2 (owner-context safety): a ``self.helper()`` / ``Self::helper()`` call
+    carries no caller-owner type, so the resolver cannot tell which impl block's
+    ``helper`` the receiver refers to. When two impls in the same file both define
+    ``helper`` (``impl A { fn helper }`` + ``impl B { fn helper }``), binding to
+    whichever row appears first would corrupt the call edge. The conservative answer
+    for an ambiguous receiver-qualified method is therefore ``unknown``.
+
+    Both ``method`` and ``function`` rows are counted: an associated fn called via
+    ``Self::ctor()`` can be extracted under either kind, and either one duplicated
+    across impls is ambiguous. This guard runs ONLY on the receiver-qualified
+    (``self``/``Self``/``this``/``super``) path; a bare free-function call keeps
+    ``_lookup_in_file`` (a Rust module cannot define two free fns of one name, so a
+    bare match is never ambiguous and stays unaffected).
+    """
+    matches = [
+        sym_id
+        for name, kind, sym_id in ctx.file_symbols.get(file_path, [])
+        if name == simple and kind in ("function", "method")
+    ]
+    return matches[0] if len(matches) == 1 else None
+
+
 def _project_owns(ctx: RustResolverContext, simple: str) -> bool:
     """True when a COMPATIBLE-LANGUAGE (Rust) project symbol of name ``simple``
     exists.
@@ -150,10 +178,23 @@ def resolve_rust_callee(
     """
     receiver, simple = _split_receiver(callee_full, callee_name)
 
-    # 1. local — bare call / ``self``-qualified / ``Self``-qualified, resolved in
-    #    the caller's OWN file only (never another file → the moat holds).
-    if receiver in ("", "self", "Self", "this", "super"):
+    # 1a. local (bare call) — a receiver-less call resolves to a same-file def in
+    #     the caller's OWN file only (never another file → the moat holds). A Rust
+    #     module cannot define two free fns of one name, so the first match is the
+    #     unique def.
+    if receiver == "":
         sym_id = _lookup_in_file(ctx, caller_file, simple)
+        if sym_id is not None:
+            return sym_id, "local", caller_file
+
+    # 1b. local (receiver-qualified) — ``self.helper`` / ``Self::helper`` /
+    #     ``this`` / ``super``. The caller-owner type is NOT available to this
+    #     resolver, so we can only safely bind when the method name is UNIQUE in the
+    #     file. If two impls in the same file both define ``helper``, the receiver is
+    #     ambiguous and we leave it ``unknown`` rather than mis-bind to the first row
+    #     (Codex P2). Resolution stays in the caller's OWN file only → the moat holds.
+    elif receiver in ("self", "Self", "this", "super"):
+        sym_id = _lookup_unique_method_in_file(ctx, caller_file, simple)
         if sym_id is not None:
             return sym_id, "local", caller_file
 

@@ -107,6 +107,91 @@ def test_self_method_resolves_local() -> None:
     assert resolved_file == "lib.rs"
 
 
+def test_self_method_resolves_local_when_method_name_unique() -> None:
+    """``self.helper()`` resolves local only when exactly ONE method named
+    ``helper`` is defined in the file — a single impl, so no owner ambiguity."""
+    ctx = _ctx(
+        file_symbols={
+            "lib.rs": [
+                ("call", "method", 10),
+                ("helper", "method", 11),
+            ]
+        },
+        file_languages={"lib.rs": "rust"},
+    )
+    sym_id, resolution, resolved_file = resolve_rust_callee(
+        "helper", "self.helper", "lib.rs", ctx
+    )
+    assert resolution == "local"
+    assert sym_id == 11
+    assert resolved_file == "lib.rs"
+
+
+def test_self_method_ambiguous_across_impls_stays_unknown() -> None:
+    """Codex P2: ``self.helper()`` must NOT bind when the SAME file defines
+    ``helper`` in two different impl blocks (``impl A`` and ``impl B``).
+
+    The resolver receives no caller-owner type, so it cannot tell which
+    ``helper`` the ``self`` refers to. Binding to whichever row appears first
+    would corrupt the call edge — the exact mis-bind Codex flagged. The
+    conservative answer is ``unknown`` (precision over recall)."""
+    ctx = _ctx(
+        file_symbols={
+            "lib.rs": [
+                ("helper", "method", 11),  # impl A { fn helper }
+                ("call", "method", 12),  # impl B { fn call -> self.helper() }
+                ("helper", "method", 13),  # impl B { fn helper }
+            ]
+        },
+        file_languages={"lib.rs": "rust"},
+    )
+    sym_id, resolution, resolved_file = resolve_rust_callee(
+        "helper", "self.helper", "lib.rs", ctx
+    )
+    assert resolution == "unknown", (
+        "an ambiguous self.method across multiple impls must NOT bind to the "
+        f"first row; got {resolution} -> sym_id={sym_id}"
+    )
+    assert sym_id is None
+    assert resolved_file == ""
+
+
+def test_selfcap_method_ambiguous_across_impls_stays_unknown() -> None:
+    """The ``Self::helper()`` associated-call form has the same ambiguity hazard
+    as ``self.helper()`` and must also stay ``unknown`` when duplicated."""
+    ctx = _ctx(
+        file_symbols={
+            "lib.rs": [
+                ("helper", "method", 21),
+                ("helper", "method", 22),
+            ]
+        },
+        file_languages={"lib.rs": "rust"},
+    )
+    sym_id, resolution, _ = resolve_rust_callee("helper", "Self::helper", "lib.rs", ctx)
+    assert resolution == "unknown"
+    assert sym_id is None
+
+
+def test_bare_free_fn_unaffected_by_method_duplicate() -> None:
+    """A bare free-function call still resolves local even if an unrelated
+    duplicate METHOD name exists — the ambiguity guard targets receiver-qualified
+    (self/Self) calls, and a Rust module cannot define two free fns of one name."""
+    ctx = _ctx(
+        file_symbols={
+            "lib.rs": [
+                ("run", "function", 30),  # the unique free fn we call
+                ("helper", "method", 31),  # duplicate method name, irrelevant
+                ("helper", "method", 32),
+            ]
+        },
+        file_languages={"lib.rs": "rust"},
+    )
+    sym_id, resolution, _ = resolve_rust_callee("run", "run", "lib.rs", ctx)
+    assert resolution == "local"
+    assert sym_id == 30
+
+
 def test_unknown_local_name_stays_unknown() -> None:
     """A bare name with no same-file definition and no std signature -> unknown."""
     ctx = _ctx(
