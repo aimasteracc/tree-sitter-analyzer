@@ -285,6 +285,55 @@ def test_integration_import_shadow_suppresses_builtin(tmp_path: Path) -> None:
     )
 
 
+def test_integration_import_shadow_no_project_symbol_suppresses_builtin(
+    tmp_path: Path,
+) -> None:
+    """FULL INDEX PATH (Codex P2 #4): ``import { Map } from 'immutable'`` with NO
+    project class named ``Map``. The TS plugin stores the import's raw statement
+    under the ``text`` field (not ``name``/``source``), so the shadow set must be
+    built from ``text``. Without that, ``Map.of()`` is wrongly ``builtin`` because
+    the ``global_name_table`` path can't save it either (no project ``Map``)."""
+    db = _index(
+        tmp_path,
+        {
+            "svc.ts": (
+                "import { Map } from 'immutable';\n"
+                "class Service {\n"
+                "  run(): void { Map.of(1); }\n"
+                "}\n"
+            ),
+        },
+    )
+    res = _resolution_for(db, "of")
+    assert res, "expected a Map.of() edge"
+    assert "builtin" not in res, (
+        f"import-shadowed Map.of (no project symbol) must NOT classify builtin; "
+        f"got {res}"
+    )
+
+
+def test_integration_default_import_shadow_suppresses_builtin(tmp_path: Path) -> None:
+    """FULL INDEX PATH (Codex P2 #4): a default import ``import Promise from
+    'bluebird'`` (statement stored under ``text``) shadows the ``Promise`` global;
+    ``Promise.all()`` must NOT classify ``builtin``."""
+    db = _index(
+        tmp_path,
+        {
+            "svc.ts": (
+                "import Promise from 'bluebird';\n"
+                "class Service {\n"
+                "  run(): void { Promise.all([]); }\n"
+                "}\n"
+            ),
+        },
+    )
+    res = _resolution_for(db, "all")
+    assert res, "expected a Promise.all() edge"
+    assert "builtin" not in res, (
+        f"default-import-shadowed Promise.all must NOT classify builtin; got {res}"
+    )
+
+
 def test_integration_variable_shadow_suppresses_builtin(tmp_path: Path) -> None:
     """FULL INDEX PATH: ``const Promise = require('bluebird')`` shadows the
     ``Promise`` global; ``Promise.all()`` must NOT classify ``builtin``."""

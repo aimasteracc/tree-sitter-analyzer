@@ -67,8 +67,9 @@ class TypeScriptResolverContext:
 
 
 #: Binding names introduced by a TS ``import`` statement. The TS plugin stores
-#: the *raw statement text* as the ``import`` symbol's name (``ast_imports`` is
-#: empty for TS — Codex P2 #3), so the resolver extracts the bound locals itself.
+#: the *raw statement text* under the ``import`` symbol's ``text`` field
+#: (``ast_imports`` is empty for TS — Codex P2 #3), so the resolver extracts the
+#: bound locals itself.
 _IMPORT_DEFAULT_RE = re.compile(r"import\s+([A-Za-z_$][\w$]*)\s*(?:,|\s+from\b)")
 _IMPORT_NAMESPACE_RE = re.compile(r"import\s+\*\s+as\s+([A-Za-z_$][\w$]*)")
 _IMPORT_NAMED_BLOCK_RE = re.compile(r"\{([^}]*)\}")
@@ -126,7 +127,13 @@ def _build_shadow_locals(conn: Any) -> dict[str, set[str]]:
                 if name:
                     names.add(name)
             elif kind == "import":
-                statement = sym.get("name") or sym.get("source") or ""
+                # The generic AST extractor emits TS imports as
+                # ``{"kind": "import", "text": "<raw statement>"}`` — the bound
+                # locals live in ``text``, NOT ``name``/``source`` (Codex P2 #4).
+                # ``name``/``source`` are kept as fallbacks for other emitters.
+                statement = (
+                    sym.get("text") or sym.get("name") or sym.get("source") or ""
+                )
                 names |= _import_binding_names(statement)
         if names:
             out[row["file_path"]] = names
