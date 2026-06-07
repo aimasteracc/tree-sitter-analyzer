@@ -198,6 +198,56 @@ def test_aliased_stdlib_import_resolves_under_alias() -> None:
     assert resolution == "stdlib"
 
 
+# ---------------------------------------------------------------------------
+# Codex P2 (finding 2): comments in a Go import block must be stripped before
+# the import matcher runs, or a commented-out stdlib path leaks a spurious
+# qualifier and a same-named variable is falsely classified as stdlib.
+# ---------------------------------------------------------------------------
+def test_line_comment_in_import_block_is_not_an_import() -> None:
+    """A ``// "net/http"`` line comment inside a grouped import must NOT be
+    parsed as a real import spec — only ``fmt`` is actually imported."""
+    from tree_sitter_analyzer.synapse_resolver.languages._go_constants import (
+        parse_go_import_block,
+    )
+
+    raw = 'import (\n\t"fmt"\n\t// "net/http"\n)'
+    assert parse_go_import_block(raw) == {"fmt": "fmt"}
+
+
+def test_trailing_line_comment_after_spec_is_not_an_import() -> None:
+    """A trailing ``// "net/http"`` after a real ``"fmt"`` import must be
+    ignored — the commented path is not imported."""
+    from tree_sitter_analyzer.synapse_resolver.languages._go_constants import (
+        parse_go_import_block,
+    )
+
+    raw = 'import "fmt" // "net/http"'
+    assert parse_go_import_block(raw) == {"fmt": "fmt"}
+
+
+def test_block_comment_in_import_block_is_not_an_import() -> None:
+    """A ``/* "net/http" */`` block comment must be stripped before matching —
+    the commented stdlib path must not leak an ``http`` qualifier."""
+    from tree_sitter_analyzer.synapse_resolver.languages._go_constants import (
+        parse_go_import_block,
+    )
+
+    raw = 'import (\n\t"fmt"\n\t/* "net/http" */\n)'
+    assert parse_go_import_block(raw) == {"fmt": "fmt"}
+
+
+def test_commented_import_does_not_enable_stdlib_qualifier() -> None:
+    """End-to-end of finding 2 through the resolver: a ``// "net/http"`` comment
+    next to a real ``"fmt"`` import must leave a later ``http.Get`` ``unknown`` —
+    the commented path is not real import evidence."""
+    ctx = _ctx(
+        {"main.go": [("main", "function", 11)]},
+        imports={"main.go": 'import (\n\t"fmt"\n\t// "net/http"\n)'},
+    )
+    _sym, resolution, _file = resolve_go_callee("Get", "http.Get", "main.go", ctx)
+    assert resolution == "unknown"
+
+
 def test_receiver_method_call_stays_unknown() -> None:
     """``s.Run()`` — ``s`` is a local variable whose struct type the edge does
     not carry. The resolver must NOT guess a same-name ``Run`` elsewhere."""

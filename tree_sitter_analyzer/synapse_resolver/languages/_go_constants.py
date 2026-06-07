@@ -80,6 +80,40 @@ _GO_IMPORT_SPEC = re.compile(r'(?:(?P<local>[A-Za-z_.][\w.]*)[ \t]+)?"(?P<path>[
 #: line (``import "fmt"``).
 _GO_IMPORT_KEYWORD = re.compile(r"\bimport\b\s*\(?")
 
+#: Matches, in priority order, ONE of: an interpreted string literal
+#: (``"..."`` with escapes), a raw string literal (`` `...` ``), a ``//`` line
+#: comment, or a ``/* ... */`` block comment. Alternation order matters — a
+#: string is matched BEFORE a comment so a ``//`` that lives inside a path like
+#: ``"net/http"`` is never mistaken for the start of a comment. Comments are
+#: replaced with a space (so a commented spec leaves no quoted path behind);
+#: string literals are preserved verbatim. Used to strip Go comments before the
+#: import-spec matcher runs (Codex P2: a commented ``// "net/http"`` must not
+#: leak an ``http`` qualifier).
+_GO_STRING_OR_COMMENT = re.compile(
+    r'"(?:\\.|[^"\\])*"'  # interpreted string literal
+    r"|`[^`]*`"  # raw string literal
+    r"|//[^\n]*"  # line comment
+    r"|/\*.*?\*/",  # block comment (non-greedy, spans newlines)
+    re.DOTALL,
+)
+
+
+def _strip_go_comments(raw: str) -> str:
+    """Remove Go ``//`` and ``/* */`` comments, preserving string literals.
+
+    A ``//`` or ``/* */`` that lives INSIDE a double-quoted (or raw) string is
+    not a comment, so the matcher consumes whole string literals first and only
+    replaces genuine comments (with a space). This prevents a commented-out
+    import path (``// "net/http"``) from being matched as a real import spec.
+    """
+
+    def _repl(m: re.Match[str]) -> str:
+        token = m.group(0)
+        # A matched string literal is kept verbatim; a comment becomes a space.
+        return token if token[:1] in ('"', "`") else " "
+
+    return _GO_STRING_OR_COMMENT.sub(_repl, raw)
+
 
 def parse_go_import_block(raw: str) -> dict[str, str]:
     """Parse a Go import-block string into ``{qualifier -> stdlib package}``.
@@ -104,9 +138,12 @@ def parse_go_import_block(raw: str) -> dict[str, str]:
     resolver leaves it ``unknown`` (RFC-0008 precision-over-recall).
     """
     out: dict[str, str] = {}
+    # Strip Go comments FIRST (string-literal aware) so a commented-out spec
+    # (``// "net/http"``) leaves no quoted path for the matcher to capture.
+    uncommented = _strip_go_comments(raw or "")
     # Drop every ``import`` keyword (and trailing ``(``) so it can never be
     # captured as a same-line alias for the first spec.
-    cleaned = _GO_IMPORT_KEYWORD.sub(" ", raw or "")
+    cleaned = _GO_IMPORT_KEYWORD.sub(" ", uncommented)
     for m in _GO_IMPORT_SPEC.finditer(cleaned):
         local = m.group("local")
         path = m.group("path")
