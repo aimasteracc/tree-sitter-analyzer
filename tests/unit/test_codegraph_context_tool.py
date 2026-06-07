@@ -1453,3 +1453,33 @@ def test_entry_point_ranked_before_high_degree_noise(tmp_path: Path) -> None:
     # only ONE block slot — the entry must win it.
     blocks = _build_code_blocks([noise, entry], edges, 1, str(tmp_path))
     assert [b["name"] for b in blocks] == ["answer"], blocks
+
+
+def test_generic_verbs_dropped_when_specific_candidate_present() -> None:
+    """RFC-0009 C: a bare generic verb ('dispatch') is dropped from candidates
+    when the task also names a specific snake_case/CamelCase symbol — it only
+    matches unrelated event dispatchers and wastes entry-point slots. The old
+    tokeniser kept it (RED)."""
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        _extract_symbol_candidates,
+    )
+
+    cands = _extract_symbol_candidates(
+        "how does resolve_callee dispatch a Java call to resolve_java_callee"
+    )
+    assert "dispatch" not in cands, cands
+    # the specific symbols the task is actually about are preserved
+    assert "resolve_callee" in cands
+    assert "resolve_java_callee" in cands
+
+
+def test_generic_verb_kept_when_sole_signal() -> None:
+    """RFC-0009 C is conservative: when a generic verb is the ONLY signal (no
+    specific symbol named), it is KEPT so 'find the dispatch function' still
+    resolves to the dispatch symbol."""
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        _extract_symbol_candidates,
+    )
+
+    cands = _extract_symbol_candidates("find the dispatch function")
+    assert "dispatch" in cands, cands

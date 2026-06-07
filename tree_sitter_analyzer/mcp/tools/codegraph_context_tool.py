@@ -26,6 +26,21 @@ _STOP_WORDS = frozenset(
     "or through to trace what when where which why with work works".split()
 )
 
+# RFC-0009 C: generic single-word verbs that frequently appear in trace questions
+# ("how does X dispatch / handle a request") but ALSO name many unrelated symbols
+# (event dispatchers, request handlers). When the task carries a more specific
+# candidate (a snake_case / CamelCase / quoted symbol), these BARE verbs are
+# dropped — they only spend entry-point slots on wrong symbols. They are KEPT
+# when they are the only signal in the task, so "find the dispatch function"
+# still works. Conservative: precision over recall on entry-point selection.
+# Note: snake_case/CamelCase names like ``resolve_callee`` are NOT affected —
+# only bare lowercase verb tokens match this set.
+_GENERIC_VERBS = frozenset(
+    "dispatch dispatcher handle handler process processor run runner execute "
+    "executor get set send receive emit notify invoke route resolve register "
+    "lookup parse load store update fetch".split()
+)
+
 # Inline-body cap per code block for TANGENTIAL nodes (pulled in by call-graph
 # expansion, not the task's named symbols). These get signature + head; the agent
 # rarely needs their full body, so RFC-0006's thrift is preserved where it costs
@@ -597,6 +612,18 @@ def _extract_symbol_candidates(task: str) -> list[str]:
             if token not in seen:
                 seen.add(token)
                 out.append(token)
+
+    # RFC-0009 C: when the task names a specific symbol (snake_case / CamelCase),
+    # drop bare generic-verb candidates ("dispatch", "handle") — they only match
+    # unrelated event dispatchers / handlers and waste entry-point slots. Keep
+    # them when they are the ONLY signal (no specific candidate present).
+    def _is_specific(tok: str) -> bool:
+        return "_" in tok or any(ch.isupper() for ch in tok)
+
+    if any(_is_specific(tok) for tok in out):
+        out = [
+            tok for tok in out if _is_specific(tok) or tok.lower() not in _GENERIC_VERBS
+        ]
     return out
 
 
