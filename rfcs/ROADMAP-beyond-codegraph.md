@@ -9,7 +9,7 @@ the prioritized path to becoming the default agent code-intelligence layer.
 |---|---|---|---|
 | symbol kinds (kind=method) | 20,348 | 20,275 | TSA ahead |
 | callee classification | 96.3% (.ast-cache, measured) | many same-name mis-wires | TSA ahead (correct AND complete) |
-| cross-language safety | ~0.01% mis-wires across 8 languages (py/java/go/js/ts/cpp/rust + jsx) | wires 299 Python `sorted()` callers to a Swift func | TSA structurally ahead — gated by language family, ~0.01% residual (generic Java names) vs CodeGraph's wholesale cross-language collapse; see REPORT-v1.21.0 |
+| cross-language safety | ~0.01% mis-wires across the 7 active-extraction languages (py/java/go/js/ts/c/cpp); 5 more (rust/kotlin/ruby/csharp/php) are resolver-ready, extraction pending | wires 299 Python `sorted()` callers to a Swift func | TSA structurally ahead — gated by language family, ~0.01% residual (generic Java names) vs CodeGraph's wholesale cross-language collapse; see REPORT-v1.21.0 |
 | FTS production-first | yes | test-mock shadows | TSA ahead |
 | edges_by_kind status | yes | none | TSA exclusive |
 | token / context call | ~6.6k (was 12.7k) | ~4.4k | gap 2.9x to 1.5x; near parity |
@@ -30,10 +30,10 @@ If TSA is now within ~1.1x of CG (or cheaper), the "CG is cheaper" caveat can be
 retired with evidence. This converts a hedge into a headline. (Needs API budget;
 user has authorized spend.)
 
-### P1 — Multi-language correctness moat (RFC-0008 + RFC-0010): FIRST WAVE SHIPPED
+### P1 — Multi-language correctness moat (RFC-0008 + RFC-0010): RESOLVERS SHIPPED; ACTIVATION = call-edge extraction
 The 83.9% → 96.5% classification win was Python-only; the cross-language-safety
-win generalises only as far as TSA has per-language resolution. **Now shipped for
-8 languages.** RFC-0010 (#345) introduced a language **registry + auto-discovery**
+win generalises only as far as TSA has per-language resolution. **Resolvers now shipped for 12 languages; 7 are
+active (have call-edge extraction), 5 are resolver-ready (extraction pending).** RFC-0010 (#345) introduced a language **registry + auto-discovery**
 so a language is a self-contained `languages/<lang>.py` module — added with ZERO
 edits to shared files, in parallel. First wave landed: **Go (#350), JavaScript
 (#346), TypeScript (#347), C++ (#348), Rust (#349)** — on top of Python + Java
