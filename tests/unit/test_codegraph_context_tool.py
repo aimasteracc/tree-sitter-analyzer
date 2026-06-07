@@ -1581,7 +1581,9 @@ def test_snake_or_camel_path_components_do_not_anchor_filter() -> None:
     assert "dispatch" in _extract_symbol_candidates(
         "find dispatch in tree_sitter_analyzer/mcp_tools.py"
     )
-    assert "dispatch" in _extract_symbol_candidates("find dispatch in src/UserService.py")
+    assert "dispatch" in _extract_symbol_candidates(
+        "find dispatch in src/UserService.py"
+    )
     # control: a genuine snake_case symbol (not in a path) DOES anchor + drop bare verb
     assert "dispatch" not in _extract_symbol_candidates(
         "how does resolve_callee dispatch a call"
