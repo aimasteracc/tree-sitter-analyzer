@@ -146,7 +146,7 @@ Pinned commands. Run from the repo root with both indexes present
 (`.codegraph/codegraph.db` and `.ast-cache/index.db`).
 
 ```bash
-# --- node-count merges (CodeGraph collapses same-name across languages) ---
+# --- node counts (CodeGraph keeps N distinct same-name nodes; queries merge them) ---
 for s in get add fts_search; do
   printf "%s nodes: " "$s"
   sqlite3 .codegraph/codegraph.db "SELECT COUNT(*) FROM nodes WHERE name='$s';"
