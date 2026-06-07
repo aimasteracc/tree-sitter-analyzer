@@ -71,9 +71,11 @@ Key mixins for the Java formatter:
 C0/DEL control characters (NULL etc.) from CSV cells before they reach
 `csv.writer`. Python 3.10's `csv.writer` raises `_csv.Error: need to escape,
 but no escapechar set` on a NULL byte; setting `escapechar` would silence it
-but double literal backslashes in ordinary fields (a format regression). Tab,
-newline, and carriage return are preserved (the writer quotes them on every
-version). Used by `CsvFormatter`, `format_html_csv`, and `format_csv_output`.
+but double literal backslashes in ordinary fields (a format regression). Tab
+and newline are preserved (the writer quotes them on every version); a bare
+carriage return is **stripped** because Python 3.10 emits it unquoted, yielding
+an unreadable CSV. Used by `CsvFormatter`, `format_html_csv`, and
+`format_csv_output`.
 
 ## TOON Format
 

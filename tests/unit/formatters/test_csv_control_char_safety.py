@@ -112,11 +112,42 @@ def test_csv_formatter_preserves_backslashes() -> None:
 
 
 def test_csv_safe_cell_strips_controls_keeps_tab_newline() -> None:
-    """The sanitizer removes C0/DEL controls but keeps tab/newline/CR."""
+    """The sanitizer removes C0/DEL controls + bare CR, keeps tab and LF.
+
+    CR is stripped because Python 3.10's csv.writer emits a bare \\r unquoted,
+    producing an unreadable CSV; tab and LF are quoted correctly on all
+    versions and so survive.
+    """
     assert csv_safe_cell("a\x00b\x01c") == "abc"
-    assert csv_safe_cell("a\tb\nc\rd") == "a\tb\nc\rd"
+    assert csv_safe_cell("a\tb\nc") == "a\tb\nc"  # tab + LF preserved
+    assert csv_safe_cell("a\rb") == "ab"  # bare CR stripped
+    assert csv_safe_cell("a\r\nb") == "a\nb"  # CRLF -> LF
     assert csv_safe_cell(r"C:\tmp") == r"C:\tmp"  # backslash untouched
     assert csv_safe_cell(42) == 42  # non-str passes through unchanged
+
+
+@pytest.mark.parametrize("name", ["a\rb", "a\r\nb", "\r", "line1\rline2"])
+def test_csv_formatter_output_is_readable_with_cr(name: str) -> None:
+    """CSV output must round-trip through csv.reader even for CR-laden names.
+
+    Guards the Python 3.10 'new-line character seen in unquoted field' failure
+    Codex flagged: a bare CR in a cell must not survive into the output.
+    """
+    import csv
+    import io
+
+    element = CodeElement(
+        name=name,
+        element_type="class",
+        start_line=1,
+        end_line=10,
+        language="python",
+    )
+    result = CsvFormatter().format([element])
+    # Must parse back without raising on any Python version.
+    rows = list(csv.reader(io.StringIO(result)))
+    assert len(rows) >= 2  # header + at least one data row
+    assert "\r" not in result
 
 
 def test_csv_safe_row_only_touches_string_cells() -> None:
