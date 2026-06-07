@@ -9,7 +9,7 @@ the prioritized path to becoming the default agent code-intelligence layer.
 |---|---|---|---|
 | symbol kinds (kind=method) | 20,348 | 20,275 | TSA ahead |
 | callee classification | 96.3% (.ast-cache, measured) | many same-name mis-wires | TSA ahead (correct AND complete) |
-| cross-language safety | ~0.01% mis-wires across 8 languages (py/java/go/js/ts/cpp/rust + jsx) | wires 299 Python `sorted()` callers to a Swift func | TSA structurally ahead — never binds across language; see REPORT-v1.21.0 |
+| cross-language safety | ~0.01% mis-wires across 8 languages (py/java/go/js/ts/cpp/rust + jsx) | wires 299 Python `sorted()` callers to a Swift func | TSA structurally ahead — gated by language family, ~0.01% residual (generic Java names) vs CodeGraph's wholesale cross-language collapse; see REPORT-v1.21.0 |
 | FTS production-first | yes | test-mock shadows | TSA ahead |
 | edges_by_kind status | yes | none | TSA exclusive |
 | token / context call | ~6.6k (was 12.7k) | ~4.4k | gap 2.9x to 1.5x; near parity |
