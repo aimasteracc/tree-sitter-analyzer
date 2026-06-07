@@ -5,7 +5,7 @@
 > **专为 AI agent 而生的 MCP 代码情报服务 — 更少 token、更少工具调用、100% 本地运行。**
 > 预建 AST 索引 + **8 个 MCP 工具**（从 v1.x 的 63 个精简而来）+ 13 个精选 agent 技能 + TOON 压缩输出。
 > **tool-definition 开销降低约 80%** — 市场上唯一同时具备 rich-output（verdict + TOON）和 Roo/Cursor 兼容的 code-intel MCP。
-> CodeGraph 的**严格 CLI 超集**、更快的索引、一次调用的 jQuery 风格查询 DSL。（诚实成本说明：一次性 agent 任务上 CodeGraph 约便宜 1.5× —— 见[与 CodeGraph 的对比](#与-codegraph-的对比)。）
+> CodeGraph 的**严格 CLI 超集**，更快的索引、一次调用的 jQuery 风格查询 DSL，以及 **跨 13 种语言都不会错连的调用图**。在同一仓库的两个工具实时索引上，CodeGraph 产生 **745 处**跨语言错连（例如把 Python 的 `sorted()` 连到 Swift 的 func），TSA 只有 **6 处**（约 **390× 更干净**）。成本曾是 CodeGraph 唯一的优势，RFC-0006 已弥合大部分 —— 见[与 CodeGraph 的对比](#与-codegraph-的对比)。
 > **BM25 排名搜索** — 所有 8 个 facade 的结果按相关性打分排序，不再按文件路径随机排列。
 >
 > 竞品工具数对比：CodeGraph ~12 · Rhizome 1 · **TSA 8（rich-output）** · TSA v1.x 为 63。
@@ -33,6 +33,14 @@ claude mcp add tree-sitter-analyzer \
 重启 agent，对它说："设置项目根目录到我的仓库，然后用 `index` 工具调用 action=status。"
 
 [其他 agent（Cursor / Copilot / Cline / Continue / Claude Desktop / Roo Code）→](#-支持的-agent)
+
+**用一条命令在你自己的仓库上验证 correctness 优势**（无需安装、无需 CodeGraph，会先重建索引）：
+
+```bash
+uvx --from "tree-sitter-analyzer" miswire-audit .
+```
+
+它会显示一个 name-only 代码索引（多数工具的设计）会把多少调用跨语言错连（例如 Python 的 `sorted()` → Swift 的 func），对比 TSA 的数量。实测：[HuggingFace `tokenizers`](benchmarks/codegraph_compare/MISWIRE-AUDIT-EXAMPLES.md) 上 name-only 为 **1,259 处**（含 JS `tokenize()` → Rust），TSA 为 **0**。ruff **7557×**、polars **9016×**。单语言仓库（gin/Go）两者均为 **0**，无误报。
 
 ---
 
