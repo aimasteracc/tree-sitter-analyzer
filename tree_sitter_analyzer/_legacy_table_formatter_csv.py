@@ -7,6 +7,18 @@ import io
 from typing import Any
 
 
+def _csv_safe_row(row: list[Any]) -> list[Any]:
+    """Sanitize a CSV row, importing the shared helper lazily.
+
+    Importing ``tree_sitter_analyzer.formatters`` at module load time creates a
+    circular import (formatters.__init__ -> formatter_registry -> ... -> this
+    module), so the helper is imported on first use instead.
+    """
+    from tree_sitter_analyzer.formatters._csv_safety import csv_safe_row
+
+    return csv_safe_row(row)
+
+
 def format_csv(data: dict[str, Any]) -> str:
     """Format structure data as legacy CSV output."""
     output = io.StringIO()
@@ -27,16 +39,18 @@ def format_csv(data: dict[str, Any]) -> str:
 
     for cls in data.get("classes", []) or []:
         writer.writerow(
-            [
-                str(cls.get("type", "class")),
-                str(cls.get("name", "Unknown")),
-                "",
-                "",
-                str(cls.get("visibility", "public")),
-                "false",
-                "true" if "final" in cls.get("modifiers", []) else "false",
-                cls.get("line_range", {}).get("start", 0),
-            ]
+            _csv_safe_row(
+                [
+                    str(cls.get("type", "class")),
+                    str(cls.get("name", "Unknown")),
+                    "",
+                    "",
+                    str(cls.get("visibility", "public")),
+                    "false",
+                    "true" if "final" in cls.get("modifiers", []) else "false",
+                    cls.get("line_range", {}).get("start", 0),
+                ]
+            )
         )
 
     for method in data.get("methods", []):
@@ -59,16 +73,18 @@ def _write_csv_method_row(writer: Any, method: dict[str, Any]) -> None:
     is_final = "final" in modifiers or method.get("is_final", False)
 
     writer.writerow(
-        [
-            "constructor" if method.get("is_constructor", False) else "method",
-            str(method.get("name", "")),
-            str(method.get("return_type", "void")),
-            _csv_parameters(method.get("parameters", [])),
-            str(method.get("visibility", "public")),
-            "true" if is_static else "false",
-            "true" if is_final else "false",
-            method.get("line_range", {}).get("start", 0),
-        ]
+        _csv_safe_row(
+            [
+                "constructor" if method.get("is_constructor", False) else "method",
+                str(method.get("name", "")),
+                str(method.get("return_type", "void")),
+                _csv_parameters(method.get("parameters", [])),
+                str(method.get("visibility", "public")),
+                "true" if is_static else "false",
+                "true" if is_final else "false",
+                method.get("line_range", {}).get("start", 0),
+            ]
+        )
     )
 
 
@@ -79,16 +95,18 @@ def _write_csv_field_row(writer: Any, field: dict[str, Any]) -> None:
     is_final = "final" in modifiers or field.get("is_final", False)
 
     writer.writerow(
-        [
-            "field",
-            str(field.get("name", "")),
-            str(field.get("type", "Object")),
-            "",
-            str(field.get("visibility", "private")),
-            "true" if is_static else "false",
-            "true" if is_final else "false",
-            field.get("line_range", {}).get("start", 0),
-        ]
+        _csv_safe_row(
+            [
+                "field",
+                str(field.get("name", "")),
+                str(field.get("type", "Object")),
+                "",
+                str(field.get("visibility", "private")),
+                "true" if is_static else "false",
+                "true" if is_final else "false",
+                field.get("line_range", {}).get("start", 0),
+            ]
+        )
     )
 
 
