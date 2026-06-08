@@ -360,10 +360,11 @@ class ModificationGuardTool(BaseMCPTool):
                 "trace_impact for general usage lookup.\n"
                 "\n"
                 "safety_verdict values:\n"
-                "  SAFE     — 0 callers, proceed freely\n"
-                "  CAUTION  — 1-5 callers, review before modifying\n"
-                "  REVIEW   — 6-20 callers, check all call sites\n"
-                "  UNSAFE   — 21+ callers, requires careful planning\n"
+                "  SAFE      — 0 callers, proceed freely\n"
+                "  CAUTION   — 1-5 callers, review before modifying\n"
+                "  REVIEW    — 6-20 callers, check all call sites\n"
+                "  UNSAFE    — 21+ callers, requires careful planning\n"
+                "  NOT_FOUND — symbol unknown to the index (NOT a SAFE result)\n"
                 "\n"
                 "VERDICT INTEGRITY: agent_summary.verdict is a hard gate, not a "
                 "suggestion. It is derived from concrete caller counts in the "
@@ -446,6 +447,16 @@ class ModificationGuardTool(BaseMCPTool):
                 "error": trace_result.get("error", "trace_impact failed"),
             }
 
+        # Wave 1b (audit edit-08): a symbol that resolves to ZERO occurrences in
+        # the project is UNKNOWN — it must not be reported as SAFE ("no callers,
+        # safe to refactor"), which is a dangerous false-safe for an agent about
+        # to act. trace_impact already flags this (found=False / NOT_FOUND);
+        # distinguish "symbol unknown" from "symbol known, 0 callers".
+        if trace_result.get("found") is False or trace_result.get("verdict") == (
+            "NOT_FOUND"
+        ):
+            return self._build_not_found_result(symbol, modification_type)
+
         total_callers = trace_result.get("call_count", 0)
         impact = _get_impact_level(total_callers)
         impact_level = impact["level"]
@@ -488,6 +499,41 @@ class ModificationGuardTool(BaseMCPTool):
             proceed_recommendation=proceed_recommendation,
             architecture_rank=result.get("architecture_rank"),
         )
+        return mirror_summary_line(result)
+
+    @staticmethod
+    def _build_not_found_result(symbol: str, modification_type: str) -> dict[str, Any]:
+        """Wave 1b (audit edit-08): envelope for a symbol unknown to the index.
+
+        success is True (the guard ran fine) but the verdict is NOT_FOUND, and
+        no SAFE/safety claim is made — the symbol does not exist, so there is
+        nothing to call it safe to modify.
+        """
+        summary_line = f"modification_guard: '{symbol}' not found in project"
+        next_step = (
+            f"'{symbol}' resolves to no definition or reference in the project. "
+            "Verify the name/spelling (search action=symbol) before assuming it "
+            "is safe to modify — this is NOT a SAFE verdict."
+        )
+        result: dict[str, Any] = {
+            "success": True,
+            "symbol": symbol,
+            "modification_type": modification_type,
+            "verdict": "NOT_FOUND",
+            "safety_verdict": "NOT_FOUND",
+            "total_callers": 0,
+            "summary_line": summary_line,
+            "agent_summary": {
+                "summary_line": summary_line,
+                "verdict": "NOT_FOUND",
+                # ``risk`` is part of every guard agent_summary (see
+                # _build_agent_summary) — keep it here too so consumers reading
+                # agent_summary["risk"] never KeyError on the NOT_FOUND path.
+                # "unknown" mirrors trace_impact's NOT_FOUND convention.
+                "risk": "unknown",
+                "next_step": next_step,
+            },
+        }
         return mirror_summary_line(result)
 
     async def _run_trace_impact(
