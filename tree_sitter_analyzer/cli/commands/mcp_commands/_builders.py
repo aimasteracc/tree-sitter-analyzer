@@ -220,6 +220,7 @@ def _build_change_impact_tool_args(args: Any, output_format: str) -> dict[str, A
         "include_tests": bool(getattr(args, "change_impact_include_tests", True)),
         "output_format": output_format,
         "scope_paths": getattr(args, "change_impact_scope", None) or [],
+        "scope_mode": getattr(args, "change_impact_scope_mode", "report") or "report",
         "agent_summary_only": not bool(getattr(args, "change_impact_full", False)),
     }
 

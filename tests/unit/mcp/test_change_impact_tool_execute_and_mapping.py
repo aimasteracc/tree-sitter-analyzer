@@ -608,3 +608,132 @@ def test_execute_no_changes_with_scope_and_agent_summary(monkeypatch):
     assert result["agent_summary_only"] is True
     assert result["queue_ledger"]["scoped_changed_count"] == 0
     assert result["queue_ledger"]["out_of_scope_changed_count"] == 0
+
+
+def test_execute_strict_scope_mode_mutes_out_of_scope(monkeypatch):
+    """#8: scope_mode=strict threads through execute and mutes the out-of-scope
+    dirty-file list in the queue ledger while keeping an honest count."""
+
+    def fake_changed(mode, project_root, scope_paths=None):
+        # Scoped query returns only the in-scope file; the unscoped workspace
+        # query returns extra dirty files outside the scope.
+        if scope_paths:
+            return ["src/a.py"]
+        return ["src/a.py", "docs/noise.md", "tmp/scratch.py"]
+
+    monkeypatch.setattr(tool_module, "_get_changed_files", fake_changed)
+    monkeypatch.setattr(
+        tool_module,
+        "_get_diff_stat",
+        lambda mode, project_root, scope_paths=None: "src/a.py | 2 +-",
+    )
+    # Keep scope paths "valid" so the test does not depend on on-disk layout.
+    monkeypatch.setattr(tool_module, "_scope_paths_invalid", lambda root, paths: [])
+
+    def fail_graph(project_root):
+        raise RuntimeError("no graph")
+
+    monkeypatch.setattr(change_impact_tool, "DependencyGraph", fail_graph)
+
+    tool = tool_module.ChangeImpactTool(project_root="/repo")
+    result = asyncio.run(
+        tool.execute(
+            {
+                "output_format": "json",
+                "scope_paths": ["src/"],
+                "scope_mode": "strict",
+            }
+        )
+    )
+
+    ledger = result["queue_ledger"]
+    assert ledger["scope_mode"] == "strict"
+    assert ledger["scoped_changed_count"] == 1
+    assert ledger["out_of_scope_changed_count"] == 2
+    assert ledger["out_of_scope_changed_preview"] == []
+    assert ledger["out_of_scope_muted"] is True
+    # The agent_summary mirror must reflect the muted ledger too.
+    assert result["agent_summary"]["queue_ledger"]["out_of_scope_muted"] is True
+
+
+def test_execute_strict_scope_mode_does_not_leak_into_toon(monkeypatch):
+    """#8: under TOON output, strict mode must NOT serialize an out-of-scope
+    filename anywhere in the response (the mute has to survive serialization)."""
+
+    def fake_changed(mode, project_root, scope_paths=None):
+        if scope_paths:
+            return ["src/a.py"]
+        return ["src/a.py", "docs/secret_noise.md"]
+
+    monkeypatch.setattr(tool_module, "_get_changed_files", fake_changed)
+    monkeypatch.setattr(
+        tool_module,
+        "_get_diff_stat",
+        lambda mode, project_root, scope_paths=None: "src/a.py | 2 +-",
+    )
+    monkeypatch.setattr(tool_module, "_scope_paths_invalid", lambda root, paths: [])
+
+    def fail_graph(project_root):
+        raise RuntimeError("no graph")
+
+    monkeypatch.setattr(change_impact_tool, "DependencyGraph", fail_graph)
+
+    tool = tool_module.ChangeImpactTool(project_root="/repo")
+    result = asyncio.run(
+        tool.execute(
+            {
+                "output_format": "toon",
+                "scope_paths": ["src/"],
+                "scope_mode": "strict",
+            }
+        )
+    )
+
+    # Whatever the TOON envelope shape, the muted filename must appear nowhere.
+    import json as _json
+
+    blob = _json.dumps(result)
+    assert "secret_noise.md" not in blob
+    assert result["queue_ledger"]["out_of_scope_changed_count"] == 1
+
+
+def test_execute_default_scope_mode_lists_out_of_scope(monkeypatch):
+    """Default scope_mode=report keeps today's behavior: out-of-scope dirty
+    files are listed (not muted) — byte-parity guard for #8."""
+
+    def fake_changed(mode, project_root, scope_paths=None):
+        if scope_paths:
+            return ["src/a.py"]
+        return ["src/a.py", "docs/noise.md"]
+
+    monkeypatch.setattr(tool_module, "_get_changed_files", fake_changed)
+    monkeypatch.setattr(
+        tool_module,
+        "_get_diff_stat",
+        lambda mode, project_root, scope_paths=None: "src/a.py | 2 +-",
+    )
+    monkeypatch.setattr(tool_module, "_scope_paths_invalid", lambda root, paths: [])
+
+    def fail_graph(project_root):
+        raise RuntimeError("no graph")
+
+    monkeypatch.setattr(change_impact_tool, "DependencyGraph", fail_graph)
+
+    tool = tool_module.ChangeImpactTool(project_root="/repo")
+    result = asyncio.run(
+        tool.execute({"output_format": "json", "scope_paths": ["src/"]})
+    )
+
+    ledger = result["queue_ledger"]
+    assert ledger["scope_mode"] == "report"
+    assert ledger["out_of_scope_muted"] is False
+    assert ledger["out_of_scope_changed_preview"] == ["docs/noise.md"]
+
+
+def test_validate_arguments_rejects_bad_scope_mode():
+    """#8: invalid scope_mode is rejected with an actionable message."""
+    import pytest
+
+    tool = tool_module.ChangeImpactTool(project_root="/repo")
+    with pytest.raises(ValueError, match=r"scope_mode must be report\|strict"):
+        tool.validate_arguments({"scope_mode": "nonsense"})
