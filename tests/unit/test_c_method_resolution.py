@@ -16,8 +16,6 @@ is False), while a C caller MAY resolve another C file / C-tagged ``.h`` header.
 
 from __future__ import annotations
 
-import pytest
-
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.synapse_resolver import ResolverContext, resolve_callee
 from tree_sitter_analyzer.synapse_resolver._context import build_resolver_context
@@ -451,6 +449,22 @@ _REAL_C = (
 # collision the moat must never bind a C caller to.
 _REAL_PY = "def helper():\n    return 2\n"
 
+# A freestanding / embedded C project that defines its OWN ``malloc`` (a custom
+# allocator — common in firmware, kernels, and allocator libraries). A call to
+# ``malloc`` here MUST NOT be classified ``stdlib``: the project owns it. This is
+# the Codex P2 (PR #353) regression target.
+_REAL_C_CUSTOM_MALLOC = (
+    "void *malloc(unsigned long n) { return (void *)0; }\n"
+    "void use(void) {\n"
+    "    void *p = malloc(16);\n"
+    "    (void)p;\n"
+    "}\n"
+)
+# A Python file ALSO defining ``malloc`` — a foreign-language same-name symbol
+# that the C resolver's ownership gate must NOT count (the moat): a Python
+# ``malloc`` must neither shadow the libc tier nor get bound.
+_REAL_PY_MALLOC = "def malloc(n):\n    return None\n"
+
 
 class TestRealIndexIntegration:
     def test_c_context_is_built_from_real_index(self, tmp_path) -> None:
@@ -484,23 +498,52 @@ class TestRealIndexIntegration:
         assert f != "util.py"
         assert not f.endswith(".py")
 
-    @pytest.mark.xfail(
-        reason=(
-            "Known production gap: the shared generic symbol walker "
-            "(_ast_extraction._walk_for_symbols) gates on "
-            "child_by_field_name('name'), which tree-sitter C "
-            "function_definition nodes do not expose (the identifier lives "
-            "under function_declarator), so ordinary C free functions are "
-            "absent from ast_symbol_rows and the local/single-global tiers "
-            "cannot fire. Root cause lives in the shared extractor, out of "
-            "this resolver's scope; this xfail is the regression target so the "
-            "tier flips to PASS once the walker recovers C symbols."
-        ),
-        strict=True,
-    )
+    def test_project_defined_malloc_is_not_stdlib_on_real_index(self, tmp_path) -> None:
+        """Codex P2 (PR #353): a C project that DEFINES its own ``malloc`` must
+        NOT have a ``malloc()`` call classified ``stdlib``.
+
+        The libc tier may only fire when the project owns no compatible-language
+        function of that name. Here the project owns ``malloc`` (a C
+        ``function_definition``), so the call must resolve to the project
+        definition (``local``/``project``) — never ``stdlib``.
+        """
+        _root, c_ctx = _index_and_build(
+            tmp_path, {"alloc.c": _REAL_C_CUSTOM_MALLOC}
+        )
+        sym, res, f = resolve_c_callee("malloc", "malloc", "alloc.c", c_ctx)
+        assert res != "stdlib", (
+            "project-defined malloc must shadow the libc tier, got stdlib"
+        )
+        # It is the project's own C definition (same file => local).
+        assert res in {"local", "project"}
+        assert sym is not None
+        assert f == "alloc.c"
+
+    def test_foreign_malloc_does_not_shadow_libc_on_real_index(self, tmp_path) -> None:
+        """THE MOAT under the custom-libc fix: a Python ``malloc`` must NOT count
+        as a C owner. With only a foreign (Python) ``malloc`` present, the C
+        ``malloc()`` call still classifies ``stdlib`` and is NEVER bound to the
+        Python definition."""
+        _root, c_ctx = _index_and_build(
+            tmp_path,
+            {"service.c": _REAL_C, "util.py": _REAL_PY_MALLOC},
+        )
+        sym, res, f = resolve_c_callee("malloc", "malloc", "service.c", c_ctx)
+        assert (sym, res, f) == (None, "stdlib", "")
+
     def test_local_free_function_resolves_on_real_index(self, tmp_path) -> None:
-        """When the extractor populates C symbols, an unqualified call to a
-        same-file free function (``helper``) must resolve ``local``."""
+        """An unqualified call to a same-file C free function (``helper``) must
+        resolve ``local`` on a real index.
+
+        This was previously a ``strict`` xfail: the shared generic symbol walker
+        (``_ast_extraction._walk_for_symbols``) gated on
+        ``child_by_field_name('name')``, which tree-sitter C
+        ``function_definition`` nodes do not expose (the identifier lives under
+        ``function_declarator``), so C free functions never reached
+        ``ast_symbol_rows``. The walker now recovers C function names via
+        ``_c_function_def_name``, so the local / single-global tiers fire and
+        this is a hard PASS.
+        """
         _root, c_ctx = _index_and_build(tmp_path, {"service.c": _REAL_C})
         _sym, res, f = resolve_c_callee("helper", "helper", "service.c", c_ctx)
         assert res == "local"
