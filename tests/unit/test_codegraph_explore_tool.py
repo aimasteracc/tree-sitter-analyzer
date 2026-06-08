@@ -87,10 +87,22 @@ class TestToolDefinition:
         assert ann["idempotentHint"] is True
         assert ann["openWorldHint"] is False
 
-    def test_schema_requires_query(self, tool):
+    def test_schema_query_and_symbol_alias_not_required(self, tool):
+        # Wave 1b (audit structure-06): query may arrive via the `symbol` alias,
+        # so neither is schema-required; validate_arguments enforces the rule.
         schema = tool.get_tool_schema()
         assert "query" in schema["properties"]
-        assert schema["required"] == ["query"]
+        assert "symbol" in schema["properties"]
+        assert "query" not in schema.get("required", [])
+
+    def test_symbol_alias_maps_to_query(self, tool):
+        args = {"symbol": "FooBar"}
+        assert tool.validate_arguments(args) is True
+        assert args["query"] == "FooBar"
+
+    def test_missing_query_and_symbol_raises(self, tool):
+        with pytest.raises(ValueError, match="query is required"):
+            tool.validate_arguments({})
 
     def test_schema_strict_no_additional_properties(self, tool):
         assert tool.get_tool_schema()["additionalProperties"] is False
