@@ -57,11 +57,16 @@ class TestGetToolDefinition:
         assert "required" in schema
 
     def test_required_fields(self, tool):
+        # Wave 1b (audit project-05): ``roots`` is no longer schema-required.
+        # It is optional — synthesised from the ``path`` alias or defaulted to
+        # project_root — and validate_arguments enforces the real rules. A
+        # required ``roots`` contradicted the ``path`` alias and made strict MCP
+        # clients reject a valid ``{path: X}`` call before dispatch.
         definition = tool.get_tool_definition()
         schema = definition["inputSchema"]
         required = schema.get("required", [])
-        assert "roots" in required
-        assert len(required) == 1
+        assert "roots" not in required
+        assert required == []
 
     def test_roots_property(self, tool):
         definition = tool.get_tool_definition()
