@@ -134,6 +134,38 @@ All inter-agent state lives in a shared memory namespace (`memory_store` / `memo
 - **Name agents** — `name: "role"` makes them addressable by the lead even though they cannot address each other.
 - **After spawning**: STOP, tell user what's running, wait for completion notifications. No polling.
 
+### Subagent engineering principles (dev/research briefs)
+
+Every **dev / research / fix** subagent brief MUST also carry these four principles
+(adapted from Karpathy's LLM-coding-pitfalls list). The key adaptation for this
+project: the audience for "ask / surface" is the **lead**, never the end user —
+and an uncertain agent picks a reasonable default, flags it, and **keeps going**
+(a subagent has no inbox; pausing = wasted run). Do NOT send these to **review**
+subagents — they must stay adversarial truth-seekers, not style-followers.
+
+1. **Think before coding (report to the lead, never block).** In your final
+   return, state your assumptions explicitly; if multiple interpretations exist,
+   list them and pick one *with a reason* (don't pick silently); surface any
+   inconsistency or simpler approach you notice. If something is unclear, assume
+   the most reasonable default, finish the task, and note *"assumed X — lead,
+   correct if wrong."* Never stop the pipeline waiting for a human.
+2. **Simplicity first.** Minimum code that solves the task, nothing speculative —
+   no features/abstractions/config/impossible-case error handling that weren't
+   asked for. If 200 lines could be 50, rewrite it.
+3. **Surgical changes.** Touch only what the task needs; every changed line
+   traces to the task. Don't "improve" adjacent code/comments/formatting, don't
+   refactor what isn't broken, match existing style. Clean up only the orphans
+   *your* change created; pre-existing dead code you only *mention*, never delete
+   (unless asked). Reinforces the focused-PR rule.
+4. **Goal-driven execution.** Turn the task into a verifiable goal: write the
+   failing test first (RED), then implement to green; for multi-step work, state
+   a brief `step → verify` plan. Strong success criteria let you loop
+   independently; weak ones ("make it work") force round-trips.
+
+The lead also honors 2–4; for principle 1 the lead's "report" audience is the
+investor's node-level Chinese briefing — but the lead likewise never pauses for
+permission.
+
 ### Spawning example (memory-as-bus)
 
 ```javascript
