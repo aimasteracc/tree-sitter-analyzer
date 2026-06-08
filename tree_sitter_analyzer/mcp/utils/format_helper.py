@@ -14,6 +14,52 @@ from ...utils import setup_logger
 logger = setup_logger(__name__)
 
 
+#: RFC-0012: the minimal scalar control surface an agent branches on WITHOUT
+#: parsing the ``toon_content`` blob. Everything else in a TOON response is
+#: recoverable from ``toon_content``, so under ``compact_only`` we keep only
+#: these keys alongside the blob and drop the duplicated metadata.
+#:
+#: ``summary_line`` is included deliberately: the MCP boundary's
+#: ``ensure_canonical_success_envelope`` re-populates it on every success
+#: anyway (so dropping it is futile), it is a single cheap scalar, and it is
+#: the highest-value one-line triage signal.
+TOON_CONTROL_SURFACE: frozenset[str] = frozenset(
+    {
+        "success",
+        "format",
+        "toon_content",
+        "verdict",
+        "error",
+        "error_type",
+        "output_format",
+        "summary_line",
+        # Cheap branchable identifiers/affordances an agent should not have to
+        # parse the TOON blob for (review nit): the recovery ``hint`` on error
+        # envelopes is the sharpest edge; ``file_path`` / ``pr_url`` /
+        # ``pr_number`` echo the call's subject.
+        "hint",
+        "file_path",
+        "pr_url",
+        "pr_number",
+    }
+)
+
+
+def reduce_to_control_surface(result: dict[str, Any]) -> dict[str, Any]:
+    """Drop TOON-response metadata already encoded inside ``toon_content``.
+
+    RFC-0012 Phase 1. Keeps only :data:`TOON_CONTROL_SURFACE` keys (plus the
+    ``toon_content`` blob). It is a no-op unless ``result`` is a TOON response
+    (``format == "toon"``), and it is **idempotent** — applying it twice equals
+    applying it once — so it is safe to run both inside a tool's ``execute`` and
+    again at the MCP boundary after canonical-envelope normalization re-adds
+    metadata.
+    """
+    if not isinstance(result, dict) or result.get("format") != "toon":
+        return result
+    return {k: v for k, v in result.items() if k in TOON_CONTROL_SURFACE}
+
+
 def format_output(data: dict[str, Any], output_format: str = "json") -> str:
     """
     Format data according to the specified output format.
@@ -172,7 +218,10 @@ def _copy_metadata_fields(
 
 
 def apply_toon_format_to_response(
-    result: dict[str, Any], output_format: str = "json"
+    result: dict[str, Any],
+    output_format: str = "json",
+    *,
+    compact_only: bool = False,
 ) -> dict[str, Any]:
     """
     Apply TOON format to MCP tool response if requested.
@@ -183,6 +232,16 @@ def apply_toon_format_to_response(
     so callers can still inspect ``success``/``error``/``file_path`` without
     parsing the TOON blob.
 
+    RFC-0012 Phase 1: when ``compact_only`` is True, the TOON response is
+    further reduced to :data:`TOON_CONTROL_SURFACE` (plus ``toon_content``),
+    dropping metadata that is *already* encoded in the blob — eliminating the
+    JSON/TOON duplication that made metadata-heavy responses larger than plain
+    JSON. Default ``False`` preserves the legacy (duplicating) shape verbatim,
+    so no existing caller or golden test changes until it opts in. Note: on the
+    MCP server path the canonical post-hook re-adds metadata, so the boundary
+    re-applies :func:`reduce_to_control_surface` (idempotent) — see
+    ``handle_call_tool``.
+
     Also performs the verdict safety-net: if the tool returned a success
     response without a ``verdict`` field, INFO is injected so agents
     branching on verdict get a sane default rather than ``None``. Tools
@@ -192,6 +251,8 @@ def apply_toon_format_to_response(
     Args:
         result: Original result dictionary from MCP tool
         output_format: Output format ('json' or 'toon')
+        compact_only: When True (and output is TOON), keep only the control
+            surface alongside ``toon_content`` (RFC-0012).
 
     Returns:
         Modified result dict with TOON content if requested, otherwise original
@@ -244,6 +305,11 @@ def apply_toon_format_to_response(
         _copy_metadata_fields(
             result, toon_response, redundant_fields, conditionally_redundant_list_fields
         )
+
+        # RFC-0012: opt-in compaction strips the metadata that is already inside
+        # toon_content, leaving only the branchable control surface.
+        if compact_only:
+            return reduce_to_control_surface(toon_response)
 
         return toon_response
 
