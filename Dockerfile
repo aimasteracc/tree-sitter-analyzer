@@ -5,8 +5,13 @@
 # by anyone who wants to run the MCP server in a container.
 #
 # Build:  docker build -t tree-sitter-analyzer-mcp .
-# Run:    docker run --rm -i -v "$PWD:/work" -w /work tree-sitter-analyzer-mcp
-#         (the server speaks MCP over stdio; -i keeps stdin open)
+# Run:    docker run --rm -i --user "$(id -u):$(id -g)" \
+#             -v "$PWD:/work" -w /work tree-sitter-analyzer-mcp
+#         (the server speaks MCP over stdio; -i keeps stdin open. --user runs
+#         as the host UID/GID so the .ast-cache, decision journal, and any
+#         `edit`/`refactor` writes under the bind-mounted repo are owned by you,
+#         not root. Glama-style introspection needs no bind mount, so the bare
+#         image is fine there.)
 FROM python:3.12-slim
 
 # Prebuilt tree-sitter wheels mean no compiler is needed on the slim image.
