@@ -195,6 +195,15 @@ class ClassHierarchy:
         )
         return True
 
+    def has_class(self, class_name: str) -> bool:
+        """Whether ``class_name`` is a known, defined class in the project.
+
+        Lets callers distinguish "class does not exist" from "class exists but
+        has no subclasses" — both otherwise present as an empty subclass list.
+        """
+        self.build()
+        return class_name in self._classes
+
     def subclasses_of(
         self,
         class_name: str,
