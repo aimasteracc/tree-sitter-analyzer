@@ -41,6 +41,11 @@ TOON_CONTROL_SURFACE: frozenset[str] = frozenset(
         "file_path",
         "pr_url",
         "pr_number",
+        # The legacy-shim migration warning (legacy_shim.dispatch_legacy injects
+        # ``deprecation`` AFTER the facade built toon_content). It is the shim's
+        # only in-band signal for agents that cannot read server stderr, so it
+        # must survive compaction (Codex P2 #393).
+        "deprecation",
     }
 )
 

@@ -206,6 +206,31 @@ async def test_boundary_compact_only_error_envelope_keeps_hint(tmp_path) -> None
 
 
 @pytest.mark.asyncio
+async def test_boundary_compact_only_legacy_keeps_deprecation(tmp_path) -> None:
+    """Codex P2 #393: a LEGACY tool name (e.g. check_file_health) routed through
+    dispatch_legacy injects ``deprecation`` AFTER the facade built toon_content.
+    Compaction must NOT drop that in-band migration warning — agents that cannot
+    read server stderr rely on it.
+
+    (check_file_health / safe_to_edit / analyze_change_impact are legacy names in
+    facade_map.LEGACY_TOOL_MAP.)
+    """
+    src = tmp_path / "leg.py"
+    src.write_text("def m():\n    return 5\n")
+    server = TreeSitterAnalyzerMCPServer(str(tmp_path))
+    handler = _capture_call_tool_handler(server)
+    res = await handler(
+        "check_file_health",
+        {"file_path": str(src), "output_format": "toon", "compact_only": True},
+    )
+    body = json.loads(res[0].text)
+    assert set(body) <= TOON_CONTROL_SURFACE
+    assert "deprecation" in body, (
+        "legacy migration warning was dropped by compact reduction"
+    )
+
+
+@pytest.mark.asyncio
 async def test_boundary_reduction_is_idempotent(tmp_path) -> None:
     """Reducing an already-compact response at the boundary is a no-op — guards
     against the execute-level reduction + the boundary reduction disagreeing."""
