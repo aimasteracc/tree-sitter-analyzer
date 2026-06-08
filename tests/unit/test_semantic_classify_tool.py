@@ -24,11 +24,31 @@ class TestSemanticClassifyToolDefinition:
         defn = tool.get_tool_definition()
         assert defn["name"] == "semantic_classify"
 
-    def test_schema_requires_mode(self, tool: SemanticClassifyTool):
+    def test_mode_is_optional_in_schema(self, tool: SemanticClassifyTool):
+        # Wave 1b (audit edit-10): mode is resolved at runtime (defaults to
+        # classify_file when file_path is given), so it must NOT be required —
+        # else a strict MCP client rejects a valid {file_path: X} call.
         schema = tool.get_tool_schema()
         assert "mode" in schema["properties"]
-        assert "required" in schema
-        assert "mode" in schema["required"]
+        assert "mode" not in schema.get("required", [])
+
+    def test_resolve_mode_defaults(self, tool: SemanticClassifyTool):
+        assert tool._resolve_mode({"file_path": "x.py"}) == "classify_file"
+        assert (
+            tool._resolve_mode({"old_source": "a", "new_source": "b"})
+            == "classify_string"
+        )
+        assert tool._resolve_mode({}) == "classify_string"
+        # explicit mode always wins
+        assert (
+            tool._resolve_mode({"mode": "classify_string", "file_path": "x.py"})
+            == "classify_string"
+        )
+
+    def test_file_path_only_does_not_demand_sources(self, tool: SemanticClassifyTool):
+        # The edit-10 bug: classify file_path=X raised "old_source... required".
+        # With the file-default it validates as classify_file instead.
+        assert tool.validate_arguments({"file_path": "some/file.py"}) is True
 
 
 class TestSemanticClassifyValidation:
