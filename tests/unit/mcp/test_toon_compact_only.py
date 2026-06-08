@@ -10,12 +10,15 @@ boundary, not just ``tool.execute()``.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from unittest.mock import Mock, patch
 
 import pytest
 
 from tree_sitter_analyzer.mcp.server import TreeSitterAnalyzerMCPServer
+from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool
+from tree_sitter_analyzer.mcp.tools.safe_to_edit_tool import SafeToEditTool
 from tree_sitter_analyzer.mcp.utils.format_helper import (
     TOON_CONTROL_SURFACE,
     apply_toon_format_to_response,
@@ -246,3 +249,39 @@ async def test_boundary_reduction_is_idempotent(tmp_path) -> None:
     )
     body = json.loads(res[0].text)
     assert reduce_to_control_surface(dict(body)) == body
+
+
+# ---------------------------------------------------------------------------
+# Execute-level early-return compaction (coverage of the syntax-error branch,
+# where execute() forwards compact_only before the main scoring path).
+# ---------------------------------------------------------------------------
+
+_BROKEN_PY = "def f(:\n    return\n"  # tree-sitter parse error → syntax_response
+
+
+def test_execute_compact_only_on_syntax_error_path_file_health(tmp_path) -> None:
+    """file_health's syntax-error early return must honor compact_only too."""
+    src = tmp_path / "broken.py"
+    src.write_text(_BROKEN_PY)
+    res = asyncio.run(
+        FileHealthTool(str(tmp_path)).execute(
+            {"file_path": str(src), "output_format": "toon", "compact_only": True}
+        )
+    )
+    assert res.get("format") == "toon"
+    assert set(res) <= TOON_CONTROL_SURFACE
+    assert res.get("verdict") == "ERROR"  # syntax_error envelope
+
+
+def test_execute_compact_only_on_syntax_error_path_safe_to_edit(tmp_path) -> None:
+    """safe_to_edit's syntax-error early return must honor compact_only too."""
+    src = tmp_path / "broken2.py"
+    src.write_text(_BROKEN_PY)
+    res = asyncio.run(
+        SafeToEditTool(str(tmp_path)).execute(
+            {"file_path": str(src), "output_format": "toon", "compact_only": True}
+        )
+    )
+    assert res.get("format") == "toon"
+    assert set(res) <= TOON_CONTROL_SURFACE
+    assert res.get("verdict") == "ERROR"
