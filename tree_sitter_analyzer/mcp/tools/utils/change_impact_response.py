@@ -210,11 +210,24 @@ def attach_queue_ledger(
     scope_paths: list[str] | None,
     scoped_changed_files: list[str],
     workspace_changed_files: list[str],
+    scope_mode: str = "report",
 ) -> dict[str, Any]:
-    """Attach a lightweight scoped dirty-worktree ledger for agent handoffs."""
+    """Attach a lightweight scoped dirty-worktree ledger for agent handoffs.
+
+    ``scope_mode`` controls how out-of-scope dirty files are surfaced (#8):
+
+    * ``"report"`` (default) — list the out-of-scope dirty files in the preview
+      (today's behavior; byte-parity for callers that omit the argument).
+    * ``"strict"`` — fully mute the out-of-scope file *list* so a large dirty
+      worktree cannot bury the actionable scoped message. The honest
+      ``out_of_scope_changed_count`` is retained (faithful reporting — the agent
+      still learns untouched dirt exists), but the preview is emptied and an
+      ``out_of_scope_muted`` flag is set.
+    """
     if not scope_paths:
         return result
 
+    strict = scope_mode == "strict"
     out_of_scope = [
         path
         for path in workspace_changed_files
@@ -223,21 +236,26 @@ def attach_queue_ledger(
     verification_command = result.get("verification_command") or result.get(
         "agent_summary", {}
     ).get("verification_command", "")
+    out_of_scope_preview = (
+        [] if strict else out_of_scope[:CHANGE_IMPACT_PREVIEW_LIMIT]
+    )
     # Pol3 (round-21): a cap on either preview without a transparency flag
     # would let an agent think it had the full picture. Surface
     # ``preview_limit`` + ``preview_truncated`` whenever the underlying
-    # count exceeds what we expose.
-    preview_truncated = (
-        len(scoped_changed_files) > CHANGE_IMPACT_PREVIEW_LIMIT
-        or len(out_of_scope) > CHANGE_IMPACT_PREVIEW_LIMIT
+    # count exceeds what we expose. In strict mode the out-of-scope list is
+    # intentionally muted, so it never marks the response "truncated".
+    preview_truncated = len(scoped_changed_files) > CHANGE_IMPACT_PREVIEW_LIMIT or (
+        not strict and len(out_of_scope) > CHANGE_IMPACT_PREVIEW_LIMIT
     )
     ledger = {
         "mode": mode,
+        "scope_mode": scope_mode,
         "scope_paths": scope_paths,
         "scoped_changed_count": len(scoped_changed_files),
         "out_of_scope_changed_count": len(out_of_scope),
+        "out_of_scope_muted": strict,
         "scoped_changed_preview": scoped_changed_files[:CHANGE_IMPACT_PREVIEW_LIMIT],
-        "out_of_scope_changed_preview": out_of_scope[:CHANGE_IMPACT_PREVIEW_LIMIT],
+        "out_of_scope_changed_preview": out_of_scope_preview,
         "preview_limit": CHANGE_IMPACT_PREVIEW_LIMIT,
         "preview_truncated": preview_truncated,
         "handoff": _queue_ledger_handoff(
@@ -247,10 +265,17 @@ def attach_queue_ledger(
     result["queue_ledger"] = ledger
     summary = result.setdefault("agent_summary", {})
     summary["queue_ledger"] = ledger
-    summary["scope_hint"] = (
-        f"Scoped queue has {len(scoped_changed_files)} changed file(s); "
-        f"{len(out_of_scope)} out-of-scope dirty file(s) remain untouched."
-    )
+    if strict:
+        summary["scope_hint"] = (
+            f"Scoped queue has {len(scoped_changed_files)} changed file(s); "
+            f"{len(out_of_scope)} out-of-scope dirty file(s) "
+            "muted (scope_mode=strict)."
+        )
+    else:
+        summary["scope_hint"] = (
+            f"Scoped queue has {len(scoped_changed_files)} changed file(s); "
+            f"{len(out_of_scope)} out-of-scope dirty file(s) remain untouched."
+        )
     return result
 
 
