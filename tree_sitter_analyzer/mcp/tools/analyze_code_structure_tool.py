@@ -288,7 +288,11 @@ def _attach_agent_summary(
     )
     response["summary_line"] = summary_line
     # r37x (envelope ratchet): top-level verdict mirror (r37u contract).
-    response["verdict"] = "n/a"
+    # Wave 1b (audit structure-07): a successful structural analysis is
+    # informational with no risk judgment — emit the canonical INFO, not the
+    # off-ladder "n/a" placeholder (not in CANONICAL_VERDICTS), which an agent
+    # branching on verdict cannot interpret.
+    response["verdict"] = "INFO"
     response["agent_summary"] = {
         "summary_line": summary_line,
         "next_step": (
@@ -296,7 +300,7 @@ def _attach_agent_summary(
             if next_steps
             else "Call query_code or extract_code_section for deeper detail."
         ),
-        "verdict": "n/a",
+        "verdict": "INFO",
     }
 
 
