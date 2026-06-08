@@ -60,11 +60,21 @@ class TestGetToolDefinition:
 class TestGetToolSchema:
     """Tests for get_tool_schema."""
 
-    def test_schema_has_required_mode(self):
+    def test_mode_is_optional_in_schema(self):
+        # Wave 1b (audit index-10): mode is resolved at runtime (search when a
+        # query is supplied, else stats), so it must NOT be required — else a
+        # strict MCP client rejects a valid {query: X} call before dispatch.
         tool = ASTCacheTool()
         schema = tool.get_tool_schema()
         assert "mode" in schema["properties"]
-        assert "mode" in schema["required"]
+        assert "mode" not in schema.get("required", [])
+
+    def test_resolve_mode_defaults_to_search_with_query(self):
+        # index-10: cache query=X with no mode searches instead of silently
+        # returning stats and dropping the query.
+        assert ASTCacheTool._resolve_mode({"query": "Foo"}) == "search"
+        assert ASTCacheTool._resolve_mode({}) == "stats"
+        assert ASTCacheTool._resolve_mode({"mode": "stats", "query": "Foo"}) == "stats"
 
     def test_valid_modes(self):
         tool = ASTCacheTool()
@@ -189,6 +199,33 @@ class TestExecute:
         result = await tool.execute({"mode": "search", "query": "MyClass"})
         assert result["count"] == 1
         assert result["query"] == "MyClass"
+
+    @pytest.mark.asyncio
+    async def test_empty_search_with_fts5_says_no_match_not_populate(
+        self, tool_with_mock_cache
+    ):
+        """Wave 1b (audit index-05): an empty result while FTS5 is available is a
+        genuine no-match — guide to broaden, NOT 'populate the FTS index'."""
+        tool, mock_cache = tool_with_mock_cache
+        mock_cache.fts_search.return_value = []
+        mock_cache.fts_search_ranked.return_value = []
+        mock_cache.fts5_available = True
+        result = await tool.execute({"mode": "search", "query": "zzznomatch"})
+        assert result["count"] == 0
+        ns = result["agent_summary"]["next_step"]
+        assert "No symbols match" in ns
+        assert "populate" not in ns.lower()
+
+    @pytest.mark.asyncio
+    async def test_empty_search_without_fts5_says_rebuild(self, tool_with_mock_cache):
+        """index-05: when FTS5 is unavailable, the rebuild hint is correct."""
+        tool, mock_cache = tool_with_mock_cache
+        mock_cache.fts_search.return_value = []
+        mock_cache.fts_search_ranked.return_value = []
+        mock_cache.fts5_available = False
+        result = await tool.execute({"mode": "search", "query": "zzznomatch"})
+        assert result["count"] == 0
+        assert "FTS5 unavailable" in result["agent_summary"]["next_step"]
 
     @pytest.mark.asyncio
     async def test_fts_search_mode(self, tool_with_mock_cache):
