@@ -325,3 +325,35 @@ class TestWalkForSymbolsC:
         names = _walk_c("int (*factory(void))(int) { return 0; }")
         assert "factory" in names
         assert not any("(" in n for n in names)
+
+
+class TestCDeclaratorName:
+    """Edge cases of the C declarator-name descent helper."""
+
+    def test_none_declarator_returns_none(self):
+        from tree_sitter_analyzer._ast_extraction import _c_declarator_name
+
+        assert _c_declarator_name(None, "", 0) is None
+
+    def test_depth_guard_returns_none(self):
+        from tree_sitter_analyzer._ast_extraction import _c_declarator_name
+
+        # depth past the bound short-circuits even with a real node
+        node = SimpleNamespace(type="identifier")
+        assert _c_declarator_name(node, "x", 99) is None
+
+    def test_unknown_declarator_type_returns_none(self):
+        from tree_sitter_analyzer._ast_extraction import _c_declarator_name
+
+        node = SimpleNamespace(type="abstract_declarator", children=[])
+        assert _c_declarator_name(node, "", 0) is None
+
+    def test_parenthesized_without_name_returns_none(self):
+        from tree_sitter_analyzer._ast_extraction import _c_declarator_name
+
+        # parenthesized_declarator whose children carry no name-bearing node
+        paren = SimpleNamespace(
+            type="parenthesized_declarator",
+            children=[SimpleNamespace(type="(", children=[])],
+        )
+        assert _c_declarator_name(paren, "", 0) is None
