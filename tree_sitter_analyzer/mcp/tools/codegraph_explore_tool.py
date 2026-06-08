@@ -72,6 +72,13 @@ _EXPLORE_SCHEMA: dict[str, Any] = {
                 "sentence."
             ),
         },
+        # Wave 1b (audit structure-06): accept the facade's canonical
+        # ``symbol`` as an alias for ``query``. Declared here so the facade
+        # whitelist does not drop it before this tool can map it.
+        "symbol": {
+            "type": "string",
+            "description": "Alias for query (single symbol name).",
+        },
         "maxFiles": {
             "type": "integer",
             "default": 12,
@@ -98,7 +105,10 @@ _EXPLORE_SCHEMA: dict[str, Any] = {
             "description": "Output format (default: toon)",
         },
     },
-    "required": ["query"],
+    # Wave 1b (audit structure-06): not strictly required — ``query`` may arrive
+    # via the ``symbol`` alias, which validate_arguments normalises. A required
+    # ``query`` made strict MCP clients reject a valid ``{symbol: X}`` call.
+    "required": [],
     "additionalProperties": False,
 }
 
@@ -281,6 +291,10 @@ def _handle_no_resolved(
         relationship_map={},
         stats=s,
         hint=_HINT_NOT_FOUND,
+        # Wave 1b (audit structure-03): also expose the hint as the canonical
+        # top-level next_step so the MCP boundary mirrors it into
+        # agent_summary.next_step (agents read next_step, not hint).
+        next_step=_HINT_NOT_FOUND,
     )
     return apply_toon_format_to_response(result, output_format)
 
@@ -374,9 +388,14 @@ class CodeGraphExploreTool(BaseMCPTool):
         return _EXPLORE_SCHEMA
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
+        # Wave 1b (audit structure-06): map the canonical ``symbol`` alias to
+        # ``query`` so ``explore symbol=X`` works instead of raising
+        # "query is required" (the facade's core param is ``symbol``).
+        if not arguments.get("query") and arguments.get("symbol"):
+            arguments["query"] = arguments["symbol"]
         query = arguments.get("query")
         if not isinstance(query, str) or not query.strip():
-            raise ValueError("query is required")
+            raise ValueError("query is required (or pass it as `symbol`)")
         return True
 
     # ------------------------------------------------------------------
