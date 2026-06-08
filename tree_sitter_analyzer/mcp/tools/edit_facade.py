@@ -13,7 +13,7 @@ impact        ``analyze_change_impact``       Post-edit dependency blast-radius 
 refactor      ``refactoring_suggestions``     Refactoring opportunities for a file
 constraints   ``check_constraints``           Constraint violations in the project
 pr            ``codegraph_pr_review``         AI review of a PR diff via CodeGraph
-classify      ``semantic_classify``           Semantic classification of a symbol/file
+classify      ``semantic_classify``           Semantic change classification (file git-diff or code strings)
 ast_diff      ``ast_diff``                    Structural diff of two AST snapshots
 ============  ==============================  ================================
 
@@ -71,8 +71,11 @@ _EDIT_DESCRIPTION = (
     "- action=pr — AI review of a PR diff via codegraph: structural issues, "
     "blast-radius, test-coverage gaps (codegraph_pr_review equivalent). "
     "Params: pr_url or diff (see inner schema).\n"
-    "- action=classify — semantic classification of a symbol or file: domain, "
-    "layer, responsibility. Params: file_path or symbol, output_format.\n"
+    "- action=classify — semantic change classification: classify a file's diff "
+    "between git refs (file_path [+ old_ref/new_ref]) or two code strings "
+    "(old_source + new_source + language). With only file_path, defaults to the "
+    "file/git-ref mode. Params: file_path | old_source+new_source+language, "
+    "output_format.\n"
     "- action=ast_diff — structural AST diff between two snapshots/versions of "
     "a file: added/removed/changed nodes. Params: file_path, before, after or "
     "git ref params (see inner schema).\n"
