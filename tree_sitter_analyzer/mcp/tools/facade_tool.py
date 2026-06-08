@@ -232,6 +232,18 @@ class FacadeTool(BaseMCPTool):
         ):
             cleaned["function_name"] = cleaned["symbol"]
 
+        # Wave 1b (audit structure-01): the canonical ``symbol`` also fills
+        # ``class_name`` for inners that declare it (class_hierarchy /
+        # class_inspect), mirroring R3. Without this the facade dropped
+        # ``symbol`` before projection — so class_tree silently returned the
+        # global summary and class_detail raised "class_name is required".
+        if (
+            "class_name" in inner_props
+            and not cleaned.get("class_name")
+            and cleaned.get("symbol")
+        ):
+            cleaned["class_name"] = cleaned["symbol"]
+
         if not inner_props:
             # Inner declared no properties — cannot whitelist; forward as-is
             # minus control keys (the inner's own guard skips empty schemas).
