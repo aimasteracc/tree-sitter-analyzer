@@ -340,6 +340,43 @@ Create `.vscode/mcp.json` (note: `servers`, not `mcpServers`):
 All read the same `mcpServers` schema as Claude Desktop. Cursor: **Settings → MCP**. Cline: MCP panel → Edit settings. Continue: `~/.continue/config.json` under `experimental.modelContextProtocolServers`. Roo Code: MCP panel → Edit MCP Settings.
 </details>
 
+<details>
+<summary><b>🐳 Docker</b> (no local Python / uv)</summary>
+
+The repo ships a [`Dockerfile`](Dockerfile) that builds the MCP server (stdio transport) from source, so the image always matches the committed code.
+
+```bash
+# Build once
+docker build -t tree-sitter-analyzer-mcp .
+
+# Run against the current repo (server speaks MCP over stdio; -i keeps stdin open)
+docker run --rm -i --user "$(id -u):$(id -g)" \
+  -v "$PWD:/work" -w /work tree-sitter-analyzer-mcp
+```
+
+`--user "$(id -u):$(id -g)"` runs as your host UID/GID, so the `.ast-cache/`, decision journal, and any `edit` writes under the bind-mounted repo are owned by you, not root.
+
+MCP client config (the project root inside the container is the mount point `/work`):
+
+```json
+{
+  "mcpServers": {
+    "tree-sitter-analyzer": {
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i",
+        "--user", "1000:1000",
+        "-v", "/absolute/path/to/your/project:/work",
+        "-w", "/work",
+        "-e", "TREE_SITTER_PROJECT_ROOT=/work",
+        "tree-sitter-analyzer-mcp"
+      ]
+    }
+  }
+}
+```
+</details>
+
 > ⚠️ `TREE_SITTER_PROJECT_ROOT` must be **absolute**. The server enforces a security boundary against escapes via `SecurityBoundaryManager`.
 
 ---
