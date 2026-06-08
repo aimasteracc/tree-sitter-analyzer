@@ -4,8 +4,12 @@
 # Triggers: Called by branch-specific workflows
 # Jobs:
 #   - test-matrix: Runs tests across Python versions and OS platforms
-# Secrets Required:
-#   - CODECOV_TOKEN: For coverage upload
+# Secrets (optional):
+#   - CODECOV_TOKEN: For coverage upload. NOT required — Dependabot PRs run
+#     without access to Actions secrets, and a `required: true` declaration
+#     fails workflow-call validation before any job starts (startup_failure,
+#     ~2s, zero steps). The upload step already sets fail_ci_if_error: false,
+#     so an absent token degrades gracefully to a skipped/no-op upload.
 
 name: Reusable Test Workflow
 
@@ -32,7 +36,9 @@ on:
 
     secrets:
       CODECOV_TOKEN:
-        required: true
+        # Optional so Dependabot PRs (no Actions-secret access) don't hit a
+        # workflow-call startup_failure. Real PRs/releases still inherit it.
+        required: false
 
 jobs:
   test-matrix-pr:
