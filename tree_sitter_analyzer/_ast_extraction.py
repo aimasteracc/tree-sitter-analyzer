@@ -419,23 +419,57 @@ def _c_function_def_name(node: Any, source: str) -> str | None:
     A tree-sitter C ``function_definition`` does NOT expose a ``name`` field —
     the identifier lives under its ``function_declarator``, which may itself be
     wrapped in one or more ``pointer_declarator`` / ``parenthesized_declarator``
-    layers for pointer-returning functions (e.g. ``void *malloc(...)``). Walk the
-    ``declarator`` field chain down to the ``function_declarator`` and return its
-    declarator identifier text, or ``None`` when it cannot be recovered.
+    layers. For a plain pointer-returning function (``void *malloc(...)``) one
+    ``pointer_declarator`` wraps the ``function_declarator``. For a function that
+    *returns a function pointer* (``int (*factory(void))(int)``) the name lives
+    in an INNER ``function_declarator`` nested inside a ``parenthesized_declarator``
+    — so we must keep descending past the outermost ``function_declarator`` until
+    we reach the identifier itself. Return the innermost declarator identifier
+    text, or ``None`` when it cannot be recovered.
 
     This is what lets C free functions reach ``ast_symbol_rows`` so the synapse
     C resolver's ownership gate (``_project_owns``) sees project-defined libc
     names (e.g. a custom ``malloc``) and does NOT misclassify them as ``stdlib``.
     """
-    declarator = node.child_by_field_name("declarator")
-    for _ in range(8):  # bounded descent through pointer/parenthesized wrappers
-        if declarator is None:
-            return None
-        if declarator.type == "function_declarator":
-            inner = declarator.child_by_field_name("declarator")
-            text = _node_text(inner, source) if inner is not None else ""
-            return text or None
-        declarator = declarator.child_by_field_name("declarator")
+    return _c_declarator_name(node.child_by_field_name("declarator"), source, 0)
+
+
+# Declarator wrappers a C function name can be nested under, ordered so the
+# common cases stay shallow. ``parenthesized_declarator`` does NOT expose a
+# ``declarator`` field, so it is handled by scanning children explicitly.
+_C_DECLARATOR_WRAPPERS = (
+    "function_declarator",
+    "pointer_declarator",
+    "array_declarator",
+)
+
+
+def _c_declarator_name(declarator: Any, source: str, depth: int) -> str | None:
+    """Descend a C declarator chain to its innermost identifier.
+
+    Handles pointer / array / function declarator wrappers (which expose a
+    ``declarator`` field) and ``parenthesized_declarator`` (which does not — its
+    inner declarator is an unnamed child). Bounded to avoid pathological depth.
+    """
+    if declarator is None or depth > 16:
+        return None
+    dtype = declarator.type
+    if dtype in ("identifier", "field_identifier", "type_identifier"):
+        text = _node_text(declarator, source)
+        return text or None
+    if dtype == "parenthesized_declarator":
+        for child in declarator.children:
+            if child.type in _C_DECLARATOR_WRAPPERS or child.type.endswith(
+                "identifier"
+            ):
+                name = _c_declarator_name(child, source, depth + 1)
+                if name is not None:
+                    return name
+        return None
+    if dtype in _C_DECLARATOR_WRAPPERS:
+        return _c_declarator_name(
+            declarator.child_by_field_name("declarator"), source, depth + 1
+        )
     return None
 
 
