@@ -15,6 +15,7 @@ from tree_sitter_analyzer.mcp.tools.analyze_code_structure_helpers import (
 )
 from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (
     AnalyzeCodeStructureTool,
+    _attach_agent_summary,
     _build_next_steps,
     _convert_parameters,
     _format_table,
@@ -22,6 +23,7 @@ from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (
     _get_method_modifiers,
     _get_method_parameters,
 )
+from tree_sitter_analyzer.mcp.tools.tool_response import CANONICAL_VERDICTS
 
 
 @pytest.fixture
@@ -30,10 +32,27 @@ def tool():
     return AnalyzeCodeStructureTool()
 
 
+def test_attach_agent_summary_emits_canonical_info_verdict():
+    """Wave 1b (audit structure-07): a successful structural analysis must emit
+    the canonical INFO verdict, not the off-ladder "n/a" placeholder (which is
+    not in CANONICAL_VERDICTS and an agent branching on verdict cannot read)."""
+    response: dict = {"success": True}
+    _attach_agent_summary(
+        response,
+        MagicMock(),  # _ExecutionOptions — unused by the verdict path
+        {"classes_count": 1, "methods_count": 2, "fields_count": 0, "total_lines": 10},
+        [],
+    )
+    assert response["verdict"] == "INFO"
+    assert response["verdict"] in CANONICAL_VERDICTS
+    assert response["agent_summary"]["verdict"] == "INFO"
+
+
 @pytest.fixture
 def tool_with_project_root():
     """Create an AnalyzeCodeStructureTool instance with a project root."""
     return AnalyzeCodeStructureTool(project_root="/test/project")
+
 
 class TestAnalyzeCodeStructureHelpers:
     """Tests for module-level analyze_code_structure helpers."""
