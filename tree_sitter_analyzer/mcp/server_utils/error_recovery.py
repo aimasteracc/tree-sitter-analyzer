@@ -436,7 +436,16 @@ def _populate_agent_summary_block(
     if not isinstance(agent_summary, dict):
         agent_summary = {}
     agent_summary.setdefault("summary_line", summary_line_value)
-    agent_summary.setdefault("next_step", "")
+    # Wave 1b batch B (audit nav-03/04, search-05, project-03, viz-05, health-04):
+    # many tools set a rich TOP-LEVEL ``next_step`` but leave
+    # ``agent_summary.next_step`` empty. Mirror the top-level value into the
+    # agent_summary (the documented place agents read) rather than defaulting to
+    # "" — only when agent_summary has no real next_step of its own.
+    if not agent_summary.get("next_step"):
+        top_next = response.get("next_step")
+        agent_summary["next_step"] = (
+            top_next if isinstance(top_next, str) and top_next else ""
+        )
     response["agent_summary"] = agent_summary
     return agent_summary
 
