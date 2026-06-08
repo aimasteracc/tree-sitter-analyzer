@@ -136,6 +136,69 @@ class TestModificationGuardToolExecution:
         assert result["total_callers"] == 0
 
     @pytest.mark.asyncio
+    async def test_unknown_symbol_is_not_found_not_safe(
+        self, tool: ModificationGuardTool
+    ) -> None:
+        """Wave 1b (audit edit-08): a symbol that resolves to ZERO occurrences
+        (trace_impact found=False / NOT_FOUND) must NOT be reported as SAFE —
+        that is a dangerous false-safe. It must return verdict=NOT_FOUND."""
+        not_found_trace = {
+            "success": True,
+            "call_count": 0,
+            "usages": [],
+            "found": False,
+            "verdict": "NOT_FOUND",
+        }
+        with patch.object(
+            tool._trace_impact_tool,
+            "execute",
+            new_callable=AsyncMock,
+            return_value=not_found_trace,
+        ):
+            result = await tool.execute(
+                {
+                    "symbol": "this_symbol_does_not_exist_xyz",
+                    "modification_type": "rename",
+                }
+            )
+
+        assert result["success"] is True
+        assert result["verdict"] == "NOT_FOUND"
+        assert result["safety_verdict"] == "NOT_FOUND"
+        assert result["agent_summary"]["verdict"] == "NOT_FOUND"
+        # The dangerous old behavior — never claim SAFE for an unknown symbol.
+        assert result["safety_verdict"] != "SAFE"
+        # agent_summary must carry ``risk`` on EVERY path (no KeyError for
+        # consumers reading agent_summary["risk"] on the NOT_FOUND branch).
+        assert result["agent_summary"]["risk"] == "unknown"
+
+    @pytest.mark.asyncio
+    async def test_known_symbol_zero_callers_is_still_safe_not_notfound(
+        self, tool: ModificationGuardTool
+    ) -> None:
+        """The distinction edit-08 requires: a KNOWN symbol with 0 callers
+        (found=True, no NOT_FOUND verdict) stays SAFE — only an UNKNOWN symbol
+        is NOT_FOUND."""
+        known_zero = {
+            "success": True,
+            "call_count": 0,
+            "usages": [],
+            "found": True,
+        }
+        with patch.object(
+            tool._trace_impact_tool,
+            "execute",
+            new_callable=AsyncMock,
+            return_value=known_zero,
+        ):
+            result = await tool.execute(
+                {"symbol": "definedButUncalled", "modification_type": "delete"}
+            )
+        assert result["safety_verdict"] == "SAFE"
+        assert result["verdict"] == "SAFE"
+        assert result["verdict"] != "NOT_FOUND"
+
+    @pytest.mark.asyncio
     async def test_caution_verdict_few_callers(
         self, tool: ModificationGuardTool
     ) -> None:
