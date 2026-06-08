@@ -41,6 +41,19 @@ class TestCodeGraphTestGapTool:
         assert "gaps" in mode_enum
         assert "file" in mode_enum
 
+    def test_output_format_defaults_to_toon(self, tool):
+        # Wave 1b (audit health-03): MCP default is TOON (CLAUDE.md §1).
+        # test_gap was the lone tool defaulting to json.
+        schema = tool.get_tool_schema()
+        assert schema["properties"]["output_format"]["default"] == "toon"
+
+    @pytest.mark.asyncio
+    async def test_default_output_is_toon_formatted(self, tool, project_with_code):
+        tool.set_project_path(str(project_with_code))
+        result = await tool.execute({"mode": "summary"})
+        assert result.get("format") == "toon"
+        assert "toon_content" in result
+
     def test_validate_no_mode(self):
         t = CodeGraphTestGapTool()
         assert t.validate_arguments({})
@@ -74,10 +87,12 @@ class TestCodeGraphTestGapTool:
     @pytest.mark.asyncio
     async def test_execute_file_mode(self, tool, project_with_code):
         tool.set_project_path(str(project_with_code))
-        result = await tool.execute({
-            "mode": "file",
-            "file_path": "service.py",
-        })
+        result = await tool.execute(
+            {
+                "mode": "file",
+                "file_path": "service.py",
+            }
+        )
         assert result["success"] is True
 
     @pytest.mark.asyncio
