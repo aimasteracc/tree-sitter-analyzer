@@ -84,6 +84,7 @@ dependencies = [
     "pyyaml>=6.0",
     "pathspec>=0.12.1",
     "anthropic>=0.104.1",
+    "tree-sitter-bash>=0.23.0",
 ]
 
 # Add C# to optional dependencies

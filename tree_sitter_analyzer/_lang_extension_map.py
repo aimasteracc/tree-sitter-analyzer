@@ -40,6 +40,7 @@ from pathlib import Path
 # so diffs are obvious in code review.
 EXT_TO_LANG: dict[str, str] = {
     # Code languages — symbol-bearing, used by call graph + impact tools.
+    ".bash": "bash",
     ".c": "c",
     ".cc": "cpp",
     ".cpp": "cpp",
@@ -57,6 +58,7 @@ EXT_TO_LANG: dict[str, str] = {
     ".py": "python",
     ".rb": "ruby",
     ".rs": "rust",
+    ".sh": "bash",
     ".swift": "swift",
     # .swiftinterface — module-interface files emitted by
     # `swiftc -emit-module-interface`. Syntactically a subset of Swift,
@@ -66,6 +68,7 @@ EXT_TO_LANG: dict[str, str] = {
     ".swiftinterface": "swift",
     ".ts": "typescript",
     ".tsx": "typescript",
+    ".zsh": "bash",
     # NOTE: ``.css / .html / .md / .sql / .yaml / .yml`` have plugins
     # but are intentionally NOT wired here — their indexing path through
     # the ast_cache is not fully exercised yet (see
