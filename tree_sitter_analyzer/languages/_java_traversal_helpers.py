@@ -12,6 +12,12 @@ _JAVA_CONTAINER_NODES = {
     "class_declaration",
     "interface_declaration",
     "enum_declaration",
+    # Theme-I (2026-06-10): descend into records and annotation types so
+    # their members (e.g. a record's methods) are reachable. A record's body
+    # is a plain ``class_body``; annotation types use ``annotation_type_body``.
+    "record_declaration",
+    "annotation_type_declaration",
+    "annotation_type_body",
     "method_declaration",
     "constructor_declaration",
     "block",
