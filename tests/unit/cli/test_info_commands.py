@@ -207,8 +207,9 @@ class TestQ3SupportedExtensionsParity:
         "extension",
         [
             ".scala",
-            ".sh",
-            ".bash",
+            # ".sh" / ".bash" graduated 2026-06-10: tree-sitter-bash is now a
+            # declared dependency and the extensions are wired end-to-end (see
+            # test_bash_language_wiring.py + test_core_extensions_still_advertised).
             ".lua",
             ".hs",
             ".dart",
@@ -226,10 +227,10 @@ class TestQ3SupportedExtensionsParity:
     )
     def test_orphan_extensions_not_advertised(self, detector_instance, extension):
         """Orphan-plugin / no-parser extensions must NOT appear in the
-        ``--show-supported-extensions`` output. ``scala_plugin.py`` and
-        ``bash_plugin.py`` ship in the source tree as work-in-progress, but
-        until the underlying tree-sitter dependency is wired in we must not
-        advertise their extensions to users."""
+        ``--show-supported-extensions`` output. ``scala_plugin.py`` ships in
+        the source tree as work-in-progress, but until the underlying
+        tree-sitter dependency is wired in we must not advertise its
+        extensions to users."""
         extensions = detector_instance.get_supported_extensions()
         assert extension not in extensions, (
             f"Extension {extension!r} is still advertised as supported but "
@@ -255,6 +256,9 @@ class TestQ3SupportedExtensionsParity:
             ".kt",
             ".swift",
             ".cs",
+            ".sh",
+            ".bash",
+            ".zsh",
             ".html",
             ".css",
             ".json",
