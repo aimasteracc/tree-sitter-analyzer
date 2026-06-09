@@ -264,6 +264,11 @@ class AnalyzeScaleTool(BaseMCPTool):
             result = await _engine.analyze(request)
             if result is None:
                 raise RuntimeError(fail_prefix)
+            # Theme-D parity: honor the engine's parse-failure flag instead of
+            # masking it as an empty-success overview (matches the non-Java
+            # branch below and the structure-facade fix in PR #414).
+            if not result.success:
+                raise RuntimeError(result.error_message or fail_prefix)
             return result, self._extract_structural_overview(result)
 
         request = AnalysisRequest(
