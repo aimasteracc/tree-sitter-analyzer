@@ -622,6 +622,16 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
         if result is None:
             _msg = _ANALYZE_ERR_PREFIX + _file_path
             raise RuntimeError(_msg)
+        # Theme-D fix: honor the engine's ``success=False`` (parse failure for a
+        # detected-but-unparseable language) instead of fabricating an
+        # empty-success structure. Propagating ``error_message`` lets the MCP
+        # boundary classify it as ``language_unsupported`` — the same honest
+        # error the CLI returns — rather than masking it as "0 elements".
+        if getattr(result, "success", True) is False:
+            raise ValueError(
+                getattr(result, "error_message", None)
+                or (_ANALYZE_ERR_PREFIX + _file_path)
+            )
         return result
 
     def _save_output(
