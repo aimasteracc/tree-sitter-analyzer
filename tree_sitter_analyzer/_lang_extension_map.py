@@ -58,6 +58,10 @@ EXT_TO_LANG: dict[str, str] = {
     ".py": "python",
     ".rb": "ruby",
     ".rs": "rust",
+    # .sc (Scala scripts / Ammonite) intentionally NOT wired — ambiguous
+    # with SuperCollider; the plugin still accepts it via an explicit
+    # ``language`` override.
+    ".scala": "scala",
     ".sh": "bash",
     ".swift": "swift",
     # .swiftinterface — module-interface files emitted by
