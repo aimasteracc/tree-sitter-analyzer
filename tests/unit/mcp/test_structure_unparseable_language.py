@@ -119,8 +119,8 @@ async def test_structure_boundary_classifies_as_language_unsupported() -> None:
 
             inner.analysis_engine.analyze = _fake_analyze  # type: ignore[attr-defined]
             patched += 1
-    assert patched >= 2, (
-        f"expected to patch outline+analyze inner tools, patched {patched}"
+    assert patched == 2, (
+        f"expected to patch exactly the outline+analyze inner tools, patched {patched}"
     )
 
     async def boundary(name: str, args: dict) -> dict:

@@ -11,6 +11,19 @@
 - Keep files under 500 lines
 - Validate input at system boundaries
 
+### Exact assertions only — no `>=` / approximate test assertions
+
+**🔒 LOCKED BY USER (2026-06-10):** 「测试拒绝大于等于这样的约等不严谨的测试」。
+Count/measurement assertions in tests MUST pin the **exact** expected value
+(`== 11`), never a loose bound (`>= 10`, `> 0`, `<= 100`) that lets drift pass
+silently. If an upstream change (e.g. a grammar-version bump) shifts the
+number, the test SHOULD go red and force a conscious re-pin with the new
+measured value — an approximate green is a false green. Reviewer suggestions
+to "relax to a lower bound for resilience" are REJECTED under this rule.
+Legitimate exceptions are rare and only where the value is genuinely
+nondeterministic (timing, memory) — and then the test should assert a
+documented invariant, not a hand-waved bound on a deterministic count.
+
 ## Deliberate design decisions — do NOT "fix" these
 
 These look like inconsistencies in a dogfood pass, but they are intentional and reflect the project's design priorities. Reverting them costs real value. **If a dogfood agent proposes any of the items below as a "finding", REJECT the finding and link the agent back to this section.**

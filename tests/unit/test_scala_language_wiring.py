@@ -70,12 +70,13 @@ def test_scala_corpus_extracts_symbols() -> None:
     tree = parser.parse(src)
     assert not tree.root_node.has_error, "corpus must parse cleanly"
     elements = plugin.extract_elements(tree, src.decode())
-    # Validated 2026-06-10 against tree-sitter-scala 0.26: 66 functions,
-    # 33 classes, 3 imports. Assert lower bounds so minor grammar-version
-    # drift doesn't flake the suite.
-    assert len(elements["functions"]) >= 50
-    assert len(elements["classes"]) >= 25
-    assert len(elements["imports"]) >= 3
+    # Validated 2026-06-10 against tree-sitter-scala 0.26. Exact pins
+    # (user rule 2026-06-10: no >=-style approximate assertions) — a
+    # grammar-version bump that changes these counts MUST fail the test
+    # and force a conscious re-pin, not pass silently.
+    assert len(elements["functions"]) == 66
+    assert len(elements["classes"]) == 33
+    assert len(elements["imports"]) == 3
 
 
 def test_ast_cache_indexes_scala_file() -> None:
@@ -89,7 +90,7 @@ def test_ast_cache_indexes_scala_file() -> None:
         cache.index_project()
         conn = cache.get_conn()
         count = conn.execute("SELECT COUNT(*) FROM ast_symbol_rows").fetchone()[0]
-        assert count >= 50, f"expected >=50 scala symbols indexed, got {count}"
+        assert count == 86, f"expected exactly 86 scala symbols indexed, got {count}"
         cache.close()
     finally:
         shutil.rmtree(d, ignore_errors=True)
