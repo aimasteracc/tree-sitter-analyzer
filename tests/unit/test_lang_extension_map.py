@@ -37,10 +37,10 @@ PLUGIN_DIR = Path("tree_sitter_analyzer/languages")
 SCAFFOLDS_WITHOUT_EXT: set[str] = {
     # Code-targeted plugins waiting for ext wiring (tree-sitter parsers
     # available on PyPI; plugin scaffolds in place; needs validation pass).
-    # NOTE: "bash" graduated 2026-06-10 — tree-sitter-bash dep added,
-    # .sh/.bash/.zsh wired in language_detector + _lang_extension_map +
-    # file_handler.
-    "scala",
+    # NOTE: "bash" and "scala" graduated 2026-06-10 — tree-sitter deps
+    # added and extensions wired end-to-end. See
+    # tests/unit/test_bash_language_wiring.py and
+    # tests/unit/test_scala_language_wiring.py.
     "json",
     # Data / markup plugins. Reachable via the CLI single-file path
     # (file_handler.py uses its own ext map), but NOT yet wired into

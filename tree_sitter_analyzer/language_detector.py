@@ -140,6 +140,7 @@ class LanguageDetector:
         "ruby",
         "swift",
         "bash",
+        "scala",
         "markdown",
         "html",
         "css",

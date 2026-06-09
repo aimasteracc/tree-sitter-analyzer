@@ -67,6 +67,7 @@ class LanguageLoader:
         "kotlin": "tree_sitter_kotlin",
         "swift": "tree_sitter_swift",
         "bash": "tree_sitter_bash",
+        "scala": "tree_sitter_scala",
     }
 
     # TypeScript特別処理（TypeScriptとTSX）

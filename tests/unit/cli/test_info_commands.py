@@ -206,10 +206,11 @@ class TestQ3SupportedExtensionsParity:
     @pytest.mark.parametrize(
         "extension",
         [
-            ".scala",
-            # ".sh" / ".bash" graduated 2026-06-10: tree-sitter-bash is now a
-            # declared dependency and the extensions are wired end-to-end (see
-            # test_bash_language_wiring.py + test_core_extensions_still_advertised).
+            # ".sh"/".bash" and ".scala" graduated 2026-06-10: the
+            # tree-sitter grammars are now declared dependencies and the
+            # extensions are wired end-to-end (see
+            # test_bash_language_wiring.py / test_scala_language_wiring.py
+            # + test_core_extensions_still_advertised).
             ".lua",
             ".hs",
             ".dart",
@@ -227,10 +228,9 @@ class TestQ3SupportedExtensionsParity:
     )
     def test_orphan_extensions_not_advertised(self, detector_instance, extension):
         """Orphan-plugin / no-parser extensions must NOT appear in the
-        ``--show-supported-extensions`` output. ``scala_plugin.py`` ships in
-        the source tree as work-in-progress, but until the underlying
-        tree-sitter dependency is wired in we must not advertise its
-        extensions to users."""
+        ``--show-supported-extensions`` output. These languages have no
+        registered tree-sitter parser, so advertising their extensions
+        would promise support the analyzer cannot deliver."""
         extensions = detector_instance.get_supported_extensions()
         assert extension not in extensions, (
             f"Extension {extension!r} is still advertised as supported but "
@@ -259,6 +259,7 @@ class TestQ3SupportedExtensionsParity:
             ".sh",
             ".bash",
             ".zsh",
+            ".scala",
             ".html",
             ".css",
             ".json",
@@ -281,9 +282,10 @@ class TestQ3SupportedExtensionsParity:
         assert ".scala" in all_known
         assert ".lua" in all_known
 
-    def test_show_extensions_cli_does_not_advertise_scala(self):
-        """End-to-end check: ``--show-supported-extensions`` output must not
-        mention ``.scala``."""
+    def test_show_extensions_cli_advertises_scala(self):
+        """End-to-end check: ``--show-supported-extensions`` must mention
+        ``.scala``. Inverted 2026-06-10 when scala graduated (tree-sitter-scala
+        wired in); the pre-graduation version asserted the opposite."""
         import subprocess
         import sys
 
@@ -301,14 +303,13 @@ class TestQ3SupportedExtensionsParity:
         # Combined stdout+stderr because output_list/output_info may route
         # to different streams depending on env.
         combined = result.stdout + result.stderr
-        assert ".scala" not in combined, (
-            f"--show-supported-extensions still mentions .scala:\n{combined}"
+        assert ".scala" in combined, (
+            f"--show-supported-extensions no longer mentions .scala:\n{combined}"
         )
 
-    def test_show_languages_cli_does_not_advertise_scala(self):
-        """End-to-end check: ``--show-supported-languages`` output must not
-        list ``scala`` as a top-level language."""
-        import re
+    def test_show_languages_cli_advertises_scala(self):
+        """End-to-end check: ``--show-supported-languages`` must list
+        ``scala``. Inverted 2026-06-10 when scala graduated."""
         import subprocess
         import sys
 
@@ -324,10 +325,8 @@ class TestQ3SupportedExtensionsParity:
             timeout=30,
         )
         combined = result.stdout + result.stderr
-        # Match scala as a language label (start-of-line indented entry),
-        # ignoring incidental occurrences in extensions or descriptions.
-        assert not re.search(r"^\s+scala\s", combined, re.MULTILINE), (
-            f"--show-supported-languages still mentions scala:\n{combined}"
+        assert "scala" in combined, (
+            f"--show-supported-languages no longer mentions scala:\n{combined}"
         )
 
 
