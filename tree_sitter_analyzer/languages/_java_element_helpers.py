@@ -10,6 +10,9 @@ _CLASS_TYPE_MAP = {
     "class_declaration": "class",
     "interface_declaration": "interface",
     "enum_declaration": "enum",
+    # Theme-I (2026-06-10): record / annotation-type containers.
+    "record_declaration": "record",
+    "annotation_type_declaration": "annotation",
 }
 
 
