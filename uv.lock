@@ -2820,6 +2820,7 @@ all = [
     { name = "types-psutil" },
 ]
 all-languages = [
+    { name = "tree-sitter-bash" },
     { name = "tree-sitter-c" },
     { name = "tree-sitter-c-sharp" },
     { name = "tree-sitter-cpp" },
@@ -3126,6 +3127,7 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'full'", specifier = ">=0.5.0" },
     { name = "tree-sitter", specifier = ">=0.25.0" },
     { name = "tree-sitter-bash", specifier = ">=0.23.0" },
+    { name = "tree-sitter-bash", marker = "extra == 'all-languages'", specifier = ">=0.23.0,<0.26.0" },
     { name = "tree-sitter-c", specifier = ">=0.20.0" },
     { name = "tree-sitter-c", marker = "extra == 'all'", specifier = ">=0.20.0,<0.25.0" },
     { name = "tree-sitter-c", marker = "extra == 'all-languages'", specifier = ">=0.20.0,<0.25.0" },

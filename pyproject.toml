@@ -159,6 +159,7 @@ all-languages = [
     "tree-sitter-php>=0.23.0,<0.25.0",  # PHP language support for web applications
     "tree-sitter-ruby>=0.23.0,<0.25.0",  # Ruby language support for Rails and scripting
     "tree-sitter-yaml>=0.7.0",  # YAML language support for configuration files
+    "tree-sitter-bash>=0.23.0,<0.26.0",  # Bash/shell script support
 ]
 
 # MCP server support
