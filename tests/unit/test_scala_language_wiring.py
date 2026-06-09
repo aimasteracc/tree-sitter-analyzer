@@ -34,6 +34,18 @@ def test_lang_extension_map_has_scala() -> None:
     assert EXT_TO_LANG.get(".scala") == "scala"
 
 
+def test_sc_extension_stays_unknown() -> None:
+    """``.sc`` is deliberately NOT wired (ambiguous with SuperCollider) even
+    though ``ScalaPlugin.get_file_extensions()`` lists it. Pin the documented
+    behavior: detection returns unknown; an explicit ``language="scala"``
+    override remains the supported route for Scala scripts / Ammonite."""
+    from tree_sitter_analyzer._lang_extension_map import EXT_TO_LANG
+    from tree_sitter_analyzer.language_detector import detect_language_from_file
+
+    assert ".sc" not in EXT_TO_LANG
+    assert detect_language_from_file("script.sc") == "unknown"
+
+
 def test_loader_provides_scala_language() -> None:
     from tree_sitter_analyzer.language_loader import loader
 

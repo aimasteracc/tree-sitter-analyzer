@@ -104,6 +104,11 @@ async def test_structure_boundary_classifies_as_language_unsupported() -> None:
 
     # The structure facade routes outline/analyze through inner tools held in
     # ``action_map`` — patch the engine of every inner tool that has one.
+    # NOTE: this LOOKS like the classic loop-closure bug but is safe: the
+    # closure captures nothing from ``inner`` (every iteration assigns an
+    # identical zero-capture coroutine), and all inner tools share the same
+    # engine singleton anyway, so each assignment overwrites the same attr.
+    # conftest's reset_global_singletons clears the singleton after the test.
     structure_facade = server.tools["structure"]
     patched = 0
     for inner in structure_facade.action_map.values():
