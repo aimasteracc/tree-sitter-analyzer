@@ -628,7 +628,12 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
         # boundary classify it as ``language_unsupported`` — the same honest
         # error the CLI returns — rather than masking it as "0 elements".
         if getattr(result, "success", True) is False:
-            raise ValueError(
+            # RuntimeError (not ValueError): a parse failure is an internal
+            # condition, not a caller-validation error. The "Unsupported
+            # language" substring still maps to ``language_unsupported`` at the
+            # boundary; the ``error_message is None`` fallback maps to
+            # ``internal`` instead of the misleading ``validation``.
+            raise RuntimeError(
                 getattr(result, "error_message", None)
                 or (_ANALYZE_ERR_PREFIX + _file_path)
             )

@@ -50,3 +50,55 @@ async def test_analyze_structure_does_not_mask_unparseable_language() -> None:
     with pytest.raises(Exception) as exc_info:
         await tool.execute({"file_path": UNPARSEABLE_FILE, "output_format": "json"})
     assert "unsupported language" in str(exc_info.value).lower()
+
+
+@pytest.mark.asyncio
+async def test_structure_boundary_classifies_as_language_unsupported() -> None:
+    """The MCP boundary must surface an honest ``language_unsupported`` ERROR
+    envelope (verdict=ERROR, success=False) — not a masked empty-success — for
+    every structure action on an unparseable-language file.
+
+    This exercises the true client surface (``_dispatch_tool`` + the canonical
+    envelope normalizers), so it catches both the masking regression AND any
+    error_type misclassification the per-tool ``pytest.raises`` checks miss.
+    """
+    from tree_sitter_analyzer.mcp.server import TreeSitterAnalyzerMCPServer
+    from tree_sitter_analyzer.mcp.server_utils.error_recovery import (
+        build_agent_friendly_error,
+        ensure_canonical_error_envelope,
+        ensure_canonical_success_envelope,
+    )
+    from tree_sitter_analyzer.mcp.server_utils.tool_registration import (
+        _dispatch_tool,
+    )
+
+    server = TreeSitterAnalyzerMCPServer(project_root=".")
+    server._ensure_registry()
+    server._initialization_complete = True
+
+    async def boundary(name: str, args: dict) -> dict:
+        try:
+            result = await _dispatch_tool(server, name, args)
+            if isinstance(result, dict) and result.get("success") is False:
+                return ensure_canonical_error_envelope(name, result, arguments=args)
+            if isinstance(result, dict):
+                return ensure_canonical_success_envelope(name, result, arguments=args)
+            return result
+        except Exception as e:  # noqa: BLE001 — mirrors handle_call_tool
+            return build_agent_friendly_error(name, e, arguments=args)
+
+    for action in ("outline", "analyze"):
+        env = await boundary(
+            "structure",
+            {
+                "action": action,
+                "file_path": UNPARSEABLE_FILE,
+                "output_format": "json",
+            },
+        )
+        verdict = env.get("verdict") or (env.get("agent_summary") or {}).get("verdict")
+        assert env.get("success") is False, f"{action}: masked as success"
+        assert verdict == "ERROR", f"{action}: verdict={verdict!r}"
+        assert env.get("error_type") == "language_unsupported", (
+            f"{action}: error_type={env.get('error_type')!r}"
+        )

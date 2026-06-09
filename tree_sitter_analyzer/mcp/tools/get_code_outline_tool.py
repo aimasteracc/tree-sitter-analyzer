@@ -341,7 +341,14 @@ class GetCodeOutlineTool(BaseMCPTool):
         # containing "Unsupported language" maps to ``language_unsupported``),
         # matching the honest error the CLI already returns for the same file.
         if getattr(analysis_result, "success", True) is False:
-            raise ValueError(
+            # RuntimeError (not ValueError): a parse failure is an internal
+            # condition, not a caller-validation error. When the engine's
+            # message contains "Unsupported language" the boundary still maps
+            # it to ``language_unsupported`` (substring match wins over the
+            # exception type); the degenerate ``error_message is None`` case
+            # then falls back to ``internal`` rather than the misleading
+            # ``validation`` classification.
+            raise RuntimeError(
                 getattr(analysis_result, "error_message", None)
                 or f"Failed to analyze file: {original_path}"
             )
