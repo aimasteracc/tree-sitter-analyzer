@@ -34,6 +34,11 @@ impl Greet for Counter {
     fn hi(&self) {}
 }
 
+impl Counter {
+    fn into_box(self: Box<Self>) {}
+    fn poll(self: Pin<&mut Self>) {}
+}
+
 fn standalone() {}
 """
 
@@ -73,6 +78,18 @@ def test_trait_impl_method_receiver_type() -> None:
     funcs = _functions()
     assert funcs["hi"].receiver_type == "Counter", f"got {funcs['hi'].receiver_type!r}"
     assert funcs["hi"].is_method is True
+
+
+def test_verbose_self_receiver_is_method() -> None:
+    """``self: Box<Self>`` / ``self: Pin<&mut Self>`` parse as plain
+    ``parameter`` nodes (not ``self_parameter``) — adversarial-review P2:
+    they are still receivers and must be classified as methods."""
+    funcs = _functions()
+    assert funcs["into_box"].is_method is True
+    assert funcs["into_box"].receiver == "self: Box<Self>"
+    assert funcs["into_box"].receiver_type == "Counter"
+    assert funcs["poll"].is_method is True
+    assert funcs["poll"].receiver == "self: Pin<&mut Self>"
 
 
 def test_free_function_unowned() -> None:

@@ -327,13 +327,22 @@ class RustElementExtractor(ElementExtractor):
         return None
 
     def _find_self_parameter(self, node: tree_sitter.Node) -> str | None:
-        """Return the self-parameter text (``&self`` / ``&mut self`` / ...)."""
+        """Return the self-parameter text (``&self`` / ``&mut self`` / ...).
+
+        Shorthand receivers parse as ``self_parameter``; verbose receivers
+        (``self: Pin<&mut Self>`` / ``self: Box<Self>``) parse as a plain
+        ``parameter`` whose ``pattern`` field is the bare ``self`` token.
+        """
         params = node.child_by_field_name("parameters")
         if params is None:
             return None
         for child in params.children:
             if child.type == "self_parameter":
                 return self._get_node_text(child)
+            if child.type == "parameter":
+                pattern = child.child_by_field_name("pattern")
+                if pattern is not None and self._get_node_text(pattern) == "self":
+                    return self._get_node_text(child)
         return None
 
     def _extract_struct(self, node: tree_sitter.Node) -> Class | None:
