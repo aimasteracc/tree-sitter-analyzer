@@ -13,9 +13,9 @@
 |----|-----|---|---|---|-----|
 | display | (0):String | pub | - | 16-16 | - |
 | summary | (0):String | pub | - | 18-20 | - |
-| getUser | (0):User? | pub | - | 33-35 | - |
-| fetchUserAsync | (0):Result<User> | pub | - | 37-40 | - |
+| getUser | (1):User? | pub | - | 33-35 | - |
+| fetchUserAsync | (1):Result<User> | pub | - | 37-40 | - |
 | display | (0):String | pub | - | 42-44 | - |
 | toTitleCase | (0):String | pub | - | 52-54 | - |
 | get | (0) | pub | - | 59-59 | - |
-| main | (0) | pub | - | 62-65 | - |
+| main | (1) | pub | - | 62-65 | - |
