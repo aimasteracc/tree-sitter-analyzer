@@ -25,6 +25,7 @@ _CORE_SPECS: tuple[McpCommandSpec, ...] = (
         build_tool_args=lambda args, output_format: {
             "file_path": args.file_path,
             "output_format": output_format,
+            "compact_only": bool(getattr(args, "compact_toon", False)),
         },
     ),
     McpCommandSpec(
@@ -35,6 +36,7 @@ _CORE_SPECS: tuple[McpCommandSpec, ...] = (
             "min_grade": getattr(args, "min_grade", "D"),
             "max_files": getattr(args, "max_files", 30),
             "output_format": output_format,
+            "compact_only": bool(getattr(args, "compact_toon", False)),
         },
     ),
     McpCommandSpec(
@@ -55,6 +57,7 @@ _CORE_SPECS: tuple[McpCommandSpec, ...] = (
             "file_path": args.file_path,
             "edit_type": getattr(args, "edit_type", "refactor") or "refactor",
             "output_format": output_format,
+            "compact_only": bool(getattr(args, "compact_toon", False)),
         },
     ),
     McpCommandSpec(

@@ -217,6 +217,15 @@ TOOL_SCHEMA: dict[str, Any] = {
             "default": False,
             "description": "Return only the compact agent decision surface instead of full impact details",
         },
+        "compact_only": {
+            "type": "boolean",
+            "default": False,
+            "description": (
+                "RFC-0012: with output_format=toon, return only the control "
+                "surface alongside toon_content, dropping metadata already "
+                "encoded in the blob."
+            ),
+        },
     },
     "additionalProperties": False,
 }
@@ -328,6 +337,7 @@ class ChangeImpactTool(BaseMCPTool):
         scope_paths = arguments.get("scope_paths") or []
         scope_mode = arguments.get("scope_mode", "report")
         agent_summary_only = bool(arguments.get("agent_summary_only", False))
+        compact_only = bool(arguments.get("compact_only", False))
 
         # H8: validate scope paths against disk so a typo cannot silently
         # become "scope matched nothing". The analysis still runs on the
@@ -342,6 +352,7 @@ class ChangeImpactTool(BaseMCPTool):
                 scope_paths,
                 agent_summary_only,
                 scope_mode=scope_mode,
+                compact_only=compact_only,
             )
 
         changed_files = _get_changed_files(mode, self.project_root, scope_paths)
@@ -377,7 +388,9 @@ class ChangeImpactTool(BaseMCPTool):
             # agent_summary so direct callers (tests, hive-mind workers)
             # see the same envelope shape as MCP-routed callers.
             result = mirror_summary_line(result)
-            return apply_toon_format_to_response(result, output_format)
+            return apply_toon_format_to_response(
+                result, output_format, compact_only=compact_only
+            )
 
         diff_stat = _get_diff_stat(mode, self.project_root, scope_paths)
         result = _build_change_impact_result(
@@ -417,7 +430,9 @@ class ChangeImpactTool(BaseMCPTool):
         # agent_summary so direct callers see the same envelope shape as
         # MCP-routed callers.
         result = mirror_summary_line(result)
-        return apply_toon_format_to_response(result, output_format)
+        return apply_toon_format_to_response(
+            result, output_format, compact_only=compact_only
+        )
 
     def _execute_pr_analysis(
         self,
@@ -428,6 +443,7 @@ class ChangeImpactTool(BaseMCPTool):
         agent_summary_only: bool,
         *,
         scope_mode: str = "report",
+        compact_only: bool = False,
     ) -> dict[str, Any]:
         """Analyze a GitHub PR's diff via gh CLI.
 
@@ -465,6 +481,7 @@ class ChangeImpactTool(BaseMCPTool):
                 agent_summary_only=agent_summary_only,
                 output_format=output_format,
                 scope_mode=scope_mode,
+                compact_only=compact_only,
             )
 
         diff_stat = fetch_pr_diff_stat(parsed)
@@ -488,6 +505,7 @@ class ChangeImpactTool(BaseMCPTool):
             agent_summary_only=agent_summary_only,
             output_format=output_format,
             scope_mode=scope_mode,
+            compact_only=compact_only,
         )
 
     @staticmethod
@@ -501,6 +519,7 @@ class ChangeImpactTool(BaseMCPTool):
         agent_summary_only: bool,
         output_format: str,
         scope_mode: str = "report",
+        compact_only: bool = False,
     ) -> dict[str, Any]:
         """Attach PR metadata + queue ledger + scope validation, mirror, and TOON.
 
@@ -535,4 +554,6 @@ class ChangeImpactTool(BaseMCPTool):
         # caller used.
         _canonicalize_change_impact_verdict(result)
         result = mirror_summary_line(result)
-        return apply_toon_format_to_response(result, output_format)
+        return apply_toon_format_to_response(
+            result, output_format, compact_only=compact_only
+        )
