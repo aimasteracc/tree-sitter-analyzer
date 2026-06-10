@@ -245,6 +245,20 @@ def _add_mcp_graph_nav_options(parser: argparse.ArgumentParser) -> None:
             "of --codegraph-impact output (counts are always present)."
         ),
     )
+    # RFC-0014 Phase B: CLI parity for nav action=test_map.
+    parser.add_argument(
+        "--test-map",
+        metavar="SYMBOL",
+        help=(
+            "Which tests exercise a function? Returns test files and test function "
+            "names (RFC-0014 Phase B). Use before editing to know your test surface. "
+            "CLI parity for: nav action=test_map symbol=SYMBOL."
+        ),
+    )
+    parser.add_argument(
+        "--test-map-file",
+        help="File path to disambiguate overloaded functions for --test-map",
+    )
     parser.add_argument(
         "--pr-review",
         nargs="?",

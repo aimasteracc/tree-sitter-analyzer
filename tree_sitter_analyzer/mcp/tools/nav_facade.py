@@ -14,6 +14,7 @@ resolve       ``codegraph_resolve``                          symbol resolver
 lineage       ``symbol_lineage``                             class/function lineage
 impact        ``codegraph_impact``                           blast-radius / risk
 trace         ``trace_impact``                               impact trace
+test_map      BESPOKE — RFC-0014 Phase B                    test-file callers of symbol
 callers       BESPOKE — scope=point → callers_tool (R4)     point = direct callers
               BESPOKE — scope=graph → call_graph mode=callers
 callees       BESPOKE — scope=point → callees_tool (R4)     point = direct callees
@@ -44,6 +45,9 @@ from __future__ import annotations
 from typing import Any
 
 from .facade_tool import FacadeTool
+
+# RFC-0014 Phase B: cap for test_map test_functions list (matches _MAX_LISTED).
+_MAX_TEST_MAP = 50
 
 _NAV_ANNOTATIONS: dict[str, Any] = {
     "readOnlyHint": True,
@@ -110,7 +114,12 @@ _NAV_DESCRIPTION = (
     "(default 3, cap 10), max_nodes (default 150), output_format.\n"
     "- action=caller_tree — depth-limited NESTED tree of everything that "
     "transitively calls a function (blast radius), in ONE call. Params: symbol "
-    "(required), file_path, max_depth, max_nodes, output_format."
+    "(required), file_path, max_depth, max_nodes, output_format.\n"
+    "- action=test_map — which tests exercise a function (test-file callers, by "
+    "file and test function name). Use BEFORE editing to know the test surface. "
+    "Returns test_files (sorted, deduplicated), test_functions in "
+    "'file::fn' format (paste directly into pytest), edge_count, truncated flag "
+    "(cap=50). Params: symbol (required), file_path."
 )
 
 
@@ -121,6 +130,7 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
     that don't build the facade (matches the lazy-import convention used across
     the tool registry).
     """
+    from ...utils.test_detection import is_test_file
     from ._call_tree_tool import CodeGraphCalleeTreeTool, CodeGraphCallerTreeTool
     from .call_graph_tool import CodeGraphCallTool
     from .call_path_tool import CodeGraphCallPathTool
@@ -152,6 +162,9 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
     callees_point = CodeGraphCalleesTool(project_root)
     callees_graph = CodeGraphCallTool(project_root)
     context_inner = CodeGraphContextTool(project_root)
+    # RFC-0014 Phase B: impact_inner shares its CachedCallGraph with test_map
+    # so no second index build is needed when both actions are called per session.
+    impact_inner = CodeGraphImpactTool(project_root)
 
     async def _context_route(args: dict[str, Any]) -> Any:
         """Bespoke context route: normalize symbol/query → task (fix ③).
@@ -221,6 +234,84 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
         }
         return await callees_point.execute(point_args)
 
+    async def _test_map_route(args: dict[str, Any]) -> Any:
+        """RFC-0014 Phase B: which tests exercise a function?
+
+        Reuses impact_inner's CachedCallGraph so no second index build is
+        needed. Filters caller_refs_of to test-file callers only (reuses
+        is_test_file from Phase A — no duplication of classification logic).
+
+        Algorithm:
+          1. resolve_targets(symbol, file_path) → targets
+          2. For each target: caller_refs_of(target) → filter is_test_file
+          3. Collect (file_path, name) pairs; format as "file::name"
+          4. Sort; deduplicate files; cap at _MAX_TEST_MAP with truncated flag
+
+        NOT_FOUND semantics: when resolve_targets returns [] → success=False.
+        """
+        symbol: str | None = args.get("symbol") or args.get("function_name")
+        file_path: str | None = args.get("file_path")
+
+        if not symbol:
+            return {
+                "success": False,
+                "error": "symbol is required for action=test_map",
+            }
+
+        try:
+            graph = impact_inner.get_call_graph()
+            graph.build()
+        except Exception as exc:  # nosec B110
+            return {
+                "success": False,
+                "error": f"call graph unavailable: {exc}",
+            }
+
+        targets = graph.resolve_targets(symbol, file_path)
+        if not targets:
+            return {
+                "success": False,
+                "error": f"symbol not found: {symbol}",
+            }
+
+        # Collect all test caller refs across all resolved targets.
+        seen_qualified: set[str] = set()
+        test_funcs: list[str] = []  # "file::name" strings, pre-dedup
+        test_file_set: set[str] = set()
+        total_edge_count = 0
+
+        for target in targets:
+            for ref in graph.caller_refs_of(target):
+                if not is_test_file(ref.file_path):
+                    continue
+                total_edge_count += 1
+                key = f"{ref.file_path}::{ref.name}"
+                if key not in seen_qualified:
+                    seen_qualified.add(key)
+                    test_funcs.append(key)
+                    test_file_set.add(ref.file_path)
+
+        test_funcs_sorted = sorted(test_funcs)
+        truncated = len(test_funcs_sorted) > _MAX_TEST_MAP
+        capped = test_funcs_sorted[:_MAX_TEST_MAP]
+
+        return {
+            "success": True,
+            "symbol": symbol,
+            "test_files": sorted(test_file_set),
+            "test_functions": capped,
+            "edge_count": total_edge_count,
+            "truncated": truncated,
+            "agent_summary": {
+                "next_step": (
+                    f"Run: pytest {' '.join(capped[:5])}"
+                    if capped
+                    else "No test coverage found via call-graph edges. "
+                    "Consider running pytest --cov to detect coverage."
+                ),
+            },
+        }
+
     facade = FacadeTool(
         facade_name="nav",
         action_map={
@@ -245,6 +336,8 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
             "context": _context_route,
             "callers": _callers_route,
             "callees": _callees_route,
+            # RFC-0014 Phase B: test_map — which tests exercise a function.
+            "test_map": _test_map_route,
         },
         description=_NAV_DESCRIPTION,
         annotations=_NAV_ANNOTATIONS,
@@ -257,5 +350,7 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
     facade.register_bespoke_inner(callers_graph)
     facade.register_bespoke_inner(callees_point)
     facade.register_bespoke_inner(callees_graph)
+    # RFC-0014 Phase B: impact_inner holds the shared CachedCallGraph.
+    facade.register_bespoke_inner(impact_inner)
 
     return facade

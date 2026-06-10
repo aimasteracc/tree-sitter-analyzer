@@ -601,6 +601,8 @@ def test_registered_mcp_tools_have_cli_parity() -> None:
         "decision_journal": ("main", "--decision-journal"),
         "doc_sync": ("main", "--doc-sync"),
         "codegraph_test_gap": ("main", "--test-gap"),
+        # RFC-0014 Phase B: test_map — which tests exercise a function.
+        "nav_test_map": ("main", "--test-map"),
     }
 
     # ------------------------------------------------------------------
@@ -775,6 +777,8 @@ def test_facade_delegation_routes_each_action_to_expected_inner() -> None:
         ("nav", "callees"): "<bespoke>",
         ("nav", "callee_tree"): "CodeGraphCalleeTreeTool",
         ("nav", "caller_tree"): "CodeGraphCallerTreeTool",
+        # RFC-0014 Phase B: test_map is a bespoke route (closure over impact_inner).
+        ("nav", "test_map"): "<bespoke>",
         ("structure", "outline"): "GetCodeOutlineTool",
         ("structure", "analyze"): "AnalyzeCodeStructureTool",
         ("structure", "signatures"): "<bespoke>",

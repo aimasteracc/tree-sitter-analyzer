@@ -1,6 +1,6 @@
 # RFC-0014: Instant-edit safety — test-noise partition, test-map, and co-change
 
-- **Status**: draft
+- **Status**: accepted
 - **Author(s)**: @aimasteracc
 - **Created**: 2026-06-11
 - **Last updated**: 2026-06-11 — adversarial review round 1
@@ -897,41 +897,44 @@ Expected: `direct_callees` in production bucket = 2; `tests.test_callees_count =
 
 ## Acceptance criteria
 
-- [ ] `_compute_risk_score` uses production-only `fan_in`/`fan_out`; always
+- [x] `_compute_risk_score` uses production-only `fan_in`/`fan_out`; always
       returns `tests: {test_callers_count, test_callees_count}` (counts only by
-      default).
-- [ ] `include_tests` is declared in `CodeGraphImpactTool.get_tool_schema`
+      default). *(Phase A — PR #461)*
+- [x] `include_tests` is declared in `CodeGraphImpactTool.get_tool_schema`
       properties (`codegraph_impact_tool.py:308–349`), NOT in `required`, ensuring
       it survives `_project_args` schema projection at `facade_tool.py:251`.
-- [ ] `nav action=impact` supports `include_tests=true`; when true adds
+      *(Phase A — PR #461)*
+- [x] `nav action=impact` supports `include_tests=true`; when true adds
       `tests.test_caller_files` and `tests.test_callee_files` (sorted lists).
       Default path (`include_tests=false`) is byte-identical to pre-RFC for all
       response fields except the new `tests` bucket AND test-edge filtering of
-      transitive lists when `include_tests=false`.
-- [ ] `_compute_transitive_callers` and `_compute_transitive_callees` gain
+      transitive lists when `include_tests=false`. *(Phase A — PR #461)*
+- [x] `_compute_transitive_callers` and `_compute_transitive_callees` gain
       `include_tests: bool = False`; test-file filtering occurs before `to_dict()`.
-- [ ] `nav action=test_map` implemented; returns `test_files`, `test_functions`
-      in `file::fn` format, `edge_count`, `truncated`.
+      *(Phase A — PR #461)*
+- [x] `nav action=test_map` implemented; returns `test_files`, `test_functions`
+      in `file::fn` format, `edge_count`, `truncated`. *(Phase B)*
 - [ ] `nav action=co_change` implemented; returns `co_changed_files` sorted by
       lift descending; degrades gracefully (success=true, empty list) when git is
-      unavailable.
+      unavailable. *(Phase C — not yet started)*
 - [ ] co_change uses a SINGLE `git log --name-only` subprocess plus one
-      `rev-parse`; no per-commit diff-tree loop.
+      `rev-parse`; no per-commit diff-tree loop. *(Phase C)*
 - [ ] co_change HEAD-keyed cache: second call with same (project, file, HEAD)
-      does not invoke a subprocess.
-- [ ] CLI parity: `--test-map <symbol>`, `--co-change <file-or-symbol>`, and
-      `--impact <fn> [--include-tests]` flags wired, documented, and covered by a
-      parity test.
-- [ ] Unit tests `TestImpactTestPartition`, `TestNavTestMap`, `TestCoChange` green
-      with all assertions using exact values (`== N`).
+      does not invoke a subprocess. *(Phase C)*
+- [x] CLI parity: `--test-map <symbol>` and `--impact <fn> [--include-tests]`
+      flags wired, documented, and covered by a parity test.
+      (`--co-change` deferred to Phase C). *(Phase B)*
+- [x] Unit tests `TestImpactTestPartition` (Phase A) and `TestNavTestMap`
+      (Phase B) green with all assertions using exact values (`== N`).
+      (`TestCoChange` deferred to Phase C). *(Phase A+B)*
 - [ ] Integration test `TestNavImpactPartition` dispatches through
       `handle_call_tool` (not `execute()` directly); score/count assertions pinned
-      to exact values measured on first green run.
+      to exact values measured on first green run. *(deferred)*
 - [ ] DF-16 dogfood re-run: risk level changes from `high` to `low` for the
-      documented DF-16 function (16 test + 2 prod callers).
-- [ ] `_NAV_DESCRIPTION` and MCP server instructions updated with three new
-      actions (`test_map`, `co_change`, updated `impact` docs).
-- [ ] Docs/CODEMAPS updated.
+      documented DF-16 function (16 test + 2 prod callers). *(deferred)*
+- [x] `_NAV_DESCRIPTION` and MCP server instructions updated with `test_map`
+      action (and Phase A `impact` docs). *(Phase B)*
+- [x] Docs/CODEMAPS updated. *(Phase B)*
 
 ## What this RFC does NOT do (deferred)
 
