@@ -29,7 +29,13 @@ claude mcp add tree-sitter-analyzer \
   -- uvx --from "tree-sitter-analyzer[mcp]" tree-sitter-analyzer-mcp
 ```
 
-エージェントを再起動し、こう伝える: 「プロジェクト ルートを私のリポジトリに設定して、`index` ツールを action=status で呼んでください。」
+エージェントを再起動し、こう伝える: 「`index` ツールを action=status で呼んでください。」
+
+> **PyPI / uvx ユーザーへ — スキルのインストール:** 13 個の `tsa-*` スキルはホイールに同梱されています。一度だけ次のコマンドでインストールしてください:
+> ```bash
+> tree-sitter-analyzer --install-skills
+> ```
+> git clone ユーザーはすでに `.claude/skills/` に含まれているため、操作不要です。
 
 [その他のエージェント (Cursor / Copilot / Cline / Continue / Claude Desktop / Roo Code) →](#-対応エージェント)
 
@@ -149,7 +155,7 @@ CodeGraph には skill システムが存在しない。本ツールは `.claude
 
 各 skill は `allowed-tools` ツール サブセット + 手順レシピ + 決定面スキーマを同梱し、エージェントは 8 個のツールから毎回選別する必要が無い。
 
-### 272 の CLI フラグ
+### 274 の CLI フラグ
 
 CodeGraph の 15 コマンド CLI の厳密な上位互換。主なもの:
 
@@ -205,7 +211,7 @@ uv add "tree-sitter-analyzer[all,mcp]"
 }
 ```
 
-再起動後: 「プロジェクト ルートを私のリポジトリに設定して、`index` ツールを action=status で呼んでください。」
+再起動後: 「`index` ツールを action=status で呼んでください。」
 
 ---
 
@@ -238,6 +244,12 @@ claude mcp add tree-sitter-analyzer \
 ```
 
 検証: `claude mcp list`。13 の `tsa-*` skills は `.claude/skills/` から自動検出される。
+
+**PyPI / uvx ユーザー** — 同梱スキルを一度インストール:
+```bash
+tree-sitter-analyzer --install-skills
+```
+git clone ユーザーはすでに含まれているため不要です。
 </details>
 
 <details>

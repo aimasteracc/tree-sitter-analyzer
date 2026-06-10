@@ -30,6 +30,7 @@ def handle_special_commands(
 ) -> int | None:
     """Handle CLI commands that bypass the normal file-analysis command path."""
     handlers: tuple[Callable[[], int | None], ...] = (
+        lambda: _handle_install_skills(args, context),
         lambda: _handle_agent_skills(args, context),
         lambda: _handle_agent_workflow(args, context),
         lambda: _handle_batch_partial_read(args, context),
@@ -57,6 +58,41 @@ def handle_special_commands(
         if result is not None:
             return result
     return None
+
+
+def _handle_install_skills(
+    args: Any,
+    context: SpecialCommandContext,
+) -> int | None:
+    """Run ``--install-skills`` / ``--install-skills-global``."""
+    install_target = getattr(args, "install_skills", None)
+    install_global = getattr(args, "install_skills_global", False)
+    if install_target is None and not install_global:
+        return None
+    from pathlib import Path
+
+    from .install_skills import install_skills
+
+    target_dir = (
+        Path(install_target) if install_target and install_target != "." else None
+    )
+    if install_target == ".":
+        target_dir = Path(os.getcwd())
+
+    report = install_skills(target_dir=target_dir, global_install=bool(install_global))
+    summary = {
+        "success": True,
+        "installed_count": report["installed_count"],
+        "skipped_count": report["skipped_count"],
+        "installed": report["installed"],
+        "skipped": report["skipped"],
+        "summary_line": (
+            f"install_skills: {report['installed_count']} installed, "
+            f"{report['skipped_count']} skipped"
+        ),
+    }
+    context.output_json(summary)
+    return 0
 
 
 def _handle_agent_skills(

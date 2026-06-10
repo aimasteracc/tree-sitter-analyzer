@@ -30,7 +30,13 @@ claude mcp add tree-sitter-analyzer \
   -- uvx --from "tree-sitter-analyzer[mcp]" tree-sitter-analyzer-mcp
 ```
 
-Restart your agent, then say: *"Set the project root to my repo and run the `index` tool with action=status."*
+Restart your agent, then say: *"Run the `index` tool with action=status."*
+
+> **PyPI / uvx users — install skills:** the 13 `tsa-*` skills are bundled in the wheel. Copy them once with:
+> ```bash
+> tree-sitter-analyzer --install-skills
+> ```
+> Git-clone users already have them under `.claude/skills/` — no action needed.
 
 [Other agents (Cursor, Copilot, Cline, Continue, Claude Desktop, Roo Code) →](#supported-agents)
 
@@ -205,7 +211,7 @@ CodeGraph has zero skills. We ship 13 under `.claude/skills/tsa-*/`:
 
 Each skill ships an `allowed-tools` subset + procedure recipe + decision-surface schema, so the agent doesn't have to triage 8 tools on every question.
 
-### 272 CLI flags
+### 274 CLI flags
 
 Superset of CodeGraph's CLI surface. Highlights:
 
@@ -262,7 +268,7 @@ See **[Supported Agents](#supported-agents)**. Most clients want this MCP server
 }
 ```
 
-After restart: *"Set the project root to my repo and call the `index` tool with action=status."*
+After restart: *"Run the `index` tool with action=status."*
 
 ---
 
@@ -296,6 +302,12 @@ claude mcp add tree-sitter-analyzer \
 ```
 
 Verify: `claude mcp list`. The 13 `tsa-*` skills auto-discover from `.claude/skills/`.
+
+**PyPI / uvx users** — install the bundled skills once with:
+```bash
+tree-sitter-analyzer --install-skills
+```
+Git-clone users already have them — no action needed.
 </details>
 
 <details>

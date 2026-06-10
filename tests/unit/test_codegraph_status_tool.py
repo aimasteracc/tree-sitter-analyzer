@@ -158,9 +158,7 @@ class TestExecuteWithIndex:
         )
 
     @pytest.mark.asyncio
-    async def test_total_edges_zero_when_edges_absent(
-        self, tool_with_root, tmp_path
-    ):
+    async def test_total_edges_zero_when_edges_absent(self, tool_with_root, tmp_path):
         """total_edges defaults to 0 when get_stats omits it (no edges table)."""
         cache_dir = tmp_path / ".ast-cache"
         cache_dir.mkdir()
@@ -259,3 +257,22 @@ class TestExecuteOutputFormat:
         result = await tool.execute({"output_format": "json"})
         assert "toon_content" not in result
         assert result["verdict"] == "NOT_FOUND"
+
+
+class TestEmptyIndexHint:
+    """D3 — empty-index hint must reference the facade phrasing, not v1.x names."""
+
+    @pytest.mark.asyncio
+    async def test_hint_uses_facade_phrasing(self, tool_with_root):
+        """Hint must say 'index' tool with action=auto (current facade)."""
+        result = await tool_with_root.execute({"output_format": "json"})
+        assert result["verdict"] == "WARN"
+        hint = result["hint"]
+        assert "action=auto" in hint
+
+    @pytest.mark.asyncio
+    async def test_hint_has_no_codegraph_prefix(self, tool_with_root):
+        """Hint must NOT reference deprecated codegraph_autoindex name."""
+        result = await tool_with_root.execute({"output_format": "json"})
+        hint = result["hint"]
+        assert "codegraph_" not in hint
