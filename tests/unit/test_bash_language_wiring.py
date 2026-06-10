@@ -61,9 +61,10 @@ def test_bash_corpus_extracts_functions() -> None:
     tree = parser.parse(src)
     elements = plugin.extract_elements(tree, src.decode())
     # corpus_bash_expected.json records 11 function_definition nodes.
-    # Lower bound (not ==) so minor grammar-version drift doesn't flake;
-    # the golden corpus test pins the exact histogram.
-    assert len(elements["functions"]) >= 10
+    # Exact pin (user rule 2026-06-10: no >=-style approximate assertions) —
+    # a grammar-version bump that changes this count MUST fail the test and
+    # force a conscious re-pin, not pass silently.
+    assert len(elements["functions"]) == 11
 
 
 def test_ast_cache_indexes_sh_file() -> None:
@@ -77,7 +78,7 @@ def test_ast_cache_indexes_sh_file() -> None:
         cache.index_project()
         conn = cache.get_conn()
         count = conn.execute("SELECT COUNT(*) FROM ast_symbol_rows").fetchone()[0]
-        assert count >= 11, f"expected >=11 bash symbols indexed, got {count}"
+        assert count == 11, f"expected exactly 11 bash symbols indexed, got {count}"
         cache.close()
     finally:
         shutil.rmtree(d, ignore_errors=True)
