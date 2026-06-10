@@ -239,3 +239,224 @@ class TestInstallSkillsPathValidation:
         ):
             with pytest.raises(ValueError, match="self-copy"):
                 install_skills(target_dir=None)
+
+
+# ---------------------------------------------------------------------------
+# D1f — handler dispatch: end-to-end CLI tests via special_commands
+# ---------------------------------------------------------------------------
+
+
+class TestInstallSkillsHandlerDispatch:
+    def test_handle_install_skills_no_flag_returns_none(self, tmp_path):
+        """Test _handle_install_skills returns None when no flags are set."""
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+
+        from tree_sitter_analyzer.cli.special_commands import (
+            SpecialCommandContext,
+            _handle_install_skills,
+        )
+
+        args = SimpleNamespace(
+            install_skills=None,
+            install_skills_global=False,
+        )
+        context = SpecialCommandContext(
+            asyncio_run=lambda x: x,
+            output_json=MagicMock(),
+            output_error=MagicMock(),
+            output_info=MagicMock(),
+            output_list=MagicMock(),
+            query_loader=MagicMock(),
+        )
+
+        rc = _handle_install_skills(args, context)
+        assert rc is None
+
+    def test_handle_install_skills_with_explicit_target(self, tmp_path):
+        """Test --install-skills <dir> installs to <dir>/.claude/skills/."""
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+
+        from tree_sitter_analyzer.cli.special_commands import (
+            SpecialCommandContext,
+            _handle_install_skills,
+        )
+
+        target = tmp_path / "myproject"
+        target.mkdir()
+
+        captured = {}
+
+        def capture_json(d):
+            captured["json"] = d
+
+        args = SimpleNamespace(
+            install_skills=str(target),
+            install_skills_global=False,
+        )
+        context = SpecialCommandContext(
+            asyncio_run=lambda x: x,
+            output_json=capture_json,
+            output_error=MagicMock(),
+            output_info=MagicMock(),
+            output_list=MagicMock(),
+            query_loader=MagicMock(),
+        )
+
+        rc = _handle_install_skills(args, context)
+
+        assert rc == 0
+        assert captured["json"]["success"] is True
+        assert captured["json"]["installed_count"] == 13
+        assert captured["json"]["skipped_count"] == 0
+        assert (target / ".claude" / "skills").is_dir()
+
+    def test_handle_install_skills_with_dot_target(self, tmp_path, monkeypatch):
+        """Test --install-skills . installs to $CWD/.claude/skills/."""
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+
+        from tree_sitter_analyzer.cli.special_commands import (
+            SpecialCommandContext,
+            _handle_install_skills,
+        )
+
+        project = tmp_path / "proj"
+        project.mkdir()
+        monkeypatch.chdir(project)
+
+        captured = {}
+
+        def capture_json(d):
+            captured["json"] = d
+
+        args = SimpleNamespace(
+            install_skills=".",
+            install_skills_global=False,
+        )
+        context = SpecialCommandContext(
+            asyncio_run=lambda x: x,
+            output_json=capture_json,
+            output_error=MagicMock(),
+            output_info=MagicMock(),
+            output_list=MagicMock(),
+            query_loader=MagicMock(),
+        )
+
+        rc = _handle_install_skills(args, context)
+
+        assert rc == 0
+        assert captured["json"]["success"] is True
+        assert captured["json"]["installed_count"] == 13
+        assert (project / ".claude" / "skills").is_dir()
+
+    def test_handle_install_skills_global_flag(self, tmp_path, monkeypatch):
+        """Test --install-skills-global installs to ~/.claude/skills/."""
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+
+        from tree_sitter_analyzer.cli.special_commands import (
+            SpecialCommandContext,
+            _handle_install_skills,
+        )
+
+        monkeypatch.setenv("HOME", str(tmp_path))
+
+        captured = {}
+
+        def capture_json(d):
+            captured["json"] = d
+
+        args = SimpleNamespace(
+            install_skills=None,
+            install_skills_global=True,
+        )
+        context = SpecialCommandContext(
+            asyncio_run=lambda x: x,
+            output_json=capture_json,
+            output_error=MagicMock(),
+            output_info=MagicMock(),
+            output_list=MagicMock(),
+            query_loader=MagicMock(),
+        )
+
+        rc = _handle_install_skills(args, context)
+
+        assert rc == 0
+        assert captured["json"]["success"] is True
+        assert captured["json"]["installed_count"] == 13
+        assert (tmp_path / ".claude" / "skills").is_dir()
+
+
+# ---------------------------------------------------------------------------
+# D1g — error handling: permission errors and skip-existing messages
+# ---------------------------------------------------------------------------
+
+
+class TestInstallSkillsErrorHandling:
+    def test_permission_error_on_mkdir_raised(self, tmp_path):
+        """install_skills raises PermissionError when mkdir fails."""
+        from unittest.mock import patch
+
+        import pytest
+
+        from tree_sitter_analyzer.cli.install_skills import install_skills
+
+        target = tmp_path / "proj"
+        target.mkdir()
+
+        with patch(
+            "tree_sitter_analyzer.cli.install_skills.Path.mkdir",
+            side_effect=PermissionError("denied"),
+        ):
+            with pytest.raises(PermissionError, match="Cannot create skills directory"):
+                install_skills(target_dir=target)
+
+    def test_permission_error_on_copytree_raised(self, tmp_path):
+        """install_skills propagates errors during copytree."""
+        from unittest.mock import patch
+
+        import pytest
+
+        from tree_sitter_analyzer.cli.install_skills import install_skills
+
+        target = tmp_path / "proj"
+        target.mkdir()
+
+        with patch(
+            "tree_sitter_analyzer.cli.install_skills.shutil.copytree",
+            side_effect=PermissionError("cannot copy"),
+        ):
+            with pytest.raises(PermissionError, match="cannot copy"):
+                install_skills(target_dir=target)
+
+    def test_skip_existing_prints_to_stderr(self, tmp_path, capsys):
+        """When a skill already exists, skip message goes to stderr."""
+        from tree_sitter_analyzer.cli.install_skills import install_skills
+
+        target = tmp_path / "proj"
+        target.mkdir()
+        existing = target / ".claude" / "skills" / "tsa-index"
+        existing.mkdir(parents=True)
+
+        report = install_skills(target_dir=target)
+
+        captured = capsys.readouterr()
+        assert report["skipped_count"] == 1
+        assert "Skipped (already exists)" in captured.err
+        assert str(existing) in captured.err
+
+    def test_installed_skill_prints_to_stderr(self, tmp_path, capsys):
+        """When a skill is installed, message goes to stderr."""
+        from tree_sitter_analyzer.cli.install_skills import install_skills
+
+        target = tmp_path / "proj"
+        target.mkdir()
+
+        report = install_skills(target_dir=target)
+
+        captured = capsys.readouterr()
+        assert report["installed_count"] == 13
+        assert "Installed:" in captured.err
+        assert ".claude/skills/tsa-" in captured.err
