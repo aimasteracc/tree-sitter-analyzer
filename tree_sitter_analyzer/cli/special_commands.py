@@ -73,11 +73,12 @@ def _handle_install_skills(
 
     from .install_skills import install_skills
 
-    target_dir = (
-        Path(install_target) if install_target and install_target != "." else None
-    )
-    if install_target == ".":
+    if install_target and install_target != ".":
+        target_dir = Path(install_target)
+    elif install_target == ".":
         target_dir = Path(os.getcwd())
+    else:
+        target_dir = None
 
     report = install_skills(target_dir=target_dir, global_install=bool(install_global))
     summary = {

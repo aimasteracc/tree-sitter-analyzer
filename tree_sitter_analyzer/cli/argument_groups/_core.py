@@ -34,6 +34,15 @@ def _add_output_options(parser: argparse.ArgumentParser) -> None:
         help="Use tab delimiters instead of commas in TOON format (further compression)",
     )
     parser.add_argument(
+        "--compact-toon",
+        action="store_true",
+        help=(
+            "RFC-0012: with TOON output on the MCP decision tools, return only "
+            "the control surface alongside toon_content (drops metadata already "
+            "encoded in the blob). Mirrors the MCP 'compact_only' parameter."
+        ),
+    )
+    parser.add_argument(
         "--table",
         choices=["full", "compact", "csv", "json", "toon", "signatures"],
         help=(

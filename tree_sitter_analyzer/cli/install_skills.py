@@ -26,6 +26,9 @@ def _bundled_skills_dir() -> Path:
     return Path(str(_skills_pkg.__file__)).parent
 
 
+_COPY_IGNORE = shutil.ignore_patterns("__pycache__", "*.pyc", ".DS_Store")
+
+
 def _resolve_target(
     target_dir: Path | None,
     *,
@@ -33,7 +36,7 @@ def _resolve_target(
 ) -> Path:
     """Return the .claude/skills/ directory to install into."""
     if global_install:
-        home = Path(os.environ.get("HOME", Path.home()))
+        home = Path(os.environ.get("HOME") or str(Path.home()))
         return home / ".claude" / "skills"
     if target_dir is None:
         target_dir = Path.cwd()
@@ -62,7 +65,27 @@ def install_skills(
     """
     src_root = _bundled_skills_dir()
     dest_root = _resolve_target(target_dir, global_install=global_install)
-    dest_root.mkdir(parents=True, exist_ok=True)
+
+    # Guard: refuse to install if destination resolves into the bundled
+    # skills directory itself (self-copy would corrupt the package).
+    try:
+        resolved_dest = dest_root.resolve()
+        resolved_src = src_root.resolve()
+    except Exception:
+        resolved_dest = dest_root
+        resolved_src = src_root
+    if resolved_dest == resolved_src or resolved_src in resolved_dest.parents:
+        raise ValueError(
+            f"Destination {dest_root} resolves into the bundled skills "
+            "directory — refusing to self-copy."
+        )
+
+    try:
+        dest_root.mkdir(parents=True, exist_ok=True)
+    except PermissionError as exc:
+        raise PermissionError(
+            f"Cannot create skills directory {dest_root}: {exc}"
+        ) from exc
 
     installed: list[str] = []
     skipped: list[str] = []
@@ -75,7 +98,7 @@ def install_skills(
             skipped.append(src_skill.name)
             print(f"Skipped (already exists): {dest_skill}", file=sys.stderr)
         else:
-            shutil.copytree(src_skill, dest_skill)
+            shutil.copytree(src_skill, dest_skill, ignore=_COPY_IGNORE)
             installed.append(src_skill.name)
             print(f"Installed: {dest_skill}", file=sys.stderr)
 

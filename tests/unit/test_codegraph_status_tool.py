@@ -70,6 +70,7 @@ class TestExecuteNoProjectRoot:
         assert result["total_files"] == 0
         assert result["total_symbols"] == 0
         assert result["project_root"] is None
+        assert "hint" in result, "NOT_FOUND response must carry a 'hint' field"
         assert "project_root" in result["hint"]
 
 
@@ -81,6 +82,7 @@ class TestExecuteNoCache:
         assert result["indexed"] is False
         assert result["total_files"] == 0
         assert result["cache_path"] is None
+        assert "hint" in result, "WARN response must carry a 'hint' field"
         assert "warm" in result["hint"].lower() or "index" in result["hint"].lower()
 
 
@@ -267,6 +269,7 @@ class TestEmptyIndexHint:
         """Hint must say 'index' tool with action=auto (current facade)."""
         result = await tool_with_root.execute({"output_format": "json"})
         assert result["verdict"] == "WARN"
+        assert "hint" in result, "WARN response must carry a 'hint' field"
         hint = result["hint"]
         assert "action=auto" in hint
 
@@ -274,5 +277,6 @@ class TestEmptyIndexHint:
     async def test_hint_has_no_codegraph_prefix(self, tool_with_root):
         """Hint must NOT reference deprecated codegraph_autoindex name."""
         result = await tool_with_root.execute({"output_format": "json"})
+        assert "hint" in result, "WARN response must carry a 'hint' field"
         hint = result["hint"]
         assert "codegraph_" not in hint

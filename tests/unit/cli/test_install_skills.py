@@ -160,3 +160,82 @@ class TestInstallSkillsCLIFlag:
             s for a in parser._actions for s in a.option_strings if s.startswith("--")
         }
         assert "--install-skills-global" in flags
+
+
+# ---------------------------------------------------------------------------
+# D1d — wheel proof: bundled skills reachable via installed-package path
+# ---------------------------------------------------------------------------
+
+
+class TestBundledSkillsWheelPath:
+    """Verify bundled skills are reachable via the SKILLS_DIR constant that
+    the runtime (install_skills._bundled_skills_dir) uses at install time.
+
+    This test is the counterpart to the wheel-level ``unzip -l dist/*.whl |
+    grep -c skills/tsa-`` smoke check.  It catches the case where SKILLS_DIR
+    diverges from the actual on-disk location (e.g. after a packaging change).
+    """
+
+    def test_skills_dir_constant_matches_file_parent(self):
+        """SKILLS_DIR in __init__.py must agree with __file__.parent."""
+        from tree_sitter_analyzer import skills as skills_pkg
+
+        skills_dir = Path(skills_pkg.SKILLS_DIR)
+        file_parent = Path(skills_pkg.__file__).parent  # type: ignore[arg-type]
+        assert skills_dir == file_parent
+
+    def test_exactly_13_tsa_dirs_via_skills_dir(self):
+        """SKILLS_DIR must contain exactly 13 tsa-* subdirectories."""
+        from tree_sitter_analyzer import skills as skills_pkg
+
+        skills_dir = Path(skills_pkg.SKILLS_DIR)
+        tsa_dirs = [
+            d for d in skills_dir.iterdir() if d.is_dir() and d.name.startswith("tsa-")
+        ]
+        assert len(tsa_dirs) == 13
+
+    def test_each_skill_has_skill_md_via_skills_dir(self):
+        """Every tsa-* dir reachable via SKILLS_DIR must contain SKILL.md."""
+        from tree_sitter_analyzer import skills as skills_pkg
+
+        skills_dir = Path(skills_pkg.SKILLS_DIR)
+        for d in skills_dir.iterdir():
+            if d.is_dir() and d.name.startswith("tsa-"):
+                assert (d / "SKILL.md").is_file(), (
+                    f"{d.name}: SKILL.md missing from SKILLS_DIR path"
+                )
+
+
+# ---------------------------------------------------------------------------
+# D1e — path-validation guard: self-copy is rejected
+# ---------------------------------------------------------------------------
+
+
+class TestInstallSkillsPathValidation:
+    def test_self_copy_is_rejected(self):
+        """install_skills must raise ValueError if destination resolves into
+        the bundled skills directory itself (prevents corrupting the package)."""
+        # The bundled skills dir is e.g. .../tree_sitter_analyzer/skills/
+        # We need to pass a target_dir such that <target_dir>/.claude/skills/
+        # resolves to the bundled skills dir.  That path is two levels up:
+        # bundled_skills_dir / ".." / ".." == package root at best — but a
+        # simpler approach is to monkeypatch _resolve_target to point directly
+        # at the bundled dir; however we can also just pass a crafted path.
+        # Use a direct mock instead so the test is not fragile to path depth.
+        from unittest.mock import patch
+
+        import pytest
+
+        from tree_sitter_analyzer.cli.install_skills import (
+            _bundled_skills_dir,
+            install_skills,
+        )
+
+        bundled = _bundled_skills_dir()
+
+        with patch(
+            "tree_sitter_analyzer.cli.install_skills._resolve_target",
+            return_value=bundled,
+        ):
+            with pytest.raises(ValueError, match="self-copy"):
+                install_skills(target_dir=None)

@@ -65,7 +65,11 @@ def _args(**overrides: Any) -> Namespace:
         (
             {"file_health": True},
             "FileHealthTool",
-            {"file_path": "target.py", "output_format": "json"},
+            {
+                "file_path": "target.py",
+                "output_format": "json",
+                "compact_only": False,
+            },
         ),
         (
             {"parser_readiness": True},
@@ -79,7 +83,12 @@ def _args(**overrides: Any) -> Namespace:
         (
             {"project_health": True},
             "ProjectHealthTool",
-            {"min_grade": "C", "max_files": 30, "output_format": "json"},
+            {
+                "min_grade": "C",
+                "max_files": 30,
+                "output_format": "json",
+                "compact_only": False,
+            },
         ),
         (
             {"overview": True},
@@ -93,6 +102,7 @@ def _args(**overrides: Any) -> Namespace:
                 "file_path": "target.py",
                 "edit_type": "refactor",
                 "output_format": "json",
+                "compact_only": False,
             },
         ),
         (
@@ -109,6 +119,7 @@ def _args(**overrides: Any) -> Namespace:
                 # dispatcher emits the trimmed surface.
                 "agent_summary_only": True,
                 "scope_mode": "report",
+                "compact_only": False,
             },
         ),
         (
@@ -220,6 +231,7 @@ def test_safe_to_edit_cli_forwards_requested_edit_type(monkeypatch) -> None:
             "file_path": "target.py",
             "edit_type": "rename",
             "output_format": "json",
+            "compact_only": False,
         },
     }
 
@@ -251,6 +263,7 @@ def test_project_health_cli_forwards_requested_max_files(monkeypatch) -> None:
             "min_grade": "C",
             "max_files": 7,
             "output_format": "json",
+            "compact_only": False,
         },
     }
 
@@ -466,6 +479,7 @@ def test_change_impact_cli_does_not_require_file_path(monkeypatch) -> None:
             # --change-impact-full is passed.
             "agent_summary_only": True,
             "scope_mode": "report",
+            "compact_only": False,
         },
     }
 
@@ -511,6 +525,7 @@ def test_change_impact_cli_forwards_scope_paths(monkeypatch) -> None:
             # v1.12 default flip: trimmed surface unless --change-impact-full.
             "agent_summary_only": True,
             "scope_mode": "report",
+            "compact_only": False,
         },
     }
 
@@ -576,6 +591,7 @@ def test_change_impact_cli_forwards_agent_summary_only(monkeypatch) -> None:
             "scope_paths": [],
             "agent_summary_only": True,
             "scope_mode": "report",
+            "compact_only": False,
         },
     }
 
@@ -616,6 +632,7 @@ def test_change_impact_cli_forwards_mode_and_test_discovery_toggle(monkeypatch) 
             # v1.12 default flip: trimmed surface unless --change-impact-full.
             "agent_summary_only": True,
             "scope_mode": "report",
+            "compact_only": False,
         },
     }
 
@@ -657,6 +674,7 @@ def test_change_impact_cli_forwards_change_impact_full(monkeypatch) -> None:
             "scope_paths": [],
             "agent_summary_only": False,
             "scope_mode": "report",
+            "compact_only": False,
         },
     }
 
@@ -752,3 +770,28 @@ def test_symbol_resolve_cli_delegates_to_resolve_tool(monkeypatch) -> None:
             "output_format": "json",
         },
     }
+
+
+def test_compact_toon_cli_flag_forwards_compact_only(monkeypatch) -> None:
+    """RFC-0012 CLI parity: --compact-toon reaches the MCP compact_only arg."""
+    seen: dict[str, Any] = {}
+
+    class FakeFileHealthTool:
+        def __init__(self, project_root: str | None = None) -> None:
+            seen["project_root"] = project_root
+
+        async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+            seen["arguments"] = arguments
+            return {"success": True}
+
+    monkeypatch.setattr(mcp_commands, "FileHealthTool", FakeFileHealthTool)
+
+    result = mcp_commands.handle_mcp_commands(
+        _args(file_health=True, compact_toon=True),
+        lambda payload: None,
+        lambda error: None,
+        lambda: "toon",
+    )
+
+    assert result == 0
+    assert seen["arguments"]["compact_only"] is True
