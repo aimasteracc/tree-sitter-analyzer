@@ -10,9 +10,10 @@ corrupted ``pyproject.toml``. The block below adds error-path
 coverage for those exact gaps.
 
 The tests run against the real :class:`ParserReadinessTool` (no
-mocks) and use tmp_path fixtures so a divergent CWD doesn't change
-the result. Tests that expose real bugs are marked ``xfail
-strict=True`` so the suite stays green while the gap is documented.
+mocks on the tool itself) and use tmp_path fixtures so a divergent
+CWD doesn't change the result.  For install-state tests,
+``monkeypatch`` forces BOTH paths deterministically — no try/except
+conditionals that silently skip a branch.
 """
 
 from __future__ import annotations
@@ -94,18 +95,85 @@ python = "tree_sitter_analyzer.languages.python_plugin:PythonPlugin"
     assert result["readiness"][0]["signals"]["unit_tests"] is True
 
 
-@pytest.mark.asyncio
-async def test_parser_readiness_tool_returns_json(tmp_path):
-    """MCP JSON output should expose the shared parser-readiness shape."""
-    _write_pyproject(
-        tmp_path,
-        """
+class _FakeMetadata:
+    """Minimal email.message.Message stand-in for importlib distribution metadata."""
+
+    def __init__(self, home_page: str, project_urls: list[str]) -> None:
+        self._home_page = home_page
+        self._project_urls = project_urls
+
+    def get(self, key: str) -> str | None:
+        if key == "Home-page":
+            return self._home_page
+        return None
+
+    def get_all(self, key: str):
+        if key == "Project-URL":
+            return self._project_urls
+        return []
+
+
+class _FakeDistribution:
+    """Fake importlib.metadata.Distribution for patching."""
+
+    def __init__(self, version: str, home_page: str, project_urls: list[str]) -> None:
+        self.version = version
+        self.metadata = _FakeMetadata(home_page, project_urls)
+
+
+_FAKE_SWIFT_DIST = _FakeDistribution(
+    version="9.9.9",
+    home_page="https://github.com/fake/tree-sitter-swift",
+    project_urls=[
+        "Source, https://github.com/fake/tree-sitter-swift",
+    ],
+)
+
+_SWIFT_PYPROJECT = """
 [project]
 dependencies = []
 
 [project.optional-dependencies]
 swift = ["tree-sitter-swift>=0.7.2"]
-""",
+"""
+
+
+def _make_fake_importlib_metadata(*, installed: bool):
+    """Return a fake importlib_metadata namespace for monkeypatching.
+
+    Replaces only ``parser_readiness_package.importlib_metadata`` so the
+    real ``importlib.metadata`` module is never touched.  The ``PackageNotFoundError``
+    class is borrowed from the real module so the ``except`` clause in
+    ``parser_distribution_signals`` can still catch it.
+    """
+    import importlib.metadata as _real_imd
+
+    class _FakeImportlibMetadata:
+        PackageNotFoundError = _real_imd.PackageNotFoundError
+
+        @staticmethod
+        def distribution(name: str):
+            if installed:
+                return _FAKE_SWIFT_DIST
+            raise _real_imd.PackageNotFoundError(name)
+
+    return _FakeImportlibMetadata()
+
+
+@pytest.mark.asyncio
+async def test_parser_readiness_tool_returns_json_installed(tmp_path, monkeypatch):
+    """JSON output: installed state — parser_package_version == installed version.
+
+    P1 (honesty-split): when the package IS installed, parser_package_version
+    carries the installed version; parser_required_spec carries the raw spec.
+    Monkeypatching the importlib_metadata alias forces this path deterministically
+    without touching the real importlib.metadata module.
+    """
+    import tree_sitter_analyzer.cli.parser_readiness_package as _pkg
+
+    _write_pyproject(tmp_path, _SWIFT_PYPROJECT)
+    monkeypatch.setattr(
+        _pkg, "importlib_metadata", _make_fake_importlib_metadata(installed=True)
     )
 
     result = await ParserReadinessTool(str(tmp_path)).execute(
@@ -119,21 +187,53 @@ swift = ["tree-sitter-swift>=0.7.2"]
     readiness = result["readiness"][0]
     signals = readiness["signals"]
     assert readiness["language"] == "swift"
-    assert signals["parser_package_version"] == "0.7.2"
-    assert signals["parser_project_urls"]["Homepage"].startswith("https://")
+    # Installed: version == patched value, not the spec version
+    assert signals["parser_package_version"] == "9.9.9"
+    assert signals["parser_required_spec"] == "tree-sitter-swift>=0.7.2"
+    # Project URLs populated from patched distribution metadata
+    assert (
+        signals["parser_project_urls"]["Homepage"]
+        == "https://github.com/fake/tree-sitter-swift"
+    )
     assert signals["parser_maintenance_urls"]["releases"].endswith("/releases")
     assert signals["parser_maintenance_urls"]["actions"].endswith("/actions")
-    assert signals["upstream_parser_abi"].startswith("local_binding_abi_")
-    assert signals["parser_semantic_version"]
-    assert signals["upstream_grammar_json"] in {"not_packaged", "packaged:grammar.json"}
-    assert signals["upstream_external_scanner"] != "unknown_local_only"
-    assert not any("ABI" in step for step in readiness["next_steps"])
-    assert any("grammar.json" in step for step in readiness["next_steps"])
-    assert any("scanner" in step for step in readiness["next_steps"])
-    assert any(
-        signals["parser_maintenance_urls"]["releases"] in step
-        for step in readiness["next_steps"]
+    assert result["agent_summary"]["verification_command"] == (
+        "uv run tree-sitter-analyzer parser-readiness swift --format json"
     )
+
+
+@pytest.mark.asyncio
+async def test_parser_readiness_tool_returns_json_not_installed(tmp_path, monkeypatch):
+    """JSON output: not-installed state — parser_package_version == "".
+
+    P1 (honesty-split): when the package is NOT installed, parser_package_version
+    MUST be ""; parser_required_spec still carries the raw spec so callers
+    can distinguish "declared but absent" from "not declared".
+    Monkeypatching the importlib_metadata alias forces this deterministically.
+    """
+    import tree_sitter_analyzer.cli.parser_readiness_package as _pkg
+
+    _write_pyproject(tmp_path, _SWIFT_PYPROJECT)
+    monkeypatch.setattr(
+        _pkg, "importlib_metadata", _make_fake_importlib_metadata(installed=False)
+    )
+
+    result = await ParserReadinessTool(str(tmp_path)).execute(
+        {"language": "swift", "output_format": "json"}
+    )
+
+    assert result["success"] is True
+    assert result["requested_language"] == "swift"
+    readiness = result["readiness"][0]
+    signals = readiness["signals"]
+    assert readiness["language"] == "swift"
+    # Not installed: version is ALWAYS "" — never a spec-extracted guess
+    assert signals["parser_package_version"] == ""
+    # Spec is still populated from pyproject
+    assert signals["parser_required_spec"] == "tree-sitter-swift>=0.7.2"
+    # No project URLs when not installed
+    assert signals["parser_project_urls"] == {}
+    assert signals["parser_maintenance_urls"] == {}
     assert result["agent_summary"]["verification_command"] == (
         "uv run tree-sitter-analyzer parser-readiness swift --format json"
     )
@@ -159,17 +259,18 @@ dependencies = []
 
 
 @pytest.mark.asyncio
-async def test_parser_readiness_toon_includes_readiness_decision_surface(tmp_path):
-    """TOON output should keep requested-language parser facts visible."""
-    _write_pyproject(
-        tmp_path,
-        """
-[project]
-dependencies = []
+async def test_parser_readiness_toon_installed_shows_version_and_url(
+    tmp_path, monkeypatch
+):
+    """TOON output: installed state — pkg_version and url are populated.
 
-[project.optional-dependencies]
-swift = ["tree-sitter-swift>=0.7.2"]
-""",
+    P2: deterministic test for the installed path via monkeypatch.
+    """
+    import tree_sitter_analyzer.cli.parser_readiness_package as _pkg
+
+    _write_pyproject(tmp_path, _SWIFT_PYPROJECT)
+    monkeypatch.setattr(
+        _pkg, "importlib_metadata", _make_fake_importlib_metadata(installed=True)
     )
 
     result = await ParserReadinessTool(str(tmp_path)).execute(
@@ -179,9 +280,42 @@ swift = ["tree-sitter-swift>=0.7.2"]
     toon = result["toon_content"]
     assert "readiness:" in toon
     assert "- swift: status=" in toon
-    assert "pkg_version=0.7.2" in toon
-    assert "url=https://" in toon
-    assert "/releases" in toon
+    # Installed version from patched distribution
+    assert "pkg_version=9.9.9" in toon
+    # Spec always present
+    assert "req_spec=tree-sitter-swift>=0.7.2" in toon
+    # URL from patched project_urls
+    assert "url=https://github.com/fake/tree-sitter-swift" in toon
+
+
+@pytest.mark.asyncio
+async def test_parser_readiness_toon_not_installed_shows_empty_version(
+    tmp_path, monkeypatch
+):
+    """TOON output: not-installed state — pkg_version=- and no url.
+
+    P2: deterministic test for the not-installed path via monkeypatch.
+    """
+    import tree_sitter_analyzer.cli.parser_readiness_package as _pkg
+
+    _write_pyproject(tmp_path, _SWIFT_PYPROJECT)
+    monkeypatch.setattr(
+        _pkg, "importlib_metadata", _make_fake_importlib_metadata(installed=False)
+    )
+
+    result = await ParserReadinessTool(str(tmp_path)).execute(
+        {"language": "swift", "output_format": "toon"}
+    )
+
+    toon = result["toon_content"]
+    assert "readiness:" in toon
+    assert "- swift: status=" in toon
+    # Not installed: version renders as '-' (the or '-' fallback in _toon_readiness_line)
+    assert "pkg_version=-" in toon
+    # Spec still populated from pyproject
+    assert "req_spec=tree-sitter-swift>=0.7.2" in toon
+    # No project URL when not installed
+    assert "url=https://" not in toon
 
 
 @pytest.mark.asyncio

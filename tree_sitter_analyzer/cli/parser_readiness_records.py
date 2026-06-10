@@ -177,7 +177,12 @@ def _local_parser_package_signals(
 ) -> dict[str, Any]:
     """Return upstream-risk signals that can be checked from the local package."""
     signals = _unknown_upstream_signals()
-    signals.update(parser_distribution_signals(parser_info.get("package", "")))
+    # Get the package name and the first requirement spec (if available)
+    package_name = parser_info.get("package", "")
+    requirement_spec = None
+    if parser_info.get("requirements"):
+        requirement_spec = parser_info["requirements"][0]
+    signals.update(parser_distribution_signals(package_name, requirement_spec))
     if not module_name:
         return signals
 
@@ -205,6 +210,7 @@ def _unknown_upstream_signals() -> dict[str, Any]:
     return {
         "parser_module_origin": "",
         "parser_package_version": "",
+        "parser_required_spec": "",
         "parser_project_urls": {},
         "parser_maintenance_urls": {},
         "parser_semantic_version": "",
