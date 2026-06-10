@@ -1,16 +1,30 @@
-"""Regression test: builtin-receiver gate — dict.get must NOT bind to a project .get.
+"""Regression + new-design tests: inverted builtin-receiver gate.
 
-Issue #447: callee_tree binds ``result.get("format")`` (a dict.get() call) to
-``SearchCache.get`` because the second-pass resolver (_choose_candidate path) lacks
-the builtin-method guard that the synapse cascade already has.
+Issue #447 (original): callee_tree bound ``result.get("format")`` (a dict.get()
+call) to ``SearchCache.get`` because path 2 (_choose_candidate) lacked the
+builtin-receiver guard that synapse path 1 already had.
 
-The conservative policy (consistent with issue spec): when the receiver is an
-unidentifiable variable (not imported, not self/cls) AND the method name is in
-STDLIB_METHODS_PY, leave the call unresolved rather than bind it to a project symbol.
+Adversarial P1 (live-confirmed over-gating): the OLD gate fired on ANY
+non-self/cls receiver whose bare method name was in STDLIB_METHODS_PY — losing
+CORRECT edges for untyped receivers (``store.get()`` with unique project
+DataStore.get was blocked; ``unknown > correct`` violated).
+
+NEW DESIGN (inverted): the gate fires ONLY when the receiver is POSITIVELY
+inferred as a builtin type by the extractor:
+  - ``result = {}`` / ``result = dict()`` → callee_full rewritten to
+    ``dict.get``; qualifier == "dict" IS in BUILTIN_TYPE_NAMES_PY → blocked.
+  - ``store`` (untyped param) → qualifier == "store" NOT in BUILTIN_TYPE_NAMES_PY
+    → allowed through to unique-method binding.
 
 Tests:
-1. RED (bug repro): dict.get with project-owned .get → NOT project-resolved to SearchCache
-2. Counter-case: actual SearchCache import + instance.get() → DOES bind to SearchCache.get
+1. RED (bug repro, inference-provable builtin): ``result = {}; result.get()`` in
+   a file that does NOT import SearchCache → must NOT bind to SearchCache.get.
+2. Counter-case: explicit SearchCache import + sc.get() → DOES bind.
+3. NEW: untyped param receiver ``store.get()`` with unique DataStore.get →
+   MUST bind (restores P1-regressed case).
+4. NEW: self._store.get() where DataStore.get is unique → MUST bind.
+5. NEW: module-level singleton CACHE.get() where CacheStore.get is unique →
+   MUST bind (the CACHE singleton case is P3).
 """
 
 from __future__ import annotations
@@ -52,13 +66,12 @@ def _edges_for(db_path: str, callee_name: str) -> list[dict]:
 
 
 def test_dict_get_does_not_bind_to_project_search_cache_get(tmp_path: Path) -> None:
-    """Bug repro #447: result.get("format") in a file that does NOT import SearchCache
-    must not be resolved to SearchCache.get.
+    """Bug repro #447 (adjusted for new-design): ``result = {}; result.get()`` in
+    a file that does NOT import SearchCache must not be resolved to SearchCache.get.
 
-    The project defines SearchCache.get (so the project-ownership gate in
-    _try_stdlib_method correctly prevents stdlib classification by synapse).
-    The second-pass resolver (_choose_candidate) must also NOT bind this to a
-    project symbol — it must stay unresolved (unknown or stdlib).
+    The extractor infers ``result`` has type ``dict`` (from the literal assignment),
+    rewrites callee_full to ``dict.get``, so qualifier == "dict" is in
+    BUILTIN_TYPE_NAMES_PY and the gate fires correctly.  ``unknown > wrong``.
     """
     db = _index(
         tmp_path,
@@ -69,9 +82,12 @@ def test_dict_get_does_not_bind_to_project_search_cache_get(tmp_path: Path) -> N
                 "    def get(self, cache_key: str):\n"
                 "        return None\n"
             ),
-            # format_helper.py does NOT import search_cache; result is a plain dict.
+            # format_helper.py does NOT import search_cache.
+            # result is a LOCAL DICT LITERAL — the extractor infers its type.
             "format_helper.py": (
-                "def apply_toon_format_to_response(result):\n"
+                "def apply_toon_format_to_response(raw_result):\n"
+                "    result = {}\n"
+                "    result['key'] = raw_result\n"
                 "    if result.get('format') != 'toon':\n"
                 "        return result\n"
                 "    if result.get('success') is True:\n"
@@ -104,8 +120,6 @@ def test_dict_get_does_not_bind_to_project_search_cache_get(tmp_path: Path) -> N
 def test_imported_search_cache_get_still_binds(tmp_path: Path) -> None:
     """Counter-case: when the caller IMPORTS SearchCache and uses an instance,
     sc.get() SHOULD bind to SearchCache.get — the gate must not over-block.
-
-    This tests that the fix does not regress legitimate project-symbol resolution.
     """
     db = _index(
         tmp_path,
@@ -138,4 +152,113 @@ def test_imported_search_cache_get_still_binds(tmp_path: Path) -> None:
     assert project_edges, (
         f"sc.get() with explicit SearchCache import must bind to SearchCache.get; "
         f"got {consumer_edges}"
+    )
+
+
+def test_untyped_param_receiver_unique_method_binds(tmp_path: Path) -> None:
+    """P1 adversarial regression: untyped param ``store`` calling ``store.get()``
+    where DataStore.get is the ONLY project ``get`` method must bind to DataStore.get.
+
+    The OLD gate (STDLIB_METHODS_PY match on any receiver) blocked this — lost a
+    correct edge. The new inverted gate only fires when the receiver is positively
+    inferred as a builtin type. ``store`` is a param name, not in
+    BUILTIN_TYPE_NAMES_PY, so it passes through to unique-method binding.
+    """
+    db = _index(
+        tmp_path,
+        {
+            "data_store.py": (
+                "class DataStore:\n    def get(self, key: str):\n        return None\n"
+            ),
+            "processor.py": (
+                "def process(store):\n    value = store.get('key')\n    return value\n"
+            ),
+        },
+    )
+
+    edges = _edges_for(db, "get")
+    proc_edges = [e for e in edges if "processor" in e["file_path"]]
+    assert proc_edges, "expected get() edges in processor.py"
+
+    project_edges = [
+        e
+        for e in proc_edges
+        if e["callee_resolution"] == "project"
+        and "data_store" in (e["callee_resolved_file"] or "")
+    ]
+    assert project_edges, (
+        f"store.get() with unique DataStore.get must bind to DataStore.get "
+        f"(inverted gate must not over-block untyped params); got {proc_edges}"
+    )
+
+
+def test_self_attr_receiver_unique_method_binds(tmp_path: Path) -> None:
+    """P1 adversarial case: ``self._store.get()`` where DataStore.get is unique
+    must bind. ``self._store`` has qualifier ``self._store``; its last segment
+    ``_store`` is not in BUILTIN_TYPE_NAMES_PY, so the gate does not fire.
+    """
+    db = _index(
+        tmp_path,
+        {
+            "data_store.py": (
+                "class DataStore:\n    def get(self, key: str):\n        return None\n"
+            ),
+            "service.py": (
+                "from pkg.data_store import DataStore\n\n"
+                "class MyService:\n"
+                "    def __init__(self):\n"
+                "        self._store = DataStore()\n"
+                "    def fetch(self, key):\n"
+                "        return self._store.get(key)\n"
+            ),
+        },
+    )
+
+    edges = _edges_for(db, "get")
+    svc_edges = [e for e in edges if "service" in e["file_path"]]
+    assert svc_edges, "expected get() edges in service.py"
+
+    project_edges = [
+        e
+        for e in svc_edges
+        if e["callee_resolution"] == "project"
+        and "data_store" in (e["callee_resolved_file"] or "")
+    ]
+    assert project_edges, (
+        f"self._store.get() with DataStore.get must bind; got {svc_edges}"
+    )
+
+
+def test_singleton_receiver_unique_method_binds(tmp_path: Path) -> None:
+    """P3 adversarial case: module-level singleton ``CACHE.get()`` where
+    CacheStore.get is the only project ``get`` — must bind.
+    ``CACHE`` is a module-level name, not a builtin type name.
+    """
+    db = _index(
+        tmp_path,
+        {
+            "cache_store.py": (
+                "class CacheStore:\n    def get(self, key: str):\n        return None\n"
+            ),
+            "cache_client.py": (
+                "from pkg.cache_store import CacheStore\n\n"
+                "CACHE = CacheStore()\n\n"
+                "def lookup(key):\n"
+                "    return CACHE.get(key)\n"
+            ),
+        },
+    )
+
+    edges = _edges_for(db, "get")
+    client_edges = [e for e in edges if "cache_client" in e["file_path"]]
+    assert client_edges, "expected get() edges in cache_client.py"
+
+    project_edges = [
+        e
+        for e in client_edges
+        if e["callee_resolution"] == "project"
+        and "cache_store" in (e["callee_resolved_file"] or "")
+    ]
+    assert project_edges, (
+        f"CACHE.get() singleton with unique CacheStore.get must bind; got {client_edges}"
     )

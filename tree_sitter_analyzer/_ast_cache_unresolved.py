@@ -634,30 +634,42 @@ def _is_obvious_external(
 ) -> bool:
     """Return True when ``callee_name`` is clearly a stdlib/builtin call.
 
-    Builtin-receiver guard (Issue #447): when ``callee_full`` carries a
-    receiver qualifier (``result.get``, ``data.items``, …) AND the bare
-    method name is in STDLIB_METHODS_PY, the call is almost certainly on a
-    builtin container/string whose type the extractor could not infer.
-    Binding it to a project symbol via ``_choose_candidate`` would produce
-    a same-name mis-wire — the conservative policy is ``unknown > wrong``.
-    This mirrors the ``_try_stdlib_method`` gate already present in synapse
-    (path 1), closing the same hole in path 2.
+    Builtin-receiver gate (inverted, issue #447 adversarial P1): fires ONLY
+    when the receiver qualifier is POSITIVELY inferred as a builtin type name
+    (``dict``, ``list``, ``str``, …) — i.e. the extractor already rewrote the
+    callee to ``dict.get`` because it saw ``result = {}`` or ``result = dict()``.
+    An untyped receiver (``store``, ``cache``, a module singleton) does NOT
+    match BUILTIN_TYPE_NAMES_PY, so its method call is left to ``_choose_candidate``
+    which may bind it to a unique project symbol.
+
+    Path-2 asymmetry (documented): this path has only the stored ``callee_full``
+    string, not the live AST. Therefore the gate is conservative: it checks
+    whether the last qualifier segment is a known builtin type name. This covers
+    the case where the extractor inferred the type (and rewrote callee_full to
+    e.g. ``dict.get``). Literal-expression receivers (``{}.get``) are already
+    resolved to ``stdlib`` by the extractor before this pass runs.
     """
     if language != "python":
         return False
     try:
-        from .synapse_resolver import BUILTINS_PY, STDLIB_METHODS_PY, STDLIB_NAMES_PY
+        from .synapse_resolver import (
+            BUILTIN_TYPE_NAMES_PY,
+            BUILTINS_PY,
+            STDLIB_NAMES_PY,
+        )
     except Exception:  # pragma: no cover
         return False
     base = _base_name(callee_name)
     qualifier = callee_name.split(".", 1)[0]
     if base in BUILTINS_PY or qualifier in STDLIB_NAMES_PY:
         return True
-    # Builtin-receiver gate: a receiver.method() call where method is a
-    # well-known stdlib method name and receiver is not self/cls.
+    # Builtin-receiver gate: fires ONLY when the receiver is a builtin type
+    # name (positively inferred by the extractor). An untyped receiver that
+    # happens to call a method with the same name as a stdlib method is NOT
+    # blocked — it must reach _choose_candidate for unique-project binding.
     if callee_full and "." in callee_full:
         recv = callee_full.rsplit(".", 1)[0].split(".")[-1]  # last segment of receiver
-        if recv not in ("self", "cls") and base in STDLIB_METHODS_PY:
+        if recv in BUILTIN_TYPE_NAMES_PY:
             return True
     return False
 

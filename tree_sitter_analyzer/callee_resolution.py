@@ -169,6 +169,18 @@ class CalleeResolver:
             # false callees (and inlined foreign-language bodies into the
             # response, both wrong and token-bloat). When the source language is
             # unknown, keep the un-gated behaviour.
+            #
+            # Builtin-receiver gate (path 3, issue #447): this path receives only
+            # the bare callee name without the qualifier/receiver context. The
+            # inverted gate (fire only when receiver IS in BUILTIN_TYPE_NAMES_PY)
+            # requires knowing the receiver — unavailable here. However, path 3 is
+            # a bare-name global fallback: it is only reached for UNQUALIFIED calls
+            # (``get()`` with no receiver). Qualified calls (``result.get``,
+            # ``store.get``) have a receiver in callee_full that is processed by
+            # the synapse cascade (path 1) and second-pass resolver (path 2), both
+            # of which carry the inverted gate. Therefore path 3 does not gate on
+            # builtin receiver type — it already lacks the data to do so, and the
+            # callers that reach it have no receiver anyway.
             source_lang = self._source_language(source_file)
             globals_ = [
                 func
