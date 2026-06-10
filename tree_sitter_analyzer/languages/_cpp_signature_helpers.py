@@ -103,6 +103,17 @@ def _apply_signature_child(
     if child.type == "function_declarator":
         _merge_declarator(parts, child, get_node_text, extract_params_fn)
         return
+    if child.type == "operator_cast":
+        # Theme-I (2026-06-10): conversion operator (``operator double()``).
+        # There is no function_declarator — the cast-target type doubles as
+        # both the name suffix and the return type.
+        for sub in child.children:
+            if sub.type in _TYPE_NODES_CPP:
+                type_text = get_node_text(sub)
+                parts.name = f"operator {type_text}"
+                parts.return_type = type_text
+                break
+        return
     if child.type == "reference_declarator":
         parts.return_type = _append_declarator_symbol(parts.return_type, "&")
         _merge_nested_declarator(parts, child, get_node_text, extract_params_fn)
