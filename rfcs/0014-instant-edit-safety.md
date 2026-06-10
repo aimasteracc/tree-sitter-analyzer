@@ -68,8 +68,8 @@ for capability 1 (`test_map`). The correct fix is **partition at query time**.
 Concrete impact: for the DF-16 scenario (16 test + 2 prod callers, all from the
 same file):
 
-- **Unpartitioned**: `fan_in = 18` (≥ 10 → +35), `cross_file_callers = 1`
-  (< 2 → +0), `fan_out = 0` → `+0`, **`score = 35`** → level = `high`
+- **Unpartitioned**: `fan_in = 18` (≥ 10 → +35), `cross_file_callers = 2`
+  (≥ 2 → +15), `fan_out = 0` → `+0`, **`score = 50`** → level = `high`
 - **Partitioned (prod only)**: `fan_in = 2` (< 3 → +0), `cross_file_callers = 1`
   (< 2 → +0), `fan_out = 0` → +0, **`score = 0`** → level = `low`
 
@@ -906,7 +906,8 @@ Expected: `direct_callees` in production bucket = 2; `tests.test_callees_count =
 - [ ] `nav action=impact` supports `include_tests=true`; when true adds
       `tests.test_caller_files` and `tests.test_callee_files` (sorted lists).
       Default path (`include_tests=false`) is byte-identical to pre-RFC for all
-      response fields except the new `tests` bucket.
+      response fields except the new `tests` bucket AND test-edge filtering of
+      transitive lists when `include_tests=false`.
 - [ ] `_compute_transitive_callers` and `_compute_transitive_callees` gain
       `include_tests: bool = False`; test-file filtering occurs before `to_dict()`.
 - [ ] `nav action=test_map` implemented; returns `test_files`, `test_functions`

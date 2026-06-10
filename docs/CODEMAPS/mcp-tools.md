@@ -79,7 +79,7 @@ legacy MCP name is now reached via its facade (`old_name` →
 | `codegraph_callers` | `--callers` | Who calls this function |
 | `codegraph_callees` | `--callees` | What this function calls |
 | `codegraph_call_path` | `--call-path` | BFS path between two functions via call edges |
-| `codegraph_impact` | `--codegraph-impact` | Function-level blast radius |
+| `codegraph_impact` | `--codegraph-impact` | Function-level blast radius; risk score from production edges only; always includes `tests` bucket (`test_callers_count`, `test_callees_count`); pass `include_tests=true` for file lists |
 | `codegraph_dead_code` | `--dead-code` | Transitive dead functions / unused imports / unref vars |
 | **CodeGraph parity — project-wide** | | |
 | `codegraph_overview` | `--codegraph-overview` | Project-wide call graph intelligence |
