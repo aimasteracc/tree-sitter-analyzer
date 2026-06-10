@@ -6,7 +6,6 @@ Run with: uv run pytest tests/unit/test_uml_activity.py -n 0 -q
 
 from __future__ import annotations
 
-import time
 from pathlib import Path
 from unittest.mock import patch
 
@@ -263,11 +262,13 @@ def test_activity_diagram_parse_count_exactly_one(tmp_path: Path) -> None:
     assert parse_call_count == 1  # exact pin — rule-11 invariant
 
 
-def test_activity_diagram_wall_clock_bound(tmp_path: Path) -> None:
-    """Activity diagram on a ~100-line function must complete in < 2000ms.
+def test_activity_diagram_large_function_parse_count(tmp_path: Path) -> None:
+    """~100-line function: parse count must be exactly 1 (rule-11 invariant).
 
-    Rule-11 latency invariant: one file read + one tree-sitter parse.
-    2000ms is conservative — typical is < 50ms.
+    The old wall-clock bound (< 2000ms) was a hand-waved nondeterministic
+    ceiling that CLAUDE.md rule-11 explicitly bans. The parse-count == 1 IS
+    the deterministic invariant — a regression to multiple parses shows up
+    here while timing cannot.
     """
     # Build a ~100-line function with 20 if-branches
     lines = ["def big_func(items):\n"]
@@ -278,14 +279,247 @@ def test_activity_diagram_wall_clock_bound(tmp_path: Path) -> None:
     src = tmp_path / "big.py"
     src.write_text("".join(lines))
 
+    import tree_sitter_analyzer.uml_activity as _activity_module
+
+    parse_call_count = 0
+    original_parse = _activity_module._parse_file_for_activity
+
+    def counting_parse(file_path: str, language: str = "python"):
+        nonlocal parse_call_count
+        parse_call_count += 1
+        return original_parse(file_path, language)
+
+    from tree_sitter_analyzer.uml_export import UMLExporter
+
+    with patch.object(_activity_module, "_parse_file_for_activity", counting_parse):
+        exporter = UMLExporter(str(tmp_path))
+        exporter.activity_diagram("big_func", file_path=str(src))
+
+    assert (
+        parse_call_count == 1
+    )  # exact pin — rule-11 invariant; nondeterministic timing banned
+
+
+# ---------------------------------------------------------------------------
+# P1-1: exact label text assertions — no double prefix for return/raise
+# ---------------------------------------------------------------------------
+
+
+def test_return_label_exact_text(tmp_path: Path) -> None:
+    """Return node label must be 'return x' NOT 'return return x'.
+
+    tree-sitter return_statement text already contains the keyword;
+    prepending it again produces a double prefix.
+    """
+    src = tmp_path / "mod.py"
+    src.write_text("def f(x):\n    return x\n")
+    from tree_sitter_analyzer.uml_activity import build_activity_cfg
+
+    cfg = build_activity_cfg("f", str(src))
+    return_nodes = [n for n in cfg.nodes if n.kind == "return"]
+    assert len(return_nodes) == 1
+    assert return_nodes[0].label == "return x"
+
+
+def test_raise_label_exact_text(tmp_path: Path) -> None:
+    """Raise node label must be 'raise ValueError…' NOT 'raise raise ValueError…'."""
+    src = tmp_path / "mod.py"
+    src.write_text("def f():\n    raise ValueError('err')\n")
+    from tree_sitter_analyzer.uml_activity import build_activity_cfg
+
+    cfg = build_activity_cfg("f", str(src))
+    raise_nodes = [n for n in cfg.nodes if n.kind == "raise"]
+    assert len(raise_nodes) == 1
+    assert raise_nodes[0].label.startswith("raise ")
+    assert not raise_nodes[0].label.startswith("raise raise ")
+
+
+# ---------------------------------------------------------------------------
+# P1-2: newline inside labels must not appear in rendered Mermaid
+# ---------------------------------------------------------------------------
+
+
+def test_escape_label_strips_newlines() -> None:
+    """_escape_label must replace \\n and \\r with space (Mermaid ["..."] safety)."""
+    from tree_sitter_analyzer.uml_export import _escape_label
+
+    assert _escape_label("line1\nline2") == "line1 line2"
+    assert _escape_label("line1\r\nline2") == "line1 line2"
+    assert _escape_label("a\rb") == "a b"
+
+
+def test_multiline_condition_no_newline_in_mermaid(tmp_path: Path) -> None:
+    """Mermaid output must contain no raw newline inside a [\"...\"] label.
+
+    A multiline condition string (e.g. from a lambda) must be flattened to a
+    space-separated single line so that Mermaid parsers don't break.
+    """
+    from tree_sitter_analyzer.uml_export import _escape_label
+
+    multiline = "x > 0\nand y > 0"
+    escaped = _escape_label(multiline)
+    # The rendered mermaid line would be: '  node["<escaped>"]'
+    mermaid_line = f'  node["{escaped}"]'
+    assert "\n" not in mermaid_line
+    assert "\r" not in mermaid_line
+
+
+# ---------------------------------------------------------------------------
+# P2-1: metadata["note"] must always be present on successful diagrams
+# ---------------------------------------------------------------------------
+
+
+def test_activity_diagram_metadata_note_always_set(tmp_path: Path) -> None:
+    """Successful activity diagram must carry metadata['note'] (RFC-0015 stale-file contract).
+
+    activity ALWAYS re-parses from disk; the note is unconditional.
+    """
+    src = tmp_path / "mod.py"
+    src.write_text("def f(x):\n    if x:\n        return 1\n    return 0\n")
     from tree_sitter_analyzer.uml_export import UMLExporter
 
     exporter = UMLExporter(str(tmp_path))
-    t0 = time.monotonic()
-    exporter.activity_diagram("big_func", file_path=str(src))
-    elapsed_ms = (time.monotonic() - t0) * 1000
-    # documented wall-clock bound; nondeterministic timing = documented invariant
-    assert elapsed_ms < 2000
+    diagram = exporter.activity_diagram("f", file_path=str(src))
+    assert "note" in diagram.metadata
+    assert diagram.metadata["note"] == (
+        "parsed from current file content; may differ from indexed symbols"
+    )
+
+
+# ---------------------------------------------------------------------------
+# P2-2: try/except both-return — NO spurious exit edge
+# ---------------------------------------------------------------------------
+
+
+def test_try_except_both_return_no_exit_edge(tmp_path: Path) -> None:
+    """When every try/except branch terminates (return/raise), NO exit node is added.
+
+    The spurious try→exit edge must NOT appear when all branches terminate.
+    """
+    src = tmp_path / "mod.py"
+    src.write_text(
+        "def f():\n"
+        "    try:\n"
+        "        return 1\n"
+        "    except Exception:\n"
+        "        return 2\n"
+    )
+    from tree_sitter_analyzer.uml_activity import build_activity_cfg
+
+    cfg = build_activity_cfg("f", str(src))
+
+    # Exact node set: entry, try, return(try), except, return(except) — NO exit
+    assert len(cfg.nodes) == 5
+    kinds = [n.kind for n in cfg.nodes]
+    assert kinds.count("exit") == 0
+
+    # Exact edge set: entry→try, try→return, try→except, except→return
+    assert len(cfg.edges) == 4
+    edge_pairs = {(e.source_id, e.target_id) for e in cfg.edges}
+    node_by_kind = {}
+    for n in cfg.nodes:
+        node_by_kind.setdefault(n.kind, []).append(n.node_id)
+    entry_id = node_by_kind["entry"][0]
+    try_id = node_by_kind["try"][0]
+    except_id = node_by_kind["except"][0]
+    assert (entry_id, try_id) in edge_pairs
+    assert (try_id, except_id) in edge_pairs
+    # No edge from try to exit
+    assert all(e.target_id not in node_by_kind.get("exit", []) for e in cfg.edges)
+
+
+# ---------------------------------------------------------------------------
+# P2-3: nested function / qualified lookup
+# ---------------------------------------------------------------------------
+
+
+def test_find_function_bare_name_picks_outermost(tmp_path: Path) -> None:
+    """DFS-preorder: bare name returns the outermost match (first encountered)."""
+    src = tmp_path / "mod.py"
+    src.write_text(
+        "def outer(x):\n    def inner(y):\n        return y + 1\n    return inner(x)\n"
+    )
+    from tree_sitter_analyzer.uml_activity import build_activity_cfg
+
+    cfg = build_activity_cfg("outer", str(src))
+    # outer has one return statement: "return inner(x)"
+    return_labels = [n.label for n in cfg.nodes if n.kind == "return"]
+    assert len(return_labels) == 1
+    assert return_labels[0] == "return inner(x)"
+
+
+def test_find_function_qualified_name_picks_inner(tmp_path: Path) -> None:
+    """Qualified 'outer.inner' lookup navigates into outer's scope to find inner."""
+    src = tmp_path / "mod.py"
+    src.write_text(
+        "def outer(x):\n    def inner(y):\n        return y + 1\n    return inner(x)\n"
+    )
+    from tree_sitter_analyzer.uml_activity import build_activity_cfg
+
+    cfg = build_activity_cfg("outer.inner", str(src))
+    # inner has one return statement: "return y + 1"
+    return_labels = [n.label for n in cfg.nodes if n.kind == "return"]
+    assert len(return_labels) == 1
+    assert return_labels[0] == "return y + 1"
+
+
+# ---------------------------------------------------------------------------
+# P3: True/False edge labels on if-condition branches
+# ---------------------------------------------------------------------------
+
+
+def test_if_true_false_edge_labels_with_else(tmp_path: Path) -> None:
+    """Condition→true-body edge is labeled 'True'; condition→else-body is 'False'."""
+    src = tmp_path / "mod.py"
+    src.write_text(
+        "def f(x):\n    if x > 0:\n        return 1\n    else:\n        return 0\n"
+    )
+    from tree_sitter_analyzer.uml_activity import build_activity_cfg
+
+    cfg = build_activity_cfg("f", str(src))
+    cond_nodes = [n for n in cfg.nodes if n.kind == "condition"]
+    assert len(cond_nodes) == 1
+    cond_id = cond_nodes[0].node_id
+    edges_from_cond = [e for e in cfg.edges if e.source_id == cond_id]
+    assert len(edges_from_cond) == 2
+    labels = {e.label for e in edges_from_cond}
+    assert labels == {"True", "False"}
+
+
+def test_if_true_false_edge_labels_no_else(tmp_path: Path) -> None:
+    """Condition→true-body is 'True'; condition falls through to next stmt as 'False'."""
+    src = tmp_path / "mod.py"
+    src.write_text("def f(x):\n    if x > 0:\n        return 1\n    return 0\n")
+    from tree_sitter_analyzer.uml_activity import build_activity_cfg
+
+    cfg = build_activity_cfg("f", str(src))
+    cond_nodes = [n for n in cfg.nodes if n.kind == "condition"]
+    assert len(cond_nodes) == 1
+    cond_id = cond_nodes[0].node_id
+    edges_from_cond = [e for e in cfg.edges if e.source_id == cond_id]
+    # condition → return_1 (True), condition → return_0 (False)
+    assert len(edges_from_cond) == 2
+    labels = {e.label for e in edges_from_cond}
+    assert labels == {"True", "False"}
+
+
+# ---------------------------------------------------------------------------
+# P3: for-loop label renders both sides of 'in'
+# ---------------------------------------------------------------------------
+
+
+def test_for_loop_label_includes_both_sides(tmp_path: Path) -> None:
+    """For loop node label must be 'item in items', not just 'item'."""
+    src = tmp_path / "mod.py"
+    src.write_text(
+        "def f(items):\n    for item in items:\n        pass\n    return None\n"
+    )
+    from tree_sitter_analyzer.uml_activity import build_activity_cfg
+
+    cfg = build_activity_cfg("f", str(src))
+    loop_nodes = [n for n in cfg.nodes if n.kind == "loop"]
+    assert len(loop_nodes) == 1
+    assert loop_nodes[0].label == "item in items"
 
 
 # ---------------------------------------------------------------------------

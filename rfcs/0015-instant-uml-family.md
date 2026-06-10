@@ -328,9 +328,11 @@ cache-resident; `ast_symbol_rows` stores only `name/kind/file_path/language/line
 New method: `UMLExporter.activity_diagram(function_name, file_path=None, max_nodes=50) -> UMLDiagram`.
 Returns `diagram_type="activity"`, `mermaid_type="flowchart"`.
 
-**Stale/deleted-file behavior:** file changed since indexing -> parse current file
-content, set `metadata["note"] = "parsed from current file content; may differ from
-indexed symbols"`. File missing -> `verdict="NOT_FOUND"` with `next_step`.
+**Stale/deleted-file behavior:** activity ALWAYS re-parses the current file from
+disk (AST bodies are not cache-resident), so `metadata["note"]` is ALWAYS set to
+`"parsed from current file content; may differ from indexed symbols"` on every
+successful diagram — regardless of whether the file changed since indexing.
+File missing -> `verdict="NOT_FOUND"` with `next_step`.
 
 **Zero-transition NOT_FOUND:** if the AST walk produces zero nodes (function body
 empty or unparseable), return `verdict="NOT_FOUND"` with a `next_step` explaining

@@ -88,7 +88,18 @@ def _safe_id(name: str) -> str:
 
 
 def _escape_label(label: str) -> str:
-    return label.replace('"', "'")
+    """Sanitise a Mermaid node/edge label.
+
+    Replaces characters that would break the ``["..."]`` syntax:
+    - ``"`` → ``'``  (keeps text inside double-quoted Mermaid labels valid)
+    - ``\\n`` / ``\\r`` → space  (raw newlines inside ["..."] are illegal in Mermaid)
+    """
+    return (
+        label.replace('"', "'")
+        .replace("\r\n", " ")
+        .replace("\n", " ")
+        .replace("\r", " ")
+    )
 
 
 def _package_name(file_path: str, max_depth: int = 2) -> str:
@@ -626,5 +637,9 @@ class UMLExporter:
                 "analysis_kind": "structural_approximation",
                 "function_name": function_name,
                 "file_path": resolved_path,
+                # RFC-0015 §P2-A stale-file contract: activity ALWAYS re-parses
+                # the current file from disk (AST bodies are not cache-resident),
+                # so the diagram reflects the current file content, not the index.
+                "note": "parsed from current file content; may differ from indexed symbols",
             },
         )
