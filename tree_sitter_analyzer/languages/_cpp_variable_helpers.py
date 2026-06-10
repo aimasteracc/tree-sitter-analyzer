@@ -24,13 +24,24 @@ class _VariableParts:
     modifiers: list[str] = field(default_factory=list)
 
 
+_BASE_NAME_NODE_TYPES = ("type_identifier", "template_type", "qualified_identifier")
+
+
 def extract_base_classes(node: Any, get_node_text: Callable[..., str]) -> list[str]:
-    """Extract base class names from base_class_clause."""
+    """Extract base class names from base_class_clause.
+
+    Theme-C (2026-06-10): tree-sitter-cpp 0.23 puts the access_specifier /
+    type_identifier tokens DIRECTLY under ``base_class_clause`` — there is
+    no ``base_specifier`` wrapper, so the old wrapper-only loop matched
+    nothing and ``class D : public B`` reported superclass=None for every
+    C++ class. Accept both shapes (wrapper kept for older grammars).
+    """
     base_classes: list[str] = []
     for child in node.children:
-        if child.type != "base_specifier":
-            continue
-        base_classes.extend(_base_specifier_names(child, get_node_text))
+        if child.type == "base_specifier":
+            base_classes.extend(_base_specifier_names(child, get_node_text))
+        elif child.type in _BASE_NAME_NODE_TYPES:
+            base_classes.append(get_node_text(child))
     return base_classes
 
 
@@ -38,7 +49,7 @@ def _base_specifier_names(node: Any, get_node_text: Callable[..., str]) -> list[
     return [
         get_node_text(child)
         for child in node.children
-        if child.type in ("type_identifier", "template_type")
+        if child.type in _BASE_NAME_NODE_TYPES
     ]
 
 
