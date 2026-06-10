@@ -320,6 +320,7 @@ def _toon_readiness_line(record: dict[str, Any]) -> str:
         f"score={record['score']}",
         f"parser={record['parser_package'] or '-'}",
         f"pkg_version={signals.get('parser_package_version') or '-'}",
+        f"req_spec={signals.get('parser_required_spec') or '-'}",
         f"abi={signals.get('upstream_parser_abi') or '-'}",
         f"grammar={signals.get('upstream_grammar_json') or '-'}",
         f"scanner={signals.get('upstream_external_scanner') or '-'}",

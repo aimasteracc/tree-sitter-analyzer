@@ -210,6 +210,7 @@ def _unknown_upstream_signals() -> dict[str, Any]:
     return {
         "parser_module_origin": "",
         "parser_package_version": "",
+        "parser_required_spec": "",
         "parser_project_urls": {},
         "parser_maintenance_urls": {},
         "parser_semantic_version": "",
