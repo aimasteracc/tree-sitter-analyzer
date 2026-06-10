@@ -903,3 +903,390 @@ def test_cli_test_map_execution_dispatches(tmp_path: Path) -> None:  # noqa: F82
     assert len(captured) == 1
     assert captured[0]["success"] is True
     assert captured[0]["symbol"] == "my_function"
+
+
+# ---------------------------------------------------------------------------
+# 24. co_change symbol resolution: symbol -> file via call graph
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_nav_facade_co_change_resolves_symbol_to_file_via_call_graph() -> None:
+    """When symbol= is given, attempt to resolve via call graph (lines 362-366).
+
+    Tests the symbol resolution path in the try/except block.
+    When symbol resolution succeeds, target_file is set to resolved file_path.
+    """
+    from unittest.mock import MagicMock
+
+    commits = [(_sha(i), ["src/target.py", "src/peer.py"]) for i in range(5)]
+    git_log_out = _make_git_log(commits)
+    head_sha = "gg" * 20
+
+    # Mock the resolve target to simulate successful symbol resolution
+    mock_target = MagicMock()
+    mock_target.file_path = "src/resolved_target.py"
+    mock_graph = MagicMock()
+    mock_graph.resolve_targets.return_value = [mock_target]
+
+    with (
+        patch(
+            "tree_sitter_analyzer.mcp.tools.utils.co_change._run_git"
+        ) as mock_run_git,
+        patch(
+            "tree_sitter_analyzer.mcp.tools.codegraph_impact_tool.CodeGraphImpactTool"
+        ) as MockImpactTool,
+    ):
+        mock_run_git.side_effect = [
+            (0, head_sha),
+            (0, git_log_out),
+        ]
+        # Setup the mock to return our prepared call graph
+        mock_impact_instance = MagicMock()
+        mock_impact_instance.get_call_graph.return_value = mock_graph
+        MockImpactTool.return_value = mock_impact_instance
+
+        _CO_CHANGE_CACHE.clear()
+        facade = build_nav_facade(project_root=None)
+        # Pass symbol without file_path; should trigger resolution path
+        result = await facade.execute(
+            {
+                "action": "co_change",
+                "symbol": "my_function",
+                "output_format": "json",
+            }
+        )
+
+    assert result["success"] is True
+    assert result["target"] == "src/resolved_target.py"
+
+
+@pytest.mark.asyncio
+async def test_nav_facade_co_change_symbol_fallback_when_resolution_fails() -> None:
+    """When symbol resolution fails, fall back to treating symbol as file path."""
+    commits = [(_sha(i), ["src/handler.py", "src/schema.py"]) for i in range(5)]
+    git_log_out = _make_git_log(commits)
+    head_sha = "hh" * 20
+
+    with patch(
+        "tree_sitter_analyzer.mcp.tools.utils.co_change._run_git"
+    ) as mock_run_git:
+        mock_run_git.side_effect = [
+            (0, head_sha),
+            (0, git_log_out),
+        ]
+        _CO_CHANGE_CACHE.clear()
+        facade = build_nav_facade(project_root=None)
+        result = await facade.execute(
+            {
+                "action": "co_change",
+                "symbol": "nonexistent_symbol",
+                "output_format": "json",
+            }
+        )
+
+    assert result["success"] is True
+    assert result["commits_analyzed"] == 0
+
+
+# ---------------------------------------------------------------------------
+# 25. CLI error handling: --co-change with exception
+# ---------------------------------------------------------------------------
+
+
+def test_cli_co_change_execution_handles_exception() -> None:
+    """--co-change must handle exceptions gracefully and return error code 1."""
+    import argparse
+    import asyncio
+    from unittest.mock import AsyncMock
+    from unittest.mock import patch as _patch
+
+    from tree_sitter_analyzer.cli.nav_special_commands import handle_nav_actions
+    from tree_sitter_analyzer.cli.special_commands import SpecialCommandContext
+
+    errors_captured: list[str] = []
+
+    def _capture_error(msg: str) -> None:
+        errors_captured.append(msg)
+
+    ctx = SpecialCommandContext(
+        asyncio_run=asyncio.run,
+        output_json=lambda data: None,
+        output_error=_capture_error,
+        output_info=lambda msg: None,
+        output_list=lambda msg: None,
+        query_loader=None,
+    )
+
+    args = argparse.Namespace(
+        co_change="src/target.py",
+        test_map=None,
+        co_change_max_commits=500,
+        project_root="/tmp/test",
+        output_format="json",
+    )
+
+    with _patch(
+        "tree_sitter_analyzer.mcp.tools.nav_facade.build_nav_facade"
+    ) as mock_build:
+        mock_facade = mock_build.return_value
+        mock_facade.execute = AsyncMock(side_effect=RuntimeError("Test error"))
+        rc = handle_nav_actions(args, ctx)
+
+    assert rc == 1
+    assert len(errors_captured) > 0
+    assert "Test error" in errors_captured[0]
+
+
+# ---------------------------------------------------------------------------
+# 26. CLI output format: JSON output path
+# ---------------------------------------------------------------------------
+
+
+def test_cli_co_change_json_output_format() -> None:
+    """--co-change with output_format=json must call output_json (not print toon)."""
+    import argparse
+    import asyncio
+    from unittest.mock import AsyncMock
+    from unittest.mock import patch as _patch
+
+    from tree_sitter_analyzer.cli.nav_special_commands import handle_nav_actions
+    from tree_sitter_analyzer.cli.special_commands import SpecialCommandContext
+
+    json_captured: list[dict] = []
+
+    def _capture_json(data: dict) -> None:
+        json_captured.append(data)
+
+    ctx = SpecialCommandContext(
+        asyncio_run=asyncio.run,
+        output_json=_capture_json,
+        output_error=lambda msg: None,
+        output_info=lambda msg: None,
+        output_list=lambda msg: None,
+        query_loader=None,
+    )
+
+    args = argparse.Namespace(
+        co_change="src/target.py",
+        test_map=None,
+        co_change_max_commits=500,
+        project_root="/fake/repo",
+        output_format="json",
+    )
+
+    fake_result = {
+        "success": True,
+        "target": "src/target.py",
+        "commits_analyzed": 0,
+        "co_changed_files": [],
+        "truncated": False,
+        "agent_summary": {"next_step": "ok"},
+        "window": "last 500 commits",
+    }
+
+    with _patch(
+        "tree_sitter_analyzer.mcp.tools.nav_facade.build_nav_facade"
+    ) as mock_build:
+        mock_facade = mock_build.return_value
+        mock_facade.execute = AsyncMock(return_value=fake_result)
+        rc = handle_nav_actions(args, ctx)
+
+    assert rc == 0
+    assert len(json_captured) == 1
+    assert json_captured[0]["target"] == "src/target.py"
+
+
+# ---------------------------------------------------------------------------
+# 27. CLI output format: TOON output path
+# ---------------------------------------------------------------------------
+
+
+def test_cli_co_change_toon_output_format() -> None:
+    """--co-change with output_format=toon must extract and print toon_content."""
+    import argparse
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock
+    from unittest.mock import patch as _patch
+
+    from tree_sitter_analyzer.cli.nav_special_commands import handle_nav_actions
+    from tree_sitter_analyzer.cli.special_commands import SpecialCommandContext
+
+    ctx = SpecialCommandContext(
+        asyncio_run=asyncio.run,
+        output_json=lambda data: None,
+        output_error=lambda msg: None,
+        output_info=lambda msg: None,
+        output_list=lambda msg: None,
+        query_loader=None,
+    )
+
+    args = argparse.Namespace(
+        co_change="src/target.py",
+        test_map=None,
+        co_change_max_commits=500,
+        project_root="/fake/repo",
+        output_format="toon",
+    )
+
+    fake_result = {
+        "success": True,
+        "target": "src/target.py",
+        "toon_content": "Target: src/target.py\nPeers: []\n",
+        "format": "toon",
+    }
+
+    with _patch(
+        "tree_sitter_analyzer.mcp.tools.nav_facade.build_nav_facade"
+    ) as mock_build:
+        mock_facade = mock_build.return_value
+        mock_facade.execute = AsyncMock(return_value=fake_result)
+        with _patch("sys.stdout", new_callable=MagicMock):
+            rc = handle_nav_actions(args, ctx)
+
+    assert rc == 0
+
+
+# ---------------------------------------------------------------------------
+# 28. CLI co_change failure: success=False in result
+# ---------------------------------------------------------------------------
+
+
+def test_cli_co_change_returns_error_code_on_failure() -> None:
+    """--co-change with success=False in result must return error code 1."""
+    import argparse
+    import asyncio
+    from unittest.mock import AsyncMock
+    from unittest.mock import patch as _patch
+
+    from tree_sitter_analyzer.cli.nav_special_commands import handle_nav_actions
+    from tree_sitter_analyzer.cli.special_commands import SpecialCommandContext
+
+    json_captured: list[dict] = []
+
+    def _capture_json(data: dict) -> None:
+        json_captured.append(data)
+
+    ctx = SpecialCommandContext(
+        asyncio_run=asyncio.run,
+        output_json=_capture_json,
+        output_error=lambda msg: None,
+        output_info=lambda msg: None,
+        output_list=lambda msg: None,
+        query_loader=None,
+    )
+
+    args = argparse.Namespace(
+        co_change="src/target.py",
+        test_map=None,
+        co_change_max_commits=500,
+        project_root="/fake/repo",
+        output_format="json",
+    )
+
+    fake_result = {
+        "success": False,
+        "error": "File not found",
+    }
+
+    with _patch(
+        "tree_sitter_analyzer.mcp.tools.nav_facade.build_nav_facade"
+    ) as mock_build:
+        mock_facade = mock_build.return_value
+        mock_facade.execute = AsyncMock(return_value=fake_result)
+        rc = handle_nav_actions(args, ctx)
+
+    assert rc == 1
+    assert len(json_captured) == 1
+
+
+# ---------------------------------------------------------------------------
+# 29. _dispatch_test_map helper function with file_path
+# ---------------------------------------------------------------------------
+
+
+def test_cli_test_map_with_file_path() -> None:
+    """--test-map --test-map-file should pass file_path to facade."""
+    import argparse
+    import asyncio
+    from unittest.mock import AsyncMock
+    from unittest.mock import patch as _patch
+
+    from tree_sitter_analyzer.cli.nav_special_commands import handle_nav_actions
+    from tree_sitter_analyzer.cli.special_commands import SpecialCommandContext
+
+    json_captured: list[dict] = []
+
+    def _capture_json(data: dict) -> None:
+        json_captured.append(data)
+
+    ctx = SpecialCommandContext(
+        asyncio_run=asyncio.run,
+        output_json=_capture_json,
+        output_error=lambda msg: None,
+        output_info=lambda msg: None,
+        output_list=lambda msg: None,
+        query_loader=None,
+    )
+
+    args = argparse.Namespace(
+        test_map="my_function",
+        test_map_file="src/mymodule.py",
+        co_change=None,
+        project_root="/fake/repo",
+        output_format="json",
+    )
+
+    fake_result = {
+        "success": True,
+        "symbol": "my_function",
+        "test_files": [],
+        "test_functions": [],
+        "edge_count": 0,
+        "unique_function_count": 0,
+        "truncated": False,
+        "agent_summary": {"next_step": "ok"},
+    }
+
+    with _patch(
+        "tree_sitter_analyzer.mcp.tools.nav_facade.build_nav_facade"
+    ) as mock_build:
+        mock_facade = mock_build.return_value
+        mock_facade.execute = AsyncMock(return_value=fake_result)
+        rc = handle_nav_actions(args, ctx)
+
+    assert rc == 0
+    assert len(json_captured) == 1
+
+
+# ---------------------------------------------------------------------------
+# 30. handle_nav_actions returns None when no flags are set
+# ---------------------------------------------------------------------------
+
+
+def test_handle_nav_actions_returns_none_when_no_flags() -> None:
+    """handle_nav_actions returns None when neither --test-map nor --co-change set."""
+    import argparse
+    import asyncio
+
+    from tree_sitter_analyzer.cli.nav_special_commands import handle_nav_actions
+    from tree_sitter_analyzer.cli.special_commands import SpecialCommandContext
+
+    ctx = SpecialCommandContext(
+        asyncio_run=asyncio.run,
+        output_json=lambda data: None,
+        output_error=lambda msg: None,
+        output_info=lambda msg: None,
+        output_list=lambda msg: None,
+        query_loader=None,
+    )
+
+    args = argparse.Namespace(
+        test_map=None,
+        co_change=None,
+        project_root="/fake/repo",
+        output_format="json",
+    )
+
+    result = handle_nav_actions(args, ctx)
+    assert result is None
