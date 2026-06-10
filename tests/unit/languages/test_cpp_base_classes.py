@@ -65,3 +65,22 @@ def test_template_base_captured() -> None:
 def test_no_base_stays_none() -> None:
     found = _classes()
     assert found["Plain"].superclass is None
+
+
+def test_legacy_base_specifier_wrapper_still_handled() -> None:
+    """Older tree-sitter-cpp grammars wrap each base in a base_specifier
+    node — the compatibility branch must still collect names from it."""
+    from unittest.mock import Mock
+
+    from tree_sitter_analyzer.languages._cpp_variable_helpers import (
+        extract_base_classes,
+    )
+
+    name = Mock()
+    name.type = "type_identifier"
+    spec = Mock()
+    spec.type = "base_specifier"
+    spec.children = [name]
+    clause = Mock()
+    clause.children = [spec]
+    assert extract_base_classes(clause, lambda n: "Base") == ["Base"]
