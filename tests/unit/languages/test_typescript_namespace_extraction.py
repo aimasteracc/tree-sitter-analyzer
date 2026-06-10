@@ -81,3 +81,63 @@ def test_top_level_kinds_unchanged() -> None:
     assert found.get("Standalone") == "class"
     names = _extract_function_names()
     assert "run" in names
+
+
+def test_nested_namespace_name() -> None:
+    """``namespace A.B { }`` carries a nested_identifier name."""
+    extractor = TypeScriptElementExtractor()
+    lang = tree_sitter.Language(language_typescript())
+    parser = tree_sitter.Parser(lang)
+    src = "namespace A.B { export const x = 1; }\n"
+    classes = extractor.extract_classes(parser.parse(src.encode()), src)
+    names = {c.name: c.class_type for c in classes}
+    assert names.get("A.B") == "namespace"
+
+
+def test_ambient_string_module_name() -> None:
+    """``declare module "pkg" { }`` carries a string name — quotes stripped."""
+    extractor = TypeScriptElementExtractor()
+    lang = tree_sitter.Language(language_typescript())
+    parser = tree_sitter.Parser(lang)
+    src = 'declare module "my-pkg" { export function f(): void; }\n'
+    classes = extractor.extract_classes(parser.parse(src.encode()), src)
+    names = {c.name: c.class_type for c in classes}
+    assert names.get("my-pkg") == "namespace"
+
+
+def test_nameless_namespace_node_returns_none() -> None:
+    """A namespace node with no name child must be skipped, not crash."""
+    from unittest.mock import Mock
+
+    from tree_sitter_analyzer.languages.typescript_plugin._class_helpers import (
+        extract_namespace,
+    )
+
+    node = Mock()
+    node.start_point = (0, 0)
+    node.end_point = (0, 10)
+    node.children = []
+    assert (
+        extract_namespace(node, lambda n: "", lambda line: None, lambda n: False, "")
+        is None
+    )
+
+
+def test_namespace_extractor_exception_returns_none() -> None:
+    """An exploding node must be caught and yield None (error path)."""
+    from unittest.mock import Mock
+
+    from tree_sitter_analyzer.languages.typescript_plugin._class_helpers import (
+        extract_namespace,
+    )
+
+    node = Mock()
+    node.start_point = (0, 0)
+    node.end_point = (0, 10)
+    type(node).children = property(
+        lambda self: (_ for _ in ()).throw(RuntimeError("boom"))
+    )
+    assert (
+        extract_namespace(node, lambda n: "", lambda line: None, lambda n: False, "")
+        is None
+    )

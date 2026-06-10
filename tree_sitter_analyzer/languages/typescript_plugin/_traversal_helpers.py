@@ -88,6 +88,9 @@ def _container_node_types() -> set[str]:
         "expression_statement",
         "internal_module",
         "module",
+        # ``declare module "pkg" {}`` wraps the module node in an
+        # ambient_declaration.
+        "ambient_declaration",
     }
 
 
