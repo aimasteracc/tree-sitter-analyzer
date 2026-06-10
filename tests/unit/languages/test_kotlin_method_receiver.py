@@ -25,6 +25,8 @@ Node types confirmed by live parse (2026-06-11):
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 import tree_sitter
 import tree_sitter_kotlin
 
@@ -253,3 +255,324 @@ def test_companion_fun_is_static() -> None:
     assert f.receiver_type == "Box", f"got {f.receiver_type!r}"
     assert f.is_method is False
     assert f.is_static is True
+
+
+# ---------------------------------------------------------------------------
+# Coverage: _kotlin_extension_receiver edge cases (real parses)
+# ---------------------------------------------------------------------------
+
+_NESTED_CLASS_OWNER_SRC = """\
+class Outer {
+    class Inner {
+        fun method() {}
+    }
+}
+"""
+
+_ENUM_CLASS_WITH_MEMBER_SRC = """\
+enum class Color {
+    RED, GREEN, BLUE;
+
+    fun describe(): String = name
+}
+"""
+
+_EXT_REC_NULLABLE_FOLLOWED_BY_DOT = """\
+fun String?.ext(): String = this ?: ""
+"""
+
+_EXT_REC_USER_TYPE_FOLLOWED_BY_DOT = """\
+fun List.first(): Any = this.get(0)
+"""
+
+
+def test_nested_class_member_gets_inner_owner() -> None:
+    """fun inside nested Inner class → receiver_type = Inner (the immediate owner,
+    not the outer Outer class)."""
+    funcs = _functions(_NESTED_CLASS_OWNER_SRC)
+    assert "method" in funcs
+    assert funcs["method"].receiver_type == "Inner", (
+        f"got {funcs['method'].receiver_type!r}"
+    )
+
+
+def test_enum_class_member_gets_enum_owner() -> None:
+    """fun inside enum class body → receiver_type = enum name, is_method=True.
+    The walk passes through enum_class_body without stopping."""
+    funcs = _functions(_ENUM_CLASS_WITH_MEMBER_SRC)
+    assert "describe" in funcs
+    assert funcs["describe"].receiver_type == "Color", (
+        f"got {funcs['describe'].receiver_type!r}"
+    )
+    assert funcs["describe"].is_method is True
+
+
+def test_extension_receiver_with_nullable_type_and_dot() -> None:
+    """_kotlin_extension_receiver identifies nullable_type followed by '.' as
+    extension receiver."""
+    funcs = _functions(_EXT_REC_NULLABLE_FOLLOWED_BY_DOT)
+    assert "ext" in funcs
+    assert funcs["ext"].receiver_type == "String?", (
+        f"got {funcs['ext'].receiver_type!r}"
+    )
+
+
+def test_extension_receiver_with_user_type_and_dot() -> None:
+    """_kotlin_extension_receiver identifies user_type followed by '.' as
+    extension receiver."""
+    funcs = _functions(_EXT_REC_USER_TYPE_FOLLOWED_BY_DOT)
+    assert "first" in funcs
+    assert funcs["first"].receiver_type == "List", (
+        f"got {funcs['first'].receiver_type!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Coverage: _kotlin_owning_type (unit tests with mocks)
+# ---------------------------------------------------------------------------
+
+
+def test_kotlin_owning_type_parent_none_depth_zero() -> None:
+    """_kotlin_owning_type with node.parent = None → (None, False)."""
+    from tree_sitter_analyzer.languages.kotlin_helpers import _kotlin_owning_type
+
+    node = MagicMock()
+    node.parent = None
+    result = _kotlin_owning_type(node)
+    assert result == (None, False), f"got {result!r}"
+
+
+def test_kotlin_owning_type_source_file_boundary() -> None:
+    """_kotlin_owning_type stops at source_file → (None, False)."""
+    from tree_sitter_analyzer.languages.kotlin_helpers import _kotlin_owning_type
+
+    node = MagicMock()
+    source_file = MagicMock()
+    source_file.type = "source_file"
+    source_file.parent = None
+    node.parent = source_file
+    result = _kotlin_owning_type(node)
+    assert result == (None, False), f"got {result!r}"
+
+
+def test_kotlin_owning_type_local_function_boundary() -> None:
+    """_kotlin_owning_type stops at function_declaration → (None, False).
+    Local functions inside a method must not be attributed to the enclosing class."""
+    from tree_sitter_analyzer.languages.kotlin_helpers import _kotlin_owning_type
+
+    node = MagicMock()
+    func_decl = MagicMock()
+    func_decl.type = "function_declaration"
+    class_decl = MagicMock()
+    class_decl.type = "class_declaration"
+    node.parent = func_decl
+    func_decl.parent = class_decl
+    class_decl.parent = None
+
+    result = _kotlin_owning_type(node)
+    assert result == (None, False), (
+        f"got {result!r} — walk should stop at function_declaration"
+    )
+
+
+def test_kotlin_owning_type_object_literal_boundary() -> None:
+    """_kotlin_owning_type stops at object_literal → (None, False).
+    Overrides inside anonymous objects must not be attributed to the enclosing class."""
+    from tree_sitter_analyzer.languages.kotlin_helpers import _kotlin_owning_type
+
+    node = MagicMock()
+    obj_lit = MagicMock()
+    obj_lit.type = "object_literal"
+    func_decl = MagicMock()
+    func_decl.type = "function_declaration"
+    node.parent = obj_lit
+    obj_lit.parent = func_decl
+    func_decl.parent = None
+
+    result = _kotlin_owning_type(node)
+    assert result == (None, False), (
+        f"got {result!r} — walk should stop at object_literal"
+    )
+
+
+def test_kotlin_owning_type_class_declaration_with_name_field() -> None:
+    """_kotlin_owning_type finds class owner via child_by_field_name('name')."""
+    from tree_sitter_analyzer.languages.kotlin_helpers import _kotlin_owning_type
+
+    node = MagicMock()
+    class_decl = MagicMock()
+    class_decl.type = "class_declaration"
+    class_decl.parent = None
+
+    name_node = MagicMock()
+    name_node.text = b"MyClass"
+    class_decl.child_by_field_name.return_value = name_node
+
+    node.parent = class_decl
+    result = _kotlin_owning_type(node)
+    assert result == ("MyClass", False), f"got {result!r}"
+
+
+def test_kotlin_owning_type_class_declaration_name_via_identifier_scan() -> None:
+    """_kotlin_owning_type falls back to scanning children for 'identifier'
+    when child_by_field_name('name') returns None."""
+    from tree_sitter_analyzer.languages.kotlin_helpers import _kotlin_owning_type
+
+    node = MagicMock()
+    class_decl = MagicMock()
+    class_decl.type = "class_declaration"
+    class_decl.parent = None
+
+    class_decl.child_by_field_name.return_value = None
+    name_child = MagicMock()
+    name_child.type = "identifier"
+    name_child.text = b"ClassViaIdent"
+    other_child = MagicMock()
+    other_child.type = "other"
+    class_decl.children = [other_child, name_child]
+
+    node.parent = class_decl
+    result = _kotlin_owning_type(node)
+    assert result == ("ClassViaIdent", False), f"got {result!r}"
+
+
+def test_kotlin_owning_type_class_declaration_no_name_found() -> None:
+    """_kotlin_owning_type returns (None, False) when class has no name field
+    and no identifier child."""
+    from tree_sitter_analyzer.languages.kotlin_helpers import _kotlin_owning_type
+
+    node = MagicMock()
+    class_decl = MagicMock()
+    class_decl.type = "class_declaration"
+    class_decl.parent = None
+    class_decl.child_by_field_name.return_value = None
+    class_decl.children = []
+
+    node.parent = class_decl
+    result = _kotlin_owning_type(node)
+    assert result == (None, False), f"got {result!r}"
+
+
+def test_kotlin_owning_type_object_declaration_owner() -> None:
+    """_kotlin_owning_type finds object owner."""
+    from tree_sitter_analyzer.languages.kotlin_helpers import _kotlin_owning_type
+
+    node = MagicMock()
+    obj_decl = MagicMock()
+    obj_decl.type = "object_declaration"
+    obj_decl.parent = None
+    name_node = MagicMock()
+    name_node.text = b"SingletonObj"
+    obj_decl.child_by_field_name.return_value = name_node
+
+    node.parent = obj_decl
+    result = _kotlin_owning_type(node)
+    assert result == ("SingletonObj", False), f"got {result!r}"
+
+
+def test_kotlin_owning_type_companion_object_walks_further() -> None:
+    """_kotlin_owning_type marks in_companion=True and continues walking
+    past companion_object to find the enclosing class."""
+    from tree_sitter_analyzer.languages.kotlin_helpers import _kotlin_owning_type
+
+    node = MagicMock()
+    companion = MagicMock()
+    companion.type = "companion_object"
+
+    class_decl = MagicMock()
+    class_decl.type = "class_declaration"
+    class_decl.parent = None
+    class_name = MagicMock()
+    class_name.text = b"Box"
+    class_decl.child_by_field_name.return_value = class_name
+
+    node.parent = companion
+    companion.parent = class_decl
+
+    result = _kotlin_owning_type(node)
+    assert result == ("Box", True), (
+        f"got {result!r} — should return enclosing class with is_companion=True"
+    )
+
+
+def test_kotlin_owning_type_depth_cap() -> None:
+    """_kotlin_owning_type is capped at 256 iterations to prevent unbounded loops
+    on non-conforming node objects (e.g. circular parent chains or MagicMock)."""
+    from tree_sitter_analyzer.languages.kotlin_helpers import _kotlin_owning_type
+
+    node = MagicMock()
+    current = node
+    for i in range(260):
+        parent = MagicMock()
+        parent.type = f"unknown_{i}"
+        parent.parent = None if i == 259 else MagicMock()
+        current.parent = parent
+        current = parent
+
+    result = _kotlin_owning_type(node)
+    assert result == (None, False), (
+        f"got {result!r} — depth cap at 256 should terminate the loop and return (None, False)"
+    )
+
+
+def test_kotlin_owning_type_unicode_name_handling() -> None:
+    """_kotlin_owning_type safely decodes non-UTF8 bytes in name_node.text."""
+    from tree_sitter_analyzer.languages.kotlin_helpers import _kotlin_owning_type
+
+    node = MagicMock()
+    class_decl = MagicMock()
+    class_decl.type = "class_declaration"
+    class_decl.parent = None
+    name_node = MagicMock()
+    name_node.text = b"\xff\xfe"
+    class_decl.child_by_field_name.return_value = name_node
+
+    node.parent = class_decl
+    result = _kotlin_owning_type(node)
+    assert result[0] is not None, f"got {result!r}"
+    assert result[1] is False
+
+
+def test_kotlin_owning_type_decode_attribute_error() -> None:
+    """_kotlin_owning_type handles AttributeError when name_node.text
+    doesn't have a decode method."""
+    from tree_sitter_analyzer.languages.kotlin_helpers import _kotlin_owning_type
+
+    node = MagicMock()
+    class_decl = MagicMock()
+    class_decl.type = "class_declaration"
+    class_decl.parent = None
+    name_node = MagicMock()
+    # Simulate a text attribute that doesn't have .decode() method
+    name_node.text = "StringInsteadOfBytes"  # str, not bytes
+    class_decl.child_by_field_name.return_value = name_node
+
+    node.parent = class_decl
+    result = _kotlin_owning_type(node)
+    # Should fall back to str(name_node.text)
+    assert result == ("StringInsteadOfBytes", False), f"got {result!r}"
+
+
+def test_kotlin_owning_type_decode_unicode_error() -> None:
+    """_kotlin_owning_type handles UnicodeDecodeError when name_node.text
+    contains invalid UTF-8."""
+    from tree_sitter_analyzer.languages.kotlin_helpers import _kotlin_owning_type
+
+    node = MagicMock()
+    class_decl = MagicMock()
+    class_decl.type = "class_declaration"
+    class_decl.parent = None
+    name_node = MagicMock()
+    # Create a mock that raises UnicodeDecodeError when .decode is called
+    name_node.text = MagicMock()
+    name_node.text.decode.side_effect = UnicodeDecodeError(
+        "utf-8", b"\x80", 0, 1, "invalid start byte"
+    )
+
+    class_decl.child_by_field_name.return_value = name_node
+
+    node.parent = class_decl
+    result = _kotlin_owning_type(node)
+    # Should fall back to str(name_node.text)
+    assert result[0] is not None, f"got {result!r}"
+    assert result[1] is False
