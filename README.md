@@ -384,13 +384,14 @@ MCP client config (the project root inside the container is the mount point `/wo
 
 ## Supported Languages
 
-21 language plugins; 13 fully wired into the indexer (full symbol + call graph) + 5 (data/markup) reachable via the single-file CLI path + 3 scaffold (plugin exists, indexer wiring pending). The 2026-05-24 patch unblocked Swift / Kotlin / Ruby / PHP / C# that had been silently skipped for months.
+21 language plugins; 13 fully wired into the indexer (full symbol + call graph) + 2 symbol-indexed (call-graph wiring pending) + 5 (data/markup) reachable via the single-file CLI path + 1 scaffold (plugin exists, indexer wiring pending). bash and scala graduated in v1.22.0; the 2026-05-24 patch unblocked Swift / Kotlin / Ruby / PHP / C# that had been silently skipped for months.
 
 | Tier | Languages |
 |---|---|
 | **Full index + symbol + call graph** | Python · Java · JavaScript · TypeScript · Go · Rust · C · C++ · C# · Swift · Kotlin · Ruby · PHP |
+| **Full index + symbols (call-graph wiring pending)** | Bash · Scala |
 | **Single-file analysis (CLI)** | HTML · CSS · Markdown · SQL · YAML |
-| **Scaffold (plugin exists, indexer wiring pending)** | bash · scala · json |
+| **Scaffold (plugin exists, indexer wiring pending)** | json |
 
 CodeGraph supports a similar set. **Dart, Vue, Svelte, Lua** are not yet shipped — aspirational backlog, no committed date.
 
