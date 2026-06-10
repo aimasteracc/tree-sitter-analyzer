@@ -139,12 +139,21 @@ def _collect_php_class_bases(
     interfaces: list[str] = []
     for child in node.children:
         if child.type == "base_clause":
+            # Theme-C (2026-06-10): tree-sitter-php 0.24 exposes the parent
+            # as plain ``name`` / ``qualified_name`` children (no ``type``
+            # field) — the old field lookup returned None and ``extends``
+            # was silently lost. Keep the field lookup as a fast path for
+            # older grammars, fall back to child iteration.
             base_node = child.child_by_field_name("type")
             if base_node:
                 base_classes.append(get_node_text(base_node))
+            else:
+                for name_node in child.children:
+                    if name_node.type in ("name", "qualified_name"):
+                        base_classes.append(get_node_text(name_node))
         elif child.type == "class_interface_clause":
             for interface_node in child.children:
-                if interface_node.type == "name":
+                if interface_node.type in ("name", "qualified_name"):
                     interfaces.append(get_node_text(interface_node))
     return base_classes, interfaces
 
