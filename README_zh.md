@@ -14,7 +14,7 @@
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-18333%20passed-brightgreen.svg)](#-质量与测试)
+[![Tests](https://img.shields.io/badge/tests-18493%20passed-brightgreen.svg)](#-质量与测试)
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
@@ -290,13 +290,14 @@ claude mcp add tree-sitter-analyzer \
 
 ## 支持的语言
 
-21 个语言插件；13 个完全接入索引器（符号 + 调用图）+ 5 个（data/markup）走 CLI 单文件路径 + 3 个脚手架（插件存在，索引接线待完成）。2026-05-24 的补丁解锁了被静默跳过数月的 Swift / Kotlin / Ruby / PHP / C#。
+21 个语言插件；13 个完全接入索引器（符号 + 调用图）+ 2 个已接符号索引（调用图接线待完成）+ 5 个（data/markup）走 CLI 单文件路径 + 1 个脚手架（插件存在，索引接线待完成）。bash 与 scala 于 v1.22.0 毕业；2026-05-24 的补丁解锁了被静默跳过数月的 Swift / Kotlin / Ruby / PHP / C#。
 
 | 等级 | 语言 |
 |---|---|
 | **完整索引 + 符号 + 调用图** | Python · Java · JavaScript · TypeScript · Go · Rust · C · C++ · C# · Swift · Kotlin · Ruby · PHP |
+| **完整索引 + 符号（调用图待接）** | Bash · Scala |
 | **单文件分析（CLI）** | HTML · CSS · Markdown · SQL · YAML |
-| **脚手架（插件已有，索引器待接）** | bash · scala · json |
+| **脚手架（插件已有，索引器待接）** | json |
 
 CodeGraph 支持相近的集合；两者都还未发布的主流代码语言只有 **Dart、Vue、Svelte、Lua**（下个 sprint backlog）。
 
