@@ -52,6 +52,10 @@ def rust_function_nodes(draw):
     # Create mock node
     node = MagicMock()
     node.type = "function_item"
+    # Real tree-sitter parent chains terminate at None; without this the
+    # MagicMock auto-chain makes parent-walking code (_find_impl_owner)
+    # burn 256 mock allocations per call (and pre-depth-cap: OOM).
+    node.parent = None
     node.start_point = (draw(st.integers(0, 100)), 0)
     node.end_point = (node.start_point[0] + 5, 0)
     node.start_byte = 0
