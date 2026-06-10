@@ -425,6 +425,24 @@ Codex flagged 3 real P2 correctness bugs across #269/#270 (Hyphae file-identity 
 feature/* → develop → release/vX.Y.Z → main (only after all gates above)
 ```
 
+**Develop freeze while a release is in flight (🔒 LOCKED BY USER, 2026-06-10):**
+while a `release/* → main` PR is open, feature PRs QUEUE — do NOT merge them
+into develop, even with green CI. Exception: hotfixes for the in-flight
+release go to the release branch (never straight to develop). The freeze
+lifts only when release finalization (below) completes.
+*Past incident (2026-06-10):* 6 feature PRs were merged into develop while
+the v1.22.0 release PR was open. No material damage (the release diff was
+untouched), but the "release state" and "next-version content" interleaved —
+review/rollback baselines get muddy. User called it out; rule locked.
+
+**Release finalization — mandatory steps AFTER release → main merges**
+(none of these are automated; v1.20 and v1.21 both required them manually):
+
+1. `gh release create vX.Y.Z --target main --notes-file <changelog section>` — the git tag and GitHub Release are NOT auto-created.
+2. **Back-merge main → develop.** Conflict conventions: take main's authoritative test-count (measured from release CI), keep develop's newer feature surface (e.g. flag counts for develop-only params). Verify with the registry commands below, not by trusting either side.
+3. Re-verify PyPI version / main README badge / `__version__` agree.
+4. Finalization complete = release closed = develop unfreezes.
+
 **Past incident (2026-05-31):** merged release/v1.17.0 → main immediately after the Release Automation `Finalize Release` step failed — before confirming PyPI had published and before README numbers were verified. The correct order is: wait for PyPI ✓, fix README, then merge.
 
 ### How to get authoritative counts for README numbers
