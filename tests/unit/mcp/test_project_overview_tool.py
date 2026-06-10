@@ -440,7 +440,8 @@ class TestOverviewNextStep:
 
     def test_healthy_project(self) -> None:
         step = _overview_next_step({}, True)
-        assert "tool_routing" in step
+        # DF-10: verify next_step uses CLI-friendly guidance, not MCP-specific tool_routing
+        assert "check_project_health" in step
 
 
 class TestTopLanguage:
@@ -538,6 +539,26 @@ class TestBuildSmartHint:
         }
         hint = _build_smart_hint(result)
         assert "health is good" in hint
+
+    def test_language_to_extension_mapping(self) -> None:
+        # DF-11: verify language names map to correct file extensions in hints
+        result = {
+            "health_summary": [{"file": "a.py", "grade": "A", "score": 90}],
+            "language_distribution": {"python": 5},
+            "largest_source_files": [{"path": "a.py", "lines": 100}],
+        }
+        hint = _build_smart_hint(result)
+        assert ".py file" in hint
+
+    def test_language_to_extension_mapping_java(self) -> None:
+        # DF-11: verify Java maps to .java
+        result = {
+            "health_summary": [{"file": "App.java", "grade": "A", "score": 90}],
+            "language_distribution": {"java": 10},
+            "largest_source_files": [{"path": "App.java", "lines": 100}],
+        }
+        hint = _build_smart_hint(result)
+        assert ".java file" in hint
 
 
 class TestBuildAgentSummary:
