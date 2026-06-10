@@ -42,6 +42,31 @@ _SUPPORTED_EXTS = {
     ".md": "markdown",
 }
 
+# Reverse mapping: language name → canonical file extension (for hints/suggestions)
+_LANGUAGE_TO_EXT = {
+    "python": "py",
+    "java": "java",
+    "javascript": "js",
+    "typescript": "ts",
+    "go": "go",
+    "rust": "rs",
+    "kotlin": "kt",
+    "swift": "swift",
+    "csharp": "cs",
+    "ruby": "rb",
+    "php": "php",
+    "c": "c",
+    "cpp": "cpp",
+    "sql": "sql",
+    "html": "html",
+    "css": "css",
+    "yaml": "yaml",
+    "markdown": "md",
+    "bash": "sh",
+    "scala": "scala",
+    "json": "json",
+}
+
 _EXCLUDE_DIRS = frozenset(
     _PROJECT_EXCLUDE_DIRS  # canonical: .ast-cache, .tree-sitter-cache, etc.
     | {
@@ -505,7 +530,10 @@ def _overview_next_step(result: dict[str, Any], include_health: bool) -> str:
         )
     if not include_health:
         return "Re-run overview with include_health=true or run project-health."
-    return "Use tool_routing to choose the next focused MCP tool."
+    return (
+        "Pick the next query from the tool_routing map in this response "
+        "(e.g. health for grades, structure for outlines)."
+    )
 
 
 def _top_language(language_distribution: dict[str, int]) -> str:
@@ -614,8 +642,9 @@ def _build_smart_hint(result: dict[str, Any]) -> str:
         parts.append("Project health is good — all top files are A/B/C grade")
 
     if top_lang:
+        ext = _LANGUAGE_TO_EXT.get(top_lang, top_lang)
         parts.append(
-            f"SMART 'Analyze': analyze_code_structure on any .{top_lang} file for detailed table"
+            f"SMART 'Analyze': analyze_code_structure on any .{ext} file for detailed table"
         )
 
     largest = result.get("largest_source_files", [])

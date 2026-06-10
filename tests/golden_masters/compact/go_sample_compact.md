@@ -25,6 +25,6 @@
 | worker | (0):- | u | 229-234 | - |
 | Submit | (1):- | E | 237-239 | - |
 | Shutdown | (0):- | E | 242-245 | - |
-| Chain | (0):Middl | E | 257-264 | - |
+| Chain | (1):Middl | E | 257-264 | - |
 | WithTimeout | (1):Middl | E | 267-275 | - |
 | WithRetry | (1):Middl | E | 278-293 | - |

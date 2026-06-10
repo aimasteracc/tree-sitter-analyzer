@@ -9,6 +9,7 @@ except ImportError:
     Tool = Any
 
 from ...utils import setup_logger
+from ..utils.format_helper import reduce_to_control_surface
 from ..utils.schema_strictness import enforce_strict_params
 from .error_recovery import (
     build_agent_friendly_error,
@@ -82,6 +83,17 @@ def register_tools(server: Any, server_instance: Any) -> None:
                 result = ensure_canonical_success_envelope(
                     name, result, arguments=arguments
                 )
+            # RFC-0012 Phase 1: the compact reduction MUST run here, AFTER the
+            # canonical envelope normalization above (which re-adds
+            # summary_line/agent_summary). Keyed on the caller's
+            # ``compact_only`` request and only touching TOON responses; it is
+            # idempotent, so a tool's execute may also have reduced already.
+            if (
+                isinstance(result, dict)
+                and arguments.get("compact_only")
+                and result.get("format") == "toon"
+            ):
+                result = reduce_to_control_surface(result)
             return [
                 TextContent(
                     type="text",

@@ -47,6 +47,15 @@ TOOL_SCHEMA: dict[str, Any] = {
             "description": "Output format: 'toon' (default) or 'json'",
             "default": "toon",
         },
+        "compact_only": {
+            "type": "boolean",
+            "default": False,
+            "description": (
+                "RFC-0012: with output_format=toon, return only the control "
+                "surface alongside toon_content, dropping metadata already "
+                "encoded in the blob."
+            ),
+        },
     },
     "required": ["file_path"],
     "additionalProperties": False,
@@ -136,6 +145,7 @@ class SafeToEditTool(BaseMCPTool):
         file_path = arguments["file_path"]
         edit_type = arguments.get("edit_type", "refactor")
         output_format = arguments.get("output_format", "toon")
+        compact_only = bool(arguments.get("compact_only", False))
 
         resolved = self.resolve_and_validate_file_path(file_path)
         # Conditional check
@@ -155,7 +165,9 @@ class SafeToEditTool(BaseMCPTool):
         syntax_response = _syntax_error_response(resolved, file_path, edit_type)
         if syntax_response is not None:
             syntax_response["output_format"] = output_format
-            return apply_toon_format_to_response(syntax_response, output_format)
+            return apply_toon_format_to_response(
+                syntax_response, output_format, compact_only=compact_only
+            )
 
         result = _build_safe_to_edit_result(
             SafeToEditContext(
@@ -197,7 +209,9 @@ class SafeToEditTool(BaseMCPTool):
         # now propagates it into ``agent_summary``.
         result = mirror_summary_line(result)
 
-        return apply_toon_format_to_response(result, output_format)
+        return apply_toon_format_to_response(
+            result, output_format, compact_only=compact_only
+        )
 
 
 def _syntax_error_response(

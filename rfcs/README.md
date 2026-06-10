@@ -68,4 +68,4 @@ number; if two RFCs collide on a number in flight, the later-merged one renames.
 | [0009](0009-nav-context-self-sufficiency.md) | nav context self-sufficiency — answer in one call | accepted (A/B/C implemented #330/#331/#333; measured turn-drop pending) |
 | [0010](0010-resolver-language-registry.md) | Resolver language registry — scale the correctness moat to N languages | implemented (foundation #345; first wave go/js/ts/cpp/rust #346-#350) |
 | [0011](0011-miswire-audit.md) | Mis-Wire Audit — the run-on-your-repo correctness demo | accepted (console entrypoint shipped; CLI subcommand + pre-seed + README surgery tracked) |
-| [0012](0012-toon-json-dedup.md) | Eliminate TOON/JSON metadata duplication in MCP responses | draft |
+| [0012](0012-toon-json-dedup.md) | Eliminate TOON/JSON metadata duplication in MCP responses | accepted (Phase 1 implemented; Phase 2 deferred) |

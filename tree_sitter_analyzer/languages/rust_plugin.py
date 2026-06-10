@@ -50,6 +50,7 @@ class RustElementExtractor(ElementExtractor):
         self.source_code: str = ""
         self.content_lines: list[str] = []
         self._node_text_cache: dict[tuple[int, int], str] = {}
+        self._content_bytes: bytes | None = None
         self.impl_blocks: list[dict[str, Any]] = []
         self.modules: list[dict[str, Any]] = []
 
@@ -181,6 +182,7 @@ class RustElementExtractor(ElementExtractor):
     def _reset_caches(self) -> None:
         """Reset performance caches"""
         self._node_text_cache.clear()
+        self._content_bytes = None
         # Modules and impls persist across extraction calls within the same file analysis
         # but we clear them here if we assume sequential full extraction calls.
         # Ideally, we should call extract_modules separately or share state.
@@ -288,11 +290,70 @@ class RustElementExtractor(ElementExtractor):
             # Attach Rust-specific attributes
             func.is_async = is_async
 
+            # Theme-A (2026-06-10): impl-block ownership. Functions inside
+            # ``impl Counter { ... }`` were flattened to top-level with no
+            # receiver — an agent could not tell ``inc`` belongs to
+            # ``Counter``. Any fn in an impl gets receiver_type = the impl
+            # target; is_method/receiver only when a self_parameter exists
+            # (self-less impl fns are associated functions, not methods).
+            owner = self._find_impl_owner(node)
+            if owner:
+                func.receiver_type = owner
+                self_param = self._find_self_parameter(node)
+                if self_param:
+                    func.receiver = self_param
+                    func.is_method = True
+
             return func
 
         except Exception as e:
             log_error(f"Error extracting Rust function: {e}")
             return None
+
+    def _find_impl_owner(self, node: tree_sitter.Node) -> str | None:
+        """Return the impl target type name for a fn nested in an impl block.
+
+        Walks the parent chain (function_item → declaration_list →
+        impl_item); the impl's ``type`` field is the implementing type for
+        both inherent (``impl Counter``) and trait (``impl Greet for
+        Counter``) impls.
+
+        The walk is depth-capped: a real tree-sitter parent chain always
+        terminates at source_file/None, but a non-conforming node object
+        (e.g. a MagicMock in unit tests, whose .parent auto-generates an
+        endless chain) must not send this into an unbounded
+        memory-allocating loop (2026-06-10 140GB OOM incident).
+        """
+        parent = node.parent
+        for _ in range(256):
+            if parent is None:
+                return None
+            if parent.type == "impl_item":
+                type_node = parent.child_by_field_name("type")
+                return self._get_node_text(type_node) if type_node else None
+            if parent.type == "source_file":
+                return None
+            parent = parent.parent
+        return None
+
+    def _find_self_parameter(self, node: tree_sitter.Node) -> str | None:
+        """Return the self-parameter text (``&self`` / ``&mut self`` / ...).
+
+        Shorthand receivers parse as ``self_parameter``; verbose receivers
+        (``self: Pin<&mut Self>`` / ``self: Box<Self>``) parse as a plain
+        ``parameter`` whose ``pattern`` field is the bare ``self`` token.
+        """
+        params = node.child_by_field_name("parameters")
+        if params is None:
+            return None
+        for child in params.children:
+            if child.type == "self_parameter":
+                return self._get_node_text(child)
+            if child.type == "parameter":
+                pattern = child.child_by_field_name("pattern")
+                if pattern is not None and self._get_node_text(pattern) == "self":
+                    return self._get_node_text(child)
+        return None
 
     def _extract_struct(self, node: tree_sitter.Node) -> Class | None:
         """Extract struct information"""
@@ -497,8 +558,17 @@ class RustElementExtractor(ElementExtractor):
             start_byte = node.start_byte
             end_byte = node.end_byte
             encoding = "utf-8"  # Default
-            content_bytes = safe_encode("\n".join(self.content_lines), encoding)
-            text = extract_text_slice(content_bytes, start_byte, end_byte, encoding)
+            # Encode the source ONCE per extraction run. Re-encoding the
+            # whole file on every cache miss is O(file_size) per node —
+            # O(n^2) overall (the 37b39136 bug class; tripped the 5s
+            # per-test budget when receiver extraction added new call sites).
+            if self._content_bytes is None:
+                self._content_bytes = safe_encode(
+                    "\n".join(self.content_lines), encoding
+                )
+            text = extract_text_slice(
+                self._content_bytes, start_byte, end_byte, encoding
+            )
             self._node_text_cache[cache_key] = text
             return text
         except Exception:

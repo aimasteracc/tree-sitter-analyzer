@@ -56,7 +56,7 @@ import ""time""
 | worker | () | unexported | 229-234 | - |
 | Submit | ({'name': 'func()', 'type': 'job'}) | exported | 237-239 | - |
 | Shutdown | () | exported | 242-245 | - |
-| Chain | () Middleware | exported | 257-264 | - |
+| Chain | ({'name': '...Middleware', 'type': 'middlewares'}) Middleware | exported | 257-264 | - |
 | WithTimeout | ({'name': 'time.Duration', 'type': 'timeout'}) Middleware | exported | 267-275 | - |
 | WithRetry | ({'name': 'int', 'type': 'maxRetries'}) Middleware | exported | 278-293 | - |
 
