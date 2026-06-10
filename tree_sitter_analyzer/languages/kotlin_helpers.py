@@ -128,8 +128,11 @@ def _kotlin_extension_receiver(
     for i, child in enumerate(children):
         if child.type == "function_value_parameters":
             break
-        if child.type == "user_type":
+        if child.type in ("user_type", "nullable_type"):
             # Check next non-error sibling is '.'
+            # P2a (2026-06-11 adversarial review): ``fun String?.safe()``
+            # emits a ``nullable_type`` node (not ``user_type``) before the
+            # dot — return its full text including the trailing '?'.
             if i + 1 < len(children) and children[i + 1].type == ".":
                 return get_node_text(child)
     return None
@@ -145,9 +148,18 @@ def _kotlin_owning_type(node: Any) -> tuple[str | None, bool]:
       ``class_declaration`` and return (name, True)
     - ``source_file`` or None → (None, False)
 
-    The walk is depth-capped at 256 to prevent unbounded loops on
-    non-conforming node objects (e.g. MagicMock infinite parent chains
-    that caused a 140 GB OOM on 2026-06-10).
+    Boundary nodes that abort the walk with (None, False):
+    - ``function_declaration``: local functions declared inside a method
+      body must not be attributed to the outer class.
+    - ``object_literal``: ``override fun`` inside an anonymous
+      ``object : Runnable { ... }`` inside a method belongs to the
+      anonymous object, not the enclosing class.
+
+    The walk traverses through ``enum_class_body`` without stopping —
+    enum entries can contain method declarations that belong to the enum.
+
+    Depth-capped at 256 to prevent unbounded loops on non-conforming node
+    objects (e.g. MagicMock infinite parent chains — 140 GB OOM 2026-06-10).
     """
     parent = node.parent
     in_companion = False
@@ -155,6 +167,10 @@ def _kotlin_owning_type(node: Any) -> tuple[str | None, bool]:
         if parent is None:
             return None, False
         if parent.type == "source_file":
+            return None, False
+        # P1 (2026-06-11 adversarial review): local funs and anonymous-object
+        # overrides must not be attributed to the outer enclosing class.
+        if parent.type in ("function_declaration", "object_literal"):
             return None, False
         if parent.type == "companion_object":
             in_companion = True
@@ -257,6 +273,12 @@ def extract_kotlin_function(
             if owner is not None:
                 func.receiver_type = owner
                 func.is_method = not is_companion
+                # P2b (2026-06-11 adversarial review): companion funs are
+                # static-like (no implicit ``this``); flag them so agents
+                # can distinguish them from instance methods, matching
+                # Java/C#/etc. conventions for companion/static members.
+                if is_companion:
+                    func.is_static = True
 
         return func
 

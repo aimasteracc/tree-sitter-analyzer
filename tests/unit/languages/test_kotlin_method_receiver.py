@@ -162,3 +162,94 @@ def test_receiver_survives_api_serialization() -> None:
     feed = element_to_dict(funcs["feed"])
     assert feed["receiver_type"] == "Dog"
     assert feed["is_method"] is True
+
+
+# ---------------------------------------------------------------------------
+# P1 — local functions falsely attributed (adversarial review fix)
+# ---------------------------------------------------------------------------
+
+_LOCAL_FUN_SRC = """\
+class Outer {
+    fun outer() {
+        fun inner() {}
+    }
+}
+"""
+
+_ANON_OBJECT_SRC = """\
+class C {
+    fun m() {
+        val r = object : Runnable {
+            override fun run() {}
+        }
+    }
+}
+"""
+
+
+def test_local_fun_inside_method_is_unowned() -> None:
+    """P1: ``inner`` declared inside a method body must NOT be attributed to Outer.
+
+    The walk must stop (return no-owner) when it crosses a
+    ``function_declaration`` boundary before finding a class.
+    receiver_type=None, is_method=False (exact).
+    """
+    funcs = _functions(_LOCAL_FUN_SRC)
+    assert "inner" in funcs, f"inner not found; found: {list(funcs)}"
+    assert funcs["inner"].receiver_type is None, f"got {funcs['inner'].receiver_type!r}"
+    assert funcs["inner"].is_method is False
+
+
+def test_anon_object_override_inside_method_is_unowned() -> None:
+    """P1: ``run`` inside an anonymous object literal in a method must NOT be
+    attributed to C.  Walk stops at ``object_literal`` boundary.
+    receiver_type=None, is_method=False (exact).
+    """
+    funcs = _functions(_ANON_OBJECT_SRC)
+    assert "run" in funcs, f"run not found; found: {list(funcs)}"
+    assert funcs["run"].receiver_type is None, f"got {funcs['run'].receiver_type!r}"
+    assert funcs["run"].is_method is False
+
+
+# ---------------------------------------------------------------------------
+# P2a — nullable extension receiver (adversarial review fix)
+# ---------------------------------------------------------------------------
+
+_NULLABLE_EXT_SRC = """\
+fun String?.safe(): String = this ?: ""
+"""
+
+
+def test_nullable_extension_receiver_type() -> None:
+    """P2a: ``fun String?.safe()`` -> receiver_type='String?', is_method=True."""
+    funcs = _functions(_NULLABLE_EXT_SRC)
+    assert "safe" in funcs, f"safe not found; found: {list(funcs)}"
+    assert funcs["safe"].receiver_type == "String?", (
+        f"got {funcs['safe'].receiver_type!r}"
+    )
+    assert funcs["safe"].is_method is True
+
+
+# ---------------------------------------------------------------------------
+# P2b — companion is_static (adversarial review fix)
+# ---------------------------------------------------------------------------
+
+_COMPANION_STATIC_SRC = """\
+class Box {
+    companion object {
+        fun empty(): Box = Box()
+    }
+}
+"""
+
+
+def test_companion_fun_is_static() -> None:
+    """P2b: companion fun -> is_method=False, is_static=True,
+    receiver_type == enclosing class name (exact).
+    """
+    funcs = _functions(_COMPANION_STATIC_SRC)
+    assert "empty" in funcs, f"empty not found; found: {list(funcs)}"
+    f = funcs["empty"]
+    assert f.receiver_type == "Box", f"got {f.receiver_type!r}"
+    assert f.is_method is False
+    assert f.is_static is True
