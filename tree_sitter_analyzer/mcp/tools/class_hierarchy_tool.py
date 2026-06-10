@@ -78,7 +78,10 @@ class ClassHierarchyTool(BaseMCPTool):
                         "all",
                         "summary",
                     ],
-                    "description": "Query mode",
+                    "description": (
+                        "Query mode. Optional: when omitted, defaults to 'tree' "
+                        "if class_name is given, else the global 'summary'."
+                    ),
                 },
                 "class_name": {
                     "type": "string",
@@ -96,12 +99,34 @@ class ClassHierarchyTool(BaseMCPTool):
                     "default": "toon",
                 },
             },
-            "required": ["mode"],
+            # Wave 1b (audit structure-01, review nit): ``mode`` is resolved at
+            # runtime (``_resolve_mode``) — defaulting to a class-scoped view
+            # when ``class_name`` is supplied — so it is NOT required. Declaring
+            # it required made strict MCP clients reject a valid
+            # ``{class_name: X}`` call before dispatch.
+            "required": [],
             "additionalProperties": False,
         }
 
+    @staticmethod
+    def _resolve_mode(arguments: dict[str, Any]) -> str:
+        """Effective query mode.
+
+        When the caller did not specify a mode, default to a CLASS-SCOPED view
+        (``tree``) if a ``class_name`` was supplied, else the global
+        ``summary``. Wave 1b (audit structure-01): a bare ``class_tree`` carrying
+        a class identifier must NOT fall through to the global ``summary`` — that
+        mode ignores ``class_name`` and returns a confident project-wide result
+        for a class that may not even exist. ``tree`` instead returns
+        ``NOT_FOUND`` for an unknown class.
+        """
+        mode = arguments.get("mode")
+        if mode:
+            return str(mode)
+        return "tree" if arguments.get("class_name") else "summary"
+
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
-        mode = arguments.get("mode", "summary")
+        mode = self._resolve_mode(arguments)
         if mode in ("subclasses", "superclasses", "tree", "impact"):
             if not arguments.get("class_name"):
                 raise ValueError(f"class_name is required for mode '{mode}'")
@@ -110,7 +135,7 @@ class ClassHierarchyTool(BaseMCPTool):
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate_arguments(arguments)
 
-        mode = arguments.get("mode", "summary")
+        mode = self._resolve_mode(arguments)
         class_name = arguments.get("class_name", "")
         max_depth = arguments.get("max_depth", 10)
         output_format = arguments.get("output_format", "toon")
@@ -127,7 +152,12 @@ class ClassHierarchyTool(BaseMCPTool):
                 "class_name": class_name,
                 "subclass_count": len(result),
                 "subclasses": result,
-                "verdict": "INFO" if result else "NOT_FOUND",
+                # Wave 1b (audit structure-01): NOT_FOUND means the class is
+                # unknown — an existing class with zero subclasses is a valid
+                # INFO result, not a missing one.
+                "verdict": (
+                    "INFO" if result or hierarchy.has_class(class_name) else "NOT_FOUND"
+                ),
             }
         elif mode == "superclasses":
             result = hierarchy.superclasses_of(class_name)
@@ -137,7 +167,11 @@ class ClassHierarchyTool(BaseMCPTool):
                 "class_name": class_name,
                 "superclass_count": len(result),
                 "superclasses": result,
-                "verdict": "INFO" if result else "NOT_FOUND",
+                # Wave 1b: same existence-vs-emptiness distinction — a root
+                # class with no parents exists and is INFO, not NOT_FOUND.
+                "verdict": (
+                    "INFO" if result or hierarchy.has_class(class_name) else "NOT_FOUND"
+                ),
             }
         elif mode == "tree":
             result = hierarchy.hierarchy_tree(class_name)
@@ -148,7 +182,12 @@ class ClassHierarchyTool(BaseMCPTool):
                 "class_name": class_name,
                 "subclass_count": len(all_subs),
                 "tree": result,
-                "verdict": "INFO" if all_subs else "NOT_FOUND",
+                # Wave 1b (audit structure-01): verdict reflects whether the
+                # class EXISTS, not whether it has subclasses — a real leaf
+                # class (e.g. a concrete final class) must not read as
+                # NOT_FOUND just because nothing inherits from it. ``tree`` is
+                # the default mode for a named class, so this is the common path.
+                "verdict": "INFO" if hierarchy.has_class(class_name) else "NOT_FOUND",
             }
         elif mode == "impact":
             impact = hierarchy.hierarchy_impact(class_name)

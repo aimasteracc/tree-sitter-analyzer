@@ -182,6 +182,50 @@ def extract_enum(
         return None
 
 
+def extract_namespace(
+    node: tree_sitter.Node,
+    get_node_text: TextExtractor,
+    extract_tsdoc: TsdocExtractor,
+    is_exported_class: ExportPredicate,
+    framework_type: str,
+) -> Class | None:
+    """Extract a ``namespace X { ... }`` / ``module Y { ... }`` container.
+
+    Theme-I (2026-06-10): ``namespace`` parses as ``internal_module`` (inside
+    an ``expression_statement``) and ``module`` as a ``module`` node; both
+    carry their name as an ``identifier`` child (or ``string`` for ambient
+    ``declare module "name"``). Surfaced as ``class_type="namespace"`` so
+    outlines show the container the way they show classes/enums.
+    """
+    try:
+        start_line = node.start_point[0] + 1
+        end_line = node.end_point[0] + 1
+
+        ns_name = None
+        for child in node.children:
+            if child.type in ("identifier", "nested_identifier", "string"):
+                ns_name = child.text.decode("utf8") if child.text else None
+                break
+
+        if not ns_name:
+            return None
+
+        return Class(
+            name=ns_name.strip("\"'"),
+            start_line=start_line,
+            end_line=end_line,
+            raw_text=get_node_text(node),
+            language="typescript",
+            class_type="namespace",
+            docstring=extract_tsdoc(start_line),
+            framework_type=framework_type,
+            is_exported=is_exported_class(ns_name),
+        )
+    except Exception as e:
+        log_debug(f"Failed to extract namespace info: {e}")
+        return None
+
+
 def _parse_class_parts(
     node: tree_sitter.Node,
     get_node_text: TextExtractor,

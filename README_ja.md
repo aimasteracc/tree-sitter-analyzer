@@ -13,7 +13,7 @@
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-18427%20passed-brightgreen.svg)](#-品質とテスト)
+[![Tests](https://img.shields.io/badge/tests-18493%20passed-brightgreen.svg)](#-品質とテスト)
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
@@ -36,7 +36,7 @@ claude mcp add tree-sitter-analyzer \
 **自分のリポジトリで correctness の差を 1 コマンドで確認**(インストール不要・CodeGraph 不要、最初に再インデックスします):
 
 ```bash
-uvx --from "git+https://github.com/aimasteracc/tree-sitter-analyzer@develop" miswire-audit .
+uvx --from tree-sitter-analyzer miswire-audit .
 ```
 
 name-only な code index(多くのツールが採る設計)なら、何件の呼び出しを言語をまたいで誤結線するか(例: Python の `sorted()` → Swift の func)vs TSA が何件かを表示します。実証: [HuggingFace `tokenizers`](benchmarks/codegraph_compare/MISWIRE-AUDIT-EXAMPLES.md) で name-only は **1,259 件**(JS `tokenize()` → Rust 等)、TSA は **0**。ruff **7557×**、polars **9016×**。単一言語リポ(gin/Go)は両方 **0** で誤検知なし。
@@ -149,7 +149,7 @@ CodeGraph には skill システムが存在しない。本ツールは `.claude
 
 各 skill は `allowed-tools` ツール サブセット + 手順レシピ + 決定面スキーマを同梱し、エージェントは 8 個のツールから毎回選別する必要が無い。
 
-### 271 の CLI フラグ
+### 272 の CLI フラグ
 
 CodeGraph の 15 コマンド CLI の厳密な上位互換。主なもの:
 
@@ -289,13 +289,14 @@ claude mcp add tree-sitter-analyzer \
 
 ## サポート言語
 
-21 言語プラグイン; 13 はインデクサーへ完全統合 (シンボル + コール グラフ) + 5 個 (data/markup) は CLI 単一ファイル パス + 3 個スキャフォールド (プラグインあり、インデクサー配線待ち)。2026-05-24 のパッチで数か月間サイレントにスキップされていた Swift / Kotlin / Ruby / PHP / C# がアンブロック。
+21 言語プラグイン; 13 はインデクサーへ完全統合 (シンボル + コール グラフ) + 2 はシンボル インデックス済み (コール グラフ配線待ち) + 5 個 (data/markup) は CLI 単一ファイル パス + 1 個スキャフォールド (プラグインあり、インデクサー配線待ち)。bash と scala は v1.22.0 で昇格; 2026-05-24 のパッチで数か月間サイレントにスキップされていた Swift / Kotlin / Ruby / PHP / C# がアンブロック。
 
 | ティア | 言語 |
 |---|---|
 | **完全インデックス + シンボル + コール グラフ** | Python · Java · JavaScript · TypeScript · Go · Rust · C · C++ · C# · Swift · Kotlin · Ruby · PHP |
+| **完全インデックス + シンボル (コール グラフ配線待ち)** | Bash · Scala |
 | **単一ファイル解析 (CLI)** | HTML · CSS · Markdown · SQL · YAML |
-| **スキャフォールド (プラグイン有 / インデクサー結線待ち)** | bash · scala · json |
+| **スキャフォールド (プラグイン有 / インデクサー結線待ち)** | json |
 
 CodeGraph も類似の集合をサポート; 両ツール共に未実装の主流コード言語は **Dart, Vue, Svelte, Lua** のみ (次スプリント バックログ)。
 

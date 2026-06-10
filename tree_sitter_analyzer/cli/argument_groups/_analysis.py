@@ -98,6 +98,17 @@ def _add_mcp_change_options(parser: argparse.ArgumentParser) -> None:
         help="Limit --change-impact to one or more pathspecs for the current edit queue",
     )
     parser.add_argument(
+        "--change-impact-scope-mode",
+        default="report",
+        choices=["report", "strict"],
+        help=(
+            "How out-of-scope dirty files are surfaced with "
+            "--change-impact-scope: report=list them (default), "
+            "strict=mute the list so a large dirty worktree cannot bury the "
+            "scoped result (an honest count is still kept)"
+        ),
+    )
+    parser.add_argument(
         "--change-impact-no-tests",
         dest="change_impact_include_tests",
         action="store_false",

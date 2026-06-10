@@ -1,0 +1,32 @@
+# Keep the build context (and image) small and the build reproducible.
+.git
+.github
+.gitignore
+.claude
+.codegraph
+.ast-cache
+
+# Tests, benchmarks, docs, RFCs — not needed to run the MCP server.
+tests
+benchmarks
+docs
+rfcs
+examples
+
+# Python caches and local envs.
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.venv
+venv
+*.egg-info
+build
+dist
+
+# Editor / OS noise.
+.vscode
+.idea
+.DS_Store

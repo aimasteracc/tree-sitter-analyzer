@@ -1,20 +1,22 @@
 {
   "counts_by_type": {
-    "Class": 6,
+    "Class": 8,
     "Function": 36,
     "Import": 8,
     "Package": 1,
     "Variable": 10
   },
-  "element_total": 61,
+  "element_total": 63,
   "names_by_type": {
     "Class": [
       "Circle",
+      "Color",
       "Container",
       "Point",
       "Printable",
       "Rectangle",
-      "Shape"
+      "Shape",
+      "Status"
     ],
     "Function": [
       "Circle",

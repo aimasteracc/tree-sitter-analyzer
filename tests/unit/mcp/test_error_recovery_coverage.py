@@ -14,6 +14,7 @@ aliases.
 from tree_sitter_analyzer.mcp.server_utils.error_recovery import (
     build_agent_friendly_error,
     ensure_canonical_error_envelope,
+    ensure_canonical_success_envelope,
 )
 
 
@@ -24,6 +25,18 @@ def _assert_canonical(result: dict) -> None:
     assert result["success"] is False
     assert isinstance(result["agent_summary"], dict)
     assert result["agent_summary"].get("verdict") == "ERROR"
+    # Wave 1a (audit search-01/viz-01/project-02): the verdict MUST be mirrored
+    # to the TOP LEVEL too, exactly as the success path does (search_envelope
+    # normalize_envelope / _mirror_verdict). An agent reading ``result["verdict"]``
+    # — the documented r37w contract — must get a value on errors, not KeyError.
+    assert result.get("verdict") == "ERROR", (
+        "error envelope must hoist verdict to the top level so agents can "
+        "branch on result['verdict'] uniformly across success and error"
+    )
+    assert result["verdict"] == result["agent_summary"]["verdict"], (
+        "top-level verdict must equal agent_summary.verdict (r37w mirror, "
+        "now enforced on the error axis too)"
+    )
 
 
 class TestBuildAgentFriendlyError:
@@ -178,3 +191,76 @@ class TestEnsureCanonicalErrorEnvelope:
         # No envelope keys added when success is True.
         assert "agent_summary" not in result
         assert "summary_line" not in result
+
+    def test_hoists_verdict_to_top_level(self):
+        """Wave 1a: a tool that returns a bare {success: False} dict gets a
+        top-level ``verdict`` mirrored from the canonical agent_summary."""
+        response = {"success": False, "error": "boom", "error_type": "subprocess"}
+        result = ensure_canonical_error_envelope("find_and_grep", response)
+        assert result["verdict"] == "ERROR"
+        assert result["verdict"] == result["agent_summary"]["verdict"]
+
+    def test_preserves_tool_specific_top_level_verdict(self):
+        """A tool that already set a more specific top-level verdict (e.g.
+        NOT_FOUND) keeps it — the hoist must not clobber it with ERROR, and
+        the agent_summary mirrors the same value."""
+        response = {
+            "success": False,
+            "error": "no match",
+            "error_type": "validation",
+            "verdict": "NOT_FOUND",
+        }
+        result = ensure_canonical_error_envelope("query", response)
+        assert result["verdict"] == "NOT_FOUND"
+        assert result["agent_summary"]["verdict"] == "NOT_FOUND"
+
+    def test_na_placeholder_treated_as_missing_verdict(self):
+        """The ``n/a`` post-hook placeholder must NOT be promoted to a
+        top-level verdict — it counts as missing, so the error envelope falls
+        back to ERROR (consistent with _mirror_verdict's sentinel handling)."""
+        response = {
+            "success": False,
+            "error": "boom",
+            "error_type": "internal",
+            "verdict": "n/a",
+            "agent_summary": {"verdict": "n/a"},
+        }
+        result = ensure_canonical_error_envelope("query", response)
+        assert result["verdict"] == "ERROR"
+        assert result["agent_summary"]["verdict"] == "ERROR"
+
+
+class TestSuccessEnvelopeNextStepMirror:
+    """Wave 1b batch B (audit nav-03/04, search-05, project-03, viz-05, health-04):
+    tools that set a rich TOP-LEVEL ``next_step`` left ``agent_summary.next_step``
+    empty. The canonical success envelope must mirror the top-level value so an
+    agent reading ``agent_summary.next_step`` (the documented place) gets the
+    real guidance, not ``""``."""
+
+    def test_top_level_next_step_mirrored_into_agent_summary(self):
+        response = {
+            "success": True,
+            "verdict": "INFO",
+            "next_step": "Answer from the inlined body — no Read needed.",
+        }
+        result = ensure_canonical_success_envelope("nav", response)
+        assert (
+            result["agent_summary"]["next_step"]
+            == "Answer from the inlined body — no Read needed."
+        )
+
+    def test_existing_agent_summary_next_step_is_not_clobbered(self):
+        response = {
+            "success": True,
+            "verdict": "INFO",
+            "next_step": "top-level value",
+            "agent_summary": {"next_step": "tool-specific value"},
+        }
+        result = ensure_canonical_success_envelope("nav", response)
+        assert result["agent_summary"]["next_step"] == "tool-specific value"
+
+    def test_no_next_step_anywhere_stays_empty_string(self):
+        response = {"success": True, "verdict": "INFO"}
+        result = ensure_canonical_success_envelope("nav", response)
+        # Contract unchanged when there is nothing to mirror.
+        assert result["agent_summary"]["next_step"] == ""

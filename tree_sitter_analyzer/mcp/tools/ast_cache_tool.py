@@ -316,12 +316,29 @@ class ASTCacheTool(BaseMCPTool):
                     ),
                 },
             },
-            "required": ["mode"],
+            # Wave 1b (audit index-10): ``mode`` is resolved at runtime
+            # (defaults to ``search`` when a query is supplied, else ``stats``),
+            # so it is NOT required — a required ``mode`` made strict MCP clients
+            # reject a valid ``{query: X}`` call before dispatch.
+            "required": [],
             "additionalProperties": False,
         }
 
+    @staticmethod
+    def _resolve_mode(arguments: dict[str, Any]) -> str:
+        """Effective mode.
+
+        Wave 1b (audit index-10): ``cache query=X`` with no explicit mode used to
+        default to ``stats`` and silently drop the query. Default to ``search``
+        when a query is supplied (the obvious intent), else ``stats``.
+        """
+        mode = arguments.get("mode")
+        if mode:
+            return str(mode)
+        return "search" if arguments.get("query") else "stats"
+
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
-        mode = arguments.get("mode", "stats")
+        mode = self._resolve_mode(arguments)
         # ``fts_search`` is a deprecated alias for ``search`` — it remains
         # accepted at the validate boundary so existing MCP callers do not
         # break, but it is no longer in the schema enum (J1).
@@ -354,7 +371,7 @@ class ASTCacheTool(BaseMCPTool):
         / J8 / K7 contracts preserved exactly.
         """
         self.validate_arguments(arguments)
-        mode = arguments.get("mode", "stats")
+        mode = self._resolve_mode(arguments)
 
         # Watch modes are dispatched before the cache is materialised so
         # ``watch_status`` / ``watch_stop`` can answer "no watcher yet"
@@ -465,11 +482,23 @@ class ASTCacheTool(BaseMCPTool):
             f"ast_cache {mode} query={query!r} "
             f"results={len(results)} fts5={fts5_available}"
         )
-        next_step = (
-            "ast_cache mode=lookup file_path=<result.file> for the full entry"
-            if results
-            else "ast_cache mode=index to populate the FTS index first"
-        )
+        # Wave 1b (audit index-05): only tell the agent to (re)build the index
+        # when FTS is actually unavailable. When FTS5 is available an empty
+        # result is a genuine no-match — don't mislead with "populate the index".
+        if results:
+            next_step = (
+                "ast_cache mode=lookup file_path=<result.file> for the full entry"
+            )
+        elif not fts5_available:
+            next_step = (
+                "FTS5 unavailable — ast_cache mode=index to (re)build the index, "
+                "then retry the search"
+            )
+        else:
+            next_step = (
+                f"No symbols match {query!r} — broaden the term, or use "
+                "search action=symbol / codegraph_symbol_search to discover names"
+            )
         payload: dict[str, Any] = {
             "query": query,
             "results": results,

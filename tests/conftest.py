@@ -518,13 +518,26 @@ def verify_test_isolation():
 SLOW_TEST_BUDGET_S: float = 5.0
 
 
-@pytest.hookimpl(hookwrapper=True)
+@pytest.hookimpl(wrapper=True)
 def pytest_runtest_call(item):
     """Enforce per-test wall-time budget for unit tests.
 
     Skipped under integration / performance markers and when the test
     is explicitly tagged ``slow_ok``. Integration tests have their own
     looser thresholds; performance tests are timed elsewhere.
+
+    Implemented as a *new-style* ``wrapper=True`` hook (not the legacy
+    ``hookwrapper=True``). The distinction is load-bearing for CI
+    stability: with the old style, calling ``pytest.fail()`` in the
+    post-``yield`` block raises *inside* an old-style hookwrapper
+    teardown, which pluggy reports as ``PluggyTeardownRaisedWarning``.
+    Because ``pytest.ini`` runs with ``filterwarnings = error`` that
+    warning is escalated to a hard error that ``--reruns`` cannot clear
+    — producing intermittent failures on slow CI workers where an
+    otherwise-fast unit test brushes past the budget under xdist
+    scheduling contention. New-style wrappers raise the failure
+    directly through the normal call outcome (no pluggy warning), so the
+    budget failure is a clean, rerunnable test failure.
     """
     import time
 
@@ -534,19 +547,19 @@ def pytest_runtest_call(item):
         or "integration" in item.keywords
     )
     started = time.monotonic()
-    outcome = yield
+    # With wrapper=True, ``yield`` returns the wrapped hook's result and
+    # re-raises the test's own exception here if the test failed. When
+    # the test already failed, that exception propagates straight out of
+    # ``yield`` (skipping the budget check below), so we never double-fail
+    # a test that raised on its own.
+    result = yield
     elapsed = time.monotonic() - started
 
     # Only enforce on unit tests (tests/unit/...). Other suites are
     # allowed to take longer.
     is_unit = "/tests/unit/" in str(item.fspath).replace("\\", "/")
 
-    if (
-        is_unit
-        and not opted_out
-        and outcome.excinfo is None  # don't double-fail on already-failing tests
-        and elapsed > SLOW_TEST_BUDGET_S
-    ):
+    if is_unit and not opted_out and elapsed > SLOW_TEST_BUDGET_S:
         pytest.fail(
             f"Unit test exceeded per-test budget: {elapsed:.2f}s > "
             f"{SLOW_TEST_BUDGET_S:.1f}s.\n"
@@ -560,3 +573,6 @@ def pytest_runtest_call(item):
             f"@pytest.mark.slow_ok with a justifying comment.",
             pytrace=False,
         )
+
+    # New-style wrappers must return the wrapped hook's result.
+    return result

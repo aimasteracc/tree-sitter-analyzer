@@ -291,3 +291,69 @@ class TestContentHash:
 
     def test_same_content_same_hash(self):
         assert _content_hash("abc") == _content_hash(b"abc")
+
+
+# ---------------------------------------------------------------------------
+# _walk_for_symbols() — C function name recovery
+# ---------------------------------------------------------------------------
+
+
+def _walk_c(source: str) -> set[str]:
+    """Parse C ``source`` and return the set of recovered function names."""
+    from tree_sitter_analyzer.core.parser import Parser
+
+    result = Parser().parse_code(source, "c")
+    assert result.success and result.tree is not None
+    symbols: list[dict] = []
+    _walk_for_symbols(result.tree.root_node, source, symbols, "c")
+    return {s["name"] for s in symbols if s.get("kind") == "function"}
+
+
+class TestWalkForSymbolsC:
+    def test_plain_free_function(self):
+        assert "add" in _walk_c("int add(int a){return a;}")
+
+    def test_pointer_returning_function(self):
+        # void *malloc(...) — single pointer_declarator wrapper
+        assert "malloc" in _walk_c("void *malloc(int n) { return 0; }")
+
+    def test_function_pointer_returning_function(self):
+        # int (*factory(void))(int) — the declarator name lives under an inner
+        # function_declarator nested inside a parenthesized_declarator. The name
+        # must be recovered as ``factory``, NOT ``(*factory(void))``
+        # (Codex P2, PR #370).
+        names = _walk_c("int (*factory(void))(int) { return 0; }")
+        assert "factory" in names
+        assert not any("(" in n for n in names)
+
+
+class TestCDeclaratorName:
+    """Edge cases of the C declarator-name descent helper."""
+
+    def test_none_declarator_returns_none(self):
+        from tree_sitter_analyzer._ast_extraction import _c_declarator_name
+
+        assert _c_declarator_name(None, "", 0) is None
+
+    def test_depth_guard_returns_none(self):
+        from tree_sitter_analyzer._ast_extraction import _c_declarator_name
+
+        # depth past the bound short-circuits even with a real node
+        node = SimpleNamespace(type="identifier")
+        assert _c_declarator_name(node, "x", 99) is None
+
+    def test_unknown_declarator_type_returns_none(self):
+        from tree_sitter_analyzer._ast_extraction import _c_declarator_name
+
+        node = SimpleNamespace(type="abstract_declarator", children=[])
+        assert _c_declarator_name(node, "", 0) is None
+
+    def test_parenthesized_without_name_returns_none(self):
+        from tree_sitter_analyzer._ast_extraction import _c_declarator_name
+
+        # parenthesized_declarator whose children carry no name-bearing node
+        paren = SimpleNamespace(
+            type="parenthesized_declarator",
+            children=[SimpleNamespace(type="(", children=[])],
+        )
+        assert _c_declarator_name(paren, "", 0) is None

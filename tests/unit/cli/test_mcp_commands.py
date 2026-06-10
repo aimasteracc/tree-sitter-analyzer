@@ -108,6 +108,7 @@ def _args(**overrides: Any) -> Namespace:
                 # impact-full opts out. Without --change-impact-full the
                 # dispatcher emits the trimmed surface.
                 "agent_summary_only": True,
+                "scope_mode": "report",
             },
         ),
         (
@@ -464,6 +465,7 @@ def test_change_impact_cli_does_not_require_file_path(monkeypatch) -> None:
             # v1.12: default flip — agent_summary_only is now True unless
             # --change-impact-full is passed.
             "agent_summary_only": True,
+            "scope_mode": "report",
         },
     }
 
@@ -508,8 +510,39 @@ def test_change_impact_cli_forwards_scope_paths(monkeypatch) -> None:
             ],
             # v1.12 default flip: trimmed surface unless --change-impact-full.
             "agent_summary_only": True,
+            "scope_mode": "report",
         },
     }
+
+
+def test_change_impact_cli_forwards_scope_mode_strict(monkeypatch) -> None:
+    """#8 CLI parity: --change-impact-scope-mode strict reaches the MCP tool."""
+    seen: dict[str, Any] = {}
+
+    class FakeChangeImpactTool:
+        def __init__(self, project_root: str | None = None) -> None:
+            seen["project_root"] = project_root
+
+        async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+            seen["arguments"] = arguments
+            return {"success": True, "changed_files": []}
+
+    monkeypatch.setattr(mcp_commands, "ChangeImpactTool", FakeChangeImpactTool)
+
+    result = mcp_commands.handle_mcp_commands(
+        _args(
+            change_impact=True,
+            change_impact_scope=["tree_sitter_analyzer/mcp/tools"],
+            change_impact_scope_mode="strict",
+        ),
+        lambda payload: None,
+        lambda error: None,
+        lambda: "json",
+    )
+
+    assert result == 0
+    assert seen["arguments"]["scope_mode"] == "strict"
+    assert seen["arguments"]["scope_paths"] == ["tree_sitter_analyzer/mcp/tools"]
 
 
 def test_change_impact_cli_forwards_agent_summary_only(monkeypatch) -> None:
@@ -542,6 +575,7 @@ def test_change_impact_cli_forwards_agent_summary_only(monkeypatch) -> None:
             "output_format": "json",
             "scope_paths": [],
             "agent_summary_only": True,
+            "scope_mode": "report",
         },
     }
 
@@ -581,6 +615,7 @@ def test_change_impact_cli_forwards_mode_and_test_discovery_toggle(monkeypatch) 
             "scope_paths": [],
             # v1.12 default flip: trimmed surface unless --change-impact-full.
             "agent_summary_only": True,
+            "scope_mode": "report",
         },
     }
 
@@ -621,6 +656,7 @@ def test_change_impact_cli_forwards_change_impact_full(monkeypatch) -> None:
             "output_format": "json",
             "scope_paths": [],
             "agent_summary_only": False,
+            "scope_mode": "report",
         },
     }
 

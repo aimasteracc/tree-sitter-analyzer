@@ -332,6 +332,26 @@ class GetCodeOutlineTool(BaseMCPTool):
             analysis_result = await self.analysis_engine.analyze(request)
         if analysis_result is None:
             raise RuntimeError(f"Failed to analyze file: {original_path}")
+        # Theme-D fix: the engine returns ``AnalysisResult(success=False)`` when
+        # the parse fails (e.g. a detected-but-unparseable language whose
+        # tree-sitter grammar is not installed). Honor that flag instead of
+        # building an empty-success outline that lies to the agent ("0 classes,
+        # 0 methods" for a real, non-empty file). Propagating the engine's
+        # ``error_message`` lets the MCP boundary classify it (a message
+        # containing "Unsupported language" maps to ``language_unsupported``),
+        # matching the honest error the CLI already returns for the same file.
+        if getattr(analysis_result, "success", True) is False:
+            # RuntimeError (not ValueError): a parse failure is an internal
+            # condition, not a caller-validation error. When the engine's
+            # message contains "Unsupported language" the boundary still maps
+            # it to ``language_unsupported`` (substring match wins over the
+            # exception type); the degenerate ``error_message is None`` case
+            # then falls back to ``internal`` rather than the misleading
+            # ``validation`` classification.
+            raise RuntimeError(
+                getattr(analysis_result, "error_message", None)
+                or f"Failed to analyze file: {original_path}"
+            )
         return analysis_result
 
     @staticmethod

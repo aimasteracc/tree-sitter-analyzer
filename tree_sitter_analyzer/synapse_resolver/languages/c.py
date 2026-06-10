@@ -35,20 +35,21 @@ must NOT bind a ``cpp`` / ``objc`` / Python / Go definition that merely shares a
 name (``languages_compatible('c', 'cpp')`` is False; the C++ side of the
 relation is one-directional). A foreign same-name symbol stays ``unknown``.
 
-KNOWN UPSTREAM DEPENDENCY (shared with the C++ resolver): the ``local`` and
-single-global ``project`` tiers read ``file_symbols`` / ``global_name_table``,
-populated from ``ast_symbol_rows`` by the shared generic symbol walker
-(``_ast_extraction._walk_for_symbols``). That walker records a function-like
-node only when it exposes ``child_by_field_name('name')`` — but a tree-sitter C
-``function_definition`` exposes its identifier under ``function_declarator``,
-so ordinary C free functions are currently ABSENT from those maps. Until the
-shared extractor recovers C symbols, the local / single-global tiers stay
-dormant on a real index and such calls fall through to the libc tier or
-``unknown`` (SAFE — never a mis-wire). The maps-independent libc tier and THE
-MOAT hold regardless; both are covered by ``TestRealIndexIntegration`` in
-``tests/unit/test_c_method_resolution.py``, and the dormant local tier has a
-``strict`` xfail there that flips to a hard PASS the moment the extractor is
-fixed (the fix lives in the shared walker, out of this module's scope).
+SYMBOL SOURCE (shared with the C++ resolver): the ``local`` and single-global
+``project`` tiers — and the libc tier's project-ownership gate
+(``_project_owns``) — read ``file_symbols`` / ``global_name_table``, populated
+from ``ast_symbol_rows`` by the shared generic symbol walker
+(``_ast_extraction._walk_for_symbols``). A tree-sitter C ``function_definition``
+exposes its identifier under ``function_declarator`` (no ``name`` field), so the
+walker recovers it explicitly via ``_c_function_def_name``; ordinary C free
+functions therefore DO reach those maps on a real index. This matters for
+correctness, not just the dormant local tier: a project that defines its OWN
+``malloc`` (a custom allocator) now appears in ``global_name_table``, so
+``_project_owns`` shadows the libc tier and the call resolves to the project
+definition instead of being misclassified ``stdlib`` (Codex P2, PR #353). THE
+MOAT still language-gates every project binding, so a same-name symbol in a
+non-C file is never bound. All of this is covered by ``TestRealIndexIntegration``
+in ``tests/unit/test_c_method_resolution.py``.
 """
 
 from __future__ import annotations

@@ -60,6 +60,9 @@ def detect_language_from_extension(file_path: str) -> str:
         ".scala": "scala",
         ".swift": "swift",
         ".swiftinterface": "swift",
+        ".sh": "bash",
+        ".bash": "bash",
+        ".zsh": "bash",
     }
 
     return extension_map.get(extension, "unknown")

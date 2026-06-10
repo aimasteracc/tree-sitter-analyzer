@@ -248,6 +248,59 @@ class TestAttachQueueLedger:
         )
         assert "scope_hint" in out["agent_summary"]
 
+    def test_report_mode_is_default_and_keeps_out_of_scope_preview(self):
+        """Default ``scope_mode`` (report) preserves today's behavior: the
+        out-of-scope dirty files are previewed, not muted (byte-parity)."""
+        result = {"success": True}
+        out = attach_queue_ledger(
+            result,
+            mode="diff",
+            scope_paths=["src/"],
+            scoped_changed_files=["src/a.py"],
+            workspace_changed_files=["src/a.py", "tests/b.py", "docs/c.md"],
+        )
+        ledger = out["queue_ledger"]
+        assert ledger["out_of_scope_changed_count"] == 2
+        assert ledger["out_of_scope_changed_preview"] == ["tests/b.py", "docs/c.md"]
+        assert ledger.get("out_of_scope_muted", False) is False
+        assert ledger.get("scope_mode", "report") == "report"
+
+    def test_strict_mode_mutes_out_of_scope_preview(self):
+        """``scope_mode='strict'`` fully mutes the out-of-scope dirty file list
+        so the actionable scoped message is not buried — while keeping an honest
+        count so the agent still knows untouched dirt exists (#8)."""
+        result = {"success": True}
+        out = attach_queue_ledger(
+            result,
+            mode="diff",
+            scope_paths=["src/"],
+            scoped_changed_files=["src/a.py"],
+            workspace_changed_files=["src/a.py", "tests/b.py", "docs/c.md"],
+            scope_mode="strict",
+        )
+        ledger = out["queue_ledger"]
+        # Honest count retained (faithful reporting), but the noisy list muted.
+        assert ledger["out_of_scope_changed_count"] == 2
+        assert ledger["out_of_scope_changed_preview"] == []
+        assert ledger["out_of_scope_muted"] is True
+        assert ledger["scope_mode"] == "strict"
+
+    def test_strict_scope_hint_does_not_bury_scoped_message(self):
+        """In strict mode the scope_hint leads with the scoped queue and clearly
+        flags the muted count, rather than dwelling on out-of-scope noise."""
+        result = {"success": True}
+        out = attach_queue_ledger(
+            result,
+            mode="diff",
+            scope_paths=["src/"],
+            scoped_changed_files=["src/a.py", "src/b.py"],
+            workspace_changed_files=["src/a.py", "src/b.py", "tests/x.py"],
+            scope_mode="strict",
+        )
+        hint = out["agent_summary"]["scope_hint"]
+        assert hint.startswith("Scoped queue has 2 changed file(s)")
+        assert "muted" in hint
+
 
 class TestBuildChangeImpactResponse:
     """Tests for build_change_impact_response."""

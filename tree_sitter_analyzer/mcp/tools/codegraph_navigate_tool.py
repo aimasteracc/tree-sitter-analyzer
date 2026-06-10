@@ -29,6 +29,11 @@ from .base_tool import BaseMCPTool
 logger = setup_logger(__name__)
 
 _MAX_TRANSITIVE = 50
+# Wave 1b (audit nav-08b, sibling of nav-08): cap the EMITTED caller/callee
+# lists. Counts stay accurate; a hub otherwise serialises a large payload that
+# overflows the tool-result token budget. _MAX_TRANSITIVE caps the walk;
+# _MAX_LISTED caps what is serialised back.
+_MAX_LISTED = 50
 
 
 class CodeGraphNavigateTool(BaseMCPTool):
@@ -320,21 +325,35 @@ class CodeGraphNavigateTool(BaseMCPTool):
             for c in direct_callees
         ]
 
+        # Wave 1b (audit nav-08b): emit a capped head of each list; the counts
+        # stay accurate so the agent sees the true call hierarchy size.
+        truncated = len(callers) > _MAX_LISTED or len(callees) > _MAX_LISTED
         result: dict[str, Any] = {
             "caller_count": len(callers),
             "callees_count": len(callees),
-            "callers": callers,
-            "callees": callees,
+            "callers": callers[:_MAX_LISTED],
+            "callees": callees[:_MAX_LISTED],
         }
 
         if max_depth > 1:
-            result["transitive_callers"] = _transitive_callers(
+            transitive_callers = _transitive_callers(
                 graph, symbol, file_path, max_depth
             )
-            result["transitive_callees"] = _transitive_callees(
+            transitive_callees = _transitive_callees(
                 graph, symbol, file_path, max_depth
             )
+            truncated = (
+                truncated
+                or len(transitive_callers) > _MAX_LISTED
+                or len(transitive_callees) > _MAX_LISTED
+            )
+            result["transitive_caller_count"] = len(transitive_callers)
+            result["transitive_callee_count"] = len(transitive_callees)
+            result["transitive_callers"] = transitive_callers[:_MAX_LISTED]
+            result["transitive_callees"] = transitive_callees[:_MAX_LISTED]
 
+        result["lists_truncated"] = truncated
+        result["listed_cap"] = _MAX_LISTED
         return result
 
 

@@ -1,5 +1,95 @@
 # Changelog
 
+## [1.22.0] - 2026-06-10
+
+Extraction-correctness release: a three-way quality audit (source vs TSA vs a
+competing indexer) drove fixes for masked parse failures and invisible
+container declarations across five languages, plus two language graduations.
+
+### Added
+
+- **Bash language support** (#416). `tree-sitter-bash` is now a dependency and
+  `.sh` / `.bash` / `.zsh` are wired through all extension layers (detector,
+  loader, indexer map, CLI file handler). TSA can finally see its own shell
+  scripts; the golden bash corpus auto-activated (11 functions extracted).
+- **Scala language support** (#417). `tree-sitter-scala` wired end-to-end; the
+  golden Scala corpus yields 66 functions / 33 classes / 31 variables. `.sc`
+  deliberately left unmapped (SuperCollider ambiguity) — use an explicit
+  `language` override for Scala scripts.
+- **Java records & annotation types** (#418). `record` and `@interface`
+  declarations (top-level and nested) now appear in outlines as
+  `class_type="record"` / `"annotation"`; methods inside record bodies are
+  also extracted (the traversal previously pruned at the unregistered
+  container).
+- **Kotlin class-kind fidelity** (#419). `annotation class` / `data class` /
+  `enum class` / `sealed class` now surface their kind instead of a flat
+  `"class"`. Known upstream limitation documented: tree-sitter-kotlin 1.1.0
+  mis-parses an *annotated* `annotation class` as an expression.
+- **TypeScript namespaces & modules** (#421, #423). `namespace X {}` /
+  `module Y {}` / ambient `declare module "pkg" {}` containers are extracted
+  (`class_type="namespace"`) and — critically — everything inside them
+  (classes, interfaces, functions, variables) is no longer silently lost.
+- **C++ enums & conversion operators** (#422). Plain `enum` and scoped
+  `enum class` declarations now appear (`enum` / `enum_class`); conversion
+  operators (`operator double()`) are extracted as functions with the cast
+  target as name suffix and return type.
+
+### Fixed
+
+- **Structure tools no longer mask parse failures as empty success**
+  (#414, #415 — the audit's top finding). A detected-but-unparseable file
+  (e.g. `.scala` before #417) used to return `success:true, "0 classes,
+  0 methods"` from MCP `structure` while the CLI errored honestly. All five
+  `analysis_engine.analyze()` consumers now honor `success=False` and surface
+  an honest `language_unsupported` / `internal` error envelope.
+- **Audit sweep, 18 MCP envelope fixes** (#396–#413): canonical top-level
+  `verdict` in error envelopes, `class_tree`/`class_detail` honoring the class
+  identifier, `safe_to_edit` returning NOT_FOUND for unknown symbols instead
+  of false-SAFE, `list_files` honoring the `path` alias, capped caller/callee
+  lists in `impact`/`navigate`, canonical INFO verdicts, `next_step`
+  mirroring, TOON default for `test_gap`, `blast` alias for dependencies,
+  actionable `dead_code` next_step, and a canonical `count` key in symbol
+  search.
+- C resolver: project-defined libc-shadowing names no longer misclassified as
+  stdlib (#370).
+- CSV control-character safety for the remaining writers (#384); per-test
+  budget enforcer is rerunnable (#385).
+
+### Changed
+
+- `change_impact` gains `scope_mode=strict` to mute out-of-scope dirty files
+  (#390).
+- `glama.json` manifest added to claim the Glama MCP server listing (#392).
+- **Test policy (locked)**: count assertions must pin exact values — no
+  `>=`-style approximate assertions (#420). Drift must fail the suite and
+  force a conscious re-pin.
+- README de-virtue pass: broken anchors, stale counts, and overclaims
+  corrected (#402).
+- Docker: the MCP server ships a stdio container (#388) with README
+  deployment docs (#395).
+
+## [1.21.0] - 2026-06-08
+
+Correctness-moat release (backfilled entry): the 13-language classified call
+graph and the run-on-your-repo miswire audit.
+
+### Added
+
+- **Swift resolver + extraction** (#364) — 13 languages active with
+  per-language classification cascades (RFC-0010), adversarially verified to
+  never bind across a language boundary.
+- **`miswire-audit`** (#369, RFC-0011): a run-on-your-repo demo that counts
+  how many call edges a name-only index would mis-wire across languages
+  versus TSA (≈0), with a genuine-collision floor that excludes builtins
+  (#377) and graceful no-FTS5 degradation (#371).
+- Live head-to-head vs CodeGraph on this repo: 745 vs 6 cross-language
+  mis-wires (#366), generalization proof on 5 real repos (#376).
+
+### Fixed
+
+- CSV writers control-char safe on Python 3.10 (#381).
+- nav-context English-connective candidate filtering (RFC-0009 C, #368).
+
 ## [1.20.0] - 2026-06-04
 
 Agent-native milestone release: a leaner MCP surface, a CSS-selector graph

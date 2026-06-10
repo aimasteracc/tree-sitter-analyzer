@@ -195,6 +195,18 @@ TOOL_SCHEMA: dict[str, Any] = {
             "default": [],
             "description": "Optional pathspecs limiting diff, impact, and test mapping to the current queue scope",
         },
+        "scope_mode": {
+            "type": "string",
+            "enum": ["report", "strict"],
+            "default": "report",
+            "description": (
+                "How out-of-scope dirty files (relative to scope_paths) are "
+                "surfaced. report=list them in the queue ledger preview "
+                "(default); strict=fully mute the list so a large dirty "
+                "worktree cannot bury the scoped result (an honest count is "
+                "still kept). No effect without scope_paths."
+            ),
+        },
         "output_format": {
             "type": "string",
             "enum": ["json", "toon"],
@@ -292,7 +304,7 @@ class ChangeImpactTool(BaseMCPTool):
         }
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
-        """Validate mode argument."""
+        """Validate mode + scope_mode arguments."""
         if "mode" in arguments and arguments["mode"] not in (
             "diff",
             "staged",
@@ -300,6 +312,11 @@ class ChangeImpactTool(BaseMCPTool):
             "pr",
         ):
             raise ValueError("mode must be diff|staged|branch|pr")
+        if "scope_mode" in arguments and arguments["scope_mode"] not in (
+            "report",
+            "strict",
+        ):
+            raise ValueError("scope_mode must be report|strict")
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -309,6 +326,7 @@ class ChangeImpactTool(BaseMCPTool):
         include_tests = arguments.get("include_tests", True)
         output_format = arguments.get("output_format", "toon")
         scope_paths = arguments.get("scope_paths") or []
+        scope_mode = arguments.get("scope_mode", "report")
         agent_summary_only = bool(arguments.get("agent_summary_only", False))
 
         # H8: validate scope paths against disk so a typo cannot silently
@@ -318,7 +336,12 @@ class ChangeImpactTool(BaseMCPTool):
 
         if mode == "pr" and pr_url:
             return self._execute_pr_analysis(
-                pr_url, include_tests, output_format, scope_paths, agent_summary_only
+                pr_url,
+                include_tests,
+                output_format,
+                scope_paths,
+                agent_summary_only,
+                scope_mode=scope_mode,
             )
 
         changed_files = _get_changed_files(mode, self.project_root, scope_paths)
@@ -336,6 +359,7 @@ class ChangeImpactTool(BaseMCPTool):
                 scope_paths=scope_paths,
                 scoped_changed_files=changed_files,
                 workspace_changed_files=workspace_changed_files,
+                scope_mode=scope_mode,
             )
             result = apply_scope_validation(result, scope_paths_invalid)
             if agent_summary_only:
@@ -378,6 +402,7 @@ class ChangeImpactTool(BaseMCPTool):
             scope_paths=scope_paths,
             scoped_changed_files=changed_files,
             workspace_changed_files=workspace_changed_files,
+            scope_mode=scope_mode,
         )
         result = apply_scope_validation(result, scope_paths_invalid)
         if agent_summary_only:
@@ -401,6 +426,8 @@ class ChangeImpactTool(BaseMCPTool):
         output_format: str,
         scope_paths: list[str],
         agent_summary_only: bool,
+        *,
+        scope_mode: str = "report",
     ) -> dict[str, Any]:
         """Analyze a GitHub PR's diff via gh CLI.
 
@@ -437,6 +464,7 @@ class ChangeImpactTool(BaseMCPTool):
                 changed_files=[],
                 agent_summary_only=agent_summary_only,
                 output_format=output_format,
+                scope_mode=scope_mode,
             )
 
         diff_stat = fetch_pr_diff_stat(parsed)
@@ -459,6 +487,7 @@ class ChangeImpactTool(BaseMCPTool):
             changed_files=changed_files,
             agent_summary_only=agent_summary_only,
             output_format=output_format,
+            scope_mode=scope_mode,
         )
 
     @staticmethod
@@ -471,6 +500,7 @@ class ChangeImpactTool(BaseMCPTool):
         changed_files: list[str],
         agent_summary_only: bool,
         output_format: str,
+        scope_mode: str = "report",
     ) -> dict[str, Any]:
         """Attach PR metadata + queue ledger + scope validation, mirror, and TOON.
 
@@ -492,6 +522,7 @@ class ChangeImpactTool(BaseMCPTool):
             scope_paths=scope_paths,
             scoped_changed_files=changed_files,
             workspace_changed_files=changed_files,
+            scope_mode=scope_mode,
         )
         result = apply_scope_validation(result, scope_paths_invalid)
         if agent_summary_only:
