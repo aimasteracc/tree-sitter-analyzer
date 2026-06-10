@@ -459,4 +459,5 @@ class TestInstallSkillsErrorHandling:
         captured = capsys.readouterr()
         assert report["installed_count"] == 13
         assert "Installed:" in captured.err
-        assert ".claude/skills/tsa-" in captured.err
+        # path-separator agnostic (Windows prints backslashes)
+        assert str(target / ".claude" / "skills" / "tsa-constraints") in captured.err
