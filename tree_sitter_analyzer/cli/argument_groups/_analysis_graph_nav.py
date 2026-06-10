@@ -259,6 +259,24 @@ def _add_mcp_graph_nav_options(parser: argparse.ArgumentParser) -> None:
         "--test-map-file",
         help="File path to disambiguate overloaded functions for --test-map",
     )
+    # RFC-0014 Phase C: CLI parity for nav action=co_change.
+    parser.add_argument(
+        "--co-change",
+        metavar="FILE_OR_SYMBOL",
+        help=(
+            "Git-history temporal coupling: files that historically change "
+            "together with FILE_OR_SYMBOL (lift-ranked). "
+            "Use before editing to find implicit coupling the call graph cannot see. "
+            "CLI parity for: nav action=co_change file_path=FILE_OR_SYMBOL."
+        ),
+    )
+    parser.add_argument(
+        "--co-change-max-commits",
+        type=int,
+        default=500,
+        metavar="N",
+        help="Maximum number of commits to scan for --co-change (default: 500).",
+    )
     parser.add_argument(
         "--pr-review",
         nargs="?",

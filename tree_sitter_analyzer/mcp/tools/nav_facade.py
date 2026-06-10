@@ -15,6 +15,7 @@ lineage       ``symbol_lineage``                             class/function line
 impact        ``codegraph_impact``                           blast-radius / risk
 trace         ``trace_impact``                               impact trace
 test_map      BESPOKE — RFC-0014 Phase B                    test-file callers of symbol
+co_change     BESPOKE — RFC-0014 Phase C                    git-history co-change coupling
 callers       BESPOKE — scope=point → callers_tool (R4)     point = direct callers
               BESPOKE — scope=graph → call_graph mode=callers
 callees       BESPOKE — scope=point → callees_tool (R4)     point = direct callees
@@ -121,7 +122,13 @@ _NAV_DESCRIPTION = (
     "'file::fn' format (paste directly into pytest), edge_count (raw call edges "
     "across all resolved targets), unique_function_count (post-dedup; truncated "
     "is keyed to this), truncated flag (cap=50 unique functions). "
-    "Params: symbol (required), file_path, output_format."
+    "Params: symbol (required), file_path, output_format.\n"
+    "- action=co_change — git-history temporal coupling: files that historically "
+    "change together with a file or symbol (lift-ranked). Use BEFORE editing to "
+    "find implicit coupling that the call graph cannot see (config+code, "
+    "schema+handler, proto+generated stub). Params: symbol or file_path (one "
+    "required), max_commits (default 500), min_shared (default 3), "
+    "max_results (default 20), output_format."
 )
 
 
@@ -322,6 +329,69 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
 
         return apply_toon_format_to_response(result, output_format)
 
+    async def _co_change_route(args: dict[str, Any]) -> Any:
+        """RFC-0014 Phase C: git-history co-change coupling.
+
+        Returns files that historically change together with the target file,
+        ranked by true association lift P(A^B)/(P(A)*P(B)).
+
+        Resolves symbol -> defining file when symbol= is given instead of
+        file_path=. Runs _compute_co_change in a thread executor (subprocess
+        I/O). Results are cached per (project_root, target_file, HEAD).
+
+        Error handling: returns success=True with empty list when git is
+        unavailable — never raises an error envelope.
+        """
+        import asyncio
+
+        from .utils.co_change import _compute_co_change
+
+        symbol: str | None = args.get("symbol") or args.get("function_name")
+        file_path: str | None = args.get("file_path")
+
+        if not symbol and not file_path:
+            return {
+                "success": False,
+                "error": "co_change requires symbol or file_path (one is required)",
+            }
+
+        # Resolve symbol -> defining file via call graph when file_path not given.
+        target_file = file_path
+        if not target_file and symbol:
+            try:
+                graph = impact_inner.get_call_graph()
+                graph.build()
+                targets = graph.resolve_targets(symbol, None)
+                if targets:
+                    target_file = targets[0].file_path
+            except Exception:  # nosec B110
+                pass
+        if not target_file:
+            # Fall back to symbol as a file path (co_change for a file by name).
+            target_file = symbol or ""
+
+        max_commits: int = int(args.get("max_commits", 500))
+        min_shared: int = int(args.get("min_shared", 3))
+        max_results: int = int(args.get("max_results", 20))
+        proj_root: str = project_root or ""
+
+        loop = asyncio.get_running_loop()
+        co_result = await loop.run_in_executor(
+            None,
+            _compute_co_change,
+            proj_root,
+            target_file,
+            max_commits,
+            min_shared,
+            max_results,
+        )
+
+        output_format: str = args.get("output_format", "toon")
+
+        from ..utils.format_helper import apply_toon_format_to_response
+
+        return apply_toon_format_to_response(co_result, output_format)
+
     facade = FacadeTool(
         facade_name="nav",
         action_map={
@@ -348,6 +418,8 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
             "callees": _callees_route,
             # RFC-0014 Phase B: test_map — which tests exercise a function.
             "test_map": _test_map_route,
+            # RFC-0014 Phase C: co_change — git-history co-change coupling.
+            "co_change": _co_change_route,
         },
         description=_NAV_DESCRIPTION,
         annotations=_NAV_ANNOTATIONS,

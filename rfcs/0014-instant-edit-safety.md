@@ -915,17 +915,17 @@ Expected: `direct_callees` in production bucket = 2; `tests.test_callees_count =
       *(Phase A — PR #461)*
 - [x] `nav action=test_map` implemented; returns `test_files`, `test_functions`
       in `file::fn` format, `edge_count`, `truncated`. *(Phase B)*
-- [ ] `nav action=co_change` implemented; returns `co_changed_files` sorted by
+- [x] `nav action=co_change` implemented; returns `co_changed_files` sorted by
       lift descending; degrades gracefully (success=true, empty list) when git is
       unavailable. *(Phase C — not yet started)*
-- [ ] co_change uses a SINGLE `git log --name-only` subprocess plus one
+- [x] co_change uses a SINGLE `git log --name-only` subprocess plus one
       `rev-parse`; no per-commit diff-tree loop. *(Phase C)*
-- [ ] co_change HEAD-keyed cache: second call with same (project, file, HEAD)
+- [x] co_change HEAD-keyed cache: second call with same (project, file, HEAD)
       does not invoke a subprocess. *(Phase C)*
-- [x] CLI parity: `--test-map <symbol>` and `--impact <fn> [--include-tests]`
+- [x] CLI parity: `--test-map <symbol>`, `--co-change <file-or-symbol>`, and `--impact <fn> [--include-tests]`
       flags wired, documented, and covered by a parity test.
       (`--co-change` deferred to Phase C). *(Phase B)*
-- [x] Unit tests `TestImpactTestPartition` (Phase A) and `TestNavTestMap`
+- [x] Unit tests `TestImpactTestPartition` (Phase A), `TestNavTestMap` (Phase B), and `TestCoChange` (Phase C) green with exact assertions.
       (Phase B) green with all assertions using exact values (`== N`).
       (`TestCoChange` deferred to Phase C). *(Phase A+B)*
 - [ ] Integration test `TestNavImpactPartition` dispatches through
@@ -933,9 +933,9 @@ Expected: `direct_callees` in production bucket = 2; `tests.test_callees_count =
       to exact values measured on first green run. *(deferred)*
 - [ ] DF-16 dogfood re-run: risk level changes from `high` to `low` for the
       documented DF-16 function (16 test + 2 prod callers). *(deferred)*
-- [x] `_NAV_DESCRIPTION` and MCP server instructions updated with `test_map`
+- [x] `_NAV_DESCRIPTION` and MCP server instructions updated with `test_map` and `co_change`
       action (and Phase A `impact` docs). *(Phase B)*
-- [x] Docs/CODEMAPS updated. *(Phase B)*
+- [x] Docs/CODEMAPS updated. *(Phases B and C)*
 
 ## What this RFC does NOT do (deferred)
 

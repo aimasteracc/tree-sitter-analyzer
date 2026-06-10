@@ -171,4 +171,6 @@ def is_legacy_name(name: str) -> bool:
 NEW_ACTION_PARITY: dict[str, tuple[str, str, str]] = {
     # RFC-0014 Phase B: test_map is new; it was never a registered v1.x tool.
     "nav_test_map": ("nav", "test_map", "--test-map"),
+    # RFC-0014 Phase C: co_change is new; it was never a registered v1.x tool.
+    "nav_co_change": ("nav", "co_change", "--co-change"),
 }

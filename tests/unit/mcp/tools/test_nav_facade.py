@@ -56,14 +56,16 @@ def test_nav_facade_all_actions_present() -> None:
         "caller_tree",
         # RFC-0014 Phase B: test_map
         "test_map",
+        # RFC-0014 Phase C: co_change
+        "co_change",
     }
     assert expected == all_actions
 
 
 def test_nav_facade_bespoke_actions_are_context_callers_callees() -> None:
     facade = build_nav_facade(project_root=None)
-    # context, callers, callees, test_map are all bespoke routes
-    for bespoke_action in ("context", "callers", "callees", "test_map"):
+    # context, callers, callees, test_map, co_change are all bespoke routes
+    for bespoke_action in ("context", "callers", "callees", "test_map", "co_change"):
         assert bespoke_action in facade.bespoke_map, (
             f"Expected '{bespoke_action}' in bespoke_map"
         )
@@ -656,6 +658,8 @@ def test_nav_facade_schema_action_enum_complete() -> None:
         "caller_tree",
         # RFC-0014 Phase B: test_map
         "test_map",
+        # RFC-0014 Phase C: co_change
+        "co_change",
     }
     assert expected == enum
 

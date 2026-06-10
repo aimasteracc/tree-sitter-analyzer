@@ -71,6 +71,7 @@ The 8 tools: nav, search, structure, health, edit, project, index, viz.
 | Get pushed when results change | search action=subscribe |
 | File / module dependency questions (risk score, tests bucket) | nav action=impact / structure |
 | Which tests exercise a function | nav action=test_map |
+| Files that historically change with X | nav action=co_change |
 | File discovery | project / search |
 
 ## Differentiators (capabilities grep / one-shot indexers lack)
@@ -92,6 +93,11 @@ The 8 tools: nav, search, structure, health, edit, project, index, viz.
   returns which test files and test functions exercise a given function. Fields:
   `test_files` (sorted paths), `test_functions` ("file::fn" paste-ready for
   pytest), `edge_count`, `truncated`. Use BEFORE editing to know the test surface.
+- **`nav action=co_change` (RFC-0014 Phase C)** — git-history temporal coupling:
+  files that historically change together with a file or symbol, ranked by true
+  association lift. Surfaces structural coupling the call graph cannot see
+  (config+code, schema+handler, proto+stub). Results cached per HEAD. Use BEFORE
+  editing to identify co-change risk.
 
 ## Default chain for "how does X work / trace a flow" (FOLLOW THIS)
 
