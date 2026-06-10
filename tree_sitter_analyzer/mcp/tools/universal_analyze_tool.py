@@ -345,6 +345,14 @@ class UniversalAnalyzeTool(BaseMCPTool):
         result = await self.analysis_engine.analyze(request)
         if result is None:
             raise RuntimeError(f"Failed to analyze file: {file_path}")
+        # Theme-D parity: honor the engine's parse-failure flag instead of
+        # stamping ``success: True`` onto a failed analysis (matches the
+        # structure-facade fix in PR #414).
+        if not result.success:
+            raise RuntimeError(
+                getattr(result, "error_message", None)
+                or f"Failed to analyze file: {file_path}"
+            )
 
         base: dict[str, Any] = {
             "success": True,

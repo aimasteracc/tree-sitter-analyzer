@@ -8,6 +8,7 @@ import pytest
 
 from tree_sitter_analyzer.call_graph import FunctionRef
 from tree_sitter_analyzer.mcp.tools.codegraph_impact_tool import (
+    _MAX_LISTED,
     CodeGraphImpactTool,
     _blast_radius_for_functions,
     _compute_risk_score,
@@ -218,3 +219,40 @@ class TestCodeGraphImpactTool:
         assert result["success"] is True
         assert result["mode"] == "risk_score"
         assert "score" in result
+
+
+class TestFunctionImpactListCap:
+    """Wave 1b (audit nav-08): function_impact must cap the EMITTED caller/callee
+    lists so a hub function does not serialise a ~70k-char payload that overflows
+    the tool-result token budget. Full counts + a truncation flag are kept."""
+
+    def _graph_with_n_direct_callers(self, n: int) -> MagicMock:
+        graph = MagicMock()
+        hub = _make_func("hub")
+        graph.resolve_targets.return_value = [hub]
+        # direct_callers / direct_callees come from callers_of/callees_of (dicts).
+        graph.callers_of.return_value = [
+            {"name": f"c{i}", "file": f"f{i}.py", "line": i} for i in range(n)
+        ]
+        graph.callees_of.return_value = []
+        # transitive + risk walk the *_refs_of edges — keep them empty/minimal.
+        graph.caller_refs_of.return_value = []
+        graph.callee_refs_of.return_value = []
+        return graph
+
+    def test_direct_callers_capped_but_count_is_full(self):
+        tool = CodeGraphImpactTool()
+        graph = self._graph_with_n_direct_callers(_MAX_LISTED + 10)
+        result = tool._function_impact(graph, "hub", None, 5)
+        assert len(result["direct_callers"]) == _MAX_LISTED
+        assert result["direct_caller_count"] == _MAX_LISTED + 10
+        assert result["lists_truncated"] is True
+        assert result["listed_cap"] == _MAX_LISTED
+
+    def test_small_lists_not_truncated(self):
+        tool = CodeGraphImpactTool()
+        graph = self._graph_with_n_direct_callers(3)
+        result = tool._function_impact(graph, "hub", None, 5)
+        assert len(result["direct_callers"]) == 3
+        assert result["direct_caller_count"] == 3
+        assert result["lists_truncated"] is False

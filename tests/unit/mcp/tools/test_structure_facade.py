@@ -504,3 +504,47 @@ def test_structure_read_rejects_fractional_float_bounds(tmp_path: Any) -> None:
         )
     )
     assert ok.get("success") is True, ok
+
+
+# --------------------------------------------------------------------------
+# Wave 1b (audit structure-01): class_tree default mode must be CLASS-SCOPED
+# when a class identifier is supplied — never the global summary (which ignores
+# class_name and returns a confident project-wide result for a class that may
+# not exist).
+# --------------------------------------------------------------------------
+
+
+def test_class_hierarchy_default_mode_is_tree_when_class_named() -> None:
+    from tree_sitter_analyzer.mcp.tools.class_hierarchy_tool import ClassHierarchyTool
+
+    # class_name supplied, no explicit mode -> class-scoped 'tree', not 'summary'.
+    assert ClassHierarchyTool._resolve_mode({"class_name": "Foo"}) == "tree"
+
+
+def test_class_hierarchy_default_mode_is_summary_without_class() -> None:
+    from tree_sitter_analyzer.mcp.tools.class_hierarchy_tool import ClassHierarchyTool
+
+    # No identifier -> global summary (unchanged behavior).
+    assert ClassHierarchyTool._resolve_mode({}) == "summary"
+
+
+def test_class_hierarchy_explicit_mode_always_honored() -> None:
+    from tree_sitter_analyzer.mcp.tools.class_hierarchy_tool import ClassHierarchyTool
+
+    assert (
+        ClassHierarchyTool._resolve_mode({"mode": "summary", "class_name": "Foo"})
+        == "summary"
+    )
+    assert (
+        ClassHierarchyTool._resolve_mode({"mode": "subclasses", "class_name": "Foo"})
+        == "subclasses"
+    )
+
+
+def test_class_hierarchy_validate_accepts_named_class_without_mode() -> None:
+    """With a class_name and no mode, validation must pass: the resolved mode is
+    'tree', which requires class_name — and it is present."""
+    from tree_sitter_analyzer.mcp.tools.class_hierarchy_tool import ClassHierarchyTool
+
+    tool = ClassHierarchyTool(project_root=None)
+    assert tool.validate_arguments({"class_name": "Foo"}) is True

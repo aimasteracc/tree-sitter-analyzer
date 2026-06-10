@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling>=1.27,<1.30"]
+requires = ["hatchling>=1.27,<1.31"]
 build-backend = "hatchling.build"
 
 [project]
@@ -84,6 +84,8 @@ dependencies = [
     "pyyaml>=6.0",
     "pathspec>=0.12.1",
     "anthropic>=0.104.1",
+    "tree-sitter-bash>=0.23.0",
+    "tree-sitter-scala>=0.23.0",
 ]
 
 # Add C# to optional dependencies
@@ -158,6 +160,8 @@ all-languages = [
     "tree-sitter-php>=0.23.0,<0.25.0",  # PHP language support for web applications
     "tree-sitter-ruby>=0.23.0,<0.25.0",  # Ruby language support for Rails and scripting
     "tree-sitter-yaml>=0.7.0",  # YAML language support for configuration files
+    "tree-sitter-bash>=0.23.0,<0.26.0",  # Bash/shell script support
+    "tree-sitter-scala>=0.23.0,<0.27.0",  # Scala language support
 ]
 
 # MCP server support

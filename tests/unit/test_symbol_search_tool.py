@@ -80,6 +80,14 @@ class TestCodeGraphSymbolSearchExecution:
         names = [r["name"] for r in result["results"]]
         assert "UserService" in names
 
+    async def test_exposes_canonical_count_key(self, indexed_project):
+        # Wave 1b (audit search-06): symbol search must also expose the stable
+        # canonical `count` key (already emitted by search action=content) so an
+        # agent can read the result count consistently across both actions.
+        tool = CodeGraphSymbolSearchTool(str(indexed_project))
+        result = await tool.execute({"query": "UserService", "output_format": "json"})
+        assert result["count"] == result["match_count"]
+
     async def test_fuzzy_match(self, indexed_project):
         tool = CodeGraphSymbolSearchTool(str(indexed_project))
         result = await tool.execute({"query": "~user", "output_format": "json"})

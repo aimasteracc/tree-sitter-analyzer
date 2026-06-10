@@ -11,6 +11,19 @@
 - Keep files under 500 lines
 - Validate input at system boundaries
 
+### Exact assertions only — no `>=` / approximate test assertions
+
+**🔒 LOCKED BY USER (2026-06-10):** 「测试拒绝大于等于这样的约等不严谨的测试」。
+Count/measurement assertions in tests MUST pin the **exact** expected value
+(`== 11`), never a loose bound (`>= 10`, `> 0`, `<= 100`) that lets drift pass
+silently. If an upstream change (e.g. a grammar-version bump) shifts the
+number, the test SHOULD go red and force a conscious re-pin with the new
+measured value — an approximate green is a false green. Reviewer suggestions
+to "relax to a lower bound for resilience" are REJECTED under this rule.
+Legitimate exceptions are rare and only where the value is genuinely
+nondeterministic (timing, memory) — and then the test should assert a
+documented invariant, not a hand-waved bound on a deterministic count.
+
 ## Deliberate design decisions — do NOT "fix" these
 
 These look like inconsistencies in a dogfood pass, but they are intentional and reflect the project's design priorities. Reverting them costs real value. **If a dogfood agent proposes any of the items below as a "finding", REJECT the finding and link the agent back to this section.**
@@ -133,6 +146,38 @@ All inter-agent state lives in a shared memory namespace (`memory_store` / `memo
 - **Every subagent brief MUST include a degraded-mode paragraph** at the top: *"If your expected coordination tools (SendMessage, TaskUpdate, hive-mind_*) are missing, do NOT abort. Read these specific source files directly, write outputs to these specific memory keys, and complete your phase."*
 - **Name agents** — `name: "role"` makes them addressable by the lead even though they cannot address each other.
 - **After spawning**: STOP, tell user what's running, wait for completion notifications. No polling.
+
+### Subagent engineering principles (dev/research briefs)
+
+Every **dev / research / fix** subagent brief MUST also carry these four principles
+(adapted from Karpathy's LLM-coding-pitfalls list). The key adaptation for this
+project: the audience for "ask / surface" is the **lead**, never the end user —
+and an uncertain agent picks a reasonable default, flags it, and **keeps going**
+(a subagent has no inbox; pausing = wasted run). Do NOT send these to **review**
+subagents — they must stay adversarial truth-seekers, not style-followers.
+
+1. **Think before coding (report to the lead, never block).** In your final
+   return, state your assumptions explicitly; if multiple interpretations exist,
+   list them and pick one *with a reason* (don't pick silently); surface any
+   inconsistency or simpler approach you notice. If something is unclear, assume
+   the most reasonable default, finish the task, and note *"assumed X — lead,
+   correct if wrong."* Never stop the pipeline waiting for a human.
+2. **Simplicity first.** Minimum code that solves the task, nothing speculative —
+   no features/abstractions/config/impossible-case error handling that weren't
+   asked for. If 200 lines could be 50, rewrite it.
+3. **Surgical changes.** Touch only what the task needs; every changed line
+   traces to the task. Don't "improve" adjacent code/comments/formatting, don't
+   refactor what isn't broken, match existing style. Clean up only the orphans
+   *your* change created; pre-existing dead code you only *mention*, never delete
+   (unless asked). Reinforces the focused-PR rule.
+4. **Goal-driven execution.** Turn the task into a verifiable goal: write the
+   failing test first (RED), then implement to green; for multi-step work, state
+   a brief `step → verify` plan. Strong success criteria let you loop
+   independently; weak ones ("make it work") force round-trips.
+
+The lead also honors 2–4; for principle 1 the lead's "report" audience is the
+investor's node-level Chinese briefing — but the lead likewise never pauses for
+permission.
 
 ### Spawning example (memory-as-bus)
 

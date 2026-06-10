@@ -29,6 +29,7 @@ from ._class_helpers import (
     extract_class,
     extract_enum,
     extract_interface,
+    extract_namespace,
     extract_type_alias,
 )
 from ._function_helpers import (
@@ -140,6 +141,10 @@ class TypeScriptElementExtractor(ElementExtractor):
             "type_alias_declaration": self._extract_type_alias_optimized,
             "enum_declaration": self._extract_enum_optimized,
             "abstract_class_declaration": self._extract_class_optimized,
+            # Theme-I (2026-06-10): namespace/module containers were invisible
+            # (and everything inside them lost — see _traversal_helpers).
+            "internal_module": self._extract_namespace_optimized,
+            "module": self._extract_namespace_optimized,
         }
 
         self._traverse_and_extract_iterative(
@@ -335,6 +340,16 @@ class TypeScriptElementExtractor(ElementExtractor):
     def _extract_enum_optimized(self, node: "tree_sitter.Node") -> Class | None:
         """Extract enum information"""
         return extract_enum(
+            node,
+            self._get_node_text_optimized,
+            self._extract_tsdoc_for_line,
+            self._is_exported_class,
+            self.framework_type,
+        )
+
+    def _extract_namespace_optimized(self, node: "tree_sitter.Node") -> Class | None:
+        """Extract namespace/module container information"""
+        return extract_namespace(
             node,
             self._get_node_text_optimized,
             self._extract_tsdoc_for_line,

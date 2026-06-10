@@ -136,6 +136,21 @@ class ListFilesTool(BaseMCPTool):
         rewriting it to ``[project_root]`` masked typos and made the
         downstream ``_validate_roots`` check unreachable.
         """
+        # Wave 1b (audit project-05): ``path`` is a single-directory alias for
+        # ``roots``. Map it BEFORE the roots resolution so a caller-supplied
+        # scope is actually honored (and existence-validated downstream),
+        # instead of being dropped and silently falling back to project_root —
+        # which made ``files path=nonexistent_dir`` return the whole project.
+        # An explicit-but-empty ``path`` is a user error (O7), NOT a silent
+        # fallback to scanning the whole project — that would re-introduce the
+        # very bug this fixes. ``pop`` so the consumed alias never lingers.
+        if "path" in arguments and "roots" not in arguments:
+            path_value = arguments.pop("path")
+            if not path_value or not isinstance(path_value, str):
+                raise ValueError(
+                    "path must be a non-empty string (or omit it to scan project_root)"
+                )
+            arguments["roots"] = [path_value]
         if "roots" not in arguments:
             if not self.project_root:
                 raise ValueError(

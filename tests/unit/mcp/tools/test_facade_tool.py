@@ -108,12 +108,40 @@ class _FakeFunctionTool(BaseMCPTool):
         return {"success": True, "verdict": "INFO"}
 
 
+class _FakeClassTool(BaseMCPTool):
+    """Inner tool that reads ``class_name`` (mirrors codegraph_class_inspect /
+    codegraph_class_hierarchy)."""
+
+    def __init__(self, project_root: str | None = None) -> None:
+        super().__init__(project_root)
+        self.last_args: dict[str, Any] | None = None
+
+    def get_tool_schema(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {"class_name": {"type": "string"}},
+            "required": ["class_name"],
+            "additionalProperties": False,
+        }
+
+    def get_tool_definition(self) -> dict[str, Any]:
+        return {"name": "fake_class", "inputSchema": self.get_tool_schema()}
+
+    def validate_arguments(self, arguments: dict[str, Any]) -> bool:
+        return True
+
+    async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        self.last_args = dict(arguments)
+        return {"success": True, "verdict": "INFO"}
+
+
 def _make_facade(**kwargs: Any) -> FacadeTool:
     return FacadeTool(
         facade_name="test_facade",
         action_map={
             "symbol": _FakeSymbolTool(),
             "func": _FakeFunctionTool(),
+            "cls": _FakeClassTool(),
         },
         **kwargs,
     )
@@ -189,6 +217,34 @@ def test_explicit_function_name_wins_over_symbol() -> None:
     )
     assert inner.last_args is not None
     assert inner.last_args.get("function_name") == "explicit"
+
+
+# --------------------------------------------------------------------------
+# Wave 1b (audit structure-01): symbol -> class_name normalize. Without it the
+# facade dropped ``symbol`` before projection because the class inner declares
+# ``class_name`` (not symbol/function_name), so class_tree/class_detail
+# silently ignored the requested class.
+# --------------------------------------------------------------------------
+
+
+def test_symbol_normalized_to_class_name_before_projection() -> None:
+    facade = _make_facade()
+    inner = facade.action_map["cls"]
+    asyncio.run(facade.execute({"action": "cls", "symbol": "MyClass"}))
+    assert inner.last_args is not None
+    assert inner.last_args.get("class_name") == "MyClass"
+
+
+def test_explicit_class_name_wins_over_symbol() -> None:
+    facade = _make_facade()
+    inner = facade.action_map["cls"]
+    asyncio.run(
+        facade.execute(
+            {"action": "cls", "symbol": "fromSymbol", "class_name": "explicit"}
+        )
+    )
+    assert inner.last_args is not None
+    assert inner.last_args.get("class_name") == "explicit"
 
 
 # --------------------------------------------------------------------------

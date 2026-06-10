@@ -9,6 +9,8 @@ the full canonical envelope every tool's success path also produces:
         "success": False,
         "error": "<plain message>",
         "error_type": "<machine kind>",         # validation / file_not_found / ...
+        "verdict": "ERROR",                      # top-level mirror (Wave 1a) —
+                                                 # equals agent_summary.verdict
         "agent_summary": {
             "summary_line": "<one line>",
             "next_step":    "<concrete suggestion>",
@@ -197,6 +199,11 @@ def _build_envelope(
         # Backward-compatible alias kept for callers that pinned this name.
         "error_category": error_type,
         "recovery_hint": recovery_hint,
+        # Wave 1a (audit search-01/viz-01/project-02): mirror verdict to the
+        # TOP LEVEL — not just inside agent_summary — so an agent reading
+        # ``result["verdict"]`` (the r37w contract) gets a value on errors,
+        # exactly as it does on the success path.
+        "verdict": "ERROR",
         "agent_summary": {
             "summary_line": summary_line,
             "next_step": recovery_hint,
@@ -253,6 +260,7 @@ _CANONICAL_KEYS: tuple[str, ...] = (
     "success",
     "error",
     "error_type",
+    "verdict",  # Wave 1a: top-level verdict is now part of the canonical shape
     "agent_summary",
     "summary_line",
 )
@@ -428,9 +436,29 @@ def _populate_agent_summary_block(
     if not isinstance(agent_summary, dict):
         agent_summary = {}
     agent_summary.setdefault("summary_line", summary_line_value)
-    agent_summary.setdefault("next_step", "")
+    # Wave 1b batch B (audit nav-03/04, search-05, project-03, viz-05, health-04):
+    # many tools set a rich TOP-LEVEL ``next_step`` but leave
+    # ``agent_summary.next_step`` empty. Mirror the top-level value into the
+    # agent_summary (the documented place agents read) rather than defaulting to
+    # "" — only when agent_summary has no real next_step of its own.
+    if not agent_summary.get("next_step"):
+        top_next = response.get("next_step")
+        agent_summary["next_step"] = (
+            top_next if isinstance(top_next, str) and top_next else ""
+        )
     response["agent_summary"] = agent_summary
     return agent_summary
+
+
+def _real_verdict(value: Any) -> str | None:
+    """Return ``value`` only if it is a *real* verdict.
+
+    ``"n/a"`` is the canonical post-hook placeholder for "no verdict set"
+    (see :func:`_mirror_verdict`), so it — like ``""``/``None`` — counts as
+    missing. Keeps the error-path verdict resolution consistent with the
+    success-path mirror logic.
+    """
+    return value if isinstance(value, str) and value and value != "n/a" else None
 
 
 def _mirror_verdict(response: dict[str, Any], agent_summary: dict[str, Any]) -> None:
@@ -526,7 +554,18 @@ def ensure_canonical_error_envelope(
         agent_summary = {}
     agent_summary.setdefault("summary_line", summary_line)
     agent_summary.setdefault("next_step", recovery_hint)
-    agent_summary.setdefault("verdict", "ERROR")
+    # Wave 1a (audit search-01/viz-01/project-02): verdict must be present at
+    # BOTH the top level and in agent_summary, and the two must agree. Prefer
+    # a real verdict the tool already set (top level first, then agent_summary)
+    # so a specific verdict like NOT_FOUND is preserved; the "n/a" placeholder
+    # counts as missing (consistent with _mirror_verdict); otherwise ERROR.
+    verdict = (
+        _real_verdict(response.get("verdict"))
+        or _real_verdict(agent_summary.get("verdict"))
+        or "ERROR"
+    )
+    response["verdict"] = verdict
+    agent_summary["verdict"] = verdict
     response["agent_summary"] = agent_summary
 
     return response

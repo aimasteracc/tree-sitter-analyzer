@@ -86,7 +86,10 @@ class DependencyAnalysisTool(BaseMCPTool):
     # (smart_prompts, analyze_scale_helpers, project_overview_tool,
     # query_symbol_search) already names. ``full`` stays as an accepted
     # alias for caller convenience but the response echoes ``summary``.
-    _MODE_ALIASES: dict[str, str] = {"full": "summary"}
+    # Wave 1b (audit health-02): ``blast`` is a natural short form agents reach
+    # for; accept it as an alias for the canonical ``blast_radius`` so
+    # ``deps mode=blast`` works instead of raising "Unknown mode: blast".
+    _MODE_ALIASES: dict[str, str] = {"full": "summary", "blast": "blast_radius"}
 
     @classmethod
     def _normalize_mode(cls, mode: str) -> str:
