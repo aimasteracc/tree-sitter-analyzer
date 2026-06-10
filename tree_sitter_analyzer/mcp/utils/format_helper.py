@@ -299,6 +299,12 @@ def apply_toon_format_to_response(
             "edges",  # UML edge list (viz action=uml)
             "mermaid",  # Mermaid diagram string (viz action=uml / action=graph)
             "groups",  # Clone-group array (viz action=similarity)
+            # Measured 2026-06-11: the four fields below leak ~1.5x at the
+            # top level and are already encoded inside toon_content.
+            "callers",  # Caller-list (callers_tool / call_graph_tool mode=callers)
+            "callees",  # Callee-list (callees_tool / call_graph_tool mode=callees)
+            "tree",  # Nested call-tree dict (callee_tree / caller_tree tools)
+            "gaps",  # Skills gap-category dict (agent_skills_tool)
         }
         # O4 (round-30): ``lines`` is treated as bulk *content* only when
         # it is actually a list/array (e.g. raw line content from
