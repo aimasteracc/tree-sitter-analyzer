@@ -614,6 +614,7 @@ def test_registered_mcp_tools_have_cli_parity() -> None:
     from tree_sitter_analyzer.mcp.facade_map import (
         FACADE_NAMES,
         LEGACY_TOOL_MAP,
+        NEW_ACTION_PARITY,
         SET_PROJECT_PATH_TOOL_NAME,
     )
 
@@ -626,10 +627,16 @@ def test_registered_mcp_tools_have_cli_parity() -> None:
     # 2. Every capability with a CLI flag re-keys to a live (facade, action)
     #    pair (or is the standalone set_project_path infra entry). Guards
     #    "no CLI capability lost its facade route during cutover".
+    #    New-only actions (NEW_ACTION_PARITY) are also valid routes — they were
+    #    never v1.x legacy names, so they live outside LEGACY_TOOL_MAP.
     unmapped_capabilities = [
         tool_name
         for tool_name in tool_to_cli
-        if tool_name not in LEGACY_TOOL_MAP and tool_name != SET_PROJECT_PATH_TOOL_NAME
+        if (
+            tool_name not in LEGACY_TOOL_MAP
+            and tool_name not in NEW_ACTION_PARITY
+            and tool_name != SET_PROJECT_PATH_TOOL_NAME
+        )
     ]
     assert unmapped_capabilities == [], (
         "These capabilities have a CLI flag but no (facade, action) route — "
@@ -643,6 +650,18 @@ def test_registered_mcp_tools_have_cli_parity() -> None:
         "These facade-backed capabilities have NO CLI parity entry — every "
         "(facade, action) must keep a documented CLI access path: "
         + repr(missing_cli_for_route)
+    )
+
+    # 3b. NEW_ACTION_PARITY entries also have live CLI flags (same bar as legacy).
+    missing_cli_for_new_actions = [
+        key
+        for key, (_facade, _action, cli_flag) in NEW_ACTION_PARITY.items()
+        if cli_flag not in main_cli_options
+    ]
+    assert missing_cli_for_new_actions == [], (
+        "These new-action parity entries have NO CLI flag — every "
+        "(facade, action) must keep a documented CLI access path: "
+        + repr(missing_cli_for_new_actions)
     )
 
     # 4. The CLI flags themselves still resolve (main flag or console script).
@@ -775,6 +794,8 @@ def test_facade_delegation_routes_each_action_to_expected_inner() -> None:
         ("nav", "callees"): "<bespoke>",
         ("nav", "callee_tree"): "CodeGraphCalleeTreeTool",
         ("nav", "caller_tree"): "CodeGraphCallerTreeTool",
+        # RFC-0014 Phase B: test_map is a bespoke route (closure over impact_inner).
+        ("nav", "test_map"): "<bespoke>",
         ("structure", "outline"): "GetCodeOutlineTool",
         ("structure", "analyze"): "AnalyzeCodeStructureTool",
         ("structure", "signatures"): "<bespoke>",
@@ -954,7 +975,11 @@ def test_registered_mcp_tools_have_codemap_parity() -> None:
             codemap_tools.add(m.group(1))
 
     from tree_sitter_analyzer.mcp._tool_registry import create_tool_registry
-    from tree_sitter_analyzer.mcp.facade_map import FACADE_NAMES, LEGACY_TOOL_MAP
+    from tree_sitter_analyzer.mcp.facade_map import (
+        FACADE_NAMES,
+        LEGACY_TOOL_MAP,
+        NEW_ACTION_PARITY,
+    )
 
     registered = {name for name, _tool in create_tool_registry(str(PROJECT_ROOT))[0]}
 
@@ -970,7 +995,9 @@ def test_registered_mcp_tools_have_codemap_parity() -> None:
         f"the same commit: {missing_facades_in_codemap}"
     )
 
-    allowed_codemap_names = set(FACADE_NAMES) | set(LEGACY_TOOL_MAP)
+    allowed_codemap_names = (
+        set(FACADE_NAMES) | set(LEGACY_TOOL_MAP) | set(NEW_ACTION_PARITY)
+    )
     stale_in_codemap = sorted(codemap_tools - allowed_codemap_names)
     assert stale_in_codemap == [], (
         "These codemap rows reference names that are neither a live facade "

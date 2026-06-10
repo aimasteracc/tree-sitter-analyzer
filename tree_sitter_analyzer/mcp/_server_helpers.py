@@ -70,6 +70,7 @@ The 8 tools: nav, search, structure, health, edit, project, index, viz.
 | Edge-kind breakdown of the graph | index action=status (edges_by_kind) |
 | Get pushed when results change | search action=subscribe |
 | File / module dependency questions (risk score, tests bucket) | nav action=impact / structure |
+| Which tests exercise a function | nav action=test_map |
 | File discovery | project / search |
 
 ## Differentiators (capabilities grep / one-shot indexers lack)
@@ -87,6 +88,10 @@ The 8 tools: nav, search, structure, health, edit, project, index, viz.
   (`test_callers_count`, `test_callees_count`). Pass `include_tests=true` to
   also receive `test_caller_files` / `test_callee_files` (applies to
   `function_impact` and `risk_score` modes).
+- **`nav action=test_map` (RFC-0014 Phase B)** — inverts the test-noise problem:
+  returns which test files and test functions exercise a given function. Fields:
+  `test_files` (sorted paths), `test_functions` ("file::fn" paste-ready for
+  pytest), `edge_count`, `truncated`. Use BEFORE editing to know the test surface.
 
 ## Default chain for "how does X work / trace a flow" (FOLLOW THIS)
 
