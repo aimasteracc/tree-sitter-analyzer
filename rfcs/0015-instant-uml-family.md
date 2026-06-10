@@ -843,15 +843,15 @@ into the Phase 1 PR — it is a one-line metadata annotation requiring no separa
 
 ### Phase 2 — activity
 
-- [ ] `diagram` enum includes `"activity"` in schema.
-- [ ] `UMLExporter.activity_diagram(function_name, file_path, max_nodes)` implemented: `mermaid_type="flowchart"`, `%% NOTE: activity` comment in Mermaid.
-- [ ] Zero CFG nodes -> `verdict="NOT_FOUND"` + `next_step`.
-- [ ] Stale file -> parse current content + `metadata["note"]`; missing file -> `NOT_FOUND`.
-- [ ] `test_uml_tool_schema_lists_diagrams` re-pinned to 6-element enum.
-- [ ] `test_class_diagram_execute_with_mock_exporter` FakeExporter still accepts new params (no regression from Phase 1 re-pin).
-- [ ] CLI flags `--uml-function`, `--uml-max-nodes` added and wired.
-- [ ] Latency invariant: activity diagram triggers exactly 1 tree-sitter parse (assertion count == 1).
-- [ ] All Phase-2 activity tests RED-first then GREEN.
+- [x] `diagram` enum includes `"activity"` in schema.
+- [x] `UMLExporter.activity_diagram(function_name, file_path, max_nodes)` implemented: `mermaid_type="flowchart"`, `%% NOTE: activity` comment in Mermaid.
+- [x] Zero CFG nodes -> `verdict="NOT_FOUND"` + `next_step`.
+- [x] Stale file -> parse current content + `metadata["note"]`; missing file -> `NOT_FOUND`.
+- [x] `test_uml_tool_schema_lists_diagrams` re-pinned to 6-element enum (5 in P2-A: ["class","package","component","sequence","activity"]).
+- [x] `test_class_diagram_execute_with_mock_exporter` FakeExporter still accepts new params (no regression from Phase 1 re-pin).
+- [x] CLI flags `--uml-function`, `--uml-max-nodes` added and wired.
+- [x] Latency invariant: activity diagram triggers exactly 1 tree-sitter parse (assertion count == 1).
+- [x] All Phase-2 activity tests RED-first then GREEN.
 
 ### Phase 2 — state
 
