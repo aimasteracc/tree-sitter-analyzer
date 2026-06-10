@@ -41,6 +41,11 @@ def _mock_node(
     """Create a mock tree-sitter Node."""
     node = MagicMock()
     node.type = type_name
+    # CRITICAL: without this, MagicMock auto-generates an infinite
+    # .parent.parent... chain — production code that walks the parent chain
+    # (e.g. _find_impl_owner) would loop allocating fresh mocks forever
+    # (the 2026-06-10 140GB OOM incident).
+    node.parent = None
     node.start_byte = start_byte
     node.end_byte = end_byte
     node.start_point = start_point
