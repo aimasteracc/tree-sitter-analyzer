@@ -1,6 +1,6 @@
 ---
 name: tsa-index
-version: 1.0.0
+version: 2.0.0
 description: |
   Manage the persistent AST cache / index. Refresh, force-rebuild, inspect
   cache state, diff one file's AST between commits, advise on parser readiness
@@ -29,16 +29,16 @@ allowed-tools:
 
 ## Tool routing
 
-| Goal                                           | Tool                    |
-|------------------------------------------------|-------------------------|
-| Status / stats of the AST cache                | `ast_cache` (mode=status) |
-| Force rebuild                                  | `ast_cache` (mode=force)  |
-| Incremental refresh                            | `ast_cache` (mode=index)  |
-| Watch a directory and auto-refresh             | `ast_cache` (mode=watch_start) |
-| AST-level diff of one file across commits      | `ast_diff`              |
-| First-time index for a freshly-cloned repo     | `codegraph_autoindex`   |
-| Full bulk reindex (large monorepo)             | `codegraph_full_index`  |
-| "Is the python plugin / swift plugin ready"    | `advise_parser_readiness` |
+| Goal                                           | Tool                              |
+|------------------------------------------------|-----------------------------------|
+| Status / stats of the AST cache                | `index action=cache` (mode=status) |
+| Force rebuild                                  | `index action=cache` (mode=force)  |
+| Incremental refresh                            | `index action=cache` (mode=index)  |
+| Watch a directory and auto-refresh             | `index action=cache` (mode=watch_start) |
+| AST-level diff of one file across commits      | `edit action=ast_diff`            |
+| First-time index for a freshly-cloned repo     | `index action=auto`               |
+| Full bulk reindex (large monorepo)             | `index action=full`               |
+| "Is the python plugin / swift plugin ready"    | `project action=parser`           |
 
 ## Procedure
 
@@ -61,7 +61,7 @@ uv run tree-sitter-analyzer --ast-cache --ast-cache-mode index
 For structural change detection (not text):
 
 ```yaml
-ast_diff(file_path: "...", base_ref: "HEAD~5", head_ref: "HEAD")
+edit action=ast_diff file_path="..." base_ref="HEAD~5" head_ref="HEAD"
 # returns: {nodes_added: n, nodes_removed: n, nodes_modified: n,
 #           classification_hints: [...]}
 ```
@@ -71,7 +71,7 @@ Useful for distinguishing pure formatting from real change.
 ### Parser readiness
 
 ```yaml
-advise_parser_readiness(language: "swift")
+project action=parser language="swift"
 # returns: {status: "stable|beta|stub", supported_queries: [...], limitations: [...]}
 ```
 
@@ -82,10 +82,10 @@ Avoid asking "why doesn't swift work" — query this first.
 ```bash
 uv run tree-sitter-analyzer --ast-cache --ast-cache-mode status
 uv run tree-sitter-analyzer --ast-cache --ast-cache-mode force
-uv run tree-sitter-analyzer --ast-diff <file> --base HEAD~5 --head HEAD
-uv run tree-sitter-analyzer parser-readiness swift
-uv run tree-sitter-analyzer --autoindex            # codegraph_autoindex
-uv run tree-sitter-analyzer --full-index           # codegraph_full_index
+uv run tree-sitter-analyzer --ast-diff --ast-diff-file <file> --ast-diff-old-ref HEAD~5 --ast-diff-new-ref HEAD
+uv run tree-sitter-analyzer --parser-readiness swift
+uv run tree-sitter-analyzer --autoindex            # index action=auto
+uv run tree-sitter-analyzer --full-index           # index action=full
 ```
 
 ## Anti-patterns

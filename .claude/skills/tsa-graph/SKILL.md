@@ -1,6 +1,6 @@
 ---
 name: tsa-graph
-version: 1.0.0
+version: 2.0.0
 description: |
   Code archaeology via call graph + symbol resolution. Answer "who calls X",
   "what does Y call", "where is Z defined", "what's the path from A to B" in
@@ -37,19 +37,19 @@ allowed-tools:
 
 Pick the right tool by question shape:
 
-| Question                              | Tool                          |
-|---------------------------------------|-------------------------------|
-| Need search + snippets + callers/callees together? | `codegraph_query` |
-| What does FUNCTION call?              | `codegraph_callees`           |
-| What calls FUNCTION?                  | `codegraph_callers`           |
-| Where is SYMBOL defined?              | `codegraph_symbol_search`     |
-| What references SYMBOL anywhere?      | `codegraph_xref`              |
-| Path from CALLER to CALLEE?           | `codegraph_call_path`         |
-| Resolve "Path" in file X (project or stdlib?) | `codegraph_resolve`   |
-| Need architecture diagram output?     | `codegraph_uml`               |
+| Question                              | Tool                              |
+|---------------------------------------|-----------------------------------|
+| Need search + snippets + callers/callees together? | `search action=chain` |
+| What does FUNCTION call?              | `nav action=callees`              |
+| What calls FUNCTION?                  | `nav action=callers`              |
+| Where is SYMBOL defined?              | `search action=symbol`            |
+| What references SYMBOL anywhere?      | `nav action=xref`                 |
+| Path from CALLER to CALLEE?           | `nav action=call_path`            |
+| Resolve "Path" in file X (project or stdlib?) | `nav action=resolve`    |
+| Need architecture diagram output?     | `viz action=uml`                  |
 
 **Don't use** when:
-- You need the actual *body* of the function → use `extract_code_section`
+- You need the actual *body* of the function → use `structure action=read`
 - You're hunting a string literal in non-source files → use Grep
 
 ## Procedure
@@ -61,30 +61,30 @@ Pick the matching tool, call once. Read the response. Done.
 Example: "what calls `score_file`?"
 
 ```
-codegraph_callers(function_name="score_file", language="python", limit=20)
+nav action=callers function_name="score_file" language="python" limit=20
 ```
 
 Returns: `callers: [{name, file, line, callee_resolution, callee_resolved_file}, ...]`.
-The new `callee_resolution` field tells you `local` / `project` / `stdlib` /
+The `callee_resolution` field tells you `local` / `project` / `stdlib` /
 `unknown` so you can filter out noise.
 
 When a question needs several graph hops plus source snippets, prefer the
 chain surface:
 
 ```
-codegraph_query(query="search('score_file').explore(max_files=3).callers(depth=1).callees(depth=1)")
+search action=chain query="search('score_file').explore(max_files=3).callers(depth=1).callees(depth=1)"
 ```
 
 ### Multi-step case (refactor planning)
 
 Fan out 3 in parallel:
-1. `codegraph_callers` (who depends on this — blast radius)
-2. `codegraph_callees` (what this depends on — what may need updating)
-3. `codegraph_symbol_search` with the symbol name (find aliases / shadows)
+1. `nav action=callers` (who depends on this — blast radius)
+2. `nav action=callees` (what this depends on — what may need updating)
+3. `search action=symbol` with the symbol name (find aliases / shadows)
 
 Then if you need a specific reachability path:
 ```
-codegraph_call_path(from_function="X", to_function="Y", max_depth=10)
+nav action=call_path from_function="X" to_function="Y" max_depth=10
 ```
 
 ## Reading the new resolution fields (Synapse)
@@ -112,12 +112,14 @@ uv run tree-sitter-analyzer --callees <FUNC> --output-format toon
 uv run tree-sitter-analyzer --callers <FUNC> --output-format toon
 uv run tree-sitter-analyzer --symbol-search <NAME> --output-format toon
 uv run tree-sitter-analyzer --codegraph-xref <SYMBOL> --output-format toon
+uv run tree-sitter-analyzer --call-path --call-path-source X --call-path-target Y
+uv run tree-sitter-analyzer --uml class --output-format toon
 ```
 
 ## Anti-patterns
 
-- Don't `grep -rn "def X" tree_sitter_analyzer/` — use `codegraph_symbol_search` (10x faster, precise)
-- Don't read 5 files to trace a call chain — use `codegraph_call_path`
+- Don't `grep -rn "def X" tree_sitter_analyzer/` — use `search action=symbol` (10x faster, precise)
+- Don't read 5 files to trace a call chain — use `nav action=call_path`
 - Don't ignore `callee_resolution` — `unknown` entries are noise, filter them
 
 ## Decision surface

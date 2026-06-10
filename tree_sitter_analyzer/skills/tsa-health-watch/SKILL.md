@@ -1,6 +1,6 @@
 ---
 name: tsa-health-watch
-version: 1.0.0
+version: 2.0.0
 description: |
   Project & file health grading + dead-code detection + watch-daemon for grade
   drops. Answer "how healthy is this codebase", "what's rotting", "which files
@@ -29,14 +29,14 @@ allowed-tools:
 
 ## When to use
 
-| Goal                            | Tool                                |
-|---------------------------------|-------------------------------------|
-| Project portrait + worst files  | `check_project_health`              |
-| One-file deep dive              | `check_file_health`                 |
-| Top hubs + sensory neurons      | `codegraph_overview`                |
-| Find dead functions             | `codegraph_dead_code`               |
-| Complexity hotspots (visualize) | `codegraph_complexity_heatmap`      |
-| Watch & alert on degradation    | `--watch-health` CLI (Bash)         |
+| Goal                            | Tool                                  |
+|---------------------------------|---------------------------------------|
+| Project portrait + worst files  | `health action=project`               |
+| One-file deep dive              | `health action=file`                  |
+| Top hubs + sensory neurons      | `health action=overview`              |
+| Find dead functions             | `health action=dead`                  |
+| Complexity hotspots (visualize) | `health action=heatmap`               |
+| Watch & alert on degradation    | `--watch-health` CLI (Bash)           |
 
 ## Procedure
 
@@ -44,17 +44,17 @@ allowed-tools:
 
 Fan out in one message:
 
-1. `check_project_health` with `max_files: 20` — grade distribution + worst-20
-2. `codegraph_dead_code` with `limit: 50` — pruning candidates
-3. `codegraph_overview` — hub functions + entry points + 0-degree leaves
+1. `health action=project` with `max_files: 20` — grade distribution + worst-20
+2. `health action=dead` with `limit: 50` — pruning candidates
+3. `health action=overview` — hub functions + entry points + 0-degree leaves
 
 Read the verdict. If `D/F` files exist in worst-20, drill into each with
-`check_file_health` to get the per-dimension breakdown + recommendation.
+`health action=file` to get the per-dimension breakdown + recommendation.
 
 ### Single-file investigation
 
 ```
-check_file_health(file_path="<path>")
+health action=file file_path="<path>"
 ```
 
 Returns:
@@ -113,7 +113,7 @@ uv run tree-sitter-analyzer --watch-health --threshold-grade C  # daemon
 ## Anti-patterns
 
 - Don't grade individual files when the question is "which 10 are worst" —
-  use `check_project_health` once instead of N file-health calls.
+  use `health action=project` once instead of N file-health calls.
 - Don't ignore `dimensions` and just look at the grade letter — the
   recommendation lives in the weakest dimension.
 - Don't use `--watch-health` for one-shot checks — it's a long-running daemon.
@@ -121,11 +121,11 @@ uv run tree-sitter-analyzer --watch-health --threshold-grade C  # daemon
 ## Decision surface
 
 ```yaml
-project (when check_project_health):
+project (when health action=project):
   grade_distribution: {A: n, B: n, C: n, D: n, F: n}
   worst_files: [{path, grade, score, weakest_dimension}, ...]
 
-file (when check_file_health):
+file (when health action=file):
   grade: A | B | C | D | F
   score: 0-100
   signal: healthy | moderate_depth | ...

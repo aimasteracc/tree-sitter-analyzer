@@ -1,11 +1,11 @@
 ---
 name: tsa-constraints
-version: 1.0.0
+version: 2.0.0
 description: |
   Architectural constraint enforcement. Detect forbidden cross-module calls
   ("MCP must not depend on CLI") at index time and gate edits on them. Rules
-  live in YAML at repo root; violations bubble up through safe_to_edit and
-  change_impact as UNSAFE verdicts.
+  live in YAML at repo root; violations bubble up through edit action=safe and
+  edit action=impact as UNSAFE verdicts.
 
   Use when:
   - User asks "does this PR break architecture?"
@@ -33,21 +33,21 @@ allowed-tools:
 
 ## When to use
 
-| Goal                                       | Action                                |
-|--------------------------------------------|---------------------------------------|
-| List current rules                         | Read `architectural-constraints.yml`  |
-| Check repo against rules                   | `check_constraints` (no args)         |
-| Pre-edit gate (includes rule check)        | `safe_to_edit` (auto)                 |
-| Add a new rule                             | Edit YAML + re-run `check_constraints`|
-| Filter violations by severity              | `check_constraints(severity_min="error")` |
-| Filter by path                             | `check_constraints(path_filter="mcp/**")` |
+| Goal                                       | Action                                         |
+|--------------------------------------------|------------------------------------------------|
+| List current rules                         | Read `architectural-constraints.yml`           |
+| Check repo against rules                   | `edit action=constraints` (no args)            |
+| Pre-edit gate (includes rule check)        | `edit action=safe` (auto)                      |
+| Add a new rule                             | Edit YAML + re-run `edit action=constraints`   |
+| Filter violations by severity              | `edit action=constraints severity_min="error"` |
+| Filter by path                             | `edit action=constraints path_filter="mcp/**"` |
 
 ## Procedure
 
 ### One-shot audit
 
 ```
-check_constraints()
+edit action=constraints
 ```
 
 Returns:
@@ -79,7 +79,7 @@ Verdict cascade:
      reason: "<why this is forbidden>"
      exceptions: ["specific/file.py"]   # optional
    ```
-3. Run `check_constraints` to see if existing code violates the new rule
+3. Run `edit action=constraints` to see if existing code violates the new rule
 4. Either: fix the violations OR add them to `exceptions`
 
 ### Reading violations

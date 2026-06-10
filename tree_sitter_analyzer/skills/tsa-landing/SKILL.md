@@ -1,6 +1,6 @@
 ---
 name: tsa-landing
-version: 1.0.0
+version: 2.0.0
 description: |
   Land in a new (or familiar) codebase using the tree-sitter-analyzer MCP server.
   One workflow → 6 decision surfaces (project_card / entry_points / recent_signals /
@@ -33,7 +33,7 @@ allowed-tools:
 
 **Don't use** when:
 - You already have full context (just continue working)
-- User wants to read source — use `extract_code_section` directly
+- User wants to read source — use `structure action=read` directly
 
 ## Procedure
 
@@ -49,10 +49,10 @@ If `fd` or `rg` missing, stop and tell user how to install.
 
 Call these 4 tools in ONE message (parallel tool use):
 
-1. `get_project_summary` (no args) — project_card + entry_points
-2. `check_project_health` with `max_files: 5` — grade distribution + weakest dimension
-3. `analyze_change_impact` with `mode: "branch"` — recent_signals (last commit, ahead-of-main)
-4. `get_agent_workflow` (no args) — current_phase + recommended_commands
+1. `project action=overview` (no args) — project_card + entry_points
+2. `health action=project` with `max_files: 5` — grade distribution + weakest dimension
+3. `edit action=impact` with `mode: "branch"` — recent_signals (last commit, ahead-of-main)
+4. `project action=workflow` (no args) — current_phase + recommended_commands
 
 ### Step 3 — Fold and emit decision_surface
 
@@ -61,16 +61,16 @@ Combine into single Decision Surface:
 ```jsonc
 {
   "project_card": {
-    "name": <from get_project_summary.project_root basename>,
-    "purpose": <from get_project_summary.summary.purpose if present>,
-    "primary_language": <from get_project_summary.summary.by_language[0].name>,
-    "language_mix": <from get_project_summary.summary.by_language top 3>,
+    "name": <from project action=overview project_root basename>,
+    "purpose": <from project action=overview summary.purpose if present>,
+    "primary_language": <from project action=overview summary.by_language[0].name>,
+    "language_mix": <from project action=overview summary.by_language top 3>,
     "size": {
-      "files": <from get_project_summary.summary.total_files>,
-      "loc": <from get_project_summary.summary.total_lines>
+      "files": <from project action=overview summary.total_files>,
+      "loc": <from project action=overview summary.total_lines>
     }
   },
-  "entry_points": <from get_project_summary.entry_points>,
+  "entry_points": <from project action=overview entry_points>,
   "recent_signals": {
     "last_commit": <git log -1 --oneline via Bash>,
     "ahead_of_origin": <git rev-list --count via Bash>,
@@ -78,24 +78,24 @@ Combine into single Decision Surface:
     "branch": <git branch --show-current via Bash>
   },
   "health": {
-    "verdict": <from check_project_health.verdict>,
-    "risk": <from check_project_health.agent_summary.risk>,
-    "grade_distribution": <from check_project_health.grade_distribution>,
-    "weakest_dimension": <from check_project_health.weakest_dimension>
+    "verdict": <from health action=project verdict>,
+    "risk": <from health action=project agent_summary.risk>,
+    "grade_distribution": <from health action=project grade_distribution>,
+    "weakest_dimension": <from health action=project weakest_dimension>
   },
   "top_files_to_know": [
     "AGENTS.md",
     "CLAUDE.md",
-    <from get_project_summary.entry_points>,
-    <top 3 from check_project_health.top_refactoring_targets>
+    <from project action=overview entry_points>,
+    <top 3 from health action=project top_refactoring_targets>
   ],
   "agent_next_step": {
     "if_asked_what_is_this":
       "Read AGENTS.md (canonical contracts) + docs/CODEMAPS/architecture.md (topology). Stop after 2k tokens.",
     "if_asked_to_add_feature":
-      "Call get_agent_workflow → follow phase_order. Use TDD (write test first).",
+      "Call project action=workflow → follow phase_order. Use TDD (write test first).",
     "if_asked_to_fix_bug":
-      "Call code_patterns(file_path) → refactoring_suggestions(file_path). Cross-ref symbol_lineage if symbol-level.",
+      "Call health action=patterns file_path=<file> → edit action=refactor file_path=<file>. Cross-ref nav action=lineage if symbol-level.",
     "if_asked_about_test_status":
       "Run: uv run pytest -q (5-min cap). Project enforces xdist parallel, ~5min for 15k tests."
   },

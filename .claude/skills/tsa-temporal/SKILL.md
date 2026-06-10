@@ -1,6 +1,6 @@
 ---
 name: tsa-temporal
-version: 1.0.0
+version: 2.0.0
 description: |
   Find "hot zones" — symbols modified often in recent git history that need
   extra review attention. Adds temporal context (mod_count_30d / 90d / all)
@@ -27,16 +27,16 @@ allowed-tools:
 
 > Per-symbol modification frequency persisted in `ast_symbol_activation`.
 > Computed from `git log --follow -p -U0` hunk attribution at index time.
-> Symbols with `mod_count_30d >= 5` auto-trigger CAUTION in change_impact.
+> Symbols with `mod_count_30d >= 5` auto-trigger CAUTION in `edit action=impact`.
 
 ## When to use
 
-| Goal                                  | How                                            |
-|---------------------------------------|------------------------------------------------|
-| Hot-zone caller fanout                | `codegraph_callers(..., include_activation=true)` |
-| Hot-zone callee fanout                | `codegraph_callees(..., include_activation=true)` |
-| "Is this commit touching hot zones?"  | `analyze_change_impact` — read `risk_factors`  |
-| Single-file recent churn              | `check_file_health` — read `git_hotspot` dim   |
+| Goal                                  | How                                                         |
+|---------------------------------------|-------------------------------------------------------------|
+| Hot-zone caller fanout                | `nav action=callers function_name="X" include_activation=true` |
+| Hot-zone callee fanout                | `nav action=callees function_name="X" include_activation=true` |
+| "Is this commit touching hot zones?"  | `edit action=impact` — read `risk_factors`                  |
+| Single-file recent churn              | `health action=file` — read `git_hotspot` dim               |
 
 **Don't use** when:
 - The question is static (e.g. "who calls X") — use `tsa-graph` skill
@@ -49,11 +49,7 @@ allowed-tools:
 For each symbol you're about to refactor:
 
 ```
-codegraph_callers(
-  function_name="X",
-  include_activation=true,
-  limit=50
-)
+nav action=callers function_name="X" include_activation=true limit=50
 ```
 
 Returns enriched entries:
@@ -77,7 +73,7 @@ recently — those are the high-risk integration points for your refactor.
 
 ### Change-impact gate (catches hot zones automatically)
 
-`analyze_change_impact` already includes hot-zone detection. Look for this
+`edit action=impact` already includes hot-zone detection. Look for this
 in the risk_factors:
 
 ```yaml
@@ -159,7 +155,7 @@ include_activation=true response addition (per callee/caller entry):
     mod_count_30d: <int>
     last_modified_at: <unix ts | null>
 
-analyze_change_impact addition:
+edit action=impact addition:
   risk_factors: [{factor: "hot_zone", reason: "...mod_count_30d=N...", severity: "caution"}]
   verdict: CAUTION   # bumped from SAFE/REVIEW when hot zone touched
 ```

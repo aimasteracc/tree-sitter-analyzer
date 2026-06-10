@@ -461,3 +461,142 @@ class TestInstallSkillsErrorHandling:
         assert "Installed:" in captured.err
         # path-separator agnostic (Windows prints backslashes)
         assert str(target / ".claude" / "skills" / "tsa-constraints") in captured.err
+
+
+# ---------------------------------------------------------------------------
+# D1h — content-sync guard: bundled wheel copy == .claude/skills source
+# ---------------------------------------------------------------------------
+
+
+class TestSkillContentSync:
+    """The bundled package copy (tree_sitter_analyzer/skills/) MUST be
+    byte-identical to the .claude/skills/ source of truth.
+
+    If these ever diverge an agent installing the package gets stale content.
+    Added for issue #437 (legacy tool names shipped in the wheel).
+    """
+
+    SKILL_NAMES = [
+        "tsa-constraints",
+        "tsa-deps",
+        "tsa-edit-safety",
+        "tsa-edit-then-verify",
+        "tsa-find",
+        "tsa-graph",
+        "tsa-health-watch",
+        "tsa-index",
+        "tsa-landing",
+        "tsa-pr-review",
+        "tsa-refactor-queue",
+        "tsa-structure",
+        "tsa-temporal",
+    ]
+
+    def _repo_root(self) -> Path:
+        """Locate the repository root relative to this test file."""
+        # tests/unit/cli/test_install_skills.py → three parents up = repo root
+        return Path(__file__).parent.parent.parent.parent
+
+    def test_bundled_content_matches_claude_source_for_all_13_skills(self):
+        """Bundled SKILL.md bytes must equal .claude/skills SKILL.md bytes.
+
+        The bundled copy lives at tree_sitter_analyzer/skills/<name>/SKILL.md.
+        The source-of-truth copy lives at .claude/skills/<name>/SKILL.md.
+        They are synced at authoring time; this test detects drift.
+        """
+        repo = self._repo_root()
+        bundled_base = repo / "tree_sitter_analyzer" / "skills"
+        source_base = repo / ".claude" / "skills"
+
+        mismatches = []
+        for name in self.SKILL_NAMES:
+            bundled_path = bundled_base / name / "SKILL.md"
+            source_path = source_base / name / "SKILL.md"
+
+            assert bundled_path.is_file(), f"Bundled SKILL.md missing: {bundled_path}"
+            assert source_path.is_file(), f"Source SKILL.md missing: {source_path}"
+
+            bundled_bytes = bundled_path.read_bytes()
+            source_bytes = source_path.read_bytes()
+            if bundled_bytes != source_bytes:
+                mismatches.append(name)
+
+        assert mismatches == [], (
+            f"Bundled and .claude/skills copies diverged for: {mismatches}. "
+            "Run: cp .claude/skills/<name>/SKILL.md tree_sitter_analyzer/skills/<name>/SKILL.md "
+            "for each skill in the list."
+        )
+
+    def test_no_legacy_tool_names_in_skills(self):
+        """Installed SKILL.md files must not contain legacy v1.x tool-call syntax.
+
+        Legacy names: bare old-tool-name(...) patterns that the 8-facade MCP
+        server does not register. Agents following these instructions fail on
+        their first call (issue #437).
+
+        The authoritative legacy set is LEGACY_TOOL_MAP keys from facade_map.py
+        plus get_project_summary (was never in LEGACY_TOOL_MAP but appeared
+        in skills). Canonical call form: ``edit action=safe`` not ``safe_to_edit()``.
+        """
+        import re
+
+        # Subset of high-impact legacy names — most likely to appear in tool
+        # call positions. Full set in facade_map.LEGACY_TOOL_MAP.
+        LEGACY_CALL_NAMES = [
+            "safe_to_edit",
+            "analyze_change_impact",
+            "check_project_health",
+            "check_file_health",
+            "check_constraints",
+            "codegraph_callers",
+            "codegraph_callees",
+            "codegraph_pr_review",
+            "codegraph_symbol_search",
+            "codegraph_call_path",
+            "analyze_dependencies",
+            "codegraph_import_graph",
+            "codegraph_sitemap",
+            "extract_code_section",
+            "find_and_grep",
+            "search_content",
+            "list_files",
+            "check_code_scale",
+            "analyze_code_structure",
+            "query_code",
+            "code_patterns",
+            "semantic_classify",
+            "refactoring_suggestions",
+            "ast_diff",
+            "codegraph_dead_code",
+            "codegraph_overview",
+            "codegraph_complexity_heatmap",
+            "advise_parser_readiness",
+            "get_agent_workflow",
+            "get_project_summary",
+            "smart_context",
+            "codegraph_autoindex",
+            "codegraph_full_index",
+            "ast_cache",
+            "codegraph_uml",
+        ]
+
+        repo = self._repo_root()
+        bundled_base = repo / "tree_sitter_analyzer" / "skills"
+
+        violations: dict[str, list[str]] = {}
+        for name in self.SKILL_NAMES:
+            skill_path = bundled_base / name / "SKILL.md"
+            content = skill_path.read_text(encoding="utf-8")
+            found = []
+            for legacy in LEGACY_CALL_NAMES:
+                # Match name immediately followed by ( — i.e. a function call
+                if re.search(r"\b" + re.escape(legacy) + r"\s*\(", content):
+                    found.append(legacy)
+            if found:
+                violations[name] = found
+
+        assert violations == {}, (
+            "Legacy tool-call names found in bundled skills (issue #437). "
+            "Replace with facade+action form (e.g. 'safe_to_edit(' → "
+            "'edit action=safe'). Violations: " + str(violations)
+        )
