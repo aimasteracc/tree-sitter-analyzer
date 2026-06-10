@@ -84,7 +84,7 @@ With that context, here is what the Gauntlet found.
 | huggingface/tokenizers | Rust+Py+JS+TS | 16,329 | **1,259** (7.71%) | **0** | v1.21.0 <!-- re-measure --> |
 | astral-sh/ruff | Rust+Py+TS | 187,418 | **7,557** (4.03%) | **0** | v1.21.0 <!-- re-measure --> |
 | pola-rs/polars | Rust+Py | 267,066 | **9,016** (3.38%) | **0** | v1.21.0 <!-- re-measure --> |
-| tree-sitter-analyzer (this repo) | 14 langs | 116,672 | **680** (0.58%) | **1** | 2026-06-10 at v1.22.0 |
+| tree-sitter-analyzer (this repo) | 14 langs | 116,606 | **678** (0.58%) | **1** | 2026-06-10, clean checkout of tag v1.22.0 |
 | gin-gonic/gin | Go (single) | 9,134 | **0** | **0** | v1.21.0 <!-- re-measure --> |
 
 Across all four polyglot repos, TSA resolves **0 cross-language mis-wires**. The
@@ -117,16 +117,20 @@ a name-only index would genuinely mis-wire (builtins excluded), 0 that TSA mis-w
 ## The Live Head-to-Head
 
 The Gauntlet uses a modelled "name-only" count without requiring CodeGraph to be
-installed. On this repo itself, with both tools' live indexes, the measured comparison
-is (CodeGraph row from v1.21.0 — re-measure before publication):
+installed. On this repo itself, with both tools' live indexes, the last complete
+same-session comparison (both arms, same commit, v1.21.0) measured:
 
-<!-- re-measure: CodeGraph row is v1.21.0 (2026-06-07); TSA row measured 2026-06-10 at v1.22.0 -->
-| tool | cross-language call edges | total call edges | mis-wire rate | measured at |
+<!-- re-measure: rerun BOTH arms in one session before publication for a fresh ratio -->
+| tool | cross-language mis-wires | total call edges | mis-wire rate | measured at |
 |---|---|---|---|---|
-| CodeGraph | **763** | 36,788 | **2.07%** | v1.21.0 (2026-06-07) <!-- re-measure --> |
-| tree-sitter-analyzer | **1** | 116,672 | **0.0009%** | 2026-06-10 at v1.22.0 |
+| CodeGraph | **745** | 38,103 | **1.96%** | v1.21.0, same session <!-- re-measure --> |
+| tree-sitter-analyzer | **6** | 114,160 | **0.005%** | v1.21.0, same session <!-- re-measure --> |
 
-TSA is approximately 763x cleaner (1 vs 763 mis-wires) while resolving 3x more call edges.
+Same-session ratio: **~124x cleaner** while resolving 3x more call edges. TSA's
+arm alone, re-measured at v1.22.0 on a clean tag checkout, improved to **1**
+mis-wire / 116,606 edges; the CodeGraph arm has not been re-measured, so we do
+not quote an updated ratio — a number is only comparable to a number measured
+the same way at the same time.
 
 ## Run It on Your Own Code
 

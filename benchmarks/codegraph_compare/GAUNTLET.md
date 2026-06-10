@@ -24,7 +24,7 @@ All numbers in the summary table are lifted verbatim from
 | huggingface/tokenizers | Rust+Py+JS+TS | 16,329 | **1,259** (7.71%) | **0** | v1.21.0 (2026-06-07) <!-- re-measure --> |
 | astral-sh/ruff | Rust+Py+TS | 187,418 | **7,557** (4.03%) | **0** | v1.21.0 (2026-06-07) <!-- re-measure --> |
 | pola-rs/polars | Rust+Py | 267,066 | **9,016** (3.38%) | **0** | v1.21.0 (2026-06-07) <!-- re-measure --> |
-| tree-sitter-analyzer (this repo) | 14 langs | 116,672 | **680** (0.58%) | **1** | measured 2026-06-10 at v1.22.0 (g6b2a266d) |
+| tree-sitter-analyzer (this repo) | 14 langs | 116,606 | **678** (0.58%) | **1** | 2026-06-10, clean checkout of tag v1.22.0 |
 | gin-gonic/gin | Go (single) | 9,134 | **0** | **0** | v1.21.0 (2026-06-07) <!-- re-measure --> |
 
 **Across all four polyglot repos TSA resolves 0 cross-language mis-wires.** The 1
@@ -37,10 +37,15 @@ The single-language repo (gin) correctly returns 0 and 0 — no false positives.
 > each caller language's own builtins (`print`, `range`, `Ok`, …) — leaving only real
 > cross-language collisions a basic name-only index cannot skip. This column is the default
 > reported by `miswire-audit` as it survives a skeptic's "you could just exclude builtins"
-> objection. The **worst case** (including builtins) for this repo is 3,946; the genuine
-> floor is **680** (`sleep()`→Java, `connect()`→Kotlin, `Counter()`→TS, `find()`→PHP,
+> objection. The **worst case** (including builtins) for this repo is 3,928; the genuine
+> floor is **678** (`Counter()`→TS, `sleep()`→Java, `pop()`→Swift, `connect()`→Kotlin,
 > `draw()`→Kotlin). TSA resolves **0** genuine cross-language mis-wires on the four external
 > polyglot repos, and only **1** on its own repo.
+>
+> **Reproducibility protocol.** These numbers are from a **clean checkout of the
+> tag** — untracked working files (build artifacts, scratch dirs) add call edges
+> and shift every count. To reproduce: `git clone --branch v1.22.0 … && cd … &&
+> uvx --from tree-sitter-analyzer miswire-audit .`
 
 ---
 
@@ -48,16 +53,20 @@ The single-language repo (gin) correctly returns 0 and 0 — no false positives.
 
 Source: [REPORT-v1.21.0.md §Addendum 2](REPORT-v1.21.0.md)
 
-> **Note:** The CodeGraph row was measured at v1.21.0 (2026-06-07). The TSA row was
-> re-measured at v1.22.0 (2026-06-10). Re-run `gauntlet_runner.py --repo tsa` with a
-> fresh CodeGraph index to update the CodeGraph row. <!-- re-measure: CodeGraph row -->
+> **Note:** a head-to-head ratio is only honest when BOTH arms are measured in the
+> same session on the same commit. The last complete same-session pair is v1.21.0.
+> Re-run `gauntlet_runner.py --repo tsa` with a fresh CodeGraph index to produce a
+> new same-session pair before quoting a ratio. <!-- re-measure: both rows together -->
 
-| tool | cross-language call edges | total call edges | mis-wire rate | measured at |
+| tool | cross-language mis-wires | total call edges | mis-wire rate | measured at |
 |---|---|---|---|---|
-| **CodeGraph** | **763** | 36,788 | **2.07%** | v1.21.0 (2026-06-07) <!-- re-measure --> |
-| **Tree-sitter Analyzer** | **1** | 116,672 | **0.0009%** | measured 2026-06-10 at v1.22.0 |
+| **CodeGraph** | **745** | 38,103 | **1.96%** | v1.21.0 (2026-06-07), same session <!-- re-measure --> |
+| **Tree-sitter Analyzer** | **6** | 114,160 | **0.005%** | v1.21.0 (2026-06-07), same session <!-- re-measure --> |
 
-TSA is ~763x cleaner (1 vs 763 mis-wires) while resolving 3x more call edges total (116k vs 37k).
+Same-session ratio at v1.21.0: **~124x cleaner** (6 vs 745) while resolving 3x more
+call edges total (114k vs 38k). TSA's arm alone, re-measured at v1.22.0 (clean tag
+checkout), improved further to **1** mis-wire / 116,606 edges — the CodeGraph arm
+has not been re-measured yet, so no updated ratio is claimed.
 
 ---
 

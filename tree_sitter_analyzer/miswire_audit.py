@@ -548,9 +548,12 @@ def render_terminal(r: AuditResult) -> str:
     lines.append("")
     lines.append(
         "  (worst case for a name-only index — the design most indexes use. The "
-        "live head-to-head vs CodeGraph (763 vs 1 at v1.21.0/v1.22.0 on TSA's repo) is"
+        "live head-to-head vs CodeGraph on TSA's repo is tracked in"
     )
-    lines.append("   in benchmarks/codegraph_compare/GAUNTLET.md.)")
+    lines.append(
+        "   benchmarks/codegraph_compare/GAUNTLET.md and "
+        "REPORT-v1.21.0.md — numbers are version-stamped there, not baked in here.)"
+    )
     lines.append("")
     shown = r.genuine_offenders or r.naive_offenders
     if shown:
@@ -592,8 +595,8 @@ def render_card(r: AuditResult) -> str:
         f"**{mult} cleaner** — run it on your repo: "
         "`uvx --from tree-sitter-analyzer miswire-audit .`",
         "",
-        "_Name-only is the design most code indexes (incl. CodeGraph) use. Live "
-        "head-to-head vs CodeGraph: 763 vs 1 (v1.21.0/v1.22.0) — see GAUNTLET.md._",
+        "_Name-only is the design most code indexes (incl. CodeGraph) use. The "
+        "version-stamped head-to-head vs CodeGraph lives in GAUNTLET.md._",
     ]
     return "\n".join(out)
 
