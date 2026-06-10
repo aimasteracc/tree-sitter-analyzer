@@ -140,6 +140,25 @@ def extract_kotlin_function(
 
 
 # Extract elements from AST: extract_kotlin_class_or_object
+_KOTLIN_CLASS_KIND_MODIFIERS = frozenset({"enum", "annotation", "data", "sealed"})
+
+
+def _refine_kotlin_class_kind(node: Any, get_node_text: Callable[..., str]) -> str:
+    """Return the declaration kind from the class_modifier, if any.
+
+    ``enum class`` / ``annotation class`` / ``data class`` / ``sealed class``
+    carry their kind as a ``class_modifier`` token under ``modifiers``.
+    """
+    for child in node.children:
+        if child.type != "modifiers":
+            continue
+        for modifier in child.children:
+            text = get_node_text(modifier)
+            if text in _KOTLIN_CLASS_KIND_MODIFIERS:
+                return str(text)
+    return "class"
+
+
 def extract_kotlin_class_or_object(
     node: Any,
     kind: str,
@@ -173,6 +192,14 @@ def extract_kotlin_class_or_object(
                     break
                 elif child.type == "class":
                     break
+            # Theme-I (2026-06-10): class-kind fidelity. The grammar exposes
+            # the declaration kind as a ``class_modifier`` inside ``modifiers``
+            # ("enum class" / "annotation class" / "data class" /
+            # "sealed class"); without this an agent could not tell a DTO from
+            # an enum from an annotation in outlines. "inner" / "open" etc.
+            # are nesting/inheritance modifiers, not kinds — left as "class".
+            if kind == "class":
+                kind = _refine_kotlin_class_kind(node, get_node_text)
 
         raw_text = get_node_text(node)
 

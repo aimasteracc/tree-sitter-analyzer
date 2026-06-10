@@ -145,6 +145,11 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
             "verdict": "INFO" if results else "NOT_FOUND",
             "query": query,
             "match_count": len(results),
+            # Wave 1b (audit search-06): expose ``count`` too — it is the stable
+            # canonical result-count key already emitted by search action=content,
+            # so an agent can read ``count`` consistently across both search
+            # actions. ``match_count`` stays for back-compat.
+            "count": len(results),
             "file_count": len(by_file),
             "results": results,
             "data_source": "fts5" if cache.fts5_available else "linear_scan",

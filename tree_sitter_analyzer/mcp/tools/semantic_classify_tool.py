@@ -102,12 +102,37 @@ class SemanticClassifyTool(BaseMCPTool):
                     "default": "toon",
                 },
             },
-            "required": ["mode"],
+            # Wave 1b (audit edit-10): ``mode`` is resolved at runtime
+            # (_resolve_mode defaults to classify_file when a file_path is
+            # given), so it is NOT required. Declaring it required made strict
+            # MCP clients reject a valid ``{file_path: X}`` call before dispatch.
+            "required": [],
             "additionalProperties": False,
         }
 
+    @staticmethod
+    def _resolve_mode(arguments: dict[str, Any]) -> str:
+        """Effective mode.
+
+        Wave 1b (audit edit-10): the facade advertises ``classify`` as taking a
+        ``file_path``, but the default mode was ``classify_string`` (which needs
+        ``old_source``/``new_source``), so ``classify file_path=X`` failed with
+        "old_source and new_source are required". When no mode is given, default
+        to ``classify_file`` if a ``file_path`` was supplied (and not an explicit
+        old/new string pair), else the string-diff default.
+        """
+        mode = arguments.get("mode")
+        if mode:
+            return str(mode)
+        has_string_pair = bool(arguments.get("old_source")) and bool(
+            arguments.get("new_source")
+        )
+        if arguments.get("file_path") and not has_string_pair:
+            return "classify_file"
+        return "classify_string"
+
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
-        mode = arguments.get("mode", "classify_string")
+        mode = self._resolve_mode(arguments)
         if mode == "classify_string":
             if (
                 arguments.get("old_source") is None
@@ -126,7 +151,7 @@ class SemanticClassifyTool(BaseMCPTool):
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate_arguments(arguments)
 
-        mode = arguments.get("mode", "classify_string")
+        mode = self._resolve_mode(arguments)
         output_format = arguments.get("output_format", "toon")
         differ = self._get_differ()
 

@@ -27,6 +27,12 @@ logger = setup_logger(__name__)
 
 _MAX_TRANSITIVE = 200
 _MAX_DEPTH = 10
+# Wave 1b (audit nav-08): cap the EMITTED caller/callee lists. The full counts
+# are kept (direct_*/transitive_*_count), but a hub like create_tool_registry
+# otherwise serialises ~70k chars of caller/callee dicts and overflows the
+# tool-result token budget. The agent gets a representative head + the true
+# counts + a truncation flag; the full list is one callers/callees call away.
+_MAX_LISTED = 50
 
 
 def _compute_transitive_callers(
@@ -419,19 +425,29 @@ class CodeGraphImpactTool(BaseMCPTool):
         cross_file_callers = len(caller_files - {self_file})
         cross_file_callees = len(callee_files - {self_file})
 
+        # Wave 1b (audit nav-08): emit a capped head of each list; the full
+        # counts below stay accurate so the agent sees the true blast radius.
+        lists_truncated = (
+            len(direct_callers) > _MAX_LISTED
+            or len(direct_callees) > _MAX_LISTED
+            or len(transitive_callers) > _MAX_LISTED
+            or len(transitive_callees) > _MAX_LISTED
+        )
         return {
             "function": func_name,
             "file": self_file,
-            "direct_callers": direct_callers,
-            "direct_callees": direct_callees,
-            "transitive_callers": transitive_callers,
-            "transitive_callees": transitive_callees,
+            "direct_callers": direct_callers[:_MAX_LISTED],
+            "direct_callees": direct_callees[:_MAX_LISTED],
+            "transitive_callers": transitive_callers[:_MAX_LISTED],
+            "transitive_callees": transitive_callees[:_MAX_LISTED],
             "direct_caller_count": len(direct_callers),
             "direct_callee_count": len(direct_callees),
             "transitive_caller_count": len(transitive_callers),
             "transitive_callee_count": len(transitive_callees),
             "cross_file_caller_files": cross_file_callers,
             "cross_file_callee_files": cross_file_callees,
+            "lists_truncated": lists_truncated,
+            "listed_cap": _MAX_LISTED,
             "risk": risk,
         }
 

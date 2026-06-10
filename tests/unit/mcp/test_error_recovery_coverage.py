@@ -14,6 +14,7 @@ aliases.
 from tree_sitter_analyzer.mcp.server_utils.error_recovery import (
     build_agent_friendly_error,
     ensure_canonical_error_envelope,
+    ensure_canonical_success_envelope,
 )
 
 
@@ -227,3 +228,39 @@ class TestEnsureCanonicalErrorEnvelope:
         result = ensure_canonical_error_envelope("query", response)
         assert result["verdict"] == "ERROR"
         assert result["agent_summary"]["verdict"] == "ERROR"
+
+
+class TestSuccessEnvelopeNextStepMirror:
+    """Wave 1b batch B (audit nav-03/04, search-05, project-03, viz-05, health-04):
+    tools that set a rich TOP-LEVEL ``next_step`` left ``agent_summary.next_step``
+    empty. The canonical success envelope must mirror the top-level value so an
+    agent reading ``agent_summary.next_step`` (the documented place) gets the
+    real guidance, not ``""``."""
+
+    def test_top_level_next_step_mirrored_into_agent_summary(self):
+        response = {
+            "success": True,
+            "verdict": "INFO",
+            "next_step": "Answer from the inlined body — no Read needed.",
+        }
+        result = ensure_canonical_success_envelope("nav", response)
+        assert (
+            result["agent_summary"]["next_step"]
+            == "Answer from the inlined body — no Read needed."
+        )
+
+    def test_existing_agent_summary_next_step_is_not_clobbered(self):
+        response = {
+            "success": True,
+            "verdict": "INFO",
+            "next_step": "top-level value",
+            "agent_summary": {"next_step": "tool-specific value"},
+        }
+        result = ensure_canonical_success_envelope("nav", response)
+        assert result["agent_summary"]["next_step"] == "tool-specific value"
+
+    def test_no_next_step_anywhere_stays_empty_string(self):
+        response = {"success": True, "verdict": "INFO"}
+        result = ensure_canonical_success_envelope("nav", response)
+        # Contract unchanged when there is nothing to mirror.
+        assert result["agent_summary"]["next_step"] == ""

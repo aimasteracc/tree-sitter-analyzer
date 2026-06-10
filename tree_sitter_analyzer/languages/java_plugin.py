@@ -165,6 +165,10 @@ class JavaElementExtractor(ElementExtractor):
             "class_declaration": self._extract_class_optimized,
             "interface_declaration": self._extract_class_optimized,
             "enum_declaration": self._extract_class_optimized,
+            # Theme-I (2026-06-10): records and annotation types were silently
+            # dropped from outlines — modern Java DTOs/annotations invisible.
+            "record_declaration": self._extract_class_optimized,
+            "annotation_type_declaration": self._extract_class_optimized,
         }
 
         self._traverse_and_extract_iterative(

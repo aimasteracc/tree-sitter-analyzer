@@ -19,6 +19,8 @@ using StringList = vector<string>;
 | Class | Type | Visibility | Lines | Methods | Fields |
 |-------|------|------------|-------|---------|--------|
 | Container | class | public | 31-45 | 5 | 0 |
+| Color | enum | public | 52-52 | 0 | 0 |
+| Status | enum_class | public | 55-59 | 0 | 0 |
 | Point | struct | public | 62-70 | 1 | 2 |
 | Shape | class | public | 73-83 | 4 | 0 |
 | Rectangle | class | public | 86-128 | 11 | 3 |
@@ -35,6 +37,8 @@ using StringList = vector<string>;
 | get | ():T | + | 37-37 | 5-6 | 2 | - |
 | set | (value:T):void | + | 38-41 | 5-6 | 1 | - |
 
+## Color (52-52)
+## Status (55-59)
 ## Point (62-70)
 ### Fields
 | Name | Type | Vis | Modifiers | Line | Doc |

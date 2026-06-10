@@ -134,12 +134,19 @@ class CodeGraphDeadCodeTool(BaseMCPTool):
 
         total_issues = len(dead_funcs) + len(unused_imports) + len(unref_vars)
 
+        # Wave 1b (audit health-10): emit an actionable next_step. dead_code
+        # previously set none, so the boundary left agent_summary.next_step
+        # empty — an agent saw a REVIEW verdict with N findings and no guidance.
         if total_issues == 0:
             verdict = "INFO"
-        elif total_issues > 20:
-            verdict = "REVIEW"
+            next_step = "No dead code found in scope."
         else:
-            verdict = "CAUTION"
+            verdict = "REVIEW" if total_issues > 20 else "CAUTION"
+            next_step = (
+                f"Review the {total_issues} candidate(s) — static analysis can miss "
+                "dynamic refs (reflection, plugins, __all__). Run edit action=guard "
+                "on a symbol to confirm zero callers before deleting it."
+            )
 
         response: dict[str, Any] = {
             "success": True,
@@ -147,6 +154,7 @@ class CodeGraphDeadCodeTool(BaseMCPTool):
             "mode": mode,
             "project_root": self.project_root,
             "stats": result.stats,
+            "next_step": next_step,
             "dead_functions": [_serialize_dead_function(df) for df in dead_funcs],
             "unused_imports": [_serialize_unused_import(ui) for ui in unused_imports],
             "unreferenced_variables": [_serialize_unref_var(uv) for uv in unref_vars],

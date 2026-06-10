@@ -97,6 +97,15 @@ class TestValidation:
     def test_default_mode_is_summary(self, tool):
         assert tool.validate_arguments({}) is True
 
+    def test_blast_is_alias_for_blast_radius(self, tool):
+        # Wave 1b (audit health-02): 'blast' is a natural short form; it must
+        # normalise to 'blast_radius' instead of raising "Unknown mode: blast".
+        assert DependencyAnalysisTool._normalize_mode("blast") == "blast_radius"
+        # validation now treats it as blast_radius (which requires file_path).
+        assert tool.validate_arguments({"mode": "blast", "file_path": "x.py"}) is True
+        with pytest.raises(ValueError, match="file_path is required"):
+            tool.validate_arguments({"mode": "blast"})
+
 
 class TestSummaryMode:
     def test_summary_returns_node_and_edge_count(self, tool, project):
@@ -304,33 +313,23 @@ class TestResolveFile:
 
 class TestBlastRecommendation:
     def test_isolated_file(self):
-        rec = _blast_recommendation(
-            {"forward_count": 0, "reverse_count": 0}
-        )
+        rec = _blast_recommendation({"forward_count": 0, "reverse_count": 0})
         assert "Isolated" in rec
 
     def test_high_impact(self):
-        rec = _blast_recommendation(
-            {"forward_count": 25, "reverse_count": 5}
-        )
+        rec = _blast_recommendation({"forward_count": 25, "reverse_count": 5})
         assert "High-impact" in rec
 
     def test_moderate_impact(self):
-        rec = _blast_recommendation(
-            {"forward_count": 8, "reverse_count": 2}
-        )
+        rec = _blast_recommendation({"forward_count": 8, "reverse_count": 2})
         assert "Moderate" in rec
 
     def test_low_impact(self):
-        rec = _blast_recommendation(
-            {"forward_count": 2, "reverse_count": 0}
-        )
+        rec = _blast_recommendation({"forward_count": 2, "reverse_count": 0})
         assert "Low impact" in rec
 
     def test_no_downstream(self):
-        rec = _blast_recommendation(
-            {"forward_count": 0, "reverse_count": 3}
-        )
+        rec = _blast_recommendation({"forward_count": 0, "reverse_count": 3})
         assert "No downstream" in rec
 
 
@@ -416,6 +415,4 @@ class TestDefaultArguments:
 class TestUnknownMode:
     def test_unknown_mode_raises(self, tool, project):
         with pytest.raises(ValueError, match="Unknown mode"):
-            _run(
-                tool.execute({"mode": "nonexistent", "output_format": "json"})
-            )
+            _run(tool.execute({"mode": "nonexistent", "output_format": "json"}))

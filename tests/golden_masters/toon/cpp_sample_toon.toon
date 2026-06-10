@@ -4,8 +4,10 @@ package:
   name: math
   line_range: (18, 47)
 classes:
-  [6]{name,visibility,line_range(a,b)}:
+  [8]{name,visibility,line_range(a,b)}:
     Container,public,(31,45)
+    Color,public,(52,52)
+    Status,public,(55,59)
     Point,public,(62,70)
     Shape,public,(73,83)
     Rectangle,public,(86,128)
@@ -72,7 +74,7 @@ imports:
     "using std::vector;",,"using std::vector;",false,false,(15,15),[],"using std::vector;"
     using StringList = vector<string>;,,using StringList = vector<string>;,false,false,(167,167),[],using StringList = vector<string>;
 statistics:
-  class_count: 6
+  class_count: 8
   method_count: 36
   field_count: 10
   import_count: 8
