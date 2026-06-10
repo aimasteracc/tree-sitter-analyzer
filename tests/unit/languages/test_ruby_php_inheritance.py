@@ -123,3 +123,36 @@ def test_php_interface_multi_extends_all_parents_captured() -> None:
     iface = classes["I"]
     assert iface.superclass is None
     assert iface.interfaces == ["A", "B", "C"]
+
+
+def test_php_class_multi_extends_anomaly_preserved() -> None:
+    """``class C extends A, B`` is invalid PHP but parses error-tolerantly
+    with both names in base_clause — the extras are preserved in interfaces
+    rather than silently dropped."""
+    lang = tree_sitter.Language(tree_sitter_php.language_php())
+    parser = tree_sitter.Parser(lang)
+    src = "<?php\nclass C extends A, B {}\n"
+    extractor = PHPElementExtractor()
+    classes = {
+        c.name: c for c in extractor.extract_classes(parser.parse(src.encode()), src)
+    }
+    assert classes["C"].superclass == "A"
+    assert classes["C"].interfaces == ["B"]
+
+
+def test_ruby_superclass_with_only_operator_returns_none() -> None:
+    """Degenerate superclass node containing ONLY the '<' token (malformed
+    source) must yield None, not crash or return garbage."""
+    from unittest.mock import Mock
+
+    from tree_sitter_analyzer.languages.ruby_plugin import RubyElementExtractor
+
+    extractor = RubyElementExtractor()
+    op = Mock()
+    op.type = "<"
+    sup = Mock()
+    sup.type = "superclass"
+    sup.children = [op]
+    cls = Mock()
+    cls.children = [sup]
+    assert extractor._find_ruby_superclass(cls) is None
