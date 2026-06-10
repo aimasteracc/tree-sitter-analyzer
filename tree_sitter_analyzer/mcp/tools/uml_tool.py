@@ -8,12 +8,21 @@ from typing import Any
 from ...utils import setup_logger
 from ..utils.format_helper import apply_toon_format_to_response
 from ._response_builder import build_error, build_response
+from ._validators import _validate_positive_int
 from .base_tool import BaseMCPTool
 from .codegraph_visualization_hub import CodeGraphVisualizationHub
 
 logger = setup_logger(__name__)
 
-_DEFAULT_MAX_EDGES = 200
+# Per-diagram edge defaults (RFC-0015): narrowed from the old 200 monolith
+# to reduce whole-project output flood while still covering typical projects.
+_DEFAULT_CLASS_MAX_EDGES = 80
+_DEFAULT_PACKAGE_MAX_EDGES = 60
+_DEFAULT_COMPONENT_MAX_EDGES = 40
+
+# Keep the old name as an alias so existing call-sites that reference it by
+# name (e.g. FakeExporter tests) continue to resolve; remove after Phase 2.
+_DEFAULT_MAX_EDGES = _DEFAULT_CLASS_MAX_EDGES
 
 
 class CodeGraphUMLTool(BaseMCPTool):
@@ -55,9 +64,31 @@ class CodeGraphUMLTool(BaseMCPTool):
                     "type": "string",
                     "description": "Target function for sequence diagrams",
                 },
+                "file_path": {
+                    "type": "string",
+                    "description": (
+                        "Limit class diagram to classes defined in this file "
+                        "and their direct bases/dependents from the full project."
+                    ),
+                },
+                "class_name": {
+                    "type": "string",
+                    "description": (
+                        "Show the named class plus its direct superclasses and "
+                        "immediate subclasses (neighbourhood subgraph, up to max_edges)."
+                    ),
+                },
+                "include_tests": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": (
+                        "Include test-corpus classes (under tests/, test_data/, fixtures/) "
+                        "in whole-project diagrams. Default False."
+                    ),
+                },
                 "max_edges": {
                     "type": "integer",
-                    "default": _DEFAULT_MAX_EDGES,
+                    "default": _DEFAULT_CLASS_MAX_EDGES,
                     "description": "Maximum relationships to render",
                 },
                 "max_depth": {
@@ -99,10 +130,9 @@ class CodeGraphUMLTool(BaseMCPTool):
             not arguments.get("source") or not arguments.get("target")
         ):
             raise ValueError("source and target are required for sequence diagrams")
+        # P1-B: use shared validator that also handles float coercion and bool rejection
         for key in ("max_edges", "max_depth", "max_paths", "package_depth"):
-            value = arguments.get(key)
-            if value is not None and (not isinstance(value, int) or value < 1):
-                raise ValueError(f"{key} must be a positive integer")
+            _validate_positive_int(arguments, key)
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -124,17 +154,20 @@ class CodeGraphUMLTool(BaseMCPTool):
 
         if diagram_type == "class":
             diagram = exporter.class_diagram(
-                max_edges=arguments.get("max_edges", _DEFAULT_MAX_EDGES),
+                max_edges=arguments.get("max_edges", _DEFAULT_CLASS_MAX_EDGES),
                 include_external_bases=arguments.get("include_external_bases", True),
+                file_path=arguments.get("file_path"),
+                class_name=arguments.get("class_name"),
+                include_tests=arguments.get("include_tests", False),
             )
         elif diagram_type == "package":
             diagram = exporter.package_diagram(
-                max_edges=arguments.get("max_edges", _DEFAULT_MAX_EDGES),
+                max_edges=arguments.get("max_edges", _DEFAULT_PACKAGE_MAX_EDGES),
                 package_depth=arguments.get("package_depth", 2),
             )
         elif diagram_type == "component":
             diagram = exporter.component_diagram(
-                max_edges=arguments.get("max_edges", _DEFAULT_MAX_EDGES),
+                max_edges=arguments.get("max_edges", _DEFAULT_COMPONENT_MAX_EDGES),
             )
         else:
             diagram = exporter.sequence_diagram(

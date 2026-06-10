@@ -114,3 +114,81 @@ def test_compact_only_strictly_reduces_default_toon(
         f"{tool_id}: compact_only TOON ({tb_compact}B) is not smaller than "
         f"default TOON ({tb_default}B) — RFC-0012 Phase 1 compaction is a no-op."
     )
+
+
+# ── RFC-0015 P1 rule-11 differential invariant ────────────────────────────────
+
+
+def test_class_diagram_scoped_smaller_than_unscoped(monkeypatch) -> None:
+    """Scoped class diagram bytes < unscoped bytes (rule-11 differential invariant).
+
+    Scoping (file_path or class_name) restricts the node/edge set, so the
+    serialized response for a scoped request MUST be strictly smaller than
+    the unscoped whole-project response on the same class set.
+
+    Exact == pin not applicable here because bytes vary with project content;
+    the invariant is the *relationship* between scoped and unscoped (CLAUDE.md
+    rule-11 exception for nondeterministic values — assert a documented
+    invariant, not a hand-waved bound).
+    """
+    import asyncio
+    import json as _json
+
+    from tree_sitter_analyzer.mcp.tools import uml_tool as _uml_tool
+
+    # A synthetic class set with 10 classes, only one in the target file.
+    # The whole-project diagram covers all 10; the file-scoped diagram covers 1.
+    ALL_CLASSES = [
+        {"name": f"Class{i}", "parents": [], "file": f"src/mod{i}.py"}
+        for i in range(10)
+    ]
+    TARGET_FILE = "src/mod0.py"
+
+    class FakeHierarchyAll:
+        def __init__(self, cache):
+            pass
+
+        def build(self):
+            pass
+
+        def all_classes(self):
+            return ALL_CLASSES
+
+    # Sentinel cache object: prevents _open_cache from trying to open a real DB.
+    class SentinelCache:
+        pass
+
+    class FakeExporterProvider:
+        def __init__(self, project_root):
+            pass
+
+        def uml_exporter(self):
+            import tree_sitter_analyzer.uml_export as _export
+
+            # Pass the sentinel cache so _open_cache skips ASTCache("/repo")
+            return _export.UMLExporter("/repo", cache=SentinelCache())
+
+    # Patch ClassHierarchy for the duration of this test
+    import tree_sitter_analyzer.uml_export as _uml_export
+
+    monkeypatch.setattr(_uml_export, "ClassHierarchy", FakeHierarchyAll)
+    monkeypatch.setattr(_uml_tool, "CodeGraphVisualizationHub", FakeExporterProvider)
+
+    tool = _uml_tool.CodeGraphUMLTool("/repo")
+
+    # Unscoped
+    unscoped = asyncio.run(tool.execute({"diagram": "class", "output_format": "json"}))
+    # File-scoped
+    scoped = asyncio.run(
+        tool.execute(
+            {"diagram": "class", "output_format": "json", "file_path": TARGET_FILE}
+        )
+    )
+
+    unscoped_bytes = len(_json.dumps(unscoped, ensure_ascii=False))
+    scoped_bytes = len(_json.dumps(scoped, ensure_ascii=False))
+
+    assert scoped_bytes < unscoped_bytes, (
+        f"Scoped class diagram ({scoped_bytes}B) is not smaller than "
+        f"unscoped ({unscoped_bytes}B) — file_path scoping is a no-op."
+    )

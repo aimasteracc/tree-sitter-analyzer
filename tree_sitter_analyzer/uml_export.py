@@ -13,6 +13,7 @@ from typing import Any
 from .call_path import CallPathFinder
 from .class_hierarchy import ClassHierarchy
 from .import_graph import ImportGraph
+from .utils.test_detection import is_test_file
 
 _EXTERNAL_BASES = frozenset(
     {
@@ -25,6 +26,16 @@ _EXTERNAL_BASES = frozenset(
         "object",
         "str",
     }
+)
+
+# P1-C (RFC-0015): path segments that identify test/fixture content.
+# is_test_file() already covers these and more; we use it for filtering.
+# This constant documents the intent rather than providing a second filter.
+_TEST_DIRS: frozenset[str] = frozenset({"tests", "test_data", "fixtures"})
+
+_TRUNCATION_NOTE = (
+    "%% NOTE: diagram truncated — only the top N edges shown.\n"
+    "%% Pass a higher max_edges value to see more, or use file_path / class_name to scope."
 )
 
 
@@ -126,7 +137,11 @@ def _clamp_edges(
     return sorted_edges[:max_edges], len(sorted_edges) > max_edges
 
 
-def render_class_mermaid(nodes: Iterable[str], edges: Iterable[UMLEdge]) -> str:
+def render_class_mermaid(
+    nodes: Iterable[str],
+    edges: Iterable[UMLEdge],
+    truncated: bool = False,
+) -> str:
     lines = ["classDiagram"]
     node_list = sorted(set(nodes))
     edge_list = sorted(edges, key=lambda edge: (edge.source, edge.target))
@@ -137,6 +152,9 @@ def render_class_mermaid(nodes: Iterable[str], edges: Iterable[UMLEdge]) -> str:
         lines.append(f"  class {_safe_id(node)}")
     for edge in edge_list:
         lines.append(f"  {_safe_id(edge.source)} <|-- {_safe_id(edge.target)}")
+    # P1-D: honest truncation note so consumers know the diagram is incomplete
+    if truncated:
+        lines.append(_TRUNCATION_NOTE)
     return "\n".join(lines)
 
 
@@ -192,6 +210,45 @@ def render_sequence_mermaid(paths: list[dict[str, Any]], max_hops: int) -> str:
     return "\n".join(lines)
 
 
+def _file_matches(cls_file: str, filter_path: str | None) -> bool:
+    """Return True when *cls_file* matches *filter_path*.
+
+    Accepts both exact-match and suffix-match so callers can pass either
+    a repo-relative path ("src/a.py") or a basename ("a.py").
+    """
+    if not cls_file or not filter_path:
+        return False
+    norm_cls = cls_file.replace("\\", "/").lstrip("/")
+    norm_filter = filter_path.replace("\\", "/").lstrip("/")
+    return norm_cls == norm_filter or norm_cls.endswith("/" + norm_filter)
+
+
+def _is_neighbourhood(
+    child: str,
+    cls: dict[str, Any],
+    center: str | None,
+    all_classes: list[dict[str, Any]],
+) -> bool:
+    """Return True when *child* is in the neighbourhood of *center*.
+
+    The neighbourhood is: center itself + direct parents of center + direct
+    subclasses of center (classes that list center as a parent).
+    """
+    if center is None:
+        return False
+    if child == center:
+        return True
+    # child is a direct parent of center
+    center_cls = next((c for c in all_classes if c.get("name") == center), None)
+    if center_cls is not None:
+        parents = [str(p).rsplit(".", 1)[-1] for p in (center_cls.get("parents") or [])]
+        if child in parents:
+            return True
+    # child is a direct subclass of center (center is in child's parents)
+    child_parents = [str(p).rsplit(".", 1)[-1] for p in (cls.get("parents") or [])]
+    return center in child_parents
+
+
 class UMLExporter:
     """Build Mermaid UML-style diagrams from existing CodeGraph indexes."""
 
@@ -208,9 +265,25 @@ class UMLExporter:
 
     def class_diagram(
         self,
-        max_edges: int = 200,
+        max_edges: int = 80,
         include_external_bases: bool = True,
+        *,
+        file_path: str | None = None,
+        class_name: str | None = None,
+        include_tests: bool = False,
     ) -> UMLDiagram:
+        """Build a class inheritance diagram.
+
+        Scoping (P1-A, RFC-0015): applied in priority order, first match wins.
+        1. class_name given — neighbourhood subgraph (named class + direct bases
+           + direct subclasses).
+        2. file_path given — classes defined in that file plus their direct
+           bases (so inheritance arrows remain correct).
+        3. Neither given — whole-project view, subject to include_tests.
+
+        include_tests=False (P1-C) strips classes whose source file is a
+        test/fixture path (detected via is_test_file()).
+        """
         cache, should_close = self._open_cache()
         try:
             hierarchy = ClassHierarchy(cache)
@@ -219,13 +292,39 @@ class UMLExporter:
         finally:
             if should_close:
                 cache.close()
+
+        # P1-C: strip test-corpus classes from whole-project view by default
+        if not include_tests:
+            classes = [c for c in classes if not is_test_file(c.get("file"))]
+
         internal_names = {c.get("name", "") for c in classes if c.get("name")}
         raw_edges: list[UMLEdge] = []
         nodes: set[str] = set()
+
+        # Determine scope label for metadata
+        if class_name is not None:
+            scope = "class_neighbourhood"
+        elif file_path is not None:
+            scope = "file"
+        else:
+            scope = "whole_project"
+
         for cls in classes:
             child = cls.get("name", "")
             if not child:
                 continue
+
+            # P1-A scoping: apply file_path / class_name filter
+            if scope == "file":
+                cls_file = cls.get("file", "")
+                if not _file_matches(cls_file, file_path):
+                    continue
+            elif scope == "class_neighbourhood":
+                # Include: the named class itself, its direct parents, and
+                # classes that list it as a direct parent (subclasses one hop)
+                if not _is_neighbourhood(child, cls, class_name, classes):
+                    continue
+
             nodes.add(child)
             for parent_text in cls.get("parents") or []:
                 parent = str(parent_text).rsplit(".", 1)[-1]
@@ -234,6 +333,7 @@ class UMLExporter:
                 ):
                     nodes.add(parent)
                     raw_edges.append(UMLEdge(parent, child, "inherits"))
+
         edges, truncated = _clamp_edges(raw_edges, max_edges)
         rendered_nodes = sorted(
             {n for edge in edges for n in (edge.source, edge.target)}
@@ -243,11 +343,11 @@ class UMLExporter:
         return UMLDiagram(
             diagram_type="class",
             mermaid_type="classDiagram",
-            mermaid=render_class_mermaid(rendered_nodes, edges),
+            mermaid=render_class_mermaid(rendered_nodes, edges, truncated=truncated),
             nodes=rendered_nodes,
             edges=edges,
             truncated=truncated,
-            metadata={"source": "class_hierarchy"},
+            metadata={"source": "class_hierarchy", "scope": scope},
         )
 
     def package_diagram(
@@ -341,6 +441,13 @@ class UMLExporter:
             for hop in first_hops[:max_hops]
             if hop.get("caller") and hop.get("callee")
         ]
+        # P1-E (RFC-0015): observability label — "call_path+synapse_resolved"
+        # when at least one hop has callee_file populated (synapse resolution
+        # contributed to BFS traversal); "call_path" otherwise.
+        has_resolved = any(
+            hop.get("callee_file") for path in paths for hop in path.get("hops", [])
+        )
+        source_label = "call_path+synapse_resolved" if has_resolved else "call_path"
         return UMLDiagram(
             diagram_type="sequence",
             mermaid_type="sequenceDiagram",
@@ -349,7 +456,7 @@ class UMLExporter:
             edges=edges,
             truncated=result.truncated or len(first_hops) > max_hops,
             metadata={
-                "source": "call_path",
+                "source": source_label,
                 "analysis_kind": "static_approximation",
                 "path_count": len(paths),
             },

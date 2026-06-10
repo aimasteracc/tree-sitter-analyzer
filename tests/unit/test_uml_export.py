@@ -148,7 +148,8 @@ def test_class_diagram_uses_internal_and_common_external_bases(monkeypatch) -> N
     diagram = UMLExporter("/repo", cache=object()).class_diagram(max_edges=10)
 
     assert diagram.diagram_type == "class"
-    assert diagram.metadata == {"source": "class_hierarchy"}
+    # scope field added by RFC-0015 P1-A; re-pinned from {"source": "class_hierarchy"}
+    assert diagram.metadata == {"source": "class_hierarchy", "scope": "whole_project"}
     assert UMLEdge("Base", "Child", "inherits") in diagram.edges
     assert UMLEdge("ABC", "Child", "inherits") in diagram.edges
     assert "Base <|-- Child" in diagram.mermaid

@@ -266,11 +266,11 @@ def _build_code_similarity_tool_args(args: Any, output_format: str) -> dict[str,
 
 
 def _build_uml_tool_args(args: Any, output_format: str) -> dict[str, Any]:
-    return {
+    tool_args: dict[str, Any] = {
         "diagram": getattr(args, "uml", "class") or "class",
         "source": getattr(args, "uml_source", None),
         "target": getattr(args, "uml_target", None),
-        "max_edges": getattr(args, "uml_max_edges", 200),
+        "max_edges": getattr(args, "uml_max_edges", 80),
         "max_depth": getattr(args, "uml_max_depth", 8),
         "max_paths": getattr(args, "uml_max_paths", 3),
         "package_depth": getattr(args, "uml_package_depth", 2),
@@ -279,3 +279,13 @@ def _build_uml_tool_args(args: Any, output_format: str) -> dict[str, Any]:
         ),
         "output_format": output_format,
     }
+    # P1 scoping params (RFC-0015): only forward when provided
+    file_path = getattr(args, "uml_file_path", None)
+    if file_path:
+        tool_args["file_path"] = file_path
+    class_name = getattr(args, "uml_class_name", None)
+    if class_name:
+        tool_args["class_name"] = class_name
+    if getattr(args, "uml_include_tests", False):
+        tool_args["include_tests"] = True
+    return tool_args
