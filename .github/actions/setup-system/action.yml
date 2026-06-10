@@ -59,32 +59,46 @@ runs:
         # (PowerShell Core, UTF-8 by default) is the long-term fix,
         # but the default Windows runner shell is `powershell`.
         #
-        # Install each package separately - `choco install fd ripgrep -y`
-        # has been observed to silently skip fd while reporting
-        # "1/1 packages" (likely ripgrep being pre-installed on the
-        # runner image and consuming the slot). Separate calls also
-        # surface per-package failure exit codes.
-        choco install fd -y --no-progress
-        if ($LASTEXITCODE -ne 0) { Write-Host "::error::choco install fd failed"; exit 1 }
-        choco install ripgrep -y --no-progress
-        if ($LASTEXITCODE -ne 0) { Write-Host "::error::choco install ripgrep failed"; exit 1 }
+        # 2026-06-10: download pinned binaries straight from GitHub
+        # Releases instead of `choco install`. The chocolatey community
+        # feed returned 503/504 for fd/ripgrep across retries and blocked
+        # the v1.22.0 release gate on all three Windows axes. GitHub
+        # Releases shares availability with the runner itself, the
+        # versions are pinned (deterministic), and no Machine-PATH
+        # refresh dance is needed.
+        $tools = "$env:RUNNER_TEMP\tsa-tools"
+        New-Item -ItemType Directory -Force -Path $tools | Out-Null
 
-        # Refresh PATH inside this PowerShell session so the just-installed
-        # binaries are visible to fd --version / rg --version. Chocolatey
-        # writes to the Machine PATH but the current session inherits a
-        # snapshot taken at startup.
-        $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+        $fdVer = "10.2.0"
+        $fdZip = "$env:RUNNER_TEMP\fd.zip"
+        $fdUrl = "https://github.com/sharkdp/fd/releases/download/v$fdVer/fd-v$fdVer-x86_64-pc-windows-msvc.zip"
+        Invoke-WebRequest -Uri $fdUrl -OutFile $fdZip -UseBasicParsing
+        if ($LASTEXITCODE -ne 0 -and -not (Test-Path $fdZip)) { Write-Host "::error::fd download failed"; exit 1 }
+        Expand-Archive -Path $fdZip -DestinationPath $tools -Force
+        Copy-Item "$tools\fd-v$fdVer-x86_64-pc-windows-msvc\fd.exe" "$tools\fd.exe" -Force
+
+        $rgVer = "14.1.1"
+        $rgZip = "$env:RUNNER_TEMP\rg.zip"
+        $rgUrl = "https://github.com/BurntSushi/ripgrep/releases/download/$rgVer/ripgrep-$rgVer-x86_64-pc-windows-msvc.zip"
+        Invoke-WebRequest -Uri $rgUrl -OutFile $rgZip -UseBasicParsing
+        if ($LASTEXITCODE -ne 0 -and -not (Test-Path $rgZip)) { Write-Host "::error::ripgrep download failed"; exit 1 }
+        Expand-Archive -Path $rgZip -DestinationPath $tools -Force
+        Copy-Item "$tools\ripgrep-$rgVer-x86_64-pc-windows-msvc\rg.exe" "$tools\rg.exe" -Force
+
+        # Make the tools visible to this step AND all later steps.
+        $env:Path = "$tools;" + $env:Path
+        Add-Content -Path $env:GITHUB_PATH -Value $tools
 
         # Verify installation
         Write-Host "Verifying installation..."
         fd --version
         if ($LASTEXITCODE -ne 0) {
-          Write-Host "::error::fd not found after install - PATH refresh failed"
+          Write-Host "::error::fd not found after install"
           exit 1
         }
         rg --version
         if ($LASTEXITCODE -ne 0) {
-          Write-Host "::error::ripgrep not found after install - PATH refresh failed"
+          Write-Host "::error::ripgrep not found after install"
           exit 1
         }
         Write-Host "[OK] System dependencies installed successfully on Windows"
