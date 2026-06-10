@@ -1,5 +1,6 @@
 """Resource handler registration for MCP server — extracted from server.py create_server."""
 
+import json
 from typing import Any, cast
 
 from ...utils import setup_logger
@@ -45,6 +46,8 @@ def register_resources(server: Any, server_instance: Any) -> None:
     async def handle_read_resource(uri: str) -> Any:
         """Read resource content."""
         try:
+            from mcp.server.lowlevel.helper_types import ReadResourceContents
+
             from ..resources.hyphae_resource import (
                 is_hyphae_resource_uri,
                 read_hyphae_resource,
@@ -56,7 +59,19 @@ def register_resources(server: Any, server_instance: Any) -> None:
                 # created. Following the live value keeps the resource on the
                 # same project-root lifecycle as every tool.
                 live_root = getattr(server_instance, "_project_root", None)
-                return await read_hyphae_resource(str(uri), live_root)
+                result = await read_hyphae_resource(str(uri), live_root)
+                # RFC-0001 / issue #454: the MCP SDK @read_resource decorator
+                # expects str | bytes | Iterable[ReadResourceContents].  Returning
+                # a raw dict hits the Iterable branch and calls key.content on each
+                # dict key (a str) → AttributeError: 'str' has no attribute 'content'.
+                # Wrap the JSON payload in ReadResourceContents so the SDK can
+                # extract .content and .mime_type without crashing.
+                return [
+                    ReadResourceContents(
+                        content=json.dumps(result),
+                        mime_type="application/json",
+                    )
+                ]
             elif code_file_resource.matches_uri(uri):
                 return await code_file_resource.read_resource(uri)
             elif project_stats_resource.matches_uri(uri):
