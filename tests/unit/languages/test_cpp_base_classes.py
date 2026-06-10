@@ -30,6 +30,9 @@ struct S : Base {};
 template <typename T> class Box {};
 class Wrap : public Box<int> {};
 
+namespace NS { class NBase {}; }
+class Q : public NS::NBase {};
+
 class Plain {};
 """
 
@@ -60,6 +63,11 @@ def test_struct_base_captured() -> None:
 def test_template_base_captured() -> None:
     found = _classes()
     assert found["Wrap"].superclass == "Box<int>", f"got {found['Wrap'].superclass!r}"
+
+
+def test_qualified_base_captured() -> None:
+    found = _classes()
+    assert found["Q"].superclass == "NS::NBase", f"got {found['Q'].superclass!r}"
 
 
 def test_no_base_stays_none() -> None:
