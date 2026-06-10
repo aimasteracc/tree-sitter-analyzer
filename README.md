@@ -3,10 +3,10 @@
 **English** | **[日本語](README_ja.md)** | **[简体中文](README_zh.md)**
 
 > **The MCP code-intelligence server for AI agents — fewer tokens, fewer tool calls, 100 % local.**
-> Pre-indexed AST cache + **8 MCP tools** (down from 63) + 13 curated agent skills + TOON-compressed output.
+> Pre-indexed AST cache + **8 MCP tools** (down from 63; plus the `set_project_path` infrastructure entry) + 13 curated agent skills + TOON-compressed output.
 > **~80% less tool-definition overhead** vs v1.x — the only code-intel MCP that is both rich-output (verdict + TOON) and Roo/Cursor-safe.
-> A **strict CLI superset** of CodeGraph, with faster indexing, a one-call jQuery-style query DSL, and a **more complete + more correct call graph** (95.9% of call edges classified vs CodeGraph's same-name mis-wires). Token cost was CodeGraph's one edge — RFC-0006 progressive disclosure cut TSA's default context payload **53%**, closing most of that gap. See [How TSA compares](#how-tsa-compares-to-codegraph).
-> **BM25-ranked symbol search** across all 8 facades — results sorted by relevance, not file path.
+> A **strict CLI superset** of CodeGraph, with faster indexing, a one-call jQuery-style query DSL, and a **more complete + more correct call graph** (96.3% of call edges classified vs CodeGraph's same-name mis-wires). Token cost was CodeGraph's one edge — RFC-0006 progressive disclosure cut TSA's default context payload **53%**, closing most of that gap. See [How TSA compares](#how-tsa-compares-to-codegraph).
+> **BM25-ranked symbol search** across all search tools — results sorted by relevance, not file path.
 >
 > Competing tool count: CodeGraph ~12 · Rhizome 1 · **TSA 8 (rich-output)** · TSA v1.x was 63.
 > Upgrading from v1.x? See [docs/MIGRATION.md](docs/MIGRATION.md).
@@ -74,7 +74,7 @@ Token cost is one axis; a code-intelligence tool's *first* job is a **correct gr
 | CodeGraph | **745** | 38,103 | 1.96 % |
 | **Tree-sitter Analyzer** | **6** | 114,160 | **0.005 %** |
 
-**~390× cleaner on cross-language correctness, while resolving 3× more call edges.** CodeGraph's mis-wires span 17 language pairs (python→swift **408**, python→typescript 195, python→ruby 81, …); TSA's 6 are all `java→python/php` from single-word Java method names.
+**~390× cleaner on cross-language correctness, while resolving 3× more call edges.** CodeGraph's mis-wires span 19+ language pairs (python→swift **408**, python→typescript 195, python→ruby 81, …); TSA's 6 are all `java→python/php` from single-word Java method names.
 
 > **Don't trust this table — run it on your own repo (no CodeGraph install needed):**
 > ```bash
@@ -88,14 +88,14 @@ Concretely:
 
 | call (Python `_resolve_entry_points` / `build_response`) | CodeGraph | TSA |
 |---|---|---|
-| `sorted()` (Python builtin) | ❌ callee = **`tests/golden/corpus_swift.swift` — a Swift `func sorted`** (wired as a callee of **408** Python functions repo-wide) | ✅ `builtin` — no cross-language edge |
+| `sorted()` (Python builtin) | ❌ callee = **`tests/golden/corpus_swift.swift` — a Swift `func sorted`** (wired as a callee of **299** Python functions repo-wide) | ✅ `builtin` — no cross-language edge |
 | `fts_search()` / `fts_search_ranked()` | ❌ bound to the **test mock** (`FallbackCache`) instead of the real method | ✅ resolves to the source method (`_ast_cache_query.py` / `ast_cache.py`) |
 
 TSA's per-language resolver gates every binding by **language family** across **13 languages** (Python · Java · Go · JS · TS · C · C++ · Rust · C# · Kotlin · Ruby · PHP · Swift) and **demotes test-only definitions** for non-test callers, across all of its resolution paths. Telling an agent that a Python function *calls a Swift method*, or that a production call targets a test mock, is wrong structural data — and it is the dominant failure mode of a name-only index.
 
-#### Correct *and* complete — 95.9% of call edges classified
+#### Correct *and* complete — 96.3% of call edges classified
 
-A correct graph that leaves most edges `unknown` is still half a graph. TSA's resolution cascade now classifies **95.9%** of call edges (up from 83.9%), with **zero** cross-language or test-shadow mis-wires — every gain is gated on the project owning no compatible-language symbol of that name, so shadowing is always preserved:
+A correct graph that leaves most edges `unknown` is still half a graph. TSA's resolution cascade now classifies **96.3%** of call edges (up from 83.9%), with **zero** cross-language or test-shadow mis-wires — every gain is gated on the project owning no compatible-language symbol of that name, so shadowing is always preserved:
 
 | resolver tier | what it resolves | source |
 |---|---|---|
@@ -137,7 +137,7 @@ For context, the per-task `$` cost measured **before** RFC-0006 (corrected harne
 | arm | median cost (pre-RFC-0006) | tool calls | file reads |
 |---|---|---|---|
 | CodeGraph MCP | **~$0.27** | 7 | 2 |
-| Tree-sitter Analyzer MCP | ~$0.42 | 7 | 1 |
+| Tree-sitter Analyzer MCP | ~$0.44 | 7 | 1 |
 | no-MCP (grep/read) | ~$0.34 | 14 | 7 |
 
 A full per-task `$` re-benchmark is the next measurement (harness command below). We report the payload proxy straight rather than restate the old table as if RFC-0006 hadn't shipped.
@@ -241,7 +241,7 @@ See [`docs/CODEMAPS/cli.md`](docs/CODEMAPS/cli.md) for the full surface.
 curl -LsSf https://astral.sh/uv/install.sh | sh        # macOS / Linux
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"  # Windows
 
-# fd + ripgrep (required for search)
+# fd + ripgrep (required for `search action=content` text search; symbol search uses SQLite FTS5 and needs neither)
 brew install fd ripgrep                                # macOS
 winget install sharkdp.fd BurntSushi.ripgrep.MSVC      # Windows
 ```
@@ -390,7 +390,7 @@ MCP client config (the project root inside the container is the mount point `/wo
 ```
 </details>
 
-> ⚠️ `TREE_SITTER_PROJECT_ROOT` must be **absolute**. The server enforces a security boundary against escapes via `SecurityBoundaryManager`.
+> ⚠️ `TREE_SITTER_PROJECT_ROOT` must be **absolute**. The server enforces a security boundary against escapes via `SecurityValidator`.
 
 ---
 
@@ -428,7 +428,7 @@ Mostly nothing. The defaults are designed so you can hook it into your agent and
 | Coverage | [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) |
 | Type safety | 100 % mypy |
 | Platforms | macOS · Linux · Windows |
-| Pre-commit gates | bandit · mypy · pyupgrade · detect-secrets · codemap-sync · smell-ratchet |
+| Pre-commit gates | ruff · bandit · mypy · pyupgrade · detect-secrets · tsa-codemap-sync |
 
 ```bash
 uv run pytest -q                                # full suite
