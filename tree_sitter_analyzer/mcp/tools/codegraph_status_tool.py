@@ -136,7 +136,7 @@ class CodeGraphStatusTool(BaseMCPTool):
 
         if not truly_indexed:
             hint = (
-                "Index missing or empty. Run codegraph_autoindex mode=warm "
+                "Index missing or empty. Run the `index` tool with action=auto "
                 "to build the cache."
             )
             result = build_response(

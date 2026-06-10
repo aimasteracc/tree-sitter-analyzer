@@ -110,6 +110,28 @@ def _add_partial_read_options(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_install_skills_options(parser: argparse.ArgumentParser) -> None:
+    """Add skill-installation options (PyPI / uvx first-run)."""
+    parser.add_argument(
+        "--install-skills",
+        nargs="?",
+        const=".",
+        metavar="TARGET_DIR",
+        dest="install_skills",
+        help=(
+            "Install bundled tsa-* skills into TARGET_DIR/.claude/skills/ "
+            "(default: current directory). Git-clone users already have the "
+            "skills; this is for PyPI / uvx installs."
+        ),
+    )
+    parser.add_argument(
+        "--install-skills-global",
+        action="store_true",
+        dest="install_skills_global",
+        help="Install bundled tsa-* skills into ~/.claude/skills/ (user-global).",
+    )
+
+
 def _add_batch_options(parser: argparse.ArgumentParser) -> None:
     """Add batch project-health and metrics options."""
     parser.add_argument(
