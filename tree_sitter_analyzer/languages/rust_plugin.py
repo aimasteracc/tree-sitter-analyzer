@@ -288,11 +288,53 @@ class RustElementExtractor(ElementExtractor):
             # Attach Rust-specific attributes
             func.is_async = is_async
 
+            # Theme-A (2026-06-10): impl-block ownership. Functions inside
+            # ``impl Counter { ... }`` were flattened to top-level with no
+            # receiver — an agent could not tell ``inc`` belongs to
+            # ``Counter``. Any fn in an impl gets receiver_type = the impl
+            # target; is_method/receiver only when a self_parameter exists
+            # (self-less impl fns are associated functions, not methods).
+            owner = self._find_impl_owner(node)
+            if owner:
+                func.receiver_type = owner
+                self_param = self._find_self_parameter(node)
+                if self_param:
+                    func.receiver = self_param
+                    func.is_method = True
+
             return func
 
         except Exception as e:
             log_error(f"Error extracting Rust function: {e}")
             return None
+
+    def _find_impl_owner(self, node: tree_sitter.Node) -> str | None:
+        """Return the impl target type name for a fn nested in an impl block.
+
+        Walks the parent chain (function_item → declaration_list →
+        impl_item); the impl's ``type`` field is the implementing type for
+        both inherent (``impl Counter``) and trait (``impl Greet for
+        Counter``) impls.
+        """
+        parent = node.parent
+        while parent is not None:
+            if parent.type == "impl_item":
+                type_node = parent.child_by_field_name("type")
+                return self._get_node_text(type_node) if type_node else None
+            if parent.type == "source_file":
+                return None
+            parent = parent.parent
+        return None
+
+    def _find_self_parameter(self, node: tree_sitter.Node) -> str | None:
+        """Return the self-parameter text (``&self`` / ``&mut self`` / ...)."""
+        params = node.child_by_field_name("parameters")
+        if params is None:
+            return None
+        for child in params.children:
+            if child.type == "self_parameter":
+                return self._get_node_text(child)
+        return None
 
     def _extract_struct(self, node: tree_sitter.Node) -> Class | None:
         """Extract struct information"""
