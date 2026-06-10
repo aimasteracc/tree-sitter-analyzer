@@ -158,6 +158,9 @@ class CppElementExtractor(ElementExtractor):
             "class_specifier": self._extract_class_optimized,
             "struct_specifier": self._extract_struct_optimized,
             "union_specifier": self._extract_union_optimized,
+            # Theme-I (2026-06-10): plain enums and scoped ``enum class``
+            # were completely invisible in outlines.
+            "enum_specifier": self._extract_enum_optimized,
             "template_declaration": self._extract_template_class,
         }
 
@@ -353,6 +356,24 @@ class CppElementExtractor(ElementExtractor):
             return result
         except Exception as e:
             log_debug(f"Failed to extract union info: {e}")
+            return None
+
+    # Extract elements from AST: _extract_enum_optimized
+    def _extract_enum_optimized(self, node: tree_sitter.Node) -> Class | None:
+        """Extract enum / scoped enum-class information optimized.
+
+        Theme-I (2026-06-10): ``enum_specifier`` carries a ``class`` (or
+        ``struct``) keyword child when scoped — surfaced as ``enum_class``
+        so agents can tell scoped from unscoped enums.
+        """
+        try:
+            result = self._extract_class_optimized(node)
+            if result:
+                scoped = any(c.type in ("class", "struct") for c in node.children)
+                result.class_type = "enum_class" if scoped else "enum"
+            return result
+        except Exception as e:
+            log_debug(f"Failed to extract enum info: {e}")
             return None
 
     # Extract elements from AST: _extract_template_class

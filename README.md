@@ -14,7 +14,7 @@
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-18333%20passed-brightgreen.svg)](#-quality--testing)
+[![Tests](https://img.shields.io/badge/tests-18333%20passed-brightgreen.svg)](#quality--testing)
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
@@ -32,7 +32,7 @@ claude mcp add tree-sitter-analyzer \
 
 Restart your agent, then say: *"Set the project root to my repo and run the `index` tool with action=status."*
 
-[Other agents (Cursor, Copilot, Cline, Continue, Claude Desktop, Roo Code) →](#-supported-agents)
+[Other agents (Cursor, Copilot, Cline, Continue, Claude Desktop, Roo Code) →](#supported-agents)
 
 **See the correctness edge on your own repo** — no install, no CodeGraph (it re-indexes first; seconds on a small repo, a minute or two on a large one):
 
@@ -46,9 +46,9 @@ It prints how many call edges a name-only code index (the design most tools use)
 
 ## Why Tree-sitter Analyzer
 
-* **Token-efficient by default.** Every MCP response uses **TOON** — a tabular JSON variant that cuts payload by ~50-70 % vs raw JSON.
+* **Token-efficient by default.** Every MCP response uses **TOON** — a tabular JSON variant that cuts bulk/tabular payloads by ~50-70 % vs raw JSON (metadata-heavy decision payloads see less, or none).
 * **Verdict envelopes.** Every response carries `verdict: SAFE | CAUTION | UNSAFE | INFO | WARN | ERROR | NOT_FOUND`, so orchestrators branch on outcomes without re-prompting.
-* **Project health grading (A–F).** No other open-source tool grades your whole project on size / complexity / coverage / duplication / dependencies / structure / git-hotspots in one call.
+* **Project health grading (A–F).** Few code-intel tools expose a whole-project quality grade — TSA grades on size / complexity / coverage / duplication / dependencies / structure / git-hotspots in one call.
 * **13 curated workflows (Skills).** Pre-baked tool subsets for "find symbol", "trace call chain", "score health", "safe-to-edit before refactor", "PR review", etc.
 * **5 layers of safety.** `safe_to_edit` + `modification_guard` + constraint DSL + `change_impact` + verdict envelopes — designed so agents *know* before they touch.
 * **Strict CLI superset of CodeGraph, faster indexing, and a one-call query DSL** — with an honest cost comparison ([below](#how-tsa-compares-to-codegraph)).
@@ -99,7 +99,7 @@ A correct graph that leaves most edges `unknown` is still half a graph. TSA's re
 
 The remaining ~4% `unknown` is dominated by genuinely-unresolvable dynamic dispatch (`BaseTool.execute()`), constructors, and ambiguous same-name project methods — the false-positive floor of static analysis, left honest rather than guessed.
 
-> **Now multi-language.** Cross-language-safe resolution is no longer Python-only. A per-language **resolver registry** ([RFC-0010](rfcs/0010-resolver-language-registry.md)) gives each language its own classification cascade with conservative stdlib/external tiers, gated by language family so a binding does not cross into an incompatible language. **Active classified call graph (call-edge extraction + per-language resolver), 13 languages: Python · Java · Go · JavaScript · TypeScript · C · C++ · Rust · C# · Kotlin · Ruby · PHP · Swift.** Each has its own conservative stdlib/external tiers and is adversarially verified to never bind across a language boundary. **Swift is notable**: CodeGraph's flagship mis-wire binds 299 Python `sorted()` callers to a Swift `func sorted` — TSA resolves Swift correctly *and* refuses that exact cross-language bind (verified both directions). Measured on the active set: **~0.01%** cross-language edges (6 of ~57,000 resolved edges, all generic 1-word Java method names) — **~4 orders of magnitude cleaner than CodeGraph**, which wires **299** Python `sorted()` callers to a single Swift `func sorted` (TSA binds **0** of 298). Full reproducible audit: [`benchmarks/codegraph_compare/REPORT-v1.21.0.md`](benchmarks/codegraph_compare/REPORT-v1.21.0.md). Adding a language is one new resolver file (RFC-0010) plus a small call-extraction wiring.
+> **Now multi-language.** Cross-language-safe resolution is no longer Python-only. A per-language **resolver registry** ([RFC-0010](rfcs/0010-resolver-language-registry.md)) gives each language its own classification cascade with conservative stdlib/external tiers, gated by language family so a binding does not cross into an incompatible language. **Active classified call graph (call-edge extraction + per-language resolver), 13 languages: Python · Java · Go · JavaScript · TypeScript · C · C++ · Rust · C# · Kotlin · Ruby · PHP · Swift.** Each has its own conservative stdlib/external tiers and is adversarially verified to never bind across a language boundary. **Swift is notable**: CodeGraph's flagship mis-wire binds 299 Python `sorted()` callers to a Swift `func sorted` — TSA resolves Swift correctly *and* refuses that exact cross-language bind (verified both directions). Measured on the active set: **6** cross-language edges (6 of ~57,000 resolved edges, all generic 1-word Java method names) — **~390× cleaner than CodeGraph** on cross-language correctness, which wires **299** Python `sorted()` callers to a single Swift `func sorted` (TSA binds **0** of 298). Full reproducible audit: [`benchmarks/codegraph_compare/REPORT-v1.21.0.md`](benchmarks/codegraph_compare/REPORT-v1.21.0.md). Adding a language is one new resolver file (RFC-0010) plus a small call-extraction wiring.
 
 > **Symbol kinds, too.** TSA classifies class members as `kind=method` (20,348 method rows on this repo) — `search action=symbol kind=method` returns them; CodeGraph parity, not a stub. The `index status` payload breaks symbols down by kind and language and edges by kind (`edges_by_kind` — a breakdown CodeGraph does not surface).
 
@@ -108,7 +108,7 @@ The remaining ~4% `unknown` is dominated by genuinely-unresolvable dynamic dispa
 - **Index build speed.** Removing a redundant post-index edge-refresh pass cut a cold django index (~2 950 files) from **181 s → 97 s (−46 %)**; the win grows with repo size. Re-index of unchanged files is a content-hash lookup.
 - **Strict CLI superset.** Every MCP tool has a CLI equivalent (CodeGraph's CLI is thinner); *behavioural* defaults (ranking, limits, truncation) are kept in lock-step between the two surfaces. Output format is the one intentional divergence — MCP defaults to TOON (token-efficient for agents), the CLI to JSON (human/`jq`-friendly).
 - **One-call expressiveness.** A jQuery-style chain DSL — `search('X').callees(depth=2).explore(include_code=true).answer(compact=true)` — returns an entire flow's subgraph + source in a single call, with JS-style `true`/`false` so agents can write it naturally.
-- **Output is structured + token-aware.** TOON default for MCP (50–70 % smaller than JSON), per-call truncation hints, consistent test-file de-prioritisation across every ranking path.
+- **Output is structured + token-aware.** TOON default for MCP (50–70 % smaller than JSON on bulk/tabular output), per-call truncation hints, consistent test-file de-prioritisation across every ranking path.
 - **Breadth.** Health scoring, safe-to-edit / change-impact gating, 13 curated Skills, and broad language coverage.
 
 ### On token cost — and a benchmark we corrected
@@ -176,9 +176,9 @@ tree-sitter-analyzer --callees _resolve_entry_points --format json
 | Capability | TSA tool | Note |
 |---|---|---|
 | **BM25-ranked symbol search** | all search tools | relevance_score on every result (min-max normalized: best=1.0, weakest=0.0); sort(by='confidence') in DSL |
-| **Semantic search (133× faster)** | `search` action=chain (`semantic()` DSL) | BM25 pre-filter narrows 40k symbols to ~400 before cosine rerank |
-| **Project A–F health grading** | `health` action=project | 7 dimensions (size/complexity/deps/coverage/duplication/structure/git-hotspot), no competitor offers this |
-| **TOON output** | every tool, `output_format: "toon"` (default) | 50-70 % token saving |
+| **Semantic search (BM25 pre-filtered)** | `search` action=chain (`semantic()` DSL) | BM25 pre-filter narrows 40k symbols to ~400 before cosine rerank |
+| **Project A–F health grading** | `health` action=project | 7 dimensions (size/complexity/deps/coverage/duplication/structure/git-hotspot), uncommon among code-intel tools |
+| **TOON output** | every tool, `output_format: "toon"` (default) | 50-70 % token saving on bulk/tabular output |
 | **Verdict envelopes** | every tool | `SAFE/CAUTION/UNSAFE/INFO/WARN/ERROR/NOT_FOUND` |
 | **Safe-to-edit gate** | `edit` action=safe / action=guard | refuses high-risk edits before they happen |
 | **Architectural constraint DSL** | `edit` action=constraints | "module A cannot import B" → enforced |
@@ -195,7 +195,7 @@ tree-sitter-analyzer --callees _resolve_entry_points --format json
 | **Synapse cross-file resolver** | internal | import-aware, beats regex guessing |
 | **Temporal activation** | `nav` action=lineage | per-symbol git-modification frequency |
 | **One-shot file orientation** | `project` action=smart | health + exports + deps + edit-risk in one call (replaces 3-4 calls) |
-| **Architectural decision journal** | `project` action=journal | persists reasoning across sessions — no competitor exposes this |
+| **Architectural decision journal** | `project` action=journal | persists reasoning across sessions — uncommon among code-intel tools |
 
 ### Skills (13 curated workflows)
 
@@ -207,7 +207,7 @@ Each skill ships an `allowed-tools` subset + procedure recipe + decision-surface
 
 ### 272 CLI flags
 
-Strict superset of CodeGraph's 15-command CLI. Highlights:
+Superset of CodeGraph's CLI surface. Highlights:
 
 ```bash
 tree-sitter-analyzer --table full <file>          # method/signature/complexity table
@@ -248,7 +248,7 @@ uv add "tree-sitter-analyzer[all,mcp]"
 
 ### 3. Hook it into your agent
 
-See **[Supported Agents](#-supported-agents)**. Most clients want this MCP server entry:
+See **[Supported Agents](#supported-agents)**. Most clients want this MCP server entry:
 
 ```json
 {
@@ -273,8 +273,9 @@ Source code → tree-sitter parse → SQLite + FTS5 index (.ast-cache/index.db)
                                          ↓
         nav (navigate) / structure (explore) / nav (callers) / ...
                                          ↓
-                            TOON-compressed envelope
-                            (verdict + agent_summary + data)
+                            TOON-encoded envelope
+                            (compact for tabular output;
+                             verdict + agent_summary + data)
                                          ↓
                               MCP client / CLI consumer
 ```
@@ -340,6 +341,43 @@ Create `.vscode/mcp.json` (note: `servers`, not `mcpServers`):
 All read the same `mcpServers` schema as Claude Desktop. Cursor: **Settings → MCP**. Cline: MCP panel → Edit settings. Continue: `~/.continue/config.json` under `experimental.modelContextProtocolServers`. Roo Code: MCP panel → Edit MCP Settings.
 </details>
 
+<details>
+<summary><b>🐳 Docker</b> (no local Python / uv)</summary>
+
+The repo ships a [`Dockerfile`](Dockerfile) that builds the MCP server (stdio transport) from source, so the image always matches the committed code.
+
+```bash
+# Build once
+docker build -t tree-sitter-analyzer-mcp .
+
+# Run against the current repo (server speaks MCP over stdio; -i keeps stdin open)
+docker run --rm -i --user "$(id -u):$(id -g)" \
+  -v "$PWD:/work" -w /work tree-sitter-analyzer-mcp
+```
+
+`--user "$(id -u):$(id -g)"` runs as your host UID/GID, so the `.ast-cache/`, decision journal, and any `edit` writes under the bind-mounted repo are owned by you, not root.
+
+MCP client config (the project root inside the container is the mount point `/work`):
+
+```json
+{
+  "mcpServers": {
+    "tree-sitter-analyzer": {
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i",
+        "--user", "1000:1000",
+        "-v", "/absolute/path/to/your/project:/work",
+        "-w", "/work",
+        "-e", "TREE_SITTER_PROJECT_ROOT=/work",
+        "tree-sitter-analyzer-mcp"
+      ]
+    }
+  }
+}
+```
+</details>
+
 > ⚠️ `TREE_SITTER_PROJECT_ROOT` must be **absolute**. The server enforces a security boundary against escapes via `SecurityBoundaryManager`.
 
 ---
@@ -354,7 +392,7 @@ All read the same `mcpServers` schema as Claude Desktop. Cursor: **Settings → 
 | **Single-file analysis (CLI)** | HTML · CSS · Markdown · SQL · YAML |
 | **Scaffold (plugin exists, indexer wiring pending)** | bash · scala · json |
 
-CodeGraph supports a similar set; the only popular code languages neither tool ships yet are **Dart, Vue, Svelte, Lua** (next-sprint backlog).
+CodeGraph supports a similar set. **Dart, Vue, Svelte, Lua** are not yet shipped — aspirational backlog, no committed date.
 
 ---
 
@@ -373,7 +411,7 @@ Mostly nothing. The defaults are designed so you can hook it into your agent and
 
 | Metric | Value |
 |---|---|
-| Tests passed | 17,456 ✅ |
+| Tests passed | 18,333 ✅ |
 | Coverage | [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) |
 | Type safety | 100 % mypy |
 | Platforms | macOS · Linux · Windows |

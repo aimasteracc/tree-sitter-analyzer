@@ -144,6 +144,29 @@ class TestExecuteHierarchy:
         assert "bar" in names
         assert "baz" in names
 
+    @pytest.mark.asyncio
+    async def test_hierarchy_lists_capped_but_counts_full(self, tool):
+        """Wave 1b (audit nav-08b): emitted caller/callee lists are capped so a
+        hub does not overflow the token budget; counts stay accurate."""
+        from tree_sitter_analyzer.mcp.tools.codegraph_navigate_tool import _MAX_LISTED
+
+        mock_graph = MagicMock()
+        mock_graph.build.return_value = None
+        mock_graph.callers_of.return_value = [
+            {"name": f"c{i}", "file": f"f{i}.py", "line": i, "language": "python"}
+            for i in range(_MAX_LISTED + 12)
+        ]
+        mock_graph.callees_of.return_value = []
+        with patch.object(tool, "get_call_graph", return_value=mock_graph):
+            result = await tool.execute(
+                {"symbol": "hub", "mode": "hierarchy", "depth": 1}
+            )
+        h = result["hierarchy"]
+        assert len(h["callers"]) == _MAX_LISTED
+        assert h["caller_count"] == _MAX_LISTED + 12
+        assert h["lists_truncated"] is True
+        assert h["listed_cap"] == _MAX_LISTED
+
 
 class TestExecuteFull:
     @pytest.mark.asyncio

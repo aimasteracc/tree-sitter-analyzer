@@ -20,6 +20,42 @@ from tree_sitter_analyzer.graph.edge_store import (
 from tree_sitter_analyzer.mcp.tools.class_hierarchy_tool import ClassHierarchyTool
 
 
+def _stub_hierarchy(names_with_parents: dict[str, list[str]]) -> ClassHierarchy:
+    """Build a pre-populated ClassHierarchy without touching an AST cache.
+
+    The tmp-path fixtures in this module build no index (``_classes`` stays
+    empty), so existence-dependent behavior is tested against an injected
+    hierarchy instead.
+    """
+    from tree_sitter_analyzer.class_hierarchy import ClassInfo
+
+    hierarchy = ClassHierarchy(cache=None)
+    for name, parents in names_with_parents.items():
+        hierarchy._classes[name].append(
+            ClassInfo(
+                name=name,
+                file="models.py",
+                line=1,
+                end_line=2,
+                language="python",
+                parents=parents,
+            )
+        )
+        for parent in parents:
+            hierarchy._parent_map[name].append(parent)
+            hierarchy._children[parent].append(name)
+    hierarchy._built = True  # bypass build(); data is already populated
+    return hierarchy
+
+
+def test_has_class_distinguishes_existence_from_emptiness() -> None:
+    """has_class is True for a defined leaf class (no subclasses) and False for
+    an unknown name — the distinction the tree verdict relies on."""
+    h = _stub_hierarchy({"Poodle": ["Dog"]})
+    assert h.has_class("Poodle") is True
+    assert h.has_class("NoSuchClassZZZ") is False
+
+
 @pytest.fixture
 def tool():
     return ClassHierarchyTool()
@@ -61,6 +97,12 @@ class TestToolDefinition:
         hints = tool.get_tool_definition()["annotations"]
         assert hints["readOnlyHint"] is True
         assert hints["destructiveHint"] is False
+
+    def test_mode_not_required(self, tool):
+        """Wave 1b (review issue 2): mode is resolved at runtime, so it must NOT
+        be advertised as required — else a strict MCP client rejects a valid
+        {class_name: X} call before dispatch."""
+        assert "mode" not in tool.get_tool_schema().get("required", [])
 
 
 class TestValidation:
@@ -108,6 +150,84 @@ class TestExecute:
         result = await tool_with_root.execute({"mode": "summary"})
         assert result["format"] == "toon"
         assert "toon_content" in result
+
+    async def test_tree_leaf_class_is_found_not_notfound(self, tool, monkeypatch):
+        """Wave 1b (audit structure-01): a real leaf class (exists but has no
+        subclasses) must report INFO, not NOT_FOUND — existence, not subclass
+        count, drives the verdict. Injects a populated hierarchy so the test is
+        deterministic (the tmp fixture builds no index)."""
+        monkeypatch.setattr(
+            tool, "_get_hierarchy", lambda: _stub_hierarchy({"Poodle": ["Dog"]})
+        )
+        result = await tool.execute(
+            {"mode": "tree", "class_name": "Poodle", "output_format": "json"}
+        )
+        assert result["success"] is True
+        assert result["subclass_count"] == 0
+        assert result["verdict"] == "INFO"
+
+    async def test_tree_unknown_class_is_notfound(self, tool, monkeypatch):
+        monkeypatch.setattr(
+            tool, "_get_hierarchy", lambda: _stub_hierarchy({"Poodle": ["Dog"]})
+        )
+        result = await tool.execute(
+            {"mode": "tree", "class_name": "NoSuchClassZZZ", "output_format": "json"}
+        )
+        assert result["verdict"] == "NOT_FOUND"
+
+    async def test_default_mode_named_class_is_class_scoped_not_global(
+        self, tool, monkeypatch
+    ):
+        """No explicit mode + a class_name → class-scoped 'tree', NOT the global
+        'summary' (which would ignore the class and return project-wide stats)."""
+        monkeypatch.setattr(
+            tool, "_get_hierarchy", lambda: _stub_hierarchy({"Poodle": ["Dog"]})
+        )
+        result = await tool.execute({"class_name": "Poodle", "output_format": "json"})
+        assert result["mode"] == "tree"
+        assert result["class_name"] == "Poodle"
+        assert result["verdict"] == "INFO"
+        assert "total_classes" not in result  # not the global summary
+
+    async def test_subclasses_existing_class_no_children_is_info(
+        self, tool, monkeypatch
+    ):
+        """Review issue 1: an existing class with zero subclasses is a valid
+        INFO result, not NOT_FOUND (NOT_FOUND is reserved for unknown classes)."""
+        # Dog exists (inherits Animal) but nothing inherits from Dog.
+        monkeypatch.setattr(
+            tool, "_get_hierarchy", lambda: _stub_hierarchy({"Dog": ["Animal"]})
+        )
+        result = await tool.execute(
+            {"mode": "subclasses", "class_name": "Dog", "output_format": "json"}
+        )
+        assert result["subclass_count"] == 0
+        assert result["verdict"] == "INFO"
+
+    async def test_subclasses_unknown_class_is_notfound(self, tool, monkeypatch):
+        monkeypatch.setattr(
+            tool, "_get_hierarchy", lambda: _stub_hierarchy({"Dog": ["Animal"]})
+        )
+        result = await tool.execute(
+            {
+                "mode": "subclasses",
+                "class_name": "NoSuchClassZZZ",
+                "output_format": "json",
+            }
+        )
+        assert result["verdict"] == "NOT_FOUND"
+
+    async def test_superclasses_root_class_is_info(self, tool, monkeypatch):
+        """Review issue 1: a root class with no parents exists → INFO, not
+        NOT_FOUND."""
+        monkeypatch.setattr(
+            tool, "_get_hierarchy", lambda: _stub_hierarchy({"Animal": []})
+        )
+        result = await tool.execute(
+            {"mode": "superclasses", "class_name": "Animal", "output_format": "json"}
+        )
+        assert result["superclass_count"] == 0
+        assert result["verdict"] == "INFO"
 
     async def test_subclasses_mode_reads_edge_store_when_symbol_parents_missing(
         self, tmp_path

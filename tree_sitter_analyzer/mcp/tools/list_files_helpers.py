@@ -46,6 +46,17 @@ TOOL_SCHEMA: dict[str, Any] = {
             "items": {"type": "string"},
             "description": "Search dirs",
         },
+        # Wave 1b (audit project-05): single-directory alias. The project
+        # facade's ``files`` action advertises ``path``; without this property
+        # the facade whitelist dropped it before the inner saw it, so the
+        # filter was silently ignored and the whole project was listed. When
+        # supplied (and ``roots`` is not), ``path`` becomes the single root and
+        # is existence-validated like any root (a missing dir -> error, never
+        # an unfiltered project walk).
+        "path": {
+            "type": "string",
+            "description": "Single directory to list (alias for roots=[path]).",
+        },
         # Filename pattern (supports glob if glob=true)
         "pattern": {
             "type": "string",
@@ -154,8 +165,13 @@ TOOL_SCHEMA: dict[str, Any] = {
             "description": "If true with output_file, suppress detailed output",
         },
     },
-    # roots is the only required field
-    "required": ["roots"],
+    # Wave 1b (audit project-05, review): nothing is strictly required at the
+    # schema layer — ``roots`` is optional (falls back to project_root, or is
+    # synthesised from the ``path`` alias) and validate_arguments enforces the
+    # real rules. Declaring ``roots`` required contradicted the ``path`` alias
+    # and made strict MCP clients reject a valid ``{path: X}`` call before
+    # dispatch.
+    "required": [],
     "additionalProperties": False,
 }
 

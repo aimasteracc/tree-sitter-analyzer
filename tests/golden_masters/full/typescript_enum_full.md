@@ -6,6 +6,7 @@
 | Color | enum | public | 3-7 | 0 | 0 |
 | Status | enum | public | 9-13 | 0 | 0 |
 | MathConstants | enum | public | 16-19 | 0 | 0 |
+| MathConstants | namespace | public | 21-25 | 1 | 0 |
 | Person | interface | public | 28-32 | 1 | 2 |
 | Point | type | public | 35-38 | 0 | 2 |
 | User | class | public | 41-47 | 2 | 0 |
@@ -13,6 +14,12 @@
 ## Color (3-7)
 ## Status (9-13)
 ## MathConstants (16-19)
+## MathConstants (21-25)
+### Public Methods
+| Method | Signature | Vis | Lines | Cx | Doc |
+|--------|-----------|-----|-------|----|----|
+| getPrecision | ():number | + | 22-24 | 1 | - |
+
 ## Person (28-32)
 ### Fields
 | Name | Type | Vis | Modifiers | Line | Doc |
