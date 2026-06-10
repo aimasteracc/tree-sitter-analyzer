@@ -107,3 +107,19 @@ def test_interfaces_survive_api_serialization() -> None:
     as_dict = element_to_dict(dog)
     assert as_dict.get("superclass") == "Animal"
     assert as_dict.get("interfaces") == ["Walkable", "Runnable"]
+
+
+def test_php_interface_multi_extends_all_parents_captured() -> None:
+    """Review fix: ``interface I extends A, B`` must keep ALL parents —
+    the first pass routed only base_classes[0] to superclass and silently
+    dropped the rest (worse: it looked like single inheritance)."""
+    lang = tree_sitter.Language(tree_sitter_php.language_php())
+    parser = tree_sitter.Parser(lang)
+    src = "<?php\ninterface I extends A, B, C {}\n"
+    extractor = PHPElementExtractor()
+    classes = {
+        c.name: c for c in extractor.extract_classes(parser.parse(src.encode()), src)
+    }
+    iface = classes["I"]
+    assert iface.superclass is None
+    assert iface.interfaces == ["A", "B", "C"]

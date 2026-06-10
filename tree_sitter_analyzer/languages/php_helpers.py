@@ -178,6 +178,18 @@ def extract_php_class_element(
 
         # r37dt (dogfood): flatten nesting 6 → 3 via _collect_php_class_bases.
         base_classes, interfaces = _collect_php_class_bases(node, get_node_text)
+        # Theme-C review fix (2026-06-10): ``interface I extends A, B`` puts
+        # ALL parents in base_clause — for an interface they are parent
+        # interfaces, not a single superclass; routing only [0] to superclass
+        # silently dropped the rest. Classes keep first-as-superclass (PHP
+        # classes are single-inheritance; extras would be a parse anomaly and
+        # are preserved in interfaces rather than dropped).
+        if node.type == "interface_declaration":
+            interfaces = base_classes + interfaces
+            base_classes = []
+        elif len(base_classes) > 1:
+            interfaces = base_classes[1:] + interfaces
+            base_classes = base_classes[:1]
 
         full_name = f"{current_namespace}\\{name}" if current_namespace else name
 
