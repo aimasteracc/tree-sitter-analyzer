@@ -63,3 +63,37 @@ def test_existing_extraction_unchanged() -> None:
     assert classes.get("Meters") == "class"
     assert "operator+" in functions
     assert "get" in functions
+
+
+def test_enum_extractor_exception_returns_none() -> None:
+    """An exploding node must be caught and yield None (error path).
+
+    The inner class extractor is stubbed to return a truthy result so the
+    explosion happens in the scoped-check loop and the enum extractor's OWN
+    except branch is the one exercised (not the inner extractor's catch).
+    """
+    from unittest.mock import Mock
+
+    extractor = CppElementExtractor()
+    extractor._extract_class_optimized = lambda n: Mock()  # type: ignore[method-assign]
+    node = Mock()
+    type(node).children = property(
+        lambda self: (_ for _ in ()).throw(RuntimeError("boom"))
+    )
+    assert extractor._extract_enum_optimized(node) is None
+
+
+def test_operator_cast_without_type_child_yields_no_name() -> None:
+    """operator_cast with no recognizable type child -> parser returns None."""
+    from unittest.mock import Mock
+
+    from tree_sitter_analyzer.languages._cpp_signature_helpers import (
+        parse_function_signature,
+    )
+
+    cast = Mock()
+    cast.type = "operator_cast"
+    cast.children = []  # no _TYPE_NODES_CPP child
+    node = Mock()
+    node.children = [cast]
+    assert parse_function_signature(node, lambda n: "", lambda n: []) is None
