@@ -19,6 +19,9 @@ _OPTIONAL_ELEM_FIELDS = [
     "is_method",
     "complexity_score",
     "superclass",
+    # Theme-C (2026-06-10): implements/mixins were collected by plugins but
+    # dropped here — agents never saw them.
+    "interfaces",
     "class_type",
     "visibility",
     "modifiers",
