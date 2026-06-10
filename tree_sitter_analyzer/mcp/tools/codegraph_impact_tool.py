@@ -21,6 +21,7 @@ from typing import Any
 
 from ...call_graph import CachedCallGraph, CallGraph, FunctionRef
 from ...utils import setup_logger
+from ...utils.test_detection import is_test_file
 from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
@@ -35,11 +36,26 @@ _MAX_DEPTH = 10
 _MAX_LISTED = 50
 
 
+def _partition_refs(
+    refs: list[FunctionRef],
+) -> tuple[list[FunctionRef], list[FunctionRef]]:
+    """Split refs into (production, test) using the canonical is_test_file.
+
+    is_test_file lives in utils/test_detection.py and is path-based only —
+    never by symbol name — so a production class named TestRunner is not
+    misclassified.
+    """
+    prod = [r for r in refs if not is_test_file(r.file_path)]
+    test = [r for r in refs if is_test_file(r.file_path)]
+    return prod, test
+
+
 def _compute_transitive_callers(
     graph: CallGraph,
     func_name: str,
     file_path: str | None = None,
     max_depth: int = _MAX_DEPTH,
+    include_tests: bool = False,
 ) -> list[dict[str, Any]]:
     targets = graph.resolve_targets(func_name, file_path)
     visited: set[str] = set()
@@ -51,6 +67,8 @@ def _compute_transitive_callers(
         if d >= max_depth:
             continue
         for caller in graph.caller_refs_of(current):
+            if not include_tests and is_test_file(caller.file_path):
+                continue  # filter before to_dict()
             key = caller.qualified_name()
             if key not in visited:
                 visited.add(key)
@@ -68,6 +86,7 @@ def _compute_transitive_callees(
     func_name: str,
     file_path: str | None = None,
     max_depth: int = _MAX_DEPTH,
+    include_tests: bool = False,
 ) -> list[dict[str, Any]]:
     targets = graph.resolve_targets(func_name, file_path)
     visited: set[str] = set()
@@ -79,6 +98,8 @@ def _compute_transitive_callees(
         if d >= max_depth:
             continue
         for callee in graph.callee_refs_of(current):
+            if not include_tests and is_test_file(callee.file_path):
+                continue  # filter before to_dict()
             key = callee.qualified_name()
             if key not in visited:
                 visited.add(key)
@@ -95,18 +116,27 @@ def _compute_risk_score(
     graph: CallGraph,
     func_name: str,
     file_path: str | None = None,
+    include_tests: bool = False,
 ) -> dict[str, Any]:
     targets = graph.resolve_targets(func_name, file_path)
     if not targets:
-        return {"score": 0, "level": "unknown", "factors": {}}
+        return {
+            "score": 0,
+            "level": "unknown",
+            "factors": {},
+            "tests": {"test_callers_count": 0, "test_callees_count": 0},
+        }
 
     target = targets[0]
-    direct_callers = graph.caller_refs_of(target)
-    direct_callees = graph.callee_refs_of(target)
-    fan_in = len(direct_callers)
-    fan_out = len(direct_callees)
-    caller_files = {c.file_path for c in direct_callers}
-    callee_files = {c.file_path for c in direct_callees}
+    all_callers = graph.caller_refs_of(target)
+    all_callees = graph.callee_refs_of(target)
+    prod_callers, test_callers = _partition_refs(all_callers)
+    prod_callees, test_callees = _partition_refs(all_callees)
+
+    fan_in = len(prod_callers)
+    fan_out = len(prod_callees)
+    caller_files = {c.file_path for c in prod_callers}
+    callee_files = {c.file_path for c in prod_callees}
     cross_file_callers = len(caller_files - {target.file_path})
     cross_file_callees = len(callee_files - {target.file_path})
 
@@ -156,12 +186,22 @@ def _compute_risk_score(
     else:
         level = "low"
 
+    # RFC-0014 Phase A: always surface test counts; lists behind include_tests opt-in.
+    tests_bucket: dict[str, Any] = {
+        "test_callers_count": len(test_callers),
+        "test_callees_count": len(test_callees),
+    }
+    if include_tests:
+        tests_bucket["test_caller_files"] = sorted({r.file_path for r in test_callers})
+        tests_bucket["test_callee_files"] = sorted({r.file_path for r in test_callees})
+
     return {
         "score": score,
         "level": level,
         "factors": factors,
         "function": func_name,
         "file": target.file_path,
+        "tests": tests_bucket,
     }
 
 
@@ -343,6 +383,14 @@ class CodeGraphImpactTool(BaseMCPTool):
                     "description": "Output format: 'toon' (default, token-efficient) or 'json'",
                     "default": "toon",
                 },
+                "include_tests": {
+                    "type": "boolean",
+                    "description": (
+                        "When true, also return test_caller_files and test_callee_files "
+                        "in the tests bucket (counts are always present)."
+                    ),
+                    "default": False,
+                },
             },
             "required": ["mode"],
             "additionalProperties": False,
@@ -366,6 +414,7 @@ class CodeGraphImpactTool(BaseMCPTool):
         file_path = arguments.get("file_path")
         depth = arguments.get("depth", 5)
         output_format = arguments.get("output_format", "toon")
+        include_tests: bool = bool(arguments.get("include_tests", False))
 
         graph = self.get_call_graph()
         graph.build()
@@ -373,7 +422,9 @@ class CodeGraphImpactTool(BaseMCPTool):
         if mode == "function_impact":
             if not func_name:
                 raise ValueError("function_name required for function_impact mode")
-            result = self._function_impact(graph, func_name, file_path, depth)
+            result = self._function_impact(
+                graph, func_name, file_path, depth, include_tests
+            )
         elif mode == "blast_radius":
             result = _blast_radius_for_functions(
                 graph, arguments["function_names"], file_path, depth
@@ -381,7 +432,7 @@ class CodeGraphImpactTool(BaseMCPTool):
         elif mode == "risk_score":
             if not func_name:
                 raise ValueError("function_name required for risk_score mode")
-            result = _compute_risk_score(graph, func_name, file_path)
+            result = _compute_risk_score(graph, func_name, file_path, include_tests)
         else:
             raise ValueError(f"Unknown mode: {mode}")
 
@@ -407,16 +458,19 @@ class CodeGraphImpactTool(BaseMCPTool):
         func_name: str,
         file_path: str | None,
         depth: int,
+        include_tests: bool = False,
     ) -> dict[str, Any]:
         direct_callers = graph.callers_of(func_name, file_path)
         direct_callees = graph.callees_of(func_name, file_path)
         transitive_callers = _compute_transitive_callers(
-            graph, func_name, file_path, max_depth=depth
+            graph, func_name, file_path, max_depth=depth, include_tests=include_tests
         )
         transitive_callees = _compute_transitive_callees(
-            graph, func_name, file_path, max_depth=depth
+            graph, func_name, file_path, max_depth=depth, include_tests=include_tests
         )
-        risk = _compute_risk_score(graph, func_name, file_path)
+        risk = _compute_risk_score(
+            graph, func_name, file_path, include_tests=include_tests
+        )
 
         caller_files = {c.get("file", "") for c in direct_callers}
         callee_files = {c.get("file", "") for c in direct_callees}

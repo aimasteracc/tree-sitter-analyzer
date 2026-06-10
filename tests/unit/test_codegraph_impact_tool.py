@@ -14,6 +14,7 @@ from tree_sitter_analyzer.mcp.tools.codegraph_impact_tool import (
     _compute_risk_score,
     _compute_transitive_callees,
     _compute_transitive_callers,
+    _partition_refs,
 )
 
 
@@ -115,7 +116,8 @@ class TestRiskScore:
         graph.callee_refs_of.return_value = callees
         graph.call_chain.return_value = [{"depth": 3}]
         result = _compute_risk_score(graph, "core_fn")
-        assert result["score"] >= 40
+        # fan_in=12(+35) + cross_file=12(+25) + fan_out=1(+0) + cross_callees=1(+5) + depth=3(+0) = 65
+        assert result["score"] == 65
         assert result["factors"]["fan_in"] == 12
 
     def test_critical_risk(self):
@@ -128,7 +130,8 @@ class TestRiskScore:
         graph.callee_refs_of.return_value = callees
         graph.call_chain.return_value = [{"depth": 5}]
         result = _compute_risk_score(graph, "api_handler")
-        assert result["score"] >= 60
+        # fan_in=15(+35) + cross_file=15(+25) + fan_out=8(+10) + cross_callees=8(+15) + depth=5(+5) = 90
+        assert result["score"] == 90
         assert result["level"] == "critical"
 
 
@@ -256,3 +259,193 @@ class TestFunctionImpactListCap:
         assert len(result["direct_callers"]) == 3
         assert result["direct_caller_count"] == 3
         assert result["lists_truncated"] is False
+
+
+class TestImpactTestPartition:
+    """RFC-0014 Phase A: DF-16 test-noise partition for nav action=impact."""
+
+    def test_partition_refs_splits_prod_and_test(self):
+        """_partition_refs correctly classifies by is_test_file path."""
+        prod_ref = _make_func("real_caller", "src/other.py")
+        test_ref = _make_func("test_foo", "tests/test_mod.py")
+        prod, test = _partition_refs([prod_ref, test_ref])
+        assert len(prod) == 1
+        assert len(test) == 1
+        assert prod[0].file_path == "src/other.py"
+        assert test[0].file_path == "tests/test_mod.py"
+
+    def test_partition_refs_empty_list(self):
+        """Empty list → both buckets empty."""
+        prod, test = _partition_refs([])
+        assert prod == []
+        assert test == []
+
+    def test_risk_score_excludes_test_callers(self):
+        """12 test + 1 prod caller → fan_in=1, score=0, level='low'."""
+        graph = MagicMock()
+        func = _make_func("my_fn", "src/mymodule.py")
+        test_callers = [
+            _make_func(f"test_{i}", "tests/test_mod.py", i) for i in range(12)
+        ]
+        prod_callers = [_make_func("real_caller", "src/other.py")]
+        graph.resolve_targets.return_value = [func]
+        graph.caller_refs_of.return_value = test_callers + prod_callers
+        graph.callee_refs_of.return_value = []
+        graph.call_chain.return_value = []
+        result = _compute_risk_score(graph, "my_fn")
+        assert result["score"] == 0
+        assert result["level"] == "low"
+        assert result["tests"]["test_callers_count"] == 12
+        assert result["tests"]["test_callees_count"] == 0
+
+    def test_risk_score_all_prod_callers_score_60(self):
+        """12 prod callers from 12 distinct files → score==60 exactly.
+
+        fan_in=12(+35) + cross_file=12(+25) + fan_out=0(+0) + cross_callees=0(+0) +
+        depth=0(+0) = 60. Tests bucket has count 0.
+        """
+        graph = MagicMock()
+        func = _make_func("core_fn", "src/core.py")
+        callers = [_make_func(f"c_{i}", f"src/mod_{i}.py", i) for i in range(12)]
+        graph.resolve_targets.return_value = [func]
+        graph.caller_refs_of.return_value = callers
+        graph.callee_refs_of.return_value = []
+        graph.call_chain.return_value = []
+        result = _compute_risk_score(graph, "core_fn")
+        assert result["score"] == 60
+        assert result["level"] == "critical"
+        assert result["tests"]["test_callers_count"] == 0
+
+    def test_df16_scenario(self):
+        """DF-16: 16 test + 2 prod callers → partitioned score == 0, level 'low'.
+
+        Unpartitioned would give fan_in=18(+35) → score 35 = 'high'.
+        Partitioned: fan_in=2(<3→+0), cross_file=1(<2→+0), fan_out=0→0 = score 0.
+        """
+        graph = MagicMock()
+        func = _make_func("target_fn", "src/target.py")
+        test_callers = [
+            _make_func(f"test_fake_{i}", "tests/test_fakes.py", i) for i in range(16)
+        ]
+        prod_callers = [
+            _make_func("real_a", "src/module_a.py"),
+            _make_func("real_b", "src/module_a.py"),  # same file: cross_file=1
+        ]
+        graph.resolve_targets.return_value = [func]
+        graph.caller_refs_of.return_value = test_callers + prod_callers
+        graph.callee_refs_of.return_value = []
+        graph.call_chain.return_value = []
+        result = _compute_risk_score(graph, "target_fn")
+        # prod fan_in=2(<3→+0), prod cross_file=1(<2→+0), fan_out=0 → score=0
+        assert result["score"] == 0
+        assert result["level"] == "low"
+        assert result["tests"]["test_callers_count"] == 16
+        assert result["tests"]["test_callees_count"] == 0
+
+    def test_tests_bucket_always_present_when_zero(self):
+        """tests dict always present; both counts == 0 for isolated function."""
+        graph = MagicMock()
+        func = _make_func("isolated", "src/foo.py")
+        graph.resolve_targets.return_value = [func]
+        graph.caller_refs_of.return_value = []
+        graph.callee_refs_of.return_value = []
+        graph.call_chain.return_value = []
+        result = _compute_risk_score(graph, "isolated")
+        assert "tests" in result
+        assert result["tests"]["test_callers_count"] == 0
+        assert result["tests"]["test_callees_count"] == 0
+
+    def test_include_tests_false_omits_file_lists(self):
+        """Default (include_tests=False): tests bucket has counts only, no file lists."""
+        graph = MagicMock()
+        func = _make_func("fn", "src/a.py")
+        test_callers = [_make_func("t1", "tests/test_a.py")]
+        graph.resolve_targets.return_value = [func]
+        graph.caller_refs_of.return_value = test_callers
+        graph.callee_refs_of.return_value = []
+        graph.call_chain.return_value = []
+        result = _compute_risk_score(graph, "fn", include_tests=False)
+        assert result["tests"]["test_callers_count"] == 1
+        assert "test_caller_files" not in result["tests"]
+        assert "test_callee_files" not in result["tests"]
+
+    def test_include_tests_true_adds_file_lists(self):
+        """include_tests=True: file lists appear, sorted and deduplicated."""
+        graph = MagicMock()
+        func = _make_func("fn", "src/a.py")
+        test_callers = [
+            _make_func("t1", "tests/test_a.py"),
+            _make_func("t2", "tests/test_a.py"),  # same file — should dedup
+            _make_func("t3", "tests/test_b.py"),
+        ]
+        test_callees = [_make_func("mock_dep", "tests/fixtures/mock.py")]
+        graph.resolve_targets.return_value = [func]
+        graph.caller_refs_of.return_value = test_callers
+        graph.callee_refs_of.return_value = test_callees
+        graph.call_chain.return_value = []
+        result = _compute_risk_score(graph, "fn", include_tests=True)
+        assert result["tests"]["test_callers_count"] == 3
+        assert result["tests"]["test_callees_count"] == 1
+        assert result["tests"]["test_caller_files"] == [
+            "tests/test_a.py",
+            "tests/test_b.py",
+        ]
+        assert result["tests"]["test_callee_files"] == ["tests/fixtures/mock.py"]
+
+    def test_schema_declares_include_tests(self):
+        """include_tests must be in schema properties (P1-2: _project_args whitelist)."""
+        tool = CodeGraphImpactTool()
+        schema = tool.get_tool_schema()
+        assert "include_tests" in schema["properties"]
+        # Must NOT be in required (the required-trap)
+        assert "include_tests" not in schema.get("required", [])
+
+    def test_transitive_callers_filters_tests_by_default(self):
+        """_compute_transitive_callers(include_tests=False) excludes test-file entries."""
+        graph = MagicMock()
+        func = _make_func("fn", "src/a.py")
+        prod_caller = _make_func("prod_c", "src/b.py")
+        test_caller = _make_func("test_c", "tests/test_a.py")
+        graph.resolve_targets.return_value = [func]
+        callers_map = {
+            func: [prod_caller, test_caller],
+            prod_caller: [],
+            test_caller: [],
+        }
+        graph.caller_refs_of.side_effect = lambda f: callers_map.get(f, [])
+        result = _compute_transitive_callers(graph, "fn", include_tests=False)
+        assert len(result) == 1
+        assert result[0]["name"] == "prod_c"
+
+    def test_transitive_callers_include_tests_true(self):
+        """_compute_transitive_callers(include_tests=True) includes test-file entries."""
+        graph = MagicMock()
+        func = _make_func("fn", "src/a.py")
+        prod_caller = _make_func("prod_c", "src/b.py")
+        test_caller = _make_func("test_c", "tests/test_a.py")
+        graph.resolve_targets.return_value = [func]
+        callers_map = {
+            func: [prod_caller, test_caller],
+            prod_caller: [],
+            test_caller: [],
+        }
+        graph.caller_refs_of.side_effect = lambda f: callers_map.get(f, [])
+        result = _compute_transitive_callers(graph, "fn", include_tests=True)
+        assert len(result) == 2
+
+    def test_transitive_callees_filters_tests_by_default(self):
+        """_compute_transitive_callees(include_tests=False) excludes test-file entries."""
+        graph = MagicMock()
+        func = _make_func("fn", "src/a.py")
+        prod_callee = _make_func("real_dep", "src/c.py")
+        test_callee = _make_func("fake_dep", "tests/fixtures/mock.py")
+        graph.resolve_targets.return_value = [func]
+        callees_map = {
+            func: [prod_callee, test_callee],
+            prod_callee: [],
+            test_callee: [],
+        }
+        graph.callee_refs_of.side_effect = lambda f: callees_map.get(f, [])
+        result = _compute_transitive_callees(graph, "fn", include_tests=False)
+        assert len(result) == 1
+        assert result[0]["name"] == "real_dep"
