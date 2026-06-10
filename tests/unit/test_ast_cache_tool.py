@@ -254,7 +254,9 @@ class TestExecute:
     @pytest.mark.asyncio
     async def test_index_project(self, tool_with_mock_cache):
         tool, mock_cache = tool_with_mock_cache
-        mock_cache.index_project.return_value = {"files_indexed": 50}
+        mock_cache.index_project.return_value = {"indexed": 50}
+        # DF-9: verify get_stats is called to retrieve total symbol count
+        mock_cache.get_stats.return_value = {"total_symbols": 100, "total_files": 50}
         result = await tool.execute({"mode": "index", "max_files": 100, "force": True})
         assert result["success"] is True
         mock_cache.index_project.assert_called_once_with(
@@ -262,6 +264,8 @@ class TestExecute:
             force=True,
             include_activation=False,
         )
+        # DF-9: verify summary includes the symbol count
+        assert "symbols=100" in result["summary_line"]
 
     @pytest.mark.asyncio
     async def test_index_project_can_include_activation(self, tool_with_mock_cache):

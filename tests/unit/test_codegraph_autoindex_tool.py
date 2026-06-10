@@ -76,3 +76,13 @@ class TestExecute:
             {"mode": "reset", "output_format": "json"}
         )
         assert result["success"] is True
+
+    async def test_warm_mode_returns_indexed_true(self, tool_with_root):
+        # DF-8: verify warm mode returns indexed=true and cache_stats after successful index
+        result = await tool_with_root.execute(
+            {"mode": "warm", "max_files": 100, "output_format": "json"}
+        )
+        assert result["success"] is True
+        assert result["indexed"] is True
+        assert result["cache_stats"] is not None
+        assert isinstance(result["cache_stats"], dict)
