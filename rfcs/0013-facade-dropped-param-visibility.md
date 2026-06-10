@@ -3,7 +3,7 @@
 - **Status**: draft
 - **Author(s)**: @aimasteracc
 - **Created**: 2026-06-09
-- **Last updated**: 2026-06-09
+- **Last updated**: 2026-06-10 (adversarial review round 1 — opencode fallback)
 - **Tracking issue**: TBD
 - **Affected source paths** (pin them — reviewers watch for drift here):
   - `tree_sitter_analyzer/mcp/tools/facade_tool.py` (`_project_args`, `execute`)
@@ -47,12 +47,32 @@ the agent; the cost is acting on bad scope. Making drops visible fixes viz-08
 (`inner_props`) and the cleaned caller args. It currently returns only the
 whitelisted subset. We additionally compute the **dropped set**:
 
-```python
-# facade control keys (action/scope/mode/output_format/compact_only/...) are
-# infrastructure, never "intent" — they must NOT be reported as ignored.
-_NEVER_REPORT = _FACADE_CONTROL_KEYS | {"output_format", "compact_only"}
+Reality check (facade_tool.py today): `_FACADE_CONTROL_KEYS` is **only**
+`frozenset({"action"})`. `scope` / `mode` are facade-level discriminators
+declared in `_CORE_FACADE_PARAMS` — they are *not* control keys, and
+`output_format` / `compact_only` are envelope-formatting params consumed at
+the response boundary (RFC-0012), not by inners. So the never-report set must
+enumerate them **explicitly** — deriving it from `_FACADE_CONTROL_KEYS` alone
+would falsely report `scope`/`mode`/`output_format`/`compact_only` as ignored
+caller intent:
 
-def _project_args(self, inner, args):
+```python
+# Never report these as "ignored": action routes; scope/mode are facade-level
+# discriminators (validated downstream); output_format/compact_only are
+# envelope formatting (RFC-0012) consumed after the inner returns.
+_NEVER_REPORT: frozenset[str] = _FACADE_CONTROL_KEYS | frozenset(
+    {"scope", "mode", "output_format", "compact_only"}
+)
+
+def _project_args(
+    self, inner: BaseMCPTool, args: dict[str, Any]
+) -> tuple[dict[str, Any], list[str]]:
+    # NOTE the signature change: dict -> (dict, list). _project_args has
+    # exactly ONE caller today (execute, ~line 342), which unpacks the pair;
+    # the return type annotation changes with it.
+    # cleaned strips CONTROL keys only (routing infra); _NEVER_REPORT is a
+    # *reporting* filter applied to the dropped list below — two different
+    # sets doing two different jobs.
     cleaned = {k: v for k, v in args.items() if k not in _FACADE_CONTROL_KEYS}
     inner_props = self._inner_property_names(inner)
     # ... existing R3 normalize (symbol->function_name / ->class_name) ...
@@ -85,13 +105,23 @@ if dropped and isinstance(result, dict) and result.get("success") is not False:
             f" action={arguments.get('action')}' and were ignored: {dropped}. "
             "The result is NOT scoped by them."
         )
-        summary["next_step"] = (note + " " + summary.get("next_step", "")).strip()
-    result.setdefault("verdict", result.get("verdict", "INFO"))
+        # next_step carries no type contract today; only prepend when it is
+        # a string (or absent) — never crash annotating a success result.
+        prev = summary.get("next_step", "")
+        if isinstance(prev, str):
+            summary["next_step"] = (note + " " + prev).strip()
+    result.setdefault("verdict", "INFO")
 return result
 ```
 
+The annotation is synchronous code after the single `await inner.execute(...)`
+in an already-`async` method — no new awaits, no shared mutable state, so no
+concurrency surface is added.
+
 Bespoke routes (`_clean_bespoke_args`) own their own arg handling and are **out
-of scope** (they do not whitelist, so they drop nothing).
+of scope**. (Precision: `_clean_bespoke_args` does strip `_FACADE_CONTROL_KEYS`
+— i.e. `action` — and applies R3 normalize; but bespoke handlers accept the
+remaining args themselves, so there is no whitelist drop to report.)
 
 ### MCP surface (facade + action)
 
@@ -147,8 +177,10 @@ the MCP facade reports it in `ignored_params`.
 
 - **Unit**: `_project_args` returns `(projected, dropped)`; a caller param absent
   from the inner schema (and not a control key) appears in `dropped`.
-- **Unit**: control keys (`action`/`scope`/`mode`/`output_format`/`compact_only`)
-  never appear in `dropped`.
+- **Unit**: the explicit `_NEVER_REPORT` set (`action` + `scope`/`mode`/
+  `output_format`/`compact_only`) never appears in `dropped` — pinned against
+  the real `_FACADE_CONTROL_KEYS` (which contains only `action`), so the test
+  fails if the two sets drift apart.
 - **Unit**: `execute` attaches `ignored_params` + annotates `agent_summary.next_step`
   on a success result; does NOT attach when nothing was dropped (byte-identical).
 - **Integration (viz-08)**: `viz action=uml file_path="does/not/exist.py"` →
@@ -161,7 +193,7 @@ the MCP facade reports it in `ignored_params`.
 
 ## Acceptance criteria
 
-- [ ] `_project_args` returns `(projected, dropped)`; `_NEVER_REPORT` excludes control keys.
+- [ ] `_project_args` returns `(projected, dropped)` (signature + annotation change, single caller updated); `_NEVER_REPORT` explicitly enumerates `action`/`scope`/`mode`/`output_format`/`compact_only`.
 - [ ] `execute` attaches `ignored_params` + next_step note on success when params were dropped.
 - [ ] Default path (nothing dropped) is byte-identical (existing goldens untouched).
 - [ ] viz-08 integration test green (uml reports `ignored_params`).
