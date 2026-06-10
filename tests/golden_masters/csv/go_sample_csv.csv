@@ -23,6 +23,6 @@ Method,Start,():,public,221-226,1,-
 Method,worker,():,private,229-234,1,-
 Method,Submit,(func():job):,public,237-239,1,-
 Method,Shutdown,():,public,242-245,1,-
-Method,Chain,():Middleware,public,257-264,1,-
+Method,Chain,(...Middleware:middlewares):Middleware,public,257-264,1,-
 Method,WithTimeout,(time.Duration:timeout):Middleware,public,267-275,1,-
 Method,WithRetry,(int:maxRetries):Middleware,public,278-293,1,-

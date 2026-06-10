@@ -242,7 +242,11 @@ def extract_php_method_element(
         params_node = node.child_by_field_name("parameters")
         if params_node:
             for param in params_node.children:
-                if param.type in ("simple_parameter", "property_promotion_parameter"):
+                if param.type in (
+                    "simple_parameter",
+                    "property_promotion_parameter",
+                    "variadic_parameter",  # Theme E (2026-06-10): ...$arg
+                ):
                     parameters.append(get_node_text(param))
 
         return_type = "void"
@@ -286,7 +290,10 @@ def extract_php_function_element(
         params_node = node.child_by_field_name("parameters")
         if params_node:
             for param in params_node.children:
-                if param.type == "simple_parameter":
+                if param.type in (
+                    "simple_parameter",
+                    "variadic_parameter",  # Theme E (2026-06-10): ...$arg
+                ):
                     parameters.append(get_node_text(param))
 
         return_type = "void"

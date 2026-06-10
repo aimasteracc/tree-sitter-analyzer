@@ -6,12 +6,19 @@ from typing import Any
 
 
 def extract_parameters(node: Any, get_node_text: Callable[..., str]) -> list[str]:
-    """Extract function/method parameters."""
+    """Extract function/method parameters.
+
+    Theme E (2026-06-10): also capture ``variadic_parameter_declaration``
+    nodes (e.g. ``numbers ...int``) which were previously silently dropped.
+    """
     parameters: list[str] = []
     params_node = node.child_by_field_name("parameters")
     if params_node:
         for child in params_node.children:
-            if child.type == "parameter_declaration":
+            if child.type in (
+                "parameter_declaration",
+                "variadic_parameter_declaration",
+            ):
                 parameters.append(get_node_text(child))
     return parameters
 
