@@ -209,11 +209,16 @@ class RubyElementExtractor(ElementExtractor):
         for child in class_node.children:
             if child.type != "superclass":
                 continue
-            if not child.children:
-                continue
-            superclass_node = child.children[0]
-            text = self._get_node_text_optimized(superclass_node)
-            return str(text) if text else None
+            # Theme-C (2026-06-10): children[0] is the ``<`` OPERATOR token —
+            # the old code returned superclass="<" for every subclass. The
+            # real name is the first non-operator child (a constant, or a
+            # scope_resolution for ``Base::Animal``).
+            for sub in child.children:
+                if sub.type == "<":
+                    continue
+                text = self._get_node_text_optimized(sub)
+                return str(text) if text else None
+            return None
         return None
 
     def extract_functions(

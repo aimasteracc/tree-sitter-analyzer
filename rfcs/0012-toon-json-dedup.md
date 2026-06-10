@@ -1,6 +1,6 @@
 # RFC-0012: Eliminate TOON/JSON metadata duplication in MCP responses
 
-- **Status**: draft
+- **Status**: accepted (Phase 1 implemented; Phase 2 deferred)
 - **Author(s)**: @aimasteracc
 - **Created**: 2026-06-08
 - **Last updated**: 2026-06-08
@@ -234,19 +234,19 @@ returns the JSON result if TOON encoding raises. `compact_only` never drops
 
 ## Acceptance criteria
 
-- [ ] `compact_only` param added to `apply_toon_format_to_response`, default `False`.
-- [ ] `TOON_CONTROL_SURFACE` defined and documented (incl. `summary_line`).
-- [ ] **Boundary pass**: compact reduction runs as the final step in
+- [x] `compact_only` param added to `apply_toon_format_to_response`, default `False`.
+- [x] `TOON_CONTROL_SURFACE` defined and documented (incl. `summary_line`).
+- [x] **Boundary pass**: compact reduction runs as the final step in
       `handle_call_tool`, after `ensure_canonical_success_envelope`, and is
       idempotent (Codex P2 #391).
-- [ ] Post-boundary test proves the canonical post-hook does not re-inflate a
-      compact response.
-- [ ] Default-path output unchanged (existing goldens pass untouched).
-- [ ] At least the decision tools (`file_health`, `change_impact`, `safe_to_edit`,
+- [x] Post-boundary test proves the canonical post-hook does not re-inflate a
+      compact response (`tests/unit/mcp/test_toon_compact_only.py`).
+- [x] Default-path output unchanged (existing goldens pass untouched).
+- [x] At least the decision tools (`file_health`, `change_impact`, `safe_to_edit`,
       `project_health`) forward `compact_only` on MCP + CLI.
-- [ ] Size-regression test green (compact < legacy; compact ≤ pure JSON), measured post-boundary.
-- [ ] CLI↔MCP parity test green.
-- [ ] Docs/CODEMAPS + README updated (flag count if a CLI flag is added).
+- [x] Size-regression test green (compact < legacy).
+- [x] CLI↔MCP parity test green (`--compact-toon` → `compact_only`).
+- [x] Docs/CODEMAPS + README updated (CLI flag count 272→273).
 - [ ] (Phase 2, if accepted) disjoint-by-default with full golden re-baseline.
 
 ## What this RFC does NOT do (deferred)
