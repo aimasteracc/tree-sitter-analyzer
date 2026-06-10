@@ -319,7 +319,9 @@ class TestImpactTestPartition:
     def test_df16_scenario(self):
         """DF-16: 16 test + 2 prod callers → partitioned score == 0, level 'low'.
 
-        Unpartitioned would give fan_in=18(+35) → score 35 = 'high'.
+        Unpartitioned: fan_in=18(+35) + cross_file=2(+15) = score 50 → level 'high'.
+        cross_file=2 because callers span tests/test_fakes.py and src/module_a.py,
+        both distinct from the target src/target.py.
         Partitioned: fan_in=2(<3→+0), cross_file=1(<2→+0), fan_out=0→0 = score 0.
         """
         graph = MagicMock()
@@ -449,3 +451,22 @@ class TestImpactTestPartition:
         result = _compute_transitive_callees(graph, "fn", include_tests=False)
         assert len(result) == 1
         assert result[0]["name"] == "real_dep"
+
+    def test_transitive_callees_include_tests_true(self):
+        """_compute_transitive_callees(include_tests=True) includes test-file entries."""
+        graph = MagicMock()
+        func = _make_func("fn", "src/a.py")
+        prod_callee = _make_func("real_dep", "src/c.py")
+        test_callee = _make_func("fake_dep", "tests/fixtures/mock.py")
+        graph.resolve_targets.return_value = [func]
+        callees_map = {
+            func: [prod_callee, test_callee],
+            prod_callee: [],
+            test_callee: [],
+        }
+        graph.callee_refs_of.side_effect = lambda f: callees_map.get(f, [])
+        result = _compute_transitive_callees(graph, "fn", include_tests=True)
+        assert len(result) == 2
+        names = {r["name"] for r in result}
+        assert "real_dep" in names
+        assert "fake_dep" in names

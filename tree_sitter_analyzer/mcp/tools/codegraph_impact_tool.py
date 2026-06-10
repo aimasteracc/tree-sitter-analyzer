@@ -386,8 +386,11 @@ class CodeGraphImpactTool(BaseMCPTool):
                 "include_tests": {
                     "type": "boolean",
                     "description": (
-                        "When true, also return test_caller_files and test_callee_files "
-                        "in the tests bucket (counts are always present)."
+                        "Applies to function_impact and risk_score modes only "
+                        "(not blast_radius). When true, also return "
+                        "test_caller_files and test_callee_files in the tests "
+                        "bucket. Counts (test_callers_count, test_callees_count) "
+                        "are always present in the tests bucket for those modes."
                     ),
                     "default": False,
                 },
