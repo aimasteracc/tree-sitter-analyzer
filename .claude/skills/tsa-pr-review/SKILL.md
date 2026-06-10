@@ -1,13 +1,13 @@
 ---
 name: tsa-pr-review
-version: 1.0.0
+version: 2.0.0
 description: |
   AST-grounded PR / diff review. One workflow → per-file risk ranking, blast
   radius per changed symbol, the exact pytest command to gate merge, any
   architecture-constraint violations, and a final BLOCK / REVIEW / APPROVE
   verdict — in ~1–2k tokens and 4–6 MCP calls.
 
-  Goes beyond a generic LLM diff-read because only TSA's `analyze_change_impact`
+  Goes beyond a generic LLM diff-read because only TSA's `edit action=impact`
   returns a deterministic `verification_command` + `queue_ledger`, and only the
   persisted call graph can enumerate true callers/callees of changed symbols.
   (Per `docs/internal/COMPETITOR_HEAD_TO_HEAD_2026-05-23.md`: CodeGraphContext
@@ -24,9 +24,9 @@ description: |
   - Pre-merge gate in CI / agent loops
   - Right after `/ship` produced a diff and before `/land`
 
-  Workflow: fan-out (pr_review + change_impact + check_constraints) → per-file
-  fan-out (safe_to_edit) → per-symbol fan-out (callers + callees) → fold into
-  a verdict-ranked report.
+  Workflow: fan-out (edit action=pr + edit action=impact + edit action=constraints)
+  → per-file fan-out (edit action=safe) → per-symbol fan-out (nav action=callers
+  + nav action=callees) → fold into a verdict-ranked report.
 allowed-tools:
   - mcp__tree-sitter-analyzer__edit
   - mcp__tree-sitter-analyzer__nav
@@ -55,15 +55,15 @@ allowed-tools:
 
 ## Why this beats a generic LLM diff-read
 
-| Concern                          | LLM-only diff read   | tsa-pr-review                            |
-|----------------------------------|----------------------|------------------------------------------|
-| Classify signature vs body change| Heuristic            | `codegraph_pr_review` AST diff           |
-| Exact tests to run               | Invented / hallucinated | `analyze_change_impact.verification_command` |
-| Caller blast radius              | Grep guess           | `codegraph_callers` from persisted graph |
-| Callee regression surface        | Read N files         | `codegraph_callees` from persisted graph |
-| Architecture rule violations     | None                 | `check_constraints` vs YAML rules        |
-| Per-file pre-merge verdict       | Subjective           | `safe_to_edit` SAFE/REVIEW/CAUTION/UNSAFE|
-| Behaviour on Python 3.14         | n/a                  | Stable (grep-ast crashes, cgc silent-0)  |
+| Concern                          | LLM-only diff read   | tsa-pr-review                               |
+|----------------------------------|----------------------|---------------------------------------------|
+| Classify signature vs body change| Heuristic            | `edit action=pr` AST diff                   |
+| Exact tests to run               | Invented / hallucinated | `edit action=impact verification_command` |
+| Caller blast radius              | Grep guess           | `nav action=callers` from persisted graph   |
+| Callee regression surface        | Read N files         | `nav action=callees` from persisted graph   |
+| Architecture rule violations     | None                 | `edit action=constraints` vs YAML rules     |
+| Per-file pre-merge verdict       | Subjective           | `edit action=safe` SAFE/REVIEW/CAUTION/UNSAFE|
+| Behaviour on Python 3.14         | n/a                  | Stable (grep-ast crashes, cgc silent-0)     |
 
 (Source: `docs/internal/COMPETITOR_HEAD_TO_HEAD_2026-05-23.md` — the 4
 fault-tolerance advantages: oracle-consistent AST, indexed-not-silent,
@@ -75,35 +75,35 @@ Python 3.14-safe, no external DB dependency.)
 
 In one message, call all three:
 
-1. `codegraph_pr_review(mode="staged")` — AST diff classification, per-symbol
+1. `edit action=pr mode="staged"` — AST diff classification, per-symbol
    change category (signature_change / body_change / new_symbol / deletion),
    and per-file changed-symbol list.
-   - For PR URL: `codegraph_pr_review(mode="pr", pr_url="<url>")`
+   - For PR URL: `edit action=pr mode="pr" pr_url="<url>"`
    - For unstaged: `mode="diff"`; for branch-vs-main: `mode="branch"`
-2. `analyze_change_impact(mode="staged")` — returns `verification_command`,
+2. `edit action=impact mode="staged"` — returns `verification_command`,
    `queue_ledger` (in-scope vs out-of-scope dirty files), `pytest_required`,
    and per-file impact rows.
-3. `check_constraints()` — full repo audit against `architectural-constraints.yml`,
+3. `edit action=constraints` — full repo audit against `architectural-constraints.yml`,
    filtered to files the diff touches if you want noise-free output:
-   `check_constraints(path_filter="<glob covering changed files>")`.
+   `edit action=constraints path_filter="<glob covering changed files>"`.
 
 ### Step 2 — Per-file fan-out (parallel, N calls)
 
 For each changed file from Step 1, call:
 
-`safe_to_edit(file_path="<abs>", edit_type="<refactor|rename|delete|bugfix>")`
+`edit action=safe file_path="<abs>" edit_type="<refactor|rename|delete|bugfix>"`
 
 Pick `edit_type` from the dominant change category in Step 1's
-`codegraph_pr_review` output. Returns per-file verdict + `risk_factors`.
+`edit action=pr` output. Returns per-file verdict + `risk_factors`.
 
 ### Step 3 — Per-symbol fan-out (parallel, ≤2N calls)
 
 For each *changed signature* (not body-only) symbol from Step 1, fan out
 two calls:
 
-- `codegraph_callers(function_name="<sym>", language="<lang>", limit=20)`
+- `nav action=callers function_name="<sym>" language="<lang>" limit=20`
   — who depends on this; the blast radius if its signature moved.
-- `codegraph_callees(function_name="<sym>", language="<lang>", limit=20)`
+- `nav action=callees function_name="<sym>" language="<lang>" limit=20`
   — what it calls; the regression surface if its body changed.
 
 Filter callers/callees where `callee_resolution == "stdlib"` or `"unknown"` —
@@ -113,9 +113,9 @@ they're noise for blast-radius scoring (per tsa-graph guidance).
 
 ```
 verdict_precedence (worst wins):
-  - BLOCK   ← any check_constraints violation with severity=error
-              OR any safe_to_edit verdict == UNSAFE
-  - REVIEW  ← any safe_to_edit verdict in {REVIEW, CAUTION}
+  - BLOCK   ← any edit action=constraints violation with severity=error
+              OR any edit action=safe verdict == UNSAFE
+  - REVIEW  ← any edit action=safe verdict in {REVIEW, CAUTION}
               OR pytest_required=true with no nearby tests
               OR signature_change with ≥5 external callers
   - APPROVE ← all per-file verdicts == SAFE,
@@ -140,7 +140,7 @@ git -C /Users/aisheng.yu/git-private/tree-sitter-analyzer diff HEAD~2 HEAD --nam
 
 ```yaml
 # Call 1
-codegraph_pr_review(mode="branch", include_call_graph=true, output_format="json")
+edit action=pr mode="branch" include_call_graph=true
 # returns:
 #   changed_files:
 #     - path: ".../safe_to_edit_tool.py"
@@ -155,7 +155,7 @@ codegraph_pr_review(mode="branch", include_call_graph=true, output_format="json"
 #           category: "body_change"
 
 # Call 2
-analyze_change_impact(mode="branch", agent_summary_only=true)
+edit action=impact mode="branch" agent_summary_only=true
 # returns:
 #   verification_command: "uv run pytest tests/unit/test_safe_to_edit_tool.py
 #                          tests/unit/test_change_impact_tool.py -q"
@@ -165,7 +165,7 @@ analyze_change_impact(mode="branch", agent_summary_only=true)
 #     out_of_scope_dirty: []
 
 # Call 3
-check_constraints(path_filter="tree_sitter_analyzer/mcp/**")
+edit action=constraints path_filter="tree_sitter_analyzer/mcp/**"
 # returns:
 #   verdict: SAFE
 #   violations: []
@@ -174,18 +174,18 @@ check_constraints(path_filter="tree_sitter_analyzer/mcp/**")
 ### Per-file fan-out
 
 ```yaml
-safe_to_edit(file_path=".../safe_to_edit_tool.py", edit_type="refactor")
+edit action=safe file_path=".../safe_to_edit_tool.py" edit_type="refactor"
 # → verdict: REVIEW, risk_factors: [{factor: "high_caller_count", ...}]
-safe_to_edit(file_path=".../change_impact_tool.py", edit_type="bugfix")
+edit action=safe file_path=".../change_impact_tool.py" edit_type="bugfix"
 # → verdict: SAFE
 ```
 
 ### Per-symbol fan-out (only the signature-change)
 
 ```yaml
-codegraph_callers(function_name="_score_risk", language="python", limit=20)
+nav action=callers function_name="_score_risk" language="python" limit=20
 # → 7 callers; 6 in tests/, 1 in cli/commands/mcp_commands.py
-codegraph_callees(function_name="_score_risk", language="python", limit=20)
+nav action=callees function_name="_score_risk" language="python" limit=20
 # → 4 callees; all local (good — no stdlib noise)
 ```
 
@@ -239,7 +239,7 @@ Exit codes mirror `--change-impact` / `--check-constraints`:
 - DO NOT ask the LLM to invent the pytest command — quote
   `verification_command` verbatim. r36 / past incidents confirm hallucinated
   pytest invocations skip the regressions TSA already pinpointed.
-- DO NOT skip `check_constraints` because "the LLM can spot architecture
+- DO NOT skip `edit action=constraints` because "the LLM can spot architecture
   drift". It can't — the rules live in YAML and are evaluated against the
   persisted edge graph.
 - DO NOT run callers/callees on body-only changes. Bodies don't change
@@ -271,7 +271,7 @@ files:
 constraint_violations: [
   {rule_id, caller_file, caller_line, callee_file, severity, reason}
 ]
-verification_command: <copy-paste exact pytest line from change_impact>
+verification_command: <copy-paste exact pytest line from edit action=impact>
 pytest_required: bool
 queue_ledger:
   in_scope: [<path>]

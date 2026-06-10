@@ -1,6 +1,6 @@
 ---
 name: tsa-edit-safety
-version: 1.0.0
+version: 2.0.0
 description: |
   Pre-edit safety check using tree-sitter-analyzer. One workflow → verdict
   (SAFE/REVIEW/CAUTION/UNSAFE) + verification command + risk factors → ≤2k
@@ -13,8 +13,9 @@ description: |
   - Asked "is it safe to change X?" or "what breaks if I touch Y?"
   - Before approving a code review
 
-  Workflow: 2-3 parallel MCP calls (safe_to_edit + change_impact + file_health),
-  fold the verdicts, surface the exact `verification_command` and stop_condition.
+  Workflow: 2-3 parallel MCP calls (edit action=safe + edit action=impact +
+  health action=file), fold the verdicts, surface the exact
+  `verification_command` and stop_condition.
 allowed-tools:
   - mcp__tree-sitter-analyzer__edit
   - mcp__tree-sitter-analyzer__health
@@ -45,9 +46,9 @@ allowed-tools:
 
 Call these 3 tools in ONE message:
 
-1. `safe_to_edit` with `file_path: "<the file>"` and `edit_type: "<refactor|rename|delete|bugfix>"`
-2. `analyze_change_impact` with `mode: "staged"` (or `"branch"` if pre-stage), scope to the file
-3. `check_file_health` with `file_path: "<the file>"`
+1. `edit action=safe` with `file_path: "<the file>"` and `edit_type: "<refactor|rename|delete|bugfix>"`
+2. `edit action=impact` with `mode: "staged"` (or `"branch"` if pre-stage), scope to the file
+3. `health action=file` with `file_path: "<the file>"`
 
 ### Step 2 — Read the verdict cascade
 

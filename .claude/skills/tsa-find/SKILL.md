@@ -1,6 +1,6 @@
 ---
 name: tsa-find
-version: 1.0.0
+version: 2.0.0
 description: |
   Fast file + content search with code-aware sizing. Replaces Read/Grep/find
   for routine "where is this file" / "grep for X" / "show me lines 10-20 of Y"
@@ -31,20 +31,20 @@ allowed-tools:
 
 ## Tool routing
 
-| Question                                  | Tool                    |
-|-------------------------------------------|-------------------------|
-| Filename pattern only                     | `list_files`            |
-| Content pattern only (regex / literal)    | `search_content`        |
-| Filename pattern AND content              | `find_and_grep`         |
-| Read specific lines of one file           | `extract_code_section`  |
-| "Is this file too big to read fully?"     | `check_code_scale`      |
+| Question                                  | Tool                        |
+|-------------------------------------------|-----------------------------|
+| Filename pattern only                     | `project action=files`      |
+| Content pattern only (regex / literal)    | `search action=content`     |
+| Filename pattern AND content              | `search action=grep`        |
+| Read specific lines of one file           | `structure action=read`     |
+| "Is this file too big to read fully?"     | `health action=scale`       |
 
 ## Procedure
 
 ### Single search
 
 ```yaml
-search_content(pattern: "TODO", path: "tree_sitter_analyzer/", file_pattern: "*.py")
+search action=content query="TODO" roots=["tree_sitter_analyzer/"] include_globs=["*.py"]
 ```
 
 Returns: `matches: [{file, line, content}]` with sized previews. Always
@@ -55,14 +55,14 @@ includes file:line so the agent can cite without reading the file.
 Before reading a large file blind, use:
 
 ```yaml
-check_code_scale(file_path: "tree_sitter_analyzer/ast_cache.py")
-# returns {lines: 2144, size_bytes: 79809, is_large: true, recommendation: "use extract_code_section"}
+health action=scale file_path="tree_sitter_analyzer/ast_cache.py"
+# returns {lines: 2144, size_bytes: 79809, is_large: true, recommendation: "use structure action=read"}
 ```
 
 Then extract only what you need:
 
 ```yaml
-extract_code_section(file_path: "...", start_line: 800, end_line: 870)
+structure action=read file_path="..." start_line=800 end_line=870
 ```
 
 Avoids reading 80KB when you need 2KB.
@@ -70,22 +70,20 @@ Avoids reading 80KB when you need 2KB.
 ### Combined find+grep
 
 ```yaml
-find_and_grep(file_pattern: "test_*.py", content_pattern: "def test_synapse")
+search action=grep file_pattern="test_*.py" content_pattern="def test_synapse"
 # returns: list of test functions matching both criteria
 ```
 
 ## CLI equivalents
 
 ```bash
-uv run tree-sitter-analyzer --list-files --extensions py,yml
-uv run tree-sitter-analyzer --search-content "TODO" --include "*.py"
-uv run tree-sitter-analyzer --find-and-grep "test_*.py" "def test_synapse"
-uv run tree-sitter-analyzer <file> --check-scale
-uv run tree-sitter-analyzer <file> --partial-read --start-line 800 --end-line 870
+uv run tree-sitter-analyzer --project-root . --outline   # list project files
+uv run tree-sitter-analyzer --check-tools                # verify fd/rg available
+uv run tree-sitter-analyzer <file> --partial-read        # sized read with --start-line / --end-line
 ```
 
 ## Anti-patterns
 
 - DON'T `Read` a large file before checking scale — burns tokens
-- DON'T `Bash grep -rn` for things `search_content` handles — slower + noisier
+- DON'T `Bash grep -rn` for things `search action=content` handles — slower + noisier
 - DON'T re-search the same query twice in one session — cache the result mentally

@@ -1,6 +1,6 @@
 ---
 name: tsa-deps
-version: 1.0.0
+version: 2.0.0
 description: |
   Dependency / import graph analysis. Answer "what does this file import",
   "what imports this module", "what's the project's import topology",
@@ -26,18 +26,18 @@ allowed-tools:
 
 ## Tool routing
 
-| Question                                | Tool                          |
-|-----------------------------------------|-------------------------------|
-| One file's direct deps                  | `analyze_dependencies`        |
-| Project-wide import graph (who imports whom) | `codegraph_import_graph` |
-| Project topology (entry points, hubs)   | `codegraph_sitemap`           |
+| Question                                | Tool                              |
+|-----------------------------------------|-----------------------------------|
+| One file's direct deps                  | `health action=deps`              |
+| Project-wide import graph (who imports whom) | `health action=imports`      |
+| Project topology (entry points, hubs)   | `structure action=sitemap`        |
 
 ## Procedure
 
 ### File-level deps
 
 ```yaml
-analyze_dependencies(file_path: "tree_sitter_analyzer/ast_cache.py", mode: "file_deps")
+health action=deps file_path="tree_sitter_analyzer/ast_cache.py" mode="file_deps"
 # returns: {imports: [...], imported_by: [...], depth: 2}
 ```
 
@@ -49,7 +49,7 @@ analyze_dependencies(file_path: "tree_sitter_analyzer/ast_cache.py", mode: "file
 ### Import graph (project-level)
 
 ```yaml
-codegraph_import_graph(language: "python", limit: 50)
+health action=imports language="python" limit=50
 # returns: ranked list of import hubs + leaves
 ```
 
@@ -61,7 +61,7 @@ Use to find:
 ### Sitemap
 
 ```yaml
-codegraph_sitemap()
+structure action=sitemap
 # returns: {entry_points: [...], hub_modules: [...], leaf_modules: [...]}
 ```
 
@@ -73,7 +73,7 @@ Useful as a "first look" right after `tsa-landing`.
 uv run tree-sitter-analyzer <file> --dependencies file_deps
 uv run tree-sitter-analyzer --dependencies summary
 uv run tree-sitter-analyzer --import-graph --language python
-uv run tree-sitter-analyzer --sitemap
+uv run tree-sitter-analyzer --codegraph-sitemap
 ```
 
 ## Anti-patterns

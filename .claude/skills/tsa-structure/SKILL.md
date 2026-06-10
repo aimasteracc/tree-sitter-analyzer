@@ -1,6 +1,6 @@
 ---
 name: tsa-structure
-version: 1.0.0
+version: 2.0.0
 description: |
   Structural analysis of one file — classes, methods, exports, common patterns,
   semantic classification of a diff. Returns the file's *shape* without reading
@@ -28,19 +28,19 @@ allowed-tools:
 
 ## Tool routing
 
-| Question                                        | Tool                   |
-|-------------------------------------------------|------------------------|
-| Outline / table of classes + methods            | `analyze_code_structure` |
-| Run a tree-sitter query (e.g., all `def` nodes) | `query_code`           |
-| Detect design patterns (singleton, factory, …)  | `code_patterns`        |
-| Classify a diff (refactor vs feature vs fix)    | `semantic_classify`    |
+| Question                                        | Tool                         |
+|-------------------------------------------------|------------------------------|
+| Outline / table of classes + methods            | `structure action=analyze`   |
+| Run a tree-sitter query (e.g., all `def` nodes) | `search action=query`        |
+| Detect design patterns (singleton, factory, …)  | `health action=patterns`     |
+| Classify a diff (refactor vs feature vs fix)    | `edit action=classify`       |
 
 ## Procedure
 
 ### File outline (most common)
 
 ```yaml
-analyze_code_structure(file_path: "tree_sitter_analyzer/health_scorer.py")
+structure action=analyze file_path="tree_sitter_analyzer/health_scorer.py"
 # returns: {classes: [...], functions: [...], imports: [...]}
 ```
 
@@ -55,9 +55,9 @@ uv run tree-sitter-analyzer <file> --table full
 When you need something the built-in tools don't surface:
 
 ```yaml
-query_code(file_path: "...", query_key: "class")
+search action=query file_path="..." query_key="class"
 # OR
-query_code(file_path: "...", query_string: "(decorated_definition) @decorated")
+search action=query file_path="..." query_string="(decorated_definition) @decorated"
 ```
 
 `--list-queries` (CLI) shows all built-in queries available per language.
@@ -65,7 +65,7 @@ query_code(file_path: "...", query_string: "(decorated_definition) @decorated")
 ### Diff classification
 
 ```yaml
-semantic_classify(file_path: "...", before_hash: "abc", after_hash: "def")
+edit action=classify file_path="..." before_hash="abc" after_hash="def"
 # returns: {classification: "refactor|feature|bugfix|test|docs|chore", confidence: 0.92}
 ```
 
@@ -74,7 +74,7 @@ Useful for PR descriptions and CHANGELOG categorization.
 ### Pattern detection
 
 ```yaml
-code_patterns(file_path: "...", patterns: ["singleton", "factory", "observer"])
+health action=patterns file_path="..." patterns=["singleton", "factory", "observer"]
 ```
 
 ## CLI equivalents
@@ -84,11 +84,11 @@ uv run tree-sitter-analyzer <file> --table full           # outline
 uv run tree-sitter-analyzer <file> --query-key class      # built-in query
 uv run tree-sitter-analyzer <file> --query-string "(...)" # custom query
 uv run tree-sitter-analyzer <file> --code-patterns
-uv run tree-sitter-analyzer --semantic-classify <diff-args>
+uv run tree-sitter-analyzer --semantic-classify           # edit action=classify
 ```
 
 ## Anti-patterns
 
 - DON'T read the whole file just to find "what classes are in it" — use the structure tool
-- DON'T write a custom tree-sitter query when `analyze_code_structure` covers it
-- DON'T use semantic_classify on huge multi-purpose commits — split them first
+- DON'T write a custom tree-sitter query when `structure action=analyze` covers it
+- DON'T use `edit action=classify` on huge multi-purpose commits — split them first

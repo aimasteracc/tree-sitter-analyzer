@@ -1,12 +1,13 @@
 ---
 name: tsa-edit-then-verify
-version: 1.0.0
+version: 2.0.0
 description: |
   The full edit-and-verify loop mandated by CLAUDE.md and docs/agent-tooling-gap-report.md:58.
-  Pre-edit gate (safe_to_edit + baseline file_health) → LLM edits → post-edit verify
-  (file_health diff + analyze_change_impact + scoped verification_command).
-  Replaces "edit then run the whole pytest suite" (~5 min) with a scoped
-  verification (~30-60s) that only escalates to full suite when risk remains.
+  Pre-edit gate (edit action=safe + baseline health action=file) → LLM edits →
+  post-edit verify (health action=file diff + edit action=impact + scoped
+  verification_command). Replaces "edit then run the whole pytest suite" (~5 min)
+  with a scoped verification (~30-60s) that only escalates to full suite when
+  risk remains.
 
   Use when:
   - About to make any non-trivial edit to a code file in tree-sitter-analyzer
@@ -34,9 +35,9 @@ allowed-tools:
 
 > **Source of authority.** From `docs/agent-tooling-gap-report.md` line 58:
 >
-> > Every feature update must run the self-hosted workflow: `safe_to_edit`
-> > before risky edits, `file_health` on changed files, `change_impact` after
-> > edits, its reported `verification_command`, then the full default suite
+> > Every feature update must run the self-hosted workflow: `edit action=safe`
+> > before risky edits, `health action=file` on changed files, `edit action=impact`
+> > after edits, its reported `verification_command`, then the full default suite
 > > when risk remains.
 >
 > This skill is the **executable form** of that rule. `tsa-edit-safety` only
@@ -62,11 +63,11 @@ the bigger the win — full pytest is ~5 min, scoped verification is typically
 | Skill                       | What it runs                          | Time    | When right |
 |-----------------------------|---------------------------------------|---------|------------|
 | `verify` (global)           | `uv run pytest -q` (15k tests)        | ~5 min  | Pre-commit gate, large refactor |
-| **`tsa-edit-then-verify`**  | scoped `verification_command` from `analyze_change_impact` | **30-60s** | **Every feature update (the mandate)** |
+| **`tsa-edit-then-verify`**  | scoped `verification_command` from `edit action=impact` | **30-60s** | **Every feature update (the mandate)** |
 | `tsa-edit-safety`           | Pre-edit verdict only                 | ~3s     | "Is this safe to touch?" — no edit yet |
 
 The scoped command targets only the tests reachable from the changed symbols,
-via the AST call-graph. That's the whole point — `analyze_change_impact`
+via the AST call-graph. That's the whole point — `edit action=impact`
 returns a `verification_command` that's narrower than `pytest -q` but still
 covers the blast radius the AST sees.
 
@@ -76,12 +77,12 @@ covers the blast radius the AST sees.
 
 Call these in ONE message (parallel tool use):
 
-1. `safe_to_edit` with `file_path: "<file>"` and `edit_type: "<refactor|rename|delete|bugfix|feature>"`
-2. `check_file_health` with `file_path: "<file>"` — **record the grade. This is your baseline.**
+1. `edit action=safe` with `file_path: "<file>"` and `edit_type: "<refactor|rename|delete|bugfix|feature>"`
+2. `health action=file` with `file_path: "<file>"` — **record the grade. This is your baseline.**
 3. (Optional, only if file is unfamiliar to you in this session)
-   `smart_context` with `file_path: "<file>"` and `query: "<what you intend to change>"`
+   `project action=smart` with `file_path: "<file>"` and `query: "<what you intend to change>"`
 
-**Gate the verdict.** From `safe_to_edit.verdict`:
+**Gate the verdict.** From `edit action=safe verdict`:
 - `UNSAFE` → STOP. Surface the `risk_factors`, ask the user how to proceed.
   Do not edit.
 - `CAUTION` → narrow your scope. Write a failing test first if there isn't
@@ -90,8 +91,8 @@ Call these in ONE message (parallel tool use):
   "no tests nearby".
 - `SAFE` → proceed to Phase B.
 
-**Persist the baseline grade.** Note `check_file_health.grade` and
-`check_file_health.score` in your scratch — you will diff against these in
+**Persist the baseline grade.** Note `health action=file grade` and
+`health action=file score` in your scratch — you will diff against these in
 Phase C.
 
 ### Phase B — Edit (out of skill scope)
@@ -108,10 +109,10 @@ and reconsider whether this is really one task or three.
 
 After your last edit, call these in ONE message (parallel tool use):
 
-4. `check_file_health` with `file_path: "<file>"` again
+4. `health action=file` with `file_path: "<file>"` again
    → **diff against Phase A baseline. Grade MUST NOT regress.** (B→C is a
    regression. A→A is fine. F→D is improvement.)
-5. `analyze_change_impact` with `mode: "staged"` (or `mode: "branch"` if you
+5. `edit action=impact` with `mode: "staged"` (or `mode: "branch"` if you
    haven't staged) — returns `verification_command`, `pytest_command`,
    `queue_ledger`, `risk_remains` flag.
 
@@ -124,7 +125,7 @@ After your last edit, call these in ONE message (parallel tool use):
    ```
    Expect 30-60s. If it fails, fix and re-run from step 4.
 
-7. **Only if** `analyze_change_impact.risk_remains == true` (or grade
+7. **Only if** `edit action=impact risk_remains == true` (or grade
    regressed in step 4, or impact reports cross-module reach), run the full
    suite:
    ```bash
@@ -146,17 +147,16 @@ health-grading rubric.
 
 ```
 PARALLEL BATCH (one message):
-  → safe_to_edit(file_path="tree_sitter_analyzer/health_scorer.py", edit_type="feature")
-  → check_file_health(file_path="tree_sitter_analyzer/health_scorer.py")
-  → smart_context(file_path="tree_sitter_analyzer/health_scorer.py",
-                  query="add new dimension to grading rubric")
+  → edit action=safe file_path="tree_sitter_analyzer/health_scorer.py" edit_type="feature"
+  → health action=file file_path="tree_sitter_analyzer/health_scorer.py"
+  → project action=smart file_path="tree_sitter_analyzer/health_scorer.py"
 
 Returned:
-  safe_to_edit:  verdict=REVIEW
+  edit action=safe:  verdict=REVIEW
                  risk_factors=[{factor: "hot_zone", detail: "mod_count_30d=7"}]
                  verification_command="uv run pytest tests/unit/test_health_scorer.py -q"
-  check_file_health: grade=B, score=84, weakest=complexity   ← BASELINE
-  smart_context: top 3 callers = [check_project_health, check_file_health, cli/__main__]
+  health action=file: grade=B, score=84, weakest=complexity   ← BASELINE
+  project action=smart: top 3 callers = [health action=project, health action=file, cli/__main__]
 ```
 
 Verdict is REVIEW + hot_zone — write a test for the new dimension first.
@@ -170,12 +170,12 @@ dimension. Diff is ~40 lines.
 
 ```
 PARALLEL BATCH (one message):
-  → check_file_health(file_path="tree_sitter_analyzer/health_scorer.py")
-  → analyze_change_impact(mode="staged")
+  → health action=file file_path="tree_sitter_analyzer/health_scorer.py"
+  → edit action=impact mode="staged"
 
 Returned:
-  check_file_health: grade=B, score=82, weakest=complexity   ← B→B, no regression ✓
-  analyze_change_impact:
+  health action=file: grade=B, score=82, weakest=complexity   ← B→B, no regression ✓
+  edit action=impact:
     verification_command="uv run pytest tests/unit/test_health_scorer.py
                           tests/unit/test_file_health_blocks.py
                           tests/unit/test_file_health_smells.py -q"
@@ -243,7 +243,7 @@ uv run tree-sitter-analyzer tree_sitter_analyzer/health_scorer.py \
 uv run tree-sitter-analyzer tree_sitter_analyzer/health_scorer.py \
   --file-health --output-format json
 uv run tree-sitter-analyzer tree_sitter_analyzer/health_scorer.py \
-  --smart-context --query "add new dimension" --output-format json
+  --smart-context --output-format json
 ```
 
 Run post-edit (Phase C):
@@ -258,16 +258,16 @@ uv run python -m tree_sitter_analyzer --change-impact \
 
 ## Verdict cascade (Phase A gate)
 
-| `safe_to_edit.verdict` | Action |
-|------------------------|--------|
-| `UNSAFE`               | STOP. Surface risk_factors. Ask user. Do not edit. |
-| `CAUTION`              | Narrow scope. Write test first. Then edit. |
-| `REVIEW`               | Edit OK; write a test first if "no tests nearby". |
-| `SAFE`                 | Proceed to Phase B. |
+| `edit action=safe verdict` | Action |
+|----------------------------|--------|
+| `UNSAFE`                   | STOP. Surface risk_factors. Ask user. Do not edit. |
+| `CAUTION`                  | Narrow scope. Write test first. Then edit. |
+| `REVIEW`                   | Edit OK; write a test first if "no tests nearby". |
+| `SAFE`                     | Proceed to Phase B. |
 
 ## Grade-regression rule (Phase C step 4)
 
-Compare `check_file_health.grade` before vs. after:
+Compare `health action=file grade` before vs. after:
 
 | Before → After | Verdict | Action |
 |----------------|---------|--------|
@@ -283,11 +283,11 @@ Let the user decide.
 
 Run `uv run pytest -q` (full suite, ~5 min) only when ANY of these is true:
 
-- `analyze_change_impact.risk_remains == true`
+- `edit action=impact risk_remains == true`
 - Grade regressed in step 4 (A→B or worse)
 - Edit touched any of: `BaseMCPTool.__init__`, `PathResolver`, `SecurityValidator`, `plugin registry`, `cli/__main__.py`, `mcp/server.py`
 - Edit crossed >3 files
-- `analyze_change_impact.queue_ledger` shows cross-module reach (impact crossing top-level packages)
+- `edit action=impact queue_ledger` shows cross-module reach (impact crossing top-level packages)
 
 Otherwise the scoped `verification_command` from step 6 is the official
 verify gate — no need to burn 5 minutes.
@@ -298,7 +298,7 @@ verify gate — no need to burn 5 minutes.
   and catches `UNSAFE` constraint violations that would waste your Phase B
   effort.
 - **Running `pytest -q` immediately in Phase C** without first calling
-  `analyze_change_impact` — defeats the whole purpose of this skill. The
+  `edit action=impact` — defeats the whole purpose of this skill. The
   scoped command is the point.
 - **Ignoring grade regression** in Phase C step 4 — a B→C regression on a
   hot-zone file is a real signal even if tests pass.

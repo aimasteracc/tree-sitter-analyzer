@@ -1,17 +1,17 @@
 ---
 name: tsa-refactor-queue
-version: 1.0.0
+version: 2.0.0
 description: |
   Build a top-N prioritized refactoring queue by intersecting three signals:
   health grade (which files are F/D), temporal churn (which files change
   most often), and dead-code density (which files carry the most unreachable
   symbols). For each candidate the queue surfaces (a) the dimension that
   dragged the grade down, (b) the target symbol, (c) blast radius from
-  `codegraph_callers`, and (d) a concrete action — `split`, `delete dead`,
+  `nav action=callers`, and (d) a concrete action — `split`, `delete dead`,
   or `extract`.
 
   Motivated by `docs/agent-tooling-gap-report.md` "Next High-Value Work" §5:
-  use `check_project_health` output to open focused refactoring slices for
+  use `health action=project` output to open focused refactoring slices for
   the current F-grade files, starting with low-coverage Language Plugin
   extractors and `api.py`.
 
@@ -21,7 +21,7 @@ description: |
   - Engineering planning: "what would 2 weeks of cleanup buy us?"
   - Re-grading after a sprint: "did the queue shrink?"
 
-  Replaces: per-file `check_file_health` loops + spreadsheet ranking
+  Replaces: per-file `health action=file` loops + spreadsheet ranking
   (~25k tokens) with 3 parallel MCP calls + a deterministic rank
   (~3k tokens).
 allowed-tools:
@@ -47,9 +47,9 @@ allowed-tools:
 - After a CI grade-drop alert from `tsa-health-watch` — re-rank with churn
 
 **Don't use** when:
-- You already know the file (one-file deep dive → `check_file_health` or `tsa-edit-safety`)
+- You already know the file (one-file deep dive → `health action=file` or `tsa-edit-safety`)
 - The codebase is brand-new (<2 weeks of git history) — churn signal is noise
-- You want to optimize one hot function — use `tsa-graph` + `refactoring_suggestions` directly
+- You want to optimize one hot function — use `tsa-graph` + `edit action=refactor` directly
 - Shallow clone in CI — `git_state=shallow` makes mod_count_30d unreliable
 
 ## Procedure
@@ -58,16 +58,16 @@ allowed-tools:
 
 Call these in ONE message:
 
-1. `check_project_health` with `min_grade: "D"` and `max_files: 20` — F/D files + per-file `weakest_dimension`
-2. `codegraph_dead_code` with `limit: 200` — symbol-level dead candidates, grouped by file
-3. `codegraph_complexity_heatmap` with `top_n: 20` — complexity-weighted file list (covers structural smell)
+1. `health action=project` with `min_grade: "D"` and `max_files: 20` — F/D files + per-file `weakest_dimension`
+2. `health action=dead` with `limit: 200` — symbol-level dead candidates, grouped by file
+3. `health action=heatmap` with `top_n: 20` — complexity-weighted file list (covers structural smell)
 
 The three responses overlap on file path. Joining on `file_path` gives a
 3-signal table per candidate.
 
 ### Step 2 — Score and rank (deterministic, no LLM needed)
 
-For each file that appears in `check_project_health.worst_files`, compute:
+For each file that appears in `health action=project worst_files`, compute:
 
 ```
 priority = (1 - health_score/100)            # how bad is the grade
@@ -76,11 +76,11 @@ priority = (1 - health_score/100)            # how bad is the grade
 ```
 
 Where:
-- `health_score` ∈ [0,100] from `check_project_health` (lower → worse → bigger weight)
+- `health_score` ∈ [0,100] from `health action=project` (lower → worse → bigger weight)
 - `mod_count_30d_for_file` = sum of `mod_count_30d` across the file's symbols
   (read from `ast_symbol_activation` — see tsa-temporal). `log(1+x)` damps
   pathological churn so a single 50× file doesn't dominate.
-- `dead_symbol_count / total_symbols` = fraction of symbols `codegraph_dead_code`
+- `dead_symbol_count / total_symbols` = fraction of symbols `health action=dead`
   flagged. The `+ 0.1` floor ensures non-dead files can still rank if churn+grade
   alone justify it.
 
@@ -92,11 +92,11 @@ For each of the top 5 files, fan out one more parallel batch:
 
 ```yaml
 # For each candidate file:
-analyze_code_structure(file_path=<f>, format_type="compact")
+structure action=analyze file_path=<f> format_type="compact"
   → list of symbols + complexity + line ranges → pick worst symbol
-codegraph_callers(function_name=<worst_symbol>, include_activation=true, limit=50)
+nav action=callers function_name=<worst_symbol> include_activation=true limit=50
   → blast_radius = len(callers) where callee_resolution in {local, project}
-refactoring_suggestions(file_path=<f>)
+edit action=refactor file_path=<f>
   → action_hint: split | extract | delete | rename
 ```
 
@@ -109,10 +109,10 @@ For each row in the top 5, produce:
   rank: 1
   health_grade: F
   health_score: 42
-  weakest_dimension: complexity        # from check_project_health
+  weakest_dimension: complexity        # from health action=project
   mod_count_30d: 18                     # summed from activation
   dead_symbols: 4 / 67                  # 6.0%
-  target_symbol: api.analyze            # worst from analyze_code_structure
+  target_symbol: api.analyze            # worst from structure action=analyze
   blast_radius: 23                      # local+project callers
   action: split                         # split → extract helpers; delete → prune dead; extract → DRY
   estimated_token_savings: ~8k          # rough: 0.5 * (dead_symbols * 200)
@@ -191,7 +191,7 @@ The `action` column should drive how you ticket the refactor:
 | split   | `weakest_dimension ∈ {size, complexity}` and `blast_radius >= 5` | extract helpers, no public-API change |
 | extract | `weakest_dimension = duplication` or repeated patterns across files | new shared util module |
 | delete  | `dead_symbols / total_symbols > 15%` and `weakest_dimension != git_hotspot` | pure prune PR |
-| rename  | only if `refactoring_suggestions` returns `rename_advised: true` AND blast_radius < 10 | tiny solo PR |
+| rename  | only if `edit action=refactor` returns `rename_advised: true` AND blast_radius < 10 | tiny solo PR |
 
 If two actions tie, prefer `delete` first — it's the cheapest, lowest-risk PR
 and shrinks the next queue automatically.
@@ -233,7 +233,7 @@ sqlite3 .ast-cache/index.db "
   ORDER BY churn_30d DESC LIMIT 50"
 
 # 5. Per-row enrichment (loop top 5)
-uv run tree-sitter-analyzer <file> --structure --output-format json
+uv run tree-sitter-analyzer <file> --table --output-format json
 uv run tree-sitter-analyzer --callers <SYMBOL> --output-format json
 uv run tree-sitter-analyzer <file> --refactor --output-format json
 ```
@@ -263,8 +263,8 @@ top_5:
     verification_command: <copy-paste exact pytest line>
     note: <one-line caveat>
 provenance:
-  health_call: check_project_health{min_grade=D, max_files=20}
-  dead_call: codegraph_dead_code{limit=200}
+  health_call: health action=project{min_grade=D, max_files=20}
+  dead_call: health action=dead{limit=200}
   churn_source: ast_symbol_activation  # see tsa-temporal
   git_state_seen: [tracked, ...]  # warn if "shallow" appears
 ```
