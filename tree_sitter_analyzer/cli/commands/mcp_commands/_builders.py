@@ -222,6 +222,7 @@ def _build_change_impact_tool_args(args: Any, output_format: str) -> dict[str, A
         "scope_paths": getattr(args, "change_impact_scope", None) or [],
         "scope_mode": getattr(args, "change_impact_scope_mode", "report") or "report",
         "agent_summary_only": not bool(getattr(args, "change_impact_full", False)),
+        "compact_only": bool(getattr(args, "compact_toon", False)),
     }
 
 
