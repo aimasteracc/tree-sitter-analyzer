@@ -108,6 +108,77 @@ def _kotlin_parameter_pair(
     return param_name, param_type
 
 
+def _kotlin_extension_receiver(
+    node: Any, get_node_text: Callable[..., str]
+) -> str | None:
+    """Return the extension receiver type name, or None.
+
+    ``fun String.shout()`` parses as:
+        function_declaration
+          user_type  ← receiver type
+          .
+          identifier ← function name
+          …
+
+    We detect the pattern by scanning children for a ``user_type`` node
+    that is immediately followed by a ``.`` child before any
+    ``function_value_parameters`` node.
+    """
+    children = list(node.children)
+    for i, child in enumerate(children):
+        if child.type == "function_value_parameters":
+            break
+        if child.type == "user_type":
+            # Check next non-error sibling is '.'
+            if i + 1 < len(children) and children[i + 1].type == ".":
+                return get_node_text(child)
+    return None
+
+
+def _kotlin_owning_type(node: Any) -> tuple[str | None, bool]:
+    """Walk the parent chain and return ``(owner_name, is_companion)``.
+
+    Traversal stops at the first owning declaration:
+    - ``class_declaration`` → (name, False) for regular class members
+    - ``object_declaration`` → (name, False) for object members
+    - ``companion_object`` → walk further to the enclosing
+      ``class_declaration`` and return (name, True)
+    - ``source_file`` or None → (None, False)
+
+    The walk is depth-capped at 256 to prevent unbounded loops on
+    non-conforming node objects (e.g. MagicMock infinite parent chains
+    that caused a 140 GB OOM on 2026-06-10).
+    """
+    parent = node.parent
+    in_companion = False
+    for _ in range(256):
+        if parent is None:
+            return None, False
+        if parent.type == "source_file":
+            return None, False
+        if parent.type == "companion_object":
+            in_companion = True
+        elif parent.type in ("class_declaration", "object_declaration"):
+            name_node = parent.child_by_field_name("name")
+            if name_node is None:
+                for child in parent.children:
+                    if child.type == "identifier":
+                        name_node = child
+                        break
+            if name_node is not None:
+                # Use node.text if available (real tree-sitter nodes),
+                # otherwise fall back to a callable get_node_text is not
+                # in scope here, so we rely on node.text directly.
+                try:
+                    name = name_node.text.decode("utf-8", errors="replace")
+                except (AttributeError, UnicodeDecodeError):
+                    name = str(name_node.text)
+                return name, in_companion
+            return None, False
+        parent = parent.parent
+    return None, False
+
+
 def extract_kotlin_function(
     node: Any,
     get_node_text: Callable[..., str],
@@ -124,6 +195,14 @@ def extract_kotlin_function(
                 if child.type == "simple_identifier":
                     name = get_node_text(child)
                     break
+            # Extension funs: name identifier follows the '.' after receiver type
+            if name == "anonymous":
+                children = list(node.children)
+                for i, child in enumerate(children):
+                    if child.type == "." and i + 1 < len(children):
+                        if children[i + 1].type == "identifier":
+                            name = get_node_text(children[i + 1])
+                            break
 
         start_line = node.start_point[0] + 1
         end_line = node.end_point[0] + 1
@@ -158,6 +237,27 @@ def extract_kotlin_function(
             visibility=visibility,
         )
         func.is_suspend = is_suspend
+
+        # Theme-A (2026-06-11): class/object ownership. Functions inside
+        # ``class Dog { fun feed() }`` were flattened to top-level with no
+        # receiver_type — an agent could not tell ``feed`` belongs to ``Dog``.
+        #
+        # Resolution order:
+        # 1. Extension receiver: ``fun String.shout()`` → receiver_type='String',
+        #    is_method=True (declared explicitly in the function signature).
+        # 2. Owning class/object via parent walk:
+        #    - class/object member → receiver_type=owner, is_method=True
+        #    - companion object member → receiver_type=enclosing class, is_method=False
+        ext_receiver = _kotlin_extension_receiver(node, get_node_text)
+        if ext_receiver is not None:
+            func.receiver_type = ext_receiver
+            func.is_method = True
+        else:
+            owner, is_companion = _kotlin_owning_type(node)
+            if owner is not None:
+                func.receiver_type = owner
+                func.is_method = not is_companion
+
         return func
 
     except Exception as e:
