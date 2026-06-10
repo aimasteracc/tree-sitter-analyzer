@@ -3,11 +3,11 @@
 ## Classes & Objects
 | Name | Type | Visibility | Lines | Props | Methods |
 |------|------|------------|-------|-------|---------|
-| User | class | public | 8-13 | 0 | 0 |
+| User | data | public | 8-13 | 0 | 0 |
 | Displayable | interface | public | 15-21 | 0 | 2 |
-| Result | class | public | 23-26 | 0 | 0 |
-| Success | class | public | 24-24 | 0 | 0 |
-| Error | class | public | 25-25 | 0 | 0 |
+| Result | sealed | public | 23-26 | 0 | 0 |
+| Success | data | public | 24-24 | 0 | 0 |
+| Error | data | public | 25-25 | 0 | 0 |
 | UserManager | class | public | 28-45 | 1 | 3 |
 | Config | object | public | 47-50 | 2 | 0 |
 | LegacyUserManager | class | public | 57-60 | 0 | 1 |
