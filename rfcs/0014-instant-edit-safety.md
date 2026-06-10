@@ -149,8 +149,9 @@ TestMapResult = TypedDict("TestMapResult", {
     "symbol": str,
     "test_files": list[str],        # sorted, deduplicated file paths
     "test_functions": list[str],    # "tests/test_foo.py::test_case" pairs, sorted
-    "edge_count": int,              # total test→symbol call edges found
-    "truncated": bool,              # true when cap applied
+    "edge_count": int,              # raw call edges across ALL resolved targets
+    "unique_function_count": int,   # post-dedup count; truncated is keyed to this
+    "truncated": bool,              # true when unique_function_count > cap (50)
     "agent_summary": dict,
 })
 ```

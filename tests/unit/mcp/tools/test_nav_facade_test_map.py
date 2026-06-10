@@ -103,6 +103,7 @@ async def test_test_map_returns_test_files_and_functions() -> None:
 
     assert result["success"] is True
     assert result["edge_count"] == 3
+    assert result["unique_function_count"] == 3
     assert result["test_files"] == ["tests/test_a.py", "tests/test_b.py"]
     assert "tests/test_a.py::test_case_1" in result["test_functions"]
     assert "tests/test_a.py::test_case_2" in result["test_functions"]
@@ -136,6 +137,7 @@ async def test_test_map_excludes_prod_callers() -> None:
 
     assert result["success"] is True
     assert result["edge_count"] == 1
+    assert result["unique_function_count"] == 1
     assert result["test_files"] == ["tests/test_foo.py"]
     assert result["truncated"] is False
 
@@ -178,6 +180,7 @@ async def test_test_map_no_test_callers() -> None:
 
     assert result["success"] is True
     assert result["edge_count"] == 0
+    assert result["unique_function_count"] == 0
     assert result["test_files"] == []
     assert result["test_functions"] == []
     assert result["truncated"] is False
@@ -205,6 +208,7 @@ async def test_test_map_truncated_flag_set_when_cap_reached() -> None:
 
     assert result["success"] is True
     assert result["edge_count"] == 51
+    assert result["unique_function_count"] == 51
     assert result["truncated"] is True
     # test_functions list is capped at 50
     assert len(result["test_functions"]) == 50
@@ -343,3 +347,151 @@ def test_cli_test_map_flag_exists() -> None:
     parser = create_argument_parser()
     flags = {s for a in parser._actions for s in a.option_strings if s.startswith("--")}
     assert "--test-map" in flags
+
+
+# ---------------------------------------------------------------------------
+# 6. P1 regression: nav_test_map is NOT a legacy name (no deprecation envelope)
+# ---------------------------------------------------------------------------
+
+
+def test_is_legacy_name_nav_test_map_returns_false() -> None:
+    """nav_test_map was never a v1.x tool name — is_legacy_name must return False.
+
+    Regression guard: if nav_test_map were ever re-added to LEGACY_TOOL_MAP,
+    dispatch_legacy would inject FALSE deprecation envelopes for it.
+    """
+    from tree_sitter_analyzer.mcp.facade_map import is_legacy_name
+
+    assert is_legacy_name("nav_test_map") is False
+
+
+def test_nav_test_map_in_new_action_parity_not_legacy() -> None:
+    """nav_test_map lives in NEW_ACTION_PARITY, NOT LEGACY_TOOL_MAP."""
+    from tree_sitter_analyzer.mcp.facade_map import LEGACY_TOOL_MAP, NEW_ACTION_PARITY
+
+    assert "nav_test_map" not in LEGACY_TOOL_MAP
+    assert "nav_test_map" in NEW_ACTION_PARITY
+
+
+# ---------------------------------------------------------------------------
+# 7. P2 divergence: two targets sharing one test caller →
+#    edge_count==2, unique_function_count==1, truncated=False
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_test_map_edge_count_vs_unique_function_count_divergence() -> None:
+    """Two targets sharing the same test caller: edge_count==2, unique_function_count==1.
+
+    edge_count tracks raw call edges (one per target→caller pair).
+    unique_function_count deduplicates across all targets — the test function
+    ``shared_test`` appears once in test_functions regardless of how many targets
+    it covers. truncated is keyed to unique_function_count, not edge_count.
+    """
+    facade = build_nav_facade(project_root=None)
+    impact_inner = _get_impact_inner(facade)
+
+    target_a = _make_func("fn_a", "src/mod_a.py")
+    target_b = _make_func("fn_b", "src/mod_b.py")
+    shared_caller = _make_func("shared_test", "tests/test_shared.py", 10)
+
+    mock_graph = MagicMock()
+    mock_graph.resolve_targets.return_value = [target_a, target_b]
+    # Both targets are called by the same test function
+    mock_graph.caller_refs_of.return_value = [shared_caller]
+    mock_graph.build = MagicMock()
+
+    impact_inner._call_graph = mock_graph
+
+    result = await facade.execute(
+        {"action": "test_map", "symbol": "fn_a", "output_format": "json"}
+    )
+
+    # Raw edges: shared_caller is a caller of BOTH targets → 2 edges
+    assert result["edge_count"] == 2
+    # Post-dedup: shared_caller is one unique test function
+    assert result["unique_function_count"] == 1
+    # Cap not hit — unique_function_count (1) <= 50
+    assert result["truncated"] is False
+    assert result["test_functions"] == ["tests/test_shared.py::shared_test"]
+
+
+# ---------------------------------------------------------------------------
+# 8. P3 output_format threading — TOON / JSON
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_test_map_output_format_toon_wraps_result() -> None:
+    """output_format=toon → response has toon_content key (TOON wrapper applied)."""
+    facade = build_nav_facade(project_root=None)
+    impact_inner = _get_impact_inner(facade)
+
+    target_fn = _make_func("fn", "src/x.py")
+
+    mock_graph = MagicMock()
+    mock_graph.resolve_targets.return_value = [target_fn]
+    mock_graph.caller_refs_of.return_value = []
+    mock_graph.build = MagicMock()
+
+    impact_inner._call_graph = mock_graph
+
+    result = await facade.execute(
+        {"action": "test_map", "symbol": "fn", "output_format": "toon"}
+    )
+
+    assert "toon_content" in result
+    assert result.get("format") == "toon"
+    # Metadata is still accessible alongside toon_content
+    assert result["success"] is True
+
+
+@pytest.mark.asyncio
+async def test_test_map_default_output_format_is_toon() -> None:
+    """MCP house rule: default output_format is toon (not json) — LOCKED design.
+
+    When output_format is not specified, _test_map_route must default to toon.
+    This matches the locked CLAUDE.md §1 house rule: MCP defaults to TOON.
+    """
+    facade = build_nav_facade(project_root=None)
+    impact_inner = _get_impact_inner(facade)
+
+    target_fn = _make_func("fn", "src/x.py")
+
+    mock_graph = MagicMock()
+    mock_graph.resolve_targets.return_value = [target_fn]
+    mock_graph.caller_refs_of.return_value = []
+    mock_graph.build = MagicMock()
+
+    impact_inner._call_graph = mock_graph
+
+    # No output_format → should default to toon
+    result = await facade.execute({"action": "test_map", "symbol": "fn"})
+
+    assert "toon_content" in result
+    assert result.get("format") == "toon"
+
+
+@pytest.mark.asyncio
+async def test_test_map_output_format_json_no_toon_content() -> None:
+    """output_format=json → no toon_content (plain dict with scalar fields)."""
+    facade = build_nav_facade(project_root=None)
+    impact_inner = _get_impact_inner(facade)
+
+    target_fn = _make_func("fn", "src/x.py")
+
+    mock_graph = MagicMock()
+    mock_graph.resolve_targets.return_value = [target_fn]
+    mock_graph.caller_refs_of.return_value = []
+    mock_graph.build = MagicMock()
+
+    impact_inner._call_graph = mock_graph
+
+    result = await facade.execute(
+        {"action": "test_map", "symbol": "fn", "output_format": "json"}
+    )
+
+    assert "toon_content" not in result
+    assert result["success"] is True
+    assert result["edge_count"] == 0
+    assert result["unique_function_count"] == 0

@@ -118,8 +118,10 @@ _NAV_DESCRIPTION = (
     "- action=test_map — which tests exercise a function (test-file callers, by "
     "file and test function name). Use BEFORE editing to know the test surface. "
     "Returns test_files (sorted, deduplicated), test_functions in "
-    "'file::fn' format (paste directly into pytest), edge_count, truncated flag "
-    "(cap=50). Params: symbol (required), file_path."
+    "'file::fn' format (paste directly into pytest), edge_count (raw call edges "
+    "across all resolved targets), unique_function_count (post-dedup; truncated "
+    "is keyed to this), truncated flag (cap=50 unique functions). "
+    "Params: symbol (required), file_path, output_format."
 )
 
 
@@ -292,15 +294,19 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
                     test_file_set.add(ref.file_path)
 
         test_funcs_sorted = sorted(test_funcs)
-        truncated = len(test_funcs_sorted) > _MAX_TEST_MAP
+        unique_function_count = len(test_funcs_sorted)
+        truncated = unique_function_count > _MAX_TEST_MAP
         capped = test_funcs_sorted[:_MAX_TEST_MAP]
 
-        return {
+        output_format: str = args.get("output_format", "toon")
+
+        result: dict = {
             "success": True,
             "symbol": symbol,
             "test_files": sorted(test_file_set),
             "test_functions": capped,
             "edge_count": total_edge_count,
+            "unique_function_count": unique_function_count,
             "truncated": truncated,
             "agent_summary": {
                 "next_step": (
@@ -311,6 +317,10 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
                 ),
             },
         }
+
+        from ..utils.format_helper import apply_toon_format_to_response
+
+        return apply_toon_format_to_response(result, output_format)
 
     facade = FacadeTool(
         facade_name="nav",

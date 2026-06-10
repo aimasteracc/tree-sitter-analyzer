@@ -76,8 +76,6 @@ LEGACY_TOOL_MAP: dict[str, tuple[str, str]] = {
     # Tree primitives (mycelium RFC-0020/0021 parity): one call → nested tree.
     "codegraph_callee_tree": ("nav", "callee_tree"),
     "codegraph_caller_tree": ("nav", "caller_tree"),
-    # RFC-0014 Phase B: test_map — which tests exercise a function.
-    "nav_test_map": ("nav", "test_map"),
     # R4: the call-graph tool is reachable via scope=graph on callers/callees.
     # The shim forwards the legacy name to callers scope=graph (mode=callers is
     # the historical default behaviour of codegraph_call_graph for an agent
@@ -147,3 +145,30 @@ def legacy_to_facade(name: str) -> tuple[str, str] | None:
 def is_facade_name(name: str) -> bool:
     """True if ``name`` is one of the 8 live facade names."""
     return name in FACADE_NAMES
+
+
+def is_legacy_name(name: str) -> bool:
+    """True if ``name`` is a deprecated v1.x tool name shimmed by LEGACY_TOOL_MAP.
+
+    Intentionally returns ``False`` for new-only action names such as
+    ``test_map`` that never had a v1.x identity — those live in
+    ``NEW_ACTION_PARITY`` without the legacy/deprecation machinery.
+    """
+    return name in LEGACY_TOOL_MAP
+
+
+# ---------------------------------------------------------------------------
+# New-only (facade, action) pairs that need CLI parity coverage but have NO
+# v1.x legacy name — they were born into the facade surface and were NEVER
+# shimmed through dispatch_legacy.  ``test_agent_contracts`` uses this for
+# parity assertions WITHOUT triggering false deprecation envelopes.
+#
+# Shape: {capability_key: (facade, action, cli_flag)}
+#   capability_key — a stable human label (not a legacy tool name)
+#   (facade, action) — live facade route
+#   cli_flag — ``--test-map`` style flag for CLI parity assertion
+# ---------------------------------------------------------------------------
+NEW_ACTION_PARITY: dict[str, tuple[str, str, str]] = {
+    # RFC-0014 Phase B: test_map is new; it was never a registered v1.x tool.
+    "nav_test_map": ("nav", "test_map", "--test-map"),
+}
