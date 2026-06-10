@@ -12,22 +12,49 @@ Per-file commit-SHA sets give the true association lift:
 
 where ``peer_commits`` is the peer's TOTAL commit count in the window, NOT the
 shared count -- the two are different precisely when a peer changes often
-without target, making it a common file (low lift).
+without target, making it a common file (low lift).  ``total_commits`` is the
+ACTUAL number of unique commit SHAs seen in the parsed log (not ``max_commits``),
+so a 43-commit repo with max_commits=500 gets the true lift (RFC-0014 INFO fix).
 
 Results are keyed by (project_root, target_file, HEAD) for zero-cost repeat
-calls within one MCP session.
+calls within one MCP session (LRU maxsize=256).
 """
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from typing import Any
 
 from ....utils.test_detection import is_test_file
 from .change_impact_git import _run_git
 
-# Module-level cache keyed by (project_root, target_file, HEAD_sha).
+# Module-level LRU cache keyed by (project_root, target_file, HEAD_sha).
 # Invalidated when HEAD advances; no persistent storage.
-_CO_CHANGE_CACHE: dict[tuple[str, str, str], dict[str, Any]] = {}
+# maxsize=256: bounds memory in long-running MCP sessions (RFC-0014 §P3-2).
+_CO_CHANGE_CACHE_MAXSIZE = 256
+_CO_CHANGE_CACHE: OrderedDict[tuple[str, str, str], dict[str, Any]] = OrderedDict()
+
+
+def _co_change_cache_get(
+    key: tuple[str, str, str],
+) -> dict[str, Any] | None:
+    """LRU get: move hit to end (most-recently-used)."""
+    if key not in _CO_CHANGE_CACHE:
+        return None
+    _CO_CHANGE_CACHE.move_to_end(key)
+    return _CO_CHANGE_CACHE[key]
+
+
+def _co_change_cache_put(
+    key: tuple[str, str, str],
+    value: dict[str, Any],
+) -> None:
+    """LRU put: evict oldest entry if at capacity."""
+    if key in _CO_CHANGE_CACHE:
+        _CO_CHANGE_CACHE.move_to_end(key)
+    _CO_CHANGE_CACHE[key] = value
+    if len(_CO_CHANGE_CACHE) > _CO_CHANGE_CACHE_MAXSIZE:
+        _CO_CHANGE_CACHE.popitem(last=False)  # evict LRU (oldest)
 
 
 def _empty_co_change_result(target_file: str, max_commits: int) -> dict[str, Any]:
@@ -101,8 +128,9 @@ def _compute_co_change(
 
     head_sha = head_raw.strip()
     cache_key = (project_root, target_file, head_sha)
-    if cache_key in _CO_CHANGE_CACHE:
-        return _CO_CHANGE_CACHE[cache_key]
+    cached = _co_change_cache_get(cache_key)
+    if cached is not None:
+        return cached
 
     # 2. Single git log pass -- full project history (no path filter)
     rc_log, log_out = _run_git(
@@ -117,7 +145,7 @@ def _compute_co_change(
 
     if rc_log != 0 or not log_out:
         result = _empty_co_change_result(target_file, max_commits)
-        _CO_CHANGE_CACHE[cache_key] = result
+        _co_change_cache_put(cache_key, result)
         return result
 
     # 3. Parse commit blocks in Python (one subprocess total after rev-parse)
@@ -130,8 +158,10 @@ def _compute_co_change(
     #   src/file_c.py
     #
     # We collect:
+    #   all_shas: every unique commit SHA seen in the log
     #   target_shas: SHAs of commits that include target_file
     #   file_commit_sets[f]: SHAs of ALL commits that include file f
+    all_shas: set[str] = set()
     target_shas: set[str] = set()
     file_commit_sets: dict[str, set[str]] = {}  # file -> set of commit SHAs
     current_sha: str | None = None
@@ -144,6 +174,7 @@ def _compute_co_change(
         # A 40-hex SHA marks the start of a new commit block.
         if len(stripped) == 40 and all(c in "0123456789abcdef" for c in stripped):
             current_sha = stripped
+            all_shas.add(current_sha)
         elif current_sha is not None:
             if stripped == target_file:
                 target_shas.add(current_sha)
@@ -152,7 +183,7 @@ def _compute_co_change(
 
     if not target_shas:
         result = _empty_co_change_result(target_file, max_commits)
-        _CO_CHANGE_CACHE[cache_key] = result
+        _co_change_cache_put(cache_key, result)
         return result
 
     # 4. True association lift
@@ -160,8 +191,11 @@ def _compute_co_change(
     #      = (shared_commits / total) / ((target_count/total) * (peer_count/total))
     #      = (shared_commits * total_commits) / (target_count * peer_count)
     #
-    # total_commits is approximated as max_commits (per RFC open question 3).
-    total_commits = max_commits
+    # total_commits = actual commits parsed from the log (resolves RFC open
+    # question 3 — using max_commits as the denominator inflates lift when
+    # the repo has fewer commits than the window, e.g. a 43-commit repo with
+    # max_commits=500 would give a lift ~11.6× too high).
+    total_commits = len(all_shas)
     target_freq_count = len(target_shas)
 
     coupled: list[dict[str, Any]] = []
@@ -196,5 +230,5 @@ def _compute_co_change(
         "truncated": truncated,
         "agent_summary": _build_co_change_summary(target_file, top),
     }
-    _CO_CHANGE_CACHE[cache_key] = result
+    _co_change_cache_put(cache_key, result)
     return result

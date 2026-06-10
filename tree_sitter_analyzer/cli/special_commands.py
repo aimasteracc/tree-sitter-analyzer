@@ -46,6 +46,7 @@ def handle_special_commands(
         lambda: _handle_codegraph_metrics(args, context),
         lambda: _handle_incremental_sync(args, context),
         lambda: _handle_affected(args, context),
+        lambda: _handle_nav_actions(args, context),
         lambda: _handle_watch_health(args, context),
         lambda: _handle_mcp_commands(args, context),
         lambda: _validate_partial_read_options(args, context.output_error),
@@ -477,6 +478,62 @@ def _handle_affected(
     from .commands.affected_command import run_affected
 
     return run_affected(args, context.output_error)
+
+
+def _handle_nav_actions(
+    args: Any,
+    context: SpecialCommandContext,
+) -> int | None:
+    """Dispatch RFC-0014 nav facade actions: --test-map and --co-change.
+
+    Both are bespoke routes on the nav facade, never registered as legacy
+    v1.x tool names -- they never go through the MCP_COMMAND_SPECS table.
+    """
+    import asyncio
+
+    test_map_symbol = getattr(args, "test_map", None)
+    co_change_target = getattr(args, "co_change", None)
+
+    if test_map_symbol is None and co_change_target is None:
+        return None
+
+    from tree_sitter_analyzer.mcp.tools.nav_facade import build_nav_facade
+
+    project_root = getattr(args, "project_root", None) or os.getcwd()
+    output_format = getattr(args, "output_format", "json") or "json"
+    facade = build_nav_facade(project_root=project_root)
+
+    if test_map_symbol is not None:
+        tool_args: dict[str, Any] = {
+            "action": "test_map",
+            "symbol": test_map_symbol,
+            "output_format": output_format,
+        }
+        file_path = getattr(args, "test_map_file", None)
+        if file_path:
+            tool_args["file_path"] = file_path
+        label = "--test-map"
+    else:
+        tool_args = {
+            "action": "co_change",
+            "file_path": co_change_target,
+            "max_commits": getattr(args, "co_change_max_commits", 500),
+            "output_format": output_format,
+        }
+        label = "--co-change"
+
+    try:
+        result: dict[str, Any] = asyncio.run(facade.execute(tool_args))
+        if output_format == "toon":
+            import sys
+
+            print(result.get("toon_content", ""), file=sys.stdout)
+        else:
+            context.output_json(result)
+        return 0 if result.get("success", False) else 1
+    except Exception as exc:  # noqa: BLE001
+        context.output_error(f"{label} failed: {exc}")
+        return 1
 
 
 def _handle_watch_health(

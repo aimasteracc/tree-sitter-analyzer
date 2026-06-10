@@ -20,6 +20,7 @@ import pytest
 from tree_sitter_analyzer.mcp.tools.nav_facade import build_nav_facade
 from tree_sitter_analyzer.mcp.tools.utils.co_change import (
     _CO_CHANGE_CACHE,
+    _CO_CHANGE_CACHE_MAXSIZE,
     _compute_co_change,
 )
 
@@ -329,14 +330,13 @@ def test_max_results_truncation() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_single_subprocess_latency_invariant() -> None:
-    """RFC Rule-11 latency invariant: max_commits=50 completes in < 1 s.
+def test_single_subprocess_structural_invariant() -> None:
+    """RFC structural invariant: exactly 2 _run_git calls (rev-parse + single log).
 
-    The implementation issues exactly 2 _run_git calls (rev-parse + single log),
-    never a per-commit loop.  We verify this with call_count == 2.
+    The implementation must never issue a per-commit subprocess loop.
+    This is the structural guard; the real-repo timing invariant is in
+    test_real_repo_co_change_under_2s below.
     """
-    import time
-
     commits = [(_sha(i), ["src/target.py", "src/peer.py"]) for i in range(50)]
     git_log_out = _make_git_log(commits)
     head_sha = "0a" * 20
@@ -349,11 +349,8 @@ def test_single_subprocess_latency_invariant() -> None:
             (0, git_log_out),
         ]
         _CO_CHANGE_CACHE.clear()
-        start = time.monotonic()
         result = _compute_co_change("/real/repo", "src/target.py", max_commits=50)
-        elapsed = time.monotonic() - start
 
-    assert elapsed < 1.0
     assert result["success"] is True
     # Exactly 2 calls: rev-parse + single git log (no per-commit loop)
     assert mock_run_git.call_count == 2
@@ -633,3 +630,280 @@ def test_sorted_by_lift_descending() -> None:
     files = [f["file"] for f in result["co_changed_files"]]
     assert files.index("src/schema_a.py") < files.index("src/rare_c.py")
     assert files.index("src/rare_c.py") < files.index("src/handler_b.py")
+
+
+# ---------------------------------------------------------------------------
+# 19. INFO fix: actual commit count denominator (not max_commits)
+# ---------------------------------------------------------------------------
+
+
+def test_lift_uses_actual_commit_count_not_max_commits() -> None:
+    """lift denominator = actual parsed commits, NOT max_commits.
+
+    Regression test for the INFO finding: a repo with 10 commits and
+    max_commits=500 must NOT inflate lift by 500/10=50×.
+
+    Setup:
+      10 commits total in the log (commits 0-9)
+      target.py in commits 0-4 (5 commits)
+      peer.py   in commits 0-4 (5 commits, all shared with target)
+
+    Correct lift = (5 * 10) / (5 * 5) = 2.0
+    Inflated (wrong) lift = (5 * 500) / (5 * 5) = 100.0
+    """
+    commits = [(_sha(i), ["src/target.py", "src/peer.py"]) for i in range(5)] + [
+        (_sha(i + 5), ["src/other.py"]) for i in range(5)
+    ]
+    git_log_out = _make_git_log(commits)
+    head_sha = "19" * 20
+
+    with patch(
+        "tree_sitter_analyzer.mcp.tools.utils.co_change._run_git"
+    ) as mock_run_git:
+        mock_run_git.side_effect = [
+            (0, head_sha),
+            (0, git_log_out),
+        ]
+        _CO_CHANGE_CACHE.clear()
+        result = _compute_co_change(
+            "/repo", "src/target.py", max_commits=500, min_shared=3
+        )
+
+    assert result["success"] is True
+    peers = {f["file"]: f for f in result["co_changed_files"]}
+    assert "src/peer.py" in peers
+    peer = peers["src/peer.py"]
+    # actual total = 10 commits; max_commits = 500
+    # correct lift = (5 * 10) / (5 * 5) = 2.0
+    assert peer["lift"] == 2.0
+
+
+# ---------------------------------------------------------------------------
+# 20. P3-2 cache bound: LRU evicts oldest when maxsize exceeded
+# ---------------------------------------------------------------------------
+
+
+def test_lru_cache_evicts_at_maxsize() -> None:
+    """Cache must not grow beyond _CO_CHANGE_CACHE_MAXSIZE entries."""
+    from tree_sitter_analyzer.mcp.tools.utils.co_change import (
+        _co_change_cache_put,
+    )
+
+    _CO_CHANGE_CACHE.clear()
+    sentinel: dict = {"success": True, "co_changed_files": []}
+
+    # Fill to exactly maxsize
+    for i in range(_CO_CHANGE_CACHE_MAXSIZE):
+        _co_change_cache_put((f"/repo{i}", "f.py", f"sha{i:040x}"), sentinel)
+
+    assert len(_CO_CHANGE_CACHE) == _CO_CHANGE_CACHE_MAXSIZE
+
+    # One more entry must evict the oldest
+    _co_change_cache_put(("/repo_new", "f.py", "a" * 40), sentinel)
+    assert len(_CO_CHANGE_CACHE) == _CO_CHANGE_CACHE_MAXSIZE
+    # oldest key evicted
+    assert ("/repo0", "f.py", f"{'0' * 40}") not in _CO_CHANGE_CACHE
+
+    _CO_CHANGE_CACHE.clear()
+
+
+# ---------------------------------------------------------------------------
+# 21. P2-2 REAL timing: actual git repo, wall-clock < 2.0 s (Rule-11 invariant)
+# ---------------------------------------------------------------------------
+
+
+def test_real_repo_co_change_under_2s(tmp_path: Path) -> None:  # noqa: F821
+    """Rule-11: _compute_co_change on a ~30-commit real git repo completes < 2.0 s.
+
+    Builds a real git repo with 30 commits (target.py + peer.py alternate),
+    invokes _compute_co_change against real git, and asserts wall-clock < 2.0 s.
+    Documented bound: 2.0 s (RFC-0014 Rule-11; single git subprocess).
+    """
+    import shutil
+    import subprocess
+    import time
+
+    if shutil.which("git") is None:
+        import pytest as _pytest
+
+        _pytest.skip("git not available")
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    def _git(*args: str) -> None:
+        subprocess.run(
+            ["git", "-C", str(repo), *args],
+            check=True,
+            capture_output=True,
+            text=True,
+            env={
+                **__import__("os").environ,
+                "GIT_TEMPLATE_DIR": "",
+                "GIT_CONFIG_NOSYSTEM": "1",
+            },
+            timeout=10,
+        )
+
+    _git("init", "--initial-branch=main")
+    _git("config", "user.email", "test@example.com")
+    _git("config", "user.name", "Test")
+    _git("config", "commit.gpgsign", "false")
+
+    target = repo / "src" / "target.py"
+    peer = repo / "src" / "peer.py"
+    other = repo / "src" / "other.py"
+    target.parent.mkdir(parents=True, exist_ok=True)
+
+    for i in range(30):
+        target.write_text(f"# target v{i}\n", encoding="utf-8")
+        if i % 2 == 0:
+            peer.write_text(f"# peer v{i}\n", encoding="utf-8")
+            _git("add", "src/target.py", "src/peer.py")
+        else:
+            other.write_text(f"# other v{i}\n", encoding="utf-8")
+            _git("add", "src/target.py", "src/other.py")
+        _git("commit", "-m", f"commit {i}")
+
+    _CO_CHANGE_CACHE.clear()
+    start = time.monotonic()
+    result = _compute_co_change(str(repo), "src/target.py", max_commits=500)
+    elapsed = time.monotonic() - start
+
+    assert result["success"] is True
+    assert result["commits_analyzed"] == 30
+    assert elapsed < 2.0
+
+
+# ---------------------------------------------------------------------------
+# 22. P3-1 CLI execution: --co-change dispatches via _handle_nav_actions
+# ---------------------------------------------------------------------------
+
+
+def test_cli_co_change_execution_dispatches(tmp_path: Path) -> None:  # noqa: F821
+    """--co-change FILE_OR_SYMBOL must route through _handle_nav_actions and
+    return a result dict (success key present) — not fall through as unhandled.
+
+    We mock build_nav_facade.execute to avoid a real git call; the test verifies
+    the dispatch path is wired (not just the argparse flag).
+    """
+    import argparse
+    import asyncio
+    from unittest.mock import AsyncMock
+    from unittest.mock import patch as _patch
+
+    from tree_sitter_analyzer.cli.special_commands import (
+        SpecialCommandContext,
+        _handle_nav_actions,
+    )
+
+    captured: list[dict] = []
+
+    def _output_json(data: dict) -> None:
+        captured.append(data)
+
+    ctx = SpecialCommandContext(
+        asyncio_run=asyncio.run,
+        output_json=_output_json,
+        output_error=lambda msg: None,
+        output_info=lambda msg: None,
+        output_list=lambda msg: None,
+        query_loader=None,
+    )
+
+    args = argparse.Namespace(
+        co_change="src/target.py",
+        test_map=None,
+        co_change_max_commits=500,
+        project_root=str(tmp_path),
+        output_format="json",
+    )
+
+    fake_result = {
+        "success": True,
+        "target": "src/target.py",
+        "commits_analyzed": 0,
+        "co_changed_files": [],
+        "truncated": False,
+        "agent_summary": {"next_step": "ok"},
+        "window": "last 500 commits",
+    }
+
+    with _patch(
+        "tree_sitter_analyzer.mcp.tools.nav_facade.build_nav_facade"
+    ) as mock_build:
+        mock_facade = mock_build.return_value
+        mock_facade.execute = AsyncMock(return_value=fake_result)
+        rc = _handle_nav_actions(args, ctx)
+
+    assert rc == 0
+    assert len(captured) == 1
+    assert captured[0]["success"] is True
+    assert captured[0]["target"] == "src/target.py"
+
+
+# ---------------------------------------------------------------------------
+# 23. P3-1 CLI execution: --test-map dispatches via _handle_nav_actions
+# ---------------------------------------------------------------------------
+
+
+def test_cli_test_map_execution_dispatches(tmp_path: Path) -> None:  # noqa: F821
+    """--test-map SYMBOL must route through _handle_nav_actions and return a
+    result dict (success key present) — not fall through as unhandled.
+
+    We mock build_nav_facade.execute to avoid a real graph call.
+    """
+    import argparse
+    import asyncio
+    from unittest.mock import AsyncMock
+    from unittest.mock import patch as _patch
+
+    from tree_sitter_analyzer.cli.special_commands import (
+        SpecialCommandContext,
+        _handle_nav_actions,
+    )
+
+    captured: list[dict] = []
+
+    def _output_json(data: dict) -> None:
+        captured.append(data)
+
+    ctx = SpecialCommandContext(
+        asyncio_run=asyncio.run,
+        output_json=_output_json,
+        output_error=lambda msg: None,
+        output_info=lambda msg: None,
+        output_list=lambda msg: None,
+        query_loader=None,
+    )
+
+    args = argparse.Namespace(
+        test_map="my_function",
+        co_change=None,
+        test_map_file=None,
+        project_root=str(tmp_path),
+        output_format="json",
+    )
+
+    fake_result = {
+        "success": True,
+        "symbol": "my_function",
+        "test_files": [],
+        "test_functions": [],
+        "edge_count": 0,
+        "unique_function_count": 0,
+        "truncated": False,
+        "agent_summary": {"next_step": "ok"},
+    }
+
+    with _patch(
+        "tree_sitter_analyzer.mcp.tools.nav_facade.build_nav_facade"
+    ) as mock_build:
+        mock_facade = mock_build.return_value
+        mock_facade.execute = AsyncMock(return_value=fake_result)
+        rc = _handle_nav_actions(args, ctx)
+
+    assert rc == 0
+    assert len(captured) == 1
+    assert captured[0]["success"] is True
+    assert captured[0]["symbol"] == "my_function"
