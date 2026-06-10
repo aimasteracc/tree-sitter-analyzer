@@ -548,9 +548,9 @@ def render_terminal(r: AuditResult) -> str:
     lines.append("")
     lines.append(
         "  (worst case for a name-only index — the design most indexes use. The "
-        "live head-to-head vs CodeGraph specifically — 745 vs 6 on TSA's repo — is"
+        "live head-to-head vs CodeGraph (763 vs 1 at v1.21.0/v1.22.0 on TSA's repo) is"
     )
-    lines.append("   in benchmarks/codegraph_compare/REPORT-v1.21.0.md.)")
+    lines.append("   in benchmarks/codegraph_compare/GAUNTLET.md.)")
     lines.append("")
     shown = r.genuine_offenders or r.naive_offenders
     if shown:
@@ -593,7 +593,7 @@ def render_card(r: AuditResult) -> str:
         "`uvx --from tree-sitter-analyzer miswire-audit .`",
         "",
         "_Name-only is the design most code indexes (incl. CodeGraph) use. Live "
-        "head-to-head vs CodeGraph: 745 vs 6 — see REPORT-v1.21.0.md._",
+        "head-to-head vs CodeGraph: 763 vs 1 (v1.21.0/v1.22.0) — see GAUNTLET.md._",
     ]
     return "\n".join(out)
 

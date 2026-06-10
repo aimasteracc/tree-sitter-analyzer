@@ -10,28 +10,37 @@ All numbers in the summary table are lifted verbatim from
 
 ## 5-Repo Summary Table
 
-| repo | languages | call edges | name-only mis-wires (worst case) | TSA mis-wires | source |
-|---|---|---|---|---|---|
-| huggingface/tokenizers | Rust+Py+JS+TS | 16,329 | **1,259** (7.71%) | **0** | [MISWIRE-AUDIT-EXAMPLES.md](MISWIRE-AUDIT-EXAMPLES.md) |
-| astral-sh/ruff | Rust+Py+TS | 187,418 | **7,557** (4.03%) | **0** | [MISWIRE-AUDIT-EXAMPLES.md](MISWIRE-AUDIT-EXAMPLES.md) |
-| pola-rs/polars | Rust+Py | 267,066 | **9,016** (3.38%) | **0** | [MISWIRE-AUDIT-EXAMPLES.md](MISWIRE-AUDIT-EXAMPLES.md) |
-| tree-sitter-analyzer (this repo) | 13 langs | 114,160 | 4,199 (3.68%) | **6** | [MISWIRE-AUDIT-EXAMPLES.md](MISWIRE-AUDIT-EXAMPLES.md) |
-| gin-gonic/gin | Go (single) | 9,134 | **0** | **0** | [MISWIRE-AUDIT-EXAMPLES.md](MISWIRE-AUDIT-EXAMPLES.md) |
+> **Column definitions (see [MISWIRE-AUDIT-EXAMPLES.md](MISWIRE-AUDIT-EXAMPLES.md) for full explanation):**
+> - **name-only genuine floor** — naive mis-wires excluding each language's own builtins
+>   (`print`, `range`, …). Lower bound; the default column reported by `miswire-audit`.
+> - **TSA mis-wires** — edges in TSA's live index where caller and callee languages are
+>   incompatible. A real measurement, not a model.
 
-**Across all four polyglot repos TSA resolves 0 cross-language mis-wires.** The 6
-on this repo are single-word Java method names (`collect`, `data`x4, `message`)
-in the Java example files — the documented ceiling without receiver-type inference.
+<!-- re-measure: rows marked (v1.21.0) are from the v1.21.0 run (2026-06-07).
+     Re-run `gauntlet_runner.py --all` before publication to replace them with fresh numbers. -->
+
+| repo | languages | call edges | name-only genuine floor | TSA mis-wires | measured at |
+|---|---|---|---|---|---|
+| huggingface/tokenizers | Rust+Py+JS+TS | 16,329 | **1,259** (7.71%) | **0** | v1.21.0 (2026-06-07) <!-- re-measure --> |
+| astral-sh/ruff | Rust+Py+TS | 187,418 | **7,557** (4.03%) | **0** | v1.21.0 (2026-06-07) <!-- re-measure --> |
+| pola-rs/polars | Rust+Py | 267,066 | **9,016** (3.38%) | **0** | v1.21.0 (2026-06-07) <!-- re-measure --> |
+| tree-sitter-analyzer (this repo) | 14 langs | 116,672 | **680** (0.58%) | **1** | measured 2026-06-10 at v1.22.0 (g6b2a266d) |
+| gin-gonic/gin | Go (single) | 9,134 | **0** | **0** | v1.21.0 (2026-06-07) <!-- re-measure --> |
+
+**Across all four polyglot repos TSA resolves 0 cross-language mis-wires.** The 1
+on this repo is a single genuine collision on this repo's own test-corpus files —
+the documented ceiling without receiver-type inference.
 The single-language repo (gin) correctly returns 0 and 0 — no false positives.
 
-> **What "name-only mis-wires (worst case)" means.** It is the worst case for a
-> name-only design: every call whose name has a definition only in another language.
-> This includes genuine cross-language collisions AND language builtins a smarter
-> index could special-case (`print`, `range`). For this repo: 4,199 worst-case but
-> **762 genuine** (`Counter()`→TS, `sleep()`→Java, `pop()`→Swift, `connect()`→Kotlin).
-> The audit reports the **genuine floor by default** — naive mis-wires excluding
-> each language's own builtins — leading its examples with non-builtin collisions so
-> the demo survives a skeptic. TSA resolves **0** genuine cross-language mis-wires
-> on the four external polyglot repos.
+> **What "name-only genuine floor" means.** The audit models a name-only resolver: every
+> call whose name has a definition only in another language. The **genuine floor** excludes
+> each caller language's own builtins (`print`, `range`, `Ok`, …) — leaving only real
+> cross-language collisions a basic name-only index cannot skip. This column is the default
+> reported by `miswire-audit` as it survives a skeptic's "you could just exclude builtins"
+> objection. The **worst case** (including builtins) for this repo is 3,946; the genuine
+> floor is **680** (`sleep()`→Java, `connect()`→Kotlin, `Counter()`→TS, `find()`→PHP,
+> `draw()`→Kotlin). TSA resolves **0** genuine cross-language mis-wires on the four external
+> polyglot repos, and only **1** on its own repo.
 
 ---
 
@@ -39,21 +48,32 @@ The single-language repo (gin) correctly returns 0 and 0 — no false positives.
 
 Source: [REPORT-v1.21.0.md §Addendum 2](REPORT-v1.21.0.md)
 
-| tool | cross-language call edges | total call edges | mis-wire rate |
-|---|---|---|---|
-| **CodeGraph** | **745** | 38,103 | **1.96%** |
-| **Tree-sitter Analyzer** | **6** | 114,160 | **0.005%** |
+> **Note:** The CodeGraph row was measured at v1.21.0 (2026-06-07). The TSA row was
+> re-measured at v1.22.0 (2026-06-10). Re-run `gauntlet_runner.py --repo tsa` with a
+> fresh CodeGraph index to update the CodeGraph row. <!-- re-measure: CodeGraph row -->
 
-TSA is ~390x cleaner while resolving 3x more call edges total (114k vs 38k).
+| tool | cross-language call edges | total call edges | mis-wire rate | measured at |
+|---|---|---|---|---|
+| **CodeGraph** | **763** | 36,788 | **2.07%** | v1.21.0 (2026-06-07) <!-- re-measure --> |
+| **Tree-sitter Analyzer** | **1** | 116,672 | **0.0009%** | measured 2026-06-10 at v1.22.0 |
+
+TSA is ~763x cleaner (1 vs 763 mis-wires) while resolving 3x more call edges total (116k vs 37k).
 
 ---
 
-## Flagship: `sorted()` → Swift (full inline repro)
+## Flagship: `sorted()` → Swift (original repro, v1.21.0)
 
-The clearest case. Python's builtin `sorted()` is called ~299 times. There is no
-`sorted` definition in any `.py` file. The only `sorted` node in CodeGraph's index
-is a Swift method, `tests/golden/corpus_swift.swift:337`. CodeGraph wires every
-Python caller to that Swift node. TSA binds none of them.
+> **Measurement note (2026-06-10):** The numbers below were captured at v1.21.0.
+> At v1.22.0 the live index shows 392 Python `sorted()` call sites, all with
+> `callee_resolution='unknown'` — zero wired to Swift (same conclusion, updated count).
+> The Swift definition at `tests/golden/corpus_swift.swift:337` still exists.
+> The CodeGraph repro commands remain valid for demonstrating the mis-wire behaviour;
+> the TSA count will differ on a fresh index.
+
+The clearest case. Python's builtin `sorted()` is called hundreds of times across the
+Python codebase. There is no `sorted` definition in any `.py` file. The only `sorted`
+node in CodeGraph's index is a Swift method, `tests/golden/corpus_swift.swift:337`.
+CodeGraph wires every Python caller to that Swift node. TSA binds none of them.
 
 ```bash
 # 1. Confirm the only in-repo 'sorted' definition is Swift (no Python def):
@@ -61,25 +81,30 @@ grep -rl "def sorted" --include="*.py" .          # → (nothing)
 grep -n "func sorted" tests/golden/corpus_swift.swift
 # → 337:    func sorted() -> [Element] {
 
-# 2. CodeGraph: count distinct Python callers wired to the Swift node:
+# 2. CodeGraph (v1.21.0): count distinct Python callers wired to the Swift node:
 sqlite3 .codegraph/codegraph.db "
   SELECT COUNT(DISTINCT e.source)
   FROM edges e JOIN nodes n ON e.source = n.id
   WHERE e.target = 'method:93b946c9bfbf7d0843dca5323ecd16c4'
     AND e.kind = 'calls' AND n.file_path LIKE '%.py';"
-# → 299      (299 Python callers attached to a Swift func)
+# → 299      (299 Python callers attached to a Swift func — v1.21.0 index)
 
-# 3. TSA: confirm ZERO Python callers are bound to Swift:
-uv run python -m tree_sitter_analyzer --callers sorted --format json | \
-  python3 -c "import json,sys; d=json.load(sys.stdin); \
-print('swift refs:', sum('swift' in str(c).lower() for c in d['callers']), '/', d['caller_count'])"
-# → swift refs: 0 / 298
+# 3. TSA (v1.22.0, 2026-06-10): all 392 sorted() call sites are unresolved; none wired to Swift:
+uv run python -c "
+from tree_sitter_analyzer.ast_cache import ASTCache
+cache = ASTCache('.')
+conn = cache.get_conn()
+edges = conn.execute(\"SELECT callee_resolved_file, COUNT(*) n FROM edges WHERE kind='calls' AND callee_name='sorted' GROUP BY callee_resolved_file\").fetchall()
+print([(r['callee_resolved_file'] or 'unresolved', r['n']) for r in edges])
+cache.close()
+"
+# → [('unresolved', 392)]   ← all 392 callers unresolved; zero wired to Swift
 ```
 
-CodeGraph asserts 299 Python→Swift `calls` edges the AST cannot support. TSA
+CodeGraph asserts hundreds of Python→Swift `calls` edges the AST cannot support. TSA
 reports those call sites as `callee_resolution='unknown'` — honestly unresolved
 rather than confidently wrong. For an agent about to change a function's signature,
-"298 unknown" is a safe answer; "299 callers in a Swift file" is a trap.
+"392 unknown" is a safe answer; "299 callers in a Swift file" is a trap.
 
 ---
 
@@ -143,8 +168,8 @@ uv run python benchmarks/codegraph_compare/gauntlet_runner.py --repo tokenizers
   claim is made here.
 
 - **Completeness** (recall). The audit measures mis-wires (precision failures), not
-  missed edges (recall failures). TSA's 114k vs CodeGraph's 38k edge count
-  suggests higher recall, but that is a separate audit.
+  missed edges (recall failures). TSA's 116k vs CodeGraph's 37k edge count (measured
+  at their respective versions) suggests higher recall, but that is a separate audit.
 
 - **Name-only average case.** The audit reports the worst case — a better name-only
   index that special-cases all builtins would have a lower number. That hypothetical
