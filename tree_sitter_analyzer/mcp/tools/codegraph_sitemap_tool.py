@@ -26,6 +26,7 @@ from typing import Any
 from ...utils import setup_logger
 from ..utils.format_helper import apply_toon_format_to_response
 from ._response_builder import build_response
+from ._validators import _validate_positive_int
 from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
@@ -138,12 +139,10 @@ class CodeGraphSitemapTool(BaseMCPTool):
         # Guard the budget params: a non-positive limit would silently apply
         # Python negative-index slicing (max_symbols=-1 drops the last entry) or
         # empty everything (max_symbols=0), neither of which is a meaningful cap.
+        # P1-B (RFC-0015): use shared validator that handles float coercion and
+        # bool rejection, ensuring sitemap and uml_tool share the same logic.
         for key in ("max_files", "max_symbols"):
-            value = arguments.get(key)
-            if value is None:
-                continue
-            if isinstance(value, bool) or not isinstance(value, int) or value < 1:
-                raise ValueError(f"{key} must be a positive integer, got {value!r}")
+            _validate_positive_int(arguments, key)
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:

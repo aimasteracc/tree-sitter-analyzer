@@ -252,6 +252,29 @@ def _add_mcp_codegraph_map_options(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Omit common external bases such as ABC/Enum from --uml class",
     )
+    # P1 flags (RFC-0015): scoping and test-exclusion for class diagrams
+    parser.add_argument(
+        "--uml-file-path",
+        help=(
+            "Limit --uml class diagram to classes defined in this file "
+            "and their direct bases/dependents"
+        ),
+    )
+    parser.add_argument(
+        "--uml-class-name",
+        help=(
+            "Show the named class plus its direct superclasses and immediate "
+            "subclasses (neighbourhood subgraph) for --uml class"
+        ),
+    )
+    parser.add_argument(
+        "--uml-include-tests",
+        action="store_true",
+        help=(
+            "Include test-corpus classes (under tests/, testdata/, fixtures/) "
+            "in --uml class whole-project diagrams (default: excluded)"
+        ),
+    )
     parser.add_argument(
         "--dependency-matrix-threshold",
         type=float,
