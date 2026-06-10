@@ -56,7 +56,13 @@ async def test_class_diagram_execute_with_mock_exporter(monkeypatch) -> None:
 
     class FakeExporter:
         def class_diagram(
-            self, max_edges: int, include_external_bases: bool
+            self,
+            max_edges: int,
+            include_external_bases: bool,
+            *,
+            file_path: str | None = None,
+            class_name: str | None = None,
+            include_tests: bool = False,
         ) -> UMLDiagram:
             assert max_edges == 5
             assert include_external_bases is False
