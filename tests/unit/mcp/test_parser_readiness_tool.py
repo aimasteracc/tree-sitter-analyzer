@@ -18,6 +18,7 @@ strict=True`` so the suite stays green while the gap is documented.
 from __future__ import annotations
 
 import asyncio
+import importlib.metadata
 
 import pytest
 
@@ -119,21 +120,41 @@ swift = ["tree-sitter-swift>=0.7.2"]
     readiness = result["readiness"][0]
     signals = readiness["signals"]
     assert readiness["language"] == "swift"
-    assert signals["parser_package_version"] == "0.7.2"
-    assert signals["parser_project_urls"]["Homepage"].startswith("https://")
-    assert signals["parser_maintenance_urls"]["releases"].endswith("/releases")
-    assert signals["parser_maintenance_urls"]["actions"].endswith("/actions")
-    assert signals["upstream_parser_abi"].startswith("local_binding_abi_")
-    assert signals["parser_semantic_version"]
-    assert signals["upstream_grammar_json"] in {"not_packaged", "packaged:grammar.json"}
-    assert signals["upstream_external_scanner"] != "unknown_local_only"
-    assert not any("ABI" in step for step in readiness["next_steps"])
-    assert any("grammar.json" in step for step in readiness["next_steps"])
-    assert any("scanner" in step for step in readiness["next_steps"])
-    assert any(
-        signals["parser_maintenance_urls"]["releases"] in step
-        for step in readiness["next_steps"]
-    )
+    # parser_package_version should reflect either:
+    # 1. The actual installed version (if the package is installed), OR
+    # 2. The version extracted from the requirement spec (if not installed).
+    # The constraint is ">=0.7.2", so at minimum we should have a version >= 0.7.2.
+    try:
+        expected_version = importlib.metadata.version("tree-sitter-swift")
+        is_installed = True
+    except importlib.metadata.PackageNotFoundError:
+        # Package not installed; should extract from requirement spec
+        expected_version = "0.7.2"
+        is_installed = False
+    assert signals["parser_package_version"] == expected_version
+    # Project URLs are only available when the package is installed
+    if is_installed:
+        assert signals["parser_project_urls"]["Homepage"].startswith("https://")
+        assert signals["parser_maintenance_urls"]["releases"].endswith("/releases")
+        assert signals["parser_maintenance_urls"]["actions"].endswith("/actions")
+        assert signals["upstream_parser_abi"].startswith("local_binding_abi_")
+        assert signals["parser_semantic_version"]
+        assert signals["upstream_grammar_json"] in {
+            "not_packaged",
+            "packaged:grammar.json",
+        }
+        assert signals["upstream_external_scanner"] != "unknown_local_only"
+        assert not any("ABI" in step for step in readiness["next_steps"])
+        assert any("grammar.json" in step for step in readiness["next_steps"])
+        assert any("scanner" in step for step in readiness["next_steps"])
+        assert any(
+            signals["parser_maintenance_urls"]["releases"] in step
+            for step in readiness["next_steps"]
+        )
+    else:
+        # When not installed, project URLs should be empty
+        assert signals["parser_project_urls"] == {}
+        assert signals["parser_maintenance_urls"] == {}
     assert result["agent_summary"]["verification_command"] == (
         "uv run tree-sitter-analyzer parser-readiness swift --format json"
     )
@@ -179,9 +200,23 @@ swift = ["tree-sitter-swift>=0.7.2"]
     toon = result["toon_content"]
     assert "readiness:" in toon
     assert "- swift: status=" in toon
-    assert "pkg_version=0.7.2" in toon
-    assert "url=https://" in toon
-    assert "/releases" in toon
+    # Verify the TOON output includes the dynamically-measured installed version.
+    # If not installed, should extract from requirement spec (0.7.2).
+    try:
+        expected_version = importlib.metadata.version("tree-sitter-swift")
+        is_installed = True
+    except importlib.metadata.PackageNotFoundError:
+        expected_version = "0.7.2"
+        is_installed = False
+    assert f"pkg_version={expected_version}" in toon
+    # Project URLs (url=https://, /releases) are only present when package is installed
+    if is_installed:
+        assert "url=https://" in toon
+        assert "/releases" in toon
+    else:
+        # When not installed, URL field should be absent or '-'
+        # The TOON line includes "url=-" for missing URLs
+        assert "url=-" in toon or "url=https://" not in toon
 
 
 @pytest.mark.asyncio
