@@ -52,4 +52,7 @@ def test_receiver_survives_api_serialization() -> None:
     assert inc.get("receiver") == "c"
     assert inc.get("receiver_type") == "*Counter"
     standalone = element_to_dict(funcs["Standalone"])
-    assert "receiver" not in standalone or standalone.get("receiver") is None
+    # Function dataclass defaults receiver=None, so the field is always
+    # present (as None) for non-methods — pin that exact behavior.
+    assert standalone["receiver"] is None
+    assert standalone["receiver_type"] is None
