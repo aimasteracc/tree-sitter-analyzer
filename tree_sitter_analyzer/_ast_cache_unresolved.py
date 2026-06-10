@@ -294,7 +294,8 @@ def _call_refs(
         base = _base_name(callee_name)
         if not callee_name or base in local_callables or callee_name in local_callables:
             continue
-        if _is_obvious_external(language, callee_name):
+        callee_full = str(edge.get("callee_full") or "").strip()
+        if _is_obvious_external(language, callee_name, callee_full):
             continue
         caller_name = str(edge.get("caller_name") or "")
         caller_line = _line(edge.get("caller_line"))
@@ -628,16 +629,37 @@ def _call_is_resolved(edge: dict[str, Any]) -> bool:
     return resolution in {"local", "project"} and bool(resolved_file)
 
 
-def _is_obvious_external(language: str, callee_name: str) -> bool:
+def _is_obvious_external(
+    language: str, callee_name: str, callee_full: str = ""
+) -> bool:
+    """Return True when ``callee_name`` is clearly a stdlib/builtin call.
+
+    Builtin-receiver guard (Issue #447): when ``callee_full`` carries a
+    receiver qualifier (``result.get``, ``data.items``, …) AND the bare
+    method name is in STDLIB_METHODS_PY, the call is almost certainly on a
+    builtin container/string whose type the extractor could not infer.
+    Binding it to a project symbol via ``_choose_candidate`` would produce
+    a same-name mis-wire — the conservative policy is ``unknown > wrong``.
+    This mirrors the ``_try_stdlib_method`` gate already present in synapse
+    (path 1), closing the same hole in path 2.
+    """
     if language != "python":
         return False
     try:
-        from .synapse_resolver import BUILTINS_PY, STDLIB_NAMES_PY
+        from .synapse_resolver import BUILTINS_PY, STDLIB_METHODS_PY, STDLIB_NAMES_PY
     except Exception:  # pragma: no cover
         return False
     base = _base_name(callee_name)
     qualifier = callee_name.split(".", 1)[0]
-    return base in BUILTINS_PY or qualifier in STDLIB_NAMES_PY
+    if base in BUILTINS_PY or qualifier in STDLIB_NAMES_PY:
+        return True
+    # Builtin-receiver gate: a receiver.method() call where method is a
+    # well-known stdlib method name and receiver is not self/cls.
+    if callee_full and "." in callee_full:
+        recv = callee_full.rsplit(".", 1)[0].split(".")[-1]  # last segment of receiver
+        if recv not in ("self", "cls") and base in STDLIB_METHODS_PY:
+            return True
+    return False
 
 
 def _local_names(symbol_items: list[dict[str, Any]], kinds: set[str]) -> set[str]:

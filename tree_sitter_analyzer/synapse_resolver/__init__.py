@@ -423,7 +423,7 @@ def _try_class_method(
 
 
 def _try_unique_method(
-    base: str, qualifier: str, ctx: ResolverContext
+    base: str, qualifier: str, caller_file: str, ctx: ResolverContext
 ) -> ResolvedCallee | None:
     """RFC-0002 Phase 1: receiver method call where the method name is unique.
 
@@ -434,8 +434,24 @@ def _try_unique_method(
     ``cls`` are already handled by ``_try_self_method``, and bare names by the
     global rules above — so this only fires for true receiver method calls the
     earlier rules left unresolved.
+
+    Builtin-receiver guard (Issue #447): when ``base`` is a well-known stdlib
+    method name (``get``, ``append``, ``items``, …) and the receiver type is
+    unknown, the caller is almost certainly using a builtin container/string
+    method, not a project-defined method. Binding it to a project symbol just
+    because it happens to be unique would produce the same-name mis-wire the
+    README claims TSA eliminates. Conservative policy: ``unknown > wrong``.
+    This guard does NOT affect ``_try_class_method`` (receiver type IS known
+    via AST inference) or ``_try_import``/``_try_local`` (explicit import).
     """
     if not qualifier or qualifier in ("self", "cls"):
+        return None
+    # Builtin-receiver gate: a bare stdlib method name with an unidentifiable
+    # receiver must not be claimed as a project symbol via uniqueness.
+    # Language-aware: only consult the Python stdlib-method table for Python
+    # callers; a Java/JS caller with no registered table looks up an empty
+    # frozenset and the gate is a no-op (conservative).
+    if base in ctx.stdlib_methods.get(_table_language(ctx, caller_file), frozenset()):
         return None
     found: tuple[str, int] | None = None
     for file_path, classes in ctx.file_class_methods.items():
@@ -526,7 +542,7 @@ def _resolve_callee_python(
         # (RFC-0002 criterion 2 — shadowing preserved).
         lambda: _try_single_global(base, qualifier, ctx),
         lambda: _try_class_method(base, qualifier, ctx),
-        lambda: _try_unique_method(base, qualifier, ctx),
+        lambda: _try_unique_method(base, qualifier, caller_file, ctx),
         # Builtin is the last NAME resort: only fires when no project binding exists.
         lambda: _try_builtin(base, qualifier, ctx),
         # RFC-0004: stdlib METHOD names (write_text, strip, items, …) — gated on
