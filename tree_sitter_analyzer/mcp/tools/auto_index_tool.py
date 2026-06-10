@@ -158,6 +158,11 @@ class CodeGraphAutoIndexTool(BaseMCPTool):
             project_root=self.project_root,
             indexed=True,
             cache_stats=stats,
+            # keep the long-standing top-level scalars alongside the new
+            # cache_stats dict so existing consumers don't lose them
+            total_files=stats.get("total_files", 0),
+            total_symbols=stats.get("total_symbols", 0),
+            fts5_available=stats.get("fts5_available", False),
         )
         return apply_toon_format_to_response(result, output_format)
 

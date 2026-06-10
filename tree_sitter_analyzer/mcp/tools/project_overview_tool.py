@@ -62,6 +62,9 @@ _LANGUAGE_TO_EXT = {
     "css": "css",
     "yaml": "yaml",
     "markdown": "md",
+    "bash": "sh",
+    "scala": "scala",
+    "json": "json",
 }
 
 _EXCLUDE_DIRS = frozenset(
@@ -527,7 +530,10 @@ def _overview_next_step(result: dict[str, Any], include_health: bool) -> str:
         )
     if not include_health:
         return "Re-run overview with include_health=true or run project-health."
-    return "Run check_project_health for detailed analysis and targeted fixes."
+    return (
+        "Pick the next query from the tool_routing map in this response "
+        "(e.g. health for grades, structure for outlines)."
+    )
 
 
 def _top_language(language_distribution: dict[str, int]) -> str:

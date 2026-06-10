@@ -440,8 +440,13 @@ class TestOverviewNextStep:
 
     def test_healthy_project(self) -> None:
         step = _overview_next_step({}, True)
-        # DF-10: verify next_step uses CLI-friendly guidance, not MCP-specific tool_routing
-        assert "check_project_health" in step
+        # DF-10: next_step must point at the response's own tool_routing map
+        # (a real field this tool returns) with concrete examples — not a
+        # bare tool-name the CLI surface doesn't have.
+        assert step == (
+            "Pick the next query from the tool_routing map in this response "
+            "(e.g. health for grades, structure for outlines)."
+        )
 
 
 class TestTopLanguage:
