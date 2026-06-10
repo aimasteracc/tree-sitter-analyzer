@@ -193,3 +193,29 @@ class TestHyphaeResourceReadBoundary:
         assert isinstance(result, list)
         assert len(result) == 1
         assert isinstance(result[0], ReadResourceContents)
+
+
+class TestDegenerateHyphaeURI:
+    """P3 (review): tsa://hyphae/ with an empty selector must not crash."""
+
+    @pytest.mark.asyncio
+    async def test_empty_selector_uri_returns_wrapped_contents(self, tmp_path):
+        from mcp.server.lowlevel.helper_types import ReadResourceContents
+
+        handlers = {}
+        server = MagicMock()
+        server.list_resources.side_effect = _capture_decorator(
+            handlers, "list_resources"
+        )
+        server.read_resource.side_effect = _capture_decorator(handlers, "read_resource")
+        instance = _make_instance(project_root=str(tmp_path))
+        register_resources(server, instance)
+
+        # NO mock: exercise the real read_hyphae_resource degenerate path —
+        # an empty selector must yield a wrapped error payload, never a raw
+        # dict and never an uncaught exception.
+        result = await handlers["read_resource"]("tsa://hyphae/")
+
+        assert isinstance(result, list)
+        assert len(result) == 1
+        assert isinstance(result[0], ReadResourceContents)
