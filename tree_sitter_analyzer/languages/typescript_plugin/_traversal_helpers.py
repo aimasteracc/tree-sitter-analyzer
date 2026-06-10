@@ -81,6 +81,13 @@ def _container_node_types() -> set[str]:
         "assignment_expression",
         "type_alias_declaration",
         "enum_declaration",
+        # Theme-I (2026-06-10): descend into namespace/module containers.
+        # ``namespace X {}`` parses as expression_statement > internal_module
+        # (so expression_statement must be traversable to reach it); the body
+        # is a statement_block, already whitelisted above.
+        "expression_statement",
+        "internal_module",
+        "module",
     }
 
 
