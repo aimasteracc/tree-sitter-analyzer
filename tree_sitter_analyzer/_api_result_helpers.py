@@ -22,6 +22,11 @@ _OPTIONAL_ELEM_FIELDS = [
     # Theme-C (2026-06-10): implements/mixins were collected by plugins but
     # dropped here — agents never saw them.
     "interfaces",
+    # Theme-A (2026-06-10): Go/Rust receiver binding — extractors filled
+    # these but the allowlist dropped them; agents saw is_method=True with
+    # no way to tell WHICH type owns the method.
+    "receiver",
+    "receiver_type",
     "class_type",
     "visibility",
     "modifiers",
