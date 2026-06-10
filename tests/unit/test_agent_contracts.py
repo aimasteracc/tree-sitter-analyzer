@@ -796,6 +796,8 @@ def test_facade_delegation_routes_each_action_to_expected_inner() -> None:
         ("nav", "caller_tree"): "CodeGraphCallerTreeTool",
         # RFC-0014 Phase B: test_map is a bespoke route (closure over impact_inner).
         ("nav", "test_map"): "<bespoke>",
+        # RFC-0014 Phase C: co_change is a bespoke route (async wrapper for _compute_co_change).
+        ("nav", "co_change"): "<bespoke>",
         ("structure", "outline"): "GetCodeOutlineTool",
         ("structure", "analyze"): "AnalyzeCodeStructureTool",
         ("structure", "signatures"): "<bespoke>",

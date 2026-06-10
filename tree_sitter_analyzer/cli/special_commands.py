@@ -46,6 +46,7 @@ def handle_special_commands(
         lambda: _handle_codegraph_metrics(args, context),
         lambda: _handle_incremental_sync(args, context),
         lambda: _handle_affected(args, context),
+        lambda: _handle_nav_actions_lazy(args, context),
         lambda: _handle_watch_health(args, context),
         lambda: _handle_mcp_commands(args, context),
         lambda: _validate_partial_read_options(args, context.output_error),
@@ -477,6 +478,17 @@ def _handle_affected(
     from .commands.affected_command import run_affected
 
     return run_affected(args, context.output_error)
+
+
+def _handle_nav_actions_lazy(
+    args: Any,
+    context: SpecialCommandContext,
+) -> int | None:
+    """Delegate --test-map/--co-change to nav_special_commands (lazy import
+    to avoid a circular dependency; the smell ratchet keeps this file thin)."""
+    from tree_sitter_analyzer.cli.nav_special_commands import handle_nav_actions
+
+    return handle_nav_actions(args, context)
 
 
 def _handle_watch_health(

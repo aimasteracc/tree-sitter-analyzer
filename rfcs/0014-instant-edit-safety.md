@@ -192,7 +192,7 @@ scan** (see §Algorithms: co_change), so each peer gets its own independent
 frequency — this is NOT a per-query constant.
 
 **Worked example proving two peers get different lifts**
-(total_commits = 100, target_commits = 20):
+(total_commits = 100 = actual commits parsed from a 100-commit repo, target_commits = 20):
 
 | Peer | peer_commits | shared_commits | lift calculation | lift |
 |---|---|---|---|---|
@@ -204,14 +204,18 @@ only changes with target) scores 4.00 vs `handler.py` (common file — random
 co-occurrence) at 1.00. A per-query constant would return identical lifts for
 both.
 
-#### co_change in-process cache
+#### co_change in-process cache (LRU maxsize=256)
 
 ```python
-# Module-level, keyed by (project_root, target_file, HEAD_sha)
-_CO_CHANGE_CACHE: dict[tuple[str, str, str], CoChangeResult] = {}
+# Module-level LRU cache keyed by (project_root, target_file, HEAD_sha).
+# maxsize=256 bounds memory in long-running MCP sessions.
+_CO_CHANGE_CACHE: OrderedDict[tuple[str, str, str], dict] = OrderedDict()
+_CO_CHANGE_CACHE_MAXSIZE = 256
 ```
 
 HEAD SHA obtained via `_run_git(["rev-parse", "HEAD"], cwd=project_root)`.
+LRU eviction: `_co_change_cache_put` calls `OrderedDict.popitem(last=False)` when
+`len > maxsize`; `_co_change_cache_get` calls `move_to_end` on hit.
 Invalidated when HEAD advances. No persistent storage; MCP server sessions are
 short.
 
@@ -397,14 +401,25 @@ lookup into `_callers` dict).
 
 #### co_change algorithm — single-pass git scan
 
-The implementation uses a **single `git log` subprocess** that emits both commit
-hashes and changed file names in one pass. This eliminates the 500-subprocess loop
-AND produces the per-file `peer_commits` frequencies needed for the true lift
-formula:
+The implementation uses a **single `git log` subprocess** (NO path filter) that
+emits commit hashes and changed file names for the whole project in one pass.
+This eliminates the 500-subprocess loop AND produces the per-file `peer_commits`
+frequencies needed for the true lift formula.
+
+**Critical design decision: no `-- <target_file>` path filter.**
+A path-filtered log (`git log ... -- target_file`) only emits commits that
+touched `target_file`.  In those blocks every file listed alongside the target is
+a peer *by construction*, so `peer_commit_sets[peer] ⊆ target_commits` always —
+making `shared == len(peer_shas)` and `peer_freq == shared`.  The lift formula
+then degenerates to `lift = shared * total / (target * shared) = total / target`
+(a constant, independent of the peer).  Every peer would get the same lift value.
+The full-project log is the only way to get true peer frequencies.
 
 ```
-git log --max-count=<N> --pretty=format:%H --name-only -- <target_file>
+git log --max-count=<N> --pretty=format:%H --name-only
 ```
+
+(no `--` path argument)
 
 This produces output blocks like:
 
@@ -415,6 +430,7 @@ src/schema.py
 
 def789abc012...
 src/handler.py
+src/utils.py
 ```
 
 One subprocess call. Parse commit blocks in Python.
@@ -427,46 +443,62 @@ def _compute_co_change(
     min_shared: int = 3,
     max_results: int = 20,
 ) -> CoChangeResult:
-    # 1. HEAD for cache key
-    _, head = _run_git(["rev-parse", "HEAD"], cwd=project_root)
-    cache_key = (project_root, target_file, head.strip())
-    if cache_key in _CO_CHANGE_CACHE:
-        return _CO_CHANGE_CACHE[cache_key]
+    # 1. HEAD for cache key; LRU cache keyed by (project_root, target, HEAD).
+    rc_head, head_raw = _run_git(["rev-parse", "HEAD"], cwd=project_root)
+    if rc_head != 0:
+        return _empty_co_change_result(target_file, max_commits)
+    cache_key = (project_root, target_file, head_raw.strip())
+    cached = _co_change_cache_get(cache_key)  # LRU maxsize=256
+    if cached is not None:
+        return cached
 
-    # 2. Single git log pass — emit hash then filenames, separated by blank lines
-    _, out = _run_git(
+    # 2. Single full-project git log — no path filter
+    rc_log, out = _run_git(
         ["log", f"--max-count={max_commits}",
-         "--pretty=format:%H", "--name-only", "--", target_file],
+         "--pretty=format:%H", "--name-only"],
         cwd=project_root,
     )
+    if rc_log != 0 or not out:
+        result = _empty_co_change_result(target_file, max_commits)
+        _co_change_cache_put(cache_key, result)
+        return result
 
-    # 3. Parse commit blocks in Python (one subprocess total)
-    target_commits: set[str] = set()
-    peer_commit_sets: dict[str, set[str]] = {}  # peer_file → set of commit SHAs
+    # 3. Parse commit blocks in Python (one subprocess total after rev-parse)
+    all_shas: set[str] = set()           # every unique SHA seen in the log
+    target_shas: set[str] = set()        # SHAs of commits that touched target_file
+    file_commit_sets: dict[str, set[str]] = {}  # peer_file → set of commit SHAs
     current_sha: str | None = None
     for line in out.splitlines():
-        line = line.strip()
-        if not line:
+        stripped = line.strip()
+        if not stripped:
             current_sha = None
             continue
-        if len(line) == 40 and all(c in "0123456789abcdef" for c in line):
-            current_sha = line
-            target_commits.add(current_sha)
-        elif current_sha and line != target_file and not is_test_file(line):
-            peer_commit_sets.setdefault(line, set()).add(current_sha)
+        if len(stripped) == 40 and all(c in "0123456789abcdef" for c in stripped):
+            current_sha = stripped
+            all_shas.add(current_sha)
+        elif current_sha is not None:
+            if stripped == target_file:
+                target_shas.add(current_sha)
+            elif not is_test_file(stripped):
+                file_commit_sets.setdefault(stripped, set()).add(current_sha)
 
-    if not target_commits:
+    if not target_shas:
         result = _empty_co_change_result(target_file, max_commits)
-        _CO_CHANGE_CACHE[cache_key] = result
+        _co_change_cache_put(cache_key, result)
         return result
 
     # 4. True association lift + filter + sort
-    total_commits = max_commits       # approximation; see Open questions §3
-    target_freq_count = len(target_commits)
+    # total_commits = ACTUAL parsed commit count (resolves RFC open question 3).
+    # Using max_commits as denominator inflates lift when the repo has fewer
+    # commits than the window (e.g. a 43-commit repo with max_commits=500 gives
+    # lift 11.6× too high).
+    total_commits = len(all_shas)
+    target_freq_count = len(target_shas)
     coupled = []
-    for peer, peer_shas in peer_commit_sets.items():
-        shared = len(peer_shas)           # commits where BOTH target and peer changed
-        peer_freq_count = len(peer_shas)  # peer's own commit count in this window
+    for peer, peer_all_shas in file_commit_sets.items():
+        # shared = commits where BOTH target and peer changed
+        shared = len(target_shas & peer_all_shas)
+        peer_freq_count = len(peer_all_shas)  # peer's TOTAL commits in window
         if shared < min_shared:
             continue
         # lift = P(A∩B) / (P(A) * P(B))
@@ -481,16 +513,16 @@ def _compute_co_change(
         })
     coupled.sort(key=lambda x: (-x["lift"], -x["shared_commits"]))
     truncated = len(coupled) > max_results
-    result = CoChangeResult(
-        success=True,
-        target=target_file,
-        commits_analyzed=len(target_commits),
-        window=f"last {max_commits} commits",
-        co_changed_files=coupled[:max_results],
-        truncated=truncated,
-        agent_summary=_build_co_change_summary(target_file, coupled[:max_results]),
-    )
-    _CO_CHANGE_CACHE[cache_key] = result
+    result = {
+        "success": True,
+        "target": target_file,
+        "commits_analyzed": len(target_shas),
+        "window": f"last {max_commits} commits",
+        "co_changed_files": coupled[:max_results],
+        "truncated": truncated,
+        "agent_summary": _build_co_change_summary(target_file, coupled[:max_results]),
+    }
+    _co_change_cache_put(cache_key, result)
     return result
 ```
 
@@ -915,17 +947,17 @@ Expected: `direct_callees` in production bucket = 2; `tests.test_callees_count =
       *(Phase A — PR #461)*
 - [x] `nav action=test_map` implemented; returns `test_files`, `test_functions`
       in `file::fn` format, `edge_count`, `truncated`. *(Phase B)*
-- [ ] `nav action=co_change` implemented; returns `co_changed_files` sorted by
+- [x] `nav action=co_change` implemented; returns `co_changed_files` sorted by
       lift descending; degrades gracefully (success=true, empty list) when git is
       unavailable. *(Phase C — not yet started)*
-- [ ] co_change uses a SINGLE `git log --name-only` subprocess plus one
+- [x] co_change uses a SINGLE `git log --name-only` subprocess plus one
       `rev-parse`; no per-commit diff-tree loop. *(Phase C)*
-- [ ] co_change HEAD-keyed cache: second call with same (project, file, HEAD)
+- [x] co_change HEAD-keyed cache: second call with same (project, file, HEAD)
       does not invoke a subprocess. *(Phase C)*
-- [x] CLI parity: `--test-map <symbol>` and `--impact <fn> [--include-tests]`
+- [x] CLI parity: `--test-map <symbol>`, `--co-change <file-or-symbol>`, and `--impact <fn> [--include-tests]`
       flags wired, documented, and covered by a parity test.
       (`--co-change` deferred to Phase C). *(Phase B)*
-- [x] Unit tests `TestImpactTestPartition` (Phase A) and `TestNavTestMap`
+- [x] Unit tests `TestImpactTestPartition` (Phase A), `TestNavTestMap` (Phase B), and `TestCoChange` (Phase C) green with exact assertions.
       (Phase B) green with all assertions using exact values (`== N`).
       (`TestCoChange` deferred to Phase C). *(Phase A+B)*
 - [ ] Integration test `TestNavImpactPartition` dispatches through
@@ -933,9 +965,9 @@ Expected: `direct_callees` in production bucket = 2; `tests.test_callees_count =
       to exact values measured on first green run. *(deferred)*
 - [ ] DF-16 dogfood re-run: risk level changes from `high` to `low` for the
       documented DF-16 function (16 test + 2 prod callers). *(deferred)*
-- [x] `_NAV_DESCRIPTION` and MCP server instructions updated with `test_map`
+- [x] `_NAV_DESCRIPTION` and MCP server instructions updated with `test_map` and `co_change`
       action (and Phase A `impact` docs). *(Phase B)*
-- [x] Docs/CODEMAPS updated. *(Phase B)*
+- [x] Docs/CODEMAPS updated. *(Phases B and C)*
 
 ## What this RFC does NOT do (deferred)
 
