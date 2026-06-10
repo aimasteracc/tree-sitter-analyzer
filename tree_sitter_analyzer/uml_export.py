@@ -31,7 +31,6 @@ _EXTERNAL_BASES = frozenset(
 # P1-C (RFC-0015): path segments that identify test/fixture content.
 # is_test_file() already covers these and more; we use it for filtering.
 # This constant documents the intent rather than providing a second filter.
-_TEST_DIRS: frozenset[str] = frozenset({"tests", "test_data", "fixtures"})
 
 _TRUNCATION_NOTE = (
     "%% NOTE: diagram truncated — only the top N edges shown.\n"
@@ -309,6 +308,11 @@ class UMLExporter:
         else:
             scope = "whole_project"
 
+        # P2-1: an unknown class_name must be distinguishable from a known
+        # class with an empty neighbourhood — agents can't tell them apart
+        # from an empty diagram alone.
+        not_found = class_name is not None and class_name not in internal_names
+
         for cls in classes:
             child = cls.get("name", "")
             if not child:
@@ -347,7 +351,11 @@ class UMLExporter:
             nodes=rendered_nodes,
             edges=edges,
             truncated=truncated,
-            metadata={"source": "class_hierarchy", "scope": scope},
+            metadata={
+                "source": "class_hierarchy",
+                "scope": scope,
+                **({"not_found": True} if not_found else {}),
+            },
         )
 
     def package_diagram(

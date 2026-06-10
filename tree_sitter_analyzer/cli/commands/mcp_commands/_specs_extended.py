@@ -58,6 +58,9 @@ _EXTENDED_SPECS: tuple[McpCommandSpec, ...] = (
             "function_names": getattr(args, "codegraph_impact_functions", None),
             "file_path": getattr(args, "codegraph_impact_file", None),
             "depth": getattr(args, "codegraph_impact_depth", 5),
+            "include_tests": bool(
+                getattr(args, "codegraph_impact_include_tests", False)
+            ),
             "output_format": output_format,
         },
     ),

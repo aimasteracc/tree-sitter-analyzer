@@ -271,7 +271,7 @@ def _add_mcp_codegraph_map_options(parser: argparse.ArgumentParser) -> None:
         "--uml-include-tests",
         action="store_true",
         help=(
-            "Include test-corpus classes (under tests/, test_data/, fixtures/) "
+            "Include test-corpus classes (under tests/, testdata/, fixtures/) "
             "in --uml class whole-project diagrams (default: excluded)"
         ),
     )

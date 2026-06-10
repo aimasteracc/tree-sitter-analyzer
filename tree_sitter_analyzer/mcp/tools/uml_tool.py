@@ -82,7 +82,7 @@ class CodeGraphUMLTool(BaseMCPTool):
                     "type": "boolean",
                     "default": False,
                     "description": (
-                        "Include test-corpus classes (under tests/, test_data/, fixtures/) "
+                        "Include test-corpus classes (under tests/, testdata/, fixtures/) "
                         "in whole-project diagrams. Default False."
                     ),
                 },
@@ -177,6 +177,11 @@ class CodeGraphUMLTool(BaseMCPTool):
                 max_paths=arguments.get("max_paths", 3),
             )
 
-        verdict = "INFO" if diagram.edges else "NOT_FOUND"
+        # P2-1: an unknown class_name is NOT_FOUND even if the project has
+        # edges; agents must distinguish "no such class" from "no neighbours".
+        not_found = diagram.metadata.get("not_found", False)
+        verdict = (
+            "NOT_FOUND" if not_found else ("INFO" if diagram.edges else "NOT_FOUND")
+        )
         response = build_response(verdict=verdict, **diagram.to_dict())
         return apply_toon_format_to_response(response, output_format)

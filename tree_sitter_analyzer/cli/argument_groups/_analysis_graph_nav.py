@@ -237,6 +237,15 @@ def _add_mcp_graph_nav_options(parser: argparse.ArgumentParser) -> None:
         help="Max transitive depth for --codegraph-impact (default: 5)",
     )
     parser.add_argument(
+        "--codegraph-impact-include-tests",
+        action="store_true",
+        default=False,
+        help=(
+            "Include test_caller_files and test_callee_files in the tests bucket "
+            "of --codegraph-impact output (counts are always present)."
+        ),
+    )
+    parser.add_argument(
         "--pr-review",
         nargs="?",
         const="diff",

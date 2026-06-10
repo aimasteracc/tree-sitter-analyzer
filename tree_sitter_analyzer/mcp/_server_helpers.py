@@ -69,7 +69,7 @@ The 8 tools: nav, search, structure, health, edit, project, index, viz.
 | Is the index ready / how big? | index action=status |
 | Edge-kind breakdown of the graph | index action=status (edges_by_kind) |
 | Get pushed when results change | search action=subscribe |
-| File / module dependency questions | nav action=impact / structure |
+| File / module dependency questions (risk score, tests bucket) | nav action=impact / structure |
 | File discovery | project / search |
 
 ## Differentiators (capabilities grep / one-shot indexers lack)
@@ -82,6 +82,11 @@ The 8 tools: nav, search, structure, health, edit, project, index, viz.
 - **`edges_by_kind`** — `index action=status` returns a per-edge-kind count
   (calls / extends / implements / imports …), not just a single total. Use it to
   see the graph's shape before drilling in.
+- **`nav action=impact` test partition (RFC-0014)** — risk score is computed
+  from PRODUCTION call edges only; the result always includes a `tests` bucket
+  (`test_callers_count`, `test_callees_count`). Pass `include_tests=true` to
+  also receive `test_caller_files` / `test_callee_files` (applies to
+  `function_impact` and `risk_score` modes).
 
 ## Default chain for "how does X work / trace a flow" (FOLLOW THIS)
 

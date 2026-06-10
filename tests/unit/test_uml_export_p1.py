@@ -67,6 +67,29 @@ def test_class_diagram_class_neighbourhood_scope_field(monkeypatch) -> None:
     assert "Unrelated" not in diagram.nodes
 
 
+def test_class_diagram_unknown_class_name_flags_not_found(monkeypatch) -> None:
+    """P2-1: agents must distinguish 'no such class' from 'no neighbours'."""
+    classes = [
+        {"name": "Known", "parents": [], "file": "src/x.py"},
+    ]
+    monkeypatch.setattr(uml_export, "ClassHierarchy", _make_fake_hierarchy(classes))
+    exporter = UMLExporter("/repo", cache=object())
+    diagram = exporter.class_diagram(class_name="NoSuchClassXYZ")
+    assert diagram.metadata["not_found"] is True
+    assert diagram.metadata["scope"] == "class_neighbourhood"
+
+
+def test_class_diagram_known_isolated_class_not_flagged(monkeypatch) -> None:
+    """A known class with no parents/children is NOT not_found."""
+    classes = [
+        {"name": "Loner", "parents": [], "file": "src/x.py"},
+    ]
+    monkeypatch.setattr(uml_export, "ClassHierarchy", _make_fake_hierarchy(classes))
+    exporter = UMLExporter("/repo", cache=object())
+    diagram = exporter.class_diagram(class_name="Loner")
+    assert "not_found" not in diagram.metadata
+
+
 def test_class_diagram_whole_project_scope_label(monkeypatch) -> None:
     classes = [{"name": "A", "parents": [], "file": "src/a.py"}]
     monkeypatch.setattr(uml_export, "ClassHierarchy", _make_fake_hierarchy(classes))
