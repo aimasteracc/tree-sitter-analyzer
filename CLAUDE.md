@@ -109,6 +109,17 @@ and verify the output is sane before committing.
 
 In order: `--class-hierarchy`, `--callers`, `--callees`, `--call-graph`, `--class-hierarchy mode=tree`. These exist and work. Writing a 50-line Python script to answer "what subclasses does LanguagePlugin have" is wasted effort — `--class-hierarchy mode=subclasses --class-hierarchy-class LanguagePlugin` gives the same answer in one command.
 
+### 11. A non-functional claim (cost / size / latency) is a BELIEF until it is an executable invariant
+
+**Why (incident, 2026-06-08):** The MCP TOON response was ~**1.96× the size of plain JSON** for metadata-heavy decision tools — the "token-efficient" format was nearly twice as expensive as the one it replaced. ~18,000 tests were green throughout. A **human using the tool** found it; the suite never could. Root cause: the suite is a *conformance* net (does the code match its spec?), and it **cannot discover that the spec itself is wasteful**. The premise — CLAUDE.md §1's "TOON is 50-70% more token-efficient" — lived only as prose, so it was never falsifiable. (Worse: the bug was *self-protecting* — 62 test files asserted the duplicated shape as "correct", so the fix broke them.)
+
+**Rules:**
+1. **Any claim about cost/size/latency/token-count in a design doc MUST have a matching executable invariant** in `tests/unit/mcp/test_output_cost_invariants.py` (or a perf-budget test). If it isn't measured in CI, it is a belief, not a fact — and beliefs rot silently.
+2. **Assert "is it good?", not only "does it match?".** Conformance tests (`assert field == X`, `set(keys) <= SURFACE`) verify intent; they cannot question intent. Add at least one test that measures the *value* (bytes, ratio, count) and asserts a **documented relationship** (`toon ≤ json`, `compact < default`) or an exact pin — NEVER a hand-waved numeric ceiling (`ratio <= 2.5` passed for months while the bug sat at 1.96×; see the exact-assertion rule above).
+3. **Locked/"settled" design claims carry their evidence.** A LOCKED decision (e.g. §1) must cite a **measurement command + last-measured date**; "the cost analysis is settled" without a number is the exact framing that shielded this bug. Re-measure on a cadence.
+4. **Dogfood means USE + MEASURE, not run-the-suite.** A dogfood round must actually invoke tools and look at the bytes/tokens. Green tests prove self-consistency, not quality — discovering a wrong belief needs input from *outside* the loop (real use, or an outside reviewer; cf. Codex catching the `deprecation`-dropping test that was itself protecting a bug).
+5. **Prefer differential/ratchet invariants.** Assert *relationships* (`toon ≤ json`, `compact < default`) and use `strict` xfail to track a known-bad invariant so that *fixing it forces un-xfailing it* — the cost can never silently regress back.
+
 ## Dogfood-finding triage rules (when you receive a list of bugs from a dogfood agent)
 
 Before dispatching a fix agent for any finding, ask:
@@ -413,6 +424,24 @@ Codex flagged 3 real P2 correctness bugs across #269/#270 (Hyphae file-identity 
 ```
 feature/* → develop → release/vX.Y.Z → main (only after all gates above)
 ```
+
+**Develop freeze while a release is in flight (🔒 LOCKED BY USER, 2026-06-10):**
+while a `release/* → main` PR is open, feature PRs QUEUE — do NOT merge them
+into develop, even with green CI. Exception: hotfixes for the in-flight
+release go to the release branch (never straight to develop). The freeze
+lifts only when release finalization (below) completes.
+*Past incident (2026-06-10):* 6 feature PRs were merged into develop while
+the v1.22.0 release PR was open. No material damage (the release diff was
+untouched), but the "release state" and "next-version content" interleaved —
+review/rollback baselines get muddy. User called it out; rule locked.
+
+**Release finalization — mandatory steps AFTER release → main merges**
+(none of these are automated; v1.20 and v1.21 both required them manually):
+
+1. `gh release create vX.Y.Z --target main --notes-file <changelog section>` — the git tag and GitHub Release are NOT auto-created.
+2. **Back-merge main → develop.** Conflict conventions: take main's authoritative test-count (measured from release CI), keep develop's newer feature surface (e.g. flag counts for develop-only params). Verify with the registry commands below, not by trusting either side.
+3. Re-verify PyPI version / main README badge / `__version__` agree.
+4. Finalization complete = release closed = develop unfreezes.
 
 **Past incident (2026-05-31):** merged release/v1.17.0 → main immediately after the Release Automation `Finalize Release` step failed — before confirming PyPI had published and before README numbers were verified. The correct order is: wait for PyPI ✓, fix README, then merge.
 

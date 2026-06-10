@@ -128,8 +128,10 @@ def test_class_inheritance(extractor):
     tree = _parse(code)
     classes = extractor.extract_classes(tree, code)
     derived = [c for c in classes if c.name == "Derived"]
-    assert len(derived) >= 1
-    # base_class_clause is parsed but grammar lacks base_specifier children
+    assert len(derived) == 1
+    # ts-cpp 0.23 puts base names directly under base_class_clause (no
+    # base_specifier wrapper) — captured since the Theme-C fix.
+    assert derived[0].superclass == "Base"
     assert derived[0].raw_text is not None
 
 

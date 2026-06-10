@@ -17,12 +17,12 @@
 |----------|-----------|-----|-------|---------|-----|
 | display | fun(): String | pub | 16-16 | - | - |
 | summary | fun(): String | pub | 18-20 | - | - |
-| getUser | fun(): User? | pub | 33-35 | - | - |
-| fetchUserAsync | fun(): Result<User> | pub | 37-40 | - | - |
+| getUser | fun(id: Long): User? | pub | 33-35 | - | - |
+| fetchUserAsync | fun(id: Long): Result<User> | pub | 37-40 | - | - |
 | display | fun(): String | pub | 42-44 | - | - |
 | toTitleCase | fun(): String | pub | 52-54 | - | - |
 | get | fun() | pub | 59-59 | - | - |
-| main | fun() | pub | 62-65 | - | - |
+| main | fun(args: Array<String>) | pub | 62-65 | - | - |
 
 ## Properties
 | Name | Type | Vis | Kind | Line | Doc |

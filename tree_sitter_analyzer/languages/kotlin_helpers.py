@@ -47,17 +47,38 @@ def extract_kotlin_parameters(
     """Extract Kotlin function parameters.
 
     r37dt (dogfood): flatten nesting 6 → 3 via ``_kotlin_parameter_pair``.
+    Theme E (2026-06-10): tree-sitter-kotlin exposes the parameter list as a
+    child node of type ``function_value_parameters``, not as a named field
+    ``"parameters"`` — ``child_by_field_name("parameters")`` always returned
+    None, leaving every Kotlin function with zero parameters.  Scan children
+    for the correct node type.  Also track ``parameter_modifiers`` (e.g.
+    ``vararg``) immediately preceding a ``parameter`` node and prepend the
+    modifier text to the emitted parameter string.
     """
     parameters: list[str] = []
-    params_node = node.child_by_field_name("parameters")
+    params_node = None
+    for child in node.children:
+        if child.type == "function_value_parameters":
+            params_node = child
+            break
     if params_node is None:
         return parameters
+    pending_modifier: str = ""
     for child in params_node.children:
-        if child.type != "parameter":
-            continue
-        param_name, param_type = _kotlin_parameter_pair(child, get_node_text)
-        if param_name:
-            parameters.append(f"{param_name}: {param_type or 'Any'}")
+        if child.type == "parameter_modifiers":
+            pending_modifier = get_node_text(child)
+        elif child.type == "parameter":
+            param_name, param_type = _kotlin_parameter_pair(child, get_node_text)
+            if param_name:
+                if pending_modifier:
+                    parameters.append(
+                        f"{pending_modifier} {param_name}: {param_type or 'Any'}"
+                    )
+                else:
+                    parameters.append(f"{param_name}: {param_type or 'Any'}")
+            pending_modifier = ""
+        else:
+            pending_modifier = ""
     return parameters
 
 
@@ -66,17 +87,22 @@ def _kotlin_parameter_pair(
 ) -> tuple[str, str]:
     """Return ``(name, type)`` from a Kotlin ``parameter`` AST node.
 
-    Iterates the parameter node's children looking for a
-    ``simple_identifier`` (name) and a type-like node (``user_type`` or
-    any node whose ``type`` string contains ``"type"``). Empty strings
-    default when either part is missing; caller fills ``"Any"`` for
-    blank types.
+    Iterates the parameter node's children looking for a name node
+    (``simple_identifier`` or ``identifier`` — grammar version-dependent)
+    and a type-like node (``user_type`` or any node whose ``type`` string
+    contains ``"type"``). Empty strings default when either part is missing;
+    caller fills ``"Any"`` for blank types.
+
+    Theme E (2026-06-10): tree-sitter-kotlin emits ``identifier`` (not
+    ``simple_identifier``) for parameter names in the tested grammar version;
+    accept both so the helper works across grammar versions.
     """
     param_name = ""
     param_type = ""
     for grandchild in parameter_node.children:
-        if grandchild.type == "simple_identifier":
-            param_name = get_node_text(grandchild)
+        if grandchild.type in ("simple_identifier", "identifier"):
+            if not param_name:  # first identifier is the name
+                param_name = get_node_text(grandchild)
         elif "type" in grandchild.type or grandchild.type == "user_type":
             param_type = get_node_text(grandchild)
     return param_name, param_type

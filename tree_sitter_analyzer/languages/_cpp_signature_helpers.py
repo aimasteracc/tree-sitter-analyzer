@@ -63,7 +63,13 @@ def extract_parameters(
     params_node: Any,
     get_node_text: Callable[..., str],
 ) -> list[str]:
-    """Extract function parameters."""
+    """Extract function parameters.
+
+    Theme E (2026-06-10): ``variadic_parameter_declaration`` now emits the
+    full node text (e.g. ``Args... args``) instead of a bare ``"..."``.
+    C-style variadic (bare ``...`` token, node type ``"..."``) is also
+    captured so that e.g. ``printf(const char* fmt, ...)`` yields two params.
+    """
     parameters: list[str] = []
     for child in params_node.children:
         if child.type in (
@@ -72,6 +78,8 @@ def extract_parameters(
         ):
             parameters.append(get_node_text(child))
         elif child.type == "variadic_parameter_declaration":
+            parameters.append(get_node_text(child))
+        elif child.type == "...":
             parameters.append("...")
     return parameters
 
