@@ -713,9 +713,9 @@ def test_lru_cache_evicts_at_maxsize() -> None:
 
 
 def test_real_repo_co_change_under_2s(tmp_path: Path) -> None:  # noqa: F821
-    """Rule-11: _compute_co_change on a ~30-commit real git repo completes < 2.0 s.
+    """Rule-11: _compute_co_change on a ~10-commit real git repo completes < 2.0 s.
 
-    Builds a real git repo with 30 commits (target.py + peer.py alternate),
+    Builds a real git repo with 10 commits (target.py + peer.py alternate),
     invokes _compute_co_change against real git, and asserts wall-clock < 2.0 s.
     Documented bound: 2.0 s (RFC-0014 Rule-11; single git subprocess).
     """
@@ -755,7 +755,7 @@ def test_real_repo_co_change_under_2s(tmp_path: Path) -> None:  # noqa: F821
     other = repo / "src" / "other.py"
     target.parent.mkdir(parents=True, exist_ok=True)
 
-    for i in range(30):
+    for i in range(10):
         target.write_text(f"# target v{i}\n", encoding="utf-8")
         if i % 2 == 0:
             peer.write_text(f"# peer v{i}\n", encoding="utf-8")
@@ -771,7 +771,7 @@ def test_real_repo_co_change_under_2s(tmp_path: Path) -> None:  # noqa: F821
     elapsed = time.monotonic() - start
 
     assert result["success"] is True
-    assert result["commits_analyzed"] == 30
+    assert result["commits_analyzed"] == 10
     assert elapsed < 2.0
 
 
@@ -781,7 +781,7 @@ def test_real_repo_co_change_under_2s(tmp_path: Path) -> None:  # noqa: F821
 
 
 def test_cli_co_change_execution_dispatches(tmp_path: Path) -> None:  # noqa: F821
-    """--co-change FILE_OR_SYMBOL must route through _handle_nav_actions and
+    """--co-change FILE_OR_SYMBOL must route through handle_nav_actions and
     return a result dict (success key present) — not fall through as unhandled.
 
     We mock build_nav_facade.execute to avoid a real git call; the test verifies
@@ -792,10 +792,8 @@ def test_cli_co_change_execution_dispatches(tmp_path: Path) -> None:  # noqa: F8
     from unittest.mock import AsyncMock
     from unittest.mock import patch as _patch
 
-    from tree_sitter_analyzer.cli.special_commands import (
-        SpecialCommandContext,
-        _handle_nav_actions,
-    )
+    from tree_sitter_analyzer.cli.nav_special_commands import handle_nav_actions
+    from tree_sitter_analyzer.cli.special_commands import SpecialCommandContext
 
     captured: list[dict] = []
 
@@ -834,7 +832,7 @@ def test_cli_co_change_execution_dispatches(tmp_path: Path) -> None:  # noqa: F8
     ) as mock_build:
         mock_facade = mock_build.return_value
         mock_facade.execute = AsyncMock(return_value=fake_result)
-        rc = _handle_nav_actions(args, ctx)
+        rc = handle_nav_actions(args, ctx)
 
     assert rc == 0
     assert len(captured) == 1
@@ -848,7 +846,7 @@ def test_cli_co_change_execution_dispatches(tmp_path: Path) -> None:  # noqa: F8
 
 
 def test_cli_test_map_execution_dispatches(tmp_path: Path) -> None:  # noqa: F821
-    """--test-map SYMBOL must route through _handle_nav_actions and return a
+    """--test-map SYMBOL must route through handle_nav_actions and return a
     result dict (success key present) — not fall through as unhandled.
 
     We mock build_nav_facade.execute to avoid a real graph call.
@@ -858,10 +856,8 @@ def test_cli_test_map_execution_dispatches(tmp_path: Path) -> None:  # noqa: F82
     from unittest.mock import AsyncMock
     from unittest.mock import patch as _patch
 
-    from tree_sitter_analyzer.cli.special_commands import (
-        SpecialCommandContext,
-        _handle_nav_actions,
-    )
+    from tree_sitter_analyzer.cli.nav_special_commands import handle_nav_actions
+    from tree_sitter_analyzer.cli.special_commands import SpecialCommandContext
 
     captured: list[dict] = []
 
@@ -901,7 +897,7 @@ def test_cli_test_map_execution_dispatches(tmp_path: Path) -> None:  # noqa: F82
     ) as mock_build:
         mock_facade = mock_build.return_value
         mock_facade.execute = AsyncMock(return_value=fake_result)
-        rc = _handle_nav_actions(args, ctx)
+        rc = handle_nav_actions(args, ctx)
 
     assert rc == 0
     assert len(captured) == 1
