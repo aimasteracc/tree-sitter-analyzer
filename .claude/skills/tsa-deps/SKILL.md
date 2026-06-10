@@ -73,7 +73,7 @@ Useful as a "first look" right after `tsa-landing`.
 uv run tree-sitter-analyzer <file> --dependencies file_deps
 uv run tree-sitter-analyzer --dependencies summary
 uv run tree-sitter-analyzer --import-graph --language python
-uv run tree-sitter-analyzer --ast-path
+uv run tree-sitter-analyzer --codegraph-sitemap
 ```
 
 ## Anti-patterns

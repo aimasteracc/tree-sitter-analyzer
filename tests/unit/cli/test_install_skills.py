@@ -540,60 +540,31 @@ class TestSkillContentSync:
         """
         import re
 
-        # Subset of high-impact legacy names — most likely to appear in tool
-        # call positions. Full set in facade_map.LEGACY_TOOL_MAP.
-        LEGACY_CALL_NAMES = [
-            "safe_to_edit",
-            "analyze_change_impact",
-            "check_project_health",
-            "check_file_health",
-            "check_constraints",
-            "codegraph_callers",
-            "codegraph_callees",
-            "codegraph_pr_review",
-            "codegraph_symbol_search",
-            "codegraph_call_path",
-            "analyze_dependencies",
-            "codegraph_import_graph",
-            "codegraph_sitemap",
-            "extract_code_section",
-            "find_and_grep",
-            "search_content",
-            "list_files",
-            "check_code_scale",
-            "analyze_code_structure",
-            "query_code",
-            "code_patterns",
-            "semantic_classify",
-            "refactoring_suggestions",
-            "ast_diff",
-            "codegraph_dead_code",
-            "codegraph_overview",
-            "codegraph_complexity_heatmap",
-            "advise_parser_readiness",
-            "get_agent_workflow",
-            "get_project_summary",
-            "smart_context",
-            "codegraph_autoindex",
-            "codegraph_full_index",
-            "ast_cache",
-            "codegraph_uml",
-        ]
+        from tree_sitter_analyzer.mcp.facade_map import LEGACY_TOOL_MAP
+
+        # Authoritative: every legacy v1.x name, derived dynamically so the
+        # scan can never rot behind facade_map. get_project_summary appeared
+        # in skills but was never in LEGACY_TOOL_MAP — keep it explicitly.
+        legacy_call_names = sorted(set(LEGACY_TOOL_MAP) | {"get_project_summary"})
 
         repo = self._repo_root()
-        bundled_base = repo / "tree_sitter_analyzer" / "skills"
+        scan_bases = [
+            repo / "tree_sitter_analyzer" / "skills",
+            repo / ".claude" / "skills",
+        ]
 
         violations: dict[str, list[str]] = {}
-        for name in self.SKILL_NAMES:
-            skill_path = bundled_base / name / "SKILL.md"
-            content = skill_path.read_text(encoding="utf-8")
-            found = []
-            for legacy in LEGACY_CALL_NAMES:
-                # Match name immediately followed by ( — i.e. a function call
-                if re.search(r"\b" + re.escape(legacy) + r"\s*\(", content):
-                    found.append(legacy)
-            if found:
-                violations[name] = found
+        for base in scan_bases:
+            for name in self.SKILL_NAMES:
+                skill_path = base / name / "SKILL.md"
+                content = skill_path.read_text(encoding="utf-8")
+                found = []
+                for legacy in legacy_call_names:
+                    # Match name immediately followed by ( — a function call
+                    if re.search(r"\b" + re.escape(legacy) + r"\s*\(", content):
+                        found.append(legacy)
+                if found:
+                    violations[f"{base.name}/{name}"] = found
 
         assert violations == {}, (
             "Legacy tool-call names found in bundled skills (issue #437). "

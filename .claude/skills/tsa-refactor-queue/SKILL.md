@@ -233,7 +233,7 @@ sqlite3 .ast-cache/index.db "
   ORDER BY churn_30d DESC LIMIT 50"
 
 # 5. Per-row enrichment (loop top 5)
-uv run tree-sitter-analyzer <file> --outline --output-format json
+uv run tree-sitter-analyzer <file> --table --output-format json
 uv run tree-sitter-analyzer --callers <SYMBOL> --output-format json
 uv run tree-sitter-analyzer <file> --refactor --output-format json
 ```

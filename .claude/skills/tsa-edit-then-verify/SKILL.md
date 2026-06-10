@@ -150,7 +150,6 @@ PARALLEL BATCH (one message):
   → edit action=safe file_path="tree_sitter_analyzer/health_scorer.py" edit_type="feature"
   → health action=file file_path="tree_sitter_analyzer/health_scorer.py"
   → project action=smart file_path="tree_sitter_analyzer/health_scorer.py"
-                  query="add new dimension to grading rubric"
 
 Returned:
   edit action=safe:  verdict=REVIEW
