@@ -86,6 +86,15 @@ _ERROR_RECOVERY_HINTS: list[tuple[str, str, str, str]] = [
         "",
     ),
     (
+        # invalid_enum_error() format (#449): "Invalid <param>: '<got>'.
+        # Valid values: a, b, c" — the enumerated message already tells the
+        # agent what to send; the hint just points back at it.
+        "valid values:",
+        "validation",
+        "A parameter has an invalid value. The error message lists the valid values — pick one and retry.",
+        "",
+    ),
+    (
         "memory",
         "resource_exhausted",
         "The operation ran out of memory. Try analyzing a smaller scope or use suppress_output=true.",

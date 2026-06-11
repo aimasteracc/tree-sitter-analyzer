@@ -289,8 +289,25 @@ class TestDeadCodeToolEdgeCases:
     def test_invalid_mode_raises_value_error(self, fake_root):
         """validate_arguments must raise ValueError for unknown mode."""
         tool = CodeGraphDeadCodeTool(fake_root)
-        with pytest.raises(ValueError, match="Invalid mode"):
+        with pytest.raises(ValueError, match="Invalid mode.*Valid values"):
             tool.validate_arguments({"mode": "bogus"})
+
+    def test_invalid_mode_enumerates_valid_values(self, fake_root):
+        """Error message must list all valid mode values (issue #449)."""
+        tool = CodeGraphDeadCodeTool(fake_root)
+        try:
+            tool.validate_arguments({"mode": "invalid_mode"})
+            assert False, "Should have raised ValueError"
+        except ValueError as exc:
+            error_msg = str(exc)
+            # Check that the error message includes the enumeration
+            assert "all" in error_msg
+            assert "dead_functions" in error_msg
+            assert "unused_imports" in error_msg
+            assert "variables" in error_msg
+            assert "invalid_mode" in error_msg
+            # Verify the message structure (issue #449 compliance)
+            assert "Valid values:" in error_msg
 
     def test_analyze_dead_code_exception_returns_error(self, fake_root, monkeypatch):
         """If analyze_dead_code raises, tool must return success=False."""

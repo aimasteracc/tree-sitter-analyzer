@@ -305,5 +305,5 @@ def test_validate_format_type_accepts_signatures() -> None:
 
 
 def test_validate_format_type_still_rejects_unknown() -> None:
-    with pytest.raises(ValueError, match="format_type must be one of"):
+    with pytest.raises(ValueError, match="Invalid format_type"):
         _validate_format_type({"format_type": "unknown_mode"})

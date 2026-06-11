@@ -11,6 +11,7 @@ from ...language_detector import detect_language_from_file
 from ...utils import setup_logger
 from ..utils.file_output_manager import FileOutputManager
 from ..utils.format_helper import apply_toon_format_to_response
+from ._validators import invalid_enum_error
 from .analyze_code_structure_helpers import TOOL_SCHEMA as _TOOL_SCHEMA
 from .analyze_code_structure_helpers import (
     convert_analysis_result_to_structure_dict,
@@ -361,7 +362,9 @@ def _validate_format_type(arguments: dict[str, Any]) -> None:
     if not isinstance(arguments["format_type"], str):
         raise ValueError("format_type must be a string")
     if arguments["format_type"] not in _VALID_FORMAT_TYPES:
-        raise ValueError("format_type must be one of: csv, compact, full, signatures")
+        raise invalid_enum_error(
+            "format_type", arguments["format_type"], list(_VALID_FORMAT_TYPES)
+        )
 
 
 def _validate_optional_string(
