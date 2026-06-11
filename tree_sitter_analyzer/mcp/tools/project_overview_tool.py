@@ -266,12 +266,33 @@ def _is_ignored_by_gitignore(
 
 
 def _scan_project(root: Path, max_depth: int) -> dict[str, Any]:
-    """Walk the project tree and collect file/directory stats."""
+    """Walk the project tree and collect file/directory stats.
+
+    Uses ``os.walk`` (not ``rglob``) so ignored directories are pruned from
+    the recursion frontier BEFORE descending — a gitignored vendored tree
+    like .benchmark-repos/ must not even be visited (Codex P2 on #493).
+    """
+    import os
+
     scan = _new_scan()
     gitignore_spec = _load_gitignore_patterns(root)
 
-    for path in root.rglob("*"):
-        _add_path_to_scan(scan, root, path, max_depth, gitignore_spec)
+    for dirpath, dirnames, filenames in os.walk(root):
+        rel_dir = os.path.relpath(dirpath, root)
+        keep_dirs = []
+        for d in dirnames:
+            rel = d if rel_dir == "." else f"{rel_dir}/{d}"
+            # match both "dir" and "dir/" forms (pathspec dir patterns)
+            if _is_ignored_by_gitignore(rel, gitignore_spec) or (
+                _is_ignored_by_gitignore(rel + "/", gitignore_spec)
+            ):
+                continue
+            keep_dirs.append(d)
+        dirnames[:] = sorted(keep_dirs)
+        for d in dirnames:
+            _add_path_to_scan(scan, root, Path(dirpath) / d, max_depth, gitignore_spec)
+        for f in sorted(filenames):
+            _add_path_to_scan(scan, root, Path(dirpath) / f, max_depth, gitignore_spec)
     scan["source_files"].sort(key=lambda item: item["lines"], reverse=True)
     return scan
 
@@ -330,7 +351,9 @@ def _add_file_to_scan(scan: dict[str, Any], root: Path, path: Path) -> None:
     if not lang:
         return
     try:
-        rel_path = str(path.relative_to(root))
+        # Forward slashes on every platform — agents must not get
+        # OS-dependent separators in response payloads.
+        rel_path = str(path.relative_to(root)).replace("\\", "/")
         size = path.stat().st_size
         lines = _count_lines(path)
         scan["source_files"].append(

@@ -722,3 +722,33 @@ class TestEdgeCases:
         result = _run(tool.execute({"max_depth": 5, "output_format": "json"}))
 
         assert result["summary"]["languages_count"] == len(ext_lang)
+
+
+def test_load_gitignore_only_comments_returns_none(tmp_path) -> None:
+    """A .gitignore with only comments/blank lines compiles to None."""
+    from tree_sitter_analyzer.mcp.tools.project_overview_tool import (
+        _load_gitignore_patterns,
+    )
+
+    (tmp_path / ".gitignore").write_text("# only a comment\n\n")
+    assert _load_gitignore_patterns(tmp_path) is None
+
+
+def test_load_gitignore_unreadable_returns_none(tmp_path, monkeypatch) -> None:
+    """A .gitignore that raises on read degrades gracefully to None."""
+    import builtins
+
+    from tree_sitter_analyzer.mcp.tools.project_overview_tool import (
+        _load_gitignore_patterns,
+    )
+
+    (tmp_path / ".gitignore").write_text("build/\n")
+    real_open = builtins.open
+
+    def boom(path, *a, **kw):
+        if str(path).endswith(".gitignore"):
+            raise OSError("synthetic read failure")
+        return real_open(path, *a, **kw)
+
+    monkeypatch.setattr(builtins, "open", boom)
+    assert _load_gitignore_patterns(tmp_path) is None
