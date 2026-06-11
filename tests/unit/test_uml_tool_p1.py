@@ -113,11 +113,16 @@ def test_sitemap_tool_rejects_bool_max_symbols() -> None:
 
 
 def test_uml_tool_schema_lists_diagrams_phase1() -> None:
-    """Phase 1 does NOT add activity/state; enum stays at 4 elements."""
+    """Activity branch adds 'activity'; enum re-pinned to exactly 5 elements.
+
+    COLLISION_WITH_STATE_BRANCH: when feature/uml-state-diagram merges,
+    re-pin to 6: [..., "activity", "state"].
+    """
     tool = CodeGraphUMLTool()
     assert tool.get_tool_schema()["properties"]["diagram"]["enum"] == [
         "class",
         "package",
         "component",
         "sequence",
+        "activity",
     ]
