@@ -22,6 +22,12 @@ logger = logging.getLogger(__name__)
 # fall back to ``total_count_known=False`` and ``total_count_at_least``.
 RECOUNT_BUDGET_MS = 500
 
+# Default listed cap for normal (full-match) mode (DF-1 budget fix).
+# Keeps response under ~10KB for typical discovery queries. An explicit
+# user-supplied max_count always overrides this. Raise via max_count=N for
+# deeper sweeps.
+DEFAULT_CONTENT_LISTED_CAP = 50
+
 ToonFormatter = Callable[[dict[str, Any]], dict[str, Any]]
 ToonApplier = Callable[[dict[str, Any], str], dict[str, Any]]
 
@@ -359,10 +365,22 @@ def apply_limits(
     arguments: dict[str, Any],
     fd_rg_utils: Any,
 ) -> tuple[list[dict[str, Any]], bool]:
-    """Truncate matches to user max_count or hard cap."""
+    """Truncate matches to user max_count, default cap, or hard cap.
+
+    Priority:
+    1. Explicit user ``max_count`` (always honoured as-is).
+    2. ``DEFAULT_CONTENT_LISTED_CAP`` (50) — default budget for normal mode.
+    3. ``MAX_RESULTS_HARD_CAP`` — absolute ceiling; should never be reached in
+       practice once the default cap is applied.
+    """
     user_max = arguments.get("max_count")
-    if user_max is not None and len(matches) > user_max:
-        return matches[:user_max], True
+    if user_max is not None:
+        if len(matches) > user_max:
+            return matches[:user_max], True
+        return matches, False
+    # No explicit limit: apply default listed cap first.
+    if len(matches) > DEFAULT_CONTENT_LISTED_CAP:
+        return matches[:DEFAULT_CONTENT_LISTED_CAP], True
     if len(matches) >= fd_rg_utils.MAX_RESULTS_HARD_CAP:
         return matches[: fd_rg_utils.MAX_RESULTS_HARD_CAP], True
     return matches, False

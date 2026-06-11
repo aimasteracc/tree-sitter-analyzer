@@ -528,3 +528,62 @@ class TestExecute:
                 result = await tool.execute(arguments)
 
                 assert result["success"] is True
+
+
+class TestApplyLimits:
+    """Unit tests for apply_limits — DF-1 default cap and explicit max_count."""
+
+    def _make_matches(self, n: int) -> list[dict]:
+        return [
+            {"file": f"f_{i}.py", "line": i, "text": "x", "matches": []}
+            for i in range(n)
+        ]
+
+    def _make_mock_fd(self, hard_cap: int = 10000) -> MagicMock:
+        m = MagicMock()
+        m.MAX_RESULTS_HARD_CAP = hard_cap
+        return m
+
+    def test_default_cap_applied_when_no_user_max(self) -> None:
+        """DF-1: when max_count absent, DEFAULT_CONTENT_LISTED_CAP=50 caps matches."""
+        from tree_sitter_analyzer.mcp.tools.search_content_response import (
+            DEFAULT_CONTENT_LISTED_CAP,
+            apply_limits,
+        )
+
+        assert DEFAULT_CONTENT_LISTED_CAP == 50
+        matches = self._make_matches(80)
+        result, truncated = apply_limits(matches, {}, self._make_mock_fd())
+        assert len(result) == 50
+        assert truncated is True
+
+    def test_no_truncation_when_below_default_cap(self) -> None:
+        """DF-1: 30 matches with no user max → no truncation."""
+        from tree_sitter_analyzer.mcp.tools.search_content_response import apply_limits
+
+        matches = self._make_matches(30)
+        result, truncated = apply_limits(matches, {}, self._make_mock_fd())
+        assert len(result) == 30
+        assert truncated is False
+
+    def test_user_max_overrides_default_cap(self) -> None:
+        """DF-1 backward compat: explicit max_count always wins over default."""
+        from tree_sitter_analyzer.mcp.tools.search_content_response import apply_limits
+
+        matches = self._make_matches(80)
+        result, truncated = apply_limits(
+            matches, {"max_count": 10}, self._make_mock_fd()
+        )
+        assert len(result) == 10
+        assert truncated is True
+
+    def test_user_max_no_truncation_when_below(self) -> None:
+        """DF-1 backward compat: user max_count=100 with 30 matches → no truncation."""
+        from tree_sitter_analyzer.mcp.tools.search_content_response import apply_limits
+
+        matches = self._make_matches(30)
+        result, truncated = apply_limits(
+            matches, {"max_count": 100}, self._make_mock_fd()
+        )
+        assert len(result) == 30
+        assert truncated is False

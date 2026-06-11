@@ -81,7 +81,14 @@ TOOL_SCHEMA: dict[str, Any] = {
                 "Ignored if context_before or context_after is set."
             ),
         },
-        "max_count": {"type": "integer"},
+        "max_count": {
+            "type": "integer",
+            "description": (
+                "Maximum matches to list in normal mode (default 50). "
+                "When exceeded, response includes total_matches, listed_cap, "
+                "and a next_step narrowing hint. Raise for a deeper sweep."
+            ),
+        },
         "timeout_ms": {"type": "integer"},
         "count_only_matches": {"type": "boolean", "default": False},
         "summary_only": {"type": "boolean", "default": False},
