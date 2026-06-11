@@ -46,7 +46,7 @@ async def test_fd_33_type_empty(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 2
+    assert result["count"] == 2
 
 
 @pytest.mark.asyncio
@@ -91,7 +91,7 @@ async def test_fd_34_extension_filtering(tmp_path, monkeypatch):
     )
 
     assert result1["success"] is True
-    assert result1["count"] >= 1
+    assert result1["count"] == 1
 
     # Test py extension
     result2 = await tool.execute(
@@ -99,7 +99,7 @@ async def test_fd_34_extension_filtering(tmp_path, monkeypatch):
     )
 
     assert result2["success"] is True
-    assert result2["count"] >= 1
+    assert result2["count"] == 1
 
 
 @pytest.mark.asyncio
@@ -131,7 +131,7 @@ async def test_fd_35_no_extension(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 2
+    assert result["count"] == 2
 
 
 @pytest.mark.asyncio
@@ -174,7 +174,7 @@ async def test_fd_36_size_filtering(tmp_path, monkeypatch):
     )
 
     assert result1["success"] is True
-    assert result1["count"] >= 2
+    assert result1["count"] == 3
 
     # Test files smaller than 100 bytes
     result2 = await tool.execute(
@@ -182,7 +182,7 @@ async def test_fd_36_size_filtering(tmp_path, monkeypatch):
     )
 
     assert result2["success"] is True
-    assert result2["count"] >= 1
+    assert result2["count"] == 3
 
 
 @pytest.mark.asyncio
@@ -226,7 +226,7 @@ async def test_fd_37_no_ignore_basic(tmp_path, monkeypatch):
     )
 
     assert result1["success"] is True
-    assert result1["count"] >= 2
+    assert result1["count"] == 2
 
     # Test without ignore rules
     result2 = await tool.execute(
@@ -234,7 +234,7 @@ async def test_fd_37_no_ignore_basic(tmp_path, monkeypatch):
     )
 
     assert result2["success"] is True
-    assert result2["count"] >= 5
+    assert result2["count"] == 5
 
 
 @pytest.mark.asyncio
@@ -301,7 +301,7 @@ async def test_fd_39_max_depth_filtering(tmp_path, monkeypatch):
     )
 
     assert result1["success"] is True
-    assert result1["count"] >= 1
+    assert result1["count"] == 1
 
     # Test depth 2
     result2 = await tool.execute(
@@ -309,7 +309,7 @@ async def test_fd_39_max_depth_filtering(tmp_path, monkeypatch):
     )
 
     assert result2["success"] is True
-    assert result2["count"] >= 3
+    assert result2["count"] == 3
 
 
 @pytest.mark.asyncio
@@ -345,7 +345,7 @@ async def test_fd_40_min_depth_filtering(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 2
+    assert result["count"] == 2
 
 
 @pytest.mark.asyncio
@@ -394,7 +394,7 @@ async def test_fd_41_exact_depth_filtering(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 2
+    assert result["count"] == 2
 
 
 @pytest.mark.asyncio
@@ -440,7 +440,7 @@ async def test_fd_42_prune_functionality(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 3
+    assert result["count"] == 3
 
 
 @pytest.mark.asyncio
@@ -502,7 +502,7 @@ async def test_fd_43_excludes_pattern(tmp_path, monkeypatch):
     )
 
     assert result1["success"] is True
-    assert result1["count"] >= 3
+    assert result1["count"] == 3
 
     # Test exclude multiple patterns
     result2 = await tool.execute(
@@ -515,4 +515,4 @@ async def test_fd_43_excludes_pattern(tmp_path, monkeypatch):
     )
 
     assert result2["success"] is True
-    assert result2["count"] >= 2
+    assert result2["count"] == 2
