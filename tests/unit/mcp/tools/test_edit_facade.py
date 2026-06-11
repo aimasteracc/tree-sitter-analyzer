@@ -485,5 +485,34 @@ def test_edit_facade_schema_lenient_additional_properties() -> None:
     assert schema.get("additionalProperties") is True
 
 
+# ---------------------------------------------------------------------------
+# Issue #451 — edit action=pr without pr_url must fail loudly via the facade
+# ---------------------------------------------------------------------------
+
+
+def test_edit_pr_action_missing_pr_url_fails_loudly() -> None:
+    """action=pr without pr_url → success:False, ERROR verdict, not 'No changed files'.
+
+    Regression guard for issue #451: an agent that misnames the param (e.g.
+    uses query= instead of pr_url=) would have the extra param stripped by
+    facade projection, leaving only {mode:pr}. The inner must return an error
+    envelope, not silently fall through to an empty local diff review.
+    """
+    facade, inners = _make_fake_facade()
+    # Replace the fake 'pr' inner with a real CodeGraphPRReviewTool
+    from tree_sitter_analyzer.mcp.tools.codegraph_pr_review_tool import (
+        CodeGraphPRReviewTool,
+    )
+
+    real_pr_inner = CodeGraphPRReviewTool(project_root=None)
+    facade.action_map["pr"] = real_pr_inner
+
+    # mode=pr but no pr_url (simulates post-projection args)
+    result = asyncio.run(facade.execute({"action": "pr", "mode": "pr"}))
+    assert result["success"] is False
+    assert result.get("verdict") == "ERROR"
+    assert "pr_url" in result.get("error", "")
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-q"]))

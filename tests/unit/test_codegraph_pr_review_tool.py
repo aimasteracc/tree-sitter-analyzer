@@ -246,3 +246,62 @@ class TestCodeGraphPRReviewTool:
         ):
             result = _run(tool, {"mode": "diff", "output_format": "json"})
         assert result["success"] is True
+
+    # ------------------------------------------------------------------
+    # Issue #451 — mode=pr without pr_url must fail loudly, not silently
+    # fall through to local diff and return "No changed files".
+    # ------------------------------------------------------------------
+
+    def test_pr_mode_without_pr_url_fails_with_error(self):
+        """mode=pr with missing pr_url → success:False, error naming the param."""
+        tool = CodeGraphPRReviewTool()
+        result = _run(tool, {"mode": "pr"})
+        assert result["success"] is False
+        assert result.get("verdict") == "ERROR"
+        assert "pr_url" in result.get("error", "")
+
+    def test_pr_mode_with_empty_pr_url_fails_with_error(self):
+        """mode=pr with pr_url='' → same failure (typo scenario from issue #451)."""
+        tool = CodeGraphPRReviewTool()
+        result = _run(tool, {"mode": "pr", "pr_url": ""})
+        assert result["success"] is False
+        assert result.get("verdict") == "ERROR"
+        assert "pr_url" in result.get("error", "")
+
+    def test_pr_mode_without_pr_url_has_recovery_hint(self):
+        """Error response must carry a recovery_hint with a usage example."""
+        tool = CodeGraphPRReviewTool()
+        result = _run(tool, {"mode": "pr"})
+        assert result["success"] is False
+        # recovery_hint must be non-empty and guide the caller
+        hint = result.get("recovery_hint", "")
+        assert hint, "recovery_hint must be non-empty for mode=pr missing pr_url"
+        assert "pr_url" in hint
+
+    def test_pr_mode_wrong_param_name_fails_not_empty_success(self):
+        """After facade projects args, inner receives mode=pr without pr_url.
+        This simulates the #451 scenario: agent typo'd param name (e.g. query=)
+        and the facade stripped it, so inner gets {mode: pr} with no pr_url.
+        Direct call to the inner with only mode=pr must return error, not
+        success+empty.
+        """
+        tool = CodeGraphPRReviewTool()
+        # Simulate post-projection args: only mode=pr, no pr_url
+        result = _run(tool, {"mode": "pr"})
+        assert result["success"] is False
+        assert result.get("verdict") == "ERROR"
+
+    def test_no_changed_files_only_reachable_with_valid_non_pr_mode(self):
+        """The 'No changed files found' path must only trigger for non-pr modes
+        where the diff is genuinely empty — NOT when mode=pr is missing pr_url."""
+        tmpdir = _make_project(("main.py", "x = 1\n"))
+        tool = CodeGraphPRReviewTool(tmpdir)
+        # Non-pr mode with empty local diff → still OK to return NOT_FOUND
+        with patch(
+            "tree_sitter_analyzer.mcp.tools.codegraph_pr_review_tool._get_local_diff",
+            return_value="",
+        ):
+            result = _run(tool, {"mode": "diff"})
+        assert result["success"] is True
+        assert result["files_reviewed"] == 0
+        assert result.get("verdict") == "NOT_FOUND"

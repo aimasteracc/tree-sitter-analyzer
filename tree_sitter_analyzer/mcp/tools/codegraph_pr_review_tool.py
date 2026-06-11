@@ -300,6 +300,27 @@ class CodeGraphPRReviewTool(BaseMCPTool):
         include_cg = arguments.get("include_call_graph", True)
         output_format = arguments.get("output_format", "toon")
 
+        # Issue #451: mode=pr without pr_url must fail loudly, not silently fall
+        # through to local diff and produce "No changed files" (misinformation).
+        # Validate early — before touching any diff machinery — so the caller
+        # gets an actionable error rather than a false-clean success envelope.
+        if arguments.get("mode") == "pr" and not pr_url:
+            return self._format_response(
+                {
+                    "success": False,
+                    "verdict": "ERROR",
+                    "error": (
+                        "action=pr requires a non-empty pr_url. "
+                        "Received: pr_url={!r}".format(arguments.get("pr_url"))
+                    ),
+                    "recovery_hint": (
+                        "Provide a GitHub PR URL via the pr_url parameter, e.g.: "
+                        'pr_url="https://github.com/owner/repo/pull/42"'
+                    ),
+                },
+                output_format,
+            )
+
         diff_text: str = ""
         changed_files: list[str] = []
 
