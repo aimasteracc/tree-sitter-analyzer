@@ -480,6 +480,70 @@ _BULK_SHAPES: list[tuple[str, object]] = [
             for i in range(15)
         ],
     ),
+    # ── Issue #439 reopened: nav impact / navigate fields missing from denylist ──
+    # direct_callers: nav action=impact / codegraph_navigate tool
+    # 12 items × ~65 B each ≈ 780 B
+    (
+        "direct_callers",
+        [
+            {"name": f"caller_{i}", "file": f"src/module_{i}.py", "line": i * 5}
+            for i in range(12)
+        ],
+    ),
+    # direct_callees: nav action=impact / codegraph_navigate tool
+    # 12 items × ~65 B each ≈ 780 B
+    (
+        "direct_callees",
+        [
+            {"name": f"callee_{i}", "file": f"src/module_{i}.py", "line": i * 5}
+            for i in range(12)
+        ],
+    ),
+    # transitive_callers: nav action=impact (function_impact mode)
+    # 12 items × ~65 B each ≈ 780 B
+    (
+        "transitive_callers",
+        [
+            {"name": f"tc_{i}", "file": f"src/module_{i}.py", "line": i * 5}
+            for i in range(12)
+        ],
+    ),
+    # transitive_callees: nav action=impact (function_impact mode)
+    # 12 items × ~65 B each ≈ 780 B
+    (
+        "transitive_callees",
+        [
+            {"name": f"tce_{i}", "file": f"src/module_{i}.py", "line": i * 5}
+            for i in range(12)
+        ],
+    ),
+    # risk: nav action=impact risk dict (e.g. function_impact mode)
+    # ~600 B nested dict with level/score/factors/details and tests bucket
+    # Sized with enough fields to exceed the 500 B threshold.
+    (
+        "risk",
+        {
+            "level": "high",
+            "score": 0.9,
+            "factors": [f"factor_{i}" for i in range(20)],
+            "caller_count": 50,
+            "callee_count": 20,
+            "cross_file_callers": 8,
+            "cross_file_callees": 6,
+            "details": "High risk: many cross-file callers and complex dependency chain requiring careful review",
+            "tests": {
+                "test_callers_count": 5,
+                "test_callees_count": 2,
+                "test_caller_files": ["tests/test_a.py", "tests/test_b.py"],
+            },
+        },
+    ),
+    # subclasses: structure action=class_tree / class_hierarchy_tool
+    # 60 subclass names × ~12 B each ≈ 720 B
+    (
+        "subclasses",
+        [f"Subclass{i:03d}" for i in range(60)],
+    ),
 ]
 
 
@@ -543,6 +607,125 @@ def test_toon_strip_no_bulk_at_top_level(field_name: str, bulk_value: object) ->
     assert leaked_bulk == set(), (
         f"Unexpected bulk collections remain at top level: {leaked_bulk}. "
         f"Keys: {sorted(toon_resp.keys())}"
+    )
+
+
+# ── Issue #439 reopened: nav impact 50-row realistic size invariant ───────────
+
+
+def _make_synthetic_nav_impact_response(n: int = 50) -> dict:
+    """Build a realistic nav action=impact / function_impact response dict.
+
+    Mimics what CodeGraphImpactTool.execute returns for a function with
+    ``n`` callers and ``n`` callees.  The ``direct_callers``, ``direct_callees``,
+    ``transitive_callers``, ``transitive_callees``, and ``risk`` bulk fields
+    must NOT appear at top level after TOON formatting.
+    """
+    callers = [
+        {
+            "name": f"caller_{i}",
+            "file": f"src/module_{i // 10}/mod_{i}.py",
+            "line": i * 5,
+        }
+        for i in range(n)
+    ]
+    callees = [
+        {
+            "name": f"callee_{i}",
+            "file": f"src/module_{i // 10}/util_{i}.py",
+            "line": i * 3,
+        }
+        for i in range(n)
+    ]
+    risk = {
+        "level": "high",
+        "score": 0.87,
+        "caller_count": n,
+        "callee_count": n,
+        "cross_file_callers": n // 2,
+        "cross_file_callees": n // 3,
+        "factors": ["many_callers", "cross_file", "complex_callees"],
+        "tests": {"test_callers_count": 5, "test_callees_count": 2},
+    }
+    return {
+        "success": True,
+        "verdict": "CAUTION",
+        "function": "target_function",
+        "file": "src/core/engine.py",
+        "direct_callers": callers[:20],
+        "direct_callees": callees[:20],
+        "transitive_callers": callers,
+        "transitive_callees": callees,
+        "direct_caller_count": n,
+        "direct_callee_count": n,
+        "transitive_caller_count": n,
+        "transitive_callee_count": n,
+        "lists_truncated": False,
+        "listed_cap": n,
+        "risk": risk,
+        "summary_line": f"target_function — {n} callers, high risk",
+    }
+
+
+def test_nav_impact_toon_no_bulk_at_top_level() -> None:
+    """Issue #439 (reopened): nav impact TOON must strip all bulk fields.
+
+    direct_callers, direct_callees, transitive_callers, transitive_callees,
+    and risk are the 5 fields that triggered the re-open.  Verify none
+    survive at top level after apply_toon_format_to_response.
+    """
+    from tree_sitter_analyzer.mcp.utils.format_helper import (
+        TOON_CONTROL_SURFACE,
+        apply_toon_format_to_response,
+    )
+
+    response = _make_synthetic_nav_impact_response(50)
+    toon_resp = apply_toon_format_to_response(response, "toon")
+
+    assert toon_resp.get("format") == "toon"
+    assert "toon_content" in toon_resp
+
+    bulk_fields = {
+        "direct_callers",
+        "direct_callees",
+        "transitive_callers",
+        "transitive_callees",
+        "risk",
+    }
+    leaked = bulk_fields & set(toon_resp)
+    assert leaked == set(), (
+        f"Issue #439 reopened: bulk fields still at TOON top level: {leaked}. "
+        f"Top-level keys: {sorted(toon_resp.keys())}"
+    )
+    # Secondary: no unexpected large containers at top level
+    leaked_bulk = {
+        k for k, v in toon_resp.items() if k not in TOON_CONTROL_SURFACE and _is_bulk(v)
+    }
+    assert leaked_bulk == set(), (
+        f"Unexpected bulk containers at TOON top level: {leaked_bulk}"
+    )
+
+
+def test_nav_impact_toon_smaller_than_json() -> None:
+    """Rule-11 ratchet: nav impact TOON bytes < JSON bytes (50-row payload).
+
+    Before the fix, direct_callers/transitive_callers/risk at top level
+    made the response ~1.6x JSON.  After the fix, TOON must be < JSON.
+    """
+    from tree_sitter_analyzer.mcp.utils.format_helper import (
+        apply_toon_format_to_response,
+    )
+
+    response = _make_synthetic_nav_impact_response(50)
+    toon_resp = apply_toon_format_to_response(response, "toon")
+    json_resp = apply_toon_format_to_response(response, "json")
+
+    toon_bytes = len(json.dumps(toon_resp, ensure_ascii=False))
+    json_bytes = len(json.dumps(json_resp, ensure_ascii=False))
+    assert toon_bytes < json_bytes, (
+        f"nav impact TOON ({toon_bytes}B) >= JSON ({json_bytes}B) — "
+        f"duplication re-introduced ({toon_bytes / json_bytes:.2f}x). "
+        f"Before fix this was ~1.6x."
     )
 
 
