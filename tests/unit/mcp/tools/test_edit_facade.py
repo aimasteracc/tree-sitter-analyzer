@@ -516,3 +516,34 @@ def test_edit_pr_action_missing_pr_url_fails_loudly() -> None:
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-q"]))
+
+
+def test_action_pr_without_mode_or_pr_url_fails_loudly() -> None:
+    """Codex P1 (#483): facade action=pr with NO explicit mode must not
+    fall back to the inner's diff default and return empty success.
+
+    ``edit({"action": "pr", "query": "<url>"})`` (typoed param) previously
+    reached the inner without mode → diff mode → success "No changed files".
+    The facade pr route now implies mode=pr, so the pr_url guard fires."""
+    import asyncio
+
+    from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
+
+    facade = build_edit_facade(".")
+    result = asyncio.run(
+        facade.execute({"action": "pr", "query": "https://github.com/o/r/pull/1"})
+    )
+    assert result["success"] is False
+    assert "pr_url" in result["error"]
+
+
+def test_action_pr_explicit_diff_mode_still_reaches_diff() -> None:
+    """Direct sub-mode selection stays available through the facade."""
+    import asyncio
+
+    from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
+
+    facade = build_edit_facade(".")
+    result = asyncio.run(facade.execute({"action": "pr", "mode": "diff"}))
+    # diff mode reviews local changes — must not demand pr_url
+    assert result.get("error") is None or "pr_url" not in str(result.get("error"))
