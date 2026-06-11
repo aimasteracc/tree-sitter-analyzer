@@ -128,6 +128,8 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
         raw_results = self._search(cache, query, language, kind, limit)
 
         results = self._apply_kind_filter(raw_results, kind)
+        # Issue #443: fold duplicate imports and rank definitions first
+        results = self._fold_and_rank_results(results)
         self._add_source_context(results)
         # P2: inline a short verbatim body for the top matches so the agent
         # judges relevance from content, not coordinates — no Read per hit.
@@ -135,6 +137,11 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
 
         by_file: dict[str, int] = {}
         for r in results:
+            # A folded import row represents ALL its importing files —
+            # count each of them so file_count agrees with import_files
+            # (Codex P2 on #492).
+            for extra_fp in r.get("import_files", []):
+                by_file[extra_fp] = by_file.get(extra_fp, 0) + 0
             fp = r.get("file", "")
             by_file[fp] = by_file.get(fp, 0) + 1
 
@@ -445,3 +452,52 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
         except OSError:
             return ""
         return ""
+
+    def _fold_and_rank_results(
+        self, results: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Issue #443: fold duplicate imports, rank definitions first.
+
+        Returns a new list where:
+        1. Non-import kinds (function, class, method, variable) come first
+        2. Imports are folded: duplicate imports of the same symbol become a
+           single entry with import_count and import_files list
+        3. Within each group, original order/ranking is preserved
+        """
+        if not results:
+            return results
+
+        non_imports: list[dict[str, Any]] = []
+        imports_by_name: dict[str, dict[str, Any]] = {}
+
+        for result in results:
+            if result.get("kind") == "import":
+                # Fold imports by name
+                name = result.get("name", "")
+                if name not in imports_by_name:
+                    # Create folded entry: copy the result but prepare for accumulation
+                    imports_by_name[name] = {
+                        "name": name,
+                        "kind": "import",
+                        "import_files": [result.get("file", "")],
+                        "import_count": 1,
+                        # Keep first file, code, line for reference
+                        "file": result.get("file", ""),
+                        "code": result.get("code", ""),
+                        "line": result.get("line", 0),
+                        "end_line": result.get("end_line", 0),
+                        "language": result.get("language", ""),
+                        "relevance_score": result.get("relevance_score", 0.0),
+                    }
+                else:
+                    # Accumulate additional import file
+                    file = result.get("file", "")
+                    if file not in imports_by_name[name]["import_files"]:
+                        imports_by_name[name]["import_files"].append(file)
+                    imports_by_name[name]["import_count"] += 1
+            else:
+                non_imports.append(result)
+
+        # Combine: definitions first, then folded imports
+        folded_imports = list(imports_by_name.values())
+        return non_imports + folded_imports
