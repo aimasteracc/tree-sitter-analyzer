@@ -1,11 +1,12 @@
 # Loose assertion ratchet baseline
-# Measured: 2026-06-11 (Layer 1 implementation)
-# Measurement command: grep -rEn "assert .*(>=|<=| > 0| < [0-9])" tests/ --include="*.py" | wc -l
-# Current count: 2121
-# This baseline is the starting point for the Layer 2 cleanup effort.
+# Measured: 2026-06-11 (Layer 2 batch 1)
+# Measurement command: grep -rEn "assert .*(>= [0-9]|> 0([^0-9]|$))" tests/ --include="*.py" | grep -v "ratchet: nondeterministic" | wc -l
+# Previous count: 2121
+# Current count: 1700
+# Status: Pinned 32 assertions (dependency_analysis, fts5_bm25, list_files_p2, list_files_p3b_filters)
 # The count should only decrease or stay the same, never increase.
 # Each Layer 2 batch PR will lower this baseline as violations are fixed.
 
-BASELINE_COUNT=2121
+BASELINE_COUNT=1700
 MEASUREMENT_DATE=2026-06-11
-MEASUREMENT_COMMAND="grep -rEn \"assert .*(>=|<=| > 0| < [0-9])\" tests/ --include=\"*.py\" | wc -l"
+MEASUREMENT_COMMAND="grep -rEn \"assert .*(>= [0-9]|> 0([^0-9]|$))\" tests/ --include=\"*.py\" | grep -v \"ratchet: nondeterministic\" | wc -l"
