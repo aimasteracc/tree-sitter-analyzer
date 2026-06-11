@@ -32,6 +32,7 @@ from dataclasses import dataclass
 from .._language_family import languages_compatible
 from ._constants import (
     BUILTIN_QUALIFIED_PY,
+    BUILTIN_TYPE_NAMES_PY,
     BUILTINS_PY,
     EXTERNAL_METHODS_PY,
     STDLIB_METHODS_PY,
@@ -423,7 +424,7 @@ def _try_class_method(
 
 
 def _try_unique_method(
-    base: str, qualifier: str, ctx: ResolverContext
+    base: str, qualifier: str, caller_file: str, ctx: ResolverContext
 ) -> ResolvedCallee | None:
     """RFC-0002 Phase 1: receiver method call where the method name is unique.
 
@@ -434,8 +435,29 @@ def _try_unique_method(
     ``cls`` are already handled by ``_try_self_method``, and bare names by the
     global rules above — so this only fires for true receiver method calls the
     earlier rules left unresolved.
+
+    Builtin-receiver guard (Issue #447): when ``base`` is a well-known stdlib
+    method name (``get``, ``append``, ``items``, …) and the receiver type is
+    unknown, the caller is almost certainly using a builtin container/string
+    method, not a project-defined method. Binding it to a project symbol just
+    because it happens to be unique would produce the same-name mis-wire the
+    README claims TSA eliminates. Conservative policy: ``unknown > wrong``.
+    This guard does NOT affect ``_try_class_method`` (receiver type IS known
+    via AST inference) or ``_try_import``/``_try_local`` (explicit import).
     """
     if not qualifier or qualifier in ("self", "cls"):
+        return None
+    # Builtin-receiver gate (inverted, issue #447 adversarial P1): only block
+    # when the receiver is POSITIVELY inferred as a builtin container/type —
+    # i.e. the qualifier IS a builtin type name (``dict``, ``list``, ``str``…).
+    # The extractor rewrites ``result.get`` -> ``dict.get`` when it sees
+    # ``result = {}`` or ``result = dict()``, so qualifier carries the
+    # inferred type. An untyped receiver (``store``, ``cache``, a param name)
+    # has a qualifier that is NOT in BUILTIN_TYPE_NAMES_PY and is allowed
+    # through, restoring ``store.get -> DataStore.get`` (unique project method).
+    # Language-aware: only consult the Python table for Python callers.
+    table_lang = _table_language(ctx, caller_file)
+    if table_lang == "python" and qualifier in BUILTIN_TYPE_NAMES_PY:
         return None
     found: tuple[str, int] | None = None
     for file_path, classes in ctx.file_class_methods.items():
@@ -526,7 +548,7 @@ def _resolve_callee_python(
         # (RFC-0002 criterion 2 — shadowing preserved).
         lambda: _try_single_global(base, qualifier, ctx),
         lambda: _try_class_method(base, qualifier, ctx),
-        lambda: _try_unique_method(base, qualifier, ctx),
+        lambda: _try_unique_method(base, qualifier, caller_file, ctx),
         # Builtin is the last NAME resort: only fires when no project binding exists.
         lambda: _try_builtin(base, qualifier, ctx),
         # RFC-0004: stdlib METHOD names (write_text, strip, items, …) — gated on
@@ -569,6 +591,7 @@ def _is_cross_language(
 
 __all__ = [
     "BUILTIN_QUALIFIED_PY",
+    "BUILTIN_TYPE_NAMES_PY",
     "BUILTINS_PY",
     "EXTERNAL_METHODS_PY",
     "STDLIB_METHODS_PY",

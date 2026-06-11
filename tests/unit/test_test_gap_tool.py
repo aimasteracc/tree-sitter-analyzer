@@ -79,10 +79,21 @@ class TestCodeGraphTestGapTool:
     @pytest.mark.asyncio
     async def test_execute_gaps(self, tool, project_with_code):
         tool.set_project_path(str(project_with_code))
-        result = await tool.execute({"mode": "gaps"})
+        # json mode pins the structured shape; in TOON mode `gaps` is a bulk
+        # field carried only inside toon_content (issue #439 strip surface).
+        result = await tool.execute({"mode": "gaps", "output_format": "json"})
         assert result["success"] is True
         assert "gaps" in result
         assert isinstance(result["gaps"], list)
+
+    @pytest.mark.asyncio
+    async def test_execute_gaps_toon_strips_bulk(self, tool, project_with_code):
+        """Issue #439: in TOON mode the gaps list lives only in toon_content."""
+        tool.set_project_path(str(project_with_code))
+        result = await tool.execute({"mode": "gaps"})
+        assert result["success"] is True
+        assert "gaps" not in result
+        assert "gaps:" in result["toon_content"]
 
     @pytest.mark.asyncio
     async def test_execute_file_mode(self, tool, project_with_code):
