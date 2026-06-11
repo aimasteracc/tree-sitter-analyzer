@@ -26,8 +26,8 @@ def test_c_plugin_basic(plugin):
     tree = _parse(plugin, code)
     elements_dict = plugin.extract_elements(tree, code)
     assert elements_dict is not None
-    assert len(elements_dict["functions"]) > 0
-    assert len(elements_dict["classes"]) > 0
+    assert len(elements_dict["functions"]) == 1
+    assert len(elements_dict["classes"]) == 1
 
     names = [e.name for e in elements_dict["functions"]]
     assert "my_func" in names
@@ -48,7 +48,7 @@ def test_extract_static_function(plugin):
     tree = _parse(plugin, code)
     elements = plugin.extract_elements(tree, code)
     funcs = elements["functions"]
-    assert len(funcs) >= 1
+    assert len(funcs) == 1
     f = funcs[0]
     assert "static" in f.modifiers
 
@@ -59,7 +59,7 @@ def test_extract_variadic_parameter(plugin):
     tree = _parse(plugin, code)
     elements = plugin.extract_elements(tree, code)
     funcs = elements["functions"]
-    assert len(funcs) >= 1
+    assert len(funcs) == 1
     assert "..." in funcs[0].parameters
 
 
@@ -73,7 +73,7 @@ def test_extract_union(plugin):
     elements = plugin.extract_elements(tree, code)
     classes = elements["classes"]
     unions = [c for c in classes if c.class_type == "union"]
-    assert len(unions) >= 1
+    assert len(unions) == 1
     assert unions[0].name == "Data"
 
 
@@ -84,7 +84,7 @@ def test_extract_enum(plugin):
     elements = plugin.extract_elements(tree, code)
     classes = elements["classes"]
     enums = [c for c in classes if c.class_type == "enum"]
-    assert len(enums) >= 1
+    assert len(enums) == 1
     assert enums[0].name == "Color"
 
 
@@ -94,7 +94,7 @@ def test_extract_typedef_struct(plugin):
     tree = _parse(plugin, code)
     elements = plugin.extract_elements(tree, code)
     classes = elements["classes"]
-    assert len(classes) >= 1
+    assert len(classes) == 1
 
 
 def test_extract_typedef_enum(plugin):
@@ -104,7 +104,7 @@ def test_extract_typedef_enum(plugin):
     elements = plugin.extract_elements(tree, code)
     classes = elements["classes"]
     enums = [c for c in classes if c.class_type == "enum"]
-    assert len(enums) >= 1
+    assert len(enums) == 1
 
 
 def test_extract_array_field(plugin):
@@ -117,7 +117,7 @@ def test_extract_array_field(plugin):
     elements = plugin.extract_elements(tree, code)
     variables = elements["variables"]
     arr_vars = [v for v in variables if v.variable_type and "[]" in v.variable_type]
-    assert len(arr_vars) >= 1
+    assert len(arr_vars) == 1
     assert arr_vars[0].name == "name"
 
 
@@ -131,7 +131,7 @@ def test_extract_pointer_field(plugin):
     elements = plugin.extract_elements(tree, code)
     variables = elements["variables"]
     ptr_vars = [v for v in variables if v.variable_type and "*" in v.variable_type]
-    assert len(ptr_vars) >= 1
+    assert len(ptr_vars) == 2
 
 
 def test_extract_global_pointer_variable(plugin):
@@ -140,7 +140,7 @@ def test_extract_global_pointer_variable(plugin):
     tree = _parse(plugin, code)
     elements = plugin.extract_elements(tree, code)
     variables = elements["variables"]
-    assert len(variables) >= 1
+    assert len(variables) == 1
     assert variables[0].name == "ptr"
 
 
@@ -150,7 +150,7 @@ def test_extract_static_variable(plugin):
     tree = _parse(plugin, code)
     elements = plugin.extract_elements(tree, code)
     variables = elements["variables"]
-    assert len(variables) >= 1
+    assert len(variables) == 1
     assert variables[0].is_static is True
     assert variables[0].visibility == "private"
 
@@ -162,7 +162,7 @@ def test_extract_macro_constant(plugin):
     elements = plugin.extract_elements(tree, code)
     variables = elements["variables"]
     macros = [v for v in variables if v.variable_type == "macro"]
-    assert len(macros) >= 1
+    assert len(macros) == 1
     assert macros[0].name == "MAX_SIZE"
     assert macros[0].is_constant is True
 
@@ -174,7 +174,7 @@ def test_extract_macro_function(plugin):
     elements = plugin.extract_elements(tree, code)
     funcs = elements["functions"]
     macro_fns = [f for f in funcs if "macro" in f.modifiers]
-    assert len(macro_fns) >= 1
+    assert len(macro_fns) == 1
     assert macro_fns[0].name == "SQUARE"
 
 
@@ -185,7 +185,7 @@ def test_extract_system_and_local_includes(plugin):
     tree = _parse(plugin, code)
     elements = plugin.extract_elements(tree, code)
     imports = elements["imports"]
-    assert len(imports) >= 2
+    assert len(imports) == 2
     names = [imp.name for imp in imports]
     assert "stdio.h" in names
     assert "myheader.h" in names
@@ -200,7 +200,7 @@ def test_extract_const_field(plugin):
     elements = plugin.extract_elements(tree, code)
     variables = elements["variables"]
     const_vars = [v for v in variables if v.is_constant]
-    assert len(const_vars) >= 1
+    assert len(const_vars) == 1
 
 
 def test_extract_doxygen_comment(plugin):
@@ -210,7 +210,7 @@ int area(int w) { return w * w; }
     tree = _parse(plugin, code)
     elements = plugin.extract_elements(tree, code)
     funcs = elements["functions"]
-    assert len(funcs) >= 1
+    assert len(funcs) == 1
     assert funcs[0].docstring is not None
     assert "Calculate area" in funcs[0].docstring
 
@@ -222,7 +222,7 @@ void helper(void) {}
     tree = _parse(plugin, code)
     elements = plugin.extract_elements(tree, code)
     funcs = elements["functions"]
-    assert len(funcs) >= 1
+    assert len(funcs) == 1
     assert funcs[0].docstring is not None
 
 
@@ -289,7 +289,7 @@ def test_extract_macro_function_with_variadic(plugin):
     elements = plugin.extract_elements(tree, code)
     funcs = elements["functions"]
     macro_fns = [f for f in funcs if "macro" in f.modifiers]
-    assert len(macro_fns) >= 1
+    assert len(macro_fns) == 1
     assert macro_fns[0].name == "LOG"
 
 
@@ -377,7 +377,7 @@ def test_extract_const_function_qualifier(plugin):
     tree = _parse(plugin, code)
     elements = plugin.extract_elements(tree, code)
     funcs = elements["functions"]
-    assert len(funcs) >= 1
+    assert len(funcs) == 1
     assert "const" in funcs[0].modifiers
 
 
@@ -387,7 +387,7 @@ void f(void) {}
 """
     tree = _parse(plugin, code)
     count = plugin._count_tree_nodes(tree.root_node)
-    assert count > 0
+    assert count == 17
 
 
 def test_count_tree_nodes_none(plugin):
@@ -412,8 +412,8 @@ def test_extract_function_with_for_loop(plugin):
     tree = _parse(plugin, code)
     elements = plugin.extract_elements(tree, code)
     funcs = elements["functions"]
-    assert len(funcs) >= 1
-    assert funcs[0].complexity_score > 1
+    assert len(funcs) == 1
+    assert funcs[0].complexity_score == 3
 
 
 def test_extract_field_with_init_declarator(plugin):
@@ -425,7 +425,7 @@ def test_extract_field_with_init_declarator(plugin):
     elements = plugin.extract_elements(tree, code)
     variables = elements["variables"]
     timeout_vars = [v for v in variables if v.name == "timeout"]
-    assert len(timeout_vars) >= 1
+    assert len(timeout_vars) == 1
 
 
 def test_extractor_init_state():
@@ -471,5 +471,5 @@ def test_extract_function_with_switch(plugin):
     tree = _parse(plugin, code)
     elements = plugin.extract_elements(tree, code)
     funcs = elements["functions"]
-    assert len(funcs) >= 1
-    assert funcs[0].complexity_score >= 3
+    assert len(funcs) == 1
+    assert funcs[0].complexity_score == 5

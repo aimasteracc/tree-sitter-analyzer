@@ -332,7 +332,7 @@ class TestHtmlLinkImageRecognition:
         )
 
         a_elements = [e for e in elements if e.tag_name == "a"]
-        assert len(a_elements) >= 1
+        assert len(a_elements) == 5
 
     def test_extract_external_link(self):
         """Test extraction of external link."""
@@ -406,7 +406,7 @@ class TestHtmlLinkImageRecognition:
         )
 
         img_elements = [e for e in elements if e.tag_name == "img"]
-        assert len(img_elements) >= 1
+        assert len(img_elements) == 4
 
     def test_extract_image_with_alt(self):
         """Test extraction of image with alt text."""
@@ -459,7 +459,7 @@ class TestHtmlLinkImageRecognition:
         )
 
         picture_elements = [e for e in elements if e.tag_name == "picture"]
-        assert len(picture_elements) >= 0
+        assert len(picture_elements) == 1
 
     def test_extract_svg_tag(self):
         """Test extraction of svg tag."""
@@ -470,7 +470,7 @@ class TestHtmlLinkImageRecognition:
         )
 
         svg_elements = [e for e in elements if e.tag_name == "svg"]
-        assert len(svg_elements) >= 0
+        assert len(svg_elements) == 1
 
 
 class TestHtmlScriptStyleRecognition:
@@ -485,7 +485,7 @@ class TestHtmlScriptStyleRecognition:
         )
 
         script_elements = [e for e in elements if e.tag_name == "script"]
-        assert len(script_elements) >= 1
+        assert len(script_elements) == 3
 
     def test_extract_style_tag(self):
         """Test extraction of style tag."""
@@ -496,7 +496,7 @@ class TestHtmlScriptStyleRecognition:
         )
 
         style_elements = [e for e in elements if e.tag_name == "style"]
-        assert len(style_elements) >= 1
+        assert len(style_elements) == 1
 
     def test_extract_link_tag(self):
         """Test extraction of link tag."""
@@ -507,7 +507,7 @@ class TestHtmlScriptStyleRecognition:
         )
 
         link_elements = [e for e in elements if e.tag_name == "link"]
-        assert len(link_elements) >= 1
+        assert len(link_elements) == 1
 
     def test_extract_meta_tag(self):
         """Test extraction of meta tag."""
@@ -518,7 +518,7 @@ class TestHtmlScriptStyleRecognition:
         )
 
         meta_elements = [e for e in elements if e.tag_name == "meta"]
-        assert len(meta_elements) >= 1
+        assert len(meta_elements) == 6
 
     def test_extract_title_tag(self):
         """Test extraction of title tag."""
@@ -529,7 +529,7 @@ class TestHtmlScriptStyleRecognition:
         )
 
         title_elements = [e for e in elements if e.tag_name == "title"]
-        assert len(title_elements) >= 1
+        assert len(title_elements) == 1
 
     def test_extract_script_with_src(self):
         """Test extraction of script with src attribute."""
@@ -582,7 +582,7 @@ class TestHtmlComplexStructures:
         )
 
         # Should find nested elements
-        assert len(elements) >= 10
+        assert len(elements) == 28
 
     def test_extract_parent_child_relationships(self):
         """Test extraction of parent-child relationships."""
@@ -596,7 +596,7 @@ class TestHtmlComplexStructures:
         elements_with_children = [
             e for e in elements if e.children and len(e.children) > 0
         ]
-        assert len(elements_with_children) >= 1
+        assert len(elements_with_children) == 15
 
     def test_extract_multiple_classes(self):
         """Test extraction of elements with multiple classes."""
@@ -612,7 +612,9 @@ class TestHtmlComplexStructures:
             for e in elements
             if e.attributes and "class" in e.attributes and " " in e.attributes["class"]
         ]
-        assert len(elements_with_multiple_classes) >= 0
+        assert (
+            len(elements_with_multiple_classes) == 0
+        )  # extraction gap: COMPLEX_STRUCTURE_CODE single-class attrs only
 
     def test_extract_doctype(self):
         """Test extraction of DOCTYPE."""
@@ -623,7 +625,7 @@ class TestHtmlComplexStructures:
         )
 
         # DOCTYPE should be captured
-        assert len(elements) >= 1
+        assert len(elements) == 28
 
     def test_extract_html_tag(self):
         """Test extraction of html tag."""
@@ -634,7 +636,7 @@ class TestHtmlComplexStructures:
         )
 
         html_elements = [e for e in elements if e.tag_name == "html"]
-        assert len(html_elements) >= 1
+        assert len(html_elements) == 1
 
     def test_extract_head_tag(self):
         """Test extraction of head tag."""
@@ -645,7 +647,7 @@ class TestHtmlComplexStructures:
         )
 
         head_elements = [e for e in elements if e.tag_name == "head"]
-        assert len(head_elements) >= 1
+        assert len(head_elements) == 1
 
     def test_extract_body_tag(self):
         """Test extraction of body tag."""
@@ -656,7 +658,7 @@ class TestHtmlComplexStructures:
         )
 
         body_elements = [e for e in elements if e.tag_name == "body"]
-        assert len(body_elements) >= 1
+        assert len(body_elements) == 1
 
 
 class TestHtmlQueryAccuracy:
@@ -671,7 +673,7 @@ class TestHtmlQueryAccuracy:
         # Should not extract non-tag elements
         for element in elements:
             assert element.tag_name is not None
-            assert len(element.tag_name) > 0
+            assert element.tag_name != ""
 
     def test_attribute_query_accuracy(self):
         """Test that attribute query accurately identifies attributes."""
@@ -694,7 +696,7 @@ class TestHtmlQueryAccuracy:
 
         # Should find form elements
         form_elements = [e for e in elements if e.tag_name == "form"]
-        assert len(form_elements) >= 1
+        assert len(form_elements) == 1
 
     def test_table_query_accuracy(self):
         """Test that table query accurately identifies table elements."""
@@ -704,7 +706,7 @@ class TestHtmlQueryAccuracy:
 
         # Should find table elements
         table_elements = [e for e in elements if e.tag_name == "table"]
-        assert len(table_elements) >= 1
+        assert len(table_elements) == 2
 
     def test_link_query_accuracy(self):
         """Test that link query accurately identifies links."""
@@ -716,7 +718,7 @@ class TestHtmlQueryAccuracy:
 
         # Should find anchor tags
         a_elements = [e for e in elements if e.tag_name == "a"]
-        assert len(a_elements) >= 1
+        assert len(a_elements) == 5
 
     def test_image_query_accuracy(self):
         """Test that image query accurately identifies images."""
@@ -728,7 +730,7 @@ class TestHtmlQueryAccuracy:
 
         # Should find img tags
         img_elements = [e for e in elements if e.tag_name == "img"]
-        assert len(img_elements) >= 1
+        assert len(img_elements) == 4
 
     def test_no_false_positives(self):
         """Test that queries don't produce false positives."""
@@ -760,7 +762,7 @@ class TestHtmlQueryAccuracy:
         elements = plugin.create_extractor().extract_html_elements(tree, TAG_CODE)
 
         for element in elements:
-            assert element.start_line > 0
+            assert element.start_line != 0
             assert element.end_line >= element.start_line
 
     def test_element_classification_accuracy(self):
@@ -771,9 +773,8 @@ class TestHtmlQueryAccuracy:
 
         # Structure elements should be classified as structure
         structure_elements = [e for e in elements if e.element_class == "structure"]
-        assert len(structure_elements) >= 1
+        assert len(structure_elements) == 8
 
         # Heading elements should be classified as heading
         heading_elements = [e for e in elements if e.element_class == "heading"]
-        assert len(heading_elements) >= 1
-
+        assert len(heading_elements) == 4
