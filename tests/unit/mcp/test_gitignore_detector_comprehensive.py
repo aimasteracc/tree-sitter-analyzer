@@ -24,7 +24,7 @@ class TestGitignoreDetectorInitialization:
 
         assert hasattr(detector, "common_ignore_patterns")
         assert isinstance(detector.common_ignore_patterns, set)
-        assert len(detector.common_ignore_patterns) > 0
+        assert len(detector.common_ignore_patterns) == 12
 
         # Check for expected common patterns
         expected_patterns = {
@@ -142,7 +142,7 @@ class TestGitignoreDetectorFileDiscovery:
         """Test finding single .gitignore file."""
         gitignore_files = detector._find_gitignore_files(temp_project_with_gitignore)
 
-        assert len(gitignore_files) >= 1
+        assert len(gitignore_files) == 1
         assert any(f.name == ".gitignore" for f in gitignore_files)
 
     def test_find_gitignore_files_multiple_levels(self, detector):
@@ -158,7 +158,7 @@ class TestGitignoreDetectorFileDiscovery:
 
             gitignore_files = detector._find_gitignore_files(project_path)
 
-            assert len(gitignore_files) >= 1
+            assert len(gitignore_files) == 1
 
     def test_find_gitignore_files_no_files(self, detector):
         """Test finding .gitignore files when none exist."""
@@ -587,8 +587,8 @@ class TestGitignoreDetectorDetectionInfo:
 
             assert info["should_use_no_ignore"] is True
             assert "interfering patterns" in info["reason"]
-            assert len(info["detected_gitignore_files"]) > 0
-            assert len(info["interfering_patterns"]) > 0
+            assert len(info["detected_gitignore_files"]) == 1
+            assert len(info["interfering_patterns"]) == 1
             assert "src/" in info["interfering_patterns"]
 
     def test_get_detection_info_exception_handling(self, detector):

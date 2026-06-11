@@ -10,6 +10,6 @@
 # The count must only decrease (or stay equal). Each Layer-2 batch PR
 # re-measures and lowers it. Numbers are MEASURED, never hand-derived.
 
-BASELINE_COUNT=1632
+BASELINE_COUNT=1600
 MEASUREMENT_DATE=2026-06-12
 MEASUREMENT_COMMAND="grep -rEn \"assert .*(>= [0-9]|> 0([^0-9]|\$))\" tests/ --include=\"*.py\" | grep -v \"ratchet: nondeterministic\" | wc -l"
