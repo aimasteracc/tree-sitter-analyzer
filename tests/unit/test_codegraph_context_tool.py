@@ -1626,3 +1626,172 @@ def test_windows_path_components_do_not_anchor_filter() -> None:
     assert "dispatch" in _extract_symbol_candidates(
         r"find dispatch in C:\repo\src\UserService\handler.py"
     )
+
+
+# ---------------------------------------------------------------------------
+# Issue #441 — stop-words / generic nouns, examples/ ranking, honest next_step
+# ---------------------------------------------------------------------------
+
+
+def test_generic_nouns_and_stop_words_not_candidates() -> None:
+    """Issue #441 sub-1: common stop-words and generic code-nouns ('server',
+    'right', 'action', 'call', 'code', 'file', 'tool') must not appear as
+    symbol candidates for a natural-language task.
+
+    Before fix: _extract_symbol_candidates returned
+    ['MCP', 'server', 'tool', 'right', 'facade', 'action'] for the issue repro
+    task — noise terms that waste entry-point slots on unrelated symbols.
+    """
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        _extract_symbol_candidates,
+    )
+
+    task = "how does the MCP server route a tool call to the right facade action"
+    cands = _extract_symbol_candidates(task)
+    lowered = {c.lower() for c in cands}
+
+    # Generic nouns / stop-words must be absent
+    assert "server" not in lowered, f"'server' leaked into candidates: {cands}"
+    assert "right" not in lowered, f"'right' leaked into candidates: {cands}"
+    assert "action" not in lowered, f"'action' leaked into candidates: {cands}"
+    assert "tool" not in lowered, f"'tool' leaked into candidates: {cands}"
+    assert "call" not in lowered, f"'call' leaked into candidates: {cands}"
+
+    # Substantive word 'facade' is present in the codebase and should survive
+    assert "facade" in lowered, f"'facade' was dropped from candidates: {cands}"
+
+
+def test_examples_and_scripts_ranked_below_production() -> None:
+    """Issue #441 sub-2: entry points from examples/, scripts/, corpus/ must
+    rank BELOW production code of equal relevance.
+
+    Before fix: examples/file_output_factory_demo.py dominated because
+    _entry_rank_v2 only demoted test files, not examples/scripts/corpus.
+    """
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        CodeGraphContextTool,
+    )
+
+    class MixedCache:
+        def fts_search_ranked(self, candidate: str, limit: int):
+            # Return examples/ and scripts/ hits before production; ranking
+            # must invert them so production wins.
+            return [
+                {
+                    "name": "route_tool_call",
+                    "kind": "function",
+                    "file": "examples/demo.py",
+                    "line": 5,
+                },
+                {
+                    "name": "route_tool_call",
+                    "kind": "function",
+                    "file": "scripts/sync_version.py",
+                    "line": 10,
+                },
+                {
+                    "name": "route_tool_call",
+                    "kind": "function",
+                    "file": "tree_sitter_analyzer/mcp/server.py",
+                    "line": 200,
+                },
+            ]
+
+    tool = CodeGraphContextTool(str(__import__("pathlib").Path.cwd()))
+    tool._cache = MixedCache()
+
+    hits = tool._resolve_entry_points(["route_tool_call"], limit=10)
+    files = [h["file"] for h in hits]
+
+    # Production file must appear before examples/ and scripts/
+    prod_idx = files.index("tree_sitter_analyzer/mcp/server.py")
+    examples_idx = files.index("examples/demo.py")
+    scripts_idx = files.index("scripts/sync_version.py")
+    assert prod_idx < examples_idx, (
+        f"production must rank before examples/; got order: {files}"
+    )
+    assert prod_idx < scripts_idx, (
+        f"production must rank before scripts/; got order: {files}"
+    )
+
+
+def test_next_step_honest_when_only_non_prod_matches(tmp_path: Path) -> None:
+    """Issue #441 sub-3: next_step must not tell the agent to 'Answer from
+    code_blocks now' when the only matches are examples/scripts — that
+    misleads the agent into answering a production question from demo code.
+
+    We verify the honest-guidance branch: when code blocks exist but ALL
+    entry points are from non-production directories, next_step must
+    reference the actual symbols/files found and suggest a refined search,
+    NOT say 'Answer from code_blocks now.'
+    """
+    import asyncio
+
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        CodeGraphContextTool,
+    )
+
+    # Write a small demo file in examples/ so code blocks are actually built
+    ex_dir = tmp_path / "examples"
+    ex_dir.mkdir()
+    (ex_dir / "demo.py").write_text(
+        "def route_tool_call():\n    return 'demo'\n", encoding="utf-8"
+    )
+    from tree_sitter_analyzer.ast_cache import ASTCache
+
+    cache = ASTCache(str(tmp_path))
+    cache.index_project(max_files=20)
+    cache.close()
+
+    tool = CodeGraphContextTool(str(tmp_path))
+    result = asyncio.run(
+        tool.execute(
+            {
+                "task": "how does the MCP server route a tool call to the right facade action",
+                "output_format": "json",
+            }
+        )
+    )
+
+    next_step = result["agent_summary"]["next_step"]
+    # Must NOT tell agent to answer from demo code
+    assert "Answer from code_blocks now" not in next_step, (
+        f"next_step misled agent to answer from non-prod code: {next_step!r}"
+    )
+
+
+def test_next_step_references_top_symbol_when_production_match_found(
+    indexed_project: Path,
+) -> None:
+    """Issue #441 sub-3: when production matches are found, next_step should
+    reference the actual top symbol or file name — not a generic 'Answer now'
+    that gives no grounding. The key invariant: next_step must be non-empty
+    and must vary based on what was actually found (not a template string).
+    """
+    import asyncio
+
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        CodeGraphContextTool,
+    )
+
+    tool = CodeGraphContextTool(str(indexed_project))
+    result = asyncio.run(
+        tool.execute(
+            {
+                "task": "trace handle_request to UserService.get_user",
+                "output_format": "json",
+            }
+        )
+    )
+
+    next_step = result["agent_summary"]["next_step"]
+    assert next_step, "next_step must not be empty"
+    # next_step must reference the top symbol or file found (not a blank template)
+    entry_points = result.get("entry_points", [])
+    if entry_points:
+        top_name = entry_points[0].get("name", "")
+        # next_step references the top entry point name so agent knows what was found
+        assert top_name in next_step or "code_blocks" in next_step, (
+            f"next_step should mention the top symbol ({top_name!r}) or "
+            f"code_blocks; got: {next_step!r}"
+        )

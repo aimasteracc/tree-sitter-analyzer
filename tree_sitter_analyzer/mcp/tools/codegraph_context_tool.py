@@ -16,6 +16,7 @@ import re
 import time
 from typing import Any
 
+from ...test_gap_analyzer import _NON_PROD_DIRS as _SHARED_NON_PROD_DIRS
 from ...utils.test_detection import is_test_file as _shared_is_test_file
 from ...utils.test_detection import query_wants_tests as _task_wants_tests
 from ._codegraph_explore_helpers import extract_snippet_from_lines, read_file_lines
@@ -30,7 +31,14 @@ _STOP_WORDS = frozenset(
     # ``_like_rows``), spending entry-point slots on noise. Pure function words only
     # — never legitimate code identifiers (``get``/``make``/``run`` are NOT here).
     "like the per this that via than then such these those be been also just "
-    "only about after before between within".split()
+    "only about after before between within "
+    # Issue #441: generic nouns that appear in natural-language task phrasing
+    # ("how does the MCP SERVER route a TOOL CALL to the RIGHT FACADE ACTION")
+    # but are NOT plausible symbol names — they match hundreds of unrelated
+    # symbols and waste every entry-point slot. Kept to an explicit small set:
+    # never add words that are legitimate identifiers in common frameworks.
+    "server client action call right tool type item node list data code file "
+    "request response result output input value kind line".split()
 )
 
 # RFC-0009 C: generic single-word verbs that frequently appear in trace questions
@@ -351,7 +359,9 @@ class CodeGraphContextTool(BaseMCPTool):
                         f"{len(code_blocks)} code blocks"
                     ),
                     "verdict": verdict,
-                    "next_step": _next_step_lean(bool(code_blocks), bool(entry_points)),
+                    "next_step": _next_step_lean(
+                        bool(code_blocks), bool(entry_points), entry_points
+                    ),
                 },
                 "elapsed_ms": int((time.perf_counter() - started) * 1000),
             }
@@ -926,6 +936,24 @@ def _is_test_file(file_path: str) -> int:
     return 1 if _shared_is_test_file(file_path) else 0
 
 
+def _is_non_prod_file(file_path: str) -> int:
+    """Rank-tier: 1 when the file lives under a non-production directory.
+
+    Issue #441: examples/, scripts/, corpus/, fixtures/ etc. dominated
+    entry_points because only test files were demoted. Production code is
+    the primary audience for architecture questions; non-prod files are only
+    surfaced when NO production match exists.
+
+    Uses the shared ``_SHARED_NON_PROD_DIRS`` set from ``test_gap_analyzer``
+    (single source of truth — import rather than duplicate).
+    """
+    if not file_path:
+        return 0
+    # Normalise to forward slashes for consistent splitting on all platforms.
+    parts = file_path.replace("\\", "/").split("/")
+    return 1 if any(p in _SHARED_NON_PROD_DIRS for p in parts) else 0
+
+
 def _entry_rank(hit: dict[str, Any]) -> tuple[int, int, str, int]:
     file_path = hit.get("file", "")
     is_test = _is_test_file(file_path)
@@ -984,12 +1012,21 @@ def _entry_rank_v2(
     entry: dict[str, Any],
     candidates: list[str],
     wants_tests: bool = False,
-) -> tuple[int, int, int, int, int, str, int]:
+) -> tuple[int, int, int, int, int, int, str, int]:
     """Relevance-aware ranking key for an aggregated entry-point hit.
 
-    Order of precedence: non-test before test, definition kinds before refs,
-    MORE matched task words first, MORE candidate hits first, better BM25
-    rank, then file/line for a stable tie-break.
+    Order of precedence:
+      1. non-prod tier (production code < examples/scripts/corpus)
+      2. non-test before test (unless wants_tests)
+      3. definition kinds before refs
+      4. MORE matched task words first
+      5. MORE candidate hits first
+      6. better BM25 rank
+      7. file/line for a stable tie-break
+
+    Issue #441: added non-prod tier so examples/ and scripts/ entries always
+    rank below production code of equal relevance — they are surfaced only
+    when no production match exists.
 
     When ``wants_tests`` is set (the task itself asks about tests/specs), the
     test-demotion tier is disabled so relevant test symbols are not pushed
@@ -997,16 +1034,19 @@ def _entry_rank_v2(
     and "X tests" must be allowed to return test code (Codex P2 #291).
     """
     hit = entry["hit"]
-    test_tier = 0 if wants_tests else _is_test_file(hit.get("file", ""))
+    file_path = hit.get("file", "")
+    non_prod_tier = _is_non_prod_file(file_path)
+    test_tier = 0 if wants_tests else _is_test_file(file_path)
     kind_rank = 0 if hit.get("kind") in {"class", "function", "method"} else 1
     name_match = _name_match_score(hit.get("name", ""), candidates)
     return (
+        non_prod_tier,
         test_tier,
         kind_rank,
         -name_match,
         -int(entry.get("matches", 0)),
         int(entry.get("best_rank", 0)),
-        hit.get("file", ""),
+        file_path,
         int(hit.get("line", 0) or 0),
     )
 
@@ -1029,15 +1069,45 @@ def _next_step(has_code: bool, has_entry_points: bool) -> str:
     return "Try codegraph_symbol_search with an exact symbol name or broaden the task."
 
 
-def _next_step_lean(has_code: bool, has_entry_points: bool) -> str:
+def _next_step_lean(
+    has_code: bool,
+    has_entry_points: bool,
+    entry_points: list[dict[str, Any]] | None = None,
+) -> str:
     """Next-step hint for the lean (default) response path.
 
     Always names the ``include_graph=true`` flag so the agent knows the full
     call graph is available on re-request — the progressive-disclosure contract.
+
+    Issue #441: when code_blocks exist but ALL entry points are from non-prod
+    directories (examples/, scripts/, corpus/ …), the agent must NOT be told
+    to "Answer from code_blocks now" — that would mislead it into answering a
+    production question from demo/script code. Instead surface the top found
+    symbol and suggest a refined search focused on the production package.
     """
     if has_code:
+        # Check whether ALL matched entry points are from non-production dirs.
+        # If so, warn the agent and suggest a refined search rather than
+        # "answer now" — production queries should not be answered from demos.
+        if entry_points and all(
+            _is_non_prod_file(ep.get("file", "")) for ep in entry_points
+        ):
+            top = entry_points[0]
+            top_name = top.get("name", "")
+            top_file = top.get("file", "")
+            return (
+                f"Matches found only in non-production files (e.g. {top_name!r} "
+                f"in {top_file!r}). These are examples/scripts, not the "
+                "production implementation. Use search action=symbol or "
+                "search action=content with a more specific term to find the "
+                "production code. For the full call graph add include_graph=true."
+            )
+        # Production (or mixed) matches: name the top entry point so the agent
+        # has grounding rather than a blank "answer now" with no reference.
+        top_name = entry_points[0].get("name", "") if entry_points else ""
+        anchor = f" (starting from {top_name!r})" if top_name else ""
         return (
-            "Answer from code_blocks now. "
+            f"Answer from code_blocks now{anchor}. "
             "For the full call graph (nodes/edges) add include_graph=true."
         )
     if has_entry_points:
