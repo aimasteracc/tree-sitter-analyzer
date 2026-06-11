@@ -515,7 +515,7 @@ def _normalize_receiver_type(receiver_type: str | None) -> str | None:
     """
     if not receiver_type:
         return None
-    return receiver_type.lstrip("*")
+    return receiver_type.removeprefix("*")
 
 
 def _method_owned_by_class(
@@ -564,23 +564,54 @@ def _build_class_outlines(
     all_fields: list[Any],
     include_fields: bool,
 ) -> list[dict[str, Any]]:
-    """Build the ``classes`` outline section, sorted by ``line_start``."""
+    """Build the ``classes`` outline section, sorted by ``line_start``.
+
+    SINGLE-OWNERSHIP INVARIANT (P2): Each method is assigned to at most one class.
+    Precedence: line-range containment wins over receiver_type matching.
+    A method is never offered to multiple classes.
+    """
+    # Build a set of (class_idx, method_idx) pairs using FIRST-CLAIM-WINS.
+    # Process each method once; the first class that claims it (by line-range,
+    # then by receiver_type) owns it exclusively.
+    method_to_class: dict[int, int] = {}  # method_idx -> class_idx
+
+    for method_idx, method in enumerate(all_methods):
+        m_start = getattr(method, "start_line", 0)
+        # First try: line-range containment (innermost wins)
+        claimed_by = None
+        for cls_idx, cls in enumerate(classes):
+            cls_start = getattr(cls, "start_line", 0)
+            cls_end = getattr(cls, "end_line", 0)
+            if cls_start <= m_start <= cls_end:
+                claimed_by = cls_idx
+                break  # First match wins
+        # If no line-range match, try receiver_type matching
+        if claimed_by is None:
+            rt = _normalize_receiver_type(getattr(method, "receiver_type", None))
+            if rt is not None:
+                for cls_idx, cls in enumerate(classes):
+                    if getattr(cls, "name", "") == rt:
+                        claimed_by = cls_idx
+                        break
+        # Record the claim (if any)
+        if claimed_by is not None:
+            method_to_class[method_idx] = claimed_by
+
+    # Build class outlines using the ownership map
     class_outlines: list[dict[str, Any]] = []
-    for cls in classes:
+    for cls_idx, cls in enumerate(classes):
         cls_start = getattr(cls, "start_line", 0)
         cls_end = getattr(cls, "end_line", 0)
         cls_name = getattr(cls, "name", "")
-        # Methods that belong to this class (by line-range containment or
-        # receiver_type matching for Go/Rust/Kotlin methods declared outside
-        # the struct/impl body).
+        # Gather methods owned by this class
         cls_methods = [
-            _method_entry(m)
-            for m in all_methods
-            if _method_owned_by_class(m, cls_name, cls_start, cls_end)
+            _method_entry(all_methods[m_idx])
+            for m_idx in method_to_class
+            if method_to_class[m_idx] == cls_idx
         ]
         cls_methods.sort(key=lambda x: x["line_start"])
         class_entry: dict[str, Any] = {
-            "name": getattr(cls, "name", "unknown"),
+            "name": cls_name,
             "type": getattr(cls, "class_type", "class"),
             "line_start": cls_start,
             "line_end": cls_end,

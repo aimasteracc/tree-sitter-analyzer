@@ -295,6 +295,77 @@ class TestBuildOutlineGoReceiverAssociation:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Unit tests: P2 single-ownership invariant
+# ---------------------------------------------------------------------------
+
+
+class TestSingleOwnershipInvariant:
+    """P2: Each method is assigned to exactly one class (or zero).
+
+    A method cannot land in both classes A.methods and B.methods.
+    Precedence: line-range containment wins over receiver_type matching.
+    """
+
+    def setup_method(self) -> None:
+        from tree_sitter_analyzer.mcp.tools.get_code_outline_tool import (
+            GetCodeOutlineTool,
+        )
+
+        self.tool = GetCodeOutlineTool()
+
+    def test_method_inside_class_range_takes_precedence_over_receiver_type(
+        self,
+    ) -> None:
+        """Method in A's range with receiver_type=B → goes to A, not B."""
+        class_a = _make_element("class", "A", 10, 40, class_type="struct")
+        class_b = _make_element("class", "B", 50, 80, class_type="struct")
+        # Method is inside A's range (10-40) but receiver_type points to B
+        method = _make_element(
+            "function", "Foo", 25, 27, receiver_type="B", is_method=True
+        )
+        result = _make_result([class_a, class_b, method])
+        with _patch_is_elem():
+            outline = self.tool._build_outline(result, False, False)
+
+        class_dict = {c["name"]: c for c in outline["classes"]}
+        # Method appears in A (line-range wins)
+        assert len(class_dict["A"]["methods"]) == 1
+        assert class_dict["A"]["methods"][0]["name"] == "Foo"
+        # Method does NOT appear in B (claimed by A first)
+        assert len(class_dict["B"]["methods"]) == 0
+        # Method does not appear in top_level_functions either
+        assert len(outline["top_level_functions"]) == 0
+        # Assert total method count across all classes == 1 (single ownership)
+        total_methods = sum(len(c["methods"]) for c in outline["classes"]) + len(
+            outline["top_level_functions"]
+        )
+        assert total_methods == 1, (
+            f"Method should appear in exactly one place; got {total_methods}"
+        )
+
+    def test_multiple_methods_never_double_counted(self) -> None:
+        """Three methods: two in A's range, one with A's receiver_type outside range."""
+        class_a = _make_element("class", "A", 10, 30, class_type="struct")
+        # Inside range
+        m1 = _make_element("function", "M1", 15, 17, is_method=True)
+        m2 = _make_element("function", "M2", 20, 22, is_method=True)
+        # Outside range, but receiver_type=A
+        m3 = _make_element("function", "M3", 50, 52, receiver_type="A", is_method=True)
+        result = _make_result([class_a, m1, m2, m3])
+        with _patch_is_elem():
+            outline = self.tool._build_outline(result, False, False)
+
+        # All 3 methods should nest under A (2 by line, 1 by receiver)
+        assert len(outline["classes"]) == 1
+        assert len(outline["classes"][0]["methods"]) == 3
+        # sum of all appearances == 3
+        total = sum(len(c["methods"]) for c in outline["classes"]) + len(
+            outline["top_level_functions"]
+        )
+        assert total == 3, f"Three methods should appear once each; got {total} total"
+
+
 class TestGoSampleIntegration:
     """Parse examples/sample.go end-to-end and verify exact association counts."""
 
@@ -388,6 +459,51 @@ class TestGoSampleIntegration:
 # ---------------------------------------------------------------------------
 # Rust integration test — Rust impl methods also benefit from receiver_type fix
 # ---------------------------------------------------------------------------
+
+
+class TestCrossFileScopes:
+    """Known limitation: receiver_type matching is per-file only.
+
+    A method with receiver_type="Service" in the analysis result while NO class
+    named Service exists in the same result will NOT be assigned to any class.
+    It will remain in top_level_functions.
+
+    This is a documented scope limitation — cross-file resolution is not
+    supported. To fix this would require symbol resolution across file
+    boundaries, which is out of scope for the outline builder.
+    """
+
+    def test_method_with_unknown_receiver_type_stays_top_level(self) -> None:
+        """Method with receiver_type='Service' but NO Service class in result."""
+        from tree_sitter_analyzer.mcp.tools.get_code_outline_tool import (
+            GetCodeOutlineTool,
+        )
+
+        # Define only a Counter struct; method has receiver_type="Service"
+        # (referencing a struct that exists in a different file).
+        counter = _make_element("class", "Counter", 5, 8, class_type="struct")
+        unknown_receiver_method = _make_element(
+            "function",
+            "Name",
+            20,
+            22,
+            receiver_type="Service",
+            is_method=True,
+        )
+        result = _make_result([counter, unknown_receiver_method])
+        tool = GetCodeOutlineTool()
+        with _patch_is_elem():
+            outline = tool._build_outline(result, False, False)
+
+        # Method should NOT be in Counter.methods (different receiver_type).
+        assert len(outline["classes"][0]["methods"]) == 0, (
+            "Method with unknown receiver_type should not land in unrelated class"
+        )
+        # Method should stay in top_level_functions (cross-file limitation).
+        assert len(outline["top_level_functions"]) == 1, (
+            "Method with unknown receiver_type stays top-level due to per-file scope"
+        )
+        assert outline["top_level_functions"][0]["name"] == "Name"
 
 
 class TestRustImplMethodAssociation:
