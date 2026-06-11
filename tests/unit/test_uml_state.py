@@ -1037,3 +1037,117 @@ def test_extract_enum_members_includes_lowercase(tmp_path: Path) -> None:
     assert result.error == ""
     # Exact pin: all 3 lowercase members are returned
     assert sorted(result.states) == ["debug", "max_retries", "timeout"]
+
+
+# ---------------------------------------------------------------------------
+# Section L: Codex P2-2 — per-enum transition scan (bug: only enum_classes[0] scanned)
+# ---------------------------------------------------------------------------
+
+
+def test_second_enum_transitions_found_when_first_enum_has_none(
+    tmp_path: Path,
+) -> None:
+    """With class_name omitted, transitions from a second Enum are found.
+
+    Regression test for P2-2: when multiple Enums exist in a file and only
+    the second has match-driven transitions, build_state_result must return
+    those transitions (not NOT_FOUND / empty).
+
+    Semantics chosen: when multiple Enums are present and class_name is
+    omitted, the function prefers the Enum(s) that have transitions.
+    States come from transition-bearing enums; members from non-transition
+    enums are excluded from the primary output.
+    """
+    src = tmp_path / "fsm.py"
+    src.write_text(
+        textwrap.dedent("""\
+        from enum import Enum
+
+        class Color(Enum):
+            RED = 1
+            GREEN = 2
+
+        class Door(Enum):
+            OPEN = "open"
+            CLOSED = "closed"
+            LOCKED = "locked"
+
+        def transition(state: Door) -> Door:
+            match state:
+                case Door.CLOSED:
+                    return Door.OPEN
+                case Door.OPEN:
+                    return Door.CLOSED
+                case Door.LOCKED:
+                    return Door.CLOSED
+        """)
+    )
+
+    from tree_sitter_analyzer.uml_state import build_state_result
+
+    result = build_state_result(
+        file_path=str(src),
+        class_name=None,
+        max_nodes=50,
+    )
+    assert result.error == ""
+    # Exact pin: Door's 3 transitions must be present
+    assert len(result.transitions) == 3
+    transition_pairs = {(t.source, t.target) for t in result.transitions}
+    assert transition_pairs == {
+        ("CLOSED", "OPEN"),
+        ("OPEN", "CLOSED"),
+        ("LOCKED", "CLOSED"),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Section M: Codex P2-3 — qualified enum bases (e.g. enum.Enum)
+# ---------------------------------------------------------------------------
+
+
+def test_qualified_enum_base_states_and_transitions(tmp_path: Path) -> None:
+    """enum.Enum-based FSM is recognised (qualified base name fix).
+
+    Regression test for P2-3: _find_enum_classes must accept dotted bases
+    like ``enum.Enum`` / ``enum.IntEnum`` in addition to bare ``Enum``.
+    """
+    src = tmp_path / "traffic.py"
+    src.write_text(
+        textwrap.dedent("""\
+        import enum
+
+        class TrafficLight(enum.Enum):
+            RED = 1
+            YELLOW = 2
+            GREEN = 3
+
+        def next_state(state: TrafficLight) -> TrafficLight:
+            match state:
+                case TrafficLight.RED:
+                    return TrafficLight.GREEN
+                case TrafficLight.GREEN:
+                    return TrafficLight.YELLOW
+                case TrafficLight.YELLOW:
+                    return TrafficLight.RED
+        """)
+    )
+
+    from tree_sitter_analyzer.uml_state import build_state_result
+
+    result = build_state_result(
+        file_path=str(src),
+        class_name="TrafficLight",
+        max_nodes=50,
+    )
+    assert result.error == ""
+    # Exact pin: 3 states
+    assert sorted(result.states) == ["GREEN", "RED", "YELLOW"]
+    # Exact pin: 3 transitions
+    assert len(result.transitions) == 3
+    transition_pairs = {(t.source, t.target) for t in result.transitions}
+    assert transition_pairs == {
+        ("RED", "GREEN"),
+        ("GREEN", "YELLOW"),
+        ("YELLOW", "RED"),
+    }

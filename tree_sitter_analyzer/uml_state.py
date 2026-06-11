@@ -115,16 +115,14 @@ def _find_enum_classes(
                 if child.type == "identifier":
                     name = _node_text(child)
                 elif child.type == "argument_list":
-                    # Python class bases are in argument_list
+                    # Python class bases are in argument_list.
+                    # Accept both bare names ("Enum") and qualified names
+                    # ("enum.Enum", "enum.IntEnum") — take the last segment.
+                    _ENUM_BASES = {"Enum", "IntEnum", "StrEnum", "Flag", "IntFlag"}
                     for base in child.children:
                         base_text = _node_text(base)
-                        if base_text in (
-                            "Enum",
-                            "IntEnum",
-                            "StrEnum",
-                            "Flag",
-                            "IntFlag",
-                        ):
+                        # last segment handles "enum.Enum" → "Enum"
+                        if base_text.split(".")[-1] in _ENUM_BASES:
                             has_enum_base = True
             if name and has_enum_base:
                 if class_name_filter is None or name == class_name_filter:
@@ -343,13 +341,51 @@ def build_state_result(
             return StateResult(error="NOT_FOUND:class_missing")
         return StateResult(error="NOT_FOUND:no_enum_class")
 
-    # Collect members from all matched Enum classes (usually 1 after filter)
-    all_members: list[str] = []
+    # Collect members per enum class and scan each for transitions.
+    # Semantics (P2-2): when class_name is omitted and multiple Enums are
+    # present, we scan every Enum for transitions; if any have transitions we
+    # prefer those (states from transition-bearing enums only).  When none
+    # have transitions we fall back to all members (caller will set NOT_FOUND).
+    per_enum_members: list[tuple[str, list[str]]] = []
     for ec in enum_classes:
         members = _extract_enum_members(ec["node"])
-        all_members.extend(members)
+        per_enum_members.append((ec["name"], members))
 
-    # Deduplicate while preserving order
+    if class_name is not None:
+        # Filtered to a single enum — original behaviour, one scan.
+        all_members = per_enum_members[0][1] if per_enum_members else []
+        primary_class = class_name
+        known_members_set: set[str] = set(all_members)
+        all_transitions = _extract_transitions(root, primary_class, known_members_set)
+    else:
+        # Scan each discovered enum independently; aggregate results.
+        enum_transitions: list[tuple[str, list[str], list[StateTransition]]] = []
+        for ec_name, ec_members in per_enum_members:
+            km = set(ec_members)
+            txns = _extract_transitions(root, ec_name, km)
+            enum_transitions.append((ec_name, ec_members, txns))
+
+        # Prefer enums that have transitions (P2-2 semantics).
+        transition_bearing = [
+            (name, members, txns) for name, members, txns in enum_transitions if txns
+        ]
+        if transition_bearing:
+            chosen = transition_bearing
+        else:
+            chosen = enum_transitions  # fall back to all (will result in NOT_FOUND)
+
+        all_members = [m for _, members, _ in chosen for m in members]
+        # Aggregate transitions (deduplicated across enums)
+        seen_txn: set[tuple[str, str]] = set()
+        all_transitions = []
+        for _, _, txns in chosen:
+            for t in txns:
+                key = (t.source, t.target)
+                if key not in seen_txn:
+                    seen_txn.add(key)
+                    all_transitions.append(t)
+
+    # Deduplicate members while preserving order
     seen_members: set[str] = set()
     unique_members: list[str] = []
     for m in all_members:
@@ -365,14 +401,8 @@ def build_state_result(
     # Sort for deterministic output
     states = sorted(unique_members)
 
-    # Extract transitions using all enum member names from the file as context
-    known_members = set(unique_members)
-    # Use the first class name found (or the filtered class_name) as the prefix
-    primary_class = class_name if class_name else enum_classes[0]["name"]
-    transitions = _extract_transitions(root, primary_class, known_members)
-
     return StateResult(
         states=states,
-        transitions=transitions,
+        transitions=all_transitions,
         truncated=truncated,
     )

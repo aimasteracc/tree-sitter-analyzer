@@ -699,9 +699,15 @@ class UMLExporter:
         """
         from .uml_state import build_state_result
 
-        # Resolve file_path: require it explicitly for state diagram since
-        # the FSM heuristic is file-scoped (no cross-file enum scan).
-        resolved_path = file_path or ""
+        # Resolve file_path: use as-is if absolute, otherwise interpret as
+        # relative to project_root (mirrors activity_diagram path logic).
+        resolved_path = ""
+        if file_path:
+            p = Path(file_path)
+            if p.is_absolute():
+                resolved_path = str(p)
+            else:
+                resolved_path = str(Path(self.project_root) / p)
 
         if not resolved_path:
             # No file given — try to find via class_hierarchy if class_name provided
@@ -716,7 +722,14 @@ class UMLExporter:
                     all_cls = hierarchy.all_classes()
                     for cls_info in all_cls:
                         if cls_info.get("name") == class_name:
-                            resolved_path = cls_info.get("file", "") or ""
+                            cf = cls_info.get("file", "") or ""
+                            if cf:
+                                cp = Path(cf)
+                                resolved_path = (
+                                    str(cp)
+                                    if cp.is_absolute()
+                                    else str(Path(self.project_root) / cp)
+                                )
                             if resolved_path:
                                 break
                 finally:

@@ -1,10 +1,14 @@
 """Phase-1 export tests — RFC-0015 P1-A (scoping), P1-C (test exclusion),
 P1-D (truncation note), P1-E (sequence observability label).
+Also covers Codex P2-1 (state_diagram project_root path resolution).
 
 Tests are written RED-first; implemented GREEN by the same commit.
 """
 
 from __future__ import annotations
+
+import textwrap
+from pathlib import Path
 
 from tree_sitter_analyzer import uml_export
 from tree_sitter_analyzer.uml_export import (
@@ -223,3 +227,51 @@ def test_sequence_source_falls_back_without_synapse(monkeypatch) -> None:
     exporter = UMLExporter("/repo", cache=object())
     diagram = exporter.sequence_diagram("entry", "service")
     assert diagram.metadata["source"] == "call_path"
+
+
+# ---------------------------------------------------------------------------
+# Codex P2-1: state_diagram resolves relative file_path against project_root
+# ---------------------------------------------------------------------------
+
+
+def test_state_diagram_relative_path_resolved_against_project_root(
+    tmp_path: Path,
+) -> None:
+    """state_diagram with a relative file_path resolves it against project_root.
+
+    Regression test for Codex P2-1: when the caller passes a relative path
+    (or a cache-stored relative path) and cwd != project_root, the file must
+    still be found and transitions returned — not NOT_FOUND:file_missing.
+    """
+    # Create an FSM file inside tmp_path (our project_root)
+    src = tmp_path / "door.py"
+    src.write_text(
+        textwrap.dedent("""\
+        from enum import Enum
+
+        class Door(Enum):
+            OPEN = "open"
+            CLOSED = "closed"
+
+        def transition(state: Door) -> Door:
+            match state:
+                case Door.OPEN:
+                    return Door.CLOSED
+                case Door.CLOSED:
+                    return Door.OPEN
+        """)
+    )
+
+    # Pass a RELATIVE path ("door.py"), project_root = tmp_path
+    exporter = UMLExporter(str(tmp_path))
+    diagram = exporter.state_diagram(file_path="door.py")
+
+    # Must find the file and return transitions (not NOT_FOUND)
+    assert diagram.metadata.get("verdict") != "NOT_FOUND", (
+        f"Expected transitions to be found via project_root resolution, "
+        f"got verdict=NOT_FOUND. metadata={diagram.metadata}"
+    )
+    # Exact pin: 2 transitions
+    assert len(diagram.edges) == 2
+    edge_pairs = {(e.source, e.target) for e in diagram.edges}
+    assert edge_pairs == {("OPEN", "CLOSED"), ("CLOSED", "OPEN")}
