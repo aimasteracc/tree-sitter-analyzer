@@ -20,6 +20,7 @@ from typing import Any
 
 from ...dependency_matrix import DependencyMatrix
 from ...utils import setup_logger
+from ._validators import invalid_enum_error
 from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
@@ -104,9 +105,9 @@ class CodeGraphDependencyMatrixTool(BaseMCPTool):
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         mode = arguments.get("mode", "summary")
-        valid = {"summary", "matrix", "hotspots", "file", "unstable"}
+        valid = ["summary", "matrix", "hotspots", "file", "unstable"]
         if mode not in valid:
-            raise ValueError(f"Invalid mode: {mode}. Must be one of {valid}")
+            raise invalid_enum_error("mode", mode, valid)
         if mode == "file" and not arguments.get("file_path"):
             raise ValueError("file_path is required for mode='file'")
         return True

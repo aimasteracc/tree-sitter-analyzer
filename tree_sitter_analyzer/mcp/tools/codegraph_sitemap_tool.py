@@ -26,7 +26,7 @@ from typing import Any
 from ...utils import setup_logger
 from ..utils.format_helper import apply_toon_format_to_response
 from ._response_builder import build_response
-from ._validators import _validate_positive_int
+from ._validators import _validate_positive_int, invalid_enum_error
 from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
@@ -131,11 +131,9 @@ class CodeGraphSitemapTool(BaseMCPTool):
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         mode = arguments.get("mode", "full")
-        valid_modes = ("api", "flat", "full", "module")
+        valid_modes = ["api", "flat", "full", "module"]
         if mode not in valid_modes:
-            raise ValueError(
-                f"Invalid mode: {mode!r}. Valid modes: {', '.join(valid_modes)}"
-            )
+            raise invalid_enum_error("mode", mode, valid_modes)
         # Guard the budget params: a non-positive limit would silently apply
         # Python negative-index slicing (max_symbols=-1 drops the last entry) or
         # empty everything (max_symbols=0), neither of which is a meaningful cap.

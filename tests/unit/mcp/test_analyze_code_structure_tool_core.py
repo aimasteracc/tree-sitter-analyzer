@@ -166,14 +166,30 @@ class TestAnalyzeCodeStructureToolValidateArguments:
     def test_validate_arguments_invalid_format_type(self, tool):
         """Test validation fails when format_type is invalid."""
         arguments = {"file_path": "test.py", "format_type": "invalid"}
-        with pytest.raises(ValueError, match="format_type must be one of"):
+        with pytest.raises(ValueError, match="Invalid format_type"):
             tool.validate_arguments(arguments)
 
     def test_validate_arguments_unsupported_format_type(self, tool):
         """Test validation fails when format_type is not supported."""
         arguments = {"file_path": "test.py", "format_type": "html"}
-        with pytest.raises(ValueError, match="format_type must be one of"):
+        with pytest.raises(ValueError, match="Invalid format_type"):
             tool.validate_arguments(arguments)
+
+    def test_validate_arguments_unsupported_format_type_enumerates_valid(self, tool):
+        """Error message must enumerate valid format_type values (issue #449)."""
+        arguments = {"file_path": "test.py", "format_type": "html"}
+        try:
+            tool.validate_arguments(arguments)
+            assert False, "Should have raised ValueError"
+        except ValueError as exc:
+            error_msg = str(exc)
+            # Verify all valid formats are enumerated
+            assert "compact" in error_msg
+            assert "csv" in error_msg
+            assert "full" in error_msg
+            assert "signatures" in error_msg
+            assert "html" in error_msg  # The invalid value
+            assert "Valid values:" in error_msg
 
     def test_validate_arguments_invalid_language_type(self, tool):
         """Test validation fails when language is not a string."""

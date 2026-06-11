@@ -3,6 +3,9 @@
 
 Extracted from per-tool inline guards so all tools that accept positive-integer
 params share the same float-handling and bool-guard path (P1-B, RFC-0015).
+
+Also provides invalid_enum_error() to raise consistent, actionable enum validation
+errors that enumerate valid values (issue #449).
 """
 
 from __future__ import annotations
@@ -38,3 +41,28 @@ def _validate_positive_int(arguments: dict, key: str) -> None:
         return
     if not isinstance(value, int) or value < 1:
         raise ValueError(f"{key} must be a positive integer, got {value!r}")
+
+
+def invalid_enum_error(
+    param_name: str, got: str, valid: list[str], context: str = ""
+) -> ValueError:
+    """Raise a ValueError for invalid enum values with enumeration of valid values.
+
+    Args:
+        param_name: The parameter name (e.g., 'mode', 'action', 'format_type')
+        got: The invalid value received
+        valid: List of valid enum values (will be sorted for consistent output)
+        context: Optional context string to append (e.g., "for action=dead")
+
+    Returns:
+        A ValueError with an enumerated message suitable for recovery.
+
+    Example:
+        >>> raise invalid_enum_error("mode", "invalid", ["all", "file", "project"])
+        ValueError: Invalid mode: 'invalid'. Valid values: all, file, project
+    """
+    sorted_valid = sorted(valid)
+    message = f"Invalid {param_name}: {got!r}. Valid values: {', '.join(sorted_valid)}"
+    if context:
+        message += f" ({context})"
+    return ValueError(message)
