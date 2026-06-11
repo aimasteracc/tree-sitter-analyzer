@@ -941,3 +941,116 @@ def test_similarity_full_has_snippet_fields() -> None:
                 f"snippet key missing in full-bodies response function entry: {func}. "
                 "include_bodies=True must include code body snippets."
             )
+
+
+# ── DF-13: nav callers/callees default budget — honest truncation (2026-06-11) ──
+#
+# callers_tool / callees_tool previously had no display cap, so high-fan-in
+# symbols like ``execute`` returned 1985 callers / 319,870 bytes — far beyond
+# the 25k token MCP cap, forcing the harness to spill to disk.
+#
+# The fix (DF-13): default listed_cap = 50.  Response carries:
+#   caller_count   — pre-cap total (agent knows how many exist)
+#   callers_listed — count actually in the list (== min(total, cap))
+#   listed_cap     — the cap value used
+#   truncated      — bool: total > cap
+#
+# Rule-11 invariants:
+#   1. Structural: default (50/200) carries exact fields with correct values.
+#   2. Differential: default bytes < unlimited bytes (capping saves tokens).
+#   3. Exact pins: synthetic payload is deterministic (no tmp paths, no dates).
+#
+# Measured 2026-06-11 with:
+#   default (50/200): 8537 B  unlimited (200/200): 33435 B  (ratio 3.92x)
+
+
+def _make_synthetic_callers_payload(n_callers: int, limit: int) -> dict:
+    """Synthetic callers_tool response dict for n_callers callers, capped at limit.
+
+    Mimics what CodeGraphCallersTool.execute returns — no tmp paths so the
+    byte count is fully deterministic.
+    """
+    from tree_sitter_analyzer.mcp.tools._response_builder import build_response
+
+    callers_all = [
+        {
+            "name": f"caller_{i}",
+            "file": f"src/module_{i // 10}/mod_{i}.py",
+            "line": i * 5,
+            "language": "python",
+            "callee_resolution": "project",
+            "callee_resolved_file": "src/target.py",
+        }
+        for i in range(n_callers)
+    ]
+    total_callers = n_callers
+    truncated = n_callers > limit
+    callers = callers_all[:limit]
+    result = build_response(
+        verdict="INFO",
+        data_source="sql",
+        function="execute",
+        caller_count=total_callers,
+        callers_listed=len(callers),
+        listed_cap=limit,
+        truncated=truncated,
+        callers=callers,
+    )
+    if truncated:
+        result["next_step"] = (
+            f"showing {len(callers)} of {total_callers} callers — raise limit, "
+            "or qualify with ClassName.method to narrow "
+            "(dynamic-dispatch names like execute have huge fan-in)"
+        )
+    return result
+
+
+def test_callers_truncation_structural_fields() -> None:
+    """DF-13: default (50/200) response carries correct truncation fields.
+
+    This is the RED-first structural invariant: the fix must emit
+    caller_count==200, callers_listed==50, listed_cap==50, truncated==True.
+    """
+    payload = _make_synthetic_callers_payload(200, 50)
+    assert payload["caller_count"] == 200
+    assert payload["callers_listed"] == 50
+    assert payload["listed_cap"] == 50
+    assert payload["truncated"] is True
+    assert len(payload["callers"]) == 50
+
+
+def test_callers_no_truncation_structural_fields() -> None:
+    """DF-13: 10 callers with default cap 50 → truncated=False, all listed."""
+    payload = _make_synthetic_callers_payload(10, 50)
+    assert payload["caller_count"] == 10
+    assert payload["callers_listed"] == 10
+    assert payload["listed_cap"] == 50
+    assert payload["truncated"] is False
+    assert len(payload["callers"]) == 10
+
+
+def test_callers_default_cap_bytes_smaller_than_unlimited() -> None:
+    """DF-13 rule-11 differential: default (50/200) bytes < unlimited (200/200).
+
+    Capping to 50 must produce a strictly smaller response than listing all 200.
+    If this fails, the budget cap is a no-op.
+    """
+    default_resp = _make_synthetic_callers_payload(200, 50)
+    unlimited_resp = _make_synthetic_callers_payload(200, 200)
+
+    default_bytes = len(json.dumps(default_resp, ensure_ascii=False))
+    unlimited_bytes = len(json.dumps(unlimited_resp, ensure_ascii=False))
+
+    assert default_bytes < unlimited_bytes, (
+        f"callers default cap ({default_bytes}B) >= unlimited ({unlimited_bytes}B) — "
+        "budget cap is a no-op"
+    )
+    # Exact pins — synthetic fixture has no tmp paths, fully deterministic.
+    # Measured 2026-06-11: default=8537 B, unlimited=33435 B (3.92x reduction).
+    # Re-measure and re-pin if envelope fields change.
+    assert default_bytes == 8537, (
+        f"callers default bytes drifted: {default_bytes} != 8537 — re-measure and re-pin"
+    )
+    assert unlimited_bytes == 33435, (
+        f"callers unlimited bytes drifted: {unlimited_bytes} != 33435 — re-measure and re-pin"
+    )

@@ -64,6 +64,16 @@ class CodeGraphCalleesTool(CodeGraphRelationToolMixin, BaseMCPTool):
                     "type": "string",
                     "description": "Optional file path to disambiguate overloaded functions",
                 },
+                "limit": {
+                    "type": "integer",
+                    "description": (
+                        "Maximum number of callees to list in the response "
+                        "(default 50). Raise for more, or qualify with "
+                        "ClassName.method to narrow high-fan-out symbols."
+                    ),
+                    "default": 50,
+                    "minimum": 1,
+                },
                 "output_format": {
                     "type": "string",
                     "enum": ["json", "toon"],
@@ -96,6 +106,7 @@ class CodeGraphCalleesTool(CodeGraphRelationToolMixin, BaseMCPTool):
         file_path = arguments.get("file_path")
         output_format = arguments.get("output_format", "toon")
         include_activation = bool(arguments.get("include_activation", False))
+        listed_cap = int(arguments.get("limit", 50))
 
         cache = self._try_get_cache()
         if cache is not None and cache.has_call_edges():
@@ -115,18 +126,35 @@ class CodeGraphCalleesTool(CodeGraphRelationToolMixin, BaseMCPTool):
         if _is_stale_resolution(callees):
             warnings_list.append(_STALE_CACHE_WARNING)
 
+        # Honest-truncation cap: record total before slicing so agents know
+        # what was omitted (same pattern as dead_code_tool / hyphae_select_tool).
+        total_callees = len(callees)
+        truncated = total_callees > listed_cap
+        callees = callees[:listed_cap]
+
         # P2: inline each callee's verbatim source body (top-N capped) so the
         # agent answers from content, not coordinates — no Read per file:line.
         next_step = self._inline_callee_bodies(cache, callees)
 
         result = build_response(
-            verdict="INFO" if callees else "NOT_FOUND",
+            verdict="INFO" if callees or total_callees else "NOT_FOUND",
             warnings=warnings_list or None,
             data_source=data_source,
             function=func_name,
-            callee_count=len(callees),
+            callee_count=total_callees,
+            callees_listed=len(callees),
+            listed_cap=listed_cap,
+            truncated=truncated,
             callees=callees,
         )
+        if truncated:
+            trunc_note = (
+                f"showing {len(callees)} of {total_callees} callees — raise limit, "
+                "or qualify with ClassName.method to narrow "
+                "(dynamic-dispatch names like 'execute' have huge fan-out)"
+            )
+            # Combine truncation note with any body-inlining deterrent.
+            next_step = f"{trunc_note}. {next_step}" if next_step else trunc_note
         if next_step:
             result["next_step"] = next_step
 

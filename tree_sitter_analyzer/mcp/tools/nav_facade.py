@@ -218,10 +218,11 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
             graph_args["mode"] = "callers"
             return await callers_graph.execute(graph_args)
         # scope=point (default): use the dedicated callers tool.
+        # limit is forwarded so callers=point honours the budget cap.
         point_args = {
             k: v
             for k, v in args.items()
-            if k in ("function_name", "file_path", "output_format")
+            if k in ("function_name", "file_path", "limit", "output_format")
         }
         return await callers_point.execute(point_args)
 
@@ -236,10 +237,11 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
             }
             graph_args["mode"] = "callees"
             return await callees_graph.execute(graph_args)
+        # limit is forwarded so callees=point honours the budget cap.
         point_args = {
             k: v
             for k, v in args.items()
-            if k in ("function_name", "file_path", "output_format")
+            if k in ("function_name", "file_path", "limit", "output_format")
         }
         return await callees_point.execute(point_args)
 

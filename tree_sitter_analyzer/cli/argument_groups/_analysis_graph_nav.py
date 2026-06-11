@@ -296,6 +296,15 @@ def _add_mcp_graph_nav_options(parser: argparse.ArgumentParser) -> None:
         help="File path to disambiguate overloaded functions for --callers",
     )
     parser.add_argument(
+        "--call-limit",
+        type=int,
+        default=50,
+        help=(
+            "Max callers/callees listed for --callers / --callees (default: 50). "
+            "Response reports the pre-cap total and truncated flag."
+        ),
+    )
+    parser.add_argument(
         "--callees",
         help="Find all functions called by the given function (CodeGraph parity). "
         "Shorthand for --call-graph callees --call-graph-function",

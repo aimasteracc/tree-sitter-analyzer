@@ -705,6 +705,7 @@ def test_callers_cli_delegates_to_callers_tool(monkeypatch) -> None:
         "arguments": {
             "function_name": "parse_file",
             "file_path": "src/parser.py",
+            "limit": 50,
             "output_format": "json",
         },
     }
@@ -736,6 +737,7 @@ def test_callees_cli_delegates_to_callees_tool(monkeypatch) -> None:
         "arguments": {
             "function_name": "main",
             "file_path": None,
+            "limit": 50,
             "output_format": "json",
         },
     }
