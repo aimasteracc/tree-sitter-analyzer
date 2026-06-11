@@ -159,6 +159,7 @@ _CORE_SPECS: tuple[McpCommandSpec, ...] = (
         build_tool_args=lambda args, output_format: {
             "function_name": getattr(args, "callers", ""),
             "file_path": getattr(args, "callers_file", None),
+            "limit": getattr(args, "call_limit", 50),
             "output_format": output_format,
         },
     ),
@@ -169,6 +170,7 @@ _CORE_SPECS: tuple[McpCommandSpec, ...] = (
         build_tool_args=lambda args, output_format: {
             "function_name": getattr(args, "callees", ""),
             "file_path": getattr(args, "callees_file", None),
+            "limit": getattr(args, "call_limit", 50),
             "output_format": output_format,
         },
     ),

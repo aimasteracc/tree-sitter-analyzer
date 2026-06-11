@@ -441,3 +441,15 @@ class TestStaleCacheWarning:
         )
         assert result["caller_count"] == 0
         assert "warnings" not in result
+
+
+def test_cli_call_limit_flag_parity() -> None:
+    """Codex P2 (#500): CLI must be able to raise the new limit (MCP/CLI parity)."""
+    from tree_sitter_analyzer.cli_main import create_argument_parser
+
+    parser = create_argument_parser()
+    args = parser.parse_args(["--callers", "execute", "--call-limit", "200"])
+    assert args.call_limit == 200
+    # default mirrors the MCP schema default
+    args_default = parser.parse_args(["--callers", "execute"])
+    assert args_default.call_limit == 50
