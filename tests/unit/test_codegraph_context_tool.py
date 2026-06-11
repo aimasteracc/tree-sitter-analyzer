@@ -1861,3 +1861,48 @@ def test_wants_tests_skips_non_prod_demotion() -> None:
     k_prod = _entry_rank_v2(prod_entry, ["parse"], True)
     assert k_test[0] == k_prod[0] == 0
     assert k_test[1] == k_prod[1] == 0
+
+
+# ─── codecov §11: cover the new helper branches directly ─────────────────────
+
+
+def test_is_non_prod_file_branches() -> None:
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        _is_non_prod_file,
+    )
+
+    assert _is_non_prod_file("") == 0
+    assert _is_non_prod_file("pkg/mod.py") == 0
+    assert _is_non_prod_file("examples/demo.py") == 1
+    assert _is_non_prod_file("scripts/run.py") == 1
+    assert _is_non_prod_file("a\\corpus\\f.py") == 1  # windows separators
+
+
+def test_next_step_lean_non_prod_only_warns() -> None:
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        _next_step_lean,
+    )
+
+    eps = [{"name": "demo_fn", "file": "examples/demo.py"}]
+    msg = _next_step_lean(True, True, entry_points=eps)
+    assert "non-production" in msg
+    assert "demo_fn" in msg and "examples/demo.py" in msg
+
+
+def test_next_step_lean_entry_points_without_code() -> None:
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        _next_step_lean,
+    )
+
+    msg = _next_step_lean(False, True, entry_points=[{"name": "x", "file": "pkg/a.py"}])
+    assert "include_graph=true" in msg
+
+
+def test_next_step_lean_production_anchor() -> None:
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        _next_step_lean,
+    )
+
+    eps = [{"name": "handle_call_tool", "file": "pkg/server.py"}]
+    msg = _next_step_lean(True, True, entry_points=eps)
+    assert "handle_call_tool" in msg
