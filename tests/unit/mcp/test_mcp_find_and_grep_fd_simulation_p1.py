@@ -239,10 +239,8 @@ async def test_fd_07_and_bad_pattern_simulation(tmp_path, monkeypatch):
         }
     )
 
-    # Should handle bad patterns gracefully
-    assert (
-        result["success"] is False or result["count"] >= 0
-    )  # ratchet: nondeterministic — success=False short-circuits; count key absent on error path
+    # Invalid regex makes fd exit non-zero — the tool must report failure
+    assert result["success"] is False
 
 
 @pytest.mark.asyncio

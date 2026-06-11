@@ -71,9 +71,8 @@ async def test_fd_44_follow_symlinks(tmp_path, monkeypatch):
     )
 
     assert result1["success"] is True
-    assert (
-        result1["count"] >= 3
-    )  # ratchet: nondeterministic — 3 without symlinks (Windows), 5 with symlinks (macOS/Linux)
+    # Two-point platform pin: 3 without symlinks (Windows), 5 with (macOS/Linux)
+    assert result1["count"] in (3, 5)
 
     # Test following symlinks
     result2 = await tool.execute(
@@ -86,9 +85,8 @@ async def test_fd_44_follow_symlinks(tmp_path, monkeypatch):
     )
 
     assert result2["success"] is True
-    assert (
-        result2["count"] >= 3
-    )  # ratchet: nondeterministic — 3 without symlinks (Windows), 6 with symlinks (macOS/Linux)
+    # Two-point platform pin: 3 without symlinks (Windows), 6 with (macOS/Linux)
+    assert result2["count"] in (3, 6)
 
 
 @pytest.mark.asyncio
@@ -168,9 +166,8 @@ async def test_fd_46_follow_broken_symlink(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert (
-        result["count"] >= 0
-    )  # ratchet: nondeterministic — 1 without broken symlink (Windows), 2 with broken symlink (macOS/Linux)
+    # Two-point platform pin: 1 without broken symlink (Windows), 2 with (macOS/Linux)
+    assert result["count"] in (1, 2)
 
 
 @pytest.mark.asyncio
@@ -262,9 +259,8 @@ async def test_fd_48_symlink_and_absolute_path(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert (
-        result["count"] >= 2
-    )  # ratchet: nondeterministic — 2 without symlinks (Windows), 3 with symlinks (macOS/Linux)
+    # Two-point platform pin: 2 without symlinks (Windows), 3 with (macOS/Linux)
+    assert result["count"] in (2, 3)
 
 
 @pytest.mark.asyncio
