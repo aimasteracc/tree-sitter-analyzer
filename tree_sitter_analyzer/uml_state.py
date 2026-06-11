@@ -16,6 +16,8 @@ Design decisions:
 - Transitions are identified by walking match_statement nodes: a case whose
   pattern references <ClassName>.<MemberName> and whose body contains a
   return_statement of <ClassName>.<OtherMemberName> becomes a transition.
+  Also detected: assignment statements of the form ``<anything> = <ClassName>.<MemberName>``
+  inside match arms (OOP FSM style, e.g. ``self.state = Door.OPEN``).
 """
 
 from __future__ import annotations
@@ -138,8 +140,9 @@ def _extract_enum_members(class_node: Any) -> list[str]:
     """Extract Enum member names from a class_definition body.
 
     Returns member names in the order they appear (for stable ordering).
-    Only UPPERCASE_NAMES or MixedCase that are not dunder are treated as
-    members (avoiding __doc__, __module__, etc.).
+    All assignment targets that are not underscore-prefixed are treated as
+    members (avoiding __doc__, __module__, _ignore_, etc.). This includes
+    UPPERCASE_NAMES, MixedCase, and lowercase names alike.
     """
     members: list[str] = []
     for child in class_node.children:
@@ -165,7 +168,13 @@ def _extract_transitions(
 
     Heuristic: a match_statement with a subject, where each case_clause
     whose pattern references <class_name>.<MemberA> and whose body
-    contains a return <class_name>.<MemberB> is a transition A → B.
+    contains a transition target becomes a transition A → B.
+
+    Two transition-target patterns are detected:
+    1. ``return <class_name>.<MemberB>``  — pure functional FSM style.
+    2. ``<target> = <class_name>.<MemberB>``  — OOP style (e.g.
+       ``self.state = Door.OPEN``), detected by scanning assignment
+       statements whose right-hand side is an enum member reference.
     """
     transitions: list[StateTransition] = []
     seen: set[tuple[str, str]] = set()
@@ -189,12 +198,28 @@ def _extract_transitions(
         return None
 
     def _find_return_enum_ref(node: Any) -> str | None:
-        """Recursively search for a return_statement of <class_name>.<member>."""
+        """Recursively search for a return_statement or assignment whose RHS is
+        <class_name>.<member>.
+
+        Patterns detected:
+        - ``return <class_name>.<member>``  (return_statement)
+        - ``<anything> = <class_name>.<member>``  (assignment, e.g. self.state = Door.OPEN)
+        """
         if node.type == "return_statement":
             for child in node.children:
                 ref = _parse_enum_ref(child)
                 if ref is not None:
                     return ref
+        elif node.type == "assignment":
+            # assignment children: [lhs, "=", rhs]
+            # We look for the RHS (last child that is not "=")
+            children = list(node.children)
+            for child in reversed(children):
+                if child.type != "=" and _node_text(child, 2) != "=":
+                    ref = _parse_enum_ref(child)
+                    if ref is not None:
+                        return ref
+                    break
         for child in node.children:
             result = _find_return_enum_ref(child)
             if result is not None:
@@ -284,7 +309,7 @@ def _extract_transitions(
 def build_state_result(
     file_path: str,
     class_name: str | None,
-    max_nodes: int = 30,
+    max_nodes: int = 50,
     language: str = "python",
 ) -> StateResult:
     """Parse *file_path* and extract FSM states and transitions.

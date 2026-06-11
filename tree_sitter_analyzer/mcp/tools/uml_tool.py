@@ -120,9 +120,9 @@ class CodeGraphUMLTool(BaseMCPTool):
                 },
                 "max_nodes": {
                     "type": "integer",
-                    "default": 30,
+                    "default": 50,
                     "description": (
-                        "Cap on state nodes for state diagrams (default 30). "
+                        "Cap on state nodes for state diagrams (default 50). "
                         "truncated=True when exceeded."
                     ),
                 },
@@ -190,7 +190,7 @@ class CodeGraphUMLTool(BaseMCPTool):
             diagram = exporter.state_diagram(
                 class_name=arguments.get("class_name"),
                 file_path=arguments.get("file_path"),
-                max_nodes=arguments.get("max_nodes", 30),
+                max_nodes=arguments.get("max_nodes", 50),
             )
         else:
             diagram = exporter.sequence_diagram(

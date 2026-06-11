@@ -523,7 +523,7 @@ class UMLExporter:
         *,
         class_name: str | None = None,
         file_path: str | None = None,
-        max_nodes: int = 30,
+        max_nodes: int = 50,
     ) -> UMLDiagram:
         """Build a stateDiagram-v2 from an enum/match-driven FSM (P2-B, RFC-0015).
 
@@ -612,14 +612,21 @@ class UMLExporter:
                 },
             )
 
-        # Zero transitions → NOT_FOUND (honesty rule from RFC-0015 §P2-B)
+        # Zero transitions → NOT_FOUND (honesty rule from RFC-0015 §P2-B).
+        # Suppress [*] --> X initial-state lines in the NOT_FOUND mermaid output:
+        # an agent reading only `mermaid` would see a structurally-valid diagram
+        # and might not check metadata.verdict — emit only the header + NOTE guard.
         if not result.transitions:
+            not_found_mermaid = (
+                "stateDiagram-v2\n"
+                "%% NOTE: state diagram is a static approximation.\n"
+                "%% Guard conditions, timers, and exception-driven transitions are not captured.\n"
+                "%% NOTE: no transitions detected — FSM pattern not recognised by this heuristic."
+            )
             return UMLDiagram(
                 diagram_type="state",
                 mermaid_type="stateDiagram-v2",
-                mermaid=render_state_mermaid(
-                    result.states, [], truncated=result.truncated
-                ),
+                mermaid=not_found_mermaid,
                 nodes=result.states,
                 edges=[],
                 metadata={
