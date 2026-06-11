@@ -2,10 +2,11 @@
   "counts_by_type": {
     "Class": 8,
     "Function": 8,
+    "Import": 1,
     "Package": 1,
     "Variable": 4
   },
-  "element_total": 21,
+  "element_total": 22,
   "names_by_type": {
     "Class": [
       "Config",
@@ -26,6 +27,9 @@
       "summary",
       "toTitleCase"
     ],
+    "Import": [
+      "java.util.Collections"
+    ],
     "Package": [
       "com.example.kotlin"
     ],
@@ -36,6 +40,7 @@
   "types": [
     "Class",
     "Function",
+    "Import",
     "Package",
     "Variable"
   ]
