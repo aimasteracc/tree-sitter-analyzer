@@ -424,14 +424,11 @@ class Class_{i}:
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         # 全てのタスクが正常に完了することを確認
-        successful_results = 0
+        counts: list[int] = []
         for result in results:
             if isinstance(result, dict) and result.get("success"):
-                successful_results += 1
                 assert "results" in result
-                assert (
-                    result["count"] > 0
-                )  # ratchet: nondeterministic mixed concurrent tasks; per-task exact counts pinned in dedicated tests
+                counts.append(result["count"])
             elif isinstance(result, Exception):
                 pytest.fail(f"Task failed with exception: {result}")
             else:
@@ -439,7 +436,8 @@ class Class_{i}:
                 assert isinstance(result, dict)
                 assert "error" in result
 
-        assert successful_results == 3, "All 3 tasks should succeed"
+        # 固定 fixture に対する決定的な件数: class=2, function=8 (x2)
+        assert sorted(counts) == [2, 8, 8]
 
     @pytest.mark.asyncio
     async def test_multiple_languages_concurrent(
@@ -470,18 +468,16 @@ class Class_{i}:
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         # 両方の結果が正常に取得できることを確認
-        successful_results = 0
+        counts: list[int] = []
         for result in results:
             if isinstance(result, dict) and result.get("success"):
-                successful_results += 1
                 assert "results" in result
-                assert (
-                    result["count"] > 0
-                )  # ratchet: nondeterministic mixed concurrent tasks; per-task exact counts pinned in dedicated tests
+                counts.append(result["count"])
             elif isinstance(result, Exception):
                 pytest.fail(f"Task failed with exception: {result}")
 
-        assert successful_results == 2, "Both languages should work"
+        # 固定 fixture に対する決定的な件数: javascript function=2, python function=8
+        assert sorted(counts) == [2, 8]
 
     @pytest.mark.asyncio
     async def test_large_file_mcp_processing(self, large_code_file):
