@@ -128,32 +128,102 @@ class CodeGraphDeadCodeTool(BaseMCPTool):
                 "error": f"Analysis failed: {exc}",
             }
 
+        # Totals BEFORE the display cap — used for truncation signals.
+        total_dead_funcs = len(result.dead_functions)
+        total_unused_imports = len(result.unused_imports)
+        total_unref_vars = len(result.unreferenced_variables)
+
+        # Apply display caps.
         dead_funcs = result.dead_functions[:max_dead]
         unused_imports = result.unused_imports[:max_imports]
         unref_vars = result.unreferenced_variables[:max_variables]
 
-        total_issues = len(dead_funcs) + len(unused_imports) + len(unref_vars)
+        # Counts AFTER the display cap — what is actually listed in the response.
+        listed_dead = len(dead_funcs)
+        listed_imports = len(unused_imports)
+        listed_vars = len(unref_vars)
+        listed_total = listed_dead + listed_imports + listed_vars
+
+        # Full totals across all categories (for verdict / next_step).
+        total_all = total_dead_funcs + total_unused_imports + total_unref_vars
+
+        # Truncation signals: only categories VISIBLE in this mode count
+        # (Codex P2: mode=unused_imports strips dead_functions — a truncated
+        # flag about an absent list is misinformation).
+        dead_visible = mode in ("all", "dead_functions")
+        imports_visible = mode in ("all", "unused_imports")
+        vars_visible = mode in ("all", "variables")
+        dead_truncated = dead_visible and total_dead_funcs > max_dead
+        imports_truncated = imports_visible and total_unused_imports > max_imports
+        vars_truncated = vars_visible and total_unref_vars > max_variables
+        any_truncated = dead_truncated or imports_truncated or vars_truncated
+
+        # Labeled stats — every count is named for what it counts so
+        # agents can distinguish the raw total from what is shown.
+        labeled_stats: dict[str, Any] = {
+            # Honest label (Codex P2): the analyzer's dead set is TRANSITIVE
+            # (zero-caller roots PLUS functions only reachable from them,
+            # reason=unreachable_from_entry) — not pure zero-caller orphans.
+            "total_dead_functions_transitive": total_dead_funcs,
+            "candidates_after_filters": total_dead_funcs,  # filter = transitive reachability
+            "dead_functions_listed": listed_dead,
+            "dead_functions_cap": max_dead,
+            "total_unused_imports": total_unused_imports,
+            "unused_imports_listed": listed_imports,
+            "unused_imports_cap": max_imports,
+            "total_unreferenced_variables": total_unref_vars,
+            "unreferenced_variables_listed": listed_vars,
+            "unreferenced_variables_cap": max_variables,
+            "total_functions": result.stats.get("total_functions", 0),
+            "total_call_edges": result.stats.get("total_call_edges", 0),
+        }
 
         # Wave 1b (audit health-10): emit an actionable next_step. dead_code
         # previously set none, so the boundary left agent_summary.next_step
         # empty — an agent saw a REVIEW verdict with N findings and no guidance.
-        if total_issues == 0:
+        if total_all == 0:
             verdict = "INFO"
             next_step = "No dead code found in scope."
         else:
-            verdict = "REVIEW" if total_issues > 20 else "CAUTION"
-            next_step = (
-                f"Review the {total_issues} candidate(s) — static analysis can miss "
-                "dynamic refs (reflection, plugins, __all__). Run edit action=guard "
-                "on a symbol to confirm zero callers before deleting it."
-            )
+            verdict = "REVIEW" if total_all > 20 else "CAUTION"
+            if any_truncated:
+                parts: list[str] = []
+                if dead_truncated:
+                    parts.append(
+                        f"showing {listed_dead} of {total_dead_funcs} dead functions"
+                    )
+                if imports_truncated:
+                    parts.append(
+                        f"showing {listed_imports} of {total_unused_imports} unused imports"
+                    )
+                if vars_truncated:
+                    parts.append(
+                        f"showing {listed_vars} of {total_unref_vars} unreferenced variables"
+                    )
+                truncation_note = "; ".join(parts)
+                next_step = (
+                    f"Results truncated ({truncation_note}). Raise max_dead / "
+                    "max_imports / max_variables or filter by path to see more. "
+                    "Static analysis can miss dynamic refs (reflection, plugins, "
+                    "__all__). Run edit action=guard on a symbol to confirm zero "
+                    "callers before deleting it."
+                )
+            else:
+                next_step = (
+                    f"Review the {listed_total} candidate(s) "
+                    f"({listed_dead} dead functions, {listed_imports} unused imports, "
+                    f"{listed_vars} unreferenced variables) — static analysis can miss "
+                    "dynamic refs (reflection, plugins, __all__). Run edit action=guard "
+                    "on a symbol to confirm zero callers before deleting it."
+                )
 
         response: dict[str, Any] = {
             "success": True,
             "verdict": verdict,
             "mode": mode,
             "project_root": self.project_root,
-            "stats": result.stats,
+            "stats": labeled_stats,
+            "truncated": any_truncated,
             "next_step": next_step,
             "dead_functions": [_serialize_dead_function(df) for df in dead_funcs],
             "unused_imports": [_serialize_unused_import(ui) for ui in unused_imports],
