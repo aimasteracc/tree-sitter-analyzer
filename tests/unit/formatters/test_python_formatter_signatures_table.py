@@ -382,3 +382,40 @@ def test_trim_trailing_blank_lines_removes_blanks() -> None:
     lines = ["a", "b", "", ""]
     _trim_trailing_blank_lines(lines)
     assert lines == ["a", "b"]
+
+
+# ─── Codex P2 (#485): nested-class methods owned by exactly one class ─────────
+
+
+def test_nested_class_methods_not_duplicated() -> None:
+    """A method in a nested class must appear under the inner class only."""
+    data = {
+        "file_path": "m.py",
+        "classes": [
+            {"name": "Outer", "line_range": {"start": 1, "end": 20}},
+            {"name": "Inner", "line_range": {"start": 5, "end": 12}},
+        ],
+        "methods": [
+            {
+                "name": "outer_m",
+                "line_range": {"start": 3, "end": 4},
+                "parameters": [],
+                "return_type": "None",
+            },
+            {
+                "name": "inner_m",
+                "line_range": {"start": 7, "end": 8},
+                "parameters": [],
+                "return_type": "None",
+            },
+        ],
+        "statistics": {"method_count": 2, "class_count": 2},
+    }
+    from tree_sitter_analyzer.formatters.python_formatter import PythonTableFormatter
+
+    out = PythonTableFormatter(format_type="signatures").format_structure(data)
+    assert out.count("inner_m") == 1
+    assert out.count("outer_m") == 1
+    outer_block = out.split("## Outer")[1].split("## Inner")[0]
+    assert "inner_m" not in outer_block
+    assert "[1 methods]" in out.split("## Outer")[1].split("\n")[0]

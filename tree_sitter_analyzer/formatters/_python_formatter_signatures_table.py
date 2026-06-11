@@ -54,8 +54,9 @@ def format_python_signatures_table(data: dict[str, Any]) -> str:
     lines.append("")
 
     if classes:
-        for cls in classes:
-            _append_class_block(lines, cls, all_methods)
+        ownership = _assign_methods_to_classes(all_methods, classes)
+        for idx, cls in enumerate(classes):
+            _append_class_block(lines, cls, ownership.get(idx, []))
     else:
         # No classes — flat module with only top-level functions
         _append_module_functions_block(lines, all_methods)
@@ -96,12 +97,12 @@ def _append_class_block(
     cls: dict[str, Any],
     all_methods: list[dict[str, Any]],
 ) -> None:
-    """Emit one class block: header + method lines."""
+    """Emit one class block: header + method lines (pre-assigned owners)."""
     name = cls.get("name", "?")
     lr = cls.get("line_range") or {}
     start = lr.get("start", 0)
     end = lr.get("end", 0)
-    class_methods = _methods_in_range(all_methods, lr)
+    class_methods = all_methods
     n_methods = len(class_methods)
 
     lines.append(f"## {name} ({start}-{end}) [{n_methods} methods]")
@@ -168,6 +169,37 @@ def _shorten_return_type(ret: str) -> str:
     bracket = ret.find("[")
     simple = ret[:bracket] if bracket != -1 else ret
     return _RETURN_ABBREVS.get(simple, simple)
+
+
+def _assign_methods_to_classes(
+    methods: list[dict[str, Any]],
+    classes: list[dict[str, Any]],
+) -> dict[int, list[dict[str, Any]]]:
+    """Assign each method to exactly ONE class — the innermost containing one.
+
+    A method inside a nested class falls inside both the outer and inner
+    class line ranges; listing it under both overstates the outer API
+    (single-ownership rule, same family as #474 / #484: smallest containing
+    span wins)."""
+    ownership: dict[int, list[dict[str, Any]]] = {}
+    for m in methods:
+        m_start = (m.get("line_range") or {}).get("start", 0)
+        best_idx: int | None = None
+        best_span: int | None = None
+        for idx, cls in enumerate(classes):
+            lr = cls.get("line_range") or {}
+            c_start = lr.get("start", 0)
+            c_end = lr.get("end", 0)
+            if not c_start and not c_end:
+                continue
+            if c_start <= m_start <= c_end:
+                span = c_end - c_start
+                if best_span is None or span < best_span:
+                    best_span = span
+                    best_idx = idx
+        if best_idx is not None:
+            ownership.setdefault(best_idx, []).append(m)
+    return ownership
 
 
 def _methods_in_range(
