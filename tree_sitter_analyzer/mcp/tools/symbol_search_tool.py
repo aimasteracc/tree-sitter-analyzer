@@ -166,8 +166,8 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
                 result["next_step"] = search_deterrent
             else:
                 result["next_step"] = (
-                    f"Run codegraph_explore query={query!r} before raw grep/read "
-                    "to bulk-fetch related symbols and concept matches."
+                    f"Run structure action=explore symbols=[{query!r}] before "
+                    "raw grep/read to bulk-fetch related symbols and concept matches."
                 )
         if language:
             result["language_filter"] = language

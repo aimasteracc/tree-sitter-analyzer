@@ -54,13 +54,13 @@ def test_agent_backlog_orders_weakest_files_and_includes_cli_parity() -> None:
     ]
     assert backlog[0]["priority"] == "critical"
     assert backlog[0]["recommended_mcp_command"] == (
-        "refactoring_suggestions(file_path='src/awful.py')"
+        "edit action=refactor file_path='src/awful.py'"
     )
     assert backlog[0]["recommended_cli_command"] == (
         "uv run python -m tree_sitter_analyzer src/awful.py --refactor --format json"
     )
     assert backlog[0]["safety_mcp_command"] == (
-        "safe_to_edit(file_path='src/awful.py')"
+        "edit action=safe file_path='src/awful.py'"
     )
     assert backlog[0]["safety_cli_command"] == (
         "uv run python -m tree_sitter_analyzer "
@@ -71,7 +71,7 @@ def test_agent_backlog_orders_weakest_files_and_includes_cli_parity() -> None:
     c_grade_item = backlog[2]
     assert c_grade_item["priority"] == "medium"
     assert (
-        "check_file_health(file_path='src/needs work.py')"
+        "health action=file file_path='src/needs work.py'"
         in (c_grade_item["recommended_mcp_command"])
     )
     assert "weak: complexity" in c_grade_item["recommended_mcp_command"]
