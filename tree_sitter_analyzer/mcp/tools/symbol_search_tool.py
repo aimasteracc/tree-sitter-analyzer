@@ -137,6 +137,11 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
 
         by_file: dict[str, int] = {}
         for r in results:
+            # A folded import row represents ALL its importing files —
+            # count each of them so file_count agrees with import_files
+            # (Codex P2 on #492).
+            for extra_fp in r.get("import_files", []):
+                by_file[extra_fp] = by_file.get(extra_fp, 0) + 0
             fp = r.get("file", "")
             by_file[fp] = by_file.get(fp, 0) + 1
 
