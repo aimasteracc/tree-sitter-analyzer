@@ -328,9 +328,11 @@ cache-resident; `ast_symbol_rows` stores only `name/kind/file_path/language/line
 New method: `UMLExporter.activity_diagram(function_name, file_path=None, max_nodes=50) -> UMLDiagram`.
 Returns `diagram_type="activity"`, `mermaid_type="flowchart"`.
 
-**Stale/deleted-file behavior:** file changed since indexing -> parse current file
-content, set `metadata["note"] = "parsed from current file content; may differ from
-indexed symbols"`. File missing -> `verdict="NOT_FOUND"` with `next_step`.
+**Stale/deleted-file behavior:** activity ALWAYS re-parses the current file from
+disk (AST bodies are not cache-resident), so `metadata["note"]` is ALWAYS set to
+`"parsed from current file content; may differ from indexed symbols"` on every
+successful diagram — regardless of whether the file changed since indexing.
+File missing -> `verdict="NOT_FOUND"` with `next_step`.
 
 **Zero-transition NOT_FOUND:** if the AST walk produces zero nodes (function body
 empty or unparseable), return `verdict="NOT_FOUND"` with a `next_step` explaining
@@ -843,15 +845,15 @@ into the Phase 1 PR — it is a one-line metadata annotation requiring no separa
 
 ### Phase 2 — activity
 
-- [ ] `diagram` enum includes `"activity"` in schema.
-- [ ] `UMLExporter.activity_diagram(function_name, file_path, max_nodes)` implemented: `mermaid_type="flowchart"`, `%% NOTE: activity` comment in Mermaid.
-- [ ] Zero CFG nodes -> `verdict="NOT_FOUND"` + `next_step`.
-- [ ] Stale file -> parse current content + `metadata["note"]`; missing file -> `NOT_FOUND`.
-- [ ] `test_uml_tool_schema_lists_diagrams` re-pinned to 6-element enum.
-- [ ] `test_class_diagram_execute_with_mock_exporter` FakeExporter still accepts new params (no regression from Phase 1 re-pin).
-- [ ] CLI flags `--uml-function`, `--uml-max-nodes` added and wired.
-- [ ] Latency invariant: activity diagram triggers exactly 1 tree-sitter parse (assertion count == 1).
-- [ ] All Phase-2 activity tests RED-first then GREEN.
+- [x] `diagram` enum includes `"activity"` in schema.
+- [x] `UMLExporter.activity_diagram(function_name, file_path, max_nodes)` implemented: `mermaid_type="flowchart"`, `%% NOTE: activity` comment in Mermaid.
+- [x] Zero CFG nodes -> `verdict="NOT_FOUND"` + `next_step`.
+- [x] Stale file -> parse current content + `metadata["note"]`; missing file -> `NOT_FOUND`.
+- [x] `test_uml_tool_schema_lists_diagrams` re-pinned to 6-element enum (5 in P2-A: ["class","package","component","sequence","activity"]).
+- [x] `test_class_diagram_execute_with_mock_exporter` FakeExporter still accepts new params (no regression from Phase 1 re-pin).
+- [x] CLI flags `--uml-function`, `--uml-max-nodes` added and wired.
+- [x] Latency invariant: activity diagram triggers exactly 1 tree-sitter parse (assertion count == 1).
+- [x] All Phase-2 activity tests RED-first then GREEN.
 
 ### Phase 2 — state
 

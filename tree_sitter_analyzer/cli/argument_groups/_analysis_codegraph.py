@@ -212,7 +212,7 @@ def _add_mcp_codegraph_map_options(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--uml",
-        choices=["class", "package", "component", "sequence"],
+        choices=["class", "package", "component", "sequence", "activity"],
         help="Export a UML-style Mermaid diagram from indexed project intelligence",
     )
     parser.add_argument(
@@ -274,6 +274,20 @@ def _add_mcp_codegraph_map_options(parser: argparse.ArgumentParser) -> None:
             "Include test-corpus classes (under tests/, testdata/, fixtures/) "
             "in --uml class whole-project diagrams (default: excluded)"
         ),
+    )
+    # P2 flags (RFC-0015): activity diagram
+    parser.add_argument(
+        "--uml-function",
+        help=(
+            "Function name for --uml activity control-flow diagram. "
+            "Required when --uml activity is used."
+        ),
+    )
+    parser.add_argument(
+        "--uml-max-nodes",
+        type=int,
+        default=50,
+        help="Cap on CFG nodes for --uml activity diagrams (default: 50)",
     )
     parser.add_argument(
         "--dependency-matrix-threshold",

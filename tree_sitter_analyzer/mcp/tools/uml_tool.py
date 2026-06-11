@@ -33,9 +33,11 @@ class CodeGraphUMLTool(BaseMCPTool):
             "name": "codegraph_uml",
             "description": (
                 "Export UML-oriented Mermaid diagrams from indexed project "
-                "facts. Diagrams: class, package, component, sequence. "
+                "facts. Diagrams: class, package, component, sequence, "
+                "activity (control-flow graph, requires disk re-parse). "
                 "Class uses inheritance edges; package/component use import "
-                "dependencies; sequence uses call paths."
+                "dependencies; sequence uses call paths; activity uses "
+                "tree-sitter AST of the function body."
             ),
             "inputSchema": self.get_tool_schema(),
             "annotations": {
@@ -52,9 +54,14 @@ class CodeGraphUMLTool(BaseMCPTool):
             "properties": {
                 "diagram": {
                     "type": "string",
-                    "enum": ["class", "package", "component", "sequence"],
+                    "enum": ["class", "package", "component", "sequence", "activity"],
                     "default": "class",
-                    "description": "UML diagram to render",
+                    "description": (
+                        "UML diagram to render. 'activity' is a single-function "
+                        "control-flow graph built by re-parsing the source file at "
+                        "query time (disk read + tree-sitter parse per call, "
+                        "typically < 50 ms)."
+                    ),
                 },
                 "source": {
                     "type": "string",
@@ -111,6 +118,19 @@ class CodeGraphUMLTool(BaseMCPTool):
                     "default": True,
                     "description": "Include common external bases in class diagrams",
                 },
+                "function_name": {
+                    "type": "string",
+                    "description": (
+                        "Function to graph for activity diagrams. Required when "
+                        "diagram=activity. Use bare name or module.function; "
+                        "first match in file_path is used."
+                    ),
+                },
+                "max_nodes": {
+                    "type": "integer",
+                    "default": 50,
+                    "description": "Cap on CFG nodes for activity diagrams (default 50).",
+                },
                 "output_format": {
                     "type": "string",
                     "enum": ["json", "toon"],
@@ -124,15 +144,18 @@ class CodeGraphUMLTool(BaseMCPTool):
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         diagram = arguments.get("diagram", "class")
-        if diagram not in {"class", "package", "component", "sequence"}:
+        if diagram not in {"class", "package", "component", "sequence", "activity"}:
             raise ValueError(f"Unsupported UML diagram: {diagram}")
         if diagram == "sequence" and (
             not arguments.get("source") or not arguments.get("target")
         ):
             raise ValueError("source and target are required for sequence diagrams")
+        if diagram == "activity" and not arguments.get("function_name"):
+            raise ValueError("function_name is required for activity diagrams")
         # P1-B: use shared validator that also handles float coercion and bool rejection
         for key in ("max_edges", "max_depth", "max_paths", "package_depth"):
             _validate_positive_int(arguments, key)
+        _validate_positive_int(arguments, "max_nodes")
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -169,6 +192,12 @@ class CodeGraphUMLTool(BaseMCPTool):
             diagram = exporter.component_diagram(
                 max_edges=arguments.get("max_edges", _DEFAULT_COMPONENT_MAX_EDGES),
             )
+        elif diagram_type == "activity":
+            diagram = exporter.activity_diagram(
+                function_name=arguments["function_name"],
+                file_path=arguments.get("file_path"),
+                max_nodes=arguments.get("max_nodes", 50),
+            )
         else:
             diagram = exporter.sequence_diagram(
                 source=arguments["source"],
@@ -177,11 +206,16 @@ class CodeGraphUMLTool(BaseMCPTool):
                 max_paths=arguments.get("max_paths", 3),
             )
 
-        # P2-1: an unknown class_name is NOT_FOUND even if the project has
-        # edges; agents must distinguish "no such class" from "no neighbours".
-        not_found = diagram.metadata.get("not_found", False)
-        verdict = (
-            "NOT_FOUND" if not_found else ("INFO" if diagram.edges else "NOT_FOUND")
-        )
+        # Determine verdict: activity and sequence use metadata["verdict"] when set
+        meta_verdict = diagram.metadata.get("verdict")
+        if meta_verdict:
+            verdict = meta_verdict
+        else:
+            # P2-1: an unknown class_name is NOT_FOUND even if the project has
+            # edges; agents must distinguish "no such class" from "no neighbours".
+            not_found = diagram.metadata.get("not_found", False)
+            verdict = (
+                "NOT_FOUND" if not_found else ("INFO" if diagram.edges else "NOT_FOUND")
+            )
         response = build_response(verdict=verdict, **diagram.to_dict())
         return apply_toon_format_to_response(response, output_format)
