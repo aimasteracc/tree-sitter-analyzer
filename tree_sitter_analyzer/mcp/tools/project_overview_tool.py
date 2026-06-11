@@ -681,7 +681,7 @@ def _build_tool_routing() -> dict[str, str]:
         "deps": "health action=deps mode='summary'",
         "call_graph": "nav action=callers scope=graph",
         "symbol_lineage": "nav action=lineage symbol='...'",
-        "smart_context": "project action=smart task='...'",
+        "smart_context": "project action=smart file_path='<file>'",
         # Code-quality + routing
         "code_patterns": "health action=patterns file_path='...'",
         "detect_routes": "health action=routes mode='summary'",
@@ -709,7 +709,7 @@ def _suggest_refactor_action(
     is_prod = not is_test and ext == ".py"
 
     if line_count > 500 and is_prod:
-        return f"check_file_health(file_path='{file_path}') for extraction targets, then extract longest methods into a new module"
+        return f"health action=file file_path='{file_path}' for extraction targets, then extract longest methods into a new module"
     if is_test:
         return f"Split test file by test class into separate files (current: {line_count} lines)"
     if ext == ".md":
@@ -728,7 +728,7 @@ def _build_smart_hint(result: dict[str, Any]) -> str:
     if unhealthy:
         prod = [h for h in unhealthy if "test" not in h["file"].lower()]
         target = prod[0] if prod else unhealthy[0]
-        action = target.get("suggestion", "check_file_health for details")
+        action = target.get("suggestion", "health action=file for details")
         parts.append(
             f"REFACTOR: {target['file']} ({target['grade']} {target['score']:.0f}) — {action}"
         )
@@ -738,14 +738,14 @@ def _build_smart_hint(result: dict[str, Any]) -> str:
     if top_lang:
         ext = _LANGUAGE_TO_EXT.get(top_lang, top_lang)
         parts.append(
-            f"SMART 'Analyze': analyze_code_structure on any .{ext} file for detailed table"
+            f"SMART 'Analyze': structure action=analyze on any .{ext} file for detailed table"
         )
 
     largest = result.get("largest_source_files", [])
     if largest:
         biggest = largest[0]
         parts.append(
-            f"SMART 'Retrieve': extract_code_section on {biggest['path']} ({biggest['lines']} lines)"
+            f"SMART 'Retrieve': structure action=read on {biggest['path']} ({biggest['lines']} lines)"
         )
 
     return " | ".join(parts[:3])

@@ -15,6 +15,13 @@ Coverage limits (documented):
     execute-level tests below.
   - next_step strings from deep inner tools that are not directly tested here
     are covered by targeted tests per guidance surface.
+
+CALLABILITY RATCHET PRINCIPLE (Codex P2 — issue #496):
+  Guidance strings that name a tool+action+params must be CALLABLE — for each
+  taught example in tool_routing, the action must exist in the facade's
+  action_map AND any named params must exist in the inner schema's properties.
+  Uncallable examples are the exact failure mode this module guards against;
+  teaching them recursively is the issue's own complaint.
 """
 
 from __future__ import annotations
@@ -22,12 +29,16 @@ from __future__ import annotations
 import inspect
 import re
 
+import pytest
+
 from tree_sitter_analyzer.mcp.facade_map import LEGACY_TOOL_MAP
 from tree_sitter_analyzer.mcp.server_utils import error_recovery as _er
 from tree_sitter_analyzer.mcp.server_utils import smart_prompts as _sp
 from tree_sitter_analyzer.mcp.tools.project_overview_tool import (
+    _build_smart_hint,
     _build_tool_routing,
     _health_opt_in_hint,
+    _suggest_refactor_action,
 )
 from tree_sitter_analyzer.mcp.tools.symbol_search_tool import CodeGraphSymbolSearchTool
 
@@ -342,4 +353,249 @@ class TestProjectHealthToolGuidance:
         bad2 = _forbidden_calls_in(recommended_cmd)
         assert bad2 == [], (
             f"recommended_mcp_command={recommended_cmd!r} has legacy names {bad2!r}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# 6. _build_smart_hint — P2-3: legacy names must not appear in smart hint
+# ---------------------------------------------------------------------------
+
+# Legacy names that _build_smart_hint historically produced and must no longer:
+_SMART_HINT_LEGACY = frozenset(
+    {"check_file_health", "analyze_code_structure", "extract_code_section"}
+)
+
+
+class TestBuildSmartHintFacadeNames:
+    """P2-3 ratchet: _build_smart_hint output must not contain legacy tool names."""
+
+    def _assert_clean(self, hint: str) -> None:
+        bad = [n for n in _SMART_HINT_LEGACY if re.search(rf"\b{re.escape(n)}\b", hint)]
+        assert bad == [], (
+            f"_build_smart_hint output contains legacy names {bad!r}: {hint!r}"
+        )
+
+    def test_healthy_project_no_legacy(self) -> None:
+        result = {
+            "health_summary": [{"file": "a.py", "grade": "A", "score": 90}],
+            "language_distribution": {"python": 5},
+            "largest_source_files": [{"path": "a.py", "lines": 100}],
+        }
+        self._assert_clean(_build_smart_hint(result))
+
+    def test_unhealthy_project_no_legacy(self) -> None:
+        """The REFACTOR branch must not produce check_file_health or analyze_code_structure."""
+        result = {
+            "health_summary": [
+                {"file": "big.py", "grade": "F", "score": 10}
+                # No 'suggestion' key → fallback path exercises "health action=file for details"
+            ],
+            "language_distribution": {"python": 5},
+            "largest_source_files": [{"path": "big.py", "lines": 800}],
+        }
+        hint = _build_smart_hint(result)
+        self._assert_clean(hint)
+        # Must use facade form
+        assert "health action=file" in hint
+
+    def test_analyze_part_uses_facade_form(self) -> None:
+        """The SMART Analyze part must teach structure action=analyze."""
+        result = {
+            "health_summary": [],
+            "language_distribution": {"python": 5},
+            "largest_source_files": [{"path": "a.py", "lines": 100}],
+        }
+        hint = _build_smart_hint(result)
+        self._assert_clean(hint)
+        assert "structure action=analyze" in hint
+
+    def test_retrieve_part_uses_facade_form(self) -> None:
+        """The SMART Retrieve part must teach structure action=read."""
+        result = {
+            "health_summary": [],
+            "language_distribution": {"python": 5},
+            "largest_source_files": [{"path": "bigfile.py", "lines": 500}],
+        }
+        hint = _build_smart_hint(result)
+        self._assert_clean(hint)
+        assert "structure action=read" in hint
+
+    def test_suggest_refactor_action_no_legacy(self) -> None:
+        """_suggest_refactor_action for a large prod file must use facade form."""
+        result = _suggest_refactor_action(
+            "src/big.py", 600, type("H", (), {"grade": "D", "total": 30})
+        )
+        assert result is not None
+        bad = [
+            n for n in _SMART_HINT_LEGACY if re.search(rf"\b{re.escape(n)}\b", result)
+        ]
+        assert bad == [], (
+            f"_suggest_refactor_action output contains legacy names {bad!r}: {result!r}"
+        )
+        assert "health action=file" in result
+
+    def test_overview_include_health_smart_hint_no_legacy(self, tmp_path) -> None:
+        """End-to-end: overview include_health=true smart_workflow_hint must be clean."""
+        import asyncio
+
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "app.py").write_text(
+            "\n".join(f"line{i} = {i}" for i in range(600)),
+            encoding="utf-8",
+        )
+
+        from tree_sitter_analyzer.mcp.tools.project_overview_tool import (
+            ProjectOverviewTool,
+        )
+
+        tool = ProjectOverviewTool(project_root=str(tmp_path))
+        result = asyncio.run(
+            tool.execute(
+                {"include_health": True, "max_depth": 5, "output_format": "json"}
+            )
+        )
+        hint = result.get("smart_workflow_hint", "")
+        bad = [n for n in _SMART_HINT_LEGACY if re.search(rf"\b{re.escape(n)}\b", hint)]
+        assert bad == [], (
+            f"overview smart_workflow_hint contains legacy names {bad!r}: {hint!r}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# 7. Callability ratchet: every tool_routing entry must be callable
+#
+# For each entry in _build_tool_routing():
+#   * The facade name must be one of the 8 live facades.
+#   * The action must exist in that facade's action_map or bespoke_map.
+#   * Any named param (foo=...) in the snippet must exist in the inner
+#     tool's schema properties (or be an output-control param: output_format,
+#     format_type, total_only, etc.).
+#
+# This is a static test over the routing table — perfect for a parametrize.
+# It catches P2-1 (symbols= doesn't exist) and P2-2 (task= doesn't exist)
+# classes of bugs before they reach agents.
+# ---------------------------------------------------------------------------
+
+# Output-control params that every facade accepts but aren't in individual
+# inner schemas — exempt from the inner-schema check.
+_OUTPUT_CONTROL_PARAMS: frozenset[str] = frozenset(
+    {
+        "output_format",
+        "format_type",
+        "total_only",
+        "format",
+        "limit",
+        "mode",
+        "scope",
+    }
+)
+
+# Facade names and their builders — imported lazily inside the test to avoid
+# paying the import cost at module load time.
+_FACADE_BUILDERS: dict[str, str] = {
+    "search": "tree_sitter_analyzer.mcp.tools.search_facade.build_search_facade",
+    "nav": "tree_sitter_analyzer.mcp.tools.nav_facade.build_nav_facade",
+    "structure": "tree_sitter_analyzer.mcp.tools.structure_facade.build_structure_facade",
+    "health": "tree_sitter_analyzer.mcp.tools.health_facade.build_health_facade",
+    "edit": "tree_sitter_analyzer.mcp.tools.edit_facade.build_edit_facade",
+    "project": "tree_sitter_analyzer.mcp.tools.project_facade.build_project_facade",
+    "index": "tree_sitter_analyzer.mcp.tools.index_facade.build_index_facade",
+    "viz": "tree_sitter_analyzer.mcp.tools.viz_facade.build_viz_facade",
+}
+
+_ACTION_FORM_RE = re.compile(
+    r"^(?P<facade>search|nav|structure|health|edit|project|index|viz)"
+    r"\s+action=(?P<action>\w+)"
+    r"(?P<rest>.*)$"
+)
+# Match named params like foo='bar', foo=..., foo=['...']
+_NAMED_PARAM_RE = re.compile(r"\b([a-z_][a-z0-9_]*)\s*=")
+
+
+def _parse_routing_snippet(snippet: str) -> tuple[str | None, str | None, list[str]]:
+    """Parse 'facade action=X param=... param2=...' → (facade, action, [param,...])."""
+    m = _ACTION_FORM_RE.match(snippet.strip().split("#")[0].strip())
+    if not m:
+        return None, None, []
+    facade = m.group("facade")
+    action = m.group("action")
+    rest = m.group("rest")
+    # Extract named params from the rest, excluding 'action' itself
+    params = [p for p in _NAMED_PARAM_RE.findall(rest) if p != "action"]
+    return facade, action, params
+
+
+def _get_facade(facade_name: str) -> object:
+    """Lazily build a facade (with project_root=None) for schema inspection."""
+    import importlib
+
+    builder_path = _FACADE_BUILDERS[facade_name]
+    module_path, func_name = builder_path.rsplit(".", 1)
+    module = importlib.import_module(module_path)
+    builder = getattr(module, func_name)
+    return builder(None)
+
+
+def _get_inner_schema(facade: object, action: str) -> dict | None:
+    """Return the inner tool's schema for a given action, or None."""
+    # FacadeTool exposes action_map and bespoke_map
+    action_map = getattr(facade, "action_map", {})
+    bespoke_map = getattr(facade, "bespoke_map", {})
+    inner = action_map.get(action) or bespoke_map.get(action)
+    if inner is None:
+        return None
+    if callable(inner) and not hasattr(inner, "get_tool_schema"):
+        # bespoke route (async closure) — no inner schema to verify params against
+        return {}
+    if hasattr(inner, "get_tool_schema"):
+        return inner.get_tool_schema()
+    return {}
+
+
+# Build parametrize data at module scope (after _build_tool_routing is imported).
+def _routing_cases() -> list[tuple[str, str]]:
+    return [(key, snippet) for key, snippet in _build_tool_routing().items()]
+
+
+@pytest.mark.parametrize("routing_key,snippet", _routing_cases())
+def test_tool_routing_entry_is_callable(routing_key: str, snippet: str) -> None:
+    """Callability ratchet: every tool_routing entry must be a valid facade call.
+
+    Verifies:
+    1. Snippet follows 'facade action=X ...' form (one of the 8 live facades).
+    2. action X exists in that facade's action_map or bespoke_map.
+    3. Any named param in the snippet (foo=) exists in the inner schema's
+       properties (output-control params exempt).
+    """
+    facade_name, action, params = _parse_routing_snippet(snippet)
+    assert facade_name is not None, (
+        f"tool_routing[{routing_key!r}] = {snippet!r} does not match "
+        "'facade action=X ...' form — cannot verify callability"
+    )
+    assert facade_name in _FACADE_BUILDERS, (
+        f"tool_routing[{routing_key!r}] references unknown facade {facade_name!r}"
+    )
+
+    facade = _get_facade(facade_name)
+    action_map = getattr(facade, "action_map", {})
+    bespoke_map = getattr(facade, "bespoke_map", {})
+    valid_actions = set(action_map.keys()) | set(bespoke_map.keys())
+    assert action in valid_actions, (
+        f"tool_routing[{routing_key!r}] = {snippet!r}: "
+        f"action={action!r} not in {facade_name} facade "
+        f"(valid: {sorted(valid_actions)})"
+    )
+
+    inner_schema = _get_inner_schema(facade, action)
+    if inner_schema is None or not inner_schema:
+        # bespoke closure or no schema — skip param check
+        return
+    schema_props = set(inner_schema.get("properties", {}).keys())
+    for param in params:
+        if param in _OUTPUT_CONTROL_PARAMS:
+            continue
+        assert param in schema_props, (
+            f"tool_routing[{routing_key!r}] = {snippet!r}: "
+            f"param {param!r} not in {facade_name} action={action!r} "
+            f"inner schema properties (valid: {sorted(schema_props)})"
         )
