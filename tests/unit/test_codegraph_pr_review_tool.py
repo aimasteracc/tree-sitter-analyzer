@@ -203,7 +203,11 @@ class TestCodeGraphPRReviewTool:
             ):
                 result = _run(
                     tool,
-                    {"mode": "diff", "include_call_graph": False},
+                    {
+                        "mode": "diff",
+                        "include_call_graph": False,
+                        "output_format": "json",
+                    },
                 )
         assert result["success"] is True
         assert result["files_reviewed"] >= 1

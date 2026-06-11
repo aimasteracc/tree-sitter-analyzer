@@ -74,9 +74,11 @@ class TestApplyToonCompactOnly:
             )
             == legacy
         )
-        # legacy still duplicates metadata at the top level
+        # RFC-0012 Phase 2: agent_summary is in TOON_DICT_PASSTHROUGH — kept.
         assert "agent_summary" in legacy
-        assert "queue_ledger" in legacy
+        # queue_ledger is a non-empty dict NOT in TOON_DICT_PASSTHROUGH — now
+        # stripped by the value-kind rule (it was pinning the old bug).
+        assert "queue_ledger" not in legacy
 
     def test_compact_only_drops_duplicated_metadata(self) -> None:
         legacy = apply_toon_format_to_response(dict(_METADATA_HEAVY), "toon")

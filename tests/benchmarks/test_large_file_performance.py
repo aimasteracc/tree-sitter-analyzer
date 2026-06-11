@@ -58,6 +58,7 @@ class TestLargeFilePerformance:
                 "file_path": str(file_path),
                 "include_complexity": False,
                 "include_details": False,
+                "output_format": "json",
             }
         )
         end_time = time.time()
@@ -128,6 +129,7 @@ class TestLargeFilePerformance:
                 "file_path": str(file_path),
                 "include_complexity": False,
                 "include_details": False,
+                "output_format": "json",
             }
         )
         end_time = time.time()
@@ -249,6 +251,7 @@ class TestLargeFilePerformance:
                 "file_path": str(file_path),
                 "include_complexity": True,
                 "include_details": False,
+                "output_format": "json",
             }
         )
         end_time = time.time()

@@ -130,7 +130,11 @@ def analyze_file():
         return tool
 
     def test_exact_search_finds_symbol(self, tool_with_project):
-        result = asyncio.run(tool_with_project.execute({"symbol": "HealthScorer"}))
+        result = asyncio.run(
+            tool_with_project.execute(
+                {"symbol": "HealthScorer", "output_format": "json"}
+            )
+        )
         assert result["success"] is True
         assert result["matches_found"] >= 1
         defs = result.get("definitions", [])
@@ -138,7 +142,9 @@ def analyze_file():
         assert "HealthScorer" in names
 
     def test_wildcard_search_finds_multiple(self, tool_with_project):
-        result = asyncio.run(tool_with_project.execute({"symbol": "*Tool"}))
+        result = asyncio.run(
+            tool_with_project.execute({"symbol": "*Tool", "output_format": "json"})
+        )
         assert result["success"] is True
         assert result["matches_found"] >= 3
         defs = result.get("definitions", [])
@@ -200,7 +206,11 @@ class HealthScorer:
     def test_find_references_returns_definitions_and_refs(self, ref_project):
         result = asyncio.run(
             ref_project.execute(
-                {"symbol": "HealthScorer", "find_references": True}
+                {
+                    "symbol": "HealthScorer",
+                    "find_references": True,
+                    "output_format": "json",
+                }
             )
         )
         assert result["success"] is True
@@ -209,9 +219,7 @@ class HealthScorer:
 
     def test_find_references_counts_callers(self, ref_project):
         result = asyncio.run(
-            ref_project.execute(
-                {"symbol": "HealthScorer", "find_references": True}
-            )
+            ref_project.execute({"symbol": "HealthScorer", "find_references": True})
         )
         assert result["success"] is True
         assert result.get("callers_count", 0) >= 0
@@ -219,9 +227,7 @@ class HealthScorer:
 
     def test_find_references_empty_symbol_raises(self):
         with pytest.raises(ValueError, match="non-empty"):
-            asyncio.run(
-                execute_find_references(".", {"symbol": ""})
-            )
+            asyncio.run(execute_find_references(".", {"symbol": ""}))
 
     def test_find_references_flag_in_schema(self):
         from tree_sitter_analyzer.mcp.tools.query_helpers import TOOL_SCHEMA

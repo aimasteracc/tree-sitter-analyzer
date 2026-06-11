@@ -203,21 +203,80 @@ def format_for_file_output(
     return content, extension
 
 
+#: RFC-0012 Phase 2: dict keys whose value is a dict but must NOT be stripped
+#: by the value-kind bulk rule.  These are small, structurally stable dicts
+#: that consumers branch on directly without parsing ``toon_content``.
+#:
+#: ``agent_summary`` — injected by the MCP boundary's
+#: ``ensure_canonical_success_envelope``; kept here so the tool-level
+#: ``apply_toon_format_to_response`` call (before the boundary runs) preserves
+#: it for any caller that reads the raw execute() result.
+#:
+#: ``errors_summary`` — batch executor control signal ``{"errors": N}``;
+#: agents branch on error count without parsing the blob. ~13 B.
+#:
+#: ``limits`` — batch executor configuration dict ``{"max_files": N, ...}``;
+#: agents inspect request limits without parsing the blob. ~96 B.
+TOON_DICT_PASSTHROUGH: frozenset[str] = frozenset(
+    {
+        "agent_summary",
+        "errors_summary",
+        "limits",
+    }
+)
+
+
+#: Known large-string fields that are already encoded in ``toon_content`` and
+#: must be stripped from the top level.  These cannot be caught by the
+#: value-kind rule (which only fires on lists/dicts) because their value is
+#: a ``str``.  Keep this list minimal — strings are cheap; only include fields
+#: where the string is a large rendered artefact (diagram text, table output,
+#: raw file content).
+TOON_LARGE_STRING_FIELDS: frozenset[str] = frozenset(
+    {
+        "content",  # Raw file content (read_partial_tool, extract_code_section)
+        "mermaid",  # Mermaid diagram string (viz action=uml / action=graph)
+        "partial_content_result",  # Formatted partial file content (read_partial_tool)
+        "table_output",  # Formatted table output (legacy text blob)
+    }
+)
+
+
 def _copy_metadata_fields(
     result: dict[str, Any],
     toon_response: dict[str, Any],
-    redundant_fields: set[str],
-    conditionally_redundant_list_fields: set[str],
 ) -> None:
-    """Copy non-redundant metadata fields from result into toon_response."""
+    """Copy non-bulk metadata fields from result into toon_response.
+
+    RFC-0012 Phase 2 — value-kind rule (replaces per-name denylist):
+
+    * Skip any key whose value is a **non-empty list** — it is already encoded
+      inside ``toon_content`` and keeping it at top level doubles the payload.
+    * Skip any key whose value is a **non-empty dict** UNLESS the key is in
+      :data:`TOON_DICT_PASSTHROUGH` — same rationale.
+    * Skip keys in :data:`TOON_LARGE_STRING_FIELDS` — known large rendered
+      strings (mermaid diagrams, table output) that are already in
+      ``toon_content``.
+    * Empty lists/dicts pass through (near-zero cost; shape-stable).
+    * All other scalars (str, int, float, bool, None) pass through.
+    * The ``format``/``toon_content`` keys are internal and never copied.
+
+    This approach is **future-proof**: any new tool field that emits a bulk
+    list or dict is automatically stripped, regardless of its name.  The old
+    per-name denylist had been extended 6 times and still missed fields
+    (direct_callers, transitive_callers, risk, subclasses — issue #439).
+    """
     for key, value in result.items():
-        if key in redundant_fields:
-            continue
-        if key in conditionally_redundant_list_fields and isinstance(value, list):
-            # Only strip when the field is genuinely an array of
-            # content; scalar aliases (int/str) pass through.
-            continue
         if key in {"format", "toon_content"}:
+            continue
+        if key in TOON_LARGE_STRING_FIELDS:
+            # Known large-string artefacts — strip regardless of value type
+            continue
+        if isinstance(value, list) and value:
+            # Non-empty list → bulk data, strip it
+            continue
+        if isinstance(value, dict) and value and key not in TOON_DICT_PASSTHROUGH:
+            # Non-empty dict not in the passthrough set → bulk data, strip it
             continue
         toon_response[key] = value
 
@@ -231,20 +290,19 @@ def apply_toon_format_to_response(
     """
     Apply TOON format to MCP tool response if requested.
 
-    When output_format is 'toon', formats the result as TOON and removes
-    redundant data fields (results, matches, content, etc.) to maximize
-    token savings. Only metadata fields are preserved alongside toon_content
-    so callers can still inspect ``success``/``error``/``file_path`` without
-    parsing the TOON blob.
+    When output_format is 'toon', formats the result as TOON and strips all
+    non-empty list/dict fields from the top level (RFC-0012 Phase 2 value-kind
+    rule) — they are already encoded inside ``toon_content`` and duplicating
+    them doubles the payload.  Only scalars and the small
+    :data:`TOON_DICT_PASSTHROUGH` dicts survive alongside ``toon_content`` so
+    callers can branch on ``success``/``verdict``/``error`` without parsing the
+    TOON blob.
 
     RFC-0012 Phase 1: when ``compact_only`` is True, the TOON response is
     further reduced to :data:`TOON_CONTROL_SURFACE` (plus ``toon_content``),
-    dropping metadata that is *already* encoded in the blob — eliminating the
-    JSON/TOON duplication that made metadata-heavy responses larger than plain
-    JSON. Default ``False`` preserves the legacy (duplicating) shape verbatim,
-    so no existing caller or golden test changes until it opts in. Note: on the
-    MCP server path the canonical post-hook re-adds metadata, so the boundary
-    re-applies :func:`reduce_to_control_surface` (idempotent) — see
+    dropping even the passthrough dicts.  Note: on the MCP server path the
+    canonical post-hook re-adds ``agent_summary`` and ``summary_line``, so the
+    boundary re-applies :func:`reduce_to_control_surface` (idempotent) — see
     ``handle_call_tool``.
 
     Also performs the verdict safety-net: if the tool returned a success
@@ -275,57 +333,22 @@ def apply_toon_format_to_response(
         return result
 
     try:
-        # Format the full result as TOON
+        # Format the full result as TOON (encodes the full payload once).
         toon_content = format_as_toon(result)
-
-        # Drop only the redundant *data* fields — these are already present in
-        # toon_content and would duplicate tokens. Metadata fields (success,
-        # error, file_path, agent_summary, ...) stay so callers can branch on
-        # status without parsing the TOON payload.
-        redundant_fields = {
-            "results",  # Search/query results
-            "matches",  # Search matches
-            "content",  # File content
-            "partial_content_result",  # Partial read results
-            "analysis_result",  # Code analysis results
-            "data",  # Generic data field
-            "items",  # List items
-            "files",  # File listings
-            "table_output",  # Formatted table output
-            # Issue #439: viz bulk fields — these are large arrays/strings
-            # that are already encoded inside toon_content.  Without stripping
-            # them the TOON response is 1.78x the plain JSON response.
-            "nodes",  # UML class-diagram node list (viz action=uml)
-            "edges",  # UML edge list (viz action=uml)
-            "mermaid",  # Mermaid diagram string (viz action=uml / action=graph)
-            "groups",  # Clone-group array (viz action=similarity)
-            # Measured 2026-06-11: the four fields below leak ~1.5x at the
-            # top level and are already encoded inside toon_content.
-            "callers",  # Caller-list (callers_tool / call_graph_tool mode=callers)
-            "callees",  # Callee-list (callees_tool / call_graph_tool mode=callees)
-            "tree",  # Nested call-tree dict (callee_tree / caller_tree tools)
-            "gaps",  # Skills gap-category dict (agent_skills_tool)
-        }
-        # O4 (round-30): ``lines`` is treated as bulk *content* only when
-        # it is actually a list/array (e.g. raw line content from
-        # ``extract_code_section``). When a tool emits ``lines`` as a
-        # scalar alias for ``line_count`` (N9 added this for file_health),
-        # the field is metadata, not duplicated content — keep it so
-        # JSON↔TOON callers see the same dict shape.
-        conditionally_redundant_list_fields = {"lines"}
 
         toon_response = {
             "format": "toon",
             "toon_content": toon_content,
         }
 
-        # Preserve metadata, but never stomp the format/toon_content keys.
-        _copy_metadata_fields(
-            result, toon_response, redundant_fields, conditionally_redundant_list_fields
-        )
+        # RFC-0012 Phase 2 — value-kind rule: copy only scalars and the small
+        # passthrough dicts; strip all non-empty lists and non-passthrough
+        # non-empty dicts (they are already inside toon_content).
+        _copy_metadata_fields(result, toon_response)
 
-        # RFC-0012: opt-in compaction strips the metadata that is already inside
-        # toon_content, leaving only the branchable control surface.
+        # RFC-0012 Phase 1: opt-in compaction strips the metadata that is
+        # already inside toon_content, leaving only the branchable control
+        # surface.
         if compact_only:
             return reduce_to_control_surface(toon_response)
 

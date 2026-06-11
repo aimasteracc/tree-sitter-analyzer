@@ -55,7 +55,9 @@ class TestExecuteDefinition:
     @pytest.mark.asyncio
     async def test_definition_no_cache(self, tool):
         with patch.object(tool, "get_cache", return_value=None):
-            result = await tool.execute({"symbol": "foo", "mode": "definition"})
+            result = await tool.execute(
+                {"symbol": "foo", "mode": "definition", "output_format": "json"}
+            )
         assert result["success"] is True
         assert result["definition"]["found"] is False
 
@@ -80,7 +82,7 @@ class TestExecuteDefinition:
             ),
         ):
             result = await tool_with_root.execute(
-                {"symbol": "parse_tree", "mode": "definition"}
+                {"symbol": "parse_tree", "mode": "definition", "output_format": "json"}
             )
         assert result["success"] is True
         assert "definition" in result
@@ -92,7 +94,9 @@ class TestExecuteHierarchy:
         mock_graph = MagicMock()
         mock_graph.build.side_effect = Exception("no project")
         with patch.object(tool, "get_call_graph", return_value=mock_graph):
-            result = await tool.execute({"symbol": "foo", "mode": "hierarchy"})
+            result = await tool.execute(
+                {"symbol": "foo", "mode": "hierarchy", "output_format": "json"}
+            )
         assert result["success"] is True
         assert result["hierarchy"]["callers"] == []
         assert result["hierarchy"]["callees"] == []
@@ -108,7 +112,12 @@ class TestExecuteHierarchy:
         ]
         with patch.object(tool, "get_call_graph", return_value=mock_graph):
             result = await tool.execute(
-                {"symbol": "foo", "mode": "hierarchy", "depth": 1}
+                {
+                    "symbol": "foo",
+                    "mode": "hierarchy",
+                    "depth": 1,
+                    "output_format": "json",
+                }
             )
         assert result["success"] is True
         assert result["hierarchy"]["caller_count"] == 1
@@ -136,7 +145,12 @@ class TestExecuteHierarchy:
         mock_graph.callees_of.return_value = []
         with patch.object(tool, "get_call_graph", return_value=mock_graph):
             result = await tool.execute(
-                {"symbol": "foo", "mode": "hierarchy", "depth": 3}
+                {
+                    "symbol": "foo",
+                    "mode": "hierarchy",
+                    "depth": 3,
+                    "output_format": "json",
+                }
             )
         assert result["success"] is True
         tc = result["hierarchy"]["transitive_callers"]
@@ -159,7 +173,12 @@ class TestExecuteHierarchy:
         mock_graph.callees_of.return_value = []
         with patch.object(tool, "get_call_graph", return_value=mock_graph):
             result = await tool.execute(
-                {"symbol": "hub", "mode": "hierarchy", "depth": 1}
+                {
+                    "symbol": "hub",
+                    "mode": "hierarchy",
+                    "depth": 1,
+                    "output_format": "json",
+                }
             )
         h = result["hierarchy"]
         assert len(h["callers"]) == _MAX_LISTED
@@ -179,7 +198,9 @@ class TestExecuteFull:
             patch.object(tool, "get_cache", return_value=None),
             patch.object(tool, "get_call_graph", return_value=mock_graph),
         ):
-            result = await tool.execute({"symbol": "foo", "mode": "full"})
+            result = await tool.execute(
+                {"symbol": "foo", "mode": "full", "output_format": "json"}
+            )
         assert result["success"] is True
         assert "definition" in result
         assert "references" in result

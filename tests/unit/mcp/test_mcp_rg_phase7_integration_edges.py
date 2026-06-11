@@ -96,7 +96,9 @@ async def test_rg_83_find_and_grep_fd_elapsed_and_rg_elapsed(monkeypatch, tmp_pa
         "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
     )
 
-    res = await tool.execute({"roots": [str(tmp_path)], "query": "x"})
+    res = await tool.execute(
+        {"roots": [str(tmp_path)], "query": "x", "output_format": "json"}
+    )
     assert res["success"] is True
     assert "fd_elapsed_ms" in res["meta"] and "rg_elapsed_ms" in res["meta"]
 
@@ -235,7 +237,12 @@ async def test_rg_89_find_and_grep_meta_truncated(monkeypatch, tmp_path):
     )
 
     res = await tool.execute(
-        {"roots": [str(tmp_path)], "query": "x", "file_limit": 100}
+        {
+            "roots": [str(tmp_path)],
+            "query": "x",
+            "file_limit": 100,
+            "output_format": "json",
+        }
     )
     assert res["success"] is True
     assert res["meta"]["truncated"] is True

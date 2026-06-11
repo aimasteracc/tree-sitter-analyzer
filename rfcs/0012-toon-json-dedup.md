@@ -1,9 +1,9 @@
 # RFC-0012: Eliminate TOON/JSON metadata duplication in MCP responses
 
-- **Status**: accepted (Phase 1 implemented; Phase 2 deferred)
+- **Status**: implemented (Phase 1 + Phase 2 both landed)
 - **Author(s)**: @aimasteracc
 - **Created**: 2026-06-08
-- **Last updated**: 2026-06-08
+- **Last updated**: 2026-06-11
 - **Tracking issue**: TBD
 - **Affected source paths** (pin them — reviewers watch for drift here):
   - `tree_sitter_analyzer/mcp/utils/format_helper.py`
@@ -247,7 +247,7 @@ returns the JSON result if TOON encoding raises. `compact_only` never drops
 - [x] Size-regression test green (compact < legacy).
 - [x] CLI↔MCP parity test green (`--compact-toon` → `compact_only`).
 - [x] Docs/CODEMAPS + README updated (CLI flag count 272→273).
-- [ ] (Phase 2, if accepted) disjoint-by-default with full golden re-baseline.
+- [x] (Phase 2) disjoint-by-default via value-kind rule — `_copy_metadata_fields` strips all non-empty list/dict values except `TOON_DICT_PASSTHROUGH`; `TOON_LARGE_STRING_FIELDS` covers known large strings. Cost invariants in `test_output_cost_invariants.py` verify TOON < JSON for nav impact responses.
 
 ## What this RFC does NOT do (deferred)
 

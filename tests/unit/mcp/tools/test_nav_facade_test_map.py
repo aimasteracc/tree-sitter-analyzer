@@ -99,7 +99,10 @@ async def test_test_map_returns_test_files_and_functions() -> None:
 
     impact_inner._call_graph = mock_graph
 
-    result = await facade.execute({"action": "test_map", "symbol": "my_fn"})
+    # Use json to access bulk list fields directly (value-kind rule strips lists in TOON)
+    result = await facade.execute(
+        {"action": "test_map", "symbol": "my_fn", "output_format": "json"}
+    )
 
     assert result["success"] is True
     assert result["edge_count"] == 3
@@ -133,7 +136,10 @@ async def test_test_map_excludes_prod_callers() -> None:
 
     impact_inner._call_graph = mock_graph
 
-    result = await facade.execute({"action": "test_map", "symbol": "my_fn"})
+    # Use json to access bulk list fields directly (value-kind rule strips lists in TOON)
+    result = await facade.execute(
+        {"action": "test_map", "symbol": "my_fn", "output_format": "json"}
+    )
 
     assert result["success"] is True
     assert result["edge_count"] == 1
@@ -204,7 +210,10 @@ async def test_test_map_truncated_flag_set_when_cap_reached() -> None:
 
     impact_inner._call_graph = mock_graph
 
-    result = await facade.execute({"action": "test_map", "symbol": "hub_fn"})
+    # Use json to access bulk list fields directly (value-kind rule strips lists in TOON)
+    result = await facade.execute(
+        {"action": "test_map", "symbol": "hub_fn", "output_format": "json"}
+    )
 
     assert result["success"] is True
     assert result["edge_count"] == 51
@@ -234,7 +243,10 @@ async def test_test_map_test_functions_sorted() -> None:
 
     impact_inner._call_graph = mock_graph
 
-    result = await facade.execute({"action": "test_map", "symbol": "fn"})
+    # Use json to access bulk list fields directly (value-kind rule strips lists in TOON)
+    result = await facade.execute(
+        {"action": "test_map", "symbol": "fn", "output_format": "json"}
+    )
 
     assert result["test_functions"] == sorted(result["test_functions"])
     assert result["test_files"] == sorted(result["test_files"])
