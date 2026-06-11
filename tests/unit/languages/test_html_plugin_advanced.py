@@ -761,8 +761,12 @@ class TestHtmlQueryAccuracy:
         tree = get_tree_for_code(TAG_CODE, plugin)
         elements = plugin.create_extractor().extract_html_elements(tree, TAG_CODE)
 
+        # The first tag in TAG_CODE opens on line 3 — pinning the exact
+        # minimum makes a regression to 0/-1 line numbers impossible to miss
+        start_lines = [e.start_line for e in elements]
+        assert len(start_lines) == 35
+        assert min(start_lines) == 3
         for element in elements:
-            assert element.start_line != 0
             assert element.end_line >= element.start_line
 
     def test_element_classification_accuracy(self):
