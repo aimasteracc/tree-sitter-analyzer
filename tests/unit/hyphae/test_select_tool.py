@@ -185,3 +185,31 @@ def test_not_pseudo_does_not_clobber_counters() -> None:
     assert len(out) == 100
     assert ev.total_matches() == 150
     assert ev.was_truncated() is True
+
+
+def test_multi_selector_recount_covers_remaining_selectors() -> None:
+    """Cap hit in selector 1 of a list — selector 2's matches still counted."""
+    from tree_sitter_analyzer.hyphae.evaluator import Evaluator
+    from tree_sitter_analyzer.hyphae.parser import parse
+
+    cache = _FakeCacheWithManyCallers(n=120)
+    ev = Evaluator(cache, max_results=100)
+    # ".function, .function" — second selector yields only duplicates (all
+    # seen), exercising both recount loops without changing the total.
+    out = ev.eval(parse(".function, .function"))
+    assert len(out) == 100
+    assert ev.total_matches() == 120
+    assert ev.was_truncated() is True
+
+
+def test_duplicate_symbols_across_selectors_deduped() -> None:
+    """The same symbol matched by two selectors counts once."""
+    from tree_sitter_analyzer.hyphae.evaluator import Evaluator
+    from tree_sitter_analyzer.hyphae.parser import parse
+
+    cache = _FakeCacheWithManyCallers(n=10)
+    ev = Evaluator(cache, max_results=100)
+    out = ev.eval(parse(".function, .function"))
+    assert len(out) == 10
+    assert ev.total_matches() == 10
+    assert ev.was_truncated() is False
