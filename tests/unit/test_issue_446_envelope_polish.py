@@ -235,3 +235,66 @@ class TestSummaryLineShipping:
             assert isinstance(summary_line, str) and summary_line, (
                 f"agent_summary.summary_line should be non-empty; got {summary_line!r}"
             )
+
+
+# ─── codecov §11: cover the new branches directly ────────────────────────────
+
+
+def test_overview_risk_unknown_maps_to_info() -> None:
+    from tree_sitter_analyzer.mcp.tools.project_overview_tool import (
+        _overview_risk_to_verdict,
+    )
+
+    assert _overview_risk_to_verdict("unknown") == "INFO"
+    assert _overview_risk_to_verdict("Unknown") == "INFO"
+    assert _overview_risk_to_verdict("high") == "REVIEW"
+
+
+def test_status_stale_lag_next_step(tmp_path, monkeypatch) -> None:
+    """lag > 300s → next_step suggests sync before nav/search."""
+    import asyncio
+
+    from tree_sitter_analyzer.mcp.tools.codegraph_status_tool import (
+        CodeGraphStatusTool,
+    )
+
+    (tmp_path / ".ast-cache").mkdir()
+    (tmp_path / ".ast-cache" / "index.db").write_bytes(b"")
+    tool = CodeGraphStatusTool(str(tmp_path))
+    monkeypatch.setattr(
+        tool,
+        "_safe_get_stats",
+        lambda: {"total_files": 1, "total_symbols": 2, "total_edges": 3},
+    )
+    monkeypatch.setattr(tool, "_compute_lag", lambda path: 301.0)
+    result = asyncio.run(tool.execute({"output_format": "json", "include_lag": True}))
+    assert (
+        result["agent_summary"]["next_step"]
+        == "Index is healthy but stale (>5 min). Run action=sync first, "
+        "then proceed with nav/search"
+    )
+
+
+def test_status_schema_version_included_when_present(tmp_path, monkeypatch) -> None:
+    """Non-None schema_version IS emitted (only None is omitted)."""
+    import asyncio
+
+    from tree_sitter_analyzer.mcp.tools.codegraph_status_tool import (
+        CodeGraphStatusTool,
+    )
+
+    (tmp_path / ".ast-cache").mkdir()
+    (tmp_path / ".ast-cache" / "index.db").write_bytes(b"")
+    tool = CodeGraphStatusTool(str(tmp_path))
+    monkeypatch.setattr(
+        tool,
+        "_safe_get_stats",
+        lambda: {
+            "total_files": 1,
+            "total_symbols": 2,
+            "total_edges": 3,
+            "schema_version": 7,
+        },
+    )
+    result = asyncio.run(tool.execute({"output_format": "json"}))
+    assert result["schema_version"] == 7
