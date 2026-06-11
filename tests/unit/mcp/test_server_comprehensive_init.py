@@ -245,10 +245,10 @@ x = 42
 
         metrics = server._calculate_file_metrics(str(test_file), "python")
 
-        assert metrics["total_lines"] > 0
-        assert metrics["code_lines"] > 0
-        assert metrics["comment_lines"] > 0
-        assert metrics["blank_lines"] >= 0
+        assert metrics["total_lines"] == 8
+        assert metrics["code_lines"] == 3
+        assert metrics["comment_lines"] == 2
+        assert metrics["blank_lines"] == 3
 
     def test_calculate_file_metrics_javascript(self, temp_project_dir):
         """Test file metrics calculation for JavaScript file."""
@@ -269,9 +269,9 @@ const x = 42;
 
         metrics = server._calculate_file_metrics(str(test_file), "javascript")
 
-        assert metrics["total_lines"] > 0
-        assert metrics["code_lines"] > 0
-        assert metrics["comment_lines"] > 0
+        assert metrics["total_lines"] == 9
+        assert metrics["code_lines"] == 3
+        assert metrics["comment_lines"] == 4
 
     def test_calculate_file_metrics_java(self, temp_project_dir):
         """Test file metrics calculation for Java file."""
@@ -292,9 +292,9 @@ public class Test {
 
         metrics = server._calculate_file_metrics(str(test_file), "java")
 
-        assert metrics["total_lines"] > 0
-        assert metrics["code_lines"] > 0
-        assert metrics["comment_lines"] > 0
+        assert metrics["total_lines"] == 9
+        assert metrics["code_lines"] == 4
+        assert metrics["comment_lines"] == 4
 
     def test_calculate_file_metrics_multiline_comments(self, temp_project_dir):
         """Test file metrics with complex multiline comments."""
@@ -313,7 +313,7 @@ function test() {
 
         metrics = server._calculate_file_metrics(str(test_file), "javascript")
 
-        assert metrics["comment_lines"] >= 3  # At least 3 comment lines
+        assert metrics["comment_lines"] == 5
 
     def test_calculate_file_metrics_error_handling(self, temp_project_dir):
         """Test file metrics calculation error handling."""

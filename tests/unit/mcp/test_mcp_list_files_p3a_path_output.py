@@ -55,7 +55,7 @@ async def test_fd_50_symlink_and_full_path(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 0
+    assert result["count"] == 1
 
 
 @pytest.mark.asyncio
@@ -89,7 +89,7 @@ async def test_fd_51_print0_output_simulation(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 2
+    assert result["count"] == 2
     # Verify structured JSON output
     assert "results" in result
     assert isinstance(result["results"], list)
@@ -134,7 +134,7 @@ async def test_fd_52_absolute_path_output(tmp_path, monkeypatch):
     )
 
     assert result1["success"] is True
-    assert result1["count"] >= 3
+    assert result1["count"] == 3
     # Verify absolute paths
     for item in result1["results"]:
         path = item["path"]
@@ -152,7 +152,7 @@ async def test_fd_52_absolute_path_output(tmp_path, monkeypatch):
     )
 
     assert result2["success"] is True
-    assert result2["count"] >= 3
+    assert result2["count"] == 3
 
 
 @pytest.mark.asyncio
@@ -180,7 +180,7 @@ async def test_fd_53_implicit_absolute_path(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 0
+    assert result["count"] == 1
 
 
 @pytest.mark.asyncio
@@ -215,7 +215,7 @@ async def test_fd_54_normalized_absolute_path(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 0
+    assert result["count"] == 1
 
 
 @pytest.mark.asyncio
@@ -249,7 +249,7 @@ async def test_fd_55_custom_path_separator(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 0
+    assert result["count"] == 1
     # Verify proper path separators
     for item in result["results"]:
         path = item["path"]
@@ -286,7 +286,7 @@ async def test_fd_56_base_directory_output(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 0
+    assert result["count"] == 2
 
 
 @pytest.mark.asyncio
@@ -317,7 +317,7 @@ async def test_fd_57_strip_cwd_prefix(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 0
+    assert result["count"] == 1
 
 
 @pytest.mark.asyncio
@@ -350,7 +350,7 @@ async def test_fd_58_format_output_structured(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 2
+    assert result["count"] == 2
     # Verify structured format
     assert "results" in result
     assert "count" in result
@@ -385,7 +385,7 @@ async def test_fd_65_exec_invalid_utf8_simulation(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 2
+    assert result["count"] == 2
 
 
 @pytest.mark.asyncio
@@ -437,7 +437,7 @@ async def test_fd_38_gitignore_and_fdignore_advanced(tmp_path, monkeypatch):
     )
 
     assert result1["success"] is True
-    assert result1["count"] >= 0  # Allow flexible count
+    assert result1["count"] == 3
 
     # Test without ignore rules
     result2 = await tool.execute(
@@ -445,6 +445,4 @@ async def test_fd_38_gitignore_and_fdignore_advanced(tmp_path, monkeypatch):
     )
 
     assert result2["success"] is True
-    assert result2["count"] >= 0  # Allow flexible count
-
-
+    assert result2["count"] == 7
