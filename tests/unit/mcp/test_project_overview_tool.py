@@ -19,6 +19,8 @@ from tree_sitter_analyzer.mcp.tools.project_overview_tool import (
     _count_lines,
     _health_opt_in_hint,
     _increment,
+    _is_ignored_by_gitignore,
+    _load_gitignore_patterns,
     _new_scan,
     _overview_next_step,
     _overview_risk,
@@ -204,6 +206,89 @@ class TestScanProject:
 
         assert scan["ext_dist"][".py"] == 1
         assert scan["ext_dist"][".json"] == 1
+
+    def test_scan_respects_gitignore(self, tmp_path) -> None:
+        """Verify that overview respects .gitignore exclusions (#445)."""
+        # Write a visible file
+        _write(tmp_path, "src/app.py", "print('visible')\n")
+        # Write files in a gitignored directory
+        _write(tmp_path, ".benchmark-repos/vscode.d.ts", "// vendored\n")
+        _write(tmp_path, ".benchmark-repos/tokio/CHANGELOG.md", "# changelog\n")
+        # Create .gitignore that excludes .benchmark-repos
+        _write(tmp_path, ".gitignore", ".benchmark-repos/\n")
+
+        scan = _scan_project(tmp_path, max_depth=5)
+
+        # Only visible file should be counted
+        assert scan["lang_dist"] == {"python": 1}
+        # Source files should only include the visible file, not the gitignored ones
+        assert len(scan["source_files"]) == 1
+        assert scan["source_files"][0]["path"] == "src/app.py"
+
+    def test_scan_without_gitignore(self, tmp_path) -> None:
+        """Verify that scanning works when no .gitignore exists."""
+        _write(tmp_path, "app.py", "x = 1\n")
+        _write(tmp_path, "lib/util.py", "y = 2\n")
+
+        scan = _scan_project(tmp_path, max_depth=5)
+
+        assert scan["lang_dist"]["python"] == 2
+        assert len(scan["source_files"]) == 2
+
+    def test_scan_respects_multiple_gitignore_patterns(self, tmp_path) -> None:
+        """Verify that multiple .gitignore patterns work correctly."""
+        _write(tmp_path, "src/app.py", "x = 1\n")
+        _write(tmp_path, "build/output.o", "binary\n")
+        _write(tmp_path, "dist/package.tar", "archive\n")
+        _write(tmp_path, ".gitignore", "build/\ndist/\n")
+
+        scan = _scan_project(tmp_path, max_depth=5)
+
+        assert scan["lang_dist"] == {"python": 1}
+        assert len(scan["source_files"]) == 1
+
+
+class TestGitignoreSupport:
+    def test_load_gitignore_patterns_exists(self, tmp_path) -> None:
+        """Test loading .gitignore when it exists."""
+        _write(tmp_path, ".gitignore", "*.log\ntemp/\n")
+
+        spec = _load_gitignore_patterns(tmp_path)
+
+        assert spec is not None
+        assert _is_ignored_by_gitignore("test.log", spec) is True
+        assert _is_ignored_by_gitignore("temp/file.txt", spec) is True
+        assert _is_ignored_by_gitignore("src/app.py", spec) is False
+
+    def test_load_gitignore_patterns_missing(self, tmp_path) -> None:
+        """Test loading .gitignore when it doesn't exist."""
+        spec = _load_gitignore_patterns(tmp_path)
+
+        assert spec is None
+
+    def test_load_gitignore_patterns_with_comments(self, tmp_path) -> None:
+        """Test that comments and empty lines are skipped."""
+        _write(tmp_path, ".gitignore", "# Comment\n*.log\n\n# Another comment\ntemp/\n")
+
+        spec = _load_gitignore_patterns(tmp_path)
+
+        assert spec is not None
+        assert _is_ignored_by_gitignore("test.log", spec) is True
+        assert _is_ignored_by_gitignore("temp/file.txt", spec) is True
+
+    def test_is_ignored_by_gitignore_none_spec(self) -> None:
+        """Test that None spec never ignores anything."""
+        assert _is_ignored_by_gitignore("any/path.py", None) is False
+
+    def test_is_ignored_by_gitignore_normalization(self, tmp_path) -> None:
+        """Test path normalization with backslashes."""
+        _write(tmp_path, ".gitignore", "vendor/\n")
+
+        spec = _load_gitignore_patterns(tmp_path)
+
+        # Test both forward and backslash paths
+        assert _is_ignored_by_gitignore("vendor/lib.php", spec) is True
+        assert _is_ignored_by_gitignore("vendor\\lib.php", spec) is True
 
 
 class TestAddPathToScan:
@@ -637,3 +722,33 @@ class TestEdgeCases:
         result = _run(tool.execute({"max_depth": 5, "output_format": "json"}))
 
         assert result["summary"]["languages_count"] == len(ext_lang)
+
+
+def test_load_gitignore_only_comments_returns_none(tmp_path) -> None:
+    """A .gitignore with only comments/blank lines compiles to None."""
+    from tree_sitter_analyzer.mcp.tools.project_overview_tool import (
+        _load_gitignore_patterns,
+    )
+
+    (tmp_path / ".gitignore").write_text("# only a comment\n\n")
+    assert _load_gitignore_patterns(tmp_path) is None
+
+
+def test_load_gitignore_unreadable_returns_none(tmp_path, monkeypatch) -> None:
+    """A .gitignore that raises on read degrades gracefully to None."""
+    import builtins
+
+    from tree_sitter_analyzer.mcp.tools.project_overview_tool import (
+        _load_gitignore_patterns,
+    )
+
+    (tmp_path / ".gitignore").write_text("build/\n")
+    real_open = builtins.open
+
+    def boom(path, *a, **kw):
+        if str(path).endswith(".gitignore"):
+            raise OSError("synthetic read failure")
+        return real_open(path, *a, **kw)
+
+    monkeypatch.setattr(builtins, "open", boom)
+    assert _load_gitignore_patterns(tmp_path) is None
