@@ -467,6 +467,14 @@ def _add_mcp_graph_nav_options(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Skip AST cache and do full project scan for --code-similarity",
     )
+    parser.add_argument(
+        "--code-similarity-include-bodies",
+        action="store_true",
+        help=(
+            "Include code snippets in each function entry of --code-similarity output. "
+            "Default is summary-only (files, line ranges, scores — no bodies)."
+        ),
+    )
     # RFC-0003: test-gap analysis
     parser.add_argument(
         "--test-gap",

@@ -261,6 +261,7 @@ def _build_code_similarity_tool_args(args: Any, output_format: str) -> dict[str,
         "min_group_size": getattr(args, "code_similarity_min_group", 2) or 2,
         "max_groups": getattr(args, "code_similarity_max_groups", 20) or 20,
         "use_cache": not bool(getattr(args, "code_similarity_no_cache", False)),
+        "include_bodies": bool(getattr(args, "code_similarity_include_bodies", False)),
         "output_format": output_format,
     }
 

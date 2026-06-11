@@ -45,7 +45,9 @@ _VIZ_DESCRIPTION = (
     "Params: mode, file_path, function, depth, max_edges, direction.\n"
     "- action=similarity — duplicate / near-duplicate code detection "
     "(codegraph_similarity equivalent). "
-    "Params: mode, min_lines, min_group_size, max_groups, use_cache.\n"
+    "Default response is a summary map (files, line ranges, scores — no bodies). "
+    "Params: mode, min_lines, min_group_size, max_groups, use_cache, include_bodies "
+    "(set include_bodies=true to add code snippets; omit for the compact default).\n"
 )
 
 
