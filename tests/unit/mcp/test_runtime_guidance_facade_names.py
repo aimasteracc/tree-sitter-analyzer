@@ -599,3 +599,15 @@ def test_tool_routing_entry_is_callable(routing_key: str, snippet: str) -> None:
             f"param {param!r} not in {facade_name} action={action!r} "
             f"inner schema properties (valid: {sorted(schema_props)})"
         )
+
+
+def test_file_action_c_grade_without_weakest_dimension() -> None:
+    """C grade with no weakest dimension → bare health action=file form."""
+    from types import SimpleNamespace
+
+    from tree_sitter_analyzer.mcp.tools.project_health_tool import _file_action
+
+    score = SimpleNamespace(grade="C", dimensions={}, file_path="pkg/m.py")
+    out = _file_action(score)
+    assert out == "health action=file file_path='pkg/m.py'"
+    assert "check_file_health" not in out
