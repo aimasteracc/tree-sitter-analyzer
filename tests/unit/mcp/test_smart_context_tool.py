@@ -61,7 +61,7 @@ class TestSmartContextTool:
         assert tool.validate_arguments({"file_path": "some_file.py"})
 
     def test_execute_returns_complete_profile(self, tool):
-        result = _run(tool.execute({"file_path": TARGET_FILE}))
+        result = _run(tool.execute({"file_path": TARGET_FILE, "output_format": "json"}))
         assert "health" in result
         assert "exports" in result
         assert "structure" in result
@@ -72,7 +72,7 @@ class TestSmartContextTool:
         assert "recommendation" in result
 
     def test_agent_summary_guides_next_action(self, tool):
-        result = _run(tool.execute({"file_path": TARGET_FILE}))
+        result = _run(tool.execute({"file_path": TARGET_FILE, "output_format": "json"}))
         summary = result["agent_summary"]
 
         assert summary["risk"] in ("safe", "caution", "dangerous")
@@ -84,26 +84,26 @@ class TestSmartContextTool:
         assert summary["downstream_count"] >= 0
 
     def test_health_has_grade_and_score(self, tool):
-        result = _run(tool.execute({"file_path": TARGET_FILE}))
+        result = _run(tool.execute({"file_path": TARGET_FILE, "output_format": "json"}))
         health = result["health"]
         assert "grade" in health
         assert "score" in health
         assert "weakest_dimension" in health
 
     def test_exports_include_classes_and_functions(self, tool):
-        result = _run(tool.execute({"file_path": TARGET_FILE}))
+        result = _run(tool.execute({"file_path": TARGET_FILE, "output_format": "json"}))
         exports = result["exports"]
         names = [e["name"] for e in exports]
         assert "SmartContextTool" in names
 
     def test_structure_has_line_ranges(self, tool):
-        result = _run(tool.execute({"file_path": TARGET_FILE}))
+        result = _run(tool.execute({"file_path": TARGET_FILE, "output_format": "json"}))
         for item in result["structure"]:
             assert "name" in item
             assert "kind" in item
 
     def test_dependencies_structure(self, tool):
-        result = _run(tool.execute({"file_path": TARGET_FILE}))
+        result = _run(tool.execute({"file_path": TARGET_FILE, "output_format": "json"}))
         deps = result["dependencies"]
         assert "imports_count" in deps
         assert "imported_by_count" in deps
@@ -133,7 +133,9 @@ class TestSmartContextTool:
                 }
             )
         )
-        assert "health" in result
+        # TOON strips bulk dicts; health data is encoded inside toon_content.
+        assert result.get("format") == "toon"
+        assert "health" in result["toon_content"]
 
     def test_json_format_works(self, tool):
         result = _run(

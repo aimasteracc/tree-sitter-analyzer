@@ -694,7 +694,9 @@ def test_execute_strict_scope_mode_does_not_leak_into_toon(monkeypatch):
 
     blob = _json.dumps(result)
     assert "secret_noise.md" not in blob
-    assert result["queue_ledger"]["out_of_scope_changed_count"] == 1
+    # RFC-0012 Phase 2: queue_ledger (non-empty dict) is stripped from the TOON
+    # top level — its contents are inside toon_content. Check the toon_content:
+    assert "out_of_scope_changed_count" in result["toon_content"]
 
 
 def test_execute_default_scope_mode_lists_out_of_scope(monkeypatch):

@@ -116,7 +116,9 @@ class TestDependentsMode:
             {"source": "main.py", "target": "a.py", "import": "import a", "line": 0}
         ]
         with patch.object(tool, "_get_graph", return_value=mock_graph):
-            result = await tool.execute({"mode": "dependents", "file_path": str(test_file)})
+            result = await tool.execute(
+                {"mode": "dependents", "file_path": str(test_file)}
+            )
         assert result["success"] is True
         assert result["dependent_count"] == 1
 
@@ -137,7 +139,9 @@ class TestBlastRadiusMode:
             ],
         }
         with patch.object(tool, "_get_graph", return_value=mock_graph):
-            result = await tool.execute({"mode": "blast_radius", "file_path": str(test_file)})
+            result = await tool.execute(
+                {"mode": "blast_radius", "file_path": str(test_file)}
+            )
         assert result["success"] is True
         assert result["verdict"] == "INFO"
         assert result["transitive_dependents"] == 3
@@ -153,7 +157,9 @@ class TestBlastRadiusMode:
             "affected_files": [{"file": f"f{i}.py", "depth": 1} for i in range(8)],
         }
         with patch.object(tool, "_get_graph", return_value=mock_graph):
-            result = await tool.execute({"mode": "blast_radius", "file_path": str(test_file)})
+            result = await tool.execute(
+                {"mode": "blast_radius", "file_path": str(test_file)}
+            )
         assert result["verdict"] == "REVIEW"
 
 
@@ -194,7 +200,7 @@ class TestCouplingMode:
             "most_importing": [("main.py", 12), ("cli.py", 8)],
         }
         with patch.object(tool, "_get_graph", return_value=mock_graph):
-            result = await tool.execute({"mode": "coupling"})
+            result = await tool.execute({"mode": "coupling", "output_format": "json"})
         assert result["success"] is True
         assert len(result["most_imported"]) == 2
         assert len(result["most_importing"]) == 2

@@ -242,10 +242,13 @@ async def test_fd_66_count_only_mode_advanced(tmp_path, monkeypatch):
             "pattern": "count_test*.txt",
             "glob": True,
             "count_only": True,
+            "output_format": "json",
         }
     )
 
     assert result["success"] is True
     assert result["total_count"] >= 7
     assert result["count_only"] is True
-    assert "results" not in result
+    # In count_only mode the canonical envelope still includes results=[].
+    # The functional result lives in total_count, not results.
+    assert result.get("results", []) == []

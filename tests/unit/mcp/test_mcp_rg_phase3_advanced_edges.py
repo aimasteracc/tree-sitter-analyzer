@@ -76,7 +76,13 @@ async def test_rg_27_fd_rg_composed_success(monkeypatch, tmp_path):
     )
 
     res = await tool.execute(
-        {"roots": [str(tmp_path)], "pattern": "*.txt", "glob": True, "query": "hello"}
+        {
+            "roots": [str(tmp_path)],
+            "pattern": "*.txt",
+            "glob": True,
+            "query": "hello",
+            "output_format": "json",
+        }
     )
     assert res["success"] is True and res["count"] == 1
     assert res["meta"]["searched_file_count"] == 1

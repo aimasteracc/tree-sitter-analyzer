@@ -184,7 +184,6 @@ def all_tools(comprehensive_project):
 
 
 class TestMCPWorkflowIntegration:
-
     @pytest.mark.asyncio
     async def test_workflow_analyze_then_extract(
         self, all_tools, comprehensive_project
@@ -199,7 +198,11 @@ class TestMCPWorkflowIntegration:
             mock_result.elements = []
             mock_analyze.return_value = mock_result
 
-            analyze_args = {"file_path": str(main_py), "include_guidance": True}
+            analyze_args = {
+                "file_path": str(main_py),
+                "include_guidance": True,
+                "output_format": "json",
+            }
             analyze_result = await all_tools["analyze_scale"].execute(analyze_args)
 
             assert "llm_guidance" in analyze_result
@@ -358,7 +361,11 @@ class TestMCPWorkflowIntegration:
                 mock_result.elements = []
                 mock_analyze.return_value = mock_result
 
-                analyze_args = {"file_path": str(file_path), "include_guidance": True}
+                analyze_args = {
+                    "file_path": str(file_path),
+                    "include_guidance": True,
+                    "output_format": "json",
+                }
 
                 analyze_result = await all_tools["analyze_scale"].execute(analyze_args)
                 analysis_results.append((file_name, analyze_result))

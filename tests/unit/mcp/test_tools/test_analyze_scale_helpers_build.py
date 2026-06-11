@@ -115,21 +115,27 @@ class TestCreateJsonFileAnalysis:
         assert "llm_analysis_guidance" not in result
 
     def test_with_guidance(self):
-        result = create_json_file_analysis("a.json", self._base_metrics(), True)
+        result = create_json_file_analysis(
+            "a.json", self._base_metrics(), True, output_format="json"
+        )
         assert "llm_analysis_guidance" in result
         g = result["llm_analysis_guidance"]
         assert g["file_characteristics"] == "JSON configuration/data file"
         assert "recommended_workflow" in g
 
     def test_complexity_metrics_zeros(self):
-        result = create_json_file_analysis("a.json", self._base_metrics(), False)
+        result = create_json_file_analysis(
+            "a.json", self._base_metrics(), False, output_format="json"
+        )
         cm = result["complexity_metrics"]
         assert cm["total_elements"] == 0
         assert cm["max_depth"] == 0
         assert cm["avg_complexity"] == 0.0
 
     def test_structural_overview_empty(self):
-        result = create_json_file_analysis("a.json", self._base_metrics(), False)
+        result = create_json_file_analysis(
+            "a.json", self._base_metrics(), False, output_format="json"
+        )
         so = result["structural_overview"]
         assert so["classes"] == []
         assert so["methods"] == []
@@ -137,13 +143,13 @@ class TestCreateJsonFileAnalysis:
 
     def test_suitable_for_full_analysis_under_1000_lines(self):
         result = create_json_file_analysis(
-            "a.json", self._base_metrics(total_lines=500), False
+            "a.json", self._base_metrics(total_lines=500), False, output_format="json"
         )
         assert result["analysis_recommendations"]["suitable_for_full_analysis"] is True
 
     def test_not_suitable_for_full_analysis_over_1000_lines(self):
         result = create_json_file_analysis(
-            "a.json", self._base_metrics(total_lines=1500), False
+            "a.json", self._base_metrics(total_lines=1500), False, output_format="json"
         )
         assert result["analysis_recommendations"]["suitable_for_full_analysis"] is False
 

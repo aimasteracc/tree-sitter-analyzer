@@ -71,7 +71,9 @@ class TestRefactoringSuggestionsTool:
         assert tool.validate_arguments({"file_path": "some_file.py"})
 
     def test_python_analysis_works(self, tool):
-        result = _run(tool.execute({"file_path": SAMPLE_PYTHON}))
+        result = _run(
+            tool.execute({"file_path": SAMPLE_PYTHON, "output_format": "json"})
+        )
         assert result["success"] is True
         assert "total_suggestions" in result
         assert "summary" in result
@@ -90,19 +92,25 @@ class TestRefactoringSuggestionsTool:
         assert isinstance(result["suggestions"], list)
 
     def test_python_detects_long_function(self, tool):
-        result = _run(tool.execute({"file_path": SAMPLE_PYTHON}))
+        result = _run(
+            tool.execute({"file_path": SAMPLE_PYTHON, "output_format": "json"})
+        )
         suggestions = result["suggestions"]
         long_funcs = [s for s in suggestions if s["name"] == "long_function"]
         assert len(long_funcs) >= 1
 
     def test_python_detects_deep_nesting(self, tool):
-        result = _run(tool.execute({"file_path": SAMPLE_PYTHON}))
+        result = _run(
+            tool.execute({"file_path": SAMPLE_PYTHON, "output_format": "json"})
+        )
         suggestions = result["suggestions"]
         deep = [s for s in suggestions if s["name"] == "deep_nesting"]
         assert len(deep) >= 1
 
     def test_python_detects_large_class(self, tool):
-        result = _run(tool.execute({"file_path": SAMPLE_PYTHON}))
+        result = _run(
+            tool.execute({"file_path": SAMPLE_PYTHON, "output_format": "json"})
+        )
         suggestions = result["suggestions"]
         large_classes = [s for s in suggestions if s["name"] == "reduce_class_size"]
         assert len(large_classes) >= 1
@@ -118,7 +126,9 @@ class TestRefactoringSuggestionsTool:
         assert "error" in result
 
     def test_summary_format(self, tool):
-        result = _run(tool.execute({"file_path": SAMPLE_PYTHON}))
+        result = _run(
+            tool.execute({"file_path": SAMPLE_PYTHON, "output_format": "json"})
+        )
         summary = result["summary"]
         assert isinstance(summary, str)
         assert len(summary) > 0
@@ -140,20 +150,26 @@ class TestRefactoringSuggestionsTool:
         )
 
     def test_suggestions_have_priority(self, tool):
-        result = _run(tool.execute({"file_path": SAMPLE_PYTHON}))
+        result = _run(
+            tool.execute({"file_path": SAMPLE_PYTHON, "output_format": "json"})
+        )
         suggestions = result["suggestions"]
         for s in suggestions:
             assert "priority_score" in s
             assert isinstance(s["priority_score"], int)
 
     def test_suggestions_sorted_by_priority(self, tool):
-        result = _run(tool.execute({"file_path": SAMPLE_PYTHON}))
+        result = _run(
+            tool.execute({"file_path": SAMPLE_PYTHON, "output_format": "json"})
+        )
         suggestions = result["suggestions"]
         scores = [s["priority_score"] for s in suggestions]
         assert scores == sorted(scores, reverse=True)
 
     def test_suggestions_have_line_ranges(self, tool):
-        result = _run(tool.execute({"file_path": SAMPLE_PYTHON}))
+        result = _run(
+            tool.execute({"file_path": SAMPLE_PYTHON, "output_format": "json"})
+        )
         suggestions = result["suggestions"]
         for s in suggestions:
             if "line_range" in s:
@@ -164,7 +180,13 @@ class TestRefactoringSuggestionsTool:
 
     def test_include_extractions_false(self, tool):
         result = _run(
-            tool.execute({"file_path": SAMPLE_PYTHON, "include_extractions": False})
+            tool.execute(
+                {
+                    "file_path": SAMPLE_PYTHON,
+                    "include_extractions": False,
+                    "output_format": "json",
+                }
+            )
         )
         extractions = [s for s in result["suggestions"] if s["type"] == "extraction"]
         assert len(extractions) == 0
@@ -174,7 +196,9 @@ class TestRefactoringSuggestionsTool:
         assert result["total_suggestions"] >= 0
 
     def test_default_no_skeleton(self, tool):
-        result = _run(tool.execute({"file_path": SAMPLE_PYTHON}))
+        result = _run(
+            tool.execute({"file_path": SAMPLE_PYTHON, "output_format": "json"})
+        )
         with_plans = [s for s in result["suggestions"] if "precise_plan" in s]
         if with_plans:
             for ext in with_plans[0]["precise_plan"]["extractions"]:
@@ -182,7 +206,13 @@ class TestRefactoringSuggestionsTool:
 
     def test_include_skeleton_true(self, tool):
         result = _run(
-            tool.execute({"file_path": SAMPLE_PYTHON, "include_skeleton": True})
+            tool.execute(
+                {
+                    "file_path": SAMPLE_PYTHON,
+                    "include_skeleton": True,
+                    "output_format": "json",
+                }
+            )
         )
         with_plans = [s for s in result["suggestions"] if "precise_plan" in s]
         if with_plans:
@@ -195,7 +225,9 @@ class TestRefactoringSuggestionsTool:
         assert result.get("format") == "toon"
 
     def test_long_function_has_precise_plan(self, tool):
-        result = _run(tool.execute({"file_path": SAMPLE_PYTHON}))
+        result = _run(
+            tool.execute({"file_path": SAMPLE_PYTHON, "output_format": "json"})
+        )
         with_plans = [s for s in result["suggestions"] if "precise_plan" in s]
         assert len(with_plans) >= 1
         plan = with_plans[0]["precise_plan"]
@@ -207,7 +239,13 @@ class TestRefactoringSuggestionsTool:
 
     def test_precise_plan_extraction_fields(self, tool):
         result = _run(
-            tool.execute({"file_path": SAMPLE_PYTHON, "include_skeleton": True})
+            tool.execute(
+                {
+                    "file_path": SAMPLE_PYTHON,
+                    "include_skeleton": True,
+                    "output_format": "json",
+                }
+            )
         )
         with_plans = [s for s in result["suggestions"] if "precise_plan" in s]
         assert len(with_plans) >= 1
@@ -222,7 +260,9 @@ class TestRefactoringSuggestionsTool:
         assert isinstance(ext["skeleton"], str)
 
     def test_precise_plan_has_steps(self, tool):
-        result = _run(tool.execute({"file_path": SAMPLE_PYTHON}))
+        result = _run(
+            tool.execute({"file_path": SAMPLE_PYTHON, "output_format": "json"})
+        )
         with_plans = [s for s in result["suggestions"] if "precise_plan" in s]
         assert len(with_plans) >= 1
         plan = with_plans[0]["precise_plan"]
@@ -230,7 +270,9 @@ class TestRefactoringSuggestionsTool:
         assert len(plan["steps"]) >= 3
 
     def test_precise_plan_helper_module_name(self, tool):
-        result = _run(tool.execute({"file_path": SAMPLE_PYTHON}))
+        result = _run(
+            tool.execute({"file_path": SAMPLE_PYTHON, "output_format": "json"})
+        )
         with_plans = [s for s in result["suggestions"] if "precise_plan" in s]
         assert len(with_plans) >= 1
         helper_mod = with_plans[0]["precise_plan"]["helper_module"]
@@ -321,7 +363,9 @@ class TestRefactoringSuggestionsTool:
         assert "from ._standalone_helpers import " not in plan["steps"][1]
 
     def test_mcp_tool_hooks_are_not_move_to_helpers(self, tool):
-        result = _run(tool.execute({"file_path": SAMPLE_SAFE_TO_EDIT}))
+        result = _run(
+            tool.execute({"file_path": SAMPLE_SAFE_TO_EDIT, "output_format": "json"})
+        )
 
         messages = [suggestion["message"] for suggestion in result["suggestions"]]
 
@@ -472,7 +516,13 @@ class TestRefactoringSuggestionsTool:
 
     def test_precise_plan_skeleton_is_valid_python(self, tool):
         result = _run(
-            tool.execute({"file_path": SAMPLE_PYTHON, "include_skeleton": True})
+            tool.execute(
+                {
+                    "file_path": SAMPLE_PYTHON,
+                    "include_skeleton": True,
+                    "output_format": "json",
+                }
+            )
         )
         with_plans = [s for s in result["suggestions"] if "precise_plan" in s]
         assert len(with_plans) >= 1

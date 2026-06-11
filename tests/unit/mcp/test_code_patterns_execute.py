@@ -280,7 +280,9 @@ class TestExecuteResponseStructure:
     async def test_by_category_counts(self, tmp_path):
         fp = _make_python_with_anti_patterns(tmp_path)
         tool = CodePatternsTool(str(tmp_path))
-        result = await tool.execute({"file_path": fp, "categories": ["anti_patterns"]})
+        result = await tool.execute(
+            {"file_path": fp, "categories": ["anti_patterns"], "output_format": "json"}
+        )
         by_cat = result["by_category"]
         total_from_cats = sum(by_cat.values())
         assert total_from_cats == result["total_patterns"]

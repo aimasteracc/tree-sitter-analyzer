@@ -165,7 +165,12 @@ async def test_rg_60_find_and_grep_file_limit_truncates_fd(monkeypatch, tmp_path
     )
 
     res = await tool.execute(
-        {"roots": [str(tmp_path)], "query": "x", "file_limit": 100}
+        {
+            "roots": [str(tmp_path)],
+            "query": "x",
+            "file_limit": 100,
+            "output_format": "json",
+        }
     )
     assert res["success"] is True
     assert res["meta"]["searched_file_count"] == 100

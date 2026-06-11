@@ -129,6 +129,7 @@ class TestExecuteTestMixin:
                 "query_key": "methods",
                 "language": "python",
                 "result_format": "summary",
+                "output_format": "json",
             }
 
             result = await tool.execute(arguments)
