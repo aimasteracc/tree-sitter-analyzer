@@ -541,8 +541,38 @@ BUILTIN_QUALIFIED_PY: frozenset[str] = frozenset(
 )
 
 
+# ---------------------------------------------------------------------------
+# Python builtin container/type names that the extractor can infer as the
+# receiver type when it sees a literal or constructor assignment, e.g.
+# ``result = {}`` -> receiver type ``dict``, ``items = []`` -> ``list``.
+#
+# Used by ``_try_unique_method`` and ``_is_obvious_external`` to gate the
+# builtin-receiver guard: a qualifier that IS one of these names is positively
+# inferred as a builtin container -- binding its methods to a project symbol is
+# wrong. A qualifier that is NOT here (e.g. ``store``, ``cache``) is an
+# untyped receiver and must be allowed through to normal candidate selection
+# (restores the ``store.get -> DataStore.get`` case, issue #447 adversarial P1).
+# ---------------------------------------------------------------------------
+BUILTIN_TYPE_NAMES_PY: frozenset[str] = frozenset(
+    {
+        "dict",
+        "list",
+        "set",
+        "str",
+        "tuple",
+        "bytes",
+        "bytearray",
+        "frozenset",
+        "int",
+        "float",
+        "bool",
+    }
+)
+
+
 __all__ = [
     "BUILTIN_QUALIFIED_PY",
+    "BUILTIN_TYPE_NAMES_PY",
     "BUILTINS_PY",
     "EXTERNAL_METHODS_PY",
     "STDLIB_METHODS_PY",

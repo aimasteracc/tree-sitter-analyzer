@@ -312,10 +312,36 @@ def walk_tree(node: Any, source: str, language: str) -> tuple[list[dict], list[d
     return definitions, calls
 
 
+# Python tree-sitter right-hand-side node types that indicate a builtin
+# container literal. Maps AST node type -> builtin type name.
+_BUILTIN_LITERAL_NODE_TYPES: dict[str, str] = {
+    "dictionary": "dict",
+    "list": "list",
+    "tuple": "tuple",
+    "set_comprehension": "set",
+    "list_comprehension": "list",
+    "dictionary_comprehension": "dict",
+    "generator_expression": "list",
+}
+
+# Lowercase builtin constructor names whose call expressions produce a known
+# builtin type, e.g. ``dict()`` -> ``"dict"``.
+_BUILTIN_CONSTRUCTOR_NAMES: frozenset[str] = frozenset(
+    {"dict", "list", "set", "tuple", "str", "bytes", "bytearray", "frozenset"}
+)
+
+
 def _collect_local_var_types(
     func_node: Any, source: str, language: str
 ) -> dict[str, tuple[str, int]]:
-    """RFC-0002: infer local variable types from ``var = ClassName(...)``.
+    """RFC-0002: infer local variable types from assignments.
+
+    Handles two patterns:
+    1. ``var = ClassName(...)`` (uppercase) — project class receiver inference.
+    2. ``var = builtin_literal_or_constructor`` — builtin receiver inference,
+       enabling the inverted gate in ``_try_unique_method`` / ``_is_obvious_external``
+       (issue #447 adversarial P1). Recognises ``{}``/``[]``/``()`` literals,
+       comprehensions, and lowercase constructor calls ``dict()``/``list()``/…
 
     Returns ``{var: (class, assign_line)}``. The line makes typing
     flow-sensitive (P2, Codex): a call only takes the type if it appears AT or
@@ -330,17 +356,23 @@ def _collect_local_var_types(
         if getattr(n, "type", None) == "assignment":
             left = n.child_by_field_name("left")
             right = n.child_by_field_name("right")
-            if (
-                left is not None
-                and right is not None
-                and left.type == "identifier"
-                and right.type == "call"
-            ):
-                fn = right.child_by_field_name("function")
-                if fn is not None and fn.type == "identifier":
-                    cls = _node_text(fn, source)
-                    if cls and cls[0].isupper():
-                        types[_node_text(left, source)] = (cls, n.start_point[0] + 1)
+            if left is not None and right is not None and left.type == "identifier":
+                var = _node_text(left, source)
+                line = n.start_point[0] + 1
+                if right.type == "call":
+                    fn = right.child_by_field_name("function")
+                    if fn is not None and fn.type == "identifier":
+                        cls = _node_text(fn, source)
+                        if cls:
+                            if cls[0].isupper():
+                                # Project class: ``var = ClassName(...)``
+                                types[var] = (cls, line)
+                            elif cls in _BUILTIN_CONSTRUCTOR_NAMES:
+                                # Builtin constructor: ``var = dict()`` / ``list()`` …
+                                types[var] = (cls, line)
+                elif right.type in _BUILTIN_LITERAL_NODE_TYPES:
+                    # Builtin literal: ``var = {}`` / ``var = []`` / comprehension
+                    types[var] = (_BUILTIN_LITERAL_NODE_TYPES[right.type], line)
         for c in n.children:
             _walk(c)
 
