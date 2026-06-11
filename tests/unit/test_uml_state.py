@@ -632,6 +632,97 @@ def test_state_diagram_exact_node_count_with_transitions(tmp_path: Path) -> None
 
 
 # ---------------------------------------------------------------------------
+# Section E2: P2a — assignment-based transitions (self.state = Enum.MEMBER)
+# ---------------------------------------------------------------------------
+
+
+def test_assignment_transitions_detected_door_controller(tmp_path: Path) -> None:
+    """OOP FSM with self.state = Door.LOCKED produces transitions (P2a fix).
+
+    RED-first: this tests the assignment-based scanner path that complements
+    the existing return-based path.
+    """
+    src = tmp_path / "door.py"
+    src.write_text(
+        textwrap.dedent("""\
+        from enum import Enum
+
+        class Door(Enum):
+            LOCKED = "locked"
+            CLOSED = "closed"
+            OPEN = "open"
+
+        class DoorController:
+            def __init__(self):
+                self.state = Door.LOCKED
+
+            def unlock(self):
+                match self.state:
+                    case Door.LOCKED:
+                        self.state = Door.CLOSED
+                    case Door.CLOSED:
+                        self.state = Door.OPEN
+                    case Door.OPEN:
+                        self.state = Door.LOCKED
+        """)
+    )
+
+    from tree_sitter_analyzer.uml_state import build_state_result
+
+    result = build_state_result(
+        file_path=str(src),
+        class_name="Door",
+        max_nodes=30,
+    )
+    assert result.error == ""
+    # Must detect the 3 assignment transitions: LOCKED→CLOSED, CLOSED→OPEN, OPEN→LOCKED
+    assert len(result.transitions) == 3  # exact pin
+    pairs = {(t.source, t.target) for t in result.transitions}
+    assert ("LOCKED", "CLOSED") in pairs
+    assert ("CLOSED", "OPEN") in pairs
+    assert ("OPEN", "LOCKED") in pairs
+
+
+def test_assignment_transitions_combined_with_return(tmp_path: Path) -> None:
+    """A mix of return-based and assignment-based transitions are all captured."""
+    src = tmp_path / "mixed.py"
+    src.write_text(
+        textwrap.dedent("""\
+        from enum import Enum
+
+        class State(Enum):
+            A = 1
+            B = 2
+
+        def pure_fn(s):
+            match s:
+                case State.A:
+                    return State.B
+                case State.B:
+                    return State.A
+
+        class Machine:
+            def go(self):
+                match self.current:
+                    case State.A:
+                        self.current = State.B
+        """)
+    )
+
+    from tree_sitter_analyzer.uml_state import build_state_result
+
+    result = build_state_result(
+        file_path=str(src),
+        class_name="State",
+        max_nodes=30,
+    )
+    assert result.error == ""
+    # Both return-based (A→B, B→A) and assignment-based (A→B) are detected.
+    # After deduplication: A→B and B→A = 2 unique pairs.
+    assert len(result.transitions) == 2  # exact pin
+
+
+# ---------------------------------------------------------------------------
 # Section F: MCP tool schema — 'state' in diagram enum
 # ---------------------------------------------------------------------------
 
@@ -833,3 +924,121 @@ async def test_execute_state_diagram_success(tmp_path: Path) -> None:
         assert result["node_count"] == 2  # exact
     finally:
         monkeypatch.undo()
+
+
+# ---------------------------------------------------------------------------
+# Section I: P2b — CLI/MCP max_nodes default parity conformance
+# ---------------------------------------------------------------------------
+
+
+def test_uml_max_nodes_cli_mcp_default_parity() -> None:
+    """CLI argparse default for --uml-max-nodes == MCP schema default for max_nodes.
+
+    Both must be 50 (RFC-0015 table, P2b conformance).
+    """
+    from tree_sitter_analyzer.cli_main import create_argument_parser
+    from tree_sitter_analyzer.mcp.tools.uml_tool import CodeGraphUMLTool
+
+    parser = create_argument_parser()
+    cli_action = next(
+        a for a in parser._actions if "--uml-max-nodes" in (a.option_strings or [])
+    )
+    cli_default = cli_action.default
+
+    mcp_default = CodeGraphUMLTool().get_tool_schema()["properties"]["max_nodes"][
+        "default"
+    ]
+
+    assert cli_default == mcp_default  # both must agree
+    assert cli_default == 50  # exact pin: RFC-0015 §P2-B
+
+
+# ---------------------------------------------------------------------------
+# Section J: P3a — NOT_FOUND mermaid suppresses [*] --> lines
+# ---------------------------------------------------------------------------
+
+
+def test_not_found_state_diagram_no_initial_edges(tmp_path: Path) -> None:
+    """NOT_FOUND state diagram mermaid must NOT contain '[*] -->' lines.
+
+    An agent reading only mermaid would see a structurally-valid diagram if
+    initial-state edges were emitted; the %% NOTE guard must be present instead.
+    """
+    src = tmp_path / "static.py"
+    src.write_text(
+        textwrap.dedent("""\
+        from enum import Enum
+
+        class Status(Enum):
+            OPEN = 1
+            CLOSED = 2
+        """)
+    )
+
+    from tree_sitter_analyzer.uml_export import UMLExporter
+
+    exporter = UMLExporter(str(tmp_path))
+    diagram = exporter.state_diagram(class_name="Status", file_path=str(src))
+
+    # Verify NOT_FOUND verdict
+    assert diagram.metadata.get("verdict") == "NOT_FOUND"
+    # Must contain the honesty NOTE guard
+    assert "%% NOTE" in diagram.mermaid
+    # Must NOT contain any initial-state transition lines
+    assert "[*] -->" not in diagram.mermaid
+
+
+def test_not_found_state_diagram_mermaid_starts_with_header(tmp_path: Path) -> None:
+    """NOT_FOUND mermaid output starts with 'stateDiagram-v2' header."""
+    src = tmp_path / "static2.py"
+    src.write_text(
+        textwrap.dedent("""\
+        from enum import Enum
+
+        class State(Enum):
+            A = 1
+        """)
+    )
+
+    from tree_sitter_analyzer.uml_export import UMLExporter
+
+    exporter = UMLExporter(str(tmp_path))
+    diagram = exporter.state_diagram(class_name="State", file_path=str(src))
+
+    assert diagram.metadata.get("verdict") == "NOT_FOUND"
+    assert diagram.mermaid.startswith("stateDiagram-v2")
+
+
+# ---------------------------------------------------------------------------
+# Section K: P3b — _extract_enum_members lowercase-member behavior pinned
+# ---------------------------------------------------------------------------
+
+
+def test_extract_enum_members_includes_lowercase(tmp_path: Path) -> None:
+    """_extract_enum_members includes lowercase names as enum members.
+
+    Documents the actual behavior: all non-underscore-prefixed assignment
+    targets are treated as members, regardless of case.
+    """
+    src = tmp_path / "config.py"
+    src.write_text(
+        textwrap.dedent("""\
+        from enum import Enum
+
+        class Config(Enum):
+            max_retries = 3
+            timeout = 30
+            debug = False
+        """)
+    )
+
+    from tree_sitter_analyzer.uml_state import build_state_result
+
+    result = build_state_result(
+        file_path=str(src),
+        class_name="Config",
+        max_nodes=30,
+    )
+    assert result.error == ""
+    # Exact pin: all 3 lowercase members are returned
+    assert sorted(result.states) == ["debug", "max_retries", "timeout"]
