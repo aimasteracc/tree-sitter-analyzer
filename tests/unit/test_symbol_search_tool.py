@@ -241,6 +241,76 @@ class TestCodeGraphSymbolSearchExecution:
                 "FTS5 results must be sorted by relevance_score descending"
             )
 
+    async def test_definition_ranks_first_imports_folded(self):
+        """Issue #443: definitions rank first, duplicate imports folded to one.
+
+        A symbol with 1 definition + N imports should return:
+        - First result: the definition (kind != import)
+        - Second result: folded imports (kind=import, import_count==N)
+        """
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project = Path(tmpdir)
+
+            # 1 real definition
+            (project / "core.py").write_text(
+                "def apply_toon_format(data):\n    return data\n"
+            )
+
+            # 7 files that import the same function
+            for i in range(7):
+                (project / f"importer_{i}.py").write_text(
+                    f"from core import apply_toon_format\n"
+                    f"\n"
+                    f"def use_it_{i}():\n"
+                    f"    return apply_toon_format('test')\n"
+                )
+
+            cache = ASTCache(str(project))
+            cache.index_project(max_files=100)
+            cache.close()
+
+            tool = CodeGraphSymbolSearchTool(str(project))
+            result = await tool.execute(
+                {"query": "apply_toon_format", "output_format": "json"}
+            )
+
+            assert result["success"] is True
+            results = result["results"]
+
+            # Should have exactly 2 entries: 1 definition + 1 folded import
+            assert len(results) == 2, (
+                f"Expected 2 results (1 def + 1 folded import), "
+                f"got {len(results)}: {[r['name'] for r in results]}"
+            )
+
+            # First result is the definition
+            definition = results[0]
+            assert definition["kind"] == "function", (
+                f"First result should be function definition, got {definition['kind']}"
+            )
+            assert definition["file"].endswith("core.py"), (
+                f"Definition should be in core.py, got {definition['file']}"
+            )
+            assert definition.get("import_count") is None, (
+                "Definition should not have import_count"
+            )
+
+            # Second result is folded imports
+            import_entry = results[1]
+            assert import_entry["kind"] == "import", (
+                f"Second result should be import kind, got {import_entry['kind']}"
+            )
+            assert import_entry.get("import_count") == 7, (
+                f"Import entry should have import_count==7, got {import_entry.get('import_count')}"
+            )
+            assert len(import_entry.get("import_files", [])) == 7, (
+                f"Folded import should track all 7 importing files, "
+                f"got {len(import_entry.get('import_files', []))}"
+            )
+
 
 @pytest.mark.asyncio
 class TestCodeGraphSymbolSearchNoCache:
