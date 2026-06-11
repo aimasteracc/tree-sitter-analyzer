@@ -429,7 +429,9 @@ class Class_{i}:
             if isinstance(result, dict) and result.get("success"):
                 successful_results += 1
                 assert "results" in result
-                assert result["count"] > 0
+                assert (
+                    result["count"] > 0
+                )  # ratchet: nondeterministic mixed concurrent tasks; per-task exact counts pinned in dedicated tests
             elif isinstance(result, Exception):
                 pytest.fail(f"Task failed with exception: {result}")
             else:
@@ -473,7 +475,9 @@ class Class_{i}:
             if isinstance(result, dict) and result.get("success"):
                 successful_results += 1
                 assert "results" in result
-                assert result["count"] > 0
+                assert (
+                    result["count"] > 0
+                )  # ratchet: nondeterministic mixed concurrent tasks; per-task exact counts pinned in dedicated tests
             elif isinstance(result, Exception):
                 pytest.fail(f"Task failed with exception: {result}")
 
