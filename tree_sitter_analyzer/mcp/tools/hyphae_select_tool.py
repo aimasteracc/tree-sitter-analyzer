@@ -109,7 +109,12 @@ class HyphaeSelectTool(BaseMCPTool):
                 "symbols": [],
             }
 
-        evaluator = Evaluator(self._get_cache(), max_results=max_results)
+        cache = self._get_cache()
+
+        # Detect index state cheaply: check if cache has any indexed files
+        index_state = self._detect_index_state(cache)
+
+        evaluator = Evaluator(cache, max_results=max_results)
         matches = evaluator.eval(ast)
         symbols = [
             {
@@ -125,18 +130,34 @@ class HyphaeSelectTool(BaseMCPTool):
         truncated = evaluator.was_truncated()
         total_matches = evaluator.total_matches()
 
-        # Build next_step based on truncation
-        if truncated:
+        # Build next_step based on index state and result count
+        if index_state != "ready":
+            # Index is missing or empty — 0 doesn't mean "no matches", it means "not indexed"
+            next_step = (
+                "Index missing or empty. Run the `index` tool with action=auto "
+                "to build the cache."
+            )
+            verdict = "WARN"
+        elif truncated:
             next_step = (
                 f"Results truncated at {max_results} of {total_matches} matches. "
                 "Narrow the selector with :in(path), [file=], [language=], or :not(...) "
                 "to reduce results, or raise max_results."
             )
+            verdict = "INFO"
+        elif len(symbols) == 0:
+            # Zero matches on a ready index — selector didn't match anything
+            next_step = (
+                "No matches found. Check your selector or try a broader search "
+                "(e.g., remove :in(path) or [file=] filters)."
+            )
+            verdict = "NOT_FOUND"
         else:
             next_step = (
                 "Answer from these symbols, or refine the selector "
                 "(add :in(path) / [file=] / :not(...) to narrow)."
             )
+            verdict = "INFO"
 
         result: dict[str, Any] = {
             "success": True,
@@ -145,9 +166,10 @@ class HyphaeSelectTool(BaseMCPTool):
             "total_matches": total_matches,
             "truncated": truncated,
             "symbols": symbols,
+            "index_state": index_state,
             "agent_summary": {
                 "summary_line": f"hyphae_select: {len(symbols)} symbols for {selector!r}",
-                "verdict": "INFO" if symbols else "NOT_FOUND",
+                "verdict": verdict,
                 "next_step": next_step,
             },
         }
@@ -155,3 +177,19 @@ class HyphaeSelectTool(BaseMCPTool):
         from ..utils.format_helper import apply_toon_format_to_response
 
         return apply_toon_format_to_response(result, output_format)
+
+    def _detect_index_state(self, cache: Any) -> str:
+        """Determine index state: missing, empty, or ready.
+
+        Reuses the same check as codegraph_status_tool:
+        - missing: cache file doesn't exist or can't be opened
+        - empty: cache exists but has no indexed files (total_files == 0)
+        - ready: cache exists and has indexed files (total_files > 0)
+        """
+        try:
+            stats = cache.get_stats()
+            if stats and stats.get("total_files", 0) > 0:
+                return "ready"
+            return "empty"
+        except Exception:
+            return "missing"

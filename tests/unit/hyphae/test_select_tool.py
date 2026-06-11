@@ -43,6 +43,10 @@ class _FakeCache:
             ]
         return []
 
+    def get_stats(self):
+        # Ready index with 2 files
+        return {"total_files": 2, "total_symbols": 2}
+
 
 class _FakeCacheWithManyCallers:
     """Cache that returns ``n`` callers (default 150 > cap of 100)."""
@@ -80,6 +84,10 @@ class _FakeCacheWithManyCallers:
                 for i in range(150)
             ]
         return []
+
+    def get_stats(self):
+        # Ready index with many files
+        return {"total_files": self._n, "total_symbols": self._n}
 
 
 def _tool():
@@ -213,3 +221,139 @@ def test_duplicate_symbols_across_selectors_deduped() -> None:
     assert len(out) == 10
     assert ev.total_matches() == 10
     assert ev.was_truncated() is False
+
+
+# ─── Issue #491: Index state detection ─────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_empty_index_reports_missing_state() -> None:
+    """Empty index (no files) → count:0 + index_state:missing + next_step warns."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        # Create a project with empty cache (no indexed files yet)
+        tool = HyphaeSelectTool(tmp_dir)
+        # Initialize the cache but don't index anything
+        result = await tool.execute({"selector": ".function", "output_format": "json"})
+
+        assert result["success"] is True
+        assert result["count"] == 0
+        assert "index_state" in result
+        assert result["index_state"] in ("missing", "empty")
+        assert "index missing" in result["agent_summary"]["next_step"].lower()
+
+
+@pytest.mark.asyncio
+async def test_zero_matches_on_ready_index_is_not_a_warning() -> None:
+    """Zero matches on a ready index → count:0 + index_state:ready + normal next_step."""
+    tool = _tool()
+    result = await tool.execute({"selector": ".nonexistent", "output_format": "json"})
+
+    assert result["success"] is True
+    assert result["count"] == 0
+    # The test cache is considered "ready" because it has symbols
+    # (via the FakeCache mock that returns data from get_functions)
+    # The next_step should NOT say "index missing"
+    assert "index_state" in result
+    assert result["index_state"] == "ready"
+    assert "index missing" not in result["agent_summary"]["next_step"].lower()
+    assert result["agent_summary"]["verdict"] == "NOT_FOUND"
+
+
+@pytest.mark.asyncio
+async def test_valid_matches_on_ready_index_succeeds() -> None:
+    """Valid matches on ready index → count>0 + index_state:ready + info verdict."""
+    tool = _tool()
+    result = await tool.execute(
+        {"selector": ".method:calls(#UserRepo)", "output_format": "json"}
+    )
+
+    assert result["success"] is True
+    assert result["count"] == 1
+    assert result["index_state"] == "ready"
+    assert result["agent_summary"]["verdict"] == "INFO"
+    assert "index missing" not in result["agent_summary"]["next_step"].lower()
+
+
+@pytest.mark.asyncio
+async def test_truncated_results_show_narrowing_hint_on_ready_index() -> None:
+    """Truncated results on ready index → next_step mentions narrowing."""
+    t = HyphaeSelectTool("/tmp")
+    t._cache = _FakeCacheWithManyCallers()
+    result = await t.execute(
+        {"selector": ".function:calls(#Target)", "output_format": "json"}
+    )
+
+    assert result["success"] is True
+    assert result["truncated"] is True
+    assert result["index_state"] == "ready"
+    assert result["agent_summary"]["verdict"] == "INFO"
+    assert "narrow" in result["agent_summary"]["next_step"].lower()
+
+
+class _EmptyCache:
+    """A cache that reports zero indexed files (empty)."""
+
+    def get_functions(self):
+        return []
+
+    def search_symbols_cascade(self, query, limit=100):
+        return []
+
+    def get_symbols_by_kind(self, kind, limit=50000):
+        return []
+
+    def query_edges(self, kind, caller_name=None, callee_name=None, limit=10000):
+        return []
+
+    def get_stats(self):
+        # Empty index: 0 files
+        return {"total_files": 0, "total_symbols": 0}
+
+
+@pytest.mark.asyncio
+async def test_any_selector_on_empty_index_warns() -> None:
+    """Any selector on empty index → warns about missing index."""
+    tool = HyphaeSelectTool("/tmp")
+    tool._cache = _EmptyCache()
+    result = await tool.execute({"selector": ".function", "output_format": "json"})
+
+    assert result["success"] is True
+    assert result["count"] == 0
+    assert result["index_state"] == "empty"
+    assert result["agent_summary"]["verdict"] == "WARN"
+    assert "index missing" in result["agent_summary"]["next_step"].lower()
+
+
+class _BrokenCache:
+    """A cache that raises an exception on get_stats."""
+
+    def get_functions(self):
+        return []
+
+    def search_symbols_cascade(self, query, limit=100):
+        return []
+
+    def get_symbols_by_kind(self, kind, limit=50000):
+        return []
+
+    def query_edges(self, kind, caller_name=None, callee_name=None, limit=10000):
+        return []
+
+    def get_stats(self):
+        raise RuntimeError("Cache corrupted")
+
+
+@pytest.mark.asyncio
+async def test_selector_on_missing_cache_warns() -> None:
+    """Selector on missing/broken cache → warns about missing index."""
+    tool = HyphaeSelectTool("/tmp")
+    tool._cache = _BrokenCache()
+    result = await tool.execute({"selector": ".function", "output_format": "json"})
+
+    assert result["success"] is True
+    assert result["count"] == 0
+    assert result["index_state"] == "missing"
+    assert result["agent_summary"]["verdict"] == "WARN"
+    assert "index missing" in result["agent_summary"]["next_step"].lower()
