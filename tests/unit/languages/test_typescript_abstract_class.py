@@ -166,3 +166,73 @@ abstract class V {
     assert by_name["prot"].visibility == "protected"
     assert by_name["priv"].visibility == "private"
     assert by_name["implicit"].visibility == "public"
+
+
+# ─── extract_abstract_method_signature defensive branches ────────────────────
+
+
+def _abstract_sig_node() -> tree_sitter.Node:
+    """Return the abstract_method_signature node from the fixture parse."""
+    tree = _parse()
+
+    def find(node: tree_sitter.Node) -> tree_sitter.Node | None:
+        if node.type == "abstract_method_signature":
+            return node
+        for child in node.children:
+            hit = find(child)
+            if hit is not None:
+                return hit
+        return None
+
+    node = find(tree.root_node)
+    assert node is not None
+    return node
+
+
+def test_abstract_signature_parse_returning_none_yields_none() -> None:
+    from tree_sitter_analyzer.languages.typescript_plugin._function_helpers import (
+        extract_abstract_method_signature,
+    )
+
+    result = extract_abstract_method_signature(
+        _abstract_sig_node(),
+        parse_signature=lambda node: None,
+        extract_tsdoc=lambda line: "",
+        get_node_text=lambda node: "",
+        framework_type="",
+    )
+    assert result is None
+
+
+def test_abstract_signature_nameless_parse_yields_none() -> None:
+    from tree_sitter_analyzer.languages.typescript_plugin._function_helpers import (
+        extract_abstract_method_signature,
+    )
+
+    nameless = (None, [], False, False, False, False, False, "void", "public", None)
+    result = extract_abstract_method_signature(
+        _abstract_sig_node(),
+        parse_signature=lambda node: nameless,
+        extract_tsdoc=lambda line: "",
+        get_node_text=lambda node: "",
+        framework_type="",
+    )
+    assert result is None
+
+
+def test_abstract_signature_parse_raising_yields_none() -> None:
+    from tree_sitter_analyzer.languages.typescript_plugin._function_helpers import (
+        extract_abstract_method_signature,
+    )
+
+    def boom(node: tree_sitter.Node) -> None:
+        raise RuntimeError("synthetic parse failure")
+
+    result = extract_abstract_method_signature(
+        _abstract_sig_node(),
+        parse_signature=boom,
+        extract_tsdoc=lambda line: "",
+        get_node_text=lambda node: "",
+        framework_type="",
+    )
+    assert result is None
