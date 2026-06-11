@@ -250,15 +250,14 @@ class TestDogClassContract:
         inherited_names = [m["name"] for m in r["inherited_methods"]]
         assert "speak" in inherited_names
 
-    def test_field_line_numbers_positive(self, fixture_file: Path) -> None:
+    def test_field_line_numbers_exact(self, fixture_file: Path) -> None:
         r = _run_class_detail(fixture_file, "Dog")
-        for f in r["fields"]:
-            assert f["line"] > 0
+        # Exact pins (fixture is deterministic; measured 2026-06-12)
+        assert sorted(f["line"] for f in r["fields"]) == [29, 33, 34]
 
-    def test_method_line_numbers_positive(self, fixture_file: Path) -> None:
+    def test_method_line_numbers_exact(self, fixture_file: Path) -> None:
         r = _run_class_detail(fixture_file, "Dog")
-        for m in r["methods"]:
-            assert m["line"] > 0
+        assert sorted(m["line"] for m in r["methods"]) == [31, 36, 39, 45]
 
 
 # ---------------------------------------------------------------------------

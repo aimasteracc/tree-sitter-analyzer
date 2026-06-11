@@ -1067,7 +1067,7 @@ def test_cli_co_change_execution_handles_exception() -> None:
         rc = handle_nav_actions(args, ctx)
 
     assert rc == 1
-    assert len(errors_captured) > 0
+    assert len(errors_captured) == 1  # handler reports the error exactly once
     assert "Test error" in errors_captured[0]
 
 

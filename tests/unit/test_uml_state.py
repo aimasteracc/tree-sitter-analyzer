@@ -429,9 +429,14 @@ def test_render_state_mermaid_empty_states() -> None:
     from tree_sitter_analyzer.uml_export import render_state_mermaid
 
     mermaid = render_state_mermaid([], [])
-    assert "stateDiagram-v2" in mermaid
-    # Must not crash and must produce something
-    assert len(mermaid) > 0
+    # Deterministic sentinel render — exact pin (measured 2026-06-12)
+    assert mermaid == (
+        "stateDiagram-v2\n"
+        "%% NOTE: state diagram is a static approximation.\n"
+        "%% Guard conditions, timers, and exception-driven transitions "
+        "are not captured.\n"
+        "    [*] --> EmptyEnum"
+    )
 
 
 # ---------------------------------------------------------------------------

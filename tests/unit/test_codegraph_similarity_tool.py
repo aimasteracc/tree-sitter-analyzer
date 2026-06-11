@@ -109,9 +109,7 @@ class TestSummaryDefaultNoBodies:
         result = await tool_with_clones.execute({"output_format": "json"})
         assert result["success"] is True
         groups = result.get("groups", [])
-        assert len(groups) > 0, (
-            "Expected at least one clone group with tool_with_clones fixture"
-        )
+        assert len(groups) == 2  # tool_with_clones fixture: exactly 2 groups
         for group in groups:
             for func in group.get("functions", []):
                 assert "snippet" not in func, (
@@ -126,7 +124,7 @@ class TestSummaryDefaultNoBodies:
         )
         assert result["success"] is True
         groups = result.get("groups", [])
-        assert len(groups) > 0, "Expected at least one clone group"
+        assert len(groups) == 2  # tool_with_clones fixture: exactly 2 groups
         for group in groups:
             for func in group.get("functions", []):
                 assert "snippet" in func, (
@@ -181,7 +179,7 @@ class TestFacadeIncludeBodiesSurvivesRouting:
         )
         assert result.get("success") is True
         groups = result.get("groups", [])
-        assert len(groups) > 0, "Expected at least one clone group via facade"
+        assert len(groups) == 2  # same fixture via facade: exactly 2 groups
         for group in groups:
             for func in group.get("functions", []):
                 assert "snippet" in func, (

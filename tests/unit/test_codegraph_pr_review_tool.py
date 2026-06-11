@@ -1137,7 +1137,7 @@ class TestCoverageToolMethods:
                 {"mode": "diff", "include_call_graph": False, "output_format": "json"},
             )
         assert result["success"] is True
-        assert len(result["api_changes"]) >= 1
+        assert len(result["api_changes"]) == 1  # fixture yields exactly one
 
     def test_analyze_call_graph_impact_dedup_callee(self):
         """Duplicate callee entries (same qualified_name) are deduplicated."""

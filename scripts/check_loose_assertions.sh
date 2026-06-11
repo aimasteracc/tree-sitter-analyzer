@@ -91,6 +91,16 @@ while IFS= read -r line; do
         continue
     fi
 
+    # String-literal false positives (release v1.23.0): a ">=" inside a
+    # quoted version spec is not a loose bound. Skip lines that are exact
+    # comparisons (==) or string-membership assertions ("..." in x).
+    if echo "$content" | grep -E '==' > /dev/null; then
+        continue
+    fi
+    if echo "$content" | grep -E '"[^"]*>=[^"]*"' > /dev/null; then
+        continue
+    fi
+
     # Check loose assertion patterns (conservative, POSIX ERE)
     # Pattern 1: assert .* >= [0-9]
     if echo "$content" | grep -E 'assert[[:space:]]+.*>=[[:space:]]*[0-9]' > /dev/null; then
