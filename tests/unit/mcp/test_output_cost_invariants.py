@@ -727,6 +727,17 @@ def test_nav_impact_toon_smaller_than_json() -> None:
         f"duplication re-introduced ({toon_bytes / json_bytes:.2f}x). "
         f"Before fix this was ~1.6x."
     )
+    # Exact pins (Codex P2 on #476 + CLAUDE.md exact-assertion rule): the
+    # fixture is fully synthetic and deterministic, so the byte sizes are
+    # too.  Any drift (TOON encoder change, envelope field change) must go
+    # red here and force a conscious re-pin with newly measured values.
+    # Measured 2026-06-11 with the command in the PR #476 description.
+    assert toon_bytes == 6835, (
+        f"TOON bytes drifted: {toon_bytes} != 6835 — re-measure and re-pin"
+    )
+    assert json_bytes == 10348, (
+        f"JSON bytes drifted: {json_bytes} != 10348 — re-measure and re-pin"
+    )
 
 
 # ── RFC-0015 P1 rule-11 differential invariant ────────────────────────────────
