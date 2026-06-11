@@ -309,11 +309,15 @@ def _collect_files(
             # Files inside a non-production directory are always test/non-prod,
             # regardless of their individual filename.
             is_test = in_non_prod or _is_test_file(full)
-            results.append((full, lang, is_test))
             if not is_test:
-                prod_count += 1
+                # Production budget exhausted: keep walking so that test files
+                # appearing later in os.walk order (e.g. app/ before tests/)
+                # are still collected for naming-convention matching — an
+                # early return here would misreport covered symbols as gaps.
                 if prod_count >= max_files:
-                    return results
+                    continue
+                prod_count += 1
+            results.append((full, lang, is_test))
     return results
 
 

@@ -158,6 +158,26 @@ class TestPackageScopeCollectFiles:
         prod = [(f, lang) for f, lang, t in files if not t]
         assert len(prod) == 3
 
+    def test_tests_collected_after_production_cap_reached(self, tmp_path):
+        """Codex P2 (#479): the production cap must not stop the walk.
+
+        With a production dir (app/) sorting BEFORE tests/, exhausting
+        max_files on production files used to early-return and skip tests/
+        entirely — naming-based matching then misreported covered symbols
+        as gaps.  After the fix the walk continues: production collection
+        stops at the cap but ALL later test files are still collected."""
+        (tmp_path / "app").mkdir()
+        for i in range(5):
+            (tmp_path / "app" / f"mod{i}.py").write_text(f"def fn{i}():\n    pass\n")
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "test_mod0.py").write_text("def test_fn0():\n    pass\n")
+        files = _collect_files(str(tmp_path), None, max_files=2)
+        prod = [f for f, lang, t in files if not t]
+        tests = [f for f, lang, t in files if t]
+        assert len(prod) == 2
+        assert len(tests) == 1
+        assert tests[0].endswith("test_mod0.py")
+
     def test_package_symbols_included_in_scan(self, tmp_path):
         """pkg/sub/module.py symbols must appear in production count even when
         tests/ has many files and sorts before pkg/ (issue #457)."""
