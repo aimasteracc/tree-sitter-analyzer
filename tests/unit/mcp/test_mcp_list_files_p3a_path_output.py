@@ -1,3 +1,5 @@
+import os
+
 import pytest
 
 from tree_sitter_analyzer.mcp.tools.list_files_tool import ListFilesTool
@@ -267,8 +269,11 @@ async def test_fd_56_base_directory_output(tmp_path, monkeypatch):
     tool = ListFilesTool(str(tmp_path))
 
     async def fake_run(cmd, cwd=None, timeout=None, timeout_ms=None):
-        # Check if searching from subdir as base
-        if str(tmp_path / "subdir") in cmd:
+        # Check if searching from subdir as base. realpath both sides:
+        # macOS tmp_path is /private/var/... while the command builder may
+        # carry the /var/... alias — naive list membership differs by platform.
+        subdir_real = os.path.realpath(str(tmp_path / "subdir"))
+        if any(os.path.realpath(str(arg)) == subdir_real for arg in cmd):
             files = [str(tmp_path / "subdir" / "file.txt")]
         else:
             files = [str(tmp_path / "subdir"), str(tmp_path / "subdir" / "file.txt")]
@@ -286,7 +291,7 @@ async def test_fd_56_base_directory_output(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] == 2
+    assert result["count"] == 1
 
 
 @pytest.mark.asyncio
