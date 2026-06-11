@@ -71,6 +71,7 @@ def _container_node_types() -> set[str]:
         "statement_block",
         "object_type",
         "class_declaration",
+        "abstract_class_declaration",
         "interface_declaration",
         "function_declaration",
         "method_definition",
