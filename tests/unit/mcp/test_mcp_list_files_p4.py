@@ -43,19 +43,31 @@ async def test_fd_92_git_dir_handling(tmp_path, monkeypatch):
 
     # Test without hidden flag (should ignore .git)
     result1 = await tool.execute(
-        {"roots": [str(tmp_path)], "pattern": "*", "glob": True, "hidden": False}
+        {
+            "roots": [str(tmp_path)],
+            "pattern": "*",
+            "glob": True,
+            "hidden": False,
+            "output_format": "json",
+        }
     )
 
     assert result1["success"] is True
-    assert result1["count"] >= 0
+    assert result1["count"] == 1
 
     # Test with hidden flag (should include .git)
     result2 = await tool.execute(
-        {"roots": [str(tmp_path)], "pattern": "*", "glob": True, "hidden": True}
+        {
+            "roots": [str(tmp_path)],
+            "pattern": "*",
+            "glob": True,
+            "hidden": True,
+            "output_format": "json",
+        }
     )
 
     assert result2["success"] is True
-    assert result2["count"] >= 0
+    assert result2["count"] == 3
 
 
 @pytest.mark.asyncio
@@ -92,19 +104,31 @@ async def test_fd_93_gitignore_parent_handling(tmp_path, monkeypatch):
 
     # Test with parent gitignore
     result1 = await tool.execute(
-        {"roots": [str(tmp_path)], "pattern": "*", "glob": True, "no_ignore": False}
+        {
+            "roots": [str(tmp_path)],
+            "pattern": "*",
+            "glob": True,
+            "no_ignore": False,
+            "output_format": "json",
+        }
     )
 
     assert result1["success"] is True
-    assert result1["count"] >= 0
+    assert result1["count"] == 2
 
     # Test ignoring parent gitignore
     result2 = await tool.execute(
-        {"roots": [str(tmp_path)], "pattern": "*", "glob": True, "no_ignore": True}
+        {
+            "roots": [str(tmp_path)],
+            "pattern": "*",
+            "glob": True,
+            "no_ignore": True,
+            "output_format": "json",
+        }
     )
 
     assert result2["success"] is True
-    assert result2["count"] >= 0
+    assert result2["count"] == 3
 
 
 @pytest.mark.asyncio
@@ -140,7 +164,7 @@ async def test_fd_94_hyperlink_output_advanced(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 0
+    assert result["count"] == 2
 
     # Verify paths are absolute (suitable for hyperlinks) when results exist
     if result["success"] and result["count"] > 0:

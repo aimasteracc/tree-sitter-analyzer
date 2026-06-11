@@ -47,9 +47,7 @@ def simple_project(tmp_path: Path) -> Path:
     (tmp_path / "README.md").write_text(
         "# AwesomeProject\n\nA tool for awesome tasks.\n"
     )
-    (tmp_path / "pyproject.toml").write_text(
-        "[tool.poetry]\nname = 'awesomeproject'\n"
-    )
+    (tmp_path / "pyproject.toml").write_text("[tool.poetry]\nname = 'awesomeproject'\n")
     (tmp_path / "__main__.py").write_text("if __name__ == '__main__': pass\n")
 
     # Artifact dirs that should be excluded
@@ -81,7 +79,7 @@ class TestProjectIndexManagerInitialization:
     def test_schema_version_set(self) -> None:
         """Test that SCHEMA_VERSION is defined."""
         assert ProjectIndexManager.SCHEMA_VERSION is not None
-        assert len(ProjectIndexManager.SCHEMA_VERSION) > 0
+        assert len(ProjectIndexManager.SCHEMA_VERSION) == 1
 
 
 class TestProjectIndexManagerBuild:
@@ -91,18 +89,18 @@ class TestProjectIndexManagerBuild:
         """Test that build() returns a valid ProjectIndex."""
         index = manager.build()
         assert isinstance(index, ProjectIndex)
-        assert index.file_count > 0
+        assert index.file_count == 9
 
-    def test_language_distribution_correct(
-        self, manager: ProjectIndexManager
-    ) -> None:
+    def test_language_distribution_correct(self, manager: ProjectIndexManager) -> None:
         """Test that Python and TypeScript files are counted correctly."""
         index = manager.build()
         lang_dist = index.language_distribution
         assert "python" in lang_dist
         assert "typescript" in lang_dist
-        assert lang_dist["python"] >= 2  # __init__.py, utils.py, test_utils.py, __main__.py
-        assert lang_dist["typescript"] >= 2  # index.ts, types.ts
+        assert (
+            lang_dist["python"] == 4
+        )  # __init__.py, utils.py, test_utils.py, __main__.py
+        assert lang_dist["typescript"] == 2  # index.ts, types.ts
 
     def test_artifact_dirs_excluded(self, manager: ProjectIndexManager) -> None:
         """Test that __pycache__ directories are not in top_level_structure."""
@@ -117,33 +115,25 @@ class TestProjectIndexManagerBuild:
         assert "pyproject.toml" in key_lower
         assert "readme.md" in key_lower
 
-    def test_entry_points_identified(
-        self, manager: ProjectIndexManager
-    ) -> None:
+    def test_entry_points_identified(self, manager: ProjectIndexManager) -> None:
         """Test that __main__.py appears in entry_points."""
         index = manager.build()
         assert "__main__.py" in index.entry_points
 
-    def test_readme_excerpt_extracted(
-        self, manager: ProjectIndexManager
-    ) -> None:
+    def test_readme_excerpt_extracted(self, manager: ProjectIndexManager) -> None:
         """Test that a meaningful excerpt is extracted from README.md."""
         index = manager.build()
         assert index.readme_excerpt != ""
         assert "awesome" in index.readme_excerpt.lower()
 
-    def test_module_descriptions_from_init(
-        self, manager: ProjectIndexManager
-    ) -> None:
+    def test_module_descriptions_from_init(self, manager: ProjectIndexManager) -> None:
         """Test that __init__.py docstrings are captured in module_descriptions."""
         index = manager.build()
         # The src/__init__.py has docstring "Main source package."
         assert "src" in index.module_descriptions
         assert "source package" in index.module_descriptions["src"].lower()
 
-    def test_schema_version_set_in_index(
-        self, manager: ProjectIndexManager
-    ) -> None:
+    def test_schema_version_set_in_index(self, manager: ProjectIndexManager) -> None:
         """Test that the built index has the correct schema version."""
         index = manager.build()
         assert index.schema_version == ProjectIndexManager.SCHEMA_VERSION
@@ -209,9 +199,7 @@ class TestProjectIndexManagerSaveLoad:
         result = manager.load()
         assert result is None
 
-    def test_save_creates_parent_directory(
-        self, tmp_path: Path
-    ) -> None:
+    def test_save_creates_parent_directory(self, tmp_path: Path) -> None:
         """Test that save() creates the cache directory if it doesn't exist."""
         mgr = ProjectIndexManager(str(tmp_path))
         index = mgr.build()
@@ -236,17 +224,13 @@ class TestProjectIndexManagerStaleness:
         index.updated_at = time.time() - (25 * 3600)
         assert manager.is_stale(index) is True
 
-    def test_is_stale_exactly_at_boundary(
-        self, manager: ProjectIndexManager
-    ) -> None:
+    def test_is_stale_exactly_at_boundary(self, manager: ProjectIndexManager) -> None:
         """Test boundary: exactly 24h old is stale."""
         index = manager.build()
         index.updated_at = time.time() - (24 * 3600) - 1
         assert manager.is_stale(index) is True
 
-    def test_is_stale_custom_max_age(
-        self, manager: ProjectIndexManager
-    ) -> None:
+    def test_is_stale_custom_max_age(self, manager: ProjectIndexManager) -> None:
         """Test that a custom max_age_hours parameter is respected."""
         index = manager.build()
         index.updated_at = time.time() - (2 * 3600)  # 2 hours old
@@ -275,7 +259,7 @@ class TestProjectIndexManagerFdFallback:
             index = manager.build()
 
         # Should still produce a valid index with files
-        assert index.file_count > 0
+        assert index.file_count == 8
         assert "python" in index.language_distribution
 
     def test_os_walk_skips_artifact_dirs(self, tmp_path: Path) -> None:
@@ -294,7 +278,11 @@ class TestProjectIndexManagerFdFallback:
         def mock_run(cmd: list[str], **kwargs: object) -> object:
             if cmd[0] == "fd":
                 raise FileNotFoundError("fd not found")
-            return subprocess.run.__wrapped__(cmd, **kwargs) if hasattr(subprocess.run, "__wrapped__") else subprocess.__dict__["run"].__wrapped__(cmd, **kwargs)  # type: ignore[attr-defined]
+            return (
+                subprocess.run.__wrapped__(cmd, **kwargs)
+                if hasattr(subprocess.run, "__wrapped__")
+                else subprocess.__dict__["run"].__wrapped__(cmd, **kwargs)
+            )  # type: ignore[attr-defined]
 
         with patch("subprocess.run", side_effect=FileNotFoundError("fd not found")):
             files = mgr._list_files([str(tmp_path)])
@@ -316,7 +304,9 @@ class TestProjectIndexDataclass:
             updated_at=now,
             file_count=42,
             language_distribution={"python": 30, "typescript": 12},
-            top_level_structure=[{"name": "src", "type": "directory", "file_count": 30}],
+            top_level_structure=[
+                {"name": "src", "type": "directory", "file_count": 30}
+            ],
             key_files=["pyproject.toml"],
             entry_points=["src/main.py"],
             custom_notes="",

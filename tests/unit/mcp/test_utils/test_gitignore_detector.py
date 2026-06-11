@@ -109,7 +109,7 @@ class TestFindGitignoreFiles:
 
         detector = GitignoreDetector()
         files = detector._find_gitignore_files(subdir)
-        assert len(files) >= 1
+        assert len(files) == 2
         assert sub_gitignore in files
 
     def test_temp_directory_only_current(self, tmp_path):
@@ -338,8 +338,8 @@ class TestGetDetectionInfo:
         info = detector.get_detection_info(["."], str(tmp_path))
 
         assert info["should_use_no_ignore"] is True
-        assert len(info["detected_gitignore_files"]) > 0
-        assert len(info["interfering_patterns"]) > 0
+        assert len(info["detected_gitignore_files"]) == 1
+        assert len(info["interfering_patterns"]) == 1
         assert "interfering patterns" in info["reason"].lower()
 
     def test_non_root_search(self, tmp_path):
@@ -385,7 +385,7 @@ class TestGetInterferingPatterns:
 
         detector = GitignoreDetector()
         patterns = detector._get_interfering_patterns(gitignore, tmp_path, tmp_path)
-        assert len(patterns) > 0
+        assert len(patterns) == 3
 
     def test_filters_comments_and_empty_lines(self, tmp_path):
         """Test that comments and empty lines are filtered."""
@@ -447,8 +447,8 @@ lib/
         # Test get_detection_info
         info = detector.get_detection_info(["."], str(tmp_path))
         assert info["should_use_no_ignore"] is True
-        assert len(info["detected_gitignore_files"]) > 0
-        assert len(info["interfering_patterns"]) > 0
+        assert len(info["detected_gitignore_files"]) == 1
+        assert len(info["interfering_patterns"]) == 5
 
     def test_real_world_scenario(self, tmp_path):
         """Test real-world scenario with typical .gitignore."""
