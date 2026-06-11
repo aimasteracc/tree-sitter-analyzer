@@ -121,18 +121,34 @@ class HyphaeSelectTool(BaseMCPTool):
             }
             for m in matches
         ]
+
+        truncated = evaluator.was_truncated()
+        total_matches = evaluator.total_matches()
+
+        # Build next_step based on truncation
+        if truncated:
+            next_step = (
+                f"Results truncated at {max_results} of {total_matches} matches. "
+                "Narrow the selector with :in(path), [file=], [language=], or :not(...) "
+                "to reduce results, or raise max_results."
+            )
+        else:
+            next_step = (
+                "Answer from these symbols, or refine the selector "
+                "(add :in(path) / [file=] / :not(...) to narrow)."
+            )
+
         result: dict[str, Any] = {
             "success": True,
             "selector": selector,
             "count": len(symbols),
+            "total_matches": total_matches,
+            "truncated": truncated,
             "symbols": symbols,
             "agent_summary": {
                 "summary_line": f"hyphae_select: {len(symbols)} symbols for {selector!r}",
                 "verdict": "INFO" if symbols else "NOT_FOUND",
-                "next_step": (
-                    "Answer from these symbols, or refine the selector "
-                    "(add :in(path) / [file=] / :not(...) to narrow)."
-                ),
+                "next_step": next_step,
             },
         }
 
