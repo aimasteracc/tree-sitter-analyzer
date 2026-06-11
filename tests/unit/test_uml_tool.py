@@ -17,8 +17,8 @@ def test_uml_tool_definition() -> None:
 
 
 def test_uml_tool_schema_lists_diagrams() -> None:
-    # Re-pinned in P2-A (RFC-0015): 'activity' added to enum.
-    # Previously: ["class", "package", "component", "sequence"]
+    # Re-pinned at integration of P2-A + P2-B (RFC-0015): both 'activity'
+    # and 'state' now in the enum — exactly 6 elements.
     tool = CodeGraphUMLTool()
     schema = tool.get_tool_schema()
 
@@ -28,6 +28,7 @@ def test_uml_tool_schema_lists_diagrams() -> None:
         "component",
         "sequence",
         "activity",
+        "state",
     ]
 
 

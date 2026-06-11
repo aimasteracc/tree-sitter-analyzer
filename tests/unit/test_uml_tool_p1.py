@@ -113,10 +113,8 @@ def test_sitemap_tool_rejects_bool_max_symbols() -> None:
 
 
 def test_uml_tool_schema_lists_diagrams_phase1() -> None:
-    """Activity branch adds 'activity'; enum re-pinned to exactly 5 elements.
-
-    COLLISION_WITH_STATE_BRANCH: when feature/uml-state-diagram merges,
-    re-pin to 6: [..., "activity", "state"].
+    """Re-pinned at integration of P2-A + P2-B (RFC-0015): 'activity' and
+    'state' both in the enum — exactly 6 elements.
     """
     tool = CodeGraphUMLTool()
     assert tool.get_tool_schema()["properties"]["diagram"]["enum"] == [
@@ -125,4 +123,5 @@ def test_uml_tool_schema_lists_diagrams_phase1() -> None:
         "component",
         "sequence",
         "activity",
+        "state",
     ]

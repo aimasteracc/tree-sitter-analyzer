@@ -1,10 +1,14 @@
 """Phase-1 export tests — RFC-0015 P1-A (scoping), P1-C (test exclusion),
 P1-D (truncation note), P1-E (sequence observability label).
+Also covers Codex P2-1 (state_diagram project_root path resolution).
 
 Tests are written RED-first; implemented GREEN by the same commit.
 """
 
 from __future__ import annotations
+
+import textwrap
+from pathlib import Path
 
 from tree_sitter_analyzer import uml_export
 from tree_sitter_analyzer.uml_export import (
@@ -223,3 +227,372 @@ def test_sequence_source_falls_back_without_synapse(monkeypatch) -> None:
     exporter = UMLExporter("/repo", cache=object())
     diagram = exporter.sequence_diagram("entry", "service")
     assert diagram.metadata["source"] == "call_path"
+
+
+# ---------------------------------------------------------------------------
+# Codex P2-1: state_diagram resolves relative file_path against project_root
+# ---------------------------------------------------------------------------
+
+
+def test_state_diagram_relative_path_resolved_against_project_root(
+    tmp_path: Path,
+) -> None:
+    """state_diagram with a relative file_path resolves it against project_root.
+
+    Regression test for Codex P2-1: when the caller passes a relative path
+    (or a cache-stored relative path) and cwd != project_root, the file must
+    still be found and transitions returned — not NOT_FOUND:file_missing.
+    """
+    # Create an FSM file inside tmp_path (our project_root)
+    src = tmp_path / "door.py"
+    src.write_text(
+        textwrap.dedent("""\
+        from enum import Enum
+
+        class Door(Enum):
+            OPEN = "open"
+            CLOSED = "closed"
+
+        def transition(state: Door) -> Door:
+            match state:
+                case Door.OPEN:
+                    return Door.CLOSED
+                case Door.CLOSED:
+                    return Door.OPEN
+        """)
+    )
+
+    # Pass a RELATIVE path ("door.py"), project_root = tmp_path
+    exporter = UMLExporter(str(tmp_path))
+    diagram = exporter.state_diagram(file_path="door.py")
+
+    # Must find the file and return transitions (not NOT_FOUND)
+    assert diagram.metadata.get("verdict") != "NOT_FOUND", (
+        f"Expected transitions to be found via project_root resolution, "
+        f"got verdict=NOT_FOUND. metadata={diagram.metadata}"
+    )
+    # Exact pin: 2 transitions
+    assert len(diagram.edges) == 2
+    edge_pairs = {(e.source, e.target) for e in diagram.edges}
+    assert edge_pairs == {("OPEN", "CLOSED"), ("CLOSED", "OPEN")}
+
+
+# ---------------------------------------------------------------------------
+# render_state_mermaid truncated=True (line 224)
+# ---------------------------------------------------------------------------
+
+
+def test_render_state_mermaid_truncated_adds_note() -> None:
+    """render_state_mermaid with truncated=True appends the truncation note (line 224)."""
+    from tree_sitter_analyzer.uml_export import render_state_mermaid
+    from tree_sitter_analyzer.uml_state import StateTransition
+
+    transitions = [StateTransition(source="A", target="B")]
+    mermaid = render_state_mermaid(["A", "B"], transitions, truncated=True)
+    assert "%% NOTE: diagram truncated" in mermaid
+
+
+def test_render_state_mermaid_not_truncated_no_note() -> None:
+    """render_state_mermaid with truncated=False does NOT add truncation note."""
+    from tree_sitter_analyzer.uml_export import render_state_mermaid
+
+    mermaid = render_state_mermaid(["A"], [], truncated=False)
+    assert "%% NOTE: diagram truncated" not in mermaid
+
+
+# ---------------------------------------------------------------------------
+# UMLEdge.to_dict with label (line 55)
+# ---------------------------------------------------------------------------
+
+
+def test_uml_edge_to_dict_includes_label_when_present() -> None:
+    """UMLEdge.to_dict includes 'label' key when label is non-empty (line 55)."""
+    from tree_sitter_analyzer.uml_export import UMLEdge
+
+    edge = UMLEdge(source="A", target="B", label="calls", weight=1)
+    d = edge.to_dict()
+    assert "label" in d
+    assert d["label"] == "calls"
+    assert d["source"] == "A"
+    assert d["target"] == "B"
+    assert d["weight"] == 1
+
+
+def test_uml_edge_to_dict_no_label_key_when_empty() -> None:
+    """UMLEdge.to_dict omits 'label' key when label is empty string."""
+    from tree_sitter_analyzer.uml_export import UMLEdge
+
+    edge = UMLEdge(source="X", target="Y")
+    d = edge.to_dict()
+    assert "label" not in d
+
+
+# ---------------------------------------------------------------------------
+# _safe_id with digit-leading name (line 86)
+# ---------------------------------------------------------------------------
+
+
+def test_safe_id_digit_leading_name_gets_n_prefix() -> None:
+    """_safe_id prepends 'N_' when the sanitized name starts with a digit (line 86)."""
+    from tree_sitter_analyzer.uml_export import _safe_id
+
+    # "123abc" starts with a digit → must be prefixed
+    result = _safe_id("123abc")
+    assert result == "N_123abc"
+    assert not result[0].isdigit()
+
+
+def test_safe_id_normal_name_unchanged() -> None:
+    """_safe_id returns the name unchanged when it starts with a letter."""
+    from tree_sitter_analyzer.uml_export import _safe_id
+
+    assert _safe_id("MyClass") == "MyClass"
+
+
+# ---------------------------------------------------------------------------
+# render_flowchart_mermaid empty nodes and edges (lines 180-181)
+# ---------------------------------------------------------------------------
+
+
+def test_render_flowchart_mermaid_empty_nodes_and_edges() -> None:
+    """render_flowchart_mermaid with no nodes and no edges emits the empty sentinel (lines 180-181)."""
+    from tree_sitter_analyzer.uml_export import render_flowchart_mermaid
+
+    mermaid = render_flowchart_mermaid([], [])
+    assert "No edges found" in mermaid
+
+
+# ---------------------------------------------------------------------------
+# _file_matches edge cases (line 263)
+# ---------------------------------------------------------------------------
+
+
+def test_file_matches_returns_false_when_cls_file_empty() -> None:
+    """_file_matches returns False when cls_file is empty (line 263 guard)."""
+    from tree_sitter_analyzer.uml_export import _file_matches
+
+    assert _file_matches("", "src/a.py") is False
+
+
+def test_file_matches_returns_false_when_filter_path_empty() -> None:
+    """_file_matches returns False when filter_path is empty (line 263 guard)."""
+    from tree_sitter_analyzer.uml_export import _file_matches
+
+    assert _file_matches("src/a.py", "") is False
+
+
+def test_file_matches_returns_false_when_both_empty() -> None:
+    """_file_matches returns False when both are empty (line 263 guard)."""
+    from tree_sitter_analyzer.uml_export import _file_matches
+
+    assert _file_matches("", "") is False
+
+
+# ---------------------------------------------------------------------------
+# _is_neighbourhood when center is None (line 281)
+# ---------------------------------------------------------------------------
+
+
+def test_is_neighbourhood_returns_false_when_center_none() -> None:
+    """_is_neighbourhood returns False immediately when center is None (line 281)."""
+    from tree_sitter_analyzer.uml_export import _is_neighbourhood
+
+    result = _is_neighbourhood("Child", {"name": "Child", "parents": []}, None, [])
+    assert result is False
+
+
+# ---------------------------------------------------------------------------
+# state_diagram: no file_path and no class_name → NOT_FOUND (line 740)
+# ---------------------------------------------------------------------------
+
+
+def test_state_diagram_no_file_no_class_returns_not_found(tmp_path: Path) -> None:
+    """state_diagram with neither file_path nor class_name returns NOT_FOUND (line 740).
+
+    No file_path given, no class_name → resolved_path stays empty → early NOT_FOUND.
+    """
+    from tree_sitter_analyzer.uml_export import UMLExporter
+
+    exporter = UMLExporter(str(tmp_path))
+    diagram = exporter.state_diagram()
+    assert diagram.metadata.get("verdict") == "NOT_FOUND"
+    assert "next_step" in diagram.metadata
+    assert diagram.diagram_type == "state"
+    assert diagram.mermaid_type == "stateDiagram-v2"
+
+
+# ---------------------------------------------------------------------------
+# state_diagram: class_name given but no file_path — class_hierarchy lookup path
+# (lines 705->712, 715-737)
+# ---------------------------------------------------------------------------
+
+
+def test_state_diagram_class_name_no_file_path_hierarchy_lookup(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """state_diagram with class_name but no file_path triggers ClassHierarchy lookup (lines 715-737).
+
+    When file_path is omitted but class_name is provided, state_diagram calls
+    ClassHierarchy.all_classes() to find the source file. This test exercises the
+    hierarchy-based file resolution branch using a fake cache/hierarchy.
+
+    The ClassHierarchy used inside state_diagram is imported locally as
+    ``from .class_hierarchy import ClassHierarchy``, so we patch via the module.
+    """
+    import tree_sitter_analyzer.class_hierarchy as _ch_module
+
+    # Write a real FSM file so the scan can succeed
+    src = tmp_path / "light.py"
+    src.write_text(
+        textwrap.dedent("""\
+        from enum import Enum
+
+        class Light(Enum):
+            RED = 1
+            GREEN = 2
+
+        def next_state(s):
+            match s:
+                case Light.RED:
+                    return Light.GREEN
+                case Light.GREEN:
+                    return Light.RED
+        """)
+    )
+
+    # Fake ClassHierarchy that returns cls info pointing to our file
+    class FakeHierarchy:
+        def __init__(self, cache: object) -> None:
+            pass
+
+        def build(self) -> None:
+            pass
+
+        def all_classes(self):
+            return [
+                {"name": "Light", "file": str(src)},
+            ]
+
+    monkeypatch.setattr(_ch_module, "ClassHierarchy", FakeHierarchy)
+
+    exporter = UMLExporter(str(tmp_path), cache=object())
+    diagram = exporter.state_diagram(class_name="Light")
+
+    # Should find the file via hierarchy and return transitions
+    assert diagram.metadata.get("verdict") != "NOT_FOUND", (
+        f"Expected hierarchy-resolved file to succeed, got NOT_FOUND. "
+        f"metadata={diagram.metadata}"
+    )
+    # Exact pin: 2 transitions
+    assert len(diagram.edges) == 2
+    edge_pairs = {(e.source, e.target) for e in diagram.edges}
+    assert edge_pairs == {("RED", "GREEN"), ("GREEN", "RED")}
+
+
+def test_state_diagram_class_name_not_in_hierarchy_returns_not_found(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """When class_name is not found in ClassHierarchy, state_diagram returns NOT_FOUND.
+
+    Exercises the path where resolved_path stays empty after hierarchy scan (line 740).
+    """
+    import tree_sitter_analyzer.class_hierarchy as _ch_module
+
+    class FakeHierarchy:
+        def __init__(self, cache: object) -> None:
+            pass
+
+        def build(self) -> None:
+            pass
+
+        def all_classes(self):
+            return [
+                {"name": "OtherClass", "file": "other.py"},
+            ]
+
+    monkeypatch.setattr(_ch_module, "ClassHierarchy", FakeHierarchy)
+
+    exporter = UMLExporter(str(tmp_path), cache=object())
+    diagram = exporter.state_diagram(class_name="NonExistentFSM")
+
+    assert diagram.metadata.get("verdict") == "NOT_FOUND"
+    assert "next_step" in diagram.metadata
+
+
+def test_state_diagram_class_in_hierarchy_with_empty_file_falls_through(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """Matching class entry with empty file in hierarchy → resolved_path stays empty.
+
+    Exercises lines 726->733 (cf empty branch) and 733->723 (continue loop) and
+    eventually falls through to NOT_FOUND at line 740.
+    """
+    import tree_sitter_analyzer.class_hierarchy as _ch_module
+
+    class FakeHierarchy:
+        def __init__(self, cache: object) -> None:
+            pass
+
+        def build(self) -> None:
+            pass
+
+        def all_classes(self):
+            # name matches but file is empty — resolved_path stays ""
+            return [
+                {"name": "MyClass", "file": ""},
+                {"name": "OtherClass", "file": "other.py"},
+            ]
+
+    monkeypatch.setattr(_ch_module, "ClassHierarchy", FakeHierarchy)
+
+    exporter = UMLExporter(str(tmp_path), cache=object())
+    diagram = exporter.state_diagram(class_name="MyClass")
+
+    # Empty file → path not resolved → NOT_FOUND
+    assert diagram.metadata.get("verdict") == "NOT_FOUND"
+    assert "next_step" in diagram.metadata
+
+
+def test_state_diagram_class_hierarchy_owned_cache_closed(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """state_diagram with class_name but no cache closes the owned ASTCache (line 737).
+
+    When UMLExporter is created without a cache (self._cache is None), _open_cache
+    creates a new ASTCache with should_close=True. The finally block must call
+    cache.close() — exercises line 737.
+    """
+    import tree_sitter_analyzer.class_hierarchy as _ch_module
+
+    closed: list[bool] = []
+
+    class FakeCache:
+        def __init__(self, project_root: str) -> None:
+            pass
+
+        def close(self) -> None:
+            closed.append(True)
+
+    class FakeHierarchy:
+        def __init__(self, cache: object) -> None:
+            pass
+
+        def build(self) -> None:
+            pass
+
+        def all_classes(self):
+            return []
+
+    monkeypatch.setattr(_ch_module, "ClassHierarchy", FakeHierarchy)
+    monkeypatch.setattr("tree_sitter_analyzer.ast_cache.ASTCache", FakeCache)
+
+    # No cache passed → _open_cache creates FakeCache with should_close=True
+    exporter = UMLExporter(str(tmp_path))
+    exporter.state_diagram(class_name="SomeClass")
+
+    # Owned cache must be closed
+    assert closed == [True]

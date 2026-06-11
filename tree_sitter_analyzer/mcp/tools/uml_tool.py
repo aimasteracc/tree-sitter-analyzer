@@ -34,10 +34,12 @@ class CodeGraphUMLTool(BaseMCPTool):
             "description": (
                 "Export UML-oriented Mermaid diagrams from indexed project "
                 "facts. Diagrams: class, package, component, sequence, "
-                "activity (control-flow graph, requires disk re-parse). "
+                "activity (control-flow graph, requires disk re-parse), and "
+                "state (FSM approximation from enum/match, requires disk re-parse). "
                 "Class uses inheritance edges; package/component use import "
-                "dependencies; sequence uses call paths; activity uses "
-                "tree-sitter AST of the function body."
+                "dependencies; sequence uses call paths; activity uses tree-sitter "
+                "AST of the function body; state uses tree-sitter AST of the enum "
+                "class body."
             ),
             "inputSchema": self.get_tool_schema(),
             "annotations": {
@@ -54,13 +56,21 @@ class CodeGraphUMLTool(BaseMCPTool):
             "properties": {
                 "diagram": {
                     "type": "string",
-                    "enum": ["class", "package", "component", "sequence", "activity"],
+                    "enum": [
+                        "class",
+                        "package",
+                        "component",
+                        "sequence",
+                        "activity",
+                        "state",
+                    ],
                     "default": "class",
                     "description": (
                         "UML diagram to render. 'activity' is a single-function "
-                        "control-flow graph built by re-parsing the source file at "
-                        "query time (disk read + tree-sitter parse per call, "
-                        "typically < 50 ms)."
+                        "control-flow graph; 'state' is a static approximation "
+                        "of enum/match-driven FSMs. Both are built by re-parsing "
+                        "the source file at query time (disk read + tree-sitter "
+                        "parse per call, typically < 50 ms)."
                     ),
                 },
                 "source": {
@@ -129,7 +139,10 @@ class CodeGraphUMLTool(BaseMCPTool):
                 "max_nodes": {
                     "type": "integer",
                     "default": 50,
-                    "description": "Cap on CFG nodes for activity diagrams (default 50).",
+                    "description": (
+                        "Cap on CFG nodes for activity / state nodes for state "
+                        "diagrams (default 50). truncated=True when exceeded."
+                    ),
                 },
                 "output_format": {
                     "type": "string",
@@ -144,7 +157,14 @@ class CodeGraphUMLTool(BaseMCPTool):
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         diagram = arguments.get("diagram", "class")
-        if diagram not in {"class", "package", "component", "sequence", "activity"}:
+        if diagram not in {
+            "class",
+            "package",
+            "component",
+            "sequence",
+            "activity",
+            "state",
+        }:
             raise ValueError(f"Unsupported UML diagram: {diagram}")
         if diagram == "sequence" and (
             not arguments.get("source") or not arguments.get("target")
@@ -155,6 +175,7 @@ class CodeGraphUMLTool(BaseMCPTool):
         # P1-B: use shared validator that also handles float coercion and bool rejection
         for key in ("max_edges", "max_depth", "max_paths", "package_depth"):
             _validate_positive_int(arguments, key)
+        # P2: max_nodes for activity (CFG) and state diagrams
         _validate_positive_int(arguments, "max_nodes")
         return True
 
@@ -198,6 +219,12 @@ class CodeGraphUMLTool(BaseMCPTool):
                 file_path=arguments.get("file_path"),
                 max_nodes=arguments.get("max_nodes", 50),
             )
+        elif diagram_type == "state":
+            diagram = exporter.state_diagram(
+                class_name=arguments.get("class_name"),
+                file_path=arguments.get("file_path"),
+                max_nodes=arguments.get("max_nodes", 50),
+            )
         else:
             diagram = exporter.sequence_diagram(
                 source=arguments["source"],
@@ -206,7 +233,8 @@ class CodeGraphUMLTool(BaseMCPTool):
                 max_paths=arguments.get("max_paths", 3),
             )
 
-        # Determine verdict: activity and sequence use metadata["verdict"] when set
+        # Determine verdict: activity/state/sequence use metadata["verdict"]
+        # when set (state's zero-transition honesty rule forwards NOT_FOUND).
         meta_verdict = diagram.metadata.get("verdict")
         if meta_verdict:
             verdict = meta_verdict

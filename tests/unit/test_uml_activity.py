@@ -19,10 +19,10 @@ from tree_sitter_analyzer.mcp.tools.uml_tool import CodeGraphUMLTool
 
 
 def test_uml_tool_schema_lists_diagrams_with_activity() -> None:
-    """Enum must include 'activity' after Phase-2 landing (re-pinned)."""
+    """Enum after P2-A + P2-B integration — exactly 6 members (re-pinned)."""
     tool = CodeGraphUMLTool()
     enum = tool.get_tool_schema()["properties"]["diagram"]["enum"]
-    assert enum == ["class", "package", "component", "sequence", "activity"]
+    assert enum == ["class", "package", "component", "sequence", "activity", "state"]
 
 
 def test_activity_in_diagram_enum() -> None:
