@@ -234,14 +234,21 @@ async def test_empty_index_reports_missing_state() -> None:
     with tempfile.TemporaryDirectory() as tmp_dir:
         # Create a project with empty cache (no indexed files yet)
         tool = HyphaeSelectTool(tmp_dir)
-        # Initialize the cache but don't index anything
-        result = await tool.execute({"selector": ".function", "output_format": "json"})
+        # Windows: close the tool's lazy ASTCache before TemporaryDirectory
+        # cleanup — an open index.db handle is WinError 32 (#492 precedent).
+        try:
+            result = await tool.execute(
+                {"selector": ".function", "output_format": "json"}
+            )
 
-        assert result["success"] is True
-        assert result["count"] == 0
-        assert "index_state" in result
-        assert result["index_state"] in ("missing", "empty")
-        assert "index missing" in result["agent_summary"]["next_step"].lower()
+            assert result["success"] is True
+            assert result["count"] == 0
+            assert "index_state" in result
+            assert result["index_state"] in ("missing", "empty")
+            assert "index missing" in result["agent_summary"]["next_step"].lower()
+        finally:
+            if tool._cache is not None:
+                tool._cache.close()
 
 
 @pytest.mark.asyncio
