@@ -145,7 +145,10 @@ async def test_fd_36_size_filtering(tmp_path, monkeypatch):
     tool = ListFilesTool(str(tmp_path))
 
     async def fake_run(cmd, cwd=None, timeout=None, timeout_ms=None):
-        if "--size" in cmd:
+        # Production builder emits fd's short ``-S`` flag — the mock must
+        # recognise it, otherwise the size branch never fires and the test
+        # silently pins the unfiltered fallback (Codex P2 on #504).
+        if "--size" in cmd or "-S" in cmd:
             if "+100b" in cmd:  # Files larger than 100 bytes
                 files = [str(tmp_path / "medium.txt"), str(tmp_path / "large.txt")]
             elif "-100b" in cmd:  # Files smaller than 100 bytes
@@ -174,7 +177,7 @@ async def test_fd_36_size_filtering(tmp_path, monkeypatch):
     )
 
     assert result1["success"] is True
-    assert result1["count"] == 3
+    assert result1["count"] == 2  # medium + large (size branch live)
 
     # Test files smaller than 100 bytes
     result2 = await tool.execute(
@@ -182,7 +185,7 @@ async def test_fd_36_size_filtering(tmp_path, monkeypatch):
     )
 
     assert result2["success"] is True
-    assert result2["count"] == 3
+    assert result2["count"] == 1  # small only
 
 
 @pytest.mark.asyncio
