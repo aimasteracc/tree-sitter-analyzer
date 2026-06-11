@@ -1484,7 +1484,9 @@ def test_activity_diagram_no_file_path_index_unique_resolves(tmp_path) -> None:
     # Unique hit: must resolve and succeed (no NOT_FOUND verdict)
     assert result.metadata.get("verdict") is None  # success path has no verdict key
     assert result.mermaid.startswith("flowchart TD")
-    assert len(result.nodes) > 0  # CFG was built
+    # Exact pin (Codex P2 + CLAUDE.md rule): unique_fn's CFG is deterministic
+    # — start, condition, return 1, return 0.  Measured 2026-06-11.
+    assert len(result.nodes) == 4
 
 
 def test_activity_diagram_no_file_path_index_not_found_message(tmp_path) -> None:
@@ -1536,3 +1538,38 @@ def test_activity_diagram_no_file_path_index_ambiguous_lists_files(
     next_step = result.metadata.get("next_step", "")
     # Must name at least one of the candidate files
     assert "mod1.py" in next_step or "mod2.py" in next_step or "candidates" in next_step
+
+
+def test_activity_index_lookup_ignores_non_python_same_name(tmp_path) -> None:
+    """Codex P2 (#498): a same-name JS symbol must not make the Python
+    lookup ambiguous — the CFG builder is Python-only."""
+    src = tmp_path / "mod.py"
+    src.write_text("def handle(x):\n    return x\n")
+
+    from tree_sitter_analyzer.uml_export import UMLExporter
+
+    class PolyglotCache:
+        def search_symbols(self, query: str, language: str | None = None) -> list:
+            return [
+                {
+                    "name": "handle",
+                    "kind": "function",
+                    "file": str(src),
+                    "language": "python",
+                },
+                {
+                    "name": "handle",
+                    "kind": "function",
+                    "file": "web/app.js",
+                    "language": "javascript",
+                },
+            ]
+
+        def close(self) -> None:
+            pass
+
+    exporter = UMLExporter(str(tmp_path), cache=PolyglotCache())
+    result = exporter.activity_diagram("handle", file_path=None)
+    assert result.metadata.get("verdict") is None  # resolved, not ambiguous
+    assert result.mermaid.startswith("flowchart TD")
+    assert len(result.nodes) == 2  # start + return (measured 2026-06-11)

@@ -324,8 +324,20 @@ class UMLExporter:
         finally:
             if should_close:
                 cache.close()
-        # Filter to exact name matches with a file (avoid partial BM25 hits)
-        exact = [h for h in hits if h.get("name") == function_name and h.get("file")]
+        # Filter to exact name matches with a file (avoid partial BM25 hits).
+        # Python-only (Codex P2 on #498): the CFG builder is Python-only, so a
+        # same-name JS/Go symbol must not make the lookup "ambiguous" — and a
+        # JS-only hit must not be offered as a CFG target. Also restrict to
+        # function-like kinds so a same-name class/variable doesn't collide.
+        _FUNC_KINDS = {"function", "method", None, ""}
+        exact = [
+            h
+            for h in hits
+            if h.get("name") == function_name
+            and h.get("file")
+            and (h.get("language") or "python") == "python"
+            and (h.get("kind") in _FUNC_KINDS)
+        ]
         self._last_activity_index_hits: list[dict[str, Any]] = exact
         if len(exact) == 1:
             raw = exact[0]["file"]
