@@ -45,10 +45,12 @@ class _FakeCache:
 
 
 class _FakeCacheWithManyCallers:
-    """Cache that returns 150 callers to exceed the default cap of 100."""
+    """Cache that returns ``n`` callers (default 150 > cap of 100)."""
+
+    def __init__(self, n: int = 150) -> None:
+        self._n = n
 
     def get_functions(self):
-        # Generate 150 unique functions
         return [
             {
                 "name": f"caller_{i}",
@@ -57,7 +59,7 @@ class _FakeCacheWithManyCallers:
                 "language": "java",
                 "class": f"Caller{i}",
             }
-            for i in range(150)
+            for i in range(self._n)
         ]
 
     def search_symbols_cascade(self, query, limit=100):
@@ -154,3 +156,32 @@ async def test_next_step_includes_narrowing_hint_when_truncated():
     assert res["success"] is True
     assert res["truncated"] is True
     assert "narrow" in res["agent_summary"]["next_step"].lower()
+
+
+# ─── Codex P2 (#489): boundary + reentrancy ──────────────────────────────────
+
+
+def test_exactly_max_results_not_truncated() -> None:
+    """Exactly 100 unique matches is a COMPLETE result, not a capped one."""
+    from tree_sitter_analyzer.hyphae.evaluator import Evaluator
+    from tree_sitter_analyzer.hyphae.parser import parse
+
+    cache = _FakeCacheWithManyCallers(n=100)
+    ev = Evaluator(cache, max_results=100)
+    out = ev.eval(parse(".function"))
+    assert len(out) == 100
+    assert ev.total_matches() == 100
+    assert ev.was_truncated() is False
+
+
+def test_not_pseudo_does_not_clobber_counters() -> None:
+    """:not(...) re-enters eval(); outer counters must survive (reentrancy)."""
+    from tree_sitter_analyzer.hyphae.evaluator import Evaluator
+    from tree_sitter_analyzer.hyphae.parser import parse
+
+    cache = _FakeCacheWithManyCallers(n=150)
+    ev = Evaluator(cache, max_results=100)
+    out = ev.eval(parse(".function:not(#no_such_symbol)"))
+    assert len(out) == 100
+    assert ev.total_matches() == 150
+    assert ev.was_truncated() is True
