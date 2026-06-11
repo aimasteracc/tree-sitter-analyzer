@@ -46,7 +46,7 @@ class HyphaeSelectTool(BaseMCPTool):
                 "[file=]/[language=]/[class=]/[kind=]; combinators A > B / A B / "
                 "A ~ B. Example: '.class:implements(#Writeable):in(server/)'. "
                 "Unknown pseudo-classes raise an error (no silent pass-through). "
-                "Requires ast_cache index (run index action=warm)."
+                "Requires ast_cache index (run index action=warm). Response carries index_state (missing|empty|ready) + indexed_files; a missing/empty index returns verdict WARN (0 means 'not indexed', not 'no matches')."
             ),
             "inputSchema": self.get_tool_schema(),
             "annotations": {
@@ -112,7 +112,7 @@ class HyphaeSelectTool(BaseMCPTool):
         cache = self._get_cache()
 
         # Detect index state cheaply: check if cache has any indexed files
-        index_state = self._detect_index_state(cache)
+        index_state, indexed_files = self._detect_index_state(cache)
 
         evaluator = Evaluator(cache, max_results=max_results)
         matches = evaluator.eval(ast)
@@ -134,8 +134,9 @@ class HyphaeSelectTool(BaseMCPTool):
         if index_state != "ready":
             # Index is missing or empty — 0 doesn't mean "no matches", it means "not indexed"
             next_step = (
-                "Index missing or empty. Run the `index` tool with action=auto "
-                "to build the cache."
+                "Index missing, empty, or unreadable. Run the `index` tool with "
+                "action=auto to build the cache (if this persists, check "
+                ".ast-cache permissions)."
             )
             verdict = "WARN"
         elif truncated:
@@ -146,10 +147,16 @@ class HyphaeSelectTool(BaseMCPTool):
             )
             verdict = "INFO"
         elif len(symbols) == 0:
-            # Zero matches on a ready index — selector didn't match anything
+            # Zero matches on a ready index — selector didn't match anything.
+            # Honest coverage (opencode P2 on #497): an on-demand partial cache
+            # (e.g. 1 file indexed) still classifies as "ready"; reporting the
+            # indexed-file count lets the agent judge whether 0 means "no
+            # matches" or "index incomplete" — the original #491 repro case.
             next_step = (
-                "No matches found. Check your selector or try a broader search "
-                "(e.g., remove :in(path) or [file=] filters)."
+                f"No matches found across {indexed_files} indexed file(s). "
+                "Check your selector or try a broader search (remove :in(path) "
+                "or [file=] filters). If the project should contain more files, "
+                "run index action=auto to complete the index."
             )
             verdict = "NOT_FOUND"
         else:
@@ -167,6 +174,7 @@ class HyphaeSelectTool(BaseMCPTool):
             "truncated": truncated,
             "symbols": symbols,
             "index_state": index_state,
+            "indexed_files": indexed_files,
             "agent_summary": {
                 "summary_line": f"hyphae_select: {len(symbols)} symbols for {selector!r}",
                 "verdict": verdict,
@@ -178,18 +186,22 @@ class HyphaeSelectTool(BaseMCPTool):
 
         return apply_toon_format_to_response(result, output_format)
 
-    def _detect_index_state(self, cache: Any) -> str:
-        """Determine index state: missing, empty, or ready.
+    def _detect_index_state(self, cache: Any) -> tuple[str, int]:
+        """Determine (index_state, indexed_files).
 
-        Reuses the same check as codegraph_status_tool:
-        - missing: cache file doesn't exist or can't be opened
+        Reuses the same check as codegraph_status_tool (one cheap sqlite
+        count per call):
+        - missing: cache file doesn't exist or can't be opened/read
         - empty: cache exists but has no indexed files (total_files == 0)
-        - ready: cache exists and has indexed files (total_files > 0)
+        - ready: cache exists and has indexed files (total_files > 0) —
+          NOTE this includes on-demand PARTIAL caches; the indexed_files
+          count is surfaced so consumers can judge coverage honestly.
         """
         try:
             stats = cache.get_stats()
-            if stats and stats.get("total_files", 0) > 0:
-                return "ready"
-            return "empty"
+            total = int((stats or {}).get("total_files", 0) or 0)
+            if total > 0:
+                return "ready", total
+            return "empty", 0
         except Exception:
-            return "missing"
+            return "missing", 0

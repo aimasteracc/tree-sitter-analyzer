@@ -364,3 +364,16 @@ async def test_selector_on_missing_cache_warns() -> None:
     assert result["index_state"] == "missing"
     assert result["agent_summary"]["verdict"] == "WARN"
     assert "index missing" in result["agent_summary"]["next_step"].lower()
+
+
+@pytest.mark.asyncio
+async def test_ready_zero_matches_reports_indexed_file_count() -> None:
+    """opencode P2 (#497): partial cache classifies ready — the indexed-file
+    count must be surfaced so 0 matches is judgeable (original #491 repro)."""
+    tool = _tool()
+    result = await tool.execute({"selector": ".nonexistent", "output_format": "json"})
+    assert result["index_state"] == "ready"
+    assert result["indexed_files"] == 2  # FakeCache reports total_files=2
+    next_step = result["agent_summary"]["next_step"]
+    assert "indexed file(s)" in next_step
+    assert "run index action=auto to complete the index" in next_step
