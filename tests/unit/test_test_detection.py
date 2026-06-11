@@ -42,6 +42,11 @@ def test_is_test_file_no_false_positives() -> None:
     assert not is_test_file("greatest_hits.rb")
     assert not is_test_file("")
     assert not is_test_file(None)
+    # DF-19: test_*.py under a production package must NOT be mis-detected.
+    # The basename prefix alone is not sufficient — directory evidence is required.
+    assert not is_test_file("tree_sitter_analyzer/mcp/tools/test_gap_tool.py")
+    assert not is_test_file("src/test_widget.py")
+    assert not is_test_file("mypackage/subpkg/test_helpers.py")
 
 
 def test_query_wants_tests() -> None:

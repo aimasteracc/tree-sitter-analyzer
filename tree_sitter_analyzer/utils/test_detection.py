@@ -78,7 +78,14 @@ def is_test_file(path: str | None) -> bool:
         return True
     if base.endswith(_TEST_FILE_SUFFIXES):
         return True
-    if base.startswith("test_") and base.endswith(".py"):  # pytest test_*.py
+    # Require the full path to start with ``test_`` (repo-root convention) so a
+    # production file like ``tree_sitter_analyzer/mcp/tools/test_gap_tool.py``
+    # is NOT mis-detected: the basename starts with ``test_`` but the file sits
+    # inside a production package, not a test tree.  Files at the repo root
+    # (``test_thing.py``, ``test_gap_analyzer.py``) are still detected correctly.
+    if p.startswith("test_") and base.endswith(
+        ".py"
+    ):  # pytest test_*.py, repo-root only
         return True
     return False
 
