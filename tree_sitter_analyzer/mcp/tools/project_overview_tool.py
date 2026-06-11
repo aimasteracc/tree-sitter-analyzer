@@ -521,22 +521,23 @@ def _build_agent_summary(
 def _overview_risk_to_verdict(risk: str) -> str:
     """Map project-overview risk to the cross-tool verdict vocabulary.
 
-    N4 (round-27): keeps the verdict alphabet aligned with
-    ``project_health`` and the modification-guard family. Overview's
-    risk is inferred from observable signals (file sizes, language
-    spread) — it does NOT make a per-edit judgement — so the verdict
-    here describes the project's state, not a specific change.
+    N4 (round-27) + Item 3 (#446): verdict should reflect whether the code
+    NEEDS review, not whether the tool has checked health yet.
 
-    - ``high`` → ``REVIEW`` (oversized files / health alerts — agent
-      should look closer before editing)
+    - ``high`` → ``REVIEW`` (oversized files / health alerts — code needs review)
     - ``medium`` → ``CAUTION`` (some signals worth a glance)
     - ``low`` → ``SAFE`` (clean project, no red flags)
+    - ``unknown`` (when include_health=false and no observable signals) → ``INFO``
+      (plain informational overview, not a review prompt)
     """
     risk_lower = (risk or "").lower()
     if risk_lower == "high":
         return "REVIEW"
     if risk_lower == "medium":
         return "CAUTION"
+    if risk_lower == "unknown":
+        # Item 3: plain informational overview (no health check) → INFO, not REVIEW
+        return "INFO"
     return "SAFE"
 
 
