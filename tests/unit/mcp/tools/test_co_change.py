@@ -173,6 +173,28 @@ def test_no_git_repo_returns_empty() -> None:
     assert result["co_changed_files"] == []
 
 
+def test_git_log_failure_after_head_returns_empty() -> None:
+    """HEAD rev-parse succeeds but git log fails -> graceful empty result.
+
+    Covers the rc_log != 0 path (line 188-190): different from the HEAD-failure
+    path -- here git is available but log subprocess fails (e.g. shallow clone).
+    """
+    head_sha = "a1" * 20
+    with patch(
+        "tree_sitter_analyzer.mcp.tools.utils.co_change._run_git"
+    ) as mock_run_git:
+        mock_run_git.side_effect = [
+            (0, head_sha),  # rev-parse HEAD succeeds
+            (128, ""),  # git log fails (e.g. shallow clone error)
+        ]
+        _CO_CHANGE_CACHE.clear()
+        result = _compute_co_change("/shallow/repo", "src/foo.py")
+
+    assert result["success"] is True
+    assert result["commits_analyzed"] == 0
+    assert result["co_changed_files"] == []
+
+
 # ---------------------------------------------------------------------------
 # 3. Cache: second call with same (project, file, HEAD) skips subprocess
 # ---------------------------------------------------------------------------
@@ -1301,3 +1323,305 @@ def test_handle_nav_actions_returns_none_when_no_flags() -> None:
 
     result = handle_nav_actions(args, ctx)
     assert result is None
+
+
+# ---------------------------------------------------------------------------
+# 31. Small-sample guard: n < MIN_COMMITS_FOR_COUPLING_ANALYSIS
+#     When commits_analyzed < floor, next_step must say "insufficient history"
+#     and NEVER say "Safe to edit in isolation".
+# ---------------------------------------------------------------------------
+
+
+def test_small_sample_guard_insufficient_history_next_step() -> None:
+    """n=3 commits -> next_step must contain 'insufficient history' and NOT 'Safe to edit'.
+
+    Exact chosen minimum: 10 commits (MIN_COMMITS_FOR_COUPLING_ANALYSIS).
+    Rationale: association lift P(A∩B)/(P(A)·P(B)) is statistically
+    meaningless at n<10; a null result at n=3 must not claim independence.
+    The verdict/next_step must acknowledge it: no evidence ≠ evidence of absence.
+    """
+    # 3 commits, target in all 3, no peer meets min_shared=3 -> coupled=[]
+    # BUT n=3 < 10 -> must say "insufficient history", NOT "Safe to edit in isolation"
+    commits = [
+        (_sha(0), ["src/target.py", "src/peer_a.py"]),
+        (_sha(1), ["src/target.py", "src/peer_b.py"]),
+        (_sha(2), ["src/target.py"]),  # solo
+    ]
+    git_log_out = _make_git_log(commits)
+    head_sha = "31" * 20
+
+    with patch(
+        "tree_sitter_analyzer.mcp.tools.utils.co_change._run_git"
+    ) as mock_run_git:
+        mock_run_git.side_effect = [
+            (0, head_sha),
+            (0, git_log_out),
+        ]
+        _CO_CHANGE_CACHE.clear()
+        result = _compute_co_change(
+            "/fake/repo", "src/target.py", max_commits=500, min_shared=3
+        )
+
+    assert result["success"] is True
+    assert result["commits_analyzed"] == 3
+    next_step: str = result["agent_summary"]["next_step"]
+    assert "insufficient history" in next_step.lower()
+    assert "Safe to edit in isolation" not in next_step
+
+
+def test_small_sample_guard_adequate_sample_may_say_safe() -> None:
+    """n=10 commits AND no candidates at all -> 'Safe to edit in isolation' IS allowed.
+
+    The guard only blocks the safe verdict when the sample is too small.
+    An adequate sample with truly no co-changing peers may conclude safety.
+    """
+    # 10 commits, target always solo -> coupled=[], but n=10 >= 10
+    commits = [(_sha(i), ["src/target.py"]) for i in range(10)]
+    git_log_out = _make_git_log(commits)
+    head_sha = "32" * 20
+
+    with patch(
+        "tree_sitter_analyzer.mcp.tools.utils.co_change._run_git"
+    ) as mock_run_git:
+        mock_run_git.side_effect = [
+            (0, head_sha),
+            (0, git_log_out),
+        ]
+        _CO_CHANGE_CACHE.clear()
+        result = _compute_co_change(
+            "/fake/repo", "src/target.py", max_commits=500, min_shared=3
+        )
+
+    assert result["success"] is True
+    assert result["commits_analyzed"] == 10
+    next_step: str = result["agent_summary"]["next_step"]
+    assert "Safe to edit in isolation" in next_step
+
+
+# ---------------------------------------------------------------------------
+# 32. Filtered-evidence visibility: candidates_below_threshold
+#     Empty co_changed_files with nonzero below-threshold candidates must
+#     carry candidates_below_threshold == exact count in the result.
+# ---------------------------------------------------------------------------
+
+
+def test_candidates_below_threshold_exact_count() -> None:
+    """Adequate sample (n=20) but peers below min_shared=3 -> candidates_below_threshold.
+
+    3 peers each share exactly 2 commits with target (< min_shared=3 -> filtered).
+    candidates_below_threshold must be exactly 3.
+    co_changed_files must be empty (none cleared the threshold).
+    """
+    # 20 total commits: target in all 20
+    # peer_a, peer_b, peer_c each share exactly 2 commits with target
+    commits: list[tuple[str, list[str]]] = []
+    # Commits 0-1: target + peer_a
+    commits.append((_sha(0), ["src/target.py", "src/peer_a.py"]))
+    commits.append((_sha(1), ["src/target.py", "src/peer_a.py"]))
+    # Commits 2-3: target + peer_b
+    commits.append((_sha(2), ["src/target.py", "src/peer_b.py"]))
+    commits.append((_sha(3), ["src/target.py", "src/peer_b.py"]))
+    # Commits 4-5: target + peer_c
+    commits.append((_sha(4), ["src/target.py", "src/peer_c.py"]))
+    commits.append((_sha(5), ["src/target.py", "src/peer_c.py"]))
+    # Commits 6-19: target solo
+    for i in range(6, 20):
+        commits.append((_sha(i), ["src/target.py"]))
+
+    git_log_out = _make_git_log(commits)
+    head_sha = "33" * 20
+
+    with patch(
+        "tree_sitter_analyzer.mcp.tools.utils.co_change._run_git"
+    ) as mock_run_git:
+        mock_run_git.side_effect = [
+            (0, head_sha),
+            (0, git_log_out),
+        ]
+        _CO_CHANGE_CACHE.clear()
+        result = _compute_co_change(
+            "/fake/repo", "src/target.py", max_commits=500, min_shared=3
+        )
+
+    assert result["success"] is True
+    assert result["co_changed_files"] == []
+    assert result["candidates_below_threshold"] == 3
+
+
+def test_candidates_below_threshold_zero_when_no_peers_at_all() -> None:
+    """No peers at all -> candidates_below_threshold must be exactly 0."""
+    # 15 commits, target always solo
+    commits = [(_sha(i), ["src/target.py"]) for i in range(15)]
+    git_log_out = _make_git_log(commits)
+    head_sha = "34" * 20
+
+    with patch(
+        "tree_sitter_analyzer.mcp.tools.utils.co_change._run_git"
+    ) as mock_run_git:
+        mock_run_git.side_effect = [
+            (0, head_sha),
+            (0, git_log_out),
+        ]
+        _CO_CHANGE_CACHE.clear()
+        result = _compute_co_change(
+            "/fake/repo", "src/target.py", max_commits=500, min_shared=3
+        )
+
+    assert result["success"] is True
+    assert result["candidates_below_threshold"] == 0
+
+
+def test_candidates_below_threshold_mixed_above_and_below() -> None:
+    """peer_a cleared threshold (shared=5), peer_b filtered (shared=2).
+    candidates_below_threshold == 1 (only peer_b); co_changed_files has peer_a.
+    """
+    # 20 commits total
+    # peer_a: shared=5 with target -> above min_shared=3 -> in co_changed_files
+    # peer_b: shared=2 with target -> below min_shared=3 -> counted in candidates_below_threshold
+    commits: list[tuple[str, list[str]]] = []
+    # Commits 0-4: target + peer_a (5 shared)
+    for i in range(5):
+        commits.append((_sha(i), ["src/target.py", "src/peer_a.py"]))
+    # Commits 5-6: target + peer_b (2 shared)
+    commits.append((_sha(5), ["src/target.py", "src/peer_b.py"]))
+    commits.append((_sha(6), ["src/target.py", "src/peer_b.py"]))
+    # Commits 7-19: target solo
+    for i in range(7, 20):
+        commits.append((_sha(i), ["src/target.py"]))
+
+    git_log_out = _make_git_log(commits)
+    head_sha = "35" * 20
+
+    with patch(
+        "tree_sitter_analyzer.mcp.tools.utils.co_change._run_git"
+    ) as mock_run_git:
+        mock_run_git.side_effect = [
+            (0, head_sha),
+            (0, git_log_out),
+        ]
+        _CO_CHANGE_CACHE.clear()
+        result = _compute_co_change(
+            "/fake/repo", "src/target.py", max_commits=500, min_shared=3
+        )
+
+    assert result["success"] is True
+    assert len(result["co_changed_files"]) == 1
+    assert result["co_changed_files"][0]["file"] == "src/peer_a.py"
+    assert result["candidates_below_threshold"] == 1
+
+
+# ---------------------------------------------------------------------------
+# 33. Filtered-evidence next_step: adequate sample with filtered candidates
+#     must say "filtered" / acknowledge sub-threshold signals exist.
+# ---------------------------------------------------------------------------
+
+
+def test_adequate_sample_filtered_candidates_next_step_says_filtered() -> None:
+    """Adequate n=20, co_changed_files=[], candidates_below_threshold=3 ->
+    next_step must NOT say 'Safe to edit in isolation'.
+    It must acknowledge the filtered evidence.
+    """
+    # Same setup as test_candidates_below_threshold_exact_count
+    commits: list[tuple[str, list[str]]] = []
+    commits.append((_sha(0), ["src/target.py", "src/peer_a.py"]))
+    commits.append((_sha(1), ["src/target.py", "src/peer_a.py"]))
+    commits.append((_sha(2), ["src/target.py", "src/peer_b.py"]))
+    commits.append((_sha(3), ["src/target.py", "src/peer_b.py"]))
+    commits.append((_sha(4), ["src/target.py", "src/peer_c.py"]))
+    commits.append((_sha(5), ["src/target.py", "src/peer_c.py"]))
+    for i in range(6, 20):
+        commits.append((_sha(i), ["src/target.py"]))
+
+    git_log_out = _make_git_log(commits)
+    head_sha = "36" * 20
+
+    with patch(
+        "tree_sitter_analyzer.mcp.tools.utils.co_change._run_git"
+    ) as mock_run_git:
+        mock_run_git.side_effect = [
+            (0, head_sha),
+            (0, git_log_out),
+        ]
+        _CO_CHANGE_CACHE.clear()
+        result = _compute_co_change(
+            "/fake/repo", "src/target.py", max_commits=500, min_shared=3
+        )
+
+    next_step: str = result["agent_summary"]["next_step"]
+    assert "Safe to edit in isolation" not in next_step
+    # Exact pin (Codex P2): the filtered-candidate COUNT must be surfaced —
+    # the deterministic fixture filters exactly 3 candidates.
+    assert result["candidates_below_threshold"] == 3
+    assert "3 candidate(s) were filtered" in next_step
+
+
+# ---------------------------------------------------------------------------
+# 34. CLI parity: result carries candidates_below_threshold when dispatched
+#     through nav facade (not just _compute_co_change directly).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_nav_facade_co_change_carries_candidates_below_threshold() -> None:
+    """nav facade co_change result must include candidates_below_threshold field."""
+    # 20 commits, 2 sub-threshold peers
+    commits: list[tuple[str, list[str]]] = []
+    for i in range(2):
+        commits.append((_sha(i), ["src/target.py", "src/peer_a.py"]))
+    for i in range(2, 4):
+        commits.append((_sha(i), ["src/target.py", "src/peer_b.py"]))
+    for i in range(4, 20):
+        commits.append((_sha(i), ["src/target.py"]))
+
+    git_log_out = _make_git_log(commits)
+    head_sha = "37" * 20
+
+    with patch(
+        "tree_sitter_analyzer.mcp.tools.utils.co_change._run_git"
+    ) as mock_run_git:
+        mock_run_git.side_effect = [
+            (0, head_sha),
+            (0, git_log_out),
+        ]
+        _CO_CHANGE_CACHE.clear()
+        facade = build_nav_facade(project_root=None)
+        result = await facade.execute(
+            {
+                "action": "co_change",
+                "file_path": "src/target.py",
+                "output_format": "json",
+            }
+        )
+
+    assert result["success"] is True
+    assert "candidates_below_threshold" in result
+
+
+# ---------------------------------------------------------------------------
+# 36. Codex P2 (#495): coupled peers from a too-small sample carry the
+#     small-sample caveat instead of bypassing the guard.
+# ---------------------------------------------------------------------------
+
+
+def test_coupled_peers_small_sample_carries_caveat():
+    """n=3 with a peer meeting min_shared=3 must lead with the caution."""
+    commits = [(_sha(i), ["a.py", "b.py"]) for i in range(3)]
+    git_log_out = _make_git_log(commits)
+    head_sha = "b" * 40
+
+    with patch(
+        "tree_sitter_analyzer.mcp.tools.utils.co_change._run_git"
+    ) as mock_run_git:
+        mock_run_git.side_effect = [
+            (0, head_sha),
+            (0, git_log_out),
+        ]
+        _CO_CHANGE_CACHE.clear()
+        result = _compute_co_change("/fake/repo", "a.py")
+
+    assert result["commits_analyzed"] == 3
+    files = [c["file"] for c in result["co_changed_files"]]
+    assert files == ["b.py"]
+    next_step = result["agent_summary"]["next_step"]
+    assert next_step.startswith("Caution: small sample (n=3 commits")
+    assert "statistically unreliable" in next_step

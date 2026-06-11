@@ -34,6 +34,13 @@ from .change_impact_git import _run_git
 _CO_CHANGE_CACHE_MAXSIZE = 256
 _CO_CHANGE_CACHE: OrderedDict[tuple[str, str, str], dict[str, Any]] = OrderedDict()
 
+# Minimum commits touching the target file required before the result may
+# claim "Safe to edit in isolation".  Below this floor the null-result is
+# statistically meaningless: a 3-commit sample cannot prove independence.
+# Chosen at 10: association lift P(A∩B)/(P(A)·P(B)) is unreliable at n<10
+# (RFC-0014 §honesty, issue #469).
+MIN_COMMITS_FOR_COUPLING_ANALYSIS = 10
+
 
 def _co_change_cache_get(
     key: tuple[str, str, str],
@@ -79,21 +86,63 @@ def _empty_co_change_result(target_file: str, max_commits: int) -> dict[str, Any
 def _build_co_change_summary(
     target_file: str,
     coupled: list[dict[str, Any]],
+    commits_analyzed: int,
+    candidates_below_threshold: int,
 ) -> dict[str, Any]:
-    """Build the agent_summary dict for a co_change result."""
-    if not coupled:
-        return {
-            "next_step": (
-                f"{target_file} has no strongly coupled peer files in this window.  "
-                "Safe to edit in isolation."
-            ),
-        }
-    top = coupled[0]["file"]
-    lift = coupled[0]["lift"]
-    return {
-        "next_step": (
+    """Build the agent_summary dict for a co_change result.
+
+    Honesty layering (issue #469):
+    1. Small-sample guard: n < MIN_COMMITS_FOR_COUPLING_ANALYSIS -> say
+       "insufficient history"; NEVER "Safe to edit in isolation".
+    2. Filtered-evidence visibility: empty co_changed_files with nonzero
+       candidates_below_threshold -> acknowledge filtered signals exist.
+    3. "Safe to edit in isolation" only when: n >= floor AND no candidates.
+    """
+    if coupled:
+        top = coupled[0]["file"]
+        lift = coupled[0]["lift"]
+        next_step = (
             f"When editing {target_file}, also review {top} (lift={lift}).  "
             f"{len(coupled)} co-changed peer(s) total."
+        )
+        # Codex P2 (#495): coupled peers found from a too-small sample are
+        # still statistically unreliable — lead with the caveat instead of
+        # bypassing the guard via this early return.
+        if commits_analyzed < MIN_COMMITS_FOR_COUPLING_ANALYSIS:
+            next_step = (
+                f"Caution: small sample (n={commits_analyzed} commits, minimum "
+                f"is {MIN_COMMITS_FOR_COUPLING_ANALYSIS}) — coupling signals "
+                f"below are statistically unreliable.  " + next_step
+            )
+        return {"next_step": next_step}
+
+    # No coupled files above threshold.
+    if commits_analyzed < MIN_COMMITS_FOR_COUPLING_ANALYSIS:
+        return {
+            "next_step": (
+                f"Insufficient history for coupling analysis "
+                f"(n={commits_analyzed} commits in window, minimum is "
+                f"{MIN_COMMITS_FOR_COUPLING_ANALYSIS}).  "
+                "Treat as unknown, not safe — the sample is too small to "
+                "distinguish no coupling from undetected coupling."
+            ),
+        }
+
+    if candidates_below_threshold > 0:
+        return {
+            "next_step": (
+                f"{target_file} has no strongly coupled peers above the "
+                f"co-occurrence threshold, but {candidates_below_threshold} "
+                f"candidate(s) were filtered as below-threshold weak signals.  "
+                "Review those manually before editing in isolation."
+            ),
+        }
+
+    # Adequate sample AND truly no candidates at all.
+    return {
+        "next_step": (
+            f"{target_file} has no strongly coupled peer files in this window.  "
+            "Safe to edit in isolation."
         ),
     }
 
@@ -199,11 +248,16 @@ def _compute_co_change(
     target_freq_count = len(target_shas)
 
     coupled: list[dict[str, Any]] = []
+    candidates_below_threshold = 0
     for peer, peer_all_shas in file_commit_sets.items():
         # shared = commits where BOTH target and peer changed
         shared_shas = target_shas & peer_all_shas
         shared = len(shared_shas)
         if shared < min_shared:
+            # Count peers that co-changed but didn't clear the threshold
+            # (shared >= 1 means there was genuine co-change, just too rare).
+            if shared >= 1:
+                candidates_below_threshold += 1
             continue
         peer_freq_count = len(peer_all_shas)  # peer's TOTAL commits in this window
         denom = target_freq_count * peer_freq_count
@@ -220,15 +274,19 @@ def _compute_co_change(
     coupled.sort(key=lambda x: (-x["lift"], -x["shared_commits"]))
     truncated = len(coupled) > max_results
     top = coupled[:max_results]
+    commits_analyzed = len(target_shas)
 
     result = {
         "success": True,
         "target": target_file,
-        "commits_analyzed": len(target_shas),
+        "commits_analyzed": commits_analyzed,
         "window": f"last {max_commits} commits",
         "co_changed_files": top,
+        "candidates_below_threshold": candidates_below_threshold,
         "truncated": truncated,
-        "agent_summary": _build_co_change_summary(target_file, top),
+        "agent_summary": _build_co_change_summary(
+            target_file, top, commits_analyzed, candidates_below_threshold
+        ),
     }
     _co_change_cache_put(cache_key, result)
     return result
