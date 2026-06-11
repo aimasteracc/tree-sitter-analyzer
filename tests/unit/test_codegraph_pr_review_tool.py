@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import tempfile
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -15,6 +15,7 @@ from tree_sitter_analyzer.mcp.tools.codegraph_pr_review_tool import (
     PRReviewResult,
     _build_recommendations,
     _compute_verdict,
+    _filter_affected_by_language,
     _parse_diff_files,
     _risk_to_score,
     _score_to_risk,
@@ -305,3 +306,225 @@ class TestCodeGraphPRReviewTool:
         assert result["success"] is True
         assert result["files_reviewed"] == 0
         assert result.get("verdict") == "NOT_FOUND"
+
+
+# ------------------------------------------------------------------
+# Issue #450 — same-name phantom edges across languages must be dropped
+# ------------------------------------------------------------------
+
+
+class TestPhantomEdgeFilter:
+    """RED-first tests for _filter_affected_by_language (Issue #450).
+
+    Scenario: a PR touches kotlin_helpers.kt (a real Kotlin file).
+    The call graph returns:
+      - REAL upstream: kotlin_caller.kt → extract_kotlin_function  (kotlin, specific name)
+      - PHANTOM upstream: swift_file.swift → extract_kotlin_function (swift, cross-lang)
+      - PHANTOM downstream: toon_encoder.py → encode (python, cross-lang; also known-generic)
+      - AMBIGUOUS upstream: helper.kt → some_generic  (kotlin, same-lang but count ≥ threshold)
+
+    After filtering:
+      - affected_functions contains exactly ["kotlin_caller.kt extract_kotlin_function"]
+      - stats.cross_language_edges_dropped accounts for cross-lang phantoms
+      - stats.ambiguous_name_edges_dropped accounts for dropped generic names
+    """
+
+    def _make_func(
+        self,
+        name: str,
+        file: str,
+        language: str,
+        direction: str = "upstream",
+    ) -> dict:
+        return {
+            "function": name,
+            "file": file,
+            "language": language,
+            "direction": direction,
+            "line": 1,
+        }
+
+    def test_same_language_specific_name_kept(self):
+        """A same-language upstream edge with a specific (non-generic) name must survive."""
+        changed_langs = {"kotlin"}
+        funcs = [
+            self._make_func("extract_kotlin_function", "kotlin_caller.kt", "kotlin")
+        ]
+        kept, stats = _filter_affected_by_language(
+            funcs, changed_langs, name_file_count={}
+        )
+        function_names = [f["function"] for f in kept]
+        assert function_names == ["extract_kotlin_function"]
+        assert stats["cross_language_edges_dropped"] == 0
+        assert stats["ambiguous_name_edges_dropped"] == 0
+
+    def test_cross_language_phantom_dropped(self):
+        """A swift phantom for a kotlin change must be dropped (cross-language gate)."""
+        changed_langs = {"kotlin"}
+        funcs = [
+            self._make_func("extract_kotlin_function", "kotlin_caller.kt", "kotlin"),
+            self._make_func("extract_kotlin_function", "_swift_plugin.py", "swift"),
+        ]
+        kept, stats = _filter_affected_by_language(
+            funcs, changed_langs, name_file_count={}
+        )
+        assert len(kept) == 1
+        assert kept[0]["file"] == "kotlin_caller.kt"
+        assert stats["cross_language_edges_dropped"] == 1
+        assert stats["ambiguous_name_edges_dropped"] == 0
+
+    def test_ambiguous_count_name_dropped(self):
+        """A same-language edge whose bare name exists in ≥ threshold files is
+        dropped with ambiguous_name_edges_dropped incremented."""
+        changed_langs = {"kotlin"}
+        # "some_util" appears in 5 files — above threshold
+        name_file_count = {"some_util": 5}
+        funcs = [
+            self._make_func("extract_kotlin_function", "kotlin_caller.kt", "kotlin"),
+            self._make_func(
+                "some_util", "helper.kt", "kotlin"
+            ),  # same-lang but ambiguous
+        ]
+        kept, stats = _filter_affected_by_language(
+            funcs, changed_langs, name_file_count=name_file_count
+        )
+        kept_names = [f["function"] for f in kept]
+        assert kept_names == ["extract_kotlin_function"]
+        assert stats["ambiguous_name_edges_dropped"] == 1
+        assert stats["cross_language_edges_dropped"] == 0
+
+    def test_known_generic_callback_name_dropped(self):
+        """A name in _KNOWN_GENERIC_CALLBACK_NAMES is dropped even below count threshold."""
+        from tree_sitter_analyzer.mcp.tools.codegraph_pr_review_tool import (
+            _KNOWN_GENERIC_CALLBACK_NAMES,
+        )
+
+        changed_langs = {"python"}
+        # "get_node_text" is in KNOWN_GENERIC_CALLBACK_NAMES; count below threshold
+        funcs = [
+            self._make_func("extract_kotlin_function", "kotlin_caller.py", "python"),
+            self._make_func("get_node_text", "_swift_extractor.py", "python"),
+        ]
+        kept, stats = _filter_affected_by_language(
+            funcs, changed_langs, name_file_count={}
+        )
+        assert len(kept) == 1
+        assert kept[0]["function"] == "extract_kotlin_function"
+        assert stats["ambiguous_name_edges_dropped"] == 1
+        assert "get_node_text" in _KNOWN_GENERIC_CALLBACK_NAMES
+
+    def test_full_scenario_exact_pin(self):
+        """Integration scenario: kotlin change with real caller + swift phantom
+        + python downstream phantom (known-generic) + ambiguous same-lang edge.
+
+        After filtering: exactly ["kotlin_caller.kt extract_kotlin_function"] kept.
+        cross_language_edges_dropped == 1 (swift phantom)
+        ambiguous_name_edges_dropped == 2 (known-generic encode + count-generic some_util)
+        """
+        changed_langs = {"kotlin"}
+        # "some_util" has count=5 (above threshold); "encode" is in KNOWN list
+        name_file_count = {"some_util": 5}
+        funcs = [
+            # REAL — same language, non-ambiguous, specific name
+            self._make_func(
+                "extract_kotlin_function",
+                "kotlin_caller.kt",
+                "kotlin",
+                direction="upstream",
+            ),
+            # PHANTOM — swift, different language family
+            self._make_func(
+                "extract_kotlin_function",
+                "_swift_plugin.py",
+                "swift",
+                direction="upstream",
+            ),
+            # PHANTOM — known generic callback name (encode)
+            self._make_func("encode", "some_util.kt", "kotlin", direction="downstream"),
+            # AMBIGUOUS — same lang but count ≥ threshold
+            self._make_func("some_util", "helper.kt", "kotlin", direction="upstream"),
+        ]
+        kept, stats = _filter_affected_by_language(
+            funcs, changed_langs, name_file_count=name_file_count
+        )
+        # Exact pin: only the specific kotlin edge survives
+        assert len(kept) == 1
+        assert kept[0]["file"] == "kotlin_caller.kt"
+        assert kept[0]["function"] == "extract_kotlin_function"
+        assert stats["cross_language_edges_dropped"] == 1
+        assert stats["ambiguous_name_edges_dropped"] == 2
+
+    def test_empty_language_passes_through(self):
+        """An edge with empty/unknown language must not be dropped (unknown > wrong)."""
+        changed_langs = {"kotlin"}
+        funcs = [self._make_func("mystery_specific_func", "some_file.ext", "")]
+        kept, stats = _filter_affected_by_language(
+            funcs, changed_langs, name_file_count={}
+        )
+        assert len(kept) == 1
+        assert stats["cross_language_edges_dropped"] == 0
+
+    def test_analyze_call_graph_impact_filters_phantoms(self):
+        """End-to-end: _analyze_call_graph_impact populates stats fields
+        and excludes cross-language phantom entries.
+
+        The method now iterates _func_by_file + caller_refs_of/callee_refs_of
+        (not file_impact) so we mock those instead.
+        """
+        from tree_sitter_analyzer.call_graph import FunctionRef
+
+        tmpdir = _make_project(
+            ("kotlin_helpers.kt", "fun extract_kotlin_function() {}\n"),
+        )
+        tool = CodeGraphPRReviewTool(tmpdir)
+
+        # The one "real" function in the changed file (non-generic name)
+        anchor_ref = FunctionRef(
+            file_path="kotlin_helpers.kt",
+            name="extract_kotlin_function",
+            start_line=1,
+            language="kotlin",
+        )
+        # Real kotlin upstream caller
+        real_caller = FunctionRef(
+            file_path="kotlin_caller.kt",
+            name="call_extract",
+            start_line=5,
+            language="kotlin",
+        )
+        # Phantom swift upstream caller (cross-language)
+        phantom_caller = FunctionRef(
+            file_path="_swift_extractor.py",
+            name="call_extract",
+            start_line=3,
+            language="swift",
+        )
+        # Downstream callee: known-generic name "encode"
+        generic_callee = FunctionRef(
+            file_path="toon_encoder.py",
+            name="encode",
+            start_line=10,
+            language="kotlin",  # same language — would pass lang gate, caught by generic gate
+        )
+
+        mock_graph = MagicMock()
+        mock_graph.build = MagicMock()
+        mock_graph.function_refs = MagicMock(return_value=[anchor_ref])
+        mock_graph._func_by_file = {"kotlin_helpers.kt": [anchor_ref]}
+        mock_graph.caller_refs_of = MagicMock(
+            return_value=[real_caller, phantom_caller]
+        )
+        mock_graph.callee_refs_of = MagicMock(return_value=[generic_callee])
+
+        with patch.object(tool, "_get_call_graph", return_value=mock_graph):
+            result = tool._analyze_call_graph_impact(["kotlin_helpers.kt"])
+
+        kept = result["affected_functions"]
+        stats = result["stats"]
+
+        # Real kotlin upstream survives; swift phantom dropped (cross-lang gate).
+        # encode dropped (known-generic gate, rule 3).
+        assert len(kept) == 1
+        assert kept[0]["file"] == "kotlin_caller.kt"
+        assert stats["cross_language_edges_dropped"] == 1
+        assert stats["ambiguous_name_edges_dropped"] == 1
