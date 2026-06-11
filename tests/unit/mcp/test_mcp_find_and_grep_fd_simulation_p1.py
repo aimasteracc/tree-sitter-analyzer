@@ -76,7 +76,7 @@ async def test_fd_02_multi_file_search(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 0
+    assert result["count"] == 0
 
 
 @pytest.mark.asyncio
@@ -149,7 +149,7 @@ async def test_fd_04_explicit_root_path(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 0
+    assert result["count"] == 2
 
 
 @pytest.mark.asyncio
@@ -185,7 +185,7 @@ async def test_fd_05_and_basic_simulation(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 0
+    assert result["count"] == 0
 
 
 @pytest.mark.asyncio
@@ -212,7 +212,7 @@ async def test_fd_06_and_empty_pattern_simulation(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 0
+    assert result["count"] == 0
 
 
 @pytest.mark.asyncio
@@ -240,7 +240,9 @@ async def test_fd_07_and_bad_pattern_simulation(tmp_path, monkeypatch):
     )
 
     # Should handle bad patterns gracefully
-    assert result["success"] is False or result["count"] >= 0
+    assert (
+        result["success"] is False or result["count"] >= 0
+    )  # ratchet: nondeterministic — success=False short-circuits; count key absent on error path
 
 
 @pytest.mark.asyncio
@@ -319,7 +321,7 @@ async def test_fd_09_and_plus_extension(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 0
+    assert result["count"] == 0
 
 
 @pytest.mark.asyncio
@@ -352,4 +354,4 @@ async def test_fd_10_and_plus_type(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 0
+    assert result["count"] == 0

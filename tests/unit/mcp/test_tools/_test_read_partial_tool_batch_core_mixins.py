@@ -86,7 +86,9 @@ class ReadPartialToolExecuteBatchValidationMixin:
         assert result["count_files"] == 1
         # Check if results key exists
         if "results" in result:
-            assert len(result["results"][0]["errors"]) > 0
+            assert (
+                len(result["results"][0]["errors"]) > 0
+            )  # ratchet: nondeterministic — 'results' key absent in TOON output; branch never executes in default format
 
     @pytest.mark.asyncio
     async def test_execute_batch_invalid_file_path(self):
@@ -99,7 +101,9 @@ class ReadPartialToolExecuteBatchValidationMixin:
         result = await tool._execute_batch(args)
         assert result["count_files"] == 1
         if "results" in result:
-            assert len(result["results"][0]["errors"]) > 0
+            assert (
+                len(result["results"][0]["errors"]) > 0
+            )  # ratchet: nondeterministic — 'results' key absent in TOON output; branch never executes in default format
 
     @pytest.mark.asyncio
     async def test_execute_batch_invalid_sections(self):
@@ -112,7 +116,9 @@ class ReadPartialToolExecuteBatchValidationMixin:
         result = await tool._execute_batch(args)
         assert result["count_files"] == 1
         if "results" in result:
-            assert len(result["results"][0]["errors"]) > 0
+            assert (
+                len(result["results"][0]["errors"]) > 0
+            )  # ratchet: nondeterministic — 'results' key absent in TOON output; branch never executes in default format
 
     @pytest.mark.asyncio
     async def test_execute_batch_too_many_sections_per_file(self):
@@ -163,7 +169,9 @@ class ReadPartialToolExecuteBatchProcessingMixin:
             result = await tool._execute_batch(args)
         assert result["count_files"] == 1
         if "results" in result:
-            assert len(result["results"][0]["errors"]) > 0
+            assert (
+                len(result["results"][0]["errors"]) > 0
+            )  # ratchet: nondeterministic — 'results' key absent in TOON output; branch never executes in default format
 
     @pytest.mark.asyncio
     async def test_execute_batch_invalid_section_entry(self):
@@ -189,7 +197,9 @@ class ReadPartialToolExecuteBatchProcessingMixin:
                 result = await tool._execute_batch(args)
             assert result["count_files"] == 1
             if "results" in result:
-                assert len(result["results"][0]["errors"]) > 0
+                assert (
+                    len(result["results"][0]["errors"]) > 0
+                )  # ratchet: nondeterministic — 'results' key absent in TOON output; branch never executes in default format
         finally:
             if test_file.exists():
                 test_file.unlink()
@@ -218,7 +228,9 @@ class ReadPartialToolExecuteBatchProcessingMixin:
                 result = await tool._execute_batch(args)
             assert result["count_files"] == 1
             if "results" in result:
-                assert len(result["results"][0]["errors"]) > 0
+                assert (
+                    len(result["results"][0]["errors"]) > 0
+                )  # ratchet: nondeterministic — 'results' key absent in TOON output; branch never executes in default format
         finally:
             if test_file.exists():
                 test_file.unlink()
@@ -247,7 +259,9 @@ class ReadPartialToolExecuteBatchProcessingMixin:
                 result = await tool._execute_batch(args)
             assert result["count_files"] == 1
             if "results" in result:
-                assert len(result["results"][0]["errors"]) > 0
+                assert (
+                    len(result["results"][0]["errors"]) > 0
+                )  # ratchet: nondeterministic — 'results' key absent in TOON output; branch never executes in default format
         finally:
             if test_file.exists():
                 test_file.unlink()
@@ -277,10 +291,11 @@ class ReadPartialToolExecuteBatchProcessingMixin:
                 result = await tool._execute_batch(args)
             assert result["success"] is True
             assert result["count_files"] == 1
-            # count_sections may be less than expected if some sections fail
-            assert result["count_sections"] >= 1
+            assert result["count_sections"] == 2
             if "results" in result:
-                assert len(result["results"][0]["sections"]) >= 1
+                assert (
+                    len(result["results"][0]["sections"]) >= 1
+                )  # ratchet: nondeterministic — 'results' key absent in TOON output; branch never executes in default format
         finally:
             if test_file.exists():
                 test_file.unlink()

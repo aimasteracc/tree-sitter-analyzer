@@ -54,7 +54,7 @@ async def test_fd_11_and_plus_glob(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 0
+    assert result["count"] == 0
 
 
 @pytest.mark.asyncio
@@ -94,7 +94,7 @@ async def test_fd_12_and_plus_fixed_strings(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 0
+    assert result["count"] == 0
 
 
 @pytest.mark.asyncio
@@ -139,7 +139,7 @@ async def test_fd_13_and_plus_ignore_case(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 0
+    assert result["count"] == 0
 
 
 @pytest.mark.asyncio
@@ -170,7 +170,7 @@ async def test_fd_14_and_plus_case_sensitive(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 0
+    assert result["count"] == 0
 
 
 @pytest.mark.asyncio
@@ -217,7 +217,7 @@ async def test_fd_15_and_plus_full_path(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 0
+    assert result["count"] == 0
 
 
 @pytest.mark.asyncio
@@ -246,7 +246,7 @@ async def test_fd_59_exec_command_simulation(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 2
+    assert result["count"] == 2
 
 
 @pytest.mark.asyncio
@@ -274,7 +274,7 @@ async def test_fd_60_exec_multi_command_simulation(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 2
+    assert result["count"] == 2
 
 
 @pytest.mark.asyncio
@@ -302,7 +302,7 @@ async def test_fd_61_exec_batch_simulation(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 5
+    assert result["count"] == 5
 
 
 @pytest.mark.asyncio
@@ -335,7 +335,7 @@ async def test_fd_62_exec_batch_multi_simulation(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 3
+    assert result["count"] == 3
 
 
 @pytest.mark.asyncio
@@ -394,4 +394,4 @@ async def test_fd_64_exec_with_separator_simulation(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 2
+    assert result["count"] == 2

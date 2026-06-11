@@ -71,7 +71,9 @@ async def test_fd_44_follow_symlinks(tmp_path, monkeypatch):
     )
 
     assert result1["success"] is True
-    assert result1["count"] >= 3
+    assert (
+        result1["count"] >= 3
+    )  # ratchet: nondeterministic — 3 without symlinks (Windows), 5 with symlinks (macOS/Linux)
 
     # Test following symlinks
     result2 = await tool.execute(
@@ -84,7 +86,9 @@ async def test_fd_44_follow_symlinks(tmp_path, monkeypatch):
     )
 
     assert result2["success"] is True
-    assert result2["count"] >= 3
+    assert (
+        result2["count"] >= 3
+    )  # ratchet: nondeterministic — 3 without symlinks (Windows), 6 with symlinks (macOS/Linux)
 
 
 @pytest.mark.asyncio
@@ -118,7 +122,7 @@ async def test_fd_45_file_system_boundaries(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 3
+    assert result["count"] == 3
 
 
 @pytest.mark.asyncio
@@ -164,7 +168,9 @@ async def test_fd_46_follow_broken_symlink(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 0
+    assert (
+        result["count"] >= 0
+    )  # ratchet: nondeterministic — 1 without broken symlink (Windows), 2 with broken symlink (macOS/Linux)
 
 
 @pytest.mark.asyncio
@@ -210,7 +216,7 @@ async def test_fd_47_symlink_as_root(tmp_path, monkeypatch):
         )
 
     assert result["success"] is True
-    assert result["count"] >= 0
+    assert result["count"] == 1
 
 
 @pytest.mark.asyncio
@@ -256,7 +262,9 @@ async def test_fd_48_symlink_and_absolute_path(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 2
+    assert (
+        result["count"] >= 2
+    )  # ratchet: nondeterministic — 2 without symlinks (Windows), 3 with symlinks (macOS/Linux)
 
 
 @pytest.mark.asyncio
@@ -297,4 +305,4 @@ async def test_fd_49_symlink_as_absolute_root(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 0
+    assert result["count"] == 1

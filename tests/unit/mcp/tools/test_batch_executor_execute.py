@@ -36,7 +36,10 @@ class TestExecuteBatch:
             tool,
             {
                 "requests": [
-                    {"file_path": "a.py", "sections": [{"start_line": 1, "end_line": 2}]}
+                    {
+                        "file_path": "a.py",
+                        "sections": [{"start_line": 1, "end_line": 2}],
+                    }
                 ]
             },
             read_fn,
@@ -55,7 +58,7 @@ class TestExecuteBatch:
             lambda *a: "",
         )
         assert result["success"] is False
-        assert result["errors_summary"]["errors"] >= 1
+        assert result["errors_summary"]["errors"] == 1
 
     @pytest.mark.asyncio
     async def test_non_dict_request_entry(self):
@@ -65,7 +68,7 @@ class TestExecuteBatch:
             {"requests": ["not_a_dict"]},
             lambda *a: "",
         )
-        assert result["errors_summary"]["errors"] >= 1
+        assert result["errors_summary"]["errors"] == 1
 
     @pytest.mark.asyncio
     async def test_fail_fast_on_invalid_entry(self):
@@ -115,7 +118,7 @@ class TestExecuteBatch:
             },
             lambda *a: "",
         )
-        assert result["errors_summary"]["errors"] >= 1
+        assert result["errors_summary"]["errors"] == 1
 
     @pytest.mark.asyncio
     async def test_invalid_start_line_in_section(self, tmp_path):
@@ -134,7 +137,7 @@ class TestExecuteBatch:
             },
             lambda *a: "",
         )
-        assert result["errors_summary"]["errors"] >= 1
+        assert result["errors_summary"]["errors"] == 1
 
     @pytest.mark.asyncio
     async def test_invalid_end_line_in_section(self, tmp_path):
@@ -155,7 +158,7 @@ class TestExecuteBatch:
             },
             lambda *a: "",
         )
-        assert result["errors_summary"]["errors"] >= 1
+        assert result["errors_summary"]["errors"] == 1
 
     @pytest.mark.asyncio
     async def test_empty_content_counts_as_error(self, tmp_path):
@@ -174,7 +177,7 @@ class TestExecuteBatch:
             },
             lambda *a: "",
         )
-        assert result["errors_summary"]["errors"] >= 1
+        assert result["errors_summary"]["errors"] == 1
 
     @pytest.mark.asyncio
     async def test_fail_fast_on_section_limit(self, tmp_path):
@@ -201,9 +204,7 @@ class TestExecuteBatch:
         f.write_text("line\n" * 300)
         tool = self._make_tool(str(f))
         limit = BATCH_LIMITS["max_sections_total"]
-        sections = [
-            {"start_line": i + 1, "end_line": i + 1} for i in range(limit + 5)
-        ]
+        sections = [{"start_line": i + 1, "end_line": i + 1} for i in range(limit + 5)]
         result = await execute_batch(
             tool,
             {
@@ -303,9 +304,7 @@ class TestExecuteBatch:
             return "content_b"
 
         tool = MagicMock()
-        tool.resolve_and_validate_file_path.side_effect = lambda p: str(
-            tmp_path / p
-        )
+        tool.resolve_and_validate_file_path.side_effect = lambda p: str(tmp_path / p)
         result = await execute_batch(
             tool,
             {
@@ -333,7 +332,7 @@ class TestExecuteBatch:
             },
             lambda *a: "content",
         )
-        assert result["errors_summary"]["errors"] >= 1
+        assert result["errors_summary"]["errors"] == 1
 
     @pytest.mark.asyncio
     async def test_label_preserved_in_section_result(self, tmp_path):
@@ -396,7 +395,7 @@ class TestExecuteBatch:
             },
             lambda r, s, e: "   ",
         )
-        assert result["errors_summary"]["errors"] >= 1
+        assert result["errors_summary"]["errors"] == 1
 
     @pytest.mark.asyncio
     async def test_content_bytes_limit_exceeded(self, tmp_path):
@@ -452,7 +451,12 @@ class TestExecuteBatch:
                     "requests": [
                         {
                             "file_path": "a.py",
-                            "sections": [{"start_line": 1, "end_line": BATCH_LIMITS["max_total_lines"] + 1}],
+                            "sections": [
+                                {
+                                    "start_line": 1,
+                                    "end_line": BATCH_LIMITS["max_total_lines"] + 1,
+                                }
+                            ],
                         }
                     ]
                 },
