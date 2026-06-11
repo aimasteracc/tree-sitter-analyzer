@@ -46,7 +46,7 @@ class TestBuildAgentFriendlyError:
         _assert_canonical(result)
         assert result["error_category"] == "file_not_found"
         assert result["error_type"] == "file_not_found"
-        assert "list_files" in result["suggested_tool"]
+        assert result["suggested_tool"] == "project action=files"
 
     def test_unsupported_language_pattern(self):
         err = ValueError("unsupported language: .xyz")
@@ -138,7 +138,7 @@ class TestBuildAgentFriendlyError:
         result = build_agent_friendly_error("analyze_file", err)
         _assert_canonical(result)
         assert "suggested_tool" in result
-        assert result["suggested_tool"] == "list_files"
+        assert result["suggested_tool"] == "project action=files"
 
     def test_identifier_mirrored_from_arguments(self):
         err = ValueError("File not found: missing.py")

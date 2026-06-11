@@ -577,7 +577,9 @@ class TestSuggestRefactorAction:
             "src/big.py", 600, type("H", (), {"grade": "D", "total": 30})
         )
         assert result is not None
-        assert "check_file_health" in result
+        # P2-3: must use facade form, not legacy check_file_health
+        assert "health action=file" in result
+        assert "check_file_health" not in result
 
     def test_test_file(self) -> None:
         result = _suggest_refactor_action(
@@ -632,6 +634,7 @@ class TestBuildSmartHint:
 
     def test_language_to_extension_mapping(self) -> None:
         # DF-11: verify language names map to correct file extensions in hints
+        # P2-3: hint must use facade form (structure action=analyze), not analyze_code_structure
         result = {
             "health_summary": [{"file": "a.py", "grade": "A", "score": 90}],
             "language_distribution": {"python": 5},
@@ -639,9 +642,12 @@ class TestBuildSmartHint:
         }
         hint = _build_smart_hint(result)
         assert ".py file" in hint
+        assert "analyze_code_structure" not in hint
+        assert "structure action=analyze" in hint
 
     def test_language_to_extension_mapping_java(self) -> None:
         # DF-11: verify Java maps to .java
+        # P2-3: hint must use facade form (structure action=analyze), not analyze_code_structure
         result = {
             "health_summary": [{"file": "App.java", "grade": "A", "score": 90}],
             "language_distribution": {"java": 10},
@@ -649,6 +655,7 @@ class TestBuildSmartHint:
         }
         hint = _build_smart_hint(result)
         assert ".java file" in hint
+        assert "analyze_code_structure" not in hint
 
 
 class TestBuildAgentSummary:

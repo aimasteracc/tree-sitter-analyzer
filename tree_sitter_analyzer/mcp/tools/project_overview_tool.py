@@ -431,8 +431,8 @@ def _build_base_result(root: Path, scan: dict[str, Any]) -> dict[str, Any]:
 
 def _health_opt_in_hint() -> str:
     return (
-        "Call get_project_overview(include_health=true) for health grades, "
-        "or check_code_scale on any file for a quick assessment."
+        "Call project action=overview include_health=true for health grades, "
+        "or health action=scale file_path='...' for a quick per-file assessment."
     )
 
 
@@ -642,55 +642,52 @@ def _top_language(language_distribution: dict[str, int]) -> str:
 def _build_tool_routing() -> dict[str, str]:
     """Return the static MCP tool routing guide.
 
-    H11: every value here must reference a tool name that is actually
-    registered in ``_create_tool_registry`` (see
-    ``tree_sitter_analyzer/mcp/server.py``). The previous version mixed
-    CLI shorthand into the MCP syntax, which made calls fail with
-    "unknown tool" when an agent copy-pasted the snippet through the
-    MCP JSON-RPC transport. The single source of truth for the names
-    below is the registry tuple in ``server._create_tool_registry``.
-    All snippets use MCP keyword-argument form (``tool(key=value)``);
-    none of them use CLI positional form.
+    H11 + issue-440: every value here must reference one of the 8 live facade
+    names (search/nav/structure/health/edit/project/index/viz) using the
+    ``facade action=x param=v`` call form.  Legacy pre-facade names
+    (codegraph_*, safe_to_edit, list_files, query_code, ...) must NOT appear
+    here — agents that follow this guide must be able to make the call without
+    hitting an "unknown tool" error.
+
+    Source of truth for facade names: ``facade_map.FACADE_NAMES``.
+    Source of truth for action names: each facade's ``action_map`` in
+    edit_facade.py / health_facade.py / project_facade.py / etc.
     """
     return {
         # Health + safety
-        "project_health": (
-            "check_project_health()  # grade ALL files, top fix targets"
-        ),
+        "project_health": ("health action=project  # grade ALL files, top fix targets"),
         "file_health": (
-            "check_file_health(file_path='...')  # A-F grade + smells + security"
+            "health action=file file_path='...'  # A-F grade + smells + security"
         ),
-        "edit_risk": ("safe_to_edit(file_path='...')  # MUST call before editing"),
-        "refactor_plan": (
-            "refactoring_suggestions(file_path='...')  # extraction plans"
-        ),
-        "change_impact": ("analyze_change_impact()  # git diff + deps -> tests to run"),
+        "edit_risk": ("edit action=safe file_path='...'  # MUST call before editing"),
+        "refactor_plan": ("edit action=refactor file_path='...'  # extraction plans"),
+        "change_impact": ("edit action=impact  # git diff + deps -> tests to run"),
         # Scale + structure
-        "file_scale": "check_code_scale(file_path='...')",
+        "file_scale": "health action=scale file_path='...'",
         "structure_table": (
-            "analyze_code_structure(file_path='...', format_type='compact')"
+            "structure action=analyze file_path='...' format_type='compact'"
         ),
         "read_lines": (
-            "extract_code_section(file_path='...', start_line=1, end_line=100)"
+            "structure action=read file_path='...' start_line=1 end_line=100"
         ),
-        # Symbol + text search (MCP-canonical names from server registry)
+        # Symbol + text search (8-facade names — Wave C2 surface)
         "find_symbol": (
-            "query_code(symbol='...')  # wildcards: *Service, fuzzy: ~analyz"
+            "search action=symbol query='...'  # wildcards: *Service, fuzzy: ~analyz"
         ),
-        "search_text": ("search_content(query='...', total_only=true)  # ~10 tok"),
-        "find_files": "list_files(roots=['.'], extensions=['py'])",
-        "find_and_grep": "find_and_grep(query='...', roots=['.'])",
+        "search_text": ("search action=content query='...' total_only=true  # ~10 tok"),
+        "find_files": "project action=files path='.' extensions=['py']",
+        "find_and_grep": "search action=grep query='...' roots=['.']",
         # Deep analysis
-        "deps": "analyze_dependencies(mode='summary')",
-        "call_graph": "codegraph_call_graph(mode='summary')",
-        "symbol_lineage": "symbol_lineage(symbol='...')",
-        "smart_context": "smart_context(file_path='...')",
+        "deps": "health action=deps mode='summary'",
+        "call_graph": "nav action=callers scope=graph",
+        "symbol_lineage": "nav action=lineage symbol='...'",
+        "smart_context": "project action=smart file_path='<file>'",
         # Code-quality + routing
-        "code_patterns": "code_patterns(file_path='...')",
-        "detect_routes": "detect_routes(mode='summary')",
+        "code_patterns": "health action=patterns file_path='...'",
+        "detect_routes": "health action=routes mode='summary'",
         # Index + workflow
-        "ast_cache": "ast_cache(mode='stats')",
-        "agent_workflow": "get_agent_workflow(file_path='...')",
+        "ast_cache": "index action=cache mode='stats'",
+        "agent_workflow": "project action=workflow",
     }
 
 
@@ -712,7 +709,7 @@ def _suggest_refactor_action(
     is_prod = not is_test and ext == ".py"
 
     if line_count > 500 and is_prod:
-        return f"check_file_health(file_path='{file_path}') for extraction targets, then extract longest methods into a new module"
+        return f"health action=file file_path='{file_path}' for extraction targets, then extract longest methods into a new module"
     if is_test:
         return f"Split test file by test class into separate files (current: {line_count} lines)"
     if ext == ".md":
@@ -731,7 +728,7 @@ def _build_smart_hint(result: dict[str, Any]) -> str:
     if unhealthy:
         prod = [h for h in unhealthy if "test" not in h["file"].lower()]
         target = prod[0] if prod else unhealthy[0]
-        action = target.get("suggestion", "check_file_health for details")
+        action = target.get("suggestion", "health action=file for details")
         parts.append(
             f"REFACTOR: {target['file']} ({target['grade']} {target['score']:.0f}) — {action}"
         )
@@ -741,14 +738,14 @@ def _build_smart_hint(result: dict[str, Any]) -> str:
     if top_lang:
         ext = _LANGUAGE_TO_EXT.get(top_lang, top_lang)
         parts.append(
-            f"SMART 'Analyze': analyze_code_structure on any .{ext} file for detailed table"
+            f"SMART 'Analyze': structure action=analyze on any .{ext} file for detailed table"
         )
 
     largest = result.get("largest_source_files", [])
     if largest:
         biggest = largest[0]
         parts.append(
-            f"SMART 'Retrieve': extract_code_section on {biggest['path']} ({biggest['lines']} lines)"
+            f"SMART 'Retrieve': structure action=read on {biggest['path']} ({biggest['lines']} lines)"
         )
 
     return " | ".join(parts[:3])
