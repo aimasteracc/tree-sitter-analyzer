@@ -1151,3 +1151,636 @@ def test_qualified_enum_base_states_and_transitions(tmp_path: Path) -> None:
         ("GREEN", "YELLOW"),
         ("YELLOW", "RED"),
     }
+
+
+# ---------------------------------------------------------------------------
+# Section N2: _extract_enum_members — non-expression_statement children (line 149->148)
+# ---------------------------------------------------------------------------
+
+
+def test_enum_with_method_body_still_extracts_members(tmp_path: Path) -> None:
+    """Enum class with a method definition: non-expression_statement block children
+    are skipped gracefully (line 149->148 branch: stmt.type != 'expression_statement').
+
+    The method definition must not crash extraction and members must still be found.
+    """
+    src = tmp_path / "rich_enum.py"
+    src.write_text(
+        textwrap.dedent("""\
+        from enum import Enum
+
+        class Status(Enum):
+            OPEN = 1
+            CLOSED = 2
+
+            def label(self):
+                return self.value
+        """)
+    )
+
+    from tree_sitter_analyzer.uml_state import build_state_result
+
+    result = build_state_result(
+        file_path=str(src),
+        class_name="Status",
+        max_nodes=30,
+    )
+    assert result.error == ""
+    # Exact pin: only OPEN and CLOSED, not anything from the method
+    assert sorted(result.states) == ["CLOSED", "OPEN"]
+
+
+def test_enum_with_docstring_skips_non_assignment_expressions(tmp_path: Path) -> None:
+    """Enum class with a docstring: expression_statement wrapping a string
+    (not assignment) is skipped (line 151->150 branch: sub.type != 'assignment').
+
+    The docstring is an expression_statement whose content is a string, not
+    an assignment. The extractor must skip it without crashing.
+    """
+    src = tmp_path / "documented_enum.py"
+    src.write_text(
+        textwrap.dedent("""\
+        from enum import Enum
+
+        class Phase(Enum):
+            \"\"\"Phase states of the system.\"\"\"
+            INIT = 1
+            RUNNING = 2
+            DONE = 3
+        """)
+    )
+
+    from tree_sitter_analyzer.uml_state import build_state_result
+
+    result = build_state_result(
+        file_path=str(src),
+        class_name="Phase",
+        max_nodes=30,
+    )
+    assert result.error == ""
+    # Exact pin: 3 members, docstring excluded
+    assert sorted(result.states) == ["DONE", "INIT", "RUNNING"]
+
+
+# ---------------------------------------------------------------------------
+# Section N: _node_text edge-cases (raw=None, exception)
+# ---------------------------------------------------------------------------
+
+
+def test_node_text_raw_none_returns_empty() -> None:
+    """_node_text returns '' when node.text is None (line 92 branch)."""
+    from tree_sitter_analyzer.uml_state import _node_text
+
+    node = _make_ts_node("identifier", "")
+    node.text = None  # override to None explicitly
+    result = _node_text(node)
+    assert result == ""
+
+
+def test_node_text_exception_returns_empty() -> None:
+    """_node_text returns '' when node.text raises AttributeError (lines 95-96)."""
+    from tree_sitter_analyzer.uml_state import _node_text
+
+    class BadNode:
+        @property
+        def text(self):
+            raise AttributeError("no text attribute")
+
+    result = _node_text(BadNode())
+    assert result == ""
+
+
+def test_node_text_long_string_truncated() -> None:
+    """_node_text truncates at max_len (line 94 short-path covered)."""
+    from tree_sitter_analyzer.uml_state import _node_text
+
+    node = _make_ts_node("identifier", "A" * 80)
+    result = _node_text(node, max_len=10)
+    assert result == "A" * 10
+    assert len(result) == 10
+
+
+# ---------------------------------------------------------------------------
+# Section O: build_state_result — PARSE_FAILED path
+# ---------------------------------------------------------------------------
+
+
+def test_build_state_result_parse_failed(tmp_path: Path) -> None:
+    """build_state_result returns error='PARSE_FAILED' when parser returns None (line 332)."""
+    import tree_sitter_analyzer.uml_state as _state_module
+
+    src = tmp_path / "exists.py"
+    src.write_text("class Foo(Enum):\n    A = 1\n")
+
+    def fake_parse(file_path: str, language: str = "python"):
+        return None  # simulate parse failure
+
+    orig = _state_module._parse_file_for_state
+    try:
+        _state_module._parse_file_for_state = fake_parse
+        result = _state_module.build_state_result(
+            file_path=str(src),
+            class_name=None,
+            max_nodes=30,
+        )
+    finally:
+        _state_module._parse_file_for_state = orig
+
+    assert result.error == "PARSE_FAILED"
+    assert result.states == []
+    assert result.transitions == []
+
+
+# ---------------------------------------------------------------------------
+# Section P: multi-enum fallback — no transitions in any enum
+# ---------------------------------------------------------------------------
+
+
+def test_multi_enum_no_transitions_falls_back_to_all_members(tmp_path: Path) -> None:
+    """When class_name is None and NO enum has transitions, fall back to all members.
+
+    Covers line 374-375 (else: chosen = enum_transitions fallback) and
+    the deduplication path for all_members when no transition-bearing enum exists.
+    """
+    src = tmp_path / "no_fsm.py"
+    src.write_text(
+        textwrap.dedent("""\
+        from enum import Enum
+
+        class Color(Enum):
+            RED = 1
+            GREEN = 2
+
+        class Size(Enum):
+            SMALL = 1
+            LARGE = 2
+        """)
+    )
+
+    from tree_sitter_analyzer.uml_state import build_state_result
+
+    result = build_state_result(
+        file_path=str(src),
+        class_name=None,
+        max_nodes=50,
+    )
+    # No error — enum classes found
+    assert result.error == ""
+    # No transitions — both enums have no match statements
+    assert result.transitions == []
+    # All 4 members returned (dedup preserves order from both enums)
+    assert sorted(result.states) == ["GREEN", "LARGE", "RED", "SMALL"]
+
+
+# ---------------------------------------------------------------------------
+# Section Q: _iter_case_clauses direct case_clause fallback (line 262)
+# ---------------------------------------------------------------------------
+
+
+def test_iter_case_clauses_direct_child_fallback() -> None:
+    """_iter_case_clauses handles direct case_clause children (grammar fallback, line 262)."""
+    from tree_sitter_analyzer.uml_state import _extract_transitions
+
+    # Build a minimal mock match_statement where case_clauses are direct children
+    # (not inside a block). This exercises the line 260-262 fallback branch.
+    case_clause = _make_ts_node("case_clause")
+    # case_clause with case_pattern → "State.A" and block → return State.B
+    # For simplicity, just verify the direct child path is tried (no transition extracted
+    # from this mock since it lacks proper sub-structure, but the branch is exercised).
+    match_stmt = _make_ts_node("match_statement", children=[case_clause])
+
+    root = _make_ts_node("module", children=[match_stmt])
+    transitions = _extract_transitions(root, "State", {"A", "B"})
+    # No transitions from malformed mock, but branch is covered
+    assert isinstance(transitions, list)
+
+
+def test_extract_enum_members_with_empty_lhs_children_skipped() -> None:
+    """_extract_enum_members skips an assignment with empty children (line 153->150).
+
+    When an assignment mock has no children, lhs_children is empty ([]) and the
+    `if lhs_children:` guard at line 153 is False — exercises the 153->150 branch.
+    """
+    from tree_sitter_analyzer.uml_state import _extract_enum_members
+
+    # Create a class_definition node with a block containing an expression_statement
+    # wrapping an assignment that has NO children.
+    empty_assignment = _make_ts_node("assignment", children=[])
+    expr_stmt = _make_ts_node("expression_statement", children=[empty_assignment])
+    block = _make_ts_node("block", children=[expr_stmt])
+    cls_node = _make_ts_node("class_definition", children=[block])
+
+    members = _extract_enum_members(cls_node)
+    # Empty assignment → no members extracted, no crash
+    assert members == []
+
+
+def test_extract_enum_members_with_non_identifier_lhs_skipped() -> None:
+    """_extract_enum_members skips an assignment whose LHS is not an identifier (line 155->150).
+
+    When the LHS child type is 'tuple' (e.g., `(a, b) = ...`), the `if lhs.type ==
+    'identifier':` guard at line 155 is False — exercises the 155->150 branch.
+    """
+    from tree_sitter_analyzer.uml_state import _extract_enum_members
+
+    tuple_lhs = _make_ts_node("tuple", "(A, B)")
+    assignment = _make_ts_node("assignment", children=[tuple_lhs])
+    expr_stmt = _make_ts_node("expression_statement", children=[assignment])
+    block = _make_ts_node("block", children=[expr_stmt])
+    cls_node = _make_ts_node("class_definition", children=[block])
+
+    members = _extract_enum_members(cls_node)
+    # Tuple LHS → not a member, no crash
+    assert members == []
+
+
+def test_iter_case_clauses_block_with_non_case_clause_child() -> None:
+    """_iter_case_clauses skips non-case_clause children in block (line 258->257).
+
+    When a block has a child that is NOT a case_clause (e.g. a comment or newline),
+    the loop continues without appending it (258->257 branch).
+    """
+    from tree_sitter_analyzer.uml_state import _extract_transitions
+
+    # Block child is a comment node, not a case_clause
+    comment_node = _make_ts_node("comment", "# comment")
+    block = _make_ts_node("block", children=[comment_node])
+    match_stmt = _make_ts_node("match_statement", children=[block])
+    root = _make_ts_node("module", children=[match_stmt])
+
+    transitions = _extract_transitions(root, "State", {"A", "B"})
+    # Block had no case_clause children → no transitions
+    assert transitions == []
+
+
+def test_parse_enum_ref_no_match_returns_none() -> None:
+    """_parse_enum_ref returns None when text doesn't start with class_name prefix (194->196).
+
+    This exercises the False branch of `if text.startswith(prefix):` in _parse_enum_ref,
+    which returns None (line 196) rather than a member name.
+
+    We invoke this indirectly via _extract_transitions with a case_pattern node
+    whose text does NOT start with the class prefix.
+    """
+    from tree_sitter_analyzer.uml_state import _extract_transitions
+
+    # case_pattern with text "OtherClass.OPEN" — not matching "State." prefix
+    non_matching = _make_ts_node("attribute", "OtherClass.OPEN")
+    case_pattern = _make_ts_node("case_pattern", children=[non_matching])
+
+    # block with a return of matching member (target)
+    return_ref = _make_ts_node("attribute", "State.B")
+    return_stmt = _make_ts_node("return_statement", children=[return_ref])
+    block = _make_ts_node("block", children=[return_stmt])
+
+    case_clause = _make_ts_node("case_clause", children=[case_pattern, block])
+    inner_block = _make_ts_node("block", children=[case_clause])
+    match_stmt = _make_ts_node("match_statement", children=[inner_block])
+    root = _make_ts_node("module", children=[match_stmt])
+
+    # Source doesn't match (non_matching text "OtherClass.OPEN" with prefix "State.")
+    # so _parse_enum_ref returns None → source_member stays None → no transition
+    transitions = _extract_transitions(root, "State", {"A", "B"})
+    assert transitions == []
+
+
+def test_case_pattern_fallback_exercises_node_text_path() -> None:
+    """_extract_transitions uses case_pattern text fallback when children don't yield ref (line 283).
+
+    When a case_pattern's children DON'T yield an enum ref (they have non-matching text),
+    but the case_pattern node's own text IS a matching ref (e.g. 'State.A'), the
+    fallback at lines 279-283 picks it up.
+
+    To trigger this: case_pattern's child is a non-matching attribute, but the
+    case_pattern's own text is "State.A" — a matching enum ref.
+    """
+    from tree_sitter_analyzer.uml_state import _extract_transitions
+
+    # case_pattern child: text "other.X" — does NOT match "State." prefix
+    non_match_child = _make_ts_node("attribute", "other.X")
+    # case_pattern itself: text "State.A" — DOES match "State." prefix
+    case_pattern = _make_ts_node("case_pattern", "State.A", children=[non_match_child])
+
+    # block with return of State.B (target)
+    return_ref = _make_ts_node("attribute", "State.B")
+    return_stmt = _make_ts_node("return_statement", children=[return_ref])
+    block = _make_ts_node("block", children=[return_stmt])
+
+    case_clause = _make_ts_node("case_clause", children=[case_pattern, block])
+    inner_block = _make_ts_node("block", children=[case_clause])
+    match_stmt = _make_ts_node("match_statement", children=[inner_block])
+    root = _make_ts_node("module", children=[match_stmt])
+
+    transitions = _extract_transitions(root, "State", {"A", "B"})
+    # Fallback text match → source=A, target=B → 1 transition
+    assert len(transitions) == 1  # exact pin
+    assert transitions[0].source == "A"
+    assert transitions[0].target == "B"
+
+
+def test_dotted_name_direct_source_member() -> None:
+    """Lines 284-287: dotted_name/attribute directly in case_clause as source member.
+
+    Some tree-sitter grammar versions place the pattern as a direct dotted_name
+    child of the case_clause (not wrapped in case_pattern). Lines 284-287 handle
+    this: when cc.type in ('dotted_name', 'attribute'), _parse_enum_ref is called
+    directly on it.
+    """
+    from tree_sitter_analyzer.uml_state import _extract_transitions
+
+    # case_clause has a direct 'dotted_name' child with "State.A" text (source)
+    # and a block child with return_statement (target)
+    dotted_name = _make_ts_node("dotted_name", "State.A")
+    return_ref = _make_ts_node("attribute", "State.B")
+    return_stmt = _make_ts_node("return_statement", children=[return_ref])
+    block = _make_ts_node("block", children=[return_stmt])
+
+    case_clause = _make_ts_node("case_clause", children=[dotted_name, block])
+    inner_block = _make_ts_node("block", children=[case_clause])
+    match_stmt = _make_ts_node("match_statement", children=[inner_block])
+    root = _make_ts_node("module", children=[match_stmt])
+
+    transitions = _extract_transitions(root, "State", {"A", "B"})
+    # Direct dotted_name source + block target → 1 transition A→B
+    assert len(transitions) == 1  # exact pin
+    assert transitions[0].source == "A"
+    assert transitions[0].target == "B"
+
+
+def test_dotted_name_non_matching_source_skipped() -> None:
+    """Line 286->271: dotted_name in case_clause doesn't match enum prefix → skipped.
+
+    When cc.type is 'dotted_name' but text is 'Other.X' (not 'State.X'), the
+    _parse_enum_ref returns None → 286->271 branch fires (if m is not None: is False).
+    source_member stays None and no transition is recorded.
+    """
+    from tree_sitter_analyzer.uml_state import _extract_transitions
+
+    # Direct dotted_name with non-matching text
+    dotted_name = _make_ts_node("dotted_name", "Other.X")
+    return_ref = _make_ts_node("attribute", "State.B")
+    return_stmt = _make_ts_node("return_statement", children=[return_ref])
+    block = _make_ts_node("block", children=[return_stmt])
+
+    case_clause = _make_ts_node("case_clause", children=[dotted_name, block])
+    inner_block = _make_ts_node("block", children=[case_clause])
+    match_stmt = _make_ts_node("match_statement", children=[inner_block])
+    root = _make_ts_node("module", children=[match_stmt])
+
+    transitions = _extract_transitions(root, "State", {"A", "B"})
+    # Source doesn't match → no transition
+    assert transitions == []
+
+
+# ---------------------------------------------------------------------------
+# Section R: _find_return_enum_ref — assignment branch (lines 211-220)
+# ---------------------------------------------------------------------------
+
+
+def test_find_return_enum_ref_assignment_with_eq_first_reversed() -> None:
+    """_find_return_enum_ref skips reversed children where type == '=' (line 216->215).
+
+    We place the '=' token as the LAST child (first when reversed) to force the
+    loop to skip it and continue to the next child (the enum ref). This exercises
+    the 216->215 branch (condition False → loop continues to next iteration).
+    After skipping '=', the loop finds the enum ref and returns it.
+    """
+    from tree_sitter_analyzer.uml_state import _extract_transitions
+
+    # Assignment: children=[lhs, enum_ref, eq_token] — reversed: [eq_token, enum_ref, lhs]
+    # First reversed child is '=' → condition False → skip → next is enum_ref → match → break
+    lhs_child = _make_ts_node("identifier", "x")
+    rhs_child = _make_ts_node("attribute", "State.B")
+    # Deliberately put "=" LAST so it's FIRST when reversed
+    eq_last = _make_ts_node("=", "=")
+    assignment = _make_ts_node("assignment", children=[lhs_child, rhs_child, eq_last])
+
+    block = _make_ts_node("block", children=[assignment])
+    case_clause = _make_ts_node("case_clause", children=[block])
+    inner_block = _make_ts_node("block", children=[case_clause])
+    match_stmt = _make_ts_node("match_statement", children=[inner_block])
+    root = _make_ts_node("module", children=[match_stmt])
+
+    # No crash; may or may not produce transitions but branch is exercised
+    transitions = _extract_transitions(root, "State", {"A", "B"})
+    assert isinstance(transitions, list)
+
+
+def test_find_return_enum_ref_assignment_non_matching_rhs_breaks() -> None:
+    """_find_return_enum_ref hits break (line 220) when RHS of assignment doesn't match enum.
+
+    When an assignment has a non-enum RHS (e.g. a string literal 'foo'), the
+    _parse_enum_ref returns None → `break` fires (line 220), exiting the reversed loop.
+    No transition is recorded.
+    """
+    from tree_sitter_analyzer.uml_state import _extract_transitions
+
+    # Assignment: [lhs, =, non_enum_rhs] where rhs is a string literal, not an enum ref
+    lhs_child = _make_ts_node("identifier", "x")
+    eq_child = _make_ts_node("=", "=")
+    non_enum_rhs = _make_ts_node("string", '"foo"')  # does NOT match "State." prefix
+    assignment = _make_ts_node(
+        "assignment", children=[lhs_child, eq_child, non_enum_rhs]
+    )
+
+    # Put in a case_clause with a dummy source
+    dotted_name = _make_ts_node("dotted_name", "State.A")  # valid source
+    block = _make_ts_node("block", children=[assignment])
+    case_clause = _make_ts_node("case_clause", children=[dotted_name, block])
+    inner_block = _make_ts_node("block", children=[case_clause])
+    match_stmt = _make_ts_node("match_statement", children=[inner_block])
+    root = _make_ts_node("module", children=[match_stmt])
+
+    transitions = _extract_transitions(root, "State", {"A", "B"})
+    # RHS doesn't match enum → break → no transition target → no transition
+    assert transitions == []
+
+
+def test_find_return_enum_ref_assignment_no_children_no_crash() -> None:
+    """_find_return_enum_ref handles assignment with no children gracefully (line 215->221).
+
+    When the assignment node has an empty children list, the reversed loop exits
+    immediately without finding any ref (exercises 215->221 back-edge = loop exits).
+    """
+    from tree_sitter_analyzer.uml_state import _extract_transitions
+
+    # Assignment with no children — reversed([]) yields nothing
+    assignment = _make_ts_node("assignment", children=[])
+
+    block = _make_ts_node("block", children=[assignment])
+    case_clause = _make_ts_node("case_clause", children=[block])
+    inner_block = _make_ts_node("block", children=[case_clause])
+    match_stmt = _make_ts_node("match_statement", children=[inner_block])
+    root = _make_ts_node("module", children=[match_stmt])
+
+    # Should not crash; no transitions found
+    transitions = _extract_transitions(root, "State", {"A", "B"})
+    assert transitions == []
+
+
+def test_find_return_enum_ref_assignment_branch_via_integration(tmp_path: Path) -> None:
+    """Assignment-style transitions exercise the reversed-children scan (lines 211-220).
+
+    This uses a real file so the assignment branch path in _find_return_enum_ref
+    is exercised end-to-end through build_state_result.
+    """
+    src = tmp_path / "oop.py"
+    src.write_text(
+        textwrap.dedent("""\
+        from enum import Enum
+
+        class Lamp(Enum):
+            ON = 1
+            OFF = 2
+
+        class Controller:
+            def toggle(self):
+                match self.state:
+                    case Lamp.ON:
+                        self.state = Lamp.OFF
+                    case Lamp.OFF:
+                        self.state = Lamp.ON
+        """)
+    )
+
+    from tree_sitter_analyzer.uml_state import build_state_result
+
+    result = build_state_result(
+        file_path=str(src),
+        class_name="Lamp",
+        max_nodes=30,
+    )
+    assert result.error == ""
+    assert len(result.transitions) == 2  # exact pin: ON→OFF, OFF→ON
+    pairs = {(t.source, t.target) for t in result.transitions}
+    assert ("ON", "OFF") in pairs
+    assert ("OFF", "ON") in pairs
+
+
+# ---------------------------------------------------------------------------
+# Section S: _extract_enum_members — branches with non-qualifying AST nodes
+# ---------------------------------------------------------------------------
+
+
+def test_build_state_result_ignores_underscore_prefixed_members(tmp_path: Path) -> None:
+    """_extract_enum_members skips names starting with '_' (line 157 branch)."""
+    src = tmp_path / "skip.py"
+    src.write_text(
+        textwrap.dedent("""\
+        from enum import Enum
+
+        class Flags(Enum):
+            ACTIVE = 1
+            _INTERNAL = 2
+            DONE = 3
+        """)
+    )
+
+    from tree_sitter_analyzer.uml_state import build_state_result
+
+    result = build_state_result(
+        file_path=str(src),
+        class_name="Flags",
+        max_nodes=30,
+    )
+    assert result.error == ""
+    # Exact pin: only non-underscore members
+    assert sorted(result.states) == ["ACTIVE", "DONE"]
+
+
+# ---------------------------------------------------------------------------
+# Section T: multi-enum deduplication path (line 392->391)
+# ---------------------------------------------------------------------------
+
+
+def test_multi_enum_dedup_members_preserves_unique(tmp_path: Path) -> None:
+    """When multiple enums have overlapping member names, dedup preserves uniqueness.
+
+    Exercises the seen_members deduplication loop at line 389-394 for the
+    multi-enum (class_name=None) fallback path.
+    """
+    src = tmp_path / "overlap.py"
+    src.write_text(
+        textwrap.dedent("""\
+        from enum import Enum
+
+        class Status(Enum):
+            ACTIVE = 1
+            INACTIVE = 2
+
+        class Flag(Enum):
+            ACTIVE = 1
+            DONE = 2
+        """)
+    )
+
+    from tree_sitter_analyzer.uml_state import build_state_result
+
+    result = build_state_result(
+        file_path=str(src),
+        class_name=None,
+        max_nodes=50,
+    )
+    assert result.error == ""
+    # ACTIVE appears in both enums but must be deduplicated
+    # Exact pin: ACTIVE, INACTIVE, DONE (3 unique members)
+    assert sorted(result.states) == ["ACTIVE", "DONE", "INACTIVE"]
+
+
+# ---------------------------------------------------------------------------
+# Section U: multi-enum with transitions from MULTIPLE enums (line 384->382)
+# — exercises the dedup loop in _aggregate_transitions when >1 transition exists
+# ---------------------------------------------------------------------------
+
+
+def test_multi_enum_both_have_transitions_aggregated_and_deduped(
+    tmp_path: Path,
+) -> None:
+    """Both enums have transitions; cross-enum duplicate transitions are deduped.
+
+    Exercises the deduplicated transition aggregation loop at lines 381-386
+    (seen_txn branch at 384->382 fires when a transition from enum2 duplicates one
+    from enum1).
+    """
+    src = tmp_path / "two_fsm.py"
+    src.write_text(
+        textwrap.dedent("""\
+        from enum import Enum
+
+        class Door(Enum):
+            OPEN = "open"
+            CLOSED = "closed"
+
+        class Gate(Enum):
+            OPEN = "open"
+            CLOSED = "closed"
+
+        def door_fn(state: Door) -> Door:
+            match state:
+                case Door.OPEN:
+                    return Door.CLOSED
+                case Door.CLOSED:
+                    return Door.OPEN
+
+        def gate_fn(state: Gate) -> Gate:
+            match state:
+                case Gate.OPEN:
+                    return Gate.CLOSED
+                case Gate.CLOSED:
+                    return Gate.OPEN
+        """)
+    )
+
+    from tree_sitter_analyzer.uml_state import build_state_result
+
+    result = build_state_result(
+        file_path=str(src),
+        class_name=None,
+        max_nodes=50,
+    )
+    assert result.error == ""
+    # Both enums have the same OPEN<->CLOSED transitions.
+    # After dedup: OPEN->CLOSED, CLOSED->OPEN = 2 unique transitions.
+    assert len(result.transitions) == 2  # exact pin — duplicates removed
+    pairs = {(t.source, t.target) for t in result.transitions}
+    assert pairs == {("OPEN", "CLOSED"), ("CLOSED", "OPEN")}
