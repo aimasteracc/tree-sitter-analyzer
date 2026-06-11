@@ -1831,9 +1831,7 @@ import kotlinx.coroutines.*
         imports = extractor.extract_imports(tree, code)
 
         assert isinstance(imports, list)
-        assert (
-            len(imports) == 0
-        )  # extraction gap: kotlin import extraction not yet implemented
+        assert len(imports) == 3
 
     def test_extract_variables_extractor(self, extractor, kotlin_parser):
         """Test extract_variables method."""

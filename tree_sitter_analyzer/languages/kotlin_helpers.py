@@ -8,14 +8,23 @@ from ..utils import log_error
 
 
 def extract_import(node: Any, get_node_text: Callable[..., str]) -> Import | None:
-    """Extract import header."""
+    """Extract import header.
+
+    Guards against the 'import' keyword *token* (a leaf child of the import
+    statement node) that shares the same node type in the tree-sitter-kotlin
+    grammar.  The keyword token has no children and its text is just "import",
+    so ``parts`` will have length 1 — return None in that case.
+    """
     try:
         raw_text = get_node_text(node)
         start_line = node.start_point[0] + 1
         end_line = node.end_point[0] + 1
 
         parts = raw_text.split()
-        name = parts[1] if len(parts) > 1 else "unknown"
+        # Leaf 'import' keyword token: raw_text == "import", parts has 1 item
+        if len(parts) < 2:
+            return None
+        name = parts[1]
 
         return Import(
             name=name,
