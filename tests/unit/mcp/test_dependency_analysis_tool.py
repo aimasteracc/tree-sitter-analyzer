@@ -112,8 +112,8 @@ class TestSummaryMode:
         result = _run(tool.execute({"mode": "summary", "output_format": "json"}))
         assert result["success"] is True
         assert result["mode"] == "summary"
-        assert result["node_count"] >= 1
-        assert result["edge_count"] >= 0
+        assert result["node_count"] == 6
+        assert result["edge_count"] == 3
         assert "top_hub_files" in result
         assert "high_dependency_files" in result
 
@@ -280,7 +280,7 @@ class TestCyclesMode:
         t.set_project_path(str(tmp_path))
         result = _run(t.execute({"mode": "cycles", "output_format": "json"}))
         assert result["success"] is True
-        assert result["cycle_count"] >= 1
+        assert result["cycle_count"] == 1
 
     def test_cycles_with_toon(self, tool, project):
         result = _run(tool.execute({"mode": "cycles", "output_format": "toon"}))
@@ -338,7 +338,7 @@ class TestSummaryHelper:
         graph = DependencyGraph(str(project))
         result = _summary(graph)
         assert result["success"] is True
-        assert result["node_count"] >= 1
+        assert result["node_count"] == 6
         assert isinstance(result["top_hub_files"], list)
 
     def test_summary_empty_graph(self, tmp_path):
@@ -373,8 +373,8 @@ class TestFileDepsHelper:
     def test_file_deps_helper_counts(self, project):
         graph = DependencyGraph(str(project))
         result = _file_deps(graph, "main.py")
-        assert result["dependency_count"] >= 0
-        assert result["dependent_count"] >= 0
+        assert result["dependency_count"] == 2
+        assert result["dependent_count"] == 0
 
 
 class TestGraphResetOnPathChange:

@@ -43,7 +43,7 @@ async def test_fd_75_modified_relative_time(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 0
+    assert result["count"] == 1
 
 
 @pytest.mark.asyncio
