@@ -737,13 +737,7 @@ def test_state_in_diagram_enum() -> None:
 
 
 def test_uml_tool_schema_lists_diagrams_with_state() -> None:
-    """Enum on this branch is [..., 'state'] — 5 members on develop+state.
-
-    NOTE (integration): When the activity branch (which adds 'activity') merges
-    before this branch, the integration re-pin must extend this list to
-    ["class", "package", "component", "sequence", "activity", "state"].
-    Flag: COLLISION_WITH_ACTIVITY_BRANCH
-    """
+    """Enum after P2-A + P2-B integration — exactly 6 members."""
     from tree_sitter_analyzer.mcp.tools.uml_tool import CodeGraphUMLTool
 
     tool = CodeGraphUMLTool()
@@ -754,6 +748,7 @@ def test_uml_tool_schema_lists_diagrams_with_state() -> None:
         "package",
         "component",
         "sequence",
+        "activity",
         "state",
     ]
 

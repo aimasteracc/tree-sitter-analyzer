@@ -202,10 +202,11 @@ class GetCodeOutlineTool(BaseMCPTool):
             (getattr(cls, "start_line", 0), getattr(cls, "end_line", 0))
             for cls in classes
         ]
+        class_names = [getattr(cls, "name", "") for cls in classes]
         top_level_fns = [
             _method_entry(m)
             for m in all_methods
-            if not _in_class_ranges(m, class_ranges)
+            if not _in_class_ranges(m, class_ranges, class_names)
         ]
         top_level_fns.sort(key=lambda x: x["line_start"])
 
@@ -506,12 +507,54 @@ def _field_entry(f: Any) -> dict[str, Any]:
     }
 
 
-def _in_class_ranges(method: Any, class_ranges: list[tuple[int, int]]) -> bool:
-    """Return True iff ``method.start_line`` falls inside any class range."""
+def _normalize_receiver_type(receiver_type: str | None) -> str | None:
+    """Strip a leading ``*`` from a Go receiver type (``*Counter`` → ``Counter``).
+
+    Returns ``None`` when ``receiver_type`` is falsy so callers can use a
+    simple truthiness check before comparing against class names.
+    """
+    if not receiver_type:
+        return None
+    return receiver_type.removeprefix("*")
+
+
+def _method_owned_by_class(
+    method: Any, cls_name: str, cls_start: int, cls_end: int
+) -> bool:
+    """Return True when ``method`` belongs to ``cls``.
+
+    Primary: line-range containment (works for Java, Python, C#, …).
+    Secondary: receiver_type matching (Go, Rust, Kotlin — methods declared
+    outside the struct/impl body carry ``receiver_type`` instead of being
+    physically nested).
+    """
     m_start = getattr(method, "start_line", 0)
-    for cls_start, cls_end in class_ranges:
+    if cls_start <= m_start <= cls_end:
+        return True
+    # Secondary: receiver_type-based association for Go/Rust/Kotlin.
+    rt = _normalize_receiver_type(getattr(method, "receiver_type", None))
+    return rt is not None and rt == cls_name
+
+
+def _in_class_ranges(
+    method: Any,
+    class_ranges: list[tuple[int, int]],
+    class_names: list[str] | None = None,
+) -> bool:
+    """Return True iff ``method`` falls inside any class range or owns a receiver_type match.
+
+    ``class_names`` is parallel to ``class_ranges``: when provided, the
+    secondary receiver_type check is also applied so Go/Rust/Kotlin methods
+    declared outside the struct body are not leaked to ``top_level_functions``.
+    """
+    m_start = getattr(method, "start_line", 0)
+    for i, (cls_start, cls_end) in enumerate(class_ranges):
         if cls_start <= m_start <= cls_end:
             return True
+        if class_names is not None:
+            rt = _normalize_receiver_type(getattr(method, "receiver_type", None))
+            if rt is not None and rt == class_names[i]:
+                return True
     return False
 
 
@@ -521,20 +564,54 @@ def _build_class_outlines(
     all_fields: list[Any],
     include_fields: bool,
 ) -> list[dict[str, Any]]:
-    """Build the ``classes`` outline section, sorted by ``line_start``."""
+    """Build the ``classes`` outline section, sorted by ``line_start``.
+
+    SINGLE-OWNERSHIP INVARIANT (P2): Each method is assigned to at most one class.
+    Precedence: line-range containment wins over receiver_type matching.
+    A method is never offered to multiple classes.
+    """
+    # Build a set of (class_idx, method_idx) pairs using FIRST-CLAIM-WINS.
+    # Process each method once; the first class that claims it (by line-range,
+    # then by receiver_type) owns it exclusively.
+    method_to_class: dict[int, int] = {}  # method_idx -> class_idx
+
+    for method_idx, method in enumerate(all_methods):
+        m_start = getattr(method, "start_line", 0)
+        # First try: line-range containment (innermost wins)
+        claimed_by = None
+        for cls_idx, cls in enumerate(classes):
+            cls_start = getattr(cls, "start_line", 0)
+            cls_end = getattr(cls, "end_line", 0)
+            if cls_start <= m_start <= cls_end:
+                claimed_by = cls_idx
+                break  # First match wins
+        # If no line-range match, try receiver_type matching
+        if claimed_by is None:
+            rt = _normalize_receiver_type(getattr(method, "receiver_type", None))
+            if rt is not None:
+                for cls_idx, cls in enumerate(classes):
+                    if getattr(cls, "name", "") == rt:
+                        claimed_by = cls_idx
+                        break
+        # Record the claim (if any)
+        if claimed_by is not None:
+            method_to_class[method_idx] = claimed_by
+
+    # Build class outlines using the ownership map
     class_outlines: list[dict[str, Any]] = []
-    for cls in classes:
+    for cls_idx, cls in enumerate(classes):
         cls_start = getattr(cls, "start_line", 0)
         cls_end = getattr(cls, "end_line", 0)
-        # Methods that belong to this class (by line-range containment).
+        cls_name = getattr(cls, "name", "")
+        # Gather methods owned by this class
         cls_methods = [
-            _method_entry(m)
-            for m in all_methods
-            if cls_start <= getattr(m, "start_line", 0) <= cls_end
+            _method_entry(all_methods[m_idx])
+            for m_idx in method_to_class
+            if method_to_class[m_idx] == cls_idx
         ]
         cls_methods.sort(key=lambda x: x["line_start"])
         class_entry: dict[str, Any] = {
-            "name": getattr(cls, "name", "unknown"),
+            "name": cls_name,
             "type": getattr(cls, "class_type", "class"),
             "line_start": cls_start,
             "line_end": cls_end,

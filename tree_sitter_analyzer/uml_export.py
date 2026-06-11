@@ -90,13 +90,9 @@ def _safe_id(name: str) -> str:
 def _escape_label(label: str) -> str:
     """Sanitise a Mermaid node/edge label.
 
-    Replaces characters that would break the ["..."] syntax:
-    - " → '  (keeps text inside double-quoted Mermaid labels valid)
-    - \\n / \\r → space  (raw newlines inside ["..."] are illegal in Mermaid)
-
-    NOTE: the newline fix is replicated from feature/uml-activity-diagram
-    to avoid a merge conflict when the two branches integrate. Dedup note:
-    whichever branch merges second should keep this version verbatim.
+    Replaces characters that would break the ``["..."]`` syntax:
+    - ``"`` → ``'``  (keeps text inside double-quoted Mermaid labels valid)
+    - ``\\n`` / ``\\r`` → space  (raw newlines inside ["..."] are illegal in Mermaid)
     """
     return (
         label.replace('"', "'")
@@ -515,6 +511,169 @@ class UMLExporter:
                 "source": source_label,
                 "analysis_kind": "static_approximation",
                 "path_count": len(paths),
+            },
+        )
+
+    def activity_diagram(
+        self,
+        function_name: str,
+        file_path: str | None = None,
+        max_nodes: int = 50,
+    ) -> UMLDiagram:
+        """Build a structural control-flow graph for *function_name*.
+
+        P2-A (RFC-0015): requires a disk read + tree-sitter parse at query
+        time (AST bodies are NOT cache-resident). Cost: typically < 50 ms.
+
+        Stale file (changed since indexing): parsed from current disk content;
+        metadata["note"] records the staleness. Missing file/function:
+        verdict="NOT_FOUND".
+
+        Language support: Python only in this phase. The node-type map in
+        uml_activity._CFG_NODE_TYPES is language-keyed; future languages
+        register there without touching this method.
+        """
+        from .uml_activity import build_activity_cfg
+
+        # Resolve file_path: use as-is if absolute, otherwise interpret as
+        # relative to project_root.
+        resolved_path: str | None = None
+        if file_path is not None:
+            p = Path(file_path)
+            if p.is_absolute():
+                resolved_path = str(p)
+            else:
+                resolved_path = str(Path(self.project_root) / p)
+
+        if resolved_path is None:
+            # No file_path given: NOT_FOUND — require file_path for activity
+            return UMLDiagram(
+                diagram_type="activity",
+                mermaid_type="flowchart",
+                mermaid="flowchart TD\n",
+                nodes=[],
+                edges=[],
+                metadata={
+                    "diagram_type": "activity",
+                    "verdict": "NOT_FOUND",
+                    "next_step": (
+                        "activity diagram requires file_path to locate the function; "
+                        "provide the source file path"
+                    ),
+                },
+            )
+
+        cfg = build_activity_cfg(function_name, resolved_path, max_nodes)
+
+        if cfg.error:
+            if "file_missing" in cfg.error:
+                return UMLDiagram(
+                    diagram_type="activity",
+                    mermaid_type="flowchart",
+                    mermaid="flowchart TD\n",
+                    nodes=[],
+                    edges=[],
+                    metadata={
+                        "diagram_type": "activity",
+                        "verdict": "NOT_FOUND",
+                        "next_step": (
+                            f"activity diagram: source file '{resolved_path}' does "
+                            "not exist; the indexed symbol's source file may have "
+                            "been deleted or moved"
+                        ),
+                    },
+                )
+            if "function_missing" in cfg.error:
+                return UMLDiagram(
+                    diagram_type="activity",
+                    mermaid_type="flowchart",
+                    mermaid="flowchart TD\n",
+                    nodes=[],
+                    edges=[],
+                    metadata={
+                        "diagram_type": "activity",
+                        "verdict": "NOT_FOUND",
+                        "next_step": (
+                            f"activity diagram: function '{function_name}' not found "
+                            f"in '{resolved_path}'"
+                        ),
+                    },
+                )
+            if "empty_body" in cfg.error:
+                return UMLDiagram(
+                    diagram_type="activity",
+                    mermaid_type="flowchart",
+                    mermaid="flowchart TD\n",
+                    nodes=[],
+                    edges=[],
+                    metadata={
+                        "diagram_type": "activity",
+                        "verdict": "NOT_FOUND",
+                        "next_step": (
+                            f"activity diagram found no control-flow nodes in "
+                            f"'{function_name}'; the function may be a stub or use "
+                            "a pattern not yet supported"
+                        ),
+                    },
+                )
+            # PARSE_FAILED or unknown error
+            return UMLDiagram(
+                diagram_type="activity",
+                mermaid_type="flowchart",
+                mermaid="flowchart TD\n",
+                nodes=[],
+                edges=[],
+                metadata={
+                    "diagram_type": "activity",
+                    "verdict": "NOT_FOUND",
+                    "error": cfg.error,
+                    "next_step": "activity diagram: parse failed; check the file is valid Python",
+                },
+            )
+
+        # Build Mermaid from CFG
+        uml_nodes = [n.node_id for n in cfg.nodes]
+        uml_edges = [UMLEdge(e.source_id, e.target_id, e.label) for e in cfg.edges]
+
+        # Build Mermaid flowchart TD (not via render_flowchart_mermaid — we
+        # want actual node labels, not sorted IDs)
+        lines = ["flowchart TD"]
+        lines.append("%% NOTE: activity diagram is a structural AST approximation.")
+        lines.append(
+            "%% Exception edges, async suspension, and dynamic dispatch are not modelled."
+        )
+        for n in cfg.nodes:
+            safe = _safe_id(n.node_id)
+            label = _escape_label(n.label)
+            lines.append(f'  {safe}["{label}"]')
+        for e in cfg.edges:
+            src = _safe_id(e.source_id)
+            tgt = _safe_id(e.target_id)
+            if e.label:
+                lines.append(f"  {src} -->|{_escape_label(e.label)}| {tgt}")
+            else:
+                lines.append(f"  {src} --> {tgt}")
+        if cfg.truncated:
+            lines.append(_TRUNCATION_NOTE)
+
+        mermaid = "\n".join(lines)
+
+        return UMLDiagram(
+            diagram_type="activity",
+            mermaid_type="flowchart",
+            mermaid=mermaid,
+            nodes=uml_nodes,
+            edges=uml_edges,
+            truncated=cfg.truncated,
+            metadata={
+                "diagram_type": "activity",
+                "analysis_kind": "structural_approximation",
+                "function_name": function_name,
+                "file_path": resolved_path,
+                # RFC-0015 §P2-A stale-file contract: activity ALWAYS re-parses
+                # the current file from disk (AST bodies are not cache-resident),
+                # so the diagram reflects the current file content, not the index.
+                "note": "parsed from current file content; may differ from indexed symbols",
             },
         )
 

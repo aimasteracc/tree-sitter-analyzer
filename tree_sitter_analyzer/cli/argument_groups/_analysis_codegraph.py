@@ -212,7 +212,7 @@ def _add_mcp_codegraph_map_options(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--uml",
-        choices=["class", "package", "component", "sequence", "state"],
+        choices=["class", "package", "component", "sequence", "activity", "state"],
         help="Export a UML-style Mermaid diagram from indexed project intelligence",
     )
     parser.add_argument(
@@ -275,14 +275,21 @@ def _add_mcp_codegraph_map_options(parser: argparse.ArgumentParser) -> None:
             "in --uml class whole-project diagrams (default: excluded)"
         ),
     )
-    # P2-B flags (RFC-0015): state diagram support
+    # P2 flags (RFC-0015): activity (P2-A) + state (P2-B) diagrams
+    parser.add_argument(
+        "--uml-function",
+        help=(
+            "Function name for --uml activity control-flow diagram. "
+            "Required when --uml activity is used."
+        ),
+    )
     parser.add_argument(
         "--uml-max-nodes",
         type=int,
         default=50,
         help=(
-            "Cap on state nodes for --uml state diagrams (default: 50). "
-            "truncated=True when exceeded."
+            "Cap on CFG nodes for --uml activity / state nodes for --uml state "
+            "(default: 50). truncated=True when exceeded."
         ),
     )
     parser.add_argument(
