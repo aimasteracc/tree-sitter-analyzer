@@ -1831,9 +1831,46 @@ import kotlinx.coroutines.*
         imports = extractor.extract_imports(tree, code)
 
         assert isinstance(imports, list)
-        assert (
-            len(imports) == 0
-        )  # extraction gap: kotlin import extraction not yet implemented
+        assert len(imports) == 3
+        names = sorted(imp.name for imp in imports)
+        assert names == [
+            "kotlin.collections.List",
+            "kotlin.collections.Map",
+            "kotlinx.coroutines.*",
+        ]
+        wildcard = next(i for i in imports if i.name == "kotlinx.coroutines.*")
+        assert wildcard.is_wildcard is True
+
+    def test_extract_import_text_fallback(self):
+        """Old-grammar nodes without a qualified_identifier child fall back to
+        whitespace parsing (semicolon stripped, wildcard detected)."""
+        from unittest.mock import MagicMock
+
+        from tree_sitter_analyzer.languages.kotlin_helpers import extract_import
+
+        node = MagicMock()
+        node.parent = None
+        node.children = []
+        node.start_point = (0, 0)
+        node.end_point = (0, 30)
+
+        plain = extract_import(node, lambda n: "import com.foo.Bar;")
+        assert plain is not None
+        assert plain.name == "com.foo.Bar"
+        assert plain.is_wildcard is False
+
+        wildcard = extract_import(node, lambda n: "import com.foo.*")
+        assert wildcard is not None
+        assert wildcard.name == "com.foo.*"
+        assert wildcard.is_wildcard is True
+
+        keyword_leaf = extract_import(node, lambda n: "import")
+        assert keyword_leaf is None
+
+        def _boom(_node):
+            raise RuntimeError("boom")
+
+        assert extract_import(node, _boom) is None
 
     def test_extract_variables_extractor(self, extractor, kotlin_parser):
         """Test extract_variables method."""

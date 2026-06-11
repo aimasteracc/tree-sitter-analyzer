@@ -120,6 +120,11 @@ class KotlinElementExtractor(ElementExtractor):
         imports: list[Import] = []
 
         extractors = {
+            # The installed tree-sitter-kotlin grammar emits node type "import"
+            # (not "import_header" — that was the expected name but the grammar
+            # never used it). Keep "import_header" as well so older grammar
+            # versions that do emit it continue to work.
+            "import": self._extract_import,
             "import_header": self._extract_import,
         }
 

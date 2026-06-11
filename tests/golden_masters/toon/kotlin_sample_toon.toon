@@ -29,12 +29,14 @@ fields:
     unknown,,(48,48)
     unknown,,(49,49)
     unknown,,(63,63)
-imports: []
+imports:
+  [1]{name,module_name,statement,is_static,is_wildcard,line_range(a,b),imported_names,raw_text}:
+    java.util.Collections,java.util.Collections,import java.util.Collections,false,false,(3,3),[],import java.util.Collections
 statistics:
   class_count: 8
   method_count: 8
   field_count: 4
-  import_count: 0
+  import_count: 1
   total_lines: 65
 effective_table: toon
 requested_table: toon

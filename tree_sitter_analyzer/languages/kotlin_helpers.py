@@ -8,14 +8,51 @@ from ..utils import log_error
 
 
 def extract_import(node: Any, get_node_text: Callable[..., str]) -> Import | None:
-    """Extract import header."""
+    """Extract a Kotlin import statement.
+
+    Reads the AST children instead of splitting the statement text, so
+    trailing semicolons, inline comments, wildcards and aliases all yield
+    clean qualified names:
+
+        import (statement node)
+          'import' keyword leaf  <- same node type; has no children -- skip
+          qualified_identifier   <- the module path
+          [ '.' '*' ]            <- wildcard import
+          [ 'as' identifier ]    <- alias import
+          [ ';' ]                <- optional terminator
+
+    Falls back to whitespace parsing for grammar versions that emit
+    ``import_header`` without a ``qualified_identifier`` child.
+    """
     try:
         raw_text = get_node_text(node)
         start_line = node.start_point[0] + 1
         end_line = node.end_point[0] + 1
 
-        parts = raw_text.split()
-        name = parts[1] if len(parts) > 1 else "unknown"
+        qualified: str | None = None
+        is_wildcard = False
+        alias: str | None = None
+        saw_as = False
+        for child in node.children:
+            if child.type == "qualified_identifier":
+                qualified = get_node_text(child)
+            elif child.type == "*":
+                is_wildcard = True
+            elif child.type == "as":
+                saw_as = True
+            elif child.type == "identifier" and saw_as:
+                alias = get_node_text(child)
+
+        if qualified is None:
+            # Leaf 'import' keyword token (no children) or an older grammar's
+            # import_header: fall back to text parsing.
+            parts = raw_text.split()
+            if len(parts) < 2:
+                return None
+            name = parts[1].rstrip(";")
+            is_wildcard = name.endswith(".*")
+        else:
+            name = qualified + (".*" if is_wildcard else "")
 
         return Import(
             name=name,
@@ -24,6 +61,9 @@ def extract_import(node: Any, get_node_text: Callable[..., str]) -> Import | Non
             raw_text=raw_text,
             language="kotlin",
             import_statement=raw_text,
+            module_name=name,
+            is_wildcard=is_wildcard,
+            alias=alias,
         )
     except Exception as e:
         log_error(f"Error extracting Kotlin import: {e}")
