@@ -1625,3 +1625,53 @@ def test_coupled_peers_small_sample_carries_caveat():
     next_step = result["agent_summary"]["next_step"]
     assert next_step.startswith("Caution: small sample (n=3 commits")
     assert "statistically unreliable" in next_step
+
+
+# ---------------------------------------------------------------------------
+# Codex P2 (#506): CLI FILE_OR_SYMBOL routing — symbols go as symbol=.
+# ---------------------------------------------------------------------------
+
+
+def test_cli_co_change_routes_symbol_vs_path():
+    """Path-looking values -> file_path; bare names -> symbol."""
+    import argparse
+    import asyncio
+    from unittest.mock import AsyncMock
+    from unittest.mock import patch as _patch
+
+    from tree_sitter_analyzer.cli.nav_special_commands import handle_nav_actions
+    from tree_sitter_analyzer.cli.special_commands import SpecialCommandContext
+
+    captured: list[dict] = []
+
+    def make_ctx() -> SpecialCommandContext:
+        return SpecialCommandContext(
+            asyncio_run=asyncio.run,
+            output_json=lambda data: None,
+            output_error=lambda msg: None,
+            output_info=lambda msg: None,
+            output_list=lambda msg: None,
+            query_loader=None,
+        )
+
+    for target in ["src/handler.py", "apply_toon_format_to_response"]:
+        args = argparse.Namespace(
+            co_change=target,
+            test_map=None,
+            co_change_max_commits=500,
+            project_root="/tmp/test",
+            output_format="json",
+        )
+        with _patch(
+            "tree_sitter_analyzer.mcp.tools.nav_facade.build_nav_facade"
+        ) as mock_build:
+            mock_facade = mock_build.return_value
+            mock_facade.execute = AsyncMock(
+                side_effect=lambda a: captured.append(a) or {"success": True}
+            )
+            handle_nav_actions(args, make_ctx())
+
+    assert captured[0].get("file_path") == "src/handler.py"
+    assert "symbol" not in captured[0]
+    assert captured[1].get("symbol") == "apply_toon_format_to_response"
+    assert "file_path" not in captured[1]

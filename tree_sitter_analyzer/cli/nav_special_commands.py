@@ -34,9 +34,17 @@ def _dispatch_co_change(
     output_format: str,
 ) -> int:
     """Dispatch --co-change action."""
+    # FILE_OR_SYMBOL routing (Codex P2 on #506): a path-looking value goes
+    # as file_path; anything else goes as symbol so the facade's
+    # symbol-to-defining-file resolution runs instead of comparing a bare
+    # symbol name against git path names (which always yields no history).
+    target = getattr(args, "co_change", None) or ""
+    looks_like_path = (
+        "/" in target or "\\" in target or "." in target.rsplit("/", 1)[-1]
+    )
     tool_args = {
         "action": "co_change",
-        "file_path": getattr(args, "co_change", None),
+        ("file_path" if looks_like_path else "symbol"): target,
         "max_commits": getattr(args, "co_change_max_commits", 500),
         "output_format": output_format,
     }
