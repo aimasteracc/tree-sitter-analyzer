@@ -1,6 +1,5 @@
 """MCP search content fd-compat tests — extracted from test_mcp_search_content_p1."""
 
-
 import pytest
 
 from tree_sitter_analyzer.mcp.tools.list_files_tool import ListFilesTool
@@ -32,16 +31,24 @@ async def test_fd_01_simple_search(tmp_path, monkeypatch):
 
     async def fake_run(cmd, cwd=None, timeout=None, timeout_ms=None):
         pattern = None
+        import os
+
         for _i, arg in enumerate(cmd):
-            if arg not in [
-                "-a",
-                "-H",
-                "-I",
-                "-L",
-                "--color",
-                "never",
-                "fd",
-            ] and not arg.startswith("-"):
+            if (
+                arg
+                not in [
+                    "-a",
+                    "-H",
+                    "-I",
+                    "-L",
+                    "--color",
+                    "never",
+                    "fd",
+                ]
+                and not arg.startswith("-")
+                and not arg.isdigit()
+                and not os.path.isabs(arg)
+            ):
                 pattern = arg
                 break
 
@@ -52,6 +59,24 @@ async def test_fd_01_simple_search(tmp_path, monkeypatch):
         elif pattern == "d.foo":
             files = [str(tmp_path / "one" / "two" / "three" / "d.foo")]
         elif pattern == "foo":
+            files = [
+                str(tmp_path / "a.foo"),
+                str(tmp_path / "one" / "b.foo"),
+                str(tmp_path / "one" / "two" / "c.foo"),
+                str(tmp_path / "one" / "two" / "C.Foo2"),
+                str(tmp_path / "one" / "two" / "three" / "d.foo"),
+                str(tmp_path / "one" / "two" / "three" / "directory_foo"),
+            ]
+        elif pattern in ("*.foo", None):
+            # glob pattern — return all .foo files
+            files = [
+                str(tmp_path / "a.foo"),
+                str(tmp_path / "one" / "b.foo"),
+                str(tmp_path / "one" / "two" / "c.foo"),
+                str(tmp_path / "one" / "two" / "C.Foo2"),
+                str(tmp_path / "one" / "two" / "three" / "d.foo"),
+            ]
+        elif pattern == "*":
             files = [
                 str(tmp_path / "a.foo"),
                 str(tmp_path / "one" / "b.foo"),
@@ -74,19 +99,19 @@ async def test_fd_01_simple_search(tmp_path, monkeypatch):
         {"roots": [str(tmp_path)], "pattern": "a.foo", "output_format": "json"}
     )
     assert result1["success"] is True
-    assert result1["count"] >= 0
+    assert result1["count"] == 1
 
     result2 = await tool.execute(
         {"roots": [str(tmp_path)], "pattern": "*.foo", "glob": True}
     )
     assert result2["success"] is True
-    assert result2["count"] >= 0
+    assert result2["count"] == 5
 
     result3 = await tool.execute(
         {"roots": [str(tmp_path)], "pattern": "*", "glob": True}
     )
     assert result3["success"] is True
-    assert result3["count"] >= 0
+    assert result3["count"] == 6
 
 
 @pytest.mark.unit
@@ -112,7 +137,7 @@ async def test_fd_16_empty_pattern(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 2
+    assert result["count"] == 2
 
 
 @pytest.mark.unit
@@ -153,7 +178,7 @@ async def test_fd_17_regex_searches(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 2
+    assert result["count"] == 2
 
 
 @pytest.mark.unit
@@ -196,11 +221,11 @@ async def test_fd_18_smart_case_search(tmp_path, monkeypatch):
     )
 
     assert result1["success"] is True
-    assert result1["count"] >= 2
+    assert result1["count"] == 3
 
     result2 = await tool.execute(
         {"roots": [str(tmp_path)], "pattern": "Test", "output_format": "json"}
     )
 
     assert result2["success"] is True
-    assert result2["count"] >= 1
+    assert result2["count"] == 1
