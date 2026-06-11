@@ -587,3 +587,20 @@ class TestApplyLimits:
         )
         assert len(result) == 30
         assert truncated is False
+
+
+def test_apply_limits_aggregate_modes_uncapped() -> None:
+    """Codex P2 (#505): summary/group_by_file must see ALL matches —
+    the default listed cap only applies to normal/full mode."""
+    from tree_sitter_analyzer.mcp.tools import fd_rg_utils
+    from tree_sitter_analyzer.mcp.tools.search_content_response import apply_limits
+
+    matches = [{"file": f"f{i}.py", "line": i} for i in range(200)]
+    for mode_arg in ({"summary_only": True}, {"group_by_file": True}):
+        out, truncated = apply_limits(matches, dict(mode_arg), fd_rg_utils)
+        assert len(out) == 200
+        assert truncated is False
+    # normal mode still budgeted
+    out, truncated = apply_limits(matches, {}, fd_rg_utils)
+    assert len(out) == 50
+    assert truncated is True

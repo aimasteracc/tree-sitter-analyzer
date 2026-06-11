@@ -377,9 +377,18 @@ def apply_limits(
     if user_max is not None:
         if len(matches) > user_max:
             return matches[:user_max], True
+        # The absolute ceiling applies even to explicit user limits — a
+        # user_max above MAX_RESULTS_HARD_CAP cannot lift the hard cap.
+        if len(matches) >= fd_rg_utils.MAX_RESULTS_HARD_CAP:
+            return matches[: fd_rg_utils.MAX_RESULTS_HARD_CAP], True
         return matches, False
-    # No explicit limit: apply default listed cap first.
-    if len(matches) > DEFAULT_CONTENT_LISTED_CAP:
+    # No explicit limit: apply the default listed cap ONLY in normal/full
+    # mode. Aggregate modes (summary/group_by_file/count_only/total_only)
+    # must see ALL matches or their totals are silently corrupted
+    # (Codex P2 on #505 — a 200-match summary would report total 50).
+    if determine_requested_format(arguments) == "normal" and (
+        len(matches) > DEFAULT_CONTENT_LISTED_CAP
+    ):
         return matches[:DEFAULT_CONTENT_LISTED_CAP], True
     if len(matches) >= fd_rg_utils.MAX_RESULTS_HARD_CAP:
         return matches[: fd_rg_utils.MAX_RESULTS_HARD_CAP], True
