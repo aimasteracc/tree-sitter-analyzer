@@ -131,8 +131,11 @@ def _extract_fields_from_source(
             continue
         if stripped.startswith("#"):
             continue
-        # Match: name = ... or name: type = ...
-        m = re.match(r"([A-Za-z_]\w*)(?:\s*:\s*[^=\n]+)?\s*=\s*", stripped)
+        # Match: name = ... / name: type = ... / annotation-only name: type
+        # (dataclass / Pydantic required fields have no default value)
+        m = re.match(
+            r"([A-Za-z_]\w*)(?:\s*:\s*[^=\n]+?)?\s*=\s*[^=]", stripped
+        ) or re.match(r"([A-Za-z_]\w*)\s*:\s*[^=\n]+$", stripped)
         if m and not m.group(1).startswith("__"):
             # Skip dunder class attributes (likely __slots__, __doc__ etc)
             attr_name = m.group(1)

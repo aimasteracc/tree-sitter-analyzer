@@ -406,7 +406,7 @@ class TestEdgeCases:
         assert response["success"] is True
         # fields should be empty (OSError fallback) but rest of response is intact
         assert response["fields"] == []
-        assert len(response["methods"]) > 0  # methods still work
+        assert len(response["methods"]) == 4  # methods still work (Animal pin)
 
     def test_class_with_duplicate_self_assignments_deduplicated(
         self, tmp_path: Path
@@ -854,3 +854,29 @@ def test_base_mcp_tool_fields_extracted_from_delegated_init() -> None:
     vis = {f["name"]: f["visibility"] for f in fields}
     assert vis["_project_root"] == "protected"
     assert vis["security_validator"] == "public"
+
+
+def test_annotation_only_fields_extracted() -> None:
+    """Codex P2 (#482): dataclass/Pydantic required fields have no '='.
+
+    ``name: str`` (annotation-only) must be reported as a class field."""
+    from tree_sitter_analyzer.mcp.tools.class_inspect_tool import (
+        _extract_fields_from_source,
+    )
+
+    src = (
+        "class Config:\n"
+        "    name: str\n"
+        "    retries: int = 3\n"
+        "    _token: str\n"
+        "\n"
+        "    def ping(self) -> None:\n"
+        "        pass\n"
+    )
+    fields = _extract_fields_from_source(src, "Config", 1, 7)
+    names = [f["name"] for f in fields]
+    assert names == ["name", "retries", "_token"]
+    vis = {f["name"]: f["visibility"] for f in fields}
+    assert vis["_token"] == "protected"
+    kinds = {f["name"]: f["kind"] for f in fields}
+    assert kinds == {"name": "class", "retries": "class", "_token": "class"}
