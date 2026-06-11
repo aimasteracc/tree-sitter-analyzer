@@ -1,11 +1,11 @@
 {
   "counts_by_type": {
     "Class": 30,
-    "Function": 44,
+    "Function": 48,
     "Import": 5,
     "Variable": 31
   },
-  "element_total": 110,
+  "element_total": 114,
   "names_by_type": {
     "Class": [
       "AdminUser",
@@ -55,6 +55,7 @@
       "fetchMultipleData",
       "findAll",
       "findById",
+      "getId",
       "getInstance",
       "getProperty",
       "greet",
@@ -73,6 +74,7 @@
       "save",
       "setupEventHandlers",
       "simulateApiCall",
+      "updateTimestamp",
       "validate"
     ],
     "Import": [
