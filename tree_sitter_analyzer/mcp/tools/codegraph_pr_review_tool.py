@@ -77,9 +77,20 @@ def _filter_affected_by_language(
     Rules (applied in order — drop on first match):
     1. **Language gate**: if the candidate's language is *known* and not compatible
        with any changed-file language, drop it (cross-language phantom).
+
+       The check is **directional** (mirrors ``languages_compatible`` semantics):
+       - *upstream* edge: candidate is the CALLER, changed file is the CALLEE →
+         ``languages_compatible(candidate_lang, changed_lang)``
+       - *downstream* edge: changed file is the CALLER, candidate is the CALLEE →
+         ``languages_compatible(changed_lang, candidate_lang)``
+
+       This matters for C/C++/ObjC: a .cpp caller is allowed to resolve a .h
+       (indexed as ``c``) so ``cpp→c`` is allowed; but a pure-C caller resolving
+       a .cpp function is not.
+
     2. **Ambiguity gate (count)**: if the candidate's bare function name appears in
-       ≥ ``_AMBIGUOUS_NAME_FILE_THRESHOLD`` distinct files across the project, drop
-       it (no positive import evidence to anchor the binding).
+       ≥ ``_AMBIGUOUS_NAME_FILE_THRESHOLD`` **distinct files** across the project,
+       drop it (no positive import evidence to anchor the binding).
     3. **Ambiguity gate (known callbacks)**: if the name is in
        ``_KNOWN_GENERIC_CALLBACK_NAMES``, drop it.  These are commonly passed as
        parameters (callback pattern) rather than imported — the call graph cannot
@@ -88,7 +99,7 @@ def _filter_affected_by_language(
     Args:
         candidates: list of affected-function dicts (must have "language" key).
         changed_languages: set of language strings inferred from the changed files.
-        name_file_count: mapping from bare function name → count of distinct files
+        name_file_count: mapping from bare function name → count of **distinct files**
             that define it project-wide.  Pass ``{}`` when unavailable.
 
     Returns:
@@ -103,13 +114,24 @@ def _filter_affected_by_language(
     for func in candidates:
         candidate_lang = func.get("language", "")
         func_name = func.get("function", "")
+        direction = func.get("direction", "upstream")
 
-        # Rule 1: language gate — only block on a *known* mismatch
+        # Rule 1: language gate — only block on a *known* mismatch.
+        # Direction matters: upstream edges have candidate=caller, changed=callee;
+        # downstream edges have changed=caller, candidate=callee.
         if candidate_lang and changed_languages:
-            compatible = any(
-                languages_compatible(changed_lang, candidate_lang)
-                for changed_lang in changed_languages
-            )
+            if direction == "upstream":
+                # candidate calls into the changed file → candidate is the caller
+                compatible = any(
+                    languages_compatible(candidate_lang, changed_lang)
+                    for changed_lang in changed_languages
+                )
+            else:
+                # changed file calls into candidate → changed file is the caller
+                compatible = any(
+                    languages_compatible(changed_lang, candidate_lang)
+                    for changed_lang in changed_languages
+                )
             if not compatible:
                 cross_dropped += 1
                 continue
@@ -603,16 +625,23 @@ class CodeGraphPRReviewTool(BaseMCPTool):
             if lang:
                 changed_langs.add(lang)
 
-        # Build a project-wide name→file-count map from the call graph so we can
-        # detect generic bare names (e.g. "text", "encode") that appear everywhere.
-        name_file_count: dict[str, int] = {}
+        # Build a project-wide name→distinct-file-count map from the call graph so
+        # we can detect generic bare names (e.g. "text", "encode") that appear in
+        # many different files.  One file may define the same name N times (e.g.
+        # overloads, inner classes) — counting per-ref would make a single-file
+        # hotspot trip the threshold; we count DISTINCT FILES instead.
+        name_files: dict[str, set[str]] = {}
         try:
             for ref in graph.function_refs():
                 name = ref.name
-                # Count each (name, file) pair once
-                name_file_count[name] = name_file_count.get(name, 0) + 1
+                if name not in name_files:
+                    name_files[name] = set()
+                name_files[name].add(ref.file_path)
         except Exception:
             pass
+        name_file_count: dict[str, int] = {
+            name: len(files) for name, files in name_files.items()
+        }
 
         # Collect raw candidates, skipping edges anchored on generic functions
         # defined in the changed file (e.g. determine_visibility: defined in 5+
