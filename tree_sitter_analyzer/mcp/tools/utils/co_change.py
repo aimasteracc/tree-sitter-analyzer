@@ -101,12 +101,20 @@ def _build_co_change_summary(
     if coupled:
         top = coupled[0]["file"]
         lift = coupled[0]["lift"]
-        return {
-            "next_step": (
-                f"When editing {target_file}, also review {top} (lift={lift}).  "
-                f"{len(coupled)} co-changed peer(s) total."
-            ),
-        }
+        next_step = (
+            f"When editing {target_file}, also review {top} (lift={lift}).  "
+            f"{len(coupled)} co-changed peer(s) total."
+        )
+        # Codex P2 (#495): coupled peers found from a too-small sample are
+        # still statistically unreliable — lead with the caveat instead of
+        # bypassing the guard via this early return.
+        if commits_analyzed < MIN_COMMITS_FOR_COUPLING_ANALYSIS:
+            next_step = (
+                f"Caution: small sample (n={commits_analyzed} commits, minimum "
+                f"is {MIN_COMMITS_FOR_COUPLING_ANALYSIS}) — coupling signals "
+                f"below are statistically unreliable.  " + next_step
+            )
+        return {"next_step": next_step}
 
     # No coupled files above threshold.
     if commits_analyzed < MIN_COMMITS_FOR_COUPLING_ANALYSIS:

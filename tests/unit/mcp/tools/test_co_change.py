@@ -1549,12 +1549,10 @@ def test_adequate_sample_filtered_candidates_next_step_says_filtered() -> None:
 
     next_step: str = result["agent_summary"]["next_step"]
     assert "Safe to edit in isolation" not in next_step
-    # Must surface the filtered count somehow
-    assert (
-        "3" in next_step
-        or "filtered" in next_step.lower()
-        or "below" in next_step.lower()
-    )
+    # Exact pin (Codex P2): the filtered-candidate COUNT must be surfaced —
+    # the deterministic fixture filters exactly 3 candidates.
+    assert result["candidates_below_threshold"] == 3
+    assert "3 candidate(s) were filtered" in next_step
 
 
 # ---------------------------------------------------------------------------
@@ -1597,3 +1595,33 @@ async def test_nav_facade_co_change_carries_candidates_below_threshold() -> None
 
     assert result["success"] is True
     assert "candidates_below_threshold" in result
+
+
+# ---------------------------------------------------------------------------
+# 36. Codex P2 (#495): coupled peers from a too-small sample carry the
+#     small-sample caveat instead of bypassing the guard.
+# ---------------------------------------------------------------------------
+
+
+def test_coupled_peers_small_sample_carries_caveat():
+    """n=3 with a peer meeting min_shared=3 must lead with the caution."""
+    commits = [(_sha(i), ["a.py", "b.py"]) for i in range(3)]
+    git_log_out = _make_git_log(commits)
+    head_sha = "b" * 40
+
+    with patch(
+        "tree_sitter_analyzer.mcp.tools.utils.co_change._run_git"
+    ) as mock_run_git:
+        mock_run_git.side_effect = [
+            (0, head_sha),
+            (0, git_log_out),
+        ]
+        _CO_CHANGE_CACHE.clear()
+        result = _compute_co_change("/fake/repo", "a.py")
+
+    assert result["commits_analyzed"] == 3
+    files = [c["file"] for c in result["co_changed_files"]]
+    assert files == ["b.py"]
+    next_step = result["agent_summary"]["next_step"]
+    assert next_step.startswith("Caution: small sample (n=3 commits")
+    assert "statistically unreliable" in next_step
