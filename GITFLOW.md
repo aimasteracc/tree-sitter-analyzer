@@ -124,27 +124,23 @@ The project recommends using automated release workflows, but the manual process
     ```bash
     # Create temporary release message file (avoid encoding and symbol errors)
     cat > release_message.md << 'EOF'
-    ## v1.7.2 - File Output Optimization and ROO Rules Documentation
+    ## vX.Y.Z - <release title>
 
     ### 🎯 New Features
-    - **File Output Optimization**: Added `suppress_output` and `output_file` parameters to MCP search tools, significantly reducing token consumption
-    - **Automatic Format Detection**: Intelligent file format selection (JSON/Markdown) based on content type
-    - **ROO Rules Documentation**: Added comprehensive tree-sitter-analyzer MCP optimization usage guide
+    - <describe new features>
 
     ### 📊 Quality Metrics
-    - Test count: 2675 tests (100% pass rate)
-    - Code coverage: 78.85%
-    - New features: File output optimization significantly reduces AI conversation token consumption
+    - Test count: <test count from release CI> (100% pass rate)
+    - Code coverage: <coverage %>
+    - <other metrics>
 
     ### 🔧 Technical Improvements
-    - Response size reduction up to 99% (when outputting large search results to files)
-    - Backward compatible, no impact on existing functionality usage
-    - Complete test coverage including file output optimization feature verification
+    - <describe technical improvements>
     EOF
 
     # Create release using gh CLI
-    gh release create v1.7.2 \
-        --title "Release v1.7.2: File Output Optimization and ROO Rules Documentation" \
+    gh release create vX.Y.Z \
+        --title "Release vX.Y.Z: <release title>" \
         --notes-file release_message.md \
         --target main
 

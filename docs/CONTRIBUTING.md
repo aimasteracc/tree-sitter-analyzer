@@ -130,10 +130,10 @@ This checklist includes:
 
 ```bash
 # Run language-specific tests
-uv run pytest tests/test_{language}/ -v
+uv run pytest tests/unit/languages/ -v
 
 # Run golden master tests
-uv run pytest tests/test_golden_master_regression.py -v -k "{language}"
+uv run pytest tests/regression/test_plugin_golden_masters.py -v -k "{language}"
 ```
 
 ## Code Quality
@@ -157,7 +157,7 @@ uv run pytest tests/ -v
 uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=term-missing
 
 # Run specific test file
-uv run pytest tests/test_readme/ -v
+uv run pytest tests/integration/docs/test_readme_structure.py -v
 
 # Parallel execution (faster)
 uv run pytest tests/ -n auto
@@ -191,13 +191,13 @@ When making structural changes to README.md, contributors are responsible for:
 - [ ] When adding new sections, add the same sections to README_ja.md and README_zh.md
 - [ ] When reordering sections, update all READMEs with the same order
 - [ ] When changing section emojis, update all READMEs with the same emojis
-- [ ] Verify all `tests/test_readme/` tests pass
+- [ ] Verify all `tests/integration/docs/` tests pass
 
 ### Structure Consistency Verification
 
 ```bash
 # Run README structure tests
-uv run pytest tests/test_readme/ -v
+uv run pytest tests/integration/docs/test_readme_structure.py -v
 ```
 
 These tests verify:

@@ -60,12 +60,12 @@ The analyzer engine is the central component that orchestrates code analysis.
 
 Each supported language has a dedicated plugin that understands its syntax and semantics.
 
-**Location**: `tree_sitter_analyzer/plugins/`
+**Location**: `tree_sitter_analyzer/languages/` (plugin implementations);
+`tree_sitter_analyzer/plugins/` contains only the abstract base class (`LanguagePlugin`) and the plugin manager/registry.
 
 **Plugin Structure**:
 ```
-plugins/
-├── base_plugin.py          # Abstract base class
+languages/
 ├── java_plugin.py          # Java language support
 ├── python_plugin.py        # Python language support
 ├── typescript_plugin.py    # TypeScript/JavaScript support
@@ -76,6 +76,10 @@ plugins/
 ├── go_plugin.py            # Go support
 ├── kotlin_plugin.py        # Kotlin support
 └── ...
+
+plugins/
+├── base_plugin.py          # Abstract base class (LanguagePlugin ABC)
+└── ...                     # Plugin manager / registry
 ```
 
 **Plugin Responsibilities**:
@@ -140,14 +144,11 @@ The cache service optimizes repeated operations.
 │  ┌─────────────────────────────────────────────────────┐    │
 │  │                   Tool Registry                      │    │
 │  ├─────────────────────────────────────────────────────┤    │
-│  │  • check_code_scale                                 │    │
-│  │  • analyze_code_structure                           │    │
-│  │  • extract_code_section                             │    │
-│  │  • query_code                                       │    │
-│  │  • list_files                                       │    │
-│  │  • search_content                                   │    │
-│  │  • find_and_grep                                    │    │
-│  │  • set_project_path                                 │    │
+│  │  8 facade tools (each with action= parameter):      │    │
+│  │  • search   • nav      • structure  • health        │    │
+│  │  • edit     • project  • index      • viz           │    │
+│  │  + set_project_path (standalone infrastructure)     │    │
+│  │  See docs/CODEMAPS/mcp-tools.md for action lists.  │    │
 │  └─────────────────────────────────────────────────────┘    │
 │                                                              │
 │  ┌─────────────────────────────────────────────────────┐    │
@@ -173,16 +174,21 @@ The cache service optimizes repeated operations.
 
 **Location**: `tree_sitter_analyzer/mcp/tools/`
 
-| Tool | File | Purpose |
-|------|------|---------|
-| `check_code_scale` | `mcp/tools/analyze_scale_tool.py` | File size and complexity assessment |
-| `analyze_code_structure` | `mcp/tools/ast_cache_tool.py` | Structured code analysis |
-| `extract_code_section` | `mcp/tools/read_partial_tool.py` | Line-range code extraction |
-| `query_code` | `mcp/tools/query_tool.py` | Element-specific queries |
-| `list_files` | `mcp/tools/list_files_tool.py` | File discovery (fd) |
-| `search_content` | `mcp/tools/search_content_tool.py` | Content search (ripgrep) |
-| `find_and_grep` | `mcp/tools/find_and_grep_tool.py` | Combined search |
-| `set_project_path` | Various | Project boundary setting |
+The public surface is **8 facade tools + set_project_path**. Each facade delegates to
+inner tool classes (approximately 74 total). For the full action-to-tool mapping see
+[docs/CODEMAPS/mcp-tools.md](CODEMAPS/mcp-tools.md).
+
+| Facade | Purpose |
+|--------|---------|
+| `search` | Symbol/content/grep/query/batch/chain/DSL search |
+| `nav` | Call-graph navigation, context, callers/callees, impact |
+| `structure` | AST outline, analyze, read, class tree, explore |
+| `health` | Project/file health, patterns, heatmap, deps, test_gap |
+| `edit` | Edit safety, guard, impact, refactor, constraints, PR review |
+| `project` | Project overview, files, smart context, workflow |
+| `index` | CodeGraph index lifecycle (status/build/sync) |
+| `viz` | UML / graph diagrams + similarity |
+| `set_project_path` | Project boundary setting (standalone, not a facade) |
 
 ### External Tool Integration
 
