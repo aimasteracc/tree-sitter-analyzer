@@ -58,7 +58,10 @@ winget install sharkdp.fd BurntSushi.ripgrep.MSVC      # Windows
 #### 2. 安装 Tree-sitter Analyzer
 
 ```bash
-uv add "tree-sitter-analyzer[all,mcp]"
+# 独立安装(持久 CLI 命令):
+uv tool install "tree-sitter-analyzer[all,mcp]"
+# — 也可完全不安装:下方 MCP 配置通过 uvx 按需运行。
+# 在 uv 管理的 Python 项目内则用: uv add "tree-sitter-analyzer[all,mcp]"
 ```
 
 #### 3. 接入你的 agent
