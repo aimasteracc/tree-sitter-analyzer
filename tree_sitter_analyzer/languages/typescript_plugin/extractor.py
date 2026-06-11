@@ -33,6 +33,7 @@ from ._class_helpers import (
     extract_type_alias,
 )
 from ._function_helpers import (
+    extract_abstract_method_signature,
     extract_arrow_function,
     extract_function,
     extract_generator_function,
@@ -115,6 +116,10 @@ class TypeScriptElementExtractor(ElementExtractor):
             "method_definition": self._extract_method_optimized,
             "generator_function_declaration": self._extract_generator_function_optimized,
             "method_signature": self._extract_method_signature_optimized,
+            # Issue #459 (Theme I): abstract methods inside abstract classes use
+            # a distinct node type.  Visibility (public/protected/private) must
+            # be preserved so we use a dedicated handler.
+            "abstract_method_signature": self._extract_abstract_method_signature_optimized,
         }
 
         self._traverse_and_extract_iterative(
@@ -283,6 +288,18 @@ class TypeScriptElementExtractor(ElementExtractor):
     ) -> Function | None:
         """Extract method signature information from interfaces"""
         return extract_method_signature(
+            node,
+            self._parse_method_signature_optimized,
+            self._extract_tsdoc_for_line,
+            self._get_node_text_optimized,
+            self.framework_type,
+        )
+
+    def _extract_abstract_method_signature_optimized(
+        self, node: "tree_sitter.Node"
+    ) -> Function | None:
+        """Extract abstract method signature from an abstract class (preserves visibility)."""
+        return extract_abstract_method_signature(
             node,
             self._parse_method_signature_optimized,
             self._extract_tsdoc_for_line,

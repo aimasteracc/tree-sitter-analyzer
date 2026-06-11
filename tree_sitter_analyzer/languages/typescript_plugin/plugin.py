@@ -236,9 +236,13 @@ class TypeScriptPlugin(LanguagePlugin):
                 "method_definition",
             ],
             "arrow_function": ["arrow_function"],
-            "method": ["method_definition", "method_signature"],
+            "method": [
+                "method_definition",
+                "method_signature",
+                "abstract_method_signature",
+            ],
             "constructor": ["method_definition"],
-            "signature": ["method_signature"],
+            "signature": ["method_signature", "abstract_method_signature"],
             # Class-related categories
             "class": ["class_declaration", "abstract_class_declaration"],
             "interface": ["interface_declaration"],

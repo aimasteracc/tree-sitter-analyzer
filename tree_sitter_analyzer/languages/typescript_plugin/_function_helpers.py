@@ -219,6 +219,65 @@ def extract_method_signature(
         return None
 
 
+def extract_abstract_method_signature(
+    node: tree_sitter.Node,
+    parse_signature: MethodSignatureParser,
+    extract_tsdoc: TsdocExtractor,
+    get_node_text: TextExtractor,
+    framework_type: str,
+) -> Function | None:
+    """Extract abstract method signature from an abstract class.
+
+    Issue #459 (Theme I): ``abstract_method_signature`` nodes carry an
+    accessibility_modifier child (public/protected/private) that is absent
+    from interface ``method_signature`` nodes.  Unlike
+    ``extract_method_signature`` we preserve ``visibility`` here.
+    """
+    try:
+        start_line = node.start_point[0] + 1
+        end_line = node.end_point[0] + 1
+
+        method_info = parse_signature(node)
+        if not method_info:
+            return None
+
+        (
+            name,
+            parameters,
+            is_async,
+            is_static,
+            _is_getter,
+            _is_setter,
+            _is_constructor,
+            return_type,
+            visibility,
+            _generics,
+        ) = method_info
+        if name is None:
+            return None
+
+        return Function(
+            name=name,
+            start_line=start_line,
+            end_line=end_line,
+            raw_text=get_node_text(node),
+            language="typescript",
+            parameters=parameters,
+            return_type=return_type or "any",
+            is_async=is_async,
+            is_static=is_static,
+            docstring=extract_tsdoc(start_line),
+            complexity_score=0,
+            is_arrow=False,
+            is_method=True,
+            framework_type=framework_type,
+            visibility=visibility,
+        )
+    except Exception as e:
+        log_debug(f"Failed to extract abstract method signature info: {e}")
+        return None
+
+
 def extract_generator_function(
     node: tree_sitter.Node,
     parse_signature: FunctionSignatureParser,
