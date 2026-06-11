@@ -128,3 +128,17 @@ def test_invalid_enum_error_empty_list() -> None:
     exc = invalid_enum_error("mode", "anything", [])
     # Note: trailing space comes from ', '.join([])
     assert str(exc) == "Invalid mode: 'anything'. Valid values: "
+
+
+def test_invalid_enum_error_routes_to_validation_recovery_hint() -> None:
+    """opencode P2 (#490): the enumerated message must classify as a
+    validation error with an actionable (non-generic) recovery hint."""
+    from tree_sitter_analyzer.mcp.server_utils.error_recovery import (
+        build_agent_friendly_error,
+    )
+    from tree_sitter_analyzer.mcp.tools._validators import invalid_enum_error
+
+    err = invalid_enum_error("mode", "bogus", ["all", "summary"])
+    payload = build_agent_friendly_error("health", err)
+    assert payload["error_type"] == "validation"
+    assert "valid values" in payload["recovery_hint"].lower()
