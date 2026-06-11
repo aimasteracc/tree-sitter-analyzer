@@ -95,28 +95,28 @@ while IFS= read -r line; do
     # Pattern 1: assert .* >= [0-9]
     if echo "$content" | grep -E 'assert[[:space:]]+.*>=[[:space:]]*[0-9]' > /dev/null; then
         VIOLATIONS+="$CURRENT_FILE: $content"$'\n'
-        ((VIOLATION_COUNT++))
+        VIOLATION_COUNT=$((VIOLATION_COUNT + 1))
         continue
     fi
 
     # Pattern 2: assert .* > 0[^0-9] (> 0 word boundary)
-    if echo "$content" | grep -E 'assert[[:space:]]+.*>[[:space:]]*0[^0-9]' > /dev/null; then
+    if echo "$content" | grep -E 'assert[[:space:]]+.*>[[:space:]]*0([^0-9]|$)' > /dev/null; then
         VIOLATIONS+="$CURRENT_FILE: $content"$'\n'
-        ((VIOLATION_COUNT++))
+        VIOLATION_COUNT=$((VIOLATION_COUNT + 1))
         continue
     fi
 
     # Pattern 3: assert len(...) >= [0-9]
     if echo "$content" | grep -E 'assert[[:space:]]+.*len\([^)]*\)[[:space:]]*>=[[:space:]]*[0-9]' > /dev/null; then
         VIOLATIONS+="$CURRENT_FILE: $content"$'\n'
-        ((VIOLATION_COUNT++))
+        VIOLATION_COUNT=$((VIOLATION_COUNT + 1))
         continue
     fi
 
     # Pattern 4: assert len(...) > [0-9]
     if echo "$content" | grep -E 'assert[[:space:]]+.*len\([^)]*\)[[:space:]]*>[[:space:]]*[0-9]' > /dev/null; then
         VIOLATIONS+="$CURRENT_FILE: $content"$'\n'
-        ((VIOLATION_COUNT++))
+        VIOLATION_COUNT=$((VIOLATION_COUNT + 1))
         continue
     fi
 
