@@ -1191,13 +1191,25 @@ def test_is_neighbourhood_center_none_returns_false() -> None:
 
 
 def test_activity_diagram_no_file_path_returns_not_found(tmp_path) -> None:
-    """activity_diagram with file_path=None returns NOT_FOUND (lines 508→515, 517)."""
+    """activity_diagram with file_path=None AND no index hit returns NOT_FOUND.
+
+    When the function is not found in the index and no file_path is given,
+    verdict=NOT_FOUND with message distinguishing "not in index" from "file required".
+    """
     from tree_sitter_analyzer.uml_export import UMLExporter
 
-    exporter = UMLExporter(str(tmp_path))
+    class FakeCache:
+        def search_symbols(self, query: str, language: str | None = None) -> list:
+            return []  # no index hits
+
+        def close(self) -> None:
+            pass
+
+    exporter = UMLExporter(str(tmp_path), cache=FakeCache())
     result = exporter.activity_diagram("f", file_path=None)
     assert result.metadata.get("verdict") == "NOT_FOUND"
-    assert "file_path" in result.metadata.get("next_step", "")
+    next_step = result.metadata.get("next_step", "")
+    assert "not found in the index" in next_step or "not in index" in next_step
 
 
 def test_activity_diagram_relative_file_path(tmp_path) -> None:
@@ -1438,3 +1450,126 @@ def test_handle_if_no_else_false_live_has_non_condition(tmp_path) -> None:
     labels = {e.label for e in edges_from_cond}
     assert "True" in labels
     assert "False" in labels
+
+
+# ---------------------------------------------------------------------------
+# #477: index-resolved activity — STRONG option
+# Without file_path, resolve via AST index; distinguish found/ambiguous/absent.
+# ---------------------------------------------------------------------------
+
+
+def test_activity_diagram_no_file_path_index_unique_resolves(tmp_path) -> None:
+    """RED → GREEN (#477 STRONG): unique index hit → resolve file and build CFG.
+
+    When file_path is absent but the function is uniquely indexed, the exporter
+    resolves the file from the index and proceeds to build the diagram instead
+    of returning NOT_FOUND.
+    """
+    src = tmp_path / "mod.py"
+    src.write_text("def unique_fn(x):\n    if x:\n        return 1\n    return 0\n")
+
+    from tree_sitter_analyzer.uml_export import UMLExporter
+
+    class FakeCache:
+        def search_symbols(self, query: str, language: str | None = None) -> list:
+            if query == "unique_fn":
+                return [{"name": "unique_fn", "kind": "function", "file": str(src)}]
+            return []
+
+        def close(self) -> None:
+            pass
+
+    exporter = UMLExporter(str(tmp_path), cache=FakeCache())
+    result = exporter.activity_diagram("unique_fn", file_path=None)
+    # Unique hit: must resolve and succeed (no NOT_FOUND verdict)
+    assert result.metadata.get("verdict") is None  # success path has no verdict key
+    assert result.mermaid.startswith("flowchart TD")
+    # Exact pin (Codex P2 + CLAUDE.md rule): unique_fn's CFG is deterministic
+    # — start, condition, return 1, return 0.  Measured 2026-06-11.
+    assert len(result.nodes) == 4
+
+
+def test_activity_diagram_no_file_path_index_not_found_message(tmp_path) -> None:
+    """RED → GREEN (#477 STRONG): no index hit → NOT_FOUND with 'not found in the index'.
+
+    Distinct from "file_path required" — the message must say the function
+    is absent from the index, not that file_path is missing.
+    """
+    from tree_sitter_analyzer.uml_export import UMLExporter
+
+    class FakeCache:
+        def search_symbols(self, query: str, language: str | None = None) -> list:
+            return []
+
+        def close(self) -> None:
+            pass
+
+    exporter = UMLExporter(str(tmp_path), cache=FakeCache())
+    result = exporter.activity_diagram("no_such_fn_zz", file_path=None)
+    assert result.metadata.get("verdict") == "NOT_FOUND"
+    next_step = result.metadata.get("next_step", "")
+    # Must distinguish from the "file_path required" message
+    assert "not_found_in_index" in next_step or "not found in the index" in next_step
+
+
+def test_activity_diagram_no_file_path_index_ambiguous_lists_files(
+    tmp_path,
+) -> None:
+    """RED → GREEN (#477 STRONG): multiple index hits → NOT_FOUND with candidate files.
+
+    When a function name matches in multiple files, agent must see the file list
+    so it can supply the right file_path. Bare NOT_FOUND is insufficient.
+    """
+    from tree_sitter_analyzer.uml_export import UMLExporter
+
+    class FakeCache:
+        def search_symbols(self, query: str, language: str | None = None) -> list:
+            return [
+                {"name": "my_func", "kind": "function", "file": "a/mod1.py"},
+                {"name": "my_func", "kind": "function", "file": "b/mod2.py"},
+            ]
+
+        def close(self) -> None:
+            pass
+
+    exporter = UMLExporter(str(tmp_path), cache=FakeCache())
+    result = exporter.activity_diagram("my_func", file_path=None)
+    assert result.metadata.get("verdict") == "NOT_FOUND"
+    next_step = result.metadata.get("next_step", "")
+    # Must name at least one of the candidate files
+    assert "mod1.py" in next_step or "mod2.py" in next_step or "candidates" in next_step
+
+
+def test_activity_index_lookup_ignores_non_python_same_name(tmp_path) -> None:
+    """Codex P2 (#498): a same-name JS symbol must not make the Python
+    lookup ambiguous — the CFG builder is Python-only."""
+    src = tmp_path / "mod.py"
+    src.write_text("def handle(x):\n    return x\n")
+
+    from tree_sitter_analyzer.uml_export import UMLExporter
+
+    class PolyglotCache:
+        def search_symbols(self, query: str, language: str | None = None) -> list:
+            return [
+                {
+                    "name": "handle",
+                    "kind": "function",
+                    "file": str(src),
+                    "language": "python",
+                },
+                {
+                    "name": "handle",
+                    "kind": "function",
+                    "file": "web/app.js",
+                    "language": "javascript",
+                },
+            ]
+
+        def close(self) -> None:
+            pass
+
+    exporter = UMLExporter(str(tmp_path), cache=PolyglotCache())
+    result = exporter.activity_diagram("handle", file_path=None)
+    assert result.metadata.get("verdict") is None  # resolved, not ambiguous
+    assert result.mermaid.startswith("flowchart TD")
+    assert len(result.nodes) == 2  # start + return (measured 2026-06-11)

@@ -518,8 +518,17 @@ def test_state_diagram_note_in_metadata(tmp_path: Path) -> None:
     assert "parsed from current file content" in diagram.metadata["note"]
 
 
-def test_state_diagram_zero_transitions_not_found(tmp_path: Path) -> None:
-    """Zero transitions → verdict='NOT_FOUND' in metadata (honesty rule)."""
+def test_state_diagram_zero_transitions_info(tmp_path: Path) -> None:
+    """Zero transitions but states found → verdict='INFO' in metadata (#480 fix).
+
+    RE-PINNED from NOT_FOUND → INFO (consciously):
+    RFC-0015 §P2-B's "honesty rule" intent was "don't fake a diagram"; the mermaid
+    suppression of [*]--> lines already serves that goal. A partial result (states
+    found, zero transitions) is not "not found" — an agent branching on verdict
+    would discard the 19 extracted states. INFO + note preserves the useful
+    partial result while the mermaid header/note guards remain honest.
+    True NOT_FOUND is reserved for zero states (class not found at all).
+    """
     src = tmp_path / "static.py"
     src.write_text(
         textwrap.dedent("""\
@@ -535,7 +544,8 @@ def test_state_diagram_zero_transitions_not_found(tmp_path: Path) -> None:
 
     exporter = UMLExporter(str(tmp_path))
     diagram = exporter.state_diagram(class_name="Status", file_path=str(src))
-    assert diagram.metadata.get("verdict") == "NOT_FOUND"
+    # RE-PINNED: was NOT_FOUND, now INFO (states found, no transitions)
+    assert diagram.metadata.get("verdict") == "INFO"
     assert "next_step" in diagram.metadata
 
 
@@ -949,15 +959,19 @@ def test_uml_max_nodes_cli_mcp_default_parity() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Section J: P3a — NOT_FOUND mermaid suppresses [*] --> lines
+# Section J: P3a — INFO (zero-transitions) mermaid suppresses [*] --> lines
+# RE-PINNED: was NOT_FOUND, now INFO (#480 fix — states found, no transitions
+# is a partial result, not "not found").
 # ---------------------------------------------------------------------------
 
 
-def test_not_found_state_diagram_no_initial_edges(tmp_path: Path) -> None:
-    """NOT_FOUND state diagram mermaid must NOT contain '[*] -->' lines.
+def test_info_zero_transition_state_diagram_no_initial_edges(tmp_path: Path) -> None:
+    """INFO (zero-transition) state diagram mermaid must NOT contain '[*] -->' lines.
 
-    An agent reading only mermaid would see a structurally-valid diagram if
-    initial-state edges were emitted; the %% NOTE guard must be present instead.
+    RE-PINNED from NOT_FOUND → INFO (#480): the mermaid honesty rule (suppress
+    initial-state lines when no transitions detected) is preserved. The %% NOTE
+    guard must still be present. An agent reading only mermaid still sees an
+    honest "no transitions detected" note rather than a fake diagram.
     """
     src = tmp_path / "static.py"
     src.write_text(
@@ -975,16 +989,21 @@ def test_not_found_state_diagram_no_initial_edges(tmp_path: Path) -> None:
     exporter = UMLExporter(str(tmp_path))
     diagram = exporter.state_diagram(class_name="Status", file_path=str(src))
 
-    # Verify NOT_FOUND verdict
-    assert diagram.metadata.get("verdict") == "NOT_FOUND"
-    # Must contain the honesty NOTE guard
+    # RE-PINNED: was NOT_FOUND, now INFO (states found, zero transitions)
+    assert diagram.metadata.get("verdict") == "INFO"
+    # Mermaid honesty guard must still be present
     assert "%% NOTE" in diagram.mermaid
-    # Must NOT contain any initial-state transition lines
+    # Must NOT contain any initial-state transition lines (mermaid suppression preserved)
     assert "[*] -->" not in diagram.mermaid
 
 
-def test_not_found_state_diagram_mermaid_starts_with_header(tmp_path: Path) -> None:
-    """NOT_FOUND mermaid output starts with 'stateDiagram-v2' header."""
+def test_info_zero_transition_state_diagram_mermaid_starts_with_header(
+    tmp_path: Path,
+) -> None:
+    """INFO (zero-transition) mermaid output starts with 'stateDiagram-v2' header.
+
+    RE-PINNED from NOT_FOUND → INFO (#480).
+    """
     src = tmp_path / "static2.py"
     src.write_text(
         textwrap.dedent("""\
@@ -1000,8 +1019,47 @@ def test_not_found_state_diagram_mermaid_starts_with_header(tmp_path: Path) -> N
     exporter = UMLExporter(str(tmp_path))
     diagram = exporter.state_diagram(class_name="State", file_path=str(src))
 
-    assert diagram.metadata.get("verdict") == "NOT_FOUND"
+    # RE-PINNED: was NOT_FOUND, now INFO (#480)
+    assert diagram.metadata.get("verdict") == "INFO"
     assert diagram.mermaid.startswith("stateDiagram-v2")
+
+
+def test_state_diagram_true_not_found_zero_states(tmp_path: Path) -> None:
+    """TRUE NOT_FOUND = zero states: class not found in file at all.
+
+    This pins the contract that NOT_FOUND is only for node_count==0 (#480).
+    A missing class or no enum → verdict=NOT_FOUND.
+    """
+    src = tmp_path / "no_enum.py"
+    src.write_text("class Plain:\n    pass\n")
+
+    from tree_sitter_analyzer.uml_export import UMLExporter
+
+    exporter = UMLExporter(str(tmp_path))
+    diagram = exporter.state_diagram(file_path=str(src))
+    assert diagram.metadata.get("verdict") == "NOT_FOUND"
+
+
+def test_state_diagram_non_python_file_not_found_mentions_language(
+    tmp_path: Path,
+) -> None:
+    """Non-Python file (TypeScript) → NOT_FOUND with language coverage note (#480).
+
+    State extraction is Python-only. A bare NOT_FOUND on a .ts file reads as
+    a bug, not a scope limit. The next_step must mention language support or
+    Python scope.
+    """
+    ts_file = tmp_path / "State.ts"
+    ts_file.write_text("enum UserRole { Admin = 'admin', User = 'user' }\n")
+
+    from tree_sitter_analyzer.uml_export import UMLExporter
+
+    exporter = UMLExporter(str(tmp_path))
+    diagram = exporter.state_diagram(file_path=str(ts_file))
+    assert diagram.metadata.get("verdict") == "NOT_FOUND"
+    next_step = diagram.metadata.get("next_step", "")
+    # Must mention Python-only scope or language limitation
+    assert "python" in next_step.lower() or "language" in next_step.lower()
 
 
 # ---------------------------------------------------------------------------

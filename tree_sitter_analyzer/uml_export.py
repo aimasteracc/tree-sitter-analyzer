@@ -306,6 +306,81 @@ class UMLExporter:
 
         return ASTCache(self.project_root), True
 
+    def _resolve_function_file(self, function_name: str) -> str | None:
+        """Look up *function_name* in the AST index and return a unique file path.
+
+        Returns:
+            Absolute path string if exactly one match; ``None`` otherwise
+            (not found OR ambiguous — caller handles both via
+            ``_activity_not_found_no_file``).
+
+        Stores the search results on ``self._last_activity_index_hits`` so that
+        ``_activity_not_found_no_file`` can compose a richer message without a
+        second query.
+        """
+        cache, should_close = self._open_cache()
+        try:
+            hits = cache.search_symbols(function_name)
+        finally:
+            if should_close:
+                cache.close()
+        # Filter to exact name matches with a file (avoid partial BM25 hits).
+        # Python-only (Codex P2 on #498): the CFG builder is Python-only, so a
+        # same-name JS/Go symbol must not make the lookup "ambiguous" — and a
+        # JS-only hit must not be offered as a CFG target. Also restrict to
+        # function-like kinds so a same-name class/variable doesn't collide.
+        _FUNC_KINDS = {"function", "method", None, ""}
+        exact = [
+            h
+            for h in hits
+            if h.get("name") == function_name
+            and h.get("file")
+            and (h.get("language") or "python") == "python"
+            and (h.get("kind") in _FUNC_KINDS)
+        ]
+        self._last_activity_index_hits: list[dict[str, Any]] = exact
+        if len(exact) == 1:
+            raw = exact[0]["file"]
+            p = Path(raw)
+            return str(p) if p.is_absolute() else str(Path(self.project_root) / raw)
+        return None
+
+    def _activity_not_found_no_file(self, function_name: str) -> UMLDiagram:
+        """Return a descriptive NOT_FOUND when index lookup for *function_name* fails.
+
+        Distinguishes three cases:
+        - not in index at all
+        - ambiguous (multiple files) — lists candidate files
+        """
+        hits: list[dict[str, Any]] = getattr(self, "_last_activity_index_hits", [])
+        if not hits:
+            next_step = (
+                f"activity diagram: '{function_name}' not found in the index; "
+                "verify the project is indexed and the function name is correct, "
+                "or supply --uml-file-path / file_path directly"
+            )
+        else:
+            # Ambiguous: list candidate files (max 5 for brevity)
+            candidates = [h.get("file", "") for h in hits[:5]]
+            cand_list = ", ".join(f"'{c}'" for c in candidates)
+            next_step = (
+                f"activity diagram: '{function_name}' found in multiple files "
+                f"({cand_list}{'...' if len(hits) > 5 else ''}); "
+                "pass file_path to select the correct one"
+            )
+        return UMLDiagram(
+            diagram_type="activity",
+            mermaid_type="flowchart",
+            mermaid="flowchart TD\n",
+            nodes=[],
+            edges=[],
+            metadata={
+                "diagram_type": "activity",
+                "verdict": "NOT_FOUND",
+                "next_step": next_step,
+            },
+        )
+
     def class_diagram(
         self,
         max_edges: int = 80,
@@ -546,22 +621,15 @@ class UMLExporter:
                 resolved_path = str(Path(self.project_root) / p)
 
         if resolved_path is None:
-            # No file_path given: NOT_FOUND — require file_path for activity
-            return UMLDiagram(
-                diagram_type="activity",
-                mermaid_type="flowchart",
-                mermaid="flowchart TD\n",
-                nodes=[],
-                edges=[],
-                metadata={
-                    "diagram_type": "activity",
-                    "verdict": "NOT_FOUND",
-                    "next_step": (
-                        "activity diagram requires file_path to locate the function; "
-                        "provide the source file path"
-                    ),
-                },
-            )
+            # No file_path given: attempt to resolve via the AST index (#477 STRONG).
+            # Look up function_name in the index to distinguish:
+            #   a) unique hit  → resolve file and proceed
+            #   b) ambiguous   → NOT_FOUND with candidate file list
+            #   c) not in index → NOT_FOUND with "not found in index" message
+            resolved_path = self._resolve_function_file(function_name)
+            if resolved_path is None:
+                # Index lookup failed — return descriptive NOT_FOUND
+                return self._activity_not_found_no_file(function_name)
 
         cfg = build_activity_cfg(function_name, resolved_path, max_nodes)
 
@@ -689,11 +757,13 @@ class UMLExporter:
         Static approximation: enum members become states; match/case patterns
         with return <Enum>.<Member> become transitions.
 
-        Honesty rules:
+        Honesty rules (#480 update):
         - metadata["analysis_kind"] == "static_approximation" always.
         - metadata["note"] records that parsing is done from current file content.
-        - zero detected transitions → verdict="NOT_FOUND" with next_step.
-        - missing file / class → verdict="NOT_FOUND" with next_step.
+        - states found, zero transitions → verdict="INFO" with next_step note
+          (partial result — enum members extracted but FSM pattern not recognised).
+        - zero states (class missing / no enum found / file absent) → verdict="NOT_FOUND".
+        - Language coverage: Python-only; non-Python files emit a language note.
 
         Cost: ONE disk read + ONE tree-sitter parse (rule-11 invariant).
         """
@@ -753,6 +823,13 @@ class UMLExporter:
                 },
             )
 
+        # Language coverage: state extraction is Python-only (#480).
+        # Non-Python files (e.g. .ts, .java) will fail the no-enum check below,
+        # but the message should explain the scope limit, not just say "check
+        # for an Enum subclass" (which is meaningless for TypeScript).
+        _py_extensions = {".py", ".pyw"}
+        _file_is_python = Path(resolved_path).suffix.lower() in _py_extensions
+
         result = build_state_result(
             file_path=resolved_path,
             class_name=class_name,
@@ -768,6 +845,17 @@ class UMLExporter:
         base_metadata["file_path"] = resolved_path
 
         if result.error:
+            if not _file_is_python:
+                next_step_msg = (
+                    f"state diagram: state extraction supports Python only; "
+                    f"'{Path(resolved_path).name}' is not a Python file. "
+                    "Pass a .py file that contains an Enum subclass."
+                )
+            else:
+                next_step_msg = (
+                    f"state diagram: {result.error}; "
+                    "check that the file exists and contains an Enum subclass"
+                )
             return UMLDiagram(
                 diagram_type="state",
                 mermaid_type="stateDiagram-v2",
@@ -777,19 +865,18 @@ class UMLExporter:
                 metadata={
                     **base_metadata,
                     "verdict": "NOT_FOUND",
-                    "next_step": (
-                        f"state diagram: {result.error}; "
-                        "check that the file exists and contains an Enum subclass"
-                    ),
+                    "next_step": next_step_msg,
                 },
             )
 
-        # Zero transitions → NOT_FOUND (honesty rule from RFC-0015 §P2-B).
-        # Suppress [*] --> X initial-state lines in the NOT_FOUND mermaid output:
-        # an agent reading only `mermaid` would see a structurally-valid diagram
-        # and might not check metadata.verdict — emit only the header + NOTE guard.
+        # Zero transitions but states found → INFO (#480 fix).
+        # A partial result (states extracted, FSM pattern not recognised) is not
+        # "not found". Use INFO so agents can consume the extracted enum members.
+        # The mermaid [*]--> lines are still suppressed (mermaid honesty rule):
+        # an agent reading only `mermaid` would see a structurally-valid diagram;
+        # emitting only the header + NOTE guard keeps the mermaid honest.
         if not result.transitions:
-            not_found_mermaid = (
+            info_mermaid = (
                 "stateDiagram-v2\n"
                 "%% NOTE: state diagram is a static approximation.\n"
                 "%% Guard conditions, timers, and exception-driven transitions are not captured.\n"
@@ -798,14 +885,15 @@ class UMLExporter:
             return UMLDiagram(
                 diagram_type="state",
                 mermaid_type="stateDiagram-v2",
-                mermaid=not_found_mermaid,
+                mermaid=info_mermaid,
                 nodes=result.states,
                 edges=[],
                 metadata={
                     **base_metadata,
-                    "verdict": "NOT_FOUND",
+                    "verdict": "INFO",
                     "next_step": (
-                        "state diagram found no enum members or match-pattern transitions; "
+                        f"state diagram: {len(result.states)} enum member(s) extracted "
+                        "as states but no match-pattern transitions were found; "
                         "the class may not encode a finite-state machine in a pattern "
                         "this heuristic recognises"
                     ),
