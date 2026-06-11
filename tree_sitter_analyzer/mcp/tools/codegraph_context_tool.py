@@ -634,13 +634,19 @@ def _extract_symbol_candidates(task: str) -> list[str]:
     seen: set[str] = set()
     out: list[str] = []
     for raw in tokens:
+        # Quoted/backticked tokens are EXPLICIT symbol references — a stop
+        # word filter must never eat `Request` / "server" (Codex P1 on #487).
+        was_quoted = raw[:1] in "`\"'"
         raw = raw.strip("`\"'")
         for part in re.split(r"[.:\->]+", raw):
             token = part.strip("_.,;:!?()[]{}")
             if not token:
                 continue
             lowered = token.lower()
-            if lowered in _STOP_WORDS or len(token) < 3:
+            # Capitalised (Server) or non-lowercase (HTTPServer, snake_case
+            # with caps) tokens are symbol-shaped, not prose — keep them.
+            is_plain_prose = token == lowered and not was_quoted
+            if (lowered in _STOP_WORDS and is_plain_prose) or len(token) < 3:
                 continue
             if not (
                 "_" in token or any(ch.isupper() for ch in token) or len(token) >= 4
@@ -1035,7 +1041,10 @@ def _entry_rank_v2(
     """
     hit = entry["hit"]
     file_path = hit.get("file", "")
-    non_prod_tier = _is_non_prod_file(file_path)
+    # Test-intent queries must not demote test/spec/benchmark paths via the
+    # non-prod tier either (Codex P2 on #487) — the tier exists to stop
+    # examples/ from crowding out production, not to bury requested tests.
+    non_prod_tier = 0 if wants_tests else _is_non_prod_file(file_path)
     test_tier = 0 if wants_tests else _is_test_file(file_path)
     kind_rank = 0 if hit.get("kind") in {"class", "function", "method"} else 1
     name_match = _name_match_score(hit.get("name", ""), candidates)

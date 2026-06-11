@@ -1795,3 +1795,69 @@ def test_next_step_references_top_symbol_when_production_match_found(
             f"next_step should mention the top symbol ({top_name!r}) or "
             f"code_blocks; got: {next_step!r}"
         )
+
+
+# ─── Codex review on #487: stop-word filter must keep explicit symbols ────────
+
+
+def test_quoted_stop_word_token_kept_as_candidate() -> None:
+    """`Request`/`Response` in backticks are explicit symbol refs."""
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        _extract_symbol_candidates,
+    )
+
+    out = _extract_symbol_candidates("trace `Request` to `Response`")
+    assert out == ["Request", "Response"]
+
+
+def test_capitalized_stop_word_kept_unquoted() -> None:
+    """Capitalised Server is symbol-shaped even unquoted."""
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        _extract_symbol_candidates,
+    )
+
+    out = _extract_symbol_candidates("how does Server dispatch work")
+    assert "Server" in out
+    assert "server" not in out
+
+
+def test_plain_lowercase_stop_word_still_filtered() -> None:
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import (
+        _extract_symbol_candidates,
+    )
+
+    out = _extract_symbol_candidates("which tool is the right one for the server")
+    assert "server" not in out
+    assert "tool" not in out
+
+
+def test_wants_tests_skips_non_prod_demotion() -> None:
+    """Codex P2: test-intent queries must not demote tests/ via non_prod_tier."""
+    from tree_sitter_analyzer.mcp.tools.codegraph_context_tool import _entry_rank_v2
+
+    test_entry = {
+        "hit": {
+            "file": "tests/test_parser.py",
+            "name": "test_parse",
+            "kind": "function",
+            "line": 1,
+        },
+        "matches": 1,
+        "best_rank": 0,
+    }
+    prod_entry = {
+        "hit": {
+            "file": "pkg/parser.py",
+            "name": "parse",
+            "kind": "function",
+            "line": 1,
+        },
+        "matches": 1,
+        "best_rank": 0,
+    }
+    # With wants_tests=True the test file must NOT rank strictly after prod
+    # on the tier dimensions (first two key elements equal).
+    k_test = _entry_rank_v2(test_entry, ["parse"], True)
+    k_prod = _entry_rank_v2(prod_entry, ["parse"], True)
+    assert k_test[0] == k_prod[0] == 0
+    assert k_test[1] == k_prod[1] == 0
