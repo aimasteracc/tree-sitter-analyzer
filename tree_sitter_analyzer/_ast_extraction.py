@@ -594,11 +594,18 @@ def _extract_call_edges(
         call_line = call["line"]
         caller_name = ""
         caller_line = 0
+        best_range = -1
         for fname, (start, end) in file_funcs.items():
             if start <= call_line <= end:
-                caller_name = fname
-                caller_line = start
-                break
+                span = end - start
+                # Pick the innermost (narrowest) enclosing function.
+                # Nested defs share the same call line but the inner has a
+                # smaller span; without this the outer always wins because
+                # dict iteration order is outer-first (issue #452).
+                if best_range < 0 or span < best_range:
+                    best_range = span
+                    caller_name = fname
+                    caller_line = start
         callee_name = call.get("name", "")
         callee_full = call.get("full_name", callee_name)
         callee_line = call_line
