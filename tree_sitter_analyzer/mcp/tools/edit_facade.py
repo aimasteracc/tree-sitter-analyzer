@@ -92,9 +92,25 @@ def build_edit_facade(project_root: str | None = None) -> FacadeTool:
     that don't build the facade (matches the lazy-import convention in
     ``_tool_registry.py``).
     """
+
     from .ast_diff_tool import ASTDiffTool
     from .change_impact_tool import ChangeImpactTool
     from .codegraph_pr_review_tool import CodeGraphPRReviewTool
+
+    class _PRReviewViaFacade(CodeGraphPRReviewTool):
+        """Facade ``action=pr`` implies ``mode=pr``.
+
+        The inner tool's mode default is ``diff`` (for direct callers
+        reviewing local changes); routed through the facade's pr action,
+        an absent mode must mean PR review — otherwise ``edit action=pr``
+        without pr_url silently falls into diff mode and returns an empty
+        success (issue #451, Codex P1)."""
+
+        async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+            args = dict(arguments)
+            args.setdefault("mode", "pr")
+            return await super().execute(args)
+
     from .constraint_check_tool import ConstraintCheckTool
     from .modification_guard_tool import ModificationGuardTool
     from .refactoring_suggestions_tool import RefactoringSuggestionsTool
@@ -109,7 +125,7 @@ def build_edit_facade(project_root: str | None = None) -> FacadeTool:
             "impact": ChangeImpactTool(project_root),
             "refactor": RefactoringSuggestionsTool(project_root),
             "constraints": ConstraintCheckTool(project_root),
-            "pr": CodeGraphPRReviewTool(project_root),
+            "pr": _PRReviewViaFacade(project_root),
             "classify": SemanticClassifyTool(project_root),
             "ast_diff": ASTDiffTool(project_root),
         },

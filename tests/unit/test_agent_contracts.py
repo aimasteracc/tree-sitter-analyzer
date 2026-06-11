@@ -824,7 +824,10 @@ def test_facade_delegation_routes_each_action_to_expected_inner() -> None:
         ("edit", "impact"): "ChangeImpactTool",
         ("edit", "refactor"): "RefactoringSuggestionsTool",
         ("edit", "constraints"): "ConstraintCheckTool",
-        ("edit", "pr"): "CodeGraphPRReviewTool",
+        # _PRReviewViaFacade subclasses CodeGraphPRReviewTool so facade
+        # action=pr implies mode=pr (#451 Codex P1); delegation to the
+        # unchanged inner execute() is preserved via super().
+        ("edit", "pr"): "_PRReviewViaFacade",
         ("edit", "classify"): "SemanticClassifyTool",
         ("edit", "ast_diff"): "ASTDiffTool",
         ("project", "overview"): "ProjectOverviewTool",

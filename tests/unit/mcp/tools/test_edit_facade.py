@@ -485,5 +485,65 @@ def test_edit_facade_schema_lenient_additional_properties() -> None:
     assert schema.get("additionalProperties") is True
 
 
+# ---------------------------------------------------------------------------
+# Issue #451 — edit action=pr without pr_url must fail loudly via the facade
+# ---------------------------------------------------------------------------
+
+
+def test_edit_pr_action_missing_pr_url_fails_loudly() -> None:
+    """action=pr without pr_url → success:False, ERROR verdict, not 'No changed files'.
+
+    Regression guard for issue #451: an agent that misnames the param (e.g.
+    uses query= instead of pr_url=) would have the extra param stripped by
+    facade projection, leaving only {mode:pr}. The inner must return an error
+    envelope, not silently fall through to an empty local diff review.
+    """
+    facade, inners = _make_fake_facade()
+    # Replace the fake 'pr' inner with a real CodeGraphPRReviewTool
+    from tree_sitter_analyzer.mcp.tools.codegraph_pr_review_tool import (
+        CodeGraphPRReviewTool,
+    )
+
+    real_pr_inner = CodeGraphPRReviewTool(project_root=None)
+    facade.action_map["pr"] = real_pr_inner
+
+    # mode=pr but no pr_url (simulates post-projection args)
+    result = asyncio.run(facade.execute({"action": "pr", "mode": "pr"}))
+    assert result["success"] is False
+    assert result.get("verdict") == "ERROR"
+    assert "pr_url" in result.get("error", "")
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-q"]))
+
+
+def test_action_pr_without_mode_or_pr_url_fails_loudly() -> None:
+    """Codex P1 (#483): facade action=pr with NO explicit mode must not
+    fall back to the inner's diff default and return empty success.
+
+    ``edit({"action": "pr", "query": "<url>"})`` (typoed param) previously
+    reached the inner without mode → diff mode → success "No changed files".
+    The facade pr route now implies mode=pr, so the pr_url guard fires."""
+    import asyncio
+
+    from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
+
+    facade = build_edit_facade(".")
+    result = asyncio.run(
+        facade.execute({"action": "pr", "query": "https://github.com/o/r/pull/1"})
+    )
+    assert result["success"] is False
+    assert "pr_url" in result["error"]
+
+
+def test_action_pr_explicit_diff_mode_still_reaches_diff() -> None:
+    """Direct sub-mode selection stays available through the facade."""
+    import asyncio
+
+    from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
+
+    facade = build_edit_facade(".")
+    result = asyncio.run(facade.execute({"action": "pr", "mode": "diff"}))
+    # diff mode reviews local changes — must not demand pr_url
+    assert result.get("error") is None or "pr_url" not in str(result.get("error"))
