@@ -29,6 +29,11 @@ FUNCTIONS = """
     parameters: (formal_parameters) @function.params
     return_type: (type_annotation)? @function.return_type
     body: (statement_block) @function.body) @method.definition
+
+(abstract_method_signature
+    name: (property_identifier) @function.name
+    parameters: (formal_parameters) @function.params
+    return_type: (type_annotation)? @function.return_type) @abstract.method
 """
 
 # Class declarations
@@ -150,6 +155,11 @@ SIGNATURES = """
     name: (_) @method.name
     parameters: (formal_parameters) @method.params
     return_type: (type_annotation)? @method.return_type) @method.signature
+
+(abstract_method_signature
+    name: (property_identifier) @method.name
+    parameters: (formal_parameters) @method.params
+    return_type: (type_annotation)? @method.return_type) @abstract.method.signature
 
 (construct_signature
     parameters: (formal_parameters) @constructor.params

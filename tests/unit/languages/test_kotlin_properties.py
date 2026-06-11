@@ -54,6 +54,10 @@ def kotlin_function_nodes(draw):
     # Create mock node
     node = MagicMock()
     node.type = "function_declaration"
+    # Mock safety: set parent=None so _kotlin_owning_type depth-capped walk
+    # terminates immediately instead of following MagicMock's infinite
+    # auto-generated attribute chain (2026-06-11 OOM guard).
+    node.parent = None
     node.start_point = (draw(st.integers(0, 100)), 0)
     node.end_point = (node.start_point[0] + 5, 0)
     node.start_byte = 0
@@ -121,6 +125,10 @@ def kotlin_class_nodes(draw):
 
     node = MagicMock()
     node.type = "class_declaration" if kind != "object" else "object_declaration"
+    # P3b (2026-06-11 adversarial review): set parent=None so any future
+    # walk of the parent chain terminates immediately instead of following
+    # MagicMock's infinite auto-generated attribute chain (OOM defense).
+    node.parent = None
     node.start_point = (draw(st.integers(0, 100)), 0)
     node.end_point = (node.start_point[0] + 3, 0)
     node.start_byte = 0

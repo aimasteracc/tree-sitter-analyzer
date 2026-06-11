@@ -47,7 +47,11 @@ class ReadPartialToolCoverageExecuteMixin:
             with patch.object(
                 tool, "resolve_and_validate_file_path", return_value=str(test_file)
             ):
-                result = await tool.execute({"file_path": "t.py", "start_line": 1})
+                # Use json to access the range dict directly (value-kind rule
+                # strips non-passthrough non-empty dicts in TOON mode)
+                result = await tool.execute(
+                    {"file_path": "t.py", "start_line": 1, "output_format": "json"}
+                )
             assert result["success"] is True
             assert result["range"]["end_line"] is None
             assert "next_steps" not in result

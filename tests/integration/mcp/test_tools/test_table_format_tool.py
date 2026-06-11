@@ -537,7 +537,7 @@ public class TestClass {
         """Test validation with invalid format_type."""
         # Test invalid format_type value
         arguments = {"file_path": "/path/to/file.java", "format_type": "invalid"}
-        with pytest.raises(ValueError, match="format_type must be one of"):
+        with pytest.raises(ValueError, match="Invalid format_type"):
             self.tool.validate_arguments(arguments)
 
         # Test non-string format_type

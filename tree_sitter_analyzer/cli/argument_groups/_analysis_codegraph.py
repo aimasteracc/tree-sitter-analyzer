@@ -212,7 +212,7 @@ def _add_mcp_codegraph_map_options(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--uml",
-        choices=["class", "package", "component", "sequence"],
+        choices=["class", "package", "component", "sequence", "activity", "state"],
         help="Export a UML-style Mermaid diagram from indexed project intelligence",
     )
     parser.add_argument(
@@ -251,6 +251,46 @@ def _add_mcp_codegraph_map_options(parser: argparse.ArgumentParser) -> None:
         "--uml-no-external-bases",
         action="store_true",
         help="Omit common external bases such as ABC/Enum from --uml class",
+    )
+    # P1 flags (RFC-0015): scoping and test-exclusion for class diagrams
+    parser.add_argument(
+        "--uml-file-path",
+        help=(
+            "Limit --uml class diagram to classes defined in this file "
+            "and their direct bases/dependents"
+        ),
+    )
+    parser.add_argument(
+        "--uml-class-name",
+        help=(
+            "Show the named class plus its direct superclasses and immediate "
+            "subclasses (neighbourhood subgraph) for --uml class"
+        ),
+    )
+    parser.add_argument(
+        "--uml-include-tests",
+        action="store_true",
+        help=(
+            "Include test-corpus classes (under tests/, testdata/, fixtures/) "
+            "in --uml class whole-project diagrams (default: excluded)"
+        ),
+    )
+    # P2 flags (RFC-0015): activity (P2-A) + state (P2-B) diagrams
+    parser.add_argument(
+        "--uml-function",
+        help=(
+            "Function name for --uml activity control-flow diagram. "
+            "Required when --uml activity is used."
+        ),
+    )
+    parser.add_argument(
+        "--uml-max-nodes",
+        type=int,
+        default=50,
+        help=(
+            "Cap on CFG nodes for --uml activity / state nodes for --uml state "
+            "(default: 50). truncated=True when exceeded."
+        ),
     )
     parser.add_argument(
         "--dependency-matrix-threshold",

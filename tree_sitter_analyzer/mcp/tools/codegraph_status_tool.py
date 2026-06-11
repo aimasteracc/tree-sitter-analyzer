@@ -114,7 +114,6 @@ class CodeGraphStatusTool(BaseMCPTool):
                 indexed=False,
                 total_files=0,
                 total_symbols=0,
-                schema_version=None,
                 fts5_available=False,
                 lag_seconds=None,
                 cache_path=None,
@@ -136,7 +135,7 @@ class CodeGraphStatusTool(BaseMCPTool):
 
         if not truly_indexed:
             hint = (
-                "Index missing or empty. Run codegraph_autoindex mode=warm "
+                "Index missing or empty. Run the `index` tool with action=auto "
                 "to build the cache."
             )
             result = build_response(
@@ -145,25 +144,45 @@ class CodeGraphStatusTool(BaseMCPTool):
                 indexed=False,
                 total_files=0,
                 total_symbols=0,
-                schema_version=None,
                 fts5_available=bool(stats.get("fts5_available")) if stats else False,
                 lag_seconds=None,
                 cache_path=cache_path if cache_exists else None,
                 hint=hint,
+                agent_summary={
+                    "summary_line": "codegraph_status: index missing or empty",
+                    "next_step": hint,
+                    "verdict": "WARN",
+                },
             )
+            # Item 1: omit schema_version when None (don't emit null scalars)
+            if stats and stats.get("schema_version") is not None:
+                result["schema_version"] = stats.get("schema_version")
             return apply_toon_format_to_response(result, output_format)
 
         lag_seconds = None
         if include_lag:
             lag_seconds = self._compute_lag(cache_path)
 
+        # Item 1: real next_step for INFO verdict. Index is healthy, so suggest
+        # proceeding with nav/search. Staleness check if lag available.
+        next_step = "Index is healthy — proceed with nav or search tools"
+        if lag_seconds is not None and lag_seconds > 300:  # 5+ minutes stale
+            next_step = (
+                "Index is healthy but stale (>5 min). Run action=sync first, "
+                "then proceed with nav/search"
+            )
+
+        total_files = int(stats.get("total_files", 0)) if stats else 0
+        total_symbols = int(stats.get("total_symbols", 0)) if stats else 0
+        total_edges = int(stats.get("total_edges", 0)) if stats else 0
+
         result = build_response(
             verdict="INFO",
             project_root=self.project_root,
             indexed=True,
-            total_files=int(stats.get("total_files", 0)) if stats else 0,
-            total_symbols=int(stats.get("total_symbols", 0)) if stats else 0,
-            total_edges=int(stats.get("total_edges", 0)) if stats else 0,
+            total_files=total_files,
+            total_symbols=total_symbols,
+            total_edges=total_edges,
             # CodeGraph parity: per-kind and per-language symbol breakdowns
             # + edges_by_kind (beyond CodeGraph — CG has no edge breakdown).
             # Degrade to empty dicts when the underlying stats omit them.
@@ -172,13 +191,23 @@ class CodeGraphStatusTool(BaseMCPTool):
             if stats
             else {},
             edges_by_kind=dict(stats.get("edges_by_kind") or {}) if stats else {},
-            schema_version=stats.get("schema_version") if stats else None,
             fts5_available=bool(stats.get("fts5_available")) if stats else False,
             lag_seconds=lag_seconds,
             cache_path=cache_path,
-            hint=None,
             auto_index_guard_warm=indexed_flag,
+            agent_summary={
+                "summary_line": (
+                    f"codegraph_status: {total_files} files, "
+                    f"{total_symbols} symbols, "
+                    f"{total_edges} edges"
+                ),
+                "next_step": next_step,
+                "verdict": "INFO",
+            },
         )
+        # Item 1: omit schema_version when None (don't emit null scalars)
+        if stats and stats.get("schema_version") is not None:
+            result["schema_version"] = stats.get("schema_version")
         return apply_toon_format_to_response(result, output_format)
 
     def _safe_get_stats(self) -> dict[str, Any] | None:

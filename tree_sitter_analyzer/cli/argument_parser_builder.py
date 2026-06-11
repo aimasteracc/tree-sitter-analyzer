@@ -27,6 +27,7 @@ from .argument_groups import (
     _add_core_options,
     _add_decision_journal_options,
     _add_environment_probe_options,
+    _add_install_skills_options,
     _add_mcp_analysis_options,
     _add_mcp_change_options,
     _add_mcp_constraints_options,
@@ -54,6 +55,7 @@ __all__ = [
     "_add_core_options",
     "_add_decision_journal_options",
     "_add_environment_probe_options",
+    "_add_install_skills_options",
     "_add_mcp_analysis_options",
     "_add_mcp_change_options",
     "_add_mcp_constraints_options",
@@ -160,5 +162,6 @@ def create_argument_parser() -> argparse.ArgumentParser:
     _add_project_and_logging_options(parser)
     _add_partial_read_options(parser)
     _add_batch_options(parser)
+    _add_install_skills_options(parser)
     _add_mcp_equivalent_options(parser)
     return parser

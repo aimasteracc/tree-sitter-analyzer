@@ -30,6 +30,7 @@ from ._python_formatter_helpers import (
     get_python_visibility_symbol,
     shorten_type,
 )
+from ._python_formatter_signatures_table import format_python_signatures_table
 from .base_formatter import BaseTableFormatter
 
 
@@ -131,6 +132,14 @@ class PythonTableFormatter(BaseTableFormatter):
     def _format_compact_table(self, data: dict[str, Any]) -> str:
         """Compact table format for Python"""
         return format_python_compact_table(self, data)
+
+    def _format_signatures_table(self, data: dict[str, Any]) -> str:
+        """Signatures (lightweight method-directory) format for Python.
+
+        Lists every method as ``name →returnType(Np) startLine-endLine``
+        grouped by class.  ~25% of full-mode token cost for large files.
+        """
+        return format_python_signatures_table(data)
 
     def _format_method_row(self, method: dict[str, Any]) -> str:
         """Format a method table row for Python"""

@@ -17,6 +17,8 @@ def test_uml_tool_definition() -> None:
 
 
 def test_uml_tool_schema_lists_diagrams() -> None:
+    # Re-pinned at integration of P2-A + P2-B (RFC-0015): both 'activity'
+    # and 'state' now in the enum — exactly 6 elements.
     tool = CodeGraphUMLTool()
     schema = tool.get_tool_schema()
 
@@ -25,6 +27,8 @@ def test_uml_tool_schema_lists_diagrams() -> None:
         "package",
         "component",
         "sequence",
+        "activity",
+        "state",
     ]
 
 
@@ -56,7 +60,13 @@ async def test_class_diagram_execute_with_mock_exporter(monkeypatch) -> None:
 
     class FakeExporter:
         def class_diagram(
-            self, max_edges: int, include_external_bases: bool
+            self,
+            max_edges: int,
+            include_external_bases: bool,
+            *,
+            file_path: str | None = None,
+            class_name: str | None = None,
+            include_tests: bool = False,
         ) -> UMLDiagram:
             assert max_edges == 5
             assert include_external_bases is False

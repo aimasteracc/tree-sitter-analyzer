@@ -390,3 +390,82 @@ class TestFullParserIntegration:
         assert args.min_grade == "D"
         assert args.dependencies is None
         assert args.summary is None
+
+
+class TestCodeGraphImpactCliParity:
+    """P3 — CLI parity for codegraph_impact include_tests flag.
+
+    These tests ensure:
+    1. The argparse dest is exactly ``codegraph_impact_include_tests`` (so a
+       flag rename can't silently revert the feature to False).
+    2. _specs_extended.build_tool_args reads that dest and passes it through as
+       ``include_tests`` in the tool-args dict.
+    """
+
+    def test_flag_dest_is_codegraph_impact_include_tests(self):
+        """--codegraph-impact-include-tests stores to dest codegraph_impact_include_tests."""
+        from tree_sitter_analyzer.cli.argument_parser_builder import (
+            create_argument_parser,
+        )
+
+        parser = create_argument_parser()
+        args = parser.parse_args([])
+        # Default must be False (store_true flag, not set → False)
+        assert args.codegraph_impact_include_tests is False
+
+    def test_flag_can_be_set_true(self):
+        """Passing --codegraph-impact-include-tests sets dest to True."""
+        from tree_sitter_analyzer.cli.argument_parser_builder import (
+            create_argument_parser,
+        )
+
+        parser = create_argument_parser()
+        args = parser.parse_args(
+            ["--codegraph-impact", "my_fn", "--codegraph-impact-include-tests"]
+        )
+        assert args.codegraph_impact_include_tests is True
+
+    def test_build_tool_args_threads_include_tests_false(self):
+        """build_tool_args reads codegraph_impact_include_tests=False → include_tests=False."""
+        import argparse
+
+        from tree_sitter_analyzer.cli.commands.mcp_commands._specs_extended import (
+            _EXTENDED_SPECS,
+        )
+
+        spec = next(s for s in _EXTENDED_SPECS if s.flag_name == "codegraph_impact")
+        # Simulate argparse namespace with include_tests=False (the default)
+        ns = argparse.Namespace(
+            codegraph_impact="my_fn",
+            codegraph_impact_mode="function_impact",
+            codegraph_impact_functions=None,
+            codegraph_impact_file=None,
+            codegraph_impact_depth=5,
+            codegraph_impact_include_tests=False,
+        )
+        tool_args = spec.build_tool_args(ns, "json")
+        assert tool_args["include_tests"] is False
+
+    def test_build_tool_args_threads_include_tests_true(self):
+        """build_tool_args reads codegraph_impact_include_tests=True → include_tests=True.
+
+        If the argparse dest were renamed and getattr fell back to False,
+        this assertion would catch the regression.
+        """
+        import argparse
+
+        from tree_sitter_analyzer.cli.commands.mcp_commands._specs_extended import (
+            _EXTENDED_SPECS,
+        )
+
+        spec = next(s for s in _EXTENDED_SPECS if s.flag_name == "codegraph_impact")
+        ns = argparse.Namespace(
+            codegraph_impact="my_fn",
+            codegraph_impact_mode="risk_score",
+            codegraph_impact_functions=None,
+            codegraph_impact_file=None,
+            codegraph_impact_depth=5,
+            codegraph_impact_include_tests=True,
+        )
+        tool_args = spec.build_tool_args(ns, "json")
+        assert tool_args["include_tests"] is True

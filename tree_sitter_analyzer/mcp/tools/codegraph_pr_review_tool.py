@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from ..._language_family import language_from_path, languages_compatible
 from ...ast_diff import ASTDiffer
 from ...call_graph import CachedCallGraph, CallGraph
 from ...pr_url import check_gh_available, fetch_pr_diff, parse_pr_url
@@ -34,6 +35,123 @@ logger = setup_logger(__name__)
 
 _MAX_FILES = 30
 _MAX_HUNKS_DISPLAY = 10
+
+# A bare function name that appears in definitions across ≥ this many distinct
+# files is considered "generic" (e.g. `text`, `encode`, `get_node_text` exist in
+# virtually every language plugin). Even if the language check passes, binding on
+# a generic name without positive import evidence is unreliable — drop it and count
+# the drop in the stats so callers see a conservative (honest) blast radius.
+#
+# Threshold is deliberately low (3) so that names defined in ≥3 files are
+# treated as ambiguous. The call graph only indexes parsed languages so actual
+# project-wide counts are higher than what function_refs() returns.
+_AMBIGUOUS_NAME_FILE_THRESHOLD = 3
+
+# Known generic callback/utility names that the call graph cannot reliably bind
+# because they are commonly passed as parameters (callback pattern) rather than
+# called as imports. These are dropped regardless of definition count.
+# Label: heuristic — curated from dogfood evidence on TSA codebase (issue #450).
+_KNOWN_GENERIC_CALLBACK_NAMES: frozenset[str] = frozenset(
+    {
+        "get_node_text",
+        "text",
+        "encode",
+        "decode",
+        "append",
+        "log_error",
+        "parse",
+        "child_by_field_name",
+        "type",
+        "set_language",
+    }
+)
+
+
+def _filter_affected_by_language(
+    candidates: list[dict],
+    changed_languages: set[str],
+    name_file_count: dict[str, int],
+) -> tuple[list[dict], dict[str, int]]:
+    """Filter call-graph edges to remove cross-language phantoms and ambiguous bare names.
+
+    Rules (applied in order — drop on first match):
+    1. **Language gate**: if the candidate's language is *known* and not compatible
+       with any changed-file language, drop it (cross-language phantom).
+
+       The check is **directional** (mirrors ``languages_compatible`` semantics):
+       - *upstream* edge: candidate is the CALLER, changed file is the CALLEE →
+         ``languages_compatible(candidate_lang, changed_lang)``
+       - *downstream* edge: changed file is the CALLER, candidate is the CALLEE →
+         ``languages_compatible(changed_lang, candidate_lang)``
+
+       This matters for C/C++/ObjC: a .cpp caller is allowed to resolve a .h
+       (indexed as ``c``) so ``cpp→c`` is allowed; but a pure-C caller resolving
+       a .cpp function is not.
+
+    2. **Ambiguity gate (count)**: if the candidate's bare function name appears in
+       ≥ ``_AMBIGUOUS_NAME_FILE_THRESHOLD`` **distinct files** across the project,
+       drop it (no positive import evidence to anchor the binding).
+    3. **Ambiguity gate (known callbacks)**: if the name is in
+       ``_KNOWN_GENERIC_CALLBACK_NAMES``, drop it.  These are commonly passed as
+       parameters (callback pattern) rather than imported — the call graph cannot
+       reliably distinguish a call-site from a parameter reference.
+
+    Args:
+        candidates: list of affected-function dicts (must have "language" key).
+        changed_languages: set of language strings inferred from the changed files.
+        name_file_count: mapping from bare function name → count of **distinct files**
+            that define it project-wide.  Pass ``{}`` when unavailable.
+
+    Returns:
+        (kept, stats) where stats has keys:
+          cross_language_edges_dropped  — count of rule-1 drops
+          ambiguous_name_edges_dropped  — count of rule-2/3 drops
+    """
+    kept: list[dict] = []
+    cross_dropped = 0
+    ambiguous_dropped = 0
+
+    for func in candidates:
+        candidate_lang = func.get("language", "")
+        func_name = func.get("function", "")
+        direction = func.get("direction", "upstream")
+
+        # Rule 1: language gate — only block on a *known* mismatch.
+        # Direction matters: upstream edges have candidate=caller, changed=callee;
+        # downstream edges have changed=caller, candidate=callee.
+        if candidate_lang and changed_languages:
+            if direction == "upstream":
+                # candidate calls into the changed file → candidate is the caller
+                compatible = any(
+                    languages_compatible(candidate_lang, changed_lang)
+                    for changed_lang in changed_languages
+                )
+            else:
+                # changed file calls into candidate → changed file is the caller
+                compatible = any(
+                    languages_compatible(changed_lang, candidate_lang)
+                    for changed_lang in changed_languages
+                )
+            if not compatible:
+                cross_dropped += 1
+                continue
+
+        # Rule 2: ambiguity gate (count) — generic names without import evidence
+        if name_file_count.get(func_name, 0) >= _AMBIGUOUS_NAME_FILE_THRESHOLD:
+            ambiguous_dropped += 1
+            continue
+
+        # Rule 3: known callback/utility names that the call graph cannot bind reliably
+        if func_name in _KNOWN_GENERIC_CALLBACK_NAMES:
+            ambiguous_dropped += 1
+            continue
+
+        kept.append(func)
+
+    return kept, {
+        "cross_language_edges_dropped": cross_dropped,
+        "ambiguous_name_edges_dropped": ambiguous_dropped,
+    }
 
 
 @dataclass
@@ -73,6 +191,12 @@ class PRReviewResult:
     api_changes: list[str]
     affected_functions: list[dict[str, Any]]
     recommendations: list[str]
+    phantom_edge_stats: dict[str, int] = field(
+        default_factory=lambda: {
+            "cross_language_edges_dropped": 0,
+            "ambiguous_name_edges_dropped": 0,
+        }
+    )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -84,6 +208,7 @@ class PRReviewResult:
             "api_changes": self.api_changes,
             "affected_functions": self.affected_functions[:20],
             "recommendations": self.recommendations,
+            "phantom_edge_stats": self.phantom_edge_stats,
         }
 
 
@@ -300,6 +425,27 @@ class CodeGraphPRReviewTool(BaseMCPTool):
         include_cg = arguments.get("include_call_graph", True)
         output_format = arguments.get("output_format", "toon")
 
+        # Issue #451: mode=pr without pr_url must fail loudly, not silently fall
+        # through to local diff and produce "No changed files" (misinformation).
+        # Validate early — before touching any diff machinery — so the caller
+        # gets an actionable error rather than a false-clean success envelope.
+        if arguments.get("mode") == "pr" and not pr_url:
+            return self._format_response(
+                {
+                    "success": False,
+                    "verdict": "ERROR",
+                    "error": (
+                        "action=pr requires a non-empty pr_url. "
+                        "Received: pr_url={!r}".format(arguments.get("pr_url"))
+                    ),
+                    "recovery_hint": (
+                        "Provide a GitHub PR URL via the pr_url parameter, e.g.: "
+                        'pr_url="https://github.com/owner/repo/pull/42"'
+                    ),
+                },
+                output_format,
+            )
+
         diff_text: str = ""
         changed_files: list[str] = []
 
@@ -397,10 +543,16 @@ class CodeGraphPRReviewTool(BaseMCPTool):
             risk_scores.append(_risk_to_score(classification.risk_level))
 
         affected_functions: list[dict[str, Any]] = []
+        phantom_edge_stats: dict[str, int] = {
+            "cross_language_edges_dropped": 0,
+            "ambiguous_name_edges_dropped": 0,
+        }
         if include_cg and self.project_root and file_reviews:
-            affected_functions = self._analyze_call_graph_impact(
+            cg_result = self._analyze_call_graph_impact(
                 [r.file_path for r in file_reviews]
             )
+            affected_functions = cg_result["affected_functions"]
+            phantom_edge_stats = cg_result["stats"]
 
         overall_score = sum(risk_scores) / len(risk_scores) if risk_scores else 0
         overall_risk = _score_to_risk(overall_score)
@@ -428,6 +580,7 @@ class CodeGraphPRReviewTool(BaseMCPTool):
             api_changes=api_changes,
             affected_functions=affected_functions,
             recommendations=recommendations,
+            phantom_edge_stats=phantom_edge_stats,
         )
 
         response: dict[str, Any] = {"success": True, **result.to_dict()}
@@ -436,50 +589,117 @@ class CodeGraphPRReviewTool(BaseMCPTool):
 
         return self._format_response(response, output_format)
 
-    def _analyze_call_graph_impact(
-        self, changed_files: list[str]
-    ) -> list[dict[str, Any]]:
+    def _analyze_call_graph_impact(self, changed_files: list[str]) -> dict[str, Any]:
+        """Analyze call-graph impact for changed files.
+
+        Returns a dict with:
+          affected_functions: list of filtered caller/callee dicts
+          stats: phantom_edge_stats (cross_language_edges_dropped,
+                 ambiguous_name_edges_dropped)
+
+        Issue #450: raw call-graph edges include same-name phantoms from
+        unrelated language files (e.g. get_node_text in swift/cpp when the
+        changed file is kotlin).  Two gates applied:
+          1. Language gate: drop edges whose language is incompatible with the
+             changed file's language (uses languages_compatible).
+          2. Ambiguity gate: drop edges whose bare name is defined in ≥
+             _AMBIGUOUS_NAME_FILE_THRESHOLD distinct files project-wide.
+        """
+        empty: dict[str, Any] = {
+            "affected_functions": [],
+            "stats": {
+                "cross_language_edges_dropped": 0,
+                "ambiguous_name_edges_dropped": 0,
+            },
+        }
         try:
             graph = self._get_call_graph()
             graph.build()
         except Exception:
-            return []
+            return empty
 
-        affected: list[dict[str, Any]] = []
-        seen: set[str] = set()
+        # Collect the language set of all changed files
+        changed_langs: set[str] = set()
         for fp in changed_files:
-            impact = graph.file_impact(fp)
-            for func in impact.get("upstream", [])[:5]:
-                key = f"{func.get('file', '')}:{func.get('name', '')}"
-                if key not in seen:
-                    seen.add(key)
-                    func_name = func.get("name", "")
-                    func_file = func.get("file", "")
-                    func_line = func.get("line", 0)
-                    affected.append(
-                        {
-                            "function": func_name,
-                            "file": func_file,
-                            "direction": "upstream",
-                            "line": func_line,
-                        }
-                    )
-            for func in impact.get("downstream", [])[:5]:
-                key = f"{func.get('file', '')}:{func.get('name', '')}"
-                if key not in seen:
-                    seen.add(key)
-                    func_name = func.get("name", "")
-                    func_file = func.get("file", "")
-                    func_line = func.get("line", 0)
-                    affected.append(
-                        {
-                            "function": func_name,
-                            "file": func_file,
-                            "direction": "downstream",
-                            "line": func_line,
-                        }
-                    )
-        return affected
+            lang = language_from_path(fp)
+            if lang:
+                changed_langs.add(lang)
+
+        # Build a project-wide name→distinct-file-count map from the call graph so
+        # we can detect generic bare names (e.g. "text", "encode") that appear in
+        # many different files.  One file may define the same name N times (e.g.
+        # overloads, inner classes) — counting per-ref would make a single-file
+        # hotspot trip the threshold; we count DISTINCT FILES instead.
+        name_files: dict[str, set[str]] = {}
+        try:
+            for ref in graph.function_refs():
+                name = ref.name
+                if name not in name_files:
+                    name_files[name] = set()
+                name_files[name].add(ref.file_path)
+        except Exception:
+            pass
+        name_file_count: dict[str, int] = {
+            name: len(files) for name, files in name_files.items()
+        }
+
+        # Collect raw candidates, skipping edges anchored on generic functions
+        # defined in the changed file (e.g. determine_visibility: defined in 5+
+        # files — callers of this function are unreliable bare-name binds).
+        candidates: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        ambiguous_anchor_dropped = 0
+
+        for fp in changed_files:
+            funcs_in_file = graph._func_by_file.get(fp, [])  # noqa: SLF001
+            for anchor_ref in funcs_in_file:
+                anchor_name = anchor_ref.name
+                # Skip collecting upstream callers for generic anchor names —
+                # the call graph cannot distinguish which definition they target.
+                anchor_is_generic = (
+                    anchor_name in _KNOWN_GENERIC_CALLBACK_NAMES
+                    or name_file_count.get(anchor_name, 0)
+                    >= _AMBIGUOUS_NAME_FILE_THRESHOLD
+                )
+                if not anchor_is_generic:
+                    for caller in graph.caller_refs_of(anchor_ref):
+                        key = caller.qualified_name()
+                        if key not in seen:
+                            seen.add(key)
+                            candidates.append(
+                                {
+                                    "function": caller.name,
+                                    "file": caller.file_path,
+                                    "language": caller.language,
+                                    "direction": "upstream",
+                                    "line": caller.start_line,
+                                }
+                            )
+                else:
+                    ambiguous_anchor_dropped += graph.caller_refs_of(
+                        anchor_ref
+                    ).__len__()
+
+                # Downstream callees: filter by anchor being called from the changed file
+                for callee in graph.callee_refs_of(anchor_ref):
+                    key = callee.qualified_name()
+                    if key not in seen:
+                        seen.add(key)
+                        candidates.append(
+                            {
+                                "function": callee.name,
+                                "file": callee.file_path,
+                                "language": callee.language,
+                                "direction": "downstream",
+                                "line": callee.start_line,
+                            }
+                        )
+
+        kept, stats = _filter_affected_by_language(
+            candidates, changed_langs, name_file_count
+        )
+        stats["ambiguous_name_edges_dropped"] += ambiguous_anchor_dropped
+        return {"affected_functions": kept, "stats": stats}
 
     def _format_response(
         self, response: dict[str, Any], output_format: str

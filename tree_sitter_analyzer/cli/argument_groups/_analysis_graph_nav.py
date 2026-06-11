@@ -237,6 +237,47 @@ def _add_mcp_graph_nav_options(parser: argparse.ArgumentParser) -> None:
         help="Max transitive depth for --codegraph-impact (default: 5)",
     )
     parser.add_argument(
+        "--codegraph-impact-include-tests",
+        action="store_true",
+        default=False,
+        help=(
+            "Include test_caller_files and test_callee_files in the tests bucket "
+            "of --codegraph-impact output (counts are always present)."
+        ),
+    )
+    # RFC-0014 Phase B: CLI parity for nav action=test_map.
+    parser.add_argument(
+        "--test-map",
+        metavar="SYMBOL",
+        help=(
+            "Which tests exercise a function? Returns test files and test function "
+            "names (RFC-0014 Phase B). Use before editing to know your test surface. "
+            "CLI parity for: nav action=test_map symbol=SYMBOL."
+        ),
+    )
+    parser.add_argument(
+        "--test-map-file",
+        help="File path to disambiguate overloaded functions for --test-map",
+    )
+    # RFC-0014 Phase C: CLI parity for nav action=co_change.
+    parser.add_argument(
+        "--co-change",
+        metavar="FILE_OR_SYMBOL",
+        help=(
+            "Git-history temporal coupling: files that historically change "
+            "together with FILE_OR_SYMBOL (lift-ranked). "
+            "Use before editing to find implicit coupling the call graph cannot see. "
+            "CLI parity for: nav action=co_change file_path=FILE_OR_SYMBOL."
+        ),
+    )
+    parser.add_argument(
+        "--co-change-max-commits",
+        type=int,
+        default=500,
+        metavar="N",
+        help="Maximum number of commits to scan for --co-change (default: 500).",
+    )
+    parser.add_argument(
         "--pr-review",
         nargs="?",
         const="diff",
@@ -253,6 +294,15 @@ def _add_mcp_graph_nav_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--callers-file",
         help="File path to disambiguate overloaded functions for --callers",
+    )
+    parser.add_argument(
+        "--call-limit",
+        type=int,
+        default=50,
+        help=(
+            "Max callers/callees listed for --callers / --callees (default: 50). "
+            "Response reports the pre-cap total and truncated flag."
+        ),
     )
     parser.add_argument(
         "--callees",
@@ -425,6 +475,14 @@ def _add_mcp_graph_nav_options(parser: argparse.ArgumentParser) -> None:
         "--code-similarity-no-cache",
         action="store_true",
         help="Skip AST cache and do full project scan for --code-similarity",
+    )
+    parser.add_argument(
+        "--code-similarity-include-bodies",
+        action="store_true",
+        help=(
+            "Include code snippets in each function entry of --code-similarity output. "
+            "Default is summary-only (files, line ranges, scores — no bodies)."
+        ),
     )
     # RFC-0003: test-gap analysis
     parser.add_argument(

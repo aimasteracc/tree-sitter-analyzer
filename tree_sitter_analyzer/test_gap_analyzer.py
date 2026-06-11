@@ -55,6 +55,30 @@ _EXCLUDE_DIRS = {
     "migrations",
 }
 
+# Directories that are never production source code: test suites, corpora,
+# fixture/golden-master collections, example code, and benchmark harnesses.
+# Walking these wastes the max_files budget and pollutes the production-symbol
+# count with non-product code.
+_NON_PROD_DIRS = {
+    "tests",
+    "test",
+    "testing",
+    "corpus",
+    "fixtures",
+    "fixture",
+    "golden_masters",
+    "examples",
+    "example",
+    "benchmarks",
+    "benchmark",
+    "compatibility_test",
+    "compatibility_tests",
+    "scripts",
+    "spec",
+    "specs",
+    "e2e",
+}
+
 _SOURCE_EXTENSIONS = {
     ".py",
     ".js",
@@ -246,8 +270,31 @@ def _collect_files(
     language_filter: str | None = None,
     max_files: int = 1000,
 ) -> list[tuple[str, str, bool]]:
+    """Collect source files under *project_root*.
+
+    Scope rule: all source files found by os.walk, excluding dirs in
+    ``_EXCLUDE_DIRS`` (tooling/build).  Directories listed in
+    ``_NON_PROD_DIRS`` (tests, corpus, fixtures, examples, benchmarks,
+    scripts, …) are still walked so that test files inside them are collected
+    for naming-convention matching, but every file found inside a
+    ``_NON_PROD_DIRS`` subtree is treated as a test/non-production file
+    regardless of its individual name.
+
+    The ``max_files`` cap applies to **production files only** so that test
+    files cannot exhaust the budget and prevent the main package from being
+    scanned.  Test files are never capped — they are all collected regardless
+    of count.
+    """
     results: list[tuple[str, str, bool]] = []
+    prod_count = 0
     for dirpath, dirnames, filenames in os.walk(project_root):
+        # Determine whether the current directory is inside a non-production
+        # subtree by checking whether any path component from project_root
+        # downward matches _NON_PROD_DIRS.
+        rel_dir = os.path.relpath(dirpath, project_root)
+        parts = rel_dir.split(os.sep) if rel_dir != "." else []
+        in_non_prod = any(p in _NON_PROD_DIRS for p in parts)
+
         dirnames[:] = [
             d for d in dirnames if d not in _EXCLUDE_DIRS and not d.startswith(".")
         ]
@@ -259,10 +306,18 @@ def _collect_files(
             lang = _language_from_ext(full) or ""
             if language_filter and lang != language_filter:
                 continue
-            is_test = _is_test_file(full)
+            # Files inside a non-production directory are always test/non-prod,
+            # regardless of their individual filename.
+            is_test = in_non_prod or _is_test_file(full)
+            if not is_test:
+                # Production budget exhausted: keep walking so that test files
+                # appearing later in os.walk order (e.g. app/ before tests/)
+                # are still collected for naming-convention matching — an
+                # early return here would misreport covered symbols as gaps.
+                if prod_count >= max_files:
+                    continue
+                prod_count += 1
             results.append((full, lang, is_test))
-            if len(results) >= max_files:
-                return results
     return results
 
 

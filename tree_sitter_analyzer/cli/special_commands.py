@@ -30,6 +30,7 @@ def handle_special_commands(
 ) -> int | None:
     """Handle CLI commands that bypass the normal file-analysis command path."""
     handlers: tuple[Callable[[], int | None], ...] = (
+        lambda: _handle_install_skills(args, context),
         lambda: _handle_agent_skills(args, context),
         lambda: _handle_agent_workflow(args, context),
         lambda: _handle_batch_partial_read(args, context),
@@ -45,6 +46,7 @@ def handle_special_commands(
         lambda: _handle_codegraph_metrics(args, context),
         lambda: _handle_incremental_sync(args, context),
         lambda: _handle_affected(args, context),
+        lambda: _handle_nav_actions_lazy(args, context),
         lambda: _handle_watch_health(args, context),
         lambda: _handle_mcp_commands(args, context),
         lambda: _validate_partial_read_options(args, context.output_error),
@@ -57,6 +59,42 @@ def handle_special_commands(
         if result is not None:
             return result
     return None
+
+
+def _handle_install_skills(
+    args: Any,
+    context: SpecialCommandContext,
+) -> int | None:
+    """Run ``--install-skills`` / ``--install-skills-global``."""
+    install_target = getattr(args, "install_skills", None)
+    install_global = getattr(args, "install_skills_global", False)
+    if install_target is None and not install_global:
+        return None
+    from pathlib import Path
+
+    from .install_skills import install_skills
+
+    if install_target and install_target != ".":
+        target_dir = Path(install_target)
+    elif install_target == ".":
+        target_dir = Path(os.getcwd())
+    else:
+        target_dir = None
+
+    report = install_skills(target_dir=target_dir, global_install=bool(install_global))
+    summary = {
+        "success": True,
+        "installed_count": report["installed_count"],
+        "skipped_count": report["skipped_count"],
+        "installed": report["installed"],
+        "skipped": report["skipped"],
+        "summary_line": (
+            f"install_skills: {report['installed_count']} installed, "
+            f"{report['skipped_count']} skipped"
+        ),
+    }
+    context.output_json(summary)
+    return 0
 
 
 def _handle_agent_skills(
@@ -440,6 +478,17 @@ def _handle_affected(
     from .commands.affected_command import run_affected
 
     return run_affected(args, context.output_error)
+
+
+def _handle_nav_actions_lazy(
+    args: Any,
+    context: SpecialCommandContext,
+) -> int | None:
+    """Delegate --test-map/--co-change to nav_special_commands (lazy import
+    to avoid a circular dependency; the smell ratchet keeps this file thin)."""
+    from tree_sitter_analyzer.cli.nav_special_commands import handle_nav_actions
+
+    return handle_nav_actions(args, context)
 
 
 def _handle_watch_health(

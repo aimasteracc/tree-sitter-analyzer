@@ -47,17 +47,38 @@ def extract_kotlin_parameters(
     """Extract Kotlin function parameters.
 
     r37dt (dogfood): flatten nesting 6 → 3 via ``_kotlin_parameter_pair``.
+    Theme E (2026-06-10): tree-sitter-kotlin exposes the parameter list as a
+    child node of type ``function_value_parameters``, not as a named field
+    ``"parameters"`` — ``child_by_field_name("parameters")`` always returned
+    None, leaving every Kotlin function with zero parameters.  Scan children
+    for the correct node type.  Also track ``parameter_modifiers`` (e.g.
+    ``vararg``) immediately preceding a ``parameter`` node and prepend the
+    modifier text to the emitted parameter string.
     """
     parameters: list[str] = []
-    params_node = node.child_by_field_name("parameters")
+    params_node = None
+    for child in node.children:
+        if child.type == "function_value_parameters":
+            params_node = child
+            break
     if params_node is None:
         return parameters
+    pending_modifier: str = ""
     for child in params_node.children:
-        if child.type != "parameter":
-            continue
-        param_name, param_type = _kotlin_parameter_pair(child, get_node_text)
-        if param_name:
-            parameters.append(f"{param_name}: {param_type or 'Any'}")
+        if child.type == "parameter_modifiers":
+            pending_modifier = get_node_text(child)
+        elif child.type == "parameter":
+            param_name, param_type = _kotlin_parameter_pair(child, get_node_text)
+            if param_name:
+                if pending_modifier:
+                    parameters.append(
+                        f"{pending_modifier} {param_name}: {param_type or 'Any'}"
+                    )
+                else:
+                    parameters.append(f"{param_name}: {param_type or 'Any'}")
+            pending_modifier = ""
+        else:
+            pending_modifier = ""
     return parameters
 
 
@@ -66,20 +87,112 @@ def _kotlin_parameter_pair(
 ) -> tuple[str, str]:
     """Return ``(name, type)`` from a Kotlin ``parameter`` AST node.
 
-    Iterates the parameter node's children looking for a
-    ``simple_identifier`` (name) and a type-like node (``user_type`` or
-    any node whose ``type`` string contains ``"type"``). Empty strings
-    default when either part is missing; caller fills ``"Any"`` for
-    blank types.
+    Iterates the parameter node's children looking for a name node
+    (``simple_identifier`` or ``identifier`` — grammar version-dependent)
+    and a type-like node (``user_type`` or any node whose ``type`` string
+    contains ``"type"``). Empty strings default when either part is missing;
+    caller fills ``"Any"`` for blank types.
+
+    Theme E (2026-06-10): tree-sitter-kotlin emits ``identifier`` (not
+    ``simple_identifier``) for parameter names in the tested grammar version;
+    accept both so the helper works across grammar versions.
     """
     param_name = ""
     param_type = ""
     for grandchild in parameter_node.children:
-        if grandchild.type == "simple_identifier":
-            param_name = get_node_text(grandchild)
+        if grandchild.type in ("simple_identifier", "identifier"):
+            if not param_name:  # first identifier is the name
+                param_name = get_node_text(grandchild)
         elif "type" in grandchild.type or grandchild.type == "user_type":
             param_type = get_node_text(grandchild)
     return param_name, param_type
+
+
+def _kotlin_extension_receiver(
+    node: Any, get_node_text: Callable[..., str]
+) -> str | None:
+    """Return the extension receiver type name, or None.
+
+    ``fun String.shout()`` parses as:
+        function_declaration
+          user_type  ← receiver type
+          .
+          identifier ← function name
+          …
+
+    We detect the pattern by scanning children for a ``user_type`` node
+    that is immediately followed by a ``.`` child before any
+    ``function_value_parameters`` node.
+    """
+    children = list(node.children)
+    for i, child in enumerate(children):
+        if child.type == "function_value_parameters":
+            break
+        if child.type in ("user_type", "nullable_type"):
+            # Check next non-error sibling is '.'
+            # P2a (2026-06-11 adversarial review): ``fun String?.safe()``
+            # emits a ``nullable_type`` node (not ``user_type``) before the
+            # dot — return its full text including the trailing '?'.
+            if i + 1 < len(children) and children[i + 1].type == ".":
+                return get_node_text(child)
+    return None
+
+
+def _kotlin_owning_type(node: Any) -> tuple[str | None, bool]:
+    """Walk the parent chain and return ``(owner_name, is_companion)``.
+
+    Traversal stops at the first owning declaration:
+    - ``class_declaration`` → (name, False) for regular class members
+    - ``object_declaration`` → (name, False) for object members
+    - ``companion_object`` → walk further to the enclosing
+      ``class_declaration`` and return (name, True)
+    - ``source_file`` or None → (None, False)
+
+    Boundary nodes that abort the walk with (None, False):
+    - ``function_declaration``: local functions declared inside a method
+      body must not be attributed to the outer class.
+    - ``object_literal``: ``override fun`` inside an anonymous
+      ``object : Runnable { ... }`` inside a method belongs to the
+      anonymous object, not the enclosing class.
+
+    The walk traverses through ``enum_class_body`` without stopping —
+    enum entries can contain method declarations that belong to the enum.
+
+    Depth-capped at 256 to prevent unbounded loops on non-conforming node
+    objects (e.g. MagicMock infinite parent chains — 140 GB OOM 2026-06-10).
+    """
+    parent = node.parent
+    in_companion = False
+    for _ in range(256):
+        if parent is None:
+            return None, False
+        if parent.type == "source_file":
+            return None, False
+        # P1 (2026-06-11 adversarial review): local funs and anonymous-object
+        # overrides must not be attributed to the outer enclosing class.
+        if parent.type in ("function_declaration", "object_literal"):
+            return None, False
+        if parent.type == "companion_object":
+            in_companion = True
+        elif parent.type in ("class_declaration", "object_declaration"):
+            name_node = parent.child_by_field_name("name")
+            if name_node is None:
+                for child in parent.children:
+                    if child.type == "identifier":
+                        name_node = child
+                        break
+            if name_node is not None:
+                # Use node.text if available (real tree-sitter nodes),
+                # otherwise fall back to a callable get_node_text is not
+                # in scope here, so we rely on node.text directly.
+                try:
+                    name = name_node.text.decode("utf-8", errors="replace")
+                except (AttributeError, UnicodeDecodeError):
+                    name = str(name_node.text)
+                return name, in_companion
+            return None, False
+        parent = parent.parent
+    return None, False
 
 
 def extract_kotlin_function(
@@ -98,6 +211,14 @@ def extract_kotlin_function(
                 if child.type == "simple_identifier":
                     name = get_node_text(child)
                     break
+            # Extension funs: name identifier follows the '.' after receiver type
+            if name == "anonymous":
+                children = list(node.children)
+                for i, child in enumerate(children):
+                    if child.type == "." and i + 1 < len(children):
+                        if children[i + 1].type == "identifier":
+                            name = get_node_text(children[i + 1])
+                            break
 
         start_line = node.start_point[0] + 1
         end_line = node.end_point[0] + 1
@@ -132,6 +253,33 @@ def extract_kotlin_function(
             visibility=visibility,
         )
         func.is_suspend = is_suspend
+
+        # Theme-A (2026-06-11): class/object ownership. Functions inside
+        # ``class Dog { fun feed() }`` were flattened to top-level with no
+        # receiver_type — an agent could not tell ``feed`` belongs to ``Dog``.
+        #
+        # Resolution order:
+        # 1. Extension receiver: ``fun String.shout()`` → receiver_type='String',
+        #    is_method=True (declared explicitly in the function signature).
+        # 2. Owning class/object via parent walk:
+        #    - class/object member → receiver_type=owner, is_method=True
+        #    - companion object member → receiver_type=enclosing class, is_method=False
+        ext_receiver = _kotlin_extension_receiver(node, get_node_text)
+        if ext_receiver is not None:
+            func.receiver_type = ext_receiver
+            func.is_method = True
+        else:
+            owner, is_companion = _kotlin_owning_type(node)
+            if owner is not None:
+                func.receiver_type = owner
+                func.is_method = not is_companion
+                # P2b (2026-06-11 adversarial review): companion funs are
+                # static-like (no implicit ``this``); flag them so agents
+                # can distinguish them from instance methods, matching
+                # Java/C#/etc. conventions for companion/static members.
+                if is_companion:
+                    func.is_static = True
+
         return func
 
     except Exception as e:

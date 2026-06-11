@@ -13,7 +13,7 @@ All tools default to **TOON output** (locked — see `CLAUDE.md`).
 | MCP name | action= | Purpose |
 |---|---|---|
 | `search` | symbol / query / content / grep / batch / chain / select / subscribe / unsubscribe | Code search: BM25 symbol lookup, tree-sitter .scm DSL, ripgrep, fd+rg, batch, graph-chain DSL, Hyphae DSL, reactive push subscriptions (RFC-0001) |
-| `nav` | navigate / call_path / xref / resolve / lineage / impact / trace / context / callers / callees | Call-graph navigation + one-call symbol context |
+| `nav` | navigate / call_path / xref / resolve / lineage / impact / trace / context / callers / callees / callee_tree / caller_tree / test_map / co_change | Call-graph navigation + one-call symbol context; test_map = which tests exercise a function (RFC-0014 Phase B); co_change = git-history temporal coupling (RFC-0014 Phase C) |
 | `structure` | outline / analyze / ast_path / sitemap / class_tree / class_detail / explore / read | Structural AST analysis + partial file read |
 | `health` | project / file / scale / patterns / heatmap / imports / matrix / dead / routes / overview / deps / test_gap | Code health, complexity, dependency analysis, untested symbol discovery |
 | `edit` | safe / guard / impact / refactor / constraints / pr / classify / ast_diff | Edit-safety, blast-radius, refactor, PR review |
@@ -79,7 +79,9 @@ legacy MCP name is now reached via its facade (`old_name` →
 | `codegraph_callers` | `--callers` | Who calls this function |
 | `codegraph_callees` | `--callees` | What this function calls |
 | `codegraph_call_path` | `--call-path` | BFS path between two functions via call edges |
-| `codegraph_impact` | `--codegraph-impact` | Function-level blast radius |
+| `codegraph_impact` | `--codegraph-impact` | Function-level blast radius; risk score from production edges only; always includes `tests` bucket (`test_callers_count`, `test_callees_count`); pass `include_tests=true` for file lists |
+| `nav_test_map` | `--test-map` | Which tests exercise a function? (RFC-0014 Phase B) Returns test_files + test_functions in file::fn format, edge_count (raw edges), unique_function_count (deduped), truncated |
+| `nav_co_change` | `--co-change` | Git-history temporal coupling (RFC-0014 Phase C): files that historically change together with a file or symbol, lift-ranked. Surfaces coupling the call graph cannot see. |
 | `codegraph_dead_code` | `--dead-code` | Transitive dead functions / unused imports / unref vars |
 | **CodeGraph parity — project-wide** | | |
 | `codegraph_overview` | `--codegraph-overview` | Project-wide call graph intelligence |
@@ -92,7 +94,7 @@ legacy MCP name is now reached via its facade (`old_name` →
 | `codegraph_xref` | `--codegraph-xref` | Multi-dimension cross-reference from AST cache |
 | `codegraph_similarity` | `--code-similarity` | AST-structural clone detection |
 | `codegraph_visualize` | `--codegraph-visualize` | Export call graph as Mermaid flowchart |
-| `codegraph_uml` | `--uml` | Export UML-style Mermaid diagrams (class/package/component/sequence) |
+| `codegraph_uml` | `--uml` | Export UML-style Mermaid diagrams (class/package/component/sequence/activity). `activity` builds a control-flow graph by re-parsing the source file at query time (one disk read + tree-sitter parse; requires `function_name` + `file_path`). |
 | **CodeGraph parity — cache/index** | | |
 | `codegraph_status` | `--codegraph-status` | INDEX HEALTH at-a-glance (indexed?, files, symbols, lag) |
 | `codegraph_autoindex` | `--autoindex` | Transparent AST cache auto-indexing |

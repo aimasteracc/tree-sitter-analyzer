@@ -92,6 +92,7 @@ async def test_find_and_grep_exec_composed(monkeypatch, tmp_path):
             "roots": [str(tmp_path)],
             "pattern": "a.txt",
             "query": "hello",
+            "output_format": "json",
         }
     )
     assert result["success"] is True

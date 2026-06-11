@@ -59,9 +59,7 @@ def _scaffold_min_project(tmp_path: Path) -> Path:
     target = tmp_path / TARGET_FILE_REL
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(
-        "class SafeToEditTool:\n"
-        "    def execute(self):\n"
-        "        return 'safe'\n"
+        "class SafeToEditTool:\n    def execute(self):\n        return 'safe'\n"
     )
     return tmp_path
 
@@ -164,9 +162,7 @@ def _make_change_impact_tool(project_root: Path):
 class TestSafeToEditConstraintIntegration:
     """An error-severity violation on the target file must promote verdict."""
 
-    def test_safe_to_edit_emits_UNSAFE_on_error_violation(
-        self, tmp_path: Path
-    ) -> None:
+    def test_safe_to_edit_emits_UNSAFE_on_error_violation(self, tmp_path: Path) -> None:
         """Pre-existing error-severity violation → safe_to_edit returns UNSAFE.
 
         This is the first producer of the ``UNSAFE`` verdict from
@@ -189,7 +185,11 @@ class TestSafeToEditConstraintIntegration:
         )
 
         tool = _make_safe_to_edit_tool(project)
-        result = _run(tool.execute({"file_path": TARGET_FILE_REL}))
+        # Use json to access the risk_factors list directly (value-kind rule
+        # strips non-empty lists at top level in TOON mode)
+        result = _run(
+            tool.execute({"file_path": TARGET_FILE_REL, "output_format": "json"})
+        )
 
         assert result["verdict"] == "UNSAFE", (
             f"safe_to_edit must return verdict='UNSAFE' when an "
@@ -204,8 +204,10 @@ class TestSafeToEditConstraintIntegration:
         constraint_factors = [
             f
             for f in risk_factors
-            if (f.get("kind") == "constraint_violation"
-                or f.get("factor") == "constraint_violation")
+            if (
+                f.get("kind") == "constraint_violation"
+                or f.get("factor") == "constraint_violation"
+            )
         ]
         assert constraint_factors, (
             "risk_factors must include an entry with "
@@ -213,9 +215,7 @@ class TestSafeToEditConstraintIntegration:
             f"Got risk_factors: {risk_factors}"
         )
 
-    def test_safe_to_edit_emits_CAUTION_on_warn_violation(
-        self, tmp_path: Path
-    ) -> None:
+    def test_safe_to_edit_emits_CAUTION_on_warn_violation(self, tmp_path: Path) -> None:
         """Only warn-severity → CAUTION (not the legacy ``REVIEW``).
 
         The mapping must distinguish constraint-driven CAUTION from the
@@ -282,25 +282,28 @@ class TestChangeImpactConstraintIntegration:
 
         # Initialise a git repo with one committed state, then dirty
         # the target file so it appears in ``git diff``.
-        subprocess.run(
-            ["git", "init", "-q", "-b", "main"], cwd=project, check=True
-        )
+        subprocess.run(["git", "init", "-q", "-b", "main"], cwd=project, check=True)
         subprocess.run(
             ["git", "config", "user.email", "test@example.com"],
-            cwd=project, check=True,
+            cwd=project,
+            check=True,
         )
-        subprocess.run(
-            ["git", "config", "user.name", "test"], cwd=project, check=True
-        )
+        subprocess.run(["git", "config", "user.name", "test"], cwd=project, check=True)
         subprocess.run(
             ["git", "config", "commit.gpgsign", "false"],
-            cwd=project, check=True,
+            cwd=project,
+            check=True,
         )
         subprocess.run(["git", "add", "-A"], cwd=project, check=True)
         subprocess.run(
-            ["git", "commit", "-q", "-m", "initial"], cwd=project, check=True,
-            env={**os.environ, "GIT_COMMITTER_NAME": "test",
-                 "GIT_COMMITTER_EMAIL": "test@example.com"},
+            ["git", "commit", "-q", "-m", "initial"],
+            cwd=project,
+            check=True,
+            env={
+                **os.environ,
+                "GIT_COMMITTER_NAME": "test",
+                "GIT_COMMITTER_EMAIL": "test@example.com",
+            },
         )
 
         # Dirty the file so the unstaged diff contains it.

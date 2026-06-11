@@ -14,6 +14,8 @@ resolve       ``codegraph_resolve``                          symbol resolver
 lineage       ``symbol_lineage``                             class/function lineage
 impact        ``codegraph_impact``                           blast-radius / risk
 trace         ``trace_impact``                               impact trace
+test_map      BESPOKE — RFC-0014 Phase B                    test-file callers of symbol
+co_change     BESPOKE — RFC-0014 Phase C                    git-history co-change coupling
 callers       BESPOKE — scope=point → callers_tool (R4)     point = direct callers
               BESPOKE — scope=graph → call_graph mode=callers
 callees       BESPOKE — scope=point → callees_tool (R4)     point = direct callees
@@ -44,6 +46,9 @@ from __future__ import annotations
 from typing import Any
 
 from .facade_tool import FacadeTool
+
+# RFC-0014 Phase B: cap for test_map test_functions list (matches _MAX_LISTED).
+_MAX_TEST_MAP = 50
 
 _NAV_ANNOTATIONS: dict[str, Any] = {
     "readOnlyHint": True,
@@ -80,8 +85,12 @@ _NAV_DESCRIPTION = (
     "Params: symbol (required), output_format.\n"
     "- action=impact — blast-radius / risk scoring for a function or set of "
     "functions (codegraph_impact equivalent). "
+    "Risk score computed from PRODUCTION edges only; tests bucket "
+    "(test_callers_count, test_callees_count) always present. "
     "Params: mode (function_impact|blast_radius|risk_score), "
-    "function_name, function_names, file_path, depth.\n"
+    "function_name, function_names, file_path, depth, "
+    "include_tests (bool, default false — when true adds "
+    "test_caller_files/test_callee_files to tests bucket).\n"
     "- action=trace — full impact trace from a symbol outward "
     "(codegraph_trace equivalent). "
     "Params: symbol (required), output_format.\n"
@@ -106,7 +115,20 @@ _NAV_DESCRIPTION = (
     "(default 3, cap 10), max_nodes (default 150), output_format.\n"
     "- action=caller_tree — depth-limited NESTED tree of everything that "
     "transitively calls a function (blast radius), in ONE call. Params: symbol "
-    "(required), file_path, max_depth, max_nodes, output_format."
+    "(required), file_path, max_depth, max_nodes, output_format.\n"
+    "- action=test_map — which tests exercise a function (test-file callers, by "
+    "file and test function name). Use BEFORE editing to know the test surface. "
+    "Returns test_files (sorted, deduplicated), test_functions in "
+    "'file::fn' format (paste directly into pytest), edge_count (raw call edges "
+    "across all resolved targets), unique_function_count (post-dedup; truncated "
+    "is keyed to this), truncated flag (cap=50 unique functions). "
+    "Params: symbol (required), file_path, output_format.\n"
+    "- action=co_change — git-history temporal coupling: files that historically "
+    "change together with a file or symbol (lift-ranked). Use BEFORE editing to "
+    "find implicit coupling that the call graph cannot see (config+code, "
+    "schema+handler, proto+generated stub). Params: symbol or file_path (one "
+    "required), max_commits (default 500), min_shared (default 3), "
+    "max_results (default 20), output_format."
 )
 
 
@@ -117,6 +139,7 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
     that don't build the facade (matches the lazy-import convention used across
     the tool registry).
     """
+    from ...utils.test_detection import is_test_file
     from ._call_tree_tool import CodeGraphCalleeTreeTool, CodeGraphCallerTreeTool
     from .call_graph_tool import CodeGraphCallTool
     from .call_path_tool import CodeGraphCallPathTool
@@ -148,6 +171,9 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
     callees_point = CodeGraphCalleesTool(project_root)
     callees_graph = CodeGraphCallTool(project_root)
     context_inner = CodeGraphContextTool(project_root)
+    # RFC-0014 Phase B: impact_inner shares its CachedCallGraph with test_map
+    # so no second index build is needed when both actions are called per session.
+    impact_inner = CodeGraphImpactTool(project_root)
 
     async def _context_route(args: dict[str, Any]) -> Any:
         """Bespoke context route: normalize symbol/query → task (fix ③).
@@ -192,10 +218,11 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
             graph_args["mode"] = "callers"
             return await callers_graph.execute(graph_args)
         # scope=point (default): use the dedicated callers tool.
+        # limit is forwarded so callers=point honours the budget cap.
         point_args = {
             k: v
             for k, v in args.items()
-            if k in ("function_name", "file_path", "output_format")
+            if k in ("function_name", "file_path", "limit", "output_format")
         }
         return await callers_point.execute(point_args)
 
@@ -210,12 +237,162 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
             }
             graph_args["mode"] = "callees"
             return await callees_graph.execute(graph_args)
+        # limit is forwarded so callees=point honours the budget cap.
         point_args = {
             k: v
             for k, v in args.items()
-            if k in ("function_name", "file_path", "output_format")
+            if k in ("function_name", "file_path", "limit", "output_format")
         }
         return await callees_point.execute(point_args)
+
+    async def _test_map_route(args: dict[str, Any]) -> Any:
+        """RFC-0014 Phase B: which tests exercise a function?
+
+        Reuses impact_inner's CachedCallGraph so no second index build is
+        needed. Filters caller_refs_of to test-file callers only (reuses
+        is_test_file from Phase A — no duplication of classification logic).
+
+        Algorithm:
+          1. resolve_targets(symbol, file_path) → targets
+          2. For each target: caller_refs_of(target) → filter is_test_file
+          3. Collect (file_path, name) pairs; format as "file::name"
+          4. Sort; deduplicate files; cap at _MAX_TEST_MAP with truncated flag
+
+        NOT_FOUND semantics: when resolve_targets returns [] → success=False.
+        """
+        symbol: str | None = args.get("symbol") or args.get("function_name")
+        file_path: str | None = args.get("file_path")
+
+        if not symbol:
+            return {
+                "success": False,
+                "error": "symbol is required for action=test_map",
+            }
+
+        try:
+            graph = impact_inner.get_call_graph()
+            graph.build()
+        except Exception as exc:  # nosec B110
+            return {
+                "success": False,
+                "error": f"call graph unavailable: {exc}",
+            }
+
+        targets = graph.resolve_targets(symbol, file_path)
+        if not targets:
+            return {
+                "success": False,
+                "error": f"symbol not found: {symbol}",
+            }
+
+        # Collect all test caller refs across all resolved targets.
+        seen_qualified: set[str] = set()
+        test_funcs: list[str] = []  # "file::name" strings, pre-dedup
+        test_file_set: set[str] = set()
+        total_edge_count = 0
+
+        for target in targets:
+            for ref in graph.caller_refs_of(target):
+                if not is_test_file(ref.file_path):
+                    continue
+                total_edge_count += 1
+                key = f"{ref.file_path}::{ref.name}"
+                if key not in seen_qualified:
+                    seen_qualified.add(key)
+                    test_funcs.append(key)
+                    test_file_set.add(ref.file_path)
+
+        test_funcs_sorted = sorted(test_funcs)
+        unique_function_count = len(test_funcs_sorted)
+        truncated = unique_function_count > _MAX_TEST_MAP
+        capped = test_funcs_sorted[:_MAX_TEST_MAP]
+
+        output_format: str = args.get("output_format", "toon")
+
+        result: dict = {
+            "success": True,
+            "symbol": symbol,
+            "test_files": sorted(test_file_set),
+            "test_functions": capped,
+            "edge_count": total_edge_count,
+            "unique_function_count": unique_function_count,
+            "truncated": truncated,
+            "agent_summary": {
+                "next_step": (
+                    f"Run: pytest {' '.join(capped[:5])}"
+                    if capped
+                    else "No test coverage found via call-graph edges. "
+                    "Consider running pytest --cov to detect coverage."
+                ),
+            },
+        }
+
+        from ..utils.format_helper import apply_toon_format_to_response
+
+        return apply_toon_format_to_response(result, output_format)
+
+    async def _co_change_route(args: dict[str, Any]) -> Any:
+        """RFC-0014 Phase C: git-history co-change coupling.
+
+        Returns files that historically change together with the target file,
+        ranked by true association lift P(A^B)/(P(A)*P(B)).
+
+        Resolves symbol -> defining file when symbol= is given instead of
+        file_path=. Runs _compute_co_change in a thread executor (subprocess
+        I/O). Results are cached per (project_root, target_file, HEAD).
+
+        Error handling: returns success=True with empty list when git is
+        unavailable — never raises an error envelope.
+        """
+        import asyncio
+
+        from .utils.co_change import _compute_co_change
+
+        symbol: str | None = args.get("symbol") or args.get("function_name")
+        file_path: str | None = args.get("file_path")
+
+        if not symbol and not file_path:
+            return {
+                "success": False,
+                "error": "co_change requires symbol or file_path (one is required)",
+            }
+
+        # Resolve symbol -> defining file via call graph when file_path not given.
+        target_file = file_path
+        if not target_file and symbol:
+            try:
+                graph = impact_inner.get_call_graph()
+                graph.build()
+                targets = graph.resolve_targets(symbol, None)
+                if targets:
+                    target_file = targets[0].file_path
+            except Exception:  # nosec B110
+                pass
+        if not target_file:
+            # Fall back to symbol as a file path (co_change for a file by name).
+            target_file = symbol or ""
+
+        max_commits: int = int(args.get("max_commits", 500))
+        min_shared: int = int(args.get("min_shared", 3))
+        max_results: int = int(args.get("max_results", 20))
+        proj_root: str = project_root or ""
+
+        loop = asyncio.get_running_loop()
+        co_result = await loop.run_in_executor(
+            None,
+            _compute_co_change,
+            proj_root,
+            target_file,
+            max_commits,
+            min_shared,
+            max_results,
+        )
+
+        output_format: str = args.get("output_format", "toon")
+
+        from ..utils.format_helper import apply_toon_format_to_response
+
+        return apply_toon_format_to_response(co_result, output_format)
 
     facade = FacadeTool(
         facade_name="nav",
@@ -241,6 +418,10 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
             "context": _context_route,
             "callers": _callers_route,
             "callees": _callees_route,
+            # RFC-0014 Phase B: test_map — which tests exercise a function.
+            "test_map": _test_map_route,
+            # RFC-0014 Phase C: co_change — git-history co-change coupling.
+            "co_change": _co_change_route,
         },
         description=_NAV_DESCRIPTION,
         annotations=_NAV_ANNOTATIONS,
@@ -253,5 +434,7 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
     facade.register_bespoke_inner(callers_graph)
     facade.register_bespoke_inner(callees_point)
     facade.register_bespoke_inner(callees_graph)
+    # RFC-0014 Phase B: impact_inner holds the shared CachedCallGraph.
+    facade.register_bespoke_inner(impact_inner)
 
     return facade

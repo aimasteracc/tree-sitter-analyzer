@@ -84,12 +84,12 @@ class TestSafeToEditTool:
         assert result["health_grade"] in ("A", "B", "C", "D", "F")
 
     def test_execute_includes_pre_edit_checklist(self, tool):
-        result = _run(tool.execute({"file_path": TARGET_FILE}))
+        result = _run(tool.execute({"file_path": TARGET_FILE, "output_format": "json"}))
         assert "pre_edit_checklist" in result
         assert len(result["pre_edit_checklist"]) >= 2
 
     def test_execute_includes_structured_agent_workflow(self, tool):
-        result = _run(tool.execute({"file_path": TARGET_FILE}))
+        result = _run(tool.execute({"file_path": TARGET_FILE, "output_format": "json"}))
 
         workflow = result["agent_workflow"]
 
@@ -132,14 +132,14 @@ class TestSafeToEditTool:
         )
 
     def test_pre_edit_checklist_uses_uv_pytest_contract(self, tool):
-        result = _run(tool.execute({"file_path": TARGET_FILE}))
+        result = _run(tool.execute({"file_path": TARGET_FILE, "output_format": "json"}))
         checklist = "\n".join(result["pre_edit_checklist"])
 
         assert "uv run pytest" in checklist
         assert "Run existing tests FIRST: pytest " not in checklist
 
     def test_execute_includes_risk_factors(self, tool):
-        result = _run(tool.execute({"file_path": TARGET_FILE}))
+        result = _run(tool.execute({"file_path": TARGET_FILE, "output_format": "json"}))
         assert "risk_factors" in result
         assert isinstance(result["risk_factors"], list)
 
@@ -149,7 +149,7 @@ class TestSafeToEditTool:
         assert "dependency_count" in result
 
     def test_execute_includes_test_files(self, tool):
-        result = _run(tool.execute({"file_path": TARGET_FILE}))
+        result = _run(tool.execute({"file_path": TARGET_FILE, "output_format": "json"}))
         assert "test_files_nearby" in result
 
     def test_edit_type_rename_higher_risk(self, tool):
@@ -158,6 +158,7 @@ class TestSafeToEditTool:
                 {
                     "file_path": TARGET_FILE,
                     "edit_type": "refactor",
+                    "output_format": "json",
                 }
             )
         )
@@ -166,6 +167,7 @@ class TestSafeToEditTool:
                 {
                     "file_path": TARGET_FILE,
                     "edit_type": "rename",
+                    "output_format": "json",
                 }
             )
         )

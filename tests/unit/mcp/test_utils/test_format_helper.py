@@ -269,16 +269,19 @@ class TestApplyToonFormatToResponse:
         assert "toon_content" not in response
 
     def test_apply_toon_format_toon_with_results(self):
-        """Redundant ``results`` payload is dropped; small metadata is kept
-        so callers can branch on ``metadata``/``success``/``error`` without
-        parsing the TOON blob."""
+        """Redundant ``results`` payload is dropped; RFC-0012 Phase 2 also strips
+        non-empty dict fields (``metadata``) — they are already inside toon_content.
+        Only scalars and TOON_DICT_PASSTHROUGH dicts survive at top level."""
         result = {
             "results": [{"id": 1}, {"id": 2}],
             "metadata": {"total": 2},
         }
         response = apply_toon_format_to_response(result, "toon")
         assert "results" not in response
-        assert response.get("metadata") == {"total": 2}
+        # Phase 2: metadata is a non-empty dict, not in TOON_DICT_PASSTHROUGH → stripped
+        assert "metadata" not in response
+        # But it IS encoded inside toon_content (full payload was encoded first)
+        assert "metadata" in response["toon_content"]
         assert response["format"] == "toon"
         assert "toon_content" in response
         assert isinstance(response["toon_content"], str)
@@ -308,7 +311,9 @@ class TestApplyToonFormatToResponse:
         assert "toon_content" in response
 
     def test_apply_toon_format_toon_with_multiple_redundant_fields(self):
-        """All known bulk-data fields are stripped, metadata fields stay."""
+        """RFC-0012 Phase 2: all bulk list/dict fields and large-string fields
+        are stripped; scalars survive.  ``metadata`` (non-empty dict, not in
+        TOON_DICT_PASSTHROUGH) is now stripped too — it was pinning old behaviour."""
         result = {
             "results": [{"id": 1}],
             "matches": [{"line": 1}],
@@ -322,17 +327,19 @@ class TestApplyToonFormatToResponse:
             "status": "success",
         }
         response = apply_toon_format_to_response(result, "toon")
-        # Bulk-data fields are removed
+        # Bulk list fields stripped by value-kind rule
         assert "results" not in response
         assert "matches" not in response
-        assert "content" not in response
         assert "data" not in response
         assert "items" not in response
         assert "files" not in response
         assert "lines" not in response
+        # Large-string fields stripped by TOON_LARGE_STRING_FIELDS
+        assert "content" not in response
         assert "table_output" not in response
-        # Metadata is preserved so callers can branch on it
-        assert response.get("metadata") == {"count": 10}
+        # Phase 2: metadata (non-empty dict, not in passthrough) is now stripped too
+        assert "metadata" not in response
+        # Scalar metadata survives
         assert response.get("status") == "success"
         assert response["format"] == "toon"
         assert "toon_content" in response
@@ -467,10 +474,13 @@ class TestIntegration:
         toon_string = format_output(data, "toon")
         assert isinstance(toon_string, str)
 
-        # Step 2: Apply TOON format — bulk data dropped, metadata kept
+        # Step 2: Apply TOON format — bulk data and non-passthrough dicts dropped
+        # RFC-0012 Phase 2: metadata (non-empty dict, not in TOON_DICT_PASSTHROUGH)
+        # is now stripped (it is already encoded inside toon_content).
         toon_response = apply_toon_format_to_response(data, "toon")
         assert "results" not in toon_response
-        assert toon_response.get("metadata") == {"total": 1}
+        assert "metadata" not in toon_response
+        assert "metadata" in toon_response["toon_content"]  # encoded in the blob
         assert "toon_content" in toon_response
         assert "format" in toon_response
 
@@ -494,17 +504,22 @@ class TestIntegration:
         assert isinstance(toon_result, str)
 
     def test_attach_vs_apply_toon_difference(self):
-        """Test difference between attach and apply TOON functions."""
+        """Test difference between attach and apply TOON functions.
+
+        RFC-0012 Phase 2: apply strips all non-passthrough non-empty dicts/lists;
+        attach preserves everything (it just adds toon_content alongside).
+        """
         data = {
             "results": [{"id": 1}],
             "metadata": {"total": 1},
             "status": "success",
         }
 
-        # apply_toon_format_to_response strips only bulk-data fields; metadata stays
+        # apply_toon_format_to_response: value-kind rule strips lists and dicts
         applied = apply_toon_format_to_response(data, "toon")
         assert "results" not in applied
-        assert applied.get("metadata") == {"total": 1}
+        # Phase 2: metadata (non-empty dict, not in TOON_DICT_PASSTHROUGH) stripped
+        assert "metadata" not in applied
         assert applied.get("status") == "success"
         assert "format" in applied
         assert "toon_content" in applied

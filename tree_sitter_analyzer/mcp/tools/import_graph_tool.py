@@ -17,6 +17,7 @@ from typing import Any
 
 from ...import_graph import ImportGraph
 from ...utils import setup_logger
+from ._validators import invalid_enum_error
 from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
@@ -98,16 +99,16 @@ class CodeGraphImportGraphTool(BaseMCPTool):
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         mode = arguments.get("mode", "summary")
-        valid_modes = {
+        valid_modes = [
             "summary",
             "deps",
             "dependents",
             "blast_radius",
             "cycles",
             "coupling",
-        }
+        ]
         if mode not in valid_modes:
-            raise ValueError(f"Invalid mode: {mode}. Must be one of {valid_modes}")
+            raise invalid_enum_error("mode", mode, valid_modes)
         if mode in ("deps", "dependents", "blast_radius") and not arguments.get(
             "file_path"
         ):

@@ -76,11 +76,27 @@ class Evaluator:
     def __init__(self, cache: Any, max_results: int = 500) -> None:
         self._cache = cache
         self._max = max_results
+        self._was_truncated = False
+        self._total_count = 0
 
     # -- public --------------------------------------------------------------
     def eval(self, selector_list: SelectorList) -> list[dict[str, Any]]:
+        """Evaluate the selector and return capped results.
+
+        Returns the list of matching symbols (capped at self._max).
+        Call total_matches() and was_truncated() after eval() to get metadata.
+        """
+        # ALL counting is kept in locals and written to the instance only at
+        # the very end: ``:not(...)`` re-enters eval() (line ~213), and any
+        # mid-loop instance mutation would be clobbered by the nested call
+        # (Codex P2 on #489 — reentrancy). The outer frame's final assignment
+        # always wins because it happens after every nested eval returns.
         seen: set[tuple[Any, Any, Any]] = set()
         out: list[dict[str, Any]] = []
+        total_count = 0
+        hit_cap = False
+        sel_with_cap = None
+
         for sel in selector_list.selectors:
             for sym in self._eval_selector(sel):
                 k = _key(sym)
@@ -88,9 +104,44 @@ class Evaluator:
                     continue
                 seen.add(k)
                 out.append(sym)
+                total_count += 1
                 if len(out) >= self._max:
-                    return out
+                    hit_cap = True
+                    sel_with_cap = sel
+                    break
+            if hit_cap:
+                break
+
+        # If we hit the cap, count the rest to get the true total.
+        if hit_cap and sel_with_cap is not None:
+            # Count remaining from current selector
+            for sym in self._eval_selector(sel_with_cap):
+                k = _key(sym)
+                if k not in seen:
+                    seen.add(k)
+                    total_count += 1
+            # Count remaining selectors
+            sel_idx = selector_list.selectors.index(sel_with_cap)
+            for rem_sel in selector_list.selectors[sel_idx + 1 :]:
+                for sym in self._eval_selector(rem_sel):
+                    k = _key(sym)
+                    if k not in seen:
+                        seen.add(k)
+                        total_count += 1
+
+        self._total_count = total_count
+        # Truncated only if matches were actually LOST: exactly max_results
+        # unique matches is a complete result, not a capped one (Codex P2).
+        self._was_truncated = total_count > len(out)
         return out
+
+    def total_matches(self) -> int:
+        """Return the total number of matches (before cap, if truncated)."""
+        return self._total_count
+
+    def was_truncated(self) -> bool:
+        """Return whether the results were capped at max_results."""
+        return self._was_truncated
 
     # -- dispatch ------------------------------------------------------------
     def _eval_selector(self, sel: Any) -> list[dict[str, Any]]:

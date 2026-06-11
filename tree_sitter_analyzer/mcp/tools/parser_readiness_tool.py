@@ -49,7 +49,11 @@ class ParserReadinessTool(BaseMCPTool):
                 "Advise which language parser/plugin work is ready next. Uses local "
                 "pyproject parser dependencies, plugin entry points, loader mappings, "
                 "tests, and wiki-inspired parser signals such as ABI, grammar.json, "
-                "external scanner, and maintenance checks."
+                "external scanner, and maintenance checks. "
+                "Each language record exposes parser_package_version (installed "
+                "distribution version, always empty-string when not installed) and "
+                "parser_required_spec (raw pyproject requirement string, always "
+                "populated when the dependency is declared)."
             ),
             "inputSchema": TOOL_SCHEMA,
             "annotations": {

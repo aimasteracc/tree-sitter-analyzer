@@ -46,14 +46,14 @@ _ERROR_RECOVERY_HINTS: list[tuple[str, str, str, str]] = [
     (
         "not found",
         "file_not_found",
-        "The file does not exist at the given path. Verify the path or use list_files to discover files.",
-        "list_files",
+        "The file does not exist at the given path. Verify the path or use project action=files to discover files.",
+        "project action=files",
     ),
     (
         "no such file",
         "file_not_found",
-        "The file does not exist at the given path. Verify the path or use list_files to discover files.",
-        "list_files",
+        "The file does not exist at the given path. Verify the path or use project action=files to discover files.",
+        "project action=files",
     ),
     (
         "unsupported language",
@@ -83,6 +83,15 @@ _ERROR_RECOVERY_HINTS: list[tuple[str, str, str, str]] = [
         "must be",
         "validation",
         "A parameter has an invalid value. Check the tool schema for valid options.",
+        "",
+    ),
+    (
+        # invalid_enum_error() format (#449): "Invalid <param>: '<got>'.
+        # Valid values: a, b, c" — the enumerated message already tells the
+        # agent what to send; the hint just points back at it.
+        "valid values:",
+        "validation",
+        "A parameter has an invalid value. The error message lists the valid values — pick one and retry.",
         "",
     ),
     (

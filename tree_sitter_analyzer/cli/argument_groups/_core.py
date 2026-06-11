@@ -34,6 +34,15 @@ def _add_output_options(parser: argparse.ArgumentParser) -> None:
         help="Use tab delimiters instead of commas in TOON format (further compression)",
     )
     parser.add_argument(
+        "--compact-toon",
+        action="store_true",
+        help=(
+            "RFC-0012: with TOON output on the MCP decision tools, return only "
+            "the control surface alongside toon_content (drops metadata already "
+            "encoded in the blob). Mirrors the MCP 'compact_only' parameter."
+        ),
+    )
+    parser.add_argument(
         "--table",
         choices=["full", "compact", "csv", "json", "toon", "signatures"],
         help=(
@@ -98,6 +107,28 @@ def _add_partial_read_options(parser: argparse.ArgumentParser) -> None:
         "--fail-fast",
         action="store_true",
         help="Batch mode: stop on first error (default: partial success)",
+    )
+
+
+def _add_install_skills_options(parser: argparse.ArgumentParser) -> None:
+    """Add skill-installation options (PyPI / uvx first-run)."""
+    parser.add_argument(
+        "--install-skills",
+        nargs="?",
+        const=".",
+        metavar="TARGET_DIR",
+        dest="install_skills",
+        help=(
+            "Install bundled tsa-* skills into TARGET_DIR/.claude/skills/ "
+            "(default: current directory). Git-clone users already have the "
+            "skills; this is for PyPI / uvx installs."
+        ),
+    )
+    parser.add_argument(
+        "--install-skills-global",
+        action="store_true",
+        dest="install_skills_global",
+        help="Install bundled tsa-* skills into ~/.claude/skills/ (user-global).",
     )
 
 

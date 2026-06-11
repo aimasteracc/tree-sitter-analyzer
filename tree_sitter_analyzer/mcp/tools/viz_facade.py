@@ -39,13 +39,15 @@ _VIZ_DESCRIPTION = (
     "- action=uml — UML class or sequence diagrams "
     "(codegraph_uml equivalent). "
     "Params: diagram, source, target, max_edges, max_depth, max_paths, "
-    "package_depth, include_external_bases.\n"
+    "package_depth, include_external_bases, file_path, class_name, include_tests.\n"
     "- action=graph — call/dependency graph visualizations "
     "(codegraph_visualize equivalent). "
     "Params: mode, file_path, function, depth, max_edges, direction.\n"
     "- action=similarity — duplicate / near-duplicate code detection "
     "(codegraph_similarity equivalent). "
-    "Params: mode, min_lines, min_group_size, max_groups, use_cache.\n"
+    "Default response is a summary map (files, line ranges, scores — no bodies). "
+    "Params: mode, min_lines, min_group_size, max_groups, use_cache, include_bodies "
+    "(set include_bodies=true to add code snippets; omit for the compact default).\n"
 )
 
 

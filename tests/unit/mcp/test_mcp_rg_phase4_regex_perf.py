@@ -75,7 +75,15 @@ async def test_rg_45_large_output_truncation(monkeypatch, tmp_path):
         "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
     )
 
-    res = await tool.execute({"roots": [str(tmp_path)], "query": "x"})
+    # DF-1 re-pin: default (no max_count) now applies the 50-listed budget
+    # in normal mode; to exercise the HARD cap, request more than it.
+    res = await tool.execute(
+        {
+            "roots": [str(tmp_path)],
+            "query": "x",
+            "max_count": fd_rg_utils.MAX_RESULTS_HARD_CAP + 100,
+        }
+    )
     assert res["success"] is True
     assert res["truncated"] is True
     assert res["count"] == fd_rg_utils.MAX_RESULTS_HARD_CAP

@@ -222,6 +222,7 @@ def _build_change_impact_tool_args(args: Any, output_format: str) -> dict[str, A
         "scope_paths": getattr(args, "change_impact_scope", None) or [],
         "scope_mode": getattr(args, "change_impact_scope_mode", "report") or "report",
         "agent_summary_only": not bool(getattr(args, "change_impact_full", False)),
+        "compact_only": bool(getattr(args, "compact_toon", False)),
     }
 
 
@@ -260,16 +261,17 @@ def _build_code_similarity_tool_args(args: Any, output_format: str) -> dict[str,
         "min_group_size": getattr(args, "code_similarity_min_group", 2) or 2,
         "max_groups": getattr(args, "code_similarity_max_groups", 20) or 20,
         "use_cache": not bool(getattr(args, "code_similarity_no_cache", False)),
+        "include_bodies": bool(getattr(args, "code_similarity_include_bodies", False)),
         "output_format": output_format,
     }
 
 
 def _build_uml_tool_args(args: Any, output_format: str) -> dict[str, Any]:
-    return {
+    tool_args: dict[str, Any] = {
         "diagram": getattr(args, "uml", "class") or "class",
         "source": getattr(args, "uml_source", None),
         "target": getattr(args, "uml_target", None),
-        "max_edges": getattr(args, "uml_max_edges", 200),
+        "max_edges": getattr(args, "uml_max_edges", 80),
         "max_depth": getattr(args, "uml_max_depth", 8),
         "max_paths": getattr(args, "uml_max_paths", 3),
         "package_depth": getattr(args, "uml_package_depth", 2),
@@ -278,3 +280,20 @@ def _build_uml_tool_args(args: Any, output_format: str) -> dict[str, Any]:
         ),
         "output_format": output_format,
     }
+    # P1 scoping params (RFC-0015): only forward when provided
+    file_path = getattr(args, "uml_file_path", None)
+    if file_path:
+        tool_args["file_path"] = file_path
+    class_name = getattr(args, "uml_class_name", None)
+    if class_name:
+        tool_args["class_name"] = class_name
+    if getattr(args, "uml_include_tests", False):
+        tool_args["include_tests"] = True
+    # P2 params (RFC-0015): activity + state diagrams
+    function_name = getattr(args, "uml_function", None)
+    if function_name:
+        tool_args["function_name"] = function_name
+    max_nodes = getattr(args, "uml_max_nodes", None)
+    if max_nodes is not None:
+        tool_args["max_nodes"] = max_nodes
+    return tool_args

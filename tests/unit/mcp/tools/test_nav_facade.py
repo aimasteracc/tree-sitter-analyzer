@@ -54,14 +54,18 @@ def test_nav_facade_all_actions_present() -> None:
         "callees",
         "callee_tree",
         "caller_tree",
+        # RFC-0014 Phase B: test_map
+        "test_map",
+        # RFC-0014 Phase C: co_change
+        "co_change",
     }
     assert expected == all_actions
 
 
 def test_nav_facade_bespoke_actions_are_context_callers_callees() -> None:
     facade = build_nav_facade(project_root=None)
-    # context, callers, callees are all bespoke routes (closures, not action_map entries)
-    for bespoke_action in ("context", "callers", "callees"):
+    # context, callers, callees, test_map, co_change are all bespoke routes
+    for bespoke_action in ("context", "callers", "callees", "test_map", "co_change"):
         assert bespoke_action in facade.bespoke_map, (
             f"Expected '{bespoke_action}' in bespoke_map"
         )
@@ -551,13 +555,13 @@ def test_set_project_path_rebinds_bespoke_inners(tmp_path: Any) -> None:
         )
 
 
-def test_five_bespoke_inners_registered() -> None:
-    """Exactly 5 bespoke inners: context_inner, callers_point, callers_graph,
-    callees_point, callees_graph — required by G3 for reliable multi-project rebind.
-    context_inner was added (fix ③) to enable symbol/query → task normalization."""
+def test_six_bespoke_inners_registered() -> None:
+    """Exactly 6 bespoke inners: context_inner, callers_point, callers_graph,
+    callees_point, callees_graph, impact_inner — required by G3 for reliable
+    multi-project rebind. impact_inner added in RFC-0014 Phase B (test_map)."""
     facade = build_nav_facade(project_root=None)
-    assert len(facade._bespoke_inners) == 5, (
-        f"Expected 5 registered bespoke inners, got {len(facade._bespoke_inners)}"
+    assert len(facade._bespoke_inners) == 6, (
+        f"Expected 6 registered bespoke inners, got {len(facade._bespoke_inners)}"
     )
 
 
@@ -652,6 +656,10 @@ def test_nav_facade_schema_action_enum_complete() -> None:
         "callees",
         "callee_tree",
         "caller_tree",
+        # RFC-0014 Phase B: test_map
+        "test_map",
+        # RFC-0014 Phase C: co_change
+        "co_change",
     }
     assert expected == enum
 
@@ -752,6 +760,53 @@ async def test_call_path_in_running_event_loop_returns_dict(tmp_path: Any) -> No
     )
     assert isinstance(result, dict)
     assert result.get("verdict") in {"PATH_FOUND", "NO_PATH", "ERROR", "NOT_FOUND"}
+
+
+# ---------------------------------------------------------------------------
+# DF-13: limit param survives nav action=callers/callees projection
+# ---------------------------------------------------------------------------
+
+
+def test_callers_limit_forwarded_to_point_inner() -> None:
+    """DF-13: limit= must reach callers_point inner when action=callers scope=point.
+
+    The _callers_route whitelist now includes 'limit'; verify it is forwarded
+    so the budget cap is honoured through the facade boundary.
+    """
+    facade, mocks = _build_facade_with_mock_inners()
+    asyncio.run(
+        facade.execute(
+            {
+                "action": "callers",
+                "function_name": "execute",
+                "scope": "point",
+                "limit": 10,
+            }
+        )
+    )
+    call_args = mocks["callers_point"].call_args[0][0]
+    assert call_args.get("limit") == 10, (
+        f"limit not forwarded to callers_point inner: {call_args}"
+    )
+
+
+def test_callees_limit_forwarded_to_point_inner() -> None:
+    """DF-13: limit= must reach callees_point inner when action=callees scope=point."""
+    facade, mocks = _build_facade_with_mock_inners()
+    asyncio.run(
+        facade.execute(
+            {
+                "action": "callees",
+                "function_name": "execute",
+                "scope": "point",
+                "limit": 10,
+            }
+        )
+    )
+    call_args = mocks["callees_point"].call_args[0][0]
+    assert call_args.get("limit") == 10, (
+        f"limit not forwarded to callees_point inner: {call_args}"
+    )
 
 
 if __name__ == "__main__":

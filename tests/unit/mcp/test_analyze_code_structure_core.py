@@ -162,13 +162,13 @@ class TestAnalyzeCodeStructureToolValidateArguments:
     def test_validate_arguments_invalid_format_type(self, tool):
         """Test validation fails when format_type is invalid."""
         arguments = {"file_path": "test.py", "format_type": "invalid"}
-        with pytest.raises(ValueError, match="format_type must be one of"):
+        with pytest.raises(ValueError, match="Invalid format_type"):
             tool.validate_arguments(arguments)
 
     def test_validate_arguments_unsupported_format_type(self, tool):
         """Test validation fails when format_type is not supported."""
         arguments = {"file_path": "test.py", "format_type": "html"}
-        with pytest.raises(ValueError, match="format_type must be one of"):
+        with pytest.raises(ValueError, match="Invalid format_type"):
             tool.validate_arguments(arguments)
 
     def test_validate_arguments_invalid_language_type(self, tool):
@@ -670,7 +670,7 @@ class TestAnalyzeCodeStructureToolExecute:
             mock_registry.is_format_supported.return_value = False
 
             arguments = {"file_path": str(test_file), "format_type": "unsupported"}
-            with pytest.raises(ValueError, match="format_type must be one of"):
+            with pytest.raises(ValueError, match="Invalid format_type"):
                 await tool.execute(arguments)
 
     @pytest.mark.asyncio

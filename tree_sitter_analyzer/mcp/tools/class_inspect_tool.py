@@ -1,14 +1,25 @@
 #!/usr/bin/env python3
 """
-Class Inspect MCP Tool — method inventory for a single class.
+Class Inspect MCP Tool — full class contract inspection.
 
-Reports all methods defined in a class (not inherited), and for each
-method indicates whether it is an override of a parent-class method.
+Reports for a single class:
+- extends: direct base class names
+- fields: class-level attributes and self.* instance attributes (with visibility)
+- methods: direct class-body functions only (closures excluded), with visibility
+           and override detection
+- inherited_methods: methods from the nearest in-project ancestor (if resolvable)
+
+Visibility convention (Python):
+  __name (dunder)  → private
+  _name            → protected
+  name             → public
 """
 
 from __future__ import annotations
 
 import json
+import os
+import re
 from typing import Any
 
 from ...ast_cache import ASTCache
@@ -18,17 +29,161 @@ from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
 
+# Regex patterns for Python field extraction from source text
+# Class-level attribute: <identifier>: ... = ... OR <UPPER_IDENT> = ... at class body
+_CLS_ATTR_RE = re.compile(
+    r"^    ([A-Za-z_]\w*)(?:\s*:\s*[^=\n]+)?\s*=\s*",
+    re.MULTILINE,
+)
+# Instance attribute in __init__: self.<name> = ...
+_SELF_ATTR_RE = re.compile(
+    r"^\s+self\.([A-Za-z_]\w*)\s*=\s*",
+    re.MULTILINE,
+)
+
+
+def _compute_visibility(name: str) -> str:
+    """Derive Python visibility from name convention.
+
+    __name (two leading underscores, no trailing)  → private
+    _name  (one leading underscore)                → protected
+    otherwise                                      → public
+
+    Note: dunder methods (__init__, __str__) are considered public by
+    Python convention, even though they start with double underscores on
+    both sides. We treat them as public here because they ARE part of the
+    public interface.
+    """
+    if name.startswith("__") and name.endswith("__"):
+        # dunder / special method — public by Python convention
+        return "public"
+    if name.startswith("__"):
+        return "private"
+    if name.startswith("_"):
+        return "protected"
+    return "public"
+
+
+def _filter_closures(
+    raw_methods: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Remove closures — functions whose line range is fully contained within
+    another method's line range in the same file.
+
+    Algorithm: for each method m, if there exists another method `outer`
+    (same file) where outer.line <= m.line and outer.end_line >= m.end_line
+    and outer != m, then m is a closure/nested function and is excluded.
+    """
+    result: list[dict[str, Any]] = []
+    for i, m in enumerate(raw_methods):
+        m_file = m["file"]
+        m_start = m["line"]
+        m_end = m["end_line"]
+        is_closure = False
+        for j, outer in enumerate(raw_methods):
+            if i == j:
+                continue
+            if outer["file"] != m_file:
+                continue
+            # m is fully inside outer
+            if outer["line"] <= m_start and outer["end_line"] >= m_end:
+                is_closure = True
+                break
+        if not is_closure:
+            result.append(m)
+    return result
+
+
+def _extract_fields_from_source(
+    source: str,
+    class_name: str,
+    class_start: int,
+    class_end: int,
+) -> list[dict[str, Any]]:
+    """Extract class-level and instance attributes from source text.
+
+    Scans the class body (lines class_start..class_end) for:
+    1. Class-level assignments at 4-space indent: ``name = ...``
+    2. Self-assignments anywhere in the class body: ``self.name = ...``
+       (not just __init__ — e.g. BaseMCPTool delegates its attribute
+       writes to ``_apply_project_root``, the very repro of issue #455)
+
+    Returns a list of field dicts: {name, line, visibility, kind}
+    where kind is "class" or "instance".
+    """
+    lines = source.splitlines()
+    class_lines = lines[class_start - 1 : class_end]
+
+    fields: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    # 1. Class-level attributes: lines at indent == 4, assignment, not starting with def/class/@
+    for rel_i, line in enumerate(class_lines):
+        stripped = line.lstrip()
+        indent = len(line) - len(stripped)
+        if indent != 4:
+            continue
+        if (
+            stripped.startswith("def ")
+            or stripped.startswith("class ")
+            or stripped.startswith("@")
+        ):
+            continue
+        if stripped.startswith("#"):
+            continue
+        # Match: name = ... / name: type = ... / annotation-only name: type
+        # (dataclass / Pydantic required fields have no default value)
+        m = re.match(
+            r"([A-Za-z_]\w*)(?:\s*:\s*[^=\n]+?)?\s*=\s*[^=]", stripped
+        ) or re.match(r"([A-Za-z_]\w*)\s*:\s*[^=\n]+$", stripped)
+        if m and not m.group(1).startswith("__"):
+            # Skip dunder class attributes (likely __slots__, __doc__ etc)
+            attr_name = m.group(1)
+            if attr_name not in seen:
+                seen.add(attr_name)
+                abs_line = class_start + rel_i
+                fields.append(
+                    {
+                        "name": attr_name,
+                        "line": abs_line,
+                        "visibility": _compute_visibility(attr_name),
+                        "kind": "class",
+                    }
+                )
+
+    # 2. Instance attributes: self.x = ... anywhere in the class body
+    # (annotated assignments ``self.x: T = ...`` included)
+    for rel_i, line in enumerate(class_lines):
+        m = re.match(r"\s+self\.([A-Za-z_]\w*)(?:\s*:\s*[^=\n]+)?\s*=\s*", line)
+        if m:
+            attr_name = m.group(1)
+            if attr_name not in seen:
+                seen.add(attr_name)
+                abs_line = class_start + rel_i
+                fields.append(
+                    {
+                        "name": attr_name,
+                        "line": abs_line,
+                        "visibility": _compute_visibility(attr_name),
+                        "kind": "instance",
+                    }
+                )
+
+    fields.sort(key=lambda f: f["line"])
+    return fields
+
 
 class ClassInspectTool(BaseMCPTool):
-    """Inspect the methods defined in a single class, with override detection."""
+    """Inspect a single class: fields, methods (no closures), visibility, extends."""
 
     def get_tool_definition(self) -> dict[str, Any]:
         return {
             "name": "codegraph_class_inspect",
             "description": (
-                "List all methods defined directly on a class (not inherited). "
-                "For each method, reports whether it overrides a parent-class method "
-                "and which parent introduced it. "
+                "Detailed class inspection: fields (class-level + instance), "
+                "methods (direct only — closures excluded), visibility for each, "
+                "base classes (extends), and inherited methods from the nearest "
+                "in-project ancestor when resolvable. "
                 "Requires ast_cache index to be built first."
             ),
             "inputSchema": self.get_tool_schema(),
@@ -69,10 +224,41 @@ class ClassInspectTool(BaseMCPTool):
             raise ValueError("Project root not set. Call set_project_path first.")
         return ASTCache(self.project_root)
 
-    def _collect_methods(
+    def _collect_class_info(
+        self, cache: ASTCache, class_name: str
+    ) -> dict[str, Any] | None:
+        """Return the raw class symbol dict for class_name (first match)."""
+        try:
+            conn = cache.get_conn()
+            rows = conn.execute(
+                "SELECT file_path, symbols_json FROM ast_index"
+            ).fetchall()
+        except Exception:
+            return None
+
+        for row in rows:
+            try:
+                symbols = json.loads(row["symbols_json"])
+            except (json.JSONDecodeError, TypeError):
+                continue
+            for sym in symbols.get("symbols", []):
+                if sym.get("kind") == "class" and sym.get("name") == class_name:
+                    return {
+                        "file": row["file_path"],
+                        "line": sym.get("line", 0),
+                        "end_line": sym.get("end_line", 0),
+                        "parents": sym.get("parents", []),
+                    }
+        return None
+
+    def _collect_raw_methods(
         self, cache: ASTCache, class_name: str
     ) -> list[dict[str, Any]]:
-        """Return all methods whose enclosing class matches class_name."""
+        """Return ALL method/function symbols whose enclosing class is class_name.
+
+        This includes closures — caller is responsible for filtering via
+        :func:`_filter_closures`.
+        """
         try:
             conn = cache.get_conn()
             rows = conn.execute(
@@ -151,7 +337,6 @@ class ClassInspectTool(BaseMCPTool):
         except Exception:
             return None
 
-        # Build map: ancestor_class -> set of method names
         ancestor_methods: dict[str, set[str]] = {}
         for row in rows:
             try:
@@ -170,6 +355,90 @@ class ClassInspectTool(BaseMCPTool):
                 return str(ancestor)
         return None
 
+    def _collect_fields(
+        self,
+        cache: ASTCache,
+        class_info: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        """Extract class-level and instance fields by scanning source.
+
+        Falls back to [] when the file cannot be read.
+        """
+        file_path: str = class_info["file"]
+        class_start: int = class_info["line"]
+        class_end: int = class_info["end_line"]
+
+        # Resolve to absolute path
+        project_root = self.project_root or ""
+        abs_path = (
+            file_path
+            if os.path.isabs(file_path)
+            else os.path.join(project_root, file_path)
+        )
+
+        try:
+            source = open(abs_path, encoding="utf-8", errors="replace").read()
+        except OSError:
+            return []
+
+        return _extract_fields_from_source(
+            source, class_info.get("name", ""), class_start, class_end
+        )
+
+    def _collect_inherited_methods(
+        self,
+        hierarchy: ClassHierarchy,
+        class_name: str,
+        cache: ASTCache,
+    ) -> dict[str, Any]:
+        """Collect inherited methods from the nearest in-project ancestor.
+
+        Returns:
+          {"available": True, "methods": [...]}  when the parent is indexed
+          {"available": False, "reason": "..."}  when it cannot be resolved
+        """
+        ancestors = hierarchy.superclasses_of(class_name)
+        if not ancestors:
+            return {"available": False, "reason": "no ancestors found in index"}
+
+        # nearest ancestor = first in BFS order
+        nearest = ancestors[0]
+        ancestor_name = nearest["name"]
+
+        try:
+            conn = cache.get_conn()
+            rows = conn.execute("SELECT symbols_json FROM ast_index").fetchall()
+        except Exception:
+            return {"available": False, "reason": "cache query failed"}
+
+        inherited: list[dict[str, Any]] = []
+        for row in rows:
+            try:
+                symbols = json.loads(row["symbols_json"])
+            except (json.JSONDecodeError, TypeError):
+                continue
+            for sym in symbols.get("symbols", []):
+                if sym.get("kind") not in ("function", "method"):
+                    continue
+                if sym.get("class") == ancestor_name:
+                    inherited.append(
+                        {
+                            "name": sym.get("name", ""),
+                            "defined_in": ancestor_name,
+                        }
+                    )
+
+        if not inherited:
+            return {
+                "available": False,
+                "reason": (
+                    f"ancestor '{ancestor_name}' found in hierarchy but has no "
+                    "indexed methods (external library or unindexed file)"
+                ),
+            }
+
+        return {"available": True, "methods": inherited}
+
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate_arguments(arguments)
 
@@ -182,29 +451,40 @@ class ClassInspectTool(BaseMCPTool):
 
         # Check the class is known
         if class_name not in hierarchy._classes:  # noqa: SLF001
-            response: dict[str, Any] = {
+            not_found: dict[str, Any] = {
                 "success": True,
                 "verdict": "NOT_FOUND",
                 "class_name": class_name,
                 "message": f"Class '{class_name}' not found in AST index.",
                 "methods": [],
                 "method_count": 0,
+                "fields": [],
+                "extends": [],
             }
             from ..utils.format_helper import apply_toon_format_to_response
 
-            return apply_toon_format_to_response(response, output_format)
+            return apply_toon_format_to_response(not_found, output_format)
 
+        # Collect class metadata (parents, file, line range)
+        class_info = self._collect_class_info(cache, class_name)
+        extends: list[str] = class_info["parents"] if class_info else []
+
+        # Collect all raw method symbols, then filter closures
+        raw_methods = self._collect_raw_methods(cache, class_name)
+        direct_methods = _filter_closures(raw_methods)
+
+        # Override detection
         parent_method_names = self._parent_method_names(hierarchy, class_name, cache)
-        raw_methods = self._collect_methods(cache, class_name)
 
         methods: list[dict[str, Any]] = []
-        for m in raw_methods:
+        for m in direct_methods:
             is_override = m["name"] in parent_method_names
             entry: dict[str, Any] = {
                 "name": m["name"],
                 "line": m["line"],
                 "end_line": m["end_line"],
                 "file": m["file"],
+                "visibility": _compute_visibility(m["name"]),
                 "is_override": is_override,
             }
             if is_override:
@@ -215,13 +495,32 @@ class ClassInspectTool(BaseMCPTool):
                     entry["overrides_from"] = src
             methods.append(entry)
 
-        response = {
+        # Fields
+        fields: list[dict[str, Any]] = []
+        if class_info:
+            class_info["name"] = class_name
+            fields = self._collect_fields(cache, class_info)
+
+        # Inherited members
+        inherited_result = self._collect_inherited_methods(hierarchy, class_name, cache)
+
+        response: dict[str, Any] = {
             "success": True,
             "verdict": "INFO",
             "class": class_name,
+            "extends": extends,
             "method_count": len(methods),
             "methods": methods,
+            "fields": fields,
         }
+
+        if inherited_result.get("available"):
+            response["inherited_methods"] = inherited_result["methods"]
+        else:
+            response["inherited"] = {
+                "available": False,
+                "reason": inherited_result.get("reason", "unknown"),
+            }
 
         from ..utils.format_helper import apply_toon_format_to_response
 

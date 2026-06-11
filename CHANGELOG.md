@@ -1,5 +1,103 @@
 # Changelog
 
+## [1.23.0] - 2026-06-12
+
+Agent-experience release: the "instant everything" diagram family lands
+(activity + state), the TOON duplication disease class is structurally
+extinct, and a two-wave dogfood sweep closed 26 issues — every response
+surface is now budget-aware, honestly truncated, and teaches callable
+8-facade commands.
+
+### Added
+
+- **Activity diagrams** (#472, RFC-0015 P2-A). `--uml activity` / MCP
+  `viz diagram=activity`: per-function control-flow graphs (if/elif/else,
+  loops, try/except, match) as Mermaid flowcharts, with honest
+  static-approximation metadata and node caps. Without `file_path` the
+  function is resolved from the AST index — a unique hit builds the CFG on
+  the first call (#477, #498).
+- **State diagrams** (#475, RFC-0015 P2-B). `--uml state`: stateDiagram-v2
+  from Python `Enum`/`match` FSMs covering both `return Enum.X` and
+  `self.attr = Enum.X` transition patterns; partial results (states found,
+  no transitions) return INFO with the honesty note instead of NOT_FOUND
+  (#480); Python-only coverage disclosed.
+- **Instant edit-safety trio** (RFC-0014, implemented): `impact`
+  test-partition, `test_map`, and `co_change` (true association lift,
+  one git subprocess, per-HEAD LRU cache). co_change refuses to overclaim:
+  n<10 history yields "treat as unknown, not safe" and filtered candidates
+  are counted, never hidden (#469, #495).
+- **`--call-limit` CLI flag** (#500): callers/callees budget parity with MCP.
+- **Loose-assertion ratchet, Layer 1** (#502): CI blocks NEW `>=` / `> 0`
+  test assertions (exemption marker + property-test whitelist); baseline
+  measured and recorded for batched cleanup (#504 started: 32 pinned).
+
+### Changed
+
+- **TOON duplication structurally extinct** (#476, RFC-0012 Phase 2,
+  closes the 6× recurring #439). The per-key denylist is replaced by a
+  value-kind rule: in TOON mode the top level keeps scalars + a 3-entry
+  control-dict allowlist; every other non-empty container is stripped.
+  Measured: a 50-row nav-impact payload is now **0.52×** the JSON size
+  (was ~1.5×+), pinned to exact bytes in CI.
+- **High-fan-in responses budgeted** (honest-truncation convention):
+  nav callers/callees default 50 listed with pre-cap totals + truncated
+  flag (#500 — `callers 'execute'` went 320KB → 27.7KB, 11.5×); content
+  search defaults to 50 listed in normal mode, aggregate modes uncapped
+  (#505, 2.48×); Hyphae select reports `total_matches` + `truncated`
+  (#489) and `index_state` missing/empty/ready + `indexed_files` (#497).
+- **Runtime guidance speaks 8-facade names** (#496, closes #440): 6 files /
+  ~30 legacy tool names swept; every taught example is schema-validated
+  CALLABLE (action exists + params exist) by a new ratchet test.
+- **README restructured** (#501): one-sentence lede, merged quick-start,
+  CodeGraph comparison moved after features, claim→evidence anchors;
+  standalone install corrected to `uv tool install`.
+
+### Fixed
+
+- **Nested functions get call edges** (#484, closes #452): call sites are
+  attributed to the innermost enclosing function with column-aware
+  containment across 6 languages (index-time fix — re-index to benefit).
+- **TypeScript abstract classes extract members** (#478, closes #459):
+  `abstract_class_declaration` traversal + `abstract_method_signature`
+  extraction + query/CLI path; golden master consciously re-pinned.
+- **Go/Rust receiver methods nest under their structs** (#474, closes #456)
+  with first-claim-wins single ownership; the same innermost-span rule also
+  fixed nested-class duplication in Python signature tables (#485).
+- **PR review phantom edges dropped** (#488, closes #450): language-family
+  gate (directional C-family), distinct-file ambiguity counting, generic
+  callback-name filter, anchor-level filtering — 167 phantom edges removed
+  on the repro PR with `phantom_edge_stats` honesty fields.
+- **test_gap scans the full package tree** (#479, closes #457):
+  `max_files` budget no longer consumed by `tests/` — 121 → 7,894
+  production symbols on this repo; coverage verdict is real.
+- **dead-code counts labeled and consistent** (#486, closes #448):
+  `total_dead_functions_transitive` / `*_listed` / `*_cap` + truncated;
+  scoped modes don't flag hidden categories.
+- **class_detail delivers its full contract** (#482, closes #455): fields
+  (incl. annotation-only and whole-class-body `self.*`), visibility,
+  extends, honest inherited fallback; local closures excluded.
+- **signatures supports Python** (#485, closes #442) with extension
+  auto-detect and truthful facade description.
+- **Validation errors enumerate valid values** (#490, closes #449) with a
+  shared `invalid_enum_error` helper + actionable recovery-hint routing.
+- **`edit action=pr` without `pr_url` fails loudly** (#483, closes #451);
+  the facade pr route implies `mode=pr`.
+- **nav context quality** (#487, closes #441): stop-word filtering that
+  preserves quoted/capitalised symbols, production-over-examples ranking,
+  honest next_step.
+- **`is_test_file` requires path-anchored evidence** (#499): production
+  files named `test_*.py` are no longer misjudged; 5 parallel
+  implementations consolidated.
+- **search symbol folds duplicate import rows** (#492, closes #443);
+  **overview counts respect .gitignore** with pruned walk (#493,
+  closes #445); **envelope polish** (#494, closes #446): no null scalars,
+  real status next_step, honest overview verdict semantics.
+- **builtin-receiver evidence gate** (#470, closes #447): `unknown` never
+  becomes `wrong` — bare-name `.get()` no longer binds to `dict.get`.
+- Windows CI stability: co_change timing skip (#473), sqlite handle closes
+  in tests, cross-platform forward-slash paths.
+
+
 ## [1.22.0] - 2026-06-10
 
 Extraction-correctness release: a three-way quality audit (source vs TSA vs a

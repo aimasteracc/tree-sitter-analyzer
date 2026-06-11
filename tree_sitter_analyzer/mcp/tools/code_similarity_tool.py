@@ -29,7 +29,10 @@ class CodeGraphSimilarityTool(BaseMCPTool):
                 "AST-structural clone detection: finds duplicate and near-duplicate "
                 "functions using tree-sitter fingerprints. Detects structural clones "
                 "(same AST shape, different names) and textual clones (copy-paste). "
-                "No other tool provides AST-based similarity analysis."
+                "No other tool provides AST-based similarity analysis. "
+                "Default response is a summary map (files, line ranges, similarity "
+                "scores — no code bodies). Pass include_bodies=true to include "
+                "code snippets in each function entry."
             ),
             "inputSchema": self.get_tool_schema(),
             "annotations": {
@@ -74,6 +77,16 @@ class CodeGraphSimilarityTool(BaseMCPTool):
                     "description": "Use pre-indexed AST cache for instant detection (default: true)",
                     "default": True,
                 },
+                "include_bodies": {
+                    "type": "boolean",
+                    "description": (
+                        "Include code snippets in each function entry (default: false). "
+                        "By default the response is a summary map (files, line ranges, "
+                        "similarity scores only). Set include_bodies=true to add code "
+                        "body snippets — this substantially increases response size."
+                    ),
+                    "default": False,
+                },
                 "output_format": {
                     "type": "string",
                     "enum": ["json", "toon"],
@@ -104,6 +117,7 @@ class CodeGraphSimilarityTool(BaseMCPTool):
         min_group_size = arguments.get("min_group_size", 2)
         max_groups = arguments.get("max_groups", 20)
         use_cache = arguments.get("use_cache", True)
+        include_bodies = arguments.get("include_bodies", False)
         output_format = arguments.get("output_format", "toon")
 
         try:
@@ -137,7 +151,7 @@ class CodeGraphSimilarityTool(BaseMCPTool):
             "verdict": verdict,
             "project_root": self.project_root,
             "stats": result.stats,
-            "groups": [g.to_dict() for g in result.groups],
+            "groups": [g.to_dict(include_bodies=include_bodies) for g in result.groups],
         }
 
         from ..utils.format_helper import apply_toon_format_to_response

@@ -9,6 +9,8 @@ Aggregates language distribution, file counts, and top-level health summary.
 from pathlib import Path
 from typing import Any
 
+import pathspec
+
 from ...utils import setup_logger
 from ._graph_cache_fingerprint import _EXCLUDE_DIRS as _PROJECT_EXCLUDE_DIRS
 from .base_tool import BaseMCPTool
@@ -40,6 +42,31 @@ _SUPPORTED_EXTS = {
     ".yaml": "yaml",
     ".yml": "yaml",
     ".md": "markdown",
+}
+
+# Reverse mapping: language name → canonical file extension (for hints/suggestions)
+_LANGUAGE_TO_EXT = {
+    "python": "py",
+    "java": "java",
+    "javascript": "js",
+    "typescript": "ts",
+    "go": "go",
+    "rust": "rs",
+    "kotlin": "kt",
+    "swift": "swift",
+    "csharp": "cs",
+    "ruby": "rb",
+    "php": "php",
+    "c": "c",
+    "cpp": "cpp",
+    "sql": "sql",
+    "html": "html",
+    "css": "css",
+    "yaml": "yaml",
+    "markdown": "md",
+    "bash": "sh",
+    "scala": "scala",
+    "json": "json",
 }
 
 _EXCLUDE_DIRS = frozenset(
@@ -190,11 +217,82 @@ class ProjectOverviewTool(BaseMCPTool):
         return apply_toon_format_to_response(result, output_format)
 
 
+def _load_gitignore_patterns(root: Path) -> pathspec.PathSpec | None:
+    """Load .gitignore patterns from the project root.
+
+    Returns a pathspec.PathSpec object if .gitignore exists, None otherwise.
+    Uses gitwildmatch syntax to match git's semantics.
+    """
+    gitignore_path = root / ".gitignore"
+    if not gitignore_path.exists():
+        return None
+
+    try:
+        patterns = []
+        with open(gitignore_path, encoding="utf-8") as f:
+            for line in f:
+                line = line.rstrip("\n\r")
+                # Skip empty lines and comments
+                if line and not line.startswith("#"):
+                    patterns.append(line)
+
+        if not patterns:
+            return None
+
+        return pathspec.PathSpec.from_lines("gitwildmatch", patterns)
+    except Exception as e:
+        logger.warning(f"Failed to load .gitignore from {gitignore_path}: {e}")
+        return None
+
+
+def _is_ignored_by_gitignore(
+    rel_path: str, gitignore_spec: pathspec.PathSpec | None
+) -> bool:
+    """Check if a relative path matches any gitignore patterns.
+
+    Args:
+        rel_path: Relative path from project root (use forward slashes)
+        gitignore_spec: Compiled pathspec from .gitignore (None if no .gitignore)
+
+    Returns:
+        True if the path should be ignored, False otherwise
+    """
+    if gitignore_spec is None:
+        return False
+
+    # Normalize to forward slashes for gitignore matching
+    normalized = rel_path.replace("\\", "/")
+    return gitignore_spec.match_file(normalized)
+
+
 def _scan_project(root: Path, max_depth: int) -> dict[str, Any]:
-    """Walk the project tree and collect file/directory stats."""
+    """Walk the project tree and collect file/directory stats.
+
+    Uses ``os.walk`` (not ``rglob``) so ignored directories are pruned from
+    the recursion frontier BEFORE descending — a gitignored vendored tree
+    like .benchmark-repos/ must not even be visited (Codex P2 on #493).
+    """
+    import os
+
     scan = _new_scan()
-    for path in root.rglob("*"):
-        _add_path_to_scan(scan, root, path, max_depth)
+    gitignore_spec = _load_gitignore_patterns(root)
+
+    for dirpath, dirnames, filenames in os.walk(root):
+        rel_dir = os.path.relpath(dirpath, root)
+        keep_dirs = []
+        for d in dirnames:
+            rel = d if rel_dir == "." else f"{rel_dir}/{d}"
+            # match both "dir" and "dir/" forms (pathspec dir patterns)
+            if _is_ignored_by_gitignore(rel, gitignore_spec) or (
+                _is_ignored_by_gitignore(rel + "/", gitignore_spec)
+            ):
+                continue
+            keep_dirs.append(d)
+        dirnames[:] = sorted(keep_dirs)
+        for d in dirnames:
+            _add_path_to_scan(scan, root, Path(dirpath) / d, max_depth, gitignore_spec)
+        for f in sorted(filenames):
+            _add_path_to_scan(scan, root, Path(dirpath) / f, max_depth, gitignore_spec)
     scan["source_files"].sort(key=lambda item: item["lines"], reverse=True)
     return scan
 
@@ -210,15 +308,32 @@ def _new_scan() -> dict[str, Any]:
 
 
 def _add_path_to_scan(
-    scan: dict[str, Any], root: Path, path: Path, max_depth: int
+    scan: dict[str, Any],
+    root: Path,
+    path: Path,
+    max_depth: int,
+    gitignore_spec: pathspec.PathSpec | None = None,
 ) -> None:
-    """Add a path to project scan accumulators when it is in scope."""
+    """Add a path to project scan accumulators when it is in scope.
+
+    Args:
+        scan: Mutable scan accumulator dict
+        root: Project root path
+        path: Path to check and potentially add
+        max_depth: Max directory depth to scan
+        gitignore_spec: Compiled .gitignore patterns (if any)
+    """
     if any(part in _EXCLUDE_DIRS for part in path.parts):
         return
     try:
         rel_path = path.relative_to(root)
     except ValueError:
         return
+
+    # Check if path is ignored by .gitignore
+    if _is_ignored_by_gitignore(str(rel_path), gitignore_spec):
+        return
+
     if len(rel_path.parts) > max_depth:
         return
     if path.is_dir():
@@ -236,7 +351,9 @@ def _add_file_to_scan(scan: dict[str, Any], root: Path, path: Path) -> None:
     if not lang:
         return
     try:
-        rel_path = str(path.relative_to(root))
+        # Forward slashes on every platform — agents must not get
+        # OS-dependent separators in response payloads.
+        rel_path = str(path.relative_to(root)).replace("\\", "/")
         size = path.stat().st_size
         lines = _count_lines(path)
         scan["source_files"].append(
@@ -314,8 +431,8 @@ def _build_base_result(root: Path, scan: dict[str, Any]) -> dict[str, Any]:
 
 def _health_opt_in_hint() -> str:
     return (
-        "Call get_project_overview(include_health=true) for health grades, "
-        "or check_code_scale on any file for a quick assessment."
+        "Call project action=overview include_health=true for health grades, "
+        "or health action=scale file_path='...' for a quick per-file assessment."
     )
 
 
@@ -404,22 +521,27 @@ def _build_agent_summary(
 def _overview_risk_to_verdict(risk: str) -> str:
     """Map project-overview risk to the cross-tool verdict vocabulary.
 
-    N4 (round-27): keeps the verdict alphabet aligned with
-    ``project_health`` and the modification-guard family. Overview's
-    risk is inferred from observable signals (file sizes, language
-    spread) — it does NOT make a per-edit judgement — so the verdict
-    here describes the project's state, not a specific change.
+    N4 (round-27) + Item 3 (#446): verdict should reflect whether the code
+    NEEDS review, not whether the tool has checked health yet.
 
-    - ``high`` → ``REVIEW`` (oversized files / health alerts — agent
-      should look closer before editing)
+    - ``high`` → ``REVIEW`` (oversized files / health alerts — code needs review)
     - ``medium`` → ``CAUTION`` (some signals worth a glance)
     - ``low`` → ``SAFE`` (clean project, no red flags)
+    - ``unknown`` (when include_health=false and no observable signals) → ``INFO``
+      (plain informational overview, not a review prompt)
     """
     risk_lower = (risk or "").lower()
     if risk_lower == "high":
         return "REVIEW"
     if risk_lower == "medium":
         return "CAUTION"
+    if risk_lower == "unknown":
+        # Defensive mapping only: F11 made _overview_risk derive low/medium/high
+        # from observable signals and never return "unknown" — a plain overview
+        # already gets an honest verdict (REVIEW means real oversized files /
+        # D-F grades, not "health not run"). This branch guards hypothetical
+        # future inputs (opencode P2 on #494: documented as defensive, not live).
+        return "INFO"
     return "SAFE"
 
 
@@ -505,7 +627,10 @@ def _overview_next_step(result: dict[str, Any], include_health: bool) -> str:
         )
     if not include_health:
         return "Re-run overview with include_health=true or run project-health."
-    return "Use tool_routing to choose the next focused MCP tool."
+    return (
+        "Pick the next query from the tool_routing map in this response "
+        "(e.g. health for grades, structure for outlines)."
+    )
 
 
 def _top_language(language_distribution: dict[str, int]) -> str:
@@ -517,55 +642,52 @@ def _top_language(language_distribution: dict[str, int]) -> str:
 def _build_tool_routing() -> dict[str, str]:
     """Return the static MCP tool routing guide.
 
-    H11: every value here must reference a tool name that is actually
-    registered in ``_create_tool_registry`` (see
-    ``tree_sitter_analyzer/mcp/server.py``). The previous version mixed
-    CLI shorthand into the MCP syntax, which made calls fail with
-    "unknown tool" when an agent copy-pasted the snippet through the
-    MCP JSON-RPC transport. The single source of truth for the names
-    below is the registry tuple in ``server._create_tool_registry``.
-    All snippets use MCP keyword-argument form (``tool(key=value)``);
-    none of them use CLI positional form.
+    H11 + issue-440: every value here must reference one of the 8 live facade
+    names (search/nav/structure/health/edit/project/index/viz) using the
+    ``facade action=x param=v`` call form.  Legacy pre-facade names
+    (codegraph_*, safe_to_edit, list_files, query_code, ...) must NOT appear
+    here — agents that follow this guide must be able to make the call without
+    hitting an "unknown tool" error.
+
+    Source of truth for facade names: ``facade_map.FACADE_NAMES``.
+    Source of truth for action names: each facade's ``action_map`` in
+    edit_facade.py / health_facade.py / project_facade.py / etc.
     """
     return {
         # Health + safety
-        "project_health": (
-            "check_project_health()  # grade ALL files, top fix targets"
-        ),
+        "project_health": ("health action=project  # grade ALL files, top fix targets"),
         "file_health": (
-            "check_file_health(file_path='...')  # A-F grade + smells + security"
+            "health action=file file_path='...'  # A-F grade + smells + security"
         ),
-        "edit_risk": ("safe_to_edit(file_path='...')  # MUST call before editing"),
-        "refactor_plan": (
-            "refactoring_suggestions(file_path='...')  # extraction plans"
-        ),
-        "change_impact": ("analyze_change_impact()  # git diff + deps -> tests to run"),
+        "edit_risk": ("edit action=safe file_path='...'  # MUST call before editing"),
+        "refactor_plan": ("edit action=refactor file_path='...'  # extraction plans"),
+        "change_impact": ("edit action=impact  # git diff + deps -> tests to run"),
         # Scale + structure
-        "file_scale": "check_code_scale(file_path='...')",
+        "file_scale": "health action=scale file_path='...'",
         "structure_table": (
-            "analyze_code_structure(file_path='...', format_type='compact')"
+            "structure action=analyze file_path='...' format_type='compact'"
         ),
         "read_lines": (
-            "extract_code_section(file_path='...', start_line=1, end_line=100)"
+            "structure action=read file_path='...' start_line=1 end_line=100"
         ),
-        # Symbol + text search (MCP-canonical names from server registry)
+        # Symbol + text search (8-facade names — Wave C2 surface)
         "find_symbol": (
-            "query_code(symbol='...')  # wildcards: *Service, fuzzy: ~analyz"
+            "search action=symbol query='...'  # wildcards: *Service, fuzzy: ~analyz"
         ),
-        "search_text": ("search_content(query='...', total_only=true)  # ~10 tok"),
-        "find_files": "list_files(roots=['.'], extensions=['py'])",
-        "find_and_grep": "find_and_grep(query='...', roots=['.'])",
+        "search_text": ("search action=content query='...' total_only=true  # ~10 tok"),
+        "find_files": "project action=files path='.' extensions=['py']",
+        "find_and_grep": "search action=grep query='...' roots=['.']",
         # Deep analysis
-        "deps": "analyze_dependencies(mode='summary')",
-        "call_graph": "codegraph_call_graph(mode='summary')",
-        "symbol_lineage": "symbol_lineage(symbol='...')",
-        "smart_context": "smart_context(file_path='...')",
+        "deps": "health action=deps mode='summary'",
+        "call_graph": "nav action=callers scope=graph",
+        "symbol_lineage": "nav action=lineage symbol='...'",
+        "smart_context": "project action=smart file_path='<file>'",
         # Code-quality + routing
-        "code_patterns": "code_patterns(file_path='...')",
-        "detect_routes": "detect_routes(mode='summary')",
+        "code_patterns": "health action=patterns file_path='...'",
+        "detect_routes": "health action=routes mode='summary'",
         # Index + workflow
-        "ast_cache": "ast_cache(mode='stats')",
-        "agent_workflow": "get_agent_workflow(file_path='...')",
+        "ast_cache": "index action=cache mode='stats'",
+        "agent_workflow": "project action=workflow",
     }
 
 
@@ -587,7 +709,7 @@ def _suggest_refactor_action(
     is_prod = not is_test and ext == ".py"
 
     if line_count > 500 and is_prod:
-        return f"check_file_health(file_path='{file_path}') for extraction targets, then extract longest methods into a new module"
+        return f"health action=file file_path='{file_path}' for extraction targets, then extract longest methods into a new module"
     if is_test:
         return f"Split test file by test class into separate files (current: {line_count} lines)"
     if ext == ".md":
@@ -606,7 +728,7 @@ def _build_smart_hint(result: dict[str, Any]) -> str:
     if unhealthy:
         prod = [h for h in unhealthy if "test" not in h["file"].lower()]
         target = prod[0] if prod else unhealthy[0]
-        action = target.get("suggestion", "check_file_health for details")
+        action = target.get("suggestion", "health action=file for details")
         parts.append(
             f"REFACTOR: {target['file']} ({target['grade']} {target['score']:.0f}) — {action}"
         )
@@ -614,15 +736,16 @@ def _build_smart_hint(result: dict[str, Any]) -> str:
         parts.append("Project health is good — all top files are A/B/C grade")
 
     if top_lang:
+        ext = _LANGUAGE_TO_EXT.get(top_lang, top_lang)
         parts.append(
-            f"SMART 'Analyze': analyze_code_structure on any .{top_lang} file for detailed table"
+            f"SMART 'Analyze': structure action=analyze on any .{ext} file for detailed table"
         )
 
     largest = result.get("largest_source_files", [])
     if largest:
         biggest = largest[0]
         parts.append(
-            f"SMART 'Retrieve': extract_code_section on {biggest['path']} ({biggest['lines']} lines)"
+            f"SMART 'Retrieve': structure action=read on {biggest['path']} ({biggest['lines']} lines)"
         )
 
     return " | ".join(parts[:3])

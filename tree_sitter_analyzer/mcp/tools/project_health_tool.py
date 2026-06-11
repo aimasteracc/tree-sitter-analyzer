@@ -131,6 +131,15 @@ class ProjectHealthTool(BaseMCPTool):
                     "description": "Output format: 'toon' (default, token-efficient) or 'json'",
                     "default": "toon",
                 },
+                "compact_only": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": (
+                        "RFC-0012: with output_format=toon, return only the "
+                        "control surface alongside toon_content, dropping "
+                        "metadata already encoded in the blob."
+                    ),
+                },
             },
             "additionalProperties": False,
         }
@@ -147,6 +156,7 @@ class ProjectHealthTool(BaseMCPTool):
         min_grade = arguments.get("min_grade", "D")
         max_files = _normalize_max_files(arguments.get("max_files", 20))
         output_format = arguments.get("output_format", "toon")
+        compact_only = bool(arguments.get("compact_only", False))
 
         scorer = HealthScorer()
         # F9: measure the scan so the response carries an honest
@@ -167,7 +177,9 @@ class ProjectHealthTool(BaseMCPTool):
 
         from ..utils.format_helper import apply_toon_format_to_response
 
-        return apply_toon_format_to_response(result, output_format)
+        return apply_toon_format_to_response(
+            result, output_format, compact_only=compact_only
+        )
 
 
 _GRADE_RECOMMENDATIONS = {
@@ -424,12 +436,12 @@ def _file_action(score: Any) -> str:
     file_path = score.file_path
 
     if grade in ("D", "F"):
-        return f"refactoring_suggestions(file_path='{file_path}')"
+        return f"edit action=refactor file_path='{file_path}'"
 
     if grade == "C":
         if weakest:
-            return f"check_file_health(file_path='{file_path}') — weak: {weakest}"
-        return f"check_file_health(file_path='{file_path}')"
+            return f"health action=file file_path='{file_path}' — weak: {weakest}"
+        return f"health action=file file_path='{file_path}'"
 
     return ""
 
@@ -674,7 +686,7 @@ def _build_agent_backlog_item(score: Any) -> dict[str, Any]:
         "reason": _agent_backlog_reason(score.grade, weakest),
         "recommended_mcp_command": _file_action(score),
         "recommended_cli_command": _recommended_cli_command(score.grade, quoted_path),
-        "safety_mcp_command": f"safe_to_edit(file_path='{file_path}')",
+        "safety_mcp_command": f"edit action=safe file_path='{file_path}'",
         "safety_cli_command": (
             "uv run python -m tree_sitter_analyzer "
             f"{quoted_path} --safe-to-edit --format json"

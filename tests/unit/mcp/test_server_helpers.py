@@ -37,6 +37,11 @@ def test_build_initialization_options_includes_agent_routing_instructions():
     assert "action=subscribe" in instructions
     assert "edges_by_kind" in instructions
 
+    # RFC-0014 Phase A: nav action=impact test-partition must be documented.
+    # Agents need to know the tests bucket exists and how to opt-in to file lists.
+    assert "include_tests" in instructions
+    assert "tests bucket" in instructions
+
     # The 8 real facade tools must never be described by a non-existent name.
     real_facades = {
         "search",

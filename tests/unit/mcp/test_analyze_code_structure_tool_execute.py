@@ -27,6 +27,7 @@ def tool_with_project_root():
     """Create an AnalyzeCodeStructureTool instance with a project root."""
     return AnalyzeCodeStructureTool(project_root="/test/project")
 
+
 class TestAnalyzeCodeStructureToolExecute:
     """Tests for execute method."""
 
@@ -501,7 +502,7 @@ class TestAnalyzeCodeStructureToolExecute:
             mock_registry.is_format_supported.return_value = False
 
             arguments = {"file_path": str(test_file), "format_type": "unsupported"}
-            with pytest.raises(ValueError, match="format_type must be one of"):
+            with pytest.raises(ValueError, match="Invalid format_type"):
                 await tool.execute(arguments)
 
     @pytest.mark.asyncio
@@ -574,5 +575,3 @@ class TestAnalyzeCodeStructureToolExecute:
         metadata = _convert_analysis_result(mock_analysis_result)
         assert "statistics" in metadata
         assert metadata["statistics"]["total_lines"] == 100
-
-

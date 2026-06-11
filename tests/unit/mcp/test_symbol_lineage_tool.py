@@ -45,16 +45,17 @@ class TestRiskAssessment:
 
 
 class TestIsTestFile:
+    # DF-19: _is_test_file now delegates to utils.test_detection.is_test_file
+    # (the canonical implementation).  Assertions are re-pinned to match
+    # canonical semantics: test_*.py under a production directory is NOT a test
+    # file; FooTest.java / foo_test.js are not in the canonical suffix set.
     @pytest.mark.parametrize(
         "path",
         [
-            "tests/test_foo.py",
-            "tests/unit/test_bar.py",
-            "src/test_widget.py",
-            "foo_test.py",
-            "foo_test.js",
-            "FooTest.java",
-            "foo_test.go",
+            "tests/test_foo.py",  # test dir prefix → True
+            "tests/unit/test_bar.py",  # test dir segment → True
+            "foo_test.py",  # _test.py suffix → True
+            "foo_test.go",  # _test.go suffix → True
         ],
     )
     def test_detects_test_files(self, path):
@@ -67,6 +68,11 @@ class TestIsTestFile:
             "tree_sitter_analyzer/mcp/server.py",
             "README.md",
             "setup.py",
+            # DF-19 production-file false positives now correctly False:
+            "src/test_widget.py",  # test_ prefix but no test-dir evidence
+            "tree_sitter_analyzer/mcp/tools/test_gap_tool.py",  # production tool
+            "FooTest.java",  # not in canonical suffix set
+            "foo_test.js",  # _test.js not in canonical suffix set
         ],
     )
     def test_rejects_non_test_files(self, path):
