@@ -286,6 +286,8 @@ def test_is_test_file_detects_cross_language_test_paths() -> None:
     assert _is_test_file("latest.java") == 0  # not '*test.java' substring trap
     assert _is_test_file("contest.py") == 0
     assert _is_test_file("") == 0
+    # DF-19: production tool with test_ prefix must not be mis-detected
+    assert _is_test_file("tree_sitter_analyzer/mcp/tools/test_gap_tool.py") == 0
 
 
 def test_entry_rank_v2_sinks_test_file_below_impl() -> None:

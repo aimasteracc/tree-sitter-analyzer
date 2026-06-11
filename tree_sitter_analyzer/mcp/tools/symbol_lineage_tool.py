@@ -18,6 +18,7 @@ from typing import Any
 
 from ...project_graph import BlastRadius, DependencyGraph
 from ...utils import setup_logger
+from ...utils.test_detection import is_test_file as _is_test_file
 from ..utils.format_helper import apply_toon_format_to_response
 from ._graph_cache_fingerprint import GraphFingerprint, compute_graph_fingerprint
 from .base_tool import BaseMCPTool
@@ -739,21 +740,6 @@ def _assess_risk(
         level = "high"
 
     return {"level": level, "score": score, "reasons": reasons}
-
-
-def _is_test_file(rel_path: str) -> bool:
-    lower = rel_path.lower()
-    parts = Path(lower).parts
-    return (
-        "test" in parts[-1]
-        or "tests" in parts
-        or "test" in parts
-        or parts[-1].startswith("test_")
-        or parts[-1].endswith("_test.py")
-        or parts[-1].endswith("_test.js")
-        or parts[-1].endswith("test.java")
-        or parts[-1].endswith("test.go")
-    )
 
 
 # K3 fallback: project-wide text scan for definition sites. Used when
