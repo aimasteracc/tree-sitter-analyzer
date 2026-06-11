@@ -248,6 +248,7 @@ class TestWalkTree:
                 "name": "handleHTTPRequest",
                 "full_name": "engine.handleHTTPRequest",
                 "line": 6,
+                "col": 1,
                 "receiver": "engine",
             }
         ]

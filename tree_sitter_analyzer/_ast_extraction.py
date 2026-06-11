@@ -578,34 +578,56 @@ def _extract_structure(symbols: dict[str, Any]) -> dict[str, Any]:
 def _extract_call_edges(
     tree: Any, source_code: str, language: str, symbols: dict[str, Any]
 ) -> list[dict[str, Any]]:
-    """Extract call edges from the AST using shared function-call helpers."""
+    """Extract call edges from the AST using shared function-call helpers.
+
+    Containment is column-aware: when a call and a nested function definition
+    share the same start/end line (compact brace style), line-only containment
+    incorrectly attributes sibling calls to the nested function.  We compare
+    (line, col) tuples lexicographically so that a call at column C that lies
+    beyond the nested function's end column is correctly attributed to the outer
+    enclosing function (Codex P2 / issue #484).
+    """
     if tree is None:
         return []
     from .function_extraction import walk_tree
 
     definitions, calls = walk_tree(tree.root_node, source_code, language)
 
-    file_funcs: dict[str, tuple[int, int]] = {}
+    # Keyed by name → (start_line, start_col, end_line, end_col, start_line_raw)
+    # start_line_raw is kept separately for caller_line output (unchanged API).
+    file_funcs: dict[str, tuple[int, int, int, int, int]] = {}
     for d in definitions:
-        file_funcs[d["name"]] = (d["start_line"], d.get("end_line", d["start_line"]))
+        sl = d["start_line"]
+        sc = d.get("start_col", 0)
+        el = d.get("end_line", sl)
+        ec = d.get("end_col", 0)
+        file_funcs[d["name"]] = (sl, sc, el, ec, sl)
 
     edges: list[dict[str, Any]] = []
     for call in calls:
         call_line = call["line"]
+        call_col = call.get("col", 0)
         caller_name = ""
         caller_line = 0
-        best_range = -1
-        for fname, (start, end) in file_funcs.items():
-            if start <= call_line <= end:
-                span = end - start
-                # Pick the innermost (narrowest) enclosing function.
-                # Nested defs share the same call line but the inner has a
-                # smaller span; without this the outer always wins because
-                # dict iteration order is outer-first (issue #452).
-                if best_range < 0 or span < best_range:
-                    best_range = span
-                    caller_name = fname
-                    caller_line = start
+        best_span: tuple[int, int] | None = None
+        for fname, (sl, sc, el, ec, raw_start) in file_funcs.items():
+            # Column-aware containment: (call_line, call_col) must be strictly
+            # inside [start_point .. end_point] expressed as (line, col) pairs.
+            # Uses lexicographic comparison so single-line functions work too.
+            after_start = (call_line, call_col) >= (sl, sc)
+            before_end = (call_line, call_col) <= (el, ec)
+            if not (after_start and before_end):
+                continue
+            # Among all containing functions pick the innermost (smallest span).
+            # Span is (line_span, col_span): line span first, then column span
+            # as a tiebreaker for same-line (compact brace-style) functions.
+            line_span = el - sl
+            col_span = ec - sc if el == sl else 0  # only meaningful for 1-liners
+            span: tuple[int, int] = (line_span, col_span)
+            if best_span is None or span < best_span:
+                best_span = span
+                caller_name = fname
+                caller_line = raw_start
         callee_name = call.get("name", "")
         callee_full = call.get("full_name", callee_name)
         callee_line = call_line

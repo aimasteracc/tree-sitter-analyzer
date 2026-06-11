@@ -131,6 +131,65 @@ def outer():
 
 
 # ---------------------------------------------------------------------------
+# Unit: same-line sibling calls — column-aware attribution (Codex P2 / #484)
+# ---------------------------------------------------------------------------
+
+
+class TestSameLineSiblingCallAttribution:
+    """Compact brace-style code: a call that sits on the same line as a nested
+    function definition but *after* its closing brace must be attributed to the
+    outer enclosing function, not the inner one.
+
+    JS example:
+        function outer() {
+          function inner() {} helper();
+        }
+
+    ``helper()`` is on line 2 (same as inner's start/end) but column 22 >
+    inner's end column 21, so it is outside inner's body.  A line-only
+    containment check would incorrectly attribute it to inner (the narrower
+    span); column-aware check correctly attributes it to outer.
+    """
+
+    _JS_SOURCE = "function outer() {\n  function inner() {} helper();\n}\n"
+
+    def _js_edges(self) -> list[dict]:
+        result = Parser().parse_code(self._JS_SOURCE, "javascript")
+        assert result.success and result.tree is not None, (
+            f"JS parse failed: {result.error_message}"
+        )
+        return _extract_call_edges(
+            result.tree, self._JS_SOURCE, "javascript", {"symbols": []}
+        )
+
+    def test_helper_attributed_to_outer_not_inner(self):
+        """helper() is OUTSIDE inner's body column-wise → caller must be outer."""
+        edges = self._js_edges()
+        helper_edges = [e for e in edges if e["callee_name"] == "helper"]
+        assert len(helper_edges) == 1, (
+            f"expected exactly 1 edge to helper, got {helper_edges}"
+        )
+        assert helper_edges[0]["caller_name"] == "outer", (
+            f"expected caller=outer (column-aware attribution), "
+            f"got caller={helper_edges[0]['caller_name']!r}. "
+            "helper() sits past inner's end column on the same line; "
+            "line-only containment incorrectly steals it for inner."
+        )
+
+    def test_inner_has_no_helper_edge(self):
+        """inner() has an empty body — it must not appear as caller of helper."""
+        edges = self._js_edges()
+        inner_helper = [
+            e
+            for e in edges
+            if e["caller_name"] == "inner" and e["callee_name"] == "helper"
+        ]
+        assert len(inner_helper) == 0, (
+            f"inner should have 0 edges to helper (empty body), got {inner_helper}"
+        )
+
+
+# ---------------------------------------------------------------------------
 # Integration: ASTCache index + callees/callers tools
 # ---------------------------------------------------------------------------
 

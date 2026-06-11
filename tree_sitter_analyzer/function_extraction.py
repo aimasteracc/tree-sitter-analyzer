@@ -164,6 +164,7 @@ def _call_info_java(node: Any, source: str) -> dict[str, Any] | None:
                 "name": name,
                 "full_name": full_name,
                 "line": node.start_point[0] + 1,
+                "col": node.start_point[1],
                 "receiver": receiver,
             }
     for child in node.children:
@@ -183,6 +184,7 @@ def _call_info_c(node: Any, source: str) -> dict[str, Any] | None:
             "name": name,
             "full_name": name,
             "line": node.start_point[0] + 1,
+            "col": node.start_point[1],
             "receiver": None,
         }
     for child in node.children:
@@ -205,6 +207,7 @@ def _call_info_rust(node: Any, source: str) -> dict[str, Any] | None:
                 "name": name,
                 "full_name": name,
                 "line": node.start_point[0] + 1,
+                "col": node.start_point[1],
                 "receiver": None,
             }
         return None
@@ -244,6 +247,7 @@ def _call_info_ruby(node: Any, source: str) -> dict[str, Any] | None:
         "name": name,
         "full_name": full_name,
         "line": node.start_point[0] + 1,
+        "col": node.start_point[1],
         "receiver": receiver,
     }
 
@@ -268,6 +272,7 @@ def _call_info_php(node: Any, source: str) -> dict[str, Any] | None:
             "name": name,
             "full_name": full_name,
             "line": node.start_point[0] + 1,
+            "col": node.start_point[1],
             "receiver": receiver,
         }
     func_node = node.child_by_field_name("function")
@@ -497,7 +502,9 @@ def _extract_recursive(
                 {
                     "name": func_name,
                     "start_line": node.start_point[0] + 1,
+                    "start_col": node.start_point[1],
                     "end_line": node.end_point[0] + 1,
+                    "end_col": node.end_point[1],
                     "class": parent_class,
                 }
             )
@@ -578,6 +585,7 @@ def _call_from_text(text: str, node: Any) -> dict[str, Any]:
         "name": name,
         "full_name": text,
         "line": node.start_point[0] + 1,
+        "col": node.start_point[1],
         "receiver": receiver,
     }
 
