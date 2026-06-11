@@ -9,6 +9,8 @@ Aggregates language distribution, file counts, and top-level health summary.
 from pathlib import Path
 from typing import Any
 
+import pathspec
+
 from ...utils import setup_logger
 from ._graph_cache_fingerprint import _EXCLUDE_DIRS as _PROJECT_EXCLUDE_DIRS
 from .base_tool import BaseMCPTool
@@ -215,11 +217,61 @@ class ProjectOverviewTool(BaseMCPTool):
         return apply_toon_format_to_response(result, output_format)
 
 
+def _load_gitignore_patterns(root: Path) -> pathspec.PathSpec | None:
+    """Load .gitignore patterns from the project root.
+
+    Returns a pathspec.PathSpec object if .gitignore exists, None otherwise.
+    Uses gitwildmatch syntax to match git's semantics.
+    """
+    gitignore_path = root / ".gitignore"
+    if not gitignore_path.exists():
+        return None
+
+    try:
+        patterns = []
+        with open(gitignore_path, encoding="utf-8") as f:
+            for line in f:
+                line = line.rstrip("\n\r")
+                # Skip empty lines and comments
+                if line and not line.startswith("#"):
+                    patterns.append(line)
+
+        if not patterns:
+            return None
+
+        return pathspec.PathSpec.from_lines("gitwildmatch", patterns)
+    except Exception as e:
+        logger.warning(f"Failed to load .gitignore from {gitignore_path}: {e}")
+        return None
+
+
+def _is_ignored_by_gitignore(
+    rel_path: str, gitignore_spec: pathspec.PathSpec | None
+) -> bool:
+    """Check if a relative path matches any gitignore patterns.
+
+    Args:
+        rel_path: Relative path from project root (use forward slashes)
+        gitignore_spec: Compiled pathspec from .gitignore (None if no .gitignore)
+
+    Returns:
+        True if the path should be ignored, False otherwise
+    """
+    if gitignore_spec is None:
+        return False
+
+    # Normalize to forward slashes for gitignore matching
+    normalized = rel_path.replace("\\", "/")
+    return gitignore_spec.match_file(normalized)
+
+
 def _scan_project(root: Path, max_depth: int) -> dict[str, Any]:
     """Walk the project tree and collect file/directory stats."""
     scan = _new_scan()
+    gitignore_spec = _load_gitignore_patterns(root)
+
     for path in root.rglob("*"):
-        _add_path_to_scan(scan, root, path, max_depth)
+        _add_path_to_scan(scan, root, path, max_depth, gitignore_spec)
     scan["source_files"].sort(key=lambda item: item["lines"], reverse=True)
     return scan
 
@@ -235,15 +287,32 @@ def _new_scan() -> dict[str, Any]:
 
 
 def _add_path_to_scan(
-    scan: dict[str, Any], root: Path, path: Path, max_depth: int
+    scan: dict[str, Any],
+    root: Path,
+    path: Path,
+    max_depth: int,
+    gitignore_spec: pathspec.PathSpec | None = None,
 ) -> None:
-    """Add a path to project scan accumulators when it is in scope."""
+    """Add a path to project scan accumulators when it is in scope.
+
+    Args:
+        scan: Mutable scan accumulator dict
+        root: Project root path
+        path: Path to check and potentially add
+        max_depth: Max directory depth to scan
+        gitignore_spec: Compiled .gitignore patterns (if any)
+    """
     if any(part in _EXCLUDE_DIRS for part in path.parts):
         return
     try:
         rel_path = path.relative_to(root)
     except ValueError:
         return
+
+    # Check if path is ignored by .gitignore
+    if _is_ignored_by_gitignore(str(rel_path), gitignore_spec):
+        return
+
     if len(rel_path.parts) > max_depth:
         return
     if path.is_dir():
