@@ -64,6 +64,16 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                     "type": "string",
                     "description": "Optional file path to disambiguate overloaded functions",
                 },
+                "limit": {
+                    "type": "integer",
+                    "description": (
+                        "Maximum number of callers to list in the response "
+                        "(default 50). Raise for more, or qualify with "
+                        "ClassName.method to narrow high-fan-in symbols."
+                    ),
+                    "default": 50,
+                    "minimum": 1,
+                },
                 "output_format": {
                     "type": "string",
                     "enum": ["json", "toon"],
@@ -96,6 +106,7 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         file_path = arguments.get("file_path")
         output_format = arguments.get("output_format", "toon")
         include_activation = bool(arguments.get("include_activation", False))
+        listed_cap = int(arguments.get("limit", 50))
 
         # Detect "ClassName.method_name" qualified lookup.  The SQL fast-path
         # stores bare callee names and can't filter by receiver class, so we
@@ -125,18 +136,35 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         if _is_stale_resolution(callers):
             warnings_list.append(_STALE_CACHE_WARNING)
 
+        # Honest-truncation cap: record total before slicing so agents know
+        # what was omitted (same pattern as dead_code_tool / hyphae_select_tool).
+        total_callers = len(callers)
+        truncated = total_callers > listed_cap
+        callers = callers[:listed_cap]
+
         # P2: inline each caller's verbatim source body (top-N capped) so the
         # agent answers from content, not coordinates — no Read per file:line.
         next_step = self._inline_caller_bodies(cache, callers)
 
         result = build_response(
-            verdict="INFO" if callers else "NOT_FOUND",
+            verdict="INFO" if callers or total_callers else "NOT_FOUND",
             warnings=warnings_list or None,
             data_source=data_source,
             function=func_name,
-            caller_count=len(callers),
+            caller_count=total_callers,
+            callers_listed=len(callers),
+            listed_cap=listed_cap,
+            truncated=truncated,
             callers=callers,
         )
+        if truncated:
+            trunc_note = (
+                f"showing {len(callers)} of {total_callers} callers — raise limit, "
+                "or qualify with ClassName.method to narrow "
+                "(dynamic-dispatch names like 'execute' have huge fan-in)"
+            )
+            # Combine truncation note with any body-inlining deterrent.
+            next_step = f"{trunc_note}. {next_step}" if next_step else trunc_note
         if next_step:
             result["next_step"] = next_step
 

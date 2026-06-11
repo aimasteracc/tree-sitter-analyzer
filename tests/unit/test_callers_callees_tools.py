@@ -209,6 +209,173 @@ class TestCallerCalleeIntegration:
         assert result2["callee_count"] == 0
 
 
+class TestHonestTruncationCallers:
+    """DF-13: default limit=50 caps high-fan-in callers; response carries
+    total/truncated/listed_cap so agents know what was omitted."""
+
+    @pytest.fixture
+    def many_callers_root(self, tmp_path):
+        """Tiny project with one target function called by 60 callers.
+
+        ``target()`` is defined in target.py.
+        60 caller modules (caller_NN.py) each define ``fn_NN()`` that calls it.
+        This produces 60 call edges to ``target``, which exceeds the default
+        cap of 50 so truncation logic fires.
+        """
+        (tmp_path / "target.py").write_text(
+            "def target():\n    return 42\n",
+            encoding="utf-8",
+        )
+        for i in range(60):
+            (tmp_path / f"caller_{i:03d}.py").write_text(
+                f"from target import target\n\n\ndef fn_{i:03d}():\n    return target()\n",
+                encoding="utf-8",
+            )
+        return str(tmp_path)
+
+    @pytest.mark.asyncio
+    async def test_default_limit_caps_at_50(self, many_callers_root):
+        """With 60 callers and default limit=50, listed == 50, total == 60."""
+        tool = CodeGraphCallersTool(many_callers_root)
+        result = await tool.execute(
+            {"function_name": "target", "output_format": "json"}
+        )
+        assert result["success"] is True
+        # total must be the pre-cap count (60)
+        assert result["caller_count"] == 60
+        # listed must be exactly the cap
+        assert result["callers_listed"] == 50
+        assert result["listed_cap"] == 50
+        assert result["truncated"] is True
+        assert len(result["callers"]) == 50
+
+    @pytest.mark.asyncio
+    async def test_raised_limit_shows_all(self, many_callers_root):
+        """limit=100 > 60 callers → no truncation, all listed."""
+        tool = CodeGraphCallersTool(many_callers_root)
+        result = await tool.execute(
+            {"function_name": "target", "output_format": "json", "limit": 100}
+        )
+        assert result["success"] is True
+        assert result["caller_count"] == 60
+        assert result["callers_listed"] == 60
+        assert result["truncated"] is False
+        assert len(result["callers"]) == 60
+
+    @pytest.mark.asyncio
+    async def test_no_truncation_when_few_callers(self, tiny_project_root):
+        """1 caller (foo→bar) → truncated=False, callers_listed == caller_count."""
+        tool = CodeGraphCallersTool(tiny_project_root)
+        result = await tool.execute({"function_name": "bar", "output_format": "json"})
+        assert result["success"] is True
+        assert result["truncated"] is False
+        assert result["callers_listed"] == result["caller_count"]
+
+    @pytest.mark.asyncio
+    async def test_truncated_next_step_present(self, many_callers_root):
+        """When truncated, next_step must mention the counts and suggest narrowing."""
+        tool = CodeGraphCallersTool(many_callers_root)
+        result = await tool.execute(
+            {"function_name": "target", "output_format": "json"}
+        )
+        assert result["truncated"] is True
+        assert "next_step" in result
+        assert "50 of 60" in result["next_step"]
+
+    def test_schema_declares_limit_param(self):
+        tool = CodeGraphCallersTool(None)
+        schema = tool.get_tool_schema()
+        assert "limit" in schema["properties"]
+        assert schema["properties"]["limit"]["default"] == 50
+        assert schema["properties"]["limit"]["minimum"] == 1
+
+    @pytest.mark.asyncio
+    async def test_zero_callers_not_truncated(self, tiny_project_root):
+        """0 callers → truncated=False, callers_listed==0."""
+        tool = CodeGraphCallersTool(tiny_project_root)
+        result = await tool.execute(
+            {"function_name": "zzz_nonexistent_xyz", "output_format": "json"}
+        )
+        assert result["caller_count"] == 0
+        assert result["callers_listed"] == 0
+        assert result["truncated"] is False
+
+
+class TestHonestTruncationCallees:
+    """Symmetric to TestHonestTruncationCallers — callees_tool must apply the
+    same default limit=50 cap and emit honest truncation fields."""
+
+    @pytest.fixture
+    def many_callees_root(self, tmp_path):
+        """One source function ``hub()`` calling 60 distinct helpers.
+
+        hub.py defines ``hub()`` which calls ``helper_00()`` … ``helper_59()``
+        from helpers.py. This produces 60 callee edges from ``hub``, exceeding
+        the default cap of 50.
+        """
+        helpers_code = "\n".join(
+            f"def helper_{i:03d}():\n    return {i}\n" for i in range(60)
+        )
+        (tmp_path / "helpers.py").write_text(helpers_code, encoding="utf-8")
+        calls = "\n    ".join(f"helper_{i:03d}()" for i in range(60))
+        (tmp_path / "hub.py").write_text(
+            f"from helpers import {', '.join(f'helper_{i:03d}' for i in range(60))}\n\n\ndef hub():\n    {calls}\n",
+            encoding="utf-8",
+        )
+        return str(tmp_path)
+
+    @pytest.mark.asyncio
+    async def test_default_limit_caps_at_50(self, many_callees_root):
+        """With 60 callees and default limit=50, listed == 50, total == 60."""
+        tool = CodeGraphCalleesTool(many_callees_root)
+        result = await tool.execute({"function_name": "hub", "output_format": "json"})
+        assert result["success"] is True
+        assert result["callee_count"] == 60
+        assert result["callees_listed"] == 50
+        assert result["listed_cap"] == 50
+        assert result["truncated"] is True
+        assert len(result["callees"]) == 50
+
+    @pytest.mark.asyncio
+    async def test_raised_limit_shows_all(self, many_callees_root):
+        """limit=100 > 60 callees → no truncation."""
+        tool = CodeGraphCalleesTool(many_callees_root)
+        result = await tool.execute(
+            {"function_name": "hub", "output_format": "json", "limit": 100}
+        )
+        assert result["success"] is True
+        assert result["callee_count"] == 60
+        assert result["callees_listed"] == 60
+        assert result["truncated"] is False
+
+    @pytest.mark.asyncio
+    async def test_no_truncation_when_few_callees(self, tiny_project_root):
+        """1 callee (foo→bar) → truncated=False."""
+        tool = CodeGraphCalleesTool(tiny_project_root)
+        result = await tool.execute({"function_name": "foo", "output_format": "json"})
+        assert result["success"] is True
+        assert result["truncated"] is False
+        assert result["callees_listed"] == result["callee_count"]
+
+    def test_schema_declares_limit_param(self):
+        tool = CodeGraphCalleesTool(None)
+        schema = tool.get_tool_schema()
+        assert "limit" in schema["properties"]
+        assert schema["properties"]["limit"]["default"] == 50
+        assert schema["properties"]["limit"]["minimum"] == 1
+
+    @pytest.mark.asyncio
+    async def test_zero_callees_not_truncated(self, tiny_project_root):
+        """0 callees → truncated=False, callees_listed==0."""
+        tool = CodeGraphCalleesTool(tiny_project_root)
+        result = await tool.execute(
+            {"function_name": "zzz_nonexistent_xyz", "output_format": "json"}
+        )
+        assert result["callee_count"] == 0
+        assert result["callees_listed"] == 0
+        assert result["truncated"] is False
+
+
 class TestStaleCacheWarning:
     """Stale-cache hint surfaces in callees/callers when ≥80% of edges
     have ``callee_resolution='unknown'``. The detection helper is

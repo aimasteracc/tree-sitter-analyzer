@@ -762,5 +762,52 @@ async def test_call_path_in_running_event_loop_returns_dict(tmp_path: Any) -> No
     assert result.get("verdict") in {"PATH_FOUND", "NO_PATH", "ERROR", "NOT_FOUND"}
 
 
+# ---------------------------------------------------------------------------
+# DF-13: limit param survives nav action=callers/callees projection
+# ---------------------------------------------------------------------------
+
+
+def test_callers_limit_forwarded_to_point_inner() -> None:
+    """DF-13: limit= must reach callers_point inner when action=callers scope=point.
+
+    The _callers_route whitelist now includes 'limit'; verify it is forwarded
+    so the budget cap is honoured through the facade boundary.
+    """
+    facade, mocks = _build_facade_with_mock_inners()
+    asyncio.run(
+        facade.execute(
+            {
+                "action": "callers",
+                "function_name": "execute",
+                "scope": "point",
+                "limit": 10,
+            }
+        )
+    )
+    call_args = mocks["callers_point"].call_args[0][0]
+    assert call_args.get("limit") == 10, (
+        f"limit not forwarded to callers_point inner: {call_args}"
+    )
+
+
+def test_callees_limit_forwarded_to_point_inner() -> None:
+    """DF-13: limit= must reach callees_point inner when action=callees scope=point."""
+    facade, mocks = _build_facade_with_mock_inners()
+    asyncio.run(
+        facade.execute(
+            {
+                "action": "callees",
+                "function_name": "execute",
+                "scope": "point",
+                "limit": 10,
+            }
+        )
+    )
+    call_args = mocks["callees_point"].call_args[0][0]
+    assert call_args.get("limit") == 10, (
+        f"limit not forwarded to callees_point inner: {call_args}"
+    )
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-q"]))
