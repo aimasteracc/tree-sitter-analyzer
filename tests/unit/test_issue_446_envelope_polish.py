@@ -298,3 +298,25 @@ def test_status_schema_version_included_when_present(tmp_path, monkeypatch) -> N
     )
     result = asyncio.run(tool.execute({"output_format": "json"}))
     assert result["schema_version"] == 7
+
+
+def test_status_warn_branch_schema_version_included(tmp_path, monkeypatch) -> None:
+    """WARN (empty index) branch also emits non-None schema_version."""
+    import asyncio
+
+    from tree_sitter_analyzer.mcp.tools.codegraph_status_tool import (
+        CodeGraphStatusTool,
+    )
+
+    (tmp_path / ".ast-cache").mkdir()
+    (tmp_path / ".ast-cache" / "index.db").write_bytes(b"")
+    tool = CodeGraphStatusTool(str(tmp_path))
+    # total_files == 0 → truly_indexed False → WARN branch
+    monkeypatch.setattr(
+        tool,
+        "_safe_get_stats",
+        lambda: {"total_files": 0, "schema_version": 7},
+    )
+    result = asyncio.run(tool.execute({"output_format": "json"}))
+    assert result["verdict"] == "WARN"
+    assert result["schema_version"] == 7
