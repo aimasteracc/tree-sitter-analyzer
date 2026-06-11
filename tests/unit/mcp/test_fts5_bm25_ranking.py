@@ -159,7 +159,7 @@ class TestFtsSearchRanked:
 
         results = self._call(conn, "search")
 
-        assert len(results) > 0
+        assert len(results) == 2
         for r in results:
             assert "relevance_score" in r, f"missing relevance_score in {r}"
 
@@ -171,7 +171,7 @@ class TestFtsSearchRanked:
 
         results = self._call(conn, "search")
 
-        assert len(results) >= 2
+        assert len(results) == 2
         scores = [r["relevance_score"] for r in results]
         # list is best-first; first score >= last score
         assert scores[0] >= scores[-1]
@@ -245,7 +245,7 @@ class TestFtsSearchRanked:
 
         results = self._call(conn, "routing")
 
-        assert len(results) >= 2
+        assert len(results) == 3
         # imports must not appear before any class or function
         kinds = [r["kind"] for r in results]
         import_indices = [i for i, k in enumerate(kinds) if k == "import"]

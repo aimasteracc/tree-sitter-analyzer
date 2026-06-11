@@ -1,11 +1,15 @@
-# Loose assertion ratchet baseline
-# Measured: 2026-06-11 (Layer 1 implementation)
-# Measurement command: grep -rEn "assert .*(>=|<=| > 0| < [0-9])" tests/ --include="*.py" | wc -l
-# Current count: 2121
-# This baseline is the starting point for the Layer 2 cleanup effort.
-# The count should only decrease or stay the same, never increase.
-# Each Layer 2 batch PR will lower this baseline as violations are fixed.
+# Loose assertion ratchet baseline (Layer 2 prep — informational, not yet CI-enforced)
+#
+# METHODOLOGY NOTE (2026-06-11, conscious change): the original plan
+# (.recon/ge-assertion-ratchet-plan.md) measured with a BROADER pattern
+# (incl. <= and < bounds): 2121 pre-batch-1 / 2096 post-batch-1.
+# The baseline now uses the ENFORCEMENT-ALIGNED pattern — the same family
+# the CI script (scripts/check_loose_assertions.sh) blocks — so the
+# ratchet is self-consistent: what we count is what we block.
+#
+# The count must only decrease (or stay equal). Each Layer-2 batch PR
+# re-measures and lowers it. Numbers are MEASURED, never hand-derived.
 
-BASELINE_COUNT=2121
+BASELINE_COUNT=1792
 MEASUREMENT_DATE=2026-06-11
-MEASUREMENT_COMMAND="grep -rEn \"assert .*(>=|<=| > 0| < [0-9])\" tests/ --include=\"*.py\" | wc -l"
+MEASUREMENT_COMMAND="grep -rEn \"assert .*(>= [0-9]|> 0([^0-9]|\$))\" tests/ --include=\"*.py\" | grep -v \"ratchet: nondeterministic\" | wc -l"

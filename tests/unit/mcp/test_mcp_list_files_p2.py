@@ -46,7 +46,7 @@ async def test_fd_33_type_empty(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 2
+    assert result["count"] == 2
 
 
 @pytest.mark.asyncio
@@ -91,7 +91,7 @@ async def test_fd_34_extension_filtering(tmp_path, monkeypatch):
     )
 
     assert result1["success"] is True
-    assert result1["count"] >= 1
+    assert result1["count"] == 1
 
     # Test py extension
     result2 = await tool.execute(
@@ -99,7 +99,7 @@ async def test_fd_34_extension_filtering(tmp_path, monkeypatch):
     )
 
     assert result2["success"] is True
-    assert result2["count"] >= 1
+    assert result2["count"] == 1
 
 
 @pytest.mark.asyncio
@@ -131,7 +131,7 @@ async def test_fd_35_no_extension(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 2
+    assert result["count"] == 2
 
 
 @pytest.mark.asyncio
@@ -145,7 +145,10 @@ async def test_fd_36_size_filtering(tmp_path, monkeypatch):
     tool = ListFilesTool(str(tmp_path))
 
     async def fake_run(cmd, cwd=None, timeout=None, timeout_ms=None):
-        if "--size" in cmd:
+        # Production builder emits fd's short ``-S`` flag — the mock must
+        # recognise it, otherwise the size branch never fires and the test
+        # silently pins the unfiltered fallback (Codex P2 on #504).
+        if "--size" in cmd or "-S" in cmd:
             if "+100b" in cmd:  # Files larger than 100 bytes
                 files = [str(tmp_path / "medium.txt"), str(tmp_path / "large.txt")]
             elif "-100b" in cmd:  # Files smaller than 100 bytes
@@ -174,7 +177,7 @@ async def test_fd_36_size_filtering(tmp_path, monkeypatch):
     )
 
     assert result1["success"] is True
-    assert result1["count"] >= 2
+    assert result1["count"] == 2  # medium + large (size branch live)
 
     # Test files smaller than 100 bytes
     result2 = await tool.execute(
@@ -182,7 +185,7 @@ async def test_fd_36_size_filtering(tmp_path, monkeypatch):
     )
 
     assert result2["success"] is True
-    assert result2["count"] >= 1
+    assert result2["count"] == 1  # small only
 
 
 @pytest.mark.asyncio
@@ -226,7 +229,7 @@ async def test_fd_37_no_ignore_basic(tmp_path, monkeypatch):
     )
 
     assert result1["success"] is True
-    assert result1["count"] >= 2
+    assert result1["count"] == 2
 
     # Test without ignore rules
     result2 = await tool.execute(
@@ -234,7 +237,7 @@ async def test_fd_37_no_ignore_basic(tmp_path, monkeypatch):
     )
 
     assert result2["success"] is True
-    assert result2["count"] >= 5
+    assert result2["count"] == 5
 
 
 @pytest.mark.asyncio
@@ -301,7 +304,7 @@ async def test_fd_39_max_depth_filtering(tmp_path, monkeypatch):
     )
 
     assert result1["success"] is True
-    assert result1["count"] >= 1
+    assert result1["count"] == 1
 
     # Test depth 2
     result2 = await tool.execute(
@@ -309,7 +312,7 @@ async def test_fd_39_max_depth_filtering(tmp_path, monkeypatch):
     )
 
     assert result2["success"] is True
-    assert result2["count"] >= 3
+    assert result2["count"] == 3
 
 
 @pytest.mark.asyncio
@@ -345,7 +348,7 @@ async def test_fd_40_min_depth_filtering(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 2
+    assert result["count"] == 2
 
 
 @pytest.mark.asyncio
@@ -394,7 +397,7 @@ async def test_fd_41_exact_depth_filtering(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 2
+    assert result["count"] == 2
 
 
 @pytest.mark.asyncio
@@ -440,7 +443,7 @@ async def test_fd_42_prune_functionality(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 3
+    assert result["count"] == 3
 
 
 @pytest.mark.asyncio
@@ -502,7 +505,7 @@ async def test_fd_43_excludes_pattern(tmp_path, monkeypatch):
     )
 
     assert result1["success"] is True
-    assert result1["count"] >= 3
+    assert result1["count"] == 3
 
     # Test exclude multiple patterns
     result2 = await tool.execute(
@@ -515,4 +518,4 @@ async def test_fd_43_excludes_pattern(tmp_path, monkeypatch):
     )
 
     assert result2["success"] is True
-    assert result2["count"] >= 2
+    assert result2["count"] == 2
