@@ -75,15 +75,17 @@ class SimilarFunction:
     language: str
     body_snippet: str = ""
 
-    def to_dict(self) -> dict[str, Any]:
-        return {
+    def to_dict(self, include_snippet: bool = False) -> dict[str, Any]:
+        entry: dict[str, Any] = {
             "file": self.file,
             "name": self.name,
             "line": self.line,
             "end_line": self.end_line,
             "language": self.language,
-            "snippet": self.body_snippet[:200],
         }
+        if include_snippet:
+            entry["snippet"] = self.body_snippet[:200]
+        return entry
 
 
 @dataclass
@@ -93,13 +95,15 @@ class SimilarityGroup:
     similarity: float
     functions: list[SimilarFunction] = field(default_factory=list)
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self, include_bodies: bool = False) -> dict[str, Any]:
         return {
             "fingerprint": self.fingerprint[:16],
             "method": self.method,
             "similarity": round(self.similarity, 3),
             "function_count": len(self.functions),
-            "functions": [f.to_dict() for f in self.functions],
+            "functions": [
+                f.to_dict(include_snippet=include_bodies) for f in self.functions
+            ],
         }
 
 
@@ -108,10 +112,10 @@ class SimilarityResult:
     groups: list[SimilarityGroup] = field(default_factory=list)
     stats: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self, include_bodies: bool = False) -> dict[str, Any]:
         return {
             "group_count": len(self.groups),
-            "groups": [g.to_dict() for g in self.groups],
+            "groups": [g.to_dict(include_bodies=include_bodies) for g in self.groups],
             "stats": self.stats,
         }
 

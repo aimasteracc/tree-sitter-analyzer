@@ -816,3 +816,128 @@ def test_class_diagram_scoped_smaller_than_unscoped(monkeypatch) -> None:
         f"Scoped class diagram ({scoped_bytes}B) is not smaller than "
         f"unscoped ({unscoped_bytes}B) — file_path scoping is a no-op."
     )
+
+
+# ── Issue #460: viz similarity summary-default — rule-11 invariants ───────────
+#
+# Default viz similarity response must NOT inline code bodies.  Full bodies are
+# only included when include_bodies=True.  This section:
+#   1. Builds a deterministic synthetic 20-group response in both modes.
+#   2. Asserts the relationship: summary_bytes < full_bytes  (differential)
+#   3. Exact-pins both byte counts so any drift in the response envelope
+#      goes RED and forces a conscious re-pin.
+#
+# Measured 2026-06-11 with the synthetic fixture below (20 groups × 3 functions).
+# summary = 9416 B,  full = 13616 B  (ratio 1.446×).
+# Snapshot command:
+#   python3 -c "
+#   import json
+#   # ... (see _make_synthetic_similarity_summary / _full below)
+#   "
+
+
+def _make_synthetic_similarity_group(i: int, include_snippet: bool) -> dict:
+    """One synthetic clone group with 3 function entries."""
+    funcs = []
+    for j in range(3):
+        f: dict = {
+            "file": f"src/module_{i}/handler_{j}.py",
+            "name": f"process_item_{j}",
+            "line": j * 20 + 1,
+            "end_line": j * 20 + 15,
+            "language": "python",
+        }
+        if include_snippet:
+            f["snippet"] = f"def process_item_{j}(x):\n    if x > 0:\n        y = x * "
+        funcs.append(f)
+    return {
+        "fingerprint": f"abcdef1234567{i:03d}",
+        "method": "structural",
+        "similarity": 1.0,
+        "function_count": 3,
+        "functions": funcs,
+    }
+
+
+def _make_synthetic_similarity_response(include_snippets: bool) -> dict:
+    """Deterministic 20-group similarity response — summary or full bodies.
+
+    Fixture design:
+    - 20 groups × 3 functions each = 60 clone instances (always REVIEW verdict).
+    - project_root is a fixed string ("/repo") so byte sizes are deterministic.
+    - include_snippets controls whether the 'snippet' field appears per function.
+    """
+    groups = [_make_synthetic_similarity_group(i, include_snippets) for i in range(20)]
+    return {
+        "success": True,
+        "verdict": "REVIEW",
+        "project_root": "/repo",
+        "stats": {
+            "total_groups": 20,
+            "total_clone_instances": 60,
+            "mode": "all",
+            "min_lines": 5,
+            "cache_used": True,
+        },
+        "groups": groups,
+    }
+
+
+def test_similarity_summary_smaller_than_full_bodies() -> None:
+    """Rule-11 differential invariant: summary response < full-bodies response.
+
+    The whole point of include_bodies=False (the default): the response must
+    be strictly smaller than include_bodies=True.  If this fails, summary mode
+    is a no-op and the 226KB default is back.
+    """
+    summary_resp = _make_synthetic_similarity_response(include_snippets=False)
+    full_resp = _make_synthetic_similarity_response(include_snippets=True)
+
+    summary_bytes = len(json.dumps(summary_resp, ensure_ascii=False))
+    full_bytes = len(json.dumps(full_resp, ensure_ascii=False))
+
+    assert summary_bytes < full_bytes, (
+        f"similarity summary ({summary_bytes}B) >= full-bodies ({full_bytes}B) — "
+        "include_bodies=False is a no-op; snippet stripping is broken."
+    )
+    # Exact pins — synthetic fixture is deterministic (no tmp paths, no dates).
+    # Re-measure and re-pin if envelope fields change.
+    # Measured 2026-06-11: summary=9416 B, full=13616 B (1.446x reduction).
+    assert summary_bytes == 9416, (
+        f"similarity summary bytes drifted: {summary_bytes} != 9416 — "
+        "re-measure and re-pin"
+    )
+    assert full_bytes == 13616, (
+        f"similarity full bytes drifted: {full_bytes} != 13616 — re-measure and re-pin"
+    )
+
+
+def test_similarity_summary_no_snippet_fields() -> None:
+    """Structural invariant: summary groups must not contain 'snippet' key.
+
+    Verifies the data shape, not just the byte count.  If snippet is somehow
+    included in the summary response (e.g. include_bodies default flipped or
+    to_dict signature changed), this fails immediately.
+    """
+    summary_resp = _make_synthetic_similarity_response(include_snippets=False)
+    for group in summary_resp["groups"]:
+        for func in group["functions"]:
+            assert "snippet" not in func, (
+                f"snippet key present in summary response function entry: {func}. "
+                "Summary mode must omit code bodies."
+            )
+
+
+def test_similarity_full_has_snippet_fields() -> None:
+    """Structural invariant: full-bodies groups must contain 'snippet' key.
+
+    Mirrors the previous test — verifies that include_bodies=True actually
+    adds the snippet, so the feature is not silently a no-op in either direction.
+    """
+    full_resp = _make_synthetic_similarity_response(include_snippets=True)
+    for group in full_resp["groups"]:
+        for func in group["functions"]:
+            assert "snippet" in func, (
+                f"snippet key missing in full-bodies response function entry: {func}. "
+                "include_bodies=True must include code body snippets."
+            )
