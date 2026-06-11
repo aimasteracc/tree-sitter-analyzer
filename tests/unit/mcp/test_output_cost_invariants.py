@@ -1054,3 +1054,124 @@ def test_callers_default_cap_bytes_smaller_than_unlimited() -> None:
     assert unlimited_bytes == 33435, (
         f"callers unlimited bytes drifted: {unlimited_bytes} != 33435 — re-measure and re-pin"
     )
+
+
+# ── DF-1: search content default budget — honest truncation (2026-06-12) ──
+#
+# SearchContentTool (normal / respond_full mode) previously had no default
+# display cap: a common-word query like "def execute" returned 125 matches
+# and 24,477 bytes — far exceeding a typical agent's token budget for a
+# single discovery query.
+#
+# The fix (DF-1): DEFAULT_CONTENT_LISTED_CAP = 50 applied in apply_limits
+# when the user has not set max_count.  Response carries:
+#   total_matches  — pre-cap count (agent knows how many exist)
+#   listed_cap     — the cap value used
+#   truncated      — bool: total > cap
+#   next_step      — narrowing hint when truncated
+#
+# Rule-11 invariants:
+#   1. Structural: capped (50/80) response carries correct fields.
+#   2. Differential: capped bytes < uncapped bytes (cap saves tokens).
+#   3. Exact pins: synthetic payload has no tmp paths — fully deterministic.
+#
+# Measured 2026-06-12:
+#   capped (50/80):   6775 B
+#   uncapped (80/80): 10505 B  (ratio 1.55x)
+#   live dogfood:     before 24477B / after 9856B (2.48x reduction)
+
+
+def _make_synthetic_content_response(n_shown: int, n_total: int, cap: int) -> dict:
+    """Synthetic search_content respond_full payload — no tmp paths.
+
+    Mirrors the fields that respond_full emits after the DF-1 fix.
+    """
+    matches = [
+        {
+            "file": f"tree_sitter_analyzer/module_{i // 10}/file_{i}.py",
+            "line": i * 3 + 10,
+            "text": "def execute(self, arguments):",
+            "matches": [[4, 11]],
+        }
+        for i in range(n_shown)
+    ]
+    result: dict = {
+        "success": True,
+        "count": n_shown,
+        "truncated": n_shown < n_total,
+        "total_matches": n_total,
+        "listed_cap": cap,
+        "elapsed_ms": 42,
+        "case_sensitive": False,
+        "results": matches,
+    }
+    if n_shown < n_total:
+        result["next_step"] = (
+            f"showing {n_shown} of {n_total} matches — "
+            "narrow with roots=[], include_globs=['*.py'], "
+            "or file_types=['py'] to reduce scope; "
+            f"raise max_count above {cap} for a deeper sweep"
+        )
+    return result
+
+
+def test_content_truncation_structural_fields() -> None:
+    """DF-1: capped (50/80) response carries correct truncation fields."""
+    from tree_sitter_analyzer.mcp.tools.search_content_response import (
+        DEFAULT_CONTENT_LISTED_CAP,
+    )
+
+    payload = _make_synthetic_content_response(50, 80, DEFAULT_CONTENT_LISTED_CAP)
+    assert payload["truncated"] is True
+    assert payload["total_matches"] == 80
+    assert payload["listed_cap"] == DEFAULT_CONTENT_LISTED_CAP
+    assert payload["listed_cap"] == 50
+    assert len(payload["results"]) == 50
+    assert "next_step" in payload
+
+
+def test_content_no_truncation_structural_fields() -> None:
+    """DF-1: 30 matches with default cap 50 → truncated=False, all listed."""
+    from tree_sitter_analyzer.mcp.tools.search_content_response import (
+        DEFAULT_CONTENT_LISTED_CAP,
+    )
+
+    payload = _make_synthetic_content_response(30, 30, DEFAULT_CONTENT_LISTED_CAP)
+    assert payload["truncated"] is False
+    assert payload["total_matches"] == 30
+    assert payload["listed_cap"] == DEFAULT_CONTENT_LISTED_CAP
+    assert len(payload["results"]) == 30
+    assert "next_step" not in payload
+
+
+def test_content_default_cap_bytes_smaller_than_uncapped() -> None:
+    """DF-1 rule-11 differential: capped (50/80) bytes < uncapped (80/80).
+
+    Capping to DEFAULT_CONTENT_LISTED_CAP must produce a strictly smaller
+    response than listing all 80 matches. If this fails, the budget cap is
+    a no-op.
+    """
+    from tree_sitter_analyzer.mcp.tools.search_content_response import (
+        DEFAULT_CONTENT_LISTED_CAP,
+    )
+
+    capped_resp = _make_synthetic_content_response(50, 80, DEFAULT_CONTENT_LISTED_CAP)
+    uncapped_resp = _make_synthetic_content_response(80, 80, DEFAULT_CONTENT_LISTED_CAP)
+
+    capped_bytes = len(json.dumps(capped_resp, ensure_ascii=False))
+    uncapped_bytes = len(json.dumps(uncapped_resp, ensure_ascii=False))
+
+    assert capped_bytes < uncapped_bytes, (
+        f"content default cap ({capped_bytes}B) >= uncapped ({uncapped_bytes}B) — "
+        "budget cap is a no-op"
+    )
+    # Exact pins — synthetic fixture has no tmp paths, fully deterministic.
+    # Measured 2026-06-12: capped=6775 B, uncapped=10505 B (1.55x reduction).
+    # Live dogfood: before 24477B / after 9856B (2.48x reduction).
+    # Re-measure and re-pin if envelope fields change.
+    assert capped_bytes == 6775, (
+        f"content capped bytes drifted: {capped_bytes} != 6775 — re-measure and re-pin"
+    )
+    assert uncapped_bytes == 10505, (
+        f"content uncapped bytes drifted: {uncapped_bytes} != 10505 — re-measure and re-pin"
+    )

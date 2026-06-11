@@ -253,12 +253,20 @@ def respond_full(
     total_count_known: bool = True,
 ) -> dict[str, Any]:
     """Return full match details with optional next steps."""
+    from .search_content_response import DEFAULT_CONTENT_LISTED_CAP
+
     displayed = len(matches)
     total_for_envelope = real_total if real_total is not None else displayed
+    # Determine the cap that was (or would be) applied.
+    user_max = arguments.get("max_count")
+    listed_cap = int(user_max) if user_max is not None else DEFAULT_CONTENT_LISTED_CAP
+
     result: dict[str, Any] = {
         "success": True,
         "count": displayed,
         "truncated": truncated,
+        "total_matches": total_for_envelope,
+        "listed_cap": listed_cap,
         "elapsed_ms": elapsed_ms,
         "case_sensitive": _resolved_case_sensitive(arguments),
         "agent_summary": build_agent_summary(
@@ -274,7 +282,14 @@ def respond_full(
         "results": matches,
     }
 
-    if matches and not arguments.get("suppress_output", False):
+    if truncated:
+        result["next_step"] = (
+            f"showing {displayed} of {total_for_envelope} matches — "
+            "narrow with roots=[], include_globs=['*.py'], "
+            "or file_types=['py'] to reduce scope; "
+            f"raise max_count above {listed_cap} for a deeper sweep"
+        )
+    elif matches and not arguments.get("suppress_output", False):
         steps = build_next_steps(matches)
         if steps:
             result["next_steps"] = steps
