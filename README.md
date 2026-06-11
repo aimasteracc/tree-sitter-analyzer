@@ -2,13 +2,14 @@
 
 **English** | **[日本語](README_ja.md)** | **[简体中文](README_zh.md)**
 
-> **The MCP code-intelligence server for AI agents — fewer tokens, fewer tool calls, 100 % local.**
-> Pre-indexed AST cache + **8 MCP tools** (down from 63; plus the `set_project_path` infrastructure entry) + 13 curated agent skills + TOON-compressed output.
-> **~80% less tool-definition overhead** vs v1.x — the only code-intel MCP that is both rich-output (verdict + TOON) and Roo/Cursor-safe.
-> A **strict CLI superset** of CodeGraph, with faster indexing, a one-call jQuery-style query DSL, and a **more complete + more correct call graph** (96.3% of call edges classified vs CodeGraph's same-name mis-wires). Token cost was CodeGraph's one edge — RFC-0006 progressive disclosure cut TSA's default context payload **53%**, closing most of that gap. See [How TSA compares](#how-tsa-compares-to-codegraph).
-> **BM25-ranked symbol search** across all search tools — results sorted by relevance, not file path.
->
-> Competing tool count: CodeGraph ~12 · Rhizome 1 · **TSA 8 (rich-output)** · TSA v1.x was 63.
+Code intelligence for AI agents: a pre-indexed, token-efficient MCP server — **8 MCP tools** + CLI, 100% local.
+
+* **Instant structural answers.** Who calls this? What would break? Generate a UML diagram. One call returns the whole answer — no grep loop.
+* **Token-budget aware.** TOON output cuts bulk/tabular payload by ~50-70% vs raw JSON ([measured invariant](tests/unit/mcp/test_output_cost_invariants.py)); RFC-0012 measured 0.52× ratio on representative decision tools.
+* **Edit safely.** `safe_to_edit` + `change_impact` + constraint DSL gate every modification before it happens; [≈0 cross-language mis-wires](benchmarks/codegraph_compare/MISWIRE-AUDIT-EXAMPLES.md) in the call graph.
+
+> **100% local** means the index lives in `.ast-cache/` inside your repo, no telemetry, no remote calls. Every MCP response + CLI output is generated locally from the SQLite+FTS5 cache.
+
 > Upgrading from v1.x? See [docs/MIGRATION.md](docs/MIGRATION.md).
 
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
@@ -40,6 +41,44 @@ Restart your agent, then say: *"Run the `index` tool with action=status."*
 
 [Other agents (Cursor, Copilot, Cline, Continue, Claude Desktop, Roo Code) →](#supported-agents)
 
+### Quick install
+
+#### 1. Install dependencies
+
+```bash
+# uv (required)
+curl -LsSf https://astral.sh/uv/install.sh | sh        # macOS / Linux
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"  # Windows
+
+# fd + ripgrep (required for `search action=content` text search; symbol search uses SQLite FTS5 and needs neither)
+brew install fd ripgrep                                # macOS
+winget install sharkdp.fd BurntSushi.ripgrep.MSVC      # Windows
+```
+
+#### 2. Install Tree-sitter Analyzer
+
+```bash
+uv add "tree-sitter-analyzer[all,mcp]"
+```
+
+#### 3. Hook it into your agent
+
+See **[Supported Agents](#supported-agents)**. Most clients want this MCP server entry:
+
+```json
+{
+  "mcpServers": {
+    "tree-sitter-analyzer": {
+      "command": "uvx",
+      "args": ["--from", "tree-sitter-analyzer[mcp]", "tree-sitter-analyzer-mcp"],
+      "env": { "TREE_SITTER_PROJECT_ROOT": "/absolute/path/to/your/project" }
+    }
+  }
+}
+```
+
+After restart: *"Run the `index` tool with action=status."*
+
 **See the correctness edge on your own repo** — no install, no CodeGraph (it re-indexes first; seconds on a small repo, a minute or two on a large one):
 
 ```bash
@@ -52,12 +91,82 @@ It prints how many call edges a name-only code index (the design most tools use)
 
 ## Why Tree-sitter Analyzer
 
-* **Token-efficient by default.** Every MCP response uses **TOON** — a tabular JSON variant that cuts bulk/tabular payloads by ~50-70 % vs raw JSON (metadata-heavy decision payloads see less, or none).
+* **Token-efficient by default.** Every MCP response uses **TOON** — a tabular JSON variant that cuts bulk/tabular payloads by ~50-70 % vs raw JSON ([measured invariant](tests/unit/mcp/test_output_cost_invariants.py); RFC-0012 measured 0.52× ratio on representative decision tools).
 * **Verdict envelopes.** Every response carries `verdict: SAFE | CAUTION | UNSAFE | INFO | WARN | ERROR | NOT_FOUND`, so orchestrators branch on outcomes without re-prompting.
 * **Project health grading (A–F).** Few code-intel tools expose a whole-project quality grade — TSA grades on size / complexity / coverage / duplication / dependencies / structure / git-hotspots in one call.
 * **13 curated workflows (Skills).** Pre-baked tool subsets for "find symbol", "trace call chain", "score health", "safe-to-edit before refactor", "PR review", etc.
 * **5 layers of safety.** `safe_to_edit` + `modification_guard` + constraint DSL + `change_impact` + verdict envelopes — designed so agents *know* before they touch.
 * **Strict CLI superset of CodeGraph, faster indexing, and a one-call query DSL** — with an honest cost comparison ([below](#how-tsa-compares-to-codegraph)).
+
+---
+
+## Key Features
+
+### Pre-indexed code intelligence (CodeGraph parity + superset)
+
+| Capability | TSA tool | Status |
+|---|---|---|
+| Symbol search (FTS5 + **BM25 ranked**) | `search` action=symbol | **ahead** — results sorted by relevance score, not file path |
+| Go-to-def / find-refs / call hierarchy in one call | `nav` action=navigate | PRIMARY entry point |
+| Bulk-fetch N related symbols + relationship map | `structure` action=explore | parity |
+| Function-level blast radius + risk score | `nav` action=impact | parity + risk score |
+| Who-calls-X / what-X-calls | `nav` action=callers / action=callees | parity |
+| Index health at-a-glance (+ edge count) | `index` action=status | **ahead** — reports `total_edges` for graph density signal |
+| Pre-built call graph cache | `index` action=auto / action=full / action=sync | parity |
+| Tests affected by a change (CLI) | `--affected FILE...` | parity |
+
+### Tree-sitter Analyzer exclusive
+
+| Capability | TSA tool | Note |
+|---|---|---|
+| **BM25-ranked symbol search** | all search tools | relevance_score on every result (min-max normalized: best=1.0, weakest=0.0); sort(by='confidence') in DSL |
+| **Semantic search (BM25 pre-filtered)** | `search` action=chain (`semantic()` DSL) | BM25 pre-filter narrows 40k symbols to ~400 before cosine rerank |
+| **Project A–F health grading** | `health` action=project | 7 dimensions (size/complexity/deps/coverage/duplication/structure/git-hotspot), uncommon among code-intel tools |
+| **TOON output** | every tool, `output_format: "toon"` (default) | 50-70 % token saving on bulk/tabular output |
+| **Verdict envelopes** | every tool | `SAFE/CAUTION/UNSAFE/INFO/WARN/ERROR/NOT_FOUND` |
+| **Safe-to-edit gate** | `edit` action=safe / action=guard | refuses high-risk edits before they happen |
+| **Architectural constraint DSL** | `edit` action=constraints | "module A cannot import B" → enforced |
+| **Code health (file-level)** | `health` action=file | block/long-method/smell detection |
+| **Class hierarchy** | `structure` action=class_tree | type-inheritance tree |
+| **Dependency matrix** | `health` action=matrix | module-coupling matrix |
+| **Dead code** | `health` action=dead | transitive unreachable analysis |
+| **Complexity heatmap** | `health` action=heatmap | per-fn cyclomatic + project view |
+| **AST-structural clone detection** | `viz` action=similarity | beyond text similarity |
+| **Mermaid call-graph export** | `viz` action=graph | paste-ready in docs |
+| **UML Mermaid export** | `viz` action=uml | class / package / component / sequence diagrams |
+| **PR review** | `edit` action=pr | AST-diff + semantic classify + blast radius |
+| **agent_summary** | every response | next-step hint baked into the envelope |
+| **Synapse cross-file resolver** | internal | import-aware, beats regex guessing |
+| **Temporal activation** | `nav` action=lineage | per-symbol git-modification frequency |
+| **One-shot file orientation** | `project` action=smart | health + exports + deps + edit-risk in one call (replaces 3-4 calls) |
+| **Architectural decision journal** | `project` action=journal | persists reasoning across sessions — uncommon among code-intel tools |
+
+### Skills (13 curated workflows)
+
+CodeGraph has zero skills. We ship 13 under `.claude/skills/tsa-*/`:
+
+`tsa-landing`, `tsa-find`, `tsa-graph`, `tsa-structure`, `tsa-deps`, `tsa-index`, `tsa-health-watch`, `tsa-edit-safety`, `tsa-edit-then-verify`, `tsa-constraints`, `tsa-pr-review`, `tsa-refactor-queue`, `tsa-temporal`.
+
+Each skill ships an `allowed-tools` subset + procedure recipe + decision-surface schema, so the agent doesn't have to triage 8 tools on every question.
+
+### 287 CLI flags
+
+Superset of CodeGraph's CLI surface. Highlights:
+
+```bash
+tree-sitter-analyzer --table full <file>          # method/signature/complexity table
+tree-sitter-analyzer --partial-read --start-line N --end-line M <file>
+tree-sitter-analyzer --project-health             # A-F grade across the project
+tree-sitter-analyzer --callers <symbol>           # who-calls
+tree-sitter-analyzer --codegraph-impact <fn>      # blast radius + risk
+tree-sitter-analyzer --affected <file...>         # tests transitively affected
+tree-sitter-analyzer --dead-code                  # transitive unreachable
+tree-sitter-analyzer --check-constraints          # architectural rules
+tree-sitter-analyzer --safe-to-edit <file>        # refuse if risky
+tree-sitter-analyzer --uml class                  # Mermaid UML class diagram
+```
+
+See [`docs/CODEMAPS/cli.md`](docs/CODEMAPS/cli.md) for the full surface.
 
 ---
 
@@ -159,116 +268,6 @@ tree-sitter-analyzer --callees _resolve_entry_points --format json
 ```
 
 > Reproduce the cost numbers: `uv run python benchmarks/codegraph_compare/run.py phase full-warm --repos gin,django`. Raw envelopes + the harness fix live in that directory.
-
----
-
-## Key Features
-
-### Pre-indexed code intelligence (CodeGraph parity + superset)
-
-| Capability | TSA tool | Status |
-|---|---|---|
-| Symbol search (FTS5 + **BM25 ranked**) | `search` action=symbol | **ahead** — results sorted by relevance score, not file path |
-| Go-to-def / find-refs / call hierarchy in one call | `nav` action=navigate | PRIMARY entry point |
-| Bulk-fetch N related symbols + relationship map | `structure` action=explore | parity |
-| Function-level blast radius + risk score | `nav` action=impact | parity + risk score |
-| Who-calls-X / what-X-calls | `nav` action=callers / action=callees | parity |
-| Index health at-a-glance (+ edge count) | `index` action=status | **ahead** — reports `total_edges` for graph density signal |
-| Pre-built call graph cache | `index` action=auto / action=full / action=sync | parity |
-| Tests affected by a change (CLI) | `--affected FILE...` | parity |
-
-### Tree-sitter Analyzer exclusive
-
-| Capability | TSA tool | Note |
-|---|---|---|
-| **BM25-ranked symbol search** | all search tools | relevance_score on every result (min-max normalized: best=1.0, weakest=0.0); sort(by='confidence') in DSL |
-| **Semantic search (BM25 pre-filtered)** | `search` action=chain (`semantic()` DSL) | BM25 pre-filter narrows 40k symbols to ~400 before cosine rerank |
-| **Project A–F health grading** | `health` action=project | 7 dimensions (size/complexity/deps/coverage/duplication/structure/git-hotspot), uncommon among code-intel tools |
-| **TOON output** | every tool, `output_format: "toon"` (default) | 50-70 % token saving on bulk/tabular output |
-| **Verdict envelopes** | every tool | `SAFE/CAUTION/UNSAFE/INFO/WARN/ERROR/NOT_FOUND` |
-| **Safe-to-edit gate** | `edit` action=safe / action=guard | refuses high-risk edits before they happen |
-| **Architectural constraint DSL** | `edit` action=constraints | "module A cannot import B" → enforced |
-| **Code health (file-level)** | `health` action=file | block/long-method/smell detection |
-| **Class hierarchy** | `structure` action=class_tree | type-inheritance tree |
-| **Dependency matrix** | `health` action=matrix | module-coupling matrix |
-| **Dead code** | `health` action=dead | transitive unreachable analysis |
-| **Complexity heatmap** | `health` action=heatmap | per-fn cyclomatic + project view |
-| **AST-structural clone detection** | `viz` action=similarity | beyond text similarity |
-| **Mermaid call-graph export** | `viz` action=graph | paste-ready in docs |
-| **UML Mermaid export** | `viz` action=uml | class / package / component / sequence diagrams |
-| **PR review** | `edit` action=pr | AST-diff + semantic classify + blast radius |
-| **agent_summary** | every response | next-step hint baked into the envelope |
-| **Synapse cross-file resolver** | internal | import-aware, beats regex guessing |
-| **Temporal activation** | `nav` action=lineage | per-symbol git-modification frequency |
-| **One-shot file orientation** | `project` action=smart | health + exports + deps + edit-risk in one call (replaces 3-4 calls) |
-| **Architectural decision journal** | `project` action=journal | persists reasoning across sessions — uncommon among code-intel tools |
-
-### Skills (13 curated workflows)
-
-CodeGraph has zero skills. We ship 13 under `.claude/skills/tsa-*/`:
-
-`tsa-landing`, `tsa-find`, `tsa-graph`, `tsa-structure`, `tsa-deps`, `tsa-index`, `tsa-health-watch`, `tsa-edit-safety`, `tsa-edit-then-verify`, `tsa-constraints`, `tsa-pr-review`, `tsa-refactor-queue`, `tsa-temporal`.
-
-Each skill ships an `allowed-tools` subset + procedure recipe + decision-surface schema, so the agent doesn't have to triage 8 tools on every question.
-
-### 287 CLI flags
-
-Superset of CodeGraph's CLI surface. Highlights:
-
-```bash
-tree-sitter-analyzer --table full <file>          # method/signature/complexity table
-tree-sitter-analyzer --partial-read --start-line N --end-line M <file>
-tree-sitter-analyzer --project-health             # A-F grade across the project
-tree-sitter-analyzer --callers <symbol>           # who-calls
-tree-sitter-analyzer --codegraph-impact <fn>      # blast radius + risk
-tree-sitter-analyzer --affected <file...>         # tests transitively affected
-tree-sitter-analyzer --dead-code                  # transitive unreachable
-tree-sitter-analyzer --check-constraints          # architectural rules
-tree-sitter-analyzer --safe-to-edit <file>        # refuse if risky
-tree-sitter-analyzer --uml class                  # Mermaid UML class diagram
-```
-
-See [`docs/CODEMAPS/cli.md`](docs/CODEMAPS/cli.md) for the full surface.
-
----
-
-## Quick Start
-
-### 1. Install dependencies
-
-```bash
-# uv (required)
-curl -LsSf https://astral.sh/uv/install.sh | sh        # macOS / Linux
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"  # Windows
-
-# fd + ripgrep (required for `search action=content` text search; symbol search uses SQLite FTS5 and needs neither)
-brew install fd ripgrep                                # macOS
-winget install sharkdp.fd BurntSushi.ripgrep.MSVC      # Windows
-```
-
-### 2. Install Tree-sitter Analyzer
-
-```bash
-uv add "tree-sitter-analyzer[all,mcp]"
-```
-
-### 3. Hook it into your agent
-
-See **[Supported Agents](#supported-agents)**. Most clients want this MCP server entry:
-
-```json
-{
-  "mcpServers": {
-    "tree-sitter-analyzer": {
-      "command": "uvx",
-      "args": ["--from", "tree-sitter-analyzer[mcp]", "tree-sitter-analyzer-mcp"],
-      "env": { "TREE_SITTER_PROJECT_ROOT": "/absolute/path/to/your/project" }
-    }
-  }
-}
-```
-
-After restart: *"Run the `index` tool with action=status."*
 
 ---
 
