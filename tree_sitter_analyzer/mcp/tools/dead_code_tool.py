@@ -147,17 +147,25 @@ class CodeGraphDeadCodeTool(BaseMCPTool):
         # Full totals across all categories (for verdict / next_step).
         total_all = total_dead_funcs + total_unused_imports + total_unref_vars
 
-        # Truncation signals: any category was capped.
-        dead_truncated = total_dead_funcs > max_dead
-        imports_truncated = total_unused_imports > max_imports
-        vars_truncated = total_unref_vars > max_variables
+        # Truncation signals: only categories VISIBLE in this mode count
+        # (Codex P2: mode=unused_imports strips dead_functions — a truncated
+        # flag about an absent list is misinformation).
+        dead_visible = mode in ("all", "dead_functions")
+        imports_visible = mode in ("all", "unused_imports")
+        vars_visible = mode in ("all", "variables")
+        dead_truncated = dead_visible and total_dead_funcs > max_dead
+        imports_truncated = imports_visible and total_unused_imports > max_imports
+        vars_truncated = vars_visible and total_unref_vars > max_variables
         any_truncated = dead_truncated or imports_truncated or vars_truncated
 
         # Labeled stats — every count is named for what it counts so
         # agents can distinguish the raw total from what is shown.
         labeled_stats: dict[str, Any] = {
-            "total_zero_caller_symbols": total_dead_funcs,
-            "candidates_after_filters": total_dead_funcs,  # filter = zero-caller detection
+            # Honest label (Codex P2): the analyzer's dead set is TRANSITIVE
+            # (zero-caller roots PLUS functions only reachable from them,
+            # reason=unreachable_from_entry) — not pure zero-caller orphans.
+            "total_dead_functions_transitive": total_dead_funcs,
+            "candidates_after_filters": total_dead_funcs,  # filter = transitive reachability
             "dead_functions_listed": listed_dead,
             "dead_functions_cap": max_dead,
             "total_unused_imports": total_unused_imports,

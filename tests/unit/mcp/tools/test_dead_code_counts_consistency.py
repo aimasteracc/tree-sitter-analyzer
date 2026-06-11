@@ -139,10 +139,10 @@ class TestDeadCodeCountsConsistency:
         stats = result["stats"]
         assert result["truncated"] is True
         assert stats["dead_functions_listed"] == 5
-        assert stats["total_zero_caller_symbols"] == 20
+        assert stats["total_dead_functions_transitive"] == 20
         # listed == min(total, cap)
         assert stats["dead_functions_listed"] == min(
-            stats["total_zero_caller_symbols"], stats["dead_functions_cap"]
+            stats["total_dead_functions_transitive"], stats["dead_functions_cap"]
         )
 
     def test_truncated_flag_set_when_imports_exceeds_cap(self, fake_root, monkeypatch):
@@ -188,7 +188,7 @@ class TestDeadCodeCountsConsistency:
         # The old unlabeled "dead_functions" key must not exist
         assert "dead_functions" not in stats, (
             "stats['dead_functions'] is the old unlabeled raw total that caused #448; "
-            "it must not appear — use total_zero_caller_symbols instead"
+            "it must not appear — use total_dead_functions_transitive instead"
         )
 
     def test_narrative_uses_same_count_as_listed_total(self, fake_root, monkeypatch):
@@ -230,14 +230,17 @@ class TestDeadCodeCountsConsistency:
         )
 
     def test_candidates_lte_total(self, fake_root, monkeypatch):
-        """candidates_after_filters <= total_zero_caller_symbols (they're equal here;
+        """candidates_after_filters <= total_dead_functions_transitive (they're equal here;
         test documents the relationship)."""
         monkeypatch.setattr(mod, "analyze_dead_code", lambda *a, **k: _fake_result(7))
         tool = CodeGraphDeadCodeTool(fake_root)
         result = _run(tool.execute({"output_format": "json"}))
 
         stats = result["stats"]
-        assert stats["candidates_after_filters"] == stats["total_zero_caller_symbols"]
+        assert (
+            stats["candidates_after_filters"]
+            == stats["total_dead_functions_transitive"]
+        )
 
     def test_empty_result_truncated_false(self, fake_root, monkeypatch):
         """A clean result must report truncated=False and zero listed counts."""
@@ -344,3 +347,32 @@ class TestDeadCodeToolEdgeCases:
         assert "unreferenced_variables" in result
         assert "dead_functions" not in result
         assert "unused_imports" not in result
+
+
+def test_scoped_mode_ignores_hidden_category_truncation(tmp_path) -> None:
+    """Codex P2 (#486): mode=unused_imports strips dead_functions from the
+    response — the truncated flag must NOT fire for the hidden dead-function
+    cap when the visible categories are uncapped."""
+    import asyncio
+    from unittest.mock import patch
+
+    from tree_sitter_analyzer.mcp.tools.dead_code_tool import CodeGraphDeadCodeTool
+
+    tool = CodeGraphDeadCodeTool(str(tmp_path))
+    fake = _fake_result(n_dead=20, n_imports=1, n_vars=0)
+    with patch(
+        "tree_sitter_analyzer.mcp.tools.dead_code_tool.analyze_dead_code",
+        return_value=fake,
+    ):
+        result = asyncio.run(
+            tool.execute(
+                {
+                    "mode": "unused_imports",
+                    "max_dead": 5,
+                    "output_format": "json",
+                }
+            )
+        )
+    # 20 dead functions exceed cap 5, but they are hidden in this mode.
+    assert result["truncated"] is False
+    assert "dead_functions" not in result
