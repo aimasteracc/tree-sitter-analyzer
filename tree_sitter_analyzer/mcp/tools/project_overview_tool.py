@@ -536,7 +536,11 @@ def _overview_risk_to_verdict(risk: str) -> str:
     if risk_lower == "medium":
         return "CAUTION"
     if risk_lower == "unknown":
-        # Item 3: plain informational overview (no health check) → INFO, not REVIEW
+        # Defensive mapping only: F11 made _overview_risk derive low/medium/high
+        # from observable signals and never return "unknown" — a plain overview
+        # already gets an honest verdict (REVIEW means real oversized files /
+        # D-F grades, not "health not run"). This branch guards hypothetical
+        # future inputs (opencode P2 on #494: documented as defensive, not live).
         return "INFO"
     return "SAFE"
 

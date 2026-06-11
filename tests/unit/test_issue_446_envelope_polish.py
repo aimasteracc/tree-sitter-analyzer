@@ -65,7 +65,7 @@ class TestStatusToolNullFields:
 
             # schema_version should not be present in output (or be omitted)
             # If it appears at all, the test alerts to the change
-            assert result.get("schema_version") is None, (
+            assert "schema_version" not in result, (
                 "schema_version=None should be omitted from response "
                 "(RFC-0012 null compaction)"
             )
@@ -320,3 +320,23 @@ def test_status_warn_branch_schema_version_included(tmp_path, monkeypatch) -> No
     result = asyncio.run(tool.execute({"output_format": "json"}))
     assert result["verdict"] == "WARN"
     assert result["schema_version"] == 7
+
+
+def test_overview_review_requires_real_signals() -> None:
+    """REVIEW comes from observable signals (≥3 files ≥800 lines), never
+    from \'health not run\' — the issue's premise is structurally impossible
+    after F11 (_overview_risk never returns \'unknown\')."""
+    from tree_sitter_analyzer.mcp.tools.project_overview_tool import (
+        _overview_risk,
+    )
+
+    plain_small = {
+        "largest_source_files": [{"path": "a.py", "lines": 100}],
+        "summary": {},
+    }
+    assert _overview_risk(plain_small, include_health=False) == "low"
+    oversized = {
+        "largest_source_files": [{"path": f"f{i}.py", "lines": 900} for i in range(3)],
+        "summary": {},
+    }
+    assert _overview_risk(oversized, include_health=False) == "high"

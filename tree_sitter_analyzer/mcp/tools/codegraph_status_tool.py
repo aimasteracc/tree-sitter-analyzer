@@ -114,7 +114,6 @@ class CodeGraphStatusTool(BaseMCPTool):
                 indexed=False,
                 total_files=0,
                 total_symbols=0,
-                schema_version=None,
                 fts5_available=False,
                 lag_seconds=None,
                 cache_path=None,
@@ -150,7 +149,7 @@ class CodeGraphStatusTool(BaseMCPTool):
                 cache_path=cache_path if cache_exists else None,
                 hint=hint,
                 agent_summary={
-                    "summary_line": f"codegraph_status: {hint}",
+                    "summary_line": "codegraph_status: index missing or empty",
                     "next_step": hint,
                     "verdict": "WARN",
                 },
