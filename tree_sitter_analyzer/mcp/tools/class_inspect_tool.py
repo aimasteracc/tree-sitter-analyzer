@@ -104,7 +104,9 @@ def _extract_fields_from_source(
 
     Scans the class body (lines class_start..class_end) for:
     1. Class-level assignments at 4-space indent: ``name = ...``
-    2. Self-assignments in __init__ body: ``self.name = ...``
+    2. Self-assignments anywhere in the class body: ``self.name = ...``
+       (not just __init__ — e.g. BaseMCPTool delegates its attribute
+       writes to ``_apply_project_root``, the very repro of issue #455)
 
     Returns a list of field dicts: {name, line, visibility, kind}
     where kind is "class" or "instance".
@@ -114,44 +116,6 @@ def _extract_fields_from_source(
 
     fields: list[dict[str, Any]] = []
     seen: set[str] = set()
-
-    # Find __init__ line range within the class body
-    init_start_rel: int | None = None
-    init_end_rel: int | None = None
-    in_init = False
-    init_indent: int | None = None
-
-    for rel_i, line in enumerate(class_lines):
-        stripped = line.lstrip()
-        indent = len(line) - len(stripped)
-
-        if stripped.startswith("def __init__") and indent == 4:
-            in_init = True
-            init_start_rel = rel_i
-            init_indent = indent
-            continue
-
-        if in_init:
-            if not stripped:
-                # blank line inside function — continue
-                continue
-            # End of __init__ when we hit another def/class at same or lower indent
-            if (
-                indent <= (init_indent or 4)
-                and stripped
-                and not stripped.startswith("#")
-            ):
-                # Check if it's a new method/class definition at the class level
-                if (
-                    stripped.startswith("def ")
-                    or stripped.startswith("class ")
-                    or stripped.startswith("@")
-                ):
-                    init_end_rel = rel_i - 1
-                    in_init = False
-
-    if in_init:
-        init_end_rel = len(class_lines) - 1
 
     # 1. Class-level attributes: lines at indent == 4, assignment, not starting with def/class/@
     for rel_i, line in enumerate(class_lines):
@@ -184,24 +148,23 @@ def _extract_fields_from_source(
                     }
                 )
 
-    # 2. Instance attributes from __init__ body
-    if init_start_rel is not None and init_end_rel is not None:
-        init_body_lines = class_lines[init_start_rel : init_end_rel + 1]
-        for rel_i, line in enumerate(init_body_lines):
-            m = re.match(r"\s+self\.([A-Za-z_]\w*)\s*=\s*", line)
-            if m:
-                attr_name = m.group(1)
-                if attr_name not in seen:
-                    seen.add(attr_name)
-                    abs_line = class_start + init_start_rel + rel_i
-                    fields.append(
-                        {
-                            "name": attr_name,
-                            "line": abs_line,
-                            "visibility": _compute_visibility(attr_name),
-                            "kind": "instance",
-                        }
-                    )
+    # 2. Instance attributes: self.x = ... anywhere in the class body
+    # (annotated assignments ``self.x: T = ...`` included)
+    for rel_i, line in enumerate(class_lines):
+        m = re.match(r"\s+self\.([A-Za-z_]\w*)(?:\s*:\s*[^=\n]+)?\s*=\s*", line)
+        if m:
+            attr_name = m.group(1)
+            if attr_name not in seen:
+                seen.add(attr_name)
+                abs_line = class_start + rel_i
+                fields.append(
+                    {
+                        "name": attr_name,
+                        "line": abs_line,
+                        "visibility": _compute_visibility(attr_name),
+                        "kind": "instance",
+                    }
+                )
 
     fields.sort(key=lambda f: f["line"])
     return fields

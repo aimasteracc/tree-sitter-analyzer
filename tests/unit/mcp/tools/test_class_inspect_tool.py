@@ -826,3 +826,31 @@ class TestEdgeCases:
         field_names = [f["name"] for f in response["fields"]]
         assert field_names.count("shared_name") == 1
         assert "unique" in field_names
+
+
+# ─── Issue #455 repro guard: fields found outside __init__ ───────────────────
+
+
+def test_base_mcp_tool_fields_extracted_from_delegated_init() -> None:
+    """BaseMCPTool assigns self.* in _apply_project_root, not __init__.
+
+    The issue's own repro class must yield non-empty fields — an
+    __init__-only scan returns [] here (the original gap)."""
+    from tree_sitter_analyzer.mcp.tools.class_inspect_tool import (
+        _extract_fields_from_source,
+    )
+
+    src = open("tree_sitter_analyzer/mcp/tools/base_tool.py").read()
+    fields = _extract_fields_from_source(src, "BaseMCPTool", 282, 686)
+    names = [f["name"] for f in fields]
+    assert names == [
+        "_project_root",
+        "_project_root_initialized",
+        "security_validator",
+        "path_resolver",
+    ]
+    kinds = {f["name"]: f["kind"] for f in fields}
+    assert kinds["security_validator"] == "instance"
+    vis = {f["name"]: f["visibility"] for f in fields}
+    assert vis["_project_root"] == "protected"
+    assert vis["security_validator"] == "public"
