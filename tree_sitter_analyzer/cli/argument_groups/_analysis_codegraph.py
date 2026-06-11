@@ -212,7 +212,7 @@ def _add_mcp_codegraph_map_options(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--uml",
-        choices=["class", "package", "component", "sequence"],
+        choices=["class", "package", "component", "sequence", "state"],
         help="Export a UML-style Mermaid diagram from indexed project intelligence",
     )
     parser.add_argument(
@@ -273,6 +273,16 @@ def _add_mcp_codegraph_map_options(parser: argparse.ArgumentParser) -> None:
         help=(
             "Include test-corpus classes (under tests/, testdata/, fixtures/) "
             "in --uml class whole-project diagrams (default: excluded)"
+        ),
+    )
+    # P2-B flags (RFC-0015): state diagram support
+    parser.add_argument(
+        "--uml-max-nodes",
+        type=int,
+        default=50,
+        help=(
+            "Cap on state nodes for --uml state diagrams (default: 50). "
+            "truncated=True when exceeded."
         ),
     )
     parser.add_argument(

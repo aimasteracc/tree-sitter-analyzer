@@ -33,9 +33,11 @@ class CodeGraphUMLTool(BaseMCPTool):
             "name": "codegraph_uml",
             "description": (
                 "Export UML-oriented Mermaid diagrams from indexed project "
-                "facts. Diagrams: class, package, component, sequence. "
+                "facts. Diagrams: class, package, component, sequence, "
+                "state (FSM approximation from enum/match, requires disk re-parse). "
                 "Class uses inheritance edges; package/component use import "
-                "dependencies; sequence uses call paths."
+                "dependencies; sequence uses call paths; state uses tree-sitter "
+                "AST of the enum class body."
             ),
             "inputSchema": self.get_tool_schema(),
             "annotations": {
@@ -52,9 +54,14 @@ class CodeGraphUMLTool(BaseMCPTool):
             "properties": {
                 "diagram": {
                     "type": "string",
-                    "enum": ["class", "package", "component", "sequence"],
+                    "enum": ["class", "package", "component", "sequence", "state"],
                     "default": "class",
-                    "description": "UML diagram to render",
+                    "description": (
+                        "UML diagram to render. 'state' is a static approximation "
+                        "of enum/match-driven FSMs, built by re-parsing the source "
+                        "file at query time (disk read + tree-sitter parse per call, "
+                        "typically < 50 ms)."
+                    ),
                 },
                 "source": {
                     "type": "string",
@@ -111,6 +118,14 @@ class CodeGraphUMLTool(BaseMCPTool):
                     "default": True,
                     "description": "Include common external bases in class diagrams",
                 },
+                "max_nodes": {
+                    "type": "integer",
+                    "default": 30,
+                    "description": (
+                        "Cap on state nodes for state diagrams (default 30). "
+                        "truncated=True when exceeded."
+                    ),
+                },
                 "output_format": {
                     "type": "string",
                     "enum": ["json", "toon"],
@@ -124,7 +139,7 @@ class CodeGraphUMLTool(BaseMCPTool):
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         diagram = arguments.get("diagram", "class")
-        if diagram not in {"class", "package", "component", "sequence"}:
+        if diagram not in {"class", "package", "component", "sequence", "state"}:
             raise ValueError(f"Unsupported UML diagram: {diagram}")
         if diagram == "sequence" and (
             not arguments.get("source") or not arguments.get("target")
@@ -133,6 +148,8 @@ class CodeGraphUMLTool(BaseMCPTool):
         # P1-B: use shared validator that also handles float coercion and bool rejection
         for key in ("max_edges", "max_depth", "max_paths", "package_depth"):
             _validate_positive_int(arguments, key)
+        # P2-B: max_nodes for state diagrams
+        _validate_positive_int(arguments, "max_nodes")
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -169,6 +186,12 @@ class CodeGraphUMLTool(BaseMCPTool):
             diagram = exporter.component_diagram(
                 max_edges=arguments.get("max_edges", _DEFAULT_COMPONENT_MAX_EDGES),
             )
+        elif diagram_type == "state":
+            diagram = exporter.state_diagram(
+                class_name=arguments.get("class_name"),
+                file_path=arguments.get("file_path"),
+                max_nodes=arguments.get("max_nodes", 30),
+            )
         else:
             diagram = exporter.sequence_diagram(
                 source=arguments["source"],
@@ -179,9 +202,15 @@ class CodeGraphUMLTool(BaseMCPTool):
 
         # P2-1: an unknown class_name is NOT_FOUND even if the project has
         # edges; agents must distinguish "no such class" from "no neighbours".
+        # Also: state diagram sets verdict="NOT_FOUND" in metadata for zero-
+        # transition honesty rule — forward that verdict.
         not_found = diagram.metadata.get("not_found", False)
-        verdict = (
-            "NOT_FOUND" if not_found else ("INFO" if diagram.edges else "NOT_FOUND")
-        )
+        meta_verdict = diagram.metadata.get("verdict")
+        if meta_verdict == "NOT_FOUND":
+            verdict: str = "NOT_FOUND"
+        elif not_found:
+            verdict = "NOT_FOUND"
+        else:
+            verdict = "INFO" if diagram.edges else "NOT_FOUND"
         response = build_response(verdict=verdict, **diagram.to_dict())
         return apply_toon_format_to_response(response, output_format)

@@ -88,7 +88,22 @@ def _safe_id(name: str) -> str:
 
 
 def _escape_label(label: str) -> str:
-    return label.replace('"', "'")
+    """Sanitise a Mermaid node/edge label.
+
+    Replaces characters that would break the ["..."] syntax:
+    - " → '  (keeps text inside double-quoted Mermaid labels valid)
+    - \\n / \\r → space  (raw newlines inside ["..."] are illegal in Mermaid)
+
+    NOTE: the newline fix is replicated from feature/uml-activity-diagram
+    to avoid a merge conflict when the two branches integrate. Dedup note:
+    whichever branch merges second should keep this version verbatim.
+    """
+    return (
+        label.replace('"', "'")
+        .replace("\r\n", " ")
+        .replace("\n", " ")
+        .replace("\r", " ")
+    )
 
 
 def _package_name(file_path: str, max_depth: int = 2) -> str:
@@ -178,6 +193,39 @@ def render_flowchart_mermaid(
             )
         else:
             lines.append(f"  {_safe_id(edge.source)} --> {_safe_id(edge.target)}")
+    return "\n".join(lines)
+
+
+def render_state_mermaid(
+    states: list[str],
+    transitions: list[Any],  # list[StateTransition] — avoid circular at module level
+    truncated: bool = False,
+) -> str:
+    """Render a Mermaid stateDiagram-v2 from states and transitions.
+
+    Each state gets a [*] --> StateName initial-state edge.
+    Transitions appear as StateA --> StateB (with optional label).
+    The RFC-0015 §P2-B honesty comment is always prepended.
+    """
+    lines = ["stateDiagram-v2"]
+    lines.append("%% NOTE: state diagram is a static approximation.")
+    lines.append(
+        "%% Guard conditions, timers, and exception-driven transitions are not captured."
+    )
+    if not states:
+        lines.append("    [*] --> EmptyEnum")
+        return "\n".join(lines)
+    for state in sorted(states):
+        lines.append(f"    [*] --> {_safe_id(state)}")
+    for t in transitions:
+        src = _safe_id(t.source)
+        tgt = _safe_id(t.target)
+        if t.label:
+            lines.append(f"    {src} --> {tgt} : {_escape_label(t.label)}")
+        else:
+            lines.append(f"    {src} --> {tgt}")
+    if truncated:
+        lines.append(_TRUNCATION_NOTE)
     return "\n".join(lines)
 
 
@@ -468,4 +516,133 @@ class UMLExporter:
                 "analysis_kind": "static_approximation",
                 "path_count": len(paths),
             },
+        )
+
+    def state_diagram(
+        self,
+        *,
+        class_name: str | None = None,
+        file_path: str | None = None,
+        max_nodes: int = 30,
+    ) -> UMLDiagram:
+        """Build a stateDiagram-v2 from an enum/match-driven FSM (P2-B, RFC-0015).
+
+        Static approximation: enum members become states; match/case patterns
+        with return <Enum>.<Member> become transitions.
+
+        Honesty rules:
+        - metadata["analysis_kind"] == "static_approximation" always.
+        - metadata["note"] records that parsing is done from current file content.
+        - zero detected transitions → verdict="NOT_FOUND" with next_step.
+        - missing file / class → verdict="NOT_FOUND" with next_step.
+
+        Cost: ONE disk read + ONE tree-sitter parse (rule-11 invariant).
+        """
+        from .uml_state import build_state_result
+
+        # Resolve file_path: require it explicitly for state diagram since
+        # the FSM heuristic is file-scoped (no cross-file enum scan).
+        resolved_path = file_path or ""
+
+        if not resolved_path:
+            # No file given — try to find via class_hierarchy if class_name provided
+            # (best-effort: use ClassHierarchy to find the file for the named class)
+            if class_name is not None:
+                cache, should_close = self._open_cache()
+                try:
+                    from .class_hierarchy import ClassHierarchy
+
+                    hierarchy = ClassHierarchy(cache)
+                    hierarchy.build()
+                    all_cls = hierarchy.all_classes()
+                    for cls_info in all_cls:
+                        if cls_info.get("name") == class_name:
+                            resolved_path = cls_info.get("file", "") or ""
+                            if resolved_path:
+                                break
+                finally:
+                    if should_close:
+                        cache.close()
+
+        if not resolved_path:
+            return UMLDiagram(
+                diagram_type="state",
+                mermaid_type="stateDiagram-v2",
+                mermaid="stateDiagram-v2\n",
+                nodes=[],
+                edges=[],
+                metadata={
+                    "analysis_kind": "static_approximation",
+                    "verdict": "NOT_FOUND",
+                    "next_step": (
+                        "state diagram: supply file_path or class_name with an indexed "
+                        "Enum class so the scanner can locate the source file"
+                    ),
+                },
+            )
+
+        result = build_state_result(
+            file_path=resolved_path,
+            class_name=class_name,
+            max_nodes=max_nodes,
+        )
+
+        base_metadata: dict[str, Any] = {
+            "analysis_kind": "static_approximation",
+            "note": "parsed from current file content; may differ from indexed symbols",
+        }
+        if class_name:
+            base_metadata["class_name"] = class_name
+        base_metadata["file_path"] = resolved_path
+
+        if result.error:
+            return UMLDiagram(
+                diagram_type="state",
+                mermaid_type="stateDiagram-v2",
+                mermaid="stateDiagram-v2\n",
+                nodes=[],
+                edges=[],
+                metadata={
+                    **base_metadata,
+                    "verdict": "NOT_FOUND",
+                    "next_step": (
+                        f"state diagram: {result.error}; "
+                        "check that the file exists and contains an Enum subclass"
+                    ),
+                },
+            )
+
+        # Zero transitions → NOT_FOUND (honesty rule from RFC-0015 §P2-B)
+        if not result.transitions:
+            return UMLDiagram(
+                diagram_type="state",
+                mermaid_type="stateDiagram-v2",
+                mermaid=render_state_mermaid(
+                    result.states, [], truncated=result.truncated
+                ),
+                nodes=result.states,
+                edges=[],
+                metadata={
+                    **base_metadata,
+                    "verdict": "NOT_FOUND",
+                    "next_step": (
+                        "state diagram found no enum members or match-pattern transitions; "
+                        "the class may not encode a finite-state machine in a pattern "
+                        "this heuristic recognises"
+                    ),
+                },
+            )
+
+        uml_edges = [UMLEdge(t.source, t.target, t.label) for t in result.transitions]
+        mermaid = render_state_mermaid(
+            result.states, result.transitions, truncated=result.truncated
+        )
+        return UMLDiagram(
+            diagram_type="state",
+            mermaid_type="stateDiagram-v2",
+            mermaid=mermaid,
+            nodes=result.states,
+            edges=uml_edges,
+            truncated=result.truncated,
+            metadata=base_metadata,
         )

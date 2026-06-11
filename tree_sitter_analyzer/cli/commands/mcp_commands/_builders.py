@@ -288,4 +288,8 @@ def _build_uml_tool_args(args: Any, output_format: str) -> dict[str, Any]:
         tool_args["class_name"] = class_name
     if getattr(args, "uml_include_tests", False):
         tool_args["include_tests"] = True
+    # P2-B: max_nodes for state diagrams (RFC-0015)
+    max_nodes = getattr(args, "uml_max_nodes", None)
+    if max_nodes is not None:
+        tool_args["max_nodes"] = max_nodes
     return tool_args

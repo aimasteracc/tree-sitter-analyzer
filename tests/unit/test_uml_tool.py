@@ -17,6 +17,10 @@ def test_uml_tool_definition() -> None:
 
 
 def test_uml_tool_schema_lists_diagrams() -> None:
+    # Re-pinned in P2-B (RFC-0015): 'state' added to enum.
+    # On this branch: ["class", "package", "component", "sequence", "state"]
+    # Integration note: when the activity branch (which adds 'activity') merges,
+    # this list must become [..., "activity", "state"] — COLLISION_WITH_ACTIVITY_BRANCH.
     tool = CodeGraphUMLTool()
     schema = tool.get_tool_schema()
 
@@ -25,6 +29,7 @@ def test_uml_tool_schema_lists_diagrams() -> None:
         "package",
         "component",
         "sequence",
+        "state",
     ]
 
 
