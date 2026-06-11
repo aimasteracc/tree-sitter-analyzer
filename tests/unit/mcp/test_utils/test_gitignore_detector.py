@@ -109,8 +109,13 @@ class TestFindGitignoreFiles:
 
         detector = GitignoreDetector()
         files = detector._find_gitignore_files(subdir)
-        assert len(files) == 2
-        assert sub_gitignore in files
+        # The detector short-circuits to current-dir-only when the path string
+        # contains tmp/temp: Linux /tmp/... and Windows ...\Temp\... hit it,
+        # macOS /private/var/folders/... does not. Pin each branch exactly.
+        if "tmp" in str(subdir).lower() or "temp" in str(subdir).lower():
+            assert files == [sub_gitignore]
+        else:
+            assert files == [sub_gitignore, root_gitignore]
 
     def test_temp_directory_only_current(self, tmp_path):
         """Test that temp directories only check current directory."""

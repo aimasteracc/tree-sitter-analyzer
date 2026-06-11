@@ -87,9 +87,15 @@ class TestProjectIndexManagerBuild:
 
     def test_build_creates_index(self, manager: ProjectIndexManager) -> None:
         """Test that build() returns a valid ProjectIndex."""
-        index = manager.build()
+        # Force the os.walk path: with fd installed the count differs (fd
+        # includes the __pycache__ file → 9), so pin the hermetic fallback
+        with patch(
+            "tree_sitter_analyzer.mcp.utils.project_index._filesystem.subprocess.run",
+            side_effect=FileNotFoundError("fd not found"),
+        ):
+            index = manager.build()
         assert isinstance(index, ProjectIndex)
-        assert index.file_count == 9
+        assert index.file_count == 8
 
     def test_language_distribution_correct(self, manager: ProjectIndexManager) -> None:
         """Test that Python and TypeScript files are counted correctly."""
