@@ -123,12 +123,55 @@ class TestFindClassName:
         cls = _make_elem(cls_name="Class", start_line=1, end_line=10)
         assert find_class_name(method, [cls]) == "foo"
 
-    def test_multiple_classes_picks_first(self):
+    def test_multiple_classes_picks_innermost(self):
+        """When method is inside two classes, the innermost (smallest span) wins."""
         method = _make_elem(start_line=8, end_line=10)
+        # cls1 span=11 (outer), cls2 span=7 (inner) — cls2 must win
         cls1 = _make_elem(name="A", cls_name="Class", start_line=1, end_line=12)
         cls2 = _make_elem(name="B", cls_name="Class", start_line=3, end_line=10)
-        result = find_class_name(method, [cls1, cls2])
-        assert result in ("A", "foo")
+        assert find_class_name(method, [cls1, cls2]) == "B"
+
+    # --- Issue #532: nested-container innermost-wins ---
+
+    def test_nested_container_innermost_wins(self):
+        """Method inside nested class → innermost (smallest span) class wins."""
+        # Outer: lines 1-20 (span=19), Inner: lines 5-10 (span=5)
+        # method on line 7 is inside BOTH — must get Inner.
+        method = _make_elem(name="m", start_line=7, end_line=8)
+        outer = _make_elem(name="Outer", cls_name="Class", start_line=1, end_line=20)
+        inner = _make_elem(name="Inner", cls_name="Class", start_line=5, end_line=10)
+        # Outer listed first (as plugins typically emit outer before inner)
+        assert find_class_name(method, [outer, inner]) == "Inner"
+
+    def test_nested_namespace_innermost_wins(self):
+        """TS namespace wrapping a class: method inside class → class, not namespace."""
+        # Namespace (class_type=namespace): lines 1-18
+        # BatchProcessor class: lines 3-17
+        # method on line 5
+        method = _make_elem(name="process", start_line=5, end_line=7)
+        namespace = _make_elem(
+            name="DataProcessing", cls_name="Class", start_line=1, end_line=18
+        )
+        cls = _make_elem(
+            name="BatchProcessor", cls_name="Class", start_line=3, end_line=17
+        )
+        # namespace listed first (as TypeScript extractor emits outer first)
+        assert find_class_name(method, [namespace, cls]) == "BatchProcessor"
+
+    def test_java_method_in_inner_class_gets_class_name(self):
+        """element_to_dict sets class_name for a function inside a nested class
+        even when is_method is not explicitly True (Java plugin doesn't set it)."""
+        inner_class = _make_elem(
+            name="InnerClass", cls_name="Class", start_line=3, end_line=7
+        )
+        method = _make_elem(
+            name="innerMethod",
+            cls_name="Function",
+            start_line=4,
+            end_line=6,
+        )
+        result = element_to_dict(method, all_elements=[inner_class, method])
+        assert result["class_name"] == "InnerClass"
 
 
 class TestFileAnalysisResult:
@@ -235,3 +278,45 @@ class TestCodeAnalysisError:
     def test_empty_language(self):
         result = code_analysis_error("", RuntimeError("fail"))
         assert result["language_info"]["language"] == "unknown"
+
+
+class TestLocalFunctionStaysUnowned:
+    """Codex P2 on #570: a function nested inside another FUNCTION's span
+    (local helper) is deliberately unowned — line containment in a class
+    must not ownerize it."""
+
+    def test_local_function_gets_no_class_name(self):
+        cls = _make_elem("Outer", cls_name="Class", start_line=1, end_line=30)
+        method = _make_elem("doWork", cls_name="Function", start_line=5, end_line=20)
+        local = _make_elem("inner", cls_name="Function", start_line=8, end_line=12)
+        elements = [cls, method, local]
+        d = element_to_dict(local, elements)
+        assert "class_name" not in d
+        d2 = element_to_dict(method, elements)
+        assert d2["class_name"] == "Outer"
+
+    def test_span_less_sibling_is_skipped(self):
+        """Elements without line attrs (line 70 guard) don't break containment."""
+
+        class Bare:
+            pass
+
+        bare = Bare()
+        bare.__class__.__name__ = "Function"
+        cls = _make_elem("Outer", cls_name="Class", start_line=1, end_line=30)
+        method = _make_elem("doWork", cls_name="Function", start_line=5, end_line=20)
+        d = element_to_dict(method, [cls, bare, method])
+        assert d["class_name"] == "Outer"
+
+    def test_span_less_class_is_skipped_in_find_class_name(self):
+        """A class-like element without line attrs (guard line) is skipped."""
+
+        class BareClass:
+            pass
+
+        bare = BareClass()
+        bare.__class__.__name__ = "Class"
+        bare.name = "Ghost"
+        cls = _make_elem("Outer", cls_name="Class", start_line=1, end_line=30)
+        method = _make_elem("doWork", cls_name="Function", start_line=5, end_line=20)
+        assert find_class_name(method, [bare, cls]) == "Outer"
