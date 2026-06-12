@@ -1031,3 +1031,139 @@ class TestPhpConstantsGuards:
         )
         assert var is not None
         assert var.name == "FAST"
+
+
+# ---------------------------------------------------------------------------
+# Issue #626: JS/TS function-local variables no longer over-captured
+# ---------------------------------------------------------------------------
+
+
+_JSTS_JS_SRC = """\
+const TOP_CONST = 1;
+let topLet = 2;
+var topVar = 3;
+if (flag) { const ifWrapped = 4; }
+try { const tryWrapped = 5; } catch (e) { const catchLocal = 6; }
+function f() { const localInFunc = 7; var hoisted = 8; }
+const fexpr = function () { const localInFexpr = 9; };
+const arrow = () => { const localInArrow = 10; };
+function* gen() { const localInGen = 11; }
+const genExpr = function* () { const localInGenExpr = 12; };
+class C {
+  m() { const localInMethod = 13; }
+  static { const staticBlockLocal = 14; }
+}
+"""
+
+_JSTS_TS_SRC = """\
+const TOP_CONST = 1;
+let topLet = 2;
+var topVar = 3;
+namespace NS {
+  const nsConst = 4;
+  export const NS_EXPORTED = 5;
+}
+module M { const mConst = 6; }
+declare module "ext" { const ambientConst: number; }
+function f(): void { const localInFunc = 7; }
+class C { m(): void { const localInMethod = 8; } }
+const arrow = (): void => { const localInArrow = 9; };
+"""
+
+
+class TestJsTsLocalVariableContraction:
+    """Issue #626 — JS/TS function-local declarators must NOT reach
+    ast_symbol_rows; module/top-level (incl. if/try-wrapped, #612 guarantee)
+    and TS namespace-level declarators stay kind="variable"."""
+
+    def _variables(self, src: str, lang: str) -> list[str]:
+        return sorted(
+            s["name"] for s in _symbols_for(src, lang) if s["kind"] == "variable"
+        )
+
+    def test_js_exactly_the_module_level_declarators_survive(self):
+        # catchLocal: a module-level catch block is a statement_block outside
+        # any function — kept by design (statement_block deliberately absent
+        # from the scope set, preserving the #612 if/try guarantee).
+        assert self._variables(_JSTS_JS_SRC, "javascript") == [
+            "TOP_CONST",
+            "arrow",
+            "catchLocal",
+            "fexpr",
+            "genExpr",
+            "ifWrapped",
+            "topLet",
+            "topVar",
+            "tryWrapped",
+        ]
+
+    def test_js_function_and_generator_locals_dropped(self):
+        names = self._variables(_JSTS_JS_SRC, "javascript")
+        for local in (
+            "localInFunc",
+            "hoisted",
+            "localInFexpr",
+            "localInGen",
+            "localInGenExpr",
+        ):
+            assert local not in names
+
+    def test_js_arrow_method_and_static_block_locals_dropped(self):
+        names = self._variables(_JSTS_JS_SRC, "javascript")
+        for local in ("localInArrow", "localInMethod", "staticBlockLocal"):
+            assert local not in names
+
+    def test_ts_module_and_namespace_level_declarators_survive(self):
+        assert self._variables(_JSTS_TS_SRC, "typescript") == [
+            "NS_EXPORTED",
+            "TOP_CONST",
+            "ambientConst",
+            "arrow",
+            "mConst",
+            "nsConst",
+            "topLet",
+            "topVar",
+        ]
+
+    def test_ts_locals_dropped(self):
+        names = self._variables(_JSTS_TS_SRC, "typescript")
+        for local in ("localInFunc", "localInMethod", "localInArrow"):
+            assert local not in names
+
+    def test_tsx_maps_to_typescript_language_id(self):
+        # The ast_cache path only ever delivers "javascript"/"typescript" for
+        # this family — .tsx (and .jsx -> "javascript") included — so the
+        # language gate on those two ids covers every indexed file.
+        from tree_sitter_analyzer._lang_extension_map import EXT_TO_LANG
+
+        assert EXT_TO_LANG[".tsx"] == "typescript"
+        assert EXT_TO_LANG[".jsx"] == "javascript"
+
+    def test_tsx_shaped_source_contracts_under_typescript_id(self):
+        # JSX-free .tsx content goes down the identical typescript path.
+        # (Known limitation, NOT pinned: .tsx WITH JSX is parsed by the
+        # typescript grammar — ERROR recovery flattens function bodies, so
+        # locals in broken regions may survive; pre-existing, outside #626.)
+        src = "const TOP = 1;\nfunction Comp() { const inner = 2; }\n"
+        assert self._variables(src, "typescript") == ["TOP"]
+
+    def test_java_locals_unaffected(self):
+        # Java is the separate follow-up PR (#626 part 2) — its function
+        # locals must still be captured by this change.
+        src = "class A { void m() { int local = 1; } }\n"
+        assert self._variables(src, "java") == ["local"]
+
+
+class TestJsTsErrorRegionHardening:
+    """Codex P2 on #629: declarations inside error-recovered regions have
+    undecidable scope — they must not be emitted (better unindexed than a
+    function-local masquerading as a module symbol)."""
+
+    def test_declaration_inside_error_node_not_emitted(self):
+        # Deliberately broken TSX-ish source that forces ERROR recovery at
+        # the point of the declaration.
+        src = "const Comp = () => {\n  const Math = 1;\n  return <div//;\n};\nconst TOP = 2;\n"
+        syms = _symbols_for(src, "typescript")
+        names = [s["name"] for s in syms if s["kind"] == "variable"]
+        assert "Math" not in names
+        assert "TOP" in names
