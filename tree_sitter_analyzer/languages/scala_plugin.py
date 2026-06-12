@@ -546,11 +546,20 @@ class ScalaElementExtractor(ElementExtractor):
                 if sub.type == "with":
                     seen_with = True
                     continue
-                if sub.type == "type_identifier":
+                if sub.type in (
+                    "type_identifier",
+                    # Codex P2 on #585: Base[String] parses as generic_type,
+                    # pkg.M as stable_type_identifier — accept all three and
+                    # strip type arguments from the generic form.
+                    "generic_type",
+                    "stable_type_identifier",
+                ):
+                    raw = self._get_node_text(sub)
+                    name_text = raw.split("[")[0].strip()
                     if superclass is None and not seen_with:
-                        superclass = self._get_node_text(sub)
+                        superclass = name_text
                     else:
-                        interfaces.append(self._get_node_text(sub))
+                        interfaces.append(name_text)
             break  # at most one extends_clause per declaration
 
         return superclass, interfaces

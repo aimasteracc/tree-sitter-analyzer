@@ -244,3 +244,29 @@ class TestKotlinPrimaryConstructors:
     def test_ctor_language_kotlin(self, functions: list) -> None:
         ctor = next(f for f in functions if f.name == "Point")
         assert ctor.language == "kotlin"
+
+
+class TestScalaQualifiedGenericInheritance:
+    """Codex P2 on #585: Base[String] (generic_type) and pkg.M
+    (stable_type_identifier) must extract like bare type_identifiers."""
+
+    CODE = """
+package demo
+class C extends Base[String] with pkg.M with Other
+"""
+
+    def test_generic_and_qualified_parents(self):
+        import tree_sitter
+        import tree_sitter_scala
+
+        from tree_sitter_analyzer.languages.scala_plugin import (
+            ScalaElementExtractor,
+        )
+
+        lang = tree_sitter.Language(tree_sitter_scala.language())
+        tree = tree_sitter.Parser(lang).parse(self.CODE.encode())
+        classes = ScalaElementExtractor().extract_classes(tree, self.CODE)
+        c = [k for k in classes if k.name == "C"]
+        assert len(c) == 1
+        assert c[0].superclass == "Base"
+        assert c[0].interfaces == ["pkg.M", "Other"]
