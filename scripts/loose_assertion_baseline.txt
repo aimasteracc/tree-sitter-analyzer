@@ -1,15 +1,30 @@
 # Loose assertion ratchet baseline (Layer 2 prep — informational, not yet CI-enforced)
 #
-# METHODOLOGY NOTE (2026-06-11, conscious change): the original plan
-# (.recon/ge-assertion-ratchet-plan.md) measured with a BROADER pattern
-# (incl. <= and < bounds): 2121 pre-batch-1 / 2096 post-batch-1.
-# The baseline now uses the ENFORCEMENT-ALIGNED pattern — the same family
-# the CI script (scripts/check_loose_assertions.sh) blocks — so the
-# ratchet is self-consistent: what we count is what we block.
+# METHODOLOGY NOTE (2026-06-12, conscious re-pin — AST counter supersedes grep):
 #
+# Counter history:
+#   grep (original, 2026-06-11)                  : 1230
+#   grep (post batch-13 PR #584)                  : 1180
+#   AST  (this PR, measured on same HEAD as #584) : 1083
+#
+# Why AST < grep (~97 fewer false positives removed by the AST approach):
+#   1. Multi-line asserts where ">=" appears on a continuation line were
+#      invisible to grep (it saw only the line with "assert", not the line
+#      with ">="). These are now caught — but many were already exact (==)
+#      chained compares or had exemption markers, so net new detections < 97.
+#   2. Lines containing "==" elsewhere on the same assert were skipped by
+#      the grep rule (any == → skip), but the AST checker skips only if
+#      the assert *test expression* contains an Eq compare. Some asserts had
+#      "==" in a different sub-expression and were counted by grep but not
+#      by AST.
+#   3. String literals containing ">=" (e.g. version specs) are naturally
+#      excluded by AST parsing; grep had a partial workaround that missed
+#      some cases.
+#
+# The AST count is the authoritative baseline going forward.
 # The count must only decrease (or stay equal). Each Layer-2 batch PR
 # re-measures and lowers it. Numbers are MEASURED, never hand-derived.
 
-BASELINE_COUNT=1168
+BASELINE_COUNT=1083
 MEASUREMENT_DATE=2026-06-12
-MEASUREMENT_COMMAND="grep -rEn \"assert .*(>= [0-9]|> 0([^0-9]|\$))\" tests/ --include=\"*.py\" | grep -v \"ratchet: nondeterministic\" | wc -l"
+MEASUREMENT_COMMAND="uv run python scripts/check_loose_assertions.py --baseline"
