@@ -259,7 +259,7 @@ def _kotlin_expression_body_type(
     if body.child_count < 2:
         return ""
     expr = body.children[1]
-    if expr.type == "string_literal":
+    if expr.type in ("string_literal", "multiline_string_literal"):
         return "String"
     if expr.type == "float_literal":
         return "Double"

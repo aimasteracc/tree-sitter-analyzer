@@ -183,3 +183,11 @@ class LegacyUserManager {
 """
     )
     assert funcs["get"].return_type == "String"
+
+
+def test_expression_body_raw_string_is_string():
+    """Codex P2 on #593: multiline_string_literal ("raw strings") are the
+    same trivial String case as string_literal."""
+    source = "fun raw() = " + '"""' + "x" + '"""'
+    funcs = _functions(source)
+    assert funcs["raw"].return_type == "String"
