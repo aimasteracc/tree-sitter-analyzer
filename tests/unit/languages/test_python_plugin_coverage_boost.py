@@ -47,7 +47,11 @@ def test_python_plugin_basic(plugin):
     tree = _parse(plugin, code)
     elements = plugin.extract_elements(tree, code)
     assert elements is not None
-    assert len(elements) > 0
+    assert len(elements) == 4
+    assert len(elements["functions"]) == 3
+    assert len(elements["classes"]) == 1
+    assert len(elements["imports"]) == 2
+    assert len(elements["variables"]) == 0
 
 
 class TestExtractImportsManual:
@@ -55,7 +59,7 @@ class TestExtractImportsManual:
         code = "import os\nimport sys\n"
         tree = _parse(plugin, code)
         imports = extractor._extract_imports_manual(tree.root_node, code)
-        assert len(imports) >= 2
+        assert len(imports) == 2
         names = [i.name for i in imports]
         assert "os" in names
         assert "sys" in names
@@ -64,7 +68,7 @@ class TestExtractImportsManual:
         code = "from os.path import join, exists\n"
         tree = _parse(plugin, code)
         imports = extractor._extract_imports_manual(tree.root_node, code)
-        assert len(imports) >= 1
+        assert len(imports) == 1
         imp = imports[0]
         assert imp.module_name == "os.path"
         assert "join" in imp.imported_names
@@ -74,7 +78,7 @@ class TestExtractImportsManual:
         code = "from collections import OrderedDict\n"
         tree = _parse(plugin, code)
         imports = extractor._extract_imports_manual(tree.root_node, code)
-        assert len(imports) >= 1
+        assert len(imports) == 1
         assert "collections" in imports[0].module_name
 
     def test_empty_code(self, extractor, plugin):
@@ -104,7 +108,7 @@ class TestExtractPackages:
             plugin = PythonPlugin()
             tree = _parse(plugin, "# test\n")
             packages = extractor.extract_packages(tree, "")
-            assert len(packages) >= 1
+            assert len(packages) == 1
             assert packages[0].name == "mypkg"
 
     def test_no_init_file(self, extractor):
@@ -167,7 +171,7 @@ class TestExtractDecoratorsFromNode:
             return result
 
         func_nodes = find_nodes(tree.root_node, "function_definition")
-        assert len(func_nodes) >= 1
+        assert len(func_nodes) == 1
         decorators = extractor._extract_decorators_from_node(func_nodes[0], code)
         assert "property" in decorators
 
@@ -203,7 +207,7 @@ class TestExtractReturnTypeFromNode:
             return result
 
         func_nodes = find_nodes(tree.root_node, "function_definition")
-        assert len(func_nodes) >= 1
+        assert len(func_nodes) == 1
         ret = extractor._extract_return_type_from_node(func_nodes[0], code)
         assert ret is not None and "str" in ret
 
@@ -277,7 +281,7 @@ class TestExtractFunctionBody:
             return result
 
         func_nodes = find_nodes(tree.root_node, "function_definition")
-        assert len(func_nodes) >= 1
+        assert len(func_nodes) == 1
         body = extractor._extract_function_body(func_nodes[0], code)
         assert "x = 1" in body
 
@@ -296,7 +300,7 @@ class TestExtractSuperclassesFromNode:
             return result
 
         class_nodes = find_nodes(tree.root_node, "class_definition")
-        assert len(class_nodes) >= 1
+        assert len(class_nodes) == 1
         supers = extractor._extract_superclasses_from_node(class_nodes[0], code)
         assert "Base" in supers
 
@@ -326,7 +330,7 @@ class TestCalculateComplexity:
     def test_with_branches(self, extractor):
         body = "if x:\n    pass\nelif y:\n    pass\nfor i in range(10):\n    pass"
         c = extractor._calculate_complexity(body)
-        assert c >= 3
+        assert c == 3
 
 
 class TestExtractDetailedFunctionInfo:
@@ -343,7 +347,7 @@ class TestExtractDetailedFunctionInfo:
             return result
 
         func_nodes = find_nodes(tree.root_node, "function_definition")
-        assert len(func_nodes) >= 1
+        assert len(func_nodes) == 1
         info = extractor._extract_detailed_function_info(
             func_nodes[0], code, is_async=True
         )
@@ -363,7 +367,7 @@ class TestExtractDetailedFunctionInfo:
             return result
 
         func_nodes = find_nodes(tree.root_node, "function_definition")
-        assert len(func_nodes) >= 1
+        assert len(func_nodes) == 1
         info = extractor._extract_detailed_function_info(func_nodes[0], code)
         assert info is not None
         assert info.name == "__init__"
@@ -382,7 +386,7 @@ class TestExtractDetailedFunctionInfo:
             return result
 
         func_nodes = find_nodes(tree.root_node, "function_definition")
-        assert len(func_nodes) >= 1
+        assert len(func_nodes) == 1
         info = extractor._extract_detailed_function_info(func_nodes[0], code)
         assert info is not None
         assert info.name == "_internal"

@@ -29,7 +29,9 @@
 #   batch-14 (AST): 1083 -> 1026, 2026-06-12 (56 pins in top-4 AST-ranked
 #   files; pre-batch measure on base ca8e9927 was 1082 — develop had
 #   already dropped 1 since the 1083 recording).
+#   batch-15 (AST): 1026 -> 977, 2026-06-13 (49 pins in top-4 AST-ranked
+#   files).
 
-BASELINE_COUNT=1026
-MEASUREMENT_DATE=2026-06-12
+BASELINE_COUNT=977
+MEASUREMENT_DATE=2026-06-13
 MEASUREMENT_COMMAND="uv run python scripts/check_loose_assertions.py --baseline"
