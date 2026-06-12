@@ -465,7 +465,13 @@ def _build_php_constant_variable(
     visibility: str,
 ) -> Variable | None:
     """Build a ``Variable`` from one ``const_element`` AST child."""
+    # tree-sitter-php const_element carries NO ``name`` field — the
+    # identifier is a bare ``name`` child (#624; the field lookup silently
+    # dropped every const). Keep the field lookup first for grammar
+    # forward-compatibility, then fall back to the child scan.
     name_node = element_node.child_by_field_name("name")
+    if name_node is None:
+        name_node = next((c for c in element_node.children if c.type == "name"), None)
     if name_node is None:
         return None
     name = get_node_text(name_node)

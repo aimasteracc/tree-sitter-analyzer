@@ -136,11 +136,12 @@ class TestReturnTypeAndParamsSerialized:
 
 
 class TestExtractorVersionBump:
-    def test_extractor_version_is_6_in_both_sites(self):
+    def test_extractor_version_is_7_in_both_sites(self):
+        # v7: #624 — PHP const declarations extracted as kind="constant".
         from tree_sitter_analyzer import _ast_cache_indexer, ast_cache
 
-        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 6
-        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 6
+        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 7
+        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 7
 
 
 class TestCodexP2sOn621:
