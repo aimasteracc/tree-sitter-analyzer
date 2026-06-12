@@ -172,6 +172,26 @@ _CLASS_TYPE_MAP = {
 
 _BASE_TYPE_NODES = frozenset(["type_identifier", "generic_name", "qualified_name"])
 
+_ACCESS_MODIFIERS = ("public", "private", "protected", "internal")
+
+
+def _apply_interface_implicit_public(
+    node: Any, modifiers: list[str], visibility: str
+) -> str:
+    """C# interface members without an explicit access modifier are public.
+
+    Applies to methods, properties and events alike (#536, Codex P2 on the
+    method-only first cut). Parent chain:
+    ``<member>_declaration → declaration_list → interface_declaration``.
+    """
+    if visibility != "private" or any(m in modifiers for m in _ACCESS_MODIFIERS):
+        return visibility
+    parent = getattr(node, "parent", None)
+    grandparent = getattr(parent, "parent", None) if parent is not None else None
+    if getattr(grandparent, "type", None) == "interface_declaration":
+        return "public"
+    return visibility
+
 
 # Extract elements from AST: extract_class_declaration
 def extract_class_declaration(
@@ -252,21 +272,9 @@ def extract_method_declaration(
 
         method_name = get_node_text(name_node)
         modifiers = extract_modifiers_fn(node)
-        visibility = determine_visibility(modifiers)
-        # C# interface members have no access modifier — they are implicitly public.
-        # The parent chain is: method_declaration → declaration_list → interface_declaration.
-        if visibility == "private" and not any(
-            m in modifiers for m in ("public", "private", "protected", "internal")
-        ):
-            parent = getattr(node, "parent", None)
-            grandparent = (
-                getattr(parent, "parent", None) if parent is not None else None
-            )
-            if (
-                grandparent is not None
-                and getattr(grandparent, "type", None) == "interface_declaration"
-            ):
-                visibility = "public"
+        visibility = _apply_interface_implicit_public(
+            node, modifiers, determine_visibility(modifiers)
+        )
         is_async = "async" in modifiers
         attributes = extract_attributes_fn(node)
 
@@ -357,7 +365,9 @@ def extract_property_declaration(
 
         property_name = get_node_text(name_node)
         modifiers = extract_modifiers_fn(node)
-        visibility = determine_visibility(modifiers)
+        visibility = _apply_interface_implicit_public(
+            node, modifiers, determine_visibility(modifiers)
+        )
         attributes = extract_attributes_fn(node)
 
         type_node = node.child_by_field_name("type")
@@ -471,7 +481,9 @@ def extract_event_declaration(
     try:
         modifiers = extract_modifiers_fn(node)
         modifiers.append("event")
-        visibility = determine_visibility(modifiers)
+        visibility = _apply_interface_implicit_public(
+            node, modifiers, determine_visibility(modifiers)
+        )
         attributes = extract_attributes_fn(node)
         variable_declaration = _find_variable_declaration(node)
         type_node = (

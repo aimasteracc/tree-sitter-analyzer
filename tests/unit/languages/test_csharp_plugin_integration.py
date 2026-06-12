@@ -494,3 +494,32 @@ namespace MyApp
             assert fn.visibility == "public", (
                 f"IUserRepository.{name}: expected public, got {fn.visibility!r}"
             )
+
+
+class TestCSharpInterfacePropertyEventVisibility:
+    """Codex P2 on #564: implicit-public must cover properties and events,
+    not just methods."""
+
+    CODE = """
+public interface IFoo
+{
+    string Name { get; }
+    event EventHandler Changed;
+}
+"""
+
+    def test_interface_property_is_public(self):
+        plugin = CSharpPlugin()
+        tree = get_tree_for_code(self.CODE, plugin)
+        functions = plugin.extractor.extract_functions(tree, self.CODE)
+        props = [f for f in functions if f.name == "Name"]
+        assert len(props) == 1
+        assert props[0].visibility == "public"
+
+    def test_interface_event_is_public(self):
+        plugin = CSharpPlugin()
+        tree = get_tree_for_code(self.CODE, plugin)
+        variables = plugin.extractor.extract_variables(tree, self.CODE)
+        events = [v for v in variables if v.name == "Changed"]
+        assert len(events) == 1
+        assert events[0].visibility == "public"
