@@ -17,28 +17,28 @@ class TestJavaScriptExtendedQueries:
 
     def test_query_count_comprehensive(self):
         """Test that JavaScript has comprehensive query coverage"""
-        # JavaScript should have 85+ queries
-        assert len(js_queries.ALL_QUERIES) >= 85
+        assert len(js_queries.ALL_QUERIES) == 87
         print(f"Total JavaScript queries: {len(js_queries.ALL_QUERIES)}")
 
     def test_function_queries_comprehensive(self):
         """Test comprehensive function query coverage"""
-        function_queries = [
-            "function",
-            "function_declaration",
-            "function_expression",
-            "arrow_function",
-            "method_definition",
-            "async_function",
-            "generator_function",
-        ]
+        # Exact stripped query-source lengths (update when query strings change)
+        function_query_lens = {
+            "function": 32,
+            "function_declaration": 176,
+            "function_expression": 175,
+            "arrow_function": 108,
+            "method_definition": 177,
+            "async_function": 201,
+            "generator_function": 184,
+        }
 
-        for query_name in function_queries:
+        for query_name, expected_len in function_query_lens.items():
             assert query_name in js_queries.ALL_QUERIES
             query_data = js_queries.ALL_QUERIES[query_name]
             assert "query" in query_data
             assert "description" in query_data
-            assert len(query_data["query"].strip()) > 0
+            assert len(query_data["query"].strip()) == expected_len
 
     def test_class_queries_comprehensive(self):
         """Test comprehensive class query coverage"""
@@ -201,8 +201,15 @@ class TestJavaScriptExtendedQueries:
             # Check content
             assert isinstance(query_data["query"], str)
             assert isinstance(query_data["description"], str)
-            assert len(query_data["query"].strip()) > 0
-            assert len(query_data["description"].strip()) > 0
+
+        # Pin minimum observed lengths (exact facts; update when query strings change)
+        assert (
+            min(len(d["query"].strip()) for d in js_queries.ALL_QUERIES.values()) == 16
+        )
+        assert (
+            min(len(d["description"].strip()) for d in js_queries.ALL_QUERIES.values())
+            == 15
+        )
 
     def test_query_syntax_validation(self):
         """Test basic syntax validation for queries"""
@@ -256,11 +263,13 @@ class TestJavaScriptExtendedQueries:
         for query_name, query_data in js_queries.ALL_QUERIES.items():
             description = query_data["description"]
 
-            # Description should be meaningful
-            assert len(description) > 10, f"Description for {query_name} is too short"
             assert not description.lower().startswith("todo"), (
                 f"Description for {query_name} appears to be a placeholder"
             )
+
+        # Pin minimum observed description length (exact fact; update when
+        # descriptions change)
+        assert min(len(d["description"]) for d in js_queries.ALL_QUERIES.values()) == 15
 
     def test_utility_functions(self):
         """Test utility functions"""
@@ -268,19 +277,19 @@ class TestJavaScriptExtendedQueries:
         if hasattr(js_queries, "get_query"):
             functions_query = js_queries.get_query("functions")
             assert isinstance(functions_query, str)
-            assert len(functions_query) > 0
+            assert len(functions_query) == 658
 
         # Test get_all_queries function
         if hasattr(js_queries, "get_all_queries"):
             all_queries = js_queries.get_all_queries()
             assert isinstance(all_queries, dict)
-            assert len(all_queries) >= 85
+            assert len(all_queries) == 87
 
         # Test list_queries function
         if hasattr(js_queries, "list_queries"):
             query_names = js_queries.list_queries()
             assert isinstance(query_names, list)
-            assert len(query_names) >= 85
+            assert len(query_names) == 87
 
     def test_consistency_with_constants(self):
         """Test consistency between constants and ALL_QUERIES"""
@@ -353,9 +362,8 @@ class TestJavaScriptQueryComparison:
         """Test that JavaScript has comprehensive coverage"""
         js_count = len(js_queries.ALL_QUERIES)
 
-        # JavaScript should have 85+ queries
-        assert js_count >= 85, (
-            f"JavaScript should have at least 85 queries, got {js_count}"
+        assert js_count == 87, (
+            f"JavaScript should have exactly 87 queries, got {js_count}"
         )
 
     def test_javascript_vs_typescript_features(self):

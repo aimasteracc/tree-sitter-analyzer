@@ -17,20 +17,21 @@ class TestTypeScriptExtendedQueries:
 
     def test_new_function_queries(self):
         """Test new function-specific queries"""
-        function_queries = [
-            "function_declaration",
-            "arrow_function",
-            "method_definition",
-            "async_function",
-        ]
+        # Exact stripped (query, description) lengths (update when strings change)
+        function_query_lens = {
+            "function_declaration": (236, 33),
+            "arrow_function": (156, 27),
+            "method_definition": (221, 30),
+            "async_function": (257, 34),
+        }
 
-        for query_name in function_queries:
+        for query_name, (query_len, desc_len) in function_query_lens.items():
             assert query_name in ts_queries.ALL_QUERIES
             query_data = ts_queries.ALL_QUERIES[query_name]
             assert "query" in query_data
             assert "description" in query_data
-            assert len(query_data["query"].strip()) > 0
-            assert len(query_data["description"].strip()) > 0
+            assert len(query_data["query"].strip()) == query_len
+            assert len(query_data["description"].strip()) == desc_len
 
     def test_new_class_queries(self):
         """Test new class-specific queries"""
@@ -225,8 +226,7 @@ class TestTypeScriptExtendedQueries:
 
     def test_query_count(self):
         """Test that we have the expected number of queries"""
-        # We should have 82 queries total
-        assert len(ts_queries.ALL_QUERIES) >= 80
+        assert len(ts_queries.ALL_QUERIES) == 83
         print(f"Total TypeScript queries: {len(ts_queries.ALL_QUERIES)}")
 
     def test_all_queries_have_valid_structure(self):
@@ -241,12 +241,15 @@ class TestTypeScriptExtendedQueries:
             # Check content
             assert isinstance(query_data["query"], str)
             assert isinstance(query_data["description"], str)
-            assert len(query_data["query"].strip()) > 0
-            assert len(query_data["description"].strip()) > 0
 
             # Check description quality
-            assert len(query_data["description"]) > 10
             assert not query_data["description"].lower().startswith("todo")
+
+        # Pin minimum observed lengths (exact facts; update when strings change)
+        queries = ts_queries.ALL_QUERIES
+        assert min(len(d["query"].strip()) for d in queries.values()) == 18
+        assert min(len(d["description"].strip()) for d in queries.values()) == 18
+        assert min(len(d["description"]) for d in queries.values()) == 18
 
     def test_query_syntax_basic_validation(self):
         """Test basic syntax validation for queries"""
@@ -341,11 +344,12 @@ class TestTypeScriptExtendedQueries:
 
     def test_query_descriptions_meaningful(self):
         """Test that query descriptions are meaningful and specific"""
+        # Pin minimum observed description length (exact fact; update when
+        # descriptions change)
+        assert min(len(d["description"]) for d in ts_queries.ALL_QUERIES.values()) == 18
+
         for query_name, query_data in ts_queries.ALL_QUERIES.items():
             description = query_data["description"]
-
-            # Should be descriptive
-            assert len(description) > 15
 
             # Should contain action word
             action_words = ["search", "find", "extract", "match", "locate"]
@@ -377,7 +381,7 @@ class TestTypeScriptExtendedQueries:
 
         # Test get_all_queries function
         all_queries = ts_queries.get_all_queries()
-        assert len(all_queries) >= 80
+        assert len(all_queries) == 83
         assert "union_type" in all_queries
         assert "as_expression" in all_queries
 
@@ -396,9 +400,8 @@ class TestTypeScriptQueryComparison:
         """Test that TypeScript has more queries than JavaScript"""
         ts_count = len(ts_queries.ALL_QUERIES)
 
-        # TypeScript should have significantly more queries due to type system
-        assert ts_count >= 80, (
-            f"TypeScript should have at least 80 queries, got {ts_count}"
+        assert ts_count == 83, (
+            f"TypeScript should have exactly 83 queries, got {ts_count}"
         )
 
         # Check TypeScript-specific features not in JavaScript
