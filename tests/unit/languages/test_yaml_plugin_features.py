@@ -272,7 +272,7 @@ class TestYAMLComplexStructures:
         tree = get_tree_for_code(COMPLEX_YAML_CODE, plugin)
         elements = plugin.extractor.extract_yaml_elements(tree, COMPLEX_YAML_CODE)
 
-        assert len(elements) >= 10
+        assert len(elements) == 37
 
     def test_extract_services_structure(self):
         """Test extraction of services structure."""
@@ -293,7 +293,7 @@ class TestYAMLComplexStructures:
         service_keys = [
             e.key for e in elements if e.key in ["web", "database", "cache"]
         ]
-        assert len(service_keys) >= 1
+        assert len(service_keys) == 3
 
     def test_extract_environment_variables(self):
         """Test extraction of environment variables."""
@@ -302,7 +302,7 @@ class TestYAMLComplexStructures:
         elements = plugin.extractor.extract_yaml_elements(tree, COMPLEX_YAML_CODE)
 
         env_elements = [e for e in elements if e.key == "environment"]
-        assert len(env_elements) >= 1
+        assert len(env_elements) == 2
 
     def test_extract_volumes(self):
         """Test extraction of volumes."""
@@ -336,7 +336,7 @@ class TestYAMLMultiDocument:
         elements = plugin.extractor.extract_yaml_elements(tree, MULTI_DOCUMENT_CODE)
 
         document_elements = [e for e in elements if e.element_type == "document"]
-        assert len(document_elements) >= 2
+        assert len(document_elements) == 3
 
     def test_extract_document_content(self):
         """Test extraction of document content."""
@@ -344,7 +344,7 @@ class TestYAMLMultiDocument:
         tree = get_tree_for_code(MULTI_DOCUMENT_CODE, plugin)
         elements = plugin.extractor.extract_yaml_elements(tree, MULTI_DOCUMENT_CODE)
 
-        assert len(elements) >= 3
+        assert len(elements) == 9
 
     def test_document_indices(self):
         """Test that document indices are captured."""
@@ -353,7 +353,7 @@ class TestYAMLMultiDocument:
         elements = plugin.extractor.extract_yaml_elements(tree, MULTI_DOCUMENT_CODE)
 
         multi_doc_elements = [e for e in elements if e.document_index > 0]
-        assert len(multi_doc_elements) >= 1
+        assert len(multi_doc_elements) == 6
 
 
 @pytest.mark.skipif(not YAML_AVAILABLE, reason="tree-sitter-yaml not installed")
@@ -399,7 +399,7 @@ class TestYAMLScalarTypes:
         boolean_elements = [
             e for e in elements if e.key in ["boolean_true", "boolean_false"]
         ]
-        assert len(boolean_elements) >= 2
+        assert len(boolean_elements) == 2
 
     def test_extract_null_scalar(self):
         """Test extraction of null scalar."""
@@ -453,7 +453,7 @@ class TestYAMLCommentRecognition:
         elements = plugin.extractor.extract_yaml_elements(tree, COMMENT_CODE)
 
         comment_elements = [e for e in elements if e.element_type == "comment"]
-        assert len(comment_elements) >= 1
+        assert len(comment_elements) == 11
 
     def test_extract_inline_comment(self):
         """Test extraction of inline comment."""
@@ -462,7 +462,7 @@ class TestYAMLCommentRecognition:
         elements = plugin.extractor.extract_yaml_elements(tree, COMMENT_CODE)
 
         comment_elements = [e for e in elements if e.element_type == "comment"]
-        assert len(comment_elements) >= 1
+        assert len(comment_elements) == 11
 
     def test_extract_block_comment(self):
         """Test extraction of block comment."""
@@ -471,7 +471,7 @@ class TestYAMLCommentRecognition:
         elements = plugin.extractor.extract_yaml_elements(tree, COMMENT_CODE)
 
         comment_elements = [e for e in elements if e.element_type == "comment"]
-        assert len(comment_elements) >= 1
+        assert len(comment_elements) == 11
 
 
 @pytest.mark.skipif(not YAML_AVAILABLE, reason="tree-sitter-yaml not installed")
@@ -484,10 +484,8 @@ class TestYAMLQueryAccuracy:
         tree = get_tree_for_code(KEY_VALUE_CODE, plugin)
         elements = plugin.extractor.extract_yaml_elements(tree, KEY_VALUE_CODE)
 
-        for element in elements:
-            if element.element_type == "mapping":
-                assert element.key is not None
-                assert len(element.key) > 0
+        mapping_keys = [e.key for e in elements if e.element_type == "mapping"]
+        assert all(k is not None and k for k in mapping_keys)
 
     def test_list_query_accuracy(self):
         """Test that list query accurately identifies lists."""
@@ -496,7 +494,7 @@ class TestYAMLQueryAccuracy:
         elements = plugin.extractor.extract_yaml_elements(tree, LIST_CODE)
 
         sequence_elements = [e for e in elements if e.element_type == "sequence"]
-        assert len(sequence_elements) >= 1
+        assert len(sequence_elements) == 8
 
     def test_nested_structure_query_accuracy(self):
         """Test that nested structure query is accurate."""
@@ -505,7 +503,7 @@ class TestYAMLQueryAccuracy:
         elements = plugin.extractor.extract_yaml_elements(tree, NESTED_STRUCTURE_CODE)
 
         nested_elements = [e for e in elements if e.nesting_level > 0]
-        assert len(nested_elements) >= 1
+        assert len(nested_elements) == 25
 
     def test_anchor_alias_query_accuracy(self):
         """Test that anchor/alias query is accurate."""
@@ -515,7 +513,8 @@ class TestYAMLQueryAccuracy:
 
         anchor_elements = [e for e in elements if e.element_type == "anchor"]
         alias_elements = [e for e in elements if e.element_type == "alias"]
-        assert len(anchor_elements) >= 1 or len(alias_elements) >= 1
+        assert len(anchor_elements) == 3
+        assert len(alias_elements) == 6
 
     def test_multi_document_query_accuracy(self):
         """Test that multi-document query is accurate."""
@@ -524,7 +523,7 @@ class TestYAMLQueryAccuracy:
         elements = plugin.extractor.extract_yaml_elements(tree, MULTI_DOCUMENT_CODE)
 
         document_elements = [e for e in elements if e.element_type == "document"]
-        assert len(document_elements) >= 2
+        assert len(document_elements) == 3
 
     def test_scalar_type_query_accuracy(self):
         """Test that scalar type query is accurate."""
@@ -564,9 +563,8 @@ class TestYAMLQueryAccuracy:
         tree = get_tree_for_code(KEY_VALUE_CODE, plugin)
         elements = plugin.extractor.extract_yaml_elements(tree, KEY_VALUE_CODE)
 
-        for element in elements:
-            assert element.start_line > 0
-            assert element.end_line >= element.start_line
+        assert min(e.start_line for e in elements) == 2
+        assert all(e.end_line >= e.start_line for e in elements)
 
     def test_value_type_accuracy(self):
         """Test that value types are accurately identified."""
