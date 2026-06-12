@@ -39,7 +39,8 @@ except sqlite3.OperationalError:
     _FTS5_AVAILABLE = False
 
 pytestmark = pytest.mark.skipif(
-    not _FTS5_AVAILABLE, reason="SQLite FTS5 extension not available"
+    not _FTS5_AVAILABLE,
+    reason="SQLite FTS5 extension not available; tracked: optional sqlite build capability",
 )
 
 # The pre-#604 DDL (no tokenize= clause → default unicode61, no stemming).
