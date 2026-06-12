@@ -184,9 +184,7 @@ async function asyncFunction() {
         )
 
         assert result.returncode == 0, f"CLI failed with stderr: {result.stderr}"
-        assert len(result.stdout) > 0, (
-            "No output from CLI"
-        )  # ratchet: nondeterministic uuid-in-output-path
+        assert len(result.stdout) > 0  # ratchet: nondeterministic uuid-in-output-path
 
         # 関数が見つかることを確認（具体的な名前は実装依存）
         output = result.stdout.lower()
@@ -209,9 +207,7 @@ async function asyncFunction() {
         )
 
         assert result.returncode == 0, f"CLI failed with stderr: {result.stderr}"
-        assert len(result.stdout) > 0, (
-            "No output from CLI"
-        )  # ratchet: nondeterministic uuid-in-output-path
+        assert len(result.stdout) > 0  # ratchet: nondeterministic uuid-in-output-path
 
         # 関数が見つかることを確認（具体的な名前は実装依存）
         output = result.stdout.lower()
@@ -234,9 +230,7 @@ async function asyncFunction() {
         )
 
         assert result.returncode == 0, f"CLI failed with stderr: {result.stderr}"
-        assert len(result.stdout) > 0, (
-            "No output from CLI"
-        )  # ratchet: nondeterministic uuid-in-output-path
+        assert len(result.stdout) > 0  # ratchet: nondeterministic uuid-in-output-path
 
         # クラスが見つかることを確認（具体的な名前は実装依存）
         output = result.stdout.lower()
@@ -262,8 +256,8 @@ async function asyncFunction() {
             assert result.returncode == 0, (
                 f"CLI failed for file {i} with stderr: {result.stderr}"
             )
-            assert len(result.stdout) > 0, (
-                f"No output from CLI for file {i}"
+            assert (
+                len(result.stdout) > 0
             )  # ratchet: nondeterministic uuid-in-output-path
 
     def test_output_format_json(self, sample_files):
@@ -285,9 +279,7 @@ async function asyncFunction() {
         )
 
         assert result.returncode == 0, f"CLI failed with stderr: {result.stderr}"
-        assert len(result.stdout) > 0, (
-            "No output from CLI"
-        )  # ratchet: nondeterministic uuid-in-output-path
+        assert len(result.stdout) > 0  # ratchet: nondeterministic uuid-in-output-path
 
         # JSON形式の出力を確認
         try:
@@ -335,9 +327,7 @@ async function asyncFunction() {
         )
 
         assert result.returncode == 0, f"CLI failed with stderr: {result.stderr}"
-        assert len(result.stdout) > 0, (
-            "No output from CLI"
-        )  # ratchet: nondeterministic uuid-in-output-path
+        assert len(result.stdout) > 0  # ratchet: nondeterministic uuid-in-output-path
 
     def test_filter_expression(self, sample_files):
         """フィルター式のテスト"""
@@ -359,8 +349,8 @@ async function asyncFunction() {
 
         # フィルターが実装されていない場合もあるので、エラーにはしない
         if result.returncode == 0:
-            assert len(result.stdout) > 0, (
-                "No output from CLI"
+            assert (
+                len(result.stdout) > 0
             )  # ratchet: nondeterministic uuid-in-output-path
 
     def test_language_auto_detection(self, sample_files):
@@ -381,9 +371,7 @@ async function asyncFunction() {
         )
 
         assert result.returncode == 0, f"CLI failed with stderr: {result.stderr}"
-        assert len(result.stdout) > 0, (
-            "No output from CLI"
-        )  # ratchet: nondeterministic uuid-in-output-path
+        assert len(result.stdout) > 0  # ratchet: nondeterministic uuid-in-output-path
 
     def test_explicit_language_specification(self, sample_files):
         """明示的な言語指定のテスト"""
@@ -404,9 +392,7 @@ async function asyncFunction() {
         )
 
         assert result.returncode == 0, f"CLI failed with stderr: {result.stderr}"
-        assert len(result.stdout) > 0, (
-            "No output from CLI"
-        )  # ratchet: nondeterministic uuid-in-output-path
+        assert len(result.stdout) > 0  # ratchet: nondeterministic uuid-in-output-path
 
     def test_error_cases_nonexistent_file(self):
         """エラーケース: 存在しないファイル"""
@@ -521,8 +507,8 @@ async function asyncFunction() {
         assert result.returncode == 0, (
             f"Help command failed with stderr: {result.stderr}"
         )
-        assert len(result.stdout) > 0, (
-            "No help output"
+        assert (
+            len(result.stdout) > 0
         )  # ratchet: nondeterministic terminal-width-dependent
 
         # ヘルプ内容の確認
@@ -542,8 +528,8 @@ async function asyncFunction() {
 
         # バージョンコマンドが実装されている場合
         if result.returncode == 0:
-            assert len(result.stdout) > 0, (
-                "No version output"
+            assert (
+                len(result.stdout) > 0
             )  # ratchet: nondeterministic executable-name-in-version-string
         # 実装されていない場合はスキップ
 
@@ -585,9 +571,7 @@ async function asyncFunction() {
             )
             assert (
                 len(result.stdout) > 0
-            ), (  # ratchet: nondeterministic uuid-in-output-path
-                f"No output from concurrent CLI execution {i}"
-            )
+            )  # ratchet: nondeterministic uuid-in-output-path
 
     def test_large_file_cli_processing(self):
         """大きなファイルのCLI処理テスト"""
@@ -629,8 +613,8 @@ class Class_{i}:
             assert result.returncode == 0, (
                 f"Large file CLI processing failed with stderr: {result.stderr}"
             )
-            assert len(result.stdout) > 0, (
-                "No output from large file CLI processing"
+            assert (
+                len(result.stdout) > 0
             )  # ratchet: nondeterministic uuid-in-output-path
 
         finally:
@@ -671,9 +655,7 @@ class Class_{i}:
         duration = end_time - start_time
 
         assert result.returncode == 0, f"CLI failed with stderr: {result.stderr}"
-        assert len(result.stdout) > 0, (
-            "No output from CLI"
-        )  # ratchet: nondeterministic uuid-in-output-path
+        assert len(result.stdout) > 0  # ratchet: nondeterministic uuid-in-output-path
 
         # パフォーマンス要件: 15秒以内 (Windows環境の遅延を考慮)
         assert duration < 15.0, f"CLI execution took too long: {duration:.2f}s"
