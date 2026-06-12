@@ -82,9 +82,7 @@ fun greet(name: String, age: Int) {
         assert len(functions) == 1
         func = functions[0]
         assert func.name == "greet"
-        assert (
-            len(func.parameters) >= 0
-        )  # May or may not extract params depending on implementation
+        assert func.parameters == ["name: String", "age: Int"]
 
     def test_extract_function_with_return_type(self, extractor, kotlin_parser):
         """Should extract function with return type."""
