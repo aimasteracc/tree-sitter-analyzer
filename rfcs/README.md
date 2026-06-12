@@ -69,3 +69,10 @@ number; if two RFCs collide on a number in flight, the later-merged one renames.
 | [0010](0010-resolver-language-registry.md) | Resolver language registry — scale the correctness moat to N languages | implemented (foundation #345; first wave go/js/ts/cpp/rust #346-#350) |
 | [0011](0011-miswire-audit.md) | Mis-Wire Audit — the run-on-your-repo correctness demo | accepted (console entrypoint shipped; CLI subcommand + pre-seed + README surgery tracked) |
 | [0012](0012-toon-json-dedup.md) | Eliminate TOON/JSON metadata duplication in MCP responses | accepted (Phase 1 implemented; Phase 2 deferred) |
+| [0013](0013-facade-dropped-param-visibility.md) | Facade dropped-parameter visibility — `ignored_params` surface | accepted |
+| [0014](0014-instant-edit-safety.md) | Instant edit safety — test-noise partition, test-map, and co-change | accepted (Phase A #461; Phase B #463; Phase C #466; integration test + DF-16 dogfood deferred) |
+| [0015](0015-instant-uml-family.md) | Instant UML family — scoping fixes + activity/state diagrams | implemented (Phase 1 #462; P2-A #472; P2-B #475; v1.23.0) |
+
+## Roadmap
+
+See [ROADMAP-beyond-codegraph.md](ROADMAP-beyond-codegraph.md) for planned future directions beyond the current correctness-moat work.

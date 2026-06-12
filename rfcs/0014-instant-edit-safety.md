@@ -932,42 +932,40 @@ Expected: `direct_callees` in production bucket = 2; `tests.test_callees_count =
 
 - [x] `_compute_risk_score` uses production-only `fan_in`/`fan_out`; always
       returns `tests: {test_callers_count, test_callees_count}` (counts only by
-      default). *(Phase A — PR #461)*
+      default). *(Phase A — shipped #461)*
 - [x] `include_tests` is declared in `CodeGraphImpactTool.get_tool_schema`
       properties (`codegraph_impact_tool.py:308–349`), NOT in `required`, ensuring
       it survives `_project_args` schema projection at `facade_tool.py:251`.
-      *(Phase A — PR #461)*
+      *(Phase A — shipped #461)*
 - [x] `nav action=impact` supports `include_tests=true`; when true adds
       `tests.test_caller_files` and `tests.test_callee_files` (sorted lists).
       Default path (`include_tests=false`) is byte-identical to pre-RFC for all
       response fields except the new `tests` bucket AND test-edge filtering of
-      transitive lists when `include_tests=false`. *(Phase A — PR #461)*
+      transitive lists when `include_tests=false`. *(Phase A — shipped #461)*
 - [x] `_compute_transitive_callers` and `_compute_transitive_callees` gain
       `include_tests: bool = False`; test-file filtering occurs before `to_dict()`.
-      *(Phase A — PR #461)*
+      *(Phase A — shipped #461)*
 - [x] `nav action=test_map` implemented; returns `test_files`, `test_functions`
-      in `file::fn` format, `edge_count`, `truncated`. *(Phase B)*
+      in `file::fn` format, `edge_count`, `truncated`. *(Phase B — shipped #463)*
 - [x] `nav action=co_change` implemented; returns `co_changed_files` sorted by
       lift descending; degrades gracefully (success=true, empty list) when git is
-      unavailable. *(Phase C — not yet started)*
+      unavailable. *(Phase C — shipped #466)*
 - [x] co_change uses a SINGLE `git log --name-only` subprocess plus one
-      `rev-parse`; no per-commit diff-tree loop. *(Phase C)*
+      `rev-parse`; no per-commit diff-tree loop. *(Phase C — shipped #466)*
 - [x] co_change HEAD-keyed cache: second call with same (project, file, HEAD)
-      does not invoke a subprocess. *(Phase C)*
+      does not invoke a subprocess. *(Phase C — shipped #466)*
 - [x] CLI parity: `--test-map <symbol>`, `--co-change <file-or-symbol>`, and `--impact <fn> [--include-tests]`
-      flags wired, documented, and covered by a parity test.
-      (`--co-change` deferred to Phase C). *(Phase B)*
+      flags wired, documented, and covered by a parity test. *(Phase B — shipped #463; `--co-change` Phase C — shipped #466)*
 - [x] Unit tests `TestImpactTestPartition` (Phase A), `TestNavTestMap` (Phase B), and `TestCoChange` (Phase C) green with exact assertions.
-      (Phase B) green with all assertions using exact values (`== N`).
-      (`TestCoChange` deferred to Phase C). *(Phase A+B)*
+      *(Phase A — shipped #461; Phase B — shipped #463; Phase C — shipped #466)*
 - [ ] Integration test `TestNavImpactPartition` dispatches through
       `handle_call_tool` (not `execute()` directly); score/count assertions pinned
-      to exact values measured on first green run. *(deferred)*
+      to exact values measured on first green run. *(deferred — open work)*
 - [ ] DF-16 dogfood re-run: risk level changes from `high` to `low` for the
-      documented DF-16 function (16 test + 2 prod callers). *(deferred)*
+      documented DF-16 function (16 test + 2 prod callers). *(deferred — open work)*
 - [x] `_NAV_DESCRIPTION` and MCP server instructions updated with `test_map` and `co_change`
-      action (and Phase A `impact` docs). *(Phase B)*
-- [x] Docs/CODEMAPS updated. *(Phases B and C)*
+      action (and Phase A `impact` docs). *(Phase B — shipped #463)*
+- [x] Docs/CODEMAPS updated. *(Phase B — shipped #463; Phase C — shipped #466)*
 
 ## What this RFC does NOT do (deferred)
 
