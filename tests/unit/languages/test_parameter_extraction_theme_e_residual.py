@@ -447,3 +447,24 @@ class TestStructureConversionOfDefaults:
             "name": "name",
             "type": "String",
         }
+
+    def test_get_method_parameters_string_form(self):
+        from types import SimpleNamespace
+
+        from tree_sitter_analyzer.mcp.tools.analyze_code_structure_helpers import (
+            get_method_parameters,
+        )
+
+        method = SimpleNamespace(parameters=["limit = 10", "name: str", ""])
+        assert get_method_parameters(method) == [
+            {"name": "limit", "type": "Any", "default": "10"},
+            {"name": "name", "type": "str"},
+        ]
+
+    def test_empty_and_blank_param_strings(self):
+        from tree_sitter_analyzer.mcp.tools.analyze_code_structure_helpers import (
+            _parse_string_parameter,
+        )
+
+        assert _parse_string_parameter("") is None
+        assert _parse_string_parameter("   ") is None
