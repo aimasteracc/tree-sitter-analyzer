@@ -7,6 +7,7 @@ out to the unchanged inner tools; the 66 legacy names still work for one
 deprecation cycle via the legacy-name shim
 ([`mcp/legacy_shim.py`](../../tree_sitter_analyzer/mcp/legacy_shim.py)).
 All tools default to **TOON output** (locked — see `CLAUDE.md`).
+Response-envelope semantics (verdict alphabet, truncation fields, `compact_only` control surface) are specified in the [Agent Envelope Contract](../agent-envelope-contract.md).
 
 ## Facade Surface (public, eager — the only 8 tools clients see)
 

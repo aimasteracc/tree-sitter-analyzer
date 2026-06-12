@@ -465,6 +465,7 @@ logging.basicConfig(level=logging.WARNING)
 
 ## See Also
 
+- [Agent Envelope Contract](agent-envelope-contract.md) — verdict alphabet, truncation contract, and the `compact_only` control surface around the TOON payload
 - [CLI Reference](cli-reference.md)
 - [API Documentation](api/)
 - [Examples](../examples/)
