@@ -39,7 +39,7 @@ These look like inconsistencies in a dogfood pass, but they are intentional and 
 ### 2. project_root canonicalisation is a foundational change
 
 - **Why**: macOS `/var/folders/...` symlinks to `/private/var/folders/...`. Naive `os.path.abspath()` doesn't resolve the symlink but `realpath()` does. The SecurityValidator and test fixtures use different resolutions, so any change to `BaseMCPTool.__init__` propagates through 164+ tests.
-- **Symptom that looks like a bug**: MCP `safe_to_edit(project_root='.')` returns SAFE while CLI returns UNSAFE (different downstream counts because `DependencyGraph('.')` walks a different tree than `DependencyGraph('/abs/path')`).
+- **Symptom that looks like a bug**: MCP `edit action=safe` (formerly `safe_to_edit`) with `project_root='.'` returns SAFE while CLI returns UNSAFE (different downstream counts because `DependencyGraph('.')` walks a different tree than `DependencyGraph('/abs/path')`).
 - **Correct action**: if you fix this, study the macOS symlink behavior and the test fixture conventions FIRST. Use `os.path.abspath` only after confirming SecurityValidator / PathResolver / test fixtures all use the same resolution. Test on macOS specifically. Land it in a dedicated commit, never bundled with other fixes.
 - **Past incident**: r36 attempted "R1: canonicalise project_root in BaseMCPTool" — broke 164 tests on macOS, rolled back.
 
