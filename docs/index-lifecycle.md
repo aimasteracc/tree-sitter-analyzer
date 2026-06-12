@@ -52,14 +52,21 @@ files changed and you want guaranteed consistency.
 
 MCP:
 ```json
-{ "action": "full" }
+{ "action": "full", "mode": "full" }
+```
+
+> ⚠️ Without `"mode": "full"` the tool **defaults to `incremental`** — unchanged-but-stale rows survive. For a guaranteed from-scratch rebuild always pass the mode explicitly.
+
+```json
+{ "action": "full" }   // mode defaults to "incremental"
 ```
 
 CLI equivalent:
 ```bash
-uv run python -m tree_sitter_analyzer --full-index
-# Force full (skip incremental heuristic):
+# Guaranteed full rebuild (recommended after pull/rebase):
 uv run python -m tree_sitter_analyzer --full-index --full-index-mode full
+# Bare --full-index defaults to --full-index-mode incremental:
+uv run python -m tree_sitter_analyzer --full-index
 ```
 
 ---
@@ -123,6 +130,8 @@ MCP:
 
 CLI equivalent:
 ```bash
+uv run python -m tree_sitter_analyzer --codegraph-status   # indexed? schema version, FTS5, cache lag
+# Raw AST-cache stats (lower level, no health verdict):
 uv run python -m tree_sitter_analyzer --ast-cache --ast-cache-mode stats
 ```
 
