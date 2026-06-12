@@ -163,7 +163,7 @@ class TestYAMLKeyPairRecognition:
         elements = plugin.extractor.extract_yaml_elements(tree, KEY_VALUE_CODE)
 
         mapping_elements = [e for e in elements if e.element_type == "mapping"]
-        assert len(mapping_elements) >= 1
+        assert len(mapping_elements) == 12
 
     def test_extract_string_value(self):
         """Test extraction of string value."""
@@ -257,7 +257,7 @@ class TestYAMLListRecognition:
         elements = plugin.extractor.extract_yaml_elements(tree, LIST_CODE)
 
         sequence_elements = [e for e in elements if e.element_type == "sequence"]
-        assert len(sequence_elements) >= 1
+        assert len(sequence_elements) == 8
 
     def test_extract_list_of_strings(self):
         """Test extraction of list of strings."""
@@ -320,7 +320,7 @@ class TestYAMLNestedStructureRecognition:
         tree = get_tree_for_code(NESTED_STRUCTURE_CODE, plugin)
         elements = plugin.extractor.extract_yaml_elements(tree, NESTED_STRUCTURE_CODE)
 
-        assert len(elements) >= 5
+        assert len(elements) == 28
 
     def test_extract_person_structure(self):
         """Test extraction of person structure."""
@@ -348,7 +348,7 @@ class TestYAMLNestedStructureRecognition:
         tree = get_tree_for_code(NESTED_STRUCTURE_CODE, plugin)
         elements = plugin.extractor.extract_yaml_elements(tree, NESTED_STRUCTURE_CODE)
 
-        assert len(elements) >= 10
+        assert len(elements) == 28
 
     def test_extract_config_structure(self):
         """Test extraction of config structure."""
@@ -367,7 +367,7 @@ class TestYAMLNestedStructureRecognition:
         elements = plugin.extractor.extract_yaml_elements(tree, NESTED_STRUCTURE_CODE)
 
         nested_elements = [e for e in elements if e.nesting_level > 0]
-        assert len(nested_elements) >= 1
+        assert len(nested_elements) == 25
 
 
 @pytest.mark.skipif(not YAML_AVAILABLE, reason="tree-sitter-yaml not installed")
@@ -381,7 +381,7 @@ class TestYAMLAnchorAliasRecognition:
         elements = plugin.extractor.extract_yaml_elements(tree, ANCHOR_ALIAS_CODE)
 
         anchor_elements = [e for e in elements if e.element_type == "anchor"]
-        assert len(anchor_elements) >= 1
+        assert len(anchor_elements) == 3
 
     def test_extract_alias(self):
         """Test extraction of alias."""
@@ -390,7 +390,7 @@ class TestYAMLAnchorAliasRecognition:
         elements = plugin.extractor.extract_yaml_elements(tree, ANCHOR_ALIAS_CODE)
 
         alias_elements = [e for e in elements if e.element_type == "alias"]
-        assert len(alias_elements) >= 1
+        assert len(alias_elements) == 6
 
     def test_extract_defaults_anchor(self):
         """Test extraction of defaults anchor."""
@@ -409,7 +409,7 @@ class TestYAMLAnchorAliasRecognition:
         elements = plugin.extractor.extract_yaml_elements(tree, ANCHOR_ALIAS_CODE)
 
         alias_usage_elements = [e for e in elements if e.alias_target is not None]
-        assert len(alias_usage_elements) >= 1
+        assert len(alias_usage_elements) == 6
 
     def test_extract_merge_key(self):
         """Test extraction of merge key (<<)."""
@@ -418,7 +418,7 @@ class TestYAMLAnchorAliasRecognition:
         elements = plugin.extractor.extract_yaml_elements(tree, ANCHOR_ALIAS_CODE)
 
         merge_elements = [e for e in elements if "<<" in str(e.raw_text)]
-        assert len(merge_elements) >= 1
+        assert len(merge_elements) == 13
 
     def test_extract_multiple_anchors(self):
         """Test extraction of multiple anchors."""
@@ -427,7 +427,7 @@ class TestYAMLAnchorAliasRecognition:
         elements = plugin.extractor.extract_yaml_elements(tree, ANCHOR_ALIAS_CODE)
 
         anchor_elements = [e for e in elements if e.element_type == "anchor"]
-        assert len(anchor_elements) >= 2
+        assert len(anchor_elements) == 3
 
     def test_extract_anchor_in_list(self):
         """Test extraction of anchor in list."""
@@ -436,4 +436,4 @@ class TestYAMLAnchorAliasRecognition:
         elements = plugin.extractor.extract_yaml_elements(tree, ANCHOR_ALIAS_CODE)
 
         anchor_elements = [e for e in elements if e.element_type == "anchor"]
-        assert len(anchor_elements) >= 1
+        assert len(anchor_elements) == 3
