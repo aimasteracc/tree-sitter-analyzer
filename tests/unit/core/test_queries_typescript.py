@@ -18,79 +18,79 @@ class TestTypeScriptQueries:
         """Test that FUNCTIONS query is defined"""
         assert hasattr(ts_queries, "FUNCTIONS")
         assert isinstance(ts_queries.FUNCTIONS, str)
-        assert len(ts_queries.FUNCTIONS.strip()) > 0
+        assert len(ts_queries.FUNCTIONS.strip()) == 1058
 
     def test_classes_query_exists(self):
         """Test that CLASSES query is defined"""
         assert hasattr(ts_queries, "CLASSES")
         assert isinstance(ts_queries.CLASSES, str)
-        assert len(ts_queries.CLASSES.strip()) > 0
+        assert len(ts_queries.CLASSES.strip()) == 346
 
     def test_interfaces_query_exists(self):
         """Test that INTERFACES query is defined"""
         assert hasattr(ts_queries, "INTERFACES")
         assert isinstance(ts_queries.INTERFACES, str)
-        assert len(ts_queries.INTERFACES.strip()) > 0
+        assert len(ts_queries.INTERFACES.strip()) == 193
 
     def test_type_aliases_query_exists(self):
         """Test that TYPE_ALIASES query is defined"""
         assert hasattr(ts_queries, "TYPE_ALIASES")
         assert isinstance(ts_queries.TYPE_ALIASES, str)
-        assert len(ts_queries.TYPE_ALIASES.strip()) > 0
+        assert len(ts_queries.TYPE_ALIASES.strip()) == 157
 
     def test_enums_query_exists(self):
         """Test that ENUMS query is defined"""
         assert hasattr(ts_queries, "ENUMS")
         assert isinstance(ts_queries.ENUMS, str)
-        assert len(ts_queries.ENUMS.strip()) > 0
+        assert len(ts_queries.ENUMS.strip()) == 103
 
     def test_variables_query_exists(self):
         """Test that VARIABLES query is defined"""
         assert hasattr(ts_queries, "VARIABLES")
         assert isinstance(ts_queries.VARIABLES, str)
-        assert len(ts_queries.VARIABLES.strip()) > 0
+        assert len(ts_queries.VARIABLES.strip()) == 389
 
     def test_imports_query_exists(self):
         """Test that IMPORTS query is defined"""
         assert hasattr(ts_queries, "IMPORTS")
         assert isinstance(ts_queries.IMPORTS, str)
-        assert len(ts_queries.IMPORTS.strip()) > 0
+        assert len(ts_queries.IMPORTS.strip()) == 501
 
     def test_exports_query_exists(self):
         """Test that EXPORTS query is defined"""
         assert hasattr(ts_queries, "EXPORTS")
         assert isinstance(ts_queries.EXPORTS, str)
-        assert len(ts_queries.EXPORTS.strip()) > 0
+        assert len(ts_queries.EXPORTS.strip()) == 249
 
     def test_decorators_query_exists(self):
         """Test that DECORATORS query is defined"""
         assert hasattr(ts_queries, "DECORATORS")
         assert isinstance(ts_queries.DECORATORS, str)
-        assert len(ts_queries.DECORATORS.strip()) > 0
+        assert len(ts_queries.DECORATORS.strip()) == 365
 
     def test_generics_query_exists(self):
         """Test that GENERICS query is defined"""
         assert hasattr(ts_queries, "GENERICS")
         assert isinstance(ts_queries.GENERICS, str)
-        assert len(ts_queries.GENERICS.strip()) > 0
+        assert len(ts_queries.GENERICS.strip()) == 186
 
     def test_signatures_query_exists(self):
         """Test that SIGNATURES query is defined"""
         assert hasattr(ts_queries, "SIGNATURES")
         assert isinstance(ts_queries.SIGNATURES, str)
-        assert len(ts_queries.SIGNATURES.strip()) > 0
+        assert len(ts_queries.SIGNATURES.strip()) == 655
 
     def test_comments_query_exists(self):
         """Test that COMMENTS query is defined"""
         assert hasattr(ts_queries, "COMMENTS")
         assert isinstance(ts_queries.COMMENTS, str)
-        assert len(ts_queries.COMMENTS.strip()) > 0
+        assert len(ts_queries.COMMENTS.strip()) == 18
 
     def test_all_queries_dict_exists(self):
         """Test that ALL_QUERIES dictionary is defined"""
         assert hasattr(ts_queries, "ALL_QUERIES")
         assert isinstance(ts_queries.ALL_QUERIES, dict)
-        assert len(ts_queries.ALL_QUERIES) > 0
+        assert len(ts_queries.ALL_QUERIES) == 83
 
     def test_all_queries_structure(self):
         """Test the structure of ALL_QUERIES dictionary"""
@@ -104,8 +104,10 @@ class TestTypeScriptQueries:
             assert "description" in query_data
             assert isinstance(query_data["query"], str)
             assert isinstance(query_data["description"], str)
-            assert len(query_data["query"].strip()) > 0
-            assert len(query_data["description"].strip()) > 0
+
+        # Pin minimum observed lengths (exact facts; update when query strings change)
+        assert min(len(d["query"].strip()) for d in queries.values()) == 18
+        assert min(len(d["description"].strip()) for d in queries.values()) == 18
 
     def test_expected_queries_present(self):
         """Test that expected TypeScript queries are present"""
@@ -286,7 +288,7 @@ class TestTypeScriptQueries:
 
         query_names = ts_queries.list_queries()
         assert isinstance(query_names, list)
-        assert len(query_names) > 0
+        assert len(query_names) == 83
 
         # Should match keys in ALL_QUERIES
         expected_names = list(ts_queries.ALL_QUERIES.keys())
