@@ -364,3 +364,133 @@ class TestCSharpIntegration:
             code = f.read()
         # Just verify it can be read without errors
         assert len(code) > 0
+
+
+# ---------------------------------------------------------------------------
+# Issue #536 — return types void-ified + interface members marked private
+# ---------------------------------------------------------------------------
+
+RETURN_TYPE_CODE = """
+namespace MyApp
+{
+    public class Calc
+    {
+        public bool IsValid() { return true; }
+        public string ToString() { return "x"; }
+        public int GetCount() { return 42; }
+    }
+
+    public interface IRepo
+    {
+        User GetById(int id);
+        IEnumerable<User> GetAll();
+        void Add(User user);
+        void Delete(int id);
+    }
+}
+"""
+
+
+class TestCSharpReturnTypes:
+    """Issue #536 leg 1: primitive and generic return types must not be 'void'."""
+
+    def _parse(self, code: str):
+        plugin = CSharpPlugin()
+        tree = get_tree_for_code(code, plugin)
+        return plugin.extractor.extract_functions(tree, code)
+
+    def test_bool_return_type(self):
+        """IsValid() → bool, not void."""
+        functions = self._parse(RETURN_TYPE_CODE)
+        is_valid = next((f for f in functions if f.name == "IsValid"), None)
+        assert is_valid is not None
+        assert is_valid.return_type == "bool"
+
+    def test_string_return_type(self):
+        """ToString() → string, not void."""
+        functions = self._parse(RETURN_TYPE_CODE)
+        to_string = next((f for f in functions if f.name == "ToString"), None)
+        assert to_string is not None
+        assert to_string.return_type == "string"
+
+    def test_int_return_type(self):
+        """GetCount() → int, not void."""
+        functions = self._parse(RETURN_TYPE_CODE)
+        get_count = next((f for f in functions if f.name == "GetCount"), None)
+        assert get_count is not None
+        assert get_count.return_type == "int"
+
+    def test_identifier_return_type(self):
+        """IRepo.GetById() → User, not void."""
+        functions = self._parse(RETURN_TYPE_CODE)
+        get_by_id = next((f for f in functions if f.name == "GetById"), None)
+        assert get_by_id is not None
+        assert get_by_id.return_type == "User"
+
+    def test_generic_return_type(self):
+        """IRepo.GetAll() → IEnumerable<User>, not void."""
+        functions = self._parse(RETURN_TYPE_CODE)
+        get_all = next((f for f in functions if f.name == "GetAll"), None)
+        assert get_all is not None
+        assert get_all.return_type == "IEnumerable<User>"
+
+    def test_void_return_type_preserved(self):
+        """IRepo.Add() and Delete() keep void."""
+        functions = self._parse(RETURN_TYPE_CODE)
+        add = next((f for f in functions if f.name == "Add"), None)
+        delete = next((f for f in functions if f.name == "Delete"), None)
+        assert add is not None
+        assert add.return_type == "void"
+        assert delete is not None
+        assert delete.return_type == "void"
+
+
+class TestCSharpInterfaceMemberVisibility:
+    """Issue #536 leg 2: interface members without explicit modifier → public."""
+
+    def _parse(self, code: str):
+        plugin = CSharpPlugin()
+        tree = get_tree_for_code(code, plugin)
+        return plugin.extractor.extract_functions(tree, code)
+
+    def test_interface_method_visibility_public(self):
+        """All IRepo methods without explicit modifier must be public."""
+        functions = self._parse(RETURN_TYPE_CODE)
+        interface_methods = ["GetById", "GetAll", "Add", "Delete"]
+        for name in interface_methods:
+            fn = next((f for f in functions if f.name == name), None)
+            assert fn is not None, f"Method {name} not found"
+            assert fn.visibility == "public", (
+                f"{name}: expected visibility='public', got {fn.visibility!r}"
+            )
+
+    def test_class_method_with_no_modifier_stays_private(self):
+        """A class method without any modifier keeps C# default (private)."""
+        code = """
+namespace MyApp
+{
+    public class Foo
+    {
+        void InternalMethod() { }
+    }
+}
+"""
+        functions = self._parse(code)
+        internal = next((f for f in functions if f.name == "InternalMethod"), None)
+        assert internal is not None
+        assert internal.visibility == "private"
+
+    def test_sample_cs_interface_methods_public(self):
+        """All IUserRepository methods in examples/Sample.cs are public."""
+        sample = Path("examples/Sample.cs")
+        if not sample.exists():
+            pytest.skip("examples/Sample.cs not found")
+        code = sample.read_text(encoding="utf-8")
+        functions = self._parse(code)
+        repo_methods = ["GetById", "GetAll", "Add", "Update", "Delete"]
+        for name in repo_methods:
+            fn = next((f for f in functions if f.name == name), None)
+            assert fn is not None, f"IUserRepository.{name} not found"
+            assert fn.visibility == "public", (
+                f"IUserRepository.{name}: expected public, got {fn.visibility!r}"
+            )

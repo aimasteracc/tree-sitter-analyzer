@@ -253,10 +253,26 @@ def extract_method_declaration(
         method_name = get_node_text(name_node)
         modifiers = extract_modifiers_fn(node)
         visibility = determine_visibility(modifiers)
+        # C# interface members have no access modifier — they are implicitly public.
+        # The parent chain is: method_declaration → declaration_list → interface_declaration.
+        if visibility == "private" and not any(
+            m in modifiers for m in ("public", "private", "protected", "internal")
+        ):
+            parent = getattr(node, "parent", None)
+            grandparent = (
+                getattr(parent, "parent", None) if parent is not None else None
+            )
+            if (
+                grandparent is not None
+                and getattr(grandparent, "type", None) == "interface_declaration"
+            ):
+                visibility = "public"
         is_async = "async" in modifiers
         attributes = extract_attributes_fn(node)
 
-        type_node = node.child_by_field_name("type")
+        # tree-sitter-c-sharp uses the field name "returns" for the return type of
+        # a method_declaration (not "type" — that is used by property_declaration).
+        type_node = node.child_by_field_name("returns")
         return_type = extract_type_fn(type_node)
 
         params_node = node.child_by_field_name("parameters")
