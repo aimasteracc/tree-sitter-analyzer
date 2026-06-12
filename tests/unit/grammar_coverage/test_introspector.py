@@ -10,6 +10,32 @@ from tree_sitter_analyzer.grammar_coverage.introspector import (
     get_structural_types,
 )
 
+# Exact (total, extractable, structural) node-type counts per language,
+# measured 2026-06-13 against the grammar wheel versions locked in uv.lock
+# (CI installs the same set via `uv sync --all-extras`). A grammar version
+# bump that shifts a count MUST go red here and force a conscious re-pin.
+# "json" is absent: loader.is_language_available("json") is False, so the
+# loops below skip it.
+EXPECTED_GRAMMAR_COUNTS = {
+    "python": (129, 25, 104),
+    "javascript": (122, 25, 98),
+    "typescript": (191, 30, 162),
+    "go": (110, 30, 80),
+    "rust": (185, 20, 165),
+    "java": (142, 30, 112),
+    "cpp": (256, 43, 213),
+    "c": (160, 21, 139),
+    "csharp": (239, 44, 195),
+    "ruby": (157, 4, 156),
+    "php": (177, 35, 142),
+    "swift": (191, 29, 162),
+    "kotlin": (116, 9, 107),
+    "scala": (153, 15, 138),
+    "bash": (85, 10, 75),
+    "yaml": (161, 0, 161),
+    "sql": (527, 7, 520),
+}
+
 
 class TestGetAllNodeTypes:
     """测试从 tree-sitter 语法中提取所有节点类型。"""
@@ -36,8 +62,8 @@ class TestGetAllNodeTypes:
         for expected in expected_types:
             assert expected in node_types, f"Missing {expected}"
 
-        # 验证节点数量合理（Python 语法约 100+ 命名节点）
-        assert len(node_types) > 50, f"Too few node types: {len(node_types)}"
+        # 验证节点数量（精确钉死，见 EXPECTED_GRAMMAR_COUNTS 测量说明）
+        assert len(node_types) == 129, f"Node type count drifted: {len(node_types)}"
 
     def test_javascript_node_extraction(self) -> None:
         """测试 JavaScript 语言的节点类型提取。"""
@@ -86,7 +112,11 @@ class TestGetAllNodeTypes:
             if not loader.is_language_available(language):
                 continue  # skip languages not installed in this environment
             node_types = get_all_node_types(language)
-            assert len(node_types) > 0, f"No node types for {language}"
+            expected_total = EXPECTED_GRAMMAR_COUNTS[language][0]
+            assert len(node_types) == expected_total, (
+                f"Node type count drifted for {language}: "
+                f"{len(node_types)} != {expected_total}"
+            )
             assert node_types == sorted(node_types)
 
 
@@ -212,9 +242,9 @@ class TestGetStructuralTypes:
             all_set = set(all_types)
 
             # 所有节点都应该被分类到至少一个类别
-            assert all_set.issubset(
-                covered
-            ), f"Uncovered nodes in {language}: {all_set - covered}"
+            assert all_set.issubset(covered), (
+                f"Uncovered nodes in {language}: {all_set - covered}"
+            )
 
 
 class TestGetLanguageSummary:
@@ -242,10 +272,10 @@ class TestGetLanguageSummary:
         assert len(summary["extractable_types"]) == summary["extractable_count"]
         assert len(summary["structural_types"]) == summary["structural_count"]
 
-        # 验证计数合理性
-        assert summary["total_count"] > 0
-        assert summary["extractable_count"] > 0
-        assert summary["structural_count"] > 0
+        # 验证计数（精确钉死，见 EXPECTED_GRAMMAR_COUNTS 测量说明）
+        assert summary["total_count"] == 129
+        assert summary["extractable_count"] == 25
+        assert summary["structural_count"] == 104
 
     def test_all_languages_summary(self) -> None:
         """测试所有支持语言的摘要生成。"""
@@ -258,17 +288,22 @@ class TestGetLanguageSummary:
                 continue  # skip languages not installed in this environment
             summary = get_language_summary(language)
 
-            assert summary["total_count"] > 0, f"No types for {language}"
+            expected = EXPECTED_GRAMMAR_COUNTS[language]
+            assert summary["total_count"] == expected[0], (
+                f"Total count drifted for {language}: {summary['total_count']}"
+            )
 
-            # 数据格式语言可能没有可提取节点
+            # 数据格式语言可能没有可提取节点（yaml 钉死为 0）
             if language not in DATA_FORMAT_LANGUAGES:
-                assert (
-                    summary["extractable_count"] > 0
-                ), f"No extractable types for {language}"
+                assert summary["extractable_count"] == expected[1], (
+                    f"Extractable count drifted for {language}: "
+                    f"{summary['extractable_count']}"
+                )
 
-            assert (
-                summary["structural_count"] > 0
-            ), f"No structural types for {language}"
+            assert summary["structural_count"] == expected[2], (
+                f"Structural count drifted for {language}: "
+                f"{summary['structural_count']}"
+            )
 
             # 验证数据一致性
             assert len(summary["all_types"]) == summary["total_count"]
@@ -350,23 +385,25 @@ class TestCrossLanguageConsistency:
             summary = get_language_summary(language)
 
             # 语法节点数通常在 10-600 之间（SQL 有 527 个节点）
-            assert (
-                10 <= summary["total_count"] <= 600
-            ), f"Unusual node count for {language}: {summary['total_count']}"
+            assert 10 <= summary["total_count"] <= 600, (
+                f"Unusual node count for {language}: {summary['total_count']}"
+            )
 
             # 数据格式语言可能没有可提取节点（它们主要是结构性节点）
+            expected = EXPECTED_GRAMMAR_COUNTS[language]
             if language in DATA_FORMAT_LANGUAGES:
                 # YAML 和 JSON 可能没有传统意义上的"可提取"节点
-                # 但应该有总节点数
-                assert summary["total_count"] > 0
+                # 但总节点数精确钉死
+                assert summary["total_count"] == expected[0]
             else:
-                # 编程语言必须有可提取节点
-                assert (
-                    summary["extractable_count"] > 0
-                ), f"No extractable types for {language}"
+                # 编程语言的可提取节点数精确钉死
+                assert summary["extractable_count"] == expected[1], (
+                    f"Extractable count drifted for {language}: "
+                    f"{summary['extractable_count']}"
+                )
 
                 # 可提取节点占比通常在 0.5%-50% 之间
                 ratio = summary["extractable_count"] / summary["total_count"]
-                assert (
-                    0.005 <= ratio <= 0.5
-                ), f"Unusual extractable ratio for {language}: {ratio:.2%} ({summary['extractable_count']}/{summary['total_count']})"
+                assert 0.005 <= ratio <= 0.5, (
+                    f"Unusual extractable ratio for {language}: {ratio:.2%} ({summary['extractable_count']}/{summary['total_count']})"
+                )

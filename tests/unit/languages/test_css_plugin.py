@@ -175,11 +175,13 @@ h1 {
             # Analyze the file
             result = await self.plugin.analyze_file(temp_path, request)
 
-            # Verify results
+            # Verify results. Exact pins measured on the inline fixture:
+            # 34 lines; 7 elements = body/.container/h1 + @media + its 2
+            # nested rules + @keyframes.
             assert result.success
             assert result.language == "css"
-            assert result.line_count > 0
-            assert len(result.elements) > 0
+            assert result.line_count == 34
+            assert len(result.elements) == 7
             assert result.source_code == css_content
 
             # Check that we have at least one element
@@ -223,7 +225,7 @@ class TestCssExtractAtRuleName:
         elements = self.extractor.extract_css_rules(tree, css_code)
 
         keyframes = [e for e in elements if e.selector.startswith("@keyframes")]
-        assert len(keyframes) >= 1
+        assert len(keyframes) == 1  # fixture declares exactly 1 @keyframes
         assert keyframes[0].selector == "@keyframes fadeIn"
         assert keyframes[0].name == "@keyframes fadeIn"
 
@@ -237,7 +239,7 @@ class TestCssExtractAtRuleName:
         elements = self.extractor.extract_css_rules(tree, css_code)
 
         media_queries = [e for e in elements if e.selector.startswith("@media")]
-        assert len(media_queries) >= 1
+        assert len(media_queries) == 1  # fixture declares exactly 1 @media
         assert media_queries[0].selector == "@media (max-width: 768px)"
         assert media_queries[0].name == "@media (max-width: 768px)"
 
@@ -251,7 +253,7 @@ class TestCssExtractAtRuleName:
         elements = self.extractor.extract_css_rules(tree, css_code)
 
         media_queries = [e for e in elements if e.selector.startswith("@media")]
-        assert len(media_queries) >= 1
+        assert len(media_queries) == 1  # fixture declares exactly 1 @media
         assert "screen" in media_queries[0].selector
         assert "min-width" in media_queries[0].selector
 
@@ -265,7 +267,7 @@ class TestCssExtractAtRuleName:
         elements = self.extractor.extract_css_rules(tree, css_code)
 
         media_queries = [e for e in elements if e.selector.startswith("@media")]
-        assert len(media_queries) >= 1
+        assert len(media_queries) == 1  # fixture declares exactly 1 @media
         assert "min-width" in media_queries[0].selector
         assert "max-width" in media_queries[0].selector
 
@@ -279,7 +281,7 @@ class TestCssExtractAtRuleName:
         elements = self.extractor.extract_css_rules(tree, css_code)
 
         media_queries = [e for e in elements if e.selector.startswith("@media")]
-        assert len(media_queries) >= 1
+        assert len(media_queries) == 1  # fixture declares exactly 1 @media
         assert "prefers-color-scheme" in media_queries[0].selector
         assert "dark" in media_queries[0].selector
 
@@ -293,7 +295,7 @@ class TestCssExtractAtRuleName:
         elements = self.extractor.extract_css_rules(tree, css_code)
 
         media_queries = [e for e in elements if e.selector.startswith("@media")]
-        assert len(media_queries) >= 1
+        assert len(media_queries) == 1  # fixture declares exactly 1 @media
         assert media_queries[0].selector == "@media print"
 
     def test_extract_multiple_keyframes(self):
@@ -318,7 +320,7 @@ class TestCssExtractAtRuleName:
         elements = self.extractor.extract_css_rules(tree, css_code)
 
         keyframes = [e for e in elements if e.selector.startswith("@keyframes")]
-        assert len(keyframes) >= 3
+        assert len(keyframes) == 3  # fixture declares exactly 3 @keyframes
 
         names = [e.name for e in keyframes]
         assert "@keyframes fadeIn" in names
@@ -534,7 +536,10 @@ class TestCssPluginAnalyzeFallback:
                     result = await plugin.analyze_file(temp_path, MockRequest())
                     assert result.success
                     assert result.language == "css"
-                    assert len(result.elements) >= 1
+                    # The regex fallback parser extracts 1 element from the
+                    # 2-rule fixture (measured live; documents the degraded
+                    # path's actual recall, not a hoped-for bound).
+                    assert len(result.elements) == 1
         finally:
             Path(temp_path).unlink()
 
