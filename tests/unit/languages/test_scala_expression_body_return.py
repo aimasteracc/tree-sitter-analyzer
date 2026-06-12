@@ -178,3 +178,28 @@ def test_malformed_expression_body_returns_unknown() -> None:
     fn = _Stub("function_definition", [_Stub("def", []), _Stub("identifier", []), eq])
     extractor = ScalaElementExtractor()
     assert extractor._scala_expression_body_type(fn) == ""
+
+
+def test_indented_block_single_literal_infers_type():
+    """Codex P2 on #597: `def f =` followed by an indented literal wraps the
+    RHS in an indented_block — same trivial literal case."""
+    src = "class C {\n  def f =\n    " + '"x"' + "\n}\n"
+    funcs = _functions(src)
+    assert funcs["f"].return_type == "String"
+
+
+def test_indented_block_multi_statement_is_unknown():
+    src = "class C {\n  def f =\n    println(1)\n    2\n}\n"
+    funcs = _functions(src)
+    assert funcs["f"].return_type == ""
+
+
+def test_negative_int_literal_is_int():
+    """Codex P2 on #597: `-1` is a single integer_literal node; Scala infers Int."""
+    funcs = _functions("class C { def neg = -1 }")
+    assert funcs["neg"].return_type == "Int"
+
+
+def test_negative_suffixed_literal_is_unknown():
+    funcs = _functions("class C { def neg = -1L }")
+    assert funcs["neg"].return_type == ""

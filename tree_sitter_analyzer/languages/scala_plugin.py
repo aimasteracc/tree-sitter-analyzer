@@ -464,14 +464,23 @@ class ScalaElementExtractor(ElementExtractor):
                 break
         if expr is None:
             return None  # block body or abstract def → Unit default is correct
+        if expr.type == "indented_block":
+            # `def f =\n  "x"` wraps the RHS in an indented_block (Codex P2
+            # on #597); a single-expression block is the same literal case.
+            named = [c for c in expr.children if c.is_named and c.type != "comment"]
+            if len(named) != 1:
+                return ""
+            expr = named[0]
         if expr.type == "string":
             return "String"
         if expr.type == "floating_point_literal":
             return "Double"
         if expr.type == "integer_literal":
-            # Only pure-digit literals are Int; 42L / 0xFF etc. stay unknown.
+            # Signed decimal literals (`-1`) are a single integer_literal node
+            # and infer Int (Codex P2 on #597); 42L / 0xFF etc. stay unknown.
             text = self._get_node_text(expr)
-            return "Int" if text.isdigit() else ""
+            digits = text[1:] if text[:1] in ("-", "+") else text
+            return "Int" if digits.isdigit() else ""
         if expr.type == "boolean_literal":
             return "Boolean"
         return ""
