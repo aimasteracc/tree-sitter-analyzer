@@ -71,7 +71,7 @@ class TestSyncModifiedFile:
         main_py.write_text("def goodbye():\n    pass\n")
         os.utime(str(main_py), times=None)
         result = sync.sync()
-        assert result.updated_files >= 1
+        assert result.updated_files == 1
         assert any("main.py" in d["file"] for d in result.details)
 
     def test_reindexes_modified_content(self, sync, cache, project):
@@ -93,7 +93,7 @@ class TestSyncDeletedFile:
         sync.sync()
         (project / "src" / "helper.js").unlink()
         result = sync.sync()
-        assert result.deleted_files >= 1
+        assert result.deleted_files == 1
         assert any("helper.js" in d["file"] for d in result.details)
 
     def test_removes_deleted_from_cache(self, sync, cache, project):
@@ -109,7 +109,7 @@ class TestSyncNewFile:
         sync.sync()
         (project / "src" / "new_module.py").write_text("def fresh():\n    pass\n")
         result = sync.sync()
-        assert result.new_files >= 1
+        assert result.new_files == 1
         assert any("new_module.py" in d["file"] for d in result.details)
 
 
@@ -123,9 +123,9 @@ class TestSyncMixedChanges:
         main_py.write_text("def updated():\n    pass\n")
         os.utime(str(main_py), times=None)
         result = sync.sync()
-        assert result.new_files >= 1
-        assert result.deleted_files >= 1
-        assert result.updated_files >= 1
+        assert result.new_files == 1
+        assert result.deleted_files == 1
+        assert result.updated_files == 1
 
 
 class TestSyncMaxFiles:
@@ -133,14 +133,14 @@ class TestSyncMaxFiles:
         (project / "src" / "extra1.py").write_text("x = 1\n")
         (project / "src" / "extra2.py").write_text("y = 2\n")
         result = sync.sync(max_files=2)
-        assert result.scanned <= 2
+        assert result.scanned == 2
 
 
 class TestSyncCallback:
     def test_callback_receives_details(self, sync, cache, project):
         received = []
         sync.sync(callback=lambda d: received.append(d))
-        assert len(received) >= 3
+        assert len(received) == 3
 
 
 class TestGetChanges:
@@ -164,19 +164,19 @@ class TestGetChanges:
         main_py.write_text("def changed():\n    pass\n")
         os.utime(str(main_py), times=None)
         changes = sync.get_changes()
-        assert len(changes["modified"]) >= 1
+        assert len(changes["modified"]) == 1
 
     def test_get_changes_detects_deletion(self, sync, cache, project):
         sync.sync()
         (project / "src" / "helper.js").unlink()
         changes = sync.get_changes()
-        assert len(changes["deleted"]) >= 1
+        assert len(changes["deleted"]) == 1
 
     def test_get_changes_detects_new_file(self, sync, cache, project):
         sync.sync()
         (project / "src" / "brand_new.py").write_text("z = 3\n")
         changes = sync.get_changes()
-        assert len(changes["new"]) >= 1
+        assert len(changes["new"]) == 1
 
 
 class TestSyncResultDict:
