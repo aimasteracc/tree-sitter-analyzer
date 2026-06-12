@@ -226,6 +226,53 @@ class TestGiantFixtureTruncation:
         assert starts == sorted(starts)
 
 
+class TestFunctionOnlyTruncationHint:
+    """A function-heavy module with zero classes must get a hint about the
+    function overflow, not 'showing 0 of 0 classes' (Codex P2 on #542)."""
+
+    def setup_method(self):
+        elements = [
+            _make_method_elem(f"fn_{i:03d}", i * 3 + 1, i * 3 + 2) for i in range(60)
+        ]
+        analysis_result = _make_analysis_result(elements, 0, 60)
+        tool = GetCodeOutlineTool()
+        with (
+            patch.object(
+                tool, "resolve_and_validate_file_path", return_value="/proj/fns.py"
+            ),
+            patch("pathlib.Path.exists", return_value=True),
+            patch(
+                "tree_sitter_analyzer.mcp.tools.get_code_outline_tool.detect_language_mismatch",
+                return_value=None,
+            ),
+            patch(
+                "tree_sitter_analyzer.mcp.tools.get_code_outline_tool.detect_language_from_file",
+                return_value="python",
+            ),
+            patch.object(
+                tool.analysis_engine,
+                "analyze",
+                new_callable=AsyncMock,
+                return_value=analysis_result,
+            ),
+        ):
+            self.result = asyncio.run(
+                tool.execute({"file_path": "/proj/fns.py", "output_format": "json"})
+            )
+
+    def test_truncated_true(self):
+        assert self.result["truncated"] is True
+
+    def test_function_totals_honest(self):
+        assert self.result["top_level_functions_total"] == 60
+        assert self.result["top_level_functions_listed"] == 50
+
+    def test_hint_names_functions_not_empty_classes(self):
+        next_step = self.result["agent_summary"]["next_step"]
+        assert "50 of 60 top-level functions" in next_step
+        assert "0 of 0 classes" not in next_step
+
+
 # ---------------------------------------------------------------------------
 # 3. No truncation when classes <= cap
 # ---------------------------------------------------------------------------

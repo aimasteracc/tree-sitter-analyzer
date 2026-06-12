@@ -500,17 +500,28 @@ class GetCodeOutlineTool(BaseMCPTool):
         result["summary_line"] = summary_line
         result["verdict"] = "INFO"
 
-        # Honest-truncation next_step hint.
+        # Honest-truncation next_step hint. Name whichever list(s) actually
+        # exceeded the cap — a function-heavy module with zero classes must
+        # not be told "showing 0 of 0 classes" (Codex P2 on #542).
         truncated = result.get("truncated", False)
         classes_total = result.get("classes_total", class_count)
         classes_listed = result.get("classes_listed", class_count)
+        functions_total = result.get("top_level_functions_total", 0)
+        functions_listed = result.get("top_level_functions_listed", 0)
         listed_cap = result.get("listed_cap", DEFAULT_OUTLINE_CLASSES_CAP)
         if truncated:
+            overflow_parts = []
+            if classes_listed < classes_total:
+                overflow_parts.append(f"{classes_listed} of {classes_total} classes")
+            if functions_listed < functions_total:
+                overflow_parts.append(
+                    f"{functions_listed} of {functions_total} top-level functions"
+                )
             next_step = (
-                f"truncated: showing {classes_listed} of {classes_total} classes "
+                f"truncated: showing {', '.join(overflow_parts)} "
                 f"(listed_cap={listed_cap}). "
                 "To see more, raise listed_cap or narrow with a specific element type. "
-                "Use extract_code_section with line ranges from the listed classes."
+                "Use extract_code_section with line ranges from the listed entries."
             )
         else:
             next_step = "extract_code_section for the method you need (use line ranges from outline)"
