@@ -64,7 +64,8 @@ logger = logging.getLogger(__name__)
 # v5: #613 — Rust const/static items extracted as kind="constant".
 # v6: #614 — docstring/return_type/params serialized into symbols_json.
 # v7: #624 — PHP const declarations extracted as kind="constant".
-_AST_CACHE_EXTRACTOR_VERSION = 7
+# v8: #626 — JS/TS function-local variables no longer over-captured.
+_AST_CACHE_EXTRACTOR_VERSION = 8
 
 
 class SchemaIntegrityError(RuntimeError):

@@ -321,6 +321,38 @@ _PHP_SCOPE_BODY_NODES = frozenset(
     }
 )
 
+# Issue #626 — JS/TS function-local variables were OVER-captured: every
+# ``variable_declarator`` with a ``name`` field became a kind="variable" row
+# regardless of scope, so function locals (``const id = req.params.id``)
+# polluted FTS and symbol search (−57% JS / −54% TS variable rows on the
+# in-repo corpus). Inverse of the constants family (#612/#615/#618/#625):
+# the same language-gated top-down ``enclosed`` flag, used here to SKIP rows
+# instead of adding them. Module/top-level declarators stay captured —
+# const+let+var, NO const-style name gate (this is a contraction of the
+# pre-existing kind="variable" contract, not a constants feature).
+#
+# ``statement_block`` is deliberately ABSENT: module-level ``if``/``try``
+# bodies are statement_blocks outside any function node — including it would
+# break the #612 guarantee that if/try-wrapped module declarators stay
+# captured. TS namespace bodies (``internal_module`` / ``module`` /
+# ``ambient_declaration``) are not function scopes either, so namespace-level
+# declarators stay captured naturally (PHP #624 namespace precedent).
+# ``function`` is the anonymous-function-expression node of older grammar
+# versions; in current grammars it only matches the bare ``function`` keyword
+# token, which is harmless (keyword tokens have no children).
+_JSTS_SCOPE_BODY_NODES = frozenset(
+    {
+        "function_declaration",
+        "function_expression",
+        "function",
+        "arrow_function",
+        "method_definition",
+        "generator_function",
+        "generator_function_declaration",
+        "class_static_block",
+    }
+)
+
 
 def _php_constants(node: Any, source: str) -> list[dict[str, Any]]:
     """Return kind="constant" symbols for a PHP const_declaration, one row
@@ -723,9 +755,11 @@ def _walk_for_symbols(
 
     ``enclosed`` tracks (top-down, no parent walking) whether *node* sits
     inside a Python function/class body (#610), a Go function body (#613),
-    a Rust function/closure body (#613), or a PHP function/closure body
-    (#624) — module/package-constant capture must fire at top-level scope
-    only, including ``if``/``try``-wrapped module-level assignments.
+    a Rust function/closure body (#613), a PHP function/closure body
+    (#624), or a JS/TS function/method/static-block body (#626) —
+    module/package-constant capture must fire at top-level scope only,
+    including ``if``/``try``-wrapped module-level assignments, and JS/TS
+    function-local declarators must NOT produce kind="variable" rows.
     """
     if depth > 20:
         return
@@ -799,7 +833,15 @@ def _walk_for_symbols(
                 "language": language,
             }
         )
-    elif node_type in _VAR_DECL_LIKE and name_node is not None:
+    elif (
+        node_type in _VAR_DECL_LIKE
+        and name_node is not None
+        # #626: JS/TS function-local declarators are not cross-file symbols —
+        # skip them. The ast_cache path only ever delivers the language ids
+        # "javascript"/"typescript" for this family (.jsx → "javascript",
+        # .tsx → "typescript"), so gating on those two ids is complete.
+        and not (language in ("javascript", "typescript") and enclosed)
+    ):
         name = _node_text(name_node, source)
         if not name.startswith("_") or depth < 3:
             symbols.append(
@@ -845,6 +887,10 @@ def _walk_for_symbols(
         or (language == "go" and node_type in _GO_SCOPE_BODY_NODES)
         or (language == "rust" and node_type in _RUST_SCOPE_BODY_NODES)
         or (language == "php" and node_type in _PHP_SCOPE_BODY_NODES)
+        or (
+            language in ("javascript", "typescript")
+            and node_type in _JSTS_SCOPE_BODY_NODES
+        )
     )
     for child in node.children:
         _walk_for_symbols(child, source, symbols, language, depth + 1, child_enclosed)
