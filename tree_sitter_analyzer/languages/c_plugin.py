@@ -129,15 +129,38 @@ class CElementExtractor(ElementExtractor):
         # Issue #534 (Scope B): preproc_function_def macros are emitted once
         # per #ifdef / #else branch because both branches are traversed (the
         # traversal intentionally descends into both to catch macros defined
-        # only inside an #ifdef block).  Deduplicate by name, keeping the
-        # first occurrence (which comes from the #ifdef / #if branch).
-        seen_macro_names: set[str] = set()
+        # only inside an #ifdef block).  Collapse same-name macros ONLY when
+        # they sit inside the SAME preproc conditional (sibling branches) —
+        # a later legitimate redefinition (#undef + #define elsewhere) must
+        # survive (Codex P2 on #566).
+        conditional_ranges: list[tuple[int, int]] = []
+        stack = [tree.root_node]
+        while stack:
+            n = stack.pop()
+            if n.type in ("preproc_if", "preproc_ifdef"):
+                conditional_ranges.append((n.start_point[0] + 1, n.end_point[0] + 1))
+            stack.extend(n.children)
+
+        def _innermost_conditional(line: int) -> int | None:
+            best: int | None = None
+            best_span = -1
+            for i, (s, e) in enumerate(conditional_ranges):
+                if s <= line <= e:
+                    span = e - s
+                    if best is None or span < best_span:
+                        best, best_span = i, span
+            return best
+
+        seen_macro_keys: set[tuple[str, int]] = set()
         deduped: list[Function] = []
         for fn in functions:
             if fn.return_type == "macro":
-                if fn.name in seen_macro_names:
-                    continue
-                seen_macro_names.add(fn.name)
+                cond = _innermost_conditional(fn.start_line)
+                if cond is not None:
+                    key = (fn.name, cond)
+                    if key in seen_macro_keys:
+                        continue
+                    seen_macro_keys.add(key)
             deduped.append(fn)
         functions = deduped
 
