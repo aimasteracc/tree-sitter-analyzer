@@ -60,7 +60,8 @@ from .project_graph import _language_from_ext
 logger = logging.getLogger(__name__)
 
 # v3: #610 — Python module-level constants extracted as kind="constant".
-_AST_CACHE_EXTRACTOR_VERSION = 3
+# v4: #613 — Go package-level const/var specs extracted as kind="constant".
+_AST_CACHE_EXTRACTOR_VERSION = 4
 
 
 class SchemaIntegrityError(RuntimeError):

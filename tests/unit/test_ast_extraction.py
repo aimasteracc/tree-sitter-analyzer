@@ -561,3 +561,130 @@ class TestPythonModuleConstants:
         # Non-simple targets (tuple unpacking) are excluded by the scope rule.
         syms = _symbols_for("X_A, Y_B = 1, 2\n", "python")
         assert [s for s in syms if s["kind"] == "constant"] == []
+
+
+# ---------------------------------------------------------------------------
+# Issue #613: Go package-level constants indexed as kind="constant"
+# ---------------------------------------------------------------------------
+
+
+_GO_CONST_SRC = """\
+package main
+
+const A = 1
+
+const (
+	B = 2
+	C = 3
+)
+
+const lowercaseConst = 4
+
+var MAX_RETRIES = 5
+
+var lowercase_var = "x"
+
+var (
+	GROUP_VAR = 1
+	other     = 2
+)
+
+var _ = sideEffect()
+
+func f() {
+	const LOCAL_CONST = 9
+	var LOCAL_VAR = 10
+	_ = LOCAL_CONST
+	_ = LOCAL_VAR
+}
+"""
+
+
+class TestGoPackageConstants:
+    """Issue #613 — Go package-level const specs (all of them — Go consts are
+    constants by compiler definition) and const-style package vars must reach
+    ast_symbol_rows as kind="constant"; function-locals must not."""
+
+    def _constants(self) -> dict[str, dict]:
+        syms = _symbols_for(_GO_CONST_SRC, "go")
+        return {s["name"]: s for s in syms if s["kind"] == "constant"}
+
+    def test_exactly_the_six_package_constants_extracted(self):
+        consts = self._constants()
+        assert sorted(consts) == [
+            "A",
+            "B",
+            "C",
+            "GROUP_VAR",
+            "MAX_RETRIES",
+            "lowercaseConst",
+        ]
+
+    def test_grouped_const_block_captures_both_names_lines_pinned(self):
+        consts = self._constants()
+        assert consts["B"]["line"] == 6
+        assert consts["B"]["end_line"] == 6
+        assert consts["C"]["line"] == 7
+        assert consts["C"]["end_line"] == 7
+        assert all(c["language"] == "go" for c in consts.values())
+
+    def test_lowercase_const_included_no_pattern_gate(self):
+        # Go consts are constants by definition (compiler-enforced
+        # immutability) — no const-style name gate, unlike package vars.
+        assert "lowercaseConst" in self._constants()
+
+    def test_package_var_const_style_included(self):
+        consts = self._constants()
+        assert consts["MAX_RETRIES"]["line"] == 12
+        assert consts["GROUP_VAR"]["line"] == 17
+
+    def test_lowercase_package_var_excluded(self):
+        # Package vars are mutable state; only const-style names (the author
+        # signalling a constant by convention) count — asymmetry vs const.
+        syms = _symbols_for(_GO_CONST_SRC, "go")
+        assert [s["kind"] for s in syms if s.get("name") == "lowercase_var"] == []
+        assert [s["kind"] for s in syms if s.get("name") == "other"] == []
+
+    def test_blank_identifier_excluded(self):
+        # `var _ = sideEffect()` — the blank identifier is not referenceable.
+        assert "_" not in self._constants()
+
+    def test_function_local_const_and_var_excluded(self):
+        consts = self._constants()
+        assert "LOCAL_CONST" not in consts
+        assert "LOCAL_VAR" not in consts
+
+    def test_method_and_func_literal_locals_excluded(self):
+        src = (
+            "package main\n\n"
+            "type S struct{}\n\n"
+            "func (s S) m() {\n"
+            "\tconst METHOD_CONST = 1\n"
+            "\t_ = METHOD_CONST\n"
+            "}\n\n"
+            "var F = func() {\n"
+            "\tconst CLOSURE_CONST = 2\n"
+            "\t_ = CLOSURE_CONST\n"
+            "}\n"
+        )
+        syms = _symbols_for(src, "go")
+        consts = sorted(s["name"] for s in syms if s["kind"] == "constant")
+        assert consts == []
+
+    def test_multi_name_const_spec_captures_all_names(self):
+        syms = _symbols_for("package main\n\nconst P1, Q2 = 1, 2\n", "go")
+        consts = sorted(s["name"] for s in syms if s["kind"] == "constant")
+        assert consts == ["P1", "Q2"]
+
+    def test_typed_const_and_iota_block_captured(self):
+        src = (
+            "package main\n\n"
+            "const Typed int = 7\n\n"
+            "const (\n"
+            "\tKindA = iota\n"
+            "\tKindB\n"
+            ")\n"
+        )
+        syms = _symbols_for(src, "go")
+        consts = sorted(s["name"] for s in syms if s["kind"] == "constant")
+        assert consts == ["KindA", "KindB", "Typed"]
