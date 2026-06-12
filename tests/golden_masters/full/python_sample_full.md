@@ -12,7 +12,7 @@ from functools import reduce
 | Class | Type | Visibility | Lines | Methods | Fields |
 |-------|------|------------|-------|---------|--------|
 | Person | class | public | 14-28 | 2 | 1 |
-| Animal | class | public | 31-45 | 3 | 0 |
+| Animal | abstract_class | public | 31-45 | 3 | 0 |
 | Dog | class | public | 48-61 | 3 | 0 |
 | Cat | class | public | 64-78 | 3 | 0 |
 

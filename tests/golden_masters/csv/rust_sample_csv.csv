@@ -12,6 +12,7 @@
 ## Functions
 | Function | Signature | Vis | Async | Lines | Doc |
 |----------|-----------|-----|-------|-------|-----|
+| display | fn({'name': 'self', 'type': 'Any'}) -> String | public | - | 25-25 | - |
 | summary | fn({'name': 'self', 'type': 'Any'}) -> String | public | - | 27-29 | - |
 | new | fn({'name': 'id', 'type': 'u64'}, {'name': 'username', 'type': 'String'}, {'name': 'email', 'type': 'String'}) -> Self | public | - | 34-41 | - |
 | deactivate | fn({'name': 'self', 'type': 'Any'}) | public | - | 44-46 | - |
