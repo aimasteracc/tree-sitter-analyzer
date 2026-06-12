@@ -307,3 +307,16 @@ class TestLocalFunctionStaysUnowned:
         method = _make_elem("doWork", cls_name="Function", start_line=5, end_line=20)
         d = element_to_dict(method, [cls, bare, method])
         assert d["class_name"] == "Outer"
+
+    def test_span_less_class_is_skipped_in_find_class_name(self):
+        """A class-like element without line attrs (guard line) is skipped."""
+
+        class BareClass:
+            pass
+
+        bare = BareClass()
+        bare.__class__.__name__ = "Class"
+        bare.name = "Ghost"
+        cls = _make_elem("Outer", cls_name="Class", start_line=1, end_line=30)
+        method = _make_elem("doWork", cls_name="Function", start_line=5, end_line=20)
+        assert find_class_name(method, [bare, cls]) == "Outer"
