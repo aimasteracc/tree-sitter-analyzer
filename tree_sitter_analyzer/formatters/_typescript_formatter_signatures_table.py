@@ -104,7 +104,9 @@ def _append_class_block(
 ) -> None:
     """Emit one class/interface block: header + method lines."""
     name = cls.get("name", "?")
-    class_type = cls.get("class_type", "class")
+    # Real analysis data stores the container kind under "type"
+    # (_convert_class); "class_type" is the raw-element spelling.
+    class_type = cls.get("class_type") or cls.get("type") or "class"
     lr = cls.get("line_range") or {}
     start = lr.get("start", 0)
     end = lr.get("end", 0)

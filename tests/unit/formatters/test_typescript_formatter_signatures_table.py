@@ -168,8 +168,24 @@ def test_interface_block_header_present() -> None:
 def test_interface_class_type_shown() -> None:
     """Interface type should be visible in the header."""
     output = format_typescript_signatures_table(_interface_data())
-    # interface marker should be present
-    assert "interface" in output.lower() or "IUserService" in output
+    assert "## IUserService (1-20) [interface, 2 methods]" in output
+
+
+def test_container_kind_read_from_type_key() -> None:
+    """Real analysis data stores the container kind under 'type'
+    (_convert_class), not 'class_type' — Codex P2 on #541: without the
+    fallback every interface/enum/namespace renders as [class, ...]."""
+    iface = _make_class("Window", 17, 22, class_type="interface")
+    # Re-shape to the _convert_class spelling: kind under "type"
+    iface["type"] = iface.pop("class_type")
+    data = {
+        "file_path": "globals.d.ts",
+        "classes": [iface],
+        "methods": [],
+        "functions": [],
+    }
+    output = format_typescript_signatures_table(data)
+    assert "## Window (17-22) [interface, 0 methods]" in output
 
 
 def test_interface_method_count_exact() -> None:
