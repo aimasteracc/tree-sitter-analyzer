@@ -318,7 +318,10 @@ versions; its prior-art value is SQL ergonomics, not ANN.
 
 ## What this RFC does NOT do (deferred)
 
-- sqlite-vec/ANN indexing (phase-2, behind a measured trigger).
+- sqlite-vec/ANN indexing (phase-2, behind a measured trigger; if adopted,
+  the vec0 column MUST pin `distance_metric=cosine` — the default is L2,
+  which would silently disagree with the phase-1 cosine semantics (Codex P2
+  on #603 rev 1)).
 - `nav action=context` semantic rerank (phase-2, pilot-gated).
 - Body-content embeddings; cross-repo federation; replacing BM25 anywhere;
   auto-building on first connect. (Unchanged.)
