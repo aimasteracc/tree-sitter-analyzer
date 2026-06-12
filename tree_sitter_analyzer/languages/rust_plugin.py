@@ -314,6 +314,24 @@ class RustElementExtractor(ElementExtractor):
             log_error(f"Error extracting Rust function: {e}")
             return None
 
+    def _inside_trait(self, node: tree_sitter.Node) -> bool:
+        """True when *node* sits inside a ``trait_item`` body.
+
+        Depth-capped for the same reason as ``_find_impl_owner`` (MagicMock
+        endless-parent-chain OOM, 2026-06-10). ``impl_item`` / ``foreign_mod_item``
+        terminate the walk early: a signature inside them is not trait-required.
+        """
+        parent = node.parent
+        for _ in range(256):
+            if parent is None:
+                return False
+            if parent.type == "trait_item":
+                return True
+            if parent.type in ("impl_item", "foreign_mod_item"):
+                return False
+            parent = parent.parent
+        return False
+
     def _find_impl_owner(self, node: tree_sitter.Node) -> str | None:
         """Return the impl target type name for a fn nested in an impl block.
 
@@ -366,8 +384,16 @@ class RustElementExtractor(ElementExtractor):
         no default implementation — they end with ``;`` rather than a block.
         The ``function_item`` handler covers default-impl methods; this one
         covers the missing half (issue #538, Rust N2).
+
+        ``extern`` blocks also emit ``function_signature_item`` for foreign
+        function declarations — those are linked FFI APIs, not trait-required
+        methods, so only nodes inside a ``trait_item`` are extracted here
+        (Codex P2 on #583).
         """
         try:
+            if not self._inside_trait(node):
+                return None
+
             name_node = node.child_by_field_name("name")
             if not name_node:
                 return None

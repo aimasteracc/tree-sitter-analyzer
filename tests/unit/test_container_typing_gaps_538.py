@@ -305,3 +305,208 @@ class TestGoAliasNonContainerType:
         alias = [c for c in classes if c.name == "StringSlice"]
         assert len(alias) == 1
         assert alias[0].interfaces == []
+
+
+class TestRustExternSignatureNotAbstract:
+    """Codex P2 on #583: extern-block foreign fns also emit
+    function_signature_item — they are FFI declarations, not trait methods."""
+
+    CODE = """
+extern "C" {
+    fn puts(s: *const u8) -> i32;
+}
+
+trait Greet {
+    fn hello(&self) -> String;
+}
+"""
+
+    def test_extern_fn_excluded_trait_fn_kept(self):
+        import tree_sitter
+        import tree_sitter_rust
+
+        from tree_sitter_analyzer.languages.rust_plugin import RustElementExtractor
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        tree = tree_sitter.Parser(lang).parse(self.CODE.encode())
+        funcs = RustElementExtractor().extract_functions(tree, self.CODE)
+        names = [f.name for f in funcs]
+        assert "puts" not in names
+        trait_fns = [f for f in funcs if f.name == "hello"]
+        assert len(trait_fns) == 1
+        assert trait_fns[0].is_abstract is True
+
+
+class TestPythonQualifiedAbcBase:
+    """Codex P2 on #583: ``class Animal(abc.ABC)`` must classify as
+    abstract_class even without an @abstractmethod in the body."""
+
+    CODE = """import abc
+
+
+class Animal(abc.ABC):
+    pass
+
+
+class Dog(Animal, abc.ABC):
+    pass
+"""
+
+    @pytest.fixture
+    def classes(self, tmp_path):
+        import asyncio
+
+        from tree_sitter_analyzer.core.analysis_engine import get_analysis_engine
+
+        p = tmp_path / "abc_sample.py"
+        p.write_text(self.CODE, newline="\n")
+        result = asyncio.run(get_analysis_engine().analyze_file(str(p)))
+        return [e for e in result.elements if type(e).__name__ == "Class"]
+
+    def test_qualified_abc_is_abstract(self, classes):
+        animal = next(c for c in classes if c.name == "Animal")
+        assert animal.class_type == "abstract_class"
+        assert animal.superclass == "abc.ABC"
+
+    def test_qualified_abc_in_interfaces(self, classes):
+        dog = next(c for c in classes if c.name == "Dog")
+        assert dog.class_type == "abstract_class"
+        assert dog.superclass == "Animal"
+        assert dog.interfaces == ["abc.ABC"]
+
+
+class TestRustTraitSignatureSelfForms:
+    """Cover _find_self_parameter branches for trait signatures (codecov)."""
+
+    CODE = """
+trait Consume {
+    fn take(self: Box<Self>) -> String;
+    fn peek(&self) -> i32;
+}
+"""
+
+    def test_typed_self_parameter_binds_receiver(self):
+        import tree_sitter
+        import tree_sitter_rust
+
+        from tree_sitter_analyzer.languages.rust_plugin import RustElementExtractor
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        tree = tree_sitter.Parser(lang).parse(self.CODE.encode())
+        funcs = RustElementExtractor().extract_functions(tree, self.CODE)
+        take = next(f for f in funcs if f.name == "take")
+        assert take.is_abstract is True
+        peek = next(f for f in funcs if f.name == "peek")
+        assert peek.is_abstract is True
+
+
+class _RustStubNode:
+    """Minimal tree-sitter node stand-in (explicit parent, no auto-chains)."""
+
+    def __init__(
+        self, type_: str = "function_signature_item", parent=None, fields=None
+    ):
+        self.type = type_
+        self.parent = parent
+        self._fields = fields or {}
+
+    def child_by_field_name(self, name):
+        return self._fields.get(name)
+
+
+class TestRustSignatureStubFallbacks:
+    """Cover guard branches unreachable from valid Rust source (codecov)."""
+
+    @staticmethod
+    def _extractor():
+        from tree_sitter_analyzer.languages.rust_plugin import RustElementExtractor
+
+        return RustElementExtractor()
+
+    def test_no_params_node_returns_none(self):
+        node = _RustStubNode(parent=None)
+        assert self._extractor()._find_self_parameter(node) is None
+
+    def test_nameless_signature_in_trait_returns_none(self):
+        trait = _RustStubNode(type_="trait_item", parent=None)
+        body = _RustStubNode(type_="declaration_list", parent=trait)
+        node = _RustStubNode(parent=body)
+        assert self._extractor()._extract_function_signature(node) is None
+
+    def test_orphan_node_not_inside_trait(self):
+        node = _RustStubNode(parent=None)
+        assert self._extractor()._inside_trait(node) is False
+
+
+class TestRustFindSelfParameterDirect:
+    """Cover the typed-self ``parameter`` branch of _find_self_parameter,
+    unreachable through trait signatures (no impl owner there) — codecov."""
+
+    def _signature_node(self, code: str):
+        import tree_sitter
+        import tree_sitter_rust
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        tree = tree_sitter.Parser(lang).parse(code.encode())
+        stack = [tree.root_node]
+        while stack:
+            n = stack.pop()
+            if n.type == "function_signature_item":
+                return n
+            stack.extend(n.children)
+        raise AssertionError("no function_signature_item parsed")
+
+    def _extractor(self, code: str):
+        from tree_sitter_analyzer.languages.rust_plugin import RustElementExtractor
+
+        ex = RustElementExtractor()
+        ex.source_code = code
+        ex._content_bytes = code.encode()
+        return ex
+
+    def test_boxed_self_parameter_found(self):
+        code = "trait T { fn take(self: Box<Self>); }"
+        node = self._signature_node(code)
+        ex = self._extractor(code)
+        assert ex._find_self_parameter(node) == "self: Box<Self>"
+
+    def test_plain_typed_parameter_is_not_self(self):
+        code = "trait T { fn take(x: i32); }"
+        node = self._signature_node(code)
+        ex = self._extractor(code)
+        assert ex._find_self_parameter(node) is None
+
+
+class TestRustSignatureArrowPrefixStrip:
+    """Cover the defensive '->' strip (mirrors function_item handler) — codecov."""
+
+    def test_arrow_prefixed_return_type_stripped(self):
+        from tree_sitter_analyzer.languages.rust_plugin import RustElementExtractor
+
+        content = b"x-> i32"
+
+        class _SpanStub(_RustStubNode):
+            def __init__(self, type_, parent=None, fields=None, span=(0, 0)):
+                super().__init__(type_, parent=parent, fields=fields)
+                self.start_byte, self.end_byte = span
+                self.start_point = (0, self.start_byte)
+                self.end_point = (0, self.end_byte)
+                self.children = []
+
+        trait = _SpanStub("trait_item")
+        body = _SpanStub("declaration_list", parent=trait)
+        name = _SpanStub("identifier", span=(0, 1))
+        ret = _SpanStub("type", span=(1, 7))
+        node = _SpanStub(
+            "function_signature_item",
+            parent=body,
+            fields={"name": name, "return_type": ret, "parameters": None},
+            span=(0, 7),
+        )
+
+        ex = RustElementExtractor()
+        ex.source_code = content.decode()
+        ex._content_bytes = content
+        func = ex._extract_function_signature(node)
+        assert func is not None
+        assert func.return_type == "i32"

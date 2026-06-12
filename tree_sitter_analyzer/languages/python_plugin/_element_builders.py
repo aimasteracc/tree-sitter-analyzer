@@ -156,7 +156,11 @@ class ClassBuildInput:
 
 
 def build_class_element(data: ClassBuildInput) -> Class:
-    is_abstract = "ABC" in data.superclasses or "abstractmethod" in data.raw_text
+    # Accept both bare ABC and qualified abc.ABC (Codex P2 on #583)
+    is_abstract = (
+        any(s == "ABC" or s.endswith(".ABC") for s in data.superclasses)
+        or "abstractmethod" in data.raw_text
+    )
     return Class(
         name=data.name,
         start_line=data.start_line,
