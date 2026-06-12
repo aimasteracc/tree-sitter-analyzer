@@ -214,3 +214,394 @@ class TestSemanticClassifyChangeImpactIntegration:
 
         assert _classify_changed_files([], None) == []
         assert _classify_changed_files(["x.py"], None) == []
+
+
+# ── #528 byte-budget tests ────────────────────────────────────────────────────
+
+# Shared source fixtures that reliably trigger the AST children bloat.
+# classify_string mode is used so tests work without a git repo.
+_SRC_V1 = (
+    "import os\n"
+    "import sys\n"
+    "\n"
+    "\n"
+    "class MyService:\n"
+    "    def __init__(self, name: str) -> None:\n"
+    "        self.name = name\n"
+    "        self.data: list[str] = []\n"
+    "\n"
+    "    def start(self) -> bool:\n"
+    "        print(f'Starting {self.name}')\n"
+    "        return True\n"
+    "\n"
+    "    def stop(self) -> None:\n"
+    "        self.data.clear()\n"
+    "\n"
+    "    def process(self, item: str) -> str:\n"
+    "        return item.upper()\n"
+    "\n"
+    "\n"
+    "def helper_one(x: int) -> int:\n"
+    "    return x + 1\n"
+    "\n"
+    "\n"
+    "def helper_two(x: int, y: int) -> int:\n"
+    "    return x * y\n"
+)
+
+_SRC_V2 = (
+    "import os\n"
+    "import sys\n"
+    "import logging\n"
+    "\n"
+    "\n"
+    "class MyService:\n"
+    "    def __init__(self, name: str, timeout: int = 30) -> None:\n"
+    "        self.name = name\n"
+    "        self.timeout = timeout\n"
+    "        self.data: list[str] = []\n"
+    "\n"
+    "    def start(self, retry: bool = False) -> bool:\n"
+    "        logging.info(f'Starting {self.name} retry={retry}')\n"
+    "        return True\n"
+    "\n"
+    "    def stop(self) -> None:\n"
+    "        self.data.clear()\n"
+    "\n"
+    "    def process(self, item: str) -> str:\n"
+    "        result = item.strip().upper()\n"
+    "        return result\n"
+    "\n"
+    "    def status(self) -> dict:\n"
+    "        return {'name': self.name, 'items': len(self.data)}\n"
+    "\n"
+    "\n"
+    "def helper_one(x: int) -> int:\n"
+    "    return x + 1\n"
+    "\n"
+    "\n"
+    "def helper_two(x: int, y: int) -> int:\n"
+    "    return x * y\n"
+)
+
+
+# Minimal git repo fixture — used for the classify_file / git-diff invariant test only.
+@pytest.fixture
+def git_repo_with_two_commits(tmp_path):
+    """Minimal git repo with a before/after commit so classify_file can run."""
+    import subprocess
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    env = {
+        "GIT_AUTHOR_NAME": "test",
+        "GIT_AUTHOR_EMAIL": "t@t.com",
+        "GIT_COMMITTER_NAME": "test",
+        "GIT_COMMITTER_EMAIL": "t@t.com",
+        "HOME": str(tmp_path),
+        "PATH": __import__("os").environ["PATH"],
+    }
+
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True, env=env)
+    subprocess.run(
+        ["git", "config", "user.email", "t@t.com"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        env=env,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "test"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        env=env,
+    )
+    (repo / "service.py").write_text(_SRC_V1)
+    subprocess.run(
+        ["git", "add", "service.py"], cwd=repo, check=True, capture_output=True, env=env
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "initial"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        env=env,
+    )
+    (repo / "service.py").write_text(_SRC_V2)
+    subprocess.run(
+        ["git", "add", "service.py"], cwd=repo, check=True, capture_output=True, env=env
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "add features"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        env=env,
+    )
+    return repo
+
+
+class TestCompactHelpers:
+    """Unit tests for _compact_classification / _compact_hunk helpers (#528)."""
+
+    def test_compact_classification_passthrough_when_include_ast_nodes(self):
+        from tree_sitter_analyzer.mcp.tools.semantic_classify_tool import (
+            _compact_classification,
+        )
+
+        entry = {
+            "category": "refactor",
+            "hunk": {"old": {"type": "fn", "children": [{"x": 1}]}},
+        }
+        result = _compact_classification(entry, include_ast_nodes=True)
+        assert result is entry  # exact same object, no copy
+
+    def test_compact_classification_returns_entry_when_hunk_not_dict(self):
+        """Covers the defensive branch when hunk is None or missing."""
+        from tree_sitter_analyzer.mcp.tools.semantic_classify_tool import (
+            _compact_classification,
+        )
+
+        entry_no_hunk = {"category": "refactor"}
+        result = _compact_classification(entry_no_hunk, include_ast_nodes=False)
+        assert result is entry_no_hunk
+
+        entry_null_hunk = {"category": "refactor", "hunk": None}
+        result2 = _compact_classification(entry_null_hunk, include_ast_nodes=False)
+        assert result2 is entry_null_hunk
+
+    def test_compact_hunk_strips_children_from_old_and_new(self):
+        from tree_sitter_analyzer.mcp.tools.semantic_classify_tool import _compact_hunk
+
+        hunk = {
+            "kind": "modified",
+            "old": {"type": "fn", "line": 1, "children": [{"x": 1}, {"y": 2}]},
+            "new": {"type": "fn", "line": 5, "children": [{"z": 3}]},
+        }
+        result = _compact_hunk(hunk)
+        assert "children" not in result["old"]
+        assert "children" not in result["new"]
+        assert result["old"]["type"] == "fn"
+        assert result["new"]["type"] == "fn"
+        assert result["kind"] == "modified"
+
+    def test_compact_hunk_passthrough_non_old_new_keys(self):
+        from tree_sitter_analyzer.mcp.tools.semantic_classify_tool import _compact_hunk
+
+        hunk = {"kind": "added", "summary": "hello", "details": {"x": 1}}
+        result = _compact_hunk(hunk)
+        assert result["kind"] == "added"
+        assert result["summary"] == "hello"
+        assert result["details"] == {"x": 1}
+
+    def test_compact_hunk_old_new_non_dict_passthrough(self):
+        """When old/new value is not a dict, pass it through unchanged."""
+        from tree_sitter_analyzer.mcp.tools.semantic_classify_tool import _compact_hunk
+
+        # 'old' and 'new' that are not dicts (e.g., None or a string)
+        hunk = {"kind": "deleted", "old": None, "new": "not_a_dict"}
+        result = _compact_hunk(hunk)
+        assert result["old"] is None
+        assert result["new"] == "not_a_dict"
+
+
+class TestClassifyByteBudget:
+    """#528 — default response must not inline full AST subtrees."""
+
+    def test_schema_has_include_ast_nodes_param(self, tool: SemanticClassifyTool):
+        """include_ast_nodes opt-in must be declared in schema, not required."""
+        schema = tool.get_tool_schema()
+        props = schema["properties"]
+        assert "include_ast_nodes" in props, (
+            "include_ast_nodes param missing from schema"
+        )
+        assert props["include_ast_nodes"]["type"] == "boolean"
+        assert "include_ast_nodes" not in schema.get("required", [])
+
+    def test_schema_has_hunk_cap_param(self, tool: SemanticClassifyTool):
+        """hunk_cap opt-in must be declared in schema, not required."""
+        schema = tool.get_tool_schema()
+        props = schema["properties"]
+        assert "hunk_cap" in props, "hunk_cap param missing from schema"
+        assert props["hunk_cap"]["type"] == "integer"
+        assert "hunk_cap" not in schema.get("required", [])
+
+    def test_default_classifications_have_no_ast_children(
+        self, tool: SemanticClassifyTool
+    ):
+        """By default, each entry in classifications must not contain hunk.old/new children.
+
+        Uses classify_string mode — reliably triggers AST children without a git repo.
+        """
+        result = _run(
+            tool,
+            {
+                "mode": "classify_string",
+                "old_source": _SRC_V1,
+                "new_source": _SRC_V2,
+                "language": "python",
+                "output_format": "json",
+            },
+        )
+        assert result["success"] is True
+        assert result.get("change_count") == 10  # _SRC_V1→_SRC_V2 fixed fixture
+        for entry in result.get("classifications", []):
+            hunk = entry.get("hunk", {})
+            old_node = hunk.get("old", {})
+            new_node = hunk.get("new", {})
+            assert "children" not in old_node, (
+                "hunk.old.children must not appear in default response"
+            )
+            assert "children" not in new_node, (
+                "hunk.new.children must not appear in default response"
+            )
+
+    def test_default_response_exact_bytes_string_mode(self, tool: SemanticClassifyTool):
+        """Exact byte pin (string mode, deterministic fixture).
+
+        Pre-fix this fixture serialized to ~100KB (120× the 837-byte raw
+        diff — full AST subtrees inlined). The exact post-fix pin makes ANY
+        response-size drift go red and forces a conscious re-pin (locked
+        exact-assertion rule; a ratio ceiling let bloat regrow silently).
+        """
+        import difflib
+        import json
+
+        raw_diff = "".join(
+            difflib.unified_diff(
+                _SRC_V1.splitlines(keepends=True),
+                _SRC_V2.splitlines(keepends=True),
+                fromfile="service.py",
+                tofile="service.py",
+            )
+        )
+        assert len(raw_diff.encode()) == 837
+
+        result = _run(
+            tool,
+            {
+                "mode": "classify_string",
+                "old_source": _SRC_V1,
+                "new_source": _SRC_V2,
+                "language": "python",
+                "output_format": "json",
+            },
+        )
+        assert result["success"] is True
+        assert len(json.dumps(result)) == 4544
+
+    def test_default_response_leq_raw_diff_bytes_git_mode(
+        self, tool: SemanticClassifyTool, git_repo_with_two_commits
+    ):
+        """Differential invariant (git mode): default classify_file response ≤ raw git diff bytes."""
+        import json
+        import subprocess
+
+        repo = git_repo_with_two_commits
+        local_tool = SemanticClassifyTool(project_root=str(repo))
+        result = _run(
+            local_tool,
+            {
+                "mode": "classify_file",
+                "file_path": "service.py",
+                "old_ref": "HEAD~1",
+                "new_ref": "HEAD",
+                "output_format": "json",
+            },
+        )
+        assert result["success"] is True
+
+        raw_diff = subprocess.run(
+            ["git", "diff", "HEAD~1", "HEAD", "--", "service.py"],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            check=False,
+        ).stdout
+        raw_diff_bytes = len(raw_diff.encode())
+        response_bytes = len(json.dumps(result))
+
+        assert response_bytes <= raw_diff_bytes, (
+            f"Default classify_file response ({response_bytes} bytes) "
+            f"exceeds raw git diff ({raw_diff_bytes} bytes). "
+            "Full AST subtrees must not be inlined by default."
+        )
+
+    def test_default_response_has_verdict_and_summary_fields(
+        self, tool: SemanticClassifyTool
+    ):
+        """Default response must carry verdict, dominant_category, risk_level, change_summary,
+        category_counts, diff_hunks, change_count — the essential scalar fields."""
+        result = _run(
+            tool,
+            {
+                "mode": "classify_string",
+                "old_source": _SRC_V1,
+                "new_source": _SRC_V2,
+                "language": "python",
+                "output_format": "json",
+            },
+        )
+        for field in (
+            "success",
+            "verdict",
+            "dominant_category",
+            "risk_level",
+            "change_summary",
+            "category_counts",
+            "diff_hunks",
+            "change_count",
+            "classifications",
+        ):
+            assert field in result, (
+                f"Required field '{field}' missing from default response"
+            )
+
+    def test_truncation_honesty_fields_when_capped(self, tool: SemanticClassifyTool):
+        """When hunk_cap limits the output, truncated/listed_cap/next_step must appear."""
+        result = _run(
+            tool,
+            {
+                "mode": "classify_string",
+                "old_source": _SRC_V1,
+                "new_source": _SRC_V2,
+                "language": "python",
+                "output_format": "json",
+                "hunk_cap": 2,
+            },
+        )
+        assert result["success"] is True
+        # _SRC_V1→_SRC_V2 fixed fixture: 10 changes (> the cap of 2, so
+        # truncation below is meaningfully exercised)
+        assert result.get("change_count") == 10
+        assert result.get("truncated") is True, "truncated must be True when cap is hit"
+        assert "listed_cap" in result, "listed_cap must appear when truncated"
+        assert "next_step" in result, "next_step must appear when truncated"
+        assert len(result["classifications"]) == 2
+
+    def test_include_ast_nodes_opt_in_adds_hunk_detail(
+        self, tool: SemanticClassifyTool
+    ):
+        """With include_ast_nodes=True, hunk.old/new details appear in classifications."""
+        result = _run(
+            tool,
+            {
+                "mode": "classify_string",
+                "old_source": _SRC_V1,
+                "new_source": _SRC_V2,
+                "language": "python",
+                "output_format": "json",
+                "include_ast_nodes": True,
+            },
+        )
+        assert result["success"] is True
+        classifications = result.get("classifications", [])
+        assert len(classifications) == 10  # _SRC_V1→_SRC_V2 fixed fixture
+        has_hunk_detail = any(
+            "old" in entry.get("hunk", {}) or "new" in entry.get("hunk", {})
+            for entry in classifications
+        )
+        assert has_hunk_detail, (
+            "include_ast_nodes=True must populate hunk.old/new details"
+        )
