@@ -510,3 +510,59 @@ class TestRustSignatureArrowPrefixStrip:
         func = ex._extract_function_signature(node)
         assert func is not None
         assert func.return_type == "i32"
+
+
+class TestRustSignatureGuardEdges:
+    """Cover depth-cap exhaustion and the extractor except branch (codecov)."""
+
+    def test_self_referencing_parent_chain_hits_depth_cap(self):
+        from tree_sitter_analyzer.languages.rust_plugin import RustElementExtractor
+
+        node = _RustStubNode(parent=None)
+        node.parent = node  # cycle: never None, never a terminator type
+        assert RustElementExtractor()._inside_trait(node) is False
+
+    def test_node_error_inside_trait_returns_none(self):
+        from tree_sitter_analyzer.languages.rust_plugin import RustElementExtractor
+
+        class _ExplodingName(_RustStubNode):
+            def child_by_field_name(self, name):
+                raise RuntimeError("boom")
+
+        trait = _RustStubNode(type_="trait_item", parent=None)
+        body = _RustStubNode(type_="declaration_list", parent=trait)
+        node = _ExplodingName(parent=body)
+        assert RustElementExtractor()._extract_function_signature(node) is None
+
+
+class TestGoStructInterfacesNoneNode:
+    """Cover the type_node=None early return (codecov branch)."""
+
+    def test_none_type_node_returns_empty(self):
+        from tree_sitter_analyzer.languages._go_type_helpers import (
+            _go_struct_interfaces,
+        )
+
+        assert _go_struct_interfaces(None, lambda n: "") == []
+
+
+class TestPythonNodeHelpersQualifiedBase:
+    """Cover the attribute branch in the _node_helpers superclass path
+    (the fallback extractor path, not exercised by the engine tests)."""
+
+    def test_attribute_base_extracted(self):
+        import tree_sitter
+        import tree_sitter_python
+
+        from tree_sitter_analyzer.languages.python_plugin._node_helpers import (
+            extract_superclasses_from_node,
+        )
+
+        code = "class A(abc.ABC, Base):\n    pass\n"
+        lang = tree_sitter.Language(tree_sitter_python.language())
+        tree = tree_sitter.Parser(lang).parse(code.encode())
+        class_node = tree.root_node.children[0]
+        assert extract_superclasses_from_node(class_node, code) == [
+            "abc.ABC",
+            "Base",
+        ]

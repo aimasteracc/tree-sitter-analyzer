@@ -426,14 +426,10 @@ class RustElementExtractor(ElementExtractor):
             )
             func.is_abstract = True
 
-            owner = self._find_impl_owner(node)
-            if owner:
-                func.receiver_type = owner
-                self_param = self._find_self_parameter(node)
-                if self_param:
-                    func.receiver = self_param
-                    func.is_method = True
-
+            # No receiver binding here: _inside_trait guarantees the node is
+            # trait-contained, and _find_impl_owner only matches impl_item —
+            # trait-body declarations carry no impl owner (same as the
+            # function_item path for trait default methods).
             return func
         except Exception as e:
             log_error(f"Error extracting Rust abstract function: {e}")
