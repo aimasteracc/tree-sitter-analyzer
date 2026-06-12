@@ -291,6 +291,62 @@ _RUST_CONST_LIKE = frozenset({"const_item", "static_item"})
 # scope — and deliberately absent.
 _RUST_SCOPE_BODY_NODES = frozenset({"function_item", "closure_expression", "block"})
 
+# Issue #624 — PHP const declarations, same shape as #610/#615/#618.
+# tree-sitter-php emits ``const_declaration`` (the node type already sits in
+# _VAR_DECL_LIKE via Go's grammar) but the names live on ``const_element``
+# children which carry NO ``name`` field — the identifier is a bare ``name``
+# child — so the _VAR_DECL_LIKE name gate never matched and no rows were
+# produced. ALL names are captured — PHP ``const`` is compiler-enforced
+# immutable, so no const-style name gate (mirrors the Go/Rust reasoning).
+# Class/interface/trait/enum consts ARE captured (deliberate): addressable as
+# ``Config::MAX_USERS`` like Rust associated consts; their bodies are
+# declaration_list / enum_declaration_list nodes, not function scopes, so the
+# ``enclosed`` mechanism keeps them naturally. ``define()`` calls are
+# function_call_expression nodes — runtime registration whose name is a
+# string argument, not a declaration — and stay out of scope.
+
+# Nodes that open a function scope in PHP (PHP analogue of the other
+# _*_SCOPE_BODY_NODES sets, feeding the same top-down ``enclosed`` flag).
+# PHP has no legal function-scope const, but tree-sitter-php parses one
+# permissively as const_declaration, so the gate is still required. Braced
+# namespace bodies are ``compound_statement`` nodes — the gate keys on the
+# function/closure declaration node types (not compound_statement) precisely
+# so namespace-scope consts stay captured.
+_PHP_SCOPE_BODY_NODES = frozenset(
+    {
+        "function_definition",
+        "method_declaration",
+        "anonymous_function",
+        "arrow_function",
+    }
+)
+
+
+def _php_constants(node: Any, source: str) -> list[dict[str, Any]]:
+    """Return kind="constant" symbols for a PHP const_declaration, one row
+    per ``const_element`` (``const A = 1, B = 2;`` yields two rows).
+
+    The caller guarantees the declaration is not enclosed in a function
+    body (#624 scope rule).
+    """
+    out: list[dict[str, Any]] = []
+    for child in node.children:
+        if child.type != "const_element":
+            continue
+        name_node = next((c for c in child.children if c.type == "name"), None)
+        if name_node is None:
+            continue
+        out.append(
+            {
+                "kind": "constant",
+                "name": _node_text(name_node, source),
+                "line": child.start_point[0] + 1,
+                "end_line": child.end_point[0] + 1,
+                "language": "php",
+            }
+        )
+    return out
+
 
 def _python_module_constant(node: Any, source: str) -> dict[str, Any] | None:
     """Return a kind="constant" symbol for a module-scope Python assignment,
@@ -667,9 +723,9 @@ def _walk_for_symbols(
 
     ``enclosed`` tracks (top-down, no parent walking) whether *node* sits
     inside a Python function/class body (#610), a Go function body (#613),
-    or a Rust function/closure body (#613) — module/package-constant capture
-    must fire at top-level scope only, including ``if``/``try``-wrapped
-    module-level assignments.
+    a Rust function/closure body (#613), or a PHP function/closure body
+    (#624) — module/package-constant capture must fire at top-level scope
+    only, including ``if``/``try``-wrapped module-level assignments.
     """
     if depth > 20:
         return
@@ -778,6 +834,8 @@ def _walk_for_symbols(
                 "language": "rust",
             }
         )
+    elif node_type == "const_declaration" and language == "php" and not enclosed:
+        symbols.extend(_php_constants(node, source))
     # Language-gated: Rust needs "block" in its scope set (const-initializer
     # block expressions, Codex P2 on #618), but Python's if/try bodies are
     # also "block" nodes — a shared set would break the #612 guarantee that
@@ -786,6 +844,7 @@ def _walk_for_symbols(
         (language == "python" and node_type in _PY_SCOPE_BODY_NODES)
         or (language == "go" and node_type in _GO_SCOPE_BODY_NODES)
         or (language == "rust" and node_type in _RUST_SCOPE_BODY_NODES)
+        or (language == "php" and node_type in _PHP_SCOPE_BODY_NODES)
     )
     for child in node.children:
         _walk_for_symbols(child, source, symbols, language, depth + 1, child_enclosed)

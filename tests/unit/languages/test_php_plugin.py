@@ -500,15 +500,38 @@ class TestPHPVariableExtraction:
         extractor = plugin.create_extractor()
         variables = extractor.extract_variables(tree, COMPLEX_CLASS_CODE)
 
-        # COMPLEX_CLASS_CODE yields exactly 4 properties (measured with
-        # tree-sitter-php 0.24.1). The MAX_USERS class constant is NOT
-        # extracted — known constant-extraction gap.
+        # COMPLEX_CLASS_CODE yields 4 properties + the MAX_USERS class
+        # constant (gap fixed by #624: const_element carries no ``name``
+        # field, so the field lookup dropped every const silently).
         assert [v.name for v in variables] == [
             "logger",
             "repository",
+            "MAX_USERS",
             "instanceCount",
             "serviceName",
         ]
+        max_users = next(v for v in variables if v.name == "MAX_USERS")
+        assert max_users.is_constant is True
+        assert max_users.is_static is True
+        assert max_users.is_final is True
+        assert max_users.visibility == "public"
+        assert max_users.variable_type == "const"
+        assert max_users.receiver_type == "UserService"
+        assert max_users.start_line == 21
+
+    def test_extract_top_level_const(self):
+        """#624 — top-level const reaches extract_variables too (the plugin
+        walks the whole tree, so the same name-field fix covers it)."""
+        plugin = PHPPlugin()
+        code = "<?php\nconst MAX = 1;\nconst A = 1, B = 2;\n"
+        tree = get_tree_for_code(code, plugin)
+        extractor = plugin.create_extractor()
+        variables = extractor.extract_variables(tree, code)
+
+        assert [v.name for v in variables] == ["MAX", "A", "B"]
+        top = next(v for v in variables if v.name == "MAX")
+        assert top.is_constant is True
+        assert top.receiver_type is None
 
     def test_extract_static_property(self):
         """Test extraction of static property."""
@@ -753,11 +776,12 @@ class TestPHPIntegration:
         imports = extractor.extract_imports(tree, COMPLEX_CLASS_CODE)
 
         # COMPLEX_CLASS_CODE measured with tree-sitter-php 0.24.1:
-        # 2 classes (BaseService/UserService), 6 functions, 4 properties,
+        # 2 classes (BaseService/UserService), 6 functions, 5 variables
+        # (4 properties + the MAX_USERS class const, extracted since #624),
         # 3 imports (use statements, extracted since #617).
         assert len(classes) == 2
         assert len(functions) == 6
-        assert len(variables) == 4
+        assert len(variables) == 5
         assert [i.name for i in imports] == [
             "App\\Repositories\\UserRepository",
             "App\\Events\\UserCreated",

@@ -63,7 +63,8 @@ logger = logging.getLogger(__name__)
 # v4: #613 — Go package-level const/var specs extracted as kind="constant".
 # v5: #613 — Rust const/static items extracted as kind="constant".
 # v6: #614 — docstring/return_type/params serialized into symbols_json.
-_AST_CACHE_EXTRACTOR_VERSION = 6
+# v7: #624 — PHP const declarations extracted as kind="constant".
+_AST_CACHE_EXTRACTOR_VERSION = 7
 
 
 class SchemaIntegrityError(RuntimeError):

@@ -837,3 +837,157 @@ class TestRustConstantsCodexP2s:
         syms = _symbols_for(src, "python")
         names = [s["name"] for s in syms if s["kind"] == "constant"]
         assert names == ["SEP"]
+
+
+# ---------------------------------------------------------------------------
+# Issue #624: PHP const declarations indexed as kind="constant"
+# ---------------------------------------------------------------------------
+
+
+_PHP_CONST_SRC = """\
+<?php
+const MAX = 1;
+
+const A = 1, B = 2;
+
+define('LEGACY_MODE', true);
+
+class Config {
+    const MAX_USERS = 1000;
+    public const X = 2;
+    final public const FLAG = 5;
+}
+
+interface Shape {
+    const SIDES = 0;
+}
+
+trait Loggable {
+    const TRAIT_C = 4;
+}
+
+enum Suit: int {
+    case Hearts = 1;
+    const ENUM_C = 9;
+}
+
+function f() {
+    const ILLEGAL_LOCAL = 7;
+    define('RUNTIME_FLAG', 1);
+}
+
+$pad = new class {
+    const ANON_C = 3;
+};
+"""
+
+
+class TestPhpConstants:
+    """Issue #624 — PHP const declarations must reach ast_symbol_rows as
+    kind="constant" (ALL names — PHP ``const`` is compiler-enforced
+    immutable, no name-pattern gate; mirrors the Go #615 / Rust #618
+    reasoning). Class/interface/trait/enum consts ARE captured: addressable
+    as ``Config::MAX_USERS``, like Rust associated consts — their bodies are
+    declaration_list / enum_declaration_list nodes, so the ``enclosed``
+    mechanism keeps them naturally. ``define()`` calls are
+    function_call_expression nodes (runtime registration, not declarations)
+    and stay out — as do function-body consts (illegal PHP that
+    tree-sitter-php still parses as const_declaration)."""
+
+    def _constants(self) -> dict[str, dict]:
+        syms = _symbols_for(_PHP_CONST_SRC, "php")
+        return {s["name"]: s for s in syms if s["kind"] == "constant"}
+
+    def test_exactly_the_ten_constants_extracted(self):
+        consts = self._constants()
+        assert sorted(consts) == [
+            "A",
+            "ANON_C",
+            "B",
+            "ENUM_C",
+            "FLAG",
+            "MAX",
+            "MAX_USERS",
+            "SIDES",
+            "TRAIT_C",
+            "X",
+        ]
+
+    def test_top_level_const_lines_pinned(self):
+        consts = self._constants()
+        assert consts["MAX"]["line"] == 2
+        assert consts["MAX"]["end_line"] == 2
+        assert all(c["language"] == "php" for c in consts.values())
+
+    def test_multi_element_declaration_one_row_each(self):
+        # `const A = 1, B = 2;` — one const_declaration, two const_element
+        # children; each element is its own row (mirrors Go spec handling).
+        consts = self._constants()
+        assert consts["A"]["line"] == 4
+        assert consts["B"]["line"] == 4
+
+    def test_class_consts_captured_decision_pinned(self):
+        # Decision (#624): class consts ARE captured — compiler-enforced
+        # constants addressable as Config::MAX_USERS, like Rust associated
+        # consts (#618), unlike the mutable Python class attributes #612
+        # excludes. Modifiers (public / final public) do not change capture.
+        consts = self._constants()
+        assert consts["MAX_USERS"]["line"] == 9
+        assert consts["X"]["line"] == 10
+        assert consts["FLAG"]["line"] == 11
+
+    def test_interface_trait_enum_consts_captured(self):
+        consts = self._constants()
+        assert consts["SIDES"]["line"] == 15
+        assert consts["TRAIT_C"]["line"] == 19
+        assert consts["ENUM_C"]["line"] == 24
+
+    def test_enum_case_is_not_a_const_row(self):
+        # enum cases are enum_case nodes, not const_element — a different
+        # construct, out of #624 scope (no kind="constant" row).
+        assert "Hearts" not in self._constants()
+
+    def test_define_calls_excluded_decision_pinned(self):
+        # Decision (#624): define() is a function_call_expression — runtime
+        # registration whose name is a string argument (possibly dynamic),
+        # not a declaration. Not indexed.
+        consts = self._constants()
+        assert "LEGACY_MODE" not in consts
+        assert "RUNTIME_FLAG" not in consts
+
+    def test_function_body_const_excluded(self):
+        # PHP has no function-scope const (compile error), but
+        # tree-sitter-php parses it permissively as const_declaration —
+        # the enclosed gate must keep it out.
+        assert "ILLEGAL_LOCAL" not in self._constants()
+
+    def test_top_level_anonymous_class_const_captured(self):
+        # Decision (#624): a top-level anonymous-class const is still a
+        # compiler-enforced class const (addressable via the instance);
+        # captured. Inside a function body it is excluded like any other
+        # function-enclosed const (next test).
+        assert self._constants()["ANON_C"]["line"] == 33
+
+    def test_closure_and_function_nested_consts_excluded(self):
+        src = (
+            "<?php\n"
+            "$c = function () {\n"
+            "    const CLOSURE_LOCAL = 1;\n"
+            "};\n"
+            "function g() {\n"
+            "    $y = new class {\n"
+            "        const FN_ANON = 2;\n"
+            "    };\n"
+            "}\n"
+        )
+        syms = _symbols_for(src, "php")
+        assert [s["name"] for s in syms if s["kind"] == "constant"] == []
+
+    def test_braced_namespace_const_captured(self):
+        # Braced namespace bodies are compound_statement nodes — the scope
+        # gate uses function/closure node types (not compound_statement)
+        # precisely so namespace-scope consts stay captured.
+        src = "<?php\nnamespace App {\n    const NS_CONST = 1;\n}\n"
+        syms = _symbols_for(src, "php")
+        names = [s["name"] for s in syms if s["kind"] == "constant"]
+        assert names == ["NS_CONST"]
