@@ -208,11 +208,12 @@ def _resolve_class_extends(cls: Any) -> str | None:
     Java plugin sets ``extends_class``; JS/TS/Python/Ruby/PHP/C++/C#/Go
     plugins set ``superclass``.  Issue #530.
     """
-    v = getattr(cls, "extends_class", None)
-    if v:
-        return str(v)
-    raw = getattr(cls, "superclass", None)
-    return str(raw) if raw else None
+    for attr in ("extends_class", "superclass"):
+        v = getattr(cls, attr, None)
+        # Strings only — Mock auto-attributes must not leak reprs (#560).
+        if isinstance(v, str) and v:
+            return v
+    return None
 
 
 def _resolve_class_implements(cls: Any) -> list[str]:
@@ -221,11 +222,11 @@ def _resolve_class_implements(cls: Any) -> list[str]:
     Java/Rust plugins set ``implements_interfaces``; TS/Python/PHP/C++/C#/Go
     plugins set ``interfaces``.  Issue #530.
     """
-    v = getattr(cls, "implements_interfaces", None)
-    if v:
-        return list(v)
-    raw = getattr(cls, "interfaces", None)
-    return list(raw) if raw else []
+    for attr in ("implements_interfaces", "interfaces"):
+        v = getattr(cls, attr, None)
+        if isinstance(v, (list, tuple)) and v:
+            return [str(item) for item in v]
+    return []
 
 
 def _convert_class(cls: Any) -> dict[str, Any]:
