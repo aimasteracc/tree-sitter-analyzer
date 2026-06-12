@@ -400,7 +400,7 @@ uv run python check_quality.py --new-code-only  # 质量闸门
 
 | 症状 | 修复 |
 |---|---|
-| `.swift / .kt / .rb / .php / .cs` 显示 `unsupported language` | 升级到 ≥ 1.12.x — 5 语言 gap 已在 commit `50e99a8f` 中修复 |
+| `.swift / .kt / .rb / .php / .cs` 显示 `unsupported language` | 升级到 ≥ 1.12.x — 5 语言 gap 已在 commit `50e99a8f` 中修复。extras 门控语言的语法模块不随基础安装捆绑;运行 `pip install "tree-sitter-analyzer[swift]"`(或 `kotlin`、`ruby`、`php`、`csharp`)补装 |
 | MCP 服务在客户端中不出现 | `TREE_SITTER_PROJECT_ROOT` 必须是**绝对路径**；编辑配置后重启客户端 |
 | `database is locked` | 关闭其他占用 `.ast-cache/index.db` 的进程；持续存在则 `rm -rf .ast-cache && tree-sitter-analyzer --autoindex` |
 | 首次调用慢 | 首次调用会建索引。后续亚秒。预先跑 `--full-index` 即可分摊 |

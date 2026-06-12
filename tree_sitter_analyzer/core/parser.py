@@ -16,7 +16,7 @@ from cachetools import LRUCache
 from tree_sitter import Tree
 
 from ..encoding_utils import EncodingManager
-from ..language_loader import get_loader
+from ..language_loader import get_loader, grammar_install_hint, is_grammar_installed
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -270,7 +270,11 @@ class Parser:
         try:
             # Check if language is supported
             if not self.is_language_supported(language):
-                err_msg = f"Unsupported language: {language}"
+                hint = grammar_install_hint(language)
+                if hint and not is_grammar_installed(language):
+                    err_msg = hint
+                else:
+                    err_msg = f"Unsupported language: {language}"
                 return ParseResult(
                     tree=None,
                     source_code=source_code,
