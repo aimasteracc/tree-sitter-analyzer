@@ -21,6 +21,7 @@ from ._typescript_formatter_helpers import (
     get_class_fields,
     get_class_methods,
 )
+from ._typescript_formatter_signatures_table import format_typescript_signatures_table
 from .base_formatter import BaseTableFormatter
 
 
@@ -45,6 +46,11 @@ class TypeScriptTableFormatter(BaseTableFormatter):
     def _format_csv(self, data: dict[str, Any]) -> str:
         """CSV format for TypeScript - matches golden master format"""
         return format_typescript_csv(self, data)
+
+    # Format data for output: _format_signatures_table
+    def _format_signatures_table(self, data: dict[str, Any]) -> str:
+        """Signatures format for TypeScript — lightweight method-directory."""
+        return format_typescript_signatures_table(data)
 
     def _get_class_methods(
         self, methods: list[dict[str, Any]], line_range: dict[str, int]
