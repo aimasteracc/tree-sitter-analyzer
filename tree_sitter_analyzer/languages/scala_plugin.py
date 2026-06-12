@@ -391,6 +391,7 @@ class ScalaElementExtractor(ElementExtractor):
                 return_type=return_type,
                 visibility=visibility,
                 docstring=docstring,
+                is_constructor=name == "this",
             )
 
         except Exception as e:

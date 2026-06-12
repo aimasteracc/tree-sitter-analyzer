@@ -75,6 +75,7 @@ class FunctionBuildInput:
     docstring: str
     complexity_score: int
     framework_type: str
+    is_constructor: bool = False
 
 
 def build_function_element(data: FunctionBuildInput) -> Function:
@@ -101,6 +102,7 @@ def build_function_element(data: FunctionBuildInput) -> Function:
         framework_type=data.framework_type,
         is_property="property" in data.decorators,
         is_classmethod="classmethod" in data.decorators,
+        is_constructor=data.is_constructor,
     )
 
 

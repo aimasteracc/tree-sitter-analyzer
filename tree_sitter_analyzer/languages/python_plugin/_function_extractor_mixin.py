@@ -23,6 +23,27 @@ from ._extractor_helpers import (
 )
 
 
+def _is_python_constructor(name: str, node: Any) -> bool:
+    """Return True when ``name`` is ``__init__`` and the node lives inside a class body.
+
+    The parent chain for a method is: function_definition → block →
+    class_definition — with an optional ``decorated_definition`` between the
+    function and the block when the method carries decorators (Codex P2 on
+    #567: ``@trace\\ndef __init__`` must still flag).
+    A module-level ``def __init__()`` has only ``module`` above it.
+    """
+    if name != "__init__":
+        return False
+    parent = getattr(node, "parent", None)
+    if getattr(parent, "type", "") == "decorated_definition":
+        parent = getattr(parent, "parent", None)
+    return (
+        parent is not None
+        and getattr(parent, "type", "") == "block"
+        and getattr(getattr(parent, "parent", None), "type", "") == "class_definition"
+    )
+
+
 class PythonFunctionExtractionMixin:
     def extract_functions(self, tree: Any, source_code: str) -> list[Function]:
         """Extract Python function definitions with comprehensive details."""
@@ -74,6 +95,7 @@ class PythonFunctionExtractionMixin:
                     docstring=docstring,
                     complexity_score=complexity_score,
                     framework_type=self.framework_type,
+                    is_constructor=_is_python_constructor(name, node),
                 )
             )
         except Exception as exc:

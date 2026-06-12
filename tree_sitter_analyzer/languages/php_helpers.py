@@ -267,6 +267,7 @@ def extract_php_method_element(
             modifiers=modifiers,
             annotations=[{"name": attr["name"]} for attr in attributes],
             receiver_type=parent_class if parent_class else None,
+            is_constructor=name == "__construct",
         )
     except Exception as e:
         log_error(f"Error extracting method element: {e}")

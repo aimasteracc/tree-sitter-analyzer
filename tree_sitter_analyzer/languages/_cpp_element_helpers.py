@@ -29,6 +29,45 @@ class CppClassExtractionContext:
     extract_comment_for_line: Callable[[int], str | None]
 
 
+_CPP_CLASS_NODE_TYPES = frozenset({"class_specifier", "struct_specifier"})
+_CPP_CLASS_PARENT_WALK_LIMIT = 12
+
+
+def _cpp_containing_class_name(node: Any) -> str | None:
+    """Walk the parent chain (capped) to find the enclosing C++ class name.
+
+    Returns the ``type_identifier`` text of the nearest ``class_specifier``
+    or ``struct_specifier`` ancestor, or ``None`` when the function is not
+    inside a class body.  The depth cap prevents infinite walks on mocked
+    or malformed nodes.
+    """
+    current = getattr(node, "parent", None)
+    depth = 0
+    while current is not None and depth < _CPP_CLASS_PARENT_WALK_LIMIT:
+        if getattr(current, "type", "") in _CPP_CLASS_NODE_TYPES:
+            for child in getattr(current, "children", ()):
+                if getattr(child, "type", "") == "type_identifier":
+                    text = getattr(child, "text", b"")
+                    if isinstance(text, bytes):
+                        return text.decode("utf-8", errors="replace")
+                    return str(text)
+            return None
+        current = getattr(current, "parent", None)
+        depth += 1
+    return None
+
+
+def _is_cpp_constructor(name: str, node: Any) -> bool:
+    """Return True when ``name`` matches the enclosing class name (constructor).
+
+    Destructor names start with ``~``, so ``~Rectangle != Rectangle`` → False.
+    """
+    if not name or name.startswith("~"):
+        return False
+    class_name = _cpp_containing_class_name(node)
+    return class_name is not None and name == class_name
+
+
 def extract_cpp_function(
     node: Any,
     context: CppFunctionExtractionContext | Callable[..., str],
@@ -62,6 +101,7 @@ def extract_cpp_function(
             visibility=visibility,
             docstring=ctx.extract_comment_for_line(start_line),
             complexity_score=ctx.calculate_complexity(node),
+            is_constructor=_is_cpp_constructor(name, node),
         )
     except (AttributeError, ValueError, TypeError) as exc:
         log_debug(f"Failed to extract function info: {exc}")
