@@ -75,13 +75,47 @@ def get_method_parameters(method: Any) -> list[dict[str, str]]:
     if parameters and isinstance(parameters[0], str):
         result: list[dict[str, str]] = []
         for param_str in parameters:
-            parts = param_str.strip().split()
-            if len(parts) >= 2:
-                result.append({"name": parts[-1], "type": " ".join(parts[:-1])})
-            elif len(parts) == 1:
-                result.append({"name": "param", "type": parts[0]})
+            entry = _parse_string_parameter(param_str)
+            if entry:
+                result.append(entry)
         return result
     return convert_parameters(parameters)
+
+
+def _parse_string_parameter(param_str: str) -> dict[str, str] | None:
+    """Parse one string-form parameter into ``{name, type[, default]}``.
+
+    Handles the default-valued forms #533 introduced (Codex P2 on #581):
+    ``limit = 10`` and ``breed: str = "Mixed"`` must not be whitespace-split
+    into ``{"name": "10", "type": "limit ="}``.
+    """
+    text = param_str.strip()
+    if not text:
+        return None
+    default: str | None = None
+    if "=" in text:
+        head, default = (s.strip() for s in text.split("=", 1))
+    else:
+        head = text
+    if ":" in head:
+        name, ptype = (s.strip() for s in head.split(":", 1))
+    else:
+        parts = head.split()
+        if len(parts) >= 2:
+            name, ptype = parts[-1], " ".join(parts[:-1])
+        elif len(parts) == 1:
+            # bare name (JS) — or bare type for legacy `Type` strings; the
+            # default-bearing form is always a name.
+            if default is not None:
+                name, ptype = parts[0], "Any"
+            else:
+                name, ptype = "param", parts[0]
+        else:
+            return None
+    entry: dict[str, str] = {"name": name, "type": ptype}
+    if default is not None:
+        entry["default"] = default
+    return entry
 
 
 # JSON Schema: input validation for analyze_code_structure tool

@@ -410,3 +410,40 @@ class TestBashParamStructuralNa:
         proc = next((f for f in fns if f.name == "process"), None)
         assert proc is not None, "process not found"
         assert proc.parameters == []
+
+
+class TestStructureConversionOfDefaults:
+    """Codex P2 on #581: get_method_parameters must not whitespace-split
+    'limit = 10' into {'name': '10', 'type': 'limit ='}."""
+
+    def test_js_default_param_parses(self):
+        from tree_sitter_analyzer.mcp.tools.analyze_code_structure_helpers import (
+            _parse_string_parameter,
+        )
+
+        assert _parse_string_parameter("limit = 10") == {
+            "name": "limit",
+            "type": "Any",
+            "default": "10",
+        }
+
+    def test_python_typed_default_parses(self):
+        from tree_sitter_analyzer.mcp.tools.analyze_code_structure_helpers import (
+            _parse_string_parameter,
+        )
+
+        assert _parse_string_parameter('breed: str = "Mixed"') == {
+            "name": "breed",
+            "type": "str",
+            "default": '"Mixed"',
+        }
+
+    def test_legacy_java_form_unchanged(self):
+        from tree_sitter_analyzer.mcp.tools.analyze_code_structure_helpers import (
+            _parse_string_parameter,
+        )
+
+        assert _parse_string_parameter("String name") == {
+            "name": "name",
+            "type": "String",
+        }
