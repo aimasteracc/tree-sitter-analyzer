@@ -244,3 +244,60 @@ class TestCppIsConstructor:
     def test_global_function_is_constructor_false(self, functions) -> None:
         gfunc = next(f for f in functions if f.name == "global_func")
         assert gfunc.is_constructor is False
+
+
+class TestDecoratedPythonConstructor:
+    """Codex P2 on #567: decorated_definition sits between the function and
+    the class block — @trace def __init__ must still flag."""
+
+    def test_decorated_init_is_constructor(self):
+        import tree_sitter
+        import tree_sitter_python
+
+        from tree_sitter_analyzer.languages.python_plugin import (
+            PythonElementExtractor,
+        )
+
+        code = b"""
+def trace(fn):
+    return fn
+
+class A:
+    @trace
+    def __init__(self):
+        pass
+"""
+        lang = tree_sitter.Language(tree_sitter_python.language())
+        tree = tree_sitter.Parser(lang).parse(code)
+        fns = PythonElementExtractor().extract_functions(tree, code.decode())
+        init = [f for f in fns if f.name == "__init__"]
+        assert len(init) == 1
+        assert init[0].is_constructor is True
+
+
+class TestCppHeaderConstructorDeclaration:
+    """Codex P2 on #567: body-less constructor declarations in headers go
+    through the field_declaration path and must flag too."""
+
+    def test_header_declaration_is_constructor(self):
+        import tree_sitter
+        import tree_sitter_cpp
+
+        from tree_sitter_analyzer.languages.cpp_plugin import CppElementExtractor
+
+        code = b"""
+class Rectangle {
+public:
+    Rectangle(double w, double h);
+    double area();
+};
+"""
+        lang = tree_sitter.Language(tree_sitter_cpp.language())
+        tree = tree_sitter.Parser(lang).parse(code)
+        fns = CppElementExtractor().extract_functions(tree, code.decode())
+        ctor = [f for f in fns if f.name == "Rectangle"]
+        area = [f for f in fns if f.name == "area"]
+        assert len(ctor) == 1
+        assert ctor[0].is_constructor is True
+        assert len(area) == 1
+        assert area[0].is_constructor is False
