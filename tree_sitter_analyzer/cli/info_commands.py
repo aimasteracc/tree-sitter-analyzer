@@ -5,10 +5,12 @@ Information Commands for CLI
 Commands that display information without requiring file analysis.
 """
 
+import importlib.util
 from abc import ABC, abstractmethod
 from argparse import Namespace
 
 from ..language_detector import detect_language_from_file, detector
+from ..language_loader import grammar_install_hint
 from ..output_manager import (
     output_data,
     output_error,
@@ -18,6 +20,18 @@ from ..output_manager import (
 )
 from ..query_loader import query_loader
 from .output_format import wants_json_output as _wants_json_output  # noqa: F401
+
+
+def _grammar_installed(language: str) -> bool:
+    """Probe grammar module availability without importing it."""
+    from ..language_loader import LanguageLoader
+
+    module_name = LanguageLoader.LANGUAGE_MODULES.get(language)
+    if module_name is None:
+        # Languages without a grammar module (e.g. json uses its own plugin path)
+        # are treated as installed (they won't raise a ModuleNotFoundError).
+        return True
+    return importlib.util.find_spec(module_name) is not None
 
 
 class InfoCommand(ABC):
@@ -307,12 +321,17 @@ class ShowLanguagesCommand(InfoCommand):
         languages_info = []
         for language in detector.get_supported_languages():
             info = detector.get_language_info(language)
-            languages_info.append(
-                {
-                    "language": language,
-                    "extensions": list(info["extensions"]),
-                }
-            )
+            installed = _grammar_installed(language)
+            entry: dict = {
+                "language": language,
+                "extensions": list(info["extensions"]),
+                "installed": installed,
+            }
+            if not installed:
+                hint = grammar_install_hint(language)
+                if hint:
+                    entry["install_hint"] = hint
+            languages_info.append(entry)
 
         if _wants_json_output(self.args):
             summary_line = f"show_supported_languages: {len(languages_info)} languages"
@@ -341,7 +360,14 @@ class ShowLanguagesCommand(InfoCommand):
             extensions = ", ".join(exts[:5])
             if len(exts) > 5:
                 extensions += f", ... ({len(exts) - 5} more)"
-            output_list(f"  {entry['language']:<12} - Extensions: {extensions}")
+            if entry["installed"]:
+                output_list(f"  {entry['language']:<12} - Extensions: {extensions}")
+            else:
+                hint = entry.get("install_hint", "")
+                output_list(
+                    f"  {entry['language']:<12} - Extensions: {extensions}"
+                    f"  [not installed — {hint}]"
+                )
         return 0
 
 

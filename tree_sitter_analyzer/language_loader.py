@@ -7,6 +7,7 @@ and lazy loading for optimal performance.
 """
 
 import importlib
+import importlib.util
 import threading
 from typing import TYPE_CHECKING, Any, Optional
 
@@ -325,3 +326,67 @@ def create_parser_safely(language: str) -> Optional["Parser"]:
 def load_language(language: str) -> Optional["Language"]:
     """言語をロード"""
     return get_loader().load_language(language)
+
+
+# ---------------------------------------------------------------------------
+# Install hints — map each language (or alias) to its pyproject extras group.
+# Aliases that share a grammar (tsx→typescript, cs→csharp, yml→yaml) use their
+# canonical extras name so the hint is unambiguous.
+# ---------------------------------------------------------------------------
+_GRAMMAR_EXTRAS: dict[str, str] = {
+    "java": "java",
+    "javascript": "javascript",
+    "typescript": "typescript",
+    "tsx": "typescript",  # shares tree-sitter-typescript
+    "python": "python",
+    "c": "c",
+    "cpp": "cpp",
+    "rust": "rust",
+    "go": "go",
+    "markdown": "markdown",
+    "sql": "sql",
+    "csharp": "csharp",
+    "cs": "csharp",  # alias
+    "html": "html",
+    "css": "css",
+    "yaml": "yaml",
+    "yml": "yaml",  # alias
+    "php": "php",
+    "ruby": "ruby",
+    "kotlin": "kotlin",
+    "swift": "swift",
+    "bash": "bash",
+    "scala": "scala",
+}
+
+
+def grammar_install_hint(language: str) -> str | None:
+    """Return a pip-install instruction for a language's grammar, or None.
+
+    If the language is unknown (not in LANGUAGE_MODULES and not an alias),
+    returns None.  Otherwise returns a string like:
+        'Swift grammar not installed — pip install "tree-sitter-analyzer[swift]"'
+
+    The caller can use importlib.util.find_spec to check whether the grammar
+    is actually missing before surfacing this hint to the user.
+    """
+    extras = _GRAMMAR_EXTRAS.get(language)
+    if extras is None:
+        return None
+    display = language.upper() if len(language) <= 3 else language.capitalize()
+    return (
+        f"{display} grammar not installed — "
+        f'pip install "tree-sitter-analyzer[{extras}]"'
+    )
+
+
+def is_grammar_installed(language: str) -> bool:
+    """Return True if the grammar module for *language* can be found.
+
+    Uses importlib.util.find_spec (no import, safe for fast probing).
+    Returns False for unknown languages.
+    """
+    module_name = LanguageLoader.LANGUAGE_MODULES.get(language)
+    if module_name is None:
+        return False
+    return importlib.util.find_spec(module_name) is not None
