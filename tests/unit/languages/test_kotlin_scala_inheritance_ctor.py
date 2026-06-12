@@ -270,3 +270,50 @@ class C extends Base[String] with pkg.M with Other
         assert len(c) == 1
         assert c[0].superclass == "Base"
         assert c[0].interfaces == ["pkg.M", "Other"]
+
+
+class _StubNode:
+    """Minimal stand-in for a tree-sitter node (explicit parent, no auto-chains)."""
+
+    def __init__(self, type_: str = "primary_constructor", parent=None, children=()):
+        self.type = type_
+        self.parent = parent
+        self.children = list(children)
+
+
+class TestKotlinPrimaryCtorFallbacks:
+    """codecov/patch on #585: anonymous fallbacks + extractor error branch."""
+
+    def test_orphan_node_returns_anonymous(self):
+        from tree_sitter_analyzer.languages.kotlin_helpers import (
+            _kotlin_primary_ctor_class_name,
+        )
+
+        node = _StubNode(parent=None)
+        assert _kotlin_primary_ctor_class_name(node, lambda n: "x") == "anonymous"
+
+    def test_parent_without_identifier_returns_anonymous(self):
+        from tree_sitter_analyzer.languages.kotlin_helpers import (
+            _kotlin_primary_ctor_class_name,
+        )
+
+        parent = _StubNode(
+            type_="class_declaration", children=[_StubNode(type_="modifiers")]
+        )
+        node = _StubNode(parent=parent)
+        assert _kotlin_primary_ctor_class_name(node, lambda n: "x") == "anonymous"
+
+    def test_extractor_swallows_node_errors(self):
+        from tree_sitter_analyzer.languages.kotlin_helpers import (
+            extract_kotlin_primary_constructor,
+        )
+
+        class _Exploding(_StubNode):
+            @property
+            def start_point(self):
+                raise RuntimeError("boom")
+
+        result = extract_kotlin_primary_constructor(
+            _Exploding(parent=None), lambda n: "x", ""
+        )
+        assert result is None
