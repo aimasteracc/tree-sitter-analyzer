@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from ..models import AnalysisResult
 
 from ..encoding_utils import extract_text_slice, safe_encode
-from ..models import Class, Function, Import, Variable
+from ..models import Class, Function, Import, Package, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error
 
@@ -157,6 +157,47 @@ class RustElementExtractor(ElementExtractor):
 
         log_debug(f"Extracted {len(imports)} Rust imports")
         return imports
+
+    def extract_packages(
+        self, tree: tree_sitter.Tree, source_code: str
+    ) -> list[Package]:
+        """Extract Rust ``mod`` blocks as Package containers (issue #589).
+
+        Mirrors the C++ namespace → Package convention. Declaration-only
+        mods (``mod tests;`` — no body) are emitted too: their span is the
+        declaration line, which is the only trace of the file-module
+        mapping and cannot mis-claim nested items.
+        """
+        self.source_code = source_code
+        self.content_lines = source_code.split("\n")
+        self._reset_caches()
+
+        packages: list[Package] = []
+        self._traverse_and_extract(
+            tree.root_node,
+            {"mod_item": self._extract_mod_package},
+            packages,
+        )
+
+        log_debug(f"Extracted {len(packages)} Rust modules")
+        return packages
+
+    def _extract_mod_package(self, node: tree_sitter.Node) -> Package | None:
+        """Build a Package element from a ``mod_item`` node."""
+        try:
+            name_node = node.child_by_field_name("name")
+            if name_node is None:
+                return None
+            return Package(
+                name=self._get_node_text(name_node),
+                start_line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                raw_text=self._get_node_text(node),
+                language="rust",
+            )
+        except Exception as e:
+            log_error(f"Error extracting Rust mod as package: {e}")
+            return None
 
     def _extract_import(self, node: tree_sitter.Node) -> Import | None:
         """Extract import statement (use declaration)"""
@@ -722,6 +763,7 @@ class RustPlugin(LanguagePlugin):
             all_elements.extend(extractor.extract_classes(tree, file_content))
             all_elements.extend(extractor.extract_variables(tree, file_content))
             all_elements.extend(extractor.extract_imports(tree, file_content))
+            all_elements.extend(extractor.extract_packages(tree, file_content))
 
             node_count = (
                 self._count_tree_nodes(tree.root_node) if tree and tree.root_node else 0
@@ -807,6 +849,7 @@ class RustPlugin(LanguagePlugin):
                 "classes": extractor.extract_classes(tree, source_code),
                 "variables": extractor.extract_variables(tree, source_code),
                 "imports": extractor.extract_imports(tree, source_code),
+                "packages": extractor.extract_packages(tree, source_code),
             }
 
             return result
