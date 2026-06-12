@@ -63,6 +63,21 @@ NO_CLI_TWIN = "—"
 #   {"schema_from": ("<module>", "<ClassName>"), "source": ...}
 #       The closure forwards args VERBATIM to one inner tool whose strict
 #       schema therefore IS the param contract — derived live, zero drift.
+# Conditional requirements enforced in runtime validation code, invisible to
+# JSON-schema ``required`` (Codex P2 on #602). Keyed (facade, action); the
+# note is appended to the params cell. Provenance pinned per entry; a key
+# naming a nonexistent action fails generation (loud-fail, same philosophy
+# as BESPOKE_ROUTE_SPECS).
+CONDITIONAL_PARAM_NOTES: dict[tuple[str, str], str] = {
+    # QueryTool._dispatch (query_tool.py): file_path-or-symbol gate;
+    # _validate_query_arguments: exactly one of query_key/query_string
+    # for file-scoped queries.
+    ("search", "query"): (
+        "requires `file_path` or `symbol`; file-scoped queries take "
+        "exactly one of `query_key`/`query_string`"
+    ),
+}
+
 BESPOKE_ROUTE_SPECS: dict[tuple[str, str], dict[str, Any]] = {
     ("nav", "context"): {
         "params": (
@@ -311,6 +326,9 @@ def collect_rows() -> dict[str, list[ActionRow]]:
                 inner = facade.action_map[action]
                 params = _params_cell_from_schema(_input_schema_of(inner))
                 response = _response_cell(inner)
+            note = CONDITIONAL_PARAM_NOTES.get((facade_name, action))
+            if note:
+                params = f"{params} — {note}"
             cli_twin = cli_twins.get((facade_name, action), NO_CLI_TWIN)
             rows.append(
                 ActionRow(
@@ -321,6 +339,14 @@ def collect_rows() -> dict[str, list[ActionRow]]:
                 )
             )
         rows_by_facade[facade_name] = rows
+    all_actions = {
+        (fname, row.action) for fname, frows in rows_by_facade.items() for row in frows
+    }
+    stale_notes = set(CONDITIONAL_PARAM_NOTES) - all_actions
+    if stale_notes:
+        raise SystemExit(
+            f"CONDITIONAL_PARAM_NOTES names nonexistent actions: {sorted(stale_notes)}"
+        )
     return rows_by_facade
 
 
