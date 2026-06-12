@@ -991,3 +991,43 @@ class TestPhpConstants:
         syms = _symbols_for(src, "php")
         names = [s["name"] for s in syms if s["kind"] == "constant"]
         assert names == ["NS_CONST"]
+
+
+class _PhpStubNode:
+    """Minimal node stand-in (explicit parent, no MagicMock chains)."""
+
+    def __init__(self, type_, children=(), fields=None):
+        self.type = type_
+        self.children = list(children)
+        self._fields = fields or {}
+        self.parent = None
+        self.start_point = (0, 0)
+        self.end_point = (0, 0)
+
+    def child_by_field_name(self, name):
+        return self._fields.get(name)
+
+
+class TestPhpConstantsGuards:
+    """Cover defensive branches unreachable from valid PHP source (codecov)."""
+
+    def test_nameless_const_element_skipped(self):
+        from tree_sitter_analyzer._ast_extraction import _php_constants
+
+        nameless = _PhpStubNode("const_element", children=[])
+        decl = _PhpStubNode("const_declaration", children=[nameless])
+        assert _php_constants(decl, "") == []
+
+    def test_php_helper_name_field_fast_path(self):
+        from tree_sitter_analyzer.languages.php_helpers import (
+            _build_php_constant_variable,
+        )
+
+        name = _PhpStubNode("name")
+        element = _PhpStubNode("const_element", fields={"name": name})
+        decl = _PhpStubNode("const_declaration", children=[element])
+        var = _build_php_constant_variable(
+            decl, element, "", lambda n: "FAST", lambda n: [], lambda n: []
+        )
+        assert var is not None
+        assert var.name == "FAST"
