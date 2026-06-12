@@ -36,6 +36,7 @@ def handle_special_commands(
         lambda: _handle_batch_partial_read(args, context),
         lambda: _handle_health_check(args, context),
         lambda: _handle_check_scale(args, context),
+        lambda: _handle_outline(args, context),
         lambda: _handle_batch_metrics(args, context),
         lambda: _handle_check_constraints(args, context),
         # --clean-state and --autoindex / --full-index / --codegraph-metrics
@@ -376,6 +377,50 @@ def _handle_check_scale(
             context,
             "check_scale",
             f"Scale analysis failed: {exc}",
+            error_type="runtime",
+        )
+        return 1
+
+
+def _handle_outline(
+    args: Any,
+    context: SpecialCommandContext,
+) -> int | None:
+    """Run GetCodeOutlineTool for a single file (``--outline FILE``)."""
+    file_path = getattr(args, "outline", None)
+    if not file_path:
+        return None
+
+    try:
+        from tree_sitter_analyzer.mcp.tools.get_code_outline_tool import (
+            GetCodeOutlineTool,
+        )
+
+        project_root = getattr(args, "project_root", None) or os.getcwd()
+        # No CWD-relative existence preflight: the tool resolves file_path
+        # against project_root (--project-root /repo with a relative path
+        # works) and reports missing files itself.
+        tool_args: dict[str, Any] = {
+            "file_path": file_path,
+            "output_format": _tool_output_format(args),
+            "listed_cap": int(getattr(args, "outline_listed_cap", 50) or 50),
+        }
+        language = getattr(args, "language", None)
+        if language:
+            tool_args["language"] = language
+        return _run_mcp_tool_sync(
+            GetCodeOutlineTool,
+            tool_args,
+            project_root=project_root,
+            args=args,
+            context=context,
+        )
+    except Exception as exc:
+        _emit_cli_error(
+            args,
+            context,
+            "outline",
+            f"Outline analysis failed: {exc}",
             error_type="runtime",
         )
         return 1

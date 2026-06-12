@@ -22,7 +22,12 @@ def _add_analysis_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--structure",
         action="store_true",
-        help="Output detailed structure information in JSON format",
+        help=(
+            "Output detailed structure information in JSON format. "
+            "For the richer MCP-equivalent outline schema (nested methods under "
+            "classes, params, return_type, is_constructor, is_static, extends, "
+            "implements), use --outline FILE instead."
+        ),
     )
     parser.add_argument(
         "--statistics",
@@ -179,10 +184,23 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--outline",
-        action="store_true",
+        metavar="FILE",
         help=(
-            "Hierarchical outline (package → class → method) without "
-            "method bodies — the navigation-first view of a file."
+            "Rich MCP-equivalent outline for FILE: nested methods under classes "
+            "with params, return_type, is_constructor, is_static, extends, "
+            "implements, and honest-truncation fields. "
+            "JSON to stdout; exit 0 on success, 1 on error. "
+            "(structure action=structure parity with the full MCP schema)"
+        ),
+    )
+    parser.add_argument(
+        "--outline-listed-cap",
+        type=int,
+        default=50,
+        metavar="N",
+        help=(
+            "Maximum number of classes (and top-level functions) to list in "
+            "--outline output (default: 50). Pre-cap totals are always present."
         ),
     )
     parser.add_argument(
