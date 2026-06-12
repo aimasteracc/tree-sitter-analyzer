@@ -909,3 +909,29 @@ class TestPhpUseClauseGuards:
         prefix = _PhpStubNode("namespace_name")
         decl = _PhpStubNode("namespace_use_declaration", children=[prefix, group])
         assert h.extract_use_statement(decl, lambda n: "p") == []
+
+
+class TestPhpEnumConstantOwnership:
+    """Codex P2 on #625: enums may declare consts — without enum_declaration
+    in the parent tracking they emit receiver_type=None (global lookalike)."""
+
+    CODE = """<?php
+enum Suit
+{
+    case Hearts;
+    const ENUM_C = "wild";
+}
+"""
+
+    def test_enum_const_carries_enum_receiver(self):
+        import tree_sitter
+        import tree_sitter_php
+
+        from tree_sitter_analyzer.languages.php_plugin import PHPElementExtractor
+
+        lang = tree_sitter.Language(tree_sitter_php.language_php())
+        tree = tree_sitter.Parser(lang).parse(self.CODE.encode())
+        variables = PHPElementExtractor().extract_variables(tree, self.CODE)
+        consts = [v for v in variables if v.name == "ENUM_C"]
+        assert len(consts) == 1
+        assert consts[0].receiver_type == "Suit"

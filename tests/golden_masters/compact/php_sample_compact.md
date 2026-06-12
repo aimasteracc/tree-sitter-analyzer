@@ -5,7 +5,7 @@
 |----------|-------|
 | Namespace |  |
 | Methods | 21 |
-| Fields | 9 |
+| Fields | 12 |
 
 ## Methods
 | Method | Sig | V | L | Cx | Doc |

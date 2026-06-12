@@ -32,7 +32,10 @@ methods:
     "App\\Models\\createUser",public,(203,206)
     "App\\Models\\hashPassword",public,(211,214)
 fields:
-  [9]{name,type,line_range(a,b)}:
+  [12]{name,type,line_range(a,b)}:
+    STATUS_ACTIVE,,(20,20)
+    STATUS_INACTIVE,,(21,21)
+    MAX_LOGIN_ATTEMPTS,,(22,22)
     id,,(25,25)
     username,,(26,26)
     email,,(27,27)
@@ -49,7 +52,7 @@ imports:
 statistics:
   class_count: 5
   method_count: 21
-  field_count: 9
+  field_count: 12
   import_count: 2
   total_lines: 0
 effective_table: toon

@@ -311,12 +311,15 @@ class PHPElementExtractor(ElementExtractor):
                 var_elems = self._extract_constant_elements(node, parent_class)
                 variables.extend(var_elems)
 
-            # Track parent class
+            # Track parent class — enums may declare consts too (Codex P2
+            # on #625): without enum_declaration here, an enum const emits
+            # with receiver_type=None and masquerades as a global.
             new_parent = parent_class
             if node.type in (
                 "class_declaration",
                 "interface_declaration",
                 "trait_declaration",
+                "enum_declaration",
             ):
                 name_node = node.child_by_field_name("name")
                 if name_node:
