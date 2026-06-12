@@ -570,27 +570,62 @@ class TestPHPImportExtraction:
     """Test PHP import (use statement) extraction."""
 
     def test_extract_simple_use(self):
-        """Test extraction of simple use statements."""
+        """Test extraction of simple use statements (#617)."""
         plugin = PHPPlugin()
         tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
         extractor = plugin.create_extractor()
         imports = extractor.extract_imports(tree, SIMPLE_CLASS_CODE)
 
-        # The PHP extractor does NOT extract `use` statements as imports —
-        # measured 0 with tree-sitter-php 0.24.1 (known extraction gap).
-        # If import extraction is implemented, this must be re-pinned.
-        assert imports == []
+        # SIMPLE_CLASS_CODE has exactly 2 top-level `use` statements.
+        # The class-body `use HasTimestamps;` (trait use) is composition,
+        # NOT an import — it must stay excluded.
+        assert [(i.name, i.alias) for i in imports] == [
+            ("App\\Contracts\\UserInterface", None),
+            ("App\\Traits\\HasTimestamps", None),
+        ]
 
-    def test_extract_aliased_use(self):
-        """Test extraction of aliased use statements."""
+    def test_extract_group_function_const_use(self):
+        """Group, function, and const use forms are extracted (#617)."""
         plugin = PHPPlugin()
         tree = get_tree_for_code(USE_STATEMENTS_CODE, plugin)
         extractor = plugin.create_extractor()
         imports = extractor.extract_imports(tree, USE_STATEMENTS_CODE)
 
-        # The PHP extractor does NOT extract `use` statements (incl. aliased
-        # ones) — measured 0 with tree-sitter-php 0.24.1 (known gap).
-        # If import extraction is implemented, this must be re-pinned.
+        # USE_STATEMENTS_CODE: 5 use declarations → 6 imports (the group
+        # `use App\Services\{UserService, PostService};` yields one per
+        # member, each prefixed with the group namespace).
+        assert [(i.name, i.alias) for i in imports] == [
+            ("App\\Models\\User", None),
+            ("App\\Models\\Post", "BlogPost"),
+            ("App\\Services\\UserService", None),
+            ("App\\Services\\PostService", None),
+            ("App\\Helpers\\formatDate", None),
+            ("App\\Constants\\APP_VERSION", None),
+        ]
+
+    def test_extract_aliased_use(self):
+        """Test extraction of aliased use statements (#617)."""
+        plugin = PHPPlugin()
+        tree = get_tree_for_code(USE_STATEMENTS_CODE, plugin)
+        extractor = plugin.create_extractor()
+        imports = extractor.extract_imports(tree, USE_STATEMENTS_CODE)
+
+        # `use App\Models\Post as BlogPost;` — name keeps the original FQN,
+        # alias carries the local binding (same convention as Python's
+        # `import x as y`: original in name/module_name, bound name in alias).
+        aliased = [i for i in imports if i.alias is not None]
+        assert len(aliased) == 1
+        assert aliased[0].name == "App\\Models\\Post"
+        assert aliased[0].alias == "BlogPost"
+        assert aliased[0].module_name == "App\\Models\\Post"
+
+    def test_trait_use_not_an_import(self):
+        """Class-body `use TraitName;` is composition, not an import (#617)."""
+        plugin = PHPPlugin()
+        code = "<?php\nclass A {\n    use TraitName;\n}\n"
+        tree = get_tree_for_code(code, plugin)
+        extractor = plugin.create_extractor()
+        imports = extractor.extract_imports(tree, code)
         assert imports == []
 
     def test_extract_imports_empty_tree(self):
@@ -603,17 +638,14 @@ class TestPHPImportExtraction:
         assert imports == []
 
     def test_import_line_numbers(self):
-        """Test that import line numbers are correct."""
+        """Test that import line numbers are correct (#617)."""
         plugin = PHPPlugin()
         tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
         extractor = plugin.create_extractor()
         imports = extractor.extract_imports(tree, SIMPLE_CLASS_CODE)
 
-        # imports is empty (use-statement extraction gap, tree-sitter-php
-        # 0.24.1), so the previous all(...) line-number checks were vacuously
-        # true. Pin the actual result; re-pin real line-number checks once
-        # import extraction lands.
-        assert imports == []
+        # SIMPLE_CLASS_CODE: the two use statements sit on lines 4 and 5.
+        assert [(i.start_line, i.end_line) for i in imports] == [(4, 4), (5, 5)]
 
 
 class TestPHPNamespaceHandling:
@@ -688,10 +720,10 @@ class TestPHPPluginAnalyzeFile:
         assert result.success is True
         assert result.language == "php"
         assert result.file_path == str(php_file)
-        # SIMPLE_CLASS_CODE yields exactly 6 elements: 1 class (User),
-        # 3 functions (__construct/getName/getAge), 2 variables (name/age)
-        # (measured with tree-sitter-php 0.24.1)
-        assert len(result.elements) == 6
+        # SIMPLE_CLASS_CODE yields exactly 8 elements: 1 class (User),
+        # 3 functions (__construct/getName/getAge), 2 variables (name/age),
+        # 2 imports (UserInterface/HasTimestamps — extracted since #617).
+        assert len(result.elements) == 8
 
 
 class TestPHPIntegration:
@@ -722,11 +754,15 @@ class TestPHPIntegration:
 
         # COMPLEX_CLASS_CODE measured with tree-sitter-php 0.24.1:
         # 2 classes (BaseService/UserService), 6 functions, 4 properties,
-        # 0 imports (use-statement extraction gap).
+        # 3 imports (use statements, extracted since #617).
         assert len(classes) == 2
         assert len(functions) == 6
         assert len(variables) == 4
-        assert imports == []
+        assert [i.name for i in imports] == [
+            "App\\Repositories\\UserRepository",
+            "App\\Events\\UserCreated",
+            "Psr\\Log\\LoggerInterface",
+        ]
 
     def test_node_counting(self):
         """Test node counting functionality."""
@@ -795,3 +831,57 @@ class TestPHPMethodNameClean:
         user_method_names = {f.name for f in user_methods}
         assert "__construct" in user_method_names
         assert "createUser" in user_method_names
+
+
+class _PhpStubNode:
+    """Minimal tree-sitter node stand-in (explicit parent, no auto-chains)."""
+
+    def __init__(self, type_, children=(), fields=None, parent=None):
+        self.type = type_
+        self.children = list(children)
+        self._fields = fields or {}
+        self.parent = parent
+        self.start_point = (0, 0)
+        self.end_point = (0, 0)
+
+    def child_by_field_name(self, name):
+        return self._fields.get(name)
+
+
+class TestPhpUseClauseGuards:
+    """Cover the defensive directions codecov flagged on #619: nameless
+    clauses return None and are dropped by both extraction loops; the
+    field fast-path is honored when a grammar provides it."""
+
+    @staticmethod
+    def _helpers():
+        from tree_sitter_analyzer.languages import php_helpers
+
+        return php_helpers
+
+    def test_nameless_clause_returns_none(self):
+        h = self._helpers()
+        clause = _PhpStubNode("namespace_use_clause", children=[])
+        assert h._build_use_clause_import(clause, clause, lambda n: "x") is None
+
+    def test_name_field_fast_path_used(self):
+        h = self._helpers()
+        name = _PhpStubNode("qualified_name")
+        clause = _PhpStubNode("namespace_use_clause", fields={"name": name})
+        imp = h._build_use_clause_import(clause, clause, lambda n: "App\\X")
+        assert imp is not None
+        assert imp.name == "App\\X"
+
+    def test_nameless_clause_dropped_by_simple_loop(self):
+        h = self._helpers()
+        clause = _PhpStubNode("namespace_use_clause", children=[])
+        decl = _PhpStubNode("namespace_use_declaration", children=[clause])
+        assert h.extract_use_statement(decl, lambda n: "x") == []
+
+    def test_nameless_clause_dropped_by_group_loop(self):
+        h = self._helpers()
+        clause = _PhpStubNode("namespace_use_clause", children=[])
+        group = _PhpStubNode("namespace_use_group", children=[clause])
+        prefix = _PhpStubNode("namespace_name")
+        decl = _PhpStubNode("namespace_use_declaration", children=[prefix, group])
+        assert h.extract_use_statement(decl, lambda n: "p") == []

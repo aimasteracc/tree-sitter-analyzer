@@ -85,18 +85,40 @@ def extract_use_statement(
     node: Any,
     get_node_text: Callable[..., str],
 ) -> list[Import]:
-    """Extract use statement elements.
+    """Extract use statement elements from a ``namespace_use_declaration``.
 
     r37co (dogfood): extracted per-clause logic to flatten nesting 7 → 3.
+
+    #617: handles the declaration shapes of tree-sitter-php 0.24:
+    - simple/function/const/aliased use → direct ``namespace_use_clause``
+      children;
+    - group use (``use App\\Models\\{User, Post};``) → clauses nested inside
+      a ``namespace_use_group``, prefixed by the sibling ``namespace_name``.
+
+    Class-body trait use (``use TraitName;``) parses as ``use_declaration``,
+    a different node type, and is intentionally NOT an import — it is
+    composition, not a namespace binding.
     """
     imports: list[Import] = []
     try:
+        group_prefix = ""
         for child in node.children:
-            if child.type != "namespace_use_clause":
-                continue
-            imp = _build_use_clause_import(node, child, get_node_text)
-            if imp is not None:
-                imports.append(imp)
+            if child.type == "namespace_name":
+                # Group-use form: the shared namespace prefix.
+                group_prefix = get_node_text(child)
+            elif child.type == "namespace_use_clause":
+                imp = _build_use_clause_import(node, child, get_node_text)
+                if imp is not None:
+                    imports.append(imp)
+            elif child.type == "namespace_use_group":
+                for clause in child.children:
+                    if clause.type != "namespace_use_clause":
+                        continue
+                    imp = _build_use_clause_import(
+                        node, clause, get_node_text, prefix=group_prefix
+                    )
+                    if imp is not None:
+                        imports.append(imp)
     except Exception as e:
         log_error(f"Error extracting use statement: {e}")
     return imports
@@ -106,19 +128,38 @@ def _build_use_clause_import(
     use_node: Any,
     clause_node: Any,
     get_node_text: Callable[..., str],
+    prefix: str = "",
 ) -> Import | None:
-    """Build one ``Import`` from a ``namespace_use_clause`` node."""
+    """Build one ``Import`` from a ``namespace_use_clause`` node.
+
+    #617 root cause: tree-sitter-php 0.24 exposes the imported name as a
+    plain ``qualified_name``/``name`` child (there is no ``name`` field on
+    the clause) — the old ``child_by_field_name("name")`` lookup always
+    returned ``None``, so PHP files reported 0 imports. Keep the field
+    lookup as a fast path for grammars that do provide it, fall back to
+    child iteration (the alias ``name`` always follows ``as``, so the
+    first match in document order is the imported name, never the alias).
+    """
     name_node = clause_node.child_by_field_name("name")
-    if not name_node:
+    if name_node is None:
+        for child in clause_node.children:
+            if child.type in ("qualified_name", "name"):
+                name_node = child
+                break
+    if name_node is None:
         return None
     alias_node = clause_node.child_by_field_name("alias")
     alias = get_node_text(alias_node) if alias_node else None
+    name = get_node_text(name_node)
+    if prefix:
+        name = f"{prefix}\\{name}"
     return Import(
-        name=get_node_text(name_node),
+        name=name,
         start_line=use_node.start_point[0] + 1,
         end_line=use_node.end_point[0] + 1,
         alias=alias,
         is_wildcard=False,
+        module_name=name,
     )
 
 

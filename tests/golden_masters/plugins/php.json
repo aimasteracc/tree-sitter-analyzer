@@ -2,9 +2,10 @@
   "counts_by_type": {
     "Class": 5,
     "Function": 21,
+    "Import": 2,
     "Variable": 9
   },
-  "element_total": 35,
+  "element_total": 37,
   "names_by_type": {
     "Class": [
       "App\\Models\\AdminUser",
@@ -35,6 +36,10 @@
       "setId",
       "updateProfile"
     ],
+    "Import": [
+      "App\\Contracts\\UserInterface",
+      "App\\Traits\\Timestampable"
+    ],
     "Variable": [
       "createdAt",
       "email",
@@ -50,6 +55,7 @@
   "types": [
     "Class",
     "Function",
+    "Import",
     "Variable"
   ]
 }
