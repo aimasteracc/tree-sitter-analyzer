@@ -1147,11 +1147,12 @@ class TestJsTsLocalVariableContraction:
         src = "const TOP = 1;\nfunction Comp() { const inner = 2; }\n"
         assert self._variables(src, "typescript") == ["TOP"]
 
-    def test_java_locals_unaffected(self):
-        # Java is the separate follow-up PR (#626 part 2) — its function
-        # locals must still be captured by this change.
+    def test_java_locals_now_contracted_too(self):
+        # Re-pinned when the Java half of #626 landed (extractor v9): Java
+        # method locals are dropped as well — full Java surface pinned in
+        # TestJavaLocalVariableContraction below.
         src = "class A { void m() { int local = 1; } }\n"
-        assert self._variables(src, "java") == ["local"]
+        assert self._variables(src, "java") == []
 
 
 class TestJsTsErrorRegionHardening:
@@ -1167,3 +1168,103 @@ class TestJsTsErrorRegionHardening:
         names = [s["name"] for s in syms if s["kind"] == "variable"]
         assert "Math" not in names
         assert "TOP" in names
+
+
+# ---------------------------------------------------------------------------
+# Issue #626 (Java half): function-local variables no longer over-captured
+# ---------------------------------------------------------------------------
+
+
+_JAVA_626_SRC = """\
+interface Iface {
+    int IFACE_CONST = 99;
+}
+
+record Rec(int x) {
+    static final int REC_CONST = 7;
+    Rec {
+        int compactCtorLocal = 100;
+    }
+}
+
+class A {
+    static final int STATIC_FINAL = 1;
+    int plainField = 2;
+    static int staticField = 3;
+    Runnable fieldLambda = () -> { int lambdaFieldLocal = 4; };
+
+    static { int staticInitLocal = 5; }
+    { int instanceInitLocal = 6; }
+    A() { int ctorLocal = 7; }
+
+    void m() {
+        int local = 10;
+        for (int i = 0; i < 3; i++) { int loopBody = 11; }
+        try { int tryLocal = 12; } catch (Exception e) { int catchLocal = 13; }
+    }
+}
+"""
+
+
+class TestJavaLocalVariableContraction:
+    """Issue #626 (Java half) — method/ctor/compact-ctor/lambda/initializer
+    locals must NOT reach ast_symbol_rows; class fields (incl. record
+    constants) and interface constants stay kind="variable". Fields are safe
+    from the ``block`` scope node: they route ``class_body >
+    field_declaration`` and never through a ``block`` (live-parse verified)."""
+
+    def _variables(self, src: str, lang: str) -> list[str]:
+        return sorted(
+            s["name"] for s in _symbols_for(src, lang) if s["kind"] == "variable"
+        )
+
+    def test_java_exactly_fields_and_constants_survive(self):
+        assert self._variables(_JAVA_626_SRC, "java") == [
+            "IFACE_CONST",
+            "REC_CONST",
+            "STATIC_FINAL",
+            "fieldLambda",
+            "plainField",
+            "staticField",
+        ]
+
+    def test_java_method_ctor_and_compact_ctor_locals_dropped(self):
+        names = self._variables(_JAVA_626_SRC, "java")
+        for local in (
+            "local",
+            "i",
+            "loopBody",
+            "tryLocal",
+            "catchLocal",
+            "ctorLocal",
+            "compactCtorLocal",
+        ):
+            assert local not in names
+
+    def test_java_lambda_and_initializer_locals_dropped(self):
+        # lambdaFieldLocal sits in a lambda hanging off a FIELD initializer —
+        # the only shape where ``lambda_expression`` (not method/block) is the
+        # gating scope node; the field holder itself stays captured.
+        names = self._variables(_JAVA_626_SRC, "java")
+        for local in ("lambdaFieldLocal", "staticInitLocal", "instanceInitLocal"):
+            assert local not in names
+
+    def test_csharp_locals_unaffected(self):
+        # C# has the same over-capture disease (10 live rows) but is a
+        # separate follow-up per the #626 decision — must NOT be widened here.
+        src = "class A { void M() { int local = 1; } }\n"
+        assert self._variables(src, "csharp") == ["local"]
+
+
+class TestJavaErrorRegionHardening:
+    """#629 ERROR-hardening precedent applied to Java: declarations inside
+    error-recovered regions have undecidable scope — they must not be emitted
+    (better unindexed than a lambda local masquerading as a field)."""
+
+    def test_declaration_inside_error_node_not_emitted(self):
+        # Unterminated lambda-in-field shatters the class into an ERROR node;
+        # 'leaked' currently surfaces as ERROR > local_variable_declaration
+        # (live-parse verified) — it must produce no row.
+        src = "class A {\n  Runnable r = () -> {\n    int leaked = 1;\n"
+        syms = _symbols_for(src, "java")
+        assert [s["name"] for s in syms if s["kind"] == "variable"] == []

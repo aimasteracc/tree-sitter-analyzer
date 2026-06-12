@@ -358,6 +358,34 @@ _JSTS_SCOPE_BODY_NODES = frozenset(
     }
 )
 
+# Issue #626 (Java half) — same over-capture disease: every Java
+# ``variable_declarator`` became a kind="variable" row, so method/ctor/
+# lambda/initializer locals polluted FTS and symbol search (−69% Java
+# variable rows on the in-repo corpus). Class fields and interface constants
+# stay captured: they route ``class_body > field_declaration`` /
+# ``interface_body > constant_declaration`` and NEVER through any node in
+# this set — ``block`` is safe for Java because fields never sit inside a
+# block node (live-parse verified), while the instance initializer is a bare
+# ``block`` child of ``class_body``, which is exactly why ``block`` is here.
+# ``constructor_declaration`` gates ctor locals (their body is a
+# ``constructor_body``, not a ``block``); ``compact_constructor_declaration``
+# covers record compact ctors; ``lambda_expression`` covers lambdas hanging
+# off FIELD initializers (lambdas in methods are already inside the method).
+# ``ERROR`` per the #629 hardening precedent: declarations inside
+# error-recovered regions have undecidable scope — better unindexed than a
+# lambda local masquerading as a field.
+_JAVA_SCOPE_BODY_NODES = frozenset(
+    {
+        "method_declaration",
+        "constructor_declaration",
+        "compact_constructor_declaration",
+        "lambda_expression",
+        "static_initializer",
+        "block",
+        "ERROR",
+    }
+)
+
 
 def _php_constants(node: Any, source: str) -> list[dict[str, Any]]:
     """Return kind="constant" symbols for a PHP const_declaration, one row
@@ -761,9 +789,10 @@ def _walk_for_symbols(
     ``enclosed`` tracks (top-down, no parent walking) whether *node* sits
     inside a Python function/class body (#610), a Go function body (#613),
     a Rust function/closure body (#613), a PHP function/closure body
-    (#624), or a JS/TS function/method/static-block body (#626) —
+    (#624), a JS/TS function/method/static-block body (#626), or a Java
+    method/ctor/lambda/initializer body (#626 Java half) —
     module/package-constant capture must fire at top-level scope only,
-    including ``if``/``try``-wrapped module-level assignments, and JS/TS
+    including ``if``/``try``-wrapped module-level assignments, and JS/TS/Java
     function-local declarators must NOT produce kind="variable" rows.
     """
     if depth > 20:
@@ -841,11 +870,12 @@ def _walk_for_symbols(
     elif (
         node_type in _VAR_DECL_LIKE
         and name_node is not None
-        # #626: JS/TS function-local declarators are not cross-file symbols —
-        # skip them. The ast_cache path only ever delivers the language ids
-        # "javascript"/"typescript" for this family (.jsx → "javascript",
-        # .tsx → "typescript"), so gating on those two ids is complete.
-        and not (language in ("javascript", "typescript") and enclosed)
+        # #626: JS/TS/Java function-local declarators are not cross-file
+        # symbols — skip them. The ast_cache path only ever delivers the
+        # language ids "javascript"/"typescript"/"java" for this family
+        # (.jsx → "javascript", .tsx → "typescript", .java → "java"), so
+        # gating on these ids is complete.
+        and not (language in ("javascript", "typescript", "java") and enclosed)
     ):
         name = _node_text(name_node, source)
         if not name.startswith("_") or depth < 3:
@@ -896,6 +926,7 @@ def _walk_for_symbols(
             language in ("javascript", "typescript")
             and node_type in _JSTS_SCOPE_BODY_NODES
         )
+        or (language == "java" and node_type in _JAVA_SCOPE_BODY_NODES)
     )
     for child in node.children:
         _walk_for_symbols(child, source, symbols, language, depth + 1, child_enclosed)

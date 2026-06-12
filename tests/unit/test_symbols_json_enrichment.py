@@ -136,12 +136,12 @@ class TestReturnTypeAndParamsSerialized:
 
 
 class TestExtractorVersionBump:
-    def test_extractor_version_is_8_in_both_sites(self):
-        # v8: #626 — JS/TS function-local variables no longer over-captured.
+    def test_extractor_version_is_9_in_both_sites(self):
+        # v9: #626 — Java function-local variables no longer over-captured.
         from tree_sitter_analyzer import _ast_cache_indexer, ast_cache
 
-        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 8
-        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 8
+        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 9
+        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 9
 
 
 class TestCodexP2sOn621:
