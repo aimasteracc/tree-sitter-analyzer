@@ -11,7 +11,7 @@
 | Class | Type | Lines |
 |-------|------|-------|
 | Person | class | 14-28 |
-| Animal | class | 31-45 |
+| Animal | abstract_class | 31-45 |
 | Dog | class | 48-61 |
 | Cat | class | 64-78 |
 

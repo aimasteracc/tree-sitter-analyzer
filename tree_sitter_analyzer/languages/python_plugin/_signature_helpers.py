@@ -82,7 +82,8 @@ def _extract_superclass_names(argument_list_node: Any) -> list[str]:
 
     superclasses = []
     for child in argument_list_node.children:
-        if child.type != "identifier":
+        # "attribute" covers qualified bases such as abc.ABC (Codex P2 on #583)
+        if child.type not in ("identifier", "attribute"):
             continue
         superclass_name = _decode_optional_text(child)
         if superclass_name:

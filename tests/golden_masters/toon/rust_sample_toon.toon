@@ -9,7 +9,8 @@ classes:
     Container,pub,(67,69)
     BorrowedItem,pub,(77,79)
 methods:
-  [8]{name,visibility,line_range(a,b)}:
+  [9]{name,visibility,line_range(a,b)}:
+    display,private,(25,25)
     summary,private,(27,29)
     new,pub,(34,41)
     deactivate,pub,(44,46)
@@ -31,7 +32,7 @@ imports:
     "use std::collections::HashMap;",,"use std::collections::HashMap;",false,false,(3,3),[],"use std::collections::HashMap;"
 statistics:
   class_count: 5
-  method_count: 8
+  method_count: 9
   field_count: 6
   import_count: 1
   total_lines: 93

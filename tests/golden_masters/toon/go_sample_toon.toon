@@ -4,7 +4,7 @@ package:
   name: sample
   line_range: (10, 10)
 classes:
-  [9]{name,visibility,line_range(a,b)}:
+  [10]{name,visibility,line_range(a,b)}:
     Status,public,(33,33)
     Config,public,(44,50)
     Reader,public,(53,56)
@@ -12,6 +12,7 @@ classes:
     ReadWriter,public,(65,68)
     Service,public,(71,77)
     WorkerPool,public,(206,210)
+    StringSlice,public,(248,248)
     Handler,public,(251,251)
     Middleware,public,(254,254)
 methods:
@@ -53,7 +54,7 @@ imports:
     sync,sync,"\"sync\"",false,false,(16,16),[],"\"sync\""
     time,time,"\"time\"",false,false,(17,17),[],"\"time\""
 statistics:
-  class_count: 9
+  class_count: 10
   method_count: 18
   field_count: 9
   import_count: 5
