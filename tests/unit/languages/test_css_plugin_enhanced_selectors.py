@@ -306,10 +306,16 @@ class TestCssSelectorRecognition:
         extractor = plugin.create_extractor()
         elements = extractor.extract_css_rules(tree, SELECTOR_CODE)
 
+        # Match bracketed attribute selectors so prefix-match operators
+        # ([href^=...]) count too — a literal 'href=' substring misses them
         attr_selectors = [
-            e for e in elements if "type=" in e.selector or "href=" in e.selector
+            e for e in elements if "[type=" in e.selector or "[href^=" in e.selector
         ]
-        assert len(attr_selectors) == 1
+        assert len(attr_selectors) == 2
+        assert sorted(e.selector for e in attr_selectors) == [
+            'a[href^="https"]',
+            'input[type="text"]',
+        ]
 
     def test_extract_pseudo_class_selector(self):
         """Test extraction of pseudo-class selector."""
