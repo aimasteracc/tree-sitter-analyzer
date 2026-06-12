@@ -663,6 +663,42 @@ def _in_class_ranges(
     return False
 
 
+def _resolve_extends(cls: Any) -> str | None:
+    """Return the superclass name for a Class element.
+
+    Tries ``extends_class`` first (the Java plugin spelling, also set by the
+    Java plugin as the canonical alias) then falls back to ``superclass`` (the
+    spelling used by JS, TS, Python, Ruby, PHP, C++, C#, and Go plugins).
+
+    Issue #530: before this helper existed, ``_build_class_outlines`` only
+    checked ``extends_class``, so all plugins that write ``superclass`` silently
+    produced ``extends: null`` in the outline.
+    """
+    v = getattr(cls, "extends_class", None)
+    if v:
+        return str(v)
+    raw = getattr(cls, "superclass", None)
+    return str(raw) if raw else None
+
+
+def _resolve_implements(cls: Any) -> list[str]:
+    """Return the list of implemented interface names for a Class element.
+
+    Tries ``implements_interfaces`` first (the Java plugin spelling, also set
+    by the Rust plugin) then falls back to ``interfaces`` (the spelling used by
+    TS, Python, PHP, C++, C#, Go, and Ruby plugins).
+
+    Issue #530: before this helper existed, ``_build_class_outlines`` only
+    checked ``implements_interfaces``, so all plugins that write ``interfaces``
+    silently produced ``implements: []`` in the outline.
+    """
+    v = getattr(cls, "implements_interfaces", None)
+    if v:
+        return list(v)
+    raw = getattr(cls, "interfaces", None)
+    return list(raw) if raw else []
+
+
 def _build_class_outlines(
     classes: list[Any],
     all_methods: list[Any],
@@ -720,8 +756,8 @@ def _build_class_outlines(
             "type": getattr(cls, "class_type", "class"),
             "line_start": cls_start,
             "line_end": cls_end,
-            "extends": getattr(cls, "extends_class", None),
-            "implements": getattr(cls, "implements_interfaces", []),
+            "extends": _resolve_extends(cls),
+            "implements": _resolve_implements(cls),
             "methods": cls_methods,
         }
         if include_fields:

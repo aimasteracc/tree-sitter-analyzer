@@ -202,6 +202,32 @@ def extract_metadata(structure_dict: dict[str, Any]) -> dict[str, Any]:
 
 
 # _convert_class: implementation
+def _resolve_class_extends(cls: Any) -> str | None:
+    """Return the superclass name, checking both plugin spelling conventions.
+
+    Java plugin sets ``extends_class``; JS/TS/Python/Ruby/PHP/C++/C#/Go
+    plugins set ``superclass``.  Issue #530.
+    """
+    v = getattr(cls, "extends_class", None)
+    if v:
+        return str(v)
+    raw = getattr(cls, "superclass", None)
+    return str(raw) if raw else None
+
+
+def _resolve_class_implements(cls: Any) -> list[str]:
+    """Return implemented interfaces, checking both plugin spelling conventions.
+
+    Java/Rust plugins set ``implements_interfaces``; TS/Python/PHP/C++/C#/Go
+    plugins set ``interfaces``.  Issue #530.
+    """
+    v = getattr(cls, "implements_interfaces", None)
+    if v:
+        return list(v)
+    raw = getattr(cls, "interfaces", None)
+    return list(raw) if raw else []
+
+
 def _convert_class(cls: Any) -> dict[str, Any]:
     return {
         "name": getattr(cls, "name", "unknown"),
@@ -211,8 +237,8 @@ def _convert_class(cls: Any) -> dict[str, Any]:
         },
         "type": getattr(cls, "class_type", "class"),
         "visibility": getattr(cls, "visibility", "public"),
-        "extends": getattr(cls, "extends_class", None),
-        "implements": getattr(cls, "implements_interfaces", []),
+        "extends": _resolve_class_extends(cls),
+        "implements": _resolve_class_implements(cls),
         "annotations": getattr(cls, "annotations", []),
     }
 

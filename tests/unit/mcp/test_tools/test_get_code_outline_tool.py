@@ -370,6 +370,172 @@ class TestBuildOutlineBasic:
         assert "IFoo" in cls_out["implements"]
         assert "Serializable" in cls_out["implements"]
 
+    # ------------------------------------------------------------------
+    # Issue #530: plugins that set ``superclass`` / ``interfaces`` (not
+    # the Java-spelling ``extends_class`` / ``implements_interfaces``)
+    # must also surface in the outline.  One test per failing language.
+    # ------------------------------------------------------------------
+
+    def _make_class_superclass(
+        self, name, start, end, superclass=None, interfaces=None
+    ):
+        """Build a Class mock using the non-Java field spellings."""
+        elem = _make_element(
+            "class",
+            name,
+            start,
+            end,
+            class_type="class",
+            # Use the non-Java spellings (JS/TS/Python/Ruby/PHP/C++/C#/Go).
+            superclass=superclass,
+            interfaces=interfaces or [],
+            # Leave extends_class / implements_interfaces at their MagicMock
+            # defaults so getattr(cls, "extends_class", None) returns a Mock
+            # truthy value — we must NOT set them to sentinel values that
+            # accidentally satisfy the truthiness check.  We force them to
+            # None / [] explicitly to reproduce the pre-fix behaviour.
+            extends_class=None,
+            implements_interfaces=[],
+        )
+        return elem
+
+    def test_js_superclass_field_surfaces_as_extends(self):
+        """JS plugin sets superclass=... — outline must surface it as extends."""
+        cls = self._make_class_superclass("Dog", 1, 20, superclass="Animal")
+        result = _make_analysis_result(
+            elements=[cls], file_path="/p/dog.js", language="javascript"
+        )
+        with self._patch_is_element_of_type():
+            outline = self.tool._build_outline(result, False, False)
+        cls_out = outline["classes"][0]
+        assert cls_out["extends"] == "Animal"
+        assert cls_out["implements"] == []
+
+    def test_ts_superclass_and_interfaces_surface_correctly(self):
+        """TS plugin sets superclass= and interfaces=[] — both must surface."""
+        cls = self._make_class_superclass(
+            "AppComponent",
+            1,
+            30,
+            superclass="BaseComponent",
+            interfaces=["OnInit", "OnDestroy"],
+        )
+        result = _make_analysis_result(
+            elements=[cls], file_path="/p/app.ts", language="typescript"
+        )
+        with self._patch_is_element_of_type():
+            outline = self.tool._build_outline(result, False, False)
+        cls_out = outline["classes"][0]
+        assert cls_out["extends"] == "BaseComponent"
+        assert cls_out["implements"] == ["OnInit", "OnDestroy"]
+
+    def test_python_superclass_and_interfaces_surface_correctly(self):
+        """Python plugin maps first parent to superclass, rest to interfaces."""
+        cls = self._make_class_superclass(
+            "MyView",
+            1,
+            40,
+            superclass="View",
+            interfaces=["LoginRequiredMixin"],
+        )
+        result = _make_analysis_result(
+            elements=[cls], file_path="/p/views.py", language="python"
+        )
+        with self._patch_is_element_of_type():
+            outline = self.tool._build_outline(result, False, False)
+        cls_out = outline["classes"][0]
+        assert cls_out["extends"] == "View"
+        assert cls_out["implements"] == ["LoginRequiredMixin"]
+
+    def test_ruby_superclass_field_surfaces_as_extends(self):
+        """Ruby plugin sets superclass= only (no implements in Ruby)."""
+        cls = self._make_class_superclass("Dog", 1, 15, superclass="Animal")
+        result = _make_analysis_result(
+            elements=[cls], file_path="/p/dog.rb", language="ruby"
+        )
+        with self._patch_is_element_of_type():
+            outline = self.tool._build_outline(result, False, False)
+        cls_out = outline["classes"][0]
+        assert cls_out["extends"] == "Animal"
+        assert cls_out["implements"] == []
+
+    def test_php_superclass_and_interfaces_surface_correctly(self):
+        """PHP plugin sets superclass= and interfaces= — both must surface."""
+        cls = self._make_class_superclass(
+            "OrderController",
+            1,
+            50,
+            superclass="AbstractController",
+            interfaces=["LoggerAwareInterface"],
+        )
+        result = _make_analysis_result(
+            elements=[cls], file_path="/p/OrderController.php", language="php"
+        )
+        with self._patch_is_element_of_type():
+            outline = self.tool._build_outline(result, False, False)
+        cls_out = outline["classes"][0]
+        assert cls_out["extends"] == "AbstractController"
+        assert cls_out["implements"] == ["LoggerAwareInterface"]
+
+    def test_cpp_superclass_and_interfaces_surface_correctly(self):
+        """C++ plugin sets superclass= (first base) and interfaces= (extras)."""
+        cls = self._make_class_superclass(
+            "ConcreteWidget",
+            1,
+            60,
+            superclass="Widget",
+            interfaces=["Paintable"],
+        )
+        result = _make_analysis_result(
+            elements=[cls], file_path="/p/widget.cpp", language="cpp"
+        )
+        with self._patch_is_element_of_type():
+            outline = self.tool._build_outline(result, False, False)
+        cls_out = outline["classes"][0]
+        assert cls_out["extends"] == "Widget"
+        assert cls_out["implements"] == ["Paintable"]
+
+    def test_csharp_superclass_and_interfaces_surface_correctly(self):
+        """C# plugin sets superclass= and interfaces= — both must surface."""
+        cls = self._make_class_superclass(
+            "OrderService",
+            1,
+            80,
+            superclass="BaseService",
+            interfaces=["IOrderService", "IDisposable"],
+        )
+        result = _make_analysis_result(
+            elements=[cls], file_path="/p/OrderService.cs", language="csharp"
+        )
+        with self._patch_is_element_of_type():
+            outline = self.tool._build_outline(result, False, False)
+        cls_out = outline["classes"][0]
+        assert cls_out["extends"] == "BaseService"
+        assert cls_out["implements"] == ["IOrderService", "IDisposable"]
+
+    def test_rust_implements_interfaces_field_surfaces_correctly(self):
+        """Rust plugin sets implements_interfaces= (derives) — must surface."""
+        cls = _make_element(
+            "class",
+            "MyStruct",
+            1,
+            20,
+            class_type="struct",
+            # Rust sets implements_interfaces for derives; no superclass.
+            extends_class=None,
+            implements_interfaces=["Debug", "Clone"],
+            superclass=None,
+            interfaces=[],
+        )
+        result = _make_analysis_result(
+            elements=[cls], file_path="/p/lib.rs", language="rust"
+        )
+        with self._patch_is_element_of_type():
+            outline = self.tool._build_outline(result, False, False)
+        cls_out = outline["classes"][0]
+        assert cls_out["extends"] is None
+        assert cls_out["implements"] == ["Debug", "Clone"]
+
     def test_method_string_parameters(self):
         """当 parameters 是字符串列表时，应原样保留到大纲。"""
         cls = self._make_class_elem("A", 1, 50)

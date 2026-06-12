@@ -217,3 +217,47 @@ class TestConvertClass:
         cls = MagicMock(spec=[])
         result = _convert_class(cls)
         assert result["visibility"] == "public"
+
+    def _make_cls_non_java(self, **kwargs):
+        """Build a Class mock using superclass/interfaces (non-Java spellings)."""
+        cls = MagicMock()
+        cls.name = kwargs.get("name", "MyClass")
+        cls.start_line = kwargs.get("start_line", 1)
+        cls.end_line = kwargs.get("end_line", 10)
+        cls.class_type = kwargs.get("class_type", "class")
+        cls.visibility = kwargs.get("visibility", "public")
+        cls.annotations = kwargs.get("annotations", [])
+        # Non-Java spellings (JS/TS/Python/Ruby/PHP/C++/C#/Go):
+        cls.superclass = kwargs.get("superclass", None)
+        cls.interfaces = kwargs.get("interfaces", [])
+        # Force Java-spelling aliases to None / [] so they don't accidentally
+        # satisfy the truthiness check in _resolve_class_extends / _resolve_class_implements.
+        cls.extends_class = None
+        cls.implements_interfaces = []
+        return cls
+
+    def test_convert_class_superclass_field_surfaces_as_extends(self):
+        """superclass= (non-Java spelling) must surface as extends in output."""
+        cls = self._make_cls_non_java(superclass="Animal")
+        result = _convert_class(cls)
+        assert result["extends"] == "Animal"
+
+    def test_convert_class_interfaces_field_surfaces_as_implements(self):
+        """interfaces= (non-Java spelling) must surface as implements in output."""
+        cls = self._make_cls_non_java(interfaces=["IFoo", "IBar"])
+        result = _convert_class(cls)
+        assert result["implements"] == ["IFoo", "IBar"]
+
+    def test_convert_class_both_non_java_fields_surface(self):
+        """Both superclass= and interfaces= surface when set together."""
+        cls = self._make_cls_non_java(superclass="Base", interfaces=["IA", "IB"])
+        result = _convert_class(cls)
+        assert result["extends"] == "Base"
+        assert result["implements"] == ["IA", "IB"]
+
+    def test_convert_class_java_spelling_extends_class_takes_priority(self):
+        """extends_class= (Java spelling) surfaces when set, even if superclass= is also set."""
+        cls = self._make_cls(extends_class="JavaBase", implements_interfaces=["IFoo"])
+        result = _convert_class(cls)
+        assert result["extends"] == "JavaBase"
+        assert result["implements"] == ["IFoo"]
