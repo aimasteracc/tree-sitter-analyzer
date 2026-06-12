@@ -270,6 +270,28 @@ def _go_package_constants(node: Any, source: str) -> list[dict[str, Any]]:
     return out
 
 
+# Issue #613 — Rust const/static items, same shape as #610/#615. tree-sitter-
+# rust emits ``const_item``/``static_item`` (with a ``name`` field), but
+# neither type is in _VAR_DECL_LIKE (which carries Go's ``const_declaration``,
+# not Rust's node names), so they never produced rows. ALL names are captured
+# — Rust const/static are language-level constants/globals (rustc lints
+# non_upper_case_globals), so no const-style name gate is needed; this mirrors
+# the Go const reasoning. ``static mut`` counts too: still a named crate-level
+# global. Associated consts in impl/trait bodies ARE captured (deliberate):
+# they are compiler-enforced constants addressable as ``Type::CONST``, unlike
+# the Python class attributes #612 excludes — and impl/trait bodies are
+# ``declaration_list`` nodes, not function scopes, so the ``enclosed``
+# mechanism keeps them naturally.
+_RUST_CONST_LIKE = frozenset({"const_item", "static_item"})
+
+# Nodes that open a function scope in Rust: const/static items nested under
+# any of these are function-locals, not module constants (Rust analogue of
+# _PY_SCOPE_BODY_NODES / _GO_SCOPE_BODY_NODES, feeding the same top-down
+# ``enclosed`` flag). mod/impl/trait bodies are ``declaration_list`` — module
+# scope — and deliberately absent.
+_RUST_SCOPE_BODY_NODES = frozenset({"function_item", "closure_expression", "block"})
+
+
 def _python_module_constant(node: Any, source: str) -> dict[str, Any] | None:
     """Return a kind="constant" symbol for a module-scope Python assignment,
     or None when the node does not match the #610 scope rule.
@@ -600,9 +622,10 @@ def _walk_for_symbols(
     """Walk the AST collecting symbol dicts.
 
     ``enclosed`` tracks (top-down, no parent walking) whether *node* sits
-    inside a Python function/class body (#610) or a Go function body (#613)
-    — module/package-constant capture must fire at top-level scope only,
-    including ``if``/``try``-wrapped module-level assignments.
+    inside a Python function/class body (#610), a Go function body (#613),
+    or a Rust function/closure body (#613) — module/package-constant capture
+    must fire at top-level scope only, including ``if``/``try``-wrapped
+    module-level assignments.
     """
     if depth > 20:
         return
@@ -677,10 +700,32 @@ def _walk_for_symbols(
             symbols.append(const_sym)
     elif node_type in _GO_CONST_LIKE and language == "go" and not enclosed:
         symbols.extend(_go_package_constants(node, source))
-    child_enclosed = (
-        enclosed
-        or node_type in _PY_SCOPE_BODY_NODES
-        or node_type in _GO_SCOPE_BODY_NODES
+    elif (
+        node_type in _RUST_CONST_LIKE
+        and language == "rust"
+        and not enclosed
+        and name_node is not None
+        # `const _: usize = ...;` compile-time assertions: `_` is not a
+        # referenceable symbol (Codex P2 on #618; mirrors the Go blank rule)
+        and _node_text(name_node, source) != "_"
+    ):
+        symbols.append(
+            {
+                "kind": "constant",
+                "name": _node_text(name_node, source),
+                "line": node.start_point[0] + 1,
+                "end_line": node.end_point[0] + 1,
+                "language": "rust",
+            }
+        )
+    # Language-gated: Rust needs "block" in its scope set (const-initializer
+    # block expressions, Codex P2 on #618), but Python's if/try bodies are
+    # also "block" nodes — a shared set would break the #612 guarantee that
+    # if/try-wrapped module assignments stay captured.
+    child_enclosed = enclosed or (
+        (language == "python" and node_type in _PY_SCOPE_BODY_NODES)
+        or (language == "go" and node_type in _GO_SCOPE_BODY_NODES)
+        or (language == "rust" and node_type in _RUST_SCOPE_BODY_NODES)
     )
     for child in node.children:
         _walk_for_symbols(child, source, symbols, language, depth + 1, child_enclosed)
