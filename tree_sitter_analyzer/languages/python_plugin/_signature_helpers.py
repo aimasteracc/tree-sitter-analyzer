@@ -10,6 +10,7 @@ _PARAMETER_NODE_TYPES = frozenset(
         "identifier",
         "typed_parameter",
         "default_parameter",
+        "typed_default_parameter",
         "list_splat_pattern",
         "dictionary_splat_pattern",
     }
