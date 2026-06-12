@@ -27,18 +27,19 @@ This document outlines the steps required to add support for a new programming l
 - [ ] Create `tree_sitter_analyzer/queries/{language}.py`
   - [ ] Define language-specific Tree-sitter queries
 
-### 4. Implement Formatter
+### 4. Implement Formatter (if needed)
 
-- [ ] Create `tree_sitter_analyzer/formatters/{language}_formatter.py`
+- [ ] If the language requires custom output formatting, create `tree_sitter_analyzer/formatters/{language}_formatter.py`
   - [ ] Inherit from `BaseFormatter`
   - [ ] Implement `format_summary()`
   - [ ] Implement `format_structure()`
   - [ ] Implement `format_advanced()`
   - [ ] Implement `format_table()`
+  - Note: Many languages use the default formatter and do not need a standalone formatter file.
 
-### 5. Register Formatter
+### 5. Register Formatter (if created)
 
-- [ ] Register formatter in `tree_sitter_analyzer/formatters/formatter_registry.py`
+- [ ] If a custom formatter was created, register it in `tree_sitter_analyzer/formatters/formatter_registry.py`
 
 ### 6. Create Sample File
 
@@ -57,7 +58,7 @@ This document outlines the steps required to add support for a new programming l
 - [ ] Create `tests/golden_masters/full/{language}_sample_{name}_full.md`
 - [ ] Create `tests/golden_masters/compact/{language}_sample_{name}_compact.md` (optional)
 - [ ] Create `tests/golden_masters/csv/{language}_sample_{name}_csv.csv` (optional)
-- [ ] Add test cases to `tests/test_golden_master_regression.py`
+- [ ] Add test cases to `tests/regression/test_plugin_golden_masters.py`
   ```python
   # {Language} tests
   ("examples/sample.{ext}", "{language}_sample", "full"),

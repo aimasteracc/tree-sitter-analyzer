@@ -2,8 +2,8 @@
 # MCP Tools Codemap
 
 **8 facade tools** registered in [`mcp/_tool_registry.py`](../../tree_sitter_analyzer/mcp/_tool_registry.py)
-(v2.0 β cutover — was 63 discrete tools). Each facade fans an `action` parameter
-out to the unchanged inner tools; the 63 legacy names still work for one
+(v2.0 β cutover — was 66 discrete tools). Each facade fans an `action` parameter
+out to the unchanged inner tools; the 66 legacy names still work for one
 deprecation cycle via the legacy-name shim
 ([`mcp/legacy_shim.py`](../../tree_sitter_analyzer/mcp/legacy_shim.py)).
 All tools default to **TOON output** (locked — see `CLAUDE.md`).
@@ -27,7 +27,7 @@ All tools default to **TOON output** (locked — see `CLAUDE.md`).
 
 ## Legacy Capability → Facade Crosswalk (deprecated names, still shimmed)
 
-The table below documents the 62 legacy capabilities and their CLI flags. Each
+The table below documents the 66 legacy capabilities and their CLI flags. Each
 legacy MCP name is now reached via its facade (`old_name` →
 `facade action=<...>`); see [`mcp/facade_map.py`](../../tree_sitter_analyzer/mcp/facade_map.py).
 

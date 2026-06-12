@@ -85,7 +85,7 @@ an unreadable CSV. Used by `CsvFormatter`, `format_html_csv`, and
 
 ## TOON Format
 
-TOON (Token-Optimized Object Notation) emits indentation-aware key:value lines without
+TOON (Token-Oriented Object Notation) emits indentation-aware key:value lines without
 JSON's punctuation overhead. Example:
 
 ```

@@ -131,27 +131,23 @@ gitGraph
     ```bash
     # 一時的なリリースメッセージファイルを作成（エンコーディングと記号エラーを回避）
     cat > release_message.md << 'EOF'
-    ## v1.7.2 - ファイル出力最適化とROOルールドキュメント
+    ## vX.Y.Z - <リリースタイトル>
 
     ### 🎯 新機能
-    - **ファイル出力最適化**: MCP検索ツールに`suppress_output`と`output_file`パラメータを追加、トークン消費を大幅削減
-    - **自動フォーマット検出**: コンテンツタイプに基づいてファイル形式（JSON/Markdown）を自動選択
-    - **ROOルールドキュメント**: tree-sitter-analyzer MCP最適化使用ガイドを新規追加
+    - <新機能を記述>
 
     ### 📊 品質指標
-    - テスト数: 2675個のテスト（100%パス）
-    - コードカバレッジ: 78.85%
-    - 新機能: ファイル出力最適化により、AI対話のトークン消費を大幅削減
+    - テスト数: <リリースCIからのテスト数>（100%パス）
+    - コードカバレッジ: <カバレッジ%>
+    - <その他の指標>
 
     ### 🔧 技術改善
-    - 大型検索結果のファイル出力時、レスポンスサイズを最大99%削減
-    - 後方互換性を維持、既存機能の使用に影響なし
-    - ファイル出力最適化機能の検証を含む完全なテストカバレッジ
+    - <技術的改善を記述>
     EOF
 
     # gh CLI を使用してリリースを作成
-    gh release create v1.7.2 \
-        --title "Release v1.7.2: File Output Optimization and ROO Rules Documentation" \
+    gh release create vX.Y.Z \
+        --title "Release vX.Y.Z: <リリースタイトル>" \
         --notes-file release_message.md \
         --target main
 
