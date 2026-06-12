@@ -448,3 +448,27 @@ class TestCodeGraphSymbolSearchRegistration:
 
         _, tools = _create_tool_registry(None)
         assert "callees" in tools["nav"].bespoke_map
+
+
+# ---------------------------------------------------------------------------
+# Issue #540 — Leg 2: positive-int validation for limit
+# ---------------------------------------------------------------------------
+
+
+class TestSymbolSearchLimitValidation:
+    """validate_arguments must reject limit <= 0."""
+
+    def test_negative_limit_raises(self):
+        tool = CodeGraphSymbolSearchTool()
+        with pytest.raises(ValueError, match="limit"):
+            tool.validate_arguments({"query": "foo", "limit": -5})
+
+    def test_zero_limit_raises(self):
+        tool = CodeGraphSymbolSearchTool()
+        with pytest.raises(ValueError, match="limit"):
+            tool.validate_arguments({"query": "foo", "limit": 0})
+
+    def test_positive_limit_passes(self):
+        tool = CodeGraphSymbolSearchTool()
+        # Must not raise
+        tool.validate_arguments({"query": "foo", "limit": 1})

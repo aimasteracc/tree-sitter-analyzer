@@ -109,6 +109,9 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         if not arguments.get("query"):
             raise ValueError("query is required")
+        from ._validators import _validate_positive_int
+
+        _validate_positive_int(arguments, "limit")
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:

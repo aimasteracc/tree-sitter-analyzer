@@ -12,6 +12,17 @@ from typing import Any
 
 from .base_tool import BaseMCPTool
 
+# #540 leg 3: responses echo the selector for context, but a pathological
+# selector (16KB observed in dogfood) must not flood the response — cap the
+# echo, never the selector actually parsed.
+_SELECTOR_ECHO_CAP = 200
+
+
+def _cap_selector_echo(selector: str) -> str:
+    if len(selector) <= _SELECTOR_ECHO_CAP:
+        return selector
+    return selector[:_SELECTOR_ECHO_CAP] + f"… ({len(selector)} chars total)"
+
 
 class HyphaeSelectTool(BaseMCPTool):
     """Execute a Hyphae selector and return matching symbols."""
@@ -96,6 +107,11 @@ class HyphaeSelectTool(BaseMCPTool):
         max_results = max(1, min(max_results, 1000))
         output_format = arguments.get("output_format", "toon")
 
+        # #540 leg 3: every response echoes the selector capped — the
+        # syntax-error branch is the one a 16KB garbage selector actually
+        # hits, so the cap must apply on BOTH branches.
+        selector_echo = _cap_selector_echo(selector)
+
         from ...hyphae import Evaluator, parse
         from ...hyphae.parser import HyphaeSyntaxError
 
@@ -104,7 +120,7 @@ class HyphaeSelectTool(BaseMCPTool):
         except (HyphaeSyntaxError, ValueError) as exc:
             return {
                 "success": False,
-                "selector": selector,
+                "selector": selector_echo,
                 "error": f"Hyphae syntax error: {exc}",
                 "symbols": [],
             }
@@ -168,7 +184,7 @@ class HyphaeSelectTool(BaseMCPTool):
 
         result: dict[str, Any] = {
             "success": True,
-            "selector": selector,
+            "selector": selector_echo,
             "count": len(symbols),
             "total_matches": total_matches,
             "truncated": truncated,
@@ -176,7 +192,11 @@ class HyphaeSelectTool(BaseMCPTool):
             "index_state": index_state,
             "indexed_files": indexed_files,
             "agent_summary": {
-                "summary_line": f"hyphae_select: {len(symbols)} symbols for {selector!r}",
+                # Codex P2 on #553: interpolate the CAPPED echo, not the raw
+                # selector — a valid 16KB selector flooded summary_line.
+                "summary_line": (
+                    f"hyphae_select: {len(symbols)} symbols for {selector_echo!r}"
+                ),
                 "verdict": verdict,
                 "next_step": next_step,
             },
