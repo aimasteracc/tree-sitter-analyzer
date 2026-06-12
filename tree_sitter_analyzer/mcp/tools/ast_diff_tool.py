@@ -60,7 +60,13 @@ class ASTDiffTool(BaseMCPTool):
                 "mode": {
                     "type": "string",
                     "enum": ["diff_files", "diff_strings", "diff_git"],
-                    "description": "Diff mode (default: diff_files)",
+                    # mode is runtime-resolved from arg shape (issue #529) —
+                    # NOT in required; an absent mode is inferred from the args.
+                    "description": "Diff mode — inferred when omitted: "
+                    "old_ref/new_ref → diff_git; "
+                    "old_source/new_source → diff_strings; "
+                    "old_file/new_file → diff_files. "
+                    "Explicit value always wins.",
                     "default": "diff_files",
                 },
                 "old_file": {
@@ -104,12 +110,49 @@ class ASTDiffTool(BaseMCPTool):
                     "default": "toon",
                 },
             },
-            "required": ["mode"],
+            # mode is runtime-resolved from arg shape (issue #529 / the 6×-recurred
+            # facade trap) — it is NOT required. Declaring it required causes strict
+            # MCP clients to reject valid calls like {old_ref, new_ref, file_path}.
+            "required": [],
             "additionalProperties": False,
         }
 
+    @staticmethod
+    def _resolve_mode(arguments: dict[str, Any]) -> str:
+        """Effective mode — inferred from argument shape when omitted.
+
+        Issue #529 (schema honesty / mode inference):
+        - Explicit ``mode`` always wins.
+        - old_source/new_source present → diff_strings
+        - old_file/new_file present → diff_files
+        - old_ref/new_ref + file_path → diff_git
+        - None of the above → returns empty string (validate_arguments will raise)
+
+        Source/file signatures are checked BEFORE refs because callers that
+        materialize schema defaults (the CLI bridge fills old_ref/new_ref
+        with HEAD~1/HEAD) carry ref fields on every call — refs alone must
+        not steal the inference from an explicit string/file diff. The git
+        signature additionally requires its file_path discriminator
+        (Codex P2 on #551).
+        """
+        mode = arguments.get("mode")
+        if mode:
+            return str(mode)
+        if (
+            arguments.get("old_source") is not None
+            or arguments.get("new_source") is not None
+        ):
+            return "diff_strings"
+        if arguments.get("old_file") or arguments.get("new_file"):
+            return "diff_files"
+        if (arguments.get("old_ref") or arguments.get("new_ref")) and arguments.get(
+            "file_path"
+        ):
+            return "diff_git"
+        return ""
+
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
-        mode = arguments.get("mode", "diff_files")
+        mode = self._resolve_mode(arguments)
         if mode == "diff_files":
             if not arguments.get("old_file") or not arguments.get("new_file"):
                 raise ValueError(
@@ -128,12 +171,21 @@ class ASTDiffTool(BaseMCPTool):
         elif mode == "diff_git":
             if not arguments.get("file_path"):
                 raise ValueError("file_path is required for diff_git mode")
+        else:
+            raise ValueError(
+                "Cannot infer mode from arguments. "
+                "Provide one of the following mode signatures:\n"
+                "  diff_files:   old_file + new_file\n"
+                "  diff_strings: old_source + new_source + language\n"
+                "  diff_git:     old_ref + new_ref + file_path\n"
+                "Or pass mode= explicitly."
+            )
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate_arguments(arguments)
 
-        mode = arguments.get("mode", "diff_files")
+        mode = self._resolve_mode(arguments)
         output_format = arguments.get("output_format", "toon")
         differ = self._get_differ()
 

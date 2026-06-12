@@ -448,6 +448,36 @@ def test_edit_facade_definition_includes_annotations() -> None:
 
 
 # ---------------------------------------------------------------------------
+# 13. Facade description honesty — ast_diff description uses REAL mode params
+#     (Leg D of issue #529 triple-fix)
+# ---------------------------------------------------------------------------
+
+
+def test_ast_diff_facade_description_uses_real_mode_params() -> None:
+    """Leg D: the ast_diff description in the edit facade must reference the
+    REAL mode signatures (old_file/new_file | old_source/new_source |
+    old_ref/new_ref) and must NOT use the nonexistent 'before, after' params.
+    """
+    from tree_sitter_analyzer.mcp.tools.edit_facade import _EDIT_DESCRIPTION
+
+    # Must contain real param names
+    assert "old_ref" in _EDIT_DESCRIPTION, (
+        "ast_diff facade description must mention 'old_ref' (diff_git signature)"
+    )
+    assert "old_file" in _EDIT_DESCRIPTION or "new_file" in _EDIT_DESCRIPTION, (
+        "ast_diff facade description must mention 'old_file'/'new_file' (diff_files signature)"
+    )
+    assert "old_source" in _EDIT_DESCRIPTION or "new_source" in _EDIT_DESCRIPTION, (
+        "ast_diff facade description must mention 'old_source'/'new_source' (diff_strings signature)"
+    )
+
+    # Must NOT use the nonexistent 'before, after' params
+    assert "before, after" not in _EDIT_DESCRIPTION, (
+        "ast_diff facade description must NOT use nonexistent 'before, after' params"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Schema sanity
 # ---------------------------------------------------------------------------
 
