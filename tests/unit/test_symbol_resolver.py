@@ -58,7 +58,7 @@ class TestSymbolResolverEngine:
         cache = ASTCache(str(indexed_project))
         resolver = SymbolResolver(cache)
         result = resolver.resolve("handle_request")
-        assert len(result.definitions) >= 1
+        assert len(result.definitions) == 1
         assert result.definitions[0].name == "handle_request"
         assert result.definitions[0].kind == "function"
         assert "app.py" in result.definitions[0].file
@@ -68,7 +68,7 @@ class TestSymbolResolverEngine:
         cache = ASTCache(str(indexed_project))
         resolver = SymbolResolver(cache)
         result = resolver.resolve("UserService")
-        assert len(result.definitions) >= 1
+        assert len(result.definitions) == 1
         assert result.definitions[0].name == "UserService"
         assert result.definitions[0].kind == "class"
         cache.close()
@@ -77,7 +77,7 @@ class TestSymbolResolverEngine:
         cache = ASTCache(str(indexed_project))
         resolver = SymbolResolver(cache)
         result = resolver.resolve("get_user")
-        assert len(result.definitions) >= 1
+        assert len(result.definitions) == 1
         assert result.definitions[0].name == "get_user"
         cache.close()
 
@@ -114,7 +114,7 @@ class TestSymbolResolverEngine:
         cache = Cache()
         resolver = SymbolResolver(cache)
         result = resolver.resolve("APP_NAME")
-        assert len(result.definitions) >= 1
+        assert len(result.definitions) == 1
         assert result.definitions[0].name == "APP_NAME"
         assert result.definitions[0].kind == "variable"
 
@@ -131,8 +131,8 @@ class TestSymbolResolverEngine:
         result = resolver.resolve("UserService")
         d = result.to_dict()
         assert d["symbol"] == "UserService"
-        assert d["definition_count"] >= 1
-        assert len(d["definitions"]) >= 1
+        assert d["definition_count"] == 1
+        assert len(d["definitions"]) == 1
         assert "file" in d["definitions"][0]
         cache.close()
 
@@ -140,8 +140,8 @@ class TestSymbolResolverEngine:
         cache = ASTCache(str(indexed_project))
         resolver = SymbolResolver(cache)
         result = resolver.find_references("get_user")
-        assert len(result.definitions) >= 1
-        assert len(result.references) >= 0
+        assert len(result.definitions) == 1
+        assert len(result.references) == 1
         d = result.to_dict()
         assert d["symbol"] == "get_user"
         assert "reference_count" in d
@@ -151,7 +151,7 @@ class TestSymbolResolverEngine:
         cache = ASTCache(str(indexed_project))
         resolver = SymbolResolver(cache)
         result = resolver.resolve("UserService.get_user")
-        assert len(result.definitions) >= 1
+        assert len(result.definitions) == 1
         assert result.definitions[0].name == "get_user"
         cache.close()
 
@@ -231,8 +231,8 @@ class TestCodeGraphSymbolResolveExecution:
         )
         assert result["success"] is True
         assert result["symbol"] == "UserService"
-        assert result["definition_count"] >= 1
-        assert len(result["definitions"]) >= 1
+        assert result["definition_count"] == 1
+        assert len(result["definitions"]) == 1
         assert "file" in result["definitions"][0]
 
     async def test_references_mode(self, indexed_project):
@@ -241,8 +241,8 @@ class TestCodeGraphSymbolResolveExecution:
             {"symbol": "get_user", "mode": "references", "output_format": "json"}
         )
         assert result["success"] is True
-        assert result["definition_count"] >= 1
-        assert "reference_count" in result
+        assert result["definition_count"] == 1
+        assert result["reference_count"] == 1
         assert "references" in result
 
     async def test_nonexistent_symbol(self, indexed_project):
@@ -271,7 +271,7 @@ class TestCodeGraphSymbolResolveExecution:
         tool = CodeGraphSymbolResolveTool(str(indexed_project))
         result = await tool.execute({"symbol": "format_user", "output_format": "json"})
         assert result["success"] is True
-        assert result["definition_count"] >= 1
+        assert result["definition_count"] == 1
         defs = result["definitions"]
         assert any("utils.py" in d["file"] for d in defs)
 
@@ -279,6 +279,6 @@ class TestCodeGraphSymbolResolveExecution:
         tool = CodeGraphSymbolResolveTool(str(indexed_project))
         result = await tool.execute({"symbol": "User", "output_format": "json"})
         assert result["success"] is True
-        assert result["definition_count"] >= 1
+        assert result["definition_count"] == 1
         defs = result["definitions"]
         assert any("models.py" in d["file"] for d in defs)

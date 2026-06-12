@@ -40,6 +40,7 @@ class TestUserStory2Integration:
             (project_root / "config").mkdir()
 
             # Python ファイル
+            # newline="\n" pins byte lengths cross-platform (content_length asserts)
             (project_root / "src" / "main.py").write_text(
                 """#!/usr/bin/env python3
 \"\"\"
@@ -98,7 +99,8 @@ def main():
 
 if __name__ == "__main__":
     main()
-"""
+""",
+                newline="\n",
             )
 
             # JavaScript ファイル
@@ -167,7 +169,8 @@ class FileManager {
 }
 
 module.exports = { FileManager };
-"""
+""",
+                newline="\n",
             )
 
             # テストファイル
@@ -242,7 +245,8 @@ class TestDataProcessor:
         assert len(saved_data) == 1
         assert saved_data[0]["id"] == 1
 
-"""
+""",
+                newline="\n",
             )
 
             # 設定ファイル
@@ -269,7 +273,8 @@ class TestDataProcessor:
     "file": "app.log",
     "max_size": "10MB"
   }
-}"""
+}""",
+                newline="\n",
             )
 
             # README ファイル
@@ -337,7 +342,8 @@ python -m pytest tests/
 - [ ] Create web interface
 - [ ] Add performance monitoring
 - [ ] Implement data validation
-"""
+""",
+                newline="\n",
             )
 
             # .gitignore ファイル
@@ -388,7 +394,8 @@ logs/
 *.tmp
 *.temp
 temp/
-"""
+""",
+                newline="\n",
             )
 
             yield str(project_root)
@@ -445,7 +452,7 @@ temp/
         assert "file_path" in result
         assert "partial_content_result" in result
         # JSON形式では構造化されたデータが返される
-        assert result["content_length"] > 0
+        assert result["content_length"] == 258
 
     @pytest.mark.asyncio
     async def test_list_files_basic_search(self, list_files_tool):
@@ -456,7 +463,7 @@ temp/
         )
 
         assert result["success"] is True
-        assert result["count"] >= 2  # main.py, test_main.py
+        assert result["count"] == 2  # main.py, test_main.py
 
         # Python ファイルのみが含まれることを確認
         for file_info in result["results"]:
@@ -478,7 +485,7 @@ temp/
         )
 
         assert result["success"] is True
-        assert result["count"] >= 3  # main.py, utils.js, test_main.py
+        assert result["count"] == 3  # main.py, utils.js, test_main.py
 
         # 指定された拡張子のみが含まれることを確認
         for file_info in result["results"]:
@@ -495,7 +502,9 @@ temp/
         assert result["success"] is True
         assert result["count_only"] is True
         assert "total_count" in result
-        assert result["total_count"] >= 5  # 複数ファイルが存在
+        assert (
+            result["total_count"] == 9
+        )  # 6 ファイル + src/tests/docs/config 以下のエントリ
 
     @pytest.mark.asyncio
     async def test_search_content_basic(self, search_tool):
@@ -506,7 +515,7 @@ temp/
         )
 
         assert result["success"] is True
-        assert result["count"] >= 2  # DataProcessor, FileManager
+        assert result["count"] == 2  # DataProcessor, FileManager
 
         # 検索結果の構造確認
         for match in result["results"]:
@@ -529,7 +538,9 @@ temp/
         )
 
         assert result["success"] is True
-        assert result["count"] >= 5  # 複数のメソッド定義
+        assert (
+            result["count"] == 5
+        )  # __init__, load_data, process_data, save_results, main
 
         # 正規表現マッチの確認
         for match in result["results"]:
@@ -547,7 +558,7 @@ temp/
         assert result["count_only"] is True
         assert "total_matches" in result
         assert "file_counts" in result
-        assert result["total_matches"] >= 1  # README.mdにTODOが存在
+        assert result["total_matches"] == 2  # src/main.py と README.md に1件ずつ
 
     @pytest.mark.asyncio
     async def test_search_content_total_only(self, search_tool):
@@ -558,7 +569,7 @@ temp/
 
         # total_onlyモードでは数値のみが返される
         assert isinstance(result, int)
-        assert result >= 2  # 複数のimport文が存在
+        assert result == 3  # import os / import sys / from typing import
 
     @pytest.mark.asyncio
     async def test_workflow_file_discovery_and_analysis(
@@ -578,7 +589,7 @@ temp/
 
         assert files_result["success"] is True
         python_files = [f["path"] for f in files_result["results"]]
-        assert len(python_files) >= 1
+        assert len(python_files) == 1  # src/main.py
 
         # Step 2: クラス定義を検索 (use JSON output_format for test assertions)
         search_result = await search_tool.execute(
@@ -586,7 +597,7 @@ temp/
         )
 
         assert search_result["success"] is True
-        assert search_result["count"] >= 1
+        assert search_result["count"] == 1  # class DataProcessor
 
         # Step 3: 見つかったクラスの詳細を抽出
         class_match = search_result["results"][0]
@@ -622,7 +633,7 @@ temp/
         )
 
         assert todo_result["success"] is True
-        assert todo_result["count"] >= 1
+        assert todo_result["count"] == 2  # src/main.py と README.md
 
         # Step 2: TODO周辺のコードを詳細抽出
         for match in todo_result["results"][:2]:  # 最初の2つのTODOを分析
@@ -660,7 +671,7 @@ temp/
         )
 
         assert config_files["success"] is True
-        assert config_files["count"] >= 1
+        assert config_files["count"] == 1  # settings.json
 
         # Step 2: 設定値を検索
         for config_file in config_files["results"]:
@@ -764,7 +775,7 @@ temp/
         )
 
         assert search_result["success"] is True
-        assert search_result["count"] >= 1
+        assert search_result["count"] == 2  # DataProcessor, FileManager
 
         # ファイル出力機能が動作することを確認
         assert "output_file" in search_result
@@ -790,7 +801,7 @@ temp/
         # ファイル出力機能が正常に動作することを確認
         # suppress_outputが有効な場合、ファイルに保存され、file_savedがTrueになる
         assert extract_result["file_saved"] is True
-        assert extract_result["content_length"] > 0
+        assert extract_result["content_length"] == 420
 
 
 if __name__ == "__main__":
