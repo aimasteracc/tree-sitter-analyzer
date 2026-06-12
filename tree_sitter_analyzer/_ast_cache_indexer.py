@@ -23,7 +23,8 @@ logger = logging.getLogger(__name__)
 # v3: #610 — Python module-level constants extracted as kind="constant".
 # v4: #613 — Go package-level const/var specs extracted as kind="constant".
 # v5: #613 — Rust const/static items extracted as kind="constant".
-_AST_CACHE_EXTRACTOR_VERSION = 5
+# v6: #614 — docstring/return_type/params serialized into symbols_json.
+_AST_CACHE_EXTRACTOR_VERSION = 6
 
 
 def check_cache_or_read(

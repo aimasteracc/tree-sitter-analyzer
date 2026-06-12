@@ -317,6 +317,50 @@ def _python_module_constant(node: Any, source: str) -> dict[str, Any] | None:
     }
 
 
+# Issue #614 — RFC-0016 prerequisite. symbols_json must carry enough text to
+# build the embedding/BM25 input "{kind} {name}({params}) -> {return_type}\n
+# {docstring}". Docstrings are much larger than names, so serialized values
+# are capped at 500 chars (stated cap; index-size impact measured on #614).
+_DOCSTRING_MAX_CHARS = 500
+
+
+def _python_docstring(node: Any, source: str) -> str | None:
+    """Return the PEP 257 docstring of a Python function/class node, or None.
+
+    The first statement of the ``body`` block must be an expression statement
+    whose sole expression is a string literal. Quote delimiters are excluded
+    by reading the ``string_content`` children. Python-only this PR — other
+    languages keep docs in comments, which need per-language helpers (#614
+    follow-up). Result is stripped and capped at ``_DOCSTRING_MAX_CHARS``;
+    whitespace-only docstrings yield None so absent stays absent.
+    """
+    body = node.child_by_field_name("body")
+    if body is None or not body.named_children:
+        return None
+    first = body.named_children[0]
+    if first.type != "expression_statement" or not first.named_children:
+        return None
+    string_node = first.named_children[0]
+    if string_node.type == "string":
+        string_parts = [string_node]
+    elif string_node.type == "concatenated_string":
+        # Adjacent literals ('a' 'b') fold into __doc__ — a legal PEP 257
+        # docstring; tree-sitter wraps them in concatenated_string
+        # (Codex P2 on #621).
+        string_parts = [c for c in string_node.named_children if c.type == "string"]
+    else:
+        return None
+    content = "".join(
+        _node_text(child, source)
+        for part in string_parts
+        for child in part.children
+        if child.type == "string_content"
+    ).strip()
+    if not content:
+        return None
+    return content[:_DOCSTRING_MAX_CHARS]
+
+
 _COMPLEXITY_NODE_TYPES: dict[str, set[str]] = {
     "python": {
         "if_statement",
@@ -656,6 +700,18 @@ def _walk_for_symbols(
         }
         if dp:
             sym["decision_points"] = dp
+        # #614: return_type where the grammar exposes the field (python/rust/
+        # typescript use "return_type"; absent field → key absent, no noise).
+        return_type_node = node.child_by_field_name("return_type")
+        if return_type_node is not None:
+            # TS/TSX expose a type_annotation node whose text is ": string" —
+            # strip the annotation prefix so consumers compare bare types
+            # (Codex P2 on #621; mirrors the TS signature helpers).
+            sym["return_type"] = _node_text(return_type_node, source).lstrip(": ")
+        if language == "python":
+            doc = _python_docstring(node, source)
+            if doc is not None:
+                sym["docstring"] = doc
         parent_cls = _find_parent_class(node, source)
         if parent_cls:
             sym["kind"] = "method"
@@ -673,6 +729,10 @@ def _walk_for_symbols(
         }
         if parents:
             cls_sym["parents"] = parents
+        if language == "python":
+            doc = _python_docstring(node, source)
+            if doc is not None:
+                cls_sym["docstring"] = doc
         symbols.append(cls_sym)
     elif node_type in _IMPORT_LIKE:
         symbols.append(
