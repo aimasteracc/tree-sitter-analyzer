@@ -30,7 +30,7 @@ import java.util.Collections
 | fetchUserAsync | fun(id: Long): Result<User> | pub | 37-40 | - | - |
 | display | fun(): String | pub | 42-44 | - | - |
 | toTitleCase | fun(): String | pub | 52-54 | - | - |
-| get | fun() | pub | 59-59 | - | - |
+| get | fun(): String | pub | 59-59 | - | - |
 | main | fun(args: Array<String>) | pub | 62-65 | - | - |
 
 ## Properties
