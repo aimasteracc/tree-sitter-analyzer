@@ -230,7 +230,7 @@ class TestRubyClassExtraction:
         extractor = plugin.create_extractor()
         classes = extractor.extract_classes(tree, SIMPLE_CLASS_CODE)
 
-        assert all(c.start_line > 0 for c in classes)
+        assert min(c.start_line for c in classes) == 5
         assert all(c.end_line >= c.start_line for c in classes)
 
     def test_extract_empty_tree(self):
@@ -255,7 +255,9 @@ class TestRubyFunctionExtraction:
 
         func_names = [f.name for f in functions]
         # Should find initialize, greet, generate_id, and attr_ methods
-        assert any("initialize" in name for name in func_names)
+        assert any(
+            "initialize" in name for name in func_names
+        )  # TODO(#535): substring-match accommodates owner-prefixed names; re-pin exact bare names after the fix
         assert any("greet" in name for name in func_names)
 
     def test_extract_singleton_methods(self):
@@ -279,7 +281,7 @@ class TestRubyFunctionExtraction:
 
         # attr_accessor creates getter/setter methods
         func_names = [f.name for f in functions]
-        assert any("name" in name for name in func_names) or len(functions) > 0
+        assert any("name" in name for name in func_names)
 
     def test_extract_method_parameters(self):
         """Test extraction of method parameters."""
@@ -291,7 +293,7 @@ class TestRubyFunctionExtraction:
         initialize_method = next((f for f in functions if "initialize" in f.name), None)
         assert initialize_method is not None
         # Should have name and age parameters
-        assert len(initialize_method.parameters) >= 0
+        assert len(initialize_method.parameters) == 2
 
     def test_extract_splat_parameters(self):
         """Test extraction of splat parameters."""
@@ -312,7 +314,7 @@ class TestRubyFunctionExtraction:
 
         # Singleton methods should be marked as static
         singleton_methods = [f for f in functions if f.is_static]
-        assert len(singleton_methods) >= 0  # May vary by extraction
+        assert len(singleton_methods) == 2
 
     def test_extract_functions_empty_tree(self):
         """Test function extraction with empty code."""
@@ -336,7 +338,9 @@ class TestRubyVariableExtraction:
 
         var_names = [v.name for v in variables]
         # Should find MAX_USERS, DEFAULT_TIMEOUT, API_VERSION
-        assert any("MAX_USERS" in name for name in var_names) or len(variables) > 0
+        assert any(
+            "MAX_USERS" in name for name in var_names
+        )  # TODO(#535): substring-match accommodates owner-prefixed names; re-pin exact bare names after the fix
 
     def test_constant_is_marked_constant(self):
         """Test that constants are marked as constant."""
@@ -347,7 +351,7 @@ class TestRubyVariableExtraction:
 
         constants = [v for v in variables if v.is_constant]
         # Should have constant variables
-        assert len(constants) >= 0
+        assert len(constants) == 3
 
     def test_extract_class_variables(self):
         """Test extraction of class variables."""
@@ -358,7 +362,9 @@ class TestRubyVariableExtraction:
 
         # @@instance_count should be extracted
         var_names = [v.name for v in variables]
-        assert any("instance_count" in name for name in var_names) or len(variables) > 0
+        assert any(
+            "instance_count" in name for name in var_names
+        )  # TODO(#535): substring-match accommodates owner-prefixed names; re-pin exact bare names after the fix
 
     def test_variable_line_numbers(self):
         """Test that variable line numbers are correct."""
@@ -367,7 +373,7 @@ class TestRubyVariableExtraction:
         extractor = plugin.create_extractor()
         variables = extractor.extract_variables(tree, CONSTANTS_CODE)
 
-        assert all(v.start_line > 0 for v in variables)
+        assert min(v.start_line for v in variables) == 3
         assert all(v.end_line >= v.start_line for v in variables)
 
     def test_extract_variables_empty_tree(self):
@@ -421,7 +427,7 @@ class TestRubyImportExtraction:
         extractor = plugin.create_extractor()
         imports = extractor.extract_imports(tree, REQUIRE_STATEMENTS_CODE)
 
-        assert all(i.start_line > 0 for i in imports)
+        assert min(i.start_line for i in imports) == 2
         assert all(i.end_line >= i.start_line for i in imports)
 
     def test_extract_imports_empty_tree(self):
@@ -555,7 +561,7 @@ class TestRubyPluginAnalyzeFile:
         assert result.success is True
         assert result.language == "ruby"
         assert result.file_path == str(rb_file)
-        assert len(result.elements) > 0
+        assert len(result.elements) == 12
 
     @pytest.mark.asyncio
     async def test_analyze_file_node_count(self, tmp_path):
@@ -566,7 +572,7 @@ class TestRubyPluginAnalyzeFile:
         plugin = RubyPlugin()
         result = await plugin.analyze_file(str(rb_file), None)
 
-        assert result.node_count > 0
+        assert result.node_count == 77
 
 
 class TestRubyIntegration:
@@ -595,9 +601,9 @@ class TestRubyIntegration:
         extractor.extract_variables(tree, SIMPLE_CLASS_CODE)
         imports = extractor.extract_imports(tree, SIMPLE_CLASS_CODE)
 
-        assert len(classes) > 0
-        assert len(functions) > 0
-        assert len(imports) > 0
+        assert len(classes) == 1
+        assert len(functions) == 6
+        assert len(imports) == 2
 
     def test_module_extraction(self):
         """Test extraction from module code."""
@@ -609,9 +615,9 @@ class TestRubyIntegration:
         functions = extractor.extract_functions(tree, MODULE_CODE)
 
         # Should find modules and nested classes
-        assert len(classes) >= 1
+        assert len(classes) == 3
         # Should find methods
-        assert len(functions) >= 0
+        assert len(functions) == 2
 
     def test_inheritance_chain(self):
         """Test extraction of inheritance relationships."""

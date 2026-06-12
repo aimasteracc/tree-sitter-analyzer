@@ -27,30 +27,30 @@ class TestCSSQueries:
     def test_css_queries_dict_exists(self):
         """Test that CSS_QUERIES dictionary exists"""
         assert isinstance(CSS_QUERIES, dict)
-        assert len(CSS_QUERIES) > 0
+        assert len(CSS_QUERIES) == 86
 
     def test_css_query_descriptions_dict_exists(self):
         """Test that CSS_QUERY_DESCRIPTIONS dictionary exists"""
         assert isinstance(CSS_QUERY_DESCRIPTIONS, dict)
-        assert len(CSS_QUERY_DESCRIPTIONS) > 0
+        assert len(CSS_QUERY_DESCRIPTIONS) == 86
 
     def test_all_queries_dict_exists(self):
         """Test that ALL_QUERIES dictionary exists"""
         assert isinstance(ALL_QUERIES, dict)
-        assert len(ALL_QUERIES) > 0
+        assert len(ALL_QUERIES) == 90
 
     def test_all_queries_have_descriptions(self):
         """Test that all queries in CSS_QUERIES have descriptions"""
+        assert min(len(CSS_QUERY_DESCRIPTIONS[k]) for k in CSS_QUERIES) == 12
         for query_name in CSS_QUERIES.keys():
             assert query_name in CSS_QUERY_DESCRIPTIONS
             assert isinstance(CSS_QUERY_DESCRIPTIONS[query_name], str)
-            assert len(CSS_QUERY_DESCRIPTIONS[query_name]) > 0
 
     def test_all_queries_have_query_string(self):
         """Test that all queries have non-empty query strings"""
+        assert min(len(v.strip()) for v in CSS_QUERIES.values()) == 8
         for _query_name, query_string in CSS_QUERIES.items():
             assert isinstance(query_string, str)
-            assert len(query_string.strip()) > 0
 
     def test_basic_rule_queries(self):
         """Test basic rule queries exist"""
@@ -203,14 +203,13 @@ class TestGetCSSQuery:
         """Test getting a valid CSS query"""
         query = get_css_query("rule_set")
         assert isinstance(query, str)
-        assert len(query) > 0
+        assert len(query) == 30
 
     def test_get_css_query_all_defined_queries(self):
         """Test getting all defined queries"""
+        assert min(len(get_css_query(k)) for k in CSS_QUERIES) == 18
         for query_name in CSS_QUERIES.keys():
-            query = get_css_query(query_name)
-            assert isinstance(query, str)
-            assert len(query) > 0
+            assert isinstance(get_css_query(query_name), str)
 
     def test_get_css_query_invalid(self):
         """Test getting an invalid query raises ValueError"""
@@ -231,14 +230,13 @@ class TestGetCSSQueryDescription:
         """Test getting a valid query description"""
         description = get_css_query_description("rule_set")
         assert isinstance(description, str)
-        assert len(description) > 0
+        assert len(description) == 20
 
     def test_get_css_query_description_all_queries(self):
         """Test getting descriptions for all queries"""
+        assert min(len(get_css_query_description(k)) for k in CSS_QUERIES) == 12
         for query_name in CSS_QUERIES.keys():
-            description = get_css_query_description(query_name)
-            assert isinstance(description, str)
-            assert len(description) > 0
+            assert isinstance(get_css_query_description(query_name), str)
 
     def test_get_css_query_description_invalid(self):
         """Test getting description for invalid query"""
@@ -253,7 +251,7 @@ class TestGetQuery:
         """Test getting a query using get_query"""
         query = get_query("rule_set")
         assert isinstance(query, str)
-        assert len(query) > 0
+        assert len(query) == 30
 
     def test_get_query_invalid(self):
         """Test getting invalid query raises ValueError"""
@@ -274,7 +272,7 @@ class TestGetAllQueries:
         """Test get_all_queries returns a dictionary"""
         queries = get_all_queries()
         assert isinstance(queries, dict)
-        assert len(queries) > 0
+        assert len(queries) == 90
 
     def test_get_all_queries_structure(self):
         """Test structure of returned queries"""
@@ -309,7 +307,7 @@ class TestListQueries:
         """Test list_queries returns a list"""
         queries = list_queries()
         assert isinstance(queries, list)
-        assert len(queries) > 0
+        assert len(queries) == 90
 
     def test_list_queries_contains_all_css_queries(self):
         """Test that all CSS queries are in the list"""
@@ -330,7 +328,7 @@ class TestGetAvailableCSSQueries:
         """Test get_available_css_queries returns a list"""
         queries = get_available_css_queries()
         assert isinstance(queries, list)
-        assert len(queries) > 0
+        assert len(queries) == 86
 
     def test_get_available_css_queries_matches_css_queries(self):
         """Test that available queries match CSS_QUERIES keys"""
@@ -350,15 +348,15 @@ class TestALLQueriesIntegration:
 
     def test_all_queries_query_strings_valid(self):
         """Test all query strings are valid"""
+        assert min(len(v["query"].strip()) for v in ALL_QUERIES.values()) == 8
         for _query_name, query_data in ALL_QUERIES.items():
             assert isinstance(query_data["query"], str)
-            assert len(query_data["query"].strip()) > 0
 
     def test_all_queries_descriptions_valid(self):
         """Test all descriptions are valid"""
+        assert min(len(v["description"]) for v in ALL_QUERIES.values()) == 12
         for _query_name, query_data in ALL_QUERIES.items():
             assert isinstance(query_data["description"], str)
-            assert len(query_data["description"]) > 0
 
 
 class TestLegacyQueries:
@@ -408,7 +406,7 @@ class TestQueryConsistency:
 
     def test_css_queries_count(self):
         """Test that we have a substantial number of queries"""
-        assert len(CSS_QUERIES) >= 80  # Should have at least 80 queries
+        assert len(CSS_QUERIES) == 86
 
     def test_all_queries_count(self):
         """Test ALL_QUERIES includes all CSS queries plus legacy"""
