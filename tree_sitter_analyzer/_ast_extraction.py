@@ -152,6 +152,11 @@ _FUNCTION_LIKE = frozenset(
         "function_declarator",
         "declaration",
         "init_declarator",
+        # Issue #532: Ruby uses ``method`` / ``singleton_method`` node types;
+        # without these, Ruby methods were invisible in symbols_json so the
+        # class_inspect_tool showed 0 methods for every Ruby class.
+        "method",
+        "singleton_method",
     }
 )
 
@@ -353,12 +358,28 @@ def _count_decision_points(node: Any, language: str) -> dict[str, int]:
 
 
 def _find_parent_class(node: Any, source: str) -> str | None:
+    """Walk up the parent chain to find the innermost enclosing class-like
+    container, returning its name.
+
+    Special cases:
+    - ``impl_item`` (Rust): exposes the implemented type in the ``type``
+      field (e.g. ``Container<T>`` or ``User``), NOT a ``name`` field.
+      Strip any generic parameters so ``Container<T>`` → ``"Container"``.
+    """
     parent = node.parent
     while parent:
         if parent.type in _CLASS_LIKE:
-            name_node = parent.child_by_field_name("name")
-            if name_node:
-                return _node_text(name_node, source)
+            if parent.type == "impl_item":
+                # Rust impl block: the implemented type is in the ``type`` field.
+                type_node = parent.child_by_field_name("type")
+                if type_node is not None:
+                    raw = _node_text(type_node, source)
+                    # Strip generic parameters: "Container<T>" → "Container"
+                    return raw.split("<")[0].strip() or None
+            else:
+                name_node = parent.child_by_field_name("name")
+                if name_node:
+                    return _node_text(name_node, source)
         parent = parent.parent
     return None
 

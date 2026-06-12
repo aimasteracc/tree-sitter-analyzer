@@ -49,23 +49,35 @@ def element_to_dict(
         if hasattr(elem, field):
             result[field] = getattr(elem, field)
 
-    if result.get("is_method") and result["type"] == "function" and all_elements:
-        result["class_name"] = find_class_name(elem, all_elements)
+    if result["type"] == "function" and all_elements:
+        class_name = find_class_name(elem, all_elements)
+        if class_name is not None:
+            result["class_name"] = class_name
 
     return result
 
 
 def find_class_name(elem: Any, elements: Sequence[Any]) -> str | None:
-    """Find the containing class name for a method element."""
+    """Find the containing class name for a method element.
+
+    When multiple classes contain the element's line range (e.g. an inner
+    class nested inside an outer class, or a class inside a namespace), the
+    INNERMOST class — the one with the smallest line span — wins.  This
+    mirrors the single-ownership rule from #474/#484/#532.
+    """
+    best_name: str | None = None
+    best_span: int | None = None
     for other in elements:
-        if (
-            type(other).__name__.lower() == "class"
-            and hasattr(other, "start_line")
-            and hasattr(other, "end_line")
-            and other.start_line <= elem.start_line <= other.end_line
-        ):
-            return other.name
-    return None
+        if type(other).__name__.lower() != "class":
+            continue
+        if not (hasattr(other, "start_line") and hasattr(other, "end_line")):
+            continue
+        if other.start_line <= elem.start_line <= other.end_line:
+            span = other.end_line - other.start_line
+            if best_span is None or span < best_span:
+                best_span = span
+                best_name = other.name
+    return best_name
 
 
 def file_analysis_result(

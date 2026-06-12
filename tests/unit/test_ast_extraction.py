@@ -357,3 +357,114 @@ class TestCDeclaratorName:
             children=[SimpleNamespace(type="(", children=[])],
         )
         assert _c_declarator_name(paren, "", 0) is None
+
+
+# ---------------------------------------------------------------------------
+# Issue #532: nested-container method ownership (Ruby + Rust)
+# ---------------------------------------------------------------------------
+
+
+def _symbols_for(source: str, lang: str) -> list[dict]:
+    """Parse source and return all symbols from _extract_symbols."""
+
+    from tree_sitter_analyzer._ast_extraction import _extract_symbols
+    from tree_sitter_analyzer.core.parser import Parser
+
+    result = Parser().parse_code(source, lang)
+    if not result.success or result.tree is None:
+        return []
+    syms = _extract_symbols(result.tree, source, lang)
+    return syms["symbols"]
+
+
+class TestNestedContainerMethodOwnership:
+    """Issue #532 — methods inside nested containers must be attributed to
+    the INNERMOST container in the symbols DB path (_walk_for_symbols)."""
+
+    # ---- Ruby ----
+
+    def test_ruby_module_nested_class_methods_attributed_correctly(self):
+        """Methods inside a class nested in a module must get the CLASS as
+        their owner, not the module, AND must appear at all (Ruby ``method``
+        node type was missing from _FUNCTION_LIKE)."""
+        code = """\
+module Authentication
+  class User
+    def initialize(name)
+      @name = name
+    end
+    def full_name
+      @name
+    end
+  end
+  class AdminUser
+    def login
+      true
+    end
+  end
+end
+"""
+        syms = _symbols_for(code, "ruby")
+        methods = [s for s in syms if s["kind"] in ("function", "method")]
+        classes = {s["name"] for s in syms if s["kind"] == "class"}
+
+        # Classes must be visible
+        assert "User" in classes
+        assert "AdminUser" in classes
+
+        # Methods must be extracted (was 0 before fix — "method" missing from _FUNCTION_LIKE)
+        assert len(methods) == 3
+
+        # Each method must be attributed to its direct owner class, NOT the module
+        owners = {m["name"]: m.get("class") for m in methods}
+        assert owners.get("initialize") == "User"
+        assert owners.get("full_name") == "User"
+        assert owners.get("login") == "AdminUser"
+
+    # ---- Rust ----
+
+    def test_rust_impl_generic_methods_attributed_to_struct(self):
+        """Methods inside impl<T> Container<T> must be attributed to Container,
+        not left unowned (_find_parent_class must read impl_item's type field)."""
+        code = """\
+pub struct Container<T> {
+    items: Vec<T>,
+}
+
+impl<T> Container<T> {
+    pub fn new() -> Self {
+        Container { items: Vec::new() }
+    }
+    pub fn push(&mut self, item: T) {
+        self.items.push(item);
+    }
+}
+"""
+        syms = _symbols_for(code, "rust")
+        methods = [s for s in syms if s["kind"] in ("function", "method")]
+
+        # Both functions must appear
+        assert len(methods) == 2
+
+        # Both must be attributed to Container (stripped of generics)
+        owners = {m["name"]: m.get("class") for m in methods}
+        assert owners.get("new") == "Container"
+        assert owners.get("push") == "Container"
+
+    def test_rust_plain_impl_methods_attributed_to_struct(self):
+        """Plain impl User (no generics) must attribute methods to User."""
+        code = """\
+struct User {
+    name: String,
+}
+
+impl User {
+    fn greet(&self) -> String {
+        format!("Hello, {}", self.name)
+    }
+}
+"""
+        syms = _symbols_for(code, "rust")
+        methods = [s for s in syms if s["kind"] in ("function", "method")]
+        assert len(methods) == 1
+        assert methods[0].get("class") == "User"
