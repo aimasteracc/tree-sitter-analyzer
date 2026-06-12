@@ -366,6 +366,36 @@ def apply_migration_v11(conn: sqlite3.Connection, record_fn: RecordFn) -> None:
         pass
 
 
+def apply_migration_v12(conn: sqlite3.Connection, record_fn: RecordFn) -> None:
+    """Rebuild ``ast_symbols_fts`` with porter stemming (v12 — #604).
+
+    FTS5's default unicode61 tokenizer does not stem, so ``"dispatching"``
+    missed ``dispatch_legacy`` / ``_dispatch``. The tokenizer is fixed at
+    CREATE time and ``SCHEMA_V2_FTS`` uses ``IF NOT EXISTS``, so an existing
+    cache keeps its old tokenizer until this migration drops the table,
+    recreates it from the current DDL (``tokenize='porter unicode61'``), and
+    repopulates it from ``ast_symbol_rows`` — the rowid join
+    (``f.rowid = r.id``) is preserved, so no full reindex is needed.
+
+    Intentionally NOT in ``EXPECTED_SCHEMA_VERSIONS``: the FTS table only
+    exists when the SQLite build has FTS5, and the integrity self-check has
+    no way to assert a tokenizer anyway. On FTS5-less builds the CREATE
+    raises ``OperationalError`` and the migration degrades silently, same as
+    ``SCHEMA_V2_FTS`` itself.
+    """
+    try:
+        conn.execute("DROP TABLE IF EXISTS ast_symbols_fts")
+        conn.executescript(SCHEMA_V2_FTS)
+        conn.execute(
+            "INSERT INTO ast_symbols_fts (rowid, name, kind, file_path, language) "
+            "SELECT id, name, kind, file_path, language FROM ast_symbol_rows"
+        )
+        record_fn(conn, 12, "FTS5 porter stemming rebuild")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass
+
+
 # ---------------------------------------------------------------------------
 # Schema DDL constants V1 and V2 (moved from ast_cache.py)
 # ---------------------------------------------------------------------------
@@ -399,7 +429,8 @@ CREATE VIRTUAL TABLE IF NOT EXISTS ast_symbols_fts
         kind,
         file_path,
         language,
-        content=''
+        content='',
+        tokenize='porter unicode61'
     );
 
 CREATE TABLE IF NOT EXISTS ast_symbol_rows (
