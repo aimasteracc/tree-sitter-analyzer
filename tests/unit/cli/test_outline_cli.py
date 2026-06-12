@@ -361,3 +361,16 @@ class TestOutlineMcpCliParity:
             assert "methods" in cls
             assert "extends" in cls
             assert "implements" in cls
+
+
+class TestBareOutlineValidation(TestOutlineDispatch):
+    def test_bare_outline_without_any_file_errors(self):
+        """Codex P3 on #582: bare --outline with no file must fail with a
+        clear validation error, not leak the sentinel to the dispatcher."""
+        from tree_sitter_analyzer.cli.special_commands import _handle_outline
+
+        args = self._base_args(outline="__POSITIONAL__")
+        args.file_path = None
+        ctx = _make_context()
+        rc = _handle_outline(args, ctx)
+        assert rc == 1

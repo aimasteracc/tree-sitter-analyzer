@@ -395,7 +395,15 @@ def _handle_outline(
         # #539) — fall back to the positional file argument.
         file_path = getattr(args, "file_path", None)
         if not file_path:
-            return None
+            # Bare --outline with no file anywhere — fail here instead of
+            # letting the MCP dispatcher chase "__POSITIONAL__" (Codex P3).
+            _emit_cli_error(
+                args,
+                context,
+                "outline",
+                "--outline requires a FILE path (flag value or positional)",
+            )
+            return 1
 
     try:
         from tree_sitter_analyzer.mcp.tools.get_code_outline_tool import (
