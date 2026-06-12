@@ -61,6 +61,7 @@ public class Service {
 }
 """,
                 encoding="utf-8",
+                newline="\n",
             )
 
             java_test = project_path / "src" / "test" / "java" / "ServiceTest.java"
@@ -84,6 +85,7 @@ public class ServiceTest {
 }
 """,
                 encoding="utf-8",
+                newline="\n",
             )
 
             # Pythonスクリプト作成
@@ -136,6 +138,7 @@ if __name__ == "__main__":
     print(f"Total TODOs: {total_todos}")
 ''',
                 encoding="utf-8",
+                newline="\n",
             )
 
             # ドキュメント作成
@@ -171,6 +174,7 @@ python scripts/helper.py
 This will find all Java files and count TODO comments.
 """,
                 encoding="utf-8",
+                newline="\n",
             )
 
             yield str(project_path)
@@ -523,6 +527,7 @@ public class NewService {
 }
 """,
             encoding="utf-8",
+            newline="\n",
         )
 
         # Step 3: プロジェクト境界を再設定（リフレッシュ）
