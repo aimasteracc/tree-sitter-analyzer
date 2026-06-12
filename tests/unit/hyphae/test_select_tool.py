@@ -415,6 +415,18 @@ async def test_short_selector_not_truncated() -> None:
 
 
 @pytest.mark.asyncio
+async def test_summary_line_uses_capped_echo() -> None:
+    """A long but VALID selector must not flood agent_summary.summary_line
+    (Codex P2 on #553: the success path interpolated the raw selector)."""
+    tool = _tool()
+    long_valid = ".function" + ("x" * 16000)
+    result = await tool.execute({"selector": long_valid, "output_format": "json"})
+    summary_line = result["agent_summary"]["summary_line"]
+    assert len(summary_line) <= 300
+    assert "(16009 chars total)" in summary_line
+
+
+@pytest.mark.asyncio
 async def test_syntax_error_branch_caps_echo_too() -> None:
     """The 16KB GARBAGE selector from the dogfood report hits the
     syntax-error branch — that echo must be capped as well (lead review:

@@ -192,7 +192,11 @@ class HyphaeSelectTool(BaseMCPTool):
             "index_state": index_state,
             "indexed_files": indexed_files,
             "agent_summary": {
-                "summary_line": f"hyphae_select: {len(symbols)} symbols for {selector!r}",
+                # Codex P2 on #553: interpolate the CAPPED echo, not the raw
+                # selector — a valid 16KB selector flooded summary_line.
+                "summary_line": (
+                    f"hyphae_select: {len(symbols)} symbols for {selector_echo!r}"
+                ),
                 "verdict": verdict,
                 "next_step": next_step,
             },
