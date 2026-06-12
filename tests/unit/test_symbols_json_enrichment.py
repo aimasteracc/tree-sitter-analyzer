@@ -141,3 +141,15 @@ class TestExtractorVersionBump:
 
         assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 6
         assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 6
+
+
+class TestCodexP2sOn621:
+    def test_concatenated_string_docstring_preserved(self):
+        src = 'def f():\n    "first " "second"\n    return 1\n'
+        syms = {x["name"]: x for x in _symbols_for(src, "python")}
+        assert syms["f"]["docstring"] == "first second"
+
+    def test_typescript_return_annotation_stripped(self):
+        src = "function f(): string { return 'x'; }\n"
+        syms = {x["name"]: x for x in _symbols_for(src, "typescript")}
+        assert syms["f"]["return_type"] == "string"

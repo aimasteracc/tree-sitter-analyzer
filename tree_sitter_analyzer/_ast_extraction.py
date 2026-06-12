@@ -341,11 +341,19 @@ def _python_docstring(node: Any, source: str) -> str | None:
     if first.type != "expression_statement" or not first.named_children:
         return None
     string_node = first.named_children[0]
-    if string_node.type != "string":
+    if string_node.type == "string":
+        string_parts = [string_node]
+    elif string_node.type == "concatenated_string":
+        # Adjacent literals ('a' 'b') fold into __doc__ — a legal PEP 257
+        # docstring; tree-sitter wraps them in concatenated_string
+        # (Codex P2 on #621).
+        string_parts = [c for c in string_node.named_children if c.type == "string"]
+    else:
         return None
     content = "".join(
         _node_text(child, source)
-        for child in string_node.children
+        for part in string_parts
+        for child in part.children
         if child.type == "string_content"
     ).strip()
     if not content:
@@ -696,7 +704,10 @@ def _walk_for_symbols(
         # typescript use "return_type"; absent field → key absent, no noise).
         return_type_node = node.child_by_field_name("return_type")
         if return_type_node is not None:
-            sym["return_type"] = _node_text(return_type_node, source)
+            # TS/TSX expose a type_annotation node whose text is ": string" —
+            # strip the annotation prefix so consumers compare bare types
+            # (Codex P2 on #621; mirrors the TS signature helpers).
+            sym["return_type"] = _node_text(return_type_node, source).lstrip(": ")
         if language == "python":
             doc = _python_docstring(node, source)
             if doc is not None:
