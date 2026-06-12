@@ -10,6 +10,8 @@
 ## Funcs
 | Func | Sig | V | L | Doc |
 |------|-----|---|---|-----|
+| Read | (1):(n in | E | 55-55 | - |
+| Write | (1):(n in | E | 61-61 | - |
 | NewService | (2):*Ser | E | 80-86 | - |
 | Name | (0):s | E | 89-91 | - |
 | IsRunning | (0):b | E | 94-98 | - |

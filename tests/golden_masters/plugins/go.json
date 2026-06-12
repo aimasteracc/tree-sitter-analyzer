@@ -1,12 +1,12 @@
 {
   "counts_by_type": {
     "Class": 10,
-    "Function": 18,
+    "Function": 20,
     "Import": 5,
     "Package": 1,
     "Variable": 9
   },
-  "element_total": 43,
+  "element_total": 45,
   "names_by_type": {
     "Class": [
       "Config",
@@ -27,12 +27,14 @@
       "NewService",
       "NewWorkerPool",
       "ProcessData",
+      "Read",
       "Shutdown",
       "Start",
       "Stop",
       "Submit",
       "WithRetry",
       "WithTimeout",
+      "Write",
       "process",
       "run",
       "stop",

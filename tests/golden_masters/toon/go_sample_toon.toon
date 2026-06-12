@@ -16,7 +16,9 @@ classes:
     Handler,public,(251,251)
     Middleware,public,(254,254)
 methods:
-  [18]{name,visibility,line_range(a,b)}:
+  [20]{name,visibility,line_range(a,b)}:
+    Read,public,(55,55)
+    Write,public,(61,61)
     NewService,public,(80,86)
     Name,public,(89,91)
     IsRunning,public,(94,98)
@@ -55,7 +57,7 @@ imports:
     time,time,"\"time\"",false,false,(17,17),[],"\"time\""
 statistics:
   class_count: 10
-  method_count: 18
+  method_count: 20
   field_count: 9
   import_count: 5
   total_lines: 293

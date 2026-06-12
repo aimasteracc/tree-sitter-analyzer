@@ -42,6 +42,8 @@ import ""time""
 ## Functions
 | Func | Signature | Vis | Lines | Doc |
 |------|-----------|-----|-------|-----|
+| Read | ({'name': '[]byte', 'type': 'p'}) (n int, err error) | exported | 55-55 | - |
+| Write | ({'name': '[]byte', 'type': 'p'}) (n int, err error) | exported | 61-61 | - |
 | NewService | ({'name': 'string', 'type': 'name'}, {'name': '*Config', 'type': 'config'}) *Service | exported | 80-86 | - |
 | Name | () string | exported | 89-91 | - |
 | IsRunning | () bool | exported | 94-98 | - |
