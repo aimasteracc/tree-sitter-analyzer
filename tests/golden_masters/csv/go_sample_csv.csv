@@ -8,6 +8,8 @@ Field,StatusRunning,StatusRunning:None,public,38-38,,-
 Field,StatusCompleted,StatusCompleted:None,public,39-39,,-
 Field,StatusFailed,StatusFailed:None,public,40-40,,-
 Field,lastErr,lastErr:error,private,281-281,,-
+Method,Read,"([]byte:p):(n int, err error)",public,55-55,1,-
+Method,Write,"([]byte:p):(n int, err error)",public,61-61,1,-
 Method,NewService,"(string:name, *Config:config):*Service",public,80-86,1,-
 Method,Name,():string,public,89-91,1,-
 Method,IsRunning,():bool,public,94-98,1,-
