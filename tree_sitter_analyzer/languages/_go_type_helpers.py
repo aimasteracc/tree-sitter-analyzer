@@ -107,9 +107,30 @@ def _go_struct_interfaces(
     type_node: Any | None,
     get_node_text: Callable[..., str],
 ) -> list[str]:
-    if not type_node or type_node.type != "struct_type":
+    if not type_node:
         return []
-    return extract_embedded_types(type_node, get_node_text)
+    if type_node.type == "struct_type":
+        return extract_embedded_types(type_node, get_node_text)
+    if type_node.type == "interface_type":
+        return _go_interface_embedded(type_node, get_node_text)
+    return []
+
+
+def _go_interface_embedded(
+    interface_node: Any,
+    get_node_text: Callable[..., str],
+) -> list[str]:
+    """Extract embedded interface names from an interface_type node.
+
+    ``type ReadWriter interface { Reader; Writer }`` emits ``type_elem``
+    children whose single child is the embedded type identifier.  These are
+    the interface embedding constraints (N5 in issue #538).
+    """
+    return [
+        get_node_text(child)
+        for child in interface_node.children
+        if child.type == "type_elem" and get_node_text(child).strip()
+    ]
 
 
 def extract_type_declaration(
@@ -130,4 +151,6 @@ def extract_type_declaration(
 
 
 def _iter_type_specs(node: Any) -> list[Any]:
-    return [child for child in node.children if child.type == "type_spec"]
+    return [
+        child for child in node.children if child.type in ("type_spec", "type_alias")
+    ]

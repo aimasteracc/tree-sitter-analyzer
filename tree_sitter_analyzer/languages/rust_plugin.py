@@ -64,10 +64,14 @@ class RustElementExtractor(ElementExtractor):
 
         functions: list[Function] = []
 
-        # Use tree traversal to find function_item
+        # Use tree traversal to find function_item (implemented) and
+        # function_signature_item (abstract / trait-required method with no body).
         self._traverse_and_extract(
             tree.root_node,
-            {"function_item": self._extract_function},
+            {
+                "function_item": self._extract_function,
+                "function_signature_item": self._extract_function_signature,
+            },
             functions,
         )
 
@@ -354,6 +358,60 @@ class RustElementExtractor(ElementExtractor):
                 if pattern is not None and self._get_node_text(pattern) == "self":
                     return self._get_node_text(child)
         return None
+
+    def _extract_function_signature(self, node: tree_sitter.Node) -> Function | None:
+        """Extract a trait abstract method (``function_signature_item``).
+
+        These are required-method declarations inside a trait body that carry
+        no default implementation — they end with ``;`` rather than a block.
+        The ``function_item`` handler covers default-impl methods; this one
+        covers the missing half (issue #538, Rust N2).
+        """
+        try:
+            name_node = node.child_by_field_name("name")
+            if not name_node:
+                return None
+
+            name = self._get_node_text(name_node)
+            start_line = node.start_point[0] + 1
+            end_line = node.end_point[0] + 1
+            parameters = self._extract_rust_parameters(
+                node.child_by_field_name("parameters")
+            )
+            return_type = "()"
+            ret_node = node.child_by_field_name("return_type")
+            if ret_node:
+                return_type = self._get_node_text(ret_node)
+                if return_type.startswith("->"):
+                    return_type = return_type[2:].strip()
+
+            visibility = self._extract_visibility(node)
+            raw_text = self._get_node_text(node)
+
+            func = Function(
+                name=name,
+                start_line=start_line,
+                end_line=end_line,
+                raw_text=raw_text,
+                language="rust",
+                parameters=parameters,
+                return_type=return_type,
+                visibility=visibility,
+            )
+            func.is_abstract = True
+
+            owner = self._find_impl_owner(node)
+            if owner:
+                func.receiver_type = owner
+                self_param = self._find_self_parameter(node)
+                if self_param:
+                    func.receiver = self_param
+                    func.is_method = True
+
+            return func
+        except Exception as e:
+            log_error(f"Error extracting Rust abstract function: {e}")
+            return None
 
     def _extract_struct(self, node: tree_sitter.Node) -> Class | None:
         """Extract struct information"""

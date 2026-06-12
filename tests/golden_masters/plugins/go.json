@@ -1,12 +1,12 @@
 {
   "counts_by_type": {
-    "Class": 9,
+    "Class": 10,
     "Function": 18,
     "Import": 5,
     "Package": 1,
     "Variable": 9
   },
-  "element_total": 42,
+  "element_total": 43,
   "names_by_type": {
     "Class": [
       "Config",
@@ -16,6 +16,7 @@
       "Reader",
       "Service",
       "Status",
+      "StringSlice",
       "WorkerPool",
       "Writer"
     ],

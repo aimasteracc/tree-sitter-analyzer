@@ -156,13 +156,14 @@ class ClassBuildInput:
 
 
 def build_class_element(data: ClassBuildInput) -> Class:
+    is_abstract = "ABC" in data.superclasses or "abstractmethod" in data.raw_text
     return Class(
         name=data.name,
         start_line=data.start_line,
         end_line=data.end_line,
         raw_text=data.raw_text,
         language="python",
-        class_type="class",
+        class_type="abstract_class" if is_abstract else "class",
         superclass=data.superclasses[0] if data.superclasses else None,
         interfaces=data.superclasses[1:] if len(data.superclasses) > 1 else [],
         docstring=data.docstring,
@@ -171,7 +172,7 @@ def build_class_element(data: ClassBuildInput) -> Class:
         package_name=data.current_module,
         framework_type=data.framework_type,
         is_dataclass="dataclass" in data.decorators,
-        is_abstract="ABC" in data.superclasses or "abstractmethod" in data.raw_text,
+        is_abstract=is_abstract,
         is_exception=_is_exception_class(data.superclasses),
     )
 
