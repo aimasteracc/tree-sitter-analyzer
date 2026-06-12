@@ -288,6 +288,81 @@ For AI assistants with token limits, Tree-sitter Analyzer provides multiple opti
 | **Methods** | Instance, class, singleton | |
 | **Blocks** | Block, Proc, Lambda | |
 
+## UML / Mermaid Diagrams
+
+TSA exports Mermaid diagrams from indexed project intelligence via
+`viz action=uml` (MCP) or `--uml` (CLI). Six diagram types are shipped.
+
+### Diagram types
+
+| Type | What it renders | Key params |
+|---|---|---|
+| `class` | Inheritance graph — classes, superclasses, subclasses | `file_path`, `class_name`, `include_tests`, `--uml-no-external-bases` |
+| `package` | Module dependency graph grouped by directory depth | `package_depth` (default: 2) |
+| `component` | Import-level component dependencies | `max_edges` |
+| `sequence` | Call-path trace between two functions | `source`, `target` (both required) |
+| `activity` | Per-function control-flow graph (CFG) built from the AST | `function_name` (required), `file_path`, `max_nodes` |
+| `state` | FSM approximation from enum definitions and match/switch statements | `file_path`, `max_nodes` |
+
+`activity` and `state` re-parse the source file at query time (disk read +
+tree-sitter parse, typically < 50 ms). All other types read from the index.
+
+### Scoping parameters
+
+| Param | Applies to | Effect |
+|---|---|---|
+| `file_path` / `--uml-file-path` | `class`, `activity`, `state` | Limit to classes or functions in this file |
+| `class_name` / `--uml-class-name` | `class` | Show the named class plus its immediate superclasses and subclasses |
+| `function_name` / `--uml-function` | `activity` | Required: function to graph (bare name or `module.function`) |
+| `include_tests` / `--uml-include-tests` | `class`, `package`, `component` | Include test-corpus classes (default: excluded) |
+| `max_nodes` / `--uml-max-nodes` | `activity`, `state` | Cap on CFG/FSM nodes (default: 50); `truncated=true` when exceeded |
+
+### CLI examples
+
+```bash
+# Whole-project class diagram
+uv run python -m tree_sitter_analyzer --uml class
+
+# Class diagram for one file (excludes external base classes)
+uv run python -m tree_sitter_analyzer --uml class \
+  --uml-file-path tree_sitter_analyzer/mcp/tools/base_tool.py \
+  --uml-no-external-bases
+
+# Neighbourhood subgraph for one class
+uv run python -m tree_sitter_analyzer --uml class \
+  --uml-class-name BaseMCPTool
+
+# Call-path sequence diagram
+uv run python -m tree_sitter_analyzer --uml sequence \
+  --uml-source execute --uml-target build_response
+
+# Per-function CFG (activity diagram)
+uv run python -m tree_sitter_analyzer --uml activity \
+  --uml-function execute \
+  --uml-file-path tree_sitter_analyzer/mcp/tools/uml_tool.py
+
+# Enum/match FSM state diagram
+uv run python -m tree_sitter_analyzer --uml state \
+  --uml-file-path tree_sitter_analyzer/mcp/tools/uml_tool.py
+
+# Package dependency map
+uv run python -m tree_sitter_analyzer --uml package --uml-package-depth 2
+```
+
+### MCP equivalent
+
+```json
+{ "action": "uml", "diagram": "class", "file_path": "src/models.py" }
+{ "action": "uml", "diagram": "activity", "function_name": "execute", "file_path": "src/tool.py" }
+{ "action": "uml", "diagram": "sequence", "source": "handle_call", "target": "build_response" }
+```
+
+All diagrams require the AST index (`index action=status` to check; `index
+action=auto mode=warm` to build). `activity` and `state` additionally need
+`file_path` to locate the source.
+
+---
+
 ## Output Formats
 
 All languages support the following output formats:
