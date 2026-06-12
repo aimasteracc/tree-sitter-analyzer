@@ -14,9 +14,13 @@ classes:
     Config,public,(47,50)
     LegacyUserManager,public,(57,60)
 methods:
-  [8]{name,visibility,line_range(a,b)}:
+  [12]{name,visibility,line_range(a,b)}:
+    User,public,(8,13)
     display,public,(16,16)
     summary,public,(18,20)
+    Success,public,(24,24)
+    Error,public,(25,25)
+    UserManager,public,(28,28)
     getUser,public,(33,35)
     fetchUserAsync,public,(37,40)
     display,public,(42,44)
@@ -34,7 +38,7 @@ imports:
     java.util.Collections,java.util.Collections,import java.util.Collections,false,false,(3,3),[],import java.util.Collections
 statistics:
   class_count: 8
-  method_count: 8
+  method_count: 12
   field_count: 4
   import_count: 1
   total_lines: 65

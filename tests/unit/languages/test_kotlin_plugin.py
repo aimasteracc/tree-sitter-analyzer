@@ -82,9 +82,7 @@ fun greet(name: String, age: Int) {
         assert len(functions) == 1
         func = functions[0]
         assert func.name == "greet"
-        assert (
-            len(func.parameters) >= 0
-        )  # May or may not extract params depending on implementation
+        assert func.parameters == ["name: String", "age: Int"]
 
     def test_extract_function_with_return_type(self, extractor, kotlin_parser):
         """Should extract function with return type."""
@@ -515,7 +513,8 @@ object UserFactory {
         classes = extractor.extract_classes(tree, code)
         imports = extractor.extract_imports(tree, code)
 
-        assert len(functions) == 3  # addUser, fetchUsers, createUser
+        # Re-pinned (old=3): User primary_ctor + addUser + fetchUsers + createUser
+        assert len(functions) == 4
         assert len(classes) == 3  # User, UserRepository, UserFactory
         # Import extraction may not be fully implemented
         assert isinstance(imports, list)

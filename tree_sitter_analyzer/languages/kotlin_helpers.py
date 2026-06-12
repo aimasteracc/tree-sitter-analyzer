@@ -327,6 +327,86 @@ def extract_kotlin_function(
         return None
 
 
+def _kotlin_primary_ctor_class_name(
+    node: Any, get_node_text: Callable[..., str]
+) -> str:
+    """Return the enclosing class name for a ``primary_constructor`` node.
+
+    Grammar shape:
+        class_declaration
+          identifier  ← class name
+          primary_constructor  ← ``node`` is here
+          ...
+
+    Walk up one level (node.parent = class_declaration) and read the first
+    ``identifier`` child.
+    """
+    parent = node.parent
+    if parent is None:
+        return "anonymous"
+    for child in parent.children:
+        if child.type == "identifier":
+            return get_node_text(child)
+    return "anonymous"
+
+
+def extract_kotlin_primary_constructor(
+    node: Any,
+    get_node_text: Callable[..., str],
+    current_package: str,
+) -> Function | None:
+    """Extract a Kotlin ``primary_constructor`` as a Function(is_constructor=True).
+
+    Issue #567 scope-B: ``primary_constructor`` nodes were not in the
+    extractor dispatch map so ``data class Point(val x: Int, val y: Int)``
+    produced no constructor element — an agent could not distinguish class
+    instantiation from method calls.
+
+    Convention (matching C++ same-name-constructor and Java constructor):
+    - ``name`` = enclosing class name
+    - ``is_constructor = True``
+    - ``parameters`` extracted from ``class_parameters`` child nodes
+
+    Visibility defaults to public; Kotlin primary constructors can carry an
+    explicit ``constructor_modifier`` but that is rare and left for a
+    follow-up.
+    """
+    try:
+        name = _kotlin_primary_ctor_class_name(node, get_node_text)
+        start_line = node.start_point[0] + 1
+        end_line = node.end_point[0] + 1
+        raw_text = get_node_text(node)
+
+        # Parameters live in class_parameters > class_parameter children.
+        parameters: list[str] = []
+        for child in node.children:
+            if child.type == "class_parameters":
+                for param in child.children:
+                    if param.type == "class_parameter":
+                        param_name, param_type = _kotlin_parameter_pair(
+                            param, get_node_text
+                        )
+                        if param_name:
+                            parameters.append(f"{param_name}: {param_type or 'Any'}")
+                break
+
+        return Function(
+            name=name,
+            start_line=start_line,
+            end_line=end_line,
+            raw_text=raw_text,
+            language="kotlin",
+            parameters=parameters,
+            return_type="void",
+            visibility="public",
+            is_constructor=True,
+        )
+
+    except Exception as e:
+        log_error(f"Error extracting Kotlin primary constructor: {e}")
+        return None
+
+
 # Extract elements from AST: extract_kotlin_class_or_object
 _KOTLIN_CLASS_KIND_MODIFIERS = frozenset({"enum", "annotation", "data", "sealed"})
 
@@ -345,6 +425,53 @@ def _refine_kotlin_class_kind(node: Any, get_node_text: Callable[..., str]) -> s
             if text in _KOTLIN_CLASS_KIND_MODIFIERS:
                 return str(text)
     return "class"
+
+
+def _extract_kotlin_delegation(
+    node: Any, get_node_text: Callable[..., str]
+) -> tuple[str | None, list[str]]:
+    """Return ``(superclass, interfaces)`` from a ``class_declaration`` node.
+
+    Iterates the ``delegation_specifiers`` child (if present).  Each
+    ``delegation_specifier`` contains either a ``constructor_invocation``
+    (= superclass — e.g. ``Result(value)``) or a plain ``user_type``
+    (= interface — e.g. ``Displayable``).
+
+    Grammar shape (from live AST dump):
+        delegation_specifiers
+          delegation_specifier
+            constructor_invocation   <- superclass with call args
+              user_type  "Result"
+              value_arguments  "(value)"
+          delegation_specifier
+            user_type  "Displayable"   <- interface
+
+    At most one ``constructor_invocation`` is valid Kotlin; we take the
+    first.  All plain ``user_type`` delegates (no constructor call) are
+    collected as interfaces.
+    """
+    superclass: str | None = None
+    interfaces: list[str] = []
+
+    for child in node.children:
+        if child.type != "delegation_specifiers":
+            continue
+        for spec in child.children:
+            if spec.type != "delegation_specifier":
+                continue
+            for inner in spec.children:
+                if inner.type == "constructor_invocation":
+                    # First child of constructor_invocation is user_type
+                    for sub in inner.children:
+                        if sub.type == "user_type":
+                            if superclass is None:
+                                superclass = get_node_text(sub)
+                            break
+                elif inner.type == "user_type":
+                    interfaces.append(get_node_text(inner))
+        break  # only one delegation_specifiers node
+
+    return superclass, interfaces
 
 
 def extract_kotlin_class_or_object(
@@ -389,6 +516,11 @@ def extract_kotlin_class_or_object(
             if kind == "class":
                 kind = _refine_kotlin_class_kind(node, get_node_text)
 
+        # Issue #561: read delegation_specifiers to populate superclass /
+        # interfaces. Previously this was never read so all Kotlin classes
+        # showed empty inheritance data in outline surfaces.
+        superclass, interfaces = _extract_kotlin_delegation(node, get_node_text)
+
         raw_text = get_node_text(node)
 
         return Class(
@@ -400,6 +532,8 @@ def extract_kotlin_class_or_object(
             class_type=kind,
             visibility=visibility,
             package_name=current_package,
+            superclass=superclass,
+            interfaces=interfaces,
         )
 
     except Exception as e:

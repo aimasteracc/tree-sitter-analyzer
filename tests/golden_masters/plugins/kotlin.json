@@ -1,12 +1,12 @@
 {
   "counts_by_type": {
     "Class": 8,
-    "Function": 8,
+    "Function": 12,
     "Import": 1,
     "Package": 1,
     "Variable": 4
   },
-  "element_total": 22,
+  "element_total": 26,
   "names_by_type": {
     "Class": [
       "Config",
@@ -19,6 +19,10 @@
       "UserManager"
     ],
     "Function": [
+      "Error",
+      "Success",
+      "User",
+      "UserManager",
       "display",
       "fetchUserAsync",
       "get",
