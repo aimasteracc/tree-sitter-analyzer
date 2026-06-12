@@ -350,6 +350,11 @@ _JSTS_SCOPE_BODY_NODES = frozenset(
         "generator_function",
         "generator_function_declaration",
         "class_static_block",
+        # Declarations inside error-recovered regions have undecidable scope
+        # (.tsx is parsed with the typescript grammar, so JSX can shatter
+        # function bodies into ERROR nodes) — better unindexed than wrong
+        # (Codex P2 on #629; defensive hardening, 4 JSX shapes probed clean).
+        "ERROR",
     }
 )
 

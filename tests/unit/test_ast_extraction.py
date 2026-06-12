@@ -1152,3 +1152,18 @@ class TestJsTsLocalVariableContraction:
         # locals must still be captured by this change.
         src = "class A { void m() { int local = 1; } }\n"
         assert self._variables(src, "java") == ["local"]
+
+
+class TestJsTsErrorRegionHardening:
+    """Codex P2 on #629: declarations inside error-recovered regions have
+    undecidable scope — they must not be emitted (better unindexed than a
+    function-local masquerading as a module symbol)."""
+
+    def test_declaration_inside_error_node_not_emitted(self):
+        # Deliberately broken TSX-ish source that forces ERROR recovery at
+        # the point of the declaration.
+        src = "const Comp = () => {\n  const Math = 1;\n  return <div//;\n};\nconst TOP = 2;\n"
+        syms = _symbols_for(src, "typescript")
+        names = [s["name"] for s in syms if s["kind"] == "variable"]
+        assert "Math" not in names
+        assert "TOP" in names
