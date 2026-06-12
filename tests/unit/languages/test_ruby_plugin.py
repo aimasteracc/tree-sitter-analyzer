@@ -255,9 +255,8 @@ class TestRubyFunctionExtraction:
 
         func_names = [f.name for f in functions]
         # Should find initialize, greet, generate_id, and attr_ methods
-        assert any(
-            "initialize" in name for name in func_names
-        )  # TODO(#535): substring-match accommodates owner-prefixed names; re-pin exact bare names after the fix
+        # #535 fixed: names are bare — exact membership, no substring accommodation
+        assert "initialize" in func_names
         assert any("greet" in name for name in func_names)
 
     def test_extract_singleton_methods(self):
@@ -338,9 +337,8 @@ class TestRubyVariableExtraction:
 
         var_names = [v.name for v in variables]
         # Should find MAX_USERS, DEFAULT_TIMEOUT, API_VERSION
-        assert any(
-            "MAX_USERS" in name for name in var_names
-        )  # TODO(#535): substring-match accommodates owner-prefixed names; re-pin exact bare names after the fix
+        # #535 fixed: names are bare — exact membership
+        assert "MAX_USERS" in var_names
 
     def test_constant_is_marked_constant(self):
         """Test that constants are marked as constant."""
@@ -362,9 +360,8 @@ class TestRubyVariableExtraction:
 
         # @@instance_count should be extracted
         var_names = [v.name for v in variables]
-        assert any(
-            "instance_count" in name for name in var_names
-        )  # TODO(#535): substring-match accommodates owner-prefixed names; re-pin exact bare names after the fix
+        # #535 fixed: names are bare — exact membership
+        assert "instance_count" in var_names
 
     def test_variable_line_numbers(self):
         """Test that variable line numbers are correct."""
