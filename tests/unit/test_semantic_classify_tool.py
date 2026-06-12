@@ -457,15 +457,13 @@ class TestClassifyByteBudget:
                 "hunk.new.children must not appear in default response"
             )
 
-    def test_default_response_leq_raw_diff_bytes_string_mode(
-        self, tool: SemanticClassifyTool
-    ):
-        """Differential invariant (string mode): default classify response / raw diff ≤ 10×.
+    def test_default_response_exact_bytes_string_mode(self, tool: SemanticClassifyTool):
+        """Exact byte pin (string mode, deterministic fixture).
 
-        Strict "≤ 1×" is not achievable: the response adds semantic labels, risk levels,
-        and per-hunk summaries that make it inherently richer than a line-count diff.
-        However it must not balloon by embedding full AST subtrees — the pre-fix ratio
-        was ~120× for this fixture; the post-fix ratio must be ≤ 10×.
+        Pre-fix this fixture serialized to ~100KB (120× the 837-byte raw
+        diff — full AST subtrees inlined). The exact post-fix pin makes ANY
+        response-size drift go red and forces a conscious re-pin (locked
+        exact-assertion rule; a ratio ceiling let bloat regrow silently).
         """
         import difflib
         import json
@@ -478,7 +476,7 @@ class TestClassifyByteBudget:
                 tofile="service.py",
             )
         )
-        raw_diff_bytes = len(raw_diff.encode())
+        assert len(raw_diff.encode()) == 837
 
         result = _run(
             tool,
@@ -491,15 +489,7 @@ class TestClassifyByteBudget:
             },
         )
         assert result["success"] is True
-        response_bytes = len(json.dumps(result))
-
-        # Pre-fix: ~120× (full AST subtrees inlined). Post-fix target: ≤ 10×.
-        ratio = response_bytes / raw_diff_bytes
-        assert ratio <= 10, (
-            f"Default classify response ({response_bytes} bytes) is {ratio:.1f}× "
-            f"the raw diff ({raw_diff_bytes} bytes). "
-            "Must be ≤ 10× — full AST subtrees must not be inlined by default."
-        )
+        assert len(json.dumps(result)) == 4544
 
     def test_default_response_leq_raw_diff_bytes_git_mode(
         self, tool: SemanticClassifyTool, git_repo_with_two_commits
@@ -582,10 +572,9 @@ class TestClassifyByteBudget:
             },
         )
         assert result["success"] is True
-        change_count = result.get("change_count", 0)
-        assert change_count > 2, (
-            "fixture must produce >2 classifications for this test to be meaningful"
-        )
+        # _SRC_V1→_SRC_V2 fixed fixture: 10 changes (> the cap of 2, so
+        # truncation below is meaningfully exercised)
+        assert result.get("change_count") == 10
         assert result.get("truncated") is True, "truncated must be True when cap is hit"
         assert "listed_cap" in result, "listed_cap must appear when truncated"
         assert "next_step" in result, "next_step must appear when truncated"

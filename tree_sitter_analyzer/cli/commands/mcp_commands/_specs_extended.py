@@ -139,6 +139,9 @@ _EXTENDED_SPECS: tuple[McpCommandSpec, ...] = (
             "old_ref": getattr(args, "semantic_classify_old_ref", "HEAD~1"),
             "new_ref": getattr(args, "semantic_classify_new_ref", "HEAD"),
             "language": getattr(args, "semantic_classify_language", None),
+            # #528 byte-budget knobs — CLI parity with the MCP schema
+            "include_ast_nodes": getattr(args, "classify_include_ast_nodes", False),
+            "hunk_cap": getattr(args, "classify_hunk_cap", 50),
             "output_format": output_format,
         },
     ),
