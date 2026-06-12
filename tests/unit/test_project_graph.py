@@ -44,8 +44,8 @@ class TestImportExtraction:
         # We expect at least: utils, models.user, models.base, pkg.submodule
         # (os, sys, pathlib are stdlib/external)
         found_internal = {r for r in resolved if "." in r or "/" in r}
-        assert len(found_internal) >= 3, (
-            f"Expected >=3 internal imports, got {found_internal}"
+        assert len(found_internal) == 4, (
+            f"Expected exactly 4 internal imports, got {found_internal}"
         )
 
     def test_extract_python_imports_from_utils(self):
@@ -157,26 +157,32 @@ class TestDependencyGraph:
     def test_build_python_graph(self, py_graph):
         """Graph should contain all .py files in the project."""
         nodes = py_graph.nodes()
-        assert len(nodes) > 0, "Graph should have nodes"
-        # Should include main.py, utils.py, models/__init__.py, models/base.py, models/user.py, pkg/submodule.py
-        assert len(nodes) >= 4, f"Expected >=4 nodes, got {len(nodes)}: {nodes}"
+        # main.py, utils.py, models/__init__.py, models/base.py,
+        # models/user.py, pkg/__init__.py, pkg/submodule.py
+        assert len(nodes) == 7, f"Expected 7 nodes, got {len(nodes)}: {nodes}"
 
     def test_build_js_graph(self, js_graph):
         """Graph should contain JS files."""
         nodes = js_graph.nodes()
-        assert len(nodes) >= 2, f"Expected >=2 nodes, got {len(nodes)}"
+        # index.js, src/base.js, src/formatter.js, src/models/user.js, src/utils.js
+        assert len(nodes) == 5, f"Expected 5 nodes, got {len(nodes)}: {nodes}"
 
     def test_get_dependencies_of_file(self, py_graph):
         """Query what a specific file depends on."""
         deps = py_graph.dependencies_of("main.py")
-        assert len(deps) > 0, f"main.py should depend on other files, got {deps}"
+        assert deps == [
+            "models/__init__.py",
+            "models/user.py",
+            "pkg/__init__.py",
+            "utils.py",
+        ], f"main.py dependencies changed: {deps}"
 
     def test_get_dependents_of_file(self, py_graph):
         """Query what files depend on a specific file."""
         # utils.py is imported by main.py
         dependents = py_graph.dependents_of("utils.py")
-        assert len(dependents) >= 1, (
-            f"utils.py should have dependents, got {dependents}"
+        assert dependents == ["main.py"], (
+            f"utils.py should be imported by main.py only, got {dependents}"
         )
 
     def test_leaf_file_has_no_dependents(self, py_graph):
@@ -357,7 +363,7 @@ class TestSymbolInDegree:
             assert key in result, f"existing key {key} dropped from to_dict()"
         # New additive key is present and non-negative.
         assert "symbol_index_size" in result
-        assert result["symbol_index_size"] >= 0
+        assert result["symbol_index_size"] == 9
 
     def test_G3_find_cycles_unchanged(self, py_graph):
         # PY_PROJECT has an intentional cycle (used by TestCycleDetection).
@@ -403,8 +409,8 @@ class TestCycleDetection:
     def test_detect_cycles(self, py_graph):
         """Should detect the cycle between main.py and pkg/submodule.py."""
         cycles = py_graph.find_cycles()
-        # submodule.py imports from main.py, and main.py imports from submodule.py
-        assert len(cycles) > 0, f"Expected cycles in {PY_PROJECT}, got none"
+        # models/base.py participates in the fixture's intentional cycle
+        assert len(cycles) == 1, f"Expected 1 cycle in {PY_PROJECT}, got {cycles}"
 
 
 # ============================================================
@@ -431,19 +437,27 @@ class TestBlastRadius:
         """Changing a leaf file → impact propagates to its dependents."""
         # Changing models/base.py should affect user.py and main.py
         impacted = radius.forward("models/base.py")
-        assert len(impacted) >= 2, f"Expected >=2 impacted files, got {impacted}"
+        assert impacted == {"main.py", "models/user.py", "pkg/submodule.py"}, (
+            f"Expected 3 impacted files, got {impacted}"
+        )
 
     def test_blast_radius_reverse(self, radius):
         """To understand what influences a file → trace reverse dependencies."""
         # What does main.py depend on?
         dependencies = radius.reverse("main.py")
-        assert len(dependencies) > 0, f"Expected >0 reverse deps, got {dependencies}"
+        assert dependencies == {
+            "models/__init__.py",
+            "models/base.py",
+            "models/user.py",
+            "pkg/__init__.py",
+            "utils.py",
+        }, f"Expected 5 reverse deps, got {dependencies}"
 
     def test_blast_radius_leaf_file_forward(self, radius):
         """Changing utils.py (no internal deps, imported by main) → only main is impacted."""
         impacted = radius.forward("utils.py")
-        assert len(impacted) >= 1, (
-            f"utils.py change should impact at least main.py, got {impacted}"
+        assert impacted == {"main.py", "pkg/submodule.py"}, (
+            f"utils.py change should impact main.py and pkg/submodule.py, got {impacted}"
         )
 
     def test_blast_radius_nonexistent_file(self, radius):
@@ -543,7 +557,7 @@ class TestDependencyGraphPublicAPI:
         for v in deps.values():
             v.clear()
         # Graph's internal state should be unaffected
-        assert any(len(v) > 0 for v in tiny.all_deps().values()), (
+        assert tiny.all_deps() == {"a.py": {"b.py"}, "b.py": {"c.py"}}, (
             "all_deps() must return independent copies, not shared references"
         )
 
@@ -576,7 +590,7 @@ class TestDependencyGraphPublicAccessors:
     def test_has_node_true_for_existing_node(self, small_graph):
         """has_node() returns True for a file that is in the graph."""
         nodes = small_graph.nodes()
-        assert len(nodes) >= 1
+        assert len(nodes) == 2  # a.py, b.py
         assert small_graph.has_node(nodes[0]) is True
 
     def test_has_node_false_for_missing_node(self, small_graph):
@@ -593,7 +607,7 @@ class TestDependencyGraphPublicAccessors:
 
     def test_node_count_nonzero(self, small_graph):
         """A non-empty project has at least one node."""
-        assert small_graph.node_count() >= 1
+        assert small_graph.node_count() == 2  # a.py, b.py
 
 
 # ============================================================
