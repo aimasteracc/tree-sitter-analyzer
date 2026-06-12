@@ -59,7 +59,8 @@ from .project_graph import _language_from_ext
 
 logger = logging.getLogger(__name__)
 
-_AST_CACHE_EXTRACTOR_VERSION = 2
+# v3: #610 — Python module-level constants extracted as kind="constant".
+_AST_CACHE_EXTRACTOR_VERSION = 3
 
 
 class SchemaIntegrityError(RuntimeError):

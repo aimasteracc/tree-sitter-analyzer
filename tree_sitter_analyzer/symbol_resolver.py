@@ -26,7 +26,8 @@ from .codegraph_query_backend import CodeGraphQueryBackend
 
 logger = logging.getLogger(__name__)
 
-_DEFINITION_KINDS = frozenset({"function", "class", "method", "variable"})
+# #610: "constant" — Python module-level constants are definition sites.
+_DEFINITION_KINDS = frozenset({"function", "class", "method", "variable", "constant"})
 
 _REFERENCE_KINDS = frozenset({"function", "class", "method", "variable"})
 
@@ -344,7 +345,7 @@ class SymbolResolver:
         rows = conn.execute(
             """SELECT name, kind, file_path, language, line, end_line
                FROM ast_symbol_rows
-               WHERE file_path = ? AND name = ? AND kind IN ('function', 'class', 'method')
+               WHERE file_path = ? AND name = ? AND kind IN ('function', 'class', 'method', 'constant')
                ORDER BY line""",
             (file_path, name),
         ).fetchall()

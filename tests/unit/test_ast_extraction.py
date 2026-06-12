@@ -468,3 +468,96 @@ impl User {
         methods = [s for s in syms if s["kind"] in ("function", "method")]
         assert len(methods) == 1
         assert methods[0].get("class") == "User"
+
+
+# ---------------------------------------------------------------------------
+# Issue #610: Python module-level constants indexed as kind="constant"
+# ---------------------------------------------------------------------------
+
+
+_CONST_SRC = """\
+_STOP_WORDS = frozenset({"the"})
+CONFIG: dict = {}
+__version__ = "1.0"
+logger = get_logger()
+paths: list = []
+bare_decl: int
+
+if True:
+    WRAPPED_FLAG = 1
+
+
+class Settings:
+    TIMEOUT = 30
+
+
+def setup():
+    RETRIES = 3
+"""
+
+
+class TestPythonModuleConstants:
+    """Issue #610 — module-level const-style / annotated / dunder assignments
+    must reach ast_symbol_rows as kind="constant"."""
+
+    def _constants(self) -> dict[str, dict]:
+        syms = _symbols_for(_CONST_SRC, "python")
+        return {s["name"]: s for s in syms if s["kind"] == "constant"}
+
+    def test_exactly_the_five_module_constants_extracted(self):
+        consts = self._constants()
+        assert sorted(consts) == [
+            "CONFIG",
+            "WRAPPED_FLAG",
+            "_STOP_WORDS",
+            "__version__",
+            "paths",
+        ]
+
+    def test_const_style_name_lines_pinned(self):
+        consts = self._constants()
+        assert consts["_STOP_WORDS"]["line"] == 1
+        assert consts["_STOP_WORDS"]["end_line"] == 1
+        assert consts["CONFIG"]["line"] == 2
+        assert consts["__version__"]["line"] == 3
+        assert consts["WRAPPED_FLAG"]["line"] == 9
+        assert all(c["language"] == "python" for c in consts.values())
+
+    def test_annotated_lowercase_assignment_extracted(self):
+        # `paths: list = []` — annotated module assignment counts even when
+        # the name is not const-style (deliberate typed API surface).
+        assert "paths" in self._constants()
+
+    def test_lowercase_unannotated_assignment_not_extracted(self):
+        # `logger = get_logger()` — mutable module state, excluded by scope rule.
+        syms = _symbols_for(_CONST_SRC, "python")
+        logger_kinds = [s["kind"] for s in syms if s.get("name") == "logger"]
+        assert logger_kinds == []
+
+    def test_bare_annotation_without_value_not_extracted(self):
+        # `bare_decl: int` has no right-hand side — not a definition site.
+        assert "bare_decl" not in self._constants()
+
+    def test_class_body_all_caps_not_extracted(self):
+        # Settings.TIMEOUT is a class attribute, not a module constant.
+        assert "TIMEOUT" not in self._constants()
+
+    def test_function_body_all_caps_not_extracted(self):
+        # RETRIES lives in a function body — module-level only.
+        assert "RETRIES" not in self._constants()
+
+    def test_non_python_assignment_unaffected(self):
+        # JS module-level const keeps its pre-existing kind="variable" path.
+        syms = _symbols_for("const MAX_SIZE = 10;\n", "javascript")
+        kinds = {s["name"]: s["kind"] for s in syms if "name" in s}
+        assert kinds == {"MAX_SIZE": "variable"}
+
+    def test_chained_assignment_captures_both_names(self):
+        syms = _symbols_for("A_ONE = B_TWO = 5\n", "python")
+        consts = sorted(s["name"] for s in syms if s["kind"] == "constant")
+        assert consts == ["A_ONE", "B_TWO"]
+
+    def test_tuple_target_not_extracted(self):
+        # Non-simple targets (tuple unpacking) are excluded by the scope rule.
+        syms = _symbols_for("X_A, Y_B = 1, 2\n", "python")
+        assert [s for s in syms if s["kind"] == "constant"] == []

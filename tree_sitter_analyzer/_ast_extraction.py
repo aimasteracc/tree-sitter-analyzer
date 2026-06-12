@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import sqlite3
 from typing import Any
 
@@ -199,6 +200,45 @@ _VAR_DECL_LIKE = frozenset(
         "let_declaration",
     }
 )
+
+# Issue #610 — Python module-level constants. tree-sitter-python emits
+# ``assignment`` nodes (with a ``left`` field, not ``name``), so they never
+# matched _VAR_DECL_LIKE and were invisible to ast_symbol_rows. Scope rule
+# (approved on #610): module-scope simple assignments whose target is
+# const-style (``^_?[A-Z][A-Z0-9_]+$``), annotated (``x: T = ...``), or a
+# dunder (``^__\w+__$``) — emitted as kind="constant".
+_PY_CONST_NAME = re.compile(r"^_?[A-Z][A-Z0-9_]+$")
+_PY_DUNDER_NAME = re.compile(r"^__\w+__$")
+
+# Node types that open a non-module scope: an ``assignment`` nested under any
+# of these is a class attribute or function local, not a module constant.
+_PY_SCOPE_BODY_NODES = frozenset({"function_definition", "class_definition"})
+
+
+def _python_module_constant(node: Any, source: str) -> dict[str, Any] | None:
+    """Return a kind="constant" symbol for a module-scope Python assignment,
+    or None when the node does not match the #610 scope rule.
+
+    The caller guarantees module scope (no enclosing function/class body);
+    this helper checks target shape and naming/annotation rules only.
+    """
+    left = node.child_by_field_name("left")
+    if left is None or left.type != "identifier":
+        return None  # tuple/attribute/subscript targets are out of scope
+    if node.child_by_field_name("right") is None:
+        return None  # bare annotation (``x: int``) — not a definition site
+    name = _node_text(left, source)
+    annotated = node.child_by_field_name("type") is not None
+    if not (annotated or _PY_CONST_NAME.match(name) or _PY_DUNDER_NAME.match(name)):
+        return None
+    return {
+        "kind": "constant",
+        "name": name,
+        "line": node.start_point[0] + 1,
+        "end_line": node.end_point[0] + 1,
+        "language": "python",
+    }
+
 
 _COMPLEXITY_NODE_TYPES: dict[str, set[str]] = {
     "python": {
@@ -500,7 +540,15 @@ def _walk_for_symbols(
     symbols: list[dict[str, Any]],
     language: str,
     depth: int = 0,
+    enclosed: bool = False,
 ) -> None:
+    """Walk the AST collecting symbol dicts.
+
+    ``enclosed`` tracks (top-down, no parent walking) whether *node* sits
+    inside a Python function/class body — module-constant capture (#610)
+    must fire at module scope only, including ``if``/``try``-wrapped
+    module-level assignments.
+    """
     if depth > 20:
         return
     node_type = node.type
@@ -568,8 +616,13 @@ def _walk_for_symbols(
                     "language": language,
                 }
             )
+    elif node_type == "assignment" and language == "python" and not enclosed:
+        const_sym = _python_module_constant(node, source)
+        if const_sym is not None:
+            symbols.append(const_sym)
+    child_enclosed = enclosed or node_type in _PY_SCOPE_BODY_NODES
     for child in node.children:
-        _walk_for_symbols(child, source, symbols, language, depth + 1)
+        _walk_for_symbols(child, source, symbols, language, depth + 1, child_enclosed)
 
 
 def _extract_symbols(tree: Any, source_code: str, language: str) -> dict[str, Any]:
