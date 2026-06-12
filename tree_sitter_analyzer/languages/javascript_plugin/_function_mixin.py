@@ -130,7 +130,14 @@ class JavaScriptFunctionExtractionMixin:
             return None
 
     def _extract_parameters(self, params_node: "tree_sitter.Node") -> list[str]:
-        """Extract function parameters."""
+        """Extract function parameters.
+
+        Handles plain identifiers, rest (...args), destructuring patterns
+        (object/array), and default-valued parameters (assignment_pattern,
+        e.g. ``limit = 10`` or ``options = {}``).  Default-valued params
+        are emitted as full text so API consumers see the default — e.g.
+        ``'limit = 10'``, ``'options = {}'`` (fixes Issue #533).
+        """
         parameters = []
 
         for child in params_node.children:
@@ -143,5 +150,10 @@ class JavaScriptFunctionExtractionMixin:
             elif child.type in ["object_pattern", "array_pattern"]:
                 destructure_text = self._get_node_text_optimized(child)
                 parameters.append(destructure_text)
+            elif child.type == "assignment_pattern":
+                # Default-valued parameter: e.g. "limit = 10", "options = {}".
+                # Emit full node text so the default is visible to API consumers.
+                default_text = self._get_node_text_optimized(child)
+                parameters.append(default_text)
 
         return parameters
