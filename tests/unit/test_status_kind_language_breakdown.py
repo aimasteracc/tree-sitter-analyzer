@@ -183,6 +183,19 @@ class TestGetStatsBreakdowns:
         # classification engineer may reclassify some entries.
         assert by_kind.get("function", 0) >= 1
 
+    def test_symbols_by_kind_includes_constant_bucket(self) -> None:
+        """Issue #610 — kind='constant' rows (Python module constants) must
+        surface as their own symbols_by_kind bucket."""
+        rows = [
+            ("MAX_RETRIES", "constant", "python"),
+            ("_STOP_WORDS", "constant", "python"),
+            ("my_func", "function", "python"),
+        ]
+        conn = _make_conn_with_symbols(rows)
+        stats = get_stats(conn, fts5_available=True, db_path=":memory:")
+        by_kind = stats["symbols_by_kind"]
+        assert by_kind.get("constant") == 2, f"expected constant=2, got {by_kind}"
+
     def test_degrade_gracefully_when_fts5_unavailable(self) -> None:
         """When fts5_available=False, symbols_by_kind/by_language are empty dicts."""
         conn = _make_conn_with_symbols([("ClassA", "class", "python")])

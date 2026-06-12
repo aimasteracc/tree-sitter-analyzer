@@ -20,7 +20,8 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Extractor version constant — kept in sync with ast_cache.py.
-_AST_CACHE_EXTRACTOR_VERSION = 2
+# v3: #610 — Python module-level constants extracted as kind="constant".
+_AST_CACHE_EXTRACTOR_VERSION = 3
 
 
 def check_cache_or_read(

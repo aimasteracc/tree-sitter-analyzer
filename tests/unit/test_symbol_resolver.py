@@ -282,3 +282,51 @@ class TestCodeGraphSymbolResolveExecution:
         assert result["definition_count"] == 1
         defs = result["definitions"]
         assert any("models.py" in d["file"] for d in defs)
+
+
+# ---------------------------------------------------------------------------
+# Issue #610: module-level constants are go-to-definition-able
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def constant_project(tmp_path):
+    project = tmp_path / "proj610"
+    project.mkdir()
+    (project / "consts.py").write_text(
+        '_STOP_WORDS = frozenset({"the"})\nMAX_RETRIES: int = 5\n__version__ = "1.0"\n'
+    )
+    (project / "main.py").write_text(
+        "from consts import _STOP_WORDS\n\ndef use_it():\n    return _STOP_WORDS\n"
+    )
+    cache = ASTCache(str(project))
+    cache.index_project(max_files=10)
+    cache.close()
+    return project
+
+
+class TestConstantNavigation:
+    """Issue #610 — kind=constant rows must be searchable AND navigable."""
+
+    def test_resolve_constant_definition(self, constant_project):
+        cache = ASTCache(str(constant_project))
+        resolver = SymbolResolver(cache)
+        result = resolver.resolve("_STOP_WORDS")
+        assert len(result.definitions) == 1
+        d = result.definitions[0]
+        assert d.name == "_STOP_WORDS"
+        assert d.kind == "constant"
+        assert d.file == "consts.py"
+        assert d.line == 1
+        cache.close()
+
+    def test_find_defs_in_file_kind_filter_includes_constant(self, constant_project):
+        # nav action=navigate import-following path goes through
+        # _find_defs_in_file, whose kind filter historically excluded constants.
+        cache = ASTCache(str(constant_project))
+        resolver = SymbolResolver(cache)
+        defs = resolver._find_defs_in_file("consts.py", "MAX_RETRIES")
+        assert len(defs) == 1
+        assert defs[0].kind == "constant"
+        assert defs[0].line == 2
+        cache.close()
