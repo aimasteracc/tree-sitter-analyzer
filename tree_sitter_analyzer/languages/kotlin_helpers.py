@@ -235,6 +235,45 @@ def _kotlin_owning_type(node: Any) -> tuple[str | None, bool]:
     return None, False
 
 
+def _kotlin_expression_body_type(
+    node: Any,
+    get_node_text: Callable[..., str],
+) -> str | None:
+    """Infer the return type of an expression-body function (issue #591).
+
+    Returns:
+        * ``None`` — no expression body (block body or abstract fun);
+          caller keeps the ``Unit`` default, which is correct there.
+        * a pinned literal type (``String``/``Int``/``Boolean``/``Double``)
+          for trivial literal bodies.
+        * ``""`` (unknown) for any other expression body — honest "no
+          claim", never a fabricated ``Unit``.
+    """
+    body = None
+    for child in node.children:
+        if child.type == "function_body":
+            body = child
+            break
+    if body is None or body.child_count == 0 or body.children[0].type != "=":
+        return None  # block body or no body → Unit default is correct
+    if body.child_count < 2:
+        return ""
+    expr = body.children[1]
+    if expr.type == "string_literal":
+        return "String"
+    if expr.type == "float_literal":
+        return "Double"
+    if expr.type == "number_literal":
+        # Only pure-digit literals are Int; 42L / 0xFF etc. stay unknown.
+        text = get_node_text(expr)
+        return "Int" if text.isdigit() else ""
+    if expr.type in ("boolean_literal", "identifier"):
+        if get_node_text(expr) in ("true", "false"):
+            return "Boolean"
+        return ""
+    return ""
+
+
 def extract_kotlin_function(
     node: Any,
     get_node_text: Callable[..., str],
@@ -266,11 +305,22 @@ def extract_kotlin_function(
         parameters = extract_kotlin_parameters(node, get_node_text)
 
         return_type = "Unit"
+        explicit_type = False
         for i, child in enumerate(node.children):
             if child.type == ":":
                 if i + 1 < len(node.children):
                     return_type = get_node_text(node.children[i + 1])
+                    explicit_type = True
                 break
+        if not explicit_type:
+            # Issue #591: ``fun get() = "legacy"`` must not claim Unit — the
+            # expression body infers the type. Full inference is a non-goal;
+            # pin trivial literals, otherwise emit "" (unknown, matching the
+            # Go plugin's absent-return-type convention). Block bodies
+            # ``{ ... }`` without an explicit type really are Unit — keep.
+            inferred = _kotlin_expression_body_type(node, get_node_text)
+            if inferred is not None:
+                return_type = inferred
 
         visibility = "public"
         is_suspend = False
