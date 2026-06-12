@@ -261,3 +261,44 @@ class TestConvertClass:
         result = _convert_class(cls)
         assert result["extends"] == "JavaBase"
         assert result["implements"] == ["IFoo"]
+
+
+class TestResolverMockLeakGuard:
+    """A bare MagicMock (auto-generated attributes) must NOT leak its repr
+    through the resolvers — the #560 mid-PR incident: byte pins drifted
+    per-run because Mock reprs (with memory addresses) entered responses."""
+
+    def test_bare_mock_extends_resolves_to_none(self):
+        from unittest.mock import MagicMock
+
+        from tree_sitter_analyzer.mcp.tools.analyze_code_structure_helpers import (
+            _resolve_class_extends,
+        )
+
+        mock = MagicMock()
+        mock.parent = None
+        assert _resolve_class_extends(mock) is None
+
+    def test_bare_mock_implements_resolves_to_empty(self):
+        from unittest.mock import MagicMock
+
+        from tree_sitter_analyzer.mcp.tools.analyze_code_structure_helpers import (
+            _resolve_class_implements,
+        )
+
+        mock = MagicMock()
+        mock.parent = None
+        assert _resolve_class_implements(mock) == []
+
+    def test_bare_mock_outline_resolvers_safe(self):
+        from unittest.mock import MagicMock
+
+        from tree_sitter_analyzer.mcp.tools.get_code_outline_tool import (
+            _resolve_extends,
+            _resolve_implements,
+        )
+
+        mock = MagicMock()
+        mock.parent = None
+        assert _resolve_extends(mock) is None
+        assert _resolve_implements(mock) == []
