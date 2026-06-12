@@ -327,6 +327,7 @@ class RubyElementExtractor(ElementExtractor):
                 modifiers=[],
                 annotations=[],
                 receiver_type=parent_class if parent_class else None,
+                is_constructor=name == "initialize",
             )
         except Exception as e:
             log_error(f"Error extracting method element: {e}")
