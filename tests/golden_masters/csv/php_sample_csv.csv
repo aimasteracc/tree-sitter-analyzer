@@ -1,13 +1,13 @@
 Type,Name,Signature,Visibility,Lines,Complexity,Doc
-Field,id,id:int,private,25-25,,-
-Field,username,username:string,public,26-26,,-
-Field,email,email:string,public,27-27,,-
-Field,passwordHash,passwordHash:string,private,28-28,,-
-Field,createdAt,createdAt:\DateTime,public,29-29,,-
-Field,lastLoginAt,lastLoginAt:?string,protected,30-30,,-
-Field,instanceCount,instanceCount:int,private,31-31,,-
-Field,permissions,permissions:array,private,127-127,,-
-Field,logs,logs:array,protected,163-163,,-
+Field,User::id,User::id:int,private,25-25,,-
+Field,User::username,User::username:string,public,26-26,,-
+Field,User::email,User::email:string,public,27-27,,-
+Field,User::passwordHash,User::passwordHash:string,private,28-28,,-
+Field,User::createdAt,User::createdAt:\DateTime,public,29-29,,-
+Field,User::lastLoginAt,User::lastLoginAt:?string,protected,30-30,,-
+Field,User::instanceCount,User::instanceCount:int,private,31-31,,-
+Field,AdminUser::permissions,AdminUser::permissions:array,private,127-127,,-
+Field,Loggable::logs,Loggable::logs:array,protected,163-163,,-
 Constructor,User::__construct,($username:string, $email:string):void,public,36-42,1,-
 Method,User::getId,():int,public,47-50,1,-
 Method,User::setId,($id:int):void,public,55-58,1,-

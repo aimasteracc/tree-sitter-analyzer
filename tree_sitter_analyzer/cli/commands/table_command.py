@@ -390,7 +390,7 @@ class TableCommand(BaseCommand):
         include_javadoc = getattr(self.args, "include_javadoc", False)
         javadoc = getattr(element, "docstring", "") or "" if include_javadoc else ""
 
-        return {
+        result: dict[str, Any] = {
             "name": getattr(element, "name", str(element)),
             "type": field_type,
             "visibility": field_visibility,
@@ -404,6 +404,13 @@ class TableCommand(BaseCommand):
             },
             "javadoc": javadoc,
         }
+        # Propagate receiver_type as parent_class for fields too — without it
+        # multi-class files collide (User::$id vs AdminUser::$id) in CSV/TOON
+        # output (#535, Codex P2).
+        receiver_type = getattr(element, "receiver_type", None)
+        if receiver_type:
+            result["parent_class"] = receiver_type
+        return result
 
     # Convert between formats: _convert_import_element
     def _convert_import_element(self, element: Any) -> dict[str, Any]:

@@ -371,7 +371,8 @@ def _build_php_property_variable(
     if name_node is None:
         return None
     name = get_node_text(name_node).lstrip("$")
-    # bare name — owner is the containing class via parent linkage (#535)
+    # bare name — owner travels in receiver_type (#535, Codex P2: without it
+    # multi-class files collide on field names in structured output)
     return Variable(
         name=name,
         start_line=property_node.start_point[0] + 1,
@@ -383,6 +384,7 @@ def _build_php_property_variable(
         is_readonly="readonly" in modifiers,
         variable_type=var_type,
         modifiers=modifiers,
+        receiver_type=parent_class or None,
     )
 
 
@@ -425,7 +427,7 @@ def _build_php_constant_variable(
     if name_node is None:
         return None
     name = get_node_text(name_node)
-    # bare name — owner is the containing class via parent linkage (#535)
+    # bare name — owner travels in receiver_type (#535, Codex P2)
     return Variable(
         name=name,
         start_line=const_node.start_point[0] + 1,
@@ -436,4 +438,5 @@ def _build_php_constant_variable(
         is_final=True,
         variable_type="const",
         modifiers=modifiers,
+        receiver_type=parent_class or None,
     )
