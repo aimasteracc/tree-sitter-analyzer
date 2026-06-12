@@ -79,6 +79,13 @@ _EXPLORE_SCHEMA: dict[str, Any] = {
             "type": "string",
             "description": "Alias for query (single symbol name).",
         },
+        # #515: the facade documents explore as multi-symbol ("Params:
+        # symbols") — accept the list form and join it into the query.
+        "symbols": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "List of symbol names (joined into the query).",
+        },
         "maxFiles": {
             "type": "integer",
             "default": 12,
@@ -391,11 +398,19 @@ class CodeGraphExploreTool(BaseMCPTool):
         # Wave 1b (audit structure-06): map the canonical ``symbol`` alias to
         # ``query`` so ``explore symbol=X`` works instead of raising
         # "query is required" (the facade's core param is ``symbol``).
-        if not arguments.get("query") and arguments.get("symbol"):
-            arguments["query"] = arguments["symbol"]
+        # #515: also accept the documented multi-symbol forms — ``symbols``
+        # as a list, and a list mistakenly passed via ``symbol``.
+        if not arguments.get("query"):
+            candidate = arguments.get("symbols") or arguments.get("symbol")
+            if isinstance(candidate, list):
+                arguments["query"] = " ".join(
+                    str(item) for item in candidate if str(item).strip()
+                )
+            elif candidate:
+                arguments["query"] = candidate
         query = arguments.get("query")
         if not isinstance(query, str) or not query.strip():
-            raise ValueError("query is required (or pass it as `symbol`)")
+            raise ValueError("query is required (or pass it as `symbol`/`symbols`)")
         return True
 
     # ------------------------------------------------------------------
