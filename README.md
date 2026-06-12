@@ -6,7 +6,7 @@ Code intelligence for AI agents: a pre-indexed, token-efficient MCP server — *
 
 * **Instant structural answers.** Who calls this? What would break? Generate a UML diagram. One call returns the whole answer — no grep loop.
 * **Token-budget aware.** TOON output cuts bulk/tabular payload by ~50-70% vs raw JSON ([measured invariant](tests/unit/mcp/test_output_cost_invariants.py)); RFC-0012 measured 0.52× ratio on representative decision tools.
-* **Edit safely.** `safe_to_edit` + `change_impact` + constraint DSL gate every modification before it happens; [≈0 cross-language mis-wires](benchmarks/codegraph_compare/MISWIRE-AUDIT-EXAMPLES.md) in the call graph.
+* **Edit safely.** `edit action=safe` + `edit action=impact` + constraint DSL gate every modification before it happens; [≈0 cross-language mis-wires](benchmarks/codegraph_compare/MISWIRE-AUDIT-EXAMPLES.md) in the call graph.
 
 > **100% local** means the index lives in `.ast-cache/` inside your repo, no telemetry, no remote calls. Every MCP response + CLI output is generated locally from the SQLite+FTS5 cache.
 
@@ -98,7 +98,7 @@ It prints how many call edges a name-only code index (the design most tools use)
 * **Verdict envelopes.** Every response carries `verdict: SAFE | CAUTION | UNSAFE | INFO | WARN | ERROR | NOT_FOUND`, so orchestrators branch on outcomes without re-prompting.
 * **Project health grading (A–F).** Few code-intel tools expose a whole-project quality grade — TSA grades on size / complexity / coverage / duplication / dependencies / structure / git-hotspots in one call.
 * **13 curated workflows (Skills).** Pre-baked tool subsets for "find symbol", "trace call chain", "score health", "safe-to-edit before refactor", "PR review", etc.
-* **5 layers of safety.** `safe_to_edit` + `modification_guard` + constraint DSL + `change_impact` + verdict envelopes — designed so agents *know* before they touch.
+* **5 layers of safety.** `edit action=safe` + `edit action=guard` + constraint DSL + `edit action=impact` + verdict envelopes — designed so agents *know* before they touch.
 * **Strict CLI superset of CodeGraph, faster indexing, and a one-call query DSL** — with an honest cost comparison ([below](#how-tsa-compares-to-codegraph)).
 
 ---

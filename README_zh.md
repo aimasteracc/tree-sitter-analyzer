@@ -6,7 +6,7 @@
 
 * **即时结构化解答。** 谁调用这个？改了会破坏什么？生成 UML 图。一次调用返回完整答案 — 无需 grep 循环。
 * **token 预算意识。** TOON 输出将 bulk/tabular 载荷相比原始 JSON 削减 ~50-70%（[可执行不变量](tests/unit/mcp/test_output_cost_invariants.py)；RFC-0012 在代表性决策工具上实测比值 0.52×）。
-* **安全编辑。** `safe_to_edit` + `change_impact` + 约束 DSL 在每次修改前把关；调用图[跨语言错连 ≈0](benchmarks/codegraph_compare/MISWIRE-AUDIT-EXAMPLES.md)。
+* **安全编辑。** `edit action=safe` + `edit action=impact` + 约束 DSL 在每次修改前把关；调用图[跨语言错连 ≈0](benchmarks/codegraph_compare/MISWIRE-AUDIT-EXAMPLES.md)。
 
 > **100% 本地**意味着索引保存在你仓库内的 `.ast-cache/` 中，无遥测、无远程调用。所有 MCP 响应和 CLI 输出均从本地 SQLite+FTS5 缓存生成。
 
@@ -98,7 +98,7 @@ uvx --from tree-sitter-analyzer miswire-audit .
 * **结论信封 (verdict envelope)**。每个响应都带 `verdict: SAFE | CAUTION | UNSAFE | INFO | WARN | ERROR | NOT_FOUND`，orchestrator 直接分支决策，无需二次提示。
 * **项目级 A-F 健康评级**。其他开源工具都没有 — 一次调用从体积、复杂度、覆盖率、重复度、依赖、结构、git-热点 7 个维度给整个项目打分。
 * **13 个精选工作流（Skills）**。预包装好的工具子集，对应 "查找符号"、"追踪调用链"、"评估健康"、"重构前安全检查"、"PR 评审" 等典型场景。
-* **5 层安全防护**。`safe_to_edit` + `modification_guard` + 架构约束 DSL + `change_impact` + verdict 信封 — 让 agent 在动手前 *知道* 风险。
+* **5 层安全防护**。`edit action=safe` + `edit action=guard` + 架构约束 DSL + `edit action=impact` + verdict 信封 — 让 agent 在动手前 *知道* 风险。
 * **CodeGraph 的严格 CLI 超集、更快索引、一次调用查询 DSL** —— 诚实成本对比见[下文](#与-codegraph-的对比)。
 
 ---
