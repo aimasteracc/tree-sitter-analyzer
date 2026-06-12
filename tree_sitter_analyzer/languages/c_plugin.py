@@ -126,6 +126,21 @@ class CElementExtractor(ElementExtractor):
             tree.root_node, extractors, functions, "function"
         )
 
+        # Issue #534 (Scope B): preproc_function_def macros are emitted once
+        # per #ifdef / #else branch because both branches are traversed (the
+        # traversal intentionally descends into both to catch macros defined
+        # only inside an #ifdef block).  Deduplicate by name, keeping the
+        # first occurrence (which comes from the #ifdef / #if branch).
+        seen_macro_names: set[str] = set()
+        deduped: list[Function] = []
+        for fn in functions:
+            if fn.return_type == "macro":
+                if fn.name in seen_macro_names:
+                    continue
+                seen_macro_names.add(fn.name)
+            deduped.append(fn)
+        functions = deduped
+
         log_debug(f"Extracted {len(functions)} C functions")
         return functions
 

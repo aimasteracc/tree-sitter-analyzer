@@ -260,6 +260,49 @@ class TestBuildOutlineBasic:
         assert outline["top_level_functions"][0]["name"] == "main"
         assert len(outline["classes"][0]["methods"]) == 1
 
+    # --- Issue #534: nested functions must NOT appear in top_level_functions ---
+
+    def test_nested_function_not_in_top_level(self):
+        """Issue #534: functions nested inside another function are not top-level.
+
+        my_decorator (lines 3-7) contains wrapper (lines 5-6).
+        top_level_fn (lines 10-11) is truly top-level.
+        Only top_level_fn should appear in top_level_functions.
+        """
+        # outer function
+        outer_fn = self._make_method_elem("my_decorator", 3, 7)
+        # nested function strictly inside outer_fn
+        nested_fn = self._make_method_elem("wrapper", 5, 6)
+        # truly top-level function (no enclosing function)
+        top_fn = self._make_method_elem("top_level_fn", 10, 11)
+        elements = [outer_fn, nested_fn, top_fn]
+        result = _make_analysis_result(elements=elements)
+
+        with self._patch_is_element_of_type():
+            outline = self.tool._build_outline(result, False, False)
+
+        top_names = [f["name"] for f in outline["top_level_functions"]]
+        assert top_names == ["my_decorator", "top_level_fn"]
+        assert "wrapper" not in top_names
+
+    def test_nested_function_same_start_not_promoted(self):
+        """Issue #534: a function starting at the same line as its outer function
+        but ending strictly inside it is still nested (edge case for span check)."""
+        outer_fn = self._make_method_elem("outer", 5, 10)
+        # starts same line as outer, ends inside — strictly contained
+        nested_fn = self._make_method_elem("inner", 6, 9)
+        top_fn = self._make_method_elem("standalone", 20, 25)
+        elements = [outer_fn, nested_fn, top_fn]
+        result = _make_analysis_result(elements=elements)
+
+        with self._patch_is_element_of_type():
+            outline = self.tool._build_outline(result, False, False)
+
+        top_names = [f["name"] for f in outline["top_level_functions"]]
+        assert "inner" not in top_names
+        assert "outer" in top_names
+        assert "standalone" in top_names
+
     def test_package_extracted(self):
         """package 元素应被提取到 outline.package。"""
         pkg = self._make_pkg_elem("com.example.service")

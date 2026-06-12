@@ -103,7 +103,10 @@ class JavaScriptFunctionExtractionMixin:
             is_static = "static" in node_text
 
             for child in node.children:
-                if child.type == "property_identifier":
+                if child.type in ("property_identifier", "private_property_identifier"):
+                    # private_property_identifier covers JS private fields (#name)
+                    # Issue #534: previously only property_identifier was checked,
+                    # so private methods like #logActivity yielded name="".
                     name = self._get_node_text_optimized(child)
                     is_constructor = name == "constructor"
                 elif child.type == "formal_parameters":

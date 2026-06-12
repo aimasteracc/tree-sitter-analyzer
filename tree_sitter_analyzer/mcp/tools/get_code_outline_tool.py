@@ -235,10 +235,18 @@ class GetCodeOutlineTool(BaseMCPTool):
             for cls in classes
         ]
         class_names = [getattr(cls, "name", "") for cls in classes]
+        # Build function span ranges so nested functions can be excluded from
+        # top_level_functions.  A function is top-level only when NO other
+        # function's span strictly contains it (Issue #534 — span containment).
+        fn_spans = [
+            (getattr(m, "start_line", 0), getattr(m, "end_line", 0))
+            for m in all_methods
+        ]
         top_level_fns = [
             _method_entry(m)
-            for m in all_methods
+            for i, m in enumerate(all_methods)
             if not _in_class_ranges(m, class_ranges, class_names)
+            and not _in_function_spans(i, fn_spans)
         ]
         top_level_fns.sort(key=lambda x: x["line_start"])
 
@@ -660,6 +668,35 @@ def _in_class_ranges(
             rt = _normalize_receiver_type(getattr(method, "receiver_type", None))
             if rt is not None and rt == class_names[i]:
                 return True
+    return False
+
+
+def _in_function_spans(
+    fn_idx: int,
+    fn_spans: list[tuple[int, int]],
+) -> bool:
+    """Return True iff function at ``fn_idx`` is strictly nested inside another.
+
+    A function is nested when another function's span contains it entirely:
+    ``other_start <= fn_start and fn_end <= other_end`` and the spans are not
+    identical (prevents false-positive when two functions share the same lines,
+    e.g. a one-liner or same-line arrow functions).
+
+    Issue #534: without this check, decorator-helper functions (Python
+    ``wrapper`` inside ``my_decorator``), curried inner lambdas (TS), and Scala
+    ``loop`` all leaked into ``top_level_functions``.
+    """
+    fn_start, fn_end = fn_spans[fn_idx]
+    for j, (other_start, other_end) in enumerate(fn_spans):
+        if j == fn_idx:
+            continue
+        # fn is contained within other (non-identical spans)
+        if (
+            other_start <= fn_start
+            and fn_end <= other_end
+            and (other_start, other_end) != (fn_start, fn_end)
+        ):
+            return True
     return False
 
 
