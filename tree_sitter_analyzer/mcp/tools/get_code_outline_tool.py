@@ -663,6 +663,45 @@ def _in_class_ranges(
     return False
 
 
+def _resolve_extends(cls: Any) -> str | None:
+    """Return the superclass name for a Class element.
+
+    Tries ``extends_class`` first (the Java plugin spelling, also set by the
+    Java plugin as the canonical alias) then falls back to ``superclass`` (the
+    spelling used by JS, TS, Python, Ruby, PHP, C++, C#, and Go plugins).
+
+    Issue #530: before this helper existed, ``_build_class_outlines`` only
+    checked ``extends_class``, so all plugins that write ``superclass`` silently
+    produced ``extends: null`` in the outline.
+    """
+    for attr in ("extends_class", "superclass"):
+        v = getattr(cls, attr, None)
+        # Strings only — a Mock's auto-generated attribute (or any odd
+        # object) must not leak its repr into the response (memory
+        # addresses made the byte-budget pins nondeterministic).
+        if isinstance(v, str) and v:
+            return v
+    return None
+
+
+def _resolve_implements(cls: Any) -> list[str]:
+    """Return the list of implemented interface names for a Class element.
+
+    Tries ``implements_interfaces`` first (the Java plugin spelling, also set
+    by the Rust plugin) then falls back to ``interfaces`` (the spelling used by
+    TS, Python, PHP, C++, C#, Go, and Ruby plugins).
+
+    Issue #530: before this helper existed, ``_build_class_outlines`` only
+    checked ``implements_interfaces``, so all plugins that write ``interfaces``
+    silently produced ``implements: []`` in the outline.
+    """
+    for attr in ("implements_interfaces", "interfaces"):
+        v = getattr(cls, attr, None)
+        if isinstance(v, (list, tuple)) and v:
+            return [str(item) for item in v]
+    return []
+
+
 def _build_class_outlines(
     classes: list[Any],
     all_methods: list[Any],
@@ -720,8 +759,8 @@ def _build_class_outlines(
             "type": getattr(cls, "class_type", "class"),
             "line_start": cls_start,
             "line_end": cls_end,
-            "extends": getattr(cls, "extends_class", None),
-            "implements": getattr(cls, "implements_interfaces", []),
+            "extends": _resolve_extends(cls),
+            "implements": _resolve_implements(cls),
             "methods": cls_methods,
         }
         if include_fields:
