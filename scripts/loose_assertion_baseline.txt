@@ -24,7 +24,12 @@
 # The AST count is the authoritative baseline going forward.
 # The count must only decrease (or stay equal). Each Layer-2 batch PR
 # re-measures and lowers it. Numbers are MEASURED, never hand-derived.
+#
+# History:
+#   batch-14 (AST): 1083 -> 1026, 2026-06-12 (56 pins in top-4 AST-ranked
+#   files; pre-batch measure on base ca8e9927 was 1082 — develop had
+#   already dropped 1 since the 1083 recording).
 
-BASELINE_COUNT=1083
+BASELINE_COUNT=1026
 MEASUREMENT_DATE=2026-06-12
 MEASUREMENT_COMMAND="uv run python scripts/check_loose_assertions.py --baseline"

@@ -220,3 +220,124 @@ def test_multiple_violations_in_one_file() -> None:
     """)
     violations = _violations_in_source(source)
     assert len(violations) == 3
+
+
+# ---------------------------------------------------------------------------
+# Diff-scoped mode (Codex P1/P2 on #586)
+# ---------------------------------------------------------------------------
+
+
+def _git(repo: Path, *args: str) -> str:
+    import subprocess
+
+    result = subprocess.run(
+        ["git", "-C", str(repo), *args],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return result.stdout.strip()
+
+
+def _make_repo(tmp_path: Path) -> Path:
+    repo = tmp_path / "repo"
+    (repo / "tests").mkdir(parents=True)
+    _git(repo, "init", "-q")
+    _git(repo, "config", "user.email", "t@example.com")
+    _git(repo, "config", "user.name", "t")
+    return repo
+
+
+def test_preexisting_loose_assert_not_flagged_on_unrelated_edit(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Codex P1: touching a file must not re-flag its baseline asserts."""
+    repo = _make_repo(tmp_path)
+    f = repo / "tests" / "test_sample.py"
+    f.write_text(
+        "def test_old():\n    assert len([1]) >= 0\n\n\ndef test_other():\n    assert 1 == 1\n",
+        newline="\n",
+    )
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "base")
+    base = _git(repo, "rev-parse", "HEAD")
+
+    # Unrelated edit: change the exact assert only
+    f.write_text(
+        "def test_old():\n    assert len([1]) >= 0\n\n\ndef test_other():\n    assert 2 == 2\n",
+        newline="\n",
+    )
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "unrelated edit")
+
+    monkeypatch.chdir(repo)
+    assert _checker.check_diff(base) == 0
+
+
+def test_added_loose_assert_is_flagged(tmp_path: Path, monkeypatch) -> None:
+    repo = _make_repo(tmp_path)
+    f = repo / "tests" / "test_sample.py"
+    f.write_text("def test_a():\n    assert 1 == 1\n", newline="\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "base")
+    base = _git(repo, "rev-parse", "HEAD")
+
+    f.write_text(
+        "def test_a():\n    assert 1 == 1\n\n\ndef test_new():\n    assert len([1]) >= 1\n",
+        newline="\n",
+    )
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "adds loose assert")
+
+    monkeypatch.chdir(repo)
+    assert _checker.check_diff(base) == 1
+
+
+def test_renamed_file_with_added_loose_assert_is_flagged(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Codex P2: --diff-filter must include renames (new path scanned)."""
+    repo = _make_repo(tmp_path)
+    f = repo / "tests" / "test_old_name.py"
+    f.write_text("def test_a():\n    assert 1 == 1\n", newline="\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "base")
+    base = _git(repo, "rev-parse", "HEAD")
+
+    _git(repo, "mv", "tests/test_old_name.py", "tests/test_new_name.py")
+    new = repo / "tests" / "test_new_name.py"
+    new.write_text(
+        "def test_a():\n    assert 1 == 1\n\n\ndef test_new():\n    assert len([1]) > 0\n",
+        newline="\n",
+    )
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "rename + loose assert")
+
+    monkeypatch.chdir(repo)
+    assert _checker.check_diff(base) == 1
+
+
+def test_multiline_assert_partially_touched_is_flagged(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Editing any line of an existing multiline loose assert re-flags it —
+    touching a loose assert means fixing it."""
+    repo = _make_repo(tmp_path)
+    f = repo / "tests" / "test_sample.py"
+    f.write_text(
+        "def test_a():\n    assert (\n        len([1]) >= 1\n    )\n",
+        newline="\n",
+    )
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "base")
+    base = _git(repo, "rev-parse", "HEAD")
+
+    f.write_text(
+        "def test_a():\n    assert (\n        len([1, 2]) >= 1\n    )\n",
+        newline="\n",
+    )
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "edits inside the loose assert")
+
+    monkeypatch.chdir(repo)
+    assert _checker.check_diff(base) == 1

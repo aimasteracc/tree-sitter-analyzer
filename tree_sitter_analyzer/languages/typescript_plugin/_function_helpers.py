@@ -266,6 +266,7 @@ def extract_abstract_method_signature(
             return_type=return_type or "any",
             is_async=is_async,
             is_static=is_static,
+            is_abstract=True,
             docstring=extract_tsdoc(start_line),
             complexity_score=0,
             is_arrow=False,

@@ -1,11 +1,11 @@
 {
   "counts_by_type": {
     "Class": 5,
-    "Function": 8,
+    "Function": 9,
     "Import": 1,
     "Variable": 6
   },
-  "element_total": 20,
+  "element_total": 21,
   "names_by_type": {
     "Class": [
       "BorrowedItem",
