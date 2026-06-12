@@ -396,37 +396,6 @@ def apply_migration_v12(conn: sqlite3.Connection, record_fn: RecordFn) -> None:
         pass
 
 
-def apply_migration_v13(conn: sqlite3.Connection, record_fn: RecordFn) -> None:
-    """Rebuild ``ast_symbols_fts`` with a ``docstring`` column (v13 — #614).
-
-    BM25-enrichment arm of RFC-0016: docstring tokens become searchable in a
-    NEW low-weight column (bm25 weight 1.0 vs name 10.0 — see
-    ``fts_search_ranked``) so conceptual queries can match docstring text
-    without polluting name-rank. FTS5 column sets are fixed at CREATE time,
-    so this mirrors the v12 pattern: drop, recreate from the current DDL,
-    repopulate from ``ast_symbol_rows`` preserving the rowid join.
-
-    ``ast_symbol_rows`` has no docstring column — the repopulated rows carry
-    an empty docstring until the extractor-version bump (5→6, same PR)
-    re-extracts every file and the write path fills the real values.
-
-    Intentionally NOT in ``EXPECTED_SCHEMA_VERSIONS`` — same FTS5-availability
-    reasoning as v12.
-    """
-    try:
-        conn.execute("DROP TABLE IF EXISTS ast_symbols_fts")
-        conn.executescript(SCHEMA_V2_FTS)
-        conn.execute(
-            "INSERT INTO ast_symbols_fts "
-            "(rowid, name, kind, file_path, language, docstring) "
-            "SELECT id, name, kind, file_path, language, '' FROM ast_symbol_rows"
-        )
-        record_fn(conn, 13, "FTS5 docstring column (#614)")
-        conn.commit()
-    except sqlite3.OperationalError:
-        pass
-
-
 # ---------------------------------------------------------------------------
 # Schema DDL constants V1 and V2 (moved from ast_cache.py)
 # ---------------------------------------------------------------------------
@@ -460,7 +429,6 @@ CREATE VIRTUAL TABLE IF NOT EXISTS ast_symbols_fts
         kind,
         file_path,
         language,
-        docstring,
         content='',
         tokenize='porter unicode61'
     );

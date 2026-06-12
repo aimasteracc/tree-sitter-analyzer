@@ -49,14 +49,12 @@ def write_fts5_symbols(
         (rel_path,),
     ).fetchone()
     base_id = start_id[0] if start_id else 0
-    # #614: docstring tokens enter the FTS docstring column (low bm25 weight).
     fts_params = [
-        (base_id + i, p[0], p[1], rel_path, language, sym.get("docstring", ""))
-        for i, (p, sym) in enumerate(zip(sym_params, sym_list, strict=True))
+        (base_id + i, p[0], p[1], rel_path, language) for i, p in enumerate(sym_params)
     ]
     conn.executemany(
-        "INSERT INTO ast_symbols_fts (rowid, name, kind, file_path, language, docstring) "
-        "VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO ast_symbols_fts (rowid, name, kind, file_path, language) "
+        "VALUES (?, ?, ?, ?, ?)",
         fts_params,
     )
     return [
@@ -69,18 +67,15 @@ def write_fts5_symbols_from_tuples(
     conn: sqlite3.Connection,
     rel_path: str,
     language: str,
-    symbol_rows: list[tuple[str, str, int, int, str]],
+    symbol_rows: list[tuple[str, str, int, int]],
 ) -> list[dict[str, Any]]:
-    """Insert FTS5 symbols from worker-serialised tuples
-    (name, kind, line, end_line, docstring) — docstring added by #614."""
+    """Insert FTS5 symbols from worker-serialised tuples (name, kind, line, end_line)."""
     conn.execute("DELETE FROM ast_symbol_rows WHERE file_path = ?", (rel_path,))
     conn.execute("DELETE FROM ast_symbols_fts WHERE file_path = ?", (rel_path,))
     if not symbol_rows:
         return []
     inserted: list[dict[str, Any]] = []
-    sym_params = [
-        (n, k, rel_path, language, ln, el) for n, k, ln, el, _d in symbol_rows
-    ]
+    sym_params = [(n, k, rel_path, language, ln, el) for n, k, ln, el in symbol_rows]
     conn.executemany(
         "INSERT INTO ast_symbol_rows (name, kind, file_path, language, line, end_line) "
         "VALUES (?, ?, ?, ?, ?, ?)",
@@ -92,15 +87,15 @@ def write_fts5_symbols_from_tuples(
     ).fetchone()
     base_id = start_id[0] if start_id else 0
     fts_params = [
-        (base_id + i, n, k, rel_path, language, d)
-        for i, (n, k, _ln, _el, d) in enumerate(symbol_rows)
+        (base_id + i, n, k, rel_path, language)
+        for i, (n, k, _ln, _el) in enumerate(symbol_rows)
     ]
     conn.executemany(
-        "INSERT INTO ast_symbols_fts (rowid, name, kind, file_path, language, docstring) "
-        "VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO ast_symbols_fts (rowid, name, kind, file_path, language) "
+        "VALUES (?, ?, ?, ?, ?)",
         fts_params,
     )
-    for i, (_n, _k, ln, el, _d) in enumerate(symbol_rows):
+    for i, (_n, _k, ln, el) in enumerate(symbol_rows):
         inserted.append(
             {
                 "id": base_id + i,

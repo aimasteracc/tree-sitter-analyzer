@@ -115,9 +115,6 @@ def _worker_index_file(args: tuple[str, str, str]) -> dict[str, Any]:
                 sym.get("kind", "unknown"),
                 sym.get("line", 0),
                 sym.get("end_line", 0),
-                # #614: docstring rides to the FTS docstring column; "" (not
-                # None) for doc-less symbols — the FTS column is TEXT.
-                sym.get("docstring", ""),
             )
             for sym in symbols.get("symbols", [])
         ],

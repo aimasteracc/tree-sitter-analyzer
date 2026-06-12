@@ -49,7 +49,6 @@ from ._ast_cache_schema import (
     apply_migration_v10 as _apply_migration_v10,
     apply_migration_v11 as _apply_migration_v11,
     apply_migration_v12 as _apply_migration_v12,
-    apply_migration_v13 as _apply_migration_v13,
     backfill_schema_version_row as _backfill_schema_version_row,
     check_schema_expectations as _check_schema_expectations,
     clear_activation_for_file as _clear_activation_for_file_fn,
@@ -63,7 +62,7 @@ logger = logging.getLogger(__name__)
 # v3: #610 — Python module-level constants extracted as kind="constant".
 # v4: #613 — Go package-level const/var specs extracted as kind="constant".
 # v5: #613 — Rust const/static items extracted as kind="constant".
-# v6: #614 — docstring/return_type serialized into symbols_json + FTS docstring.
+# v6: #614 — docstring/return_type/params serialized into symbols_json.
 _AST_CACHE_EXTRACTOR_VERSION = 6
 
 
@@ -150,7 +149,6 @@ class ASTCache:
             (10, _apply_migration_v10),
             (11, _apply_migration_v11),
             (12, _apply_migration_v12),
-            (13, _apply_migration_v13),
         ]
         self._fts5_available = _schema_init_db(
             conn, self._fts5_available, _has_fts5, migrations
