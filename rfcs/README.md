@@ -72,7 +72,7 @@ number; if two RFCs collide on a number in flight, the later-merged one renames.
 | [0013](0013-facade-dropped-param-visibility.md) | Facade dropped-parameter visibility — `ignored_params` surface | accepted |
 | [0014](0014-instant-edit-safety.md) | Instant edit safety — test-noise partition, test-map, and co-change | accepted (Phase A #461; Phase B #463; Phase C #466; integration test + DF-16 dogfood deferred) |
 | [0015](0015-instant-uml-family.md) | Instant UML family — scoping fixes + activity/state diagrams | implemented (Phase 1 #462; P2-A #472; P2-B #475; v1.23.0) |
-| [0016](0016-semantic-symbol-search.md) | Semantic symbol search via sqlite-vec in `.ast-cache` | draft (#517) |
+| [0016](0016-semantic-symbol-search.md) | Semantic symbol search via sqlite-vec in `.ast-cache` | rejected (data-driven; pilot NO-GO at deployment scale, #517) |
 
 ## Roadmap
 

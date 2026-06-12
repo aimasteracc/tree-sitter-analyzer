@@ -1,6 +1,9 @@
 # RFC-0016: Semantic symbol search (brute-force-first, sqlite-vec deferred)
 
-- **Status**: draft (revision 2 — rewritten after adversarial panel round 1)
+- **Status**: rejected (data-driven, 2026-06-13 — embedding pilot at deployment
+  scale scored 2/5 on the conceptual-gap gate; full chain: stemming #606,
+  demotion #609, BM25-docstring #621 all measured first; pilot report
+  `.recon/rfc0016-pilot-step2-embeddings.md`, decision thread #517)
 - **Author(s)**: lead (autonomous), on behalf of dogfood evidence in #517
 - **Created**: 2026-06-13
 - **Last updated**: 2026-06-13
@@ -325,6 +328,31 @@ versions; its prior-art value is SQL ergonomics, not ANN.
 - `nav action=context` semantic rerank (phase-2, pilot-gated).
 - Body-content embeddings; cross-repo federation; replacing BM25 anywhere;
   auto-building on first connect. (Unchanged.)
+
+## Outcome (2026-06-13, closing note)
+
+The pilot ran exactly as specified and returned **NO-GO at deployment scale**:
+semantic top-5 hit 2/5 of the conceptual-gap gate set at 37,876 symbols
+(vs 4/5 on the 1k pilot corpus — the gap between the two IS the lesson:
+**retrieval pilots need deployment-size distractor sets**, a 1k corpus
+overstates recall by construction). Other recorded findings:
+
+- The hybrid spec in this RFC is actively harmful as written (1/10): the
+  exact-name leg promoted bare symbols named `format`/`search`/`a`. Any
+  future revival must gate the lexical leg on identifier quality.
+- Vectors added exactly +2 conceptual wins over post-#609 BM25 (union 7/10
+  vs 5/10) — one short of the gate, against the full onnx/tokenizer/model-
+  distribution platform surface the round-1 panel costed.
+- The flagship miss (`handle_call_tool`: generic name + no docstring) is
+  unreachable by ANY retrieval layer — that is a naming/documentation
+  problem, not a search problem.
+- Measured (Rule 11): 1,821 symbols/s embed throughput, 1,536 B/symbol,
+  ~18 ms query p50 @ 38k — the engineering was viable; the recall wasn't.
+
+What this rejection does NOT undo: phase 0 stemming (#606), the cascade
+demotion fix (#609), constants indexing (#610/#612/#613/#615/#618), and
+docstring serialization (#621) all shipped on their own merits during the
+measurement chain.
 
 ## Open questions
 
