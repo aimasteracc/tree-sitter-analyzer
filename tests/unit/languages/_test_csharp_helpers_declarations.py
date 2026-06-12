@@ -83,7 +83,11 @@ class TestExtractClassDeclaration:
             end_point=(5, 5),
         )
         result = extract_class_declaration(
-            node, "MyApp.Models", _get_node_text, self._extract_mods, self._extract_attrs
+            node,
+            "MyApp.Models",
+            _get_node_text,
+            self._extract_mods,
+            self._extract_attrs,
         )
         assert result is not None
         assert result.full_qualified_name == "MyApp.Models.Bar"
@@ -221,12 +225,13 @@ class TestExtractMethodDeclaration:
         return 1
 
     def test_simple_method(self) -> None:
+        # tree-sitter-c-sharp uses "returns" (not "type") for method return-type field
         node = FakeNode(
             "method_declaration",
             "public void DoWork() { }",
             fields={
                 "name": FakeNode("identifier", "DoWork"),
-                "type": FakeNode("type_identifier", "void"),
+                "returns": FakeNode("type_identifier", "void"),
                 "parameters": FakeNode("parameter_list", children=[]),
             },
             start_point=(5, 4),
@@ -234,7 +239,13 @@ class TestExtractMethodDeclaration:
             children=[_make_modifier("public")],
         )
         result = extract_method_declaration(
-            node, _get_node_text, self._mods, self._attrs, self._type, self._params, self._complexity
+            node,
+            _get_node_text,
+            self._mods,
+            self._attrs,
+            self._type,
+            self._params,
+            self._complexity,
         )
         assert result is not None
         assert result.name == "DoWork"
@@ -243,12 +254,13 @@ class TestExtractMethodDeclaration:
         assert result.parameters == []
 
     def test_async_method(self) -> None:
+        # tree-sitter-c-sharp uses "returns" (not "type") for method return-type field
         node = FakeNode(
             "method_declaration",
             "public async Task<string> Fetch() { }",
             fields={
                 "name": FakeNode("identifier", "Fetch"),
-                "type": FakeNode("generic_name", "Task<string>"),
+                "returns": FakeNode("generic_name", "Task<string>"),
                 "parameters": FakeNode("parameter_list", children=[]),
             },
             start_point=(0, 0),
@@ -256,7 +268,13 @@ class TestExtractMethodDeclaration:
             children=[_make_modifier("public"), _make_modifier("async")],
         )
         result = extract_method_declaration(
-            node, _get_node_text, self._mods, self._attrs, self._type, self._params, self._complexity
+            node,
+            _get_node_text,
+            self._mods,
+            self._attrs,
+            self._type,
+            self._params,
+            self._complexity,
         )
         assert result is not None
         assert result.is_async is True
@@ -270,19 +288,26 @@ class TestExtractMethodDeclaration:
                 FakeNode("parameter", "string y"),
             ],
         )
+        # tree-sitter-c-sharp uses "returns" (not "type") for method return-type field
         node = FakeNode(
             "method_declaration",
             "void Foo(int x, string y) { }",
             fields={
                 "name": FakeNode("identifier", "Foo"),
-                "type": FakeNode("type_identifier", "void"),
+                "returns": FakeNode("type_identifier", "void"),
                 "parameters": params_node,
             },
             start_point=(0, 0),
             end_point=(0, 29),
         )
         result = extract_method_declaration(
-            node, _get_node_text, self._mods, self._attrs, self._type, self._params, self._complexity
+            node,
+            _get_node_text,
+            self._mods,
+            self._attrs,
+            self._type,
+            self._params,
+            self._complexity,
         )
         assert result is not None
         assert result.parameters == ["int x", "string y"]
@@ -290,17 +315,24 @@ class TestExtractMethodDeclaration:
     def test_no_name_returns_none(self) -> None:
         node = FakeNode("method_declaration", "void () { }")
         result = extract_method_declaration(
-            node, _get_node_text, self._mods, self._attrs, self._type, self._params, self._complexity
+            node,
+            _get_node_text,
+            self._mods,
+            self._attrs,
+            self._type,
+            self._params,
+            self._complexity,
         )
         assert result is None
 
     def test_complexity_passed_through(self) -> None:
+        # tree-sitter-c-sharp uses "returns" (not "type") for method return-type field
         node = FakeNode(
             "method_declaration",
             "void Complex() { }",
             fields={
                 "name": FakeNode("identifier", "Complex"),
-                "type": FakeNode("type_identifier", "void"),
+                "returns": FakeNode("type_identifier", "void"),
                 "parameters": FakeNode("parameter_list", children=[]),
             },
             start_point=(0, 0),
@@ -311,7 +343,13 @@ class TestExtractMethodDeclaration:
             return 7
 
         result = extract_method_declaration(
-            node, _get_node_text, self._mods, self._attrs, self._type, self._params, calc_complex
+            node,
+            _get_node_text,
+            self._mods,
+            self._attrs,
+            self._type,
+            self._params,
+            calc_complex,
         )
         assert result is not None
         assert result.complexity_score == 7
@@ -450,7 +488,9 @@ class TestVariableHelpers:
     def test_iter_variable_declarators_yields_matching(self) -> None:
         d1 = FakeNode("variable_declarator")
         d2 = FakeNode("variable_declarator")
-        var_decl = FakeNode("variable_declaration", children=[d1, FakeNode("comma"), d2])
+        var_decl = FakeNode(
+            "variable_declaration", children=[d1, FakeNode("comma"), d2]
+        )
         result = list(_iter_variable_declarators(var_decl))
         assert result == [d1, d2]
 
@@ -459,7 +499,9 @@ class TestVariableHelpers:
         assert result == []
 
     def test_iter_variable_declarators_no_matching(self) -> None:
-        var_decl = FakeNode("variable_declaration", children=[FakeNode("type_identifier")])
+        var_decl = FakeNode(
+            "variable_declaration", children=[FakeNode("type_identifier")]
+        )
         result = list(_iter_variable_declarators(var_decl))
         assert result == []
 
@@ -516,8 +558,12 @@ class TestExtractFieldDeclaration:
         assert result[0].is_constant is False
 
     def test_multiple_fields_same_declaration(self) -> None:
-        d1 = FakeNode("variable_declarator", "x", fields={"name": FakeNode("identifier", "x")})
-        d2 = FakeNode("variable_declarator", "y", fields={"name": FakeNode("identifier", "y")})
+        d1 = FakeNode(
+            "variable_declarator", "x", fields={"name": FakeNode("identifier", "x")}
+        )
+        d2 = FakeNode(
+            "variable_declarator", "y", fields={"name": FakeNode("identifier", "y")}
+        )
         var_decl = FakeNode(
             "variable_declaration",
             "int x, y",
@@ -544,7 +590,11 @@ class TestExtractFieldDeclaration:
             "int MaxValue",
             fields={"type": FakeNode("type_identifier", "int")},
             children=[
-                FakeNode("variable_declarator", "MaxValue", fields={"name": FakeNode("identifier", "MaxValue")}),
+                FakeNode(
+                    "variable_declarator",
+                    "MaxValue",
+                    fields={"name": FakeNode("identifier", "MaxValue")},
+                ),
             ],
         )
         node = FakeNode(
@@ -610,7 +660,11 @@ class TestExtractEventDeclaration:
             "EventHandler Click",
             fields={"type": FakeNode("type_identifier", "EventHandler")},
             children=[
-                FakeNode("variable_declarator", "Click", fields={"name": FakeNode("identifier", "Click")}),
+                FakeNode(
+                    "variable_declarator",
+                    "Click",
+                    fields={"name": FakeNode("identifier", "Click")},
+                ),
             ],
         )
         node = FakeNode(
@@ -630,8 +684,16 @@ class TestExtractEventDeclaration:
         assert result[0].visibility == "public"
 
     def test_multiple_events(self) -> None:
-        d1 = FakeNode("variable_declarator", "OnClick", fields={"name": FakeNode("identifier", "OnClick")})
-        d2 = FakeNode("variable_declarator", "OnLoad", fields={"name": FakeNode("identifier", "OnLoad")})
+        d1 = FakeNode(
+            "variable_declarator",
+            "OnClick",
+            fields={"name": FakeNode("identifier", "OnClick")},
+        )
+        d2 = FakeNode(
+            "variable_declarator",
+            "OnLoad",
+            fields={"name": FakeNode("identifier", "OnLoad")},
+        )
         var_decl = FakeNode(
             "variable_declaration",
             "EventHandler OnClick, OnLoad",
