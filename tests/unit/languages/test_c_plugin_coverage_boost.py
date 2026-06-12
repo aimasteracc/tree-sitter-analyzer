@@ -332,12 +332,13 @@ def test_extract_macros_inside_ifdef_branches(plugin):
     assert "GUARD_VALUE" in var_names, "#ifndef branch was skipped"
     assert "MODE" in var_names, "#if/#elif branches were skipped"
 
-    # Function-like macros from #ifdef and #else branches — both should
-    # be picked up (tree-sitter parses both branches of a conditional).
-    assert "LOG" in fn_names, "#ifdef/#else macro_function branches were skipped"
+    # Function-like macro from #ifdef branch must be captured (Issue #534
+    # Scope B: duplicates from #else branch are now deduplicated — only
+    # the first definition, from the #ifdef branch, is kept).
+    assert "LOG" in fn_names, "#ifdef/#else macro_function branch was skipped"
     log_macros = [f for f in funcs if f.name == "LOG"]
-    assert len(log_macros) == 2, (
-        f"expected two LOG definitions (#ifdef and #else), got {len(log_macros)}"
+    assert len(log_macros) == 1, (
+        f"expected exactly one LOG definition (deduplicated), got {len(log_macros)}"
     )
 
 

@@ -11,6 +11,8 @@
       "ModernComponent"
     ],
     "Function": [
+      "#logActivity",
+      "#validateData",
       "<anonymous>",
       "FunctionalComponent",
       "blockArrow",
