@@ -859,11 +859,11 @@ into the Phase 1 PR — it is a one-line metadata annotation requiring no separa
 
 - [x] `diagram` enum includes `"state"` in schema. (shipped #475)
 - [x] `UMLExporter.state_diagram(class_name, file_path, max_nodes)` implemented: `mermaid_type="stateDiagram-v2"`, `analysis_kind="static_approximation"`. (shipped #475)
-- [x] Zero transitions -> `verdict="NOT_FOUND"` + `next_step`. (shipped #475)
+- [x] Zero transitions -> ~~`verdict="NOT_FOUND"`~~ shipped as `verdict="INFO"` + honest "no transitions detected" note — criterion superseded by the #480 clarification (#498): states found is not a miss. (shipped #475, amended #498)
 - [x] Stale/missing file behavior same as activity. (shipped #475)
 - [x] CLI<->MCP parity test for Phase-2 flags GREEN. (shipped #475)
 - [x] All Phase-2 state tests RED-first then GREEN. (shipped #475)
-- [x] Docs/CODEMAPS updated. (shipped #475)
+- [ ] Docs/CODEMAPS updated — `docs/CODEMAPS/mcp-tools.md` uml row still omits `state` (open; flagged by Codex review on the sync PR).
 
 ## What this RFC does NOT do (deferred)
 
