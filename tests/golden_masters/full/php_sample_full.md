@@ -21,10 +21,14 @@
 | User::lastLoginAt | ?string | # | protected | 30 | - |
 | User::instanceCount | int | - | private,static | 31 | - |
 
+### Constructors
+| Constructor | Signature | Vis | Lines | Cx | Doc |
+|--------|-----------|-----|-------|----|----|
+| User::__construct | ($username:string, $email:string):void | + | 36-42 | 1 | - |
+
 ### Public Methods
 | Method | Signature | Vis | Lines | Cx | Doc |
 |--------|-----------|-----|-------|----|----|
-| User::__construct | ($username:string, $email:string):void | + | 36-42 | 1 | - |
 | User::getId | ():int | + | 47-50 | 1 | - |
 | User::setId | ($id:int):void | + | 55-58 | 1 | - |
 | User::getUsername | ():string | + | 63-66 | 1 | - |
@@ -41,10 +45,14 @@
 |------|------|-----|-----------|------|-----|
 | AdminUser::permissions | array | - | private | 127 | - |
 
+### Constructors
+| Constructor | Signature | Vis | Lines | Cx | Doc |
+|--------|-----------|-----|-------|----|----|
+| AdminUser::__construct | ($username:string, $email:string, $permissions:array):void | + | 129-133 | 1 | - |
+
 ### Public Methods
 | Method | Signature | Vis | Lines | Cx | Doc |
 |--------|-----------|-----|-------|----|----|
-| AdminUser::__construct | ($username:string, $email:string, $permissions:array):void | + | 129-133 | 1 | - |
 | AdminUser::hasPermission | ($permission:string):bool | + | 135-138 | 1 | - |
 | AdminUser::grantPermission | ($permission:string):void | + | 140-145 | 1 | - |
 

@@ -352,7 +352,7 @@ class TableCommand(BaseCommand):
         include_javadoc = getattr(self.args, "include_javadoc", False)
         javadoc = getattr(element, "docstring", "") or "" if include_javadoc else ""
 
-        return {
+        result: dict[str, Any] = {
             "name": getattr(element, "name", str(element)),
             "visibility": visibility,
             "return_type": getattr(element, "return_type", "Any"),
@@ -366,6 +366,11 @@ class TableCommand(BaseCommand):
             },
             "javadoc": javadoc,
         }
+        # Propagate receiver_type as parent_class for PHP/Ruby formatters (#535).
+        receiver_type = getattr(element, "receiver_type", None)
+        if receiver_type:
+            result["parent_class"] = receiver_type
+        return result
 
     # Convert between formats: _convert_variable_element
     def _convert_variable_element(self, element: Any, language: str) -> dict[str, Any]:

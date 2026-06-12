@@ -727,3 +727,61 @@ class TestPHPIntegration:
 
         count = plugin._count_nodes(tree.root_node)
         assert count > 0
+
+
+class TestPHPMethodNameClean:
+    """Issue #535 — method name must be bare; owner in receiver_type."""
+
+    def test_method_name_is_bare(self):
+        """Method name must NOT contain 'ClassName::' prefix."""
+        plugin = PHPPlugin()
+        tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
+        extractor = plugin.create_extractor()
+        functions = extractor.extract_functions(tree, SIMPLE_CLASS_CODE)
+
+        construct = next(f for f in functions if f.name == "__construct")
+        assert construct.name == "__construct"
+        assert "::" not in construct.name
+
+    def test_method_receiver_type_is_owner(self):
+        """receiver_type must carry the owner class name."""
+        plugin = PHPPlugin()
+        tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
+        extractor = plugin.create_extractor()
+        functions = extractor.extract_functions(tree, SIMPLE_CLASS_CODE)
+
+        for func in functions:
+            assert func.receiver_type == "User", (
+                f"{func.name!r} has receiver_type={func.receiver_type!r}, expected 'User'"
+            )
+
+    def test_property_name_is_bare(self):
+        """Variable (property) name must NOT contain 'ClassName::' prefix."""
+        plugin = PHPPlugin()
+        tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
+        extractor = plugin.create_extractor()
+        variables = extractor.extract_variables(tree, SIMPLE_CLASS_CODE)
+
+        name_prop = next(v for v in variables if v.name == "name")
+        assert name_prop.name == "name"
+        assert "::" not in name_prop.name
+
+    def test_multi_class_methods_get_correct_receiver(self):
+        """Each method carries its own class as receiver_type."""
+        plugin = PHPPlugin()
+        tree = get_tree_for_code(COMPLEX_CLASS_CODE, plugin)
+        extractor = plugin.create_extractor()
+        functions = extractor.extract_functions(tree, COMPLEX_CLASS_CODE)
+
+        base_methods = [f for f in functions if f.receiver_type == "BaseService"]
+        user_methods = [f for f in functions if f.receiver_type == "UserService"]
+
+        assert len(base_methods) == 1
+        assert base_methods[0].name == "__construct"
+
+        assert (
+            len(user_methods) == 5
+        )  # __construct, createUser, validateUser, generateId, getInstanceCount
+        user_method_names = {f.name for f in user_methods}
+        assert "__construct" in user_method_names
+        assert "createUser" in user_method_names

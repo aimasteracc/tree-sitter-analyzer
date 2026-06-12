@@ -21,9 +21,9 @@ import concerns/timestampable
 ### Fields
 | Name | Type | Vis | Modifiers | Line | Doc |
 |------|------|-----|-----------|------|-----|
-| User::STATUS_ACTIVE | None | + |  | 13 | - |
-| User::STATUS_INACTIVE | None | + |  | 14 | - |
-| User::MAX_LOGIN_ATTEMPTS | None | + |  | 15 | - |
+| STATUS_ACTIVE | None | + |  | 13 | - |
+| STATUS_INACTIVE | None | + |  | 14 | - |
+| MAX_LOGIN_ATTEMPTS | None | + |  | 15 | - |
 | instance_count | None | - |  | 23 | - |
 | username | None | - |  | 27 | - |
 | email | None | - |  | 28 | - |
@@ -40,12 +40,12 @@ import concerns/timestampable
 ### Public Methods
 | Method | Signature | Vis | Lines | Cx | Doc |
 |--------|-----------|-----|-------|----|----|
+| User#initialize | (username:Any, email:Any): | + | 26-33 | 1 | - |
 | User#username | (): | + | 18-18 | 1 | - |
 | User#email | (): | + | 18-18 | 1 | - |
 | User#id | (): | + | 19-19 | 1 | - |
 | User#created_at | (): | + | 19-19 | 1 | - |
 | User#password_hash | (): | + | 20-20 | 1 | - |
-| User#initialize | (username:Any, email:Any): | + | 26-33 | 1 | - |
 | User#authenticate | (password:Any): | + | 36-40 | 1 | - |
 | User#update_profile | (data:Any): | + | 43-47 | 1 | - |
 | User#active? | (): | + | 50-52 | 1 | - |
@@ -66,8 +66,8 @@ import concerns/timestampable
 ### Public Methods
 | Method | Signature | Vis | Lines | Cx | Doc |
 |--------|-----------|-----|-------|----|----|
-| AdminUser#permissions | (): | + | 92-92 | 1 | - |
 | AdminUser#initialize | (username:Any, email:Any, []:permissions =): | + | 94-97 | 1 | - |
+| AdminUser#permissions | (): | + | 92-92 | 1 | - |
 | AdminUser#has_permission? | (permission:Any): | + | 99-101 | 1 | - |
 | AdminUser#grant_permission | (permission:Any): | + | 103-105 | 1 | - |
 | AdminUser#revoke_permission | (permission:Any): | + | 107-109 | 1 | - |

@@ -315,7 +315,7 @@ class RubyElementExtractor(ElementExtractor):
             )
 
             return Function(
-                name=f"{parent_class}#{name}" if parent_class else name,
+                name=name,  # bare name — owner lives in receiver_type (#535)
                 start_line=node.start_point[0] + 1,
                 end_line=node.end_point[0] + 1,
                 visibility=visibility,
@@ -326,6 +326,7 @@ class RubyElementExtractor(ElementExtractor):
                 return_type="",
                 modifiers=[],
                 annotations=[],
+                receiver_type=parent_class if parent_class else None,
             )
         except Exception as e:
             log_error(f"Error extracting method element: {e}")
@@ -386,7 +387,7 @@ class RubyElementExtractor(ElementExtractor):
             )
 
             return Function(
-                name=f"{parent_class}.{name}" if parent_class else name,
+                name=name,  # bare name — owner lives in receiver_type (#535)
                 start_line=node.start_point[0] + 1,
                 end_line=node.end_point[0] + 1,
                 visibility=visibility,
@@ -397,6 +398,7 @@ class RubyElementExtractor(ElementExtractor):
                 return_type="",
                 modifiers=[],
                 annotations=[],
+                receiver_type=parent_class if parent_class else None,
             )
         except Exception as e:
             log_error(f"Error extracting singleton method element: {e}")
@@ -481,12 +483,9 @@ class RubyElementExtractor(ElementExtractor):
 
             # Clean variable name
             name = var_text.lstrip("@$")
-            full_name = (
-                f"{parent_class}::{name}" if parent_class and is_constant else name
-            )
-
+            # bare name — owner is the containing class via parent linkage (#535)
             return Variable(
-                name=full_name,
+                name=name,
                 start_line=node.start_point[0] + 1,
                 end_line=node.end_point[0] + 1,
                 visibility="public" if is_constant else "private",
