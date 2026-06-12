@@ -294,3 +294,16 @@ class TestLocalFunctionStaysUnowned:
         assert "class_name" not in d
         d2 = element_to_dict(method, elements)
         assert d2["class_name"] == "Outer"
+
+    def test_span_less_sibling_is_skipped(self):
+        """Elements without line attrs (line 70 guard) don't break containment."""
+
+        class Bare:
+            pass
+
+        bare = Bare()
+        bare.__class__.__name__ = "Function"
+        cls = _make_elem("Outer", cls_name="Class", start_line=1, end_line=30)
+        method = _make_elem("doWork", cls_name="Function", start_line=5, end_line=20)
+        d = element_to_dict(method, [cls, bare, method])
+        assert d["class_name"] == "Outer"
