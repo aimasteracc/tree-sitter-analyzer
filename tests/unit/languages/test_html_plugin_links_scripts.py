@@ -1,6 +1,5 @@
 """HTML plugin tests — links, images, scripts, styles, complex structures."""
 
-
 from tests.unit.languages._html_test_data import (
     COMPLEX_STRUCTURE_CODE,
     LINK_IMAGE_CODE,
@@ -22,7 +21,7 @@ class TestHtmlLinkImageRecognition:
         )
 
         a_elements = [e for e in elements if e.tag_name == "a"]
-        assert len(a_elements) >= 1
+        assert len(a_elements) == 5
 
     def test_extract_external_link(self):
         """Test extraction of external link."""
@@ -96,7 +95,7 @@ class TestHtmlLinkImageRecognition:
         )
 
         img_elements = [e for e in elements if e.tag_name == "img"]
-        assert len(img_elements) >= 1
+        assert len(img_elements) == 4
 
     def test_extract_image_with_alt(self):
         """Test extraction of image with alt text."""
@@ -149,7 +148,7 @@ class TestHtmlLinkImageRecognition:
         )
 
         picture_elements = [e for e in elements if e.tag_name == "picture"]
-        assert len(picture_elements) >= 0
+        assert len(picture_elements) == 1
 
     def test_extract_svg_tag(self):
         """Test extraction of svg tag."""
@@ -160,7 +159,7 @@ class TestHtmlLinkImageRecognition:
         )
 
         svg_elements = [e for e in elements if e.tag_name == "svg"]
-        assert len(svg_elements) >= 0
+        assert len(svg_elements) == 1
 
 
 class TestHtmlScriptStyleRecognition:
@@ -175,7 +174,7 @@ class TestHtmlScriptStyleRecognition:
         )
 
         script_elements = [e for e in elements if e.tag_name == "script"]
-        assert len(script_elements) >= 1
+        assert len(script_elements) == 3
 
     def test_extract_style_tag(self):
         """Test extraction of style tag."""
@@ -186,7 +185,7 @@ class TestHtmlScriptStyleRecognition:
         )
 
         style_elements = [e for e in elements if e.tag_name == "style"]
-        assert len(style_elements) >= 1
+        assert len(style_elements) == 1
 
     def test_extract_link_tag(self):
         """Test extraction of link tag."""
@@ -197,7 +196,7 @@ class TestHtmlScriptStyleRecognition:
         )
 
         link_elements = [e for e in elements if e.tag_name == "link"]
-        assert len(link_elements) >= 1
+        assert len(link_elements) == 1
 
     def test_extract_meta_tag(self):
         """Test extraction of meta tag."""
@@ -208,7 +207,7 @@ class TestHtmlScriptStyleRecognition:
         )
 
         meta_elements = [e for e in elements if e.tag_name == "meta"]
-        assert len(meta_elements) >= 1
+        assert len(meta_elements) == 6
 
     def test_extract_title_tag(self):
         """Test extraction of title tag."""
@@ -219,7 +218,7 @@ class TestHtmlScriptStyleRecognition:
         )
 
         title_elements = [e for e in elements if e.tag_name == "title"]
-        assert len(title_elements) >= 1
+        assert len(title_elements) == 1
 
     def test_extract_script_with_src(self):
         """Test extraction of script with src attribute."""
@@ -272,7 +271,7 @@ class TestHtmlComplexStructures:
         )
 
         # Should find nested elements
-        assert len(elements) >= 10
+        assert len(elements) == 28
 
     def test_extract_parent_child_relationships(self):
         """Test extraction of parent-child relationships."""
@@ -286,7 +285,7 @@ class TestHtmlComplexStructures:
         elements_with_children = [
             e for e in elements if e.children and len(e.children) > 0
         ]
-        assert len(elements_with_children) >= 1
+        assert len(elements_with_children) == 15
 
     def test_extract_multiple_classes(self):
         """Test extraction of elements with multiple classes."""
@@ -302,7 +301,9 @@ class TestHtmlComplexStructures:
             for e in elements
             if e.attributes and "class" in e.attributes and " " in e.attributes["class"]
         ]
-        assert len(elements_with_multiple_classes) >= 0
+        assert (
+            len(elements_with_multiple_classes) == 0
+        )  # extraction gap: no multi-class elements in COMPLEX_STRUCTURE_CODE fixture
 
     def test_extract_doctype(self):
         """Test extraction of DOCTYPE."""
@@ -313,7 +314,7 @@ class TestHtmlComplexStructures:
         )
 
         # DOCTYPE should be captured
-        assert len(elements) >= 1
+        assert len(elements) == 28
 
     def test_extract_html_tag(self):
         """Test extraction of html tag."""
@@ -324,7 +325,7 @@ class TestHtmlComplexStructures:
         )
 
         html_elements = [e for e in elements if e.tag_name == "html"]
-        assert len(html_elements) >= 1
+        assert len(html_elements) == 1
 
     def test_extract_head_tag(self):
         """Test extraction of head tag."""
@@ -335,7 +336,7 @@ class TestHtmlComplexStructures:
         )
 
         head_elements = [e for e in elements if e.tag_name == "head"]
-        assert len(head_elements) >= 1
+        assert len(head_elements) == 1
 
     def test_extract_body_tag(self):
         """Test extraction of body tag."""
@@ -346,6 +347,4 @@ class TestHtmlComplexStructures:
         )
 
         body_elements = [e for e in elements if e.tag_name == "body"]
-        assert len(body_elements) >= 1
-
-
+        assert len(body_elements) == 1
