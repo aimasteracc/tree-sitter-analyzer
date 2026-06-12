@@ -244,14 +244,14 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
                 # Weighted BM25 (name col 10x) — hardcoded constant, no injection risk.
                 _SQL_FUZZY_LANG = (
                     "SELECT r.name, r.kind, r.file_path, r.language, r.line, r.end_line, "
-                    "bm25(ast_symbols_fts, 10.0, 0.5, 0.5, 0.1) AS bm25_raw "
+                    "bm25(ast_symbols_fts, 10.0, 0.5, 0.5, 0.1, 1.0) AS bm25_raw "
                     "FROM ast_symbols_fts f JOIN ast_symbol_rows r ON f.rowid = r.id "
                     "WHERE ast_symbols_fts MATCH ? AND r.language = ? "
                     "ORDER BY bm25_raw LIMIT ?"
                 )
                 _SQL_FUZZY_ANY = (
                     "SELECT r.name, r.kind, r.file_path, r.language, r.line, r.end_line, "
-                    "bm25(ast_symbols_fts, 10.0, 0.5, 0.5, 0.1) AS bm25_raw "
+                    "bm25(ast_symbols_fts, 10.0, 0.5, 0.5, 0.1, 1.0) AS bm25_raw "
                     "FROM ast_symbols_fts f JOIN ast_symbol_rows r ON f.rowid = r.id "
                     "WHERE ast_symbols_fts MATCH ? "
                     "ORDER BY bm25_raw LIMIT ?"
