@@ -39,7 +39,9 @@
 #   files).
 #   batch-19 (AST): 852 -> 816, 2026-06-13 (35 exact pins + 1 timing
 #   exemption in top-4 AST-ranked files).
+#   batch-20 (AST): 816 -> 780, 2026-06-13 (36 pins in top-4 AST-ranked
+#   files).
 
-BASELINE_COUNT=816
+BASELINE_COUNT=780
 MEASUREMENT_DATE=2026-06-13
 MEASUREMENT_COMMAND="uv run python scripts/check_loose_assertions.py --baseline"
