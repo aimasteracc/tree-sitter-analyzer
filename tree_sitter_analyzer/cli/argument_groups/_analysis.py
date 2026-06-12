@@ -184,6 +184,8 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--outline",
+        nargs="?",
+        const="__POSITIONAL__",
         metavar="FILE",
         help=(
             "Rich MCP-equivalent outline for FILE: nested methods under classes "

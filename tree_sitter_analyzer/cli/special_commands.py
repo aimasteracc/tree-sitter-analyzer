@@ -390,6 +390,12 @@ def _handle_outline(
     file_path = getattr(args, "outline", None)
     if not file_path:
         return None
+    if file_path == "__POSITIONAL__":
+        # Legacy form: `tsa file.py --outline` (the flag was a bool before
+        # #539) — fall back to the positional file argument.
+        file_path = getattr(args, "file_path", None)
+        if not file_path:
+            return None
 
     try:
         from tree_sitter_analyzer.mcp.tools.get_code_outline_tool import (
