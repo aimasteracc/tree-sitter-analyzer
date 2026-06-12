@@ -36,8 +36,8 @@ tree-sitter-analyzer/
 # 全てのゴールデンマスターテストを実行
 uv run pytest tests/regression/test_plugin_golden_masters.py -v
 
-# 特定のテストだけ実行
-uv run pytest tests/regression/test_plugin_golden_masters.py -v -k "test_enum_members_extracted"
+# 特定のプラグインだけ実行（パラメタライズド test_plugin_golden_master を -k で絞る）
+uv run pytest "tests/regression/test_plugin_golden_masters.py::test_plugin_golden_master" -v -k "java"
 ```
 
 #### ステップ3: 結果を確認
@@ -48,10 +48,13 @@ uv run pytest tests/regression/test_plugin_golden_masters.py -v -k "test_enum_me
 
 #### ステップ4: ゴールデンマスターの更新（必要な場合）
 ```bash
-# 全てのゴールデンマスターを更新
-uv run python tests/integration/formatters/update_baselines.py
+# プラグイン・ゴールデンマスターを更新（意図した出力変更を受け入れる）
+TSA_UPDATE_GOLDEN=1 uv run pytest tests/regression/test_plugin_golden_masters.py -q
 
-# 更新後、再度テストを実行して確認
+# （参考）フォーマッタ・ベースライン（tests/golden_masters/{full,compact,csv}）は別系統:
+# uv run python tests/integration/formatters/update_baselines.py
+
+# 更新後、環境変数なしで再度テストを実行して確認
 uv run pytest tests/regression/test_plugin_golden_masters.py -v
 ```
 
