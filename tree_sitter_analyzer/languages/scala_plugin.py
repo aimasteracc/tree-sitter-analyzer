@@ -427,8 +427,63 @@ class ScalaElementExtractor(ElementExtractor):
 
         For variable declarations use ``_scala_type_after_colon(node, "Inferred")``
         instead — function return types want ``Unit`` as the missing-type sentinel.
+
+        Issue #594: ``def get(key: String) = "legacy"`` must not claim
+        Unit — the expression body infers the type. Full inference is a
+        non-goal; pin trivial literals, otherwise emit "" (unknown,
+        matching the Go plugin's absent-return-type convention). Block
+        bodies / abstract defs without an explicit type really are
+        Unit-defaulted — keep. Mirrors the Kotlin fix for #591/#593.
         """
-        return self._scala_type_after_colon(node, "Unit")
+        if any(child.type == ":" for child in node.children):
+            return self._scala_type_after_colon(node, "Unit")
+        inferred = self._scala_expression_body_type(node)
+        if inferred is not None:
+            return inferred
+        return "Unit"
+
+    def _scala_expression_body_type(self, node: tree_sitter.Node) -> str | None:
+        """Infer the return type of an expression-body def (issue #594).
+
+        Returns:
+            * ``None`` — no expression body (block body or abstract def);
+              caller keeps the ``Unit`` default, which is correct there.
+            * a pinned literal type (``String``/``Int``/``Boolean``/``Double``)
+              for trivial literal bodies (Scala's ``string`` node covers
+              raw triple-quoted strings too — live-verified node shapes).
+            * ``""`` (unknown) for any other expression body — honest "no
+              claim", never a fabricated ``Unit``.
+        """
+        children = node.children
+        expr = None
+        for i, child in enumerate(children):
+            if child.type == "=":
+                if i + 1 >= len(children):
+                    return ""  # malformed: '=' with nothing after it
+                expr = children[i + 1]
+                break
+        if expr is None:
+            return None  # block body or abstract def → Unit default is correct
+        if expr.type == "indented_block":
+            # `def f =\n  "x"` wraps the RHS in an indented_block (Codex P2
+            # on #597); a single-expression block is the same literal case.
+            named = [c for c in expr.children if c.is_named and c.type != "comment"]
+            if len(named) != 1:
+                return ""
+            expr = named[0]
+        if expr.type == "string":
+            return "String"
+        if expr.type == "floating_point_literal":
+            return "Double"
+        if expr.type == "integer_literal":
+            # Signed decimal literals (`-1`) are a single integer_literal node
+            # and infer Int (Codex P2 on #597); 42L / 0xFF etc. stay unknown.
+            text = self._get_node_text(expr)
+            digits = text[1:] if text[:1] in ("-", "+") else text
+            return "Int" if digits.isdigit() else ""
+        if expr.type == "boolean_literal":
+            return "Boolean"
+        return ""
 
     def _scala_type_after_colon(self, node: tree_sitter.Node, default: str) -> str:
         """Scan ``node.children`` for ``:`` and return the next sibling text.
