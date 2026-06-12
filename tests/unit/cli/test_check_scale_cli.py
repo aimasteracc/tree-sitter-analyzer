@@ -80,11 +80,11 @@ class TestCheckScaleParser:
 class TestCheckScaleDispatch:
     """handle_special_commands dispatches ``--check-scale`` correctly."""
 
-    def _base_args(self, check_scale=None, **kwargs):
+    def _base_args(self, check_scale=None, project_root=None, **kwargs):
         return SimpleNamespace(
             check_scale=check_scale,
             metrics_only=False,
-            project_root=None,
+            project_root=project_root,
             format="json",
             output_format="json",
             quiet=False,
@@ -168,14 +168,15 @@ class TestCheckScaleDispatch:
         """Nonexistent file → exit 1 with a JSON error envelope."""
         from tree_sitter_analyzer.cli.special_commands import _handle_check_scale
 
-        nonexistent = str(tmp_path / "not_here.py")
+        # Existence validation is delegated to AnalyzeScaleTool (so that
+        # --project-root resolution applies); the tool reports the miss.
         output_json_calls: list = []
         output_error_calls: list = []
         ctx = _make_context(
             output_json=lambda d: output_json_calls.append(d),
             output_error=lambda m: output_error_calls.append(m),
         )
-        args = self._base_args(check_scale=nonexistent)
+        args = self._base_args(check_scale="not_here.py", project_root=str(tmp_path))
         rc = _handle_check_scale(args, ctx)
         assert rc == 1
         # JSON format → error envelope on stdout
@@ -183,8 +184,44 @@ class TestCheckScaleDispatch:
         env = output_json_calls[0]
         assert env["success"] is False
         assert env["verdict"] == "ERROR"
-        # The error message must mention the missing file path
-        assert nonexistent in env.get("error", "")
+        assert "File not found: not_here.py" in env.get("error", "")
+
+    def test_project_root_resolves_relative_path(self, tmp_path: Path) -> None:
+        """--project-root /repo --check-scale rel/path.py works from any CWD
+        (Codex P2 on #527: no CWD-relative preflight)."""
+        from tree_sitter_analyzer.cli.special_commands import _handle_check_scale
+
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "foo.py").write_text("def foo(): pass\n")
+
+        output_json_calls: list = []
+        ctx = _make_context(output_json=lambda d: output_json_calls.append(d))
+        args = self._base_args(check_scale="src/foo.py", project_root=str(tmp_path))
+        rc = _handle_check_scale(args, ctx)
+        assert rc == 0
+        assert output_json_calls[0]["success"] is True
+        assert output_json_calls[0]["summary"]["methods"] == 1
+
+    def test_language_override_forwarded(self, tmp_path: Path) -> None:
+        """--language reaches AnalyzeScaleTool (Codex P2 on #527)."""
+        from tree_sitter_analyzer.cli.special_commands import _handle_check_scale
+
+        target = tmp_path / "script.txt"
+        target.write_text("def foo(): pass\n")
+
+        output_json_calls: list = []
+        ctx = _make_context(output_json=lambda d: output_json_calls.append(d))
+        args = self._base_args(
+            check_scale="script.txt",
+            project_root=str(tmp_path),
+            language="python",
+        )
+        rc = _handle_check_scale(args, ctx)
+        assert rc == 0
+        env = output_json_calls[0]
+        assert env["success"] is True
+        assert env["language"] == "python"
+        assert env["summary"]["methods"] == 1
 
 
 # ── parity test ─────────────────────────────────────────────────────────────

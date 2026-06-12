@@ -349,24 +349,23 @@ def _handle_check_scale(
         return None
     import os
 
-    if not os.path.exists(file_path):
-        _emit_cli_error(
-            args,
-            context,
-            "check_scale",
-            f"--check-scale: file not found: {file_path}",
-        )
-        return 1
     try:
         from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import AnalyzeScaleTool
 
         project_root = getattr(args, "project_root", None) or os.getcwd()
+        # No CWD-relative existence preflight here: the tool resolves
+        # file_path against project_root (so --project-root /repo with a
+        # repo-relative path works) and reports missing files itself.
+        tool_args: dict[str, Any] = {
+            "file_path": file_path,
+            "output_format": _tool_output_format(args),
+        }
+        language = getattr(args, "language", None)
+        if language:
+            tool_args["language"] = language
         return _run_mcp_tool_sync(
             AnalyzeScaleTool,
-            {
-                "file_path": file_path,
-                "output_format": _tool_output_format(args),
-            },
+            tool_args,
             project_root=project_root,
             args=args,
             context=context,
