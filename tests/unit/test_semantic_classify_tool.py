@@ -445,9 +445,7 @@ class TestClassifyByteBudget:
             },
         )
         assert result["success"] is True
-        assert result.get("change_count", 0) > 0, (
-            "fixture must produce at least one classification"
-        )
+        assert result.get("change_count") == 10  # _SRC_V1→_SRC_V2 fixed fixture
         for entry in result.get("classifications", []):
             hunk = entry.get("hunk", {})
             old_node = hunk.get("old", {})
@@ -610,7 +608,7 @@ class TestClassifyByteBudget:
         )
         assert result["success"] is True
         classifications = result.get("classifications", [])
-        assert len(classifications) > 0
+        assert len(classifications) == 10  # _SRC_V1→_SRC_V2 fixed fixture
         has_hunk_detail = any(
             "old" in entry.get("hunk", {}) or "new" in entry.get("hunk", {})
             for entry in classifications
