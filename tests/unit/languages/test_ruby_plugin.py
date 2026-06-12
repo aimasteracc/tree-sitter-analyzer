@@ -255,9 +255,8 @@ class TestRubyFunctionExtraction:
 
         func_names = [f.name for f in functions]
         # Should find initialize, greet, generate_id, and attr_ methods
-        assert any(
-            "initialize" in name for name in func_names
-        )  # TODO(#535): substring-match accommodates owner-prefixed names; re-pin exact bare names after the fix
+        # #535 fixed: names are bare — exact membership, no substring accommodation
+        assert "initialize" in func_names
         assert any("greet" in name for name in func_names)
 
     def test_extract_singleton_methods(self):
@@ -338,9 +337,8 @@ class TestRubyVariableExtraction:
 
         var_names = [v.name for v in variables]
         # Should find MAX_USERS, DEFAULT_TIMEOUT, API_VERSION
-        assert any(
-            "MAX_USERS" in name for name in var_names
-        )  # TODO(#535): substring-match accommodates owner-prefixed names; re-pin exact bare names after the fix
+        # #535 fixed: names are bare — exact membership
+        assert "MAX_USERS" in var_names
 
     def test_constant_is_marked_constant(self):
         """Test that constants are marked as constant."""
@@ -362,9 +360,8 @@ class TestRubyVariableExtraction:
 
         # @@instance_count should be extracted
         var_names = [v.name for v in variables]
-        assert any(
-            "instance_count" in name for name in var_names
-        )  # TODO(#535): substring-match accommodates owner-prefixed names; re-pin exact bare names after the fix
+        # #535 fixed: names are bare — exact membership
+        assert "instance_count" in var_names
 
     def test_variable_line_numbers(self):
         """Test that variable line numbers are correct."""
@@ -636,3 +633,79 @@ class TestRubyIntegration:
         # Superclass extraction may vary - check it's not None
         assert dog.superclass is not None
         assert cat.superclass is not None
+
+
+class TestRubyMethodNameClean:
+    """Issue #535 — method name must be bare; owner in receiver_type."""
+
+    def test_instance_method_name_is_bare(self):
+        """Method name must NOT contain 'ClassName#' prefix."""
+        plugin = RubyPlugin()
+        tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
+        extractor = plugin.create_extractor()
+        functions = extractor.extract_functions(tree, SIMPLE_CLASS_CODE)
+
+        init = next(f for f in functions if f.name == "initialize")
+        assert init.name == "initialize"
+        assert "#" not in init.name
+        assert "Person" not in init.name
+
+    def test_instance_method_receiver_type_is_owner(self):
+        """receiver_type must carry the owner class name for instance methods."""
+        plugin = RubyPlugin()
+        tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
+        extractor = plugin.create_extractor()
+        functions = extractor.extract_functions(tree, SIMPLE_CLASS_CODE)
+
+        for func in functions:
+            assert func.receiver_type == "Person", (
+                f"{func.name!r} has receiver_type={func.receiver_type!r}, expected 'Person'"
+            )
+
+    def test_singleton_method_name_is_bare(self):
+        """Class method name must NOT contain 'ClassName.' prefix."""
+        plugin = RubyPlugin()
+        tree = get_tree_for_code(SINGLETON_METHODS_CODE, plugin)
+        extractor = plugin.create_extractor()
+        functions = extractor.extract_functions(tree, SINGLETON_METHODS_CODE)
+
+        add_method = next(f for f in functions if f.name == "add")
+        assert add_method.name == "add"
+        assert "." not in add_method.name
+        assert add_method.receiver_type == "MathUtils"
+        assert add_method.is_static is True
+
+    def test_attr_method_name_is_bare(self):
+        """Attribute methods must have bare names."""
+        plugin = RubyPlugin()
+        tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
+        extractor = plugin.create_extractor()
+        functions = extractor.extract_functions(tree, SIMPLE_CLASS_CODE)
+
+        attr_funcs = [f for f in functions if f.is_property]
+        assert len(attr_funcs) == 3  # name, age, id
+        for f in attr_funcs:
+            assert "#" not in f.name
+            assert "Person" not in f.name
+            assert f.receiver_type == "Person"
+
+    def test_user_contains_initialize(self):
+        """Acceptance: User.methods contains initialize (bare name)."""
+        plugin = RubyPlugin()
+        # Use MODULE_CODE which has Authentication::User
+        code = """
+class User
+  def initialize(name)
+    @name = name
+  end
+  def greet
+    'hello'
+  end
+end
+"""
+        tree = get_tree_for_code(code, plugin)
+        extractor = plugin.create_extractor()
+        functions = extractor.extract_functions(tree, code)
+        user_methods = [f for f in functions if f.receiver_type == "User"]
+        method_names = [f.name for f in user_methods]
+        assert "initialize" in method_names

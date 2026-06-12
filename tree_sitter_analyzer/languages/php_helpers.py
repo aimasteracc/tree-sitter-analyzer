@@ -255,7 +255,7 @@ def extract_php_method_element(
             return_type = get_node_text(return_type_node)
 
         return Function(
-            name=f"{parent_class}::{name}" if parent_class else name,
+            name=name,  # bare name — owner lives in receiver_type (#535)
             start_line=node.start_point[0] + 1,
             end_line=node.end_point[0] + 1,
             visibility=visibility,
@@ -266,6 +266,7 @@ def extract_php_method_element(
             return_type=return_type,
             modifiers=modifiers,
             annotations=[{"name": attr["name"]} for attr in attributes],
+            receiver_type=parent_class if parent_class else None,
         )
     except Exception as e:
         log_error(f"Error extracting method element: {e}")
@@ -370,9 +371,10 @@ def _build_php_property_variable(
     if name_node is None:
         return None
     name = get_node_text(name_node).lstrip("$")
-    full_name = f"{parent_class}::{name}" if parent_class else name
+    # bare name — owner travels in receiver_type (#535, Codex P2: without it
+    # multi-class files collide on field names in structured output)
     return Variable(
-        name=full_name,
+        name=name,
         start_line=property_node.start_point[0] + 1,
         end_line=property_node.end_point[0] + 1,
         visibility=visibility,
@@ -382,6 +384,7 @@ def _build_php_property_variable(
         is_readonly="readonly" in modifiers,
         variable_type=var_type,
         modifiers=modifiers,
+        receiver_type=parent_class or None,
     )
 
 
@@ -424,9 +427,9 @@ def _build_php_constant_variable(
     if name_node is None:
         return None
     name = get_node_text(name_node)
-    full_name = f"{parent_class}::{name}" if parent_class else name
+    # bare name — owner travels in receiver_type (#535, Codex P2)
     return Variable(
-        name=full_name,
+        name=name,
         start_line=const_node.start_point[0] + 1,
         end_line=const_node.end_point[0] + 1,
         visibility=visibility,
@@ -435,4 +438,5 @@ def _build_php_constant_variable(
         is_final=True,
         variable_type="const",
         modifiers=modifiers,
+        receiver_type=parent_class or None,
     )
