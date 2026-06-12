@@ -31,7 +31,8 @@ def _rust_lang():
 
 
 pytestmark = pytest.mark.skipif(
-    _rust_lang() is None, reason="tree-sitter-rust not available"
+    _rust_lang() is None,
+    reason="tree-sitter-rust not available; tracked: optional local grammar dependency",
 )
 
 
