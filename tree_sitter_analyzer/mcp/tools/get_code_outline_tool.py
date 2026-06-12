@@ -38,6 +38,20 @@ from .base_tool import (
 
 logger = setup_logger(__name__)
 
+# ---------------------------------------------------------------------------
+# Byte-budget constants (Issue #513 leg 3 — honest-truncation pattern)
+#
+# The MCP path applies a default cap on listed classes / top-level functions
+# so giant declaration files (e.g. vscode.d.ts, 21k lines) don't blow agent
+# context windows.  CLI output is UNAFFECTED — CLI defaults to JSON (full
+# output) and the user can pipe to jq.
+#
+# Statistics (class_count / method_count) are ALWAYS computed over ALL
+# elements BEFORE truncation — the cap only slices the listed arrays.
+# ---------------------------------------------------------------------------
+DEFAULT_OUTLINE_CLASSES_CAP: int = 50
+DEFAULT_OUTLINE_FUNCTIONS_CAP: int = 50
+
 
 class GetCodeOutlineTool(BaseMCPTool):
     """
@@ -112,6 +126,18 @@ class GetCodeOutlineTool(BaseMCPTool):
                     ),
                     "default": "toon",
                 },
+                "listed_cap": {
+                    "type": "integer",
+                    "description": (
+                        "Maximum number of classes (and top-level functions) to list in the "
+                        "response.  Default 50.  Raise for larger files; pre-cap totals "
+                        "(classes_total, top_level_functions_total) are always present so you "
+                        "know how many elements exist.  "
+                        "NEVER mark this required — runtime-resolved param."
+                    ),
+                    "default": 50,
+                    "minimum": 1,
+                },
             },
             "required": ["file_path"],
             "additionalProperties": False,
@@ -150,6 +176,12 @@ class GetCodeOutlineTool(BaseMCPTool):
             output_format = arguments["output_format"]
             if output_format not in ("json", "toon"):
                 return False  # 无效格式返回 False
+
+        # 验证 listed_cap
+        if "listed_cap" in arguments and arguments["listed_cap"] is not None:
+            cap = arguments["listed_cap"]
+            if not isinstance(cap, int) or isinstance(cap, bool) or cap < 1:
+                raise ValueError("listed_cap must be a positive integer")
 
         return True
 
@@ -247,6 +279,8 @@ class GetCodeOutlineTool(BaseMCPTool):
         ``_assemble_outline_response`` (canonical dict + field hoisting),
         ``_attach_outline_summary`` (summary_line + agent_summary).
         TOON default LOCKED — output_format default stays ``toon``.
+        Issue #513 leg 3: listed_cap caps classes + top_level_functions on the
+        MCP path; honest-truncation fields added to response.
         """
         try:
             self.validate_arguments(arguments)
@@ -256,6 +290,7 @@ class GetCodeOutlineTool(BaseMCPTool):
             include_fields = arguments.get("include_fields", False)
             include_imports = arguments.get("include_imports", False)
             output_format = arguments.get("output_format", "toon")
+            listed_cap = int(arguments.get("listed_cap") or DEFAULT_OUTLINE_CLASSES_CAP)
 
             resolved = self._resolve_outline_request(file_path, language, output_format)
             if "early_response" in resolved:
@@ -271,7 +306,7 @@ class GetCodeOutlineTool(BaseMCPTool):
             )
 
             result = self._assemble_outline_response(
-                file_path, resolved["language"], outline
+                file_path, resolved["language"], outline, listed_cap=listed_cap
             )
             self._attach_outline_summary(result, file_path)
             return apply_toon_format_to_response(result, output_format)
@@ -357,7 +392,10 @@ class GetCodeOutlineTool(BaseMCPTool):
 
     @staticmethod
     def _assemble_outline_response(
-        file_path: str, language: str | None, outline: Any
+        file_path: str,
+        language: str | None,
+        outline: Any,
+        listed_cap: int = DEFAULT_OUTLINE_CLASSES_CAP,
     ) -> dict[str, Any]:
         """Build the canonical response dict + hoist outline-level fields.
 
@@ -367,6 +405,10 @@ class GetCodeOutlineTool(BaseMCPTool):
         ``top_level_functions`` is also mirrored as ``methods`` (the
         natural name callers reach for). Count summaries from
         ``outline.statistics`` are also hoisted.
+
+        Issue #513 leg 3: honest-truncation cap on classes and top_level_functions.
+        Statistics (class_count / method_count) are hoisted from the PRE-cap
+        outline.statistics — the cap never corrupts totals (#505 lesson).
         """
         result: dict[str, Any] = {
             "success": True,
@@ -376,20 +418,46 @@ class GetCodeOutlineTool(BaseMCPTool):
         }
         if not isinstance(outline, dict):
             return result
-        # 1) Hoist outline-level fields.
-        for key in (
-            "classes",
-            "top_level_functions",
-            "imports",
-            "total_lines",
-            "package",
-        ):
+
+        # --- Honest-truncation cap (Issue #513 leg 3) ---
+        # Apply BEFORE hoisting so both `result` and the inlined `outline` dict
+        # carry the capped list.  Pre-cap totals are always recorded.
+        classes_all: list = outline.get("classes") or []
+        fns_all: list = outline.get("top_level_functions") or []
+
+        classes_total = len(classes_all)
+        fns_total = len(fns_all)
+
+        classes_listed_count = min(classes_total, listed_cap)
+        fns_listed_count = min(fns_total, listed_cap)
+        truncated = classes_total > listed_cap or fns_total > listed_cap
+
+        # Slice both lists (keep sorted order — _build_outline already sorts by
+        # start_line, so slicing preserves that invariant deterministically).
+        classes_capped = classes_all[:listed_cap]
+        fns_capped = fns_all[:listed_cap]
+
+        # Patch the outline dict in-place (shallow copy to avoid mutating caller's
+        # reference — we create a new dict for outline to keep immutability).
+        outline = dict(outline)
+        outline["classes"] = classes_capped
+        outline["top_level_functions"] = fns_capped
+        result["outline"] = outline
+
+        # --- Hoist outline-level fields ---
+        # 1) Scalar fields first.
+        for key in ("imports", "total_lines", "package"):
             if key in outline and key not in result:
                 result[key] = outline[key]
-        # 2) ``top_level_functions`` also surfaces as ``methods``.
-        if "top_level_functions" in outline and "methods" not in result:
-            result["methods"] = outline["top_level_functions"]
-        # 3) Hoist the count summaries from outline.statistics.
+        # 2) Hoisted lists use the capped versions.
+        result["classes"] = classes_capped
+        result["top_level_functions"] = fns_capped
+        # 3) ``top_level_functions`` also surfaces as ``methods``.
+        if "methods" not in result:
+            result["methods"] = fns_capped
+        # 4) Hoist the count summaries from outline.statistics — PRE-cap totals
+        #    (aggregate-mode invariant: totals must equal the full element count,
+        #    never the capped slice).
         stats = outline.get("statistics")
         if isinstance(stats, dict):
             for key in (
@@ -400,6 +468,15 @@ class GetCodeOutlineTool(BaseMCPTool):
             ):
                 if key in stats and key not in result:
                     result[key] = stats[key]
+
+        # --- Honest-truncation fields (same pattern as DF-13 / DF-1) ---
+        result["classes_total"] = classes_total
+        result["classes_listed"] = classes_listed_count
+        result["top_level_functions_total"] = fns_total
+        result["top_level_functions_listed"] = fns_listed_count
+        result["listed_cap"] = listed_cap
+        result["truncated"] = truncated
+
         return result
 
     @staticmethod
@@ -409,6 +486,9 @@ class GetCodeOutlineTool(BaseMCPTool):
         r37w envelope ratchet: top-level verdict must equal
         ``agent_summary.verdict``. Both are pinned to ``INFO`` for the
         outline tool — outlines never raise alarms by themselves.
+
+        Issue #513 leg 3: when the response was truncated, the next_step
+        includes a narrowing hint (how to raise listed_cap or filter by type).
         """
         class_count = int(result.get("class_count") or 0)
         method_count = int(result.get("method_count") or 0)
@@ -419,11 +499,25 @@ class GetCodeOutlineTool(BaseMCPTool):
         )
         result["summary_line"] = summary_line
         result["verdict"] = "INFO"
+
+        # Honest-truncation next_step hint.
+        truncated = result.get("truncated", False)
+        classes_total = result.get("classes_total", class_count)
+        classes_listed = result.get("classes_listed", class_count)
+        listed_cap = result.get("listed_cap", DEFAULT_OUTLINE_CLASSES_CAP)
+        if truncated:
+            next_step = (
+                f"truncated: showing {classes_listed} of {classes_total} classes "
+                f"(listed_cap={listed_cap}). "
+                "To see more, raise listed_cap or narrow with a specific element type. "
+                "Use extract_code_section with line ranges from the listed classes."
+            )
+        else:
+            next_step = "extract_code_section for the method you need (use line ranges from outline)"
+
         result["agent_summary"] = {
             "summary_line": summary_line,
-            "next_step": (
-                "extract_code_section for the method you need (use line ranges from outline)"
-            ),
+            "next_step": next_step,
             "verdict": "INFO",
         }
 
