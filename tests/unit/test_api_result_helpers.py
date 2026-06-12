@@ -278,3 +278,19 @@ class TestCodeAnalysisError:
     def test_empty_language(self):
         result = code_analysis_error("", RuntimeError("fail"))
         assert result["language_info"]["language"] == "unknown"
+
+
+class TestLocalFunctionStaysUnowned:
+    """Codex P2 on #570: a function nested inside another FUNCTION's span
+    (local helper) is deliberately unowned — line containment in a class
+    must not ownerize it."""
+
+    def test_local_function_gets_no_class_name(self):
+        cls = _make_elem("Outer", cls_name="Class", start_line=1, end_line=30)
+        method = _make_elem("doWork", cls_name="Function", start_line=5, end_line=20)
+        local = _make_elem("inner", cls_name="Function", start_line=8, end_line=12)
+        elements = [cls, method, local]
+        d = element_to_dict(local, elements)
+        assert "class_name" not in d
+        d2 = element_to_dict(method, elements)
+        assert d2["class_name"] == "Outer"

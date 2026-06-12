@@ -50,11 +50,31 @@ def element_to_dict(
             result[field] = getattr(elem, field)
 
     if result["type"] == "function" and all_elements:
-        class_name = find_class_name(elem, all_elements)
-        if class_name is not None:
-            result["class_name"] = class_name
+        # A LOCAL function (innermost container is another function, e.g.
+        # Kotlin `fun inner` inside a method) is deliberately unowned —
+        # only class-owned methods get class_name (Codex P2 on #570).
+        if not _contained_in_other_function(elem, all_elements):
+            class_name = find_class_name(elem, all_elements)
+            if class_name is not None:
+                result["class_name"] = class_name
 
     return result
+
+
+def _contained_in_other_function(elem: Any, elements: Sequence[Any]) -> bool:
+    """True when another function's span strictly contains ``elem``'s."""
+    for other in elements:
+        if other is elem or type(other).__name__.lower() != "function":
+            continue
+        if not (hasattr(other, "start_line") and hasattr(other, "end_line")):
+            continue
+        if (
+            other.start_line <= elem.start_line
+            and elem.end_line <= other.end_line
+            and (other.start_line, other.end_line) != (elem.start_line, elem.end_line)
+        ):
+            return True
+    return False
 
 
 def find_class_name(elem: Any, elements: Sequence[Any]) -> str | None:
