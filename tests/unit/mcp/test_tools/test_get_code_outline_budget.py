@@ -482,9 +482,9 @@ class TestByteBudgetDifferentialInvariant:
 
 # ---------------------------------------------------------------------------
 # Byte pins — measured 2026-06-12 with the synthetic fixture.
-# capped (50/80 classes, 5 methods each): 99217 B
-# uncapped (80/80 classes, 5 methods each): 158804 B  (ratio 1.60x)
+# capped (50/80 classes, 5 methods each): 104517 B
+# uncapped (80/80 classes, 5 methods each): 167284 B  (ratio 1.60x)
 # Re-measure and re-pin if response envelope fields change.
 # ---------------------------------------------------------------------------
-_EXPECTED_CAPPED_BYTES: int = 99217
-_EXPECTED_UNCAPPED_BYTES: int = 158804
+_EXPECTED_CAPPED_BYTES: int = 104517
+_EXPECTED_UNCAPPED_BYTES: int = 167284
