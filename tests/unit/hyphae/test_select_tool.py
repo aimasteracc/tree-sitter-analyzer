@@ -412,3 +412,17 @@ async def test_short_selector_not_truncated() -> None:
     assert result["selector"] == short_selector, (
         "Short selector must be echoed verbatim (no truncation)"
     )
+
+
+@pytest.mark.asyncio
+async def test_syntax_error_branch_caps_echo_too() -> None:
+    """The 16KB GARBAGE selector from the dogfood report hits the
+    syntax-error branch — that echo must be capped as well (lead review:
+    the original fix only covered the success path)."""
+    tool = _tool()
+    garbage = "x" * 16384  # lexes to IDENT, rejected by the grammar
+    result = await tool.execute({"selector": garbage, "output_format": "json"})
+    assert result["success"] is False
+    echoed = result["selector"]
+    assert len(echoed) <= 250
+    assert "(16384 chars total)" in echoed

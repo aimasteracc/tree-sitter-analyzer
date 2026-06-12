@@ -12,6 +12,17 @@ from typing import Any
 
 from .base_tool import BaseMCPTool
 
+# #540 leg 3: responses echo the selector for context, but a pathological
+# selector (16KB observed in dogfood) must not flood the response — cap the
+# echo, never the selector actually parsed.
+_SELECTOR_ECHO_CAP = 200
+
+
+def _cap_selector_echo(selector: str) -> str:
+    if len(selector) <= _SELECTOR_ECHO_CAP:
+        return selector
+    return selector[:_SELECTOR_ECHO_CAP] + f"… ({len(selector)} chars total)"
+
 
 class HyphaeSelectTool(BaseMCPTool):
     """Execute a Hyphae selector and return matching symbols."""
@@ -96,6 +107,11 @@ class HyphaeSelectTool(BaseMCPTool):
         max_results = max(1, min(max_results, 1000))
         output_format = arguments.get("output_format", "toon")
 
+        # #540 leg 3: every response echoes the selector capped — the
+        # syntax-error branch is the one a 16KB garbage selector actually
+        # hits, so the cap must apply on BOTH branches.
+        selector_echo = _cap_selector_echo(selector)
+
         from ...hyphae import Evaluator, parse
         from ...hyphae.parser import HyphaeSyntaxError
 
@@ -104,7 +120,7 @@ class HyphaeSelectTool(BaseMCPTool):
         except (HyphaeSyntaxError, ValueError) as exc:
             return {
                 "success": False,
-                "selector": selector,
+                "selector": selector_echo,
                 "error": f"Hyphae syntax error: {exc}",
                 "symbols": [],
             }
@@ -165,14 +181,6 @@ class HyphaeSelectTool(BaseMCPTool):
                 "(add :in(path) / [file=] / :not(...) to narrow)."
             )
             verdict = "INFO"
-
-        _SELECTOR_ECHO_CAP = 200
-        if len(selector) > _SELECTOR_ECHO_CAP:
-            selector_echo = (
-                selector[:_SELECTOR_ECHO_CAP] + f"… ({len(selector)} chars total)"
-            )
-        else:
-            selector_echo = selector
 
         result: dict[str, Any] = {
             "success": True,
