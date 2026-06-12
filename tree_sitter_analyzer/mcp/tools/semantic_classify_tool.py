@@ -21,6 +21,47 @@ from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
 
+# Default cap on classification entries returned.
+_DEFAULT_HUNK_CAP = 50
+
+
+def _strip_children(node_dict: dict[str, Any]) -> dict[str, Any]:
+    """Return a copy of a serialised ASTNodeInfo without the recursive children list."""
+    return {k: v for k, v in node_dict.items() if k != "children"}
+
+
+def _compact_hunk(hunk_dict: dict[str, Any]) -> dict[str, Any]:
+    """Strip children from hunk.old / hunk.new so only the top-level node is kept."""
+    result: dict[str, Any] = {}
+    for key, val in hunk_dict.items():
+        if key in ("old", "new") and isinstance(val, dict):
+            result[key] = _strip_children(val)
+        else:
+            result[key] = val
+    return result
+
+
+def _compact_classification(
+    entry: dict[str, Any],
+    *,
+    include_ast_nodes: bool,
+) -> dict[str, Any]:
+    """Return a compact version of a ClassifiedHunk dict.
+
+    By default (include_ast_nodes=False):
+      - ``hunk`` is present but hunk.old/new have their ``children`` stripped.
+    With include_ast_nodes=True:
+      - Full hunk dict is preserved (children included).
+    """
+    if include_ast_nodes:
+        return entry
+    hunk = entry.get("hunk")
+    if not isinstance(hunk, dict):
+        return entry
+    compact: dict[str, Any] = {k: v for k, v in entry.items() if k != "hunk"}
+    compact["hunk"] = _compact_hunk(hunk)
+    return compact
+
 
 class SemanticClassifyTool(BaseMCPTool):
     """MCP Tool for semantic change classification."""
@@ -100,6 +141,25 @@ class SemanticClassifyTool(BaseMCPTool):
                     "enum": ["json", "toon"],
                     "description": "Output format",
                     "default": "toon",
+                },
+                # #528 — byte-budget params (opt-in, never required)
+                "include_ast_nodes": {
+                    "type": "boolean",
+                    "description": (
+                        "Include full AST node details (hunk.old/new) in each classification. "
+                        "Off by default to keep response ≤ raw diff size. "
+                        "Enable only when you need to inspect exact AST change structure."
+                    ),
+                    "default": False,
+                },
+                "hunk_cap": {
+                    "type": "integer",
+                    "description": (
+                        "Maximum number of classification entries to return. "
+                        "Default 50. When the limit is hit, truncated/listed_cap/next_step "
+                        "honesty fields are added to the response."
+                    ),
+                    "default": 50,
                 },
             },
             # Wave 1b (audit edit-10): ``mode`` is resolved at runtime
@@ -186,6 +246,22 @@ class SemanticClassifyTool(BaseMCPTool):
         else:
             verdict = "INFO"
 
+        include_ast_nodes = bool(arguments.get("include_ast_nodes", False))
+        hunk_cap = int(arguments.get("hunk_cap", 50))
+
+        # #528 — build a compact summary list by default; full AST nodes opt-in.
+        # ClassifiedHunk.to_dict() inlines the full ASTDiffHunk which carries
+        # recursive ASTNodeInfo children — up to 267 nodes per hunk on large files.
+        # Strip children (and optionally the entire hunk) unless opted in.
+        all_classifications = class_dict.get("classifications", [])
+        compact_classifications = [
+            _compact_classification(c, include_ast_nodes=include_ast_nodes)
+            for c in all_classifications
+        ]
+
+        truncated = len(compact_classifications) > hunk_cap
+        listed = compact_classifications[:hunk_cap]
+
         # change_count is part of the agent-contract shape: a scalar that
         # downstream tools can branch on without walking the classifications
         # list. Tests pin this name (pain pass 2).
@@ -193,10 +269,24 @@ class SemanticClassifyTool(BaseMCPTool):
             "success": True,
             "file_path": file_path,
             "diff_hunks": len(diff_result.hunks),
-            "change_count": len(class_dict.get("classifications", [])),
+            "change_count": len(all_classifications),
             "verdict": verdict,
-            **class_dict,
+            # Scalar summary fields from SemanticClassification (no bulk lists)
+            "dominant_category": class_dict.get("dominant_category"),
+            "dominant_label": class_dict.get("dominant_label"),
+            "risk_level": class_dict.get("risk_level"),
+            "change_summary": class_dict.get("change_summary"),
+            "category_counts": class_dict.get("category_counts"),
+            "classifications": listed,
         }
+
+        if truncated:
+            response["truncated"] = True
+            response["listed_cap"] = hunk_cap
+            response["next_step"] = (
+                f"Response capped at {hunk_cap} classifications. "
+                f"Use hunk_cap={hunk_cap * 2} to see more, or filter by category."
+            )
 
         return apply_toon_format_to_response(response, output_format)
 
