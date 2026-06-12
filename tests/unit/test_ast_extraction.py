@@ -688,3 +688,127 @@ class TestGoPackageConstants:
         syms = _symbols_for(src, "go")
         consts = sorted(s["name"] for s in syms if s["kind"] == "constant")
         assert consts == ["KindA", "KindB", "Typed"]
+
+
+# ---------------------------------------------------------------------------
+# Issue #613: Rust const/static items indexed as kind="constant"
+# ---------------------------------------------------------------------------
+
+
+_RUST_CONST_SRC = """\
+const MAX: u32 = 10;
+
+static GLOBAL: &str = "x";
+
+static mut COUNTER: i32 = 0;
+
+const lowercase_const: u32 = 4;
+
+mod m {
+    const NESTED: u32 = 1;
+    static NESTED_STATIC: u8 = 2;
+}
+
+fn f() {
+    const LOCAL_CONST: u32 = 9;
+    static LOCAL_STATIC: u32 = 8;
+    let _ = LOCAL_CONST;
+}
+
+struct S;
+
+impl S {
+    const ASSOC: u32 = 5;
+
+    fn m(&self) {
+        const METHOD_CONST: u32 = 1;
+        let _ = METHOD_CONST;
+    }
+}
+
+trait T {
+    const TRAIT_CONST: u32 = 6;
+}
+"""
+
+
+class TestRustConstants:
+    """Issue #613 — Rust const_item/static_item must reach ast_symbol_rows as
+    kind="constant" (ALL names — Rust const/static are language-level
+    constants/globals, the compiler lints non-upper-case ones, so no
+    name-pattern gate; mirrors the Go const reasoning from #615).
+    Function-locals must not appear. Associated consts (impl/trait body) ARE
+    captured: unlike Python class attributes (mutable state, excluded by
+    #612), a Rust associated const is a compiler-enforced constant
+    referenceable as ``Type::CONST`` — the ``enclosed`` mechanism captures
+    them naturally because impl/trait bodies are not function scopes."""
+
+    def _constants(self) -> dict[str, dict]:
+        syms = _symbols_for(_RUST_CONST_SRC, "rust")
+        return {s["name"]: s for s in syms if s["kind"] == "constant"}
+
+    def test_exactly_the_eight_constants_extracted(self):
+        consts = self._constants()
+        assert sorted(consts) == [
+            "ASSOC",
+            "COUNTER",
+            "GLOBAL",
+            "MAX",
+            "NESTED",
+            "NESTED_STATIC",
+            "TRAIT_CONST",
+            "lowercase_const",
+        ]
+
+    def test_module_scope_const_and_static_lines_pinned(self):
+        consts = self._constants()
+        assert consts["MAX"]["line"] == 1
+        assert consts["MAX"]["end_line"] == 1
+        assert consts["GLOBAL"]["line"] == 3
+        assert consts["GLOBAL"]["end_line"] == 3
+        assert all(c["language"] == "rust" for c in consts.values())
+
+    def test_static_mut_captured(self):
+        # `static mut` is still a crate-level global the compiler names in
+        # SCREAMING_SNAKE; mirroring Go consts, no mutability gate.
+        assert self._constants()["COUNTER"]["line"] == 5
+
+    def test_lowercase_const_included_no_pattern_gate(self):
+        # Rust const/static are constants by definition — rustc lints
+        # non_upper_case_globals, so a name-pattern gate adds nothing.
+        assert "lowercase_const" in self._constants()
+
+    def test_mod_nested_const_and_static_captured(self):
+        # mod bodies are declaration_list (module scope), consistent with
+        # the #596 mod-container treatment — NESTED/NESTED_STATIC count.
+        consts = self._constants()
+        assert consts["NESTED"]["line"] == 10
+        assert consts["NESTED_STATIC"]["line"] == 11
+
+    def test_function_local_const_and_static_excluded(self):
+        consts = self._constants()
+        assert "LOCAL_CONST" not in consts
+        assert "LOCAL_STATIC" not in consts
+        assert "METHOD_CONST" not in consts
+
+    def test_associated_consts_captured_decision_pinned(self):
+        # Decision (#613): associated consts in impl/trait bodies ARE
+        # captured — compiler-enforced constants addressable as S::ASSOC /
+        # T::TRAIT_CONST, not mutable attributes.
+        consts = self._constants()
+        assert consts["ASSOC"]["line"] == 23
+        assert consts["TRAIT_CONST"]["line"] == 32
+
+    def test_closure_local_const_excluded(self):
+        src = (
+            "fn outer() {\n"
+            "    let c = |x: i32| {\n"
+            "        const CLOSURE_CONST: i32 = 1;\n"
+            "        x + CLOSURE_CONST\n"
+            "    };\n"
+            "    let _ = c;\n"
+            "}\n"
+        )
+        syms = _symbols_for(src, "rust")
+        consts = sorted(s["name"] for s in syms if s["kind"] == "constant")
+        assert consts == []
