@@ -382,11 +382,8 @@ def _handle_check_scale(
         return 1
 
 
-def _handle_outline(
-    args: Any,
-    context: SpecialCommandContext,
-) -> int | None:
-    """Run GetCodeOutlineTool for a single file (``--outline FILE``)."""
+def _resolve_outline_file(args: Any, context: SpecialCommandContext) -> Any:
+    """Resolve --outline's file path; returns None (skip), str, or int(1)."""
     file_path = getattr(args, "outline", None)
     if not file_path:
         return None
@@ -404,6 +401,19 @@ def _handle_outline(
                 "--outline requires a FILE path (flag value or positional)",
             )
             return 1
+    return file_path
+
+
+def _handle_outline(
+    args: Any,
+    context: SpecialCommandContext,
+) -> int | None:
+    """Run GetCodeOutlineTool for a single file (``--outline FILE``)."""
+    file_path = _resolve_outline_file(args, context)
+    if file_path is None:
+        return None
+    if file_path == 1:
+        return 1
 
     try:
         from tree_sitter_analyzer.mcp.tools.get_code_outline_tool import (
