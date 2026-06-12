@@ -35,7 +35,7 @@ def indexed_project(tmp_path):
 
     cache = ASTCache(str(project))
     result = cache.index_project()
-    assert result["indexed"] >= 2, f"Expected ≥2 indexed files, got {result}"
+    assert result["indexed"] == 3, f"Expected 3 indexed files, got {result}"
     cache.close()
     return project
 
@@ -59,8 +59,8 @@ class TestSitemapTool:
         result = await tool.execute({"mode": "full", "output_format": "json"})
         assert result["success"] is True
         assert result["verdict"] == "INFO"
-        assert result["file_count"] >= 2
-        assert result["total_symbols"] > 0
+        assert result["file_count"] == 3
+        assert result["total_symbols"] == 7
         sitemap = result["sitemap"]
         assert "app" in sitemap
 
@@ -81,7 +81,7 @@ class TestSitemapTool:
         result = await tool.execute({"mode": "module", "output_format": "json"})
         assert result["success"] is True
         modules = result["modules"]
-        assert len(modules) >= 1
+        assert len(modules) == 1
         mod_names = [m["directory"] for m in modules]
         assert any("app" in m for m in mod_names)
 
@@ -91,7 +91,7 @@ class TestSitemapTool:
         result = await tool.execute({"mode": "flat", "output_format": "json"})
         assert result["success"] is True
         counts = result["counts"]
-        assert counts.get("function", 0) > 0
+        assert counts.get("function", 0) == 3
 
     @pytest.mark.asyncio
     async def test_language_filter(self, indexed_project):
@@ -109,7 +109,7 @@ class TestSitemapTool:
             {"mode": "flat", "directory": "app", "output_format": "json"}
         )
         assert result["success"] is True
-        assert result["file_count"] >= 1
+        assert result["file_count"] == 3
 
     @pytest.mark.asyncio
     async def test_empty_cache(self, tmp_path):
@@ -156,7 +156,7 @@ def large_indexed_project(tmp_path):
 
     cache = ASTCache(str(project))
     result = cache.index_project()
-    assert result["indexed"] >= 60, f"Expected ≥60 indexed files, got {result}"
+    assert result["indexed"] == 61, f"Expected 61 indexed files, got {result}"
     cache.close()
     return project
 
@@ -192,7 +192,7 @@ class TestSitemapOutputBudget:
         assert result["truncated"] is True
         assert "max_symbols" in result["truncation_note"]
         # counts still report the true (untruncated) totals.
-        assert result["counts"].get("function", 0) >= 600
+        assert result["counts"].get("function", 0) == 600
 
     @pytest.mark.asyncio
     async def test_api_mode_capped_by_default(self, large_indexed_project):
@@ -205,7 +205,7 @@ class TestSitemapOutputBudget:
         assert result["truncated"] is True
         assert "max_symbols" in result["truncation_note"]
         # The scalar counts reflect the true totals, not the truncated list.
-        assert result["public_function_count"] >= 600
+        assert result["public_function_count"] == 600
 
     @pytest.mark.asyncio
     async def test_max_symbols_param_expands_list(self, large_indexed_project):
@@ -219,7 +219,7 @@ class TestSitemapOutputBudget:
             }
         )
         emitted = sum(len(v) for v in result["symbols_by_kind"].values())
-        assert emitted >= 600, f"expected ≥600 with max_symbols=1000, got {emitted}"
+        assert emitted == 600, f"expected 600 with max_symbols=1000, got {emitted}"
         assert result["truncated"] is False
 
     @pytest.mark.asyncio
@@ -281,7 +281,7 @@ class TestSitemapCLI:
         result = self._run_cli(indexed_project, monkeypatch, "flat")
         assert result["success"] is True
         assert result["file_count"] == 3
-        assert result["counts"].get("function", 0) > 0
+        assert result["counts"].get("function", 0) == 3
 
     def test_cli_api_mode(self, indexed_project, monkeypatch):
         result = self._run_cli(indexed_project, monkeypatch, "api")
