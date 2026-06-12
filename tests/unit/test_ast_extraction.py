@@ -812,3 +812,28 @@ class TestRustConstants:
         syms = _symbols_for(src, "rust")
         consts = sorted(s["name"] for s in syms if s["kind"] == "constant")
         assert consts == []
+
+
+class TestRustConstantsCodexP2s:
+    """Codex P2s on #618: block-local nested consts and anonymous const _."""
+
+    def _constant_names(self, src: str) -> list[str]:
+        syms = _symbols_for(src, "rust")
+        return [s["name"] for s in syms if s["kind"] == "constant"]
+
+    def test_const_initializer_block_inner_const_excluded(self):
+        src = "const OUTER: i32 = { const INNER: i32 = 1; INNER };\n"
+        assert self._constant_names(src) == ["OUTER"]
+
+    def test_anonymous_const_skipped(self):
+        src = "const _: usize = 1;\nconst REAL: usize = 2;\n"
+        assert self._constant_names(src) == ["REAL"]
+
+    def test_python_if_wrapped_module_constant_still_captured(self):
+        """Guard the #612 guarantee the language-gated scope sets protect:
+        Python if-wrapped module constants stay captured even though Rust's
+        scope set now contains "block"."""
+        src = "import sys\nif sys.platform == 'win32':\n    SEP = chr(92)\n"
+        syms = _symbols_for(src, "python")
+        names = [s["name"] for s in syms if s["kind"] == "constant"]
+        assert names == ["SEP"]

@@ -289,7 +289,7 @@ _RUST_CONST_LIKE = frozenset({"const_item", "static_item"})
 # _PY_SCOPE_BODY_NODES / _GO_SCOPE_BODY_NODES, feeding the same top-down
 # ``enclosed`` flag). mod/impl/trait bodies are ``declaration_list`` — module
 # scope — and deliberately absent.
-_RUST_SCOPE_BODY_NODES = frozenset({"function_item", "closure_expression"})
+_RUST_SCOPE_BODY_NODES = frozenset({"function_item", "closure_expression", "block"})
 
 
 def _python_module_constant(node: Any, source: str) -> dict[str, Any] | None:
@@ -705,6 +705,9 @@ def _walk_for_symbols(
         and language == "rust"
         and not enclosed
         and name_node is not None
+        # `const _: usize = ...;` compile-time assertions: `_` is not a
+        # referenceable symbol (Codex P2 on #618; mirrors the Go blank rule)
+        and _node_text(name_node, source) != "_"
     ):
         symbols.append(
             {
@@ -715,11 +718,14 @@ def _walk_for_symbols(
                 "language": "rust",
             }
         )
-    child_enclosed = (
-        enclosed
-        or node_type in _PY_SCOPE_BODY_NODES
-        or node_type in _GO_SCOPE_BODY_NODES
-        or node_type in _RUST_SCOPE_BODY_NODES
+    # Language-gated: Rust needs "block" in its scope set (const-initializer
+    # block expressions, Codex P2 on #618), but Python's if/try bodies are
+    # also "block" nodes — a shared set would break the #612 guarantee that
+    # if/try-wrapped module assignments stay captured.
+    child_enclosed = enclosed or (
+        (language == "python" and node_type in _PY_SCOPE_BODY_NODES)
+        or (language == "go" and node_type in _GO_SCOPE_BODY_NODES)
+        or (language == "rust" and node_type in _RUST_SCOPE_BODY_NODES)
     )
     for child in node.children:
         _walk_for_symbols(child, source, symbols, language, depth + 1, child_enclosed)
