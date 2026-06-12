@@ -341,5 +341,47 @@ def test_schema_includes_action_and_union_params() -> None:
     assert action_enum == _ALL_ACTIONS
 
 
+# ---------------------------------------------------------------------------
+# Issue #540 — Leg 1: journal facade-doc drift
+# The description must use the REAL inner param names: mode, title, rationale,
+# query, verdict_filter — NOT the stale placeholders 'operation' or 'entry'.
+# ---------------------------------------------------------------------------
+
+
+def test_journal_description_uses_real_param_names() -> None:
+    """project facade journal description must reference real inner params."""
+    facade = build_project_facade(project_root=None)
+    defn = facade.get_tool_definition()
+    description = defn["description"]
+    assert "action=journal" in description, (
+        "action=journal entry missing from description"
+    )
+
+    # Extract the journal line to scope assertions to that section only
+    journal_line = next(
+        (line for line in description.splitlines() if "action=journal" in line), ""
+    )
+
+    # Real params that DecisionJournalTool actually accepts
+    assert "mode" in journal_line, (
+        f"journal description must mention 'mode' (the real inner param). "
+        f"Got journal line: {journal_line!r}"
+    )
+    assert "rationale" in journal_line, (
+        f"journal description must mention 'rationale' (real inner param). "
+        f"Got journal line: {journal_line!r}"
+    )
+    # Stale placeholders that the inner does NOT accept
+    assert "operation" not in journal_line, (
+        f"journal description must NOT mention 'operation' — the inner rejects it "
+        f"(real param is 'mode'). Got journal line: {journal_line!r}"
+    )
+    assert "entry" not in journal_line, (
+        f"journal description must NOT mention 'entry' — the inner rejects it "
+        f"(real params are title+rationale+verdict for record mode). "
+        f"Got journal line: {journal_line!r}"
+    )
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-q"]))

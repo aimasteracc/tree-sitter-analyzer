@@ -377,3 +377,38 @@ async def test_ready_zero_matches_reports_indexed_file_count() -> None:
     next_step = result["agent_summary"]["next_step"]
     assert "indexed file(s)" in next_step
     assert "run index action=auto to complete the index" in next_step
+
+
+# ─── Issue #540 — Leg 3: selector echo cap ────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_selector_echo_capped_at_200_chars() -> None:
+    """A 16 KB selector must be echoed back truncated to ≤ ~250 chars."""
+    tool = _tool()
+    long_selector = ".function" + ("x" * 16000)  # 16009 chars total
+    result = await tool.execute({"selector": long_selector, "output_format": "json"})
+    # selector processing is unchanged — only the echo is capped
+    echoed = result["selector"]
+    assert len(echoed) <= 250, (
+        f"Echoed selector length {len(echoed)} exceeds 250-char cap"
+    )
+    # The ellipsis marker must be present so the agent knows it was truncated
+    assert "…" in echoed or "..." in echoed, (
+        "Truncated selector echo must contain an ellipsis marker"
+    )
+    # The total length must be reported in the echo
+    assert "chars total" in echoed, (
+        "Truncated selector echo must include total char count"
+    )
+
+
+@pytest.mark.asyncio
+async def test_short_selector_not_truncated() -> None:
+    """A short selector (≤ 200 chars) must be echoed verbatim."""
+    tool = _tool()
+    short_selector = ".method:calls(#UserRepo)"
+    result = await tool.execute({"selector": short_selector, "output_format": "json"})
+    assert result["selector"] == short_selector, (
+        "Short selector must be echoed verbatim (no truncation)"
+    )

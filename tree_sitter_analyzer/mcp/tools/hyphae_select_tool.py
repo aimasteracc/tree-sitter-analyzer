@@ -166,9 +166,17 @@ class HyphaeSelectTool(BaseMCPTool):
             )
             verdict = "INFO"
 
+        _SELECTOR_ECHO_CAP = 200
+        if len(selector) > _SELECTOR_ECHO_CAP:
+            selector_echo = (
+                selector[:_SELECTOR_ECHO_CAP] + f"… ({len(selector)} chars total)"
+            )
+        else:
+            selector_echo = selector
+
         result: dict[str, Any] = {
             "success": True,
-            "selector": selector,
+            "selector": selector_echo,
             "count": len(symbols),
             "total_matches": total_matches,
             "truncated": truncated,
