@@ -2,6 +2,7 @@
 """Core CLI tests — advanced options, summary, structure, table formatting."""
 
 import contextlib
+import json
 import sys
 from io import StringIO
 from pathlib import Path
@@ -36,7 +37,17 @@ class TestCLIAdvancedOptions:
             main()
 
         output = mock_stdout.getvalue()
-        assert len(output) > 0
+        data = json.loads(output)
+        assert data["success"] is True
+        assert data["language"] == "java"
+        assert data["line_count"] == 25
+        assert data["class_count"] == 1
+        assert data["method_count"] == 2
+        assert data["field_count"] == 1
+        assert data["import_count"] == 1
+        assert (
+            data["element_count"] == 6
+        )  # 2 methods + class + field + import + package
 
     def test_advanced_option_text_output(self, monkeypatch, sample_java_file):
         """Test --advanced option with text output"""
@@ -61,7 +72,8 @@ class TestCLIAdvancedOptions:
             main()
 
         output = mock_stdout.getvalue()
-        assert len(output) > 0
+        assert "--- Advanced Analysis Results ---" in output
+        assert "Lines: 25" in output
 
         # Verify specific content - should show correct element counts
         assert "Classes: 1" in output
@@ -186,7 +198,15 @@ class TestCLIAdvancedOptions:
             main()
 
         output = mock_stdout.getvalue()
-        assert len(output) > 0
+        data = json.loads(output)
+        assert data["success"] is True
+        assert data["line_count"] == 25
+        assert data["class_count"] == 1
+        assert data["method_count"] == 2
+        assert data["field_count"] == 1
+        assert data["import_count"] == 1
+        assert data["element_count"] == 6
+        assert data["node_count"] == 76  # tree-sitter-java 0.23.5
 
     def test_statistics_option_json(self, monkeypatch, sample_java_file):
         """Test --statistics option with JSON output"""
@@ -212,7 +232,15 @@ class TestCLIAdvancedOptions:
             main()
 
         output = mock_stdout.getvalue()
-        assert len(output) > 0
+        data = json.loads(output)
+        assert data["success"] is True
+        assert data["line_count"] == 25
+        assert data["class_count"] == 1
+        assert data["method_count"] == 2
+        assert data["field_count"] == 1
+        assert data["import_count"] == 1
+        assert data["element_count"] == 6
+        assert data["node_count"] == 76  # tree-sitter-java 0.23.5
 
 
 class TestCLISummaryOption:
@@ -234,7 +262,17 @@ class TestCLISummaryOption:
             main()
 
         output = mock_stdout.getvalue()
-        assert len(output) > 0
+        data = json.loads(output)
+        assert data["success"] is True
+        assert [c["name"] for c in data["summary"]["classes"]] == ["TestClass"]
+        assert [m["name"] for m in data["summary"]["methods"]] == [
+            "TestClass",
+            "getField1",
+        ]
+        assert (
+            "classes=1 methods=2 fields=0 imports=0 types=classes,methods"
+            in data["summary_line"]
+        )
 
     def test_summary_option_specific_types(self, monkeypatch, sample_java_file):
         """Test --summary option with specific types"""
@@ -258,7 +296,18 @@ class TestCLISummaryOption:
             main()
 
         output = mock_stdout.getvalue()
-        assert len(output) > 0
+        data = json.loads(output)
+        assert data["success"] is True
+        assert [c["name"] for c in data["summary"]["classes"]] == ["TestClass"]
+        assert [m["name"] for m in data["summary"]["methods"]] == [
+            "TestClass",
+            "getField1",
+        ]
+        assert [f["name"] for f in data["summary"]["fields"]] == ["field1"]
+        assert (
+            "classes=1 methods=2 fields=1 imports=0 types=classes,methods,fields"
+            in data["summary_line"]
+        )
 
     def test_summary_option_json(self, monkeypatch, sample_java_file):
         """Test --summary option with JSON output"""
@@ -283,7 +332,17 @@ class TestCLISummaryOption:
             main()
 
         output = mock_stdout.getvalue()
-        assert len(output) > 0
+        data = json.loads(output)
+        assert data["success"] is True
+        assert [c["name"] for c in data["summary"]["classes"]] == ["TestClass"]
+        assert [m["name"] for m in data["summary"]["methods"]] == [
+            "TestClass",
+            "getField1",
+        ]
+        assert (
+            "classes=1 methods=2 fields=0 imports=0 types=classes,methods"
+            in data["summary_line"]
+        )
 
     def test_summary_option_analysis_failure(self, monkeypatch, sample_java_file):
         """Test --summary option when analysis fails"""
@@ -351,7 +410,16 @@ class TestCLIStructureOption:
             main()
 
         output = mock_stdout.getvalue()
-        assert len(output) > 0
+        data = json.loads(output)
+        assert data["success"] is True
+        assert data["statistics"] == {
+            "class_count": 1,
+            "method_count": 2,
+            "field_count": 1,
+            "import_count": 1,
+            "total_lines": 25,
+            "annotation_count": 0,
+        }
 
     def test_structure_option_text(self, monkeypatch, sample_java_file):
         """Test --structure option with text output"""
@@ -376,7 +444,14 @@ class TestCLIStructureOption:
             main()
 
         output = mock_stdout.getvalue()
-        assert len(output) > 0
+        assert "--- Structure Analysis Results ---" in output
+        assert "Package: com.example.test" in output
+        assert "Classes: 1" in output
+        assert "Methods: 2" in output
+        assert "Fields: 1" in output
+        assert "Imports: 1" in output
+        assert "Total lines: 25" in output
+        assert "- getField1" in output
 
     def test_structure_option_analysis_failure(self, monkeypatch, sample_java_file):
         """Test --structure option when analysis fails"""
@@ -416,5 +491,3 @@ class TestCLIStructureOption:
 
             error_output = mock_stderr.getvalue()
             assert "Analysis failed" in error_output
-
-
