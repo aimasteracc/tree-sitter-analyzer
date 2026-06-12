@@ -27,8 +27,8 @@ def test_function_multiple_parameters(extractor):
     tree = _parse(code)
     funcs = extractor.extract_functions(tree, code)
     add_funcs = [f for f in funcs if f.name == "add"]
-    assert len(add_funcs) >= 1
-    assert len(add_funcs[0].parameters) >= 2
+    assert len(add_funcs) == 1
+    assert len(add_funcs[0].parameters) == 3
 
 
 # --- Variadic parameter ---
@@ -37,7 +37,7 @@ def test_variadic_function(extractor):
     tree = _parse(code)
     funcs = extractor.extract_functions(tree, code)
     printf_funcs = [f for f in funcs if f.name == "printf"]
-    assert len(printf_funcs) >= 1
+    assert len(printf_funcs) == 1
 
 
 # --- Full qualified name with namespace ---
@@ -48,7 +48,7 @@ def test_qualified_name_with_namespace(extractor):
     tree = _parse(code)
     classes = extractor.extract_classes(tree, code)
     color_classes = [c for c in classes if c.name == "Color"]
-    assert len(color_classes) >= 1
+    assert len(color_classes) == 1
     cc = color_classes[0]
     assert (
         cc.full_qualified_name == "gfx::Color"
@@ -63,7 +63,7 @@ def test_deleted_method(extractor):
     tree = _parse(code)
     funcs = extractor.extract_functions(tree, code)
     nc_funcs = [f for f in funcs if f.name and "NonCopy" in f.name]
-    assert len(nc_funcs) >= 1
+    assert len(nc_funcs) == 1
 
 
 # --- Defaulted method (= default) ---
@@ -73,7 +73,7 @@ def test_defaulted_method(extractor):
     funcs = extractor.extract_functions(tree, code)
     assert isinstance(funcs, list)
     defaults_funcs = [f for f in funcs if f.name and "Defaults" in f.name]
-    assert len(defaults_funcs) >= 1
+    assert len(defaults_funcs) == 1
     # default modifier is extracted via field_declaration path
 
 
@@ -83,7 +83,7 @@ def test_protected_access_specifier(extractor):
     tree = _parse(code)
     funcs = extractor.extract_functions(tree, code)
     thing_funcs = [f for f in funcs if f.name == "do_thing"]
-    assert len(thing_funcs) >= 1
+    assert len(thing_funcs) == 1
     assert thing_funcs[0].visibility == "protected"
 
 
@@ -123,7 +123,7 @@ def test_field_init_declarator_identifier(extractor):
     tree = _parse(code)
     variables = extractor.extract_variables(tree, code)
     val_vars = [v for v in variables if v.name == "val"]
-    assert len(val_vars) >= 1
+    assert len(val_vars) == 1
     assert val_vars[0].variable_type == "int"
 
 
@@ -142,7 +142,7 @@ def test_virtual_const_function(extractor):
     tree = _parse(code)
     funcs = extractor.extract_functions(tree, code)
     area_funcs = [f for f in funcs if f.name == "area"]
-    assert len(area_funcs) >= 1
+    assert len(area_funcs) == 1
     assert "virtual" in (area_funcs[0].modifiers or [])
     assert "pure_virtual" in (area_funcs[0].modifiers or [])
 
@@ -153,8 +153,8 @@ def test_for_range_complexity(extractor):
     tree = _parse(code)
     funcs = extractor.extract_functions(tree, code)
     sum_funcs = [f for f in funcs if f.name == "sum_items"]
-    assert len(sum_funcs) >= 1
-    assert sum_funcs[0].complexity_score > 1
+    assert len(sum_funcs) == 1
+    assert sum_funcs[0].complexity_score == 2
 
 
 # --- Switch statement complexity ---
@@ -163,8 +163,8 @@ def test_switch_complexity(extractor):
     tree = _parse(code)
     funcs = extractor.extract_functions(tree, code)
     grade_funcs = [f for f in funcs if f.name == "grade"]
-    assert len(grade_funcs) >= 1
-    assert grade_funcs[0].complexity_score > 1
+    assert len(grade_funcs) == 1
+    assert grade_funcs[0].complexity_score == 5
 
 
 # --- Catch clause complexity ---
@@ -175,8 +175,8 @@ def test_try_catch_complexity(extractor):
     tree = _parse(code)
     funcs = extractor.extract_functions(tree, code)
     safe_funcs = [f for f in funcs if f.name == "safe_op"]
-    assert len(safe_funcs) >= 1
-    assert safe_funcs[0].complexity_score > 1
+    assert len(safe_funcs) == 1
+    assert safe_funcs[0].complexity_score == 2
 
 
 # --- _get_access_specifier with node not in field_declaration_list ---
@@ -237,7 +237,7 @@ def test_count_tree_nodes_with_children(plugin):
     code = "class Foo { int x; void bar() {} };\n"
     tree = _parse(code)
     count = plugin._count_tree_nodes(tree.root_node)
-    assert count > 5
+    assert count == 22
 
 
 # --- Extract with doxygen comment on class ---
@@ -246,7 +246,7 @@ def test_doxygen_comment_on_class(extractor):
     tree = _parse(code)
     classes = extractor.extract_classes(tree, code)
     dc = [c for c in classes if c.name == "DocClass"]
-    assert len(dc) >= 1
+    assert len(dc) == 1
     assert dc[0].docstring is not None
     assert "documented" in dc[0].docstring
 
@@ -256,7 +256,7 @@ def test_namespace_identifier_node(extractor):
     code = "namespace my_lib { int val = 42; }\n"
     tree = _parse(code)
     packages = extractor.extract_packages(tree, code)
-    assert len(packages) >= 1
+    assert len(packages) == 1
     assert packages[0].name == "my_lib"
 
 
@@ -273,7 +273,7 @@ def test_deeply_nested_blocks(extractor):
     tree = _parse(code)
     funcs = extractor.extract_functions(tree, code)
     main_funcs = [f for f in funcs if f.name == "main"]
-    assert len(main_funcs) >= 1
+    assert len(main_funcs) == 1
 
 
 # --- Static field declaration ---
@@ -282,7 +282,7 @@ def test_static_field_declaration(extractor):
     tree = _parse(code)
     variables = extractor.extract_variables(tree, code)
     count_vars = [v for v in variables if v.name == "count"]
-    assert len(count_vars) >= 1
+    assert len(count_vars) == 1
     assert count_vars[0].is_static is True
 
 
@@ -295,7 +295,8 @@ def test_lambda_expression(extractor):
     lambda_funcs = [
         f for f in funcs if f.name is not None and "operator" in (f.name or "")
     ]
-    assert len(lambda_funcs) >= 0  # Just exercise the extractor path
+    # extraction gap: lambda expressions are not extracted as named functions; operator() not emitted
+    assert len(lambda_funcs) == 0
 
 
 # --- Include fallback regex extraction ---
@@ -303,7 +304,7 @@ def test_include_fallback_regex_direct(extractor):
     """Test _extract_includes_fallback with system and local includes."""
     code = '#include <iostream>\n#include "myheader.h"\n'
     imports = extractor._extract_includes_fallback(code)
-    assert len(imports) >= 2
+    assert len(imports) == 2
     names = [i.name for i in imports]
     assert "iostream" in names
     assert "myheader.h" in names
@@ -313,7 +314,7 @@ def test_include_fallback_regex_direct(extractor):
 def test_include_fallback_system_only(extractor):
     code = "#include <vector>\n#include <string>\n"
     imports = extractor._extract_includes_fallback(code)
-    assert len(imports) >= 2
+    assert len(imports) == 2
     names = [i.name for i in imports]
     assert "vector" in names
     assert "string" in names
@@ -339,7 +340,7 @@ async def test_analyze_file_cpp(plugin, tmp_path):
     result = await plugin.analyze_file(str(cpp_file), SimpleNamespace())
     assert result is not None
     assert result.language == "cpp"
-    assert result.line_count > 0
+    assert result.line_count == 8
 
 
 # --- Include fallback triggered when tree-sitter misses includes ---
@@ -351,7 +352,7 @@ def test_extract_imports_fallback_path(extractor):
     # We need to ensure the extraction path exercises the code.
     imports = extractor.extract_imports(tree, code)
     # Just verify imports are extracted (either via tree-sitter or regex)
-    assert len(imports) >= 1
+    assert len(imports) == 1
 
 
 # --- _extract_function_optimized error handling ---
