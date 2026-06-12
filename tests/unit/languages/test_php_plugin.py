@@ -831,3 +831,57 @@ class TestPHPMethodNameClean:
         user_method_names = {f.name for f in user_methods}
         assert "__construct" in user_method_names
         assert "createUser" in user_method_names
+
+
+class _PhpStubNode:
+    """Minimal tree-sitter node stand-in (explicit parent, no auto-chains)."""
+
+    def __init__(self, type_, children=(), fields=None, parent=None):
+        self.type = type_
+        self.children = list(children)
+        self._fields = fields or {}
+        self.parent = parent
+        self.start_point = (0, 0)
+        self.end_point = (0, 0)
+
+    def child_by_field_name(self, name):
+        return self._fields.get(name)
+
+
+class TestPhpUseClauseGuards:
+    """Cover the defensive directions codecov flagged on #619: nameless
+    clauses return None and are dropped by both extraction loops; the
+    field fast-path is honored when a grammar provides it."""
+
+    @staticmethod
+    def _helpers():
+        from tree_sitter_analyzer.languages import php_helpers
+
+        return php_helpers
+
+    def test_nameless_clause_returns_none(self):
+        h = self._helpers()
+        clause = _PhpStubNode("namespace_use_clause", children=[])
+        assert h._build_use_clause_import(clause, clause, lambda n: "x") is None
+
+    def test_name_field_fast_path_used(self):
+        h = self._helpers()
+        name = _PhpStubNode("qualified_name")
+        clause = _PhpStubNode("namespace_use_clause", fields={"name": name})
+        imp = h._build_use_clause_import(clause, clause, lambda n: "App\\X")
+        assert imp is not None
+        assert imp.name == "App\\X"
+
+    def test_nameless_clause_dropped_by_simple_loop(self):
+        h = self._helpers()
+        clause = _PhpStubNode("namespace_use_clause", children=[])
+        decl = _PhpStubNode("namespace_use_declaration", children=[clause])
+        assert h.extract_use_statement(decl, lambda n: "x") == []
+
+    def test_nameless_clause_dropped_by_group_loop(self):
+        h = self._helpers()
+        clause = _PhpStubNode("namespace_use_clause", children=[])
+        group = _PhpStubNode("namespace_use_group", children=[clause])
+        prefix = _PhpStubNode("namespace_name")
+        decl = _PhpStubNode("namespace_use_declaration", children=[prefix, group])
+        assert h.extract_use_statement(decl, lambda n: "p") == []
