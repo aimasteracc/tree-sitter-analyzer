@@ -123,16 +123,21 @@ class ASTDiffTool(BaseMCPTool):
 
         Issue #529 (schema honesty / mode inference):
         - Explicit ``mode`` always wins.
-        - old_ref or new_ref present → diff_git
-        - old_source and new_source present → diff_strings
-        - old_file or new_file present → diff_files
+        - old_source/new_source present → diff_strings
+        - old_file/new_file present → diff_files
+        - old_ref/new_ref + file_path → diff_git
         - None of the above → returns empty string (validate_arguments will raise)
+
+        Source/file signatures are checked BEFORE refs because callers that
+        materialize schema defaults (the CLI bridge fills old_ref/new_ref
+        with HEAD~1/HEAD) carry ref fields on every call — refs alone must
+        not steal the inference from an explicit string/file diff. The git
+        signature additionally requires its file_path discriminator
+        (Codex P2 on #551).
         """
         mode = arguments.get("mode")
         if mode:
             return str(mode)
-        if arguments.get("old_ref") or arguments.get("new_ref"):
-            return "diff_git"
         if (
             arguments.get("old_source") is not None
             or arguments.get("new_source") is not None
@@ -140,6 +145,10 @@ class ASTDiffTool(BaseMCPTool):
             return "diff_strings"
         if arguments.get("old_file") or arguments.get("new_file"):
             return "diff_files"
+        if (arguments.get("old_ref") or arguments.get("new_ref")) and arguments.get(
+            "file_path"
+        ):
+            return "diff_git"
         return ""
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:

@@ -215,6 +215,26 @@ class TestASTDiffModeInference:
         result = tool._resolve_mode({"old_file": "/a.py", "new_file": "/b.py"})
         assert result == "diff_files"
 
+    def test_default_refs_do_not_steal_string_diff(self, tool):
+        # Codex P2 on #551: the CLI bridge materializes old_ref/new_ref
+        # defaults on EVERY call — sources must win over bare ref fields.
+        result = tool._resolve_mode(
+            {
+                "old_source": "def f(): pass",
+                "new_source": "def g(): pass",
+                "language": "python",
+                "old_ref": "HEAD~1",
+                "new_ref": "HEAD",
+            }
+        )
+        assert result == "diff_strings"
+
+    def test_refs_without_file_path_do_not_infer_git(self, tool):
+        # The git signature requires its file_path discriminator; bare
+        # default refs match nothing (validate raises the enumerating error).
+        result = tool._resolve_mode({"old_ref": "HEAD~1", "new_ref": "HEAD"})
+        assert result == ""
+
     def test_explicit_mode_wins_over_inference(self, tool):
         # Explicit mode always wins — even if old_source/new_source present,
         # explicit mode=diff_files is honored
