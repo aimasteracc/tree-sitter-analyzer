@@ -22,16 +22,23 @@ from ..query_loader import query_loader
 from .output_format import wants_json_output as _wants_json_output  # noqa: F401
 
 
-def _grammar_installed(language: str) -> bool:
-    """Probe grammar module availability without importing it."""
+def _grammar_install_state(language: str) -> tuple[bool, str | None]:
+    """Probe grammar availability without importing it.
+
+    Returns ``(installed, hint)``. Languages with no loader mapping at all
+    (e.g. ``json``) are reported NOT installed — the parser surface rejects
+    them (``Unsupported language``), so claiming ``installed: true`` would
+    be the same false advertising this command is being fixed for
+    (Codex P2 on #559).
+    """
     from ..language_loader import LanguageLoader
 
     module_name = LanguageLoader.LANGUAGE_MODULES.get(language)
     if module_name is None:
-        # Languages without a grammar module (e.g. json uses its own plugin path)
-        # are treated as installed (they won't raise a ModuleNotFoundError).
-        return True
-    return importlib.util.find_spec(module_name) is not None
+        return False, "no grammar loader mapping — parser surface unavailable"
+    if importlib.util.find_spec(module_name) is not None:
+        return True, None
+    return False, grammar_install_hint(language)
 
 
 class InfoCommand(ABC):
@@ -318,42 +325,51 @@ class ShowLanguagesCommand(InfoCommand):
     """Command to show supported languages."""
 
     def execute(self) -> int:
-        languages_info = []
-        for language in detector.get_supported_languages():
-            info = detector.get_language_info(language)
-            installed = _grammar_installed(language)
-            entry: dict = {
-                "language": language,
-                "extensions": list(info["extensions"]),
-                "installed": installed,
-            }
-            if not installed:
-                hint = grammar_install_hint(language)
-                if hint:
-                    entry["install_hint"] = hint
-            languages_info.append(entry)
-
+        languages_info = [
+            self._build_language_entry(language)
+            for language in detector.get_supported_languages()
+        ]
         if _wants_json_output(self.args):
-            summary_line = f"show_supported_languages: {len(languages_info)} languages"
-            output_json(
-                {
-                    "success": True,
-                    "languages": languages_info,
-                    "language_count": len(languages_info),
-                    "summary_line": summary_line,
-                    "verdict": "INFO",
-                    "agent_summary": {
-                        "summary_line": summary_line,
-                        "next_step": (
-                            "Pass --language=<name> + --list-queries to see that "
-                            "language's available query keys."
-                        ),
-                        "verdict": "INFO",
-                    },
-                }
-            )
-            return 0
+            return self._emit_json(languages_info)
+        return self._emit_text(languages_info)
 
+    @staticmethod
+    def _build_language_entry(language: str) -> dict:
+        info = detector.get_language_info(language)
+        installed, hint = _grammar_install_state(language)
+        entry: dict = {
+            "language": language,
+            "extensions": list(info["extensions"]),
+            "installed": installed,
+        }
+        if hint:
+            entry["install_hint"] = hint
+        return entry
+
+    @staticmethod
+    def _emit_json(languages_info: list[dict]) -> int:
+        summary_line = f"show_supported_languages: {len(languages_info)} languages"
+        output_json(
+            {
+                "success": True,
+                "languages": languages_info,
+                "language_count": len(languages_info),
+                "summary_line": summary_line,
+                "verdict": "INFO",
+                "agent_summary": {
+                    "summary_line": summary_line,
+                    "next_step": (
+                        "Pass --language=<name> + --list-queries to see that "
+                        "language's available query keys."
+                    ),
+                    "verdict": "INFO",
+                },
+            }
+        )
+        return 0
+
+    @staticmethod
+    def _emit_text(languages_info: list[dict]) -> int:
         output_list("Supported languages:")
         for entry in languages_info:
             exts = entry["extensions"]

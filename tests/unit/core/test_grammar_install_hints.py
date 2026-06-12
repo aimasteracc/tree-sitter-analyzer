@@ -240,7 +240,16 @@ class TestParserErrorMessageCarriesHint:
         parser._loader = FakeLoader()
         parser._encoding_manager = None  # won't be reached
 
-        result = parser.parse_code("let x = 1", "swift")
+        # Patch the parser-module probe: CI environments install the swift
+        # grammar, so the real importlib probe would take the bare-error
+        # branch there while the hint branch fires locally — pin the seam.
+        from unittest.mock import patch
+
+        with patch(
+            "tree_sitter_analyzer.core.parser.is_grammar_installed",
+            return_value=False,
+        ):
+            result = parser.parse_code("let x = 1", "swift")
         assert result.success is False
         assert result.error_message is not None
         assert "pip install" in result.error_message, (
