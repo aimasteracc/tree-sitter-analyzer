@@ -500,14 +500,15 @@ class TestPHPVariableExtraction:
         extractor = plugin.create_extractor()
         variables = extractor.extract_variables(tree, COMPLEX_CLASS_CODE)
 
-        # Check for any constants or variables
-        # Constant extraction may vary based on tree-sitter-php version
-        assert isinstance(variables, list)
-        # At minimum, properties should be extracted
-        if len(variables) > 0:
-            # Verify we get some class properties
-            var_names = [v.name for v in variables]
-            assert len(var_names) > 0
+        # COMPLEX_CLASS_CODE yields exactly 4 properties (measured with
+        # tree-sitter-php 0.24.1). The MAX_USERS class constant is NOT
+        # extracted — known constant-extraction gap.
+        assert [v.name for v in variables] == [
+            "logger",
+            "repository",
+            "instanceCount",
+            "serviceName",
+        ]
 
     def test_extract_static_property(self):
         """Test extraction of static property."""
@@ -575,10 +576,10 @@ class TestPHPImportExtraction:
         extractor = plugin.create_extractor()
         imports = extractor.extract_imports(tree, SIMPLE_CLASS_CODE)
 
-        # Use statement extraction should return a list
-        assert isinstance(imports, list)
-        # We expect to find some imports
-        assert len(imports) >= 0  # May be 0 if tree-sitter-php doesn't extract them
+        # The PHP extractor does NOT extract `use` statements as imports —
+        # measured 0 with tree-sitter-php 0.24.1 (known extraction gap).
+        # If import extraction is implemented, this must be re-pinned.
+        assert imports == []
 
     def test_extract_aliased_use(self):
         """Test extraction of aliased use statements."""
@@ -587,12 +588,10 @@ class TestPHPImportExtraction:
         extractor = plugin.create_extractor()
         imports = extractor.extract_imports(tree, USE_STATEMENTS_CODE)
 
-        # Check for aliased import
-        next(
-            (i for i in imports if i.alias == "BlogPost" or "BlogPost" in str(i)), None
-        )
-        # May be extracted depending on tree-sitter-php version
-        assert len(imports) >= 0
+        # The PHP extractor does NOT extract `use` statements (incl. aliased
+        # ones) — measured 0 with tree-sitter-php 0.24.1 (known gap).
+        # If import extraction is implemented, this must be re-pinned.
+        assert imports == []
 
     def test_extract_imports_empty_tree(self):
         """Test import extraction with empty code."""
@@ -610,8 +609,11 @@ class TestPHPImportExtraction:
         extractor = plugin.create_extractor()
         imports = extractor.extract_imports(tree, SIMPLE_CLASS_CODE)
 
-        assert all(i.start_line > 0 for i in imports)
-        assert all(i.end_line >= i.start_line for i in imports)
+        # imports is empty (use-statement extraction gap, tree-sitter-php
+        # 0.24.1), so the previous all(...) line-number checks were vacuously
+        # true. Pin the actual result; re-pin real line-number checks once
+        # import extraction lands.
+        assert imports == []
 
 
 class TestPHPNamespaceHandling:
@@ -686,7 +688,10 @@ class TestPHPPluginAnalyzeFile:
         assert result.success is True
         assert result.language == "php"
         assert result.file_path == str(php_file)
-        assert len(result.elements) > 0
+        # SIMPLE_CLASS_CODE yields exactly 6 elements: 1 class (User),
+        # 3 functions (__construct/getName/getAge), 2 variables (name/age)
+        # (measured with tree-sitter-php 0.24.1)
+        assert len(result.elements) == 6
 
 
 class TestPHPIntegration:
@@ -715,10 +720,13 @@ class TestPHPIntegration:
         variables = extractor.extract_variables(tree, COMPLEX_CLASS_CODE)
         imports = extractor.extract_imports(tree, COMPLEX_CLASS_CODE)
 
-        assert len(classes) > 0
-        assert len(functions) > 0
-        assert len(variables) > 0
-        assert isinstance(imports, list)
+        # COMPLEX_CLASS_CODE measured with tree-sitter-php 0.24.1:
+        # 2 classes (BaseService/UserService), 6 functions, 4 properties,
+        # 0 imports (use-statement extraction gap).
+        assert len(classes) == 2
+        assert len(functions) == 6
+        assert len(variables) == 4
+        assert imports == []
 
     def test_node_counting(self):
         """Test node counting functionality."""
@@ -726,7 +734,9 @@ class TestPHPIntegration:
         tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
 
         count = plugin._count_nodes(tree.root_node)
-        assert count > 0
+        # SIMPLE_CLASS_CODE parses to exactly 160 nodes
+        # (measured with tree-sitter-php 0.24.1)
+        assert count == 160
 
 
 class TestPHPMethodNameClean:

@@ -204,7 +204,10 @@ class TestSwiftExtensionExtraction:
             tree, SWIFT_EXTENSIONS_SAMPLE
         )
         ext_classes = [c for c in classes if c.class_type == "extension"]
-        assert len(ext_classes) >= 1
+        # SWIFT_EXTENSIONS_SAMPLE declares exactly 2 extensions: User, Collection
+        # (measured with tree-sitter-swift 0.7.2)
+        assert len(ext_classes) == 2
+        assert {c.name for c in ext_classes} == {"User", "Collection"}
 
     def test_extension_functions(self, plugin: SwiftPlugin) -> None:
         tree = _swift_parser().parse(SWIFT_EXTENSIONS_SAMPLE.encode("utf-8"))
@@ -241,7 +244,10 @@ class TestSwiftEnumExtraction:
         tree = _swift_parser().parse(SWIFT_ENUMS_SAMPLE.encode("utf-8"))
         classes = plugin.create_extractor().extract_classes(tree, SWIFT_ENUMS_SAMPLE)
         enum_types = [c for c in classes if c.class_type == "enum"]
-        assert len(enum_types) >= 1
+        # SWIFT_ENUMS_SAMPLE declares exactly 2 enums: NetworkError, Expr
+        # (measured with tree-sitter-swift 0.7.2)
+        assert len(enum_types) == 2
+        assert {c.name for c in enum_types} == {"NetworkError", "Expr"}
 
     def test_enum_with_interfaces(self, plugin: SwiftPlugin) -> None:
         tree = _swift_parser().parse(SWIFT_ENUMS_SAMPLE.encode("utf-8"))
@@ -315,7 +321,9 @@ class TestSwiftNestedDeclarations:
             tree, SWIFT_NESTED_SAMPLE
         )
         inits = [f for f in functions if f.is_constructor]
-        assert len(inits) >= 1
+        # SWIFT_NESTED_SAMPLE declares exactly 1 init (ViewModel.init)
+        # (measured with tree-sitter-swift 0.7.2)
+        assert len(inits) == 1
 
     def test_private_function(self, plugin: SwiftPlugin) -> None:
         tree = _swift_parser().parse(SWIFT_NESTED_SAMPLE.encode("utf-8"))
@@ -347,7 +355,14 @@ class TestSwiftProtocols:
             tree, SWIFT_PROTOCOLS_SAMPLE
         )
         protocols = [c for c in classes if c.class_type == "protocol"]
-        assert len(protocols) >= 1
+        # SWIFT_PROTOCOLS_SAMPLE declares exactly 3 protocols:
+        # Drawable, Observable, ModernFeature (measured with tree-sitter-swift 0.7.2)
+        assert len(protocols) == 3
+        assert {c.name for c in protocols} == {
+            "Drawable",
+            "Observable",
+            "ModernFeature",
+        }
 
     def test_protocol_properties(self, plugin: SwiftPlugin) -> None:
         tree = _swift_parser().parse(SWIFT_PROTOCOLS_SAMPLE.encode("utf-8"))
@@ -374,8 +389,11 @@ class TestSwiftProtocols:
             tree, SWIFT_PROTOCOLS_SAMPLE
         )
         modern = next((c for c in classes if c.name == "ModernFeature"), None)
-        if modern is not None:
-            assert "Drawable" in modern.interfaces or len(modern.interfaces) >= 1
+        # ModernFeature IS extracted and inherits exactly Drawable
+        # (measured with tree-sitter-swift 0.7.2) — the old `if modern is not
+        # None` guard plus `... or len(...) >= 1` was a near-vacuous check.
+        assert modern is not None
+        assert modern.interfaces == ["Drawable"]
 
 
 @pytest.mark.skipif(
@@ -456,7 +474,9 @@ class TestSwiftPropertyWrappers:
             tree, SWIFT_PROPERTY_WRAPPERS_SAMPLE
         )
         inits = [f for f in functions if f.is_constructor]
-        assert len(inits) >= 1
+        # SWIFT_PROPERTY_WRAPPERS_SAMPLE declares exactly 1 init (Clamped.init)
+        # (measured with tree-sitter-swift 0.7.2)
+        assert len(inits) == 1
 
     def test_property_wrapper_computed(self, plugin: SwiftPlugin) -> None:
         tree = _swift_parser().parse(SWIFT_PROPERTY_WRAPPERS_SAMPLE.encode("utf-8"))
@@ -525,7 +545,9 @@ class TestSwiftModuleLevelFunctions:
         result = _analysis_result("test.swift", "struct Foo {}", tree, elements_dict)
         assert result.file_path == "test.swift"
         assert result.language == "swift"
-        assert result.node_count > 0
+        # "struct Foo {}" parses to exactly 7 nodes
+        # (measured with tree-sitter-swift 0.7.2)
+        assert result.node_count == 7
 
     @pytest.mark.skipif(
         not TREE_SITTER_SWIFT_AVAILABLE,
@@ -545,7 +567,9 @@ class TestSwiftModuleLevelFunctions:
         language = tree_sitter.Language(tree_sitter_swift.language())
         tree = _parse_swift_source(language, "let x = 1")
         count = _count_tree_nodes(tree.root_node)
-        assert count >= 1
+        # "let x = 1" parses to exactly 8 nodes
+        # (measured with tree-sitter-swift 0.7.2)
+        assert count == 8
 
 
 @pytest.mark.skipif(
@@ -562,7 +586,9 @@ class TestSwiftAnalyzerIntegration:
         result = await plugin.analyze_file(str(source), Mock())
         assert result.success is True
         assert result.language == "swift"
-        assert result.node_count > 0
+        # SWIFT_NESTED_SAMPLE parses to exactly 270 nodes
+        # (measured with tree-sitter-swift 0.7.2)
+        assert result.node_count == 270
         element_names = {e.name for e in result.elements}
         assert "ViewModel" in element_names
 
