@@ -512,6 +512,49 @@ class ScalaElementExtractor(ElementExtractor):
         """Extract trait definition (Scala interface/mixin)"""
         return self._extract_class_like(node, "trait")
 
+    def _extract_scala_extends_clause(
+        self, node: tree_sitter.Node
+    ) -> tuple[str | None, list[str]]:
+        """Return ``(superclass, interfaces)`` from a class/object/trait node.
+
+        Issue #562: ``_extract_class_like`` never read ``extends_clause`` so
+        all Scala classes showed empty inheritance.
+
+        Grammar shape (from live AST dump):
+            extends_clause
+              'extends'
+              type_identifier   ← superclass (first one, before any 'with')
+              arguments?        ← constructor args (skipped)
+              'with'
+              type_identifier   ← mixed-in trait
+              ...
+
+        The first ``type_identifier`` child of the clause (with no preceding
+        ``with``) is the superclass.  Each ``type_identifier`` following a
+        ``with`` keyword is a mixed-in trait.
+        """
+        superclass: str | None = None
+        interfaces: list[str] = []
+
+        for child in node.children:
+            if child.type != "extends_clause":
+                continue
+            seen_with = False
+            for sub in child.children:
+                if sub.type in ("extends", "arguments"):
+                    continue
+                if sub.type == "with":
+                    seen_with = True
+                    continue
+                if sub.type == "type_identifier":
+                    if superclass is None and not seen_with:
+                        superclass = self._get_node_text(sub)
+                    else:
+                        interfaces.append(self._get_node_text(sub))
+            break  # at most one extends_clause per declaration
+
+        return superclass, interfaces
+
     def _extract_class_like(self, node: tree_sitter.Node, kind: str) -> Class | None:
         """Generic extraction for class/object/trait.
 
@@ -530,6 +573,9 @@ class ScalaElementExtractor(ElementExtractor):
             # Extract docstring
             docstring = self._extract_docstring(node)
 
+            # Issue #562: read extends_clause to populate superclass / interfaces.
+            superclass, interfaces = self._extract_scala_extends_clause(node)
+
             return Class(
                 name=name,
                 start_line=start_line,
@@ -540,6 +586,8 @@ class ScalaElementExtractor(ElementExtractor):
                 visibility=visibility,
                 package_name=self.current_package,
                 docstring=docstring,
+                superclass=superclass,
+                interfaces=interfaces,
             )
 
         except Exception as e:

@@ -29,6 +29,9 @@ from .kotlin_helpers import (
     extract_kotlin_function as _extract_func_standalone,
 )
 from .kotlin_helpers import (
+    extract_kotlin_primary_constructor as _extract_primary_ctor_standalone,
+)
+from .kotlin_helpers import (
     extract_kotlin_property as _extract_prop_standalone,
 )
 
@@ -56,7 +59,12 @@ class KotlinElementExtractor(ElementExtractor):
 
         self._traverse_and_extract(
             tree.root_node,
-            {"function_declaration": self._extract_function},
+            {
+                "function_declaration": self._extract_function,
+                # Issue #567 scope-B: primary_constructor nodes were not
+                # dispatched — emit them as Function(is_constructor=True).
+                "primary_constructor": self._extract_primary_constructor,
+            },
             functions,
         )
 
@@ -236,6 +244,12 @@ class KotlinElementExtractor(ElementExtractor):
     def _extract_function(self, node: tree_sitter.Node) -> Function | None:
         """Extract function information"""
         return _extract_func_standalone(node, self._get_node_text, self.current_package)
+
+    def _extract_primary_constructor(self, node: tree_sitter.Node) -> Function | None:
+        """Extract primary_constructor as Function(is_constructor=True)."""
+        return _extract_primary_ctor_standalone(
+            node, self._get_node_text, self.current_package
+        )
 
     def _extract_class(self, node: tree_sitter.Node) -> Class | None:
         """Extract class declaration"""

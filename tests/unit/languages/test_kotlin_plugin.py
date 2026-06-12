@@ -515,7 +515,8 @@ object UserFactory {
         classes = extractor.extract_classes(tree, code)
         imports = extractor.extract_imports(tree, code)
 
-        assert len(functions) == 3  # addUser, fetchUsers, createUser
+        # Re-pinned (old=3): User primary_ctor + addUser + fetchUsers + createUser
+        assert len(functions) == 4
         assert len(classes) == 3  # User, UserRepository, UserFactory
         # Import extraction may not be fully implemented
         assert isinstance(imports, list)
