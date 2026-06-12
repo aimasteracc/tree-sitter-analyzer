@@ -207,12 +207,67 @@ _VAR_DECL_LIKE = frozenset(
 # (approved on #610): module-scope simple assignments whose target is
 # const-style (``^_?[A-Z][A-Z0-9_]+$``), annotated (``x: T = ...``), or a
 # dunder (``^__\w+__$``) — emitted as kind="constant".
-_PY_CONST_NAME = re.compile(r"^_?[A-Z][A-Z0-9_]+$")
+# Const-style name pattern, shared by the Python (#610) and Go (#613) rules.
+_CONST_STYLE_NAME = re.compile(r"^_?[A-Z][A-Z0-9_]+$")
 _PY_DUNDER_NAME = re.compile(r"^__\w+__$")
 
 # Node types that open a non-module scope: an ``assignment`` nested under any
 # of these is a class attribute or function local, not a module constant.
 _PY_SCOPE_BODY_NODES = frozenset({"function_definition", "class_definition"})
+
+# Issue #613 — Go package-level constants, same shape as #610. tree-sitter-go
+# puts names on ``const_spec``/``var_spec`` children (repeated ``name`` field);
+# the const_declaration/var_declaration wrappers carry no ``name`` field, so
+# they never produced rows via _VAR_DECL_LIKE.
+_GO_CONST_LIKE = frozenset({"const_declaration", "var_declaration"})
+
+# Nodes that open a function scope in Go: const/var declarations nested under
+# any of these are locals, not package constants (Go analogue of
+# _PY_SCOPE_BODY_NODES, feeding the same top-down ``enclosed`` flag).
+_GO_SCOPE_BODY_NODES = frozenset(
+    {"function_declaration", "method_declaration", "func_literal"}
+)
+
+
+def _go_package_constants(node: Any, source: str) -> list[dict[str, Any]]:
+    """Return kind="constant" symbols for a package-scope Go const/var
+    declaration, or [] when nothing matches the #613 scope rule.
+
+    The caller guarantees package scope (no enclosing function body).
+    Asymmetry (deliberate): every ``const`` spec name is captured — Go consts
+    are constants by definition, the compiler enforces immutability, so no
+    name-pattern gate is needed. A package-level ``var`` is mutable state, so
+    var_spec names count only when const-style (the #612 pattern) — the
+    author signalling a constant by convention (e.g. MAX_RETRIES). The blank
+    identifier ``_`` is skipped — it is not a referenceable name.
+    """
+    require_const_style = node.type == "var_declaration"
+    specs: list[Any] = []
+    for child in node.children:
+        if child.type in ("const_spec", "var_spec"):
+            specs.append(child)
+        elif child.type == "var_spec_list":
+            specs.extend(c for c in child.children if c.type == "var_spec")
+    out: list[dict[str, Any]] = []
+    for spec in specs:
+        for ident in spec.children_by_field_name("name"):
+            if ident.type != "identifier":
+                continue  # separator tokens can appear in the field list
+            name = _node_text(ident, source)
+            if name == "_":
+                continue
+            if require_const_style and not _CONST_STYLE_NAME.match(name):
+                continue
+            out.append(
+                {
+                    "kind": "constant",
+                    "name": name,
+                    "line": spec.start_point[0] + 1,
+                    "end_line": spec.end_point[0] + 1,
+                    "language": "go",
+                }
+            )
+    return out
 
 
 def _python_module_constant(node: Any, source: str) -> dict[str, Any] | None:
@@ -229,7 +284,7 @@ def _python_module_constant(node: Any, source: str) -> dict[str, Any] | None:
         return None  # bare annotation (``x: int``) — not a definition site
     name = _node_text(left, source)
     annotated = node.child_by_field_name("type") is not None
-    if not (annotated or _PY_CONST_NAME.match(name) or _PY_DUNDER_NAME.match(name)):
+    if not (annotated or _CONST_STYLE_NAME.match(name) or _PY_DUNDER_NAME.match(name)):
         return None
     return {
         "kind": "constant",
@@ -545,9 +600,9 @@ def _walk_for_symbols(
     """Walk the AST collecting symbol dicts.
 
     ``enclosed`` tracks (top-down, no parent walking) whether *node* sits
-    inside a Python function/class body — module-constant capture (#610)
-    must fire at module scope only, including ``if``/``try``-wrapped
-    module-level assignments.
+    inside a Python function/class body (#610) or a Go function body (#613)
+    — module/package-constant capture must fire at top-level scope only,
+    including ``if``/``try``-wrapped module-level assignments.
     """
     if depth > 20:
         return
@@ -620,7 +675,13 @@ def _walk_for_symbols(
         const_sym = _python_module_constant(node, source)
         if const_sym is not None:
             symbols.append(const_sym)
-    child_enclosed = enclosed or node_type in _PY_SCOPE_BODY_NODES
+    elif node_type in _GO_CONST_LIKE and language == "go" and not enclosed:
+        symbols.extend(_go_package_constants(node, source))
+    child_enclosed = (
+        enclosed
+        or node_type in _PY_SCOPE_BODY_NODES
+        or node_type in _GO_SCOPE_BODY_NODES
+    )
     for child in node.children:
         _walk_for_symbols(child, source, symbols, language, depth + 1, child_enclosed)
 
