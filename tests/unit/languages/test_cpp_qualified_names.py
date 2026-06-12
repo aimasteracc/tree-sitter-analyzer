@@ -203,3 +203,45 @@ def test_full_table_global_functions_show_qualified_name(extractor):
     assert len(rows) == 2
     assert rows[0].startswith("| math::min |")
     assert rows[1].startswith("| math::Foo::bar |")
+
+
+# --- Codex P2s on #598 ------------------------------------------------------
+
+
+def test_typed_namespace_same_name_fn_not_constructor(extractor):
+    """int math::math() has a return type (a `type` field child) — a
+    namespace function sharing the namespace's name, not a constructor."""
+    code = (
+        "namespace math { int math(); class Foo { public: Foo(); }; }\n"
+        "int math::math() { return 0; }\n"
+        "math::Foo::Foo() { }\n"
+    )
+    funcs = list(_functions(extractor, code))
+    ns_fn = [f for f in funcs if f.receiver_type == "math" and f.name == "math"]
+    assert len(ns_fn) == 1
+    assert ns_fn[0].is_constructor is False
+    ctor = [f for f in funcs if f.receiver_type == "math::Foo" and f.name == "Foo"]
+    assert len(ctor) == 1
+    assert ctor[0].is_constructor is True
+
+
+def test_outline_method_entry_carries_receiver_type(extractor):
+    """The outline surface must not orphan out-of-class definitions: a
+    receiver-bound Function outlines with its owner attached."""
+    from tree_sitter_analyzer.mcp.tools.get_code_outline_tool import _method_entry
+
+    code = "namespace math { class Foo { public: void bar(); }; }\nvoid math::Foo::bar() { }\n"
+    funcs = list(_functions(extractor, code))
+    bound = [f for f in funcs if f.receiver_type == "math::Foo"]
+    assert len(bound) == 1
+    entry = _method_entry(bound[0])
+    assert entry["name"] == "bar"
+    assert entry["receiver_type"] == "math::Foo"
+
+
+def test_outline_method_entry_omits_receiver_when_unbound(extractor):
+    from tree_sitter_analyzer.mcp.tools.get_code_outline_tool import _method_entry
+
+    funcs = list(_functions(extractor, "int plain() { return 1; }\n"))
+    entry = _method_entry(_one(funcs, "plain"))
+    assert "receiver_type" not in entry

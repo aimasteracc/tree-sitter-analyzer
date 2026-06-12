@@ -72,7 +72,13 @@ def _is_cpp_constructor(name: str, node: Any, qualifier: str | None = None) -> b
     if not name or name.startswith("~"):
         return False
     if qualifier is not None:
-        return qualifier.rsplit("::", 1)[-1] == name
+        if qualifier.rsplit("::", 1)[-1] != name:
+            return False
+        # Constructors carry no return type, so their function_definition
+        # has no `type` field child; a namespace function that merely shares
+        # the namespace's name (`int math::math()`) does (Codex P2 on #598).
+        get_field = getattr(node, "child_by_field_name", None)
+        return get_field is None or get_field("type") is None
     class_name = _cpp_containing_class_name(node)
     return class_name is not None and name == class_name
 

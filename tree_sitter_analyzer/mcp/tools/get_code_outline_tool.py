@@ -596,7 +596,7 @@ def _method_entry(m: Any) -> dict[str, Any]:
             f"{getattr(p, 'type', 'Object')} {getattr(p, 'name', 'param')}"
             for p in params
         ]
-    return {
+    entry = {
         "name": getattr(m, "name", "unknown"),
         "return_type": getattr(m, "return_type", "void"),
         "parameters": param_list,
@@ -606,6 +606,14 @@ def _method_entry(m: Any) -> dict[str, Any]:
         "line_start": getattr(m, "start_line", 0),
         "line_end": getattr(m, "end_line", 0),
     }
+    # Owner of out-of-class/receiver-bound definitions (#590, Codex P2 on
+    # #598): without this, `void math::Foo::bar()` outlines as a bare `bar`
+    # with no trace of its owner. Additive, only present when bound — same
+    # Theme-A convention as #429/#474.
+    receiver = getattr(m, "receiver_type", None)
+    if receiver:
+        entry["receiver_type"] = receiver
+    return entry
 
 
 def _field_entry(f: Any) -> dict[str, Any]:
