@@ -38,6 +38,15 @@ def _add_analysis_options(parser: argparse.ArgumentParser) -> None:
 def _add_mcp_health_options(parser: argparse.ArgumentParser) -> None:
     """Add project and file health MCP mirror flags."""
     parser.add_argument(
+        "--check-scale",
+        metavar="FILE",
+        help=(
+            "Structural metrics for a single file: line count, method/class/"
+            "field/import counts, complexity estimate. "
+            "Use this FIRST when sizing an unknown file (health action=scale parity)."
+        ),
+    )
+    parser.add_argument(
         "--file-health",
         action="store_true",
         help="Score a single file's health (A-F grade, 7 dimensions, signal, smells)",

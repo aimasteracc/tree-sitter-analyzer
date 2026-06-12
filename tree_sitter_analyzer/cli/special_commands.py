@@ -35,6 +35,7 @@ def handle_special_commands(
         lambda: _handle_agent_workflow(args, context),
         lambda: _handle_batch_partial_read(args, context),
         lambda: _handle_health_check(args, context),
+        lambda: _handle_check_scale(args, context),
         lambda: _handle_batch_metrics(args, context),
         lambda: _handle_check_constraints(args, context),
         # --clean-state and --autoindex / --full-index / --codegraph-metrics
@@ -336,6 +337,49 @@ def _emit_cli_error(
         )
     else:
         context.output_error(message)
+
+
+def _handle_check_scale(
+    args: Any,
+    context: SpecialCommandContext,
+) -> int | None:
+    """Run AnalyzeScaleTool for a single file (``--check-scale FILE``)."""
+    file_path = getattr(args, "check_scale", None)
+    if not file_path:
+        return None
+    import os
+
+    if not os.path.exists(file_path):
+        _emit_cli_error(
+            args,
+            context,
+            "check_scale",
+            f"--check-scale: file not found: {file_path}",
+        )
+        return 1
+    try:
+        from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import AnalyzeScaleTool
+
+        project_root = getattr(args, "project_root", None) or os.getcwd()
+        return _run_mcp_tool_sync(
+            AnalyzeScaleTool,
+            {
+                "file_path": file_path,
+                "output_format": _tool_output_format(args),
+            },
+            project_root=project_root,
+            args=args,
+            context=context,
+        )
+    except Exception as exc:
+        _emit_cli_error(
+            args,
+            context,
+            "check_scale",
+            f"Scale analysis failed: {exc}",
+            error_type="runtime",
+        )
+        return 1
 
 
 def _handle_batch_metrics(
