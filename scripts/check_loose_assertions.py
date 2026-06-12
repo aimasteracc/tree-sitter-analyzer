@@ -60,6 +60,7 @@ class Violation(NamedTuple):
     path: str
     lineno: int
     snippet: str
+    end_lineno: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -169,7 +170,7 @@ def check_file(path: Path) -> list[Violation]:
 
         # Build a short snippet (first line of the assert)
         snippet = source_lines[node.lineno - 1].strip() if source_lines else ""
-        violations.append(Violation(str(path), node.lineno, snippet))
+        violations.append(Violation(str(path), node.lineno, snippet, end))
 
     return violations
 
@@ -179,15 +180,23 @@ def check_file(path: Path) -> list[Violation]:
 # ---------------------------------------------------------------------------
 
 
-def _changed_test_files(base_ref: str) -> list[Path]:
-    """Return changed/added test files (.py) vs *base_ref* from the diff."""
+def _added_line_ranges(base_ref: str) -> dict[str, set[int]]:
+    """Map changed test file (new path) → set of ADDED line numbers.
+
+    Parses ``git diff -U0`` hunk headers so the ratchet can scope violations
+    to lines the PR actually added (Codex P1 on #586: scanning whole changed
+    files re-flagged the 1000+ pre-existing baseline asserts on any touch).
+    ``--diff-filter=AMR`` includes renamed files — additions inside a rename
+    must not evade the gate (Codex P2 on #586); ``+++ b/`` carries the new
+    path for renames.
+    """
     result = subprocess.run(
         [
             "git",
             "diff",
             f"{base_ref}..HEAD",
-            "--name-only",
-            "--diff-filter=AM",
+            "--unified=0",
+            "--diff-filter=AMR",
             "--",
             "tests",
         ],
@@ -195,14 +204,21 @@ def _changed_test_files(base_ref: str) -> list[Path]:
         text=True,
         check=False,
     )
-    paths = []
+    added: dict[str, set[int]] = {}
+    current: str | None = None
     for line in result.stdout.splitlines():
-        p = Path(line.strip())
-        if p.suffix == ".py" and p.exists():
-            # Skip hypothesis property test files (same whitelist as .sh)
-            if not PROPERTY_FILE_RE.search(p.name):
-                paths.append(p)
-    return paths
+        if line.startswith("+++ b/"):
+            current = line[6:]
+            added.setdefault(current, set())
+        elif line.startswith("+++ "):
+            current = None  # /dev/null (deletion) or unexpected form
+        elif line.startswith("@@") and current is not None:
+            m = re.search(r"\+(\d+)(?:,(\d+))?", line)
+            if m:
+                start = int(m.group(1))
+                count = int(m.group(2)) if m.group(2) is not None else 1
+                added[current].update(range(start, start + count))
+    return added
 
 
 # ---------------------------------------------------------------------------
@@ -211,11 +227,27 @@ def _changed_test_files(base_ref: str) -> list[Path]:
 
 
 def check_diff(base_ref: str) -> int:
-    """Run diff-scoped check.  Returns exit code (0 = OK, 1 = violations)."""
-    files = _changed_test_files(base_ref)
+    """Run diff-scoped check.  Returns exit code (0 = OK, 1 = violations).
+
+    A violation counts only when its assert source segment overlaps a line
+    the PR added — pre-existing loose asserts elsewhere in a touched file
+    stay the baseline's problem, not this PR's.
+    """
+    added = _added_line_ranges(base_ref)
     all_violations: list[Violation] = []
-    for f in files:
-        all_violations.extend(check_file(f))
+    for fname, added_lines in added.items():
+        if not added_lines:
+            continue
+        path = Path(fname)
+        if path.suffix != ".py" or not path.exists():
+            continue
+        # Skip hypothesis property test files (same whitelist as .sh)
+        if PROPERTY_FILE_RE.search(path.name):
+            continue
+        for v in check_file(path):
+            end = v.end_lineno or v.lineno
+            if added_lines.intersection(range(v.lineno, end + 1)):
+                all_violations.append(v)
 
     if not all_violations:
         return 0
