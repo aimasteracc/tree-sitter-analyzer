@@ -76,8 +76,13 @@ _EXPLORE_SCHEMA: dict[str, Any] = {
         # ``symbol`` as an alias for ``query``. Declared here so the facade
         # whitelist does not drop it before this tool can map it.
         "symbol": {
-            "type": "string",
-            "description": "Alias for query (single symbol name).",
+            # #515 Codex P2: validate_arguments accepts a list here (agents
+            # land on this param via the strict-param hint), so the public
+            # schema must too — otherwise schema-validating clients reject
+            # the call before execute ever runs.
+            "type": ["string", "array"],
+            "items": {"type": "string"},
+            "description": "Alias for query (single name or list of names).",
         },
         # #515: the facade documents explore as multi-symbol ("Params:
         # symbols") — accept the list form and join it into the query.
