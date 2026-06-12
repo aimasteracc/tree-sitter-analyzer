@@ -259,3 +259,49 @@ def test_ts_abstract_method_has_is_abstract_true() -> None:
     assert by_name["validate"].is_abstract is True
     assert by_name["describe"].is_abstract is False
     assert len(fns) == 2
+
+
+class TestRustAbstractSignatureReturnType:
+    """Cover the -> return-type branch of function_signature_item (codecov)."""
+
+    CODE = """
+trait Displayable {
+    fn display(&self) -> String;
+    fn plain(&self);
+}
+"""
+
+    def test_signature_with_return_type(self):
+        import tree_sitter
+        import tree_sitter_rust
+
+        from tree_sitter_analyzer.languages.rust_plugin import RustElementExtractor
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        tree = tree_sitter.Parser(lang).parse(self.CODE.encode())
+        fns = RustElementExtractor().extract_functions(tree, self.CODE)
+        disp = [f for f in fns if f.name == "display"]
+        plain = [f for f in fns if f.name == "plain"]
+        assert len(disp) == 1
+        assert disp[0].return_type == "String"
+        assert len(plain) == 1
+        assert plain[0].return_type == "()"
+
+
+class TestGoAliasNonContainerType:
+    """Cover the neither-struct-nor-interface fallback (codecov)."""
+
+    CODE = "package p\n\ntype StringSlice = []string\n"
+
+    def test_alias_to_slice_extracts(self):
+        import tree_sitter
+        import tree_sitter_go
+
+        from tree_sitter_analyzer.languages.go_plugin import GoElementExtractor
+
+        lang = tree_sitter.Language(tree_sitter_go.language())
+        tree = tree_sitter.Parser(lang).parse(self.CODE.encode())
+        classes = GoElementExtractor().extract_classes(tree, self.CODE)
+        alias = [c for c in classes if c.name == "StringSlice"]
+        assert len(alias) == 1
+        assert alias[0].interfaces == []
