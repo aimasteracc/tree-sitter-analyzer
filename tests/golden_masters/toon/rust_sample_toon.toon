@@ -1,6 +1,8 @@
 file_path: examples/sample.rs
 language: rust
-package: null
+package:
+  name: sample_module
+  line_range: (2, 88)
 classes:
   [5]{name,visibility,line_range(a,b)}:
     User,pub,(7,12)

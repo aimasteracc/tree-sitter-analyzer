@@ -3,9 +3,10 @@
     "Class": 5,
     "Function": 9,
     "Import": 1,
+    "Package": 1,
     "Variable": 6
   },
-  "element_total": 21,
+  "element_total": 22,
   "names_by_type": {
     "Class": [
       "BorrowedItem",
@@ -26,6 +27,9 @@
     "Import": [
       "use std::collections::HashMap;"
     ],
+    "Package": [
+      "sample_module"
+    ],
     "Variable": [
       "active",
       "email",
@@ -39,6 +43,7 @@
     "Class",
     "Function",
     "Import",
+    "Package",
     "Variable"
   ]
 }
