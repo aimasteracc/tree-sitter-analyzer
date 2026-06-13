@@ -84,10 +84,15 @@ class TestJavaScriptFormatterIntegration:
         json_result = formatter.format(real_data, "json")
 
         # Verify all formats work
-        assert isinstance(full_result, str) and len(full_result) == 217
-        assert isinstance(compact_result, str) and len(compact_result) == 110
-        assert isinstance(csv_result, str) and len(csv_result) == 51
-        assert isinstance(json_result, str) and len(json_result) == 2058
+        assert isinstance(full_result, str)
+        # Normalize CRLF→LF so byte pins hold on Windows (5b-B; Codex P1)
+        assert len(full_result.replace("\r\n", "\n")) == 217
+        assert isinstance(compact_result, str)
+        assert len(compact_result.replace("\r\n", "\n")) == 110
+        assert isinstance(csv_result, str)
+        assert len(csv_result.replace("\r\n", "\n")) == 51
+        assert isinstance(json_result, str)
+        assert len(json_result.replace("\r\n", "\n")) == 2058
 
         # Verify content is present in full format (new format uses class name as header)
         assert "UserProfile" in full_result
@@ -185,5 +190,6 @@ class TestJavaScriptFormatterIntegration:
         result = formatter.format(complex_data, "full")
 
         # Verify complex features are handled (new format uses class name as header)
-        assert isinstance(result, str) and len(result) == 211
+        assert isinstance(result, str)
+        assert len(result.replace("\r\n", "\n")) == 211
         assert "ApiClient" in result
