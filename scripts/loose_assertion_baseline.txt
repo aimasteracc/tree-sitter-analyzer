@@ -64,7 +64,9 @@
 #   batch-31 (AST): 499 -> 479, 2026-06-13 (14 exact pins + 3 truthy conversions
 #   + 3 timing exemptions in top-4 AST-ranked files; ran parallel to batch-30,
 #   reconciled on merge — both batches' 40 pins now in develop).
+#   batch-32 (AST): 479 -> 459, 2026-06-13 (18 exact pins + 2 truthy-set pins
+#   in top-4 AST-ranked files, no timing exemptions).
 
-BASELINE_COUNT=479
+BASELINE_COUNT=459
 MEASUREMENT_DATE=2026-06-13
 MEASUREMENT_COMMAND="uv run python scripts/check_loose_assertions.py --baseline"
