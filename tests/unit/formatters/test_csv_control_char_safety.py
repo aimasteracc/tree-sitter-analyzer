@@ -45,7 +45,7 @@ def test_csv_formatter_handles_control_chars(name: str) -> None:
     )
     result = CsvFormatter().format([element])
     assert isinstance(result, str)
-    assert len(result) > 0
+    assert result != ""
 
 
 @pytest.mark.parametrize("name", CONTROL_NAMES)
@@ -73,7 +73,7 @@ def test_html_csv_helper_handles_control_chars() -> None:
     )
     result = format_html_csv([element])
     assert isinstance(result, str)
-    assert len(result) > 0
+    assert len(result) == 93
 
 
 def test_markdown_csv_output_handles_control_chars() -> None:
@@ -90,7 +90,7 @@ def test_markdown_csv_output_handles_control_chars() -> None:
     }
     result = format_csv_output(analysis_result)
     assert isinstance(result, str)
-    assert len(result) > 0
+    assert len(result) == 69
 
 
 def test_csv_formatter_preserves_backslashes() -> None:
@@ -146,7 +146,7 @@ def test_csv_formatter_output_is_readable_with_cr(name: str) -> None:
     result = CsvFormatter().format([element])
     # Must parse back without raising on any Python version.
     rows = list(csv.reader(io.StringIO(result)))
-    assert len(rows) >= 2  # header + at least one data row
+    assert len(rows) == 2  # header + exactly one data row
     assert "\r" not in result
 
 

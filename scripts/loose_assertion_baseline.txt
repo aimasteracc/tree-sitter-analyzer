@@ -80,7 +80,15 @@
 #   restructured to per-language exact dict; cache_maxsize pinned == 2000 (the
 #   deterministic CI default; env override is out-of-test); only mtime_ns exempt
 #   as a genuinely nondeterministic filesystem timestamp).
+#   batch-36 (AST): 418 -> 402, 2026-06-13 (16 pins in 4 files:
+#   test_query_library_coverage.py (list_queries==71 x2; in-loop description
+#   non-empty rewritten as !='' x2), test_csv_control_char_safety.py
+#   (parametrized result len rewritten as !=''; html_csv ==93; markdown_csv
+#   ==69; CR rows ==2), test_csv_control_char_safety_remaining.py (parametrized
+#   result len rewritten as !=''; base_formatter rows ==3; legacy rows ==4),
+#   test_legacy_table_formatter_core.py (CSV lines ==1; rows ==2 x3);
+#   no exemptions).
 
-BASELINE_COUNT=418
+BASELINE_COUNT=402
 MEASUREMENT_DATE=2026-06-13
 MEASUREMENT_COMMAND="uv run python scripts/check_loose_assertions.py --baseline"
