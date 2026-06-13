@@ -1175,3 +1175,34 @@ def test_content_default_cap_bytes_smaller_than_uncapped() -> None:
     assert uncapped_bytes == 10505, (
         f"content uncapped bytes drifted: {uncapped_bytes} != 10505 — re-measure and re-pin"
     )
+
+
+def test_outline_wide_class_methods_bounded_by_cap(tmp_path) -> None:
+    """#571: a single wide class must not detonate the outline response.
+
+    The top-level listed_cap bounds the class COUNT, but a 10k-method generated
+    stub had its methods emitted uncapped (2.75MB, truncated=False). Each listed
+    class's methods must be bounded by listed_cap — the structural invariant that
+    keeps the response within budget. The fixture is deterministic (500 methods),
+    so every count is pinned EXACTLY (CLAUDE.md exact-assertion lock — no <=/<
+    bounds; the byte budget is the deterministic consequence of methods == cap).
+    """
+    from tree_sitter_analyzer.mcp.tools.get_code_outline_tool import (
+        DEFAULT_OUTLINE_CLASSES_CAP,
+        GetCodeOutlineTool,
+    )
+
+    f = tmp_path / "wide.py"
+    f.write_text(
+        "class Big:\n" + "".join(f"    def m{i}(self): pass\n" for i in range(500))
+    )
+    tool = GetCodeOutlineTool(project_root=str(tmp_path))
+    result = asyncio.run(tool.execute({"file_path": str(f), "output_format": "json"}))
+
+    cls = result["classes"][0]
+    # Exactly listed_cap methods listed (not 500), with the honest pre-cap totals.
+    assert len(cls["methods"]) == DEFAULT_OUTLINE_CLASSES_CAP
+    assert cls["methods_total"] == 500
+    assert cls["methods_listed"] == DEFAULT_OUTLINE_CLASSES_CAP
+    assert result["method_count"] == 500  # pre-cap total stays honest
+    assert result["truncated"] is True
