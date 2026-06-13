@@ -169,6 +169,94 @@ class TestExecute:
             asyncio.run(t.execute({"symbol": "foo"}))
 
 
+class TestInheritanceLineage:
+    """#568: lineage of a class returns the advertised inheritance/override
+    content (subclasses/superclasses via extends edges), not only an impact
+    profile. Non-class symbols carry no hierarchy section."""
+
+    def test_class_symbol_returns_inheritance_hierarchy(self, tool, tmp_path):
+        from tree_sitter_analyzer.ast_cache import ASTCache
+
+        _write_py(
+            tmp_path, "base.py", "class Base:\n    def run(self):\n        pass\n"
+        )
+        _write_py(
+            tmp_path,
+            "sub.py",
+            "from base import Base\n\nclass Sub1(Base):\n    pass\n\n"
+            "class Sub2(Base):\n    pass\n",
+        )
+        ASTCache(str(tmp_path)).index_project(max_files=50)
+        result = asyncio.run(tool.execute({"symbol": "Base", "output_format": "json"}))
+        hier = result["hierarchy"]
+        assert hier["subclass_count"] == 2
+        assert sorted(s["name"] for s in hier["subclasses"]) == ["Sub1", "Sub2"]
+        # Second call with the index unchanged: result is stable (the cache is
+        # not spuriously invalidated when the AST index mtime is the same).
+        again = asyncio.run(tool.execute({"symbol": "Base", "output_format": "json"}))
+        assert again["hierarchy"]["subclass_count"] == 2
+
+    def test_function_symbol_has_no_hierarchy(self, tool, tmp_path):
+        from tree_sitter_analyzer.ast_cache import ASTCache
+
+        _write_py(tmp_path, "m.py", "def standalone():\n    return 1\n")
+        ASTCache(str(tmp_path)).index_project(max_files=50)
+        result = asyncio.run(
+            tool.execute({"symbol": "standalone", "output_format": "json"})
+        )
+        assert "hierarchy" not in result
+
+    def test_qualified_symbol_name_resolves_hierarchy(self, tool, tmp_path):
+        # Codex P2: a qualified symbol (pkg.Base) must resolve via its bare name
+        # — ClassHierarchy stores classes by bare name from the AST cache.
+        from tree_sitter_analyzer.ast_cache import ASTCache
+
+        _write_py(tmp_path, "base.py", "class Base:\n    pass\n")
+        _write_py(
+            tmp_path, "sub.py", "from base import Base\n\nclass Sub(Base):\n    pass\n"
+        )
+        ASTCache(str(tmp_path)).index_project(max_files=50)
+        result = asyncio.run(
+            tool.execute({"symbol": "base.Base", "output_format": "json"})
+        )
+        assert result["hierarchy"]["subclass_count"] == 1
+
+    def test_cache_invalidates_when_index_built_after_first_call(self, tool, tmp_path):
+        # Codex P2: a lineage call BEFORE the index is built caches a no-
+        # hierarchy response; once the index is built the cache must refresh
+        # (the index.db mtime invalidates the per-symbol cache).
+        from tree_sitter_analyzer.ast_cache import ASTCache
+
+        _write_py(tmp_path, "base.py", "class Base:\n    pass\n")
+        _write_py(
+            tmp_path, "sub.py", "from base import Base\n\nclass Sub(Base):\n    pass\n"
+        )
+        # First call: no index yet → no hierarchy (cached).
+        first = asyncio.run(tool.execute({"symbol": "Base", "output_format": "json"}))
+        assert "hierarchy" not in first
+        # Build the index, then re-query: the stale miss must NOT be served.
+        ASTCache(str(tmp_path)).index_project(max_files=50)
+        second = asyncio.run(tool.execute({"symbol": "Base", "output_format": "json"}))
+        assert second["hierarchy"]["subclass_count"] == 1
+
+    def test_hierarchy_degrades_to_none_on_error(self, tool, tmp_path, monkeypatch):
+        # A ClassHierarchy failure (e.g. corrupt cache) must degrade to no
+        # hierarchy, never crash the lineage call.
+        import tree_sitter_analyzer.class_hierarchy as ch_mod
+        from tree_sitter_analyzer.ast_cache import ASTCache
+
+        _write_py(tmp_path, "base.py", "class Base:\n    pass\n")
+        ASTCache(str(tmp_path)).index_project(max_files=50)
+
+        def _boom(self):
+            raise RuntimeError("corrupt cache")
+
+        monkeypatch.setattr(ch_mod.ClassHierarchy, "build", _boom)
+        result = asyncio.run(tool.execute({"symbol": "Base", "output_format": "json"}))
+        assert result["success"] is True
+        assert "hierarchy" not in result
+
+
 class TestR37uTopLevelVerdictMirror:
     """r37u dogfood: ``--symbol-lineage`` envelope used to omit top-level
     ``verdict`` even though ``agent_summary.verdict`` was populated.
