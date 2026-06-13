@@ -76,7 +76,7 @@ class TestCodeGraphSymbolSearchExecution:
         tool = CodeGraphSymbolSearchTool(str(indexed_project))
         result = await tool.execute({"query": "UserService", "output_format": "json"})
         assert result["success"] is True
-        assert result["match_count"] >= 1
+        assert result["match_count"] == 1
         names = [r["name"] for r in result["results"]]
         assert "UserService" in names
 
@@ -92,7 +92,7 @@ class TestCodeGraphSymbolSearchExecution:
         tool = CodeGraphSymbolSearchTool(str(indexed_project))
         result = await tool.execute({"query": "~user", "output_format": "json"})
         assert result["success"] is True
-        assert result["match_count"] >= 1
+        assert result["match_count"] == 3
 
     async def test_wildcard_match(self, indexed_project):
         tool = CodeGraphSymbolSearchTool(str(indexed_project))
@@ -144,12 +144,12 @@ class TestCodeGraphSymbolSearchExecution:
     async def test_result_has_file_and_line(self, indexed_project):
         tool = CodeGraphSymbolSearchTool(str(indexed_project))
         result = await tool.execute({"query": "UserService", "output_format": "json"})
-        assert result["match_count"] >= 1
+        assert result["match_count"] == 1
         hit = result["results"][0]
         assert "file" in hit
         assert "line" in hit
         assert "code" in hit
-        assert hit["line"] > 0
+        assert hit["line"] == 1
 
     async def test_next_step_points_to_bulk_explore(self, indexed_project):
         tool = CodeGraphSymbolSearchTool(str(indexed_project))
@@ -160,7 +160,7 @@ class TestCodeGraphSymbolSearchExecution:
         """P2: top matches carry an inlined verbatim source body (no Read)."""
         tool = CodeGraphSymbolSearchTool(str(indexed_project))
         result = await tool.execute({"query": "get_user", "output_format": "json"})
-        assert result["match_count"] >= 1
+        assert result["match_count"] == 1
         hit = next(r for r in result["results"] if r["name"] == "get_user")
         assert "body" in hit, "top match must carry inlined body"
         assert "content" in hit["body"]
@@ -197,7 +197,9 @@ class TestCodeGraphSymbolSearchExecution:
         tool = CodeGraphSymbolSearchTool(str(indexed_project))
         result = await tool.execute({"query": "format_user", "output_format": "json"})
         assert result["success"] is True
-        assert result["match_count"] >= 1, "fixture must have a format_user symbol"
+        assert result["match_count"] == 1, (
+            "fixture must have exactly one format_user symbol"
+        )
         # Indexed project always has FTS5 via ASTCache.index_project
         assert result["data_source"] == "fts5", (
             f"expected fts5 data source, got {result['data_source']}"
