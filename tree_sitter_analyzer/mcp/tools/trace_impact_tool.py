@@ -96,8 +96,8 @@ _PY_TRIPLE_QUOTE_RE = re.compile(r'(?:"""|\'\'\')')
 
 
 def _python_non_code_lines(text: str) -> set[int]:
-    # Heuristic Python-comment / docstring detector. Returns 1-based line
-    # numbers that are comment-only OR inside a triple-quoted string.
+    # Heuristic Python-comment / docstring / import detector. Returns 1-based
+    # line numbers that are NOT genuine call sites:
     #
     # Rules:
     # * Lines whose first non-whitespace character is ``#`` count as comments.
@@ -108,12 +108,16 @@ def _python_non_code_lines(text: str) -> set[int]:
     #   (treating a real call site as a docstring) are visible to the
     #   caller via the ``raw_match_count`` field, and a slight over-filter
     #   is acceptable per the brief.
+    # * Import lines (``from … import …`` / ``import …``) and all
+    #   continuation lines of a multi-line import block are flagged (#655):
+    #   an import line that mentions a symbol is NOT a call site.
     #
     # Doesn't track escape sequences inside the string — a triple-quote
     # inside a docstring is impossible to write in pure-string form
     # anyway, so a naive token count works.
     non_code: set[int] = set()
     in_triple = False
+    in_import = False  # True while inside a multi-line ``from x import (...)``
     for idx, line in enumerate(text.splitlines(), start=1):
         stripped = line.lstrip()
         # Count how many triple-quote tokens appear on this line. The
@@ -137,7 +141,88 @@ def _python_non_code_lines(text: str) -> set[int]:
         # Plain comment line.
         if stripped.startswith("#"):
             non_code.add(idx)
+            continue
+        # #655: import lines — `from module import symbol` and `import module`
+        # are not call sites. Also track multi-line import blocks opened with
+        # a ``(`` and closed with ``)`` so that continuation lines like
+        # ``    _walk_for_symbols,`` are flagged too.
+        if in_import:
+            non_code.add(idx)
+            if ")" in line:
+                in_import = False
+            continue
+        if stripped.startswith("from ") or stripped.startswith("import "):
+            non_code.add(idx)
+            # Multi-line import: ``from x import (\n    sym,\n)``
+            if "(" in line and ")" not in line.split("#")[0]:
+                in_import = True
     return non_code
+
+
+def _is_symbol_only_in_strings(line: str, symbol: str) -> bool:
+    """Return True if every occurrence of ``symbol`` in ``line`` is inside an
+    inline string literal (single or double quoted, not triple-quoted).
+
+    Used as a per-match heuristic (#655): if the only reason a line shows up
+    in ripgrep results is that the symbol name appears inside a string
+    argument (e.g. ``reason="my_func is not ready"``), it is NOT a call site.
+
+    Algorithm: walk the line character by character, tracking whether we are
+    inside a single-quoted or double-quoted string. For each position where
+    ``symbol`` starts, record whether we are inside a string at that point.
+    If ALL occurrences of ``symbol`` are inside strings → return True.
+    Returns False (not filtered) when symbol is absent (safety default).
+    """
+    if not symbol or symbol not in line:
+        return False
+
+    in_str: str | None = None  # None = outside string; '"' or "'" = inside
+    idx = 0
+    sym_len = len(symbol)
+    sym_positions_in_str: list[bool] = []
+
+    while idx < len(line):
+        ch = line[idx]
+
+        if in_str is None:
+            # Check for triple-quote open — not handled here (triple-quoted
+            # strings are caught by _python_non_code_lines); skip to avoid
+            # treating the first char of ''' as a single-quote open.
+            if line[idx : idx + 3] in ('"""', "'''"):
+                # Skip the rest of the line — triple-quote on same line
+                # (which _python_non_code_lines already flags). Just treat
+                # everything to the right as non-code.
+                remaining_has_sym = symbol in line[idx:]
+                if remaining_has_sym:
+                    # All occurrences from here are inside a triple-quote region.
+                    sym_positions_in_str.extend([True] * line[idx:].count(symbol))
+                break
+            if ch in ('"', "'"):
+                in_str = ch
+                idx += 1
+                continue
+        else:
+            # Inside a single-line string.
+            if ch == "\\" and idx + 1 < len(line):
+                # Skip escaped character.
+                idx += 2
+                continue
+            if ch == in_str:
+                in_str = None
+                idx += 1
+                continue
+
+        # Check whether symbol starts at this position.
+        if line[idx : idx + sym_len] == symbol:
+            sym_positions_in_str.append(in_str is not None)
+            idx += sym_len
+            continue
+
+        idx += 1
+
+    if not sym_positions_in_str:
+        return False  # symbol not found after walk — don't filter
+    return all(sym_positions_in_str)
 
 
 def _c_like_non_code_lines(text: str) -> set[int]:
@@ -199,16 +284,22 @@ def _file_non_code_lines(file_path: str) -> frozenset[int]:
 
 def _filter_comment_docstring_matches(
     matches: list[dict[str, Any]],
+    symbol: str = "",
 ) -> list[dict[str, Any]]:
-    """Drop hits whose line is inside a comment or docstring.
+    """Drop hits whose line is inside a comment, docstring, import, or string.
 
     Called AFTER ``_filter_source_matches`` so we only pay the file-read
-    cost for hits that survived the extension filter. The pair of filters
-    together gives an honest ``source_call_count``:
+    cost for hits that survived the extension filter. The filters together
+    give an honest ``source_call_count``:
 
     * Extension filter (H4): drops markdown / CHANGELOG hits.
-    * Comment/docstring filter (J7): drops hits inside ``#`` / ``//`` /
-      ``/* */`` / Python triple-quoted strings.
+    * Comment/docstring/import filter (J7 + #655): drops hits inside
+      ``#`` / ``//`` / ``/* */`` / Python triple-quoted strings / import
+      lines.
+    * Inline-string filter (#655): for Python files, drops hits where the
+      symbol appears only inside a string literal (e.g. in a ``reason=``
+      argument to ``pytest.mark.xfail``).  Requires ``symbol`` to be
+      provided; when omitted or empty the filter is skipped.
     """
     if not matches:
         return matches
@@ -222,6 +313,14 @@ def _filter_comment_docstring_matches(
         non_code = _file_non_code_lines(file_path)
         if line_no in non_code:
             continue
+        # #655: inline string-literal filter for Python files. If ``symbol``
+        # is provided and the match line is a Python file, check whether
+        # every occurrence of the symbol on that line is inside a quoted
+        # string. If so, it is not a call site.
+        if symbol and file_path.lower().endswith(_PY_LIKE_EXTS):
+            line_text = match.get("text", "")
+            if line_text and _is_symbol_only_in_strings(line_text, symbol):
+                continue
         kept.append(match)
     return kept
 
@@ -803,7 +902,9 @@ class TraceImpactTool(BaseMCPTool):
 
         matches = parse_rg_json_lines_to_matches(stdout)
         ext_filtered = _filter_source_matches(matches)
-        source_matches = _filter_comment_docstring_matches(ext_filtered)
+        # #655: pass symbol so import lines and inline string-literal
+        # mentions are excluded from the caller count.
+        source_matches = _filter_comment_docstring_matches(ext_filtered, symbol=symbol)
 
         true_total = len(matches)
         source_total = len(source_matches)
