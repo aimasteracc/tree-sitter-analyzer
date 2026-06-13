@@ -86,7 +86,7 @@ class TestCrossFileResolverBuild:
         resolver.build()
         assert "format_user" in resolver._functions_by_name
         assert "handle_request" in resolver._functions_by_name
-        assert len(resolver._functions_by_name["format_user"]) >= 1
+        assert len(resolver._functions_by_name["format_user"]) == 1
 
     def test_import_index_populated(self, multi_file_project):
         _project, cache = multi_file_project
@@ -105,7 +105,7 @@ class TestCrossFileResolution:
         resolver = CrossFileResolver(cache)
         resolver.build()
         results = resolver.resolve_callee("_find_user", "services.py")
-        assert len(results) >= 1
+        assert len(results) == 1
         assert any("services.py" in r[0] for r in results)
         assert results[0][1] == 1.0
 
@@ -114,7 +114,7 @@ class TestCrossFileResolution:
         resolver = CrossFileResolver(cache)
         resolver.build()
         results = resolver.resolve_callee("format_user", "services.py")
-        assert len(results) >= 1
+        assert len(results) == 1
         assert any("utils.py" in r[0] for r in results)
 
     def test_resolve_callee_with_confidence(self, multi_file_project):
@@ -122,15 +122,15 @@ class TestCrossFileResolution:
         resolver = CrossFileResolver(cache)
         resolver.build()
         results = resolver.resolve_callee("format_user", "services.py")
-        assert len(results) >= 1
-        assert results[0][1] >= 0.9
+        assert len(results) == 1
+        assert results[0][1] == 0.9
 
     def test_resolve_cross_file_via_import(self, multi_file_project):
         _project, cache = multi_file_project
         resolver = CrossFileResolver(cache)
         resolver.build()
         results = resolver.resolve_callee("handle_request", "main.py")
-        assert len(results) >= 1
+        assert len(results) == 1
         assert any("services.py" in r[0] for r in results)
 
     def test_find_caller_function(self, multi_file_project):
@@ -152,8 +152,8 @@ class TestCrossFileResolution:
         resolver = CrossFileResolver(cache)
         resolver.build()
         name, line = resolver.find_caller_function(999, "services.py")
-        assert name != ""
-        assert line > 0
+        assert name == "handle_request"
+        assert line == 12
 
     def test_find_caller_function_unknown_file(self, multi_file_project):
         _project, cache = multi_file_project
