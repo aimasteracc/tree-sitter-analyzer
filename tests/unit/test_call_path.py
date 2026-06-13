@@ -199,7 +199,7 @@ class TestCallPathFinderForward:
         result = finder.find_path("main", "bar", direction="forward")
         assert result.source == "main"
         assert result.target == "bar"
-        assert len(result.paths) >= 1
+        assert len(result.paths) == 1
         assert result.data_source == "sql"
         if result.paths:
             assert result.paths[0].total_hops == 2
@@ -214,7 +214,7 @@ class TestCallPathFinderForward:
         cache = _make_cache_with_edges(tmp_path, _DIAMOND_EDGES)
         finder = CallPathFinder(str(tmp_path), cache=cache)
         result = finder.find_path("main", "bar", direction="forward")
-        assert len(result.paths) >= 2
+        assert len(result.paths) == 2
 
     def test_max_depth_respected(self, tmp_path):
         cache = _make_cache_with_edges(tmp_path, _LINEAR_EDGES)
@@ -234,7 +234,7 @@ class TestCallPathFinderBackward:
         cache = _make_cache_with_edges(tmp_path, _LINEAR_EDGES)
         finder = CallPathFinder(str(tmp_path), cache=cache)
         result = finder.find_path("main", "bar", direction="backward")
-        assert len(result.paths) >= 1
+        assert len(result.paths) == 1
 
     def test_no_path_backward(self, tmp_path):
         cache = _make_cache_with_edges(tmp_path, _LINEAR_EDGES)
@@ -248,13 +248,13 @@ class TestCallPathFinderBidirectional:
         cache = _make_cache_with_edges(tmp_path, _LINEAR_EDGES)
         finder = CallPathFinder(str(tmp_path), cache=cache)
         result = finder.find_path("main", "bar", direction="bidirectional")
-        assert len(result.paths) >= 1
+        assert len(result.paths) == 1
 
     def test_diamond_bidirectional(self, tmp_path):
         cache = _make_cache_with_edges(tmp_path, _DIAMOND_EDGES)
         finder = CallPathFinder(str(tmp_path), cache=cache)
         result = finder.find_path("main", "bar", direction="bidirectional")
-        assert len(result.paths) >= 1
+        assert len(result.paths) == 2
 
     def test_same_function(self, tmp_path):
         cache = _make_cache_with_edges(tmp_path, _LINEAR_EDGES)
