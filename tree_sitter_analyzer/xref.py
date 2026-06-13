@@ -338,11 +338,19 @@ class XRefEngine:
             "SELECT DISTINCT file_path AS caller_file FROM edges "
             "WHERE kind = 'calls' AND callee_name IN ("
         )
-        _fd_suffix = ") AND file_path != ? ORDER BY caller_file LIMIT 50"
+        # callee_resolved_file gate (Codex P2): only count edges the resolver
+        # tied to THIS file, plus name-only fallback for unresolved rows ('').
+        # Without it, a call to b.helper would inflate a.py's count when both
+        # define `helper`.
+        _fd_suffix = (
+            ") AND file_path != ? "
+            "AND (callee_resolved_file = ? OR callee_resolved_file = '') "
+            "ORDER BY caller_file LIMIT 50"
+        )
         placeholders = ",".join("?" * len(names))
         rows = conn.execute(
             _fd_prefix + placeholders + _fd_suffix,
-            (*names, file_path),
+            (*names, file_path, file_path),
         ).fetchall()
         return [{"file": row["caller_file"]} for row in rows]
 
@@ -390,11 +398,18 @@ class XRefEngine:
             "json_extract(metadata, '$.caller_line') AS caller_line, callee_name "
             "FROM edges WHERE kind = 'calls' AND callee_name IN ("
         )
-        _fc_suffix = ") AND file_path != ? ORDER BY caller_file, caller_line LIMIT 50"
+        # callee_resolved_file gate (Codex P2): resolved-to-this-file rows plus
+        # unresolved ('') name-only fallback — excludes a same-named callee that
+        # the resolver tied to a different file.
+        _fc_suffix = (
+            ") AND file_path != ? "
+            "AND (callee_resolved_file = ? OR callee_resolved_file = '') "
+            "ORDER BY caller_file, caller_line LIMIT 50"
+        )
         placeholders = ",".join("?" * len(names))
         rows = conn.execute(
             _fc_prefix + placeholders + _fc_suffix,
-            (*names, file_path),
+            (*names, file_path, file_path),
         ).fetchall()
         return [dict(row) for row in rows]
 

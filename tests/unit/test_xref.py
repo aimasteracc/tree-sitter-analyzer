@@ -200,6 +200,28 @@ class TestXRefEngineFile:
         result = engine.xref("alpha")
         assert sorted(d["file"] for d in result.file_dependents) == ["b.py", "c.py"]
 
+    def test_file_xref_excludes_same_name_resolved_to_other_file(self, tmp_path):
+        # Codex P2 (round 2): bare callee_name matching over-counts when two
+        # files define the same callable. a.py and b.py both define `helper`;
+        # c.py calls the resolved `b.helper` (callee_resolved_file='b.py'). The
+        # callee_resolved_file gate must keep c.py OUT of a.py's callers and IN
+        # b.py's — name-only matching wrongly credited a.py with c.py.
+        project = tmp_path / "proj_same_name"
+        project.mkdir()
+        (project / "a.py").write_text("def helper():\n    pass\n")
+        (project / "b.py").write_text("def helper():\n    pass\n")
+        (project / "c.py").write_text("import b\n\ndef caller():\n    b.helper()\n")
+        cache = ASTCache(str(project))
+        cache.index_project(max_files=100)
+        engine = XRefEngine(cache)
+        a_result = engine.file_xref("a.py")
+        assert a_result["caller_count"] == 0
+        assert a_result["file_dependent_count"] == 0
+        b_result = engine.file_xref("b.py")
+        assert b_result["caller_count"] == 1
+        assert [c["caller_file"] for c in b_result["callers"]] == ["c.py"]
+        assert [d["file"] for d in b_result["file_dependents"]] == ["c.py"]
+
     def test_file_xref_includes_methods(self, tmp_path):
         """Codex P2 on #314: class methods (kind='method') must appear in file
         xref, not be dropped by a function/class-only filter. A file with only
