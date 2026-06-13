@@ -22,7 +22,6 @@ from tree_sitter_analyzer.legacy_table_formatter import LegacyTableFormatter
 
 
 class TestLegacyTableFormatterBasic:
-
     def test_default_initialization(self) -> None:
         formatter = LegacyTableFormatter()
         assert formatter.format_type == "full"
@@ -44,7 +43,6 @@ class TestLegacyTableFormatterBasic:
 
 
 class TestFullTableFormat:
-
     @pytest.fixture
     def formatter(self) -> LegacyTableFormatter:
         return LegacyTableFormatter(format_type="full", language="java")
@@ -221,7 +219,6 @@ class TestFullTableFormat:
 
 
 class TestMultipleClassesFormat:
-
     @pytest.fixture
     def formatter(self) -> LegacyTableFormatter:
         return LegacyTableFormatter(format_type="full", language="java")
@@ -315,7 +312,6 @@ class TestMultipleClassesFormat:
 
 
 class TestCompactTableFormat:
-
     @pytest.fixture
     def formatter(self) -> LegacyTableFormatter:
         return LegacyTableFormatter(format_type="compact", language="java")
@@ -402,7 +398,6 @@ class TestCompactTableFormat:
 
 
 class TestCSVFormat:
-
     @pytest.fixture
     def formatter(self) -> LegacyTableFormatter:
         return LegacyTableFormatter(format_type="csv", language="java")
@@ -412,7 +407,7 @@ class TestCSVFormat:
         result = formatter.format_structure(data)
 
         lines = result.strip().split("\n")
-        assert len(lines) >= 1
+        assert len(lines) == 1
         header = lines[0]
         assert "Type" in header
         assert "Name" in header
@@ -435,7 +430,7 @@ class TestCSVFormat:
 
         reader = csv.reader(io.StringIO(result))
         rows = list(reader)
-        assert len(rows) >= 2
+        assert len(rows) == 2
         class_row = rows[1]
         assert "class" in class_row
         assert "MyClass" in class_row
@@ -458,7 +453,7 @@ class TestCSVFormat:
 
         reader = csv.reader(io.StringIO(result))
         rows = list(reader)
-        assert len(rows) >= 2
+        assert len(rows) == 2
         method_row = rows[1]
         assert "method" in method_row
         assert "process" in method_row
@@ -481,7 +476,7 @@ class TestCSVFormat:
 
         reader = csv.reader(io.StringIO(result))
         rows = list(reader)
-        assert len(rows) >= 2
+        assert len(rows) == 2
         constructor_row = rows[1]
         assert "constructor" in constructor_row
 
