@@ -88,9 +88,8 @@ const arrowFunction = () => {
         # 実際に実行
         result = await result_coro
         assert isinstance(result, list)
-        assert (
-            len(result) >= 4
-        )  # test_function + method + async_function + another_function
+        # test_function + method + async_function + another_function
+        assert len(result) == 4
 
     @pytest.mark.asyncio
     async def test_query_key_execution(self, sample_python_file):
@@ -102,9 +101,8 @@ const arrowFunction = () => {
         )
 
         assert results is not None
-        assert (
-            len(results) >= 4
-        )  # test_function + method + async_function + another_function
+        # test_function + method + async_function + another_function
+        assert len(results) == 4
         assert any(r["capture_name"] == "function" for r in results)
 
         # 関数名の確認
@@ -140,7 +138,9 @@ const arrowFunction = () => {
         )
 
         assert results is not None
-        assert len(results) >= 0  # カスタムクエリの結果は実装依存
+        # 恒真陷阱 fixed: `len(results) >= 0` is always true.
+        # Live fact: the custom query matches the 4 function names.
+        assert len(results) == 4
 
     @pytest.mark.asyncio
     async def test_concurrent_execution(self, sample_python_file):
@@ -167,7 +167,8 @@ const arrowFunction = () => {
         for result in results:
             assert result is not None
             assert isinstance(result, list)
-            assert len(result) >= 1
+        # function / class / function queries on the fixture
+        assert [len(r) for r in results] == [4, 1, 4]
 
     @pytest.mark.asyncio
     async def test_multiple_languages_concurrent(
@@ -279,7 +280,9 @@ const arrowFunction = () => {
             content, encoding = await service._read_file_async(sample_python_file)
             assert isinstance(content, str)
             assert isinstance(encoding, str)
-            assert len(content) > 0
+            # Content pin (not byte-length: tempfile mode="w" newline
+            # translation makes byte counts platform-dependent)
+            assert content.count("def ") == 4
             # ファイル内容が読み込まれていることを確認
             assert "def " in content or "function" in content
 
@@ -307,8 +310,8 @@ def function_{i}():
             )
 
             assert results is not None
-            # 大きなファイルでも結果が返されることを確認（具体的な数は実装依存）
-            assert len(results) >= 10  # 少なくとも10個の要素が見つかることを期待
+            # One capture per generated function
+            assert len(results) == 1000
 
         finally:
             Path(large_file).unlink(missing_ok=True)
@@ -337,5 +340,5 @@ def function_{i}():
             elif isinstance(result, Exception):
                 pytest.fail(f"Task failed with exception: {result}")
 
-        # 大部分のタスクが成功することを確認
-        assert successful_results >= 15  # 20個中15個以上が成功
+        # Exceptions already pytest.fail above, so every task must be a list
+        assert successful_results == 20

@@ -360,7 +360,7 @@ class TestR37adListQueriesJsonEnvelope:
         assert captured.get("scope") == "single_language"
         assert isinstance(captured.get("queries"), list)
         assert isinstance(captured.get("query_count"), int)
-        assert captured["query_count"] > 0
+        assert captured["query_count"] == 88
         agent_summary = captured.get("agent_summary")
         assert isinstance(agent_summary, dict)
         assert agent_summary["verdict"] == "INFO"
@@ -388,8 +388,8 @@ class TestR37adListQueriesJsonEnvelope:
         assert captured.get("scope") == "all_languages"
         assert captured.get("language") is None
         assert isinstance(captured.get("languages"), list)
-        assert captured["language_count"] > 0
-        assert captured["query_count"] > 0
+        assert captured["language_count"] == 17
+        assert captured["query_count"] == 948
         assert captured["agent_summary"]["verdict"] == "INFO"
 
     def test_list_queries_text_path_preserved(self):
@@ -410,7 +410,8 @@ class TestR37adListQueriesJsonEnvelope:
             rc = cmd.execute()
         assert rc == 0
         assert mock_json.call_count == 0, "text mode must not call output_json"
-        assert mock_list.call_count > 0
+        # One header line + one line per python query key (88)
+        assert mock_list.call_count == 89
 
 
 class TestR37aeRemainingInfoCommandsJsonEnvelope:
@@ -490,7 +491,7 @@ class TestR37aeRemainingInfoCommandsJsonEnvelope:
         assert captured.get("success") is True
         assert captured.get("verdict") == "INFO"
         assert isinstance(captured.get("languages"), list)
-        assert captured.get("language_count", 0) > 0
+        assert captured.get("language_count") == 21
         # Each language entry must have the documented shape.
         sample = captured["languages"][0]
         assert "language" in sample
@@ -514,7 +515,7 @@ class TestR37aeRemainingInfoCommandsJsonEnvelope:
         assert captured.get("success") is True
         assert captured.get("verdict") == "INFO"
         assert isinstance(captured.get("extensions"), list)
-        assert captured.get("extension_count", 0) > 0
+        assert captured.get("extension_count") == 51
 
     def test_show_languages_text_path_preserved(self):
         """Text default must still go through output_list (backward compat)."""
@@ -531,4 +532,5 @@ class TestR37aeRemainingInfoCommandsJsonEnvelope:
             rc = cmd.execute()
         assert rc == 0
         assert mock_json.call_count == 0
-        assert mock_list.call_count > 0
+        # One header line + one line per supported language (21)
+        assert mock_list.call_count == 22
