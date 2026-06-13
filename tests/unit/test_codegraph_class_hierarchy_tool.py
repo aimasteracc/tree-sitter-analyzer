@@ -418,3 +418,56 @@ class TestClassHierarchyEdgeStore:
             )
         finally:
             cache.close()
+
+
+class TestSameNameDifferentBaseCollision:
+    """Codex P2 on #659: two same-named children inheriting DIFFERENT bases
+    must each only appear under their actual base."""
+
+    def test_same_name_children_different_bases_isolated(self, tmp_path):
+        from tree_sitter_analyzer.class_hierarchy import ClassHierarchy, ClassInfo
+
+        h = ClassHierarchy.__new__(ClassHierarchy)
+        # Minimal hand-built state (bypass index): two Worker classes, one
+        # inherits Base, the other inherits Other.
+        from collections import defaultdict
+
+        h._built = True
+        h._parent_map = defaultdict(list)
+        h._children = defaultdict(list, {"Base": ["Worker"], "Other": ["Worker"]})
+        h._confirmed_child_files = defaultdict(
+            set,
+            {
+                "Base": {("a.py", "Worker")},
+                "Other": {("b.py", "Worker")},
+            },
+        )
+        h._classes = defaultdict(
+            list,
+            {
+                "Worker": [
+                    ClassInfo(
+                        name="Worker",
+                        file="a.py",
+                        line=1,
+                        end_line=2,
+                        parents=["Base"],
+                        language="python",
+                    ),
+                    ClassInfo(
+                        name="Worker",
+                        file="b.py",
+                        line=1,
+                        end_line=2,
+                        parents=["Other"],
+                        language="python",
+                    ),
+                ]
+            },
+        )
+        h.build = lambda: None  # already "built"
+
+        base_subs = h.subclasses_of("Base")
+        assert [(s["file"]) for s in base_subs] == ["a.py"]
+        other_subs = h.subclasses_of("Other")
+        assert [(s["file"]) for s in other_subs] == ["b.py"]

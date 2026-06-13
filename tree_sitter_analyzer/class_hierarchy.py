@@ -92,9 +92,10 @@ class ClassHierarchy:
         self._classes: dict[str, list[ClassInfo]] = defaultdict(list)
         self._children: dict[str, list[str]] = defaultdict(list)
         self._parent_map: dict[str, list[str]] = defaultdict(list)
-        # Set of (file, class_name) pairs confirmed as real children by the
-        # edge store.  Used to disambiguate same-name collisions in #659.
-        self._confirmed_child_files: set[tuple[str, str]] = set()
+        # Parent name → {(file, class_name)} confirmed as real children by the
+        # edge store.  Keyed per-parent to disambiguate same-name collisions
+        # where two same-named children inherit different bases (#659).
+        self._confirmed_child_files: dict[str, set[tuple[str, str]]] = defaultdict(set)
         self._built = False
 
     def build(self) -> None:
@@ -169,7 +170,10 @@ class ClassHierarchy:
 
         parent_map: dict[str, list[str]] = defaultdict(list)
         children: dict[str, list[str]] = defaultdict(list)
-        confirmed_child_files: set[tuple[str, str]] = set()
+        # Keyed by PARENT name → {(child_file, child_name)} so subclasses_of
+        # can confirm a same-named child belongs to THIS specific base, not
+        # just to some base (Codex P2 on #659: Worker(Base) vs Worker(Other)).
+        confirmed_child_files: dict[str, set[tuple[str, str]]] = defaultdict(set)
         for row in rows:
             source_ref = parse_node_id(row["source_node_id"])
             child = source_ref.name
@@ -187,10 +191,11 @@ class ClassHierarchy:
             base = parent.rsplit(".", 1)[-1]
             children[parent].append(child)
             children[base].append(child)
-            # Record the (file, child_name) pair so same-name collisions can
-            # be resolved in subclasses_of (#659).
+            # Record (file, child) under BOTH the qualified parent and its bare
+            # base, so same-name collisions resolve per-base (#659).
             if source_ref.file_path:
-                confirmed_child_files.add((source_ref.file_path, child))
+                confirmed_child_files[parent].add((source_ref.file_path, child))
+                confirmed_child_files[base].add((source_ref.file_path, child))
 
         if not parent_map:
             return False
@@ -236,19 +241,22 @@ class ClassHierarchy:
                 if child_name in visited:
                     continue
                 visited.add(child_name)
+                confirmed_for_current = self._confirmed_child_files.get(current, set())
                 for info in self._classes.get(child_name, []):
-                    # Guard against same-name collision (#659): _classes is
-                    # keyed by bare class name, so both `class Foo(Base):` and
-                    # a parentless `class Foo:` in a different file land here.
-                    # Only emit an entry if:
-                    #  (a) the ClassInfo itself declares parents (normal case),
-                    #  (b) the edge store explicitly confirmed this (file, name)
-                    #      pair as a real child — handles the case where
-                    #      symbols_json parents were stripped but edges remain.
+                    # Guard against same-name collision (#659 + Codex P2): a
+                    # same-named class may be parentless, OR inherit a DIFFERENT
+                    # base. _classes is keyed by bare name so all land here.
+                    # Only emit when this specific ClassInfo is a real child of
+                    # ``current``, confirmed by EITHER:
+                    #  (a) the edge store recorded (file, name) under this parent
+                    #      (authoritative — handles stripped symbols_json), or
+                    #  (b) the ClassInfo's own bases include ``current`` by bare
+                    #      name (symbols_json source, no edge).
+                    info_bases = {p.rsplit(".", 1)[-1] for p in info.parents}
                     if (
-                        info.parents
-                        or (info.file, child_name) in self._confirmed_child_files
-                    ):
+                        info.file,
+                        child_name,
+                    ) in confirmed_for_current or current in info_bases:
                         result.append({"depth": depth + 1, **info.to_dict()})
                 queue.append((child_name, depth + 1))
 
