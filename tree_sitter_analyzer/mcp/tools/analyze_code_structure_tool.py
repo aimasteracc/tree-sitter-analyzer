@@ -122,15 +122,16 @@ def _convert_parameters(parameters: Any) -> list[dict[str, str]]:
 
 
 def _parse_string_param(param_str: str) -> dict[str, str]:
-    """Parse a single 'type name' string into a parameter dict."""
-    parts = param_str.strip().split()
-    if len(parts) >= 2:
-        _prefix = parts[:-1]
-        _joined = " ".join(_prefix)
-        return {"name": parts[-1], "type": _joined}
-    if len(parts) == 1:
-        return {"name": "param", "type": parts[0]}
-    return {"name": "param", "type": "Object"}
+    """Parse a single parameter string into a parameter dict.
+
+    #576: this duplicate previously whitespace-split the string, mangling
+    ``result: dict[str, Any]`` into ``name='Any]', type='result: dict[str,'``.
+    Delegate to the shared helper (single source of truth) — it splits on the
+    first ``:`` and handles default values; fall back for the empty case.
+    """
+    from .analyze_code_structure_helpers import _parse_string_parameter
+
+    return _parse_string_parameter(param_str) or {"name": "param", "type": "Object"}
 
 
 def _get_method_parameters(method: Any) -> list[dict[str, str]]:
