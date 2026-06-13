@@ -386,6 +386,44 @@ _JAVA_SCOPE_BODY_NODES = frozenset(
     }
 )
 
+# Issue #628 (C#) — same over-capture disease as #626: every C#
+# ``variable_declarator`` became a kind="variable" row, so method/ctor/
+# dtor/local-fn/lambda/accessor/operator locals polluted FTS and symbol
+# search. Class/interface/record fields (const, static readonly, plain)
+# stay captured: they route ``declaration_list > field_declaration`` and
+# NEVER through any node in this set (live-parse verified).
+#
+# Unlike Java, ``block`` is deliberately ABSENT: C# top-level statements
+# (C# 9 top-level programs) put blocks at compilation-unit level
+# (``block < if_statement < global_statement``), so a block-keyed set
+# would drop if/try-wrapped top-level declarators and break the #612
+# module-scope guarantee. Function-keying is complete anyway: every
+# local's ancestry passes through one of these declaration nodes.
+# ``accessor_declaration`` gates property/indexer/event get/set/init/
+# add/remove bodies (their bodies are plain ``block``s);
+# ``local_function_statement`` is itself redundant under a method but
+# kept for explicitness (and gates top-level local functions);
+# ``lambda_expression`` / ``anonymous_method_expression`` cover lambdas
+# and ``delegate`` bodies hanging off FIELD initializers (lambdas in
+# methods are already inside the method). ``ERROR`` per the #629
+# hardening precedent: declarations inside error-recovered regions have
+# undecidable scope — better unindexed than a local masquerading as a
+# field.
+_CSHARP_SCOPE_BODY_NODES = frozenset(
+    {
+        "method_declaration",
+        "constructor_declaration",
+        "destructor_declaration",
+        "operator_declaration",
+        "conversion_operator_declaration",
+        "local_function_statement",
+        "accessor_declaration",
+        "lambda_expression",
+        "anonymous_method_expression",
+        "ERROR",
+    }
+)
+
 
 def _php_constants(node: Any, source: str) -> list[dict[str, Any]]:
     """Return kind="constant" symbols for a PHP const_declaration, one row
@@ -789,11 +827,13 @@ def _walk_for_symbols(
     ``enclosed`` tracks (top-down, no parent walking) whether *node* sits
     inside a Python function/class body (#610), a Go function body (#613),
     a Rust function/closure body (#613), a PHP function/closure body
-    (#624), a JS/TS function/method/static-block body (#626), or a Java
-    method/ctor/lambda/initializer body (#626 Java half) —
+    (#624), a JS/TS function/method/static-block body (#626), a Java
+    method/ctor/lambda/initializer body (#626 Java half), or a C#
+    method/ctor/dtor/local-fn/lambda/accessor/operator body (#628) —
     module/package-constant capture must fire at top-level scope only,
-    including ``if``/``try``-wrapped module-level assignments, and JS/TS/Java
-    function-local declarators must NOT produce kind="variable" rows.
+    including ``if``/``try``-wrapped module-level assignments, and
+    JS/TS/Java/C# function-local declarators must NOT produce
+    kind="variable" rows.
     """
     if depth > 20:
         return
@@ -870,12 +910,15 @@ def _walk_for_symbols(
     elif (
         node_type in _VAR_DECL_LIKE
         and name_node is not None
-        # #626: JS/TS/Java function-local declarators are not cross-file
-        # symbols — skip them. The ast_cache path only ever delivers the
-        # language ids "javascript"/"typescript"/"java" for this family
-        # (.jsx → "javascript", .tsx → "typescript", .java → "java"), so
-        # gating on these ids is complete.
-        and not (language in ("javascript", "typescript", "java") and enclosed)
+        # #626/#628: JS/TS/Java/C# function-local declarators are not
+        # cross-file symbols — skip them. The ast_cache path only ever
+        # delivers the language ids "javascript"/"typescript"/"java"/
+        # "csharp" for this family (.jsx → "javascript", .tsx →
+        # "typescript", .java → "java", .cs → "csharp"), so gating on
+        # these ids is complete.
+        and not (
+            language in ("javascript", "typescript", "java", "csharp") and enclosed
+        )
     ):
         name = _node_text(name_node, source)
         if not name.startswith("_") or depth < 3:
@@ -927,6 +970,7 @@ def _walk_for_symbols(
             and node_type in _JSTS_SCOPE_BODY_NODES
         )
         or (language == "java" and node_type in _JAVA_SCOPE_BODY_NODES)
+        or (language == "csharp" and node_type in _CSHARP_SCOPE_BODY_NODES)
     )
     for child in node.children:
         _walk_for_symbols(child, source, symbols, language, depth + 1, child_enclosed)
