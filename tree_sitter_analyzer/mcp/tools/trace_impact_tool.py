@@ -177,6 +177,8 @@ def _is_symbol_only_in_strings(line: str, symbol: str) -> bool:
         return False
 
     in_str: str | None = None  # None = outside string; '"' or "'" = inside
+    is_fstring = False  # current string was opened with an f/F prefix
+    brace_depth = 0  # {...} replacement-field depth inside an f-string
     idx = 0
     sym_len = len(symbol)
     sym_positions_in_str: list[bool] = []
@@ -199,22 +201,50 @@ def _is_symbol_only_in_strings(line: str, symbol: str) -> bool:
                 break
             if ch in ('"', "'"):
                 in_str = ch
+                # f/F prefix (possibly combined with r/b) → replacement
+                # fields {...} carry real code (Codex P2 on #655):
+                # `f"{my_func(x)}"` is a genuine call, must not be filtered.
+                prefix = line[max(0, idx - 2) : idx].lower()
+                is_fstring = "f" in prefix
+                brace_depth = 0
                 idx += 1
                 continue
         else:
-            # Inside a single-line string.
-            if ch == "\\" and idx + 1 < len(line):
-                # Skip escaped character.
-                idx += 2
-                continue
-            if ch == in_str:
-                in_str = None
-                idx += 1
-                continue
+            # Inside an f-string replacement field — this is CODE, not string.
+            if is_fstring and brace_depth > 0:
+                if ch == "}":
+                    brace_depth -= 1
+                    idx += 1
+                    continue
+                if ch == "{":
+                    brace_depth += 1
+                    idx += 1
+                    continue
+                # fall through to the symbol-position check below (in code)
+            else:
+                # Inside the literal text of a single-line string.
+                if ch == "\\" and idx + 1 < len(line):
+                    # Skip escaped character.
+                    idx += 2
+                    continue
+                if is_fstring and ch == "{":
+                    if line[idx : idx + 2] == "{{":  # escaped brace, literal '{'
+                        idx += 2
+                        continue
+                    brace_depth += 1
+                    idx += 1
+                    continue
+                if ch == in_str:
+                    in_str = None
+                    is_fstring = False
+                    idx += 1
+                    continue
 
-        # Check whether symbol starts at this position.
+        # Check whether symbol starts at this position. A symbol inside an
+        # f-string {...} field counts as in-code (in_string=False).
         if line[idx : idx + sym_len] == symbol:
-            sym_positions_in_str.append(in_str is not None)
+            in_code = in_str is None or (is_fstring and brace_depth > 0)
+            sym_positions_in_str.append(not in_code)
             idx += sym_len
             continue
 

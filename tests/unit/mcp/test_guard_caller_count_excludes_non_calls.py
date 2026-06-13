@@ -303,3 +303,118 @@ class TestTraceImpactExcludesImportAndStringMatches:
             f"guard counted {guard_count}, nav callers counted {nav_caller_count}. "
             "Import-line phantom inflated the guard count."
         )
+
+
+class TestFStringCallSitesNotFiltered:
+    """Codex P2 on #661: a call inside an f-string replacement field is real
+    code — must NOT be filtered (filtering it undercounts callers and makes
+    unsafe edits look safe)."""
+
+    @staticmethod
+    def _only_in_strings(line, symbol):
+        from tree_sitter_analyzer.mcp.tools.trace_impact_tool import (
+            _is_symbol_only_in_strings,
+        )
+
+        return _is_symbol_only_in_strings(line, symbol)
+
+    def test_fstring_replacement_field_call_is_code(self):
+        assert self._only_in_strings('msg = f"{my_func(x)}"', "my_func") is False
+
+    def test_fstring_literal_text_mention_is_string(self):
+        assert self._only_in_strings('msg = f"my_func failed"', "my_func") is True
+
+    def test_fstring_mixed_literal_and_field(self):
+        assert self._only_in_strings('f"my_func: {my_func(x)}"', "my_func") is False
+
+    def test_escaped_brace_keeps_literal_string(self):
+        assert self._only_in_strings('f"{{my_func}}"', "my_func") is True
+
+    def test_nested_brace_in_replacement_field_call_is_code(self):
+        # f"{my_func({1: 2})}" — dict literal nests a brace inside the field;
+        # my_func is still a real call (exercises brace_depth 1->2->1).
+        assert self._only_in_strings('f"{my_func({1: 2})}"', "my_func") is False
+
+    def test_plain_string_still_filtered(self):
+        assert self._only_in_strings('reason = "my_func gates"', "my_func") is True
+
+
+class TestNonCodeLineAndStringEdges:
+    """Cover the #655/#661 diff lines: import detection, triple-quote, escape,
+    early-return (codecov)."""
+
+    @staticmethod
+    def _noncode(text):
+        from tree_sitter_analyzer.mcp.tools.trace_impact_tool import (
+            _python_non_code_lines,
+        )
+
+        return _python_non_code_lines(text)
+
+    @staticmethod
+    def _only_in_strings(line, symbol):
+        from tree_sitter_analyzer.mcp.tools.trace_impact_tool import (
+            _is_symbol_only_in_strings,
+        )
+
+        return _is_symbol_only_in_strings(line, symbol)
+
+    def test_comment_line_is_non_code(self):
+        assert 2 in self._noncode("x = 1\n# comment mentions my_func\n")
+
+    def test_import_line_is_non_code(self):
+        nc = self._noncode("from mod import my_func\nmy_func()\n")
+        assert 1 in nc and 2 not in nc
+
+    def test_symbol_absent_returns_false(self):
+        assert self._only_in_strings("nothing here", "my_func") is False
+
+    def test_triple_quote_same_line_symbol_filtered(self):
+        assert self._only_in_strings('x = """my_func ref"""', "my_func") is True
+
+    def test_escaped_char_inside_string(self):
+        # backslash escape inside the string before the symbol mention
+        assert self._only_in_strings('s = "a\\tmy_func"', "my_func") is True
+
+
+class TestCLikeAndEscapePaths:
+    """Cover the c-like block-comment path + escaped-char string path (codecov)."""
+
+    def _make_file(self, tmp_path, name, content):
+        p = tmp_path / name
+        p.write_text(content, encoding="utf-8", newline="\n")
+        return str(p)
+
+    @staticmethod
+    def _only_in_strings(line, symbol):
+        from tree_sitter_analyzer.mcp.tools.trace_impact_tool import (
+            _is_symbol_only_in_strings,
+        )
+
+        return _is_symbol_only_in_strings(line, symbol)
+
+    def test_c_block_comment_unclosed_spans_lines(self, tmp_path):
+        from tree_sitter_analyzer.mcp.tools.trace_impact_tool import (
+            _filter_comment_docstring_matches,
+        )
+
+        # /* block ... */ spanning two lines: the mention inside is filtered,
+        # the real call below it is kept (exercises the C-comment in_block path).
+        content = "int x;\n/* block\n my_func mentioned */\nmy_func();\n"
+        path = self._make_file(tmp_path, "caller.c", content)
+        matches = [
+            {"file": path, "line": 3, "text": " my_func mentioned */"},
+            {"file": path, "line": 4, "text": "my_func();"},
+        ]
+        kept = _filter_comment_docstring_matches(matches, symbol="my_func")
+        assert [m["line"] for m in kept] == [4]
+
+    def test_escaped_char_before_symbol_in_string(self):
+        # backslash-escape inside the string, symbol after it, still in-string
+        assert self._only_in_strings('s = "a\\nmy_func"', "my_func") is True
+
+    def test_symbol_before_triple_quote_is_code(self):
+        # my_func is a real call BEFORE a triple-quote with no mention after →
+        # triple-quote region has no symbol (line-198 False branch); the call
+        # outside it keeps the line as code.
+        assert self._only_in_strings('my_func() + """no ref"""', "my_func") is False
