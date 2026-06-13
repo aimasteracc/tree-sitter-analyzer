@@ -67,7 +67,7 @@ Reading the tables:
 | `deps` | `file_path`, `mode`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--dependencies` |
 | `file` | `file_path`*, `compact_only`, `language`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--file-health` |
 | `heatmap` | `directory`, `file_path`, `function_name` (`symbol` aliases `function_name`), `language`, `max_files`, `mode`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--codegraph-complexity-heatmap` |
-| `imports` | `mode`*, `file_path`, `max_depth`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--import-graph` |
+| `imports` | `file_path`, `max_depth`, `mode`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--import-graph` |
 | `matrix` | `mode`*, `file_path`, `output_format`, `threshold`, `top_k` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--dependency-matrix` |
 | `overview` | `max_coupled_files`, `max_dead`, `max_entry_points`, `max_hubs`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--codegraph-overview` |
 | `patterns` | `file_path`*, `categories`, `output_format`, `severity_threshold` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--code-patterns` |
@@ -110,7 +110,7 @@ Reading the tables:
 | --- | --- | --- | --- |
 | `auto` | `max_files`, `mode`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--autoindex` |
 | `build` | `add_notes`, `roots` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--build-project-index` |
-| `cache` | `backend`, `file_path`, `force`, `include_activation`, `language`, `limit`, `max_files`, `mode`, `poll_interval`, `query` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--ast-cache` |
+| `cache` | `backend`, `file_path`, `force`, `include_activation`, `language`, `limit`, `max_files`, `mode`, `poll_interval`, `query`, `symbol` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--ast-cache` |
 | `full` | `include_activation`, `max_files`, `mode`, `output_format`, `resolve_synapse` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--full-index` |
 | `status` | `include_lag`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--codegraph-status` |
 | `sync` | `max_files`, `mode`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--incremental-sync` |

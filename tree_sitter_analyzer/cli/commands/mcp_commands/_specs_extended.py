@@ -161,7 +161,10 @@ _EXTENDED_SPECS: tuple[McpCommandSpec, ...] = (
         tool_attr="CodeGraphImportGraphTool",
         label="File-level import dependency graph (CodeGraph parity)",
         build_tool_args=lambda args, output_format: {
-            "mode": getattr(args, "import_graph_mode", "summary") or "summary",
+            # #575/Codex P2: pass the user's mode, else None so the tool infers
+            # it from file_path (deps) — forcing "summary" here ignored
+            # --import-graph-file and broke MCP/CLI parity.
+            "mode": getattr(args, "import_graph_mode", None),
             "file_path": getattr(args, "import_graph_file", None)
             or getattr(args, "file_path", None),
             "max_depth": getattr(args, "import_graph_max_depth", 10),

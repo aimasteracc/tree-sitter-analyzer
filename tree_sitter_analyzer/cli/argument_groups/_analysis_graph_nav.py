@@ -403,8 +403,11 @@ def _add_mcp_graph_nav_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--import-graph-mode",
         choices=["summary", "deps", "dependents", "blast_radius", "cycles", "coupling"],
-        default="summary",
-        help="Mode for --import-graph (default: summary)",
+        default=None,
+        help=(
+            "Mode for --import-graph. Omit to infer: 'deps' when "
+            "--import-graph-file is given, else 'summary' (#575)."
+        ),
     )
     parser.add_argument(
         "--import-graph-file",
