@@ -28,6 +28,11 @@ from .codegraph_query_backend import CodeGraphQueryBackend
 
 logger = logging.getLogger(__name__)
 
+# SQLite's default SQLITE_MAX_VARIABLE_NUMBER is 999. Each inbound xref query
+# binds the file's symbol-name list plus 2 file_path params, so chunk the names
+# well under that ceiling (mirrors the portability chunking in _route_cache.py).
+_XREF_NAME_CHUNK = 900
+
 
 @dataclass
 class XRefResult:
@@ -320,6 +325,34 @@ class XRefEngine:
         """
         return [s["name"] for s in self._file_symbols(conn, file_path) if s.get("name")]
 
+    def _inbound_edge_rows(
+        self,
+        conn: sqlite3.Connection,
+        names: list[str],
+        file_path: str,
+        prefix: str,
+        suffix: str,
+    ) -> list[sqlite3.Row]:
+        """Run a chunked inbound-edge query and concatenate the rows.
+
+        ``names`` is chunked under SQLite's 999 bound-variable cap so a file
+        with ~1000+ symbols doesn't raise ``too many SQL variables``. Each chunk
+        binds ``(*chunk, file_path, file_path)``. ``prefix``/``suffix`` are
+        constant SQL fragments (B608: no user data in the string); callers
+        dedup + order + cap across chunks.
+        """
+        rows: list[sqlite3.Row] = []
+        for start in range(0, len(names), _XREF_NAME_CHUNK):
+            chunk = names[start : start + _XREF_NAME_CHUNK]
+            placeholders = ",".join("?" * len(chunk))
+            rows.extend(
+                conn.execute(
+                    prefix + placeholders + suffix,
+                    (*chunk, file_path, file_path),
+                ).fetchall()
+            )
+        return rows
+
     def _find_file_dependents(
         self,
         conn: sqlite3.Connection,
@@ -343,15 +376,19 @@ class XRefEngine:
         # `'x'.format()` call would otherwise inflate any file defining `format`
         # (resolved inbound only; under-count beats over-count for blast radius).
         _fd_suffix = (
-            ") AND file_path != ? AND callee_resolved_file = ? "
-            "ORDER BY caller_file LIMIT 50"
+            ") AND file_path != ? AND callee_resolved_file = ? ORDER BY caller_file"
         )
-        placeholders = ",".join("?" * len(names))
-        rows = conn.execute(
-            _fd_prefix + placeholders + _fd_suffix,
-            (*names, file_path, file_path),
-        ).fetchall()
-        return [{"file": row["caller_file"]} for row in rows]
+        rows = self._inbound_edge_rows(conn, names, file_path, _fd_prefix, _fd_suffix)
+        seen: set[str] = set()
+        out: list[dict[str, Any]] = []
+        for caller_file in sorted(row["caller_file"] for row in rows):
+            if caller_file in seen:
+                continue
+            seen.add(caller_file)
+            out.append({"file": caller_file})
+            if len(out) >= 50:
+                break
+        return out
 
     def _file_symbols(
         self,
@@ -402,14 +439,22 @@ class XRefEngine:
         # otherwise be credited to any file defining `format`).
         _fc_suffix = (
             ") AND file_path != ? AND callee_resolved_file = ? "
-            "ORDER BY caller_file, caller_line LIMIT 50"
+            "ORDER BY caller_file, caller_line"
         )
-        placeholders = ",".join("?" * len(names))
-        rows = conn.execute(
-            _fc_prefix + placeholders + _fc_suffix,
-            (*names, file_path, file_path),
-        ).fetchall()
-        return [dict(row) for row in rows]
+        rows = self._inbound_edge_rows(conn, names, file_path, _fc_prefix, _fc_suffix)
+        seen: set[tuple[str, str, Any]] = set()
+        out: list[dict[str, Any]] = []
+        for row in sorted(
+            rows, key=lambda r: (r["caller_file"], r["caller_line"] or 0)
+        ):
+            key = (row["caller_file"], row["caller_name"], row["caller_line"])
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(dict(row))
+            if len(out) >= 50:
+                break
+        return out
 
     def _file_callees(
         self,

@@ -222,6 +222,31 @@ class TestXRefEngineFile:
         assert [c["caller_file"] for c in b_result["callers"]] == ["c.py"]
         assert [d["file"] for d in b_result["file_dependents"]] == ["c.py"]
 
+    def test_file_xref_chunks_large_symbol_list(self, tmp_path, monkeypatch):
+        # Codex P2 (round 5): a file with more symbols than SQLite's bound-var
+        # cap (999 on capped builds) would raise "too many SQL variables" in the
+        # IN(...) query. The name list must be chunked. Modern SQLite defaults to
+        # 32766 vars so the raw limit can't be hit portably in a test — instead
+        # shrink the chunk size and assert multi-chunk concatenation + dedup
+        # still resolves the inbound call correctly. big.py defines 5 functions;
+        # caller.py calls the resolved big.f3(); chunk size 2 → 3 chunks.
+        import tree_sitter_analyzer.xref as xref_mod
+
+        monkeypatch.setattr(xref_mod, "_XREF_NAME_CHUNK", 2)
+        project = tmp_path / "proj_big"
+        project.mkdir()
+        (project / "big.py").write_text(
+            "".join(f"def f{i}():\n    pass\n\n" for i in range(5))
+        )
+        (project / "caller.py").write_text("import big\n\ndef use():\n    big.f3()\n")
+        cache = ASTCache(str(project))
+        cache.index_project(max_files=100)
+        engine = XRefEngine(cache)
+        result = engine.file_xref("big.py")
+        assert result["caller_count"] == 1
+        assert [c["caller_file"] for c in result["callers"]] == ["caller.py"]
+        assert [d["file"] for d in result["file_dependents"]] == ["caller.py"]
+
     def test_file_xref_excludes_unresolved_stdlib_name_collision(self, tmp_path):
         # Codex P2 (round 4): the resolved-only gate must NOT fall back to
         # name-only for unresolved rows. a.py defines `format`; b.py calls
