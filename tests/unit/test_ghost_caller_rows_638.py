@@ -197,20 +197,27 @@ class TestCallersToolGhostRows:
     async def test_real_call_sites_resolve_to_enclosing_methods(
         self, indexed_project: str
     ) -> None:
-        """Both in-method call sites attribute to 'execute'.
+        """Both in-method call sites attribute to their own execute definition.
 
-        The SQL tier dedups by (file, caller_name), so the two same-named
-        methods collapse into one listed row — the first edge's def line.
+        After #647: the SQL dedup key includes caller_line so the two same-named
+        methods (execute@13, execute@22) each produce their own listed row.
+        caller_count is 2, not 1.
         """
         tool = CodeGraphCallersTool(indexed_project)
         result = await tool.execute({"function_name": "fmt", "output_format": "json"})
-        rows = [
-            (c["name"], c["line"])
-            for c in result.get("callers", [])
-            if c["file"].endswith("sample.py")
+        rows = sorted(
+            [
+                (c["name"], c["line"])
+                for c in result.get("callers", [])
+                if c["file"].endswith("sample.py")
+            ],
+            key=lambda t: t[1],
+        )
+        assert rows == [
+            ("execute", _FIRST_EXECUTE_DEF_LINE),
+            ("execute", _SECOND_EXECUTE_DEF_LINE),
         ]
-        assert rows == [("execute", _FIRST_EXECUTE_DEF_LINE)]
-        assert result.get("caller_count") == 1
+        assert result.get("caller_count") == 2
 
     @pytest.mark.asyncio
     async def test_module_level_call_counted_not_emitted(

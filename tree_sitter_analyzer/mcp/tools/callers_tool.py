@@ -234,7 +234,7 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             if not edge.get("caller_name"):
                 unattributed += 1
                 continue
-            key = f"{edge['caller_file']}:{edge['caller_name']}"
+            key = f"{edge['caller_file']}:{edge['caller_name']}:{edge['caller_line']}"
             if key in seen:
                 continue
             seen.add(key)
