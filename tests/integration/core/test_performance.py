@@ -163,7 +163,7 @@ class TestPerformanceContext:
         context = PerformanceContext("test_operation", monitor)
         result = context.__enter__()
         assert result is context
-        assert context.start_time > 0
+        assert context.start_time > 0  # ratchet: nondeterministic wall-clock timing
 
     def test_context_manager_exit(self):
         """测试上下文管理器__exit__"""
@@ -174,7 +174,9 @@ class TestPerformanceContext:
         time.sleep(0.01)  # Small delay
         context.__exit__(None, None, None)
         # 実行時間は0以上
-        assert monitor.get_last_duration() >= 0
+        assert (
+            monitor.get_last_duration() >= 0
+        )  # ratchet: nondeterministic wall-clock timing
         assert monitor._total_operations == 1
 
     @patch("tree_sitter_analyzer.core.performance.log_performance")
@@ -189,7 +191,7 @@ class TestPerformanceContext:
         args = mock_log.call_args[0]
         assert args[0] == "test_operation"
         # 実行時間は0以上
-        assert args[1] >= 0
+        assert args[1] >= 0  # ratchet: nondeterministic wall-clock timing
         assert args[2] == "Operation completed"
 
     def test_context_manager_with_exception(self):
@@ -200,7 +202,9 @@ class TestPerformanceContext:
         context.__enter__()
         context.__exit__(ValueError, ValueError("test"), None)
         # 実行時間は0以上
-        assert monitor.get_last_duration() >= 0
+        assert (
+            monitor.get_last_duration() >= 0
+        )  # ratchet: nondeterministic wall-clock timing
 
     def test_context_manager_usage(self):
         """测试实际使用场景"""
@@ -209,7 +213,9 @@ class TestPerformanceContext:
         with monitor.measure_operation("test_operation"):
             time.sleep(0.01)
         # 実行時間は0以上
-        assert monitor.get_last_duration() >= 0
+        assert (
+            monitor.get_last_duration() >= 0
+        )  # ratchet: nondeterministic wall-clock timing
         assert monitor._total_operations == 1
         assert "test_operation" in monitor._operation_stats
 
@@ -238,7 +244,7 @@ class TestPerformanceIntegration:
 
         stats1 = monitor._operation_stats["operation1"]
         assert stats1["count"] == 2
-        assert stats1["avg_time"] > 0
+        assert stats1["avg_time"] > 0  # ratchet: nondeterministic wall-clock timing
 
         stats2 = monitor._operation_stats["operation2"]
         assert stats2["count"] == 1
