@@ -140,6 +140,20 @@ class TestXRefFileModeAgentSummary:
         assert summary["verdict"] == result["verdict"]
         assert isinstance(summary["summary_line"], str) and summary["summary_line"]
 
+    async def test_file_mode_top_level_summary_line_on_direct_path(
+        self, tool_with_root, tmp_path
+    ):
+        # Codex P2 (round 4): --codegraph-xref --format json consumers read the
+        # TOP-LEVEL summary_line, which the MCP post-hook would normally mirror.
+        # On the direct execute() path the post-hook never runs, so the tool must
+        # set the top-level summary_line itself (not only inside agent_summary).
+        (tmp_path / "mod.py").write_text("def foo():\n    pass\n")
+        result = await tool_with_root.execute(
+            {"mode": "file", "file_path": "mod.py", "output_format": "json"}
+        )
+        assert isinstance(result["summary_line"], str) and result["summary_line"]
+        assert result["summary_line"] == result["agent_summary"]["summary_line"]
+
     async def test_file_mode_count_semantics_mentions_callers(
         self, tool_with_root, tmp_path
     ):

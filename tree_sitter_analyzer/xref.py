@@ -338,13 +338,12 @@ class XRefEngine:
             "SELECT DISTINCT file_path AS caller_file FROM edges "
             "WHERE kind = 'calls' AND callee_name IN ("
         )
-        # callee_resolved_file gate (Codex P2): only count edges the resolver
-        # tied to THIS file, plus name-only fallback for unresolved rows ('').
-        # Without it, a call to b.helper would inflate a.py's count when both
-        # define `helper`.
+        # callee_resolved_file gate (Codex P2): count ONLY edges the resolver
+        # tied to THIS file. No unresolved ('') fallback — an unresolved
+        # `'x'.format()` call would otherwise inflate any file defining `format`
+        # (resolved inbound only; under-count beats over-count for blast radius).
         _fd_suffix = (
-            ") AND file_path != ? "
-            "AND (callee_resolved_file = ? OR callee_resolved_file = '') "
+            ") AND file_path != ? AND callee_resolved_file = ? "
             "ORDER BY caller_file LIMIT 50"
         )
         placeholders = ",".join("?" * len(names))
@@ -398,12 +397,11 @@ class XRefEngine:
             "json_extract(metadata, '$.caller_line') AS caller_line, callee_name "
             "FROM edges WHERE kind = 'calls' AND callee_name IN ("
         )
-        # callee_resolved_file gate (Codex P2): resolved-to-this-file rows plus
-        # unresolved ('') name-only fallback — excludes a same-named callee that
-        # the resolver tied to a different file.
+        # callee_resolved_file gate (Codex P2): resolved-to-this-file rows ONLY,
+        # no unresolved ('') fallback (an unresolved str.format() call would
+        # otherwise be credited to any file defining `format`).
         _fc_suffix = (
-            ") AND file_path != ? "
-            "AND (callee_resolved_file = ? OR callee_resolved_file = '') "
+            ") AND file_path != ? AND callee_resolved_file = ? "
             "ORDER BY caller_file, caller_line LIMIT 50"
         )
         placeholders = ",".join("?" * len(names))

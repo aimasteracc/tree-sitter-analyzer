@@ -222,6 +222,24 @@ class TestXRefEngineFile:
         assert [c["caller_file"] for c in b_result["callers"]] == ["c.py"]
         assert [d["file"] for d in b_result["file_dependents"]] == ["c.py"]
 
+    def test_file_xref_excludes_unresolved_stdlib_name_collision(self, tmp_path):
+        # Codex P2 (round 4): the resolved-only gate must NOT fall back to
+        # name-only for unresolved rows. a.py defines `format`; b.py calls
+        # str.format via "x".format() — an unresolved edge (callee_name='format',
+        # callee_resolved_file=''). It must NOT be credited to a.py, or every
+        # file defining a common method name (format/get/items) over-reports its
+        # blast radius.
+        project = tmp_path / "proj_stdlib"
+        project.mkdir()
+        (project / "a.py").write_text("def format():\n    pass\n")
+        (project / "b.py").write_text('def use():\n    return "x".format()\n')
+        cache = ASTCache(str(project))
+        cache.index_project(max_files=100)
+        engine = XRefEngine(cache)
+        a_result = engine.file_xref("a.py")
+        assert a_result["caller_count"] == 0
+        assert a_result["file_dependent_count"] == 0
+
     def test_file_xref_includes_methods(self, tmp_path):
         """Codex P2 on #314: class methods (kind='method') must appear in file
         xref, not be dropped by a function/class-only filter. A file with only
