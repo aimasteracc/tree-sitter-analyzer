@@ -361,12 +361,20 @@ class CodeGraphImpactTool(BaseMCPTool):
                 },
                 "function_name": {
                     "type": "string",
-                    "description": "Target function name (required for function_impact and risk_score)",
+                    "description": (
+                        "Target function name. Required for function_impact and "
+                        "risk_score modes. Also accepted as a singular alias for "
+                        "blast_radius (wrap in list automatically)."
+                    ),
                 },
                 "function_names": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "List of function names for blast_radius mode",
+                    "description": (
+                        "List of function names for blast_radius mode. "
+                        "Use function_names (plural) for blast_radius; "
+                        "function_name (singular) is also accepted and wrapped."
+                    ),
                 },
                 "file_path": {
                     "type": "string",
@@ -405,8 +413,12 @@ class CodeGraphImpactTool(BaseMCPTool):
             "function_name"
         ):
             raise ValueError(f"function_name is required for mode '{mode}'")
-        if mode == "blast_radius" and not arguments.get("function_names"):
-            raise ValueError("function_names is required for blast_radius mode")
+        if mode == "blast_radius":
+            # Accept function_names (plural) OR function_name (singular alias).
+            if not arguments.get("function_names") and not arguments.get(
+                "function_name"
+            ):
+                raise ValueError("function_names is required for blast_radius mode")
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -429,9 +441,11 @@ class CodeGraphImpactTool(BaseMCPTool):
                 graph, func_name, file_path, depth, include_tests
             )
         elif mode == "blast_radius":
-            result = _blast_radius_for_functions(
-                graph, arguments["function_names"], file_path, depth
+            # #657: accept function_name (singular) as alias — wrap in list.
+            func_names: list[str] = arguments.get("function_names") or (
+                [arguments["function_name"]] if arguments.get("function_name") else []
             )
+            result = _blast_radius_for_functions(graph, func_names, file_path, depth)
         elif mode == "risk_score":
             if not func_name:
                 raise ValueError("function_name required for risk_score mode")
@@ -490,7 +504,7 @@ class CodeGraphImpactTool(BaseMCPTool):
             or len(transitive_callers) > _MAX_LISTED
             or len(transitive_callees) > _MAX_LISTED
         )
-        return {
+        out: dict[str, Any] = {
             "function": func_name,
             "file": self_file,
             "direct_callers": direct_callers[:_MAX_LISTED],
@@ -507,6 +521,13 @@ class CodeGraphImpactTool(BaseMCPTool):
             "listed_cap": _MAX_LISTED,
             "risk": risk,
         }
+        # #658 honest-truncation: flag when the _MAX_TRANSITIVE cap was hit so
+        # agents don't report the cap (200) as a precise total.
+        if len(transitive_callers) >= _MAX_TRANSITIVE:
+            out["transitive_count_is_capped"] = True
+        if len(transitive_callees) >= _MAX_TRANSITIVE:
+            out["transitive_callee_count_is_capped"] = True
+        return out
 
 
 def _impact_verdict(result: dict[str, Any]) -> str:

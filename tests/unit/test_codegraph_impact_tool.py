@@ -470,3 +470,200 @@ class TestImpactTestPartition:
         names = {r["name"] for r in result}
         assert "real_dep" in names
         assert "fake_dep" in names
+
+
+# ---------------------------------------------------------------------------
+# #656 — blast_radius transitive propagation (FunctionRef dict-key identity)
+# ---------------------------------------------------------------------------
+
+
+class TestBlastRadiusPropagation:
+    """#656: blast_radius must propagate transitively, not just return the seed.
+
+    The graph walks caller_refs_of(current) where *current* may come from a
+    previous iteration's caller list.  With __hash__/__eq__ keyed on
+    (file_path, name, start_line), a FunctionRef VALUE retrieved from _callers
+    can be used as a KEY for the next-level lookup even if it is a different
+    object instance — the dict lookup succeeds because hashes match.
+    """
+
+    def test_transitive_caller_chain_propagates(self):
+        """Seed←B←C: total_affected_functions == 3 (seed + 2 transitive callers)."""
+        seed = _make_func("seed", "a.py")
+        b = _make_func("b", "b.py", 5)
+        c = _make_func("c", "c.py", 10)
+
+        graph = MagicMock()
+        graph.resolve_targets.return_value = [seed]
+        callers_map = {seed: [b], b: [c], c: []}
+        callees_map = {seed: [], b: [], c: []}
+        graph.caller_refs_of.side_effect = lambda f: callers_map.get(f, [])
+        graph.callee_refs_of.side_effect = lambda f: callees_map.get(f, [])
+
+        result = _blast_radius_for_functions(graph, ["seed"], depth=5)
+        assert result["total_affected_functions"] == 3
+
+    def test_four_direct_callers_are_all_counted(self):
+        """seed with 4 direct callers: total_affected_functions == 5 (seed + 4)."""
+        seed = _make_func("seed", "core.py")
+        callers = [_make_func(f"c{i}", f"mod{i}.py", i + 10) for i in range(4)]
+
+        graph = MagicMock()
+        graph.resolve_targets.return_value = [seed]
+        callers_map: dict = {seed: callers}
+        for c in callers:
+            callers_map[c] = []
+        callees_map: dict = {seed: []}
+        for c in callers:
+            callees_map[c] = []
+        graph.caller_refs_of.side_effect = lambda f: callers_map.get(f, [])
+        graph.callee_refs_of.side_effect = lambda f: callees_map.get(f, [])
+
+        result = _blast_radius_for_functions(graph, ["seed"], depth=5)
+        assert result["total_affected_functions"] == 5
+
+
+# ---------------------------------------------------------------------------
+# #657 — singular function_name accepted as alias for blast_radius
+# ---------------------------------------------------------------------------
+
+
+class TestBlastRadiusSingularAlias:
+    """#657: blast_radius should accept function_name (singular) and wrap it."""
+
+    def test_validate_accepts_singular_function_name(self):
+        """validate_arguments must NOT raise when function_name (singular) is given."""
+        tool = CodeGraphImpactTool()
+        # Should not raise
+        assert tool.validate_arguments({"mode": "blast_radius", "function_name": "foo"})
+
+    def test_validate_still_raises_when_both_absent(self):
+        """validate_arguments must still raise when neither name form is provided."""
+        tool = CodeGraphImpactTool()
+        with pytest.raises(ValueError, match="function_names is required"):
+            tool.validate_arguments({"mode": "blast_radius"})
+
+    @pytest.mark.asyncio
+    async def test_execute_singular_wraps_to_list(self):
+        """execute with function_name=X for blast_radius passes [X] to blast fn."""
+        tool = CodeGraphImpactTool(project_root="/tmp/nonexistent")
+        seed = _make_func("solo_fn", "x.py")
+        mock_graph = MagicMock()
+        mock_graph.resolve_targets.return_value = [seed]
+        mock_graph.caller_refs_of.return_value = []
+        mock_graph.callee_refs_of.return_value = []
+        with patch.object(tool, "get_call_graph", return_value=mock_graph):
+            result = await tool.execute(
+                {
+                    "mode": "blast_radius",
+                    "function_name": "solo_fn",  # singular, not function_names
+                    "output_format": "json",
+                }
+            )
+        assert result["success"] is True
+        assert result["mode"] == "blast_radius"
+        # seed only: total_affected_functions == 1
+        assert result["total_affected_functions"] == 1
+
+    def test_schema_mentions_blast_radius_function_names(self):
+        """Schema description for function_names must reference blast_radius mode."""
+        tool = CodeGraphImpactTool()
+        schema = tool.get_tool_schema()
+        desc = schema["properties"]["function_names"]["description"]
+        assert "blast_radius" in desc
+
+    def test_schema_describes_singular_alias(self):
+        """function_name schema description must mention blast_radius alias."""
+        tool = CodeGraphImpactTool()
+        schema = tool.get_tool_schema()
+        desc = schema["properties"]["function_name"]["description"]
+        # Must document that singular is accepted for blast_radius too
+        assert "blast_radius" in desc
+
+
+# ---------------------------------------------------------------------------
+# #658 — transitive_count_is_capped flag when _MAX_TRANSITIVE cap hit
+# ---------------------------------------------------------------------------
+
+
+class TestTransitiveCapFlag:
+    """#658: transitive_caller_count == _MAX_TRANSITIVE must expose is_capped flag."""
+
+    def _graph_with_n_transitive_callers(self, n: int) -> MagicMock:
+        """Return a mock graph whose BFS yields exactly n unique callers."""
+
+        graph = MagicMock()
+        hub = _make_func("hub", "hub.py")
+        graph.resolve_targets.return_value = [hub]
+        callers = [_make_func(f"c{i}", f"f{i}.py", i) for i in range(n)]
+        # All callers are direct (depth 1), no second-level callers.
+        callers_map: dict = {hub: callers}
+        for c in callers:
+            callers_map[c] = []
+        graph.caller_refs_of.side_effect = lambda f: callers_map.get(f, [])
+        graph.callee_refs_of.return_value = []
+        graph.callers_of.return_value = [c.to_dict() for c in callers]
+        graph.callees_of.return_value = []
+        graph.call_chain.return_value = []
+        return graph
+
+    def test_capped_flag_absent_below_limit(self):
+        """transitive_count_is_capped absent when caller count < _MAX_TRANSITIVE."""
+        from tree_sitter_analyzer.mcp.tools.codegraph_impact_tool import _MAX_TRANSITIVE
+
+        tool = CodeGraphImpactTool()
+        n = _MAX_TRANSITIVE - 1
+        graph = self._graph_with_n_transitive_callers(n)
+        result = tool._function_impact(graph, "hub", None, 10)
+        assert result["transitive_caller_count"] == n
+        assert "transitive_count_is_capped" not in result
+
+    def test_capped_flag_present_at_limit(self):
+        """transitive_count_is_capped: True when transitive_caller_count == _MAX_TRANSITIVE."""
+        from tree_sitter_analyzer.mcp.tools.codegraph_impact_tool import _MAX_TRANSITIVE
+
+        tool = CodeGraphImpactTool()
+        n = _MAX_TRANSITIVE
+        graph = self._graph_with_n_transitive_callers(n)
+        result = tool._function_impact(graph, "hub", None, 10)
+        assert result["transitive_caller_count"] == _MAX_TRANSITIVE
+        assert result["transitive_count_is_capped"] is True
+
+    def _graph_with_n_transitive_callees(self, n: int) -> MagicMock:
+        """Return a mock graph whose callee BFS yields exactly n unique callees."""
+
+        graph = MagicMock()
+        hub = _make_func("hub", "hub.py")
+        graph.resolve_targets.return_value = [hub]
+        callees = [_make_func(f"d{i}", f"g{i}.py", i) for i in range(n)]
+        callees_map: dict = {hub: callees}
+        for d in callees:
+            callees_map[d] = []
+        graph.callee_refs_of.side_effect = lambda f: callees_map.get(f, [])
+        graph.caller_refs_of.return_value = []
+        graph.callers_of.return_value = []
+        graph.callees_of.return_value = [d.to_dict() for d in callees]
+        graph.call_chain.return_value = []
+        return graph
+
+    def test_callee_capped_flag_absent_below_limit(self):
+        """transitive_callee_count_is_capped absent when callee count < _MAX_TRANSITIVE."""
+        from tree_sitter_analyzer.mcp.tools.codegraph_impact_tool import _MAX_TRANSITIVE
+
+        tool = CodeGraphImpactTool()
+        n = _MAX_TRANSITIVE - 1
+        graph = self._graph_with_n_transitive_callees(n)
+        result = tool._function_impact(graph, "hub", None, 10)
+        assert result["transitive_callee_count"] == n
+        assert "transitive_callee_count_is_capped" not in result
+
+    def test_callee_capped_flag_present_at_limit(self):
+        """transitive_callee_count_is_capped: True when count == _MAX_TRANSITIVE."""
+        from tree_sitter_analyzer.mcp.tools.codegraph_impact_tool import _MAX_TRANSITIVE
+
+        tool = CodeGraphImpactTool()
+        n = _MAX_TRANSITIVE
+        graph = self._graph_with_n_transitive_callees(n)
+        result = tool._function_impact(graph, "hub", None, 10)
+        assert result["transitive_callee_count"] == _MAX_TRANSITIVE
+        assert result["transitive_callee_count_is_capped"] is True
