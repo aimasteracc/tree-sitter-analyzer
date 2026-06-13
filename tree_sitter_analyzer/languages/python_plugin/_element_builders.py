@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from ..._ast_extraction import _PY_SCOPE_BODY_NODES, _python_module_constant
 from ...models import Class, Function, Variable
 from ...utils import log_warning
 
@@ -60,6 +61,51 @@ def _class_attribute_name_and_type(left_part: str) -> tuple[str, str | None]:
 
     name_part, type_part = left_part.split(":", 1)
     return name_part.strip(), type_part.strip()
+
+
+def extract_module_constants(tree: Any, source_code: str) -> list[Variable]:
+    """Extract module-level constants as Variable elements (issue #639).
+
+    Plugin-path parity with the #612 ast_cache scope rule (shared via
+    :func:`tree_sitter_analyzer._ast_extraction._python_module_constant`):
+    an ``assignment`` not enclosed by any function/class body whose target
+    is a plain identifier matching const-style ∪ annotated-with-value ∪
+    dunder. Only ``function_definition``/``class_definition`` close module
+    scope — if/try-wrapped module assignments stay captured, and chained
+    targets (``A = B = 1``) yield one row per nested assignment.
+    """
+    constants: list[Variable] = []
+    if tree is None or tree.root_node is None:
+        return constants
+    stack = [tree.root_node]
+    while stack:
+        node = stack.pop()
+        if node.type in _PY_SCOPE_BODY_NODES:
+            continue
+        if node.type == "assignment":
+            sym = _python_module_constant(node, source_code)
+            if sym is not None:
+                constants.append(_build_module_constant(node, sym, source_code))
+        stack.extend(reversed(node.children))
+    return constants
+
+
+def _build_module_constant(
+    node: Any, sym: dict[str, Any], source_code: str
+) -> Variable:
+    type_node = node.child_by_field_name("type")
+    vtype = node_raw_text(type_node, source_code) if type_node is not None else None
+    return Variable(
+        name=sym["name"],
+        start_line=sym["line"],
+        end_line=sym["end_line"],
+        raw_text=node_raw_text(node, source_code),
+        language="python",
+        variable_type=vtype,
+        field_type=vtype,
+        is_constant=True,
+        visibility=_function_visibility(sym["name"]),
+    )
 
 
 @dataclass(slots=True)
