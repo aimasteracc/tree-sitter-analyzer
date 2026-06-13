@@ -204,3 +204,31 @@ class TestStructureSurfaceSeesModuleConstants:
         # do not leak into the class fields list.
         (settings_cls,) = (c for c in result["classes"] if c["name"] == "Settings")
         assert [f["name"] for f in settings_cls["fields"]] == ["TIMEOUT"]
+
+
+class TestOutlineTopLevelFields:
+    """Codex P2 on #645: field_count included module constants but no
+    rendered outline section showed them — top_level_fields closes the gap."""
+
+    def test_outline_surfaces_module_constants(self, tmp_path):
+        import asyncio
+
+        from tree_sitter_analyzer.mcp.tools.get_code_outline_tool import (
+            GetCodeOutlineTool,
+        )
+
+        p = tmp_path / "consts.py"
+        p.write_text(
+            "MAX_RETRIES = 3\n\n\nclass C:\n    TIMEOUT = 5\n\n    def m(self):\n        return 1\n",
+            newline="\n",
+        )
+        tool = GetCodeOutlineTool(str(tmp_path))
+        result = asyncio.run(
+            tool.execute({"file_path": str(p), "output_format": "json"})
+        )
+        top = result["top_level_fields"]
+        assert [f["name"] for f in top] == ["MAX_RETRIES"]
+        cls_fields = result["classes"][0].get("fields")
+        if cls_fields is not None:
+            assert [f["name"] for f in cls_fields] == ["TIMEOUT"]
+        assert result["field_count"] == 2
