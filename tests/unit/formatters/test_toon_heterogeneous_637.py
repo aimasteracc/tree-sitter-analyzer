@@ -56,6 +56,24 @@ class TestHeterogeneousArrayLosslessness:
         )
         assert out == "rows:\n  [2]{a,meta{x,y}}:\n    1,\n    2,(1,2)"
 
+    def test_issue_643_divergent_nested_subkeys_encode_inline(self) -> None:
+        """#643: a dict cell whose subkeys DIVERGE from the header sample must
+        encode self-describing ``(k:v)`` — not values-only ``(v1,v2)`` that
+        would be positionally mis-read. Header samples ``meta{x,y}`` from row 0;
+        row 1's ``{x,z}`` cannot reuse that annotation without losing ``z``."""
+        out = ToonEncoder().encode(
+            {"rows": [{"meta": {"x": 1, "y": 2}}, {"meta": {"x": 3, "z": 9}}]}
+        )
+        assert out == "rows:\n  [2]{meta{x,y}}:\n    (1,2)\n    (x:3,z:9)"
+
+    def test_issue_643_matching_nested_subkeys_stay_compact(self) -> None:
+        """Regression: cells whose subkeys MATCH the header sample keep the
+        compact values-only form (the token-efficient common case)."""
+        out = ToonEncoder().encode(
+            {"rows": [{"meta": {"x": 1, "y": 2}}, {"meta": {"x": 3, "y": 4}}]}
+        )
+        assert out == "rows:\n  [2]{meta{x,y}}:\n    (1,2)\n    (3,4)"
+
     def test_mixed_dict_and_scalar_list_encodes_inline_not_crash(self) -> None:
         """A list whose first item is a dict but later items are scalars must
         NOT enter the table path (pre-fix: AttributeError → JSON fallback)."""
