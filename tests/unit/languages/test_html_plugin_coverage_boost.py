@@ -356,19 +356,40 @@ class TestRealParsingPaths:
         """Lines 168-179: self_closing_tag node type"""
         tree = _parse_html("<br/>")
         elements = extractor.extract_html_elements(tree, "<br/>")
-        # Exact current behavior: the self_closing_tag is captured twice
-        # (element node + self_closing_tag node) -> 2 entries
-        assert [e.tag_name for e in elements] == ["br", "br"]
+        # #632: the element node wraps the self_closing_tag child; only the
+        # parent element is captured (the child would be a duplicate) -> 1 entry
+        assert [e.tag_name for e in elements] == ["br"]
 
     def test_input_with_boolean_attribute(self, extractor):
         """Lines 295-337: boolean attribute (attribute_name only, no value)"""
         tree = _parse_html("<input disabled checked/>")
         elements = extractor.extract_html_elements(tree, "<input disabled checked/>")
-        # Exact current behavior: self-closing input captured twice
-        # (element node + self_closing_tag node) -> 2 entries
-        assert [e.tag_name for e in elements] == ["input", "input"]
+        # #632: self-closing input captured once (parent element only; the
+        # self_closing_tag child is skipped as a duplicate) -> 1 entry
+        assert [e.tag_name for e in elements] == ["input"]
         assert "disabled" in elements[0].attributes
         assert "checked" in elements[0].attributes
+
+    def test_self_closing_dedup_issue_632(self, extractor):
+        """#632: self-closing tags yield exactly one entry each.
+
+        tree-sitter-html wraps self_closing_tag inside an element node
+        (element is the parent, self_closing_tag the child carrying
+        tag_name/attributes); the walk must not capture both.
+        """
+        code = '<div><br/><input type="text"/></div>'
+        tree = _parse_html(code)
+        elements = extractor.extract_html_elements(tree, code)
+        assert [e.tag_name for e in elements] == ["div", "br", "input"]
+        # The surviving capture (parent element) still carries the attributes
+        assert elements[2].attributes == {"type": "text"}
+
+    def test_void_element_without_slash_issue_632(self, extractor):
+        """#632: void elements WITHOUT a slash (<br>) parse as
+        element > start_tag (no self_closing_tag node) -> exactly 1 entry."""
+        tree = _parse_html("<br>")
+        elements = extractor.extract_html_elements(tree, "<br>")
+        assert [e.tag_name for e in elements] == ["br"]
 
     def test_input_with_unquoted_attribute_value(self, extractor):
         """Line 319: attribute_value child (not quoted_attribute_value)"""
