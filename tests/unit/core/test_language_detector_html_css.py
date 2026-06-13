@@ -83,7 +83,7 @@ class TestHtmlCssLanguageDetection:
 
         # Test content patterns
         patterns = self.detector.content_patterns.get("html", [])
-        assert len(patterns) > 0
+        assert len(patterns) == 8
 
         # Check that HTML patterns match
         html_score = 0
@@ -93,7 +93,7 @@ class TestHtmlCssLanguageDetection:
             if re.search(pattern, html_content, re.MULTILINE):
                 html_score += weight
 
-        assert html_score > 0
+        assert html_score == 2.1
 
     def test_css_content_detection(self):
         """Test CSS content-based detection"""
@@ -135,7 +135,7 @@ body {
 
         # Test content patterns
         patterns = self.detector.content_patterns.get("css", [])
-        assert len(patterns) > 0
+        assert len(patterns) == 8
 
         # Check that CSS patterns match
         css_score = 0
@@ -145,7 +145,7 @@ body {
             if re.search(pattern, css_content, re.MULTILINE):
                 css_score += weight
 
-        assert css_score > 0
+        assert round(css_score, 1) == 1.8
 
     def test_html_css_supported_languages(self):
         """Test that HTML and CSS are in supported languages"""
@@ -273,7 +273,7 @@ class TestHtmlCssContentPatterns:
             if re.search(pattern, content, re.MULTILINE):
                 matched_patterns += 1
 
-        assert matched_patterns > 0
+        assert matched_patterns == 5
 
     def test_css_selector_patterns(self):
         """Test CSS selector pattern matching"""
@@ -287,7 +287,7 @@ class TestHtmlCssContentPatterns:
             if re.search(pattern, content, re.MULTILINE):
                 matched_patterns += 1
 
-        assert matched_patterns > 0
+        assert matched_patterns == 4
 
     def test_css_at_rule_patterns(self):
         """Test CSS at-rule pattern matching"""
@@ -301,7 +301,7 @@ class TestHtmlCssContentPatterns:
             if "@" in pattern and re.search(pattern, content, re.MULTILINE):
                 at_rule_matches += 1
 
-        assert at_rule_matches > 0
+        assert at_rule_matches == 3
 
 
 if __name__ == "__main__":

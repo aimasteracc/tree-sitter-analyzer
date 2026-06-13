@@ -78,7 +78,7 @@ class TestExtractFootnoteElements:
         footnotes = []
         ext._extract_footnote_elements(root, footnotes)
         refs = [f for f in footnotes if f.element_type == "footnote_reference"]
-        assert len(refs) >= 1
+        assert len(refs) == 1
         assert refs[0].text == "1"
 
     def test_footnote_definition(self):
@@ -97,7 +97,7 @@ class TestExtractFootnoteElements:
         footnotes = []
         ext._extract_footnote_elements(root, footnotes)
         defs = [f for f in footnotes if f.element_type == "footnote_definition"]
-        assert len(defs) >= 1
+        assert len(defs) == 1
         assert defs[0].text == "footnote content"
 
     def test_footnote_no_match(self):
@@ -139,7 +139,7 @@ class TestExtractInlineImages:
         )
         images = []
         ext._extract_inline_images(root, images)
-        assert len(images) >= 1
+        assert len(images) == 1
         assert images[0].element_type == "image"
         assert images[0].url == "img.png"
         assert images[0].alt_text == "alt"
@@ -179,7 +179,7 @@ class TestExtractImageRefDefs:
         )
         images = []
         ext._extract_image_reference_definitions(root, images)
-        assert len(images) >= 1
+        assert len(images) == 1
         assert any(i.element_type == "image_reference_definition" for i in images)
 
     def test_image_ref_by_url_extension(self):
@@ -200,7 +200,7 @@ class TestExtractImageRefDefs:
         )
         images = []
         ext._extract_image_reference_definitions(root, images)
-        assert len(images) >= 1
+        assert len(images) == 1
         assert images[0].url == "photo.png"
 
     def test_image_ref_no_match(self):
@@ -242,7 +242,7 @@ class TestExtractInlineLinks:
         )
         links = []
         ext._extract_inline_links(root, links)
-        assert len(links) >= 1
+        assert len(links) == 1
         assert links[0].element_type == "link"
         assert links[0].url == "https://example.com"
 
@@ -268,7 +268,7 @@ class TestExtractInlineLinks:
         )
         links = []
         ext._extract_inline_links(root, links)
-        assert len(links) >= 1
+        assert len(links) == 1
         assert links[0].title == "title"
 
 
