@@ -74,6 +74,15 @@ _ERROR_RECOVERY_HINTS: list[tuple[str, str, str, str]] = [
         "",
     ),
     (
+        # #668: blast_radius's "function_names is required ..." message contains
+        # "required", so it must precede the generic "required" rule below or the
+        # agent-facing recovery_hint/next_step loses the file-level xref guidance.
+        "blast_radius mode",
+        "validation",
+        "blast_radius needs function_names (a list of function names). For file-level dependents, use nav action=xref mode=file instead.",
+        "nav action=xref mode=file",
+    ),
+    (
         "required",
         "validation",
         "A required parameter is missing. Check the tool schema and provide all required fields.",

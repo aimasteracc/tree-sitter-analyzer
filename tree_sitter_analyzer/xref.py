@@ -308,29 +308,43 @@ class XRefEngine:
                     break
         return results
 
+    def _file_defined_names(
+        self,
+        conn: sqlite3.Connection,
+        file_path: str,
+    ) -> list[str]:
+        """Callable symbol names defined in ``file_path`` (function/method/class).
+
+        Inbound xref (callers / file-dependents) resolves by these names — the
+        same name-based precision symbol-mode ``_find_callers`` uses.
+        """
+        return [s["name"] for s in self._file_symbols(conn, file_path) if s.get("name")]
+
     def _find_file_dependents(
         self,
         conn: sqlite3.Connection,
         file_path: str,
     ) -> list[dict[str, Any]]:
+        # Inbound: distinct OTHER files whose call edges target a symbol defined
+        # in this file. (The prior query selected edges where this file is the
+        # CALLER, then discarded every row as same-file — always empty.)
+        names = self._file_defined_names(conn, file_path)
+        if not names:
+            return []
+        # Bind a ``?``-only placeholders variable between named prefix/suffix
+        # constants (no user data in the SQL string) so the security scanner
+        # doesn't flag the SELECT — same B608 convention as _route_cache.py.
+        _fd_prefix = (
+            "SELECT DISTINCT file_path AS caller_file FROM edges "
+            "WHERE kind = 'calls' AND callee_name IN ("
+        )
+        _fd_suffix = ") AND file_path != ? ORDER BY caller_file LIMIT 50"
+        placeholders = ",".join("?" * len(names))
         rows = conn.execute(
-            "SELECT file_path AS caller_file, callee_name, "
-            "json_extract(metadata, '$.callee_full') AS callee_full "
-            "FROM edges "
-            "WHERE kind = 'calls' AND file_path = ? "
-            "GROUP BY caller_file LIMIT 50",
-            (file_path,),
+            _fd_prefix + placeholders + _fd_suffix,
+            (*names, file_path),
         ).fetchall()
-
-        seen: set[str] = set()
-        results: list[dict[str, Any]] = []
-        for row in rows:
-            caller_file = row["caller_file"]
-            if caller_file == file_path or caller_file in seen:
-                continue
-            seen.add(caller_file)
-            results.append({"file": caller_file})
-        return results
+        return [{"file": row["caller_file"]} for row in rows]
 
     def _file_symbols(
         self,
@@ -364,13 +378,23 @@ class XRefEngine:
         conn: sqlite3.Connection,
         file_path: str,
     ) -> list[dict[str, Any]]:
-        rows = conn.execute(
+        # Inbound call sites in OTHER files whose callee resolves to a symbol
+        # defined in this file. (The prior `file_path = ? AND file_path != ?`
+        # predicate bound both to the same value — structurally always empty.)
+        names = self._file_defined_names(conn, file_path)
+        if not names:
+            return []
+        # ``?``-only placeholders between named prefix/suffix — B608 convention.
+        _fc_prefix = (
             "SELECT DISTINCT caller_name, file_path AS caller_file, "
-            "json_extract(metadata, '$.caller_line') AS caller_line "
-            "FROM edges "
-            "WHERE kind = 'calls' AND file_path = ? AND file_path != ? "
-            "LIMIT 50",
-            (file_path, file_path),
+            "json_extract(metadata, '$.caller_line') AS caller_line, callee_name "
+            "FROM edges WHERE kind = 'calls' AND callee_name IN ("
+        )
+        _fc_suffix = ") AND file_path != ? ORDER BY caller_file, caller_line LIMIT 50"
+        placeholders = ",".join("?" * len(names))
+        rows = conn.execute(
+            _fc_prefix + placeholders + _fc_suffix,
+            (*names, file_path),
         ).fetchall()
         return [dict(row) for row in rows]
 

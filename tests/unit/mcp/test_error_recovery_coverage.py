@@ -81,6 +81,23 @@ class TestBuildAgentFriendlyError:
         assert result["error_type"] == "validation"
         assert "suggested_tool" not in result
 
+    def test_blast_radius_required_keeps_xref_guidance(self):
+        # #668: the blast_radius "function_names is required ..." message also
+        # contains "required", so the blast_radius-specific rule MUST win over
+        # the generic "required" rule — otherwise the agent-facing recovery_hint
+        # / next_step lose the file-level xref guidance and #668 isn't fixed on
+        # the real MCP error path.
+        err = ValueError(
+            "function_names is required for blast_radius mode; "
+            "for file-level dependents use nav action=xref mode=file"
+        )
+        result = build_agent_friendly_error("codegraph_impact", err)
+        _assert_canonical(result)
+        assert result["error_type"] == "validation"
+        assert result["suggested_tool"] == "nav action=xref mode=file"
+        assert "nav action=xref mode=file" in result["recovery_hint"]
+        assert result["agent_summary"]["next_step"] == result["recovery_hint"]
+
     def test_validation_error_pattern(self):
         err = ValueError("format must be one of: full, compact")
         result = build_agent_friendly_error("analyze_file", err)

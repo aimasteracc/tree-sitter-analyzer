@@ -177,6 +177,29 @@ class TestXRefEngineFile:
         result = engine.file_xref("nonexistent.py")
         assert result["symbol_count"] == 0
 
+    def test_file_xref_inbound_callers_resolved(self, indexed_project):
+        # #669 Codex P2: the file-mode inbound counts were structurally always 0
+        # (caller query bound `file_path = ? AND file_path != ?`; file-dependent
+        # query selected edges where THIS file is the caller, then discarded them
+        # all). a.py defines alpha/gamma; b.delta() and c.epsilon() both call
+        # alpha() from other files, so the real inbound count is exactly 2.
+        _, cache = indexed_project
+        engine = XRefEngine(cache)
+        result = engine.file_xref("a.py")
+        assert result["caller_count"] == 2
+        caller_files = sorted(c["caller_file"] for c in result["callers"])
+        assert caller_files == ["b.py", "c.py"]
+        assert result["file_dependent_count"] == 2
+        assert sorted(d["file"] for d in result["file_dependents"]) == ["b.py", "c.py"]
+
+    def test_symbol_xref_file_dependents_resolved(self, indexed_project):
+        # Same shared `_find_file_dependents` bug surfaced in symbol mode: alpha
+        # is called from b.py and c.py, so file_dependents is exactly those two.
+        _, cache = indexed_project
+        engine = XRefEngine(cache)
+        result = engine.xref("alpha")
+        assert sorted(d["file"] for d in result.file_dependents) == ["b.py", "c.py"]
+
     def test_file_xref_includes_methods(self, tmp_path):
         """Codex P2 on #314: class methods (kind='method') must appear in file
         xref, not be dropped by a function/class-only filter. A file with only
