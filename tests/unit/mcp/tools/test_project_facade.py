@@ -383,5 +383,32 @@ def test_journal_description_uses_real_param_names() -> None:
     )
 
 
+def test_smart_action_documented_params_subset_of_inner_schema() -> None:
+    """#573: the facade's documented params for ``action=smart`` must all exist
+    in SmartContextTool's schema. It previously documented ``task``/``limit``
+    (neither in the inner, which requires ``file_path``), so every doc-following
+    call hard-failed with ``file_path is required`` — the worst of the
+    facade-doc-drift family because the documented invocation CANNOT work."""
+    import re
+
+    facade = build_project_facade(project_root=None)
+    desc = facade.get_tool_definition()["description"]
+    block = re.search(r"action=smart\b(.*?)(?=- action=|\Z)", desc, re.S)
+    assert block, "action=smart not found in the project facade description"
+    params = re.search(r"Params:\s*([^.\n]+)", block.group(1))
+    assert params, "action=smart documents no Params"
+    documented = {p.strip() for p in params.group(1).split(",") if p.strip()}
+
+    inner = facade.action_map["smart"]
+    props = set(inner.get_tool_definition()["inputSchema"]["properties"].keys())
+    # output_format is the universal envelope param (#651), accepted everywhere.
+    drift = documented - props - {"output_format"}
+    assert not drift, (
+        f"project action=smart documents params absent from SmartContextTool's "
+        f"schema: {sorted(drift)} (inner props: {sorted(props)}). Doc/inner "
+        f"drift — a doc-following call would fail (#573)."
+    )
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-q"]))
