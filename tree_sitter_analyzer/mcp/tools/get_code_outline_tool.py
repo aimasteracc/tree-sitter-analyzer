@@ -264,6 +264,21 @@ class GetCodeOutlineTool(BaseMCPTool):
                 "import_count": len(imports),
             },
         }
+        # Module-level constants/fields (outside every class span) — without
+        # this, field_count includes them but no rendered section shows them
+        # (Codex P2 on #645; the #639 dogfood ask was to SEE them). Emitted
+        # only when non-empty (token budget; byte-pin tests stay untouched
+        # for constant-free files).
+        top_level_fields = sorted(
+            (
+                _field_entry(f)
+                for f in all_fields
+                if not _in_class_ranges(f, class_ranges, class_names)
+            ),
+            key=lambda x: x["line_start"],
+        )
+        if top_level_fields:
+            outline["top_level_fields"] = top_level_fields
         if include_imports:
             outline["imports"] = [
                 getattr(imp, "import_statement", getattr(imp, "name", ""))
@@ -460,6 +475,8 @@ class GetCodeOutlineTool(BaseMCPTool):
         # 2) Hoisted lists use the capped versions.
         result["classes"] = classes_capped
         result["top_level_functions"] = fns_capped
+        if outline.get("top_level_fields"):
+            result["top_level_fields"] = outline["top_level_fields"]
         # 3) ``top_level_functions`` also surfaces as ``methods``.
         if "methods" not in result:
             result["methods"] = fns_capped
