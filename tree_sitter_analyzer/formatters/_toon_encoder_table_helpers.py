@@ -73,9 +73,30 @@ def encode_array_table_lines(
             indent_str,
             encode_value,
             seen_ids,
+            _sample_dict_subkeys(items, schema),
         )
     )
     return lines
+
+
+def _sample_dict_subkeys(
+    items: list[dict[str, Any]],
+    schema: list[str],
+) -> dict[str, tuple[str, ...]]:
+    """Per dict-valued column, the subkeys sampled for the header annotation.
+
+    The header (``build_table_schema_parts``) annotates a dict column from the
+    first row that has the key, e.g. ``meta{x,y}``. A row cell is encoded
+    compactly (values-only ``(v1,v2)``) only when its dict keys match this
+    sample; divergent cells fall back to inline ``(k:v,...)`` so a row with
+    different subkeys is not positionally mis-read against the sample (#643).
+    """
+    result: dict[str, tuple[str, ...]] = {}
+    for key in schema:
+        sample_value = next((item[key] for item in items if key in item), None)
+        if isinstance(sample_value, dict):
+            result[key] = tuple(sample_value.keys())
+    return result
 
 
 def build_table_schema_parts(
@@ -108,12 +129,20 @@ def encode_table_rows(
     indent_str: str,
     encode_value: EncodeValue,
     seen_ids: set[int],
+    expected_subkeys: dict[str, tuple[str, ...]] | None = None,
 ) -> list[str]:
     """Encode table rows using an existing value encoder and circular-ref set."""
+    expected_subkeys = expected_subkeys or {}
     return [
         f"{indent_str}  "
         + delimiter.join(
-            _encode_table_cell(item.get(key, ""), delimiter, encode_value, seen_ids)
+            _encode_table_cell(
+                item.get(key, ""),
+                delimiter,
+                encode_value,
+                seen_ids,
+                expected_subkeys.get(key),
+            )
             for key in schema
         )
         for item in items
@@ -125,13 +154,26 @@ def _encode_table_cell(
     delimiter: str,
     encode_value: EncodeValue,
     seen_ids: set[int],
+    expected_subkeys: tuple[str, ...] | None = None,
 ) -> str:
-    """Encode a single TOON table cell."""
+    """Encode a single TOON table cell.
+
+    A dict cell whose keys match the column's header sample (``expected_subkeys``)
+    is encoded compactly as values-only ``(v1,v2)`` — the keys are read off the
+    header. A dict whose keys DIVERGE from the sample (different/extra/missing
+    subkeys) is encoded self-describing as ``(k1:v1,k2:v2)`` so its values are
+    not positionally mis-attributed to the header's subkeys (#643).
+    """
     if isinstance(value, tuple | list) and len(value) == 2:
         return f"({value[0]},{value[1]})"
     if isinstance(value, dict):
-        dict_values = delimiter.join(
-            str(encode_value(v, seen_ids)) for v in value.values()
+        if expected_subkeys is not None and tuple(value.keys()) == expected_subkeys:
+            dict_values = delimiter.join(
+                str(encode_value(v, seen_ids)) for v in value.values()
+            )
+            return f"({dict_values})"
+        inline = delimiter.join(
+            f"{k}:{encode_value(v, seen_ids)}" for k, v in value.items()
         )
-        return f"({dict_values})"
+        return f"({inline})"
     return encode_value(value, seen_ids)
