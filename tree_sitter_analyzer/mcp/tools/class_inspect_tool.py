@@ -195,11 +195,13 @@ def _is_method_abstract(source_lines: list[str], def_line_1indexed: int) -> bool
             break
         line = source_lines[check_idx]
         stripped = line.strip()
-        if not stripped or stripped == "":
+        # Blank lines and comments may sit between stacked decorators and the
+        # def (Codex P2 on #665) — skip them, keep scanning upward.
+        if not stripped or stripped.startswith("#"):
             continue
         if _ABSTRACTMETHOD_PATTERN.match(line):
             return True
-        # If we hit a non-decorator, non-blank line, stop scanning upward
+        # A non-decorator, non-blank, non-comment line ends the decorator block.
         if not stripped.startswith("@"):
             break
     return False
@@ -278,7 +280,7 @@ class ClassInspectTool(BaseMCPTool):
         try:
             conn = cache.get_conn()
             rows = conn.execute(
-                "SELECT file_path, symbols_json FROM ast_index"
+                "SELECT file_path, symbols_json FROM ast_index ORDER BY file_path"
             ).fetchall()
         except Exception:
             return None
@@ -316,7 +318,7 @@ class ClassInspectTool(BaseMCPTool):
         try:
             conn = cache.get_conn()
             rows = conn.execute(
-                "SELECT file_path, symbols_json FROM ast_index"
+                "SELECT file_path, symbols_json FROM ast_index ORDER BY file_path"
             ).fetchall()
         except Exception:
             return []

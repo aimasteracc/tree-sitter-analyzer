@@ -900,6 +900,26 @@ def test_is_method_abstract_abc_qualified() -> None:
     assert _is_method_abstract(lines, def_line_1indexed=2) is True
 
 
+def test_is_method_abstract_comment_between_decorator_and_def() -> None:
+    """Codex P2 on #665: a comment between @abstractmethod and def must not
+    stop the upward scan — the decorator is still detected."""
+    from tree_sitter_analyzer.mcp.tools.class_inspect_tool import _is_method_abstract
+
+    lines = [
+        "    @abstractmethod\n",
+        "    # explain why this is abstract\n",
+        "    def bar(self) -> None: ...\n",
+    ]
+    assert _is_method_abstract(lines, def_line_1indexed=3) is True
+
+
+def test_is_method_abstract_blank_line_between_decorator_and_def() -> None:
+    from tree_sitter_analyzer.mcp.tools.class_inspect_tool import _is_method_abstract
+
+    lines = ["    @abstractmethod\n", "\n", "    def bar(self) -> None: ...\n"]
+    assert _is_method_abstract(lines, def_line_1indexed=3) is True
+
+
 def test_read_source_lines_io_error_returns_empty() -> None:
     """_read_source_lines returns [] when the file does not exist."""
     from tree_sitter_analyzer.mcp.tools.class_inspect_tool import _read_source_lines
@@ -1056,13 +1076,14 @@ class TestSameNameClassScoped:
             "class_detail merged both Widget classes — must scope to one file"
         )
 
-    def test_method_count_is_one_or_two(
+    def test_method_count_is_exactly_one(
         self, two_widget_files: tuple[Path, Path], tmp_path: Path
     ) -> None:
-        """First indexed Widget (widget_a.py) has 1 method; class_detail returns 1."""
+        """Deterministic first-match (ast_index ORDER BY file_path): widget_a.py
+        sorts before widget_b.py, so class_detail returns widget_a's Widget
+        with exactly its 1 method (render) — never 3 (merged), never 2
+        (widget_b). Exact pin per the locked exact-assertion rule (Codex P1)."""
         a, b = two_widget_files
         r = self._run_widget(tmp_path, a, b)
-        # widget_a.py's Widget has 1 method (render)
-        # widget_b.py's Widget has 2 methods (paint, resize)
-        # Either is acceptable (first-match), but NOT 3 (merged)
-        assert r["method_count"] in (1, 2)
+        assert r["method_count"] == 1
+        assert [m["name"] for m in r["methods"]] == ["render"]
