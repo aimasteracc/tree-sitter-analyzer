@@ -443,6 +443,79 @@ class TestR37yCanonicalEnvelope:
         # mode=stats appears so callers can distinguish stats vs full mode.
         assert "mode=stats" in captured["summary_line"]
 
+    # -- H1 regression tests (REQ-E-001) --
+
+    def test_h1_syntax_error_file_emits_error_envelope_json(self, command):
+        """H1-CLI: broken file must emit parse-error envelope in JSON mode, not fabricated structure."""
+        import os
+        import tempfile  # noqa: E401
+
+        command.args.output_format = "json"
+        command.args.statistics = False
+
+        with tempfile.NamedTemporaryFile(
+            suffix=".py", mode="w", delete=False, encoding="utf-8"
+        ) as f:
+            f.write("def foo(:\n")  # intentional syntax error
+            broken = f.name
+
+        try:
+            command.args.file_path = broken
+            captured: dict[str, object] = {}
+            with (
+                patch(
+                    "tree_sitter_analyzer.mcp.tools.utils.parse_validity.is_file_parse_broken",
+                    return_value=True,
+                ),
+                patch(
+                    "tree_sitter_analyzer.cli.commands.advanced_command.output_json",
+                    side_effect=lambda d: captured.update(d),
+                ),
+            ):
+                import asyncio
+
+                rc = asyncio.run(command.execute_async("python"))
+            assert rc == 0
+            assert captured.get("verdict") == "ERROR", (
+                f"H1-CLI: expected verdict=ERROR for broken file, got {captured.get('verdict')}"
+            )
+            assert captured.get("signal") == "syntax_error", (
+                f"H1-CLI: expected signal=syntax_error, got {captured.get('signal')}"
+            )
+            # Must not return fabricated methods
+            assert "methods" not in captured or not captured["methods"]
+        finally:
+            os.unlink(broken)
+
+    def test_h1_clean_file_is_not_affected(self, command, mock_analysis_result):
+        """H1-CLI: clean file must proceed normally (not short-circuited)."""
+        command.args.output_format = "json"
+        command.args.statistics = False
+        command.args.file_path = "/some/clean.py"
+
+        full_captured: dict[str, object] = {}
+        with (
+            patch(
+                "tree_sitter_analyzer.mcp.tools.utils.parse_validity.is_file_parse_broken",
+                return_value=False,
+            ),
+            patch.object(
+                command,
+                "analyze_file",
+                return_value=mock_analysis_result,
+            ),
+            patch(
+                "tree_sitter_analyzer.cli.commands.advanced_command.output_json",
+                side_effect=lambda d: full_captured.update(d),
+            ),
+        ):
+            import asyncio
+
+            rc = asyncio.run(command.execute_async("python"))
+        assert rc == 0
+        # The clean file's normal output must have verdict=INFO (not ERROR)
+        assert full_captured.get("verdict") == "INFO"
+
     def test_full_mode_label_differs_from_stats(self, command, mock_analysis_result):
         """summary_line carries mode= label to distinguish dispatch paths."""
         command.args = MagicMock()

@@ -17,7 +17,11 @@ from ...constants import (
     get_element_type,
     is_element_of_type,
 )
-from ...output_manager import output_data, output_json, output_section
+from ...mcp.tools.utils.parse_validity import (
+    is_file_parse_broken,
+    syntax_error_envelope,
+)
+from ...output_manager import output_data, output_error, output_json, output_section
 from .advanced_command_helpers import calculate_file_metrics
 from .base_command import BaseCommand
 
@@ -180,6 +184,15 @@ class AdvancedCommand(BaseCommand):
     """Command for advanced analysis."""
 
     async def execute_async(self, language: str) -> int:
+        # H1 (REQ-E-001): detect syntax errors before proceeding with analysis.
+        # Tree-sitter builds a partial AST for any input; without this gate the
+        # CLI returns fabricated structure data for files that fail to parse.
+        # Mirrors the same short-circuit added to MCP analyze_code_structure_tool.
+        file_path = getattr(self.args, "file_path", "") or ""
+        if is_file_parse_broken(file_path, language):
+            self._output_syntax_error(file_path)
+            return 0
+
         analysis_result = await self.analyze_file(language)
         if not analysis_result:
             return 1
@@ -190,6 +203,32 @@ class AdvancedCommand(BaseCommand):
             self._output_full_analysis(analysis_result)
 
         return 0
+
+    def _output_syntax_error(self, file_path: str) -> None:
+        """Emit canonical syntax-error envelope when the file fails to parse.
+
+        H1 (REQ-E-001): consistent with MCP analyze_code_structure short-circuit.
+        success=True / verdict=WARN / signal=syntax_error / parse_errors=True.
+        """
+        output_format = getattr(self.args, "output_format", "text")
+        envelope = syntax_error_envelope(
+            file_path,
+            tool="advanced_command",
+            output_format=output_format,
+        )
+        if output_format == "json":
+            output_json(envelope)
+            return
+        if output_format == "toon" and _toon_available:
+            use_tabs = getattr(self.args, "toon_use_tabs", False)
+            formatter = ToonFormatter(use_tabs=use_tabs)
+            print(formatter.format(envelope))
+            return
+        # Text / fallback — emit to stderr so stdout stays unpolluted
+        output_error(
+            f"Syntax error detected in '{file_path}': "
+            "file fails to parse — fix syntax before further analysis"
+        )
 
     def _calculate_file_metrics(self, file_path: str, language: str) -> dict[str, int]:
         """

@@ -242,8 +242,15 @@ class CodeGraphUMLTool(BaseMCPTool):
             # P2-1: an unknown class_name is NOT_FOUND even if the project has
             # edges; agents must distinguish "no such class" from "no neighbours".
             not_found = diagram.metadata.get("not_found", False)
+            # H6 (REQ-E-007): A diagram with nodes but no edges is still INFO
+            # (e.g. a single standalone class). Only flag NOT_FOUND when the
+            # target was genuinely absent (not_found==True) OR when neither
+            # nodes nor edges were produced.
+            node_count = len(diagram.nodes) if hasattr(diagram, "nodes") else 0
             verdict = (
-                "NOT_FOUND" if not_found else ("INFO" if diagram.edges else "NOT_FOUND")
+                "NOT_FOUND"
+                if not_found
+                else ("INFO" if (diagram.edges or node_count >= 1) else "NOT_FOUND")
             )
         response = build_response(verdict=verdict, **diagram.to_dict())
         return apply_toon_format_to_response(response, output_format)

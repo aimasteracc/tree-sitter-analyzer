@@ -269,6 +269,37 @@ class GoElementExtractor(ElementExtractor):
             node, self._get_node_text, self.content_lines
         )
 
+    # Extract elements from AST: extract_struct_fields_as_variables
+    def extract_struct_fields_as_variables(
+        self, tree: tree_sitter.Tree, source_code: str
+    ) -> list[Variable]:
+        """Extract struct field declarations as Variable elements.
+
+        H2 (REQ-U-002): Walk the AST and collect field_declaration nodes
+        inside struct_type bodies.  Returns Variable objects so they appear
+        in AnalysisResult.elements and are counted by field_count.
+        """
+        from ._go_type_helpers import extract_struct_fields
+
+        self.source_code = source_code
+        self.content_lines = source_code.split("\n")
+        fields: list[Variable] = []
+        self._collect_struct_fields(tree.root_node, fields, extract_struct_fields)
+        return fields
+
+    def _collect_struct_fields(
+        self,
+        node: Any,
+        results: list[Variable],
+        extract_fn: Any,
+    ) -> None:
+        """Recursively walk the AST and collect struct fields."""
+        if node.type == "struct_type":
+            results.extend(extract_fn(node, self._get_node_text))
+            return  # do not descend into struct — fields are already collected
+        for child in node.children:
+            self._collect_struct_fields(child, results, extract_fn)
+
     # Extract elements from AST: _extract_embedded_types
     def _extract_embedded_types(self, struct_node: tree_sitter.Node) -> list[str]:
         """Extract embedded types from struct"""
@@ -457,6 +488,12 @@ class GoPlugin(LanguagePlugin):
             all_elements.extend(extractor.extract_functions(tree, file_content))
             all_elements.extend(extractor.extract_classes(tree, file_content))
             all_elements.extend(extractor.extract_variables(tree, file_content))
+            # H2 (REQ-U-002): extract struct fields as Variable elements so
+            # field_count is populated (Java-consistent behaviour).
+            if isinstance(extractor, GoElementExtractor):
+                all_elements.extend(
+                    extractor.extract_struct_fields_as_variables(tree, file_content)
+                )
 
             node_count = (
                 self._count_tree_nodes(tree.root_node) if tree and tree.root_node else 0

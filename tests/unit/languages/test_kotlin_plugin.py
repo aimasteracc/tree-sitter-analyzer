@@ -2478,3 +2478,91 @@ fun processUser() {
         result = plugin.extract_elements(tree, code)
         assert "functions" in result
         assert "classes" in result
+
+
+# ---------------------------------------------------------------------------
+# H4 regression tests (REQ-E-004 / REQ-E-005)
+# ---------------------------------------------------------------------------
+
+
+class TestH4KotlinPropertyNameAndLocalExclusion:
+    """H4 regression: property name extraction and local val exclusion.
+
+    H4-A: tree-sitter-kotlin uses ``identifier`` inside variable_declaration;
+          ``child_by_field_name("name")`` returns None → name was "unknown".
+    H4-B: local val/var inside a function body was counted as a class field.
+    """
+
+    @pytest.fixture
+    def kotlin_parser(self):
+        import tree_sitter
+        import tree_sitter_kotlin
+
+        language = tree_sitter.Language(tree_sitter_kotlin.language())
+        return tree_sitter.Parser(language)
+
+    def test_class_property_name_is_not_unknown(self, kotlin_parser):
+        """H4-A: class-level val name must not be 'unknown'."""
+        from tree_sitter_analyzer.languages.kotlin_helpers import (
+            extract_kotlin_property,
+        )
+
+        code = "class C {\n    val dx: Int = 0\n}\n"
+        tree = kotlin_parser.parse(code.encode("utf-8"))
+
+        # Walk tree to find property_declaration nodes
+        found_names: list[str] = []
+
+        def walk(node: object) -> None:
+            from tree_sitter import Node  # noqa: PLC0415
+            assert isinstance(node, Node)
+            if node.type == "property_declaration":
+                prop = extract_kotlin_property(node, lambda n: n.text.decode("utf-8", errors="replace"))
+                if prop is not None:
+                    found_names.append(prop.name)
+            for child in node.children:
+                walk(child)
+
+        walk(tree.root_node)
+        assert len(found_names) == 1, f"Expected exactly one property, got {found_names}"
+        assert "unknown" not in found_names, (
+            f"H4-A regression: property names should not be 'unknown', got {found_names}"
+        )
+        assert "dx" in found_names, f"Expected 'dx' in {found_names}"
+
+    def test_function_local_val_is_excluded(self, kotlin_parser):
+        """H4-B: val inside function body must not be returned as a Variable."""
+        from tree_sitter_analyzer.languages.kotlin_helpers import (
+            extract_kotlin_property,
+        )
+
+        code = (
+            "class C {\n"
+            "    val classField: Int = 1\n"
+            "    fun doStuff() {\n"
+            "        val local = 42\n"
+            "    }\n"
+            "}\n"
+        )
+        tree = kotlin_parser.parse(code.encode("utf-8"))
+
+        extracted: list[object] = []
+
+        def walk(node: object) -> None:
+            from tree_sitter import Node  # noqa: PLC0415
+            assert isinstance(node, Node)
+            if node.type == "property_declaration":
+                prop = extract_kotlin_property(node, lambda n: n.text.decode("utf-8", errors="replace"))
+                if prop is not None:
+                    extracted.append(prop)
+            for child in node.children:
+                walk(child)
+
+        walk(tree.root_node)
+        names = [p.name for p in extracted]  # type: ignore[union-attr]
+        assert "local" not in names, (
+            f"H4-B regression: function-local val 'local' must not be extracted, got {names}"
+        )
+        assert "classField" in names, (
+            f"H4-B: class-level 'classField' must still be extracted, got {names}"
+        )

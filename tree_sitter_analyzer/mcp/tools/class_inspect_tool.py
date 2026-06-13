@@ -498,6 +498,21 @@ class ClassInspectTool(BaseMCPTool):
 
         return {"available": True, "methods": inherited}
 
+    def _is_index_empty(self, cache: ASTCache) -> bool:
+        """Return True when ast_index table is absent or has no rows.
+
+        H7 (REQ-E-008): Detects the case where `index full` has not been
+        run yet so the tool can return NEEDS_INDEX instead of a spurious
+        NOT_FOUND for every class.
+        """
+        try:
+            conn = cache.get_conn()
+            count = conn.execute("SELECT COUNT(*) FROM ast_index").fetchone()[0]
+            return bool(count == 0)
+        except Exception:
+            # Table does not exist or DB not accessible — treat as empty.
+            return True
+
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate_arguments(arguments)
 
@@ -505,6 +520,32 @@ class ClassInspectTool(BaseMCPTool):
         output_format: str = arguments.get("output_format", "toon")
 
         cache = self._get_cache()
+
+        # H7 (REQ-E-008): Detect an unbuilt index before trying to resolve
+        # the class — otherwise every class looks like NOT_FOUND.
+        if self._is_index_empty(cache):
+            from ..utils.format_helper import apply_toon_format_to_response
+
+            needs_index: dict[str, Any] = {
+                "success": True,
+                "verdict": "NEEDS_INDEX",
+                "class_name": class_name,
+                "message": (
+                    "AST index is not built yet. "
+                    "Run 'index full' to build it."
+                ),
+                "methods": [],
+                "method_count": 0,
+                "fields": [],
+                "extends": [],
+                "agent_summary": {
+                    "verdict": "NEEDS_INDEX",
+                    "summary_line": "AST index not found — run index full first",
+                    "next_step": "run index full to build the ast cache",
+                },
+            }
+            return apply_toon_format_to_response(needs_index, output_format)
+
         hierarchy = ClassHierarchy(cache)
         hierarchy.build()
 

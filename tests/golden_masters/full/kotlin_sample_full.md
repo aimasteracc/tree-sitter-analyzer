@@ -36,7 +36,6 @@ import java.util.Collections
 ## Properties
 | Name | Type | Vis | Kind | Line | Doc |
 |------|------|-----|------|------|-----|
-| unknown | Inferred | pub | - | 30 | - |
-| unknown | Inferred | pub | - | 48 | - |
-| unknown | Inferred | pub | - | 49 | - |
-| unknown | Inferred | pub | - | 63 | - |
+| userCount | Inferred | pub | - | 30 | - |
+| MAX_USERS | Inferred | pub | - | 48 | - |
+| version | Inferred | pub | - | 49 | - |

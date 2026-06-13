@@ -599,7 +599,12 @@ def _extract_kotlin_property_name(
 
     r37ci (dogfood): extracted from ``extract_kotlin_property`` so the
     three lookup forms (``name`` field / ``variable_declaration`` /
-    ``simple_identifier``) read as a flat chain.
+    ``simple_identifier`` / ``identifier``) read as a flat chain.
+
+    H4-A (REQ-E-004): tree-sitter-kotlin uses ``identifier`` (not
+    ``simple_identifier``) inside ``variable_declaration`` for property
+    names.  Both node types are now accepted so the fix works across
+    grammar versions.
     """
     name_node = node.child_by_field_name("name")
     if name_node:
@@ -607,11 +612,33 @@ def _extract_kotlin_property_name(
     for child in node.children:
         if child.type == "variable_declaration":
             for grandchild in child.children:
-                if grandchild.type == "simple_identifier":
+                if grandchild.type in ("simple_identifier", "identifier"):
                     return str(get_node_text(grandchild))
-        elif child.type == "simple_identifier":
+        elif child.type in ("simple_identifier", "identifier"):
             return str(get_node_text(child))
     return "unknown"
+
+
+def _is_inside_function_body(node: Any) -> bool:
+    """Return True if *node* is nested inside a ``function_declaration``.
+
+    H4-B (REQ-E-005): Only function-local vals are excluded.  Top-level vals
+    (parent chain reaches ``source_file`` first) are kept as-is.
+
+    Depth-capped at 256 to match ``_kotlin_owning_type`` safety guard.
+    """
+    parent = node.parent
+    for _ in range(256):
+        if parent is None:
+            return False
+        if parent.type == "source_file":
+            return False
+        if parent.type in ("class_declaration", "object_declaration", "companion_object"):
+            return False
+        if parent.type in ("function_declaration", "anonymous_function"):
+            return True
+        parent = parent.parent
+    return False
 
 
 # Extract elements from AST: extract_kotlin_property
@@ -619,8 +646,18 @@ def extract_kotlin_property(
     node: Any,
     get_node_text: Callable[..., str],
 ) -> Variable | None:
-    """Extract Kotlin property declaration."""
+    """Extract Kotlin property declaration.
+
+    H4-B (REQ-E-005): local ``val``/``var`` declarations inside a
+    ``function_declaration`` body must not be returned as variables.
+    Top-level and class-level vals are kept.  Companion-object vals are
+    class-level constants and are also kept.
+    """
     try:
+        # H4-B: skip properties that are local to a function body.
+        if _is_inside_function_body(node):
+            return None
+
         is_val = False
         is_var = False
         text = get_node_text(node)

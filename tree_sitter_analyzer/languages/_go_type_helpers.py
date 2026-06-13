@@ -154,3 +154,60 @@ def _iter_type_specs(node: Any) -> list[Any]:
     return [
         child for child in node.children if child.type in ("type_spec", "type_alias")
     ]
+
+
+def _extract_field_name(field: Any, get_node_text: Callable[..., str]) -> str:
+    """Return the name of a struct field node.
+
+    Named field:    field_identifier is the first named child.
+    Embedded field: type_identifier / qualified_type gives the type name,
+                    which is also used as the field name (Go convention).
+    """
+    for child in field.children:
+        if child.type == "field_identifier":
+            return get_node_text(child)
+    # Embedded (anonymous) field: fall back to type name.
+    for child in field.children:
+        if child.type in ("type_identifier", "qualified_type", "pointer_type"):
+            return get_node_text(child)
+    return "unknown"
+
+
+def _extract_field_type(field: Any, get_node_text: Callable[..., str]) -> str:
+    """Return the type text of a struct field node, skipping the name."""
+    skip_types = {"field_identifier", "comment", "tag_literal"}
+    for child in field.children:
+        if child.type not in skip_types:
+            return get_node_text(child)
+    return ""
+
+
+def extract_struct_fields(
+    struct_node: Any,
+    get_node_text: Callable[..., str],
+) -> "list[Any]":
+    """Extract named and embedded fields from a Go struct_type node.
+
+    H2 (REQ-U-002): Returns a list of Variable objects so the caller can
+    append them to the AnalysisResult.elements list.  This matches the
+    Java pattern where fields are top-level Variable elements with
+    element_type='variable'.
+    """
+    from ..models import Variable
+
+    fields = []
+    for field in _iter_struct_fields(struct_node):
+        name = _extract_field_name(field, get_node_text)
+        type_text = _extract_field_type(field, get_node_text)
+        fields.append(
+            Variable(
+                name=name,
+                start_line=field.start_point[0] + 1,
+                end_line=field.end_point[0] + 1,
+                raw_text=get_node_text(field),
+                variable_type=type_text,
+                visibility=go_visibility(name),
+                element_type="variable",
+            )
+        )
+    return fields

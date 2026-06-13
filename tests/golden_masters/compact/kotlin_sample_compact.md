@@ -6,7 +6,7 @@
 | Package | com.example.kotlin |
 | Classes | 8 |
 | Functions | 12 |
-| Properties | 4 |
+| Properties | 3 |
 
 ## Functions
 | Fn | Sig | V | S | L | Doc |

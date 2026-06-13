@@ -142,10 +142,18 @@ def build_rg_command_from_arguments(
     arguments: dict[str, Any],
     files: list[str],
 ) -> list[str]:
-    """Build the ripgrep command for the discovered files."""
-    parent_dirs, file_globs = _build_rg_targets(files)
-    combined_globs = (arguments.get("include_globs") or []) + file_globs
+    """Build the ripgrep command for the discovered files.
+
+    H5 fix (REQ-U-006): Pass exact file paths as positional arguments to rg.
+    ripgrep does NOT support --files-from; appending deduplicated paths after
+    the query is the correct way to eliminate parent-dir double-counting.
+
+    For very large file lists the caller should use
+    ``build_rg_commands_batched`` which chunks the list to avoid OS
+    command-line length limits and merges results.
+    """
     no_ignore = bool(arguments.get("no_ignore", False))
+    include_globs = arguments.get("include_globs") or []
 
     return fd_rg_utils.build_rg_command(
         query=arguments["query"],
@@ -153,7 +161,7 @@ def build_rg_command_from_arguments(
         fixed_strings=bool(arguments.get("fixed_strings", False)),
         word=bool(arguments.get("word", False)),
         multiline=bool(arguments.get("multiline", False)),
-        include_globs=combined_globs,
+        include_globs=include_globs,
         exclude_globs=arguments.get("exclude_globs"),
         follow_symlinks=bool(arguments.get("follow_symlinks", False)),
         hidden=bool(arguments.get("hidden", False)),
@@ -164,11 +172,79 @@ def build_rg_command_from_arguments(
         encoding=arguments.get("encoding"),
         max_count=arguments.get("max_count"),
         timeout_ms=arguments.get("timeout_ms"),
-        roots=list(parent_dirs),
-        files_from=None,
+        roots=None,
+        file_paths=files,
         count_only_matches=bool(arguments.get("count_only_matches", False))
         or bool(arguments.get("total_only", False)),
     )
+
+
+# OS command-line length limit guard: on Windows the practical limit is
+# ~8 191 characters; on Linux/macOS ~2 MB.  Use a conservative path-budget
+# (characters, not bytes) so we never hit the limit on any platform.
+_RG_PATH_CHUNK_CHARS = 6000
+
+
+def build_rg_commands_batched(
+    arguments: dict[str, Any],
+    files: list[str],
+    *,
+    count_only: bool = False,
+) -> list[list[str]]:
+    """Split a large file list into batches and return one rg command per batch.
+
+    Each batch's total path length stays under ``_RG_PATH_CHUNK_CHARS`` so we
+    never exceed OS command-line limits.  For small lists this returns a single
+    command identical to ``build_rg_command_from_arguments``.
+    """
+    if not files:
+        return []
+
+    batches: list[list[str]] = []
+    current_batch: list[str] = []
+    current_len = 0
+
+    for path in files:
+        path_len = len(path) + 1  # +1 for the space separator
+        if current_batch and current_len + path_len > _RG_PATH_CHUNK_CHARS:
+            batches.append(current_batch)
+            current_batch = [path]
+            current_len = path_len
+        else:
+            current_batch.append(path)
+            current_len += path_len
+
+    if current_batch:
+        batches.append(current_batch)
+
+    no_ignore = bool(arguments.get("no_ignore", False))
+    include_globs = arguments.get("include_globs") or []
+
+    cmds: list[list[str]] = []
+    for batch in batches:
+        cmd = fd_rg_utils.build_rg_command(
+            query=arguments["query"],
+            case=arguments.get("case", "smart"),
+            fixed_strings=bool(arguments.get("fixed_strings", False)),
+            word=bool(arguments.get("word", False)),
+            multiline=bool(arguments.get("multiline", False)),
+            include_globs=include_globs,
+            exclude_globs=arguments.get("exclude_globs"),
+            follow_symlinks=bool(arguments.get("follow_symlinks", False)),
+            hidden=bool(arguments.get("hidden", False)),
+            no_ignore=no_ignore,
+            max_filesize=arguments.get("max_filesize"),
+            context_before=arguments.get("context_before"),
+            context_after=arguments.get("context_after"),
+            encoding=arguments.get("encoding"),
+            max_count=arguments.get("max_count"),
+            timeout_ms=arguments.get("timeout_ms"),
+            roots=None,
+            file_paths=batch,
+            count_only_matches=count_only,
+        )
+        cmds.append(cmd)
+    return cmds
 
 
 def build_rg_error_response(err: bytes, rc: int) -> dict[str, Any]:
@@ -215,10 +291,12 @@ def build_rg_recount_command(
     and ``count_only_matches=True`` so the response counts every match (no
     per-file truncation). Used to compute the honest pre-truncation total
     when ``apply_match_limits`` truncated the primary pass.
+
+    H5 fix (REQ-U-006): Passes exact file paths as positional arguments to
+    eliminate double-counting.  No temp file needed.
     """
-    parent_dirs, file_globs = _build_rg_targets(files)
-    combined_globs = (arguments.get("include_globs") or []) + file_globs
     no_ignore = bool(arguments.get("no_ignore", False))
+    include_globs = arguments.get("include_globs") or []
 
     return fd_rg_utils.build_rg_command(
         query=arguments["query"],
@@ -226,7 +304,7 @@ def build_rg_recount_command(
         fixed_strings=bool(arguments.get("fixed_strings", False)),
         word=bool(arguments.get("word", False)),
         multiline=bool(arguments.get("multiline", False)),
-        include_globs=combined_globs,
+        include_globs=include_globs,
         exclude_globs=arguments.get("exclude_globs"),
         follow_symlinks=bool(arguments.get("follow_symlinks", False)),
         hidden=bool(arguments.get("hidden", False)),
@@ -237,8 +315,8 @@ def build_rg_recount_command(
         encoding=arguments.get("encoding"),
         max_count=None,
         timeout_ms=arguments.get("timeout_ms"),
-        roots=list(parent_dirs),
-        files_from=None,
+        roots=None,
+        file_paths=files,
         count_only_matches=True,
     )
 

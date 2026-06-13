@@ -283,7 +283,8 @@ def build_rg_command(
     max_count: int | None,
     timeout_ms: int | None,
     roots: list[str] | None,
-    files_from: str | None,
+    files_from: str | None = None,
+    file_paths: list[str] | None = None,
     count_only_matches: bool = False,
     # rg-native power flags added 2026-05-23 after the capability audit
     # (docs/internal/RG_FD_GAP_AUDIT.md). All default to off / None so
@@ -409,7 +410,20 @@ def build_rg_command(
 
     cmd.append(query)
 
-    if roots:
+    # H5 fix (REQ-U-006): ripgrep does NOT support --files-from.
+    # The correct way to pass an exact file list is as positional arguments.
+    # When file_paths is provided, deduplicate (preserving order) and append
+    # them after the query.  roots is ignored so fd's exact file list is
+    # used without directory-expansion double-counting.
+    if file_paths:
+        seen: set[str] = set()
+        deduped: list[str] = []
+        for p in file_paths:
+            if p not in seen:
+                seen.add(p)
+                deduped.append(p)
+        cmd += deduped
+    elif roots:
         cmd += roots
 
     return cmd

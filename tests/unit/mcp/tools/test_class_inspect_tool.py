@@ -326,11 +326,23 @@ class TestBaseMCPToolClosureRegression:
 
 class TestEdgeCases:
     def test_not_found_class_returns_not_found_verdict(self, tmp_path: Path) -> None:
-        """Asking for a class that doesn't exist returns NOT_FOUND verdict."""
+        """Asking for a class that doesn't exist returns NOT_FOUND verdict.
+
+        H7 update: the index must be non-empty for NOT_FOUND to trigger (an
+        empty index returns NEEDS_INDEX instead — see H7 regression tests).
+        We index a real file so the index is populated, then ask for a class
+        that doesn't exist.
+        """
         from tree_sitter_analyzer.ast_cache import ASTCache
 
         project_root = str(tmp_path)
-        ASTCache(project_root)  # Ensure cache is created
+        # Create and index a real file so the index is non-empty
+        src = tmp_path / "dummy.py"
+        src.write_text("class Dummy:\n    pass\n", encoding="utf-8")
+        cache = ASTCache(project_root)
+        idx_result = cache.index_file(str(src), language="python")
+        assert idx_result.get("status") in ("ok", "indexed", "unchanged")
+
         tool = ClassInspectTool(project_root)
         response = _run(
             tool.execute(
@@ -1087,3 +1099,53 @@ class TestSameNameClassScoped:
         r = self._run_widget(tmp_path, a, b)
         assert r["method_count"] == 1
         assert [m["name"] for m in r["methods"]] == ["render"]
+
+
+# ---------------------------------------------------------------------------
+# H7 regression: NEEDS_INDEX when index is not built (REQ-E-008)
+# ---------------------------------------------------------------------------
+
+
+def test_h7_needs_index_when_no_index_built(tmp_path: Path) -> None:
+    """H7 regression: class_detail must return NEEDS_INDEX verdict when the
+    AST index has not been built (empty ast_index table), instead of a
+    spurious NOT_FOUND with method_count=0 for every class name.
+    """
+    tool = ClassInspectTool(str(tmp_path))
+    response = _run(tool.execute({"class_name": "MyClass", "output_format": "json"}))
+
+    assert response["success"] is True, f"Expected success=True, got {response}"
+    assert response["verdict"] == "NEEDS_INDEX", (
+        f"H7 regression: expected NEEDS_INDEX for unbuilt index, got verdict={response.get('verdict')}"
+    )
+    assert response["method_count"] == 0
+    assert "agent_summary" in response
+    assert response["agent_summary"]["verdict"] == "NEEDS_INDEX"
+    # next_step must guide agent to build the index
+    next_step = response["agent_summary"].get("next_step", "")
+    assert "index" in next_step.lower(), (
+        f"H7: next_step must mention 'index', got '{next_step}'"
+    )
+
+
+def test_h7_normal_lookup_after_index_built(tmp_path: Path) -> None:
+    """H7 follow-up: after indexing, class_detail returns the real class (not NEEDS_INDEX)."""
+    from tree_sitter_analyzer.ast_cache import ASTCache
+
+    src = tmp_path / "animals.py"
+    src.write_text(
+        "class Animal:\n    def speak(self) -> str:\n        return ''\n",
+        encoding="utf-8",
+    )
+    cache = ASTCache(str(tmp_path))
+    result = cache.index_file(str(src), language="python")
+    assert result.get("status") in ("ok", "indexed", "unchanged")
+
+    tool = ClassInspectTool(str(tmp_path))
+    response = _run(tool.execute({"class_name": "Animal", "output_format": "json"}))
+
+    assert response["success"] is True
+    assert response["verdict"] != "NEEDS_INDEX", (
+        "H7: after indexing, verdict must not be NEEDS_INDEX"
+    )
+    assert response["verdict"] == "INFO"

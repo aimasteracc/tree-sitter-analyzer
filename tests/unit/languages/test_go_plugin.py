@@ -368,6 +368,44 @@ class TestGoPluginIntegration:
 
 
 @pytest.mark.asyncio
+async def test_h2_struct_fields_extracted() -> None:
+    """H2 regression: struct fields must appear as Variable(element_type=field) elements.
+
+    Previously GoPlugin.analyze_file never called extract_struct_fields_as_variables
+    so field_count was always 0 for Go structs.
+    """
+    try:
+        import tree_sitter_go  # noqa: F401
+    except ImportError:
+        pytest.skip("tree-sitter-go not installed")
+
+    plugin = GoPlugin()
+    code = "package geo\n\ntype Point struct { X int; Y int }\n"
+
+    with patch(
+        "tree_sitter_analyzer.encoding_utils.read_file_safe",
+        return_value=(code, "utf-8"),
+    ):
+        result = await plugin.analyze_file("point.go", None)
+
+    assert result is not None
+    from tree_sitter_analyzer.models import Variable
+    fields = [
+        e for e in result.elements
+        if isinstance(e, Variable) and getattr(e, "element_type", "") == "variable"
+        and e.name in ("X", "Y")
+    ]
+    assert len(fields) == 2, (
+        f"Expected 2 struct fields (X, Y), got {[e.name for e in fields]}"
+    )
+    field_count = sum(
+        1 for e in result.elements
+        if isinstance(e, Variable) and e.name in ("X", "Y")
+    )
+    assert field_count == 2
+
+
+@pytest.mark.asyncio
 async def test_full_flow_go() -> None:
     """Basic integration test with sample code."""
     try:
