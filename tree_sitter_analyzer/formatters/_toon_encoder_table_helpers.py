@@ -7,6 +7,25 @@ EncodeValue = Callable[[Any, set[int]], str]
 InferSchema = Callable[[list[dict[str, Any]]], list[str]]
 
 
+def union_schema(items: list[dict[str, Any]]) -> list[str]:
+    """Union of all rows' keys, in first-seen order (issue #637).
+
+    A header built from only the first row's keys silently drops every
+    field that later rows carry (e.g. 49 caller ``body`` fields behind a
+    ghost first row).  The union keeps the table lossless; rows missing a
+    key render an empty cell — same representation the row encoder already
+    used for schema keys absent from a row.
+    """
+    schema: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        for key in item:
+            if key not in seen:
+                seen.add(key)
+                schema.append(key)
+    return schema
+
+
 def encode_public_array_table(
     items: list[dict[str, Any]],
     schema: list[str] | None,
@@ -42,8 +61,8 @@ def encode_array_table_lines(
     encode_value: EncodeValue,
     seen_ids: set[int],
 ) -> list[str]:
-    """Encode a homogeneous array of dictionaries as TOON table lines."""
-    schema_parts = build_table_schema_parts(items[0], schema, delimiter)
+    """Encode an array of dictionaries as TOON table lines."""
+    schema_parts = build_table_schema_parts(items, schema, delimiter)
     schema_str = delimiter.join(schema_parts)
     lines = [f"{indent_str}[{len(items)}]{{{schema_str}}}:"]
     lines.extend(
@@ -60,18 +79,22 @@ def encode_array_table_lines(
 
 
 def build_table_schema_parts(
-    first_item: dict[str, Any],
+    items: list[dict[str, Any]],
     schema: list[str],
     delimiter: str,
 ) -> list[str]:
-    """Build TOON table schema labels with compact nested value annotations."""
+    """Build TOON table schema labels with compact nested value annotations.
+
+    The annotation sample for each key comes from the first row that HAS
+    the key — with a union schema (#637) the first row may lack it.
+    """
     schema_parts: list[str] = []
     for key in schema:
-        first_value = first_item.get(key)
-        if isinstance(first_value, tuple | list) and len(first_value) == 2:
+        sample_value = next((item[key] for item in items if key in item), None)
+        if isinstance(sample_value, tuple | list) and len(sample_value) == 2:
             schema_parts.append(f"{key}(a,b)")
-        elif isinstance(first_value, dict):
-            dict_keys = delimiter.join(first_value.keys())
+        elif isinstance(sample_value, dict):
+            dict_keys = delimiter.join(sample_value.keys())
             schema_parts.append(f"{key}{{{dict_keys}}}")
         else:
             schema_parts.append(key)
