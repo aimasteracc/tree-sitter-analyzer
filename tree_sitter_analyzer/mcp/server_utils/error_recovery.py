@@ -400,6 +400,32 @@ def ensure_canonical_success_envelope(
     return response
 
 
+# #672/#678: the no-identifier summary-line suffix is "ok" ONLY for success-like
+# verdicts (or an absent verdict). Every other canonical verdict — WARN, ERROR,
+# NOT_FOUND, CAUTION, REVIEW, UNSAFE, and anything added later — gets its own
+# lowercased suffix, via an ALLOWLIST (not a denylist), so a new non-success
+# verdict can never silently synthesize a lying "<tool>: ok" (Codex #678 P2:
+# viz action=similarity can return CAUTION/REVIEW with no identifier).
+_SUCCESS_LIKE_VERDICTS: frozenset[str] = frozenset({"INFO", "SAFE", "OK", "SUCCESS"})
+
+
+def _verdict_suffix(response: dict[str, Any]) -> str:
+    """Pick the no-identifier summary-line suffix from the response verdict.
+
+    Reads the top-level ``verdict`` first, then ``agent_summary.verdict``.
+    Returns ``"ok"`` for a success-like or absent verdict; otherwise the
+    verdict lowercased (``NOT_FOUND`` -> ``"not found"``).
+    """
+    verdict = response.get("verdict")
+    if not isinstance(verdict, str) or not verdict:
+        agent_summary = response.get("agent_summary")
+        if isinstance(agent_summary, dict):
+            verdict = agent_summary.get("verdict")
+    if not isinstance(verdict, str) or not verdict or verdict in _SUCCESS_LIKE_VERDICTS:
+        return "ok"
+    return verdict.lower().replace("_", " ")
+
+
 def _populate_summary_line(
     response: dict[str, Any],
     tool_name: str,
@@ -434,9 +460,14 @@ def _populate_summary_line(
             break
     if identifier_value is None:
         _identifier_key, identifier_value = _pick_identifier(arguments)
-    synthesized = (
-        f"{tool_name}: {identifier_value}" if identifier_value else f"{tool_name}: ok"
-    )
+    if identifier_value:
+        synthesized = f"{tool_name}: {identifier_value}"
+    else:
+        # #672: the fallback suffix MUST reflect the verdict — saying "ok" on a
+        # WARN/ERROR/NOT_FOUND response (e.g. index action=status with an empty
+        # cache) lies to an agent that gates on summary_line. Only success-like
+        # verdicts (or none) get "ok".
+        synthesized = f"{tool_name}: {_verdict_suffix(response)}"
     response["summary_line"] = synthesized
     return synthesized
 
