@@ -281,3 +281,66 @@ class TestSuccessEnvelopeNextStepMirror:
         result = ensure_canonical_success_envelope("nav", response)
         # Contract unchanged when there is nothing to mirror.
         assert result["agent_summary"]["next_step"] == ""
+
+
+class TestSynthesizedSummaryLineIsVerdictAware:
+    """#672/#678: when no summary_line / agent_summary.summary_line / identifier
+    is present, the synthesized fallback must reflect the verdict — never claim
+    ``"ok"`` on any non-success verdict (WARN/ERROR/NOT_FOUND/CAUTION/REVIEW/
+    UNSAFE; e.g. index action=status on an empty cache, or viz action=similarity
+    returning CAUTION), which lies to an agent that gates on summary_line. Only
+    the success-like allowlist (INFO/SAFE) keeps ``"ok"``."""
+
+    def test_warn_verdict_does_not_say_ok(self):
+        response = {"success": True, "verdict": "WARN", "indexed": False}
+        result = ensure_canonical_success_envelope("index", response)
+        assert result["summary_line"] == "index: warn"
+        assert result["agent_summary"]["summary_line"] == "index: warn"
+
+    def test_not_found_verdict_suffix(self):
+        response = {"success": True, "verdict": "NOT_FOUND"}
+        result = ensure_canonical_success_envelope("nav", response)
+        assert result["summary_line"] == "nav: not found"
+
+    def test_error_verdict_suffix(self):
+        response = {"success": True, "verdict": "ERROR"}
+        result = ensure_canonical_success_envelope("search", response)
+        assert result["summary_line"] == "search: error"
+
+    def test_caution_review_unsafe_verdicts_are_not_ok(self):
+        # Codex #678 P2: the security/quality verdicts must not fall through to
+        # "ok" — they're the exact cases an agent must NOT read as success.
+        for verdict, expected in (
+            ("CAUTION", "viz: caution"),
+            ("REVIEW", "viz: review"),
+            ("UNSAFE", "viz: unsafe"),
+        ):
+            response = {"success": True, "verdict": verdict}
+            result = ensure_canonical_success_envelope("viz", response)
+            assert result["summary_line"] == expected
+
+    def test_info_and_safe_verdicts_still_ok(self):
+        # Regression: the success-like allowlist keeps the "ok" suffix.
+        for verdict in ("INFO", "SAFE"):
+            response = {"success": True, "verdict": verdict}
+            result = ensure_canonical_success_envelope("structure", response)
+            assert result["summary_line"] == "structure: ok"
+
+    def test_verdict_read_from_agent_summary_when_top_level_absent(self):
+        response = {"success": True, "agent_summary": {"verdict": "WARN"}}
+        result = ensure_canonical_success_envelope("health", response)
+        assert result["summary_line"] == "health: warn"
+
+    def test_identifier_still_wins_over_verdict_suffix(self):
+        # When an identifier field is present it takes precedence — the verdict
+        # suffix is only the no-identifier fallback.
+        response = {"success": True, "verdict": "WARN", "file_path": "mod.py"}
+        result = ensure_canonical_success_envelope("structure", response)
+        assert result["summary_line"] == "structure: mod.py"
+
+    def test_no_verdict_no_identifier_falls_back_to_ok(self):
+        # No verdict anywhere and no identifier → the suffix is "ok" (the
+        # success-like default), with no agent_summary verdict to read either.
+        response = {"success": True}
+        result = ensure_canonical_success_envelope("nav", response)
+        assert result["summary_line"] == "nav: ok"
