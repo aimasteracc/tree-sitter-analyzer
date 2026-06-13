@@ -879,3 +879,190 @@ def test_annotation_only_fields_extracted() -> None:
     assert vis["_token"] == "protected"
     kinds = {f["name"]: f["kind"] for f in fields}
     assert kinds == {"name": "class", "retries": "class", "_token": "class"}
+
+
+# ─── Issue #660: helpers unit tests ─────────────────────────────────────────
+
+
+def test_is_method_abstract_at_line_one() -> None:
+    """Method defined at line 1 has no preceding lines — must return False (no IndexError)."""
+    from tree_sitter_analyzer.mcp.tools.class_inspect_tool import _is_method_abstract
+
+    result = _is_method_abstract(["def foo() -> None: ...\n"], def_line_1indexed=1)
+    assert result is False
+
+
+def test_is_method_abstract_abc_qualified() -> None:
+    """@abc.abstractmethod (qualified form) must also be detected."""
+    from tree_sitter_analyzer.mcp.tools.class_inspect_tool import _is_method_abstract
+
+    lines = ["    @abc.abstractmethod\n", "    def bar(self) -> None: ...\n"]
+    assert _is_method_abstract(lines, def_line_1indexed=2) is True
+
+
+def test_read_source_lines_io_error_returns_empty() -> None:
+    """_read_source_lines returns [] when the file does not exist."""
+    from tree_sitter_analyzer.mcp.tools.class_inspect_tool import _read_source_lines
+
+    result = _read_source_lines("nonexistent_file_xyz.py", "/tmp")
+    assert result == []
+
+
+# ─── Issue #660: @abstractmethod surfaced + same-name class scoping ──────────
+
+
+ABSTRACT_FIXTURE_SOURCE = textwrap.dedent("""\
+    from abc import ABC, abstractmethod
+
+
+    class Shape(ABC):
+        \"\"\"Abstract base for shapes.\"\"\"
+
+        @abstractmethod
+        def area(self) -> float:
+            \"\"\"Return area.\"\"\"
+            ...
+
+        @abstractmethod
+        def perimeter(self) -> float:
+            \"\"\"Return perimeter.\"\"\"
+            ...
+
+        def describe(self) -> str:
+            \"\"\"Non-abstract method.\"\"\"
+            return f"shape"
+""")
+
+SAME_NAME_FIXTURE_A = textwrap.dedent("""\
+    class Widget:
+        def render(self) -> str:
+            return "A"
+""")
+
+SAME_NAME_FIXTURE_B = textwrap.dedent("""\
+    class Widget:
+        def paint(self) -> str:
+            return "B"
+
+        def resize(self) -> None:
+            pass
+""")
+
+
+class TestAbstractMethodSurfaced:
+    """Issue #660 (A): @abstractmethod must appear as is_abstract=True in method entries."""
+
+    @pytest.fixture()
+    def abstract_file(self, tmp_path: Path) -> Path:
+        p = tmp_path / "shapes.py"
+        p.write_text(ABSTRACT_FIXTURE_SOURCE, encoding="utf-8", newline="\n")
+        return p
+
+    def _run_shape(self, abstract_file: Path) -> dict[str, Any]:
+        from tree_sitter_analyzer.ast_cache import ASTCache
+
+        project_root = str(abstract_file.parent)
+        cache = ASTCache(project_root)
+        result = cache.index_file(str(abstract_file), language="python")
+        assert result.get("status") in ("ok", "indexed", "unchanged"), (
+            f"Index failed: {result}"
+        )
+        tool = ClassInspectTool(project_root)
+        response = _run(tool.execute({"class_name": "Shape", "output_format": "json"}))
+        assert response["success"] is True, f"Tool failed: {response}"
+        return response
+
+    def test_abstract_method_is_abstract_true(self, abstract_file: Path) -> None:
+        """area() decorated with @abstractmethod → is_abstract=True in method entry."""
+        r = self._run_shape(abstract_file)
+        method_map = {m["name"]: m for m in r["methods"]}
+        assert method_map["area"]["is_abstract"] is True
+
+    def test_abstract_method_perimeter_is_abstract_true(
+        self, abstract_file: Path
+    ) -> None:
+        """perimeter() also abstract → is_abstract=True."""
+        r = self._run_shape(abstract_file)
+        method_map = {m["name"]: m for m in r["methods"]}
+        assert method_map["perimeter"]["is_abstract"] is True
+
+    def test_non_abstract_method_is_abstract_false(self, abstract_file: Path) -> None:
+        """describe() is NOT decorated → is_abstract=False (or absent, defaulting False)."""
+        r = self._run_shape(abstract_file)
+        method_map = {m["name"]: m for m in r["methods"]}
+        assert method_map["describe"].get("is_abstract", False) is False
+
+    def test_method_count_exact(self, abstract_file: Path) -> None:
+        """Shape has exactly 3 methods: area, perimeter, describe."""
+        r = self._run_shape(abstract_file)
+        assert r["method_count"] == 3
+
+    def test_toon_output_contains_is_abstract(self, abstract_file: Path) -> None:
+        """TOON toon_content blob must include the is_abstract flag."""
+        from tree_sitter_analyzer.ast_cache import ASTCache
+
+        project_root = str(abstract_file.parent)
+        cache = ASTCache(project_root)
+        cache.index_file(str(abstract_file), language="python")
+        tool = ClassInspectTool(project_root)
+        response = _run(tool.execute({"class_name": "Shape", "output_format": "toon"}))
+        assert response.get("format") == "toon"
+        toon_blob = response.get("toon_content", "")
+        assert "is_abstract" in toon_blob
+
+
+class TestSameNameClassScoped:
+    """Issue #660: when two files define a class with the same name, class_detail
+    must only show methods from the file where the class is indexed.
+    """
+
+    @pytest.fixture()
+    def two_widget_files(self, tmp_path: Path) -> tuple[Path, Path]:
+        a = tmp_path / "widget_a.py"
+        b = tmp_path / "widget_b.py"
+        a.write_text(SAME_NAME_FIXTURE_A, encoding="utf-8", newline="\n")
+        b.write_text(SAME_NAME_FIXTURE_B, encoding="utf-8", newline="\n")
+        return a, b
+
+    def _run_widget(
+        self,
+        tmp_path: Path,
+        file_a: Path,
+        file_b: Path,
+    ) -> dict[str, Any]:
+        from tree_sitter_analyzer.ast_cache import ASTCache
+
+        project_root = str(tmp_path)
+        cache = ASTCache(project_root)
+        for fp in (file_a, file_b):
+            result = cache.index_file(str(fp), language="python")
+            assert result.get("status") in ("ok", "indexed", "unchanged"), (
+                f"Index failed: {result}"
+            )
+        tool = ClassInspectTool(project_root)
+        response = _run(tool.execute({"class_name": "Widget", "output_format": "json"}))
+        assert response["success"] is True
+        return response
+
+    def test_methods_not_merged_across_files(
+        self, two_widget_files: tuple[Path, Path], tmp_path: Path
+    ) -> None:
+        """Widget in widget_a.py has render(); Widget in widget_b.py has paint()+resize().
+        class_detail must NOT merge them into a single 3-method list."""
+        a, b = two_widget_files
+        r = self._run_widget(tmp_path, a, b)
+        # The result must be exactly ONE Widget's methods, not all three
+        assert len(r["methods"]) != 3, (
+            "class_detail merged both Widget classes — must scope to one file"
+        )
+
+    def test_method_count_is_one_or_two(
+        self, two_widget_files: tuple[Path, Path], tmp_path: Path
+    ) -> None:
+        """First indexed Widget (widget_a.py) has 1 method; class_detail returns 1."""
+        a, b = two_widget_files
+        r = self._run_widget(tmp_path, a, b)
+        # widget_a.py's Widget has 1 method (render)
+        # widget_b.py's Widget has 2 methods (paint, resize)
+        # Either is acceptable (first-match), but NOT 3 (merged)
+        assert r["method_count"] in (1, 2)
