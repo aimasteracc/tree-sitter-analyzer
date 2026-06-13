@@ -70,9 +70,10 @@ class TestDependencyMatrixBuild:
 
         assert "a.py" in result.modules
         assert "b.py" in result.modules
-        assert len(result.coupling_pairs) >= 1
-        assert result.coupling_pairs[0].import_count >= 1
-        assert result.coupling_pairs[0].call_count >= 1
+        # one a.py<->b.py pair from 1 import + 1 resolved call edge
+        assert len(result.coupling_pairs) == 1
+        assert result.coupling_pairs[0].import_count == 1
+        assert result.coupling_pairs[0].call_count == 1
 
     def test_build_empty_cache(self, tmp_path):
         mock_cache = MagicMock()
@@ -142,9 +143,10 @@ class TestDependencyMatrixBuild:
             dm = DependencyMatrix(str(tmp_path))
             top = dm.most_coupled(top_k=2)
 
-        assert len(top) <= 2
-        if len(top) >= 1:
-            assert top[0].score > 0
+        # three coupled pairs exist; top_k=2 keeps a-b (score 4.0) and b-c (3.0)
+        assert len(top) == 2
+        assert top[0].score == 4.0
+        assert top[1].score == 3.0
 
     def test_unstable_modules(self, tmp_path):
         mock_cache = MagicMock()
@@ -176,8 +178,8 @@ class TestDependencyMatrixBuild:
             dm = DependencyMatrix(str(tmp_path))
             s = dm.summary()
 
-        assert s["module_count"] >= 2
-        assert s["coupling_pair_count"] >= 1
+        assert s["module_count"] == 2
+        assert s["coupling_pair_count"] == 1
 
     def test_high_coupling_pairs(self, tmp_path):
         mock_cache = MagicMock()
@@ -197,7 +199,8 @@ class TestDependencyMatrixBuild:
             dm = DependencyMatrix(str(tmp_path))
             result = dm.build()
 
-        assert len(result.high_coupling_pairs) >= 1
+        # all five a{i}.py<->b.py pairs (5 imports + 1 call each) rank as high
+        assert len(result.high_coupling_pairs) == 5
 
 
 class TestDependencyMatrixSelfCallFilter:
@@ -282,4 +285,4 @@ class TestDependencyMatrixCrossFileIntegration:
         entry = dm.coupling_between("a.py", "b.py")
 
         assert entry is not None
-        assert entry.call_count >= 1, "cross-file call edge must be counted"
+        assert entry.call_count == 1, "the single bar->foo call edge must be counted"

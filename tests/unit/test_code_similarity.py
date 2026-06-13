@@ -104,10 +104,11 @@ class TestDetectTextualClonesCached:
     def test_finds_clones_via_cache(self, cached_clone_project):
         cache, root = cached_clone_project
         groups = detect_textual_clones_cached(cache, root, min_lines=3)
-        assert len(groups) >= 1
+        # exactly one clone pair: process_data / handle_records
+        assert len(groups) == 1
         group = groups[0]
         assert group.method == "textual_cached"
-        assert len(group.functions) >= 2
+        assert len(group.functions) == 2
 
     def test_no_clones_returns_empty(self, tmp_path):
         project = tmp_path / "unique"
@@ -118,7 +119,8 @@ class TestDetectTextualClonesCached:
         cache.index_project(max_files=100)
         try:
             groups = detect_textual_clones_cached(cache, str(project), min_lines=2)
-            assert all(len(g.functions) >= 2 for g in groups)
+            # the two functions are distinct — no clone groups at all
+            assert groups == []
         finally:
             cache.close()
 
@@ -137,7 +139,7 @@ class TestDetectStructuralClonesCached:
     def test_finds_structural_clones(self, cached_clone_project):
         cache, root = cached_clone_project
         groups = detect_structural_clones_cached(cache, root, min_lines=3)
-        assert len(groups) >= 1
+        assert len(groups) == 1
         group = groups[0]
         assert group.method == "structural_cached"
         assert group.similarity == 1.0
@@ -160,12 +162,15 @@ class TestExtractCachedFunctions:
     def test_extracts_from_cache(self, cached_clone_project):
         cache, root = cached_clone_project
         functions = _extract_cached_functions(cache, root, min_lines=3)
-        assert len(functions) >= 2
+        # min_lines=3 keeps process_data/handle_records, drops unique_logic
+        assert len(functions) == 2
+        assert {f[1] for f in functions} == {"process_data", "handle_records"}
         for _file_path, name, start, end, lang, body in functions:
             assert name
-            assert start > 0
-            assert end >= start
-            assert lang
+            # both fixture functions span lines 1-7 of their module
+            assert start == 1
+            assert end == 7
+            assert lang == "python"
             assert body
 
     def test_min_lines_filter(self, cached_clone_project):
@@ -192,13 +197,13 @@ class TestAnalyzeCodeSimilarityWithCache:
     def test_structural_only_cached(self, cached_clone_project):
         _, root = cached_clone_project
         result = analyze_code_similarity(root, mode="structural", min_lines=3)
-        assert len(result.groups) >= 1
+        assert len(result.groups) == 1
         assert all(g.method == "structural_cached" for g in result.groups)
 
     def test_textual_only_cached(self, cached_clone_project):
         _, root = cached_clone_project
         result = analyze_code_similarity(root, mode="textual", min_lines=3)
-        assert len(result.groups) >= 1
+        assert len(result.groups) == 1
         assert all(g.method == "textual_cached" for g in result.groups)
 
     def test_no_cache_falls_back_gracefully(self, tmp_path):

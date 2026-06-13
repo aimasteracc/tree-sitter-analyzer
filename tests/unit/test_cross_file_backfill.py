@@ -68,8 +68,12 @@ class TestBackfillCrossFileEdges:
         assert "resolved" in result
         assert "unchanged" in result
         assert "errors" in result
-        assert result["total"] >= 0
-        assert result["resolved"] >= 0
+        # index_project already backfilled, so this second pass is a no-op:
+        # all 9 call edges are visited, none newly resolved.
+        assert result["total"] == 9
+        assert result["resolved"] == 0
+        assert result["unchanged"] == 9
+        assert result["errors"] == 0
 
     def test_backfill_writes_resolved_file(self, multi_file_project):
         _project, cache = multi_file_project
@@ -79,7 +83,7 @@ class TestBackfillCrossFileEdges:
             "SELECT callee_name, callee_resolved_file FROM edges "
             "WHERE kind = 'calls' AND callee_resolved_file != ''"
         ).fetchall()
-        assert len(rows) > 0
+        assert len(rows) == 6
         resolved_names = {r["callee_name"] for r in rows}
         assert "format_user" in resolved_names or "handle_request" in resolved_names
 
@@ -87,9 +91,10 @@ class TestBackfillCrossFileEdges:
         _project, cache = multi_file_project
         cache.backfill_cross_file_edges()
         stats = cache.get_cross_file_stats()
-        assert stats["total"] >= 0
-        assert stats["resolved"] >= 0
-        assert stats["cross_file"] >= 0
+        # 9 call edges; 6 resolve to a file, 3 of those land in another file
+        assert stats["total"] == 9
+        assert stats["resolved"] == 6
+        assert stats["cross_file"] == 3
         assert "pct" in stats
 
     def test_query_callers_uses_resolved_file(self, multi_file_project):
@@ -122,7 +127,8 @@ class TestBackfillCrossFileEdges:
         stats = cache.index_project(max_files=100)
         assert "cross_file_backfill" in stats
         bf = stats["cross_file_backfill"]
-        assert bf["total"] >= 0
+        # single call edge: main -> helper
+        assert bf["total"] == 1
         cache.close()
 
 
@@ -139,4 +145,4 @@ class TestCrossFileStats:
     def test_stats_after_indexing(self, multi_file_project):
         _project, cache = multi_file_project
         stats = cache.get_cross_file_stats()
-        assert stats["total"] > 0
+        assert stats["total"] == 9
