@@ -1018,15 +1018,19 @@ def _extract_call_edges(
 
     definitions, calls = walk_tree(tree.root_node, source_code, language)
 
-    # Keyed by name → (start_line, start_col, end_line, end_col, start_line_raw)
+    # (name, start_line, start_col, end_line, end_col, start_line_raw) per
+    # definition.  A LIST, not a name-keyed dict: same-named methods in
+    # different classes (two ``execute`` defs) must keep BOTH spans, or calls
+    # inside the earlier one lose attribution and become ghost
+    # caller_name=''/caller_line=0 edges (issue #638).
     # start_line_raw is kept separately for caller_line output (unchanged API).
-    file_funcs: dict[str, tuple[int, int, int, int, int]] = {}
+    file_funcs: list[tuple[str, int, int, int, int, int]] = []
     for d in definitions:
         sl = d["start_line"]
         sc = d.get("start_col", 0)
         el = d.get("end_line", sl)
         ec = d.get("end_col", 0)
-        file_funcs[d["name"]] = (sl, sc, el, ec, sl)
+        file_funcs.append((d["name"], sl, sc, el, ec, sl))
 
     edges: list[dict[str, Any]] = []
     for call in calls:
@@ -1035,7 +1039,7 @@ def _extract_call_edges(
         caller_name = ""
         caller_line = 0
         best_span: tuple[int, int] | None = None
-        for fname, (sl, sc, el, ec, raw_start) in file_funcs.items():
+        for fname, sl, sc, el, ec, raw_start in file_funcs:
             # Column-aware containment: (call_line, call_col) must be strictly
             # inside [start_point .. end_point] expressed as (line, col) pairs.
             # Uses lexicographic comparison so single-line functions work too.
