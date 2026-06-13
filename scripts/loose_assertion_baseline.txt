@@ -68,7 +68,13 @@
 #   in top-4 AST-ranked files, no timing exemptions).
 #   batch-33 (AST): 459 -> 439, 2026-06-13 (20 exact pins in top-4 AST-ranked
 #   files, no exemptions; loop assert restructured to per-pattern dict).
+#   batch-34 (AST): 439 -> 434, 2026-06-13 (5 exact pins in test_logging.py;
+#   batch deliberately small — the next-ranked files were poor targets this
+#   round: integration_tests.py has 6 pre-existing failures (table_output
+#   missing from CSV TOON, filed separately) so its asserts are unreachable,
+#   and the CLI-output files need content-invariant pins, not byte counts that
+#   vary by platform temp-stem length — both deferred to batch-35).
 
-BASELINE_COUNT=439
+BASELINE_COUNT=434
 MEASUREMENT_DATE=2026-06-13
 MEASUREMENT_COMMAND="uv run python scripts/check_loose_assertions.py --baseline"
