@@ -379,16 +379,9 @@ class XRefEngine:
             ") AND file_path != ? AND callee_resolved_file = ? ORDER BY caller_file"
         )
         rows = self._inbound_edge_rows(conn, names, file_path, _fd_prefix, _fd_suffix)
-        seen: set[str] = set()
-        out: list[dict[str, Any]] = []
-        for caller_file in sorted(row["caller_file"] for row in rows):
-            if caller_file in seen:
-                continue
-            seen.add(caller_file)
-            out.append({"file": caller_file})
-            if len(out) >= 50:
-                break
-        return out
+        # Distinct caller files across chunks, deterministically ordered, capped.
+        caller_files = sorted({row["caller_file"] for row in rows})
+        return [{"file": cf} for cf in caller_files[:50]]
 
     def _file_symbols(
         self,
@@ -442,18 +435,18 @@ class XRefEngine:
             "ORDER BY caller_file, caller_line"
         )
         rows = self._inbound_edge_rows(conn, names, file_path, _fc_prefix, _fc_suffix)
-        seen: set[tuple[str, str, Any]] = set()
-        out: list[dict[str, Any]] = []
+        # Dedup identical (file, caller, line) call sites across chunks (a caller
+        # row matches only its single callee_name, so dups arise only if two
+        # chunks return the same site), deterministically ordered, capped.
+        by_site: dict[tuple[str, str, Any], dict[str, Any]] = {}
         for row in sorted(
             rows, key=lambda r: (r["caller_file"], r["caller_line"] or 0)
         ):
-            key = (row["caller_file"], row["caller_name"], row["caller_line"])
-            if key in seen:
-                continue
-            seen.add(key)
-            out.append(dict(row))
-            if len(out) >= 50:
-                break
+            by_site.setdefault(
+                (row["caller_file"], row["caller_name"], row["caller_line"]),
+                dict(row),
+            )
+        out = list(by_site.values())[:50]
         return out
 
     def _file_callees(
