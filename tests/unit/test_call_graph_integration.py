@@ -226,8 +226,8 @@ class TestCallGraphJavaProject:
 class TestCallGraphInternalMethods:
     def test_find_enclosing_func(self):
         cg = CallGraph(str(PY_PROJECT))
-        ref1 = FunctionRef("main.py", "foo", 10, "python")
-        ref2 = FunctionRef("main.py", "bar", 5, "python")
+        ref1 = FunctionRef("main.py", "foo", 10, "python", end_line=20)
+        ref2 = FunctionRef("main.py", "bar", 5, "python", end_line=8)
         file_funcs = {"foo": ref1, "bar": ref2}
         result = cg.find_enclosing_func(file_funcs, 12)
         assert result is not None
@@ -235,8 +235,8 @@ class TestCallGraphInternalMethods:
 
     def test_find_enclosing_func_tightest(self):
         cg = CallGraph(str(PY_PROJECT))
-        ref1 = FunctionRef("main.py", "outer", 1, "python")
-        ref2 = FunctionRef("main.py", "inner", 5, "python")
+        ref1 = FunctionRef("main.py", "outer", 1, "python", end_line=20)
+        ref2 = FunctionRef("main.py", "inner", 5, "python", end_line=10)
         file_funcs = {"outer": ref1, "inner": ref2}
         result = cg.find_enclosing_func(file_funcs, 7)
         assert result is not None

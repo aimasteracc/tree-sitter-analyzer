@@ -324,10 +324,13 @@ class CallGraph:
         file_funcs: dict[str, FunctionRef],
         call_line: int,
     ) -> FunctionRef | None:
-        """Find the function that contains the given line number.
+        """Find the function whose span contains the given line number.
 
-        Uses both start_line and end_line for accurate range containment.
-        Falls back to closest start_line when end_line is unreliable.
+        Returns the tightest-enclosing FunctionRef (smallest span), or None
+        when the call is module-level (no function's range contains it).
+        The former "nearest preceding function" fallback has been removed:
+        that fallback misattributed module-level call sites to the last
+        function before them, producing wrong-name edges (#648).
         """
         best: FunctionRef | None = None
         for ref in file_funcs.values():
@@ -335,12 +338,6 @@ class CallGraph:
                 if best is None or (
                     (ref.end_line - ref.start_line) < (best.end_line - best.start_line)
                 ):
-                    best = ref
-        if best is not None:
-            return best
-        for ref in file_funcs.values():
-            if ref.start_line <= call_line:
-                if best is None or ref.start_line > best.start_line:
                     best = ref
         return best
 
@@ -628,8 +625,8 @@ class CallGraph:
         """Public alias for :meth:`_find_enclosing_func`.
 
         Returns the tightest-enclosing :class:`FunctionRef` for the given
-        *line_number* among *file_funcs*, or ``None`` if the line falls
-        before all known function starts.
+        *line_number* among *file_funcs*, or ``None`` when no function's
+        range contains the line (e.g. module-level call sites).
         """
         return self._find_enclosing_func(file_funcs, line_number)
 
