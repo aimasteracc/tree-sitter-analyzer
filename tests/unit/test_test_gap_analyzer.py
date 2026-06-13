@@ -66,7 +66,7 @@ class TestExtractTestTargets:
 
     def test_with_keyword(self):
         targets = _extract_test_targets("test_parse_raises_error")
-        assert len(targets) > 0
+        assert len(targets) == 2
 
 
 class TestRiskBand:
@@ -90,7 +90,7 @@ class TestPriorityScore:
     def test_simple_function(self):
         sym = _make_prod("foo")
         score = _priority_score(sym)
-        assert score >= 0
+        assert score == 0
 
     def test_class_bonus(self):
         cls = _make_prod("MyClass", kind="class")
@@ -162,8 +162,8 @@ class TestAnalyzeCoverageGaps:
     def test_finds_uncovered_symbols(self, project_with_gaps):
         result = analyze_coverage_gaps(str(project_with_gaps))
         assert isinstance(result, CoverageGapResult)
-        assert result.total_production_symbols >= 1
-        assert result.gap_count >= 1
+        assert result.total_production_symbols == 4
+        assert result.gap_count == 3
         assert 0 <= result.coverage_pct <= 100
 
     def test_coverage_percentage(self, project_with_gaps):
@@ -179,19 +179,15 @@ class TestAnalyzeCoverageGaps:
             assert isinstance(gap.suggestion, str)
 
     def test_language_filter(self, project_with_gaps):
-        result = analyze_coverage_gaps(
-            str(project_with_gaps), language_filter="python"
-        )
-        assert result.total_production_symbols >= 1
+        result = analyze_coverage_gaps(str(project_with_gaps), language_filter="python")
+        assert result.total_production_symbols == 4
 
     def test_max_gaps(self, project_with_gaps):
         result = analyze_coverage_gaps(str(project_with_gaps), max_gaps=1)
         assert len(result.gaps) <= 1
 
     def test_include_covered(self, project_with_gaps):
-        result = analyze_coverage_gaps(
-            str(project_with_gaps), include_covered=True
-        )
+        result = analyze_coverage_gaps(str(project_with_gaps), include_covered=True)
         assert isinstance(result.covered, list)
 
     def test_empty_project(self, tmp_path):
