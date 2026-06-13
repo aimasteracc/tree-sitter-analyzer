@@ -667,3 +667,46 @@ class TestTransitiveCapFlag:
         result = tool._function_impact(graph, "hub", None, 10)
         assert result["transitive_callee_count"] == _MAX_TRANSITIVE
         assert result["transitive_callee_count_is_capped"] is True
+
+
+# ---------------------------------------------------------------------------
+# #668 — blast_radius file-only call: recovery_hint guides to nav xref
+# ---------------------------------------------------------------------------
+
+
+class TestBlastRadiusFileOnlyRecoveryHint:
+    """#668: when blast_radius is called with file_path only (no function_names),
+    the error message must contain actionable guidance to nav action=xref mode=file.
+
+    The recovery_hint is derived from the ValueError message by
+    error_recovery._classify().  A specific rule matching 'blast_radius' must
+    be installed BEFORE the generic 'required' rule so the hint is contextual.
+    """
+
+    def test_blast_radius_error_message_contains_xref_hint(self):
+        """validate_arguments raises; error message mentions 'xref'."""
+        tool = CodeGraphImpactTool()
+        with pytest.raises(ValueError) as exc_info:
+            tool.validate_arguments(
+                {"mode": "blast_radius", "file_path": "src/_ast_extraction.py"}
+            )
+        msg = str(exc_info.value)
+        assert "xref" in msg
+
+    def test_blast_radius_error_message_mentions_file_mode(self):
+        """Error message must reference mode=file so the agent knows which xref mode."""
+        tool = CodeGraphImpactTool()
+        with pytest.raises(ValueError) as exc_info:
+            tool.validate_arguments(
+                {"mode": "blast_radius", "file_path": "src/module.py"}
+            )
+        msg = str(exc_info.value)
+        assert "mode=file" in msg
+
+    def test_blast_radius_with_no_args_error_still_mentions_xref(self):
+        """Even with no file_path provided, the blast_radius error hints at xref."""
+        tool = CodeGraphImpactTool()
+        with pytest.raises(ValueError) as exc_info:
+            tool.validate_arguments({"mode": "blast_radius"})
+        msg = str(exc_info.value)
+        assert "xref" in msg
