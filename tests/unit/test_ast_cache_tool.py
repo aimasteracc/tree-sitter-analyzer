@@ -76,6 +76,11 @@ class TestGetToolSchema:
         assert ASTCacheTool._resolve_mode({}) == "stats"
         assert ASTCacheTool._resolve_mode({"mode": "stats", "query": "Foo"}) == "stats"
 
+    def test_symbol_declared_in_schema(self):
+        # #575: symbol (the facade's canonical id) must be a declared param so
+        # the facade whitelist forwards it instead of stripping it → stats.
+        assert "symbol" in ASTCacheTool().get_tool_schema()["properties"]
+
     def test_valid_modes(self):
         tool = ASTCacheTool()
         schema = tool.get_tool_schema()
@@ -99,6 +104,32 @@ class TestGetToolSchema:
             "watch_stop",
             "watch_status",
         }
+
+
+class TestSymbolAliasesQuery:
+    """#575: `cache symbol=X` must search for the symbol, not silently fall back
+    to stats (the facade stripped symbol → no query → mode=stats → wrong answer)."""
+
+    def test_symbol_aliases_query_into_search_mode(self, tmp_path):
+        import asyncio
+
+        (tmp_path / "m.py").write_text(
+            "class Widget:\n    def go(self):\n        pass\n"
+        )
+        tool = ASTCacheTool(project_root=str(tmp_path))
+        asyncio.run(tool.execute({"mode": "index"}))  # build the cache
+        result = asyncio.run(tool.execute({"symbol": "Widget"}))
+        assert result["mode"] == "search"
+        assert result["query"] == "Widget"
+
+    def test_explicit_query_wins_over_symbol(self, tmp_path):
+        import asyncio
+
+        (tmp_path / "m.py").write_text("class Widget:\n    pass\n")
+        tool = ASTCacheTool(project_root=str(tmp_path))
+        asyncio.run(tool.execute({"mode": "index"}))
+        result = asyncio.run(tool.execute({"symbol": "Widget", "query": "other"}))
+        assert result["query"] == "other"
 
 
 class TestValidateArguments:

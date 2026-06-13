@@ -74,7 +74,10 @@ class CodeGraphImportGraphTool(BaseMCPTool):
                         "cycles",
                         "coupling",
                     ],
-                    "description": "Operation mode (default: summary)",
+                    "description": (
+                        "Operation mode. Inferred when omitted: 'deps' if "
+                        "file_path is given, else 'summary' (#575)."
+                    ),
                     "default": "summary",
                 },
                 "file_path": {
@@ -93,12 +96,25 @@ class CodeGraphImportGraphTool(BaseMCPTool):
                     "default": "toon",
                 },
             },
-            "required": ["mode"],
+            # #575: mode is NOT required — it has a default and is inferred from
+            # file_path (the required-with-default contradiction is reconciled).
+            "required": [],
             "additionalProperties": False,
         }
 
+    @staticmethod
+    def _effective_mode(arguments: dict[str, Any]) -> str:
+        """#575: resolve the mode when omitted. A bare ``file_path`` means the
+        agent wants that file's imports (``deps``), not the project ``summary``
+        that ignores file_path — answering a different question than asked.
+        """
+        explicit = arguments.get("mode")
+        if explicit:
+            return str(explicit)
+        return "deps" if arguments.get("file_path") else "summary"
+
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
-        mode = arguments.get("mode", "summary")
+        mode = self._effective_mode(arguments)
         valid_modes = [
             "summary",
             "deps",
@@ -118,7 +134,7 @@ class CodeGraphImportGraphTool(BaseMCPTool):
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate_arguments(arguments)
 
-        mode = arguments.get("mode", "summary")
+        mode = self._effective_mode(arguments)
         output_format = arguments.get("output_format", "toon")
         graph = self._get_graph()
 

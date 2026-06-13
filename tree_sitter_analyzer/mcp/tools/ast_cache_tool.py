@@ -275,6 +275,13 @@ class ASTCacheTool(BaseMCPTool):
                     "type": "string",
                     "description": "Symbol search query (for search mode)",
                 },
+                "symbol": {
+                    "type": "string",
+                    "description": (
+                        "Alias for query (the facade's canonical identifier); "
+                        "searching for this symbol (#575)."
+                    ),
+                },
                 "limit": {
                     "type": "integer",
                     "description": "Max results for search (default: 100)",
@@ -370,6 +377,12 @@ class ASTCacheTool(BaseMCPTool):
         each of the 7 modes into a focused ``_handle_*`` method. M15 / J1
         / J8 / K7 contracts preserved exactly.
         """
+        # #575: ``symbol`` is the facade's canonical identifier; accept it as an
+        # alias for ``query`` so ``index action=cache symbol=X`` searches for the
+        # symbol instead of silently falling back to ``stats`` (the facade used
+        # to strip ``symbol`` → no query → mode=stats → wrong answer, no hint).
+        if arguments.get("symbol") and not arguments.get("query"):
+            arguments = {**arguments, "query": arguments["symbol"]}
         self.validate_arguments(arguments)
         mode = self._resolve_mode(arguments)
 
