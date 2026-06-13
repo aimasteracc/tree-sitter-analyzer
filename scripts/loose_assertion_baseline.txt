@@ -74,7 +74,13 @@
 #   missing from CSV TOON, filed separately) so its asserts are unreachable,
 #   and the CLI-output files need content-invariant pins, not byte counts that
 #   vary by platform temp-stem length — both deferred to batch-35).
+#   batch-35 (AST): 434 -> 418, 2026-06-13 (15 exact pins + 1 nondeterministic
+#   exemption in 4 files: test_parser_readiness_records.py/test_language_detector_helpers.py/
+#   test_parser.py/test_queries_ruby.py; loop assert in test_key_languages_have_patterns
+#   restructured to per-language exact dict; cache_maxsize pinned == 2000 (the
+#   deterministic CI default; env override is out-of-test); only mtime_ns exempt
+#   as a genuinely nondeterministic filesystem timestamp).
 
-BASELINE_COUNT=434
+BASELINE_COUNT=418
 MEASUREMENT_DATE=2026-06-13
 MEASUREMENT_COMMAND="uv run python scripts/check_loose_assertions.py --baseline"

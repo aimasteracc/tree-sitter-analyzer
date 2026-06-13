@@ -198,7 +198,10 @@ class TestParserLanguageSupport:
         """Test getting list of supported languages."""
         languages = parser.get_supported_languages()
         assert isinstance(languages, list)
-        assert len(languages) > 0
+        # 23 with the full declared grammar set installed (as in CI). A local
+        # venv missing an optional grammar wheel (e.g. tree-sitter-swift) sees
+        # fewer — install the extras to match. A grammar add/remove flips this.
+        assert len(languages) == 23
         assert "python" in languages
 
 
@@ -256,7 +259,10 @@ class TestParserCache:
         """PERF-2: cache must be sized for medium projects (>=1000) by default.
         Configurable via TSA_PARSER_CACHE_SIZE; default raised from 100 to
         2000 in the PERF-2 audit pass."""
-        assert Parser._cache.maxsize >= 1000
+        # Default (no TSA_PARSER_CACHE_SIZE set, as in CI) is a deterministic
+        # 2000 — pin it exactly so a default change goes red and forces a
+        # conscious re-pin (the >=1000 design floor lives in the docstring).
+        assert Parser._cache.maxsize == 2000
 
     def test_cache_shared_across_instances(self) -> None:
         """Test that cache is shared across Parser instances."""
@@ -281,7 +287,7 @@ class TestParserCache:
         assert info["size"] == 1
         assert info["misses"] == 1
         assert info["hits"] == 1
-        assert info["stat_hits"] >= 1, "warm pass should take the stat fast path"
+        assert info["stat_hits"] == 1, "warm pass should take the stat fast path"
 
     def test_cache_clear_resets_state(self, tmp_path) -> None:
         src = tmp_path / "a.py"
@@ -317,8 +323,8 @@ class TestParserCache:
         # The new tree must reflect the new source.
         assert "y = 2" in r2.source_code
         info = Parser.cache_info()
-        # Two distinct keys, so misses must be >=2.
-        assert info["misses"] >= 2
+        # Two distinct keys, so misses must be exactly 2.
+        assert info["misses"] == 2
 
 
 class TestParserEdgeCases:
