@@ -367,3 +367,54 @@ class TestClassHierarchyEdgeStore:
             assert ClassHierarchy(cache)._build_edges_from_edge_store() is False
         finally:
             cache.close()
+
+    def test_same_name_class_without_parents_not_listed_as_subclass(
+        self, tmp_path
+    ) -> None:
+        """Regression: #659 — same-name collision must not create false subclass.
+
+        Two files both define a class named 'Worker':
+        - real_worker.py: class Worker(Base) — genuinely inherits Base
+        - fake_worker.py: class Worker:       — no inheritance whatsoever
+
+        subclasses_of('Base') must return exactly one entry (real_worker.py),
+        NOT two.  Before the fix the bare-name lookup in _classes['Worker']
+        returned both ClassInfo entries, emitting the parentless one as a ghost.
+        """
+        real = tmp_path / "real_worker.py"
+        real.write_text(
+            "class Base:\n    pass\n\nclass Worker(Base):\n    pass\n",
+            encoding="utf-8",
+        )
+        fake = tmp_path / "fake_worker.py"
+        fake.write_text(
+            "class Worker:\n    pass\n",
+            encoding="utf-8",
+        )
+
+        cache = ASTCache(str(tmp_path))
+        try:
+            assert cache.index_file(str(real))["status"] == "indexed"
+            assert cache.index_file(str(fake))["status"] == "indexed"
+
+            hierarchy = ClassHierarchy(cache)
+            hierarchy.build()
+
+            subs = hierarchy.subclasses_of("Base")
+            sub_entries = [(s["name"], s["file"]) for s in subs]
+
+            # Only the real inheriting Worker must appear
+            assert ("Worker", "real_worker.py") in sub_entries, (
+                f"Real Worker missing from subclasses: {sub_entries}"
+            )
+            # The parentless Worker from fake_worker.py must NOT appear
+            assert ("Worker", "fake_worker.py") not in sub_entries, (
+                f"Ghost Worker from fake_worker.py incorrectly listed: {sub_entries}"
+            )
+            # Exactly one Worker entry total
+            worker_entries = [e for e in sub_entries if e[0] == "Worker"]
+            assert len(worker_entries) == 1, (
+                f"Expected exactly 1 Worker subclass, got {len(worker_entries)}: {worker_entries}"
+            )
+        finally:
+            cache.close()

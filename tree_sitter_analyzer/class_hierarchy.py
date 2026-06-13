@@ -92,6 +92,9 @@ class ClassHierarchy:
         self._classes: dict[str, list[ClassInfo]] = defaultdict(list)
         self._children: dict[str, list[str]] = defaultdict(list)
         self._parent_map: dict[str, list[str]] = defaultdict(list)
+        # Set of (file, class_name) pairs confirmed as real children by the
+        # edge store.  Used to disambiguate same-name collisions in #659.
+        self._confirmed_child_files: set[tuple[str, str]] = set()
         self._built = False
 
     def build(self) -> None:
@@ -166,8 +169,10 @@ class ClassHierarchy:
 
         parent_map: dict[str, list[str]] = defaultdict(list)
         children: dict[str, list[str]] = defaultdict(list)
+        confirmed_child_files: set[tuple[str, str]] = set()
         for row in rows:
-            child = parse_node_id(row["source_node_id"]).name
+            source_ref = parse_node_id(row["source_node_id"])
+            child = source_ref.name
             parent = str(row["metadata"] or "")
             try:
                 parent_meta = json.loads(row["metadata"] or "{}")
@@ -182,6 +187,10 @@ class ClassHierarchy:
             base = parent.rsplit(".", 1)[-1]
             children[parent].append(child)
             children[base].append(child)
+            # Record the (file, child_name) pair so same-name collisions can
+            # be resolved in subclasses_of (#659).
+            if source_ref.file_path:
+                confirmed_child_files.add((source_ref.file_path, child))
 
         if not parent_map:
             return False
@@ -193,6 +202,7 @@ class ClassHierarchy:
             list,
             {name: sorted(set(child_names)) for name, child_names in children.items()},
         )
+        self._confirmed_child_files = confirmed_child_files
         return True
 
     def has_class(self, class_name: str) -> bool:
@@ -227,7 +237,19 @@ class ClassHierarchy:
                     continue
                 visited.add(child_name)
                 for info in self._classes.get(child_name, []):
-                    result.append({"depth": depth + 1, **info.to_dict()})
+                    # Guard against same-name collision (#659): _classes is
+                    # keyed by bare class name, so both `class Foo(Base):` and
+                    # a parentless `class Foo:` in a different file land here.
+                    # Only emit an entry if:
+                    #  (a) the ClassInfo itself declares parents (normal case),
+                    #  (b) the edge store explicitly confirmed this (file, name)
+                    #      pair as a real child — handles the case where
+                    #      symbols_json parents were stripped but edges remain.
+                    if (
+                        info.parents
+                        or (info.file, child_name) in self._confirmed_child_files
+                    ):
+                        result.append({"depth": depth + 1, **info.to_dict()})
                 queue.append((child_name, depth + 1))
 
         return result
