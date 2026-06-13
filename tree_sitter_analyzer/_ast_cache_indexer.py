@@ -27,7 +27,8 @@ logger = logging.getLogger(__name__)
 # v7: #624 — PHP const declarations extracted as kind="constant".
 # v8: #626 — JS/TS function-local variables no longer over-captured.
 # v9: #626 — Java function-local variables no longer over-captured.
-_AST_CACHE_EXTRACTOR_VERSION = 9
+# v10: #628 — C# function-local variables no longer over-captured.
+_AST_CACHE_EXTRACTOR_VERSION = 10
 
 
 def check_cache_or_read(

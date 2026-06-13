@@ -1249,11 +1249,12 @@ class TestJavaLocalVariableContraction:
         for local in ("lambdaFieldLocal", "staticInitLocal", "instanceInitLocal"):
             assert local not in names
 
-    def test_csharp_locals_unaffected(self):
-        # C# has the same over-capture disease (10 live rows) but is a
-        # separate follow-up per the #626 decision — must NOT be widened here.
+    def test_csharp_locals_now_contracted_too(self):
+        # Re-pinned when the C# follow-up (#628) landed (extractor v10): C#
+        # method locals are dropped as well — full C# surface pinned in
+        # TestCSharpLocalVariableContraction below.
         src = "class A { void M() { int local = 1; } }\n"
-        assert self._variables(src, "csharp") == ["local"]
+        assert self._variables(src, "csharp") == []
 
 
 class TestJavaErrorRegionHardening:
@@ -1267,4 +1268,161 @@ class TestJavaErrorRegionHardening:
         # (live-parse verified) — it must produce no row.
         src = "class A {\n  Runnable r = () -> {\n    int leaked = 1;\n"
         syms = _symbols_for(src, "java")
+        assert [s["name"] for s in syms if s["kind"] == "variable"] == []
+
+
+# ---------------------------------------------------------------------------
+# Issue #628 (C#): function-local variables no longer over-captured
+# ---------------------------------------------------------------------------
+
+
+_CSHARP_628_SRC = """\
+using System;
+
+int topLevelVar = 1;
+var topLevelVar2 = "x";
+if (topLevelVar > 0) { int topLevelIfLocal = 2; }
+try { int topTryLocal = 3; } catch (Exception e) { int topCatchLocal = 4; }
+
+interface IFace {
+    const int IFACE_CONST = 99;
+}
+
+record Rec(int X) {
+    public static readonly int REC_CONST = 7;
+}
+
+class A {
+    const int CONST_FIELD = 1;
+    static readonly int STATIC_READONLY = 2;
+    int plainField = 3;
+    static int staticField = 4;
+    public int AccessorProp {
+        get { int accessorLocal = 60; return accessorLocal; }
+    }
+    public int this[int idx] {
+        get { int indexerLocal = 61; return indexerLocal; }
+    }
+    public event EventHandler Ev {
+        add { int evAddLocal = 62; }
+        remove { }
+    }
+    public static A operator +(A a, A b) { int opLocal = 63; return a; }
+    public static implicit operator int(A a) { int convLocal = 64; return 0; }
+    Action fieldLambda = () => { int lambdaFieldLocal = 8; };
+    Action fieldAnonMethod = delegate () { int anonMethodLocal = 9; };
+
+    static A() { int staticCtorLocal = 10; }
+    A() { int ctorLocal = 11; }
+    ~A() { int dtorLocal = 12; }
+
+    void M() {
+        int methodLocal = 20;
+        for (int i = 0; i < 3; i++) { int loopBody = 21; }
+        try { int tryLocal = 22; } catch (Exception e) { int catchLocal = 23; }
+        int LocalFunc() {
+            int localFuncLocal = 24;
+            return localFuncLocal;
+        }
+        Action lam = () => { int lambdaLocal = 25; };
+    }
+}
+"""
+
+
+class TestCSharpLocalVariableContraction:
+    """Issue #628 — C# method/ctor/dtor/local-fn/lambda/accessor/operator
+    locals must NOT reach ast_symbol_rows; class/interface/record fields
+    (const, static readonly, plain) stay kind="variable". Unlike Java (#630),
+    ``block`` is NOT in the scope set: C# top-level statements put blocks at
+    compilation-unit level (live-parse: ``block < if_statement <
+    global_statement``), so a block-keyed set would drop if/try-wrapped
+    top-level declarators and break the #612 module-scope guarantee. Fields
+    are safe regardless: they route ``declaration_list > field_declaration``
+    and never through any function-like node (live-parse verified)."""
+
+    def _variables(self, src: str, lang: str) -> list[str]:
+        return sorted(
+            s["name"] for s in _symbols_for(src, lang) if s["kind"] == "variable"
+        )
+
+    def test_csharp_exactly_fields_constants_and_top_level_survive(self):
+        assert self._variables(_CSHARP_628_SRC, "csharp") == [
+            "CONST_FIELD",
+            "IFACE_CONST",
+            "REC_CONST",
+            "STATIC_READONLY",
+            "fieldAnonMethod",
+            "fieldLambda",
+            "plainField",
+            "staticField",
+            "topCatchLocal",
+            "topLevelIfLocal",
+            "topLevelVar",
+            "topLevelVar2",
+            "topTryLocal",
+        ]
+
+    def test_csharp_method_ctor_dtor_and_local_fn_locals_dropped(self):
+        names = self._variables(_CSHARP_628_SRC, "csharp")
+        for local in (
+            "methodLocal",
+            "i",
+            "loopBody",
+            "tryLocal",
+            "catchLocal",
+            "localFuncLocal",
+            "lam",
+            "lambdaLocal",
+            "ctorLocal",
+            "staticCtorLocal",
+            "dtorLocal",
+        ):
+            assert local not in names
+
+    def test_csharp_lambda_accessor_and_operator_locals_dropped(self):
+        # lambdaFieldLocal/anonMethodLocal sit in lambdas hanging off FIELD
+        # initializers — the only shapes where lambda_expression /
+        # anonymous_method_expression (not a method) is the gating scope
+        # node; the field holders themselves stay captured. accessor bodies
+        # (property/indexer/event) gate via accessor_declaration; operator
+        # bodies via (conversion_)operator_declaration.
+        names = self._variables(_CSHARP_628_SRC, "csharp")
+        for local in (
+            "lambdaFieldLocal",
+            "anonMethodLocal",
+            "accessorLocal",
+            "indexerLocal",
+            "evAddLocal",
+            "opLocal",
+            "convLocal",
+        ):
+            assert local not in names
+
+    def test_csharp_top_level_statement_vars_kept(self):
+        # C# 9 top-level statements ARE the program's module scope —
+        # plain, if-wrapped, and try-wrapped declarators all stay captured
+        # (mirrors the #612 if/try-wrapped module-level guarantee).
+        names = self._variables(_CSHARP_628_SRC, "csharp")
+        for kept in (
+            "topLevelVar",
+            "topLevelVar2",
+            "topLevelIfLocal",
+            "topTryLocal",
+            "topCatchLocal",
+        ):
+            assert kept in names
+
+
+class TestCSharpErrorRegionHardening:
+    """#629 ERROR-hardening precedent applied to C#: declarations inside
+    error-recovered regions have undecidable scope — they must not be emitted
+    (better unindexed than a lambda local masquerading as a field)."""
+
+    def test_declaration_inside_error_node_not_emitted(self):
+        # Unterminated lambda-in-field shatters the class into an ERROR node;
+        # 'leaked' currently surfaces as ERROR > local_declaration_statement
+        # (live-parse verified) — it must produce no row.
+        src = "class A {\n  Action r = () => {\n    int leaked = 1;\n"
+        syms = _symbols_for(src, "csharp")
         assert [s["name"] for s in syms if s["kind"] == "variable"] == []
