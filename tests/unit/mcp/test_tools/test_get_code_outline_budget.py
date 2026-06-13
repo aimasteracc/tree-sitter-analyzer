@@ -488,3 +488,52 @@ class TestByteBudgetDifferentialInvariant:
 # ---------------------------------------------------------------------------
 _EXPECTED_CAPPED_BYTES: int = 99217
 _EXPECTED_UNCAPPED_BYTES: int = 158804
+
+
+# ---------------------------------------------------------------------------
+# #571 — per-class method cap (a single wide class must not detonate)
+# ---------------------------------------------------------------------------
+
+
+class TestPerClassMethodCap:
+    """#571: the top-level cap bounds the class COUNT, but a single wide class
+    (10k generated-stub methods) was emitted uncapped → 2.75MB, truncated=False.
+    Each listed class's methods must be capped under listed_cap with per-class
+    totals, while the aggregate method_count stays the honest pre-cap total."""
+
+    # Real temp files (not the mocked engine) — the mock's 20-line class span
+    # only associates ~19 methods per class, so it can't model a genuinely wide
+    # class. A real parse exercises _build_class_outlines correctly.
+
+    @staticmethod
+    def _outline(tmp_path, n_methods: int) -> dict:
+        f = tmp_path / "wide.py"
+        body = "".join(f"    def m{i}(self): pass\n" for i in range(n_methods))
+        f.write_text("class Big:\n" + body)
+        tool = GetCodeOutlineTool(project_root=str(tmp_path))
+        return asyncio.run(tool.execute({"file_path": str(f), "output_format": "json"}))
+
+    def test_wide_class_methods_capped_to_listed_cap(self, tmp_path):
+        result = self._outline(tmp_path, 200)
+        cls = result["classes"][0]
+        assert len(cls["methods"]) == DEFAULT_OUTLINE_CLASSES_CAP
+        assert cls["methods_total"] == 200
+        assert cls["methods_listed"] == DEFAULT_OUTLINE_CLASSES_CAP
+        assert result["truncated"] is True
+        # totals are never corrupted by the cap (#505 lesson).
+        assert result["method_count"] == 200
+
+    def test_member_only_truncation_names_reason_in_next_step(self, tmp_path):
+        # Codex #683 P2: when ONLY the per-class member cap fires (top-level
+        # class/function counts all fit), the truncation note must still state
+        # the reason — not "truncated: showing  (listed_cap=50)".
+        result = self._outline(tmp_path, 200)
+        next_step = result["agent_summary"]["next_step"]
+        assert "methods/fields capped in 1 class(es)" in next_step
+
+    def test_narrow_class_methods_not_capped(self, tmp_path):
+        result = self._outline(tmp_path, 5)
+        cls = result["classes"][0]
+        assert len(cls["methods"]) == 5
+        assert "methods_total" not in cls
+        assert result["truncated"] is False

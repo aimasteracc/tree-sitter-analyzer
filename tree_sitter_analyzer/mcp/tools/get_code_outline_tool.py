@@ -460,6 +460,19 @@ class GetCodeOutlineTool(BaseMCPTool):
         classes_capped = classes_all[:listed_cap]
         fns_capped = fns_all[:listed_cap]
 
+        # Issue #571: the top-level cap above bounds the class COUNT, but a
+        # single wide class (10k methods in generated protobuf/ORM stubs)
+        # detonates the response (2.75MB, truncated=False). Cap each listed
+        # class's methods/fields under the same listed_cap with per-class totals.
+        per_class_truncated = False
+        new_classes_capped = []
+        for cls in classes_capped:
+            capped_cls, was_truncated = _cap_class_members(cls, listed_cap)
+            new_classes_capped.append(capped_cls)
+            per_class_truncated = per_class_truncated or was_truncated
+        classes_capped = new_classes_capped
+        truncated = truncated or per_class_truncated
+
         # Patch the outline dict in-place (shallow copy to avoid mutating caller's
         # reference — we create a new dict for outline to keep immutability).
         outline = dict(outline)
@@ -542,6 +555,19 @@ class GetCodeOutlineTool(BaseMCPTool):
                 overflow_parts.append(
                     f"{functions_listed} of {functions_total} top-level functions"
                 )
+            # #571 (Codex P2): truncation can come ONLY from the per-class
+            # method/field cap, in which case the top-level counts above match
+            # and overflow_parts would be empty — losing the reason. Name the
+            # member-capped classes so the note is never reasonless.
+            member_capped = sum(
+                1
+                for c in (result.get("classes") or [])
+                if isinstance(c, dict) and ("methods_total" in c or "fields_total" in c)
+            )
+            if member_capped:
+                overflow_parts.append(
+                    f"methods/fields capped in {member_capped} class(es)"
+                )
             next_step = (
                 f"truncated: showing {', '.join(overflow_parts)} "
                 f"(listed_cap={listed_cap}). "
@@ -601,6 +627,28 @@ class GetCodeOutlineTool(BaseMCPTool):
 # stays at ~25 lines of phase dispatch. Each helper preserves byte-for-byte
 # the dict layout the original code produced.
 # ---------------------------------------------------------------------------
+
+
+def _cap_class_members(cls: dict[str, Any], cap: int) -> tuple[dict[str, Any], bool]:
+    """Cap a class outline's ``methods``/``fields`` lists to ``cap`` (#571).
+
+    A single wide class (e.g. a 10k-method generated stub) otherwise blows the
+    outline response past any byte budget with ``truncated=False``. When a list
+    exceeds ``cap`` it is sliced and the pre-cap total recorded as
+    ``<key>_total`` (the count is never corrupted — same #505 lesson as the
+    top-level cap). Returns ``(capped_class, was_truncated)``. ``cls`` is always
+    a ``_build_class_outlines`` dict.
+    """
+    capped = dict(cls)
+    was_truncated = False
+    for key in ("methods", "fields"):
+        members = capped.get(key)
+        if isinstance(members, list) and len(members) > cap:
+            capped[f"{key}_total"] = len(members)
+            capped[f"{key}_listed"] = cap
+            capped[key] = members[:cap]
+            was_truncated = True
+    return capped, was_truncated
 
 
 def _method_entry(m: Any) -> dict[str, Any]:
