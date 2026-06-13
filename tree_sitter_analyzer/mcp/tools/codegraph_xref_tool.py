@@ -138,6 +138,17 @@ class CodeGraphXRefTool(BaseMCPTool):
             file_path = arguments.get("file_path", "")
             file_result = engine.file_xref(file_path)
             verdict = "INFO" if file_result.get("symbol_count", 0) > 0 else "NOT_FOUND"
+            # #669: add agent_summary with count_semantics so agents don't
+            # misread caller_count=0 as 'no inbound deps' when
+            # import_dependent_count shows files that import this module.
+            file_result["agent_summary"] = {
+                "count_semantics": (
+                    "caller_count = function-level call sites into this file; "
+                    "import_dependent_count = files that import this module; "
+                    "file_dependent_count = files with call-graph edges into this file. "
+                    "A file may have 0 callers but multiple import_dependents."
+                ),
+            }
             # build_response prepends success+verdict; remaining file_xref
             # payload merges in via **kwargs preserving every existing key.
             result = build_response(verdict=verdict, mode="file", **file_result)

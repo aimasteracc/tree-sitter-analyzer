@@ -418,7 +418,10 @@ class CodeGraphImpactTool(BaseMCPTool):
             if not arguments.get("function_names") and not arguments.get(
                 "function_name"
             ):
-                raise ValueError("function_names is required for blast_radius mode")
+                raise ValueError(
+                    "function_names is required for blast_radius mode; "
+                    "for file-level dependents use nav action=xref mode=file"
+                )
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:

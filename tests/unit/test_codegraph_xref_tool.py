@@ -88,3 +88,71 @@ class TestExecute:
             {"mode": "file", "file_path": "app.py", "output_format": "json"}
         )
         assert result.get("mode") == "file"
+
+
+# ---------------------------------------------------------------------------
+# #669 — xref file mode: agent_summary disambiguates the three counts
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+class TestXRefFileModeAgentSummary:
+    """#669: nav action=xref mode=file must include an agent_summary that
+    disambiguates caller_count / import_dependent_count / file_dependent_count.
+
+    Agents reading caller_count=0 mis-interpret it as 'no inbound deps' when
+    import_dependent_count=5 already shows 5 files import the module.  A
+    terse semantics note in agent_summary resolves the ambiguity.
+    """
+
+    async def test_file_mode_response_has_agent_summary(self, tool_with_root, tmp_path):
+        """agent_summary must be present in file mode response."""
+        (tmp_path / "mod.py").write_text("def foo():\n    pass\n")
+        result = await tool_with_root.execute(
+            {"mode": "file", "file_path": "mod.py", "output_format": "json"}
+        )
+        assert "agent_summary" in result
+
+    async def test_file_mode_agent_summary_has_count_semantics(
+        self, tool_with_root, tmp_path
+    ):
+        """agent_summary.count_semantics must be present and explain the three counts."""
+        (tmp_path / "mod.py").write_text("def foo():\n    pass\n")
+        result = await tool_with_root.execute(
+            {"mode": "file", "file_path": "mod.py", "output_format": "json"}
+        )
+        summary = result.get("agent_summary", {})
+        assert "count_semantics" in summary
+
+    async def test_file_mode_count_semantics_mentions_callers(
+        self, tool_with_root, tmp_path
+    ):
+        """count_semantics must explain caller_count (function-level call sites)."""
+        (tmp_path / "mod.py").write_text("def foo():\n    pass\n")
+        result = await tool_with_root.execute(
+            {"mode": "file", "file_path": "mod.py", "output_format": "json"}
+        )
+        semantics = result.get("agent_summary", {}).get("count_semantics", "")
+        assert "caller_count" in semantics
+
+    async def test_file_mode_count_semantics_mentions_import_dependents(
+        self, tool_with_root, tmp_path
+    ):
+        """count_semantics must explain import_dependent_count (files importing this module)."""
+        (tmp_path / "mod.py").write_text("def foo():\n    pass\n")
+        result = await tool_with_root.execute(
+            {"mode": "file", "file_path": "mod.py", "output_format": "json"}
+        )
+        semantics = result.get("agent_summary", {}).get("count_semantics", "")
+        assert "import_dependent_count" in semantics
+
+    async def test_file_mode_count_semantics_mentions_file_dependents(
+        self, tool_with_root, tmp_path
+    ):
+        """count_semantics must explain file_dependent_count (files with call edges)."""
+        (tmp_path / "mod.py").write_text("def foo():\n    pass\n")
+        result = await tool_with_root.execute(
+            {"mode": "file", "file_path": "mod.py", "output_format": "json"}
+        )
+        semantics = result.get("agent_summary", {}).get("count_semantics", "")
+        assert "file_dependent_count" in semantics
