@@ -67,7 +67,9 @@ logger = logging.getLogger(__name__)
 # v8: #626 — JS/TS function-local variables no longer over-captured.
 # v9: #626 — Java function-local variables no longer over-captured.
 # v10: #628 — C# function-local variables no longer over-captured.
-_AST_CACHE_EXTRACTOR_VERSION = 10
+# v11: #638 — call edges keep ALL same-named definition spans; calls inside
+#      the earlier of two same-named methods regain their enclosing caller.
+_AST_CACHE_EXTRACTOR_VERSION = 11
 
 
 class SchemaIntegrityError(RuntimeError):

@@ -120,9 +120,10 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             and func_name.rpartition(".")[0]  # non-empty class part
         )
 
+        unattributed_call_sites = 0
         cache = self._try_get_cache()
         if cache is not None and cache.has_call_edges() and not is_qualified:
-            callers = self._sql_native_callers(
+            callers, unattributed_call_sites = self._sql_native_callers(
                 cache, func_name, file_path, include_activation
             )
             data_source = "sql"
@@ -157,6 +158,11 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             truncated=truncated,
             callers=callers,
         )
+        if unattributed_call_sites:
+            # #638: module-level call sites have no enclosing function — they
+            # are counted here instead of being emitted as un-navigable ghost
+            # rows ({name: '', line: 0}).
+            result["unattributed_call_sites"] = unattributed_call_sites
         if truncated:
             trunc_note = (
                 f"showing {len(callers)} of {total_callers} callers — raise limit, "
@@ -205,8 +211,13 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         func_name: str,
         file_path: str | None,
         include_activation: bool = False,
-    ) -> list[dict[str, Any]]:
+    ) -> tuple[list[dict[str, Any]], int]:
         """Use SQL-native callers query — O(k) instead of full graph build.
+
+        Returns ``(callers, unattributed_call_sites)``.  Edges without an
+        enclosing function (module-level call sites store
+        ``caller_name='' / caller_line=0``) are never emitted as result rows
+        — they are counted instead (#638 ghost-caller fix).
 
         When ``include_activation`` is True, each entry gets an
         ``activation`` sub-dict carrying ``mod_count_30d`` and
@@ -214,11 +225,15 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         """
         raw = cache.query_callers(func_name, callee_file=file_path)
         results: list[dict[str, Any]] = []
+        unattributed = 0
         seen: set[str] = set()
         activation_map: dict[tuple[str, int], dict[str, Any]] = {}
         if include_activation:
             activation_map = self._fetch_activation_map(cache)
         for edge in raw:
+            if not edge.get("caller_name"):
+                unattributed += 1
+                continue
             key = f"{edge['caller_file']}:{edge['caller_name']}"
             if key in seen:
                 continue
@@ -247,7 +262,7 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                     {"mod_count_30d": 0, "last_modified_at": None},
                 )
             results.append(entry)
-        return results
+        return results, unattributed
 
     @staticmethod
     def _enrich_callers_with_resolution(

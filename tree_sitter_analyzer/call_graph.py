@@ -203,7 +203,11 @@ class CallGraph:
                 self._func_by_file[rel_path].append(ref)
                 qname = ref.qualified_name()
                 self._func_by_qualified[qname] = ref
-                file_funcs[defn["name"]] = ref
+                # Key by name AND start line: same-named methods in different
+                # classes (two ``execute`` defs) must keep BOTH spans for
+                # _find_enclosing_func, or calls inside the earlier one get
+                # mis-attributed to an unrelated preceding function (#638).
+                file_funcs[f"{defn['name']}:{defn['start_line']}"] = ref
 
             per_file.append((rel_path, abs_path, language, file_funcs, calls))
 
