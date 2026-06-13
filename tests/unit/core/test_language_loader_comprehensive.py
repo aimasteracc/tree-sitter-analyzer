@@ -34,14 +34,14 @@ class TestLanguageLoaderInitialization:
         """Test that LANGUAGE_MODULES is properly defined"""
         loader = LanguageLoader()
         assert isinstance(loader.LANGUAGE_MODULES, dict)
-        assert len(loader.LANGUAGE_MODULES) > 0
+        assert len(loader.LANGUAGE_MODULES) == 23
 
     def test_supported_languages_property(self):
         """Test SUPPORTED_LANGUAGES property"""
         loader = LanguageLoader()
         languages = loader.SUPPORTED_LANGUAGES
         assert isinstance(languages, list)
-        assert len(languages) > 0
+        assert len(languages) == 23
         assert "python" in languages
         assert "java" in languages
 
@@ -429,7 +429,7 @@ class TestGetSupportedLanguages:
         with patch.object(loader, "is_language_available", return_value=True):
             languages = loader.get_supported_languages()
             assert isinstance(languages, list)
-            assert len(languages) > 0
+            assert len(languages) == 23
 
     def test_get_supported_languages_filters_unavailable(self):
         """Test that unavailable languages are filtered out"""
@@ -450,9 +450,9 @@ class TestGetSupportedLanguages:
 
         languages = loader.get_supported_languages()
 
-        assert len(languages) > 0
+        assert len(languages) == 23
         # is_language_available should be called for languages not in unavailable set
-        assert mock_available.call_count > 0
+        assert mock_available.call_count == 23
 
 
 class TestClearCache:
