@@ -33,6 +33,13 @@ from __future__ import annotations
 import difflib
 from typing import Any
 
+#: Universal envelope-control params accepted at every tool boundary even when
+#: an individual tool's schema omits them (#651). ``output_format`` selects the
+#: TOON-vs-JSON envelope and is honoured by every formatting tool; tools with a
+#: single output shape accept-and-ignore it rather than hard-erroring, so an
+#: agent can set it uniformly across all calls without a tool-specific failure.
+_UNIVERSAL_ENVELOPE_PARAMS: frozenset[str] = frozenset({"output_format"})
+
 
 def enforce_strict_params(
     tool_name: str,
@@ -86,7 +93,11 @@ def enforce_strict_params(
         return
 
     known: list[str] = list(properties.keys())
-    unknown = [key for key in arguments if key not in properties]
+    unknown = [
+        key
+        for key in arguments
+        if key not in properties and key not in _UNIVERSAL_ENVELOPE_PARAMS
+    ]
     if not unknown:
         return
 
