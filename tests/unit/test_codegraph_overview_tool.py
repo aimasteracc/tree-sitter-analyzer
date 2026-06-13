@@ -109,7 +109,7 @@ class TestCodeGraphOverviewToolExecute:
         assert "entry_point_count" in summary
         assert "dead_code_count" in summary
         assert "max_call_depth" in summary
-        assert summary["function_count"] > 0
+        assert summary["function_count"] == 15
 
     @pytest.mark.asyncio
     async def test_execute_entry_points(self, tool):
@@ -197,8 +197,8 @@ class TestFindHubFunctions:
         graph = tool.get_call_graph()
         graph.build()
         hubs = _find_hub_functions(graph, 100)
-        for hub in hubs:
-            assert hub["caller_count"] >= 3
+        # The python_project fixture has no functions called by 3+ callers.
+        assert len(hubs) == 0
 
     def test_hub_caller_files_are_sampled(self):
         hub = FunctionRef("hub.py", "hub", 1, "python")
@@ -237,7 +237,7 @@ class TestComputeDepthDistribution:
         assert "max_depth" in dist
         assert "avg_depth" in dist
         assert "distribution" in dist
-        assert dist["max_depth"] >= 0
+        assert dist["max_depth"] == 2
 
     def test_handles_cycles_without_recursive_explosion(self):
         a = FunctionRef("graph.py", "a", 1, "python")
@@ -282,7 +282,7 @@ class TestComputeDepthDistribution:
 
         assert dist["max_depth"] == dist["depth_cap"]
         assert dist["capped"] is True
-        assert dist["distribution"]["depth_10+"] >= 1
+        assert dist["distribution"]["depth_10+"] == 3
 
 
 class TestComputeModuleCoupling:
@@ -290,6 +290,6 @@ class TestComputeModuleCoupling:
         graph = tool.get_call_graph()
         graph.build()
         coupling = _compute_module_coupling(graph, 100)
-        for c in coupling:
-            assert c["outgoing_calls"] > 0
-            assert c["target_files"] > 0
+        assert len(coupling) == 1
+        assert coupling[0]["outgoing_calls"] == 4
+        assert coupling[0]["target_files"] == 2
