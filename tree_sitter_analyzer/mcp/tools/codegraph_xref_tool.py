@@ -141,7 +141,17 @@ class CodeGraphXRefTool(BaseMCPTool):
             # #669: add agent_summary with count_semantics so agents don't
             # misread caller_count=0 as 'no inbound deps' when
             # import_dependent_count shows files that import this module.
+            # The canonical verdict + summary_line are populated here (not left
+            # to the MCP success post-hook) so the agent_summary is complete on
+            # the CLI-bridged direct execute() path too (Codex P2 round 3).
             file_result["agent_summary"] = {
+                "verdict": verdict,
+                "summary_line": (
+                    f"xref file {file_path}: "
+                    f"{file_result.get('caller_count', 0)} callers, "
+                    f"{file_result.get('import_dependent_count', 0)} importers"
+                ),
+                "next_step": "",
                 "count_semantics": (
                     "caller_count = function-level call sites into this file; "
                     "import_dependent_count = files that import this module; "

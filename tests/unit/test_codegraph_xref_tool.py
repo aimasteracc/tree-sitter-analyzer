@@ -124,6 +124,22 @@ class TestXRefFileModeAgentSummary:
         summary = result.get("agent_summary", {})
         assert "count_semantics" in summary
 
+    async def test_file_mode_agent_summary_carries_canonical_fields(
+        self, tool_with_root, tmp_path
+    ):
+        # Codex P2 (round 3): execute() is also reached on the CLI-bridged
+        # direct path (mcp_commands/_helpers.py) where the MCP success post-hook
+        # does NOT run. The agent_summary we add must therefore carry the
+        # canonical verdict + summary_line itself — not just count_semantics —
+        # or consumers branching on agent_summary break on the direct path.
+        (tmp_path / "mod.py").write_text("def foo():\n    pass\n")
+        result = await tool_with_root.execute(
+            {"mode": "file", "file_path": "mod.py", "output_format": "json"}
+        )
+        summary = result["agent_summary"]
+        assert summary["verdict"] == result["verdict"]
+        assert isinstance(summary["summary_line"], str) and summary["summary_line"]
+
     async def test_file_mode_count_semantics_mentions_callers(
         self, tool_with_root, tmp_path
     ):
