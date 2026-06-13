@@ -46,6 +46,17 @@ _VERDICT_TO_RISK: dict[str, str] = {
     "UNSAFE": "high",
 }
 
+# Authoritative enum for the modification_type parameter.
+# Used by get_tool_schema, validate_arguments, and the edit facade's
+# extra_public_params — single source so they can never drift.
+MODIFICATION_TYPES: tuple[str, ...] = (
+    "behavior_change",
+    "delete",
+    "refactor",
+    "rename",
+    "signature_change",
+)
+
 CRITICAL_NODES_FILE = ".tree-sitter-cache/critical_nodes.json"
 
 
@@ -305,13 +316,7 @@ class ModificationGuardTool(BaseMCPTool):
                 },
                 "modification_type": {
                     "type": "string",
-                    "enum": [
-                        "rename",
-                        "signature_change",
-                        "delete",
-                        "behavior_change",
-                        "refactor",
-                    ],
+                    "enum": list(MODIFICATION_TYPES),
                     "description": "Type of modification you plan to make.",
                 },
                 "file_path": {
@@ -405,13 +410,7 @@ class ModificationGuardTool(BaseMCPTool):
             )
 
         modification_type = arguments.get("modification_type")
-        valid_types = {
-            "rename",
-            "signature_change",
-            "delete",
-            "behavior_change",
-            "refactor",
-        }
+        valid_types = set(MODIFICATION_TYPES)
         if not modification_type or modification_type not in valid_types:
             raise ValueError(
                 f"modification_type must be one of: {', '.join(sorted(valid_types))}"
