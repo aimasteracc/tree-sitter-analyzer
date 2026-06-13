@@ -91,7 +91,7 @@ def build_search_facade(project_root: str | None = None) -> FacadeTool:
     from .hyphae_subscribe_tool import HyphaeSubscribeTool, HyphaeUnsubscribeTool
     from .query_tool import QueryTool
     from .search_content_tool import SearchContentTool
-    from .symbol_search_tool import CodeGraphSymbolSearchTool
+    from .symbol_search_tool import SYMBOL_SEARCH_KINDS, CodeGraphSymbolSearchTool
 
     # Inner instance used by the bespoke ``content`` route. It is held so the
     # facade can rebind it on project-root changes (G3) just like action_map
@@ -130,6 +130,17 @@ def build_search_facade(project_root: str | None = None) -> FacadeTool:
         description=_SEARCH_DESCRIPTION,
         annotations=_SEARCH_ANNOTATIONS,
         project_root=project_root,
+        # #640: ``kind`` is high-value for action=symbol (e.g. kind=constant)
+        # but was only reachable via additionalProperties — invisible to
+        # schema-reading agents. Surface it with the authoritative enum,
+        # sourced from the inner tool so facade/inner/CLI never drift.
+        extra_public_params={
+            "kind": {
+                "type": "string",
+                "enum": list(SYMBOL_SEARCH_KINDS),
+                "description": "Symbol kind filter for action=symbol (default: any).",
+            },
+        },
     )
 
     # G3: make the bespoke ``content`` tool rebind with the facade. The

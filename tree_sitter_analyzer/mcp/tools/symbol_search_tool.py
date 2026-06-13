@@ -27,6 +27,22 @@ logger = setup_logger(__name__)
 # the tool schema stay in sync — MCP/CLI parity (Codex P2 on #297).
 DEFAULT_SYMBOL_SEARCH_LIMIT = 15
 
+# Authoritative ``kind`` filter values. Must mirror exactly what
+# ``_extract_symbols`` (tree_sitter_analyzer/_ast_extraction.py) writes into
+# ``ast_symbol_rows`` — function/method/class/variable/import/constant — plus
+# the "any" no-filter default. Exported so the CLI (`--symbol-search-kind`
+# choices) and the ``search`` facade public schema stay in lock-step with this
+# tool's schema (#640: ``kind`` worked at runtime but was undiscoverable).
+SYMBOL_SEARCH_KINDS: tuple[str, ...] = (
+    "function",
+    "method",
+    "class",
+    "variable",
+    "import",
+    "constant",
+    "any",
+)
+
 
 class CodeGraphSymbolSearchTool(BaseMCPTool):
     """MCP Tool for FTS5-powered instant symbol search (CodeGraph parity)."""
@@ -86,7 +102,7 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
                 },
                 "kind": {
                     "type": "string",
-                    "enum": ["function", "class", "variable", "import", "any"],
+                    "enum": list(SYMBOL_SEARCH_KINDS),
                     "description": "Filter by symbol kind (default: any)",
                     "default": "any",
                 },
