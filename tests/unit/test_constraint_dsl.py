@@ -403,6 +403,112 @@ class TestEvaluator:
             f"Excepted caller must produce zero violations, got: {violations}"
         )
 
+    @pytest.mark.parametrize(
+        "phantom_name",
+        [
+            "update",  # dict.update / set.update — _DICT_LIST_SET_METHODS
+            "execute",  # sqlite3.Cursor.execute — DB-API standard
+            "append",  # list.append
+            "get",  # dict.get / Mapping.get
+        ],
+    )
+    def test_builtin_like_callee_name_does_not_phantom_violate(
+        self, tmp_path: Path, phantom_name: str
+    ) -> None:
+        """A bare builtin/stdlib method name bound cross-file by the resolver
+        to a forbidden-zone file must NOT trigger a constraint violation.
+
+        Reproduces #780: ``--check-constraints`` fabricated 14 phantom
+        ``error`` violations because the callee resolver bound bare names
+        like ``dict.update()`` and ``cursor.execute(sql)`` to arbitrary
+        project files that happened to define a method of the same name.
+        The evaluator trusts ``callee_resolved_file``; without a denylist
+        of builtin-like names, every ``foo.update(...)`` call where ``foo``
+        is a dict/list/set becomes a phantom cross-file edge.
+
+        The fix is defensive (evaluator-side): when ``callee_name`` is a
+        known builtin/stdlib method name, skip the edge regardless of what
+        ``callee_resolved_file`` claims. The deeper resolver-side fix is
+        tracked separately.
+        """
+        from tree_sitter_analyzer.constraints import (
+            evaluate,
+            load_constraints,
+        )
+
+        project = _stage_constraints_file(tmp_path, "dogfood_minimal.yml")
+        db_path = project / ".ast-cache" / "index.db"
+        _build_call_edges_db(
+            db_path,
+            rows=[
+                (
+                    "caller_fn",
+                    "tree_sitter_analyzer/mcp/x.py",  # caller in forbidden-from zone
+                    42,
+                    phantom_name,  # bare builtin-like name — dict.update, etc.
+                    phantom_name,
+                    "tree_sitter_analyzer/cli/y.py",  # phantom resolved file in forbidden-to zone
+                ),
+            ],
+        )
+
+        constraints = load_constraints(str(project))
+        conn = sqlite3.connect(str(db_path))
+        try:
+            violations = evaluate(constraints, conn)
+        finally:
+            conn.close()
+
+        assert violations == [], (
+            f"Bare builtin-like name {phantom_name!r} must not produce a "
+            f"phantom violation, got: {violations}"
+        )
+
+    def test_real_callee_name_still_violates_after_builtin_filter(
+        self, tmp_path: Path
+    ) -> None:
+        """Regression guard: a real project-defined method name crossing the
+        forbidden boundary must STILL trigger a violation after the
+        builtin-like denylist ships.
+
+        Without this test, an over-eager "skip common names" fix could
+        silently swallow real architectural drift — e.g. an MCP module
+        directly importing a CLI helper named ``run_cli_command``.
+        """
+        from tree_sitter_analyzer.constraints import (
+            evaluate,
+            load_constraints,
+        )
+
+        project = _stage_constraints_file(tmp_path, "dogfood_minimal.yml")
+        db_path = project / ".ast-cache" / "index.db"
+        _build_call_edges_db(
+            db_path,
+            rows=[
+                (
+                    "bridge",
+                    "tree_sitter_analyzer/mcp/x.py",
+                    7,
+                    "run_cli_command",  # NOT a builtin — real project method
+                    "run_cli_command",
+                    "tree_sitter_analyzer/cli/y.py",
+                ),
+            ],
+        )
+
+        constraints = load_constraints(str(project))
+        conn = sqlite3.connect(str(db_path))
+        try:
+            violations = evaluate(constraints, conn)
+        finally:
+            conn.close()
+
+        assert len(violations) == 1, (
+            f"Real project method must still trigger, got: {len(violations)} "
+            f"violations: {violations}"
+        )
+        assert violations[0].callee_name == "run_cli_command"
+
     @pytest.mark.slow_ok
     def test_eval_perf_on_synthetic_edges_under_500ms(self, tmp_path: Path) -> None:
         """50k edges × 5 rules in <500 ms.

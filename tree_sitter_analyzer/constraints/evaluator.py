@@ -28,10 +28,52 @@ import sqlite3
 import time
 from collections.abc import Iterator
 
+from ..synapse_resolver._constants import _DICT_LIST_SET_METHODS
 from .parser import _CompiledConstraint, compile_constraints
 from .schema import Constraint, Violation
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# #780 — phantom-resistant callee name denylist (defensive evaluator gate).
+#
+# The callee resolver is supposed to classify bare stdlib method calls
+# (``dict.update()``, ``cursor.execute(sql)``) and NOT bind them to a
+# project file. In practice it still does for some paths, producing
+# phantom CALLS edges where ``callee_resolved_file`` lands in a
+# forbidden architectural zone. The evaluator trusts that field, so
+# every ``foo.update(...)`` call where ``foo`` happens to share a name
+# with an MCP/CLI method becomes a false ``error`` violation —
+# ``--check-constraints`` reported 14 phantom violations project-wide,
+# forcing an UNSAFE verdict with zero real forbidden edges.
+#
+# Defense-in-depth: skip any edge whose ``callee_name`` is a known
+# builtin/stdlib method name. The deeper resolver-side fix (classify
+# bare names as ``stdlib`` and leave ``callee_resolved_file`` empty) is
+# tracked separately; this gate keeps the agent trust surface honest
+# in the meantime and stays correct even if the resolver regresses.
+#
+# Sourced from ``synapse_resolver._constants._DICT_LIST_SET_METHODS``
+# (already declared stdlib over there) plus the DB-API cursor methods
+# deliberately excluded from ``EXTERNAL_METHODS`` because projects
+# commonly define their own ``execute``.
+# ---------------------------------------------------------------------------
+_SQL_CURSOR_METHODS: frozenset[str] = frozenset(
+    {
+        "execute",
+        "executemany",
+        "executescript",
+        "commit",
+        "rollback",
+        "fetchone",
+        "fetchall",
+        "fetchmany",
+    }
+)
+_PHANTOM_RESISTANT_CALLEE_NAMES: frozenset[str] = (
+    _DICT_LIST_SET_METHODS | _SQL_CURSOR_METHODS
+)
 
 
 def evaluate(
@@ -93,6 +135,15 @@ def _iter_violations(
         if not callee_file:
             # Unresolved cross-file call — MVP skips it to avoid noisy
             # false positives on dynamic / external symbols.
+            continue
+        if callee_name in _PHANTOM_RESISTANT_CALLEE_NAMES:
+            # #780 defensive gate: bare builtin/stdlib method name
+            # (dict.update, cursor.execute, ...). The callee resolver
+            # may have bound it to a project file purely on name
+            # collision; skip so we do not emit a phantom violation.
+            # Real project methods that happen to share these names
+            # remain enforceable via an explicit import edge / stricter
+            # resolver tier — not via bare-name binding.
             continue
         for cc in compiled:
             if cc.from_re.fullmatch(caller_file) is None:
