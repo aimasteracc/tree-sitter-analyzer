@@ -157,10 +157,19 @@ class PythonFunctionExtractionMixin:
             return None
 
     def _extract_return_type_from_node(self, node: Any, source_code: str) -> str | None:
-        """Extract return type annotation from function node."""
+        """Extract return type annotation from function node.
+
+        Only the *def line* (first line of the node text) is scanned for
+        ``->``.  Scanning the full body text causes nested-function annotations
+        (e.g. ``inner(y) -> str``) to bleed into the parent function's
+        ``return_type`` when the parent has no annotation (#792).
+        """
         node_text = self._get_node_text_optimized(node)
-        if "->" in node_text:
-            parts = node_text.split("->")
+        # Restrict to the first line only — the def signature ends at the ':'
+        # that closes the header; everything after is the function body.
+        def_line = node_text.split("\n")[0]
+        if "->" in def_line:
+            parts = def_line.split("->")
             if len(parts) > 1:
                 return_part = parts[1].split(":")[0].strip()
                 return_type = return_part.replace("\n", " ").strip()

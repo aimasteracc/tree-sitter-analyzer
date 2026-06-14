@@ -112,8 +112,23 @@ class ClassHierarchyTool(BaseMCPTool):
             "additionalProperties": False,
         }
 
-    @staticmethod
-    def _resolve_mode(arguments: dict[str, Any]) -> str:
+    # Canonical mode names and short aliases (#802).
+    _MODE_ALIASES: dict[str, str] = {
+        "supers": "superclasses",
+        "parents": "superclasses",
+        "subs": "subclasses",
+    }
+    _VALID_MODES: tuple[str, ...] = (
+        "subclasses",
+        "superclasses",
+        "tree",
+        "impact",
+        "all",
+        "summary",
+    )
+
+    @classmethod
+    def _resolve_mode(cls, arguments: dict[str, Any]) -> str:
         """Effective query mode.
 
         When the caller did not specify a mode, default to a CLASS-SCOPED view
@@ -123,11 +138,15 @@ class ClassHierarchyTool(BaseMCPTool):
         mode ignores ``class_name`` and returns a confident project-wide result
         for a class that may not even exist. ``tree`` instead returns
         ``NOT_FOUND`` for an unknown class.
+
+        Short aliases (``supers``, ``parents``, ``subs``) are normalised to
+        their canonical forms (#802).
         """
         mode = arguments.get("mode")
-        if mode:
-            return str(mode)
-        return "tree" if arguments.get("class_name") else "summary"
+        if not mode:
+            return "tree" if arguments.get("class_name") else "summary"
+        mode = str(mode)
+        return cls._MODE_ALIASES.get(mode, mode)
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         mode = self._resolve_mode(arguments)
@@ -245,9 +264,11 @@ class ClassHierarchyTool(BaseMCPTool):
                 **hierarchy.summary(),
             }
         else:
+            valid = ", ".join(self._VALID_MODES)
             response = {
                 "success": False,
-                "error": f"Unknown mode: {mode}",
+                "error": f"Unknown mode: '{mode}'. Valid modes: {valid}",
+                "error_type": "validation",
                 "verdict": "ERROR",
             }
 
