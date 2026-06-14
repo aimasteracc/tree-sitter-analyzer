@@ -153,7 +153,7 @@ class ScalaElementExtractor(ElementExtractor):
         return functions
 
     def extract_classes(self, tree: tree_sitter.Tree, source_code: str) -> list[Class]:
-        """Extract Scala class, object, and trait definitions"""
+        """Extract Scala class, object, trait, enum, given, and type definitions."""
         self.source_code = source_code
         self.content_lines = source_code.split("\n")
         self._reset_caches()
@@ -162,18 +162,7 @@ class ScalaElementExtractor(ElementExtractor):
         self._extract_package(tree.root_node)
 
         classes: list[Class] = []
-
-        extractors = {
-            "class_definition": self._extract_class,
-            "object_definition": self._extract_object,
-            "trait_definition": self._extract_trait,
-        }
-
-        self._traverse_and_extract(
-            tree.root_node,
-            extractors,
-            classes,
-        )
+        self._traverse_classes_with_context(tree.root_node, classes, parent_class=None)
 
         log_debug(f"Extracted {len(classes)} Scala classes/objects/traits")
         return classes
@@ -351,6 +340,255 @@ class ScalaElementExtractor(ElementExtractor):
             if "identifier" in grandchild.type:
                 return self._get_node_text(grandchild)
         return None
+
+    # -----------------------------------------------------------------------
+    # Context-aware class traversal (Bug #762 + #764)
+    # -----------------------------------------------------------------------
+
+    #: Node types that introduce a new named scope (class / object / trait /
+    #: enum).  When the traversal descends into one of these it updates the
+    #: running ``parent_class`` so that nested constructs (given, type alias,
+    #: enum cases) inherit the right owner name.
+    _SCOPE_INTRODUCING_TYPES: frozenset[str] = frozenset(
+        {
+            "class_definition",
+            "object_definition",
+            "trait_definition",
+            "enum_definition",
+        }
+    )
+
+    def _traverse_classes_with_context(
+        self,
+        node: tree_sitter.Node,
+        results: list[Class],
+        parent_class: str | None,
+    ) -> None:
+        """DFS traversal that extracts all class-like constructs with context.
+
+        Unlike the generic ``_traverse_and_extract`` this walk keeps track of
+        the innermost enclosing named scope so that nested ``given`` /
+        ``type`` / enum-case nodes can record their ``parent_class``.
+
+        Stack entries: ``(node, parent_class_name)``.
+        """
+        stack: list[tuple[tree_sitter.Node, str | None]] = [(node, parent_class)]
+        while stack:
+            current, current_parent = stack.pop()
+            node_type = current.type
+
+            if node_type in (
+                "class_definition",
+                "object_definition",
+                "trait_definition",
+            ):
+                cls = self._extract_class_like_with_parent(
+                    current, node_type.split("_")[0], current_parent
+                )
+                if cls:
+                    results.append(cls)
+                # Descend with this class as the new parent scope.
+                new_parent = cls.name if cls else current_parent
+                for child in reversed(current.children):
+                    stack.append((child, new_parent))
+
+            elif node_type == "enum_definition":
+                # Emit the enum itself, then its cases.
+                self._extract_enum_with_cases(current, current_parent, results)
+                # Descend into the enum body for further nested defs (rare
+                # but possible), still under the enum's name as parent.
+                enum_name = self._scala_class_like_name(current)
+                for child in reversed(current.children):
+                    if child.type == "enum_body":
+                        for sub in reversed(child.children):
+                            stack.append((sub, enum_name))
+
+            elif node_type == "given_definition":
+                # #764: given inside an object/trait — carry parent_class.
+                cls = self._extract_given(current, current_parent)
+                if cls:
+                    results.append(cls)
+                # given bodies can theoretically contain nested defs.
+                for child in reversed(current.children):
+                    stack.append((child, current_parent))
+
+            elif node_type == "type_definition":
+                # #764: type alias inside an object/trait — carry parent_class.
+                cls = self._extract_type_alias(current, current_parent)
+                if cls:
+                    results.append(cls)
+
+            else:
+                # Generic node: descend preserving context.
+                for child in reversed(current.children):
+                    stack.append((child, current_parent))
+
+    def _extract_class_like_with_parent(
+        self,
+        node: tree_sitter.Node,
+        kind: str,
+        parent_class: str | None,
+    ) -> Class | None:
+        """Like ``_extract_class_like`` but also populates ``parent_class``."""
+        cls = self._extract_class_like(node, kind)
+        if cls is not None and parent_class is not None:
+            cls.parent_class = parent_class
+        return cls
+
+    def _extract_enum_with_cases(
+        self,
+        node: tree_sitter.Node,
+        parent_class: str | None,
+        results: list[Class],
+    ) -> None:
+        """Emit the enum itself and each ``simple_enum_case`` as enum_member.
+
+        AST shape (tree-sitter-scala):
+            enum_definition
+              'enum'
+              identifier            ← enum name
+              class_parameters?     ← optional constructor params
+              enum_body
+                ':'
+                enum_case_definitions*
+                  'case'
+                  simple_enum_case+  ← one or more cases
+                    identifier       ← case name
+                    extends_clause?
+
+        Each ``enum_case_definitions`` may contain multiple ``simple_enum_case``
+        children separated by commas (``case North, South, East, West``).
+        """
+        enum_name = self._scala_class_like_name(node)
+        start_line = node.start_point[0] + 1
+        end_line = node.end_point[0] + 1
+        raw_text = self._get_node_text(node)
+        docstring = self._extract_docstring(node)
+        superclass, interfaces = self._extract_scala_extends_clause(node)
+
+        enum_cls = Class(
+            name=enum_name,
+            start_line=start_line,
+            end_line=end_line,
+            raw_text=raw_text,
+            language="scala",
+            class_type="enum",
+            visibility=self._scala_visibility(node),
+            package_name=self.current_package,
+            docstring=docstring,
+            superclass=superclass,
+            interfaces=interfaces,
+            parent_class=parent_class,
+        )
+        results.append(enum_cls)
+
+        # Walk enum_body → enum_case_definitions → simple_enum_case
+        for child in node.children:
+            if child.type != "enum_body":
+                continue
+            for case_defs in child.children:
+                if case_defs.type != "enum_case_definitions":
+                    continue
+                for case_node in case_defs.children:
+                    if case_node.type != "simple_enum_case":
+                        continue
+                    case_name = self._scala_class_like_name(case_node)
+                    results.append(
+                        Class(
+                            name=case_name,
+                            start_line=case_node.start_point[0] + 1,
+                            end_line=case_node.end_point[0] + 1,
+                            raw_text=self._get_node_text(case_node),
+                            language="scala",
+                            class_type="enum_member",
+                            visibility="public",
+                            package_name=self.current_package,
+                            parent_class=enum_name,
+                        )
+                    )
+
+    def _extract_given(
+        self,
+        node: tree_sitter.Node,
+        parent_class: str | None,
+    ) -> Class | None:
+        """Extract a ``given_definition`` as a Class with class_type='given'.
+
+        AST shape:
+            given_definition
+              'given'
+              identifier    ← name (may be absent for anonymous givens)
+              ':'
+              <type>
+              '='
+              <expr>
+        """
+        try:
+            name_node = node.child_by_field_name("name")
+            if name_node:
+                name = self._get_node_text(name_node)
+            else:
+                # Fall back to first identifier child.
+                name = next(
+                    (
+                        self._get_node_text(c)
+                        for c in node.children
+                        if c.type == "identifier"
+                    ),
+                    "anonymous_given",
+                )
+            return Class(
+                name=name,
+                start_line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                raw_text=self._get_node_text(node),
+                language="scala",
+                class_type="given",
+                visibility="public",
+                package_name=self.current_package,
+                parent_class=parent_class,
+            )
+        except Exception as e:
+            log_error(f"Error extracting Scala given: {e}")
+            return None
+
+    def _extract_type_alias(
+        self,
+        node: tree_sitter.Node,
+        parent_class: str | None,
+    ) -> Class | None:
+        """Extract a ``type_definition`` as a Class with class_type='type_alias'.
+
+        AST shape:
+            type_definition
+              'type'
+              type_identifier   ← alias name
+              '='
+              <type>
+        """
+        try:
+            name = next(
+                (
+                    self._get_node_text(c)
+                    for c in node.children
+                    if c.type == "type_identifier"
+                ),
+                "unknown_type",
+            )
+            return Class(
+                name=name,
+                start_line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                raw_text=self._get_node_text(node),
+                language="scala",
+                class_type="type_alias",
+                visibility="public",
+                package_name=self.current_package,
+                parent_class=parent_class,
+            )
+        except Exception as e:
+            log_error(f"Error extracting Scala type alias: {e}")
+            return None
 
     def _extract_function(self, node: tree_sitter.Node) -> Function | None:
         """Extract function definition (with body)"""
