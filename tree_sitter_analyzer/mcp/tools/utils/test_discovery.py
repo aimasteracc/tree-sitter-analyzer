@@ -6,6 +6,7 @@ Finds test files for a given source file using language-specific naming
 conventions (test_*.py, *Test.java, *_test.go, etc.).
 """
 
+import ast
 import re
 from pathlib import Path
 
@@ -213,6 +214,9 @@ def _find_symbol_reference_tests(
     symbols = _python_public_symbols(source_path)
     if not symbols:
         return
+    source_modules = _python_source_module_names(source_path, root)
+    if not source_modules:
+        return
     symbol_re = re.compile(
         r"\b(?:" + "|".join(re.escape(sym) for sym in symbols) + r")\b"
     )
@@ -225,6 +229,8 @@ def _find_symbol_reference_tests(
             try:
                 text = candidate.read_text(encoding="utf-8", errors="replace")
             except OSError:
+                continue
+            if not _file_imports_source_module(text, source_modules, source_path):
                 continue
             hit_count = len(symbol_re.findall(text))
             if hit_count:
@@ -247,3 +253,68 @@ def _python_public_symbols(source_path: Path) -> list[str]:
         if not name.startswith("_") and name not in symbols:
             symbols.append(name)
     return symbols
+
+
+def _python_source_module_names(source_path: Path, root: Path) -> set[str]:
+    """Return likely Python import module names for the source file."""
+    source_rel = source_path.resolve()
+    try:
+        rel = source_rel.relative_to(root.resolve()).as_posix()
+    except ValueError:
+        rel = source_rel.name
+
+    parts = rel.removesuffix(".py").split("/")
+    if not parts or parts == ["."]:
+        return set()
+    if parts[-1] == "__init__":
+        parts = parts[:-1]
+    if not parts:
+        return set()
+
+    modules: set[str] = set()
+    for idx in range(len(parts)):
+        modules.add(".".join(parts[idx:]))
+    modules.add(parts[-1])
+    return modules
+
+
+def _file_imports_source_module(
+    text: str,
+    source_modules: set[str],
+    source_path: Path,
+) -> bool:
+    """Return True when AST imports explicitly reference the source module.
+
+    This keeps symbol-reference matches tied to real Python imports.
+    """
+    try:
+        root = ast.parse(text)
+    except SyntaxError:
+        return False
+    source_stem = source_path.stem
+    for node in ast.walk(root):
+        if isinstance(node, ast.Import):
+            for name in node.names:
+                if _matches_import_name(name.name, source_modules):
+                    return True
+        if isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            if node.module is not None and _matches_import_name(module, source_modules):
+                return True
+            if node.level > 0 and node.module is None:
+                for alias in node.names:
+                    if alias.name in source_modules or alias.name == source_stem:
+                        return True
+    return False
+
+
+def _matches_import_name(import_name: str, source_modules: set[str]) -> bool:
+    """Return whether an import target matches a source module variant."""
+    for module in source_modules:
+        if import_name == module:
+            return True
+        if import_name.startswith(module + "."):
+            return True
+        if import_name.endswith("." + module):
+            return True
+    return False

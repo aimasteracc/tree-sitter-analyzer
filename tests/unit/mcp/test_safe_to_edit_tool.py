@@ -10,6 +10,7 @@ from tree_sitter_analyzer.mcp.tools.safe_to_edit_tool import (
     _compute_risk,
     _is_init_file,
 )
+from tree_sitter_analyzer.mcp.tools.smart_context_tool import SmartContextTool
 from tree_sitter_analyzer.mcp.tools.utils.test_discovery import find_test_files
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
@@ -378,3 +379,46 @@ class TestChecklistSequentialNumbering:
         )
         numbers = [item.split(".")[0] for item in items]
         assert numbers == ["1", "2", "3", "4", "5", "6"]
+
+
+class TestCrossToolParity:
+    def test_safe_to_edit_matches_smart_context_health_and_downstream(self, tmp_path):
+        (tmp_path / "pyproject.toml").write_text("[project]\nname = 'sample'\n")
+
+        source = tmp_path / "add.py"
+        source.write_text("def add(a: int, b: int) -> int:\n    return a + b\n")
+
+        for idx in range(6):
+            importer = tmp_path / f"importer_{idx}.py"
+            if idx % 2:
+                importer.write_text(
+                    "from add import add\n\ndef use():\n    return add(1, 2)\n"
+                )
+            else:
+                importer.write_text(
+                    "import add\n\ndef use():\n    return add.add(1, 2)\n"
+                )
+
+        # This file should not be a downstream dependent because it doesn't
+        # import `add`, but it mentions the token `add` in source text.
+        (tmp_path / "noisy.py").write_text('PRINT = "add"\n')
+
+        safe = SafeToEditTool(str(tmp_path))
+        safe.set_project_path(str(tmp_path))
+        smart = SmartContextTool(str(tmp_path))
+        smart.set_project_path(str(tmp_path))
+
+        safe_result = _run(
+            safe.execute({"file_path": "add.py", "output_format": "json"})
+        )
+        smart_result = _run(
+            smart.execute({"file_path": "add.py", "output_format": "json"})
+        )
+
+        assert safe_result["downstream_count"] == 6
+        assert (
+            safe_result["downstream_count"]
+            == smart_result["agent_summary"]["downstream_count"]
+        )
+        assert safe_result["health_grade"] == smart_result["health"]["grade"]
+        assert safe_result["health_score"] == smart_result["health"]["score"]

@@ -586,6 +586,7 @@ class TestFindTestFilesPythonPublicSymbolReferences:
             unreadable = root / "tests" / "test_unreadable.py"
             readable.parent.mkdir(parents=True)
             readable.write_text(
+                "from src.format_helper import apply_toon_format_to_response\n\n"
                 "def test_budget():\n"
                 "    assert apply_toon_format_to_response({}) == {}\n",
                 encoding="utf-8",
@@ -641,6 +642,36 @@ class TestFindTestFilesPythonPublicSymbolReferences:
             results = find_test_files(str(source), tmp)
 
             assert "tests/test_output_cost_invariants.py" not in results
+
+    def test_symbol_reference_hits_require_source_import(self, tmp_path):
+        root = tmp_path
+        source = root / "src" / "arithmetic.py"
+        source.parent.mkdir(parents=True)
+        source.write_text("def add(x: int, y: int) -> int:\n    return x + y\n")
+
+        imported_test = root / "tests" / "test_arithmetic_add.py"
+        imported_test.parent.mkdir(parents=True)
+        imported_test.write_text(
+            "from src.arithmetic import add\n\n"
+            "def test_add():\n    assert add(1, 2) == 3\n",
+            encoding="utf-8",
+        )
+
+        noisy_test = root / "tests" / "test_not_related.py"
+        noisy_test.write_text(
+            'def test_noise():\n    assert "add" in "add"\n', encoding="utf-8"
+        )
+
+        no_import_test = root / "tests" / "test_no_import.py"
+        no_import_test.write_text(
+            "def test_no_import():\n    assert 1 + 2 == 3\n", encoding="utf-8"
+        )
+
+        results = find_test_files(str(source), str(root))
+
+        assert "tests/test_arithmetic_add.py" in results
+        assert "tests/test_not_related.py" not in results
+        assert "tests/test_no_import.py" not in results
 
 
 class TestFindTestFilesGo:

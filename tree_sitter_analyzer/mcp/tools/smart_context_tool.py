@@ -73,7 +73,8 @@ class SmartContextTool(BaseMCPTool):
         if self._graph is None:
             if not self.project_root:
                 raise ValueError("Project root not set.")
-            self._graph = DependencyGraph(self.project_root)
+            root = self.path_resolver.project_root or self.project_root
+            self._graph = DependencyGraph(root)
         return self._graph
 
     # _get_scorer: implementation
@@ -166,7 +167,8 @@ class SmartContextTool(BaseMCPTool):
 
         graph = self._get_graph()
         scorer = self._get_scorer()
-        rel_path = _to_relative(resolved, self.project_root or ".")
+        project_root = self.path_resolver.project_root or self.project_root or "."
+        rel_path = _to_relative(resolved, project_root)
 
         source = Path(resolved).read_text(encoding="utf-8", errors="replace")
         lines = source.splitlines()
@@ -174,7 +176,7 @@ class SmartContextTool(BaseMCPTool):
             "."
         )
 
-        health = scorer.score_file(resolved)
+        health = scorer.score_file(resolved, fast_dependencies=True)
         analysis = extract_elements(resolved, self.project_root)
         exports = get_all_exports(analysis) if analysis else []
         structure = get_structure(analysis) if analysis else []

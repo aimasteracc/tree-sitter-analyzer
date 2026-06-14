@@ -542,9 +542,25 @@ def _target_dependents(target: Path, rel_path: str, root: Path) -> set[str]:
             text = path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
+        if not _has_import_like_reference(text, needles):
+            continue
         if any(needle in text for needle in needles):
             dependents.add(to_relative(str(path), str(root)).replace("\\", "/"))
     return dependents
+
+
+def _has_import_like_reference(text: str, needles: set[str]) -> bool:
+    """Return true when the file has an import-like statement for target needles."""
+    import_statement = re.compile(
+        r"^\s*(?:from|import|export|require\(|#include|#\s*import|use)\b",
+        re.M,
+    )
+    for line in text.splitlines():
+        if not import_statement.search(line):
+            continue
+        if any(needle in line for needle in needles):
+            return True
+    return False
 
 
 def _iter_dependency_source_files(root: Path) -> list[Path]:

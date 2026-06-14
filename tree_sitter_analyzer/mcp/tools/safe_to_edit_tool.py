@@ -174,10 +174,12 @@ class SafeToEditTool(BaseMCPTool):
                 file_path=file_path,
                 edit_type=edit_type,
                 resolved_path=resolved,
-                project_root=self.project_root or ".",
+                project_root=(
+                    self.path_resolver.project_root or self.project_root or "."
+                ),
                 graph=build_file_dependency_view(
                     resolved,
-                    self.project_root or ".",
+                    self.path_resolver.project_root or self.project_root or ".",
                 ),
                 scorer=self._get_scorer(),
             )
