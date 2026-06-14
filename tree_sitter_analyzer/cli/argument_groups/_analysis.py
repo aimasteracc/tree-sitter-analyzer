@@ -450,6 +450,16 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
         "--ast-diff-language",
         help="Language override for --ast-diff (auto-detected from file extension if omitted)",
     )
+    parser.add_argument(
+        "--ast-diff-include-bodies",
+        action="store_true",
+        default=False,
+        help=(
+            "Include full recursive AST children in each hunk node. "
+            "Off by default (compact summaries only). "
+            "A 32 KB budget is enforced; excess triggers children_truncated flag."
+        ),
+    )
     # AST-path, codegraph-navigate/explore/query, callers, call-path, import-graph,
     # dead-code, doc-sync, symbol-search, code-similarity —
     # extracted to _analysis_graph_nav.py to keep this file under 500 lines.

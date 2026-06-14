@@ -239,6 +239,7 @@ _CORE_SPECS: tuple[McpCommandSpec, ...] = (
             "old_ref": getattr(args, "ast_diff_old_ref", "HEAD~1"),
             "new_ref": getattr(args, "ast_diff_new_ref", "HEAD"),
             "language": getattr(args, "ast_diff_language", None),
+            "include_node_bodies": getattr(args, "ast_diff_include_bodies", False),
             "output_format": output_format,
         },
     ),

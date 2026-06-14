@@ -17,6 +17,19 @@ from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
 
+# ---------------------------------------------------------------------------
+# Byte-budget constant for include_node_bodies opt-in (Issue #552)
+#
+# When include_node_bodies=True the full children subtree is inlined.
+# This cap prevents any single large added/removed node (e.g. a big schema
+# dict literal) from dumping megabytes into the response.  When the budget
+# is exceeded children_truncated=True and bytes_omitted=<int> are added
+# to the response for transparency.  Patched to 1 in tests to force
+# truncation.  Default matches the sibling get_code_outline tool's spirit
+# (~32 KB is enough for any practical per-diff inspection need).
+# ---------------------------------------------------------------------------
+NODE_BODIES_BUDGET: int = 32_768  # 32 KB
+
 
 class ASTDiffTool(BaseMCPTool):
     """MCP Tool for structural AST diffing."""
@@ -109,6 +122,21 @@ class ASTDiffTool(BaseMCPTool):
                     "description": "Output format: 'toon' (default, token-efficient) or 'json'",
                     "default": "toon",
                 },
+                # Issue #552 — opt-in full node body (default: compact summaries only)
+                "include_node_bodies": {
+                    "type": "boolean",
+                    "description": (
+                        "Include the full recursive children subtree in each hunk's "
+                        "old/new node. Off by default — the default response keeps only "
+                        "the compact node summary (type, kind, name, line, end_line, "
+                        "text_hash, preview, child_count) which is 70-99% smaller. "
+                        "Enable only when you need to inspect exact AST sub-structure. "
+                        "A 32 KB byte budget is enforced; when exceeded, "
+                        "children_truncated=true and bytes_omitted=<int> are set. "
+                        "NEVER mark this required — runtime-resolved param."
+                    ),
+                    "default": False,
+                },
             },
             # mode is runtime-resolved from arg shape (issue #529 / the 6×-recurred
             # facade trap) — it is NOT required. Declaring it required causes strict
@@ -187,6 +215,7 @@ class ASTDiffTool(BaseMCPTool):
 
         mode = self._resolve_mode(arguments)
         output_format = arguments.get("output_format", "toon")
+        include_node_bodies = bool(arguments.get("include_node_bodies", False))
         differ = self._get_differ()
 
         if mode == "diff_files":
@@ -206,7 +235,9 @@ class ASTDiffTool(BaseMCPTool):
         else:
             raise ValueError(f"Unknown mode: {mode}")
 
-        result_dict = result.to_dict()
+        result_dict = result.to_dict(
+            include_children=include_node_bodies, with_child_count=True
+        )
         # pain #5 (dogfood): ast-diff had no verdict. NOT_FOUND when the two
         # sides are identical (zero hunks), INFO when there are real changes.
         # We deliberately don't escalate to REVIEW/CAUTION here — diff
@@ -217,6 +248,23 @@ class ASTDiffTool(BaseMCPTool):
             "verdict": verdict,
             **result_dict,
         }
+
+        # Issue #552 — apply byte budget when include_node_bodies=True.
+        # When the hunks serialise to more than NODE_BODIES_BUDGET bytes,
+        # stop inlining children and set transparency flags.
+        if include_node_bodies:
+            import json
+
+            hunks_bytes = len(json.dumps(response.get("hunks", [])))
+            if hunks_bytes > NODE_BODIES_BUDGET:
+                # Rebuild without children and record how many bytes were saved
+                compact_dict = result.to_dict(
+                    include_children=False, with_child_count=True
+                )
+                compact_hunks_bytes = len(json.dumps(compact_dict.get("hunks", [])))
+                response["hunks"] = compact_dict["hunks"]
+                response["children_truncated"] = True
+                response["bytes_omitted"] = hunks_bytes - compact_hunks_bytes
 
         from ..utils.format_helper import apply_toon_format_to_response
 
