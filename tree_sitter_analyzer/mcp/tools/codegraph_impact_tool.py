@@ -461,6 +461,11 @@ class CodeGraphImpactTool(BaseMCPTool):
         # to the canonical agent-facing vocabulary so the tsa-landing /
         # safe-to-edit gates branch correctly.
         verdict = _impact_verdict(result)
+        # blast_radius: if no affected functions were found the seed(s) could
+        # not be resolved in the call graph — treat this as NOT_FOUND so agents
+        # don't receive "proceed with edit" for an unknown symbol.
+        if mode == "blast_radius" and result.get("total_affected_functions", 0) == 0:
+            verdict = "NOT_FOUND"
         # #577: uniform agent_summary across all facade actions.
         if mode == "function_impact":
             func = result.get("function") or func_name or "?"

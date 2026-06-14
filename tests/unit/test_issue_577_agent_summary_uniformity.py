@@ -633,3 +633,56 @@ class TestStructureAstPathAgentSummary:
         summary_line = result.get("agent_summary", {}).get("summary_line", "")
         # The else branch produces "ast_path: mode=path line=... depth=..."
         assert "mode=path" in summary_line
+
+    # ── content-correctness tests (BUG 1 follow-up after #577) ────────────────
+
+    @pytest.mark.asyncio
+    async def test_outline_summary_line_shows_true_node_count(self, tmp_path):
+        """outline summary_line must contain the TRUE top-level count, not 0.
+
+        BUG: #577 code did `len(result_dict.get("outline") or [])` but the
+        outline items live in `result_dict["path"]`, so "outline" is always
+        absent → count was always 0.  The fix reads `result_dict.get("path")`.
+
+        File has exactly 2 top-level defs (foo + bar) → count must be 2.
+        """
+        src = tmp_path / "sample.py"
+        src.write_text("def foo():\n    pass\ndef bar():\n    pass\n", encoding="utf-8")
+        tool = self._make_tool(tmp_path)
+        result = await tool.execute(
+            {"file_path": str(src), "mode": "outline", "output_format": "json"}
+        )
+        assert result.get("verdict") == "INFO"
+        summary_line = result.get("agent_summary", {}).get("summary_line", "")
+        # Must report the true count 2, NOT the buggy "0 top-level node(s)"
+        assert "2 top-level node(s)" in summary_line, (
+            f"outline summary_line must contain '2 top-level node(s)'; got: {summary_line!r}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_scope_summary_line_shows_function_name(self, tmp_path):
+        """scope summary_line must name the enclosing function, not '?'.
+
+        BUG: #577 code did `result_dict.get("scope")` but the enclosing scope
+        dict lives at `result_dict["enclosing_scope"]`, so "scope" is always
+        absent → name was always '?'.  The fix reads `result_dict.get("enclosing_scope")`.
+
+        Line 2 is inside `foo` → summary_line must contain 'foo'.
+        """
+        src = tmp_path / "sample.py"
+        src.write_text("def foo():\n    pass\n", encoding="utf-8")
+        tool = self._make_tool(tmp_path)
+        result = await tool.execute(
+            {
+                "file_path": str(src),
+                "mode": "scope",
+                "line": 2,
+                "output_format": "json",
+            }
+        )
+        assert result.get("verdict") == "INFO"
+        summary_line = result.get("agent_summary", {}).get("summary_line", "")
+        # Must report the real enclosing function name, NOT the buggy '?'
+        assert "'foo'" in summary_line, (
+            f"scope summary_line must contain \"'foo'\"; got: {summary_line!r}"
+        )

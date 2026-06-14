@@ -152,10 +152,10 @@ class CodeGraphASTPathTool(BaseMCPTool):
             )
         else:
             if mode == "outline":
-                node_count = len(result_dict.get("outline") or [])
+                node_count = len(result_dict.get("path") or [])
                 summary_line = f"ast_path: outline of {file_path!r} ({node_count} top-level node(s))"
             elif mode == "scope":
-                scope_name = (result_dict.get("scope") or {}).get("name", "?")
+                scope_name = (result_dict.get("enclosing_scope") or {}).get("name", "?")
                 summary_line = f"ast_path: scope at line {line_int} — {scope_name!r}"
             else:
                 path_len = len(result_dict.get("path") or [])
