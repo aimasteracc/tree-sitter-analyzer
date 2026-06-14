@@ -525,6 +525,58 @@ class TestCSharpFunctionExtraction:
         # Method with if/for/while/switch should have higher complexity_score
         assert calculate.complexity_score >= 1
 
+    def test_methods_carry_parent_class(self):
+        """[TDD] #766 — every C# method/property/constructor must expose its owning
+        type via receiver_type so the table formatter can set parent_class.
+
+        Before the fix all members had receiver_type=None.
+        After the fix each member must carry the name of its enclosing class,
+        interface, or struct.
+        """
+        src = """\
+namespace MyApp
+{
+    public class User
+    {
+        public int Id { get; set; }
+        public User(int id) { Id = id; }
+        public void UpdateEmail(string email) { }
+    }
+
+    public interface IUserRepository
+    {
+        User GetById(int id);
+    }
+
+    public struct UserSettings
+    {
+        public bool IsActive { get; set; }
+        public UserSettings(bool active) { IsActive = active; }
+    }
+}
+"""
+        plugin = CSharpPlugin()
+        tree = get_tree_for_code(src, plugin)
+        functions = plugin.extractor.extract_functions(tree, src)
+
+        by_name = {f.name: f for f in functions}
+
+        assert by_name["Id"].receiver_type == "User"
+        assert by_name["UpdateEmail"].receiver_type == "User"
+        assert by_name["GetById"].receiver_type == "IUserRepository"
+        assert by_name["IsActive"].receiver_type == "UserSettings"
+
+        user_ctors = [f for f in functions if f.name == "User"]
+        assert len(user_ctors) == 1
+        assert user_ctors[0].receiver_type == "User"
+
+        us_ctors = [f for f in functions if f.name == "UserSettings"]
+        assert len(us_ctors) == 1
+        assert us_ctors[0].receiver_type == "UserSettings"
+
+        missing = [f.name for f in functions if f.receiver_type is None]
+        assert missing == [], f"These members are missing receiver_type: {missing}"
+
 
 class TestCSharpVariableExtraction:
     """Test C# variable/field extraction."""
