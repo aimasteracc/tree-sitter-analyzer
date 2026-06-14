@@ -500,6 +500,18 @@ def test_search_facade_builds_and_routes() -> None:
     assert "content" in facade.bespoke_map
 
 
+def test_search_facade_batch_description_documents_query_item_shape() -> None:
+    """#569: schema-reading agents must see batch query items use pattern."""
+    from tree_sitter_analyzer.mcp.tools.search_facade import build_search_facade
+
+    definition = build_search_facade(project_root=None).get_tool_definition()
+    description = definition["description"]
+    assert "action=batch" in description
+    assert "queries (required array of 2-10 items" in description
+    assert "each item requires `pattern`" in description
+    assert "output_format" in description
+
+
 def test_search_facade_symbol_action_does_not_raise_strict(tmp_path: Any) -> None:
     """End-to-end: routing through the facade to the real symbol_search inner
     tool must not trip the inner's strict-param guard on ``action``.
