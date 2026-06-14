@@ -16,8 +16,9 @@ without target, making it a common file (low lift).  ``total_commits`` is the
 ACTUAL number of unique commit SHAs seen in the parsed log (not ``max_commits``),
 so a 43-commit repo with max_commits=500 gets the true lift (RFC-0014 INFO fix).
 
-Results are keyed by (project_root, target_file, HEAD) for zero-cost repeat
-calls within one MCP session (LRU maxsize=256).
+Results are keyed by (project_root, target_file, HEAD, max_commits, min_shared,
+max_results) for zero-cost repeat calls within one MCP session (LRU
+maxsize=256).
 """
 
 from __future__ import annotations
@@ -28,11 +29,12 @@ from typing import Any
 from ....utils.test_detection import is_test_file
 from .change_impact_git import _run_git
 
-# Module-level LRU cache keyed by (project_root, target_file, HEAD_sha).
+# Module-level LRU cache keyed by parameters that affect result shape/content.
 # Invalidated when HEAD advances; no persistent storage.
 # maxsize=256: bounds memory in long-running MCP sessions (RFC-0014 §P3-2).
 _CO_CHANGE_CACHE_MAXSIZE = 256
-_CO_CHANGE_CACHE: OrderedDict[tuple[str, str, str], dict[str, Any]] = OrderedDict()
+CoChangeCacheKey = tuple[str, str, str, int, int, int]
+_CO_CHANGE_CACHE: OrderedDict[CoChangeCacheKey, dict[str, Any]] = OrderedDict()
 
 # Minimum commits touching the target file required before the result may
 # claim "Safe to edit in isolation".  Below this floor the null-result is
@@ -43,7 +45,7 @@ MIN_COMMITS_FOR_COUPLING_ANALYSIS = 10
 
 
 def _co_change_cache_get(
-    key: tuple[str, str, str],
+    key: CoChangeCacheKey,
 ) -> dict[str, Any] | None:
     """LRU get: move hit to end (most-recently-used)."""
     if key not in _CO_CHANGE_CACHE:
@@ -53,7 +55,7 @@ def _co_change_cache_get(
 
 
 def _co_change_cache_put(
-    key: tuple[str, str, str],
+    key: CoChangeCacheKey,
     value: dict[str, Any],
 ) -> None:
     """LRU put: evict oldest entry if at capacity."""
@@ -176,7 +178,14 @@ def _compute_co_change(
         return _empty_co_change_result(target_file, max_commits)
 
     head_sha = head_raw.strip()
-    cache_key = (project_root, target_file, head_sha)
+    cache_key = (
+        project_root,
+        target_file,
+        head_sha,
+        max_commits,
+        min_shared,
+        max_results,
+    )
     cached = _co_change_cache_get(cache_key)
     if cached is not None:
         return cached
@@ -188,6 +197,7 @@ def _compute_co_change(
             f"--max-count={max_commits}",
             "--pretty=format:%H",
             "--name-only",
+            "HEAD",
         ],
         cwd=project_root,
     )
