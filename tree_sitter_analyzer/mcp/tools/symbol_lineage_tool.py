@@ -55,6 +55,7 @@ _REF_LIMIT = 30
 _DOWNSTREAM_LIMIT = 50
 _UPSTREAM_LIMIT = 20
 _TEST_LIMIT = 20
+_HIER_LIMIT = 50
 
 # Risk level → verdict mapping (canonical vocab per CLAUDE.md).
 # Lineage is an informational analyser, not a modification guard, so
@@ -174,6 +175,12 @@ class SymbolLineageTool(BaseMCPTool):
         self._dep_graph_fingerprint: GraphFingerprint | None = None
         self._dep_graph_built_at: float | None = None
         self._cache_invalidated_reason: str | None = None
+        # #568: the hierarchy section is derived from the AST index (index.db),
+        # not the source tree, so it must invalidate the per-symbol cache on its
+        # own — else a lineage call made before indexing caches a no-hierarchy
+        # response that the source-only fingerprint can't refresh once the index
+        # is built (Codex P2).
+        self._ast_index_mtime_ns: int | None = None
         super().__init__(project_root)
 
     def _on_project_root_changed(self, project_root: str | None) -> None:
@@ -183,6 +190,7 @@ class SymbolLineageTool(BaseMCPTool):
         self._dep_graph_fingerprint = None
         self._dep_graph_built_at = None
         self._cache_invalidated_reason = None
+        self._ast_index_mtime_ns = None
 
     def _get_dep_graph(self) -> DependencyGraph | None:
         """Return cached dependency graph, building it on first use.
@@ -286,6 +294,9 @@ class SymbolLineageTool(BaseMCPTool):
         # H4 fix: refresh dep graph (clears _symbol_cache on rebuild) before
         # the cache lookup below.
         graph = self._get_dep_graph()
+        # #568: also clear the per-symbol cache when the AST index changed
+        # (hierarchy is index-derived; the source fingerprint above can't see it).
+        self._invalidate_symbol_cache_on_index_change()
 
         cached_response = self._try_cached_lineage(symbol, max_depth, started)
         if cached_response is not None:
@@ -322,6 +333,7 @@ class SymbolLineageTool(BaseMCPTool):
             summary_line=summary_line,
             verdict=verdict,
             agent_summary=agent_summary,
+            hierarchy=self._hierarchy_for(symbol),
         )
 
         return self._finalize_and_cache_response(
@@ -419,6 +431,88 @@ class SymbolLineageTool(BaseMCPTool):
                 upstream_files.update(rev)
         return downstream_files, upstream_files
 
+    def _index_signature(self) -> int:
+        """Max ``mtime_ns`` across the AST index DB and its WAL/SHM sidecars.
+
+        SQLite in WAL mode writes new rows to ``index.db-wal`` without
+        touching ``index.db``'s mtime until a checkpoint (Codex P2), so a
+        bare ``index.db`` stat misses index updates. Taking the max over all
+        three files makes the signature flip on any index write. Returns 0
+        when no index exists. Called only after ``_validate_project_root``.
+        """
+        assert self.project_root is not None  # guaranteed by _validate_project_root
+        cache_dir = Path(self.project_root) / ".ast-cache"
+        sig = 0
+        for name in ("index.db", "index.db-wal", "index.db-shm"):
+            try:
+                mtime = (cache_dir / name).stat().st_mtime_ns
+            except OSError:
+                continue
+            if mtime > sig:
+                sig = mtime
+        return sig
+
+    def _invalidate_symbol_cache_on_index_change(self) -> None:
+        """Clear the per-symbol cache when the AST index changed (#568).
+
+        The hierarchy section is derived from the AST index, which an
+        autoindex/build can refresh without touching source files — so the
+        source-tree fingerprint would otherwise serve a stale no-hierarchy hit.
+        The recorded signature is refreshed in ``_finalize_and_cache_response``
+        (AFTER this call's own index reads/writes), so a call that *creates*
+        the index as a side effect — ``find_references`` / ``_hierarchy_for``
+        both touch ``.ast-cache`` — does not spuriously evict the next call's
+        warm hit. Only called from ``execute`` after ``_validate_project_root``.
+        """
+        if self._index_signature() != self._ast_index_mtime_ns:
+            self._symbol_cache = {}
+
+    def _hierarchy_for(self, symbol: str) -> dict[str, Any] | None:
+        """#568: the advertised inheritance/override lineage.
+
+        The lineage action documents "class/function inheritance and override
+        lineage" but only returned an impact profile. Ask ClassHierarchy
+        (extends edges) directly — its ``has_class`` is the authoritative gate,
+        which works regardless of how the definition was found (Codex P2s):
+
+        * the symbol is resolved to its BARE name (``pkg.Base`` -> ``Base``) —
+          ClassHierarchy stores classes by bare name from the AST cache;
+        * detection does NOT depend on the definition's ``kind``/``type``, so a
+          class found only via the K3 grep fallback (``type='definition'``, no
+          ``kind``) still gets its hierarchy.
+
+        Returns ``None`` for non-class symbols (or an empty/unbuilt index).
+        Only called from ``execute`` after ``_validate_project_root``.
+        """
+        bare = symbol.rsplit(".", 1)[-1]
+        cache = None
+        try:
+            from ...ast_cache import ASTCache
+            from ...class_hierarchy import ClassHierarchy
+
+            cache = ASTCache(str(self.project_root))
+            ch = ClassHierarchy(cache)
+            ch.build()
+            if not ch.has_class(bare):
+                return None
+            subs = ch.subclasses_of(bare)
+            supers = ch.superclasses_of(bare)
+        except Exception as exc:  # noqa: BLE001 — degrade to no hierarchy
+            logger.warning(f"lineage hierarchy lookup failed for {symbol}: {exc}")
+            return None
+        finally:
+            # Release the SQLite handle so Windows can delete the cache dir
+            # (WinError 32: index.db locked at tmp teardown otherwise).
+            if cache is not None:
+                cache.close()
+        return {
+            "subclasses": subs[:_HIER_LIMIT],
+            "subclass_count": len(subs),
+            "subclasses_truncated": len(subs) > _HIER_LIMIT,
+            "superclasses": supers,
+            "superclass_count": len(supers),
+        }
+
     @staticmethod
     def _assemble_lineage_response(
         *,
@@ -433,6 +527,7 @@ class SymbolLineageTool(BaseMCPTool):
         summary_line: str,
         verdict: str,
         agent_summary: dict[str, Any],
+        hierarchy: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Assemble the canonical lineage envelope with G6 truncation + r37u verdict."""
         sorted_downstream = sorted(downstream_files)
@@ -475,6 +570,9 @@ class SymbolLineageTool(BaseMCPTool):
             "summary_line": summary_line,
             "verdict": verdict,  # r37u: top-level verdict mirror
             "agent_summary": agent_summary,
+            # #568: the advertised inheritance/override lineage — present only
+            # for class symbols (None for functions/non-classes, omitted below).
+            **({"hierarchy": hierarchy} if hierarchy else {}),
         }
 
     def _finalize_and_cache_response(
@@ -486,6 +584,10 @@ class SymbolLineageTool(BaseMCPTool):
     ) -> dict[str, Any]:
         """Cache a deep copy, stamp elapsed/from_cache, apply TOON formatting."""
         self._symbol_cache[cache_key] = copy.deepcopy(response)
+        # #568: record the index signature AFTER this call's own index
+        # reads/writes so creating the index here doesn't evict the next
+        # warm hit (the invalidation check above compares against this).
+        self._ast_index_mtime_ns = self._index_signature()
 
         response["elapsed_ms"] = int((time.perf_counter() - started) * 1000)
         response["from_cache"] = False
