@@ -654,9 +654,17 @@ class TestStructureAstPathAgentSummary:
         )
         assert result.get("verdict") == "INFO"
         summary_line = result.get("agent_summary", {}).get("summary_line", "")
-        # Must report the true count 2, NOT the buggy "0 top-level node(s)"
-        assert "2 top-level node(s)" in summary_line, (
-            f"outline summary_line must contain '2 top-level node(s)'; got: {summary_line!r}"
+        # Must report the true count 2, NOT the buggy "0 top-level node(s)".
+        # Extract the integer from "(N top-level node(s))" and pin exactly to 2
+        # (locked exact-assertion rule: count assertions must use ==, not substring).
+        import re
+
+        m = re.search(r"\((\d+) top-level node\(s\)\)", summary_line)
+        assert m is not None, (
+            f"outline summary_line must match '(N top-level node(s))'; got: {summary_line!r}"
+        )
+        assert int(m.group(1)) == 2, (
+            f"outline summary_line must report exactly 2 top-level node(s); got: {summary_line!r}"
         )
 
     @pytest.mark.asyncio

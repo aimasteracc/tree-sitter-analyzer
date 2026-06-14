@@ -1139,6 +1139,65 @@ class TestCoverageToolMethods:
         assert result["success"] is True
         assert len(result["api_changes"]) == 1  # fixture yields exactly one
 
+    def test_high_risk_changes_hunks_are_lean_no_ast_children(self):
+        """BUG A (Codex P2 #696 follow-up): high_risk_changes entries must NOT
+        contain AST children keys in hunk.old / hunk.new.
+
+        codegraph_pr_review calls ch.to_dict() with no args; the default must
+        be lean (include_children=False).  Before the fix, ClassifiedHunk.to_dict()
+        hard-coded include_children=True, embedding full subtrees for up to 5
+        hunks/file.
+        """
+        # Use a real api_change-triggering diff so SemanticChangeClassifier
+        # produces an actual ClassifiedHunk with a real ASTDiffHunk.
+        src_old = "def public_api(x: int) -> int:\n    return x\n"
+        src_new = "def public_api(x: int, y: int = 0) -> int:\n    return x + y\n"
+        diff_text = (
+            "diff --git a/api.py b/api.py\n"
+            "--- a/api.py\n"
+            "+++ b/api.py\n"
+            "@@ -1,2 +1,2 @@\n"
+            "-def public_api(x: int) -> int:\n"
+            "+def public_api(x: int, y: int = 0) -> int:\n"
+            "     return x\n"
+        )
+        tmpdir = _make_project(("api.py", src_new))
+        tool = CodeGraphPRReviewTool(tmpdir)
+
+        with (
+            patch(
+                "tree_sitter_analyzer.mcp.tools.codegraph_pr_review_tool._get_local_diff",
+                return_value=diff_text,
+            ),
+            patch(
+                "tree_sitter_analyzer.mcp.tools.codegraph_pr_review_tool._get_old_source",
+                return_value=src_old,
+            ),
+            patch(
+                "tree_sitter_analyzer.mcp.tools.codegraph_pr_review_tool._get_new_source",
+                return_value=src_new,
+            ),
+        ):
+            result = _run(
+                tool,
+                {"mode": "diff", "include_call_graph": False, "output_format": "json"},
+            )
+        assert result["success"] is True
+        file_reviews = result.get("file_reviews", [])
+        assert len(file_reviews) == 1
+        high_risk_changes = file_reviews[0].get("high_risk_changes", [])
+        # Verify lean serialization: no hunk.old/new children in any high_risk entry.
+        for i, entry in enumerate(high_risk_changes):
+            hunk = entry.get("hunk", {})
+            assert "children" not in hunk.get("old", {}), (
+                f"high_risk_changes[{i}].hunk.old must NOT contain 'children' "
+                "(lean default — PR review must not embed full AST subtrees)"
+            )
+            assert "children" not in hunk.get("new", {}), (
+                f"high_risk_changes[{i}].hunk.new must NOT contain 'children' "
+                "(lean default — PR review must not embed full AST subtrees)"
+            )
+
     def test_analyze_call_graph_impact_dedup_callee(self):
         """Duplicate callee entries (same qualified_name) are deduplicated."""
         from tree_sitter_analyzer.call_graph import FunctionRef

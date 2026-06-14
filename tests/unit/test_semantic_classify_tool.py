@@ -664,3 +664,115 @@ class TestClassifyByteBudget:
         assert len(new_node["children"]) == 5, (
             f"Expected 5 children in new node, got {len(new_node['children'])}"
         )
+
+
+class TestClassifiedHunkSerializerOptIn:
+    """BUG A (Codex P2 #696 follow-up): ClassifiedHunk.to_dict() must accept
+    include_children param and default to lean (no children).  The PR-review
+    consumer calls ch.to_dict() without opt-in → must never embed AST subtrees.
+    """
+
+    def _make_classified_hunk(self) -> Any:
+        """Return a real ClassifiedHunk with a hunk whose old/new nodes have children."""
+        from tree_sitter_analyzer.ast_diff import ASTDiffer
+        from tree_sitter_analyzer.semantic_change_classifier import (
+            SemanticChangeClassifier,
+        )
+
+        old = "def greet(name):\n    return f'Hello {name}'\n"
+        new = "def greet(name, greeting='Hello'):\n    return f'{greeting} {name}'\n"
+        differ = ASTDiffer()
+        diff = differ.diff_strings(old, new, "python")
+        classifier = SemanticChangeClassifier()
+        classification = classifier.classify(diff)
+        assert classification.classifications, (
+            "Fixture must produce at least one ClassifiedHunk"
+        )
+        return classification.classifications[0]
+
+    def test_classified_hunk_to_dict_default_is_lean(self):
+        """ClassifiedHunk.to_dict() with no args must NOT include children keys.
+
+        This is the consumer contract for codegraph_pr_review — it calls
+        ch.to_dict() raw (no include_children kwarg), so the default must
+        be lean.  Before the fix, to_dict() hard-coded include_children=True,
+        leaking full AST subtrees into every PR-review high_risk_changes entry.
+        """
+        ch = self._make_classified_hunk()
+        d = ch.to_dict()
+        hunk = d.get("hunk", {})
+        old_node = hunk.get("old", {})
+        new_node = hunk.get("new", {})
+        assert "children" not in old_node, (
+            "hunk.old must NOT contain 'children' in default (lean) ClassifiedHunk.to_dict() — "
+            "codegraph_pr_review calls ch.to_dict() raw and must not embed AST subtrees"
+        )
+        assert "children" not in new_node, (
+            "hunk.new must NOT contain 'children' in default (lean) ClassifiedHunk.to_dict()"
+        )
+
+    def test_classified_hunk_to_dict_opt_in_delivers_children(self):
+        """ClassifiedHunk.to_dict(include_children=True) must still deliver children.
+
+        Ensures the semantic_classify opt-in path (include_ast_nodes=True) continues
+        to work after the parameterization fix.
+        """
+        ch = self._make_classified_hunk()
+        d = ch.to_dict(include_children=True)
+        hunk = d.get("hunk", {})
+        old_node = hunk.get("old", {})
+        new_node = hunk.get("new", {})
+        assert "children" in old_node, (
+            "hunk.old must contain 'children' when include_children=True"
+        )
+        assert "children" in new_node, (
+            "hunk.new must contain 'children' when include_children=True"
+        )
+
+    def test_semantic_classification_to_dict_default_is_lean(self):
+        """SemanticClassification.to_dict() must thread include_children=False to each ClassifiedHunk."""
+        from tree_sitter_analyzer.ast_diff import ASTDiffer
+        from tree_sitter_analyzer.semantic_change_classifier import (
+            SemanticChangeClassifier,
+        )
+
+        old = "def greet(name):\n    return f'Hello {name}'\n"
+        new = "def greet(name, greeting='Hello'):\n    return f'{greeting} {name}'\n"
+        differ = ASTDiffer()
+        diff = differ.diff_strings(old, new, "python")
+        classifier = SemanticChangeClassifier()
+        classification = classifier.classify(diff)
+        d = classification.to_dict()
+        for entry in d.get("classifications", []):
+            hunk = entry.get("hunk", {})
+            assert "children" not in hunk.get("old", {}), (
+                "SemanticClassification.to_dict() default must not embed children in hunk.old"
+            )
+            assert "children" not in hunk.get("new", {}), (
+                "SemanticClassification.to_dict() default must not embed children in hunk.new"
+            )
+
+    def test_semantic_classification_to_dict_opt_in_delivers_children(self):
+        """SemanticClassification.to_dict(include_children=True) must deliver children."""
+        from tree_sitter_analyzer.ast_diff import ASTDiffer
+        from tree_sitter_analyzer.semantic_change_classifier import (
+            SemanticChangeClassifier,
+        )
+
+        old = "def greet(name):\n    return f'Hello {name}'\n"
+        new = "def greet(name, greeting='Hello'):\n    return f'{greeting} {name}'\n"
+        differ = ASTDiffer()
+        diff = differ.diff_strings(old, new, "python")
+        classifier = SemanticChangeClassifier()
+        classification = classifier.classify(diff)
+        d = classification.to_dict(include_children=True)
+        found_children = False
+        for entry in d.get("classifications", []):
+            hunk = entry.get("hunk", {})
+            if "children" in hunk.get("old", {}) or "children" in hunk.get("new", {}):
+                found_children = True
+                break
+        assert found_children, (
+            "SemanticClassification.to_dict(include_children=True) must deliver children "
+            "in at least one hunk.old or hunk.new"
+        )
