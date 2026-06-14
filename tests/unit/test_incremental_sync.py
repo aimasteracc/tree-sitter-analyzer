@@ -3,6 +3,7 @@
 import os
 import sys
 import time
+from unittest.mock import patch
 
 import pytest
 
@@ -203,3 +204,61 @@ class TestContentHashComparison:
         os.utime(str(main_py), times=None)
         result = sync.sync()
         assert result.updated_files == 0
+
+
+class TestRecursionErrorHandling:
+    """Issue #805: RecursionError from deeply-nested AST must not abort sync."""
+
+    def test_recursion_error_in_one_file_does_not_abort_sync(self, project, cache):
+        """A RecursionError in index_file must be caught per-file; sibling files
+        must still be indexed and the error count must equal exactly 1."""
+        src = project / "src"
+        # pathological.py triggers RecursionError; good.py must still be indexed.
+        (src / "pathological.py").write_text("x = 1\n")
+        (src / "good.py").write_text("def ok(): pass\n")
+
+        original_index_file = cache.index_file
+
+        def _boom_on_pathological(path, language=None):
+            if "pathological" in path:
+                raise RecursionError("maximum recursion depth exceeded")
+            return original_index_file(path, language)
+
+        sync = IncrementalSync(cache)
+        with patch.object(cache, "index_file", side_effect=_boom_on_pathological):
+            result = sync.sync()
+
+        # Exactly 1 file must have errored — not more, not less.
+        assert result.errors == 1
+        # The total new-file attempts includes all files; the pathological one
+        # is counted as an attempt but ends in error.
+        # good.py (+ the original 3 fixtures) must have been attempted and
+        # succeeded; the pathological file must appear in details as an error.
+        error_details = [d for d in result.details if d.get("status") == "error"]
+        assert len(error_details) == 1
+        assert "pathological" in error_details[0]["file"]
+        # The error detail must carry exception type and message (Issue #806).
+        assert "RecursionError" in error_details[0].get("error_type", "")
+        assert error_details[0].get("error_message") != ""
+
+    def test_recursion_error_detail_has_file_attribution(self, project, cache):
+        """Error envelope must contain file path (Issue #806 partial fix)."""
+        src = project / "src"
+        (src / "deep_nest.py").write_text("y = 2\n")
+
+        original_index_file = cache.index_file
+
+        def _boom(path, language=None):
+            if "deep_nest" in path:
+                raise RecursionError("max depth")
+            return original_index_file(path, language)
+
+        sync = IncrementalSync(cache)
+        with patch.object(cache, "index_file", side_effect=_boom):
+            result = sync.sync()
+
+        error_details = [d for d in result.details if d.get("status") == "error"]
+        assert len(error_details) == 1
+        detail = error_details[0]
+        assert "deep_nest" in detail["file"]
+        assert detail.get("error_type") == "RecursionError"

@@ -653,9 +653,14 @@ def _node_text(node: Any, source: str) -> str:
 
 
 def _count_nodes(node: Any) -> int:
-    count = 1
-    for child in node.children:
-        count += _count_nodes(child)
+    """Count AST nodes iteratively to avoid RecursionError on deeply-nested trees."""
+    count = 0
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        count += 1
+        for child in current.children:
+            stack.append(child)
     return count
 
 
