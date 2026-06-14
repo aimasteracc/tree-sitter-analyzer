@@ -33,6 +33,10 @@ if TYPE_CHECKING:
 class StructureCommand(BaseCommand):
     """Command for structure analysis with Japanese output."""
 
+    def __init__(self, args: Any) -> None:
+        super().__init__(args)
+        self._json_error_envelope_enabled = True
+
     async def execute_async(self, language: str) -> int:
         analysis_result = await self.analyze_file(language)
         if not analysis_result:

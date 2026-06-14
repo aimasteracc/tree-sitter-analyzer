@@ -129,9 +129,18 @@ def build_agent_summary_only_response(result: dict[str, Any]) -> dict[str, Any]:
     """Return a compact change-impact response for agent decision loops."""
     summary = result.get("agent_summary", {})
     risk = result.get("risk_level", summary.get("risk", "none"))
-    return {
+    # Propagate the already-computed verdict rather than recalculating
+    # from risk_level. The pipeline (hot_zone -> constraint_violations
+    # -> scope_validation) may have escalated the verdict beyond what
+    # _change_impact_risk_to_verdict(risk) would produce.
+    resolved_verdict = (
+        result.get("verdict")
+        or summary.get("verdict")
+        or _change_impact_risk_to_verdict(risk)
+    )
+    compact = {
         "success": result.get("success", False),
-        "verdict": _change_impact_risk_to_verdict(risk),
+        "verdict": resolved_verdict,
         "mode": result.get("mode", "diff"),
         "scope_paths": result.get("scope_paths", []),
         "scope_filtered": result.get("scope_filtered", False),
@@ -159,6 +168,15 @@ def build_agent_summary_only_response(result: dict[str, Any]) -> dict[str, Any]:
         "verification_steps": result.get("verification_steps", []),
         "stop_condition": summary.get("stop_condition", ""),
     }
+    # Carry forward scope_paths_invalid and summary_line -- both are
+    # consumed by chained agents and were silently dropped before.
+    scope_paths_invalid = result.get("scope_paths_invalid", None)
+    if "scope_paths_invalid" in result:
+        compact["scope_paths_invalid"] = scope_paths_invalid
+    summary_line = result.get("summary_line", summary.get("summary_line", ""))
+    if summary_line:
+        compact["summary_line"] = summary_line
+    return compact
 
 
 def build_agent_summary(context: AgentSummaryContext) -> dict[str, Any]:
@@ -236,9 +254,7 @@ def attach_queue_ledger(
     verification_command = result.get("verification_command") or result.get(
         "agent_summary", {}
     ).get("verification_command", "")
-    out_of_scope_preview = (
-        [] if strict else out_of_scope[:CHANGE_IMPACT_PREVIEW_LIMIT]
-    )
+    out_of_scope_preview = [] if strict else out_of_scope[:CHANGE_IMPACT_PREVIEW_LIMIT]
     # Pol3 (round-21): a cap on either preview without a transparency flag
     # would let an agent think it had the full picture. Surface
     # ``preview_limit`` + ``preview_truncated`` whenever the underlying
@@ -426,18 +442,25 @@ def apply_scope_validation(
         )
         agent_summary["scope_paths_invalid"] = list(scope_paths_invalid)
         _augment_summary_line(result, agent_summary, scope_paths_invalid)
+
+        # Propagate WARN verdict to the top-level surface so both agree.
+        result["verdict"] = CHANGE_IMPACT_VERDICT_WARN
     else:
         # J11 (round-22): pick CLEAN vs REVIEW based on whether the
         # analysis still has pending work to verify. Use setdefault on
         # whichever value we compute so we don't stomp a richer verdict
         # another helper may have set first.
         changed_count = _resolve_changed_count(result, agent_summary)
-        default_verdict = (
-            CHANGE_IMPACT_VERDICT_CLEAN
-            if changed_count == 0
-            else CHANGE_IMPACT_VERDICT_REVIEW
-        )
+        if changed_count == 0:
+            default_verdict = CHANGE_IMPACT_VERDICT_CLEAN
+        else:
+            default_verdict = CHANGE_IMPACT_VERDICT_REVIEW
         agent_summary.setdefault("verdict", default_verdict)
+        mirror_verdict = agent_summary.get("verdict", default_verdict)
+
+        # Mirror the default verdict onto the top-level surface too so
+        # both surfaces agree from this point onward.
+        result.setdefault("verdict", mirror_verdict)
 
     return result
 

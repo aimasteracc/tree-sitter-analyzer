@@ -24,6 +24,9 @@ not one ``languages_compatible`` family.
 
 from __future__ import annotations
 
+from tree_sitter_analyzer.synapse_resolver.languages._kotlin_constants import (
+    STDLIB_BARE_FUNCTIONS_KOTLIN,
+)
 from tree_sitter_analyzer.synapse_resolver.languages.kotlin import (
     build_kotlin_resolver_context,
     resolve_kotlin_callee,
@@ -231,6 +234,12 @@ def test_bare_require_classifies_stdlib() -> None:
     )
     _sym_id, resolution, _ = resolve_kotlin_callee("require", "require", "Main.kt", ctx)
     assert resolution == "stdlib"
+
+
+def test_stdlib_bare_function_set_does_not_include_placeholder_tokens() -> None:
+    """Keep curated resolver tiers clean; placeholders like TODO must not leak."""
+
+    assert "TODO" not in STDLIB_BARE_FUNCTIONS_KOTLIN
 
 
 def test_local_def_shadows_stdlib_bare_function() -> None:

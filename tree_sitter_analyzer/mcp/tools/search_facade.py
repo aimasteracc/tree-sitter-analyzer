@@ -32,6 +32,8 @@ P0 it coexists with the existing 62 tools and changes none of their behaviour.
 
 from __future__ import annotations
 
+import ast
+import json
 from typing import Any
 
 from .facade_tool import FacadeTool
@@ -106,9 +108,52 @@ def build_search_facade(project_root: str | None = None) -> FacadeTool:
     # bespoke closure that closes over the live instance.
     content_tool = SearchContentTool(project_root)
 
+    def _normalize_roots_or_files(value: Any) -> Any:
+        """Normalize root/file inputs from facade additionalProperties into lists."""
+        if not isinstance(value, str):
+            return value
+
+        stripped = value.strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            try:
+                parsed = ast.literal_eval(stripped)
+            except (SyntaxError, ValueError):
+                try:
+                    parsed = json.loads(stripped)
+                except (TypeError, json.JSONDecodeError, ValueError):
+                    return [value]
+            if isinstance(parsed, list):
+                return parsed
+            return [value]
+        return [value]
+
+    def _normalize_max_count(value: Any) -> Any:
+        """Coerce facade string/floating max_count to int for downstream tool."""
+        if isinstance(value, bool) or value is None:
+            return value
+        if isinstance(value, int):
+            return value
+        if isinstance(value, float):
+            if value.is_integer():
+                return int(value)
+            return value
+        if isinstance(value, str):
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return value
+        return value
+
     async def _content_route(args: dict[str, Any]) -> Any:
         """F5 bespoke route: search_content returns dict|int — forward verbatim."""
-        return await content_tool.execute(args)
+        normalized = dict(args)
+        if "roots" in args:
+            normalized["roots"] = _normalize_roots_or_files(args["roots"])
+        if "files" in args:
+            normalized["files"] = _normalize_roots_or_files(args["files"])
+        if "max_count" in args:
+            normalized["max_count"] = _normalize_max_count(args["max_count"])
+        return await content_tool.execute(normalized)
 
     facade = FacadeTool(
         facade_name="search",

@@ -648,13 +648,15 @@ def test_action_pr_without_mode_or_pr_url_fails_loudly() -> None:
     assert "pr_url" in result["error"]
 
 
-def test_action_pr_explicit_diff_mode_still_reaches_diff() -> None:
+def test_action_pr_explicit_diff_mode_still_reaches_diff(tmp_path: Any) -> None:
     """Direct sub-mode selection stays available through the facade."""
     import asyncio
 
     from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
 
-    facade = build_edit_facade(".")
+    # Use an isolated temporary path so the local diff helper cannot scan
+    # the full project tree and exceed the per-test budget.
+    facade = build_edit_facade(str(tmp_path))
     result = asyncio.run(facade.execute({"action": "pr", "mode": "diff"}))
     # diff mode reviews local changes — must not demand pr_url
     assert result.get("error") is None or "pr_url" not in str(result.get("error"))

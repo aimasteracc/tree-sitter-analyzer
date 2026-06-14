@@ -288,6 +288,176 @@ def test_bespoke_handles_int_return() -> None:
     assert result == 0
 
 
+@pytest.mark.parametrize(
+    ("raw_roots", "raw_max_count", "expected_roots", "expected_max_count"),
+    [
+        ('["src"]', "7", ["src"], 7),
+        ("src", "7", ["src"], 7),
+    ],
+)
+def test_bespoke_content_route_normalizes_string_args(
+    monkeypatch: pytest.MonkeyPatch,
+    raw_roots: str,
+    raw_max_count: str,
+    expected_roots: list[str],
+    expected_max_count: int,
+) -> None:
+    from tree_sitter_analyzer.mcp.tools.search_facade import build_search_facade
+
+    observed: dict[str, Any] = {}
+
+    async def _fake_execute(self: Any, args: dict[str, Any]) -> dict[str, Any]:
+        observed["args"] = args
+        return {"success": True, "verdict": "INFO"}
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.search_content_tool.SearchContentTool.execute",
+        _fake_execute,
+    )
+    facade = build_search_facade(project_root=None)
+    result = asyncio.run(
+        facade.execute(
+            {
+                "action": "content",
+                "query": "needle",
+                "roots": raw_roots,
+                "max_count": raw_max_count,
+            }
+        )
+    )
+
+    assert result["success"] is True
+    assert "args" in observed
+    assert observed["args"]["roots"] == expected_roots
+    assert observed["args"]["max_count"] == expected_max_count
+
+
+def test_bespoke_content_route_normalizes_roots_with_custom_ast_parse(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from tree_sitter_analyzer.mcp.tools import search_facade
+    from tree_sitter_analyzer.mcp.tools.search_facade import build_search_facade
+
+    observed: dict[str, Any] = {}
+
+    async def _fake_execute(self: Any, args: dict[str, Any]) -> dict[str, Any]:
+        observed["args"] = args
+        return {"success": True, "verdict": "INFO"}
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.search_content_tool.SearchContentTool.execute",
+        _fake_execute,
+    )
+    monkeypatch.setattr(search_facade.ast, "literal_eval", lambda _value: 123)
+    facade = build_search_facade(project_root=None)
+    result = asyncio.run(
+        facade.execute({"action": "content", "query": "needle", "roots": '["x"]'})
+    )
+
+    assert result["success"] is True
+    assert "args" in observed
+    # Non-list parsed payload falls back to the original value wrapped in list.
+    assert observed["args"]["roots"] == ['["x"]']
+
+
+@pytest.mark.parametrize(
+    (
+        "raw_roots",
+        "raw_files",
+        "expected_roots",
+        "expected_files",
+    ),
+    [
+        (
+            ["src", "lib"],
+            ["README.md", "src/main.py"],
+            ["src", "lib"],
+            ["README.md", "src/main.py"],
+        ),
+        ('["a","b"]', "docs.md", ["a", "b"], ["docs.md"]),
+        ("a/b", "x.py", ["a/b"], ["x.py"]),
+        ("[true]", "x.py", [True], ["x.py"]),
+        ("[a,b]", "x.py", ["[a,b]"], ["x.py"]),
+    ],
+)
+def test_bespoke_content_route_normalizes_roots_and_files(
+    monkeypatch: pytest.MonkeyPatch,
+    raw_roots: str | list[str],
+    raw_files: str | list[str],
+    expected_roots: list[str],
+    expected_files: list[str],
+) -> None:
+    from tree_sitter_analyzer.mcp.tools.search_facade import build_search_facade
+
+    observed: dict[str, Any] = {}
+
+    async def _fake_execute(self: Any, args: dict[str, Any]) -> dict[str, Any]:
+        observed["args"] = args
+        return {"success": True, "verdict": "INFO"}
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.search_content_tool.SearchContentTool.execute",
+        _fake_execute,
+    )
+    facade = build_search_facade(project_root=None)
+    result = asyncio.run(
+        facade.execute(
+            {
+                "action": "content",
+                "query": "needle",
+                "roots": raw_roots,
+                "files": raw_files,
+            }
+        )
+    )
+
+    assert result["success"] is True
+    assert "args" in observed
+    assert observed["args"]["roots"] == expected_roots
+    assert observed["args"]["files"] == expected_files
+
+
+@pytest.mark.parametrize(
+    ("raw_max_count", "expected_max_count"),
+    [
+        ("7", 7),
+        (7, 7),
+        (7.0, 7),
+        (2.5, 2.5),
+        (True, True),
+        ("bad-number", "bad-number"),
+        (["9"], ["9"]),
+    ],
+)
+def test_bespoke_content_route_normalizes_max_count(
+    monkeypatch: pytest.MonkeyPatch,
+    raw_max_count: object,
+    expected_max_count: object,
+) -> None:
+    from tree_sitter_analyzer.mcp.tools.search_facade import build_search_facade
+
+    observed: dict[str, Any] = {}
+
+    async def _fake_execute(self: Any, args: dict[str, Any]) -> dict[str, Any]:
+        observed["args"] = args
+        return {"success": True, "verdict": "INFO"}
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.search_content_tool.SearchContentTool.execute",
+        _fake_execute,
+    )
+    facade = build_search_facade(project_root=None)
+    result = asyncio.run(
+        facade.execute(
+            {"action": "content", "query": "needle", "max_count": raw_max_count}
+        )
+    )
+
+    assert result["success"] is True
+    assert "args" in observed
+    assert observed["args"]["max_count"] == expected_max_count
+
+
 # --------------------------------------------------------------------------
 # Envelope preservation (facade must not re-wrap / mangle verdict)
 # --------------------------------------------------------------------------

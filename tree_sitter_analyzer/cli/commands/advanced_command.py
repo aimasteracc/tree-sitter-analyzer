@@ -6,7 +6,7 @@ Handles advanced analysis functionality.
 """
 
 from collections.abc import Sequence
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from ..._api_result_helpers import element_to_dict
 from ...constants import (
@@ -178,6 +178,10 @@ def _full_analysis_dict(
 
 class AdvancedCommand(BaseCommand):
     """Command for advanced analysis."""
+
+    def __init__(self, args: Any) -> None:
+        super().__init__(args)
+        self._json_error_envelope_enabled = True
 
     async def execute_async(self, language: str) -> int:
         analysis_result = await self.analyze_file(language)

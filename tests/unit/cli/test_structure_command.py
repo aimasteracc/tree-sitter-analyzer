@@ -116,8 +116,66 @@ class TestStructureCommandExecuteAsync:
                 analysis_time=0.1,
             )
             with patch.object(command, "_output_structure_analysis") as mock_output:
-                await command.execute_async("python")
+                _ = await command.execute_async("python")
                 mock_output.assert_called_once()
+
+    def test_execute_outputs_json_error_when_file_missing(
+        self,
+        tmp_path,
+    ):
+        """Missing file path with --output-format json emits failure envelope."""
+        missing = tmp_path / "missing.ts"
+        args = Namespace(
+            file_path=str(missing),
+            output_format="json",
+            project_root=str(tmp_path),
+            output_format_explicit=True,
+            language=None,
+            structure=True,
+        )
+        command = StructureCommand(args)
+
+        with patch(
+            "tree_sitter_analyzer.cli.commands.base_command.output_json"
+        ) as mock_output_json:
+            rc = command.execute()
+
+        assert rc == 1
+        envelope = mock_output_json.call_args.args[0]
+        assert envelope["success"] is False
+        assert envelope["error_type"] == "validation"
+        assert "file not found" in envelope["error"].lower()
+
+    def test_execute_outputs_json_error_when_analysis_fails(
+        self,
+        tmp_path,
+    ):
+        """Analysis engine failure with --output-format json emits failure envelope."""
+        target = tmp_path / "broken.ts"
+        target.write_text("class A {}")
+        args = Namespace(
+            file_path=str(target),
+            output_format="json",
+            project_root=str(tmp_path),
+            output_format_explicit=True,
+            language="typescript",
+            structure=True,
+        )
+        command = StructureCommand(args)
+        command.analysis_engine.analyze = AsyncMock(
+            return_value=MagicMock(success=False, error_message="boom")
+        )
+
+        with patch(
+            "tree_sitter_analyzer.cli.commands.base_command.output_json"
+        ) as mock_output_json:
+            rc = command.execute()
+
+        assert rc == 1
+        envelope = mock_output_json.call_args.args[0]
+        assert envelope["success"] is False
+        assert envelope["error_type"] == "runtime"
+        assert "analysis failed: boom" in envelope["error"].lower()
 
 
 class TestStructureCommandConvertToLegacyFormat:

@@ -256,11 +256,18 @@ class TestCacheKeyGeneration:
         assert "root1" in key or "root2" in key
 
     def test_create_cache_key_normalizes_query(self):
-        """Test that cache key normalizes query."""
+        """Test that cache key normalizes query whitespace."""
         cache = SearchCache()
-        key1 = cache.create_cache_key("  TEST QUERY  ", ["root"])
+        key1 = cache.create_cache_key("  test query  ", ["root"])
         key2 = cache.create_cache_key("test query", ["root"])
         assert key1 == key2
+
+    def test_create_cache_key_preserves_case(self):
+        """Case-sensitive queries must produce different cache keys."""
+        cache = SearchCache()
+        key1 = cache.create_cache_key("BoundaryManager", ["root"])
+        key2 = cache.create_cache_key("boundarymanager", ["root"])
+        assert key1 != key2
 
     def test_create_cache_key_normalizes_roots(self):
         """Test that cache key normalizes and sorts roots."""

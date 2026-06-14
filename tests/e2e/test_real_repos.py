@@ -65,11 +65,13 @@ def _find_python_file(repo_dir: Path) -> str:
 
 
 # ---------------------------------------------------------------------------
-# check_project_health against real repos
+# health(action=project) against real repos
 # ---------------------------------------------------------------------------
 
 
-class TestCheckProjectHealthRealRepos:
+class TestProjectHealthRealRepos:
+    """Project health via `health` facade with action `project`."""
+
     @pytest.mark.parametrize("url,name", REAL_REPOS)
     def test_project_health_returns_result(
         self,
@@ -78,17 +80,17 @@ class TestCheckProjectHealthRealRepos:
         clone_repo_factory: Callable[[str, str], Path],
         mcp_server_factory: Callable[..., MCPClient],
     ) -> None:
-        """check_project_health must not crash on a real Python project."""
+        """health(action=project) must not crash on a real Python project."""
         repo_dir = clone_repo_factory(url, name)
         client = mcp_server_factory(repo_dir)
         initialized(client)
-        response = client.call("check_project_health", {}, timeout=30.0)
+        response = client.call("health", {"action": "project"}, timeout=30.0)
         assert "error" not in response, (
-            f"check_project_health crashed on {name}: {response.get('error')}\n"
+            f"health(action=project) crashed on {name}: {response.get('error')}\n"
             f"stderr:\n{client.stderr_text()}"
         )
         content = response["result"]["content"]
-        assert content, f"check_project_health returned empty content for {name}"
+        assert content, f"health(action=project) returned empty content for {name}"
 
     @pytest.mark.parametrize("url,name", REAL_REPOS)
     def test_project_health_returns_grade(
@@ -98,17 +100,17 @@ class TestCheckProjectHealthRealRepos:
         clone_repo_factory: Callable[[str, str], Path],
         mcp_server_factory: Callable[..., MCPClient],
     ) -> None:
-        """check_project_health must return a letter grade for real repos."""
+        """health(action=project) must return a letter grade for real repos."""
         repo_dir = clone_repo_factory(url, name)
         client = mcp_server_factory(repo_dir)
         initialized(client)
-        response = client.call("check_project_health", {}, timeout=30.0)
+        response = client.call("health", {"action": "project"}, timeout=30.0)
         assert "error" not in response, response.get("error")
         content = response["result"]["content"]
         text = content[0]["text"] if isinstance(content, list) else str(content)
         has_grade = any(g in text for g in ["A", "B", "C", "D", "F"])
         assert has_grade, (
-            f"check_project_health for {name} has no letter grade:\n{text[:500]}"
+            f"health(action=project) for {name} has no letter grade:\n{text[:500]}"
         )
 
     @pytest.mark.parametrize("url,name", REAL_REPOS)
@@ -119,17 +121,17 @@ class TestCheckProjectHealthRealRepos:
         clone_repo_factory: Callable[[str, str], Path],
         mcp_server_factory: Callable[..., MCPClient],
     ) -> None:
-        """check_project_health must finish in 30s even on real repos."""
+        """health(action=project) must finish in 30s even on real repos."""
         import time
 
         repo_dir = clone_repo_factory(url, name)
         client = mcp_server_factory(repo_dir)
         initialized(client)
         t0 = time.monotonic()
-        response = client.call("check_project_health", {}, timeout=35.0)
+        response = client.call("health", {"action": "project"}, timeout=35.0)
         elapsed = time.monotonic() - t0
         assert elapsed < 30.0, (
-            f"check_project_health on {name} took {elapsed:.1f}s — over the 30s budget.\n"
+            f"health(action=project) on {name} took {elapsed:.1f}s — over the 30s budget.\n"
             f"stderr:\n{client.stderr_text()}"
         )
         assert "error" not in response, response.get("error")
@@ -244,11 +246,11 @@ class TestCrossProjectDiversity:
         repo_dir = clone_repo_factory(url, name)
         client = mcp_server_factory(repo_dir)
         initialized(client)
-        response = client.call("check_project_health", {}, timeout=30.0)
+        response = client.call("health", {"action": "project"}, timeout=30.0)
         assert "error" not in response, response.get("error")
         content = response["result"]["content"]
         text = content[0]["text"] if isinstance(content, list) else str(content)
         numbers = [int(n) for n in re.findall(r"\b(\d+)\b", text)]
         assert any(n > 0 for n in numbers), (
-            f"check_project_health for {name} contains no positive numbers:\n{text[:500]}"
+            f"health(action=project) for {name} contains no positive numbers:\n{text[:500]}"
         )

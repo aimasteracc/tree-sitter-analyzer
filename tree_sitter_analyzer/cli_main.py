@@ -190,8 +190,9 @@ def main() -> None:
     """Main entry point for the CLI."""
     _set_cli_log_environment()
     parser = create_argument_parser()
-    args = parser.parse_args(_normalize_agent_command_aliases(sys.argv[1:]))
-    _apply_format_alias(args)
+    argv = _normalize_agent_command_aliases(sys.argv[1:])
+    args = parser.parse_args(argv)
+    _apply_format_alias(args, argv)
     _configure_logging(args)
 
     special_result = handle_special_commands(args)
@@ -226,10 +227,17 @@ def _normalize_file_scoped_alias(command: str, rest: list[str]) -> list[str]:
     return [rest[0], flag, *rest[1:]]
 
 
-def _apply_format_alias(args: argparse.Namespace) -> None:
+def _apply_format_alias(
+    args: argparse.Namespace, argv: list[str] | None = None
+) -> None:
     """Mirror --format into --output-format after parsing."""
     if hasattr(args, "format") and args.format:
         args.output_format = args.format
+
+    normalized_argv = argv or []
+    args.output_format_explicit = bool(
+        "--output-format" in normalized_argv or "--format" in normalized_argv
+    )
 
 
 def _configure_logging(args: argparse.Namespace) -> None:

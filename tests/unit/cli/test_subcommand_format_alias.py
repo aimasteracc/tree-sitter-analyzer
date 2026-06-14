@@ -211,6 +211,7 @@ class TestSearchContentSubprocessAlias:
         payload = _parse_first_json(result.stdout)
         assert payload.get("success") is True
 
+    @pytest.mark.slow_ok  # subprocess startup + tree-sitter warm-up ~4-5s on CI
     def test_format_and_output_format_match(self, fixture_root: Path) -> None:
         common = [
             _module_for("search-content"),
@@ -254,6 +255,7 @@ class TestFindAndGrepSubprocessAlias:
         payload = _parse_first_json(result.stdout)
         assert payload.get("success") is True
 
+    @pytest.mark.slow_ok  # subprocess startup + index cold-load can exceed 5s budget
     def test_format_and_output_format_match(self, fixture_root: Path) -> None:
         common = [
             _module_for("find-and-grep"),

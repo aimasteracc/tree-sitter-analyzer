@@ -87,8 +87,6 @@ STDLIB_BARE_FUNCTIONS_KOTLIN: frozenset[str] = frozenset(
         "check",
         "checkNotNull",
         "error",
-        # number/range helpers projects essentially never re-define bare
-        "TODO",
     }
 )
 

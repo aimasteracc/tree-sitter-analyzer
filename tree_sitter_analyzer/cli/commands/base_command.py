@@ -9,13 +9,14 @@ import asyncio
 import json
 from abc import ABC, abstractmethod
 from argparse import Namespace
-from typing import Optional
+from collections.abc import Mapping
+from typing import Any, Optional
 
 from ...core.analysis_engine import AnalysisRequest, get_analysis_engine
 from ...file_handler import read_file_partial
 from ...language_detector import detect_language_from_file, is_language_supported
 from ...models import AnalysisResult
-from ...output_manager import output_error, output_info
+from ...output_manager import output_error, output_info, output_json
 from ...project_detector import detect_project_root
 from ...security import SecurityValidator
 
@@ -40,11 +41,79 @@ class BaseCommand(ABC):
         # Initialize components with project root
         self.analysis_engine = get_analysis_engine(self.project_root)
         self.security_validator = SecurityValidator(self.project_root)
+        self._json_error_envelope_enabled = False
+
+    @staticmethod
+    def _classify_error_type(exc: BaseException) -> str:
+        """Classify CLI failures into a stable machine-readable error_type."""
+        return (
+            "validation"
+            if isinstance(exc, (ValueError, TypeError, KeyError))
+            else "runtime"
+        )
+
+    def _emit_error_envelope(
+        self,
+        *,
+        flag_name: str,
+        message: str,
+        error_type: str,
+        verdict: str = "ERROR",
+        echo_fields: Mapping[str, Any] | None = None,
+    ) -> None:
+        """Emit a canonical CLI error envelope for machine-readable flows."""
+        if not self._should_emit_json_error_envelope():
+            output_error(message)
+            return
+
+        summary_line = f"{flag_name}: {message}"
+        envelope: dict[str, Any] = {
+            "success": False,
+            "error_type": error_type,
+            "error": message,
+            "summary_line": summary_line,
+            "verdict": verdict,
+            "agent_summary": {
+                "summary_line": summary_line,
+                "next_step": "Fix the input and retry.",
+                "verdict": verdict,
+            },
+        }
+        if echo_fields:
+            for key, value in echo_fields.items():
+                envelope[key] = value
+
+        output_format = getattr(self.args, "output_format", "json")
+        if output_format == "json":
+            output_json(envelope)
+            return
+
+        output_error(message)
+
+    def _should_emit_json_error_envelope(self) -> bool:
+        """
+        Determine whether failures should go to JSON envelope.
+
+        Only commands opting in (currently --advanced and --structure) should
+        emit JSON envelopes, and only when the user explicitly requested JSON
+        output. This preserves the existing text-mode failure behavior for
+        default CLI invocations while restoring machine-readable error output
+        for the issue-triggering commands.
+        """
+        return (
+            getattr(self, "_json_error_envelope_enabled", False)
+            and bool(getattr(self.args, "output_format_explicit", False))
+            and getattr(self.args, "output_format", "json") == "json"
+        )
 
     def validate_file(self) -> bool:
         """Validate input file exists and is accessible."""
         if not hasattr(self.args, "file_path") or not self.args.file_path:
-            output_error("File path not specified.")
+            self._emit_error_envelope(
+                flag_name="validation",
+                message="File path not specified.",
+                error_type="validation",
+            )
             return False
 
         # Security validation
@@ -52,15 +121,27 @@ class BaseCommand(ABC):
             self.args.file_path
         )
         if not is_valid:
-            output_error(f"Invalid file path: {error_msg}")
-            output_info("Use --project-root to set the project root directory.")
+            self._emit_error_envelope(
+                flag_name="file_validation",
+                message=f"Invalid file path: {error_msg}",
+                error_type="validation",
+                echo_fields={"file_path": self.args.file_path},
+            )
+            if not self._should_emit_json_error_envelope():
+                output_info("Use --project-root to set the project root directory.")
             return False
 
         from pathlib import Path
 
         if not Path(self.args.file_path).exists():
-            output_error(f"File not found: {self.args.file_path}")
-            output_info("Check the file path and try again.")
+            self._emit_error_envelope(
+                flag_name="file_validation",
+                message=f"File not found: {self.args.file_path}",
+                error_type="validation",
+                echo_fields={"file_path": self.args.file_path},
+            )
+            if not self._should_emit_json_error_envelope():
+                output_info("Check the file path and try again.")
             return False
 
         return True
@@ -173,6 +254,11 @@ class BaseCommand(ABC):
         """
         try:
             if not self._try_partial_read_precheck():
+                self._emit_error_envelope(
+                    flag_name="partial_read",
+                    message="Failed partial-read precheck.",
+                    error_type="validation",
+                )
                 return None
 
             request = AnalysisRequest(
@@ -189,13 +275,21 @@ class BaseCommand(ABC):
                     if analysis_result
                     else "Unknown error"
                 )
-                output_error(f"Analysis failed: {error_msg}")
+                self._emit_error_envelope(
+                    flag_name="analysis",
+                    message=f"Analysis failed: {error_msg}",
+                    error_type="runtime",
+                )
                 return None
 
             return analysis_result  # type: ignore[no-any-return]
 
         except Exception as e:
-            output_error(f"An error occurred during analysis: {e}")
+            self._emit_error_envelope(
+                flag_name="analysis",
+                message=f"An error occurred during analysis: {e}",
+                error_type=self._classify_error_type(e),
+            )
             return None
 
     def _try_partial_read_precheck(self) -> bool:
@@ -223,10 +317,18 @@ class BaseCommand(ABC):
                 end_column=getattr(self.args, "end_column", None),
             )
         except Exception as e:
-            output_error(f"Failed to read file partially: {e}")
+            self._emit_error_envelope(
+                flag_name="partial_read",
+                message=f"Failed to read file partially: {e}",
+                error_type=self._classify_error_type(e),
+            )
             return False
         if partial_content is None:
-            output_error("Failed to read file partially")
+            self._emit_error_envelope(
+                flag_name="partial_read",
+                message="Failed to read file partially",
+                error_type="validation",
+            )
             return False
         return True
 
@@ -250,7 +352,11 @@ class BaseCommand(ABC):
         try:
             return asyncio.run(self.execute_async(language))
         except Exception as e:
-            output_error(f"An error occurred during command execution: {e}")
+            self._emit_error_envelope(
+                flag_name="command_execution",
+                message=f"An error occurred during command execution: {e}",
+                error_type=self._classify_error_type(e),
+            )
             return 1
 
     @abstractmethod

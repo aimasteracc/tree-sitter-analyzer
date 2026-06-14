@@ -1,8 +1,12 @@
 """Unit tests for mcp/tools/utils/change_impact_response — response assembly."""
 
 from tree_sitter_analyzer.mcp.tools.utils.change_impact_response import (
+    CHANGE_IMPACT_VERDICT_CLEAN,
+    CHANGE_IMPACT_VERDICT_REVIEW,
+    CHANGE_IMPACT_VERDICT_WARN,
     AgentSummaryContext,
     ChangeImpactResponseContext,
+    apply_scope_validation,
     attach_queue_ledger,
     build_agent_summary,
     build_agent_summary_only_response,
@@ -231,6 +235,49 @@ class TestBuildAgentSummaryOnlyResponse:
         assert "changed_preview" not in response
         assert "impact_level" not in response
 
+    def test_agent_summary_only_includes_scope_paths_invalid_and_summary_line(self):
+        result = {
+            "success": True,
+            "mode": "diff",
+            "scope_paths": ["src/"],
+            "scope_filtered": True,
+            "agent_summary": {
+                "risk": "low",
+                "summary_line": "change_impact changed=1 risk=low",
+            },
+            "risk_level": "low",
+            "changed_count": 1,
+            "verification_command": "pytest",
+            "scope_paths_invalid": ["missing/"],
+        }
+
+        response = build_agent_summary_only_response(result)
+
+        assert response["scope_paths_invalid"] == ["missing/"]
+        assert response["summary_line"] == "change_impact changed=1 risk=low"
+        assert response["verdict"] == "INFO"
+
+    def test_agent_summary_only_forwards_empty_scope_paths_invalid(self):
+        result = {
+            "success": True,
+            "mode": "diff",
+            "scope_paths": ["src/"],
+            "scope_filtered": True,
+            "agent_summary": {
+                "risk": "low",
+                "summary_line": "change_impact changed=0 risk=low",
+            },
+            "risk_level": "low",
+            "scope_paths_invalid": [],
+            "summary_line": "change_impact changed=0 risk=low",
+            "changed_count": 0,
+            "verification_command": "pytest",
+        }
+
+        response = build_agent_summary_only_response(result)
+
+        assert response["scope_paths_invalid"] == []
+
 
 class TestAttachQueueLedger:
     """Tests for attach_queue_ledger."""
@@ -393,3 +440,81 @@ class TestBuildChangeImpactResponse:
         )
         response = build_change_impact_response(ctx)
         assert response["affected_files"] == []
+
+
+class TestScopeValidation:
+    """Tests for apply_scope_validation response shaping."""
+
+    def test_scope_validation_with_invalid_paths_sets_warn_verdicts(self):
+        result = {
+            "success": True,
+            "agent_summary": {
+                "risk": "low",
+                "summary_line": "change_impact changed=2 risk=low",
+                "changed_count": 2,
+            },
+            "changed_count": 2,
+            "scope_paths": ["missing/"],
+            "verification_command": "pytest -q",
+        }
+
+        updated = apply_scope_validation(result, ["missing/src.py"])
+
+        assert updated["scope_paths_invalid"] == ["missing/src.py"]
+        assert updated["agent_summary"]["scope_paths_invalid"] == ["missing/src.py"]
+        assert updated["agent_summary"]["verdict"] == CHANGE_IMPACT_VERDICT_WARN
+        assert updated["verdict"] == CHANGE_IMPACT_VERDICT_WARN
+        assert "scope_invalid=1" in updated["summary_line"]
+        assert "scope_invalid=1" in updated["agent_summary"]["summary_line"]
+        assert "did you typo" in updated["agent_summary"]["next_step"]
+
+    def test_scope_validation_with_no_invalid_path_uses_review_for_pending_changes(
+        self,
+    ):
+        result = {
+            "success": True,
+            "agent_summary": {
+                "risk": "low",
+                "changed_count": 3,
+            },
+            "changed_count": 3,
+            "verification_command": "pytest -q",
+        }
+
+        updated = apply_scope_validation(result, [])
+
+        assert updated["agent_summary"]["verdict"] == CHANGE_IMPACT_VERDICT_REVIEW
+        assert updated["verdict"] == CHANGE_IMPACT_VERDICT_REVIEW
+
+    def test_scope_validation_with_no_invalid_path_keeps_safe_when_no_changes(self):
+        result = {
+            "success": True,
+            "agent_summary": {
+                "risk": "low",
+                "changed_count": 0,
+            },
+            "changed_count": 0,
+            "verification_command": "pytest -q",
+        }
+
+        updated = apply_scope_validation(result, [])
+
+        assert updated["agent_summary"]["verdict"] == CHANGE_IMPACT_VERDICT_CLEAN
+        assert updated["verdict"] == CHANGE_IMPACT_VERDICT_CLEAN
+
+    def test_scope_validation_respects_existing_verdict(self):
+        result = {
+            "success": True,
+            "agent_summary": {
+                "risk": "low",
+                "changed_count": 3,
+                "verdict": CHANGE_IMPACT_VERDICT_CLEAN,
+            },
+            "changed_count": 3,
+            "verification_command": "pytest -q",
+        }
+
+        updated = apply_scope_validation(result, [])
+
+        assert updated["agent_summary"]["verdict"] == CHANGE_IMPACT_VERDICT_CLEAN
+        assert updated["verdict"] == CHANGE_IMPACT_VERDICT_CLEAN

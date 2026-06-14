@@ -471,3 +471,87 @@ print(len(tools))
 ```
 
 **Test count** — read from the release CI log (`ubuntu-latest` axis), not from local `uv run pytest` (local skips differ from CI).
+
+## Agent Working Discipline — read-before-write contract
+
+**Origin:** handed off from a disciplined Codex session (2026-06-14). This is the
+authoritative copy. It supersedes any duplicate stored only in `.swarm/memory.db`
+under `tsa/agent-feedback` / `tsa/agent-discipline` — memory is per-directory and
+not auto-loaded, so the contract lives here in CLAUDE.md where every agent reads it.
+The single rule behind all of the below: **gate every change through
+`--change-impact` before you touch code, and let `test_agent_contracts.py` be the
+backstop — do not try to route around it.**
+
+### 0. Discovery — read before you write
+
+Before touching any file, read `AGENTS.md` (the contract), then this `CLAUDE.md`
+(locked design decisions), then only the codemap matching the area you're changing
+from `docs/CODEMAPS/`. Never load the full source tree blindly.
+
+### 1. Change-impact feedback loop (mandatory)
+
+BEFORE edits run `uv run python -m tree_sitter_analyzer --change-impact --format json`.
+AFTER edits, rerun it and run the `verification_command` it reports. For Python
+source changes, additionally run focused `--cov` tests plus
+`uv run python scripts/check_patch_coverage.py --base origin/develop --coverage-json coverage.json`
+— no added executable lines may be left uncovered. If `change-impact` reports
+`test_required=false`, run the reported verification (e.g. `git diff --check`)
+instead of the suite.
+
+### 2. Test-runtime contract
+
+Full suite is `uv run pytest -q` (xdist auto-enabled, must finish under 5 min).
+Never run the full suite serially. Never remove or weaken `--numprocesses=auto`,
+`--maxfail=200`, `--session-timeout=600`, or `--timeout=180`. Benchmark-only runs:
+`uv run pytest tests/benchmarks/ --benchmark-enable --benchmark-only -n 0 --session-timeout=0`.
+
+### 3. GitFlow branching (hard requirement)
+
+Never push to `main` or `develop` directly — open a PR from a properly-named
+branch. `feature/<name>` branches from develop and PRs to develop. `hotfix/<name>`
+branches from main and PRs to main **and** back to develop, and is reserved ONLY
+for same-day production-breaking patches. Generic bug fixes use `fix/<name>` from
+develop, not `hotfix/`. Releases use `release/v<X.Y.Z>` from develop. Never
+force-push or delete `main`, `develop`, or `v*` tags.
+
+### 4. Codemap-sync mandate
+
+If you touch a registry file, update its codemap in the same commit:
+`mcp/_tool_registry.py` → `docs/CODEMAPS/mcp-tools.md`;
+`cli/argument_parser_builder.py` → `docs/CODEMAPS/cli.md`;
+`languages/<lang>_plugin/*` → `docs/CODEMAPS/languages.md`;
+`formatters/*` → `docs/CODEMAPS/formatters.md`.
+
+### 5. Anti-patterns — do NOT violate
+
+No untracked `pytest.skip` — the reason must carry a `#123` / `GH-123` /
+`tracked:...` reference. YAML / Actions changes must pass `actionlint`, and never
+`--no-verify`. `shell: powershell` blocks must be ASCII-only — use `pwsh` for
+Unicode. tree-sitter grammar snapshots are committed from Linux CI only, never
+from local macOS. Python floor is `>=3.10`: no `tomllib`, `datetime.UTC`,
+`typing.Self`, or 3.11+ match-exhaustiveness assumptions. `develop` must not rot
+behind `main` — check `git log --oneline develop..main` before merge-back.
+Release-prep PRs over 30 commits use rebase-merge, not squash. Never lower the
+`--maxfail` or `--session-timeout` floors.
+
+### 6. MCP/CLI parity
+
+Every MCP tool must have a CLI path. When adding or changing an MCP tool, update
+the CLI in the same change and smoke-test:
+`uv run python -m tree_sitter_analyzer <file> --smart-context --format json`.
+
+### 7. Memory capture
+
+After non-trivial work, store a concise JSON record (`branch`, `task`,
+`tools_used`, `signals`, `decision`, `verification`, `followups`) via the
+`memory_store` MCP if available, else the Claude Flow memory CLI
+(`--namespace tsa/agent-feedback`), else include the JSON in the final response
+so the lead can store it.
+
+### 8. Execution style
+
+Surgical edits only — no unrelated refactors. Follow existing patterns and local
+helper APIs. Add abstractions only when they remove real complexity or match an
+established pattern. Test coverage scales with blast radius: focused for narrow
+changes, broad for shared behavior. When unsure about scope, run `change-impact`
+first and let it tell you.

@@ -128,6 +128,23 @@ def test_reclaim_storage_uses_incremental_vacuum_when_enabled() -> None:
     assert "PRAGMA incremental_vacuum(8)" in conn.commands
 
 
+def test_reclaim_storage_runs_vacuum_for_other_auto_vacuum_modes() -> None:
+    conn = _FakeConn(free_pages=8, auto_vacuum=1)
+
+    result = reclaim_storage_after_full_rebuild(  # type: ignore[arg-type]
+        conn, "/missing/index.db", min_free_pages=5
+    )
+
+    assert result["action"] == "vacuum"
+    assert result["before"]["db_free_pages"] == 8
+    assert result["before"]["db_auto_vacuum_mode"] == 1
+    assert result["after"]["db_free_pages"] == 0
+    assert result["after"]["db_auto_vacuum_mode"] == 1
+    assert conn.commits == 2
+    assert "PRAGMA auto_vacuum=INCREMENTAL" not in conn.commands
+    assert "VACUUM" in conn.commands
+
+
 class _BrokenConn(_FakeConn):
     def execute(self, sql: str) -> _Cursor:
         if sql == "VACUUM":

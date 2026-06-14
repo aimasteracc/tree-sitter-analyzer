@@ -146,7 +146,9 @@ class TestFacadeWireContract:
         This test drives every public facade once over the actual stdio wire.
         """
         client = initialized(mcp_server)
-        response = client.call(facade_name, arguments, timeout=25.0)
+        # Full-suite xdist pressure can stretch normal MCP round-trips.
+        # Keep a wider timeout here so we catch true hangs, not scheduler noise.
+        response = client.call(facade_name, arguments, timeout=35.0)
         payload = _json_text_payload(response)
         _assert_agent_wire_envelope(payload, facade_name)
 
@@ -261,28 +263,32 @@ class TestCheckFileHealth:
 
 
 # ---------------------------------------------------------------------------
-# check_project_health
+# health(action=project)
 # ---------------------------------------------------------------------------
 
 
-class TestCheckProjectHealth:
+class TestProjectHealthFacade:
     def test_returns_summary_with_grade(self, mcp_server: MCPClient) -> None:
-        """check_project_health on the TSA repo must return a grade."""
+        """health(action=project) on the TSA repo must return a grade."""
         client = initialized(mcp_server)
-        response = client.call("check_project_health", {}, timeout=20.0)
+        response = client.call(
+            "health",
+            {"action": "project"},
+            timeout=20.0,
+        )
         assert "error" not in response, response.get("error")
         content = response["result"]["content"]
-        assert content, "check_project_health returned empty content"
+        assert content, "health(action=project) returned empty content"
         text = content[0]["text"] if isinstance(content, list) else str(content)
         has_grade = any(g in text for g in ["A", "B", "C", "D", "F"])
         assert has_grade, (
-            f"check_project_health response has no letter grade:\n{text[:500]}"
+            f"health(action=project) response has no letter grade:\n{text[:500]}"
         )
 
     def test_returns_file_count_greater_than_zero(self, mcp_server: MCPClient) -> None:
         """The TSA repo has many files; the summary must count more than zero."""
         client = initialized(mcp_server)
-        response = client.call("check_project_health", {}, timeout=20.0)
+        response = client.call("health", {"action": "project"}, timeout=20.0)
         assert "error" not in response, response.get("error")
         content = response["result"]["content"]
         text = content[0]["text"] if isinstance(content, list) else str(content)
@@ -292,7 +298,7 @@ class TestCheckProjectHealth:
         numbers = re.findall(r"\b(\d+)\b", text)
         ints = [int(n) for n in numbers]
         assert any(n > 0 for n in ints), (
-            f"check_project_health returned no positive numbers:\n{text[:500]}"
+            f"health(action=project) returned no positive numbers:\n{text[:500]}"
         )
 
 

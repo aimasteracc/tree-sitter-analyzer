@@ -391,6 +391,6 @@ async def test_rg_80_cache_key_stability(tmp_path):
     from tree_sitter_analyzer.mcp.utils.search_cache import get_default_cache
 
     cache = get_default_cache()
-    key1 = cache.create_cache_key("Query ", [str(tmp_path)], include_globs=["*.py"])
+    key1 = cache.create_cache_key("Query", [str(tmp_path)], include_globs=["*.py"])
     key2 = cache.create_cache_key("query", [str(tmp_path)], include_globs=["*.py"])
-    assert key1 == key2
+    assert key1 != key2

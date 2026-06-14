@@ -286,8 +286,9 @@ class SearchCache:
         Returns:
             Cache key string
         """
-        # Normalize query
-        normalized_query = query.strip().lower()
+        # Normalize query only for whitespace; preserve case because cache
+        # semantics must distinguish case-distinct queries.
+        normalized_query = query.strip()
 
         # Normalize roots - resolve paths and sort for consistency
         normalized_roots = []
