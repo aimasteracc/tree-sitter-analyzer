@@ -230,7 +230,9 @@ class SemanticClassifyTool(BaseMCPTool):
 
         classifier = SemanticChangeClassifier(file_path=file_path)
         classification = classifier.classify(diff_result)
-        class_dict = classification.to_dict()
+        # Always deserialize with children so _compact_classification can
+        # strip them (default) or keep them (include_ast_nodes=True).
+        class_dict = classification.to_dict(include_children=True)
 
         # Map risk_level to canonical verdict vocabulary (pain-01 tsa-landing
         # contract). NOT_FOUND when there are zero classifications (identical
