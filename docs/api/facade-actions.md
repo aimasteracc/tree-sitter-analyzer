@@ -80,7 +80,7 @@ Reading the tables:
 
 | Action | Params (required `*`) | Response keys (top-level) | CLI twin |
 | --- | --- | --- | --- |
-| `ast_diff` | `file_path`, `language`, `mode`, `new_file`, `new_ref`, `new_source`, `old_file`, `old_ref`, `old_source`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--ast-diff` |
+| `ast_diff` | `file_path`, `include_node_bodies`, `language`, `mode`, `new_file`, `new_ref`, `new_source`, `old_file`, `old_ref`, `old_source`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--ast-diff` |
 | `classify` | `file_path`, `hunk_cap`, `include_ast_nodes`, `language`, `mode`, `new_ref`, `new_source`, `old_ref`, `old_source`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--semantic-classify` |
 | `constraints` | `output_format`, `path_filter`, `severity_min` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--check-constraints` |
 | `guard` | `modification_type`*, `symbol`*, `file_path` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--modification-guard` |

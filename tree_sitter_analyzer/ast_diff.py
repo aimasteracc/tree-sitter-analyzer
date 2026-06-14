@@ -151,7 +151,9 @@ class ASTNodeInfo:
     text_preview: str
     children: list["ASTNodeInfo"] = field(default_factory=list)
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(
+        self, include_children: bool = False, with_child_count: bool = False
+    ) -> dict[str, Any]:
         d: dict[str, Any] = {
             "type": self.node_type,
             "kind": self.kind.value,
@@ -162,8 +164,18 @@ class ASTNodeInfo:
         }
         if self.text_preview:
             d["preview"] = self.text_preview
-        if self.children:
-            d["children"] = [c.to_dict() for c in self.children]
+        if include_children:
+            if self.children:
+                d["children"] = [
+                    c.to_dict(include_children=True, with_child_count=with_child_count)
+                    for c in self.children
+                ]
+        elif with_child_count:
+            # #552: child_count is an ast_diff compact-mode signal (how many
+            # children were omitted). Opt-in so it does not leak into other
+            # consumers of this shared serializer (e.g. semantic_classify,
+            # whose response byte budget is pinned by #543).
+            d["child_count"] = len(self.children)
         return d
 
 
@@ -176,16 +188,22 @@ class ASTDiffHunk:
     summary: str
     details: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(
+        self, include_children: bool = False, with_child_count: bool = False
+    ) -> dict[str, Any]:
         d: dict[str, Any] = {
             "kind": self.diff_kind.value,
             "node_kind": self.node_kind.value,
             "summary": self.summary,
         }
         if self.old_node:
-            d["old"] = self.old_node.to_dict()
+            d["old"] = self.old_node.to_dict(
+                include_children=include_children, with_child_count=with_child_count
+            )
         if self.new_node:
-            d["new"] = self.new_node.to_dict()
+            d["new"] = self.new_node.to_dict(
+                include_children=include_children, with_child_count=with_child_count
+            )
         if self.details:
             d["details"] = self.details
         return d
@@ -199,12 +217,19 @@ class ASTDiffResult:
     hunks: list[ASTDiffHunk] = field(default_factory=list)
     summary_stats: dict[str, int] = field(default_factory=dict)
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(
+        self, include_children: bool = False, with_child_count: bool = False
+    ) -> dict[str, Any]:
         return {
             "old_file": self.old_file,
             "new_file": self.new_file,
             "language": self.language,
-            "hunks": [h.to_dict() for h in self.hunks],
+            "hunks": [
+                h.to_dict(
+                    include_children=include_children, with_child_count=with_child_count
+                )
+                for h in self.hunks
+            ],
             "summary": self.summary_stats,
         }
 
