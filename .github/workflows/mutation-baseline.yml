@@ -1,0 +1,87 @@
+name: Mutation Baseline (RFC-0017 Phase 1)
+
+# Manual trigger or on a specific label push.
+# NON-BLOCKING: this job reports scores; it does not gate merges (phase 1).
+# Phase 2 (ratchet gate) is a separate PR.
+#
+# mutmut requires os.fork — Linux only; NOT on Windows.
+# Do NOT add this job to the cross-platform reusable test matrix.
+
+on:
+  workflow_dispatch:
+    inputs:
+      module:
+        description: 'Module to mutate (all = run all 5)'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - ast_diff
+          - semantic_change_classifier
+          - facade_tool
+          - query_symbol_search
+          - toon_encoder
+  pull_request:
+    types: [labeled]
+  schedule:
+    # Run weekly on develop; provides a freshness signal without blocking PRs.
+    - cron: '0 2 * * 1'
+
+jobs:
+  mutation-baseline:
+    name: Mutation score (${{ github.event.inputs.module || 'all' }})
+    # Linux only — mutmut uses os.fork which does not exist on Windows.
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'schedule' ||
+      (github.event_name == 'pull_request' && github.event.label.name == 'mutation-test')
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install dependencies (dev group includes mutmut)
+        run: uv sync --group dev
+
+      - name: Run mutation baseline (per-module script)
+        run: |
+          MODULE="${{ github.event.inputs.module || 'all' }}"
+          if [ "$MODULE" = "all" ]; then
+            for m in ast_diff semantic_change_classifier facade_tool query_symbol_search toon_encoder; do
+              echo "=== Mutating: $m ==="
+              uv run python scripts/run_mutation_baseline.py "$m" 2>&1 || true
+            done
+          else
+            uv run python scripts/run_mutation_baseline.py "$MODULE" 2>&1 || true
+          fi
+
+      - name: Upload mutation report as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-report-${{ github.run_id }}
+          path: |
+            mutants/
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Summarize results
+        if: always()
+        run: |
+          echo "### Mutation Baseline Results (RFC-0017 Phase 1)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "See \`tests/effectiveness/BASELINE.md\` for the curated baseline." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Per-run artifact: mutation-report-${{ github.run_id }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "> Phase 1 = measurement only (non-blocking). Phase 2 adds ratchet gate." >> $GITHUB_STEP_SUMMARY
