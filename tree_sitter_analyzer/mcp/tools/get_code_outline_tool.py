@@ -53,6 +53,26 @@ DEFAULT_OUTLINE_CLASSES_CAP: int = 50
 DEFAULT_OUTLINE_FUNCTIONS_CAP: int = 50
 
 
+def _outline_diagnostics_next_step(diagnostics: dict[str, Any]) -> str:
+    """Return the next action for parse/encoding diagnostic warnings."""
+    if diagnostics.get("parse_errors"):
+        return (
+            "Parse errors detected — outline symbols may be phantom "
+            "(wrong language for the file extension, or corrupt source). "
+            "Verify the file's language before trusting this outline."
+        )
+    warnings = diagnostics.get("encoding_warnings") or []
+    if "null_bytes" in warnings:
+        return (
+            "Raw NUL bytes detected — line spans may be unreliable. "
+            "Inspect or clean the source bytes before trusting this outline."
+        )
+    return (
+        "Non-UTF8 or replacement-decoded source detected — verify the file "
+        "encoding before trusting names and line spans from this outline."
+    )
+
+
 class GetCodeOutlineTool(BaseMCPTool):
     """
     MCP Tool: get_code_outline
@@ -332,6 +352,7 @@ class GetCodeOutlineTool(BaseMCPTool):
                 file_path, resolved["language"], outline, listed_cap=listed_cap
             )
             self._attach_outline_summary(result, file_path)
+            self._attach_input_diagnostics(result, resolved["resolved_path"])
             return apply_toon_format_to_response(result, output_format)
 
         except Exception as e:
@@ -582,6 +603,21 @@ class GetCodeOutlineTool(BaseMCPTool):
             "next_step": next_step,
             "verdict": "INFO",
         }
+
+    @staticmethod
+    def _attach_input_diagnostics(result: dict[str, Any], resolved_path: str) -> None:
+        """Attach parse/encoding warnings to a successful outline response."""
+        from .utils.parse_validity import file_input_diagnostics
+
+        diagnostics = file_input_diagnostics(resolved_path, result.get("language"))
+        if not diagnostics:
+            return
+        result.update(diagnostics)
+        result["verdict"] = "WARN"
+        agent_summary = result.get("agent_summary")
+        if isinstance(agent_summary, dict):
+            agent_summary["verdict"] = "WARN"
+            agent_summary["next_step"] = _outline_diagnostics_next_step(diagnostics)
 
     def get_tool_definition(self) -> dict[str, Any]:
         """返回 MCP tool 定义。"""
