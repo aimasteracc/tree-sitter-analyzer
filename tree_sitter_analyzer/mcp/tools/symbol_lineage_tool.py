@@ -505,13 +505,33 @@ class SymbolLineageTool(BaseMCPTool):
             # (WinError 32: index.db locked at tmp teardown otherwise).
             if cache is not None:
                 cache.close()
-        return {
+        # #692: freshness signal — compare source max mtime against index mtime.
+        # Prefer the already-computed dep-graph fingerprint (avoids a second
+        # tree walk); fall back to compute_graph_fingerprint if not available.
+        if self._dep_graph_fingerprint is not None:
+            source_max_mtime_ns = self._dep_graph_fingerprint.max_mtime_ns
+        else:
+            source_max_mtime_ns = compute_graph_fingerprint(
+                str(self.project_root)
+            ).max_mtime_ns
+        index_mtime_ns = self._index_signature()
+        # Treat index_mtime_ns == 0 as stale (hierarchy was built from an
+        # in-memory cache; we can't verify freshness without a real index file).
+        stale = source_max_mtime_ns > index_mtime_ns or index_mtime_ns == 0
+        hier: dict[str, Any] = {
             "subclasses": subs[:_HIER_LIMIT],
             "subclass_count": len(subs),
             "subclasses_truncated": len(subs) > _HIER_LIMIT,
             "superclasses": supers,
             "superclass_count": len(supers),
+            "index_stale": stale,
         }
+        if stale:
+            hier["index_hint"] = (
+                "Source changed since last index; run project_index/index"
+                " action=auto to refresh inheritance."
+            )
+        return hier
 
     @staticmethod
     def _assemble_lineage_response(
