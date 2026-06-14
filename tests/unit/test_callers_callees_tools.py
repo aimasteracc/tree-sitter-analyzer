@@ -513,3 +513,52 @@ class TestEmptyIndexHint:
             f"--full-index hint must NOT appear when index has edges; "
             f"got: {next_step!r}"
         )
+
+    @pytest.mark.asyncio
+    async def test_callers_built_index_zero_edges_no_hint(self, tmp_path) -> None:
+        """#705 follow-up: index IS built (total_files > 0) but the project has
+        no call edges (e.g. a single ``def solo(): return 1``).  NOT_FOUND must
+        NOT carry a --full-index hint — the user already indexed; they just have
+        a project with no calls."""
+        from tree_sitter_analyzer.ast_cache import ASTCache
+
+        (tmp_path / "solo.py").write_text(
+            "def solo():\n    return 1\n", encoding="utf-8"
+        )
+        cache = ASTCache(str(tmp_path))
+        cache.index_project()
+        assert cache.get_stats()["total_files"] == 1
+        assert not cache.has_call_edges()
+        cache.close()
+
+        tool = CodeGraphCallersTool(str(tmp_path))
+        result = await tool.execute({"function_name": "solo", "output_format": "json"})
+        assert result["verdict"] == "NOT_FOUND"
+        next_step = result.get("next_step", "")
+        assert "--full-index" not in next_step, (
+            f"--full-index hint must NOT appear when the index is built "
+            f"(zero-edge project); got: {next_step!r}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_callees_built_index_zero_edges_no_hint(self, tmp_path) -> None:
+        """#705 follow-up: same zero-edge scenario for callees."""
+        from tree_sitter_analyzer.ast_cache import ASTCache
+
+        (tmp_path / "solo.py").write_text(
+            "def solo():\n    return 1\n", encoding="utf-8"
+        )
+        cache = ASTCache(str(tmp_path))
+        cache.index_project()
+        assert cache.get_stats()["total_files"] == 1
+        assert not cache.has_call_edges()
+        cache.close()
+
+        tool = CodeGraphCalleesTool(str(tmp_path))
+        result = await tool.execute({"function_name": "solo", "output_format": "json"})
+        assert result["verdict"] == "NOT_FOUND"
+        next_step = result.get("next_step", "")
+        assert "--full-index" not in next_step, (
+            f"--full-index hint must NOT appear when the index is built "
+            f"(zero-edge project); got: {next_step!r}"
+        )
