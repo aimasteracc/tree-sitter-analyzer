@@ -150,9 +150,9 @@ class Variable(CodeElement):
     is_final: bool = False
     is_readonly: bool = False  # PHP 8.1+ readonly property
     field_type: str | None = None  # Alias for variable_type
-    # Owning class/module for class-level fields (#535) — mirrors
+    # Owning struct/class for class-level fields (#794) — mirrors
     # Function.receiver_type; names stay bare, the owner travels here.
-    receiver_type: str | None = None
+    receiver_type: str | None = None  # Go struct field owner
 
 
 @dataclass(frozen=False)

@@ -31,9 +31,6 @@ from .go_helpers import (
     extract_go_function as _extract_func_standalone,
 )
 from .go_helpers import (
-    extract_go_interface_methods as _extract_iface_methods_standalone,
-)
-from .go_helpers import (
     extract_go_method as _extract_method_standalone,
 )
 from .go_helpers import (
@@ -50,6 +47,9 @@ from .go_helpers import (
 )
 from .go_helpers import (
     extract_return_type as _extract_return_type_standalone,
+)
+from .go_helpers import (
+    extract_struct_fields as _extract_struct_fields_standalone,
 )
 from .go_helpers import (
     extract_var_spec as _extract_var_spec_standalone,
@@ -84,10 +84,6 @@ class GoElementExtractor(ElementExtractor):
         extractors = {
             "function_declaration": self._extract_function,
             "method_declaration": self._extract_method,
-            # Interface method signatures (method_elem) — owned by their
-            # interface via receiver_type (#588).
-            "type_spec": self._extract_interface_methods,
-            "type_alias": self._extract_interface_methods,
         }
 
         self._traverse_and_extract(tree.root_node, extractors, functions)
@@ -123,11 +119,12 @@ class GoElementExtractor(ElementExtractor):
         extractors = {
             "const_declaration": self._extract_const_declaration,
             "var_declaration": self._extract_var_declaration,
+            "type_declaration": self._extract_struct_fields,
         }
 
         self._traverse_and_extract(tree.root_node, extractors, variables)
 
-        log_debug(f"Extracted {len(variables)} Go const/var declarations")
+        log_debug(f"Extracted {len(variables)} Go const/var/field declarations")
         return variables
 
     # Extract elements from AST: extract_imports
@@ -238,13 +235,6 @@ class GoElementExtractor(ElementExtractor):
         """Extract method declaration (function with receiver)"""
         return _extract_method_standalone(node, self._get_node_text, self.content_lines)
 
-    # Extract elements from AST: _extract_interface_methods
-    def _extract_interface_methods(self, node: tree_sitter.Node) -> list[Function]:
-        """Extract interface method signatures owned by the interface (#588)"""
-        return _extract_iface_methods_standalone(
-            node, self._get_node_text, self.content_lines
-        )
-
     # Extract elements from AST: _extract_parameters
     def _extract_parameters(self, node: tree_sitter.Node) -> list[str]:
         """Extract function/method parameters"""
@@ -302,6 +292,11 @@ class GoElementExtractor(ElementExtractor):
     ) -> list[Variable]:
         """Extract single var/const spec"""
         return _extract_var_spec_standalone(node, is_const, self._get_node_text)
+
+    # Extract elements from AST: _extract_struct_fields
+    def _extract_struct_fields(self, node: tree_sitter.Node) -> list[Variable]:
+        """Extract struct field declarations from a type_declaration node."""
+        return _extract_struct_fields_standalone(node, self._get_node_text)
 
     # Extract elements from AST: _extract_goroutine
     def _extract_goroutine(self, node: tree_sitter.Node) -> None:
