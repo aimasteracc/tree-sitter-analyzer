@@ -273,3 +273,25 @@ class TestFilePathScoping:
         # The two responses must NOT be identical (the #693 trap).
         assert scoped["gap_count"] != whole["gap_count"]
         assert all("alpha.py" in g["file"] for g in scoped["gaps"])
+
+    def test_target_file_found_beyond_max_files_walk_order(self, tmp_path):
+        """Codex #713 P2: a scoped target later than max_files in walk order must
+        still be found. Filtering after the cap returned 0 symbols; pushing the
+        filter into the walk fixes it."""
+        pkg = tmp_path / "pkg"
+        pkg.mkdir()
+        (pkg / "__init__.py").write_text("")
+        # 20 production files that sort BEFORE the target alphabetically.
+        for i in range(20):
+            (pkg / f"a_mod{i:02d}.py").write_text(f"def fn{i}():\n    pass\n")
+        # The target sorts last and has 2 symbols.
+        (pkg / "zzz_target.py").write_text(
+            "def t_one():\n    pass\n\ndef t_two():\n    pass\n"
+        )
+        # max_files=5 would exhaust the production budget on a_mod00..04 before
+        # ever reaching zzz_target.py — the old post-cap filter returned 0.
+        scoped = analyze_coverage_gaps(
+            str(tmp_path), max_files=5, target_file="zzz_target.py"
+        )
+        assert scoped.total_production_symbols == 2
+        assert scoped.summary["production_files"] == 1

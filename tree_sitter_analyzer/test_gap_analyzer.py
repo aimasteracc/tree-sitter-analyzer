@@ -269,6 +269,7 @@ def _collect_files(
     project_root: str,
     language_filter: str | None = None,
     max_files: int = 1000,
+    target_file: str | None = None,
 ) -> list[tuple[str, str, bool]]:
     """Collect source files under *project_root*.
 
@@ -284,6 +285,13 @@ def _collect_files(
     files cannot exhaust the budget and prevent the main package from being
     scanned.  Test files are never capped — they are all collected regardless
     of count.
+
+    When *target_file* is given, production files whose path does NOT contain
+    it are skipped during the walk — BEFORE the ``max_files`` budget is
+    consumed — so a scoped request always finds its target regardless of the
+    file's walk-order position (Codex #713 P2: filtering after the cap would
+    silently return 0 symbols for a target later than ``max_files`` in the
+    walk). Test files stay unfiltered for naming-convention matching.
     """
     results: list[tuple[str, str, bool]] = []
     prod_count = 0
@@ -310,6 +318,11 @@ def _collect_files(
             # regardless of their individual filename.
             is_test = in_non_prod or _is_test_file(full)
             if not is_test:
+                # #713: a scoped request only wants production symbols from the
+                # target file — skip every other production file BEFORE the cap
+                # so walk order can't drop the target.
+                if target_file and target_file not in full:
+                    continue
                 # Production budget exhausted: keep walking so that test files
                 # appearing later in os.walk order (e.g. app/ before tests/)
                 # are still collected for naming-convention matching — an
@@ -775,19 +788,17 @@ def analyze_coverage_gaps(
         else {}
     )
 
-    all_files = _collect_files(project_root, language_filter, max_files)
+    # #693/#713: scope production analysis to a single file when requested. The
+    # filter is pushed INTO _collect_files so it runs during the walk, before
+    # the max_files cap (Codex #713 P2: a post-cap filter silently returned 0
+    # symbols for a target later than max_files in walk order). It still happens
+    # BEFORE complexity scoring, gap classification, and the max_gaps cap, so
+    # every reported number (total_production_symbols / coverage_pct /
+    # production_files / gaps) reflects just that file. Test files stay
+    # unfiltered so naming-convention coverage still matches the whole suite.
+    all_files = _collect_files(project_root, language_filter, max_files, target_file)
     prod_files = [(f, lang) for f, lang, t in all_files if not t]
     test_files = [(f, lang) for f, lang, t in all_files if t]
-
-    # #693: scope production analysis to a single file when requested, BEFORE
-    # complexity scoring, gap classification, and the max_gaps cap — so every
-    # reported number (total_production_symbols / coverage_pct / production_files
-    # / gaps) reflects just that file, not a project-wide figure with the
-    # requested path silently ignored. Substring match mirrors the tool's
-    # mode=file filter. Test files stay unfiltered so naming-convention coverage
-    # still matches across the whole suite.
-    if target_file:
-        prod_files = [(f, lang) for f, lang in prod_files if target_file in f]
 
     prod_symbols: list[ProductionSymbol] = []
     for fpath, lang in prod_files:
