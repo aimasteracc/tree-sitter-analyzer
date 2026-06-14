@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import shlex
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -43,6 +44,8 @@ logger = logging.getLogger(__name__)
 
 TESTS_TO_RUN_DISPLAY_LIMIT = 30
 FOCUSED_TEST_COMMAND_LIMIT = 20
+RESOURCE_PROFILE_DEFAULT = "default"
+RESOURCE_PROFILE_LOCAL_LOW_IMPACT = "local_low_impact"
 TEST_DIRS = {"tests/", "test/", "spec/", "__tests__/"}
 TEST_SUFFIXES = (
     "_test.py",
@@ -68,6 +71,7 @@ class ChangeImpactRequest:
     include_tests: bool
     scope_paths: list[str] | None = None
     agent_summary_only: bool = False
+    resource_profile: str = RESOURCE_PROFILE_DEFAULT
 
 
 def _find_test_files(
@@ -241,6 +245,7 @@ def _build_test_only_change_impact_result(
         changed_count=len(request.changed_files),
         tests_to_run=tests_to_run,
         verification=verification,
+        resource_profile=request.resource_profile,
     )
     agent_summary = build_agent_summary(
         AgentSummaryContext(
@@ -284,6 +289,7 @@ def _build_verification_strategy(
     changed_count: int,
     tests_to_run: list[str],
     verification: dict[str, Any],
+    resource_profile: str = RESOURCE_PROFILE_DEFAULT,
 ) -> dict[str, Any]:
     """Build an action-oriented verification strategy for agents."""
     default_command = DefaultTestCommand(
@@ -307,12 +313,95 @@ def _build_verification_strategy(
     )
     hint = _append_large_dirty_hint(hint, changed_count)
 
-    return {
+    strategy_payload = {
         "focused_test_command": focused_command,
         "verification_strategy": strategy,
         "verification_steps": steps,
         "verification_hint": hint,
     }
+    if resource_profile == RESOURCE_PROFILE_LOCAL_LOW_IMPACT:
+        return _with_local_low_impact_profile(
+            strategy_payload,
+            verification=verification,
+            focused_command=focused_command,
+            final_command=final_command,
+        )
+    return strategy_payload
+
+
+def _with_local_low_impact_profile(
+    strategy: dict[str, Any],
+    *,
+    verification: dict[str, Any],
+    focused_command: str,
+    final_command: str,
+) -> dict[str, Any]:
+    """Attach local low-impact pytest commands while preserving CI intent."""
+    if not verification["test_required"] or verification["test_runner"] != "pytest":
+        return strategy
+
+    local_source = focused_command or final_command
+    local_command = _low_impact_pytest_command(local_source)
+    label = (
+        "local_low_impact_focused_then_ci"
+        if focused_command and focused_command != final_command
+        else "local_low_impact_then_ci"
+    )
+    hint = (
+        "Run the low-impact local verification command while iterating; "
+        f"keep {final_command} as the CI or queue-boundary verification command."
+    )
+    return {
+        **strategy,
+        "resource_profile": RESOURCE_PROFILE_LOCAL_LOW_IMPACT,
+        "low_impact_focused_test_command": local_command if focused_command else "",
+        "local_verification_command": local_command,
+        "ci_verification_command": final_command,
+        "verification_strategy": label,
+        "verification_steps": [local_command],
+        "verification_hint": hint,
+    }
+
+
+def _low_impact_pytest_command(command: str) -> str:
+    """Rewrite a pytest command so it is friendlier to an interactive machine."""
+    try:
+        parts = shlex.split(command)
+    except ValueError:
+        return command
+
+    prefix: list[str]
+    rest: list[str]
+    if parts[:3] == ["uv", "run", "pytest"]:
+        prefix = parts[:3]
+        rest = parts[3:]
+    elif parts and parts[0].endswith("pytest"):
+        prefix = parts[:1]
+        rest = parts[1:]
+    else:
+        return command
+
+    normalized_rest = _drop_pytest_quiet_and_worker_flags(rest)
+    return shlex.join(["nice", "-n", "15", *prefix, *normalized_rest, "-n", "2", "-q"])
+
+
+def _drop_pytest_quiet_and_worker_flags(parts: list[str]) -> list[str]:
+    """Remove command-level pytest quiet/xdist flags before applying local caps."""
+    normalized: list[str] = []
+    skip_next = False
+    for part in parts:
+        if skip_next:
+            skip_next = False
+            continue
+        if part == "-q":
+            continue
+        if part in {"-n", "--numprocesses"}:
+            skip_next = True
+            continue
+        if part.startswith("-n=") or part.startswith("--numprocesses="):
+            continue
+        normalized.append(part)
+    return normalized
 
 
 def _select_verification_path(
@@ -561,6 +650,7 @@ def _build_change_impact_result(request: ChangeImpactRequest) -> dict[str, Any]:
         changed_count=len(request.changed_files),
         tests_to_run=all_tests,
         verification=verification,
+        resource_profile=request.resource_profile,
     )
     visible_tests = all_tests[:TESTS_TO_RUN_DISPLAY_LIMIT]
 

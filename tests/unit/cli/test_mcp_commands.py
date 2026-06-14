@@ -560,6 +560,34 @@ def test_change_impact_cli_forwards_scope_mode_strict(monkeypatch) -> None:
     assert seen["arguments"]["scope_paths"] == ["tree_sitter_analyzer/mcp/tools"]
 
 
+def test_change_impact_cli_forwards_resource_profile(monkeypatch) -> None:
+    """Local resource profile must reach the MCP change-impact tool."""
+    seen: dict[str, Any] = {}
+
+    class FakeChangeImpactTool:
+        def __init__(self, project_root: str | None = None) -> None:
+            seen["project_root"] = project_root
+
+        async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+            seen["arguments"] = arguments
+            return {"success": True, "changed_files": []}
+
+    monkeypatch.setattr(mcp_commands, "ChangeImpactTool", FakeChangeImpactTool)
+
+    result = mcp_commands.handle_mcp_commands(
+        _args(
+            change_impact=True,
+            change_impact_resource_profile="local_low_impact",
+        ),
+        lambda payload: None,
+        lambda error: None,
+        lambda: "json",
+    )
+
+    assert result == 0
+    assert seen["arguments"]["resource_profile"] == "local_low_impact"
+
+
 def test_change_impact_cli_forwards_agent_summary_only(monkeypatch) -> None:
     seen: dict[str, Any] = {}
 

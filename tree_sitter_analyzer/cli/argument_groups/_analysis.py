@@ -123,6 +123,16 @@ def _add_mcp_change_options(parser: argparse.ArgumentParser) -> None:
         ),
     )
     parser.add_argument(
+        "--change-impact-resource-profile",
+        default="default",
+        choices=["default", "local_low_impact"],
+        help=(
+            "Verification command resource profile: default preserves existing "
+            "commands; local_low_impact emits nice/xdist-capped local pytest "
+            "commands and keeps the original CI command separate"
+        ),
+    )
+    parser.add_argument(
         "--change-impact-no-tests",
         dest="change_impact_include_tests",
         action="store_false",

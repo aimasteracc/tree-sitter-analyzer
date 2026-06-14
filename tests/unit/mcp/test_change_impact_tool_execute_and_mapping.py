@@ -522,6 +522,18 @@ def test_validate_arguments_accepts_missing_mode():
     assert tool.validate_arguments({}) is True
 
 
+def test_validate_arguments_rejects_bad_resource_profile():
+    """Invalid resource_profile values should fail at the tool boundary."""
+    import pytest
+
+    tool = tool_module.ChangeImpactTool(project_root="/repo")
+    with pytest.raises(
+        ValueError,
+        match=r"resource_profile must be default\|local_low_impact",
+    ):
+        tool.validate_arguments({"resource_profile": "laptop_melter"})
+
+
 def test_execute_no_changes_returns_no_changes_result(monkeypatch):
     """execute should return no-changes result when nothing is dirty."""
     monkeypatch.setattr(
