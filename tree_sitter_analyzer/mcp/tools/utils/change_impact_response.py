@@ -51,6 +51,48 @@ CHANGE_IMPACT_VERDICT_CLEAN = "SAFE"
 CHANGE_IMPACT_VERDICT_REVIEW = "REVIEW"
 CHANGE_IMPACT_VERDICT_WARN = "WARN"
 
+# #782: the top-level ``verdict`` (risk-derived, possibly constraint-escalated)
+# and ``agent_summary["verdict"]`` (content-aware: SAFE/REVIEW/WARN) are computed
+# independently and could disagree (e.g. top=INFO while agent=REVIEW for a
+# changed_count>0 diff). ``mirror_summary_line`` only fills a *missing* verdict,
+# not a divergent one, so we reconcile them to the MORE SEVERE here. Kept in sync
+# with ``change_impact_tool._JOURNAL_VERDICT_RANK`` (duplicated to avoid a
+# circular import: that module imports this one).
+_VERDICT_SEVERITY: dict[str, int] = {
+    "SAFE": 0,
+    "INFO": 0,
+    "NOT_FOUND": 0,
+    "CAUTION": 1,
+    "REVIEW": 2,
+    "WARN": 3,
+    "ERROR": 4,
+    "UNSAFE": 5,
+}
+
+
+def _reconcile_envelope_verdict(
+    result: dict[str, Any], agent_summary: dict[str, Any]
+) -> None:
+    """Force top-level ``verdict`` and ``agent_summary["verdict"]`` to agree.
+
+    Picks the more severe of the two by :data:`_VERDICT_SEVERITY` (never a
+    downgrade — a constraint-escalated UNSAFE top-level survives, and a
+    content-aware REVIEW lifts a stale INFO top-level). Ties keep the top-level
+    value. No-ops when either side is missing — ``mirror_summary_line`` then
+    fills the gap as before.
+    """
+    top = result.get("verdict")
+    agent = agent_summary.get("verdict")
+    if not (isinstance(top, str) and top) or not (isinstance(agent, str) and agent):
+        return
+    final = (
+        agent
+        if _VERDICT_SEVERITY.get(agent, 0) > _VERDICT_SEVERITY.get(top, 0)
+        else top
+    )
+    result["verdict"] = final
+    agent_summary["verdict"] = final
+
 
 @dataclass(frozen=True)
 class AgentSummaryContext:
@@ -168,6 +210,11 @@ def build_agent_summary_only_response(result: dict[str, Any]) -> dict[str, Any]:
         value = result.get(key, summary.get(key))
         if value:
             response[key] = value
+    # #782: the compact builder recomputes the top-level verdict from risk_level
+    # above, which would discard the reconciliation apply_scope_validation did on
+    # the full result. Re-reconcile so the compact path — the surface gating
+    # agents read most — never ships top=INFO while agent_summary=REVIEW/UNSAFE.
+    _reconcile_envelope_verdict(response, summary)
     return response
 
 
@@ -499,6 +546,9 @@ def apply_scope_validation(
         )
         agent_summary.setdefault("verdict", default_verdict)
 
+    # #782: the top-level and agent_summary verdicts were computed by separate
+    # steps; force them to agree (more severe wins) before mirror_summary_line.
+    _reconcile_envelope_verdict(result, agent_summary)
     return result
 
 

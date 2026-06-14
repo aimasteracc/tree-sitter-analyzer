@@ -3,6 +3,7 @@
 from tree_sitter_analyzer.mcp.tools.utils.change_impact_response import (
     AgentSummaryContext,
     ChangeImpactResponseContext,
+    apply_scope_validation,
     attach_queue_ledger,
     build_agent_summary,
     build_agent_summary_only_response,
@@ -569,3 +570,86 @@ class TestBuildChangeImpactResponse:
         )
         response = build_change_impact_response(ctx)
         assert response["affected_files"] == []
+
+
+class TestVerdictReconciliation782:
+    """#782: top-level verdict and agent_summary.verdict must agree (more
+    severe wins) within one change-impact response — never INFO at one surface
+    while the other says REVIEW/UNSAFE.
+    """
+
+    def test_changed_files_lift_top_level_to_review(self):
+        # top=INFO (risk-derived) but changed_count>0 makes agent content-aware
+        # REVIEW; the top level must lift to REVIEW too.
+        result = {"verdict": "INFO", "changed_count": 20, "agent_summary": {}}
+        apply_scope_validation(result, [])
+        assert result["verdict"] == "REVIEW"
+        assert result["agent_summary"]["verdict"] == "REVIEW"
+
+    def test_constraint_escalation_is_not_downgraded(self):
+        # a constraint-escalated UNSAFE top level must survive and lift the
+        # agent_summary too (never downgrade to the content-aware REVIEW).
+        result = {
+            "verdict": "UNSAFE",
+            "changed_count": 5,
+            "agent_summary": {"verdict": "REVIEW"},
+        }
+        apply_scope_validation(result, [])
+        assert result["verdict"] == "UNSAFE"
+        assert result["agent_summary"]["verdict"] == "UNSAFE"
+
+    def test_no_changes_stays_benign_and_agrees(self):
+        result = {"verdict": "INFO", "changed_count": 0, "agent_summary": {}}
+        apply_scope_validation(result, [])
+        assert result["verdict"] == result["agent_summary"]["verdict"]
+
+    def test_reconcile_no_ops_when_a_verdict_is_missing(self):
+        # Early-return guard: a blank/missing verdict on either side must not
+        # crash and must leave the populated side intact (mirror fills the gap).
+        result = {"agent_summary": {}}
+        apply_scope_validation(result, [])  # no verdict either side → no-op
+        result2 = {"verdict": "REVIEW", "changed_count": 3, "agent_summary": {}}
+        # agent_summary gets REVIEW (changed>0); top already REVIEW → agree
+        apply_scope_validation(result2, [])
+        assert result2["verdict"] == result2["agent_summary"]["verdict"] == "REVIEW"
+
+    def test_compact_response_preserves_reconciled_verdict(self):
+        # The compact (agent_summary_only) path recomputes the top-level verdict
+        # from risk_level; it must NOT discard the reconciliation (#782 P1).
+        result = {
+            "verdict": "INFO",
+            "risk_level": "low",
+            "changed_count": 20,
+            "agent_summary": {},
+        }
+        apply_scope_validation(result, [])
+        compact = build_agent_summary_only_response(result)
+        assert compact["verdict"] == "REVIEW"
+        assert compact["agent_summary"]["verdict"] == "REVIEW"
+
+    def test_compact_response_keeps_constraint_unsafe(self):
+        result = {
+            "verdict": "UNSAFE",
+            "risk_level": "low",
+            "changed_count": 5,
+            "agent_summary": {"verdict": "REVIEW"},
+        }
+        apply_scope_validation(result, [])
+        compact = build_agent_summary_only_response(result)
+        assert compact["verdict"] == "UNSAFE"
+        assert compact["agent_summary"]["verdict"] == "UNSAFE"
+
+
+def test_verdict_severity_rank_matches_journal_rank():
+    """#782 drift guard: the locally-duplicated severity rank must stay
+    byte-identical to change_impact_tool._JOURNAL_VERDICT_RANK (duplicated only
+    to avoid a circular import).
+    """
+    from tree_sitter_analyzer.mcp.tools.change_impact_tool import (
+        _JOURNAL_VERDICT_RANK,
+    )
+    from tree_sitter_analyzer.mcp.tools.utils.change_impact_response import (
+        _VERDICT_SEVERITY,
+    )
+
+    assert _VERDICT_SEVERITY == _JOURNAL_VERDICT_RANK
