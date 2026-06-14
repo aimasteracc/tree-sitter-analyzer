@@ -85,7 +85,7 @@ class TestPythonQueries:
         """Test that query constants are properly defined"""
         # Exact stripped lengths (update when query strings change)
         constant_lens = [
-            (FUNCTIONS, 315),
+            (FUNCTIONS, 159),
             (CLASSES, 156),
             (VARIABLES, 322),
             (IMPORTS, 445),
@@ -375,3 +375,54 @@ class TestPythonQueriesDictCompleteness:
         ]
         for cat in categories:
             assert cat in PYTHON_QUERIES
+
+
+class TestFunctionsQueryNoDuplicate:
+    """Regression test: FUNCTIONS query must not double-capture every function.
+
+    Bug #557: the second pattern (@function.async) was byte-identical to the
+    first (@function.definition), so every function_definition node matched
+    BOTH patterns, doubling all captures.  After the fix the query must yield
+    exactly N captures for a fixture with N function definitions.
+    """
+
+    def test_functions_query_no_double_capture(self) -> None:
+        """FUNCTIONS query yields exactly 3 captures for a 3-function fixture."""
+        try:
+            import tree_sitter_python
+            from tree_sitter import Language, Parser
+
+            from tree_sitter_analyzer.utils.tree_sitter_compat import (
+                TreeSitterQueryCompat,
+            )
+        except ImportError:
+            pytest.skip("tree-sitter or tree_sitter_python not available")
+
+        py_language = Language(tree_sitter_python.language())
+        parser = Parser(py_language)
+
+        # 3 function definitions: 2 sync + 1 async
+        code = b"def foo():\n    pass\n\ndef bar():\n    pass\n\nasync def baz():\n    pass\n"
+        tree = parser.parse(code)
+
+        from tree_sitter_analyzer.queries.python import FUNCTIONS
+
+        captures = TreeSitterQueryCompat.safe_execute_query(
+            py_language, FUNCTIONS, tree.root_node
+        )
+
+        # Count only the primary/anchor captures (function.definition or
+        # function.async) — one per function definition.  After the fix only
+        # @function.definition exists and each function produces exactly 1.
+        anchor_captures = [
+            name
+            for _node, name in captures
+            if name in ("function.definition", "function.async")
+        ]
+        assert len(anchor_captures) == 3  # was 6 before fix (double-capture bug)
+
+    def test_functions_query_no_async_capture_name(self) -> None:
+        """After the fix @function.async capture no longer exists in FUNCTIONS."""
+        from tree_sitter_analyzer.queries.python import FUNCTIONS
+
+        assert "@function.async" not in FUNCTIONS

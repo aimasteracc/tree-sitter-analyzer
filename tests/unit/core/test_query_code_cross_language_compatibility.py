@@ -273,7 +273,9 @@ public class JavaClass {
                 "functions query should return results"
             )
             assert len(function_results) == 4, "Should find Python functions"
-            assert len(functions_results) == 32, "Should find Python functions"
+            assert len(functions_results) == 16, (
+                "Should find Python functions"
+            )  # was 32 (double-captured before #557); 16 is the correct single-capture count
 
             # Test class queries
             class_results = await query_service.execute_query(
@@ -399,7 +401,10 @@ public class JavaClass {
         expected_counts = {
             ("javascript", "functions"): 23,
             ("typescript", "functions"): 19,
-            ("python", "functions"): 32,
+            (
+                "python",
+                "functions",
+            ): 16,  # was 32 (double-captured before #557); 16 is the correct single-capture count
             ("java", "methods"): 3,
         }
 
