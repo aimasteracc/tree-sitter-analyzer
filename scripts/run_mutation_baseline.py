@@ -18,6 +18,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 # Module -> (source file, targeted test paths)
@@ -68,6 +69,17 @@ timeout_constant = 10.0
 """
 
 
+def _resolve_mutmut_command() -> list[str]:
+    """Return a direct mutmut command from the already-resolved environment."""
+    current_env_script = Path(sys.executable).with_name("mutmut")
+    if current_env_script.exists():
+        return [str(current_env_script)]
+    path_script = shutil.which("mutmut")
+    if path_script:
+        return [path_script]
+    return [sys.executable, "-m", "mutmut"]
+
+
 def run_module(module_key: str, repo_root: Path) -> None:
     if module_key not in MODULES:
         print(f"Unknown module: {module_key}. Choose from: {list(MODULES)}")
@@ -76,45 +88,45 @@ def run_module(module_key: str, repo_root: Path) -> None:
     source_path, test_paths = MODULES[module_key]
     test_paths_toml = "[" + ", ".join(f'"{p}"' for p in test_paths) + "]"
 
-    # Write a temporary pyproject.toml stub in a temp directory, then run
-    # mutmut from there with the real source accessible via the PYTHONPATH.
-    # Simpler: mutmut reads pyproject.toml from CWD. We swap it temporarily.
+    # Resolve mutmut before swapping pyproject.toml. The runner is usually
+    # invoked via ``uv run python ...``; calling ``uv run`` again inside the
+    # swap window would make uv resolve from the temporary minimal pyproject.
+    mutmut_command = _resolve_mutmut_command()
+
+    # mutmut 3.6 only reads config from CWD pyproject.toml / setup.cfg and has
+    # no config-file CLI flag. Swap only for mutmut's direct process.
     real_pyproject = repo_root / "pyproject.toml"
-    backup = repo_root / "pyproject.toml.mutation-bak"
 
     content = PYPROJECT_TEMPLATE.format(
         source_path=source_path,
         test_paths_toml=test_paths_toml,
     )
 
-    # Create a minimal pyproject.toml that only has [tool.mutmut] — mutmut
-    # only reads that section, so it doesn't need the full build config.
-    minimal_pyproject = repo_root / "pyproject_mutmut_tmp.toml"
-    minimal_pyproject.write_text(content, encoding="utf-8")
+    with tempfile.TemporaryDirectory(prefix="mutation-baseline-") as temp_dir:
+        temp_root = Path(temp_dir)
+        backup = temp_root / "pyproject.toml"
+        minimal_pyproject = temp_root / "pyproject.mutmut.toml"
+        minimal_pyproject.write_text(content, encoding="utf-8")
+        shutil.copy2(real_pyproject, backup)
+        try:
+            shutil.copy2(minimal_pyproject, real_pyproject)
+            print(f"\n=== Running mutmut on {source_path} ===")
+            print(f"    Tests: {test_paths}")
+            result = subprocess.run(
+                [*mutmut_command, "run"],
+                cwd=repo_root,
+                capture_output=False,
+            )
+            print(f"\n=== mutmut run exit code: {result.returncode} ===")
 
-    # Back up real pyproject.toml, swap in minimal, run, restore.
-    shutil.copy2(real_pyproject, backup)
-    try:
-        shutil.copy2(minimal_pyproject, real_pyproject)
-        print(f"\n=== Running mutmut on {source_path} ===")
-        print(f"    Tests: {test_paths}")
-        result = subprocess.run(
-            ["uv", "run", "mutmut", "run"],
-            cwd=repo_root,
-            capture_output=False,
-        )
-        print(f"\n=== mutmut run exit code: {result.returncode} ===")
-
-        # Collect results
-        print(f"\n=== Results for {module_key} ===")
-        subprocess.run(
-            ["uv", "run", "mutmut", "results"],
-            cwd=repo_root,
-        )
-    finally:
-        shutil.copy2(backup, real_pyproject)
-        backup.unlink(missing_ok=True)
-        minimal_pyproject.unlink(missing_ok=True)
+            # Collect results
+            print(f"\n=== Results for {module_key} ===")
+            subprocess.run(
+                [*mutmut_command, "results"],
+                cwd=repo_root,
+            )
+        finally:
+            shutil.copy2(backup, real_pyproject)
 
 
 def main() -> None:
