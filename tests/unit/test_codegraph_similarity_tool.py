@@ -282,7 +282,7 @@ class TestBoundingParams801:
         result = await tool_with_large_group.execute({"output_format": "json"})
         assert result["success"] is True
         groups = result["groups"]
-        assert len(groups) >= 1
+        assert len(groups) == 1  # 15 identical funcs → exactly 1 clone group
         for group in groups:
             funcs = group["functions"]
             assert len(funcs) == 10, (
@@ -299,7 +299,7 @@ class TestBoundingParams801:
         )
         assert result["success"] is True
         groups = result["groups"]
-        assert len(groups) >= 1
+        assert len(groups) == 1  # 15 identical funcs → exactly 1 clone group
         max_funcs = max(len(g["functions"]) for g in groups)
         assert max_funcs == 15, (
             f"include_bodies=True should return all 15 functions; got max={max_funcs}"
