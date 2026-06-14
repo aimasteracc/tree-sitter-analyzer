@@ -122,6 +122,9 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
 
         unattributed_call_sites = 0
         cache = self._try_get_cache()
+        call_graph_built = (
+            self._cache_call_graph_built(cache) if cache is not None else False
+        )
         call_graph_indexed = cache is not None and cache.has_call_edges()
         if call_graph_indexed and not is_qualified:
             callers, unattributed_call_sites = self._sql_native_callers(
@@ -141,9 +144,7 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             #       has calls, so the symbol just isn't there.
             # Only fire the hint when the index is absent AND the parse found
             # no edges at all (truly empty/unbuilt state).
-            has_any_call_edges = (
-                self._data_source == "cache" or len(graph.call_edges()) > 0
-            )
+            has_any_call_edges = call_graph_built or len(graph.call_edges()) > 0
 
         warnings_list: list[str] = []
         if _is_stale_resolution(callers):

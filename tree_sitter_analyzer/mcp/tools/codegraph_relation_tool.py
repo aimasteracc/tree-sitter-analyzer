@@ -163,6 +163,13 @@ class CodeGraphRelationToolMixin:
             pass
         return None
 
+    @staticmethod
+    def _cache_call_graph_built(cache: Any) -> bool:
+        try:
+            return bool(cache.call_graph_built())
+        except Exception:
+            return False
+
     def _get_call_graph(self) -> CallGraph:
         if self._call_graph is None:
             if not self.project_root:

@@ -33,6 +33,11 @@ from ._ast_cache_build_state import (
     clear_build_in_progress as _clear_build_in_progress,
     mark_build_in_progress as _mark_build_in_progress,
 )
+from ._ast_cache_callgraph_state import (
+    call_graph_built as _call_graph_built,
+    clear_call_graph_built as _clear_call_graph_built,
+    mark_call_graph_built as _mark_call_graph_built,
+)
 from ._ast_cache_helpers import (
     _build_function_entry,
     _commit_index_results,
@@ -308,6 +313,7 @@ class ASTCache:
             synapse = self._run_synapse_backfill()
             edge_store_refresh = self._refresh_graph_edges_from_cache()
             unresolved = self._run_unresolved_refs_backfill()
+            _mark_call_graph_built(self._get_conn())
             return {
                 "mode_used": "resolve_only",
                 "resolve_only": True,
@@ -333,6 +339,7 @@ class ASTCache:
                 # failed rebuild would leave a stuck marker until TTL expiry.
                 conn = self._get_conn()
                 _mark_build_in_progress(conn)
+                _clear_call_graph_built(conn)
                 conn.execute("DELETE FROM ast_index")
                 conn.commit()
             stats, candidates, count = self._walk_and_partition(
@@ -360,6 +367,7 @@ class ASTCache:
             stats["workers"] = workers
             if stats["indexed"] > 0:
                 self._post_index_backfill(stats)
+                _mark_call_graph_built(self._get_conn())
             return stats
         finally:
             if force:
@@ -822,6 +830,10 @@ class ASTCache:
             )
         except sqlite3.OperationalError:
             return False
+
+    def call_graph_built(self) -> bool:
+        """True iff the cache explicitly records a completed call-graph build."""
+        return _call_graph_built(self._get_conn())
 
     def get_cross_file_resolver(self) -> Any:
         """Get (or build) the CrossFileResolver for import-aware resolution."""
