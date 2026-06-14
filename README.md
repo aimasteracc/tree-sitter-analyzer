@@ -23,6 +23,8 @@ Code intelligence for AI agents: a pre-indexed, token-efficient MCP server — *
 
 ## Get Started
 
+> **Requires Python 3.10+** (check: `python3 --version`). Install from [python.org](https://www.python.org/downloads/) if needed.
+
 One-line install for **Claude Code**:
 
 ```bash
@@ -160,6 +162,8 @@ Superset of CodeGraph's CLI surface. Highlights:
 tree-sitter-analyzer --table full <file>          # method/signature/complexity table
 tree-sitter-analyzer --partial-read --start-line N --end-line M <file>
 tree-sitter-analyzer --project-health             # A-F grade across the project
+# Note: --callers / --callees require the call-graph index — run --full-index first
+tree-sitter-analyzer --full-index                 # build call-graph index (run once)
 tree-sitter-analyzer --callers <symbol>           # who-calls
 tree-sitter-analyzer --codegraph-impact <fn>      # blast radius + risk
 tree-sitter-analyzer --affected <file...>         # tests transitively affected

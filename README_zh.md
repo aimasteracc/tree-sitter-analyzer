@@ -23,6 +23,8 @@
 
 ## 立即上手
 
+> **需要 Python 3.10+**（检查：`python3 --version`）。如需安装请访问 [python.org](https://www.python.org/downloads/)。
+
 为 **Claude Code** 一行安装：
 
 ```bash
@@ -160,6 +162,8 @@ CodeGraph CLI 的严格超集。亮点：
 tree-sitter-analyzer --table full <file>          # 方法/签名/复杂度表
 tree-sitter-analyzer --partial-read --start-line N --end-line M <file>
 tree-sitter-analyzer --project-health             # 项目 A-F 评级
+# 注意：--callers / --callees 需要调用图索引 — 请先运行 --full-index
+tree-sitter-analyzer --full-index                 # 构建调用图索引（只需运行一次）
 tree-sitter-analyzer --callers <symbol>           # 谁调用
 tree-sitter-analyzer --codegraph-impact <fn>      # blast radius + 风险
 tree-sitter-analyzer --affected <file...>         # 受影响的测试

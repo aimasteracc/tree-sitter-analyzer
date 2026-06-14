@@ -263,6 +263,46 @@ class TestRequiredSections:
 _STALE_TOOL_NAME = re.compile(r"\bcodegraph_(?!compare\b)[a-z][a-z_]*\b")
 
 
+class TestOnboardingPrerequisites:
+    """#545/#548: README onboarding prerequisites must be present in all 3 locales.
+
+    Each README's Get Started section must carry the Python-version prerequisite,
+    and the CLI section must warn that --callers/--callees require --full-index.
+    """
+
+    @pytest.mark.parametrize(
+        "readme_path",
+        [README_PATH, README_JA_PATH, README_ZH_PATH],
+        ids=["en", "ja", "zh"],
+    )
+    def test_python_version_prerequisite_in_get_started(
+        self, readme_path: Path
+    ) -> None:
+        """#545: Get Started section must state the Python minimum version."""
+        content = get_readme_content(readme_path)
+        assert "3.10" in content, (
+            f"{readme_path.name}: Get Started must mention Python 3.10 prerequisite"
+        )
+        # Must appear as a version check note, not just in a code snippet
+        assert "python3 --version" in content, (
+            f"{readme_path.name}: Get Started must include `python3 --version` check"
+        )
+
+    @pytest.mark.parametrize(
+        "readme_path",
+        [README_PATH, README_JA_PATH, README_ZH_PATH],
+        ids=["en", "ja", "zh"],
+    )
+    def test_full_index_prereq_for_callers_callees(self, readme_path: Path) -> None:
+        """#548: CLI section must note that --callers/--callees require --full-index."""
+        content = get_readme_content(readme_path)
+        # The --full-index prerequisite must be visible near the callers/callees examples
+        assert "--full-index" in content, (
+            f"{readme_path.name}: CLI section must mention --full-index "
+            "as prerequisite for --callers/--callees"
+        )
+
+
 class TestNoStaleFacadeToolNames:
     """The feature table + quick-start must reference real facade tools.
 
