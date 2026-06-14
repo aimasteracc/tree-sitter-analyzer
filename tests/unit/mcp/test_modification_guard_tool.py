@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -216,6 +216,11 @@ class TestModificationGuardToolExecution:
 
         assert result["safety_verdict"] == "CAUTION"
         assert result["total_callers"] == 3
+        assert result["ripgrep_occurrences"] == 3
+        assert result["count_unit"] == "ripgrep_occurrences"
+        assert "callers=3" not in result["summary_line"]
+        assert "ripgrep_occurrences=3" in result["summary_line"]
+        assert "count_caveat" in result
 
     @pytest.mark.asyncio
     async def test_review_verdict_many_callers(
@@ -254,6 +259,94 @@ class TestModificationGuardToolExecution:
 
         assert result["safety_verdict"] == "UNSAFE"
         assert result["total_callers"] == 25
+        assert result["impact_badge"] == "🚨 HIGH IMPACT — 25 RIPGREP OCCURRENCES"
+        assert "source ripgrep occurrence(s)" in result["impact_guidance"]
+
+    @pytest.mark.asyncio
+    async def test_ast_caller_count_surfaced_when_file_path_given(
+        self, tool: ModificationGuardTool
+    ) -> None:
+        """Guard exposes AST caller count alongside trace-derived occurrences."""
+        usages = [{"file": f"src/file{i}.py"} for i in range(25)]
+        with (
+            patch.object(
+                tool._trace_impact_tool,
+                "execute",
+                new_callable=AsyncMock,
+                return_value=_trace_result(25, usages),
+            ),
+            patch.object(
+                tool,
+                "_try_ast_caller_count",
+                new_callable=AsyncMock,
+                return_value=11,
+            ) as mock_ast_count,
+        ):
+            result = await tool.execute(
+                {
+                    "symbol": "bigFunc",
+                    "modification_type": "delete",
+                    "file_path": "src/big.py",
+                }
+            )
+
+        mock_ast_count.assert_awaited_once_with("bigFunc", "src/big.py")
+        assert result["ripgrep_occurrences"] == 25
+        assert result["ast_caller_count"] == 11
+
+    @pytest.mark.asyncio
+    async def test_try_ast_caller_count_calls_codegraph_tool(
+        self, tool: ModificationGuardTool
+    ) -> None:
+        """AST reconciliation uses callers_tool and returns its integer count."""
+        fake_callers_tool = Mock()
+        fake_callers_tool.execute = AsyncMock(return_value={"caller_count": 7})
+
+        with patch(
+            "tree_sitter_analyzer.mcp.tools.callers_tool.CodeGraphCallersTool",
+            return_value=fake_callers_tool,
+        ) as callers_cls:
+            count = await tool._try_ast_caller_count("sharedFunc", "src/shared.py")
+
+        callers_cls.assert_called_once_with(tool.project_root)
+        fake_callers_tool.execute.assert_awaited_once_with(
+            {
+                "function_name": "sharedFunc",
+                "file_path": "src/shared.py",
+                "limit": 1,
+                "output_format": "json",
+            }
+        )
+        assert count == 7
+
+    @pytest.mark.asyncio
+    async def test_try_ast_caller_count_returns_none_on_tool_error(
+        self, tool: ModificationGuardTool
+    ) -> None:
+        """AST reconciliation is best-effort and must not fail the guard."""
+        with patch(
+            "tree_sitter_analyzer.mcp.tools.callers_tool.CodeGraphCallersTool",
+            side_effect=RuntimeError("index unavailable"),
+        ):
+            count = await tool._try_ast_caller_count("sharedFunc", "src/shared.py")
+
+        assert count is None
+
+    @pytest.mark.asyncio
+    async def test_try_ast_caller_count_ignores_non_integer_count(
+        self, tool: ModificationGuardTool
+    ) -> None:
+        """Only integer caller_count values are surfaced."""
+        fake_callers_tool = Mock()
+        fake_callers_tool.execute = AsyncMock(return_value={"caller_count": "many"})
+
+        with patch(
+            "tree_sitter_analyzer.mcp.tools.callers_tool.CodeGraphCallersTool",
+            return_value=fake_callers_tool,
+        ):
+            count = await tool._try_ast_caller_count("sharedFunc", "src/shared.py")
+
+        assert count is None
 
     @pytest.mark.asyncio
     async def test_required_actions_populated_for_unsafe(

@@ -16,7 +16,7 @@ import pytest
 
 from tree_sitter_analyzer.call_graph import FunctionRef
 from tree_sitter_analyzer.mcp.tools.codegraph_impact_tool import CodeGraphImpactTool
-from tree_sitter_analyzer.mcp.tools.nav_facade import build_nav_facade
+from tree_sitter_analyzer.mcp.tools.nav_facade import _MAX_TEST_MAP, build_nav_facade
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -112,6 +112,9 @@ async def test_test_map_returns_test_files_and_functions() -> None:
     assert "tests/test_a.py::test_case_2" in result["test_functions"]
     assert "tests/test_b.py::test_case_3" in result["test_functions"]
     assert result["truncated"] is False
+    assert result["agent_summary"]["next_step"].startswith(
+        "Run per-file tests: pytest tests/test_a.py tests/test_b.py."
+    )
 
 
 @pytest.mark.asyncio
@@ -220,7 +223,15 @@ async def test_test_map_truncated_flag_set_when_cap_reached() -> None:
     assert result["unique_function_count"] == 51
     assert result["truncated"] is True
     # test_functions list is capped at 50
-    assert len(result["test_functions"]) == 50
+    assert len(result["test_functions"]) == _MAX_TEST_MAP
+    assert (
+        f"Listed {_MAX_TEST_MAP} of 51 test function(s)"
+        in result["agent_summary"]["next_step"]
+    )
+    assert (
+        "test_files contains the complete file-level surface"
+        in result["agent_summary"]["next_step"]
+    )
 
 
 @pytest.mark.asyncio

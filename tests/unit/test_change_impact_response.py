@@ -196,6 +196,41 @@ class TestBuildAgentSummaryOnlyResponse:
         assert response["affected_count"] == 3
         assert response["next_step"] == "Run tests"
 
+    def test_agent_summary_only_does_not_emit_contradictory_legacy_scalars(self):
+        """Compact mode must not expose stale top-level fields that fight summary."""
+        result = {
+            "success": True,
+            "mode": "diff",
+            "scope_paths": [],
+            "scope_filtered": False,
+            "agent_summary": {
+                "risk": "high",
+                "changed_count": 1,
+                "affected_count": 8,
+                "tests_to_run_count": 2,
+                "changed_preview": ["tree_sitter_analyzer/example.py"],
+                "next_step": "Run verification",
+                "verification_command": "uv run pytest tests/unit/test_example.py -q",
+                "stop_condition": "focused tests pass",
+            },
+            "risk_level": "high",
+            "changed_count": 1,
+            "affected_count": 8,
+            "tests_to_run_count": 2,
+        }
+
+        response = build_agent_summary_only_response(result)
+
+        assert response["risk_level"] == "high"
+        assert response["changed_count"] == 1
+        assert response["verification_command"] == (
+            "uv run pytest tests/unit/test_example.py -q"
+        )
+        assert "pytest_required" not in response
+        assert "changed_files" not in response
+        assert "changed_preview" not in response
+        assert "impact_level" not in response
+
 
 class TestAttachQueueLedger:
     """Tests for attach_queue_ledger."""

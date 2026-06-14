@@ -229,7 +229,7 @@ def _test_instructions(
     """Return checklist items for test coverage."""
     default_command = detect_default_test_command(project_root)
     if has_tests:
-        test_command = build_test_command(default_command, test_files[:3])
+        test_command = build_test_command(default_command, test_files)
         return [
             f"2. Run existing tests FIRST: {test_command}",
             f"3. Run same verification AFTER editing: {test_command}",

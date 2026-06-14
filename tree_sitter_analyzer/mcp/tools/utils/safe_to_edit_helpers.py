@@ -358,7 +358,7 @@ def build_agent_workflow(context: AgentWorkflowContext) -> dict[str, Any]:
     """Build a machine-friendly edit workflow for autonomous agents."""
     default_command = detect_default_test_command(context.project_root)
     focused_command = (
-        build_test_command(default_command, context.test_files[:3])
+        build_test_command(default_command, context.test_files)
         if context.has_tests
         else ""
     )
