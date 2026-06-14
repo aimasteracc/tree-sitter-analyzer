@@ -21,6 +21,7 @@ except ImportError:
 from ...models import AnalysisResult, CodeElement
 from ...plugins.base import ElementExtractor, LanguagePlugin
 from ...utils import log_debug, log_error
+from ...utils.tree_sitter_compat import count_nodes_iterative
 from . import extractor as extractor_module
 from .extractor import TypeScriptElementExtractor
 
@@ -167,19 +168,13 @@ class TypeScriptPlugin(LanguagePlugin):
             elements.extend(variables)
             elements.extend(imports)
 
-            def count_nodes(node: tree_sitter.Node) -> int:
-                count = 1
-                for child in node.children:
-                    count += count_nodes(child)
-                return count
-
             return AnalysisResult(
                 file_path=file_path,
                 language=self.get_language_name(),
                 success=True,
                 elements=elements,
                 line_count=len(source_code.splitlines()),
-                node_count=count_nodes(tree.root_node),
+                node_count=count_nodes_iterative(tree.root_node),
             )
         except Exception as e:
             log_error(f"Error analyzing TypeScript file {file_path}: {e}")

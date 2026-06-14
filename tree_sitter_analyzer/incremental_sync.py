@@ -233,7 +233,16 @@ class IncrementalSync:
         # "unknown"). Previously this was a single ``action`` field that
         # confusingly read ``action: "indexed", status: "skipped"`` for files
         # the cache refused. ``action`` is preserved as a back-compat alias.
-        index_result = self._cache.index_file(abs_path)
+        try:
+            index_result = self._cache.index_file(abs_path)
+        except Exception as exc:
+            return {
+                "file": rel_path,
+                "considered": "indexed",
+                "action": "indexed",
+                "status": "error",
+                "reason": str(exc),
+            }
         status = index_result.get("status", "unknown")
         return {
             "file": rel_path,
@@ -249,7 +258,16 @@ class IncrementalSync:
         conn: sqlite3.Connection,
     ) -> dict[str, Any]:
         self._cache.invalidate(abs_path)
-        index_result = self._cache.index_file(abs_path)
+        try:
+            index_result = self._cache.index_file(abs_path)
+        except Exception as exc:
+            return {
+                "file": rel_path,
+                "considered": "updated",
+                "action": "updated",
+                "status": "error",
+                "reason": str(exc),
+            }
         status = index_result.get("status", "unknown")
         return {
             "file": rel_path,

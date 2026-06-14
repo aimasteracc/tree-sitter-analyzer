@@ -17,6 +17,7 @@ from typing import Any
 
 from .constants import EXCLUDE_DIRS
 from .core.parser import Parser
+from .utils.tree_sitter_compat import count_nodes_iterative
 
 # ---------------------------------------------------------------------------
 # FTS5 probe
@@ -653,10 +654,8 @@ def _node_text(node: Any, source: str) -> str:
 
 
 def _count_nodes(node: Any) -> int:
-    count = 1
-    for child in node.children:
-        count += _count_nodes(child)
-    return count
+    """Count nodes without recursion to avoid ``RecursionError`` on deep AST."""
+    return count_nodes_iterative(node)
 
 
 def _count_decision_points(node: Any, language: str) -> dict[str, int]:

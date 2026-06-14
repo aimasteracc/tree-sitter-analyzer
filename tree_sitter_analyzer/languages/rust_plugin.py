@@ -20,6 +20,7 @@ from ..encoding_utils import extract_text_slice, safe_encode
 from ..models import Class, Function, Import, Package, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error
+from ..utils.tree_sitter_compat import count_nodes_iterative
 
 
 def _rust_function_is_async(node: tree_sitter.Node) -> bool:
@@ -797,14 +798,10 @@ class RustPlugin(LanguagePlugin):
             )
 
     def _count_tree_nodes(self, node: Any) -> int:
-        """Recursively count nodes."""
+        """Count nodes without recursion to avoid deep-tree stack overflows."""
         if node is None:
             return 0
-        count = 1
-        if hasattr(node, "children"):
-            for child in node.children:
-                count += self._count_tree_nodes(child)
-        return count
+        return count_nodes_iterative(node)
 
     def get_tree_sitter_language(self) -> Any | None:
         """Get the tree-sitter language for Rust."""

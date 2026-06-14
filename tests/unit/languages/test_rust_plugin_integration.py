@@ -33,6 +33,21 @@ class TestRustPlugin:
         count = rust_plugin._count_tree_nodes(grandparent)
         assert count == 4  # grandparent + parent + 2 leaves
 
+    def test_count_tree_nodes_deep_hierarchy(self, rust_plugin):
+        class DeepNode:
+            def __init__(self, child: "DeepNode | None" = None):
+                self.children: list[DeepNode] = [child] if child is not None else []
+
+        depth = 1200
+        node: DeepNode | None = None
+        for _ in range(depth):
+            node = DeepNode(node)
+
+        # A recursive counter would overflow recursion for this depth
+        # in CPython default recursion settings. Iterative traversal should not.
+        count = rust_plugin._count_tree_nodes(node)
+        assert count == depth
+
     # --- get_tree_sitter_language ---
 
     def test_get_tree_sitter_language_cached(self, rust_plugin):

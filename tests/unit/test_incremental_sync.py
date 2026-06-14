@@ -113,6 +113,26 @@ class TestSyncNewFile:
         assert any("new_module.py" in d["file"] for d in result.details)
 
 
+class TestSyncErrors:
+    def test_sync_continues_when_file_fails(self, sync, cache, project, monkeypatch):
+        original_index_file = cache.index_file
+
+        def _flaky_index(abs_path: str):
+            if abs_path.endswith("main.py"):
+                raise RecursionError("simulated deep AST recursion")
+            return original_index_file(abs_path)
+
+        monkeypatch.setattr(cache, "index_file", _flaky_index)
+        result = sync.sync()
+
+        assert result.new_files == 3
+        assert result.errors == 1
+        assert any(
+            d["status"] == "error" and d["file"].endswith("main.py")
+            for d in result.details
+        )
+
+
 class TestSyncMixedChanges:
     def test_handles_mixed_changes(self, sync, cache, project):
         sync.sync()

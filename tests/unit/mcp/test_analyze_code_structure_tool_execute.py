@@ -460,8 +460,11 @@ class TestAnalyzeCodeStructureToolExecute:
             ),
         ):
             arguments = {"file_path": "test.py"}
-            with pytest.raises(RuntimeError, match="Failed to analyze structure"):
-                await tool.execute(arguments)
+            result = await tool.execute(arguments)
+
+            assert result["success"] is False
+            assert result["verdict"] == "ERROR"
+            assert result["error"] == "Failed to analyze structure for file: test.py"
 
     @pytest.mark.asyncio
     async def test_execute_unsupported_format_type(self, tool, tmp_path):

@@ -296,10 +296,61 @@ class UserService {
                 assert result.language == "typescript"
                 assert result.file_path == temp_file
                 assert isinstance(result.elements, list)
-
         finally:
             # Clean up
             Path(temp_file).unlink()
+
+    @patch(
+        "tree_sitter_analyzer.languages.typescript_plugin.plugin.TREE_SITTER_AVAILABLE",
+        True,
+    )
+    @patch(
+        "tree_sitter_analyzer.languages.typescript_plugin.extractor.loader.load_language"
+    )
+    @pytest.mark.asyncio
+    async def test_typescript_plugin_deep_node_count_is_iterative(
+        self, mock_load_language
+    ):
+        """Test deep AST trees are counted without recursion."""
+        mock_language = Mock()
+        mock_load_language.return_value = mock_language
+
+        class DeepNode:
+            def __init__(self, child: "DeepNode | None" = None):
+                self.children: list[DeepNode] = [child] if child is not None else []
+
+        depth = 1200
+        root: DeepNode | None = None
+        for _ in range(depth):
+            root = DeepNode(root)
+
+        mock_root_node = root
+        mock_tree = Mock()
+        mock_tree.root_node = mock_root_node
+        mock_parser = Mock()
+        mock_parser.parse.return_value = mock_tree
+
+        mock_extractor = Mock()
+        mock_extractor.extract_functions.return_value = []
+        mock_extractor.extract_classes.return_value = []
+        mock_extractor.extract_variables.return_value = []
+        mock_extractor.extract_imports.return_value = []
+
+        plugin = TypeScriptPlugin()
+
+        with (
+            patch.object(plugin, "create_extractor", return_value=mock_extractor),
+            patch("tree_sitter.Parser", return_value=mock_parser),
+            patch(
+                "tree_sitter_analyzer.encoding_utils.read_file_safe",
+                return_value=("module demo {}\n", "utf-8"),
+            ),
+        ):
+            result = await plugin.analyze_file("deep.ts", None)
+
+            assert result.success is True
+            assert result.language == "typescript"
+            assert result.node_count == depth
 
     def test_typescript_extractor_characteristics_detection(self):
         """Test TypeScript extractor file characteristics detection"""

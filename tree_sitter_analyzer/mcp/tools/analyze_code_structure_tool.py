@@ -11,6 +11,7 @@ from ...language_detector import detect_language_from_file
 from ...utils import setup_logger
 from ..utils.file_output_manager import FileOutputManager
 from ..utils.format_helper import apply_toon_format_to_response
+from ._response_builder import build_error
 from ._validators import invalid_enum_error
 from .analyze_code_structure_helpers import TOOL_SCHEMA as _TOOL_SCHEMA
 from .analyze_code_structure_helpers import (
@@ -543,8 +544,22 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
         if early_response is not None:
             return early_response
         options = self._prepare_execution_options(args)
-        result = await self._analyze_structure(options)
+        try:
+            result = await self._analyze_structure(options)
+        except RuntimeError as exc:
+            return self._build_error_response(options, str(exc))
         return self._format_response(result, options)
+
+    def _build_error_response(
+        self, options: _ExecutionOptions, message: str
+    ) -> dict[str, Any]:
+        return build_error(
+            error=message,
+            file_path=options.file_path,
+            language=options.language,
+            format_type=options.format_type,
+            output_format=options.output_format,
+        )
 
     def _pre_validate_language_mismatch(
         self, args: dict[str, Any]
