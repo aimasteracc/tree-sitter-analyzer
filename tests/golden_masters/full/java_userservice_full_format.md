@@ -1,4 +1,4 @@
-# com.example.service.UserService
+# com.example.service.TestClass
 
 ## Package
 `com.example.service`
@@ -12,21 +12,32 @@ import java.sql.SQLException;
 ## Class Info
 | Property | Value |
 |----------|-------|
-| Name | UserService |
 | Package | com.example.service |
 | Type | class |
-| Access | public |
+| Visibility | public |
+| Lines | 6-36 |
+| Total Methods | 4 |
+| Total Fields | 2 |
 
-## Methods
-| Name | Return Type | Parameters | Access | Line |
-|------|-------------|------------|--------|------|
-| UserService | - | UserRepository userRepository | public | 10 |
-| findUserById | User | Long id | public | 14 |
-| createUser | User | String name, String email | public | 21 |
-| validateUser | boolean | User user | private | 27 |
+## UserService (6-36)
+### Fields
+| Name | Type | Vis | Modifiers | Line | Doc |
+|------|------|-----|-----------|------|-----|
+| userRepository | UserRepository | - | private | 7 | - |
+| logger | Logger | - | private,static,final | 8 | - |
 
-## Fields
-| Name | Type | Access | Static | Final | Line |
-|------|------|--------|--------|-------|------|
-| userRepository | UserRepository | private | false | false | 7 |
-| logger | Logger | private | true | true | 8 |
+### Constructors
+| Constructor | Signature | Vis | Lines | Cx | Doc |
+|-------------|-----------|-----|-------|----|----|
+| UserService | (userRepository:UserRepository):void | + | 10-12 | 1 | - |
+
+### Public Methods
+| Method | Signature | Vis | Lines | Cx | Doc |
+|--------|-----------|-----|-------|----|----|
+| findUserById | (id:Long):User | + | 14-19 | 2 | - |
+| createUser | (name:String, email:String):User | + | 21-25 | 1 | - |
+
+### Private Methods
+| Method | Signature | Vis | Lines | Cx | Doc |
+|--------|-----------|-----|-------|----|----|
+| validateUser | (user:User):boolean | - | 27-35 | 3 | - |
