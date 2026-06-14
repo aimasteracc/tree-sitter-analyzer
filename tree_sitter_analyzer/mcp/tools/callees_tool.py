@@ -180,6 +180,28 @@ class CodeGraphCalleesTool(CodeGraphRelationToolMixin, BaseMCPTool):
         if next_step:
             result["next_step"] = next_step
 
+        # #546 seam 3 / #577 leftover: uniform agent_summary across all nav actions.
+        verdict = result.get("verdict", "NOT_FOUND")
+        if verdict == "NOT_FOUND":
+            as_summary_line = f"callees: {func_name!r} calls 0 function(s)"
+            as_next_step = result.get("next_step") or (
+                f"No callees found for '{func_name}'. "
+                "Check spelling or run --full-index to build the call graph."
+            )
+        else:
+            as_summary_line = (
+                f"callees: {func_name!r} calls {total_callees} function(s)"
+            )
+            as_next_step = result.get("next_step") or (
+                "Review callees above, run tests for dependencies, "
+                "or use nav action=callee_tree for the full call tree."
+            )
+        result["agent_summary"] = {
+            "summary_line": as_summary_line,
+            "verdict": verdict,
+            "next_step": as_next_step,
+        }
+
         from ..utils.format_helper import apply_toon_format_to_response
 
         return apply_toon_format_to_response(result, output_format)
