@@ -48,6 +48,15 @@ _LAG_SKIP_DIRS = frozenset(
     }
 )
 
+_DB_STORAGE_KEYS = (
+    "db_size_bytes",
+    "db_page_size",
+    "db_page_count",
+    "db_free_pages",
+    "db_free_bytes",
+    "db_auto_vacuum_mode",
+)
+
 
 class CodeGraphStatusTool(BaseMCPTool):
     """MCP Tool for index health at-a-glance (CodeGraph parity)."""
@@ -172,6 +181,7 @@ class CodeGraphStatusTool(BaseMCPTool):
             # #578: only emit the flag when truthy (don't emit false scalars).
             if rebuilding:
                 result["index_rebuilding"] = True
+            result.update(_storage_fields(stats))
             # Item 1: omit schema_version when None (don't emit null scalars)
             if stats and stats.get("schema_version") is not None:
                 result["schema_version"] = stats.get("schema_version")
@@ -234,6 +244,7 @@ class CodeGraphStatusTool(BaseMCPTool):
         # #578: only emit the flag when truthy (don't emit false scalars).
         if rebuilding:
             result["index_rebuilding"] = True
+        result.update(_storage_fields(stats))
         # Item 1: omit schema_version when None (don't emit null scalars)
         if stats and stats.get("schema_version") is not None:
             result["schema_version"] = stats.get("schema_version")
@@ -340,3 +351,13 @@ class CodeGraphStatusTool(BaseMCPTool):
                 if newest is None or m > newest:
                     newest = m
         return newest
+
+
+def _storage_fields(stats: dict[str, Any] | None) -> dict[str, int]:
+    if not stats:
+        return {}
+    fields: dict[str, int] = {}
+    for key in _DB_STORAGE_KEYS:
+        if key in stats and stats[key] is not None:
+            fields[key] = int(stats[key])
+    return fields

@@ -39,6 +39,9 @@ from ._ast_cache_helpers import (
     _make_error_entry,
     _project_index_activation_enabled,
 )
+from ._ast_cache_maintenance import (
+    reclaim_storage_after_full_rebuild as _reclaim_storage_after_full_rebuild,
+)
 from ._ast_cache_schema import (
     EXPECTED_SCHEMA_VERSIONS as _EXPECTED_SCHEMA_VERSIONS,
     SQL_GET_SCHEMA_VERSION as _SQL_GET_SCHEMA_VERSION,
@@ -360,6 +363,10 @@ class ASTCache:
             stats["workers"] = workers
             if stats["indexed"] > 0:
                 self._post_index_backfill(stats)
+            if force:
+                stats["db_maintenance"] = _reclaim_storage_after_full_rebuild(
+                    conn, self.db_path
+                )
             return stats
         finally:
             if force:
