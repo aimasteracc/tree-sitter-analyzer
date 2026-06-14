@@ -719,7 +719,9 @@ asyncio.run(main())
         with open(output_file, encoding="utf-8") as f:
             file_content = json.load(f)
             assert "results" in file_content
-            assert len(file_content["results"]) == 104
+            assert (
+                len(file_content["results"]) == 52
+            )  # was 104 (double-captured before #557); 52 is the correct single-capture count
 
         print(
             f"✓ ファイル出力最適化テスト成功: {result['count']}個の結果を{output_file.name}に保存"
