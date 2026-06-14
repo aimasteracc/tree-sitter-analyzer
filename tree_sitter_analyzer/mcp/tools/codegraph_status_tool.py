@@ -10,6 +10,7 @@ it is, and where to look. Replaces 3-4 separate tool calls.
 from __future__ import annotations
 
 import os
+import sqlite3
 from typing import Any
 
 from ...utils import setup_logger
@@ -133,11 +134,21 @@ class CodeGraphStatusTool(BaseMCPTool):
         # Empty cache (file exists, 0 files) is still WARN — agent should warm.
         truly_indexed = bool(stats and stats.get("total_files", 0) > 0)
 
+        # #578: a full rebuild empties ast_index mid-flight. Distinguish that
+        # transient empty/partial state from a genuinely missing index so the
+        # agent retries instead of kicking off a redundant rebuild.
+        rebuilding = self._is_rebuilding() if cache_exists else False
+
         if not truly_indexed:
             hint = (
                 "Index missing or empty. Run the `index` tool with action=auto "
                 "to build the cache."
             )
+            if rebuilding:
+                hint = (
+                    "Full rebuild in progress — the index is transiently empty. "
+                    "Do NOT start another index; retry status/nav shortly."
+                )
             result = build_response(
                 verdict="WARN",
                 project_root=self.project_root,
@@ -149,11 +160,18 @@ class CodeGraphStatusTool(BaseMCPTool):
                 cache_path=cache_path if cache_exists else None,
                 hint=hint,
                 agent_summary={
-                    "summary_line": "codegraph_status: index missing or empty",
+                    "summary_line": (
+                        "codegraph_status: full rebuild in progress (transient)"
+                        if rebuilding
+                        else "codegraph_status: index missing or empty"
+                    ),
                     "next_step": hint,
                     "verdict": "WARN",
                 },
             )
+            # #578: only emit the flag when truthy (don't emit false scalars).
+            if rebuilding:
+                result["index_rebuilding"] = True
             # Item 1: omit schema_version when None (don't emit null scalars)
             if stats and stats.get("schema_version") is not None:
                 result["schema_version"] = stats.get("schema_version")
@@ -171,13 +189,21 @@ class CodeGraphStatusTool(BaseMCPTool):
                 "Index is healthy but stale (>5 min). Run action=sync first, "
                 "then proceed with nav/search"
             )
+        if rebuilding:
+            # #578: nonempty but a rebuild is replacing rows — counts are partial.
+            next_step = (
+                "Full rebuild in progress — counts are partial and changing. "
+                "Wait for it to finish before trusting nav/search results."
+            )
 
         total_files = int(stats.get("total_files", 0)) if stats else 0
         total_symbols = int(stats.get("total_symbols", 0)) if stats else 0
         total_edges = int(stats.get("total_edges", 0)) if stats else 0
 
+        # #578: a rebuild replacing rows makes counts untrustworthy → WARN.
+        verdict = "WARN" if rebuilding else "INFO"
         result = build_response(
-            verdict="INFO",
+            verdict=verdict,
             project_root=self.project_root,
             indexed=True,
             total_files=total_files,
@@ -202,13 +228,47 @@ class CodeGraphStatusTool(BaseMCPTool):
                     f"{total_edges} edges"
                 ),
                 "next_step": next_step,
-                "verdict": "INFO",
+                "verdict": verdict,
             },
         )
+        # #578: only emit the flag when truthy (don't emit false scalars).
+        if rebuilding:
+            result["index_rebuilding"] = True
         # Item 1: omit schema_version when None (don't emit null scalars)
         if stats and stats.get("schema_version") is not None:
             result["schema_version"] = stats.get("schema_version")
         return apply_toon_format_to_response(result, output_format)
+
+    def _is_rebuilding(self) -> bool:
+        """True while a full rebuild is replacing the cache (#578).
+
+        Reads the persisted marker via a throwaway connection to the real cache
+        db — deliberately not through ASTCache, to stay consistent with this
+        tool's short-lived, handle-closing style and to avoid a migration just
+        to check one flag. Never raises.
+        """
+        if not self.project_root:  # pragma: no cover — execute() guarantees it
+            return False
+        db_path = os.path.join(self.project_root, ".ast-cache", "index.db")
+        if not os.path.exists(
+            db_path
+        ):  # pragma: no cover — caller gates on cache_exists
+            return False
+        try:
+            from ..._ast_cache_build_state import build_in_progress
+
+            conn = sqlite3.connect(db_path, timeout=2)
+            try:
+                return bool(build_in_progress(conn))
+            finally:
+                conn.close()
+        except Exception:
+            # Degrade *open* (assume not rebuilding): a 2 s SELECT timeout under
+            # the very write contention that makes rebuilds slow would land
+            # here, so the WARN is best-effort, not a guarantee. Better to miss
+            # a warning than to wedge status behind a slow lock.
+            logger.debug("rebuilding check failed", exc_info=True)
+            return False
 
     def _safe_get_stats(self) -> dict[str, Any] | None:
         # Always close the SQLite handle — this tool is read-only and

@@ -29,6 +29,10 @@ from ._ast_cache_query import (
     search_symbols_linear as _search_symbols_linear,
 )
 from ._ast_cache_search import search_symbols_cascade as _search_symbols_cascade
+from ._ast_cache_build_state import (
+    clear_build_in_progress as _clear_build_in_progress,
+    mark_build_in_progress as _mark_build_in_progress,
+)
 from ._ast_cache_helpers import (
     _build_function_entry,
     _commit_index_results,
@@ -317,31 +321,49 @@ class ASTCache:
                 "unresolved_refs_backfill": unresolved,
                 "activation_enabled": activation_enabled,
             }
-        if force:
+        try:
+            if force:
+                # #578: a full rebuild empties ast_index up front (the DELETE
+                # below commits), then re-populates in bounded batches over
+                # ~70 s. Stamp a persisted marker across that window so
+                # concurrent readers on other connections/processes warn
+                # instead of trusting the half-built table. MARK + DELETE live
+                # INSIDE the try so the finally clears the marker even if the
+                # DELETE/commit itself raises (e.g. SQLITE_FULL) — otherwise a
+                # failed rebuild would leave a stuck marker until TTL expiry.
+                conn = self._get_conn()
+                _mark_build_in_progress(conn)
+                conn.execute("DELETE FROM ast_index")
+                conn.commit()
+            stats, candidates, count = self._walk_and_partition(
+                max_files, force, activation_enabled
+            )
+            workers = self._resolve_worker_count(workers, candidates)
+            if workers and workers >= 2 and len(candidates) >= 2:
+                results = self._index_parallel(candidates, workers)
+            else:
+                results = [
+                    _worker_index_file((p, self.project_root, lang))
+                    for p, lang in candidates
+                ]
             conn = self._get_conn()
-            conn.execute("DELETE FROM ast_index")
-            conn.commit()
-        stats, candidates, count = self._walk_and_partition(
-            max_files, force, activation_enabled
-        )
-        workers = self._resolve_worker_count(workers, candidates)
-        if workers and workers >= 2 and len(candidates) >= 2:
-            results = self._index_parallel(candidates, workers)
-        else:
-            results = [
-                _worker_index_file((p, self.project_root, lang))
-                for p, lang in candidates
-            ]
-        conn = self._get_conn()
-        indexed_at = datetime.now(timezone.utc).isoformat()
-        _commit_index_results(
-            conn, results, stats, self._insert_index_row, indexed_at, activation_enabled
-        )
-        stats["total_files"] = count
-        stats["workers"] = workers
-        if stats["indexed"] > 0:
-            self._post_index_backfill(stats)
-        return stats
+            indexed_at = datetime.now(timezone.utc).isoformat()
+            _commit_index_results(
+                conn,
+                results,
+                stats,
+                self._insert_index_row,
+                indexed_at,
+                activation_enabled,
+            )
+            stats["total_files"] = count
+            stats["workers"] = workers
+            if stats["indexed"] > 0:
+                self._post_index_backfill(stats)
+            return stats
+        finally:
+            if force:
+                _clear_build_in_progress(self._get_conn())
 
     def _walk_and_partition(
         self, max_files: int, force: bool, activation_enabled: bool
