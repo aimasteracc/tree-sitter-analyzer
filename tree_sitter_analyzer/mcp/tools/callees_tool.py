@@ -109,11 +109,13 @@ class CodeGraphCalleesTool(CodeGraphRelationToolMixin, BaseMCPTool):
         listed_cap = int(arguments.get("limit", 50))
 
         cache = self._try_get_cache()
-        if cache is not None and cache.has_call_edges():
+        call_graph_indexed = cache is not None and cache.has_call_edges()
+        if call_graph_indexed:
             callees = self._sql_native_callees(
                 cache, func_name, file_path, include_activation
             )
             data_source = "sql"
+            has_any_call_edges = True  # SQL path only runs when edges exist
         else:
             graph = self._get_call_graph()
             callees = graph.callees_of(func_name, file_path)
@@ -121,6 +123,7 @@ class CodeGraphCalleesTool(CodeGraphRelationToolMixin, BaseMCPTool):
             if include_activation:
                 self._enrich_graph_callees_with_activation(callees)
             self._enrich_callees_with_resolution(callees)
+            has_any_call_edges = len(graph.call_edges()) > 0
 
         warnings_list: list[str] = []
         if _is_stale_resolution(callees):
@@ -155,6 +158,16 @@ class CodeGraphCalleesTool(CodeGraphRelationToolMixin, BaseMCPTool):
             )
             # Combine truncation note with any body-inlining deterrent.
             next_step = f"{trunc_note}. {next_step}" if next_step else trunc_note
+        # #548: when the call-graph has no edges at all (NOT_FOUND AND the graph
+        # itself is empty), surface a --full-index hint so users know why
+        # results are empty.  We deliberately skip the hint when the graph has
+        # edges but the specific symbol was simply not found.
+        if result.get("verdict") == "NOT_FOUND" and not has_any_call_edges:
+            index_hint = (
+                "Call-graph index is empty or has not been built yet. "
+                "Run `tree-sitter-analyzer --full-index` first, then retry."
+            )
+            next_step = f"{index_hint} {next_step}" if next_step else index_hint
         if next_step:
             result["next_step"] = next_step
 

@@ -453,3 +453,63 @@ def test_cli_call_limit_flag_parity() -> None:
     # default mirrors the MCP schema default
     args_default = parser.parse_args(["--callers", "execute"])
     assert args_default.call_limit == 50
+
+
+class TestEmptyIndexHint:
+    """#548: callers/callees on an empty/partial call-graph index must surface
+    a --full-index hint so users know why NOT_FOUND is returned.
+
+    An empty tmp_path has no indexed call edges — ``has_call_edges()`` returns
+    False and the graph-parse fallback produces zero results.  The NOT_FOUND
+    response's next_step MUST mention ``--full-index`` so the user is told
+    what to do next.
+    """
+
+    @pytest.mark.asyncio
+    async def test_callers_empty_index_hint_mentions_full_index(self, tmp_path) -> None:
+        """Callers NOT_FOUND on empty index carries --full-index hint."""
+        tool = CodeGraphCallersTool(str(tmp_path))
+        result = await tool.execute(
+            {"function_name": "some_function", "output_format": "json"}
+        )
+        assert result["verdict"] == "NOT_FOUND"
+        next_step = result.get("next_step", "")
+        assert "--full-index" in next_step, (
+            f"next_step should mention --full-index when call graph is empty; "
+            f"got: {next_step!r}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_callees_empty_index_hint_mentions_full_index(self, tmp_path) -> None:
+        """Callees NOT_FOUND on empty index carries --full-index hint."""
+        tool = CodeGraphCalleesTool(str(tmp_path))
+        result = await tool.execute(
+            {"function_name": "some_function", "output_format": "json"}
+        )
+        assert result["verdict"] == "NOT_FOUND"
+        next_step = result.get("next_step", "")
+        assert "--full-index" in next_step, (
+            f"next_step should mention --full-index when call graph is empty; "
+            f"got: {next_step!r}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_callers_non_empty_index_no_spurious_hint(
+        self, tiny_project_root
+    ) -> None:
+        """When the index has call edges, NOT_FOUND for unknown symbol does NOT
+        mention --full-index (it's the symbol that's missing, not the index)."""
+        tool = CodeGraphCallersTool(tiny_project_root)
+        result = await tool.execute(
+            {
+                "function_name": "zzz_definitely_not_in_tiny_project",
+                "output_format": "json",
+            }
+        )
+        # tiny_project_root has foo→bar edges, so the call graph is populated
+        assert result["verdict"] == "NOT_FOUND"
+        next_step = result.get("next_step", "")
+        assert "--full-index" not in next_step, (
+            f"--full-index hint must NOT appear when index has edges; "
+            f"got: {next_step!r}"
+        )
