@@ -54,7 +54,7 @@ Categories of CLI surface:
 - `--project-overview` — snapshot
 - `--project-health` — health-score distribution
 - `--smart-context [--query "X"]` — SMART workflow context
-- `--change-impact` — blast radius
+- `--change-impact` — blast radius (`--change-impact-resource-profile local_low_impact` emits nice/xdist-capped local pytest commands plus the original CI command)
 - `--call-graph` — caller/callee graph
 
 ### Code Quality
@@ -140,6 +140,11 @@ uv run python -m tree_sitter_analyzer --change-impact --format json
 
 The command is tailored to the change: `pytest <specific tests>`, `mypy <touched module>`,
 or `git diff --check` for non-code edits.
+For interactive agent work on a user's machine, add
+`--change-impact-resource-profile local_low_impact`; the local
+`verification_command` is capped with `nice -n 15` and `pytest -n 2`, while
+`ci_verification_command` keeps the original broader command for CI or a queue
+boundary.
 
 ## See Also
 

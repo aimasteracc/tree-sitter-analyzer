@@ -207,6 +207,16 @@ TOOL_SCHEMA: dict[str, Any] = {
                 "still kept). No effect without scope_paths."
             ),
         },
+        "resource_profile": {
+            "type": "string",
+            "enum": ["default", "local_low_impact"],
+            "default": "default",
+            "description": (
+                "Verification command resource profile. default preserves existing "
+                "commands; local_low_impact emits nice/xdist-capped local pytest "
+                "commands plus the original CI verification command."
+            ),
+        },
         "output_format": {
             "type": "string",
             "enum": ["json", "toon"],
@@ -326,6 +336,11 @@ class ChangeImpactTool(BaseMCPTool):
             "strict",
         ):
             raise ValueError("scope_mode must be report|strict")
+        if "resource_profile" in arguments and arguments["resource_profile"] not in (
+            "default",
+            "local_low_impact",
+        ):
+            raise ValueError("resource_profile must be default|local_low_impact")
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -336,6 +351,7 @@ class ChangeImpactTool(BaseMCPTool):
         output_format = arguments.get("output_format", "toon")
         scope_paths = arguments.get("scope_paths") or []
         scope_mode = arguments.get("scope_mode", "report")
+        resource_profile = arguments.get("resource_profile", "default")
         agent_summary_only = bool(arguments.get("agent_summary_only", False))
         compact_only = bool(arguments.get("compact_only", False))
 
@@ -352,6 +368,7 @@ class ChangeImpactTool(BaseMCPTool):
                 scope_paths,
                 agent_summary_only,
                 scope_mode=scope_mode,
+                resource_profile=resource_profile,
                 compact_only=compact_only,
             )
 
@@ -402,6 +419,7 @@ class ChangeImpactTool(BaseMCPTool):
                 include_tests=include_tests,
                 scope_paths=scope_paths,
                 agent_summary_only=agent_summary_only,
+                resource_profile=resource_profile,
             )
         )
         # r37fG phase 3: surface related decision_journal entries and
@@ -443,6 +461,7 @@ class ChangeImpactTool(BaseMCPTool):
         agent_summary_only: bool,
         *,
         scope_mode: str = "report",
+        resource_profile: str = "default",
         compact_only: bool = False,
     ) -> dict[str, Any]:
         """Analyze a GitHub PR's diff via gh CLI.
@@ -494,6 +513,7 @@ class ChangeImpactTool(BaseMCPTool):
                 include_tests=include_tests,
                 scope_paths=scope_paths,
                 agent_summary_only=agent_summary_only,
+                resource_profile=resource_profile,
             )
         )
         return self._finalize_pr_result(

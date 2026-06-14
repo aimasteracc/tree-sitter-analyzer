@@ -214,7 +214,7 @@ def _build_build_project_index_tool_args(
 
 
 def _build_change_impact_tool_args(args: Any, output_format: str) -> dict[str, Any]:
-    return {
+    tool_args = {
         "mode": getattr(args, "change_impact_mode", "diff") or "diff",
         "pr_url": getattr(args, "pr_url", "") or "",
         "include_tests": bool(getattr(args, "change_impact_include_tests", True)),
@@ -224,6 +224,12 @@ def _build_change_impact_tool_args(args: Any, output_format: str) -> dict[str, A
         "agent_summary_only": not bool(getattr(args, "change_impact_full", False)),
         "compact_only": bool(getattr(args, "compact_toon", False)),
     }
+    resource_profile = (
+        getattr(args, "change_impact_resource_profile", "default") or "default"
+    )
+    if resource_profile != "default":
+        tool_args["resource_profile"] = resource_profile
+    return tool_args
 
 
 def _build_codegraph_status_tool_args(args: Any, output_format: str) -> dict[str, Any]:

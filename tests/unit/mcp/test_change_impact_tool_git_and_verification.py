@@ -1,15 +1,30 @@
 """Unit tests for change-impact git helpers and verification planning."""
 
+from tree_sitter_analyzer.mcp.tools.change_impact_tool import ChangeImpactTool
 from tree_sitter_analyzer.mcp.tools.utils import (
     change_impact_analysis as change_impact_tool,
 )
-from tree_sitter_analyzer.mcp.tools.utils import (
-    change_impact_git,
-)
+from tree_sitter_analyzer.mcp.tools.utils import change_impact_git
 from tree_sitter_analyzer.mcp.tools.utils import (
     change_impact_verification as verification_tool,
 )
 from tree_sitter_analyzer.mcp.tools.utils.verification_command import DefaultTestCommand
+
+
+def test_change_impact_schema_accepts_resource_profile():
+    """MCP callers need the same resource profile knob as the CLI."""
+    schema = ChangeImpactTool().get_tool_schema()
+
+    assert schema["properties"]["resource_profile"] == {
+        "type": "string",
+        "enum": ["default", "local_low_impact"],
+        "default": "default",
+        "description": (
+            "Verification command resource profile. default preserves existing "
+            "commands; local_low_impact emits nice/xdist-capped local pytest "
+            "commands plus the original CI verification command."
+        ),
+    }
 
 
 def test_diff_mode_includes_untracked_files(monkeypatch):
@@ -255,6 +270,138 @@ def test_verification_strategy_recommends_focused_then_default_for_dirty_worktre
     assert (
         "Large dirty worktree detected (30 changed files)"
         in strategy["verification_hint"]
+    )
+
+
+def test_low_impact_profile_rewrites_focused_pytest_for_local_agents():
+    """Local agents should get a nice/xdist-capped command without losing CI intent."""
+    plan = verification_tool._build_verification_plan(
+        ["tree_sitter_analyzer/cli_main.py", "tree_sitter_analyzer/runtime.py"],
+        ["tests/unit/cli/test_cli_main_module.py"],
+        {
+            "tree_sitter_analyzer/cli_main.py": [
+                "tests/unit/cli/test_cli_main_module.py"
+            ],
+            "tree_sitter_analyzer/runtime.py": [
+                verification_tool.AUTO_DISCOVER_TEST_HINT
+            ],
+        },
+    )
+
+    strategy = change_impact_tool._build_verification_strategy(
+        changed_count=2,
+        tests_to_run=["tests/unit/cli/test_cli_main_module.py"],
+        verification=plan,
+        resource_profile="local_low_impact",
+    )
+
+    assert strategy["focused_test_command"] == (
+        "uv run pytest tests/unit/cli/test_cli_main_module.py -q"
+    )
+    assert strategy["low_impact_focused_test_command"] == (
+        "nice -n 15 uv run pytest tests/unit/cli/test_cli_main_module.py -n 2 -q"
+    )
+    assert strategy["local_verification_command"] == (
+        "nice -n 15 uv run pytest tests/unit/cli/test_cli_main_module.py -n 2 -q"
+    )
+    assert strategy["ci_verification_command"] == "uv run pytest -q"
+    assert strategy["verification_strategy"] == "local_low_impact_focused_then_ci"
+    assert strategy["verification_steps"] == [
+        "nice -n 15 uv run pytest tests/unit/cli/test_cli_main_module.py -n 2 -q"
+    ]
+
+
+def test_low_impact_profile_caps_default_pytest_for_local_agents():
+    """Unmapped runtime diffs still avoid xdist=auto on the local machine."""
+    plan = verification_tool._build_verification_plan(
+        ["tree_sitter_analyzer/new_runtime.py"],
+        [],
+    )
+
+    strategy = change_impact_tool._build_verification_strategy(
+        changed_count=1,
+        tests_to_run=[],
+        verification=plan,
+        resource_profile="local_low_impact",
+    )
+
+    assert strategy["focused_test_command"] == ""
+    assert strategy["low_impact_focused_test_command"] == ""
+    assert strategy["local_verification_command"] == (
+        "nice -n 15 uv run pytest -n 2 -q"
+    )
+    assert strategy["ci_verification_command"] == "uv run pytest -q"
+    assert strategy["verification_strategy"] == "local_low_impact_then_ci"
+    assert strategy["verification_steps"] == ["nice -n 15 uv run pytest -n 2 -q"]
+
+
+def test_low_impact_profile_leaves_docs_only_strategy_unchanged():
+    """Docs-only changes should still avoid pytest entirely."""
+    plan = verification_tool._build_verification_plan(["README.md"], [])
+
+    strategy = change_impact_tool._build_verification_strategy(
+        changed_count=1,
+        tests_to_run=[],
+        verification=plan,
+        resource_profile="local_low_impact",
+    )
+
+    assert strategy == {
+        "focused_test_command": "",
+        "verification_strategy": "docs_only",
+        "verification_steps": ["git diff --check"],
+        "verification_hint": "Docs-only diff; skip pytest unless code changes are added.",
+    }
+
+
+def test_low_impact_profile_leaves_non_pytest_strategy_unchanged():
+    """Resource profile is pytest-specific and should not rewrite other runners."""
+    plan = verification_tool._build_verification_plan(
+        ["internal/tool/main.go"],
+        [],
+        default_test_command=DefaultTestCommand("go", "go test ./..."),
+    )
+
+    strategy = change_impact_tool._build_verification_strategy(
+        changed_count=1,
+        tests_to_run=[],
+        verification=plan,
+        resource_profile="local_low_impact",
+    )
+
+    assert strategy == {
+        "focused_test_command": "",
+        "verification_strategy": "single_command",
+        "verification_steps": ["go test ./..."],
+        "verification_hint": "Run the recommended verification command for this diff.",
+    }
+
+
+def test_low_impact_pytest_command_handles_pytest_binary_and_bad_shell_quote():
+    """Command rewriting should be conservative for malformed shell strings."""
+    assert (
+        change_impact_tool._low_impact_pytest_command("pytest tests/unit/test_a.py -q")
+        == "nice -n 15 pytest tests/unit/test_a.py -n 2 -q"
+    )
+    assert (
+        change_impact_tool._low_impact_pytest_command("uv run pytest 'unterminated")
+        == "uv run pytest 'unterminated"
+    )
+    assert (
+        change_impact_tool._low_impact_pytest_command("go test ./...")
+        == "go test ./..."
+    )
+
+
+def test_low_impact_pytest_command_replaces_existing_worker_flags():
+    """Existing xdist settings should not survive the local-low-impact rewrite."""
+    command = (
+        "uv run pytest tests/unit/test_a.py -n auto --numprocesses 4 "
+        "--numprocesses=auto -q"
+    )
+
+    assert change_impact_tool._low_impact_pytest_command(command) == (
+        "nice -n 15 uv run pytest tests/unit/test_a.py -n 2 -q"
     )
 
 

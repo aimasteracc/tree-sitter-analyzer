@@ -86,6 +86,20 @@ class TestAddMcpChangeOptions:
         args = parser.parse_args(["--change-impact-mode", "staged"])
         assert args.change_impact_mode == "staged"
 
+    def test_change_impact_resource_profile_default(self):
+        parser = self._make_parser()
+        _add_mcp_change_options(parser)
+        args = parser.parse_args([])
+        assert args.change_impact_resource_profile == "default"
+
+    def test_change_impact_resource_profile_local_low_impact(self):
+        parser = self._make_parser()
+        _add_mcp_change_options(parser)
+        args = parser.parse_args(
+            ["--change-impact-resource-profile", "local_low_impact"]
+        )
+        assert args.change_impact_resource_profile == "local_low_impact"
+
     def test_change_impact_scope(self):
         parser = self._make_parser()
         _add_mcp_change_options(parser)
@@ -267,10 +281,13 @@ class TestFullParserIntegration:
                 "--change-impact",
                 "--change-impact-mode",
                 "staged",
+                "--change-impact-resource-profile",
+                "local_low_impact",
             ]
         )
         assert args.change_impact is True
         assert args.change_impact_mode == "staged"
+        assert args.change_impact_resource_profile == "local_low_impact"
 
     def test_parse_dependencies_blast_radius(self):
         parser = create_argument_parser()
