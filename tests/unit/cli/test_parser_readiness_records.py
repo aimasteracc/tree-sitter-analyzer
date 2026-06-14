@@ -235,7 +235,9 @@ class TestIsSupported:
                 {
                     "plugin_entrypoint": True,
                     "loader_mapping": True,
+                    "parser_installed": True,
                     "unit_tests": True,
+                    "golden_masters": True,
                 }
             )
             is True
@@ -247,7 +249,9 @@ class TestIsSupported:
                 {
                     "plugin_entrypoint": True,
                     "loader_mapping": True,
+                    "parser_installed": True,
                     "unit_tests": False,
+                    "golden_masters": True,
                 }
             )
             is False
@@ -259,7 +263,23 @@ class TestIsSupported:
                 {
                     "plugin_entrypoint": True,
                     "loader_mapping": False,
+                    "parser_installed": True,
                     "unit_tests": True,
+                    "golden_masters": True,
+                }
+            )
+            is False
+        )
+
+    def test_missing_golden_master(self):
+        assert (
+            _is_supported(
+                {
+                    "plugin_entrypoint": True,
+                    "loader_mapping": True,
+                    "parser_installed": True,
+                    "unit_tests": True,
+                    "golden_masters": False,
                 }
             )
             is False
@@ -271,7 +291,9 @@ class TestReadinessStatus:
         signals = {
             "plugin_entrypoint": True,
             "loader_mapping": True,
+            "parser_installed": True,
             "unit_tests": True,
+            "golden_masters": True,
             "parser_dependency_declared": True,
         }
         assert _readiness_status(signals) == "supported"
@@ -280,7 +302,9 @@ class TestReadinessStatus:
         signals = {
             "plugin_entrypoint": True,
             "loader_mapping": False,
+            "parser_installed": True,
             "unit_tests": False,
+            "golden_masters": False,
             "parser_dependency_declared": True,
         }
         assert _readiness_status(signals) == "needs_hardening"
@@ -289,7 +313,9 @@ class TestReadinessStatus:
         signals = {
             "plugin_entrypoint": False,
             "loader_mapping": False,
+            "parser_installed": False,
             "unit_tests": False,
+            "golden_masters": False,
             "parser_dependency_declared": True,
         }
         assert _readiness_status(signals) == "candidate"
@@ -298,7 +324,20 @@ class TestReadinessStatus:
         signals = {
             "plugin_entrypoint": False,
             "loader_mapping": False,
+            "parser_installed": False,
             "unit_tests": False,
+            "golden_masters": False,
+            "parser_dependency_declared": False,
+        }
+        assert _readiness_status(signals) == "missing_parser_package"
+
+    def test_plugin_without_parser_package_is_missing_parser_package(self):
+        signals = {
+            "plugin_entrypoint": True,
+            "loader_mapping": False,
+            "parser_installed": False,
+            "unit_tests": True,
+            "golden_masters": True,
             "parser_dependency_declared": False,
         }
         assert _readiness_status(signals) == "missing_parser_package"

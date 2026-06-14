@@ -13,6 +13,7 @@ import pytest
 
 from tree_sitter_analyzer.cli.parser_readiness import (
     _LANG_NAME_RE,
+    _ensure_no_gap_consistency,
     build_parser_readiness_advice,
 )
 
@@ -301,3 +302,57 @@ class TestParserPackageWarnings:
             assert isinstance(w["declarations"], list) and len(w["declarations"]) >= 2
             assert isinstance(w["sources"], list)
             assert isinstance(w["hint"], str) and w["language"] in w["hint"]
+
+
+class TestParserReadinessReportedCount:
+    """Dogfood contract: reported counts must describe the emitted records."""
+
+    def test_reported_count_matches_non_empty_readiness_list(self):
+        result = {
+            "implemented_language_count": 21,
+            "readiness": [
+                {"language": "json", "status": "needs_hardening"},
+                {"language": "scala", "status": "needs_hardening"},
+                {"language": "bash", "status": "needs_hardening"},
+            ],
+            "agent_summary": {"reported_language_count": 3},
+        }
+        _ensure_no_gap_consistency(result)
+        assert result["reported_language_count"] == 3
+
+    def test_no_gap_report_uses_implemented_language_count(self):
+        result = {
+            "implemented_language_count": 21,
+            "readiness": [],
+            "status_distribution": {},
+            "agent_summary": {"reported_language_count": 0},
+        }
+        _ensure_no_gap_consistency(result)
+        assert result["reported_language_count"] == 21
+        assert result["agent_summary"]["reported_language_count"] == 21
+
+
+class TestParserReadinessMatrixTruth:
+    """The roadmap must report every broken side of the support matrix."""
+
+    def test_plugin_entrypoint_without_parser_package_is_reported(self, tmp_path):
+        (tmp_path / "pyproject.toml").write_text(
+            """
+[project]
+dependencies = []
+
+[project.entry-points."tree_sitter_analyzer.plugins"]
+fixture = "pkg:Plugin"
+""",
+            encoding="utf-8",
+        )
+
+        result = build_parser_readiness_advice(str(tmp_path), include_supported=True)
+
+        assert result["implemented_languages"] == ["fixture"]
+        assert result["candidate_count"] == 1
+        assert result["status_distribution"] == {"missing_parser_package": 1}
+        assert result["readiness"][0]["language"] == "fixture"
+        assert result["readiness"][0]["status"] == "missing_parser_package"
+        assert result["readiness"][0]["signals"]["plugin_entrypoint"] is True
+        assert result["readiness"][0]["signals"]["parser_dependency_declared"] is False

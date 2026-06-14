@@ -57,11 +57,13 @@ python = "tree_sitter_analyzer.languages.python_plugin:PythonPlugin"
     assert result["success"] is True
     assert result["advisor"] == "parser readiness"
     assert result["implemented_languages"] == ["python"]
-    assert result["candidate_count"] == 1
+    assert result["candidate_count"] == 2
+    assert result["status_distribution"]["needs_hardening"] == 1
     assert result["status_distribution"]["candidate"] == 1
-    assert result["recommendations"][0]["language"] == "fixturelang"
-    assert result["recommendations"][0]["status"] == "candidate"
-    fixture = result["readiness"][0]
+    recommendations = {item["language"]: item for item in result["recommendations"]}
+    assert recommendations["fixturelang"]["status"] == "candidate"
+    readiness = {item["language"]: item for item in result["readiness"]}
+    fixture = readiness["fixturelang"]
     assert fixture["language"] == "fixturelang"
     assert fixture["signals"]["parser_dependency_declared"] is True
     assert fixture["signals"]["plugin_entrypoint"] is False
@@ -397,9 +399,10 @@ async def test_parser_readiness_partial_install_plugin_without_loader(tmp_path):
     "declared package, no plugin" candidate path and the "fully
     implemented" supported path, but never a half-installed
     intermediate. Here the plugin entrypoint exists but the language
-    name doesn't appear in ``LanguageLoader.LANGUAGE_MODULES``. The
-    contract: status drops to ``needs_hardening`` so callers know the
-    wiring is incomplete even though a plugin exists.
+    name doesn't appear in ``LanguageLoader.LANGUAGE_MODULES`` and no
+    parser dependency is declared. The contract: status drops to
+    ``missing_parser_package`` because the parser package is the root
+    prerequisite, while next_steps still mention the loader wiring gap.
     """
     _write_pyproject(
         tmp_path,
@@ -424,7 +427,7 @@ fixturelang = "tree_sitter_analyzer.languages.fixturelang_plugin:FixturelangPlug
     signals = readiness["signals"]
     assert signals["plugin_entrypoint"] is True
     assert signals["loader_mapping"] is False
-    assert readiness["status"] == "needs_hardening"
+    assert readiness["status"] == "missing_parser_package"
     # next_steps must mention adding the loader mapping.
     assert any(
         "loader" in step.lower() or "language_modules" in step.lower()

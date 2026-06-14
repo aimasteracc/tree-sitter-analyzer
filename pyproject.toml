@@ -335,6 +335,8 @@ kotlin = "tree_sitter_analyzer.languages.kotlin_plugin:KotlinPlugin"
 c = "tree_sitter_analyzer.languages.c_plugin:CPlugin"
 cpp = "tree_sitter_analyzer.languages.cpp_plugin:CppPlugin"
 swift = "tree_sitter_analyzer.languages.swift_plugin:SwiftPlugin"
+bash = "tree_sitter_analyzer.languages.bash_plugin:BashPlugin"
+scala = "tree_sitter_analyzer.languages.scala_plugin:ScalaPlugin"
 
 [project.urls]
 Homepage = "https://github.com/aimasteracc/tree-sitter-analyzer"

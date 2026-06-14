@@ -17,6 +17,8 @@ from tree_sitter_analyzer.language_loader import (
     loader,
 )
 
+EXPECTED_LANGUAGE_MODULE_COUNT = 24
+
 
 class TestLanguageLoaderInitialization:
     """Test LanguageLoader initialization"""
@@ -34,16 +36,17 @@ class TestLanguageLoaderInitialization:
         """Test that LANGUAGE_MODULES is properly defined"""
         loader = LanguageLoader()
         assert isinstance(loader.LANGUAGE_MODULES, dict)
-        assert len(loader.LANGUAGE_MODULES) == 23
+        assert len(loader.LANGUAGE_MODULES) == EXPECTED_LANGUAGE_MODULE_COUNT
 
     def test_supported_languages_property(self):
         """Test SUPPORTED_LANGUAGES property"""
         loader = LanguageLoader()
         languages = loader.SUPPORTED_LANGUAGES
         assert isinstance(languages, list)
-        assert len(languages) == 23
+        assert len(languages) == EXPECTED_LANGUAGE_MODULE_COUNT
         assert "python" in languages
         assert "java" in languages
+        assert "json" in languages
 
     def test_typescript_dialects_defined(self):
         """Test TypeScript dialects mapping"""
@@ -429,7 +432,7 @@ class TestGetSupportedLanguages:
         with patch.object(loader, "is_language_available", return_value=True):
             languages = loader.get_supported_languages()
             assert isinstance(languages, list)
-            assert len(languages) == 23
+            assert len(languages) == EXPECTED_LANGUAGE_MODULE_COUNT
 
     def test_get_supported_languages_filters_unavailable(self):
         """Test that unavailable languages are filtered out"""
@@ -450,9 +453,9 @@ class TestGetSupportedLanguages:
 
         languages = loader.get_supported_languages()
 
-        assert len(languages) == 23
+        assert len(languages) == EXPECTED_LANGUAGE_MODULE_COUNT
         # is_language_available should be called for languages not in unavailable set
-        assert mock_available.call_count == 23
+        assert mock_available.call_count == EXPECTED_LANGUAGE_MODULE_COUNT
 
 
 class TestClearCache:
