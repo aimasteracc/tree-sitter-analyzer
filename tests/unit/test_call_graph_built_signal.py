@@ -37,6 +37,44 @@ def test_call_graph_state_marker_round_trip() -> None:
         conn.close()
 
 
+def test_call_graph_state_write_failures_do_not_raise() -> None:
+    class BrokenConn:
+        def execute(self, *args: object, **kwargs: object) -> object:
+            raise sqlite3.OperationalError("locked")
+
+        def commit(self) -> None:
+            raise AssertionError("commit should not run after execute fails")
+
+    broken = BrokenConn()
+
+    callgraph_state.mark_call_graph_built(broken)  # type: ignore[arg-type]
+    callgraph_state.clear_call_graph_built(broken)  # type: ignore[arg-type]
+
+
+def test_call_graph_built_false_when_state_table_has_no_row() -> None:
+    conn = sqlite3.connect(":memory:")
+    try:
+        conn.execute(
+            "CREATE TABLE ast_call_graph_state "
+            "(id INTEGER PRIMARY KEY, built INTEGER NOT NULL, built_at REAL NOT NULL)"
+        )
+        conn.commit()
+
+        assert callgraph_state.call_graph_built(conn) is False
+    finally:
+        conn.close()
+
+
+def test_call_graph_built_supports_tuple_rows() -> None:
+    conn = sqlite3.connect(":memory:")
+    try:
+        callgraph_state.mark_call_graph_built(conn)
+
+        assert callgraph_state.call_graph_built(conn) is True
+    finally:
+        conn.close()
+
+
 def _seed_partial_ast_cache_without_call_graph(root: Path) -> None:
     """Create an AST-cache row that predates the call-graph-built marker."""
     source = "def solo():\n    return 1\n"
