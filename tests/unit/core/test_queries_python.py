@@ -396,7 +396,10 @@ class TestFunctionsQueryNoDuplicate:
                 TreeSitterQueryCompat,
             )
         except ImportError:
-            pytest.skip("tree-sitter or tree_sitter_python not available")
+            pytest.skip(
+                "tree-sitter or tree_sitter_python not available; "
+                "tracked: optional tree-sitter grammar dependency"
+            )
 
         py_language = Language(tree_sitter_python.language())
         parser = Parser(py_language)
