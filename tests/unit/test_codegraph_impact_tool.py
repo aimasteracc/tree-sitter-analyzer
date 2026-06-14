@@ -710,3 +710,92 @@ class TestBlastRadiusFileOnlyRecoveryHint:
             tool.validate_arguments({"mode": "blast_radius"})
         msg = str(exc_info.value)
         assert "xref" in msg
+
+
+# ---------------------------------------------------------------------------
+# BUG 2 follow-up after #577 — blast_radius unknown seed must yield NOT_FOUND
+# ---------------------------------------------------------------------------
+
+
+class TestBlastRadiusUnknownSeedVerdict:
+    """blast_radius with an unresolved seed must yield verdict=NOT_FOUND and
+    must NOT advise the caller to proceed with an edit.
+
+    BUG: when resolve_targets returns [] (seed not in call graph),
+    _blast_radius_for_functions returns total_affected_functions=0 and no
+    'risk' key.  _impact_verdict reads result.get("risk", result) → risk=result
+    (the whole dict), then result.get("level") → None → falls through to
+    return "INFO".  So the agent_summary says "proceed with edit" for a symbol
+    that was never found — dangerous for an agent relying on it as a safety gate.
+
+    FIX: detect zero affected functions + unresolved targets → return NOT_FOUND.
+    """
+
+    def _make_tool(self, tmp_path) -> CodeGraphImpactTool:
+        return CodeGraphImpactTool(str(tmp_path))
+
+    def _mock_empty_graph(self) -> MagicMock:
+        mg = MagicMock()
+        mg.resolve_targets.return_value = []  # seed not found
+        mg.caller_refs_of.return_value = []
+        mg.callee_refs_of.return_value = []
+        mg.callers_of.return_value = []
+        mg.callees_of.return_value = []
+        mg.call_chain.return_value = []
+        return mg
+
+    @pytest.mark.asyncio
+    async def test_unknown_seed_verdict_is_not_found(self, tmp_path):
+        """blast_radius with unresolved seed → verdict == 'NOT_FOUND', not 'INFO'."""
+        tool = self._make_tool(tmp_path)
+        mg = self._mock_empty_graph()
+        with patch.object(tool, "get_call_graph", return_value=mg):
+            result = await tool.execute(
+                {
+                    "mode": "blast_radius",
+                    "function_name": "nonexistent_fn_xyz",
+                    "output_format": "json",
+                }
+            )
+        verdict = result.get("verdict")
+        assert verdict == "NOT_FOUND", (
+            f"blast_radius unknown seed must yield verdict='NOT_FOUND'; got {verdict!r}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_unknown_seed_agent_summary_verdict_is_not_found(self, tmp_path):
+        """agent_summary.verdict for unknown seed must be 'NOT_FOUND', not 'INFO'."""
+        tool = self._make_tool(tmp_path)
+        mg = self._mock_empty_graph()
+        with patch.object(tool, "get_call_graph", return_value=mg):
+            result = await tool.execute(
+                {
+                    "mode": "blast_radius",
+                    "function_name": "nonexistent_fn_xyz",
+                    "output_format": "json",
+                }
+            )
+        agent_summary = result.get("agent_summary", {})
+        assert agent_summary.get("verdict") == "NOT_FOUND", (
+            f"agent_summary.verdict must be 'NOT_FOUND' for unknown seed; "
+            f"got {agent_summary.get('verdict')!r}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_unknown_seed_next_step_does_not_advise_edit(self, tmp_path):
+        """blast_radius unknown seed must NOT tell caller to 'proceed with edit'."""
+        tool = self._make_tool(tmp_path)
+        mg = self._mock_empty_graph()
+        with patch.object(tool, "get_call_graph", return_value=mg):
+            result = await tool.execute(
+                {
+                    "mode": "blast_radius",
+                    "function_name": "nonexistent_fn_xyz",
+                    "output_format": "json",
+                }
+            )
+        next_step = result.get("agent_summary", {}).get("next_step", "")
+        assert "proceed" not in next_step.lower(), (
+            f"next_step must NOT advise proceeding for an unresolved seed; "
+            f"got: {next_step!r}"
+        )
