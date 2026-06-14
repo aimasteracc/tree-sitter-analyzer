@@ -14,6 +14,7 @@ from tree_sitter_analyzer.mcp.tools.codegraph_impact_tool import (
     _compute_risk_score,
     _compute_transitive_callees,
     _compute_transitive_callers,
+    _impact_verdict,
     _partition_refs,
 )
 
@@ -799,3 +800,34 @@ class TestBlastRadiusUnknownSeedVerdict:
             f"next_step must NOT advise proceeding for an unresolved seed; "
             f"got: {next_step!r}"
         )
+
+
+# ---------------------------------------------------------------------------
+# #798 — risk.level "critical" must NOT map to verdict INFO ("proceed")
+# ---------------------------------------------------------------------------
+
+
+class TestImpactVerdictCriticalLevel:
+    """_compute_risk_score emits 4 levels (critical>=60, high>=40, medium>=20,
+    low<20), but _impact_verdict had no ``critical`` branch, so a critical-risk
+    symbol fell through to ``return "INFO"`` — and INFO drives the
+    "Low risk change — proceed with edit" next_step. The single highest-blast-
+    radius functions therefore read as safe-to-edit (same false-green family as
+    #754/#780). Fix: map critical -> CAUTION. The no-level fallthrough (INFO) is
+    left unchanged on purpose — it is the blast_radius result shape, out of
+    scope here.
+    """
+
+    def test_critical_level_is_caution_not_info(self):
+        assert _impact_verdict({"risk": {"level": "critical"}}) == "CAUTION"
+
+    def test_known_levels_unchanged(self):
+        assert _impact_verdict({"risk": {"level": "high"}}) == "CAUTION"
+        assert _impact_verdict({"risk": {"level": "medium"}}) == "REVIEW"
+        assert _impact_verdict({"risk": {"level": "low"}}) == "INFO"
+        assert _impact_verdict({"risk": {"level": "unknown"}}) == "NOT_FOUND"
+
+    def test_no_level_fallthrough_stays_info(self):
+        # blast_radius result shape has no "level" key; preserve its existing
+        # INFO fallthrough (this fix must not change blast_radius semantics).
+        assert _impact_verdict({"total_affected_functions": 5}) == "INFO"

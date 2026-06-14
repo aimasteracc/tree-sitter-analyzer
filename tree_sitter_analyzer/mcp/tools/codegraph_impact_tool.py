@@ -585,10 +585,19 @@ def _impact_verdict(result: dict[str, Any]) -> str:
         # call graph at all — agents should treat this as NOT_FOUND so they
         # don't act on stale assumptions.
         return "NOT_FOUND"
+    if level == "critical":
+        # #798: _compute_risk_score emits "critical" (score >= 60) but this
+        # mapper had no branch for it, so the highest-blast-radius symbols fell
+        # through to INFO and read as "proceed with edit" — a dangerous false
+        # green. Map critical to CAUTION (matching the sister _compute_verdict
+        # convention) so next_step becomes the high-risk "trace callers" advice.
+        return "CAUTION"
     if level == "high":
         return "CAUTION"
     if level == "medium":
         return "REVIEW"
     if level == "low":
         return "INFO"
+    # No "level" key (e.g. the blast_radius result shape) keeps the pre-existing
+    # INFO fallthrough — changing blast_radius semantics is out of #798 scope.
     return "INFO"
