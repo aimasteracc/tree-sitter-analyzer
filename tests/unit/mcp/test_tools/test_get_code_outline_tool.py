@@ -806,6 +806,49 @@ class TestGetCodeOutlineToolExecute:
         assert "fields" in response["outline"]["classes"][0]
         assert response["outline"]["classes"][0]["fields"][0]["name"] == "count"
 
+    @pytest.mark.asyncio
+    async def test_wrong_language_file_flags_parse_errors(self, tmp_path):
+        """#707: outline must not return phantom symbols as a clean INFO."""
+        target = tmp_path / "evil.py"
+        target.write_text("class Foo { public: int x; void bar() {} };\n")
+
+        tool = GetCodeOutlineTool(project_root=str(tmp_path))
+        result = await tool.execute({"file_path": "evil.py", "output_format": "json"})
+
+        assert result["parse_errors"] is True
+        assert result["verdict"] == "WARN"
+        assert result["agent_summary"]["verdict"] == "WARN"
+
+    @pytest.mark.asyncio
+    async def test_non_utf8_file_flags_encoding_warning(self, tmp_path):
+        """#707: non-UTF8 source must carry an explicit encoding signal."""
+        target = tmp_path / "latin1.py"
+        target.write_bytes("def café():\n    return 'ok'\n".encode("cp1252"))
+
+        tool = GetCodeOutlineTool(project_root=str(tmp_path))
+        result = await tool.execute({"file_path": "latin1.py", "output_format": "json"})
+
+        assert result["encoding_warning"] is True
+        assert result["non_utf8_bytes"] is True
+        assert result["encoding_warnings"] == ["non_utf8_bytes"]
+        assert result["verdict"] == "WARN"
+        assert result["agent_summary"]["verdict"] == "WARN"
+
+    @pytest.mark.asyncio
+    async def test_null_byte_file_flags_encoding_warning(self, tmp_path):
+        """#707: raw NUL bytes affect line spans, so outline must warn."""
+        target = tmp_path / "nul.py"
+        target.write_bytes(b"def outer():\n    value = 1\x00\n    return value\n")
+
+        tool = GetCodeOutlineTool(project_root=str(tmp_path))
+        result = await tool.execute({"file_path": "nul.py", "output_format": "json"})
+
+        assert result["encoding_warning"] is True
+        assert result["null_bytes"] is True
+        assert result["encoding_warnings"] == ["null_bytes"]
+        assert result["verdict"] == "WARN"
+        assert result["agent_summary"]["verdict"] == "WARN"
+
 
 # ---------------------------------------------------------------------------
 # 工具定义测试

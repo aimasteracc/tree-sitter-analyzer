@@ -284,6 +284,28 @@ class TestOutlineDispatch:
 class TestOutlineMcpCliParity:
     """CLI path and MCP GetCodeOutlineTool.execute must agree on core schema keys."""
 
+    @staticmethod
+    def _run_cli_outline(target: Path, project_root: Path) -> dict:
+        from tree_sitter_analyzer.cli.special_commands import _handle_outline
+
+        cli_result_holder: list = []
+        ctx = _make_context(
+            asyncio_run=asyncio.run,
+            output_json=lambda d: cli_result_holder.append(d),
+        )
+        args = SimpleNamespace(
+            outline=str(target),
+            outline_listed_cap=50,
+            project_root=str(project_root),
+            format="json",
+            output_format="json",
+            quiet=False,
+        )
+        rc = _handle_outline(args, ctx)
+        assert rc == 0
+        assert len(cli_result_holder) == 1
+        return cli_result_holder[0]
+
     def test_core_schema_keys_match_mcp_output(self, tmp_path: Path) -> None:
         """CLI JSON output contains the same core keys as MCP execute response."""
         from tree_sitter_analyzer.mcp.tools.get_code_outline_tool import (
@@ -361,6 +383,64 @@ class TestOutlineMcpCliParity:
             assert "methods" in cls
             assert "extends" in cls
             assert "implements" in cls
+
+    def test_parse_error_signal_keys_match_mcp_output(self, tmp_path: Path) -> None:
+        """#707: CLI must preserve outline parse-error signals from MCP."""
+        from tree_sitter_analyzer.mcp.tools.get_code_outline_tool import (
+            GetCodeOutlineTool,
+        )
+
+        target = tmp_path / "evil.py"
+        target.write_text("class Foo { public: int x; void bar() {} };\n")
+
+        tool = GetCodeOutlineTool(project_root=str(tmp_path))
+        mcp_result = asyncio.run(
+            tool.execute({"file_path": str(target), "output_format": "json"})
+        )
+        cli_result = self._run_cli_outline(target, tmp_path)
+
+        signal_keys = ("verdict", "parse_errors", "encoding_warning")
+        mcp_signals = {key: mcp_result.get(key) for key in signal_keys}
+        cli_signals = {key: cli_result.get(key) for key in signal_keys}
+        assert mcp_signals == {
+            "verdict": "WARN",
+            "parse_errors": True,
+            "encoding_warning": None,
+        }
+        assert cli_signals == mcp_signals
+
+    def test_encoding_signal_keys_match_mcp_output(self, tmp_path: Path) -> None:
+        """#707: CLI must preserve non-UTF8 outline signals from MCP."""
+        from tree_sitter_analyzer.mcp.tools.get_code_outline_tool import (
+            GetCodeOutlineTool,
+        )
+
+        target = tmp_path / "latin1.py"
+        target.write_bytes("def café():\n    return 'ok'\n".encode("cp1252"))
+
+        tool = GetCodeOutlineTool(project_root=str(tmp_path))
+        mcp_result = asyncio.run(
+            tool.execute({"file_path": str(target), "output_format": "json"})
+        )
+        cli_result = self._run_cli_outline(target, tmp_path)
+
+        signal_keys = (
+            "verdict",
+            "encoding_warning",
+            "encoding_warnings",
+            "non_utf8_bytes",
+            "null_bytes",
+        )
+        mcp_signals = {key: mcp_result.get(key) for key in signal_keys}
+        cli_signals = {key: cli_result.get(key) for key in signal_keys}
+        assert mcp_signals == {
+            "verdict": "WARN",
+            "encoding_warning": True,
+            "encoding_warnings": ["non_utf8_bytes"],
+            "non_utf8_bytes": True,
+            "null_bytes": None,
+        }
+        assert cli_signals == mcp_signals
 
 
 class TestBareOutlineValidation(TestOutlineDispatch):
