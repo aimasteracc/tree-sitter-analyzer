@@ -70,7 +70,22 @@ def _iter_violations(
 
     Split out so the public ``evaluate()`` can wrap it in ``list(...)``
     without paying a generator-overhead penalty inside the hot loop.
+
+    Deduplication: the ``edges`` table can contain multiple rows for the
+    same logical call site (same caller_file + caller_line + callee_name)
+    with different ``callee_resolved_file`` values — e.g., when a call is
+    re-indexed by two resolution passes.  Both rows can match the same
+    constraint and produce ``Violation`` objects with identical PRIMARY
+    KEY ``(rule_id, caller_file, caller_line, callee_name)``.  Inserting
+    both into ``ast_constraint_violations`` would crash with
+    ``UNIQUE constraint failed`` (#544).
+
+    We keep a ``seen`` set and skip any PK tuple already emitted.  The
+    first occurrence wins (edge ordering from the DB is stable within a
+    transaction; the choice of which ``callee_file`` survives is arbitrary
+    but deterministic and the PK is the same violation regardless).
     """
+    seen: set[tuple[str, str, int, str]] = set()
     select_sql = _build_select_sql(db_conn)
     cursor = db_conn.execute(select_sql)
     for row in cursor:
@@ -86,6 +101,15 @@ def _iter_violations(
                 continue
             if _is_excepted(caller_file, cc):
                 continue
+            pk = (
+                cc.constraint.id,
+                caller_file,
+                int(caller_line or 0),
+                callee_name or "",
+            )
+            if pk in seen:
+                continue
+            seen.add(pk)
             yield Violation(
                 rule_id=cc.constraint.id,
                 caller_file=caller_file,
