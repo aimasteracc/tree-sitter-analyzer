@@ -256,6 +256,107 @@ class TestInheritanceLineage:
         assert result["success"] is True
         assert "hierarchy" not in result
 
+    def test_hierarchy_flags_stale_after_source_edit_without_reindex(
+        self, tool, tmp_path
+    ):
+        """#692: index_stale=True when source is newer than the AST index."""
+        import os
+        import time
+
+        from tree_sitter_analyzer.ast_cache import ASTCache
+
+        _write_py(
+            tmp_path, "base.py", "class Base:\n    def run(self):\n        pass\n"
+        )
+        sub_path = tmp_path / "sub.py"
+        _write_py(
+            tmp_path,
+            "sub.py",
+            "from base import Base\nclass Sub(Base):\n    pass\n",
+        )
+        # Build the index so hierarchy is populated.
+        ASTCache(str(tmp_path)).index_project(max_files=50)
+
+        # Bump sub.py's mtime to AFTER the index was written, WITHOUT re-indexing.
+        # Use a deterministic future timestamp to avoid timing races.
+        future_ns = int(time.time() * 1e9) + 10_000_000_000  # 10 seconds ahead
+        future_s = future_ns / 1e9
+        os.utime(str(sub_path), (future_s, future_s))
+
+        # The tool must re-build the dep graph (source mtime changed) so
+        # _dep_graph_fingerprint.max_mtime_ns reflects the bumped mtime.
+        # Force cache invalidation by resetting the tool state.
+        tool._dep_graph = None
+        tool._dep_graph_fingerprint = None
+        tool._symbol_cache = {}
+
+        result = asyncio.run(tool.execute({"symbol": "Base", "output_format": "json"}))
+        hier = result["hierarchy"]
+        # Stale row still reported (the index still has Sub).
+        assert hier["subclass_count"] == 1
+        # Freshness flag must be present and True.
+        assert hier["index_stale"] is True
+        assert "index_hint" in hier
+
+    def test_hierarchy_not_stale_when_index_fresh(self, tool, tmp_path):
+        """#692: index_stale=False immediately after indexing (no source edits)."""
+        import os
+        import time
+
+        from tree_sitter_analyzer.ast_cache import ASTCache
+
+        _write_py(
+            tmp_path, "base.py", "class Base:\n    def run(self):\n        pass\n"
+        )
+        _write_py(
+            tmp_path,
+            "sub.py",
+            "from base import Base\nclass Sub(Base):\n    pass\n",
+        )
+        # Set source mtimes to a point in the past so index is guaranteed newer.
+        past_s = time.time() - 60
+        for name in ("base.py", "sub.py"):
+            p = str(tmp_path / name)
+            os.utime(p, (past_s, past_s))
+
+        # Build the index AFTER setting source mtimes to the past.
+        ASTCache(str(tmp_path)).index_project(max_files=50)
+
+        result = asyncio.run(tool.execute({"symbol": "Base", "output_format": "json"}))
+        hier = result["hierarchy"]
+        assert hier["subclass_count"] == 1
+        # Index is fresh: stale flag must be False, hint must be absent.
+        assert hier["index_stale"] is False
+        assert "index_hint" not in hier
+
+    def test_hierarchy_stale_uses_fingerprint_fallback_when_graph_missing(
+        self, tool, tmp_path
+    ):
+        """#692: when the dep-graph fingerprint is absent (graph build failed) the
+        freshness check falls back to compute_graph_fingerprint directly."""
+        import os
+        import time
+
+        from tree_sitter_analyzer.ast_cache import ASTCache
+
+        _write_py(tmp_path, "base.py", "class Base:\n    pass\n")
+        _write_py(
+            tmp_path, "sub.py", "from base import Base\nclass Sub(Base):\n    pass\n"
+        )
+        past_s = time.time() - 60
+        for name in ("base.py", "sub.py"):
+            os.utime(str(tmp_path / name), (past_s, past_s))
+        ASTCache(str(tmp_path)).index_project(max_files=50)
+
+        # Force the fallback: no cached dep-graph fingerprint available.
+        tool._dep_graph_fingerprint = None
+        hier = tool._hierarchy_for("Base")
+        assert hier is not None
+        assert hier["subclass_count"] == 1
+        # Source mtimes are in the past, index is newer → fresh via the fallback.
+        assert hier["index_stale"] is False
+        assert "index_hint" not in hier
+
 
 class TestR37uTopLevelVerdictMirror:
     """r37u dogfood: ``--symbol-lineage`` envelope used to omit top-level
