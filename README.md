@@ -2,22 +2,20 @@
 
 **English** | **[日本語](README_ja.md)** | **[简体中文](README_zh.md)**
 
-Code intelligence for AI agents: a pre-indexed, token-efficient MCP server — **8 MCP tools** + CLI, 100% local.
+[![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/) [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org) [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE) [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) [![Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer) [![Works with Claude Code · Cursor · MCP](https://img.shields.io/badge/works%20with-Claude%20Code%20%C2%B7%20Cursor%20%C2%B7%20MCP-6f42c1.svg)](#supported-agents)
 
-* **Instant structural answers.** Who calls this? What would break? Generate a UML diagram. One call returns the whole answer — no grep loop.
-* **Token-budget aware.** TOON output cuts bulk/tabular payload by ~50-70% vs raw JSON ([measured invariant](tests/unit/mcp/test_output_cost_invariants.py)); RFC-0012 measured 0.52× ratio on representative decision tools.
-* **Edit safely.** `edit action=safe` + `edit action=impact` + constraint DSL gate every modification before it happens; [≈0 cross-language mis-wires](benchmarks/codegraph_compare/MISWIRE-AUDIT-EXAMPLES.md) in the call graph.
+**Code intelligence AI agents can trust** — correct cross-language structure across 20+ languages, agent-native (MCP + CLI).
 
-> **100% local** means the index lives in `.ast-cache/` inside your repo, no telemetry, no remote calls. Every MCP response + CLI output is generated locally from the SQLite+FTS5 cache.
+TSA indexes your codebase with tree-sitter and serves correct call graphs, symbol search, and structural queries to AI coding agents — locally, with no telemetry.
+
+**Why it's different:**
+* **Cross-language correctness is the moat.** A name-only index wires Python `sorted()` to a Swift `func sorted`. TSA doesn't. ~390× fewer cross-language call-graph mis-wires than alternatives ([reproducible audit](benchmarks/codegraph_compare/MISWIRE-AUDIT-EXAMPLES.md)).
+* **Built agent-native.** 8 MCP tools, TOON output (~50-70% smaller than JSON on bulk responses), verdict envelopes, and 13 curated Skills — designed for Claude Code, Cursor, and any MCP client.
+* **Broad and correctly classified.** 13 languages with full call-graph indexing (Python · Go · Rust · Java · JS · TS · C · C++ · C# · Swift · Kotlin · Ruby · PHP), 8 more symbol-indexed or CLI-reachable.
+
+> **Proof:** on HuggingFace `tokenizers` (Rust+Python+JS+TS), a name-only resolver mis-wires **1,259** call edges — TSA: **0**. Run it on your repo in seconds: `uvx --from tree-sitter-analyzer miswire-audit .`
 
 > Upgrading from v1.x? See [docs/MIGRATION.md](docs/MIGRATION.md).
-
-[![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-19300%20passed-brightgreen.svg)](#quality--testing)
-[![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
-[![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 ---
 

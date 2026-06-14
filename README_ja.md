@@ -2,22 +2,20 @@
 
 **[English](README.md)** | **日本語** | **[简体中文](README_zh.md)**
 
-AI エージェントのためのコード インテリジェンス: 事前インデックス済みのトークン効率の良い MCP サーバー — **8 MCP ツール** + CLI、100% ローカル動作。
+[![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/) [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org) [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE) [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) [![Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer) [![対応: Claude Code · Cursor · MCP](https://img.shields.io/badge/対応-Claude%20Code%20%C2%B7%20Cursor%20%C2%B7%20MCP-6f42c1.svg)](#supported-agents)
 
-* **即時の構造的回答。** 誰がこれを呼ぶ？何が壊れる？UML 図を生成。1 回の呼び出しで全ての答えが返る — grep ループ不要。
-* **トークン バジェット意識。** TOON 出力は bulk/tabular ペイロードを生 JSON 比 ~50-70% 削減（[実測済み不変量](tests/unit/mcp/test_output_cost_invariants.py); RFC-0012 で代表的な決定ツールにて 0.52× を計測）。
-* **安全な編集。** `edit action=safe` + `edit action=impact` + 制約 DSL が全ての変更を事前にゲート; コール グラフの[異言語誤結線 ≈0](benchmarks/codegraph_compare/MISWIRE-AUDIT-EXAMPLES.md)。
+**AI エージェントが信頼できるコード インテリジェンス** — 20+ 言語にわたる正確なクロスランゲージ構造解析、エージェントネイティブ設計（MCP + CLI）。
 
-> **100% ローカル** とは、インデックスがリポジトリ内の `.ast-cache/` に保存され、テレメトリや外部呼び出しが一切ないことを意味します。全 MCP レスポンスおよび CLI 出力は SQLite+FTS5 キャッシュからローカルで生成されます。
+TSA は tree-sitter でコードベースをインデックスし、正確なコール グラフ・シンボル検索・構造クエリを AI コーディング エージェントへ提供します — 完全ローカル、テレメトリなし。AI エージェントのためのコード インテリジェンス: 事前インデックス済みのトークン効率の良い MCP サーバー — **8 MCP ツール** + CLI、100% ローカル動作。
+
+**なぜ違うのか：**
+* **クロスランゲージ正確性がモート（堀）。** 名前照合のみのインデックスは Python `sorted()` を Swift `func sorted` に結線する。TSA はしない。競合ツール比 ~390× 少ないクロスランゲージ誤結線（[再現可能な監査](benchmarks/codegraph_compare/MISWIRE-AUDIT-EXAMPLES.md)）。
+* **エージェントネイティブ。** **8 MCP ツール**、TOON 出力（bulk レスポンスが JSON より ~50-70% 小さい）、verdict エンベロープ、13 のキュレーテッド Skills — Claude Code・Cursor・任意の MCP クライアント向け設計。
+* **広くかつ正確に分類。** 13 言語のフルコールグラフ インデックス（Python · Go · Rust · Java · JS · TS · C · C++ · C# · Swift · Kotlin · Ruby · PHP）、他 8 言語はシンボル インデックスまたは CLI 経由でアクセス可。
+
+> **実測値：** HuggingFace `tokenizers`（Rust+Python+JS+TS）において名前照合リゾルバは **1,259** コール エッジを誤結線 — TSA は **0**。自分のリポジトリで確認: `uvx --from tree-sitter-analyzer miswire-audit .`
 
 > v1.x からの移行は [docs/MIGRATION.md](docs/MIGRATION.md) を参照。
-
-[![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-19300%20passed-brightgreen.svg)](#-品質とテスト)
-[![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
-[![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 ---
 
