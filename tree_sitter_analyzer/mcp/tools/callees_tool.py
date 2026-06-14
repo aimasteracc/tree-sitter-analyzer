@@ -20,6 +20,10 @@ from .codegraph_relation_tool import (
     _is_stale_resolution,
     classify_callee_resolution,
 )
+from .index_rebuild_signal import (
+    is_index_rebuilding,
+    rebuild_in_progress_next_step,
+)
 
 logger = setup_logger(__name__)
 
@@ -107,6 +111,24 @@ class CodeGraphCalleesTool(CodeGraphRelationToolMixin, BaseMCPTool):
         output_format = arguments.get("output_format", "toon")
         include_activation = bool(arguments.get("include_activation", False))
         listed_cap = int(arguments.get("limit", 50))
+
+        if is_index_rebuilding(self.project_root):
+            rebuild_next_step = rebuild_in_progress_next_step()
+            result = build_response(
+                verdict="WARN",
+                data_source="cache_rebuilding",
+                function=func_name,
+                index_rebuilding=True,
+                next_step=rebuild_next_step,
+                agent_summary={
+                    "summary_line": f"callees: {func_name!r} unavailable during full rebuild",
+                    "verdict": "WARN",
+                    "next_step": rebuild_next_step,
+                },
+            )
+            from ..utils.format_helper import apply_toon_format_to_response
+
+            return apply_toon_format_to_response(result, output_format)
 
         cache = self._try_get_cache()
         call_graph_indexed = cache is not None and cache.has_call_edges()

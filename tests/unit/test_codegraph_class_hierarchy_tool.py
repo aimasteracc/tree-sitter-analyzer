@@ -6,6 +6,7 @@ import json
 
 import pytest
 
+from tree_sitter_analyzer import _ast_cache_build_state as build_state
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.class_hierarchy import ClassHierarchy
 from tree_sitter_analyzer.graph import edge_store as edge_store_module
@@ -216,6 +217,36 @@ class TestExecute:
             }
         )
         assert result["verdict"] == "NOT_FOUND"
+
+    async def test_rebuild_marker_warns_without_phantom_subclass_count(self, tmp_path):
+        sample = tmp_path / "models.py"
+        sample.write_text(
+            "class Animal:\n    pass\n\nclass Dog(Animal):\n    pass\n",
+            encoding="utf-8",
+        )
+        cache = ASTCache(str(tmp_path))
+        try:
+            cache.index_project(workers=0)
+            build_state.mark_build_in_progress(cache.get_conn())
+
+            tool = ClassHierarchyTool(str(tmp_path))
+            result = await tool.execute(
+                {
+                    "mode": "subclasses",
+                    "class_name": "Animal",
+                    "output_format": "json",
+                }
+            )
+        finally:
+            build_state.clear_build_in_progress(cache.get_conn())
+            cache.close()
+
+        assert result["verdict"] == "WARN"
+        assert result["index_rebuilding"] is True
+        assert "subclass_count" not in result
+        assert "subclasses" not in result
+        assert "--full-index" not in result["next_step"]
+        assert result["agent_summary"]["verdict"] == "WARN"
 
     async def test_superclasses_root_class_is_info(self, tool, monkeypatch):
         """Review issue 1: a root class with no parents exists → INFO, not
