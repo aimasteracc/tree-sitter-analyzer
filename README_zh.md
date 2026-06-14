@@ -2,22 +2,20 @@
 
 **[English](README.md)** | **[日本語](README_ja.md)** | **简体中文**
 
-专为 AI agent 而生的代码情报：预建索引、token 高效的 MCP 服务器 — **8 个 MCP 工具** + CLI，100% 本地运行。
+[![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/) [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org) [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE) [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) [![Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer) [![适配 Claude Code · Cursor · MCP](https://img.shields.io/badge/适配-Claude%20Code%20%C2%B7%20Cursor%20%C2%B7%20MCP-6f42c1.svg)](#supported-agents)
 
-* **即时结构化解答。** 谁调用这个？改了会破坏什么？生成 UML 图。一次调用返回完整答案 — 无需 grep 循环。
-* **token 预算意识。** TOON 输出将 bulk/tabular 载荷相比原始 JSON 削减 ~50-70%（[可执行不变量](tests/unit/mcp/test_output_cost_invariants.py)；RFC-0012 在代表性决策工具上实测比值 0.52×）。
-* **安全编辑。** `edit action=safe` + `edit action=impact` + 约束 DSL 在每次修改前把关；调用图[跨语言错连 ≈0](benchmarks/codegraph_compare/MISWIRE-AUDIT-EXAMPLES.md)。
+**AI agent 可以信赖的代码情报** — 跨 20+ 语言的正确结构分析，为 agent 原生设计（MCP + CLI）。
 
-> **100% 本地**意味着索引保存在你仓库内的 `.ast-cache/` 中，无遥测、无远程调用。所有 MCP 响应和 CLI 输出均从本地 SQLite+FTS5 缓存生成。
+TSA 使用 tree-sitter 索引你的代码库，向 AI 编程 agent 提供正确的调用图、符号搜索与结构查询 — 完全本地，零遥测。专为 AI agent 而生的代码情报：预建索引、token 高效的 MCP 服务器 — **8 个 MCP 工具** + CLI，100% 本地运行。
+
+**为什么不同：**
+* **跨语言正确性是护城河。** 名称匹配式索引会把 Python `sorted()` 连到 Swift `func sorted`。TSA 不会。比同类工具少约 390× 的跨语言调用图错连（[可复现审计](benchmarks/codegraph_compare/MISWIRE-AUDIT-EXAMPLES.md)）。
+* **为 agent 原生设计。** 8 个 MCP 工具，TOON 输出（bulk 响应比 JSON 小约 50-70%），verdict 信封，13 个精选 Skills — 专为 Claude Code、Cursor 和任何 MCP 客户端设计。
+* **广度与正确性兼备。** 13 种语言全量调用图索引（Python · Go · Rust · Java · JS · TS · C · C++ · C# · Swift · Kotlin · Ruby · PHP），另有 8 种语言符号索引或 CLI 可达。
+
+> **数据证明：** 在 HuggingFace `tokenizers`（Rust+Python+JS+TS）上，名称匹配式解析器会错连 **1,259** 条调用边 — TSA：**0**。在你自己的仓库上运行：`uvx --from tree-sitter-analyzer miswire-audit .`
 
 > 从 v1.x 升级？见 [docs/MIGRATION.md](docs/MIGRATION.md)。
-
-[![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-19300%20passed-brightgreen.svg)](#-质量与测试)
-[![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
-[![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 ---
 
