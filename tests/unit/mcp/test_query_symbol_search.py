@@ -276,6 +276,21 @@ class TestCollectSourceFilesExcludes:
         # Exact count: only the one real source file is present
         assert len(collected) == 1
 
+    def test_project_root_under_dotted_ancestor_still_collects(self, tmp_path):
+        # Codex P2 (#699): the exclude check must look only at parts BELOW the
+        # root. A project whose root lives under a dotted/excluded-named ancestor
+        # (e.g. ~/.local/share/proj, /build/proj) must NOT exclude all its files.
+        root = tmp_path / ".local" / "build" / "proj"  # dotted + excluded ancestors
+        real = root / "pkg" / "real.py"
+        real.parent.mkdir(parents=True)
+        real.write_text("class Widget:\n    pass\n")
+
+        collected = _collect_source_files(root)
+        # The dotted/excluded ANCESTOR names are above the root, so the one real
+        # file below the root is still collected.
+        assert [str(p) for p in collected] == [str(real)]
+        assert len(collected) == 1
+
     def test_find_references_skips_dotdir_vendors(self, tmp_path):
         """find_references must not scan files inside dotdirs (budget pollution)."""
         real, _dot_decoy, _nm_decoy, root = self._make_tree(tmp_path)

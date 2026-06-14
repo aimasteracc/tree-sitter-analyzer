@@ -178,7 +178,14 @@ def _collect_source_files(root: Path) -> list[Path]:
     source_files: list[Path] = []
     for ext in _SYMBOL_SEARCH_EXTS:
         for f in root.rglob(f"*{ext}"):
-            parts = f.parts
+            # Codex P2 (#699): check only the parts BELOW the project root.
+            # Using ``f.parts`` (absolute) wrongly excludes the whole project
+            # when the root itself lives under a dotted/excluded-named ancestor
+            # (e.g. a checkout at ``~/.local/share/proj`` or ``/build/proj``).
+            try:
+                parts = f.relative_to(root).parts
+            except ValueError:  # pragma: no cover - rglob(root) only yields descendants
+                parts = f.parts
             if any(part in EXCLUDE_DIRS for part in parts):
                 continue
             if any(part.startswith(".") for part in parts):
