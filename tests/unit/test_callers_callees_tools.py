@@ -562,3 +562,151 @@ class TestEmptyIndexHint:
             f"--full-index hint must NOT appear when the index is built "
             f"(zero-edge project); got: {next_step!r}"
         )
+
+
+class TestAgentSummaryCallers:
+    """#546 seam 3 / #577 leftover: callers must emit agent_summary with
+    verdict + summary_line + next_step, mirroring the top-level verdict."""
+
+    @pytest.mark.asyncio
+    async def test_callers_has_agent_summary_found(self, tiny_project_root) -> None:
+        """INFO case: foo calls bar → bar has 1 caller (foo).
+        agent_summary must be present and summary_line must report count == 1.
+        Top-level verdict must mirror agent_summary.verdict.
+        """
+        tool = CodeGraphCallersTool(tiny_project_root)
+        result = await tool.execute({"function_name": "bar", "output_format": "json"})
+        assert result["verdict"] == "INFO"
+        agent_summary = result.get("agent_summary")
+        assert isinstance(agent_summary, dict), "agent_summary must be a dict"
+        assert agent_summary.get("verdict") in (
+            "INFO",
+            "NOT_FOUND",
+            "CAUTION",
+            "REVIEW",
+            "ERROR",
+        )
+        assert result["verdict"] == agent_summary["verdict"], (
+            "top-level verdict must mirror agent_summary.verdict"
+        )
+        summary_line = agent_summary.get("summary_line", "")
+        assert isinstance(summary_line, str) and summary_line, (
+            "summary_line must be non-empty"
+        )
+        # Extract the count from summary_line — fixture has exactly 1 caller (foo→bar).
+        import re
+
+        m = re.search(r"(\d+)\s+caller", summary_line)
+        assert m is not None, (
+            f"summary_line must mention caller count; got: {summary_line!r}"
+        )
+        assert int(m.group(1)) == 1, (
+            f"summary_line must report TRUE count 1, got {m.group(1)!r} in {summary_line!r}"
+        )
+        next_step = agent_summary.get("next_step", "")
+        assert isinstance(next_step, str) and next_step, "next_step must be non-empty"
+
+    @pytest.mark.asyncio
+    async def test_callers_has_agent_summary_not_found(self, tiny_project_root) -> None:
+        """NOT_FOUND case: unknown symbol → agent_summary present, verdict NOT_FOUND."""
+        tool = CodeGraphCallersTool(tiny_project_root)
+        result = await tool.execute(
+            {"function_name": "zzz_nonexistent_xyz", "output_format": "json"}
+        )
+        assert result["verdict"] == "NOT_FOUND"
+        agent_summary = result.get("agent_summary")
+        assert isinstance(agent_summary, dict), (
+            "agent_summary must be present even on NOT_FOUND"
+        )
+        assert agent_summary["verdict"] == "NOT_FOUND"
+        assert result["verdict"] == agent_summary["verdict"]
+        summary_line = agent_summary.get("summary_line", "")
+        assert isinstance(summary_line, str) and summary_line
+
+    @pytest.mark.asyncio
+    async def test_callers_verdict_mirrors_agent_summary(
+        self, tiny_project_root
+    ) -> None:
+        """Top-level verdict must always equal agent_summary.verdict (N4/r37u pattern)."""
+        tool = CodeGraphCallersTool(tiny_project_root)
+        for fn in ("bar", "foo", "zzz_nonexistent_xyz"):
+            result = await tool.execute({"function_name": fn, "output_format": "json"})
+            agent_summary = result.get("agent_summary", {})
+            assert result.get("verdict") == agent_summary.get("verdict"), (
+                f"verdict mismatch for {fn!r}: "
+                f"top={result.get('verdict')!r} summary={agent_summary.get('verdict')!r}"
+            )
+
+
+class TestAgentSummaryCallees:
+    """#546 seam 3 / #577 leftover: callees must emit agent_summary with
+    verdict + summary_line + next_step, mirroring the top-level verdict."""
+
+    @pytest.mark.asyncio
+    async def test_callees_has_agent_summary_found(self, tiny_project_root) -> None:
+        """INFO case: foo calls bar → foo has 1 callee (bar).
+        agent_summary must be present and summary_line must report count == 1.
+        Top-level verdict must mirror agent_summary.verdict.
+        """
+        tool = CodeGraphCalleesTool(tiny_project_root)
+        result = await tool.execute({"function_name": "foo", "output_format": "json"})
+        assert result["verdict"] == "INFO"
+        agent_summary = result.get("agent_summary")
+        assert isinstance(agent_summary, dict), "agent_summary must be a dict"
+        assert agent_summary.get("verdict") in (
+            "INFO",
+            "NOT_FOUND",
+            "CAUTION",
+            "REVIEW",
+            "ERROR",
+        )
+        assert result["verdict"] == agent_summary["verdict"], (
+            "top-level verdict must mirror agent_summary.verdict"
+        )
+        summary_line = agent_summary.get("summary_line", "")
+        assert isinstance(summary_line, str) and summary_line, (
+            "summary_line must be non-empty"
+        )
+        # Extract the count from summary_line — fixture has exactly 1 callee (foo→bar).
+        import re
+
+        m = re.search(r"(\d+)\s+(?:callee|function)", summary_line)
+        assert m is not None, (
+            f"summary_line must mention callee count; got: {summary_line!r}"
+        )
+        assert int(m.group(1)) == 1, (
+            f"summary_line must report TRUE count 1, got {m.group(1)!r} in {summary_line!r}"
+        )
+        next_step = agent_summary.get("next_step", "")
+        assert isinstance(next_step, str) and next_step, "next_step must be non-empty"
+
+    @pytest.mark.asyncio
+    async def test_callees_has_agent_summary_not_found(self, tiny_project_root) -> None:
+        """NOT_FOUND case: unknown symbol → agent_summary present, verdict NOT_FOUND."""
+        tool = CodeGraphCalleesTool(tiny_project_root)
+        result = await tool.execute(
+            {"function_name": "zzz_nonexistent_xyz", "output_format": "json"}
+        )
+        assert result["verdict"] == "NOT_FOUND"
+        agent_summary = result.get("agent_summary")
+        assert isinstance(agent_summary, dict), (
+            "agent_summary must be present even on NOT_FOUND"
+        )
+        assert agent_summary["verdict"] == "NOT_FOUND"
+        assert result["verdict"] == agent_summary["verdict"]
+        summary_line = agent_summary.get("summary_line", "")
+        assert isinstance(summary_line, str) and summary_line
+
+    @pytest.mark.asyncio
+    async def test_callees_verdict_mirrors_agent_summary(
+        self, tiny_project_root
+    ) -> None:
+        """Top-level verdict must always equal agent_summary.verdict (N4/r37u pattern)."""
+        tool = CodeGraphCalleesTool(tiny_project_root)
+        for fn in ("foo", "bar", "zzz_nonexistent_xyz"):
+            result = await tool.execute({"function_name": fn, "output_format": "json"})
+            agent_summary = result.get("agent_summary", {})
+            assert result.get("verdict") == agent_summary.get("verdict"), (
+                f"verdict mismatch for {fn!r}: "
+                f"top={result.get('verdict')!r} summary={agent_summary.get('verdict')!r}"
+            )
