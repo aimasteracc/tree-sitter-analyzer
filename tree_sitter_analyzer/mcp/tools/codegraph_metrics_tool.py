@@ -63,8 +63,11 @@ class CodeGraphMetricsTool(BaseMCPTool):
             "name": "codegraph_metrics",
             "description": (
                 "Aggregated project intelligence dashboard (CodeGraph parity). "
-                "Combines AST cache stats, call graph metrics, complexity distribution, "
-                "route counts, and file health into a single project card. "
+                "Combines AST cache stats (file/symbol counts), call graph metrics "
+                "(function/edge counts, top hub functions, dead-code candidates), "
+                "complexity distribution, route counts, and file health into a "
+                "single project card. Sections: cache, call_graph, complexity, "
+                "routes, health (all included by default; filter via sections=). "
                 "Agents call this once to get the full picture. "
                 "All data from pre-indexed caches — instant response. "
                 "Suggests which tools to run first if indexes are empty. "
@@ -159,6 +162,31 @@ class CodeGraphMetricsTool(BaseMCPTool):
             payload["suggested_next_steps"] = suggestions
 
         payload["sections_included"] = list(requested)
+
+        # #577: uniform agent_summary across all facade actions.
+        cache_info = payload.get("cache", {})
+        cg_info = payload.get("call_graph", {})
+        cache_status = cache_info.get("status", "unknown") if cache_info else "unknown"
+        if cache_status == "empty":
+            summary_line = "metrics: index empty — run ast_cache action=index first"
+            next_step = "Run: index action=auto to build the AST index and call graph."
+        else:
+            total_files = cache_info.get("total_files", 0) if cache_info else 0
+            total_funcs = (
+                cg_info.get("total_functions", 0) if isinstance(cg_info, dict) else 0
+            )
+            summary_line = (
+                f"metrics: {total_files} files, {total_funcs} functions indexed"
+            )
+            next_step = (
+                "Use nav action=context for symbol details, "
+                "or health action=heatmap for complexity hotspots."
+            )
+        payload["agent_summary"] = {
+            "summary_line": summary_line,
+            "verdict": "INFO",
+            "next_step": next_step,
+        }
 
         result = build_response(verdict="INFO", **payload)
 

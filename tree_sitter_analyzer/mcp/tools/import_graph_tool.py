@@ -217,6 +217,58 @@ class CodeGraphImportGraphTool(BaseMCPTool):
                 "verdict": "ERROR",
             }
 
+        # #577: uniform agent_summary across all facade actions.
+        verdict: str = result.get("verdict", "INFO")
+        result["agent_summary"] = _imports_agent_summary(mode, verdict, result)
+
         from ..utils.format_helper import apply_toon_format_to_response
 
         return apply_toon_format_to_response(result, output_format)
+
+
+def _imports_agent_summary(
+    mode: str,
+    verdict: str,
+    result: dict[str, Any],
+) -> dict[str, Any]:
+    """Build a concise agent_summary block for codegraph_import_graph results."""
+    if mode == "summary":
+        total = result.get("total_files", 0)
+        edges = result.get("total_edges", 0)
+        summary_line = f"imports: {total} file(s), {edges} import edge(s)"
+        next_step = "Use mode=deps for a file's imports, mode=blast_radius for impact."
+    elif mode == "deps":
+        file_path = result.get("file", "?")
+        count = result.get("dependency_count", 0)
+        summary_line = f"imports deps: {file_path!r} → {count} import(s)"
+        next_step = (
+            "Use mode=blast_radius to see which files are at risk if this changes."
+        )
+    elif mode == "dependents":
+        file_path = result.get("file", "?")
+        count = result.get("dependent_count", 0)
+        summary_line = f"imports dependents: {file_path!r} ← {count} dependent(s)"
+        next_step = "Dependents above must be retested when this file changes."
+    elif mode == "blast_radius":
+        affected = len(result.get("affected_files", []))
+        summary_line = f"imports blast_radius: {affected} file(s) at risk"
+        next_step = (
+            "Run tests for all affected files before committing changes."
+            if affected > 0
+            else "No downstream files at risk."
+        )
+    elif mode == "cycles":
+        cycles = result.get("cycle_count", 0)
+        summary_line = f"imports cycles: {cycles} circular chain(s) detected"
+        next_step = (
+            "Break the circular imports listed above to improve maintainability."
+            if cycles > 0
+            else "No circular imports detected."
+        )
+    elif mode == "coupling":
+        summary_line = "imports coupling: top import hotspots listed"
+        next_step = "Heavily-imported files are high-risk change points — review before editing."
+    else:  # pragma: no cover — validate_arguments() rejects all non-enum modes before execute() runs
+        summary_line = f"imports {mode}: {verdict.lower()}"
+        next_step = ""
+    return {"summary_line": summary_line, "verdict": verdict, "next_step": next_step}

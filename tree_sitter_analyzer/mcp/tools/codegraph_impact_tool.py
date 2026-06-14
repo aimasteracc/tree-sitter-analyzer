@@ -461,11 +461,44 @@ class CodeGraphImpactTool(BaseMCPTool):
         # to the canonical agent-facing vocabulary so the tsa-landing /
         # safe-to-edit gates branch correctly.
         verdict = _impact_verdict(result)
+        # #577: uniform agent_summary across all facade actions.
+        if mode == "function_impact":
+            func = result.get("function") or func_name or "?"
+            risk_level = (result.get("risk") or {}).get("level", "unknown")
+            summary_line = f"impact: {func!r} risk={risk_level} verdict={verdict}"
+        elif mode == "blast_radius":
+            total_affected = result.get("total_affected_functions", 0)
+            summary_line = f"impact: blast_radius affected_functions={total_affected}"
+        else:
+            # risk_score
+            score = result.get("score", 0)
+            level = result.get("level", "unknown")
+            summary_line = f"impact: risk_score={score} level={level}"
+
+        if verdict == "NOT_FOUND":
+            next_step = (
+                "Symbol not found in the call graph. "
+                "Check the function name or run index action=auto."
+            )
+        elif verdict in ("CAUTION", "REVIEW"):
+            next_step = (
+                "High risk change — trace callers with nav action=callers "
+                "and run the listed test files before editing."
+            )
+        else:
+            next_step = (
+                "Low risk change — proceed with edit; run nearest test file afterwards."
+            )
         response: dict[str, Any] = {
             "success": True,
             "mode": mode,
             "verdict": verdict,
             **result,
+            "agent_summary": {
+                "summary_line": summary_line,
+                "verdict": verdict,
+                "next_step": next_step,
+            },
         }
 
         from ..utils.format_helper import apply_toon_format_to_response

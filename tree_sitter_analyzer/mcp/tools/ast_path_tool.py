@@ -141,11 +141,38 @@ class CodeGraphASTPathTool(BaseMCPTool):
             bool(result_dict.get(k))
             for k in ("path", "nodes", "siblings", "outline", "scope")
         )
+        verdict = "INFO" if has_data else "NOT_FOUND"
+
+        # #577: uniform agent_summary across all facade actions.
+        if verdict == "NOT_FOUND":
+            summary_line = f"ast_path: mode={mode} — no AST data at requested location"
+            next_step = (
+                "Check the file_path and line number. "
+                "The file must be parseable by tree-sitter."
+            )
+        else:
+            if mode == "outline":
+                node_count = len(result_dict.get("outline") or [])
+                summary_line = f"ast_path: outline of {file_path!r} ({node_count} top-level node(s))"
+            elif mode == "scope":
+                scope_name = (result_dict.get("scope") or {}).get("name", "?")
+                summary_line = f"ast_path: scope at line {line_int} — {scope_name!r}"
+            else:
+                path_len = len(result_dict.get("path") or [])
+                summary_line = f"ast_path: mode={mode} line={line_int} depth={path_len}"
+            next_step = (
+                "Use Read or structure action=read to view the surrounding code."
+            )
         response: dict[str, Any] = {
             "success": True,
             "mode": mode,
-            "verdict": "INFO" if has_data else "NOT_FOUND",
+            "verdict": verdict,
             **result_dict,
+            "agent_summary": {
+                "summary_line": summary_line,
+                "verdict": verdict,
+                "next_step": next_step,
+            },
         }
 
         from ..utils.format_helper import apply_toon_format_to_response
