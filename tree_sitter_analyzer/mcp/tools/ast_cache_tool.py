@@ -17,6 +17,7 @@ from ...ast_cache import ASTCache
 from ...file_watcher import FileWatcherDaemon
 from ...incremental_sync import IncrementalSync
 from ...utils import setup_logger
+from ._validators import invalid_enum_error
 from .base_tool import BaseMCPTool, _canonicalize_verdict, mirror_summary_line
 
 logger = setup_logger(__name__)
@@ -363,7 +364,10 @@ class ASTCacheTool(BaseMCPTool):
             "watch_status",
         }
         if mode not in valid_modes:
-            raise ValueError(f"Invalid mode: {mode}. Must be one of {valid_modes}")
+            # ``fts_search`` is still accepted above (deprecated alias, J1) but is
+            # intentionally omitted from the enumerated guidance so agents are
+            # steered to the supported ``search`` name.
+            raise invalid_enum_error("mode", mode, sorted(valid_modes - {"fts_search"}))
         if mode in ("lookup", "invalidate") and not arguments.get("file_path"):
             raise ValueError(f"file_path is required for mode '{mode}'")
         if mode in ("search", "fts_search") and not arguments.get("query"):
