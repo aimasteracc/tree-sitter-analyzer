@@ -161,6 +161,13 @@ _FUNCTION_LIKE = frozenset(
     }
 )
 
+_ENUM_LIKE = frozenset(
+    {
+        "enum_declaration",
+        "enum",
+    }
+)
+
 _CLASS_LIKE = frozenset(
     {
         "class_definition",
@@ -168,13 +175,12 @@ _CLASS_LIKE = frozenset(
         "class",
         "interface_declaration",
         "struct_item",
-        "enum_declaration",
-        "enum",
         "trait_declaration",
         "impl_item",
         "struct_declaration",
         "type_declaration",
     }
+    | _ENUM_LIKE
 )
 
 _IMPORT_LIKE = frozenset(
@@ -890,7 +896,7 @@ def _walk_for_symbols(
         name = _node_text(name_node, source)
         parents = _extract_parent_classes(node, source, language)
         cls_sym: dict[str, Any] = {
-            "kind": "class",
+            "kind": "enum" if node_type in _ENUM_LIKE else "class",
             "name": name,
             "line": node.start_point[0] + 1,
             "end_line": node.end_point[0] + 1,
@@ -1000,7 +1006,7 @@ def _extract_structure(symbols: dict[str, Any]) -> dict[str, Any]:
     for s in symbols.get("symbols", []):
         if s["kind"] in ("function", "method"):
             functions.append({"name": s["name"], "line": s["line"]})
-        elif s["kind"] == "class":
+        elif s["kind"] in ("class", "enum"):
             classes.append({"name": s["name"], "line": s["line"]})
     return {"functions": functions, "classes": classes}
 
