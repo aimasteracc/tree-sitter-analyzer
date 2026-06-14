@@ -238,8 +238,18 @@ def test_search_content_validation_invalid_types(tmp_path):
     # Test invalid integer parameters
     with pytest.raises(ValueError, match="max_count must be an integer"):
         tool.validate_arguments(
-            {"roots": [str(tmp_path)], "query": "test", "max_count": "10"}
+            {"roots": [str(tmp_path)], "query": "test", "max_count": "ten"}
         )
+
+
+def test_search_content_validation_normalizes_string_max_count(
+    tmp_path: Path,
+) -> None:
+    """Accept stringified max_count so facade transport can pass MCP args unchanged."""
+    tool = SearchContentTool(str(tmp_path))
+    args = {"roots": [str(tmp_path)], "query": "test", "max_count": "10"}
+    assert tool.validate_arguments(args) is True
+    assert args["max_count"] == 10
 
 
 @pytest.mark.unit
@@ -648,8 +658,16 @@ def test_search_content_validation_comprehensive(tmp_path):
             "context_after must be an integer",
         ),
         (
-            {"roots": [str(tmp_path)], "query": "test", "max_count": "10"},
+            {"roots": [str(tmp_path)], "query": "test", "max_count": "ten"},
             "max_count must be an integer",
+        ),
+        (
+            {"roots": "tree_sitter_analyzer", "query": "test"},
+            "roots must be a non-empty array of strings",
+        ),
+        (
+            {"files": "search.txt", "query": "test"},
+            "files must be an array of strings",
         ),
         (
             {"roots": [str(tmp_path)], "query": "test", "timeout_ms": "5000"},

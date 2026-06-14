@@ -35,6 +35,7 @@ def validate_search_arguments(
     validator.validate_output_format_exclusion(arguments)
 
     _validate_query_and_inputs(arguments)
+    _normalize_max_count(arguments)
     _validate_option_types(arguments)
 
     if "roots" in arguments:
@@ -62,11 +63,46 @@ def _validate_query_and_inputs(arguments: dict[str, Any]) -> None:
             "roots must be a non-empty array of strings "
             "(or omit the key to scan project_root)"
         )
+    if "roots" in arguments:
+        roots = arguments["roots"]
+        if not isinstance(roots, list) or not all(
+            isinstance(entry, str) for entry in roots
+        ):
+            raise ValueError("roots must be a non-empty array of strings")
     if "files" in arguments and arguments["files"] in (None, [], ""):
         raise ValueError(
             "files must be a non-empty array of strings "
             "(or omit the key when scanning by roots)"
         )
+    if "files" in arguments:
+        files = arguments["files"]
+        if not isinstance(files, list) or not all(
+            isinstance(entry, str) for entry in files
+        ):
+            raise ValueError("files must be an array of strings")
+
+
+def _normalize_max_count(arguments: dict[str, Any]) -> None:
+    """Accept integer-like max_count strings for facade pass-through callers."""
+    if "max_count" not in arguments:
+        return
+
+    value = arguments["max_count"]
+    if isinstance(value, bool):
+        raise ValueError("max_count must be an integer")
+    if isinstance(value, int):
+        return
+    if isinstance(value, float):
+        if not value.is_integer():
+            raise ValueError("max_count must be an integer")
+        arguments["max_count"] = int(value)
+        return
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped.lstrip("+-").isdigit():
+            arguments["max_count"] = int(stripped)
+            return
+        raise ValueError("max_count must be an integer")
 
 
 def _validate_option_types(arguments: dict[str, Any]) -> None:
