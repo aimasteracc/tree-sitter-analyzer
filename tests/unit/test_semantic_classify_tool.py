@@ -605,3 +605,62 @@ class TestClassifyByteBudget:
         assert has_hunk_detail, (
             "include_ast_nodes=True must populate hunk.old/new details"
         )
+
+    def test_include_ast_nodes_delivers_children_in_hunk_nodes(
+        self, tool: SemanticClassifyTool
+    ):
+        """Regression for #694 follow-up: include_ast_nodes=True must deliver
+        the AST node children; ClassifiedHunk.to_dict() must forward
+        include_children=True to ASTDiffHunk.to_dict().
+
+        Fixture: a single-function signature change — always produces a
+        signature_changed hunk with 5 children in both old and new node (the
+        function's parameter list + body child nodes extracted by tree-sitter).
+        """
+        _OLD = "def greet(name):\n    return f'Hello {name}'\n"
+        _NEW = "def greet(name, greeting='Hello'):\n    return f'{greeting} {name}'\n"
+
+        result = _run(
+            tool,
+            {
+                "mode": "classify_string",
+                "old_source": _OLD,
+                "new_source": _NEW,
+                "language": "python",
+                "output_format": "json",
+                "include_ast_nodes": True,
+            },
+        )
+        assert result["success"] is True
+
+        # Find the signature_changed hunk (always present for this fixture).
+        sig_entries = [
+            e
+            for e in result.get("classifications", [])
+            if e.get("hunk", {}).get("kind") == "signature_changed"
+        ]
+        assert len(sig_entries) == 1, (
+            "Expected exactly 1 signature_changed classification for the greet fixture"
+        )
+
+        hunk = sig_entries[0]["hunk"]
+        old_node = hunk.get("old", {})
+        new_node = hunk.get("new", {})
+
+        # Children MUST be present — this is the gap that #694 broke.
+        assert "children" in old_node, (
+            "hunk.old must contain 'children' when include_ast_nodes=True "
+            "(ClassifiedHunk.to_dict must pass include_children=True)"
+        )
+        assert "children" in new_node, (
+            "hunk.new must contain 'children' when include_ast_nodes=True "
+            "(ClassifiedHunk.to_dict must pass include_children=True)"
+        )
+
+        # Pin exact counts (5 children in both old and new for this fixture).
+        assert len(old_node["children"]) == 5, (
+            f"Expected 5 children in old node, got {len(old_node['children'])}"
+        )
+        assert len(new_node["children"]) == 5, (
+            f"Expected 5 children in new node, got {len(new_node['children'])}"
+        )
