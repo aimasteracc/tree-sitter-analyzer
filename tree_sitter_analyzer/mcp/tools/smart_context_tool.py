@@ -25,6 +25,7 @@ from .utils.element_extractor import (
     get_all_exports,
     get_structure,
 )
+from .utils.parse_validity import is_file_parse_broken, syntax_error_envelope
 from .utils.test_discovery import find_test_files
 
 logger = setup_logger(__name__)
@@ -149,13 +150,28 @@ class SmartContextTool(BaseMCPTool):
         self.validate_arguments(arguments)
         file_path = arguments["file_path"]
         output_format = arguments.get("output_format", "toon")
+        from ..utils.format_helper import apply_toon_format_to_response
+
+        # #754: smart_context blends file_health + risk signals but called
+        # HealthScorer.score_file directly, bypassing the shared syntax gate the
+        # sibling detection tools (file_health / safe_to_edit / code_patterns)
+        # use. A file that fails to parse then scored grade=A / verdict=SAFE — a
+        # false green that tells an agent it is safe to edit unparseable code.
+        # Apply the same gate: short-circuit to the canonical syntax_error
+        # envelope before any misleading grade is computed.
+        resolved = self.resolve_and_validate_file_path(file_path)
+        language = detect_language_from_file(resolved)
+        if is_file_parse_broken(resolved, language):
+            result = _build_syntax_error_result(
+                resolved, language, self.project_root, output_format
+            )
+            return apply_toon_format_to_response(result, output_format)
+
         profile = self._build_profile(file_path)
         result = _build_smart_context_result(profile)
         # Echo the requested output_format so agents can audit envelope
         # parity across tools without consulting the call site.
         result["output_format"] = output_format
-        from ..utils.format_helper import apply_toon_format_to_response
-
         return apply_toon_format_to_response(result, output_format)
 
     # _build_profile: implementation
@@ -267,6 +283,59 @@ def _build_smart_context_result(profile: SmartContextProfile) -> dict[str, Any]:
             ),
         }
     )
+
+
+def _build_syntax_error_result(
+    resolved: str,
+    language: str | None,
+    project_root: str | None,
+    output_format: str,
+) -> dict[str, Any]:
+    """#754: syntax-error short-circuit that preserves the happy-path key shape.
+
+    Returns the canonical ``syntax_error_envelope`` (verdict=ERROR /
+    signal=syntax_error) but overlays smart_context's normal top-level keys with
+    degraded values (grade="N/A", empty exports/structure/deps/tests) so a
+    consumer that reads e.g. ``result["health"]["grade"]`` on a broken file does
+    not KeyError — mirroring how ``file_health`` degrades rather than dropping
+    fields.
+    """
+    rel = _to_relative(resolved, project_root or ".")
+    envelope = syntax_error_envelope(
+        rel, tool="smart_context", output_format=output_format
+    )
+    # is_file_parse_broken already read this file successfully, so a plain read
+    # here is safe — matches _build_profile's own un-guarded read.
+    line_count = len(
+        Path(resolved).read_text(encoding="utf-8", errors="replace").splitlines()
+    )
+    envelope.update(
+        {
+            "file_path": rel,
+            "line_count": line_count,
+            "language": language or "unknown",
+            "health": {
+                "grade": "N/A",
+                "score": 0.0,
+                "signal": "unparseable",
+                "weakest_dimension": "syntax",
+            },
+            "exports": [],
+            "structure": [],
+            "dependencies": {
+                "imports_count": 0,
+                "imported_by_count": 0,
+                "imports_sample": [],
+                "imported_by_sample": [],
+            },
+            "tests": [],
+            "edit_risk": "dangerous",
+            "recommendation": (
+                "File fails to parse — fix syntax before further analysis."
+            ),
+        }
+    )
+    return envelope
 
 
 # _build_agent_summary: implementation

@@ -149,6 +149,37 @@ class TestSmartContextTool:
         assert "health" in result
 
 
+class TestSmartContextSyntaxGate:
+    """#754: smart_context blended file_health + risk but bypassed the shared
+    syntax gate (it called HealthScorer.score_file directly), so a file that
+    fails to parse scored grade=A / verdict=SAFE — a false green telling an agent
+    it was safe to edit unparseable code. It must short-circuit to the canonical
+    syntax_error envelope like the sibling detection tools.
+    """
+
+    def test_parse_broken_file_is_error_not_safe(self, tool, tmp_path):
+        bad = tmp_path / "broken.py"
+        bad.write_text("def broken(:\n    x =\nclass  :\n")
+        result = _run(tool.execute({"file_path": "broken.py", "output_format": "json"}))
+        assert result.get("verdict") == "ERROR"
+        assert result.get("signal") == "syntax_error"
+        next_step = (result.get("agent_summary") or {}).get("next_step", "").lower()
+        assert "proceed" not in next_step
+        # Shape parity: the happy-path keys are preserved (degraded), so a
+        # consumer reading result["health"]["grade"] etc. does not KeyError.
+        assert result["health"]["grade"] == "N/A"
+        for key in ("exports", "structure", "dependencies", "tests", "language"):
+            assert key in result, key
+
+    def test_clean_file_is_not_gated(self, tool, tmp_path):
+        good = tmp_path / "clean.py"
+        good.write_text("def ok():\n    return 1\n")
+        result = _run(tool.execute({"file_path": "clean.py", "output_format": "json"}))
+        assert result.get("verdict") != "ERROR"
+        assert result.get("signal") != "syntax_error"
+        assert "health" in result
+
+
 class TestExportExtraction:
     def test_extracts_class(self):
         # models.py was decomposed into models/ package; use base.py as the canonical
