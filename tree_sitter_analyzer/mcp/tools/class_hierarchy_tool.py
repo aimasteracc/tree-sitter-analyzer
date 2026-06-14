@@ -19,6 +19,10 @@ from ...ast_cache import ASTCache
 from ...class_hierarchy import ClassHierarchy
 from ...utils import setup_logger
 from .base_tool import BaseMCPTool
+from .index_rebuild_signal import (
+    is_index_rebuilding,
+    rebuild_in_progress_next_step,
+)
 
 logger = setup_logger(__name__)
 
@@ -139,6 +143,27 @@ class ClassHierarchyTool(BaseMCPTool):
         class_name = arguments.get("class_name", "")
         max_depth = arguments.get("max_depth", 10)
         output_format = arguments.get("output_format", "toon")
+
+        if is_index_rebuilding(self.project_root):
+            rebuild_next_step = rebuild_in_progress_next_step()
+            rebuild_response = {
+                "success": True,
+                "mode": mode,
+                "class_name": class_name,
+                "verdict": "WARN",
+                "index_rebuilding": True,
+                "next_step": rebuild_next_step,
+                "agent_summary": {
+                    "summary_line": (
+                        f"class_hierarchy: {mode} unavailable during full rebuild"
+                    ),
+                    "verdict": "WARN",
+                    "next_step": rebuild_next_step,
+                },
+            }
+            from ..utils.format_helper import apply_toon_format_to_response
+
+            return apply_toon_format_to_response(rebuild_response, output_format)
 
         hierarchy = self._get_hierarchy()
         hierarchy.build()

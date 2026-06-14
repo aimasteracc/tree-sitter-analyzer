@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pytest
 
+from tree_sitter_analyzer import _ast_cache_build_state as build_state
+from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.mcp.tools.callees_tool import CodeGraphCalleesTool
 from tree_sitter_analyzer.mcp.tools.callers_tool import CodeGraphCallersTool
 from tree_sitter_analyzer.mcp.tools.codegraph_relation_tool import (
@@ -492,6 +494,64 @@ class TestEmptyIndexHint:
             f"next_step should mention --full-index when call graph is empty; "
             f"got: {next_step!r}"
         )
+
+    @pytest.mark.asyncio
+    async def test_callers_rebuild_marker_warns_without_phantom_count(
+        self, tmp_path
+    ) -> None:
+        (tmp_path / "sample.py").write_text(
+            "def foo():\n    bar()\n\ndef bar():\n    return 1\n",
+            encoding="utf-8",
+        )
+        cache = ASTCache(str(tmp_path))
+        try:
+            cache.index_project(workers=0)
+            build_state.mark_build_in_progress(cache.get_conn())
+
+            tool = CodeGraphCallersTool(str(tmp_path))
+            result = await tool.execute(
+                {"function_name": "bar", "output_format": "json"}
+            )
+        finally:
+            build_state.clear_build_in_progress(cache.get_conn())
+            cache.close()
+
+        assert result["verdict"] == "WARN"
+        assert result["index_rebuilding"] is True
+        assert result["data_source"] == "cache_rebuilding"
+        assert "caller_count" not in result
+        assert "callers" not in result
+        assert "--full-index" not in result["next_step"]
+        assert result["agent_summary"]["verdict"] == "WARN"
+
+    @pytest.mark.asyncio
+    async def test_callees_rebuild_marker_warns_without_phantom_count(
+        self, tmp_path
+    ) -> None:
+        (tmp_path / "sample.py").write_text(
+            "def foo():\n    bar()\n\ndef bar():\n    return 1\n",
+            encoding="utf-8",
+        )
+        cache = ASTCache(str(tmp_path))
+        try:
+            cache.index_project(workers=0)
+            build_state.mark_build_in_progress(cache.get_conn())
+
+            tool = CodeGraphCalleesTool(str(tmp_path))
+            result = await tool.execute(
+                {"function_name": "foo", "output_format": "json"}
+            )
+        finally:
+            build_state.clear_build_in_progress(cache.get_conn())
+            cache.close()
+
+        assert result["verdict"] == "WARN"
+        assert result["index_rebuilding"] is True
+        assert result["data_source"] == "cache_rebuilding"
+        assert "callee_count" not in result
+        assert "callees" not in result
+        assert "--full-index" not in result["next_step"]
+        assert result["agent_summary"]["verdict"] == "WARN"
 
     @pytest.mark.asyncio
     async def test_callers_non_empty_index_no_spurious_hint(

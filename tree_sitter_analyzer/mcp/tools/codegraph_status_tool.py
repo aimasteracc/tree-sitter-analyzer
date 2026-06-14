@@ -10,7 +10,6 @@ it is, and where to look. Replaces 3-4 separate tool calls.
 from __future__ import annotations
 
 import os
-import sqlite3
 from typing import Any
 
 from ...utils import setup_logger
@@ -18,6 +17,7 @@ from ..utils.auto_index_guard import is_indexed
 from ..utils.format_helper import apply_toon_format_to_response
 from ._response_builder import build_response
 from .base_tool import BaseMCPTool
+from .index_rebuild_signal import is_index_rebuilding
 
 logger = setup_logger(__name__)
 
@@ -254,21 +254,7 @@ class CodeGraphStatusTool(BaseMCPTool):
             db_path
         ):  # pragma: no cover — caller gates on cache_exists
             return False
-        try:
-            from ..._ast_cache_build_state import build_in_progress
-
-            conn = sqlite3.connect(db_path, timeout=2)
-            try:
-                return bool(build_in_progress(conn))
-            finally:
-                conn.close()
-        except Exception:
-            # Degrade *open* (assume not rebuilding): a 2 s SELECT timeout under
-            # the very write contention that makes rebuilds slow would land
-            # here, so the WARN is best-effort, not a guarantee. Better to miss
-            # a warning than to wedge status behind a slow lock.
-            logger.debug("rebuilding check failed", exc_info=True)
-            return False
+        return is_index_rebuilding(self.project_root)
 
     def _safe_get_stats(self) -> dict[str, Any] | None:
         # Always close the SQLite handle — this tool is read-only and
