@@ -742,6 +742,7 @@ def analyze_coverage_gaps(
     max_files: int = 1000,
     max_gaps: int = 50,
     include_covered: bool = False,
+    target_file: str | None = None,
 ) -> CoverageGapResult:
     """Analyse test coverage gaps.
 
@@ -749,6 +750,12 @@ def analyze_coverage_gaps(
     the function uses runtime coverage data as the ground truth for whether a
     symbol is covered. Falls back to naming-convention matching when coverage
     data is absent or malformed (RFC-0003 criteria 1,2,3,4,5).
+
+    When *target_file* is given, the production-symbol scope is filtered to
+    files whose path contains it (substring match), BEFORE the ``max_gaps``
+    cap — so ``total_production_symbols``/``coverage_pct``/``gaps`` all reflect
+    just that file. Test files stay unfiltered so naming-convention coverage
+    still matches across the suite (#693: ``file_path`` must not be a no-op).
     """
     # RFC-0003 criterion 4: auto-discover coverage.json at project root
     if coverage_json is None:
@@ -771,6 +778,16 @@ def analyze_coverage_gaps(
     all_files = _collect_files(project_root, language_filter, max_files)
     prod_files = [(f, lang) for f, lang, t in all_files if not t]
     test_files = [(f, lang) for f, lang, t in all_files if t]
+
+    # #693: scope production analysis to a single file when requested, BEFORE
+    # complexity scoring, gap classification, and the max_gaps cap — so every
+    # reported number (total_production_symbols / coverage_pct / production_files
+    # / gaps) reflects just that file, not a project-wide figure with the
+    # requested path silently ignored. Substring match mirrors the tool's
+    # mode=file filter. Test files stay unfiltered so naming-convention coverage
+    # still matches across the whole suite.
+    if target_file:
+        prod_files = [(f, lang) for f, lang in prod_files if target_file in f]
 
     prod_symbols: list[ProductionSymbol] = []
     for fpath, lang in prod_files:
