@@ -1,0 +1,30 @@
+{
+  "counts_by_type": {
+    "JSONElement": 27
+  },
+  "element_total": 27,
+  "names_by_type": {
+    "JSONElement": [
+      "array",
+      "features",
+      "full_suite_minutes",
+      "golden_masters",
+      "languages",
+      "metadata",
+      "name",
+      "null",
+      "number",
+      "object",
+      "parser_readiness",
+      "patch_coverage_required",
+      "quality_gate",
+      "string",
+      "thresholds",
+      "true",
+      "version"
+    ]
+  },
+  "types": [
+    "JSONElement"
+  ]
+}

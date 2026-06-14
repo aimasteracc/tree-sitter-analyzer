@@ -198,10 +198,10 @@ class TestParserLanguageSupport:
         """Test getting list of supported languages."""
         languages = parser.get_supported_languages()
         assert isinstance(languages, list)
-        # 23 with the full declared grammar set installed (as in CI). A local
+        # 24 with the full declared grammar set installed (as in CI). A local
         # venv missing an optional grammar wheel (e.g. tree-sitter-swift) sees
         # fewer — install the extras to match. A grammar add/remove flips this.
-        assert len(languages) == 23
+        assert len(languages) == 24
         assert "python" in languages
 
 

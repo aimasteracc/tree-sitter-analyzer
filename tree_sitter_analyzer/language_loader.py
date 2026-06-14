@@ -54,6 +54,7 @@ class LanguageLoader:
         "rust": "tree_sitter_rust",
         "go": "tree_sitter_go",
         "markdown": "tree_sitter_markdown",
+        "json": "tree_sitter_json",
         "sql": "tree_sitter_sql",
         "csharp": "tree_sitter_c_sharp",
         "cs": "tree_sitter_c_sharp",  # C# alias
@@ -344,6 +345,7 @@ _GRAMMAR_EXTRAS: dict[str, str] = {
     "rust": "rust",
     "go": "go",
     "markdown": "markdown",
+    "json": "json",
     "sql": "sql",
     "csharp": "csharp",
     "cs": "csharp",  # alias

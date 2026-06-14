@@ -13,7 +13,6 @@ from tree_sitter_analyzer.cli.parser_readiness_sources import (
     detect_parser_package_warnings,
     normalize_language,
     parser_package_requirements,
-    select_report_languages,
 )
 
 # Strict allowlist pattern: must be a safe language identifier token.
@@ -61,13 +60,12 @@ def build_parser_readiness_advice(
             "agent_summary": {"verdict": "ERROR", "next_step": str(exc)},
         }
     requested_language = normalize_language(language) if language else None
-    report_languages = select_report_languages(
-        inputs["parser_packages"],
-        inputs["plugin_entrypoints"],
+    records = _build_report_records(
+        root,
+        inputs,
         requested_language=requested_language,
         include_supported=include_supported,
     )
-    records = build_language_records(root, report_languages, inputs)
     recommendations = _build_recommendations(records)
     agent_summary = _build_agent_summary(records, recommendations, requested_language)
     return _build_result(
@@ -78,6 +76,32 @@ def build_parser_readiness_advice(
         recommendations,
         agent_summary,
     )
+
+
+def _build_report_records(
+    root: Path,
+    inputs: dict[str, Any],
+    *,
+    requested_language: str | None,
+    include_supported: bool,
+) -> list[dict[str, Any]]:
+    """Build readiness records without hiding hardening gaps.
+
+    The old selection logic only compared parser packages against plugin
+    entrypoints. That let languages with a plugin but no golden-master or
+    missing parser wiring disappear from the default roadmap. Build records
+    first, then filter out only languages that are genuinely supported.
+    """
+    if requested_language:
+        report_languages = [requested_language]
+    else:
+        report_languages = sorted(
+            set(inputs["parser_packages"]) | set(inputs["plugin_entrypoints"])
+        )
+    records = build_language_records(root, report_languages, inputs)
+    if include_supported or requested_language:
+        return records
+    return [record for record in records if record["status"] != "supported"]
 
 
 def _build_result(
@@ -189,6 +213,9 @@ def _ensure_no_gap_consistency(result: dict[str, Any]) -> None:
 
     Mutates ``result`` in place; safe to call after the main assembly.
     """
+    if result.get("readiness"):
+        result["reported_language_count"] = len(result["readiness"])
+        return
     if result.get("reported_language_count", 0) > 0:
         return
     implemented_count = result.get("implemented_language_count", 0)

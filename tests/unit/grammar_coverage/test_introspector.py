@@ -11,11 +11,9 @@ from tree_sitter_analyzer.grammar_coverage.introspector import (
 )
 
 # Exact (total, extractable, structural) node-type counts per language,
-# measured 2026-06-13 against the grammar wheel versions locked in uv.lock
+# measured 2026-06-14 against the grammar wheel versions locked in uv.lock
 # (CI installs the same set via `uv sync --all-extras`). A grammar version
 # bump that shifts a count MUST go red here and force a conscious re-pin.
-# "json" is absent: loader.is_language_available("json") is False, so the
-# loops below skip it.
 EXPECTED_GRAMMAR_COUNTS = {
     "python": (129, 25, 104),
     "javascript": (122, 25, 98),
@@ -33,6 +31,7 @@ EXPECTED_GRAMMAR_COUNTS = {
     "scala": (153, 15, 138),
     "bash": (85, 10, 75),
     "yaml": (161, 0, 161),
+    "json": (12, 0, 12),
     "sql": (527, 7, 520),
 }
 

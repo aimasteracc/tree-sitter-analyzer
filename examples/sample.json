@@ -1,0 +1,15 @@
+{
+  "name": "tree-sitter-analyzer",
+  "version": 1,
+  "languages": ["python", "json", "scala", "bash"],
+  "features": {
+    "parser_readiness": true,
+    "golden_masters": true,
+    "quality_gate": "strict"
+  },
+  "thresholds": {
+    "full_suite_minutes": 5,
+    "patch_coverage_required": true
+  },
+  "metadata": null
+}
