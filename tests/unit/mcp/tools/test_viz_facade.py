@@ -15,12 +15,14 @@ Covered behaviours (mirrors test_facade_tool.py §5 contract):
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from tree_sitter_analyzer.mcp.tools.base_tool import BaseMCPTool
+from tree_sitter_analyzer.mcp.tools.code_similarity_tool import CodeGraphSimilarityTool
 from tree_sitter_analyzer.mcp.tools.facade_tool import FacadeTool
 from tree_sitter_analyzer.mcp.tools.viz_facade import build_viz_facade
 
@@ -162,6 +164,53 @@ def test_similarity_action_routes_and_strips_action_key() -> None:
         called_args = mock_exec.call_args[0][0]
         assert "action" not in called_args
         assert called_args.get("min_lines") == 10
+
+
+def test_similarity_limit_projects_to_inner_max_groups(tmp_path: Any) -> None:
+    """action=similarity should forward `limit` and hit inner's max_groups."""
+    source = (
+        "def process(x):\n"
+        "    if x > 0:\n"
+        "        y = x * 2\n"
+        "        z = y + 1\n"
+        "        return z\n"
+        "    return 0\n"
+        "\n"
+        "def handle(x):\n"
+        "    if x > 0:\n"
+        "        y = x * 2\n"
+        "        z = y + 1\n"
+        "        return z\n"
+        "    return 0\n"
+    )
+
+    (tmp_path / "a.py").write_text(source)
+    facade = build_viz_facade(project_root=str(tmp_path))
+    assert isinstance(facade.action_map["similarity"], CodeGraphSimilarityTool)
+    with patch(
+        "tree_sitter_analyzer.mcp.tools.code_similarity_tool.analyze_code_similarity",
+        return_value=SimpleNamespace(groups=[], stats={"total_clone_instances": 0}),
+    ) as mock_analyze:
+        result = asyncio.run(
+            facade.execute(
+                {
+                    "action": "similarity",
+                    "limit": "6",
+                    "min_lines": "7",
+                    "output_format": "json",
+                }
+            )
+        )
+
+    assert result.get("success") is True
+    mock_analyze.assert_called_once_with(
+        str(tmp_path),
+        mode="all",
+        min_lines=7,
+        min_group_size=2,
+        max_groups=6,
+        use_cache=True,
+    )
 
 
 # ---------------------------------------------------------------------------

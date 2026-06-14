@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+from unittest.mock import patch
+
 import pytest
 
 from tree_sitter_analyzer.mcp.tools.code_similarity_tool import (
@@ -143,6 +146,80 @@ class TestSummaryDefaultNoBodies:
         full_bytes = len(json.dumps(result_full, ensure_ascii=False))
         assert summary_bytes < full_bytes, (
             f"Summary ({summary_bytes}B) must be smaller than with-bodies ({full_bytes}B)"
+        )
+
+
+@pytest.mark.asyncio
+class TestLimitAndCoercion:
+    """`limit` and numeric string params must be preserved/accepted."""
+
+    async def test_limit_alias_is_accepted(self, tool_with_root):
+        """`limit` should map to `max_groups`, preserving MCP façade compatibility."""
+        calls = []
+
+        def fake_analyze(
+            project_root: str, **kwargs: dict[str, object]
+        ) -> SimpleNamespace:
+            calls.append(kwargs)
+            return SimpleNamespace(groups=[], stats={"total_clone_instances": 0})
+
+        with patch(
+            "tree_sitter_analyzer.mcp.tools.code_similarity_tool.analyze_code_similarity",
+            side_effect=fake_analyze,
+        ) as mock_analyze:
+            result = await tool_with_root.execute({"limit": 4, "output_format": "json"})
+
+        assert result["success"] is True
+        assert len(calls) == 1
+        analyze_kwargs = calls[0]
+        assert analyze_kwargs["max_groups"] == 4
+        mock_analyze.assert_called_once_with(
+            tool_with_root.project_root,
+            mode="all",
+            min_lines=5,
+            min_group_size=2,
+            max_groups=4,
+            use_cache=True,
+        )
+
+    async def test_string_params_are_coerced(self, tool_with_root):
+        """Numeric strings are accepted for limit/min_* and are coerced to int."""
+        calls = []
+
+        def fake_analyze(
+            project_root: str, **kwargs: dict[str, object]
+        ) -> SimpleNamespace:
+            calls.append(kwargs)
+            return SimpleNamespace(groups=[], stats={"total_clone_instances": 0})
+
+        with patch(
+            "tree_sitter_analyzer.mcp.tools.code_similarity_tool.analyze_code_similarity",
+            side_effect=fake_analyze,
+        ) as mock_analyze:
+            result = await tool_with_root.execute(
+                {
+                    "limit": "6",
+                    "min_lines": "7",
+                    "min_group_size": "3",
+                    "max_groups": "8",
+                    "output_format": "json",
+                    "use_cache": False,
+                }
+            )
+
+        assert result["success"] is True
+        assert len(calls) == 1
+        analyze_kwargs = calls[0]
+        assert analyze_kwargs["max_groups"] == 8
+        assert analyze_kwargs["min_lines"] == 7
+        assert analyze_kwargs["min_group_size"] == 3
+        mock_analyze.assert_called_once_with(
+            tool_with_root.project_root,
+            mode="all",
+            min_lines=7,
+            min_group_size=3,
+            max_groups=8,
+            use_cache=False,
         )
 
 

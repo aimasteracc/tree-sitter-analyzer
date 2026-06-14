@@ -68,6 +68,11 @@ class CodeGraphSimilarityTool(BaseMCPTool):
                     "description": "Minimum clone group size to report (default: 2)",
                     "default": 2,
                 },
+                "limit": {
+                    "type": "integer",
+                    "description": "Alias for max_groups in facade mode (default: 20)",
+                    "default": 20,
+                },
                 "max_groups": {
                     "type": "integer",
                     "description": "Maximum similarity groups to return (default: 20)",
@@ -105,6 +110,38 @@ class CodeGraphSimilarityTool(BaseMCPTool):
             raise invalid_enum_error("mode", mode, valid_modes)
         return True
 
+    @staticmethod
+    def _coerce_positive_int(value: Any, name: str, default: int) -> int:
+        """Return a strict positive integer, accepting int/whole-float/string forms."""
+        if value is None:
+            return default
+        if isinstance(value, bool):
+            raise ValueError(f"{name} must be a positive integer, got bool {value!r}")
+        if isinstance(value, int):
+            candidate = value
+        elif isinstance(value, float):
+            if value != int(value):
+                raise ValueError(
+                    f"{name} must be a positive integer, got float {value!r}"
+                )
+            candidate = int(value)
+        elif isinstance(value, str):
+            value = value.strip()
+            if not value:
+                raise ValueError(f"{name} must be a positive integer, got {value!r}")
+            try:
+                candidate = int(value)
+            except ValueError as exc:
+                raise ValueError(
+                    f"{name} must be a positive integer, got {value!r}"
+                ) from exc
+        else:
+            raise ValueError(f"{name} must be a positive integer, got {value!r}")
+
+        if candidate < 1:
+            raise ValueError(f"{name} must be a positive integer, got {candidate!r}")
+        return candidate
+
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate_arguments(arguments)
 
@@ -115,9 +152,18 @@ class CodeGraphSimilarityTool(BaseMCPTool):
             }
 
         mode = arguments.get("mode", "all")
-        min_lines = arguments.get("min_lines", 5)
-        min_group_size = arguments.get("min_group_size", 2)
-        max_groups = arguments.get("max_groups", 20)
+        min_lines = self._coerce_positive_int(
+            arguments.get("min_lines"), "min_lines", 5
+        )
+        min_group_size = self._coerce_positive_int(
+            arguments.get("min_group_size"), "min_group_size", 2
+        )
+        source_max_groups = arguments.get("max_groups", arguments.get("limit", 20))
+        max_groups = self._coerce_positive_int(
+            source_max_groups,
+            "max_groups",
+            20,
+        )
         use_cache = arguments.get("use_cache", True)
         include_bodies = arguments.get("include_bodies", False)
         output_format = arguments.get("output_format", "toon")

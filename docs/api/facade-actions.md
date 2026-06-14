@@ -120,5 +120,5 @@ Reading the tables:
 | Action | Params (required `*`) | Response keys (top-level) | CLI twin |
 | --- | --- | --- | --- |
 | `graph` | `depth`, `direction`, `file_path`, `function`, `max_edges`, `mode`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--codegraph-visualize` |
-| `similarity` | `include_bodies`, `max_groups`, `min_group_size`, `min_lines`, `mode`, `output_format`, `use_cache` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--code-similarity` |
+| `similarity` | `include_bodies`, `limit`, `max_groups`, `min_group_size`, `min_lines`, `mode`, `output_format`, `use_cache` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--code-similarity` |
 | `uml` | `class_name` (`symbol` aliases `class_name`), `diagram`, `file_path`, `function_name` (`symbol` aliases `function_name`), `include_external_bases`, `include_tests`, `max_depth`, `max_edges`, `max_nodes`, `max_paths`, `output_format`, `package_depth`, `source`, `target` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--uml` |
