@@ -600,6 +600,10 @@ def _extract_kotlin_property_name(
     r37ci (dogfood): extracted from ``extract_kotlin_property`` so the
     three lookup forms (``name`` field / ``variable_declaration`` /
     ``simple_identifier``) read as a flat chain.
+
+    Issue #758: the installed grammar emits ``identifier`` (not
+    ``simple_identifier``) as the name child inside ``variable_declaration``.
+    Accept both so the helper works across grammar versions.
     """
     name_node = node.child_by_field_name("name")
     if name_node:
@@ -607,9 +611,9 @@ def _extract_kotlin_property_name(
     for child in node.children:
         if child.type == "variable_declaration":
             for grandchild in child.children:
-                if grandchild.type == "simple_identifier":
+                if grandchild.type in ("simple_identifier", "identifier"):
                     return str(get_node_text(grandchild))
-        elif child.type == "simple_identifier":
+        elif child.type in ("simple_identifier", "identifier"):
             return str(get_node_text(child))
     return "unknown"
 
@@ -619,15 +623,30 @@ def extract_kotlin_property(
     node: Any,
     get_node_text: Callable[..., str],
 ) -> Variable | None:
-    """Extract Kotlin property declaration."""
+    """Extract Kotlin property declaration.
+
+    Issue #758 fixes:
+    - ``is_val`` / ``is_var``: now detected from child node types (``val`` /
+      ``var`` keywords) rather than text.startswith() — which fails for
+      ``const val`` because the raw text starts with "const", not "val".
+    - ``prop_type``: read from the ``user_type`` (or any ``*type*``) child
+      inside ``variable_declaration``; falls back to ``"Inferred"`` when no
+      explicit annotation is present.
+    - ``is_static`` / ``is_readonly``: set True for ``const val`` properties
+      (Kotlin ``const`` implies compile-time constant = static & immutable).
+    """
     try:
+        # Detect val/var from child node types, not raw text.
+        # `const val` raw text starts with "const", not "val", so startswith
+        # was always False for const properties before this fix.
         is_val = False
         is_var = False
-        text = get_node_text(node)
-        if text.startswith("val "):
-            is_val = True
-        elif text.startswith("var "):
-            is_var = True
+        is_const = False
+        for child in node.children:
+            if child.type == "val":
+                is_val = True
+            elif child.type == "var":
+                is_var = True
 
         # r37ci (dogfood): extracted to drop nesting from 7 to ≤3.
         name = _extract_kotlin_property_name(node, get_node_text)
@@ -635,12 +654,32 @@ def extract_kotlin_property(
         start_line = node.start_point[0] + 1
         end_line = node.end_point[0] + 1
 
+        # Extract declared type from variable_declaration children.
+        # Grammar shape:  variable_declaration → identifier ':' user_type
+        # Falls back to "Inferred" when no type annotation is present.
         prop_type = "Inferred"
+        for child in node.children:
+            if child.type == "variable_declaration":
+                for grandchild in child.children:
+                    if "type" in grandchild.type or grandchild.type == "user_type":
+                        prop_type = get_node_text(grandchild)
+                        break
+                break
 
         visibility = "public"
+        # child_by_field_name("modifiers") returns None for property_declaration
+        # in the installed grammar even when a modifiers child is present; fall
+        # back to scanning children directly.
         modifiers_node = node.child_by_field_name("modifiers")
+        if modifiers_node is None:
+            for child in node.children:
+                if child.type == "modifiers":
+                    modifiers_node = child
+                    break
         if modifiers_node:
-            visibility = determine_visibility(get_node_text(modifiers_node))
+            mods_text = get_node_text(modifiers_node)
+            visibility = determine_visibility(mods_text)
+            is_const = "const" in mods_text
 
         raw_text = get_node_text(node)
 
@@ -655,6 +694,10 @@ def extract_kotlin_property(
         )
         var.is_val = is_val
         var.is_var = is_var
+        # Kotlin `const val` is a compile-time constant: static and readonly.
+        if is_const:
+            var.is_static = True
+            var.is_readonly = True
 
         return var
 

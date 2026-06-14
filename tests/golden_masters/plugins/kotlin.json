@@ -38,7 +38,10 @@
       "com.example.kotlin"
     ],
     "Variable": [
-      "unknown"
+      "MAX_USERS",
+      "manager",
+      "userCount",
+      "version"
     ]
   },
   "types": [
