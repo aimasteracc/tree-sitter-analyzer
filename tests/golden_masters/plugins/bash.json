@@ -1,0 +1,28 @@
+{
+  "counts_by_type": {
+    "Expression": 10,
+    "Function": 3
+  },
+  "element_total": 13,
+  "names_by_type": {
+    "Expression": [
+      "case_item",
+      "case_statement",
+      "comment",
+      "do_group",
+      "extglob_pattern",
+      "for_loop",
+      "raw_string",
+      "special_variable_name"
+    ],
+    "Function": [
+      "log",
+      "main",
+      "prepare"
+    ]
+  },
+  "types": [
+    "Expression",
+    "Function"
+  ]
+}
