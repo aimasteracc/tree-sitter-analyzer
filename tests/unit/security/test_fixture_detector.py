@@ -129,7 +129,7 @@ class TestTier2Scan:
         )
         fact = is_fixture("tree_sitter_analyzer/foo.py", root)
         assert fact.is_fixture is True
-        assert fact.confidence >= 0.85
+        assert fact.confidence == 0.85
         assert fact.source in {"path_literal", "constant_assignment"}
         assert any("test_x.py" in line for line in fact.evidence)
 
@@ -147,7 +147,7 @@ class TestTier2Scan:
         )
         fact = is_fixture("tree_sitter_analyzer/foo.py", root)
         assert fact.is_fixture is True
-        assert 0.7 <= fact.confidence < 0.85
+        assert fact.confidence == 0.7
         assert fixture_to_verdict(fact) == "CAUTION"
 
     def test_plugin_manifest_exclusion(self, tmp_path: Path) -> None:
@@ -194,8 +194,8 @@ class TestRealRepoRegression:
             "This is the canary for feedback_test-fixture-files."
         )
         # confidence must be high enough to escalate safe_to_edit to UNSAFE.
-        assert fact.confidence >= 0.85
-        assert len(fact.evidence) >= 1
+        assert fact.confidence == 0.85
+        assert len(fact.evidence) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -269,7 +269,7 @@ class TestCache:
         fact = is_fixture("tree_sitter_analyzer/foo.py", root)
 
         assert fact.is_fixture is True
-        assert fact.confidence >= 0.85
+        assert fact.confidence == 0.85
         assert fact.source == "targeted_text_scan"
 
     def test_hidden_test_dirs_do_not_count_as_fixture_signals(
@@ -313,7 +313,7 @@ class TestCache:
 
         assert fact is not None
         assert fact.is_fixture is True
-        assert fact.confidence >= 0.7
+        assert fact.confidence == 0.7
 
     def test_targeted_scan_skips_init_and_main_basenames(self, tmp_path: Path) -> None:
         root = _make_project(

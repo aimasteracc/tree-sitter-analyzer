@@ -83,7 +83,7 @@ class TestXRefEngineSymbol:
         assert isinstance(result, XRefResult)
         assert result.symbol == "alpha"
         assert result.data_source == "cache"
-        assert len(result.definitions) >= 1
+        assert len(result.definitions) == 1
         assert result.definitions[0]["name"] == "alpha"
         assert result.definitions[0]["kind"] == "function"
 
@@ -127,7 +127,7 @@ class TestXRefEngineSymbol:
         _, cache = indexed_project
         engine = XRefEngine(cache)
         result = engine.xref("beta", file_path="b.py")
-        assert len(result.definitions) >= 1
+        assert len(result.definitions) == 1
         assert result.definitions[0]["file"] == "b.py"
 
     def test_xref_unknown_symbol(self, indexed_project):
@@ -160,7 +160,7 @@ class TestXRefEngineFile:
         engine = XRefEngine(cache)
         result = engine.file_xref("a.py")
         assert result["file"] == "a.py"
-        assert result["symbol_count"] >= 2
+        assert result["symbol_count"] == 2
         assert result["data_source"] == "cache"
 
     def test_file_xref_symbols(self, indexed_project):
@@ -288,7 +288,7 @@ class TestXRefEngineFile:
         assert "process" in names, f"method missing from xref: {names}"
         assert "Service" in names
         # class + 2 methods, all surfaced.
-        assert result["symbol_count"] >= 3
+        assert result["symbol_count"] == 3
 
 
 class TestXRefResult:

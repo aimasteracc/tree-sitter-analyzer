@@ -112,9 +112,9 @@ def hello():
             assert language == "markdown"
             # Content with patterns should maintain high confidence
             if should_match:
-                assert confidence >= 0.9
+                assert confidence == 0.9
             else:
-                assert confidence >= 0.9  # Extension still gives high confidence
+                assert confidence == 0.9  # Extension still gives high confidence
 
     def test_markdown_vs_other_languages(self):
         """Test Markdown detection vs other languages"""
@@ -193,7 +193,7 @@ def hello():
         # Test with confidence
         language, confidence = self.detector.detect_language("test.custom_md")
         assert language == "markdown"
-        assert confidence > 0.0
+        assert confidence == 1.0
 
     def test_markdown_content_edge_cases(self):
         """Test Markdown content detection edge cases"""
@@ -211,23 +211,32 @@ def hello():
             ("```javascript\nconsole.log('hello');\n```", "markdown", 0.9),
         ]
 
-        for content, expected_language, min_confidence in edge_cases:
+        for content, expected_language, expected_confidence in edge_cases:
             language, confidence = self.detector.detect_language("test.md", content)
             assert language == expected_language
-            assert confidence >= min_confidence
+            assert confidence == expected_confidence
 
     def test_markdown_pattern_regex(self):
         """Test Markdown pattern regex matching"""
         # Access the content patterns for markdown
         markdown_patterns = self.detector.content_patterns.get("markdown", [])
-        assert len(markdown_patterns) > 0
+        assert len(markdown_patterns) == 8
 
-        # Test that patterns are properly formatted
+        # Test that patterns are properly formatted with expected weights
+        expected_weights = {
+            r"^#{1,6}\s+": 0.4,
+            r"^\s*[-*+]\s+": 0.3,
+            r"```[\w]*": 0.3,
+            r"\[.*\]\(.*\)": 0.2,
+            r"!\[.*\]\(.*\)": 0.2,
+            r"^\s*>\s+": 0.2,
+            r"^\s*\|.*\|": 0.2,
+            r"^[-=]{3,}$": 0.2,
+        }
         for pattern, weight in markdown_patterns:
             assert isinstance(pattern, str)
             assert isinstance(weight, int | float)
-            assert weight > 0
-            assert weight <= 1.0
+            assert weight == expected_weights[pattern]
 
     def test_unknown_extension_not_markdown(self):
         """Test that unknown extensions don't default to Markdown"""
