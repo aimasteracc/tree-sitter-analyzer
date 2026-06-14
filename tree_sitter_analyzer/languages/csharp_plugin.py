@@ -67,6 +67,9 @@ from .csharp_helpers import (
 from .csharp_helpers import (
     extract_using_directive as _extract_using_standalone,
 )
+from .csharp_helpers import (
+    find_owning_class_name as _find_owning_class_name,
+)
 
 
 def _traverse_nodes(root_node: tree_sitter.Node) -> Iterator[tree_sitter.Node]:
@@ -277,14 +280,23 @@ class CSharpElementExtractor(ElementExtractor):
             if node.type == "method_declaration":
                 func = self._extract_method(node)
                 if func:
+                    func.receiver_type = _find_owning_class_name(
+                        node, self._get_node_text_optimized
+                    )
                     functions.append(func)
             elif node.type == "constructor_declaration":
                 func = self._extract_constructor(node)
                 if func:
+                    func.receiver_type = _find_owning_class_name(
+                        node, self._get_node_text_optimized
+                    )
                     functions.append(func)
             elif node.type == "property_declaration":
                 func = self._extract_property(node)
                 if func:
+                    func.receiver_type = _find_owning_class_name(
+                        node, self._get_node_text_optimized
+                    )
                     functions.append(func)
 
         # Sort by start line for deterministic output

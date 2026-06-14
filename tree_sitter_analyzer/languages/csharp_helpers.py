@@ -6,6 +6,34 @@ from typing import Any
 from ..models import Class, Function, Import, Variable
 from ..utils import log_error
 
+_OWNING_TYPE_NODES = frozenset(
+    {
+        "class_declaration",
+        "interface_declaration",
+        "struct_declaration",
+        "record_declaration",
+        "enum_declaration",
+    }
+)
+
+
+def find_owning_class_name(
+    node: Any,
+    get_node_text: Callable[..., str],
+) -> str | None:
+    """Walk up node.parent to find the enclosing class/interface/struct/record.
+
+    Returns the bare type name, or None when the member is at module scope.
+    """
+    parent = getattr(node, "parent", None)
+    while parent is not None:
+        if parent.type in _OWNING_TYPE_NODES:
+            name_node = parent.child_by_field_name("name")
+            if name_node:
+                return get_node_text(name_node)
+        parent = getattr(parent, "parent", None)
+    return None
+
 
 def determine_visibility(modifiers: list[str]) -> str:
     """Determine visibility from C# modifiers."""
