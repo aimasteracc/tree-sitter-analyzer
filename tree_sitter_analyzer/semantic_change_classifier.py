@@ -115,7 +115,7 @@ class ClassifiedHunk:
             "risk": _RISK_LEVELS[self.category],
             "confidence": round(self.confidence, 2),
             "reason": self.reason,
-            "hunk": self.hunk.to_dict(),
+            "hunk": self.hunk.to_dict(include_children=True),
         }
 
 
