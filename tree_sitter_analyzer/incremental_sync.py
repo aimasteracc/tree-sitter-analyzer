@@ -233,7 +233,24 @@ class IncrementalSync:
         # "unknown"). Previously this was a single ``action`` field that
         # confusingly read ``action: "indexed", status: "skipped"`` for files
         # the cache refused. ``action`` is preserved as a back-compat alias.
-        index_result = self._cache.index_file(abs_path)
+        try:
+            index_result = self._cache.index_file(abs_path)
+        except RecursionError as exc:
+            # Issue #805: deeply-nested AST triggers unbounded recursion.
+            # Catch per-file so the rest of the sync continues.
+            logger.error(
+                "RecursionError indexing %s (AST too deeply nested): %s",
+                rel_path,
+                exc,
+            )
+            return {
+                "file": rel_path,
+                "considered": "indexed",
+                "action": "indexed",
+                "status": "error",
+                "error_type": type(exc).__name__,
+                "error_message": str(exc),
+            }
         status = index_result.get("status", "unknown")
         return {
             "file": rel_path,
@@ -249,7 +266,23 @@ class IncrementalSync:
         conn: sqlite3.Connection,
     ) -> dict[str, Any]:
         self._cache.invalidate(abs_path)
-        index_result = self._cache.index_file(abs_path)
+        try:
+            index_result = self._cache.index_file(abs_path)
+        except RecursionError as exc:
+            # Issue #805: same guard for re-index path.
+            logger.error(
+                "RecursionError re-indexing %s (AST too deeply nested): %s",
+                rel_path,
+                exc,
+            )
+            return {
+                "file": rel_path,
+                "considered": "updated",
+                "action": "updated",
+                "status": "error",
+                "error_type": type(exc).__name__,
+                "error_message": str(exc),
+            }
         status = index_result.get("status", "unknown")
         return {
             "file": rel_path,

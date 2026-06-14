@@ -10,6 +10,7 @@ from unittest.mock import MagicMock
 from tree_sitter_analyzer._ast_extraction import (
     _content_hash,
     _count_decision_points,
+    _count_nodes,
     _extract_call_edges,
     _extract_parent_classes,
     _has_fts5,
@@ -1426,3 +1427,46 @@ class TestCSharpErrorRegionHardening:
         src = "class A {\n  Action r = () => {\n    int leaked = 1;\n"
         syms = _symbols_for(src, "csharp")
         assert [s["name"] for s in syms if s["kind"] == "variable"] == []
+
+
+# ---------------------------------------------------------------------------
+# _count_nodes — iterative implementation (Issue #805)
+# ---------------------------------------------------------------------------
+
+
+class _FakeNode:
+    """Minimal stand-in for a tree-sitter Node."""
+
+    def __init__(self, children=None):
+        self.children = children or []
+
+
+class TestCountNodes:
+    def test_single_node_returns_1(self):
+        assert _count_nodes(_FakeNode()) == 1
+
+    def test_flat_children(self):
+        root = _FakeNode([_FakeNode(), _FakeNode(), _FakeNode()])
+        assert _count_nodes(root) == 4
+
+    def test_nested_tree(self):
+        #   root
+        #   ├── a
+        #   │   └── c
+        #   └── b
+        root = _FakeNode(
+            [
+                _FakeNode([_FakeNode()]),
+                _FakeNode(),
+            ]
+        )
+        assert _count_nodes(root) == 4
+
+    def test_deep_chain_does_not_raise(self):
+        """A chain 2000 levels deep must not raise RecursionError (issue #805)."""
+        # Build a chain: root → child → grandchild → … (2000 levels)
+        node = _FakeNode()
+        for _ in range(2000):
+            node = _FakeNode([node])
+        # Must not raise; exact count is 2001 (2000 wrappers + original leaf).
+        assert _count_nodes(node) == 2001
