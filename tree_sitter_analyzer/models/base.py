@@ -88,6 +88,7 @@ class Function(CodeElement):
     is_generator: bool = False
     is_arrow: bool = False
     is_method: bool = False
+    parent_class: str | None = None  # owning class for prototype-assigned methods
     framework_type: str | None = None
     # Python-specific fields
     is_property: bool = False

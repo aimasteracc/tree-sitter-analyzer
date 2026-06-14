@@ -40,8 +40,40 @@ class JavaScriptPublicExtractionMixin:
             "function",
         )
 
+        # Separate pass: collect prototype-assignment methods.
+        # These are NOT picked up by the traversal above because
+        # `assignment_expression` is only a container node type there;
+        # adding it to `extractors` would also re-process the inner
+        # function_expression and create duplicates.
+        prototype_methods = self._extract_prototype_methods(tree.root_node)
+        functions.extend(prototype_methods)
+
         log_debug(f"Extracted {len(functions)} JavaScript functions")
         return functions
+
+    def _extract_prototype_methods(self, root_node: tree_sitter.Node) -> list[Function]:
+        """Walk top-level expression statements for X.prototype.m = function(){}.
+
+        Only scans the immediate children of the program root (or one level
+        inside export_statement) — prototype assignments are always top-level in
+        practice and this keeps the pass O(n) where n = top-level statements.
+        """
+        methods: list[Function] = []
+        candidates = list(root_node.children)
+        for stmt in candidates:
+            # Unwrap export_statement if needed
+            if stmt.type == "export_statement":
+                inner = stmt.child_by_field_name("declaration")
+                if inner:
+                    stmt = inner
+            if stmt.type != "expression_statement":
+                continue
+            for child in stmt.children:
+                if child.type == "assignment_expression":
+                    method = self._extract_prototype_method_optimized(child)
+                    if method is not None:
+                        methods.append(method)
+        return methods
 
     # Extract elements from AST: extract_classes
     def extract_classes(self, tree: tree_sitter.Tree, source_code: str) -> list[Class]:
@@ -63,8 +95,78 @@ class JavaScriptPublicExtractionMixin:
             "class",
         )
 
+        # Synthesise Class objects for constructors defined via prototype pattern.
+        # Only add a synthetic class when no ES6 class_declaration with the same
+        # name was already found by the traversal above.
+        existing_class_names = {c.name for c in classes}
+        for proto_class in self._extract_prototype_classes(tree.root_node):
+            if proto_class.name not in existing_class_names:
+                classes.append(proto_class)
+                existing_class_names.add(proto_class.name)
+
         log_debug(f"Extracted {len(classes)} JavaScript classes")
         return classes
+
+    def _extract_prototype_classes(self, root_node: tree_sitter.Node) -> list[Class]:
+        """Synthesise Class objects from X.prototype.m assignments.
+
+        Looks for ``function ClassName(...){}`` declarations in the top-level
+        program AND collects class names from prototype assignments.  A synthetic
+        Class is created for each unique class name found only via prototype
+        assignments (i.e. no ES6 class_declaration exists for that name).
+        """
+        # Collect constructor lines from function_declaration nodes
+        constructor_lines: dict[str, int] = {}
+        for stmt in root_node.children:
+            if stmt.type == "function_declaration":
+                # Check if there is a prototype assignment for this name later
+                for id_child in stmt.children:
+                    if id_child.type == "identifier":
+                        name = self._get_node_text_optimized(id_child)
+                        constructor_lines[name] = stmt.start_point[0] + 1
+                        break
+
+        # Collect class names referenced in prototype assignments
+        proto_class_names: dict[str, int] = {}  # name -> first assignment line
+        for stmt in root_node.children:
+            if stmt.type != "expression_statement":
+                continue
+            for child in stmt.children:
+                if child.type != "assignment_expression":
+                    continue
+                left = child.child_by_field_name("left")
+                if not left or left.type != "member_expression":
+                    continue
+                proto_expr = left.child_by_field_name("object")
+                if not proto_expr or proto_expr.type != "member_expression":
+                    continue
+                proto_prop = proto_expr.child_by_field_name("property")
+                if (
+                    not proto_prop
+                    or self._get_node_text_optimized(proto_prop) != "prototype"
+                ):
+                    continue
+                class_id = proto_expr.child_by_field_name("object")
+                if not class_id or class_id.type != "identifier":
+                    continue
+                class_name = self._get_node_text_optimized(class_id)
+                if class_name not in proto_class_names:
+                    proto_class_names[class_name] = stmt.start_point[0] + 1
+
+        synthetic: list[Class] = []
+        for class_name, first_line in proto_class_names.items():
+            start_line = constructor_lines.get(class_name, first_line)
+            synthetic.append(
+                Class(
+                    name=class_name,
+                    start_line=start_line,
+                    end_line=first_line,
+                    raw_text="",
+                    language="javascript",
+                    class_type="class",
+                )
+            )
+        return synthetic
 
     # Extract elements from AST: extract_variables
     def extract_variables(

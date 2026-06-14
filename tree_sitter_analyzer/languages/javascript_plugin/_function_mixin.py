@@ -11,6 +11,7 @@ from ._function_helpers import (
     extract_function,
     extract_generator_function,
     extract_method,
+    extract_prototype_method,
 )
 
 
@@ -59,6 +60,19 @@ class JavaScriptFunctionExtractionMixin:
         return extract_generator_function(
             node,
             self._parse_function_signature_optimized,
+            self._extract_jsdoc_for_line,
+            self._calculate_complexity_optimized,
+            self._get_node_text_optimized,
+            self.framework_type,
+        )
+
+    def _extract_prototype_method_optimized(
+        self, node: "tree_sitter.Node"
+    ) -> Function | None:
+        """Extract a prototype-assignment method: ``X.prototype.m = function(){}``."""
+        return extract_prototype_method(
+            node,
+            self._extract_parameters,
             self._extract_jsdoc_for_line,
             self._calculate_complexity_optimized,
             self._get_node_text_optimized,
