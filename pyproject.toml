@@ -680,6 +680,37 @@ exclude_dirs = ["tests", "archived_files"]
 # a comment explaining why; no real exception swallowing in security-relevant paths.
 skips = ["B101", "B601", "B404", "B603", "B607", "B110", "B112"]
 
+[tool.mutmut]
+# Phase 1 (RFC-0017): measure mutation score for core modules only.
+# Each source_path is mutated and run against a targeted test selection —
+# this keeps per-mutant runtime small and the overall baseline tractable.
+#
+# Run:  uv run mutmut run
+# See:  uv run mutmut results
+#
+# NOTE: mutmut relies on os.fork — run on Linux (ubuntu-latest) only; NOT Windows.
+source_paths = [
+    "tree_sitter_analyzer/ast_diff.py",
+    "tree_sitter_analyzer/semantic_change_classifier.py",
+    "tree_sitter_analyzer/mcp/tools/facade_tool.py",
+    "tree_sitter_analyzer/mcp/tools/query_symbol_search.py",
+    "tree_sitter_analyzer/formatters/toon_encoder.py",
+]
+# Targeted test files per mutated module (reduces per-mutant runtime vs full suite).
+pytest_add_cli_args_test_selection = [
+    "tests/unit/test_ast_diff.py",
+    "tests/unit/test_ast_diff_tool.py",
+    "tests/unit/test_semantic_change_classifier.py",
+    "tests/unit/test_semantic_classify_tool.py",
+    "tests/unit/mcp/test_output_cost_invariants.py",
+]
+# Disable parallel pytest inside mutmut (each mutant is already a fork;
+# xdist inside would nest processes and OOM — same lesson as the 140G incident).
+pytest_add_cli_args = ["-n", "0", "-x", "--timeout=30", "-q"]
+# Generous timeout per mutant (tree-sitter init is slow on first import).
+timeout_multiplier = 10.0
+timeout_constant = 10.0
+
 [dependency-groups]
 dev = [
     "build>=1.2.2.post1",
@@ -708,4 +739,5 @@ dev = [
     "pytest-rerunfailures>=16.3",
     # Python 3.10 lacks tomllib; tests fall back via ``try/except ImportError``.
     "tomli>=2.0.0; python_version<'3.11'",
+    "mutmut>=3.6.0",
 ]
