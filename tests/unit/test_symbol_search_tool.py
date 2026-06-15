@@ -92,7 +92,9 @@ class TestCodeGraphSymbolSearchExecution:
         tool = CodeGraphSymbolSearchTool(str(indexed_project))
         result = await tool.execute({"query": "~user", "output_format": "json"})
         assert result["success"] is True
-        assert result["match_count"] == 3
+        # 4 symbols contain "user": get_user, _find_user, format_user, UserService.
+        # Previously 3 because FTS early-returned before linear scan found UserService (#922 fix).
+        assert result["match_count"] == 4
 
     async def test_wildcard_match(self, indexed_project):
         tool = CodeGraphSymbolSearchTool(str(indexed_project))
@@ -419,6 +421,79 @@ class TestCodeGraphSymbolSearchSourceContext:
         assert "match_tier" not in results[0]
         assert results[1]["match_tier"] == "fts5"
         assert results[1]["relevance_score"] == 0.7
+
+    def test_fuzzy_merge_supplements_fts_with_linear_suffix_hits(self):
+        """Codex P2 (#922): FTS5 returning partial token matches must be supplemented
+        by linear scan so suffix-only symbols (UserService when searching ~Service)
+        appear even when FTS5 found an exact-token match (Service class).
+        """
+        import sqlite3
+
+        class FTSAndLinearCache:
+            fts5_available = True
+
+            def get_conn(self):
+                conn = sqlite3.connect(":memory:")
+                conn.row_factory = sqlite3.Row
+                conn.execute(
+                    "CREATE VIRTUAL TABLE ast_symbols_fts USING fts5(name, kind, docstring)"
+                )
+                conn.execute(
+                    "CREATE TABLE ast_symbol_rows"
+                    "(id INTEGER PRIMARY KEY, name TEXT, kind TEXT, file_path TEXT,"
+                    " language TEXT, line INTEGER, end_line INTEGER)"
+                )
+                # "Service" tokenizes to "service" — FTS5 exact match
+                conn.execute(
+                    "INSERT INTO ast_symbol_rows VALUES (1,'Service','class','svc.py','python',1,10)"
+                )
+                conn.execute(
+                    "INSERT INTO ast_symbols_fts(rowid,name,kind) VALUES (1,'Service','class')"
+                )
+                # "UserService" tokenizes to "userservice" — NOT found by "Service" FTS token
+                conn.execute(
+                    "INSERT INTO ast_symbol_rows VALUES (2,'UserService','class','app.py','python',5,20)"
+                )
+                conn.execute(
+                    "INSERT INTO ast_symbols_fts(rowid,name,kind) VALUES (2,'UserService','class')"
+                )
+                conn.commit()
+                return conn
+
+            def _search_symbols_linear(self, query, language=None):
+                # Linear scan finds both via substring match
+                return [
+                    {
+                        "name": "Service",
+                        "kind": "class",
+                        "file": "svc.py",
+                        "language": "python",
+                        "line": 1,
+                        "end_line": 10,
+                    },
+                    {
+                        "name": "UserService",
+                        "kind": "class",
+                        "file": "app.py",
+                        "language": "python",
+                        "line": 5,
+                        "end_line": 20,
+                    },
+                ]
+
+        tool = CodeGraphSymbolSearchTool()
+        results = tool._fuzzy_search(
+            FTSAndLinearCache(), "Service", language=None, kind="any", limit=10
+        )
+        names = [r["name"] for r in results]
+        assert "Service" in names, f"FTS5 hit Service must appear; got {names}"
+        assert "UserService" in names, (
+            f"Linear supplement must add UserService; got {names}"
+        )
+        # FTS hit comes first (has relevance_score); linear supplement has no score
+        assert results[0]["name"] == "Service"
+        service_hit = next(r for r in results if r["name"] == "Service")
+        assert "relevance_score" in service_hit, "FTS hit must carry relevance_score"
 
     def test_add_source_context_skips_invalid_line_numbers(self, indexed_project):
         tool = CodeGraphSymbolSearchTool(str(indexed_project))
