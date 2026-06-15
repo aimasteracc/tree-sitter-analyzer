@@ -16,6 +16,7 @@ Two code paths are affected:
 """
 
 from tree_sitter_analyzer.cli.commands.table_command_helpers import (
+    _process_type_prefix_parameter,
     process_parameters,
 )
 from tree_sitter_analyzer.mcp.tools.analyze_code_structure_helpers import (
@@ -69,6 +70,28 @@ class TestParseStringParameterDestructuring:
         assert result["name"] == "limit"
         assert result["default"] == "10"
 
+    def test_destructuring_with_default_preserves_pattern_and_default(self):
+        # {title} = {} must NOT return name="{title} = {}" — Codex P2 on #745
+        result = _parse_string_parameter("{title} = {}")
+        assert result is not None
+        assert result["name"] == "{title}"
+        assert result.get("default") == "{}"
+
+    def test_ts_typed_destructuring_preserves_type(self):
+        # { id }: Props must return name="{ id }", type="Props" — Codex P2 on #745
+        result = _parse_string_parameter("{ id }: Props")
+        assert result is not None
+        assert result["name"] == "{ id }"
+        assert result["type"] == "Props"
+
+    def test_ts_typed_destructuring_with_default(self):
+        # { id }: Props = {} must return all three fields
+        result = _parse_string_parameter("{ id }: Props = {}")
+        assert result is not None
+        assert result["name"] == "{ id }"
+        assert result["type"] == "Props"
+        assert result.get("default") == "{}"
+
 
 class TestProcessParametersDestructuring:
     """process_parameters must preserve JS object-destructuring param names."""
@@ -103,3 +126,19 @@ class TestProcessParametersDestructuring:
         assert result[0]["name"] == "{ title, onUpdate }"
         assert result[1]["name"] == "callback"
         assert result[2]["name"] == "options"
+
+
+class TestTypePrefixParameterCSharpAttributes:
+    """C# attribute parameters must NOT be treated as destructuring (#745 Codex P2)."""
+
+    def test_csharp_frombody_attribute_preserved(self):
+        # [FromBody] UserDto dto -> name="dto", type="[FromBody] UserDto"
+        result = _process_type_prefix_parameter("[FromBody] UserDto dto")
+        assert result["name"] == "dto"
+        assert result["type"] == "[FromBody] UserDto"
+
+    def test_cpp_maybe_unused_attribute_preserved(self):
+        # [[maybe_unused]] int value -> name="value", type="[[maybe_unused]] int"
+        result = _process_type_prefix_parameter("[[maybe_unused]] int value")
+        assert result["name"] == "value"
+        assert result["type"] == "[[maybe_unused]] int"
