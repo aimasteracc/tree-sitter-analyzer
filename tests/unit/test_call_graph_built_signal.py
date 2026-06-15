@@ -6,6 +6,7 @@ import json
 import sqlite3
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -117,7 +118,37 @@ def _seed_partial_ast_cache_without_call_graph(root: Path) -> None:
     cache.close()
 
 
-def test_resolve_only_marks_call_graph_built_for_partial_cache(tmp_path: Path) -> None:
+def _seed_call_edges_without_built_marker(root: Path) -> None:
+    """Create real CALLS edges while leaving the authoritative marker false."""
+    source_path = root / "calls.py"
+    source_path.write_text(
+        "def caller():\n    target()\n\ndef target():\n    return 1\n",
+        encoding="utf-8",
+    )
+    cache = ASTCache(str(root))
+    try:
+        result = cache.index_file(str(source_path))
+        assert result["status"] == "indexed"
+        assert cache.has_call_edges() is True
+        callgraph_state.clear_call_graph_built(cache.get_conn())
+        assert cache.call_graph_built() is False
+    finally:
+        cache.close()
+
+
+def _call_graph_built_at(cache: ASTCache) -> float:
+    row = (
+        cache.get_conn()
+        .execute("SELECT built_at FROM ast_call_graph_state WHERE id = 1")
+        .fetchone()
+    )
+    assert row is not None
+    return float(row["built_at"])
+
+
+def test_resolve_only_does_not_mark_call_graph_built_for_partial_cache(
+    tmp_path: Path,
+) -> None:
     _seed_partial_ast_cache_without_call_graph(tmp_path)
 
     cache = ASTCache(str(tmp_path))
@@ -127,7 +158,48 @@ def test_resolve_only_marks_call_graph_built_for_partial_cache(tmp_path: Path) -
         result = cache.index_project(resolve_only=True)
 
         assert result["mode_used"] == "resolve_only"
+        assert cache.call_graph_built() is False
+    finally:
+        cache.close()
+
+
+def test_partial_incremental_index_does_not_stamp_call_graph_built_marker(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "a.py").write_text("def a():\n    return 1\n", encoding="utf-8")
+    (tmp_path / "b.py").write_text("def b():\n    return 2\n", encoding="utf-8")
+
+    cache = ASTCache(str(tmp_path))
+    try:
+        result = cache.index_project(max_files=1, workers=0)
+
+        assert result["indexed"] == 1
+        assert result["truncated_by_max_files"] is True
+        assert cache.call_graph_built() is False
+    finally:
+        cache.close()
+
+
+def test_single_file_reindex_refreshes_existing_call_graph_built_marker(
+    tmp_path: Path,
+) -> None:
+    source_path = tmp_path / "sample.py"
+    source_path.write_text("def sample():\n    return 1\n", encoding="utf-8")
+
+    cache = ASTCache(str(tmp_path))
+    try:
+        result = cache.index_project(force=True, workers=0)
+        assert result["indexed"] == 1
         assert cache.call_graph_built() is True
+        before = _call_graph_built_at(cache)
+
+        time.sleep(0.01)
+        source_path.write_text("def sample():\n    return 2\n", encoding="utf-8")
+        single = cache.index_file(str(source_path))
+
+        assert single["status"] == "indexed"
+        assert cache.call_graph_built() is True
+        assert _call_graph_built_at(cache) > before
     finally:
         cache.close()
 
@@ -157,6 +229,30 @@ async def test_partial_ast_cache_without_call_graph_marker_hints_full_index(
 
     tool = tool_cls(str(tmp_path))
     result = await tool.execute({"function_name": "solo", "output_format": "json"})
+
+    assert result["verdict"] == "NOT_FOUND"
+    assert result[count_key] == 0
+    assert "--full-index" in result["next_step"]
+    assert result["agent_summary"]["next_step"] == result["next_step"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("tool_cls", "count_key"),
+    [
+        (CodeGraphCallersTool, "caller_count"),
+        (CodeGraphCalleesTool, "callee_count"),
+    ],
+)
+async def test_existing_edges_without_call_graph_marker_still_hint_full_index(
+    tmp_path: Path,
+    tool_cls: type[CodeGraphCallersTool] | type[CodeGraphCalleesTool],
+    count_key: str,
+) -> None:
+    _seed_call_edges_without_built_marker(tmp_path)
+
+    tool = tool_cls(str(tmp_path))
+    result = await tool.execute({"function_name": "missing", "output_format": "json"})
 
     assert result["verdict"] == "NOT_FOUND"
     assert result[count_key] == 0

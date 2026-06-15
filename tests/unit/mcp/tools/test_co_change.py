@@ -808,6 +808,9 @@ def test_lru_cache_evicts_at_maxsize() -> None:
         "platform-independent and runs everywhere"
     ),
 )
+# Real git fixture setup can exceed 5s under xdist load; the compute path
+# keeps its own <2s assertion below.
+@pytest.mark.slow_ok
 def test_real_repo_co_change_under_2s(tmp_path: Path) -> None:  # noqa: F821
     """Rule-11: _compute_co_change on a ~10-commit real git repo completes < 2.0 s.
 

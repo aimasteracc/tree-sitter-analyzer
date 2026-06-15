@@ -4,6 +4,7 @@ import asyncio
 
 import pytest
 
+from tree_sitter_analyzer.mcp.tools._graph_cache_fingerprint import is_ast_index_stale
 from tree_sitter_analyzer.mcp.tools.symbol_lineage_tool import (
     SymbolLineageTool,
     _assess_risk,
@@ -401,6 +402,79 @@ class TestInheritanceLineage:
             "authoritative ast_index mtime check"
         )
         assert "index_hint" in hier
+
+    def test_execute_invalidates_symbol_cache_when_ast_index_is_stale(
+        self, tool, tmp_path
+    ):
+        """#932: a warm lineage response must not hide stale AST-index data."""
+        import os
+        import time
+
+        from tree_sitter_analyzer.ast_cache import ASTCache
+
+        kt_path = tmp_path / "Main.kt"
+        kt_path.write_text("class Main {\n    fun run() {}\n}\n")
+        _write_py(tmp_path, "main_wrapper.py", "class MainWrapper:\n    pass\n")
+
+        past_s = time.time() - 60
+        os.utime(str(kt_path), (past_s, past_s))
+        os.utime(str(tmp_path / "main_wrapper.py"), (past_s, past_s))
+        ASTCache(str(tmp_path)).index_project(max_files=50)
+
+        first = asyncio.run(
+            tool.execute({"symbol": "MainWrapper", "output_format": "json"})
+        )
+        assert first["from_cache"] is False
+        assert first["hierarchy"]["index_stale"] is False
+
+        future_ns = int(time.time() * 1e9) + 10_000_000_000
+        future_s = future_ns / 1e9
+        os.utime(str(kt_path), (future_s, future_s))
+
+        second = asyncio.run(
+            tool.execute({"symbol": "MainWrapper", "output_format": "json"})
+        )
+        assert second["from_cache"] is False
+        assert second["hierarchy"]["index_stale"] is True
+        assert "index_hint" in second["hierarchy"]
+
+
+class TestAstIndexStaleness:
+    def test_empty_ast_index_is_unknown_not_stale(self, tool, tmp_path):
+        """An empty DB created by a read path is not a completed stale index."""
+        from tree_sitter_analyzer.ast_cache import ASTCache
+
+        _write_py(tmp_path, "pkg/a.py", "class A:\n    pass\n")
+        ASTCache(str(tmp_path)).close()
+
+        assert is_ast_index_stale(str(tmp_path)) is False
+
+    def test_stale_when_supported_source_file_is_added_after_index(
+        self, tool, tmp_path
+    ):
+        """#931: newly added supported files must invalidate the AST index."""
+        from tree_sitter_analyzer.ast_cache import ASTCache
+
+        _write_py(tmp_path, "pkg/a.py", "class A:\n    pass\n")
+        ASTCache(str(tmp_path)).index_project(max_files=50)
+        assert is_ast_index_stale(str(tmp_path)) is False
+
+        _write_py(tmp_path, "pkg/b.py", "class B:\n    pass\n")
+
+        assert is_ast_index_stale(str(tmp_path)) is True
+
+    def test_stale_when_indexed_source_file_is_deleted(self, tool, tmp_path):
+        """#933: deleted indexed files must make the AST index stale."""
+        from tree_sitter_analyzer.ast_cache import ASTCache
+
+        source_path = tmp_path / "pkg" / "a.py"
+        _write_py(tmp_path, "pkg/a.py", "class A:\n    pass\n")
+        ASTCache(str(tmp_path)).index_project(max_files=50)
+        assert is_ast_index_stale(str(tmp_path)) is False
+
+        source_path.unlink()
+
+        assert is_ast_index_stale(str(tmp_path)) is True
 
 
 class TestR37uTopLevelVerdictMirror:

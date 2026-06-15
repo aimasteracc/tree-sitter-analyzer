@@ -169,6 +169,7 @@ def walk_and_partition(
         "skipped": 0,
         "files": [],
         "activation_enabled": activation_enabled,
+        "truncated_by_max_files": False,
     }
     if force:
         indexed_map: dict[str, tuple[int, int, int]] = {}
@@ -183,6 +184,7 @@ def walk_and_partition(
     count = 0
     for abs_path in walk_fn(cache.project_root):
         if count >= max_files:
+            stats["truncated_by_max_files"] = True
             break
         count += 1
         lang = language_fn(abs_path)
