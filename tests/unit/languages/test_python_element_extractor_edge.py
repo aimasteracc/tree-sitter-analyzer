@@ -178,8 +178,8 @@ def __magic_method__(self, other):
 
         current_node = root_node
 
-        # Create 60 levels of nesting (exceeds max_depth of 50)
-        for _i in range(60):
+        # Create 210 levels of nesting (exceeds max_depth of 200)
+        for _i in range(210):
             child = Mock()
             child.type = "block"
             child.children = []
@@ -373,5 +373,3 @@ class クラス名:
 
         # All threads should succeed
         assert success_count == 5
-
-
