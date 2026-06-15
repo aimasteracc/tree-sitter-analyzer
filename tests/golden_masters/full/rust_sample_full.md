@@ -4,7 +4,7 @@
 | Name | Type | Visibility | Lines | Fields | Traits |
 |------|------|------------|-------|--------|--------|
 | User | struct | pub | 7-12 | 4 | - |
-| UserRole | enum | pub | 16-21 | 0 | - |
+| UserRole | enum | pub | 16-21 | 4 | - |
 | Displayable | trait | pub | 24-30 | 0 | - |
 | Container | struct | pub | 67-69 | 1 | - |
 | BorrowedItem | struct | pub | 77-79 | 1 | - |

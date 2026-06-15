@@ -135,6 +135,12 @@ BESPOKE_ROUTE_SPECS: dict[tuple[str, str], dict[str, Any]] = {
         "params": "`file_path`*, `language`, `output_format`",
         "source": "structure_facade.py::_signatures_route",
     },
+    ("structure", "class_detail"): {
+        "params": (
+            "`class_name`* (or `query`/`symbol` as alias), `language`, `output_format`"
+        ),
+        "source": "structure_facade.py::_class_detail_route",
+    },
 }
 
 
