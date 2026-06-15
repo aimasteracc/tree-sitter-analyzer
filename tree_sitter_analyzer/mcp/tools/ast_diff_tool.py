@@ -242,19 +242,44 @@ class ASTDiffTool(BaseMCPTool):
         # sides are identical (zero hunks), INFO when there are real changes.
         # We deliberately don't escalate to REVIEW/CAUTION here — diff
         # severity is the semantic_classify tool's job.
-        verdict = "NOT_FOUND" if not result_dict.get("hunks") else "INFO"
-        hunk_count = len(result_dict.get("hunks", []))
+        hunks_raw = result_dict.get("hunks", [])
+        hunk_count = len(hunks_raw)
         lang_str = result_dict.get("language", "unknown")
-        agent_summary_line = (
-            f"{hunk_count} AST change(s) in {lang_str}"
-            if hunk_count
-            else f"No AST changes in {lang_str}"
+
+        # Codex P2: surface parse failures — a hunk with neither "old" nor "new"
+        # key is an error sentinel (e.g. "Both sources failed to parse"), not a
+        # real edit. Real hunks always carry at least one of "old" / "new".
+        is_error_hunk = (
+            hunk_count == 1
+            and "old" not in hunks_raw[0]
+            and "new" not in hunks_raw[0]
+            and hunks_raw[0].get("summary")
         )
+        if is_error_hunk:
+            agent_summary_line = hunks_raw[0]["summary"]
+            verdict = "ERROR"
+        elif hunk_count:
+            agent_summary_line = f"{hunk_count} AST change(s) in {lang_str}"
+            verdict = "INFO"
+        else:
+            agent_summary_line = f"No AST changes in {lang_str}"
+            verdict = "NOT_FOUND"
+
         response: dict[str, Any] = {
             "success": True,
             "verdict": verdict,
             "summary_line": agent_summary_line,
-            "agent_summary": agent_summary_line,
+            # Codex P2: agent_summary must be a dict so direct execute() callers
+            # (CLI, tests) can read agent_summary["verdict"] without the MCP
+            # server normalizer running first.
+            "agent_summary": {
+                "summary_line": agent_summary_line,
+                "next_step": (
+                    "Inspect specific hunks to understand the changes. "
+                    "Use semantic_classify for severity rating of each hunk."
+                ),
+                "verdict": verdict,
+            },
             **result_dict,
         }
 

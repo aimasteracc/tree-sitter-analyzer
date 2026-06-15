@@ -160,13 +160,16 @@ class TestCodeGraphOverviewToolExecute:
 
     @pytest.mark.asyncio
     async def test_execute_has_agent_summary_envelope(self, tool):
-        """#743: codegraph_overview must include agent_summary and summary_line."""
+        """#743: codegraph_overview must include agent_summary dict and summary_line."""
         result = await _execute(tool, {"output_format": "json"})
         assert "agent_summary" in result, "agent_summary missing from envelope"
         assert "summary_line" in result, "summary_line missing from envelope"
-        assert isinstance(result["agent_summary"], str)
+        # Codex P2: agent_summary must be a dict so direct callers can read
+        # agent_summary["verdict"] without the MCP server normalizer.
+        assert isinstance(result["agent_summary"], dict), "agent_summary must be a dict"
         assert isinstance(result["summary_line"], str)
-        assert result["agent_summary"] == result["summary_line"]
+        assert result["agent_summary"]["summary_line"] == result["summary_line"]
+        assert "verdict" in result["agent_summary"]
 
     @pytest.mark.asyncio
     async def test_execute_empty_project(self, tmp_path):

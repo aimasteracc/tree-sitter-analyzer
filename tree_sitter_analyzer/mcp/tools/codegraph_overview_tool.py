@@ -155,16 +155,30 @@ class CodeGraphOverviewTool(BaseMCPTool):
         else:
             verdict = "INFO"
 
+        # Codex P2: label capped counts with "+" so agents can tell a cap was hit.
+        ep_count = len(entry_points)
+        dead_suffix = "+" if dead_count >= max_dead else ""
+        ep_suffix = "+" if ep_count >= max_entry_points else ""
         agent_summary_line = (
-            f"{fn_count} functions, {dead_count} dead code entries — "
-            f"{len(entry_points)} entry points, "
+            f"{fn_count} functions, {dead_count}{dead_suffix} dead code entries — "
+            f"{ep_count}{ep_suffix} entry points, "
             f"max call depth {depth_dist.get('max_depth', 0)}"
         )
         result: dict[str, Any] = {
             "success": True,
             "verdict": verdict,
             "summary_line": agent_summary_line,
-            "agent_summary": agent_summary_line,
+            # Codex P2: agent_summary must be a dict so direct execute() callers
+            # (CLI, tests) can read agent_summary["verdict"] without the MCP
+            # server normalizer running first.
+            "agent_summary": {
+                "summary_line": agent_summary_line,
+                "next_step": (
+                    "Check dead_code list for cleanup opportunities. "
+                    "Use --callers to verify callers of flagged dead code."
+                ),
+                "verdict": verdict,
+            },
             "project_root": self.project_root,
             "summary": {
                 "function_count": summary.get("function_count", 0),
