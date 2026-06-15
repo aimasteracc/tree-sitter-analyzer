@@ -303,6 +303,68 @@ class TestCallPathFinderBidirectional:
         assert len(result.paths) == 1
 
 
+class TestCallPathFinderCrossFile:
+    """#734: 2-hop cross-file chains must not dead-end when the intermediate
+    node has callee_resolved_file=''.
+
+    The bug: _fwd_state() sets the intermediate node's file to
+    ``callee_resolved_file or file_path``.  When callee_resolved_file is empty,
+    file_path (the *caller* side) is used.  The next BFS iteration then queries
+    ``WHERE caller_name=? AND file_path=<caller-side-file>``, but the outgoing
+    edges for that node are stored under its *definition* file — so the query
+    returns 0 rows and the BFS silently dead-ends.
+
+    The fix adds a fallback: retry with name-only when file-filtered returns 0.
+    """
+
+    def test_two_hop_cross_file_with_unresolved_intermediate(self, tmp_path):
+        """main(a.py) → foo(b.py, unresolved) → bar(c.py) must yield 1 path."""
+        edges = [
+            {
+                "caller_name": "main",
+                "caller_file": "a.py",
+                "callee_name": "foo",
+                # callee_resolved_file intentionally empty — triggers the bug
+                "callee_resolved_file": "",
+            },
+            {
+                "caller_name": "foo",
+                "caller_file": "b.py",
+                "callee_name": "bar",
+                "callee_resolved_file": "c.py",
+            },
+        ]
+        cache = _make_cache_with_edges(tmp_path, edges)
+        finder = CallPathFinder(str(tmp_path), cache=cache)
+        result = finder.find_path("main", "bar", direction="forward")
+        assert result.data_source == "sql"
+        assert len(result.paths) == 1
+        assert result.paths[0].total_hops == 2
+
+    def test_two_hop_cross_file_with_resolved_intermediate(self, tmp_path):
+        """Baseline: same chain with callee_resolved_file set must also work."""
+        edges = [
+            {
+                "caller_name": "main",
+                "caller_file": "a.py",
+                "callee_name": "foo",
+                "callee_resolved_file": "b.py",
+            },
+            {
+                "caller_name": "foo",
+                "caller_file": "b.py",
+                "callee_name": "bar",
+                "callee_resolved_file": "c.py",
+            },
+        ]
+        cache = _make_cache_with_edges(tmp_path, edges)
+        finder = CallPathFinder(str(tmp_path), cache=cache)
+        result = finder.find_path("main", "bar", direction="forward")
+        assert result.data_source == "sql"
+        assert len(result.paths) == 1
+        assert result.paths[0].total_hops == 2
+
+
 class TestCallPathFinderFallback:
     def test_no_cache_falls_back(self, tmp_path):
         cache = MagicMock()

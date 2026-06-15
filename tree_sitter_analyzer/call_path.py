@@ -583,6 +583,17 @@ class CallPathFinder:
                     + "WHERE kind = 'calls' AND caller_name = ? AND file_path = ?",
                     (caller_name, caller_file),
                 ).fetchall()
+                # #734: intermediate nodes use callee_resolved_file || file_path
+                # as their "file" — file_path is the *caller-side* file, but the
+                # node's outgoing edges are stored under its *definition* file.
+                # When the file-filtered query returns nothing, retry without the
+                # filter so cross-file chains are not silently dead-ended.
+                if not rows:
+                    rows = conn.execute(
+                        _FORWARD_EDGE_SELECT
+                        + "WHERE kind = 'calls' AND caller_name = ?",
+                        (caller_name,),
+                    ).fetchall()
             else:
                 rows = conn.execute(
                     _FORWARD_EDGE_SELECT + "WHERE kind = 'calls' AND caller_name = ?",
