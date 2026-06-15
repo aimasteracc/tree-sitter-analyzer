@@ -240,6 +240,11 @@ class IncrementalSync:
         try:
             index_result = self._cache.index_file(abs_path)
         except Exception as exc:
+            # #886: if index_file wrote a partial ast_index row before raising
+            # (INSERT committed or uncommitted), DELETE it so the next sync
+            # treats the file as new rather than silently skipping it as
+            # "unchanged" with missing symbols/edges.
+            conn.execute("DELETE FROM ast_index WHERE file_path = ?", (rel_path,))
             # Issue #806/#805: catch all per-file errors so one pathological
             # file cannot abort the whole sync and discard accumulated results.
             logger.error(
@@ -274,6 +279,8 @@ class IncrementalSync:
         try:
             index_result = self._cache.index_file(abs_path)
         except Exception as exc:
+            # #886: same DELETE-on-failure guard as _index_new_file.
+            conn.execute("DELETE FROM ast_index WHERE file_path = ?", (rel_path,))
             # Issue #806/#805: same broad guard for re-index path.
             logger.error(
                 "Error re-indexing %s (%s): %s",
