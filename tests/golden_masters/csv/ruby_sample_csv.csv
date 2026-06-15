@@ -11,10 +11,6 @@ Field,last_login_at,last_login_at:None,private,31-31,,-
 Field,permissions,permissions:None,private,96-96,,-
 Field,database,database:None,private,144-144,,-
 Field,cache,cache:None,private,145-145,,-
-Field,validate_email,validate_email:None,private,196-196,,-
-Field,format_username,format_username:None,private,197-197,,-
-Field,log_action,log_action:None,private,200-202,,-
-Field,user,user:None,private,218-218,,-
 Method,User#username,():,public,18-18,1,-
 Method,User#email,():,public,18-18,1,-
 Method,User#id,():,public,19-19,1,-
