@@ -14,6 +14,8 @@
 | Status | enum | public | 27-31 | 0 | 0 |
 | Point | struct | public | 34-37 | 0 | 2 |
 | Rectangle | struct | public | 40-43 | 0 | 2 |
+| Point | struct | public | 41-41 | 0 | 1 |
+| Point | struct | public | 42-42 | 0 | 1 |
 | Number | union | public | 46-50 | 0 | 3 |
 | Person | struct | public | 53-56 | 0 | 2 |
 
@@ -31,6 +33,18 @@
 | Name | Type | Vis | Modifiers | Line | Doc |
 |------|------|-----|-----------|------|-----|
 | top_left | struct Point | + |  | 41 | - |
+| bottom_right | struct Point | + |  | 42 | - |
+
+## Point (41-41)
+### Fields
+| Name | Type | Vis | Modifiers | Line | Doc |
+|------|------|-----|-----------|------|-----|
+| top_left | struct Point | + |  | 41 | - |
+
+## Point (42-42)
+### Fields
+| Name | Type | Vis | Modifiers | Line | Doc |
+|------|------|-----|-----------|------|-----|
 | bottom_right | struct Point | + |  | 42 | - |
 
 ## Number (46-50)
