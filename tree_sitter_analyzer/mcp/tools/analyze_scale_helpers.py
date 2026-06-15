@@ -25,12 +25,16 @@ logger = setup_logger(__name__)
 # metadata so callers know the full count without the payload cost.
 # ---------------------------------------------------------------------------
 METHODS_OUTPUT_CAP = 50
+HOTSPOTS_OUTPUT_CAP = 50
 
 
 # Tree-sitter element extraction for structure view
 # Converts unified analysis engine results into LLM-consumable dicts
 def extract_structural_overview(
-    analysis_result: Any, *, method_cap: int = METHODS_OUTPUT_CAP
+    analysis_result: Any,
+    *,
+    method_cap: int = METHODS_OUTPUT_CAP,
+    hotspot_cap: int = HOTSPOTS_OUTPUT_CAP,
 ) -> dict[str, Any]:
     """Extract structural overview with position information for LLM guidance.
 
@@ -47,7 +51,8 @@ def extract_structural_overview(
         "imports": _extract_import_infos(elements),
         "complexity_hotspots": [],
     }
-    all_methods, overview["complexity_hotspots"] = _extract_method_infos(elements)
+    all_methods, hotspots = _extract_method_infos(elements)
+    _apply_hotspot_cap(overview, hotspots, hotspot_cap)
     total_methods = len(all_methods)
     overview["total_methods"] = total_methods
     if total_methods > method_cap:
@@ -112,6 +117,19 @@ def _extract_method_infos(
     return method_infos, hotspots
 
 
+def _apply_hotspot_cap(
+    overview: dict[str, Any], hotspots: list[dict[str, Any]], hotspot_cap: int
+) -> None:
+    """Cap hotspot payloads and expose metadata only when truncation occurs."""
+    total_hotspots = len(hotspots)
+    if total_hotspots > hotspot_cap:
+        overview["complexity_hotspots"] = hotspots[:hotspot_cap]
+        overview["total_complexity_hotspots"] = total_hotspots
+        overview["complexity_hotspots_truncated"] = True
+    else:
+        overview["complexity_hotspots"] = hotspots
+
+
 def _extract_field_infos(elements: list[Any]) -> list[dict[str, Any]]:
     """Field element → dict with type + modifiers + position."""
     fields = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_VARIABLE)]
@@ -168,6 +186,7 @@ def extract_structural_overview_universal(
     analysis_result: Any,
     *,
     method_cap: int = METHODS_OUTPUT_CAP,
+    hotspot_cap: int = HOTSPOTS_OUTPUT_CAP,
 ) -> dict[str, Any]:
     """Extract structural overview from universal analysis result (non-Java languages).
 
@@ -197,7 +216,7 @@ def extract_structural_overview_universal(
     _all_methods: list[dict[str, Any]] = []
     _fields = overview["fields"]
     _imports = overview["imports"]
-    _hotspots = overview["complexity_hotspots"]
+    _hotspots: list[dict[str, Any]] = []
 
     # Classify each element by its type and extract metadata
     for e in analysis_result.elements:
@@ -245,6 +264,7 @@ def extract_structural_overview_universal(
         overview["methods_truncated"] = True
     else:
         overview["methods"] = _all_methods
+    _apply_hotspot_cap(overview, _hotspots, hotspot_cap)
 
     return overview
 
