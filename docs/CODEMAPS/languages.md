@@ -24,7 +24,7 @@ Each implements the `LanguagePlugin` interface (`tree_sitter_analyzer/plugins/ba
 | PHP | `languages/php_plugin.py` | `languages/php_helpers.py` | PHP 8+ attributes, traits |
 | HTML | `languages/html_plugin.py` | `languages/html_helpers.py` | DOM elements with role classification |
 | CSS | `languages/css_plugin.py` | `languages/css_helpers.py` | selectors + properties |
-| SQL | `sql_plugin/` | submodules | tables, views, procedures, triggers; `table_extractor.py` regex fallback supports ANSI/MySQL/SQL-Server quoted identifiers and populates columns; CTAS (`AS SELECT`) guarded; case-sensitive dedup for quoted names (#880/#881) |
+| SQL | `sql_plugin/` | submodules | tables, views, procedures, triggers; `table_extractor.py` regex fallback supports ANSI/MySQL/SQL-Server quoted identifiers and populates columns; CTAS (`AS SELECT`) guarded; case-sensitive dedup for quoted names (#880/#881); schema-qualified `CREATE FUNCTION` now extracted (#775); CTAS table name extracted instead of schema name (#808) |
 | YAML | `languages/yaml_plugin.py` | `languages/yaml_helpers.py` | anchors, aliases, multi-doc |
 | Markdown | `markdown_plugin/` | submodules | headings, code blocks, tables |
 | JSON | `languages/json_plugin.py` | inline | basic structure |

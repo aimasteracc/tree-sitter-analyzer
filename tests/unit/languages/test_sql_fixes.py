@@ -29,7 +29,7 @@ from tree_sitter_analyzer.models import SQLFunction, SQLTable
 def _parse(sql: str):
     """Return a tree-sitter Tree for the given SQL string."""
     if not TREE_SITTER_SQL_AVAILABLE:
-        pytest.skip("tree-sitter-sql not installed")
+        pytest.skip("tree-sitter-sql not installed — tracked #775/#808")
     parser = tree_sitter.Parser(tree_sitter.Language(tree_sitter_sql.language()))
     return parser.parse(sql.encode("utf-8"))
 
