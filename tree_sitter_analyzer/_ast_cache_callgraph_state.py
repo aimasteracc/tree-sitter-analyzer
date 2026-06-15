@@ -51,15 +51,29 @@ def clear_call_graph_built(conn: sqlite3.Connection) -> None:
 
 
 def call_graph_built(conn: sqlite3.Connection) -> bool:
-    """Return True iff this cache explicitly records a built call graph."""
+    """Return True iff this cache holds a built call graph.
+
+    Fast path: trust the ``ast_call_graph_state`` marker when it is explicitly
+    set. Safety net (#1005): legacy/crashed/partial-write caches can carry a
+    fully populated ``edges`` table with NO marker (or a cleared ``built=0``)
+    — treat a non-empty ``edges`` table as proof the graph exists, otherwise
+    every consumer gating on this signal wrongly reports the index empty
+    (#981/#987/#990/#1001/#1004). One cheap COUNT query; no source-tree walk.
+    """
+    # Fast path: trust the marker if explicitly set.
     try:
         row = conn.execute(
             "SELECT built FROM ast_call_graph_state WHERE id = 1"
         ).fetchone()
     except sqlite3.OperationalError:
+        row = None  # marker table missing — fall through to the edges probe
+    if row is not None:
+        built = row["built"] if isinstance(row, sqlite3.Row) else row[0]
+        if bool(built):
+            return True
+    # Safety net: a populated edges table means the graph exists.
+    try:
+        edge_count = conn.execute("SELECT COUNT(*) FROM edges").fetchone()
+    except sqlite3.OperationalError:
         return False
-    if row is None:
-        return False
-    if isinstance(row, sqlite3.Row):
-        return bool(row["built"])
-    return bool(row[0])
+    return bool(edge_count and edge_count[0] > 0)
