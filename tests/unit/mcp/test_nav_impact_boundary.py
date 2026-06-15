@@ -320,3 +320,46 @@ class TestNavImpactBoundary:
         assert "src/tool_a.py" in next_step, (
             f"Expected candidate file in hint, got: {next_step!r}"
         )
+
+    @pytest.mark.asyncio
+    async def test_file_path_dot_prefix_does_not_false_positive(self, tmp_path) -> None:
+        """Codex P2 (#873): ./src/tool_a.py and src/tool_a.py are the same file.
+
+        After path normalization, calling with file_path='./src/tool_a.py' when
+        CallGraph stores 'src/tool_a.py' must NOT return file_path_mismatch.
+        """
+        func_ref_a = _make_ref("execute", "src/tool_a.py")
+        graph = MagicMock()
+        graph.resolve_targets.return_value = [func_ref_a]
+        graph.caller_refs_of.return_value = []
+        graph.callee_refs_of.return_value = []
+        graph.call_chain.return_value = []
+
+        server = TreeSitterAnalyzerMCPServer(str(tmp_path))
+        handler = _capture_call_tool_handler(server)
+
+        with (
+            patch(
+                "tree_sitter_analyzer.mcp.tools.codegraph_impact_tool"
+                ".CodeGraphImpactTool._get_call_graph",
+                return_value=graph,
+            ),
+            patch.object(graph, "build", return_value=None),
+        ):
+            raw = await handler(
+                "nav",
+                {
+                    "action": "impact",
+                    "mode": "risk_score",
+                    "function_name": "execute",
+                    # Caller passes ./src/tool_a.py; CallGraph stores src/tool_a.py
+                    "file_path": "./src/tool_a.py",
+                    "output_format": "json",
+                },
+            )
+
+        body = json.loads(raw[0].text)
+        assert body["success"] is True
+        assert "file_path_mismatch" not in body, (
+            "./src/tool_a.py and src/tool_a.py are the same path — no mismatch"
+        )

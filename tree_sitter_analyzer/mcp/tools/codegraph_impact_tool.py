@@ -140,8 +140,17 @@ def _compute_risk_score(
     # therefore non-empty even for a wrong file_path, so the empty-targets
     # branch above never fires.  Detect the fallback by checking whether any
     # returned target actually lives in the requested file.
+    # Codex P2: normalise paths (strip leading ./, os.sep variants, empty)
+    # before comparing so ./src/a.py, src/a.py, and src\a.py all match.
+    import os as _os
+
+    def _norm(p: str | None) -> str:
+        if not p:
+            return ""
+        return _os.path.normpath(p).replace("\\", "/")
+
     if file_path is not None and not any(
-        getattr(t, "file_path", None) == file_path for t in targets
+        _norm(getattr(t, "file_path", None)) == _norm(file_path) for t in targets
     ):
         return {
             "score": 0,
