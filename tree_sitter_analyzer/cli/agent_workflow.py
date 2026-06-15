@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import shlex
 from pathlib import Path
 from typing import Any
 
@@ -427,11 +426,22 @@ def _scoped_change_impact_command(target: str) -> str:
     )
 
 
+_SHELL_SAFE_CHARS: frozenset[str] = frozenset(
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-/\\:"
+)
+
+
 def _shell_safe_path(path: str | None) -> str:
-    """Return a shell-safe token for user-provided file paths."""
-    if path is None:
+    """Return a shell-safe token for user-provided file paths.
+
+    Double quotes work on Windows CMD, PowerShell, and Unix shells (#875).
+    shlex.quote() uses single quotes which fail in Windows CMD.
+    """
+    if not path:
         return ""
-    return shlex.quote(path)
+    if all(c in _SHELL_SAFE_CHARS for c in path):
+        return path
+    return '"' + path.replace('"', '\\"') + '"'
 
 
 def _build_toon_content(result: dict[str, Any]) -> str:
