@@ -131,3 +131,116 @@ def test_ast_cache_path_excludes_method_local_given_and_type() -> None:
     assert "Ops" in names
     assert "topGiven" in names
     assert "TopAlias" in names
+
+
+# ---------------------------------------------------------------------------
+# #972: ast_cache symbol-extraction helpers (_scala_symbol_from_node /
+# _scala_symbol_name / _scala_given_type_text). These mirror the plugin
+# helpers but live on the shared ast_cache walk; the branches differ, so
+# they are covered independently here.
+# ---------------------------------------------------------------------------
+
+
+def _scala_node(code: str, node_type: str):
+    """Return the first ``node_type`` node in a parsed Scala snippet."""
+    import tree_sitter
+
+    from tree_sitter_analyzer.languages.scala_plugin import ScalaPlugin
+
+    lang = ScalaPlugin().get_tree_sitter_language()
+    parser = tree_sitter.Parser(lang)
+    tree = parser.parse(code.encode("utf-8"))
+
+    def find(node):
+        if node.type == node_type:
+            return node
+        for child in node.children:
+            hit = find(child)
+            if hit is not None:
+                return hit
+        return None
+
+    return find(tree.root_node)
+
+
+def test_ast_cache_symbol_from_node_object_is_class() -> None:
+    from tree_sitter_analyzer._ast_extraction import _scala_symbol_from_node
+
+    code = "object Box:\n  val x = 1\n"
+    node = _scala_node(code, "object_definition")
+    sym = _scala_symbol_from_node(node, code)
+    assert sym is not None
+    assert sym["kind"] == "class"
+    assert sym["name"] == "Box"
+
+
+def test_ast_cache_symbol_from_node_enum_is_enum() -> None:
+    from tree_sitter_analyzer._ast_extraction import _scala_symbol_from_node
+
+    code = "enum Color:\n  case Red\n"
+    node = _scala_node(code, "enum_definition")
+    sym = _scala_symbol_from_node(node, code)
+    assert sym is not None
+    assert sym["kind"] == "enum"
+    assert sym["name"] == "Color"
+
+
+def test_ast_cache_symbol_from_node_rejects_non_class_like() -> None:
+    """A node outside ``_SCALA_CLASS_LIKE`` (e.g. the bare ``enum`` keyword)
+    returns None (line 877-878 guard)."""
+    from tree_sitter_analyzer._ast_extraction import _scala_symbol_from_node
+
+    code = "enum Color:\n  case Red\n"
+    keyword = _scala_node(code, "enum")
+    assert _scala_symbol_from_node(keyword, code) is None
+
+
+def test_ast_cache_symbol_name_uses_identifier_child_for_object() -> None:
+    """``object_definition`` exposes no ``name`` field, so the identifier-child
+    fallback path (line 895-897) resolves the name."""
+    from tree_sitter_analyzer._ast_extraction import _scala_symbol_name
+
+    code = "object Box:\n  val x = 1\n"
+    node = _scala_node(code, "object_definition")
+    assert _scala_symbol_name(node, code) == "Box"
+
+
+def test_ast_cache_symbol_name_named_given_via_type() -> None:
+    from tree_sitter_analyzer._ast_extraction import _scala_symbol_name
+
+    code = "object O:\n  given Ordering[Int] = ???\n"
+    node = _scala_node(code, "given_definition")
+    assert _scala_symbol_name(node, code) == "given Ordering[Int]"
+
+
+def test_ast_cache_symbol_name_degenerate_given_is_empty() -> None:
+    """``given = 1`` parses with an empty ``type_identifier`` child, so the
+    identifier-child branch (line 895-897) returns ``""`` — distinct from the
+    plugin path which line-numbers it. The empty name then trips the
+    ``if not name`` guard in ``_scala_symbol_from_node`` (line 880-881)."""
+    from tree_sitter_analyzer._ast_extraction import (
+        _scala_symbol_from_node,
+        _scala_symbol_name,
+    )
+
+    code = "object O:\n  given = 1\n"
+    node = _scala_node(code, "given_definition")
+    assert _scala_symbol_name(node, code) == ""
+    # Empty name => the class-like guard rejects the node.
+    assert _scala_symbol_from_node(node, code) is None
+
+
+def test_ast_cache_given_type_text_resolves_tuple_type() -> None:
+    from tree_sitter_analyzer._ast_extraction import _scala_given_type_text
+
+    code = "object O:\n  given (Int, String) = ???\n"
+    node = _scala_node(code, "given_definition")
+    assert _scala_given_type_text(node, code) == "(Int, String)"
+
+
+def test_ast_cache_given_type_text_resolves_generic_type() -> None:
+    from tree_sitter_analyzer._ast_extraction import _scala_given_type_text
+
+    code = "object O:\n  given Ordering[Int] = ???\n"
+    node = _scala_node(code, "given_definition")
+    assert _scala_given_type_text(node, code) == "Ordering[Int]"
