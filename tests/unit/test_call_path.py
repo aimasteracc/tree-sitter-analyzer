@@ -483,3 +483,86 @@ class TestCallPathHopCalleFile:
         hop = result.paths[0].hops[0]
         assert hop["callee_file"] == "lib.py"
         assert hop["caller_file"] == "main.py"
+
+
+# 4-hop linear chain: s -> a -> b -> t (frontiers meet on the forward side at b)
+_FOUR_HOP_EDGES = [
+    {
+        "caller_name": "s",
+        "caller_file": "s.py",
+        "callee_name": "a",
+        "callee_resolved_file": "a.py",
+    },
+    {
+        "caller_name": "a",
+        "caller_file": "a.py",
+        "callee_name": "b",
+        "callee_resolved_file": "b.py",
+    },
+    {
+        "caller_name": "b",
+        "caller_file": "b.py",
+        "callee_name": "t",
+        "callee_resolved_file": "t.py",
+    },
+]
+
+
+class TestBidirectionalMeetingOrder:
+    """#951: forward-side meetings must reconstruct in caller->callee order."""
+
+    def test_three_plus_hop_path_in_executable_order(self, tmp_path):
+        cache = _make_cache_with_edges(tmp_path, _FOUR_HOP_EDGES)
+        finder = CallPathFinder(str(tmp_path), cache=cache)
+        result = finder.find_path("s", "t", direction="bidirectional")
+        assert result.data_source == "sql"
+        assert len(result.paths) == 1
+        hops = result.paths[0].hops
+        # Hops must be ordered s->a, a->b, b->t — a non-executable scramble
+        # (e.g. s->a, b->t, a->b) is the bug this guards against.
+        assert [(h["caller"], h["callee"]) for h in hops] == [
+            ("s", "a"),
+            ("a", "b"),
+            ("b", "t"),
+        ]
+
+    def test_no_duplicate_paths_from_both_frontiers(self, tmp_path):
+        """A meeting node found by both passes is recorded exactly once."""
+        cache = _make_cache_with_edges(tmp_path, _LINEAR_EDGES)
+        finder = CallPathFinder(str(tmp_path), cache=cache)
+        result = finder.find_path("main", "bar", direction="bidirectional")
+        assert len(result.paths) == 1
+
+
+class TestFallbackBackwardGate:
+    """#951: parse-fallback backward search runs only when forward found none."""
+
+    def test_bidirectional_fallback_no_duplicate_when_forward_succeeds(self, tmp_path):
+        from tree_sitter_analyzer.call_graph import CallGraph
+
+        graph = CallGraph(str(tmp_path))
+        graph.build = lambda: None  # type: ignore[method-assign]
+        finder = CallPathFinder(str(tmp_path), cache=None)
+
+        def fake_forward(g, *a):  # noqa: ANN001, ANN002
+            paths = a[-1]
+            paths.append(
+                CallChain(
+                    hops=[{"caller": "s", "callee": "t"}], total_hops=1, files_crossed=1
+                )
+            )
+
+        def fail_backward(*a, **k):  # noqa: ANN002, ANN003
+            raise AssertionError("backward must not run when forward found paths")
+
+        finder._bfs_graph_forward = fake_forward  # type: ignore[assignment]
+        finder._bfs_graph_backward = fail_backward  # type: ignore[assignment]
+        import unittest.mock as _m
+
+        with _m.patch.object(
+            __import__("tree_sitter_analyzer.call_graph", fromlist=["CallGraph"]),
+            "CallGraph",
+            return_value=graph,
+        ):
+            result = finder._fallback_graph("s", "t", None, None, 6, 5, "bidirectional")
+        assert len(result.paths) == 1

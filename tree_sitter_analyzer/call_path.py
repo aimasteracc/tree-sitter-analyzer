@@ -326,6 +326,11 @@ def _make_chain(path: list[dict[str, Any]]) -> CallChain:
     )
 
 
+def _path_signature(path: list[dict[str, Any]]) -> tuple[tuple[str, str], ...]:
+    """Stable signature for a hop list, used to dedup equivalent paths."""
+    return tuple((hop.get("caller", ""), hop.get("callee", "")) for hop in path)
+
+
 class CallPathFinder:
     """Find execution paths between two functions via BFS on call edges.
 
@@ -517,6 +522,9 @@ class CallPathFinder:
             [(target_function, target_file)]
         )
         paths: list[CallChain] = []
+        # #951: dedup paths by their hop signature so a meeting node discovered
+        # by both the forward and backward pass in the same round is recorded once.
+        seen_paths: set[tuple[tuple[str, str], ...]] = set()
         depth = 0
         half_depth = max(1, max_depth // 2)
         while forward_queue or backward_queue:
@@ -540,11 +548,22 @@ class CallPathFinder:
                     }
                     parent_path = forward_visited.get((current_name, current_file), [])
                     forward_visited[state] = parent_path + [hop]
-                    # #797: only check for a meeting in backward_visited to stop
-                    # further exploration of this callee.  Paths are recorded
-                    # exclusively by the backward pass to prevent duplicates when
-                    # both passes discover the same meeting node in the same round.
-                    if _lookup_in_visited(state, backward_visited)[0]:
+                    # #797/#951: when the frontier first meets during the forward
+                    # expansion, record the path here in the correctly-ordered
+                    # form (forward segment to the meeting node, then the backward
+                    # segment from the meeting node) and stop exploring this callee.
+                    # Relying on the later backward pass to record it rebuilds the
+                    # chain in the wrong order for 3+ hop paths.
+                    found, bwd_path = _lookup_in_visited(state, backward_visited)
+                    if found:
+                        # backward_visited stores hops in forward (caller->callee)
+                        # order via ``[hop] + parent_path``, so the backward segment
+                        # is appended as-is — reversing it scrambles 2+ hop tails.
+                        full_path = forward_visited[state] + bwd_path
+                        sig = _path_signature(full_path)
+                        if sig not in seen_paths:
+                            seen_paths.add(sig)
+                            paths.append(_make_chain(full_path))
                         # Terminal node reached: stop exploring its callees.
                         continue
                     next_forward.append(state)
@@ -573,8 +592,13 @@ class CallPathFinder:
                     backward_visited[state] = [hop] + list(parent_path)
                     found, fwd_path = _lookup_in_visited(state, forward_visited)
                     if found:
-                        full_path = fwd_path + list(reversed(backward_visited[state]))
-                        paths.append(_make_chain(full_path))
+                        # backward_visited stores hops in forward (caller->callee)
+                        # order, so append the backward segment as-is.
+                        full_path = fwd_path + backward_visited[state]
+                        sig = _path_signature(full_path)
+                        if sig not in seen_paths:
+                            seen_paths.add(sig)
+                            paths.append(_make_chain(full_path))
                         continue
                     next_backward.append(state)
             backward_queue = next_backward
@@ -684,9 +708,15 @@ class CallPathFinder:
                 max_paths,
                 paths,
             )
-        # #797: bidirectional fallback must also try backward when forward found
-        # nothing (mirrors the SQL bidirectional that tries both frontiers).
-        if direction in ("backward", "bidirectional") and len(paths) < max_paths:
+        # #797/#951: bidirectional fallback must try backward only when forward
+        # found NOTHING (mirrors the SQL bidirectional that tries both frontiers).
+        # Running it whenever fewer than max_paths were found re-discovers the
+        # same chains and inflates path_count with duplicates.  For a pure
+        # backward search the forward pass never ran, so backward always runs.
+        run_backward = direction == "backward" or (
+            direction == "bidirectional" and not paths
+        )
+        if run_backward:
             self._bfs_graph_backward(
                 graph,
                 source_function,
