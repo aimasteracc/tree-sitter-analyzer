@@ -86,7 +86,10 @@ class TestSafeToEditTool:
     def test_execute_includes_pre_edit_checklist(self, tool):
         result = _run(tool.execute({"file_path": TARGET_FILE, "output_format": "json"}))
         assert "pre_edit_checklist" in result
-        assert len(result["pre_edit_checklist"]) == 4
+        checklist = "\n".join(result["pre_edit_checklist"])
+        assert "RISK" in checklist
+        assert "Run existing tests FIRST" in checklist
+        assert "Run same verification AFTER editing" in checklist
 
     def test_execute_includes_structured_agent_workflow(self, tool):
         result = _run(tool.execute({"file_path": TARGET_FILE, "output_format": "json"}))
