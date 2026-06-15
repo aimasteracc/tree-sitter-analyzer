@@ -44,6 +44,29 @@ def _is_python_constructor(name: str, node: Any) -> bool:
     )
 
 
+def _python_parent_class_name(node: Any) -> str | None:
+    """Return the enclosing class name when ``node`` is a class method, else None.
+
+    Walks the parent chain: function_definition (or decorated_definition) →
+    block → class_definition → identifier child.  Returns None for module-level
+    functions (#740).
+    """
+    parent = getattr(node, "parent", None)
+    if getattr(parent, "type", "") == "decorated_definition":
+        parent = getattr(parent, "parent", None)
+    if parent is None or getattr(parent, "type", "") != "block":
+        return None
+    class_node = getattr(parent, "parent", None)
+    if class_node is None or getattr(class_node, "type", "") != "class_definition":
+        return None
+    for child in getattr(class_node, "children", []):
+        if getattr(child, "type", "") == "identifier":
+            text = getattr(child, "text", None)
+            if text:
+                return text.decode("utf-8") if isinstance(text, bytes) else text
+    return None
+
+
 class PythonFunctionExtractionMixin:
     def extract_functions(self, tree: Any, source_code: str) -> list[Function]:
         """Extract Python function definitions with comprehensive details."""
@@ -82,6 +105,7 @@ class PythonFunctionExtractionMixin:
             complexity_score = self._calculate_complexity_optimized(node)
             raw_text = function_raw_text(self.content_lines, start_line, end_line)
 
+            parent_class = _python_parent_class_name(node)
             return build_function_element(
                 FunctionBuildInput(
                     name=name,
@@ -96,6 +120,8 @@ class PythonFunctionExtractionMixin:
                     complexity_score=complexity_score,
                     framework_type=self.framework_type,
                     is_constructor=_is_python_constructor(name, node),
+                    is_method=parent_class is not None,
+                    parent_class=parent_class,
                 )
             )
         except Exception as exc:
