@@ -224,6 +224,19 @@ class TestCodeGraphSymbolSearchExecution:
             f"~User must find UserService via prefix match; got {names}"
         )
 
+    async def test_fuzzy_special_chars_do_not_crash(self, indexed_project):
+        """Codex P2 / #739: ~foo-bar must not raise sqlite3.OperationalError.
+
+        Plain term* drops quoting, so FTS5 special chars (-, ., :) in the query
+        cause a syntax error.  Quoted-prefix ("term"*) is always safe.
+        """
+        tool = CodeGraphSymbolSearchTool(str(indexed_project))
+        for bad_query in ["~foo-bar", "~foo.bar", "~foo:bar"]:
+            result = await tool.execute({"query": bad_query, "output_format": "json"})
+            assert result["success"] is True, (
+                f"Query {bad_query!r} must not crash; got {result}"
+            )
+
     async def test_plain_query_cascade_fuzzy_finds_typo(self, indexed_project):
         tool = CodeGraphSymbolSearchTool(str(indexed_project))
         result = await tool.execute(
