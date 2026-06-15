@@ -387,7 +387,7 @@ class TestExtractEnumDefinition:
             end_point=(0, 29),
             children=[
                 FakeNode("type_identifier", text="Color"),
-                FakeNode("enumerator_list"),
+                FakeNode("enumerator_list"),  # body required by _has_body guard
             ],
         )
         result = extract_enum_definition(
@@ -407,7 +407,9 @@ class TestExtractEnumDefinition:
             text="enum { A, B };",
             start_point=(2, 0),
             end_point=(2, 13),
-            children=[FakeNode("enumerator_list")],
+            children=[
+                FakeNode("enumerator_list"),  # body required by _has_body guard
+            ],
         )
         result = extract_enum_definition(
             node,
