@@ -24,7 +24,7 @@ _CONTAINER_NODE_TYPES = frozenset(
         "block",
     }
 )
-_MAX_TRAVERSAL_DEPTH = 50
+_MAX_TRAVERSAL_DEPTH = 200
 
 
 @dataclass(slots=True)
