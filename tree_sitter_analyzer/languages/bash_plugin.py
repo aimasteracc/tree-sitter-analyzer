@@ -555,15 +555,45 @@ class BashElementExtractor(ElementExtractor):
             return None
 
     def _extract_subscript(self, node: tree_sitter.Node) -> Expression | None:
-        """Extract subscript/array indexing expressions"""
+        """Extract subscript/array indexing expressions.
+
+        For an array/associative assignment target (``arr[0]=x``) the base
+        variable lives under the subscript's ``name`` field (or the first
+        ``variable_name``/``word`` child). Unwrap to that base so ``name`` is
+        the variable, not the literal ``"subscript"``.
+        """
         try:
             start_line = node.start_point[0] + 1
             end_line = node.end_point[0] + 1
             raw_text = self._get_node_text_optimized(node)
             preview = raw_text[:50].replace("\n", " ") if raw_text else ""
 
+            # #949 Codex P2: the base-name unwrap is only correct for an
+            # assignment *target* (left side of a variable_assignment, e.g.
+            # ``arr[0]=x``). A subscript *read* (``echo ${arr[0]}``) — whose
+            # parent is an ``expansion``/command, not a variable_assignment —
+            # must keep the ``subscript`` label, not be relabeled to ``arr``.
+            parent = node.parent
+            name_field = (
+                parent.child_by_field_name("name")
+                if parent is not None and parent.type == "variable_assignment"
+                else None
+            )
+            is_assignment_target = name_field is not None and name_field.id == node.id
+            base = None
+            if is_assignment_target:
+                base = node.child_by_field_name("name")
+                if base is None:
+                    for child in node.children:
+                        if child.type in ("variable_name", "word"):
+                            base = child
+                            break
+            name = self._get_node_text_optimized(base) if base is not None else ""
+            if not name:
+                name = "subscript"
+
             return Expression(
-                name="subscript",
+                name=name,
                 start_line=start_line,
                 end_line=end_line,
                 raw_text=raw_text,
