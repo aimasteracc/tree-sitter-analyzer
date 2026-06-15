@@ -164,6 +164,10 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
             fp = r.get("file", "")
             by_file[fp] = by_file.get(fp, 0) + 1
 
+        # #736: detect truncation — if result count equals limit the result set
+        # was capped; agents must know so they don't treat the cap as a total.
+        truncated = len(results) >= limit
+
         # Pain #25 (dogfood pass 3): symbol_search emitted no verdict.
         # NOT_FOUND on zero matches so agents stop chasing; INFO otherwise.
         result: dict[str, Any] = {
@@ -177,11 +181,17 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
             # actions. ``match_count`` stays for back-compat.
             "count": len(results),
             "file_count": len(by_file),
+            "truncated": truncated,
             "results": results,
             "data_source": "fts5" if cache.fts5_available else "linear_scan",
         }
         if results:
-            if search_deterrent:
+            if truncated:
+                result["next_step"] = (
+                    f"Results capped at limit={limit}. Raise --symbol-search-limit "
+                    f"(or the `limit` parameter) to see more matches."
+                )
+            elif search_deterrent:
                 result["next_step"] = search_deterrent
             else:
                 result["next_step"] = (
