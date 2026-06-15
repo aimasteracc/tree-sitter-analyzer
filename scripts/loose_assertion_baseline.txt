@@ -99,7 +99,19 @@
 #   per-case dict), test_plugins_base_core.py (functions==0/unicode_len==2/
 #   node_name_len==4/traverse_functions==1), test_typescript_formatter_core.py
 #   (full==879/compact==416/csv==402/csv_lines==8)).
+#   batch-39 (AST): further pins in formatter/CLI/security tests
+#   (test_cli_table_partial_query.py, test_cli_queries.py,
+#   test_temporal_activation.py, test_file_health_blocks.py,
+#   test_codegraph_metrics_tool.py, test_change_impact_analysis.py,
+#   test_cached_call_graph.py, test_mcp_security.py, test_error_handler.py,
+#   test_safe_to_edit_tool.py, test_project_health_tool.py).
+#   batch-39 (AST): 337 -> 302, 2026-06-15 (35 exact pins in 11 files:
+#   test_cli_table_partial_query.py, test_cli_queries.py,
+#   test_temporal_activation.py, test_file_health_blocks.py,
+#   test_codegraph_metrics_tool.py, test_change_impact_analysis.py,
+#   test_cached_call_graph.py, test_mcp_security.py, test_error_handler.py,
+#   test_safe_to_edit_tool.py, test_project_health_tool.py).
 
-BASELINE_COUNT=337
+BASELINE_COUNT=302
 MEASUREMENT_DATE=2026-06-15
 MEASUREMENT_COMMAND="uv run python scripts/check_loose_assertions.py --baseline"
