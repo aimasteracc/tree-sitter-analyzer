@@ -471,3 +471,63 @@ class TestCSharpFunctionExtraction:
         assert calculate is not None
         # Method with if/for/while/switch should have higher complexity_score
         assert calculate.complexity_score == 7
+
+
+# ---------------------------------------------------------------------------
+# Issue #767 — C# namespace extracted as Package element
+# ---------------------------------------------------------------------------
+
+
+class TestCSharpNamespacePackageExtraction:
+    """Issue #767 — namespace_declaration must be surfaced as a Package element
+    so that package.name is populated (was always 'unknown' before the fix)."""
+
+    def test_qualified_namespace_produces_package_element(self):
+        """Qualified namespace (MyApp.Models) is extracted as Package."""
+        plugin = CSharpPlugin()
+        tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
+        packages = plugin.extractor.extract_packages(tree, SIMPLE_CLASS_CODE)
+
+        assert len(packages) == 1
+        assert packages[0].name == "MyApp.Models"
+
+    def test_package_element_language_is_csharp(self):
+        """Extracted Package element carries language='csharp'."""
+        plugin = CSharpPlugin()
+        tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
+        packages = plugin.extractor.extract_packages(tree, SIMPLE_CLASS_CODE)
+
+        assert packages[0].language == "csharp"
+
+    def test_simple_namespace_produces_package_element(self):
+        """Single-segment namespace (MyApp) is also extracted."""
+        src = "namespace MyApp\n{\n    public class Foo {}\n}\n"
+        plugin = CSharpPlugin()
+        tree = get_tree_for_code(src, plugin)
+        packages = plugin.extractor.extract_packages(tree, src)
+
+        assert len(packages) == 1
+        assert packages[0].name == "MyApp"
+
+    def test_no_namespace_returns_empty(self):
+        """A C# file without a namespace declaration returns no Package."""
+        src = "public class Bare {}\n"
+        plugin = CSharpPlugin()
+        tree = get_tree_for_code(src, plugin)
+        packages = plugin.extractor.extract_packages(tree, src)
+
+        assert packages == []
+
+    def test_none_tree_returns_empty(self):
+        """extract_packages with a None tree returns an empty list."""
+        extractor = CSharpElementExtractor()
+        assert extractor.extract_packages(None, "") == []
+
+    def test_interface_namespace_extracted(self):
+        """Interface file namespace is correctly captured."""
+        plugin = CSharpPlugin()
+        tree = get_tree_for_code(INTERFACE_CODE, plugin)
+        packages = plugin.extractor.extract_packages(tree, INTERFACE_CODE)
+
+        assert len(packages) == 1
+        assert packages[0].name == "MyApp.Interfaces"
