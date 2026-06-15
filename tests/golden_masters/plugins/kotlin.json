@@ -1,11 +1,12 @@
 {
   "counts_by_type": {
     "Class": 8,
-    "Function": 8,
+    "Function": 12,
+    "Import": 1,
     "Package": 1,
-    "Variable": 4
+    "Variable": 3
   },
-  "element_total": 21,
+  "element_total": 25,
   "names_by_type": {
     "Class": [
       "Config",
@@ -18,6 +19,10 @@
       "UserManager"
     ],
     "Function": [
+      "Error",
+      "Success",
+      "User",
+      "UserManager",
       "display",
       "fetchUserAsync",
       "get",
@@ -26,16 +31,22 @@
       "summary",
       "toTitleCase"
     ],
+    "Import": [
+      "java.util.Collections"
+    ],
     "Package": [
       "com.example.kotlin"
     ],
     "Variable": [
-      "unknown"
+      "MAX_USERS",
+      "userCount",
+      "version"
     ]
   },
   "types": [
     "Class",
     "Function",
+    "Import",
     "Package",
     "Variable"
   ]

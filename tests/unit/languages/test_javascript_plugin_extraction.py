@@ -455,3 +455,31 @@ class TestGetNodeTextMultiLine:
 
         assert "line one content" in result
         assert "line two content" in result
+
+
+# ---------------------------------------------------------------------------
+# Issue #534 — JS private method name (Scope A2)
+# ---------------------------------------------------------------------------
+
+
+class TestPrivateMethodNameExtraction:
+    """Private class fields (#name) must produce a non-empty name — not ''."""
+
+    def test_private_method_name_is_not_empty(self, plugin):
+        """#logActivity must be extracted as 'logActivity', not empty string."""
+        import tree_sitter
+
+        lang = plugin.get_tree_sitter_language()
+        parser = tree_sitter.Parser(lang)
+        code = "class Logger {\n    #logActivity(msg) { console.log(msg); }\n    normalMethod() {}\n}\n"
+        tree = parser.parse(bytes(code, "utf-8"))
+        extractor = plugin.extractor
+        fns = extractor.extract_functions(tree, code)
+        # normalMethod is definitely present; #logActivity should have a non-empty name
+        method_names = [f.name for f in fns if f.is_method]
+        assert "#logActivity" in method_names or "logActivity" in method_names, (
+            f"Expected private method name in {method_names!r}, got empty string"
+        )
+        # No method should have an empty name
+        empty_names = [f.name for f in fns if f.name == ""]
+        assert empty_names == [], f"Methods with empty names: {empty_names!r}"

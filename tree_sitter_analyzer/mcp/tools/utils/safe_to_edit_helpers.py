@@ -182,11 +182,9 @@ def _format_safe_to_edit_result(
     if fixture_fact.is_fixture:
         risk_factors.append(_fixture_risk_factor(fixture_fact, context.file_path))
     recommendation = _format_recommendation(risk, facts, workflow)
-    summary = build_agent_summary(workflow_context, workflow)
-    # Promote agent_summary.verdict when constraint violations escalate
-    # beyond the risk-level-derived verdict.
-    if verdict != base_verdict:
-        summary["verdict"] = verdict
+    # #781: pass the (possibly escalated) verdict so summary_line AND
+    # summary["verdict"] are both built from it — never a CAUTION/UNSAFE split.
+    summary = build_agent_summary(workflow_context, workflow, verdict_override=verdict)
     return {
         "success": True,
         "file_path": context.file_path,
@@ -317,6 +315,7 @@ def _format_recommendation(
 def build_agent_summary(
     context: AgentWorkflowContext,
     workflow: dict[str, Any],
+    verdict_override: str | None = None,
 ) -> dict[str, Any]:
     """Build the compact first-read decision summary for agents.
 
@@ -324,11 +323,20 @@ def build_agent_summary(
     cross-tool envelope contract (``TestEnvelopeContractSnapshot``) is
     satisfied. ``mirror_summary_line`` then copies the line to the
     top-level envelope for direct callers that bypass the dispatch hook.
+
+    #781: ``verdict_override`` lets the caller pass an escalated verdict (from a
+    constraint-violation or fixture promotion) so it flows into BOTH the
+    ``summary_line`` and ``summary["verdict"]`` — the one-line decision surface
+    must never disagree with the structured verdict.
     """
     before = workflow["before_edit_commands"]
     after = workflow["after_edit_commands"]
     boundary = workflow["queue_boundary_commands"]
-    verdict = _risk_to_verdict(context.risk)
+    # verdict_override is a floor-raiser (escalation), never a downgrade:
+    # _max_verdict keeps the more severe of the risk-derived base and the
+    # override (and tolerates a None override), so a future caller can't use it
+    # to silently lower the verdict below the risk level.
+    verdict = _max_verdict(_risk_to_verdict(context.risk), verdict_override)
     summary_line = (
         f"{context.file_path} risk={context.risk} verdict={verdict} "
         f"health={context.health_grade} "
@@ -358,7 +366,7 @@ def build_agent_workflow(context: AgentWorkflowContext) -> dict[str, Any]:
     """Build a machine-friendly edit workflow for autonomous agents."""
     default_command = detect_default_test_command(context.project_root)
     focused_command = (
-        build_test_command(default_command, context.test_files[:3])
+        build_test_command(default_command, context.test_files)
         if context.has_tests
         else ""
     )

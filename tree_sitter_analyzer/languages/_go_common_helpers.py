@@ -63,11 +63,19 @@ def _collect_docstring_lines(content_lines: list[str], scan_start: int) -> list[
 def extract_method_receiver(
     node: Any, get_node_text: Callable[..., str]
 ) -> tuple[str | None, str | None]:
-    """Extract method receiver name and type."""
+    """Extract method receiver name and type.
+
+    Handles generic receivers such as ``(s *Stack[T])`` or ``(p Pair[A, B])``.
+    The type-parameter suffix ``[...]`` is stripped so that ``receiver_type``
+    returns the bare type name (e.g. ``"*Stack"`` instead of ``"*Stack[T]"``).
+    Bug #750.
+    """
     receiver_node = node.child_by_field_name("receiver")
     if receiver_node:
         receiver_text = get_node_text(receiver_node)
-        match = re.search(r"\(\s*(\w+)\s+(\*?\w+)\s*\)", receiver_text)
+        # Match: open-paren, receiver-var, receiver-type (optional pointer),
+        # optional generic type-param list ``[...]``, close-paren.
+        match = re.search(r"\(\s*(\w+)\s+(\*?\w+)(?:\[.*?\])?\s*\)", receiver_text)
         if match:
             return match.group(1), match.group(2)
     return None, None

@@ -38,6 +38,20 @@ class TestParseChain:
         with pytest.raises(ValueError, match="unsupported chain step"):
             parse_chain("search('x').delete()")
 
+    def test_pipe_separator_rejected_loudly(self):
+        # #574: an UNQUOTED '|' is the natural-but-wrong separator. Without this
+        # it fell to the no-paren fallback — explore("A | B").related() — and
+        # silently returned a wrong result. Reject it with the real '.' syntax.
+        with pytest.raises(ValueError, match="separated by '.', not"):
+            parse_chain(".function | .method")
+
+    def test_quoted_pipe_is_legitimate_search_text(self):
+        # Codex P2 on the first cut: a '|' INSIDE a quoted arg (TS unions, type
+        # hints) is real search text, not a separator — must NOT be rejected.
+        steps = parse_chain("search('string | number')")
+        assert [s.name for s in steps] == ["search"]
+        assert steps[0].args == ["string | number"]
+
     def test_accepts_js_style_bare_booleans(self):
         """LLM agents naturally write true/false/null in this jQuery-style DSL.
 
@@ -205,3 +219,35 @@ class TestParseChain:
         )
         assert first_str(_ChainStep("include", [], {}), required=False) == ""
         assert first_int(_ChainStep("take", [], {"limit": 4}), default=9) == 4
+
+
+class TestChainActionDocMatchesInner:
+    """#574: the search facade documented action=chain with params
+    chain/program/default_limit/include_source — NONE of which the inner
+    CodeGraphQueryTool accepts (it needs query, max_symbols, max_files,
+    include_code, compact). A doc-following call drifted. Pin the doc to the
+    inner schema (#515 facade-doc-drift family)."""
+
+    def test_chain_documented_params_subset_of_inner_schema(self):
+        import re
+
+        from tree_sitter_analyzer.mcp.tools.search_facade import build_search_facade
+
+        facade = build_search_facade(project_root=None)
+        desc = facade.get_tool_definition()["description"]
+        block = re.search(r"action=chain\b(.*?)(?=- action=|\Z)", desc, re.S)
+        assert block, "action=chain not found in search facade description"
+        params = re.search(r"Params:\s*([^.\n]+)", block.group(1))
+        assert params, "action=chain documents no Params"
+        documented = {
+            p.strip().split()[0].split("(")[0]
+            for p in params.group(1).split(",")
+            if p.strip()
+        }
+        inner = facade.action_map["chain"]
+        props = set(inner.get_tool_definition()["inputSchema"]["properties"].keys())
+        drift = documented - props - {"output_format"}
+        assert not drift, (
+            f"chain documents params absent from CodeGraphQueryTool: "
+            f"{sorted(drift)} (inner props: {sorted(props)}) — doc drift (#574)."
+        )

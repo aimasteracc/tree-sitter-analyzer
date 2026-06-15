@@ -99,10 +99,42 @@ class _ChainStep:
     kwargs: dict[str, Any]
 
 
+def _has_unquoted_pipe(query: str) -> bool:
+    """True when ``query`` has a ``|`` outside any single/double-quoted span.
+
+    A top-level pipe is a wrong-separator attempt (#574); a pipe inside a
+    quoted arg — ``search('string | number')`` — is legitimate search text.
+    """
+    in_single = in_double = escaped = False
+    for ch in query:
+        if escaped:
+            escaped = False
+        elif ch == "\\":
+            escaped = True
+        elif ch == "'" and not in_double:
+            in_single = not in_single
+        elif ch == '"' and not in_single:
+            in_double = not in_double
+        elif ch == "|" and not in_single and not in_double:
+            return True
+    return False
+
+
 def parse_chain(query: str) -> list[_ChainStep]:
     """Parse a safe chained query into steps."""
     if len(query) > _MAX_QUERY_LENGTH:
         raise ValueError(f"query exceeds {_MAX_QUERY_LENGTH} characters")
+    # #574: '|' is the natural-but-wrong separator agents reach for. Without
+    # this it falls to the no-paren fallback — explore("A | B").related() — and
+    # silently returns a wrong result with no diagnostic. Reject an UNQUOTED
+    # '|' (separator position) loudly; a '|' inside a quoted arg is legitimate
+    # search text (TS unions, type hints — Codex P2 on the first cut).
+    if _has_unquoted_pipe(query):
+        raise ValueError(
+            "chain steps are separated by '.', not '|' — e.g. "
+            "search('IndexShard').callers().  To search for a literal '|' "
+            "(e.g. a type union), quote it: search('string | number')."
+        )
     if "(" not in query:
         return [
             _ChainStep("explore", [query], {}),

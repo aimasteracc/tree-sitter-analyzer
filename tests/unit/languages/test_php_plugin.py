@@ -500,14 +500,38 @@ class TestPHPVariableExtraction:
         extractor = plugin.create_extractor()
         variables = extractor.extract_variables(tree, COMPLEX_CLASS_CODE)
 
-        # Check for any constants or variables
-        # Constant extraction may vary based on tree-sitter-php version
-        assert isinstance(variables, list)
-        # At minimum, properties should be extracted
-        if len(variables) > 0:
-            # Verify we get some class properties
-            var_names = [v.name for v in variables]
-            assert len(var_names) > 0
+        # COMPLEX_CLASS_CODE yields 4 properties + the MAX_USERS class
+        # constant (gap fixed by #624: const_element carries no ``name``
+        # field, so the field lookup dropped every const silently).
+        assert [v.name for v in variables] == [
+            "logger",
+            "repository",
+            "MAX_USERS",
+            "instanceCount",
+            "serviceName",
+        ]
+        max_users = next(v for v in variables if v.name == "MAX_USERS")
+        assert max_users.is_constant is True
+        assert max_users.is_static is True
+        assert max_users.is_final is True
+        assert max_users.visibility == "public"
+        assert max_users.variable_type == "const"
+        assert max_users.receiver_type == "UserService"
+        assert max_users.start_line == 21
+
+    def test_extract_top_level_const(self):
+        """#624 — top-level const reaches extract_variables too (the plugin
+        walks the whole tree, so the same name-field fix covers it)."""
+        plugin = PHPPlugin()
+        code = "<?php\nconst MAX = 1;\nconst A = 1, B = 2;\n"
+        tree = get_tree_for_code(code, plugin)
+        extractor = plugin.create_extractor()
+        variables = extractor.extract_variables(tree, code)
+
+        assert [v.name for v in variables] == ["MAX", "A", "B"]
+        top = next(v for v in variables if v.name == "MAX")
+        assert top.is_constant is True
+        assert top.receiver_type is None
 
     def test_extract_static_property(self):
         """Test extraction of static property."""
@@ -569,30 +593,63 @@ class TestPHPImportExtraction:
     """Test PHP import (use statement) extraction."""
 
     def test_extract_simple_use(self):
-        """Test extraction of simple use statements."""
+        """Test extraction of simple use statements (#617)."""
         plugin = PHPPlugin()
         tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
         extractor = plugin.create_extractor()
         imports = extractor.extract_imports(tree, SIMPLE_CLASS_CODE)
 
-        # Use statement extraction should return a list
-        assert isinstance(imports, list)
-        # We expect to find some imports
-        assert len(imports) >= 0  # May be 0 if tree-sitter-php doesn't extract them
+        # SIMPLE_CLASS_CODE has exactly 2 top-level `use` statements.
+        # The class-body `use HasTimestamps;` (trait use) is composition,
+        # NOT an import — it must stay excluded.
+        assert [(i.name, i.alias) for i in imports] == [
+            ("App\\Contracts\\UserInterface", None),
+            ("App\\Traits\\HasTimestamps", None),
+        ]
 
-    def test_extract_aliased_use(self):
-        """Test extraction of aliased use statements."""
+    def test_extract_group_function_const_use(self):
+        """Group, function, and const use forms are extracted (#617)."""
         plugin = PHPPlugin()
         tree = get_tree_for_code(USE_STATEMENTS_CODE, plugin)
         extractor = plugin.create_extractor()
         imports = extractor.extract_imports(tree, USE_STATEMENTS_CODE)
 
-        # Check for aliased import
-        next(
-            (i for i in imports if i.alias == "BlogPost" or "BlogPost" in str(i)), None
-        )
-        # May be extracted depending on tree-sitter-php version
-        assert len(imports) >= 0
+        # USE_STATEMENTS_CODE: 5 use declarations → 6 imports (the group
+        # `use App\Services\{UserService, PostService};` yields one per
+        # member, each prefixed with the group namespace).
+        assert [(i.name, i.alias) for i in imports] == [
+            ("App\\Models\\User", None),
+            ("App\\Models\\Post", "BlogPost"),
+            ("App\\Services\\UserService", None),
+            ("App\\Services\\PostService", None),
+            ("App\\Helpers\\formatDate", None),
+            ("App\\Constants\\APP_VERSION", None),
+        ]
+
+    def test_extract_aliased_use(self):
+        """Test extraction of aliased use statements (#617)."""
+        plugin = PHPPlugin()
+        tree = get_tree_for_code(USE_STATEMENTS_CODE, plugin)
+        extractor = plugin.create_extractor()
+        imports = extractor.extract_imports(tree, USE_STATEMENTS_CODE)
+
+        # `use App\Models\Post as BlogPost;` — name keeps the original FQN,
+        # alias carries the local binding (same convention as Python's
+        # `import x as y`: original in name/module_name, bound name in alias).
+        aliased = [i for i in imports if i.alias is not None]
+        assert len(aliased) == 1
+        assert aliased[0].name == "App\\Models\\Post"
+        assert aliased[0].alias == "BlogPost"
+        assert aliased[0].module_name == "App\\Models\\Post"
+
+    def test_trait_use_not_an_import(self):
+        """Class-body `use TraitName;` is composition, not an import (#617)."""
+        plugin = PHPPlugin()
+        code = "<?php\nclass A {\n    use TraitName;\n}\n"
+        tree = get_tree_for_code(code, plugin)
+        extractor = plugin.create_extractor()
+        imports = extractor.extract_imports(tree, code)
+        assert imports == []
 
     def test_extract_imports_empty_tree(self):
         """Test import extraction with empty code."""
@@ -604,14 +661,14 @@ class TestPHPImportExtraction:
         assert imports == []
 
     def test_import_line_numbers(self):
-        """Test that import line numbers are correct."""
+        """Test that import line numbers are correct (#617)."""
         plugin = PHPPlugin()
         tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
         extractor = plugin.create_extractor()
         imports = extractor.extract_imports(tree, SIMPLE_CLASS_CODE)
 
-        assert all(i.start_line > 0 for i in imports)
-        assert all(i.end_line >= i.start_line for i in imports)
+        # SIMPLE_CLASS_CODE: the two use statements sit on lines 4 and 5.
+        assert [(i.start_line, i.end_line) for i in imports] == [(4, 4), (5, 5)]
 
 
 class TestPHPNamespaceHandling:
@@ -686,7 +743,12 @@ class TestPHPPluginAnalyzeFile:
         assert result.success is True
         assert result.language == "php"
         assert result.file_path == str(php_file)
-        assert len(result.elements) > 0
+        # SIMPLE_CLASS_CODE yields exactly 8 elements: 1 class (User),
+        # 3 functions (__construct/getName/getAge), 2 variables (name/age),
+        # 2 imports (UserInterface/HasTimestamps — extracted since #617).
+        assert len(result.elements) == 8
+        # #769: line_count must be non-zero (was always 0 before this fix)
+        assert result.line_count == len(SIMPLE_CLASS_CODE.splitlines())
 
 
 class TestPHPIntegration:
@@ -715,10 +777,18 @@ class TestPHPIntegration:
         variables = extractor.extract_variables(tree, COMPLEX_CLASS_CODE)
         imports = extractor.extract_imports(tree, COMPLEX_CLASS_CODE)
 
-        assert len(classes) > 0
-        assert len(functions) > 0
-        assert len(variables) > 0
-        assert isinstance(imports, list)
+        # COMPLEX_CLASS_CODE measured with tree-sitter-php 0.24.1:
+        # 2 classes (BaseService/UserService), 6 functions, 5 variables
+        # (4 properties + the MAX_USERS class const, extracted since #624),
+        # 3 imports (use statements, extracted since #617).
+        assert len(classes) == 2
+        assert len(functions) == 6
+        assert len(variables) == 5
+        assert [i.name for i in imports] == [
+            "App\\Repositories\\UserRepository",
+            "App\\Events\\UserCreated",
+            "Psr\\Log\\LoggerInterface",
+        ]
 
     def test_node_counting(self):
         """Test node counting functionality."""
@@ -726,4 +796,193 @@ class TestPHPIntegration:
         tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
 
         count = plugin._count_nodes(tree.root_node)
-        assert count > 0
+        # SIMPLE_CLASS_CODE parses to exactly 160 nodes
+        # (measured with tree-sitter-php 0.24.1)
+        assert count == 160
+
+
+class TestPHPMethodNameClean:
+    """Issue #535 — method name must be bare; owner in receiver_type."""
+
+    def test_method_name_is_bare(self):
+        """Method name must NOT contain 'ClassName::' prefix."""
+        plugin = PHPPlugin()
+        tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
+        extractor = plugin.create_extractor()
+        functions = extractor.extract_functions(tree, SIMPLE_CLASS_CODE)
+
+        construct = next(f for f in functions if f.name == "__construct")
+        assert construct.name == "__construct"
+        assert "::" not in construct.name
+
+    def test_method_receiver_type_is_owner(self):
+        """receiver_type must carry the owner class name."""
+        plugin = PHPPlugin()
+        tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
+        extractor = plugin.create_extractor()
+        functions = extractor.extract_functions(tree, SIMPLE_CLASS_CODE)
+
+        for func in functions:
+            assert func.receiver_type == "User", (
+                f"{func.name!r} has receiver_type={func.receiver_type!r}, expected 'User'"
+            )
+
+    def test_property_name_is_bare(self):
+        """Variable (property) name must NOT contain 'ClassName::' prefix."""
+        plugin = PHPPlugin()
+        tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
+        extractor = plugin.create_extractor()
+        variables = extractor.extract_variables(tree, SIMPLE_CLASS_CODE)
+
+        name_prop = next(v for v in variables if v.name == "name")
+        assert name_prop.name == "name"
+        assert "::" not in name_prop.name
+
+    def test_multi_class_methods_get_correct_receiver(self):
+        """Each method carries its own class as receiver_type."""
+        plugin = PHPPlugin()
+        tree = get_tree_for_code(COMPLEX_CLASS_CODE, plugin)
+        extractor = plugin.create_extractor()
+        functions = extractor.extract_functions(tree, COMPLEX_CLASS_CODE)
+
+        base_methods = [f for f in functions if f.receiver_type == "BaseService"]
+        user_methods = [f for f in functions if f.receiver_type == "UserService"]
+
+        assert len(base_methods) == 1
+        assert base_methods[0].name == "__construct"
+
+        assert (
+            len(user_methods) == 5
+        )  # __construct, createUser, validateUser, generateId, getInstanceCount
+        user_method_names = {f.name for f in user_methods}
+        assert "__construct" in user_method_names
+        assert "createUser" in user_method_names
+
+
+class _PhpStubNode:
+    """Minimal tree-sitter node stand-in (explicit parent, no auto-chains)."""
+
+    def __init__(self, type_, children=(), fields=None, parent=None):
+        self.type = type_
+        self.children = list(children)
+        self._fields = fields or {}
+        self.parent = parent
+        self.start_point = (0, 0)
+        self.end_point = (0, 0)
+
+    def child_by_field_name(self, name):
+        return self._fields.get(name)
+
+
+class TestPhpUseClauseGuards:
+    """Cover the defensive directions codecov flagged on #619: nameless
+    clauses return None and are dropped by both extraction loops; the
+    field fast-path is honored when a grammar provides it."""
+
+    @staticmethod
+    def _helpers():
+        from tree_sitter_analyzer.languages import php_helpers
+
+        return php_helpers
+
+    def test_nameless_clause_returns_none(self):
+        h = self._helpers()
+        clause = _PhpStubNode("namespace_use_clause", children=[])
+        assert h._build_use_clause_import(clause, clause, lambda n: "x") is None
+
+    def test_name_field_fast_path_used(self):
+        h = self._helpers()
+        name = _PhpStubNode("qualified_name")
+        clause = _PhpStubNode("namespace_use_clause", fields={"name": name})
+        imp = h._build_use_clause_import(clause, clause, lambda n: "App\\X")
+        assert imp is not None
+        assert imp.name == "App\\X"
+
+    def test_nameless_clause_dropped_by_simple_loop(self):
+        h = self._helpers()
+        clause = _PhpStubNode("namespace_use_clause", children=[])
+        decl = _PhpStubNode("namespace_use_declaration", children=[clause])
+        assert h.extract_use_statement(decl, lambda n: "x") == []
+
+    def test_nameless_clause_dropped_by_group_loop(self):
+        h = self._helpers()
+        clause = _PhpStubNode("namespace_use_clause", children=[])
+        group = _PhpStubNode("namespace_use_group", children=[clause])
+        prefix = _PhpStubNode("namespace_name")
+        decl = _PhpStubNode("namespace_use_declaration", children=[prefix, group])
+        assert h.extract_use_statement(decl, lambda n: "p") == []
+
+
+class TestPhpEnumConstantOwnership:
+    """Codex P2 on #625: enums may declare consts — without enum_declaration
+    in the parent tracking they emit receiver_type=None (global lookalike)."""
+
+    CODE = """<?php
+enum Suit
+{
+    case Hearts;
+    const ENUM_C = "wild";
+}
+"""
+
+    def test_enum_const_carries_enum_receiver(self):
+        import tree_sitter
+        import tree_sitter_php
+
+        from tree_sitter_analyzer.languages.php_plugin import PHPElementExtractor
+
+        lang = tree_sitter.Language(tree_sitter_php.language_php())
+        tree = tree_sitter.Parser(lang).parse(self.CODE.encode())
+        variables = PHPElementExtractor().extract_variables(tree, self.CODE)
+        consts = [v for v in variables if v.name == "ENUM_C"]
+        assert len(consts) == 1
+        assert consts[0].receiver_type == "Suit"
+
+
+class TestPHPTopLevelFunctionNamespace:
+    """#765: Top-level PHP functions in namespaced files must use bare names."""
+
+    CODE_WITH_NS = """<?php
+namespace App\\Models;
+
+function createUser(string $name): int
+{
+    return 1;
+}
+
+function hashPassword(string $pwd): string
+{
+    return md5($pwd);
+}
+"""
+
+    CODE_WITHOUT_NS = """<?php
+function topLevelOne(): void {}
+function topLevelTwo(int $x): int { return $x; }
+"""
+
+    def _parse(self, code: str):
+        import tree_sitter
+        import tree_sitter_php
+
+        from tree_sitter_analyzer.languages.php_plugin import PHPElementExtractor
+
+        lang = tree_sitter.Language(tree_sitter_php.language_php())
+        tree = tree_sitter.Parser(lang).parse(code.encode())
+        extractor = PHPElementExtractor()
+        return extractor.extract_functions(tree, code)
+
+    def test_namespaced_file_uses_bare_names(self):
+        funcs = self._parse(self.CODE_WITH_NS)
+        names = [f.name for f in funcs]
+        assert "createUser" in names
+        assert "hashPassword" in names
+        # Namespace must NOT be embedded in Function.name (#765)
+        assert not any("\\" in n for n in names), (
+            f"Namespace leaked into names: {names}"
+        )
+
+    def test_no_namespace_file_uses_bare_names(self):
+        funcs = self._parse(self.CODE_WITHOUT_NS)
+        names = [f.name for f in funcs]
+        assert names == ["topLevelOne", "topLevelTwo"]

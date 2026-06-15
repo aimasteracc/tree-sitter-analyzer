@@ -287,6 +287,7 @@ def handle_mcp_commands(
         return 1
 
     output_format = output_format_fn()
+    fail_on_verdict = getattr(args, "change_impact_fail_on_risk", None)
     return _run_tool(
         args,
         _get_tool_class(spec.tool_attr),
@@ -295,6 +296,7 @@ def handle_mcp_commands(
         output_json_fn,
         output_error_fn,
         output_format_fn,
+        fail_on_verdict_worse_than=fail_on_verdict,
     )
 
 

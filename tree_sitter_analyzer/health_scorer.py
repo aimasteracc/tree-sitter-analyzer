@@ -24,6 +24,7 @@ from ._health_scorer_helpers import (
     read_source_file,
     round_available_scores,
 )
+from ._lang_extension_map import EXT_TO_LANG as _EXT_TO_LANG
 from .constants import EXCLUDE_DIRS
 from .core.parser import Parser
 
@@ -40,7 +41,7 @@ DIMENSION_WEIGHTS = {
     "git_hotspot": 10,
 }
 
-PROJECT_HEALTH_SOURCE_EXTS = {
+PROJECT_HEALTH_SOURCE_EXTS = frozenset(
     # Code-only. r34 Q4 narrowed this set to extensions that have a real
     # language plugin in ``_EXT_TO_LANG`` so the scorer never falls back
     # to ``language=None`` (which would grade docs/markup as if they were
@@ -48,25 +49,14 @@ PROJECT_HEALTH_SOURCE_EXTS = {
     # intentionally OFF here — see CLAUDE.md "Deliberate design
     # decisions" §4. If you want to score markdown structure, build a
     # separate ``markdown_health`` tool.
-    ".py",
-    ".java",
-    ".js",
-    ".ts",
-    ".jsx",
-    ".tsx",
-    ".go",
-    ".rs",
-    ".kt",
-    ".cs",
-    ".rb",
-    ".php",
-    ".c",
-    ".cpp",
-    ".h",
-    ".cc",
-    ".cxx",
-    ".hpp",
-}
+    #
+    # Bug #785 fix: derive directly from the canonical EXT_TO_LANG map so
+    # this set never drifts when new language plugins are added. Extensions
+    # intentionally excluded from the indexer (e.g. .css, .html, .md, .sql,
+    # .yaml, .yml — see _lang_extension_map.py) are also excluded here since
+    # they are not wired into EXT_TO_LANG.
+    _EXT_TO_LANG.keys()
+)
 
 # Thresholds for scoring
 SIZE_IDEAL = 200  # Files under 200 lines get full size score
@@ -293,39 +283,9 @@ DECISION_NODE_TYPES: dict[str, set[str]] = {
     },
 }
 
-# Extension → language mapping
-_EXT_TO_LANG: dict[str, str] = {
-    ".py": "python",
-    ".js": "javascript",
-    ".ts": "typescript",
-    ".jsx": "javascript",
-    ".tsx": "typescript",
-    ".java": "java",
-    ".c": "c",
-    ".h": "c",
-    ".cpp": "cpp",
-    ".cc": "cpp",
-    ".cxx": "cpp",
-    ".hpp": "cpp",
-    ".go": "go",
-    ".rs": "rust",
-    ".rb": "ruby",
-    ".php": "php",
-    ".kt": "kotlin",
-    ".swift": "swift",
-    ".swiftinterface": "swift",
-    ".cs": "csharp",
-    # bash / scala resolve to a language so that when a caller scores these
-    # files (file_health, or a custom ``source_extensions`` scan) the
-    # complexity/structure dimensions use the real DECISION/FUNCTION node
-    # types above instead of falling back to ``language=None`` (a flat 50).
-    # Note: these are deliberately NOT added to PROJECT_HEALTH_SOURCE_EXTS —
-    # the default project scan stays code-only per CLAUDE.md §4.
-    ".sh": "bash",
-    ".bash": "bash",
-    ".zsh": "bash",
-    ".scala": "scala",
-}
+# _EXT_TO_LANG is imported from _lang_extension_map at the top of this module.
+# Bug #785 fix: using the canonical map eliminates the drift that caused bash,
+# scala, swiftinterface, and hxx files to be silently skipped by the scorer.
 
 # Languages whose imports ``DependencyGraph`` can actually resolve into
 # file-level edges (mirrors ``project_graph._IMPORT_RESOLVERS``). Files in

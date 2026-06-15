@@ -62,6 +62,20 @@ class TestCreateArgumentParserMixin:
         assert args.change_impact_mode == "staged"
         assert args.change_impact_include_tests is False
 
+    def test_parser_accepts_change_impact_resource_profile(self):
+        """Change-impact can request resource-aware local verification commands."""
+        parser = create_argument_parser()
+        args = parser.parse_args(
+            [
+                "--change-impact",
+                "--change-impact-resource-profile",
+                "local_low_impact",
+            ]
+        )
+
+        assert args.change_impact is True
+        assert args.change_impact_resource_profile == "local_low_impact"
+
     def test_parser_has_file_path_argument(self):
         """Test that parser has file_path argument."""
         parser = create_argument_parser()

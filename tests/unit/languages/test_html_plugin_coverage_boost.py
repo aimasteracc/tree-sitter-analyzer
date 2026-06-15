@@ -296,8 +296,14 @@ class TestHtmlPluginAnalyzeFile:
                 result = await plugin.analyze_file(temp_path, Mock())
                 assert result.success is True
                 assert result.language == "html"
-                assert len(result.elements) > 0
-                assert result.elements[0].tag_name == "html"
+                # html, head, title, body, p — exactly 5 elements
+                assert [e.tag_name for e in result.elements] == [
+                    "html",
+                    "head",
+                    "title",
+                    "body",
+                    "p",
+                ]
         finally:
             os.unlink(temp_path)
 
@@ -333,10 +339,7 @@ class TestRealParsingPaths:
         """Lines 123-137: extract_html_elements with real tree-sitter parse"""
         tree = _parse_html("<div><p>hello</p></div>")
         elements = extractor.extract_html_elements(tree, "<div><p>hello</p></div>")
-        assert len(elements) >= 2
-        tag_names = [e.tag_name for e in elements]
-        assert "div" in tag_names
-        assert "p" in tag_names
+        assert [e.tag_name for e in elements] == ["div", "p"]
 
     def test_extract_html_elements_exception_path(self, extractor):
         """Lines 134-135: top-level exception in extract_html_elements"""
@@ -353,22 +356,46 @@ class TestRealParsingPaths:
         """Lines 168-179: self_closing_tag node type"""
         tree = _parse_html("<br/>")
         elements = extractor.extract_html_elements(tree, "<br/>")
-        assert len(elements) >= 1
-        assert elements[0].tag_name == "br"
+        # #632: the element node wraps the self_closing_tag child; only the
+        # parent element is captured (the child would be a duplicate) -> 1 entry
+        assert [e.tag_name for e in elements] == ["br"]
 
     def test_input_with_boolean_attribute(self, extractor):
         """Lines 295-337: boolean attribute (attribute_name only, no value)"""
         tree = _parse_html("<input disabled checked/>")
         elements = extractor.extract_html_elements(tree, "<input disabled checked/>")
-        assert len(elements) >= 1
+        # #632: self-closing input captured once (parent element only; the
+        # self_closing_tag child is skipped as a duplicate) -> 1 entry
+        assert [e.tag_name for e in elements] == ["input"]
         assert "disabled" in elements[0].attributes
         assert "checked" in elements[0].attributes
+
+    def test_self_closing_dedup_issue_632(self, extractor):
+        """#632: self-closing tags yield exactly one entry each.
+
+        tree-sitter-html wraps self_closing_tag inside an element node
+        (element is the parent, self_closing_tag the child carrying
+        tag_name/attributes); the walk must not capture both.
+        """
+        code = '<div><br/><input type="text"/></div>'
+        tree = _parse_html(code)
+        elements = extractor.extract_html_elements(tree, code)
+        assert [e.tag_name for e in elements] == ["div", "br", "input"]
+        # The surviving capture (parent element) still carries the attributes
+        assert elements[2].attributes == {"type": "text"}
+
+    def test_void_element_without_slash_issue_632(self, extractor):
+        """#632: void elements WITHOUT a slash (<br>) parse as
+        element > start_tag (no self_closing_tag node) -> exactly 1 entry."""
+        tree = _parse_html("<br>")
+        elements = extractor.extract_html_elements(tree, "<br>")
+        assert [e.tag_name for e in elements] == ["br"]
 
     def test_input_with_unquoted_attribute_value(self, extractor):
         """Line 319: attribute_value child (not quoted_attribute_value)"""
         tree = _parse_html("<input type=text>")
         elements = extractor.extract_html_elements(tree, "<input type=text>")
-        assert len(elements) >= 1
+        assert [e.tag_name for e in elements] == ["input"]
         assert elements[0].attributes.get("type") == "text"
 
     def test_div_with_quoted_attributes(self, extractor):
@@ -377,7 +404,7 @@ class TestRealParsingPaths:
         elements = extractor.extract_html_elements(
             tree, '<div class="container" id="main">hi</div>'
         )
-        assert len(elements) >= 1
+        assert [e.tag_name for e in elements] == ["div"]
         assert elements[0].attributes.get("class") == "container"
         assert elements[0].attributes.get("id") == "main"
 
@@ -387,10 +414,10 @@ class TestRealParsingPaths:
         tree = _parse_html(code)
         elements = extractor.extract_html_elements(tree, code)
         div_elems = [e for e in elements if e.tag_name == "div"]
-        assert len(div_elems) >= 1
+        assert len(div_elems) == 1
         div = div_elems[0]
-        assert len(div.children) >= 1
-        assert div.children[0].tag_name == "span"
+        # The div has exactly one child: the span
+        assert [c.tag_name for c in div.children] == ["span"]
 
     def test_classify_all_categories(self, extractor):
         """Lines 339-347: _classify_element for all categories"""

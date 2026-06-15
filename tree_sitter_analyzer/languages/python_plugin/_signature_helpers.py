@@ -10,6 +10,7 @@ _PARAMETER_NODE_TYPES = frozenset(
         "identifier",
         "typed_parameter",
         "default_parameter",
+        "typed_default_parameter",
         "list_splat_pattern",
         "dictionary_splat_pattern",
     }
@@ -81,7 +82,8 @@ def _extract_superclass_names(argument_list_node: Any) -> list[str]:
 
     superclasses = []
     for child in argument_list_node.children:
-        if child.type != "identifier":
+        # "attribute" covers qualified bases such as abc.ABC (Codex P2 on #583)
+        if child.type not in ("identifier", "attribute"):
             continue
         superclass_name = _decode_optional_text(child)
         if superclass_name:
@@ -90,10 +92,20 @@ def _extract_superclass_names(argument_list_node: Any) -> list[str]:
 
 
 def _return_type_from_signature_text(node_text: str) -> str | None:
-    if "->" not in node_text:
+    """Extract the return-type annotation from a Python function's text.
+
+    Only the first line (the def line) is inspected so that a nested
+    function's annotation (e.g. ``inner(y) -> str``) cannot bleed into the
+    parent's return type when the parent has no annotation (#792).
+    """
+    # Restrict to the first line — the function signature ends at the ':'
+    # that closes the header; the body (including any nested functions with
+    # their own '->') starts on subsequent lines.
+    first_line = node_text.split("\n")[0]
+    if "->" not in first_line:
         return None
 
-    parts = node_text.split("->")
+    parts = first_line.split("->")
     if len(parts) <= 1:
         return None
 

@@ -104,6 +104,78 @@ class TestElementToDict:
         result = element_to_dict(elem)
         assert result["type"] == "class"
 
+    def test_enum_class_type_surfaces_as_type_enum(self):
+        """#795: Class element with class_type='enum' must output type='enum', not 'class'."""
+        elem = _make_elem(cls_name="Class", class_type="enum")
+        result = element_to_dict(elem)
+        assert result["type"] == "enum"
+
+    def test_interface_class_type_surfaces_as_type_interface(self):
+        """#795: Class element with class_type='interface' must output type='interface'."""
+        elem = _make_elem(cls_name="Class", class_type="interface")
+        result = element_to_dict(elem)
+        assert result["type"] == "interface"
+
+    def test_type_alias_class_type_surfaces_as_type_type(self):
+        """#795: Class element with class_type='type' must output type='type'."""
+        elem = _make_elem(cls_name="Class", class_type="type")
+        result = element_to_dict(elem)
+        assert result["type"] == "type"
+
+    def test_namespace_class_type_surfaces_as_type_namespace(self):
+        """#795: Class element with class_type='namespace' must output type='namespace'."""
+        elem = _make_elem(cls_name="Class", class_type="namespace")
+        result = element_to_dict(elem)
+        assert result["type"] == "namespace"
+
+    def test_abstract_class_type_surfaces_as_type_abstract_class(self):
+        """#795: Class element with class_type='abstract_class' must output type='abstract_class'."""
+        elem = _make_elem(cls_name="Class", class_type="abstract_class")
+        result = element_to_dict(elem)
+        assert result["type"] == "abstract_class"
+
+    def test_plain_class_with_default_class_type_stays_class(self):
+        """#795: Class element with class_type='class' (default) must still output type='class'."""
+        elem = _make_elem(cls_name="Class", class_type="class")
+        result = element_to_dict(elem)
+        assert result["type"] == "class"
+
+    def test_sql_parameter_dataclass_is_serialized_to_dict(self):
+        """SQLParameter dataclass instances in parameters[] must become plain dicts.
+
+        Issue #775: json.dumps crashed with 'SQLParameter not JSON serializable'
+        because element_to_dict passed the raw dataclass list through unchanged.
+        """
+        import dataclasses
+        import json
+
+        @dataclasses.dataclass
+        class FakeSQLParameter:
+            name: str
+            data_type: str
+            direction: str = "IN"
+
+        params = [
+            FakeSQLParameter("uid", "INT"),
+            FakeSQLParameter("v", "VARCHAR", "OUT"),
+        ]
+        elem = _make_elem(parameters=params)
+        result = element_to_dict(elem)
+        # Must be JSON-serializable (no crash).
+        serialized = json.dumps(result)
+        assert "uid" in serialized
+        # Each parameter must be a plain dict, not a dataclass instance.
+        assert result["parameters"] == [
+            {"name": "uid", "data_type": "INT", "direction": "IN"},
+            {"name": "v", "data_type": "VARCHAR", "direction": "OUT"},
+        ]
+
+    def test_string_parameters_pass_through_unchanged(self):
+        """String parameters (non-dataclass) are not modified."""
+        elem = _make_elem(parameters=["x: int", "y: str"])
+        result = element_to_dict(elem)
+        assert result["parameters"] == ["x: int", "y: str"]
+
 
 class TestFindClassName:
     """Tests for find_class_name."""
@@ -123,12 +195,55 @@ class TestFindClassName:
         cls = _make_elem(cls_name="Class", start_line=1, end_line=10)
         assert find_class_name(method, [cls]) == "foo"
 
-    def test_multiple_classes_picks_first(self):
+    def test_multiple_classes_picks_innermost(self):
+        """When method is inside two classes, the innermost (smallest span) wins."""
         method = _make_elem(start_line=8, end_line=10)
+        # cls1 span=11 (outer), cls2 span=7 (inner) — cls2 must win
         cls1 = _make_elem(name="A", cls_name="Class", start_line=1, end_line=12)
         cls2 = _make_elem(name="B", cls_name="Class", start_line=3, end_line=10)
-        result = find_class_name(method, [cls1, cls2])
-        assert result in ("A", "foo")
+        assert find_class_name(method, [cls1, cls2]) == "B"
+
+    # --- Issue #532: nested-container innermost-wins ---
+
+    def test_nested_container_innermost_wins(self):
+        """Method inside nested class → innermost (smallest span) class wins."""
+        # Outer: lines 1-20 (span=19), Inner: lines 5-10 (span=5)
+        # method on line 7 is inside BOTH — must get Inner.
+        method = _make_elem(name="m", start_line=7, end_line=8)
+        outer = _make_elem(name="Outer", cls_name="Class", start_line=1, end_line=20)
+        inner = _make_elem(name="Inner", cls_name="Class", start_line=5, end_line=10)
+        # Outer listed first (as plugins typically emit outer before inner)
+        assert find_class_name(method, [outer, inner]) == "Inner"
+
+    def test_nested_namespace_innermost_wins(self):
+        """TS namespace wrapping a class: method inside class → class, not namespace."""
+        # Namespace (class_type=namespace): lines 1-18
+        # BatchProcessor class: lines 3-17
+        # method on line 5
+        method = _make_elem(name="process", start_line=5, end_line=7)
+        namespace = _make_elem(
+            name="DataProcessing", cls_name="Class", start_line=1, end_line=18
+        )
+        cls = _make_elem(
+            name="BatchProcessor", cls_name="Class", start_line=3, end_line=17
+        )
+        # namespace listed first (as TypeScript extractor emits outer first)
+        assert find_class_name(method, [namespace, cls]) == "BatchProcessor"
+
+    def test_java_method_in_inner_class_gets_class_name(self):
+        """element_to_dict sets class_name for a function inside a nested class
+        even when is_method is not explicitly True (Java plugin doesn't set it)."""
+        inner_class = _make_elem(
+            name="InnerClass", cls_name="Class", start_line=3, end_line=7
+        )
+        method = _make_elem(
+            name="innerMethod",
+            cls_name="Function",
+            start_line=4,
+            end_line=6,
+        )
+        result = element_to_dict(method, all_elements=[inner_class, method])
+        assert result["class_name"] == "InnerClass"
 
 
 class TestFileAnalysisResult:
@@ -235,3 +350,45 @@ class TestCodeAnalysisError:
     def test_empty_language(self):
         result = code_analysis_error("", RuntimeError("fail"))
         assert result["language_info"]["language"] == "unknown"
+
+
+class TestLocalFunctionStaysUnowned:
+    """Codex P2 on #570: a function nested inside another FUNCTION's span
+    (local helper) is deliberately unowned — line containment in a class
+    must not ownerize it."""
+
+    def test_local_function_gets_no_class_name(self):
+        cls = _make_elem("Outer", cls_name="Class", start_line=1, end_line=30)
+        method = _make_elem("doWork", cls_name="Function", start_line=5, end_line=20)
+        local = _make_elem("inner", cls_name="Function", start_line=8, end_line=12)
+        elements = [cls, method, local]
+        d = element_to_dict(local, elements)
+        assert "class_name" not in d
+        d2 = element_to_dict(method, elements)
+        assert d2["class_name"] == "Outer"
+
+    def test_span_less_sibling_is_skipped(self):
+        """Elements without line attrs (line 70 guard) don't break containment."""
+
+        class Bare:
+            pass
+
+        bare = Bare()
+        bare.__class__.__name__ = "Function"
+        cls = _make_elem("Outer", cls_name="Class", start_line=1, end_line=30)
+        method = _make_elem("doWork", cls_name="Function", start_line=5, end_line=20)
+        d = element_to_dict(method, [cls, bare, method])
+        assert d["class_name"] == "Outer"
+
+    def test_span_less_class_is_skipped_in_find_class_name(self):
+        """A class-like element without line attrs (guard line) is skipped."""
+
+        class BareClass:
+            pass
+
+        bare = BareClass()
+        bare.__class__.__name__ = "Class"
+        bare.name = "Ghost"
+        cls = _make_elem("Outer", cls_name="Class", start_line=1, end_line=30)
+        method = _make_elem("doWork", cls_name="Function", start_line=5, end_line=20)
+        assert find_class_name(method, [bare, cls]) == "Outer"

@@ -1,18 +1,20 @@
 {
   "counts_by_type": {
     "Class": 1,
-    "Function": 32,
+    "Function": 34,
     "Import": 2,
     "Variable": 13
   },
-  "element_total": 48,
+  "element_total": 50,
   "names_by_type": {
     "Class": [
       "ModernComponent"
     ],
     "Function": [
-      "<anonymous>",
+      "#logActivity",
+      "#validateData",
       "FunctionalComponent",
+      "[`post`]",
       "blockArrow",
       "constructor",
       "createCounter",
@@ -28,7 +30,9 @@
       "getHeaders",
       "getToken",
       "handleAction",
+      "handleClick",
       "handleResponse",
+      "handleSubmit",
       "html",
       "loadModule",
       "multiParamArrow",
@@ -46,19 +50,19 @@
       "useCallback"
     ],
     "Variable": [
+      "#privateCounter",
+      "#secretKey",
       "API_BASE_URL",
       "AppModule",
       "apiClient",
-      "arrayData",
       "contentType",
       "globalCounter",
       "legacyVariable",
-      "options",
       "response",
       "result",
+      "state",
       "url",
-      "user",
-      "userProfile"
+      "user"
     ]
   },
   "types": [

@@ -1,4 +1,7 @@
 Type,Name,Signature,Visibility,Lines,Complexity,Doc
+Field,User::STATUS_ACTIVE,User::STATUS_ACTIVE:const,public,20-20,,-
+Field,User::STATUS_INACTIVE,User::STATUS_INACTIVE:const,public,21-21,,-
+Field,User::MAX_LOGIN_ATTEMPTS,User::MAX_LOGIN_ATTEMPTS:const,private,22-22,,-
 Field,User::id,User::id:int,private,25-25,,-
 Field,User::username,User::username:string,public,26-26,,-
 Field,User::email,User::email:string,public,27-27,,-
@@ -8,7 +11,7 @@ Field,User::lastLoginAt,User::lastLoginAt:?string,protected,30-30,,-
 Field,User::instanceCount,User::instanceCount:int,private,31-31,,-
 Field,AdminUser::permissions,AdminUser::permissions:array,private,127-127,,-
 Field,Loggable::logs,Loggable::logs:array,protected,163-163,,-
-Method,User::__construct,($username:string, $email:string):void,public,36-42,1,-
+Constructor,User::__construct,($username:string, $email:string):void,public,36-42,1,-
 Method,User::getId,():int,public,47-50,1,-
 Method,User::setId,($id:int):void,public,55-58,1,-
 Method,User::getUsername,():string,public,63-66,1,-
@@ -18,7 +21,7 @@ Method,User::__get,($name:string):mixed,public,91-94,1,-
 Method,User::__set,($name:string, $value:mixed):void,public,99-102,1,-
 Method,User::getInstanceCount,():int [static],public,107-110,1,-
 Method,User::findByEmail,($email:string):?self [static],public,115-119,1,-
-Method,AdminUser::__construct,($username:string, $email:string, $permissions:array):void,public,129-133,1,-
+Constructor,AdminUser::__construct,($username:string, $email:string, $permissions:array):void,public,129-133,1,-
 Method,AdminUser::hasPermission,($permission:string):bool,public,135-138,1,-
 Method,AdminUser::grantPermission,($permission:string):void,public,140-145,1,-
 Method,UserRepositoryInterface::find,($id:int):?User,public,153-153,1,-
@@ -26,6 +29,6 @@ Method,UserRepositoryInterface::save,($user:User):void,public,154-154,1,-
 Method,UserRepositoryInterface::delete,($user:User):void,public,155-155,1,-
 Method,Loggable::log,($message:string):void,public,165-171,1,-
 Method,Loggable::getLogs,():array,public,173-176,1,-
-Method,label,():string,public,189-197,1,-
-Method,App\Models\createUser,($username:string, $email:string):User,public,203-206,1,-
-Method,App\Models\hashPassword,($password:string):string,public,211-214,1,-
+Method,UserStatus::label,():string,public,189-197,1,-
+Method,createUser,($username:string, $email:string):User,public,203-206,1,-
+Method,hashPassword,($password:string):string,public,211-214,1,-

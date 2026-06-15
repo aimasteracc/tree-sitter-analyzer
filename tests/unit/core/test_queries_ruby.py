@@ -12,11 +12,11 @@ def test_ruby_queries_import():
 
     # Verify they are non-empty strings
     assert isinstance(ruby.RUBY_CLASS_QUERY, str)
-    assert len(ruby.RUBY_CLASS_QUERY) > 0
+    assert len(ruby.RUBY_CLASS_QUERY) == 119
     assert isinstance(ruby.RUBY_METHOD_QUERY, str)
-    assert len(ruby.RUBY_METHOD_QUERY) > 0
+    assert len(ruby.RUBY_METHOD_QUERY) == 274
     assert isinstance(ruby.RUBY_CONSTANT_QUERY, str)
-    assert len(ruby.RUBY_CONSTANT_QUERY) > 0
+    assert len(ruby.RUBY_CONSTANT_QUERY) == 69
 
 
 def test_ruby_class_query_structure():
@@ -75,7 +75,7 @@ def test_get_all_queries():
     result = get_all_queries()
     assert result is ALL_QUERIES
     assert isinstance(result, dict)
-    assert len(result) > 10
+    assert len(result) == 24
 
 
 def test_get_query_existing():

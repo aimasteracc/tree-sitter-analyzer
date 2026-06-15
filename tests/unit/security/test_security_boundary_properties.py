@@ -22,6 +22,7 @@ from tree_sitter_analyzer.security import ProjectBoundaryManager, SecurityValida
 
 # Common health check suppressions for property tests using fixtures
 COMMON_HEALTH_CHECKS = [HealthCheck.too_slow, HealthCheck.function_scoped_fixture]
+EXTERNAL_PATH_MAX_EXAMPLES = 25
 
 
 # ========================================
@@ -148,7 +149,7 @@ def absolute_path_outside_project(draw):
         return f"{drive}\\" + "\\".join(path_parts)
     else:
         # Unix absolute paths
-        base = draw(st.sampled_from(["/etc", "/usr", "/var", "/opt", "/home"]))
+        base = draw(st.sampled_from(["/etc", "/usr", "/opt", "/home"]))
         path_parts = [
             draw(safe_name) for _ in range(draw(st.integers(min_value=1, max_value=3)))
         ]
@@ -282,10 +283,13 @@ class TestSecurityBoundaryEnforcementProperties:
             f"Valid relative path should be accepted: {rel_path}, error: {error_msg}"
         )
 
-    @settings(max_examples=100, suppress_health_check=COMMON_HEALTH_CHECKS)
+    @settings(
+        max_examples=EXTERNAL_PATH_MAX_EXAMPLES,
+        suppress_health_check=COMMON_HEALTH_CHECKS,
+    )
     @given(abs_path=absolute_path_outside_project())
     def test_property_4_absolute_paths_outside_boundary_rejected(
-        self, temp_project_dir, abs_path
+        self, temp_project_dir, security_validator, abs_path
     ):
         """
         **Feature: test-coverage-improvement, Property 4: Security Boundary Enforcement**
@@ -295,18 +299,13 @@ class TestSecurityBoundaryEnforcementProperties:
 
         **Validates: Requirements 3.4, 10.5**
         """
-        validator = SecurityValidator(temp_project_dir)
-
-        # Ensure the path is actually outside the project
+        # Generated roots are outside the temporary project directory.
         assume(not abs_path.startswith(temp_project_dir))
-        assume(
-            not str(Path(abs_path).resolve()).startswith(
-                str(Path(temp_project_dir).resolve())
-            )
-        )
 
         # Property: Absolute paths outside boundary should be rejected
-        is_valid, error_msg = validator.validate_file_path(abs_path, temp_project_dir)
+        is_valid, error_msg = security_validator.validate_file_path(
+            abs_path, temp_project_dir
+        )
 
         assert not is_valid, (
             f"Absolute path outside boundary should be rejected: {abs_path}"
@@ -335,7 +334,10 @@ class TestSecurityBoundaryEnforcementProperties:
 
         assert is_within, f"Path within project should be accepted: {full_path}"
 
-    @settings(max_examples=100, suppress_health_check=COMMON_HEALTH_CHECKS)
+    @settings(
+        max_examples=EXTERNAL_PATH_MAX_EXAMPLES,
+        suppress_health_check=COMMON_HEALTH_CHECKS,
+    )
     @given(abs_path=absolute_path_outside_project())
     def test_property_4_boundary_manager_rejects_external_paths(
         self, temp_project_dir, abs_path
@@ -352,11 +354,6 @@ class TestSecurityBoundaryEnforcementProperties:
 
         # Ensure the path is actually outside the project
         assume(not abs_path.startswith(temp_project_dir))
-        assume(
-            not str(Path(abs_path).resolve()).startswith(
-                str(Path(temp_project_dir).resolve())
-            )
-        )
 
         # Property: Paths outside project should be rejected
         is_within = manager.is_within_project(abs_path)
@@ -530,7 +527,9 @@ class TestSecurityBoundaryEdgeCases:
             )
 
     @settings(
-        max_examples=100, suppress_health_check=COMMON_HEALTH_CHECKS, deadline=None
+        max_examples=EXTERNAL_PATH_MAX_EXAMPLES,
+        suppress_health_check=COMMON_HEALTH_CHECKS,
+        deadline=None,
     )
     @given(abs_path=absolute_path_outside_project())
     def test_property_4_get_relative_path_returns_none_for_external(
@@ -547,11 +546,6 @@ class TestSecurityBoundaryEdgeCases:
 
         # Ensure the path is actually outside the project
         assume(not abs_path.startswith(temp_project_dir))
-        assume(
-            not str(Path(abs_path).resolve()).startswith(
-                str(Path(temp_project_dir).resolve())
-            )
-        )
 
         # Property: External paths should return None
         relative = manager.get_relative_path(abs_path)

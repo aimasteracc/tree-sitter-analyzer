@@ -9,9 +9,13 @@ from __future__ import annotations
 import argparse
 
 # Keep the CLI default in lock-step with the tool's runtime default (MCP/CLI
-# parity — Codex P2 on #297).
+# parity — Codex P2 on #297). Same for the kind enum (#640: constant/method
+# were filterable at runtime but rejected by the stale hand-copied choices).
 from ...mcp.tools.symbol_search_tool import (
     DEFAULT_SYMBOL_SEARCH_LIMIT as _DEFAULT_SYMBOL_SEARCH_LIMIT,
+)
+from ...mcp.tools.symbol_search_tool import (
+    SYMBOL_SEARCH_KINDS as _SYMBOL_SEARCH_KINDS,
 )
 
 
@@ -102,7 +106,7 @@ def _add_mcp_codegraph_map_options(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--symbol-search-kind",
-        choices=["function", "class", "variable", "import", "any"],
+        choices=list(_SYMBOL_SEARCH_KINDS),
         default="any",
         help="Symbol kind filter for --symbol-search (default: any)",
     )

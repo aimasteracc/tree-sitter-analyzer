@@ -11,7 +11,7 @@
 | Class | Type | Lines |
 |-------|------|-------|
 | Person | class | 14-28 |
-| Animal | class | 31-45 |
+| Animal | abstract_class | 31-45 |
 | Dog | class | 48-61 |
 | Cat | class | 64-78 |
 
@@ -23,10 +23,10 @@
 | __init__ | (Any,str,str):Any | + | 34-36 | 1 | - |
 | make_sound | (Any):str | + | 39-41 | 1 | - |
 | describe | (Any):str | + | 43-45 | 1 | - |
-| __init__ | (Any,str):Any | + | 51-53 | 1 | - |
+| __init__ | (Any,str,str = "Mixed"):Any | + | 51-53 | 1 | - |
 | make_sound | (Any):str | + | 55-57 | 1 | - |
 | fetch | (Any,str):str | + | 59-61 | 1 | - |
-| __init__ | (Any,str):Any | + | 67-69 | 1 | - |
+| __init__ | (Any,str,bool = True):Any | + | 67-69 | 1 | - |
 | make_sound | (Any):str | + | 71-73 | 1 | - |
 | purr | ():str | + | 76-78 | 1 | - |
 | fetch_data | (str):dict[str, any] | + | 81-87 | 3 | - |

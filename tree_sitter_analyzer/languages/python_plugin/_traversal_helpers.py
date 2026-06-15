@@ -13,14 +13,18 @@ _CONTAINER_NODE_TYPES = frozenset(
         "function_definition",
         "decorated_definition",
         "if_statement",
+        "else_clause",
+        "elif_clause",
         "for_statement",
         "while_statement",
         "with_statement",
         "try_statement",
+        "except_clause",
+        "finally_clause",
         "block",
     }
 )
-_MAX_TRAVERSAL_DEPTH = 50
+_MAX_TRAVERSAL_DEPTH = 200
 
 
 @dataclass(slots=True)

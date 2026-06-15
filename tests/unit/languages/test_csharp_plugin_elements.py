@@ -399,13 +399,15 @@ public class Ctrl : ControllerBase {
         classes = plugin.extractor.extract_classes(tree, SIMPLE_CLASS_CODE)
 
         person_class = classes[0]
-        # Constructor should be in methods list
+        # Constructors are surfaced via extract_functions (see
+        # test_extract_constructor), NOT attached to class.methods —
+        # exact current behavior: empty list here.
         constructor_names = [
             m.name
             for m in person_class.methods
             if "Person" in m.name or m.name == "__init__"
         ]
-        assert len(constructor_names) >= 0  # Might be 0 if not extracted
+        assert constructor_names == []
 
     def test_extract_empty_tree(self):
         """Test extraction with empty/None tree."""
@@ -464,9 +466,9 @@ class TestCSharpFunctionExtraction:
 
         add_item = next((f for f in functions if f.name == "AddItem"), None)
         assert add_item is not None
-        # Should have 'item' parameter
+        # Parameters are stored as raw "type name" strings
         param_names = [p.name if hasattr(p, "name") else p for p in add_item.parameters]
-        assert len(param_names) >= 0  # Parameter extraction may vary
+        assert param_names == ["OrderItem item"]
 
     def test_extract_constructor(self):
         """Test constructor extraction."""
@@ -478,8 +480,8 @@ class TestCSharpFunctionExtraction:
         constructors = [
             f for f in functions if f.name == "Person" or ".ctor" in str(f.raw_text)
         ]
-        # Constructor should exist
-        assert len(constructors) >= 0  # Extraction behavior may vary
+        # Exactly one constructor (Person) is extracted
+        assert [c.name for c in constructors] == ["Person"]
 
     def test_extract_method_modifiers(self):
         """Test extraction of method modifiers."""
@@ -522,8 +524,61 @@ class TestCSharpFunctionExtraction:
 
         calculate = next((f for f in functions if f.name == "Calculate"), None)
         assert calculate is not None
-        # Method with if/for/while/switch should have higher complexity_score
-        assert calculate.complexity_score >= 1
+        # CONTROL_FLOW_CODE's if/else-if/for/while/switch/catch sum to
+        # exactly 7 (update when fixture or complexity rules change)
+        assert calculate.complexity_score == 7
+
+    def test_methods_carry_parent_class(self):
+        """[TDD] #766 — every C# method/property/constructor must expose its owning
+        type via receiver_type so the table formatter can set parent_class.
+
+        Before the fix all members had receiver_type=None.
+        After the fix each member must carry the name of its enclosing class,
+        interface, or struct.
+        """
+        src = """\
+namespace MyApp
+{
+    public class User
+    {
+        public int Id { get; set; }
+        public User(int id) { Id = id; }
+        public void UpdateEmail(string email) { }
+    }
+
+    public interface IUserRepository
+    {
+        User GetById(int id);
+    }
+
+    public struct UserSettings
+    {
+        public bool IsActive { get; set; }
+        public UserSettings(bool active) { IsActive = active; }
+    }
+}
+"""
+        plugin = CSharpPlugin()
+        tree = get_tree_for_code(src, plugin)
+        functions = plugin.extractor.extract_functions(tree, src)
+
+        by_name = {f.name: f for f in functions}
+
+        assert by_name["Id"].receiver_type == "User"
+        assert by_name["UpdateEmail"].receiver_type == "User"
+        assert by_name["GetById"].receiver_type == "IUserRepository"
+        assert by_name["IsActive"].receiver_type == "UserSettings"
+
+        user_ctors = [f for f in functions if f.name == "User"]
+        assert len(user_ctors) == 1
+        assert user_ctors[0].receiver_type == "User"
+
+        us_ctors = [f for f in functions if f.name == "UserSettings"]
+        assert len(us_ctors) == 1
+        assert us_ctors[0].receiver_type == "UserSettings"
+
+        missing = [f.name for f in functions if f.receiver_type is None]
+        assert missing == [], f"These members are missing receiver_type: {missing}"
 
 
 class TestCSharpVariableExtraction:
@@ -620,9 +675,9 @@ class TestCSharpImportExtraction:
         tree = get_tree_for_code(COMPLEX_CLASS_CODE, plugin)
         imports = plugin.extractor.extract_imports(tree, COMPLEX_CLASS_CODE)
 
-        # Should find static using for System.Math
+        # Exactly one static using: System.Math
         static_imports = [i for i in imports if i.is_static]
-        assert len(static_imports) >= 0  # May have static import
+        assert [i.name for i in static_imports] == ["System.Math"]
 
     def test_extract_imports_empty_tree(self):
         """Test import extraction with empty tree."""
@@ -636,8 +691,9 @@ class TestCSharpImportExtraction:
         tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
         imports = plugin.extractor.extract_imports(tree, SIMPLE_CLASS_CODE)
 
-        assert all(i.start_line > 0 for i in imports)
-        assert all(i.end_line >= i.start_line for i in imports)
+        # SIMPLE_CLASS_CODE's two using directives sit on lines 2-3
+        assert [i.start_line for i in imports] == [2, 3]
+        assert [i.end_line for i in imports] == [2, 3]
 
 
 class TestCSharpPropertyExtraction:
@@ -677,8 +733,9 @@ class TestCSharpComplexityCalculation:
 
         calculate = next((f for f in functions if f.name == "Calculate"), None)
         assert calculate is not None
-        # if, else if, else, for, while, switch, try/catch all add complexity
-        assert calculate.complexity_score >= 5
+        # if, else if, for, while, switch cases, catch add up to exactly 7
+        # (update when CONTROL_FLOW_CODE or the complexity rules change)
+        assert calculate.complexity_score == 7
 
     def test_simple_method_low_complexity(self):
         """Test that simple method has low complexity."""
@@ -735,8 +792,9 @@ class TestCSharpExtractorHelpers:
         extractor = CSharpElementExtractor()
 
         nodes = list(extractor._traverse_iterative(tree.root_node))
-        assert len(nodes) > 0
-        # Should traverse all nodes in the tree
+        # Full traversal of SIMPLE_CLASS_CODE's tree yields exactly 98 nodes
+        # (update on tree-sitter-c-sharp grammar bumps)
+        assert len(nodes) == 98
 
     def test_cache_invalidation(self):
         """Test that source code is properly set between extractions."""

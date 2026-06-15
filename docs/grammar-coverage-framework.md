@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-Tree-sitter-analyzer 的 Grammar Coverage 框架确保所有 17 种支持的编程语言达到 **100% MECE (Mutually Exclusive, Collectively Exhaustive) 覆盖率**。
+Tree-sitter-analyzer 的 Grammar Coverage 框架确保所有 21 种支持的编程语言达到 **100% MECE (Mutually Exclusive, Collectively Exhaustive) 覆盖率**。
 
 **核心承诺**：零 False Positives，零遗漏节点。
 
@@ -577,7 +577,7 @@ uv run pytest tests/ --cov=tree_sitter_analyzer.grammar_coverage --cov-report=ht
 - **Issue #112**: Original decorator extraction bug that triggered this work
 - **Validator Source**: [tree_sitter_analyzer/grammar_coverage/validator.py](../tree_sitter_analyzer/grammar_coverage/validator.py)
 - **Golden Corpus**: [tests/golden/](../tests/golden/)
-- **Phase 3 Reports**: [docs/grammar-coverage/](./grammar-coverage/)
+- **Phase 3 Reports**: [tree_sitter_analyzer/grammar_coverage/](../tree_sitter_analyzer/grammar_coverage/)
 
 ---
 

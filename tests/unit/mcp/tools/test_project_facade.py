@@ -341,5 +341,74 @@ def test_schema_includes_action_and_union_params() -> None:
     assert action_enum == _ALL_ACTIONS
 
 
+# ---------------------------------------------------------------------------
+# Issue #540 — Leg 1: journal facade-doc drift
+# The description must use the REAL inner param names: mode, title, rationale,
+# query, verdict_filter — NOT the stale placeholders 'operation' or 'entry'.
+# ---------------------------------------------------------------------------
+
+
+def test_journal_description_uses_real_param_names() -> None:
+    """project facade journal description must reference real inner params."""
+    facade = build_project_facade(project_root=None)
+    defn = facade.get_tool_definition()
+    description = defn["description"]
+    assert "action=journal" in description, (
+        "action=journal entry missing from description"
+    )
+
+    # Extract the journal line to scope assertions to that section only
+    journal_line = next(
+        (line for line in description.splitlines() if "action=journal" in line), ""
+    )
+
+    # Real params that DecisionJournalTool actually accepts
+    assert "mode" in journal_line, (
+        f"journal description must mention 'mode' (the real inner param). "
+        f"Got journal line: {journal_line!r}"
+    )
+    assert "rationale" in journal_line, (
+        f"journal description must mention 'rationale' (real inner param). "
+        f"Got journal line: {journal_line!r}"
+    )
+    # Stale placeholders that the inner does NOT accept
+    assert "operation" not in journal_line, (
+        f"journal description must NOT mention 'operation' — the inner rejects it "
+        f"(real param is 'mode'). Got journal line: {journal_line!r}"
+    )
+    assert "entry" not in journal_line, (
+        f"journal description must NOT mention 'entry' — the inner rejects it "
+        f"(real params are title+rationale+verdict for record mode). "
+        f"Got journal line: {journal_line!r}"
+    )
+
+
+def test_smart_action_documented_params_subset_of_inner_schema() -> None:
+    """#573: the facade's documented params for ``action=smart`` must all exist
+    in SmartContextTool's schema. It previously documented ``task``/``limit``
+    (neither in the inner, which requires ``file_path``), so every doc-following
+    call hard-failed with ``file_path is required`` — the worst of the
+    facade-doc-drift family because the documented invocation CANNOT work."""
+    import re
+
+    facade = build_project_facade(project_root=None)
+    desc = facade.get_tool_definition()["description"]
+    block = re.search(r"action=smart\b(.*?)(?=- action=|\Z)", desc, re.S)
+    assert block, "action=smart not found in the project facade description"
+    params = re.search(r"Params:\s*([^.\n]+)", block.group(1))
+    assert params, "action=smart documents no Params"
+    documented = {p.strip() for p in params.group(1).split(",") if p.strip()}
+
+    inner = facade.action_map["smart"]
+    props = set(inner.get_tool_definition()["inputSchema"]["properties"].keys())
+    # output_format is the universal envelope param (#651), accepted everywhere.
+    drift = documented - props - {"output_format"}
+    assert not drift, (
+        f"project action=smart documents params absent from SmartContextTool's "
+        f"schema: {sorted(drift)} (inner props: {sorted(props)}). Doc/inner "
+        f"drift — a doc-following call would fail (#573)."
+    )
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-q"]))

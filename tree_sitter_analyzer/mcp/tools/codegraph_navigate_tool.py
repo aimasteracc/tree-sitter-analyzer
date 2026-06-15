@@ -202,9 +202,8 @@ class CodeGraphNavigateTool(BaseMCPTool):
         ref_found = bool((result.get("references") or {}).get("found"))
         hi = result.get("hierarchy", {}) or {}
         hi_found = bool(hi.get("callers")) or bool(hi.get("callees"))
-        result["verdict"] = (
-            "INFO" if (def_found or ref_found or hi_found) else "NOT_FOUND"
-        )
+        verdict = "INFO" if (def_found or ref_found or hi_found) else "NOT_FOUND"
+        result["verdict"] = verdict
 
         if not result.get("definition") and not result.get("references"):
             if not hi_found:
@@ -212,6 +211,27 @@ class CodeGraphNavigateTool(BaseMCPTool):
                     f"No results for '{symbol}'. Check spelling or build AST cache "
                     "(ast_cache mode=index)."
                 )
+
+        # #577: uniform agent_summary across all facade actions.
+        if verdict == "NOT_FOUND":
+            summary_line = f"navigate: {symbol!r} not found"
+            next_step = (
+                f"Symbol '{symbol}' not in the index. "
+                "Check spelling or run index action=auto to rebuild."
+            )
+        else:
+            def_count = (result.get("definition") or {}).get("count", 0)
+            ref_count = (result.get("references") or {}).get("reference_count", 0)
+            summary_line = f"navigate: {symbol!r} defs={def_count} refs={ref_count}"
+            next_step = (
+                "Use nav action=callers/callees for the call graph, "
+                "or nav action=impact for blast-radius analysis."
+            )
+        result["agent_summary"] = {
+            "summary_line": summary_line,
+            "verdict": verdict,
+            "next_step": next_step,
+        }
 
         return apply_toon_format_to_response(result, output_format)
 

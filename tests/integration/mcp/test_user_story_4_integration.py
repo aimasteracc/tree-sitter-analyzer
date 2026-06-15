@@ -61,6 +61,7 @@ public class Service {
 }
 """,
                 encoding="utf-8",
+                newline="\n",
             )
 
             java_test = project_path / "src" / "test" / "java" / "ServiceTest.java"
@@ -84,6 +85,7 @@ public class ServiceTest {
 }
 """,
                 encoding="utf-8",
+                newline="\n",
             )
 
             # Pythonスクリプト作成
@@ -136,6 +138,7 @@ if __name__ == "__main__":
     print(f"Total TODOs: {total_todos}")
 ''',
                 encoding="utf-8",
+                newline="\n",
             )
 
             # ドキュメント作成
@@ -171,6 +174,7 @@ python scripts/helper.py
 This will find all Java files and count TODO comments.
 """,
                 encoding="utf-8",
+                newline="\n",
             )
 
             yield str(project_path)
@@ -226,7 +230,7 @@ This will find all Java files and count TODO comments.
 
         # 結果検証
         assert "results" in result
-        assert len(result["results"]) > 0
+        assert len(result["results"]) == 2
 
         # TODOコメントが見つかることを確認
         found_todos = False
@@ -263,7 +267,7 @@ This will find all Java files and count TODO comments.
 
         # 結果検証
         assert "results" in result
-        assert len(result["results"]) > 0
+        assert len(result["results"]) == 1
 
         # helper.pyで関数が見つかることを確認
         found_function = False
@@ -288,7 +292,7 @@ This will find all Java files and count TODO comments.
 
         # total_onlyの場合は数値のみ返される
         assert isinstance(result, int)
-        assert result > 0  # importステートメントが存在するはず
+        assert result == 14  # importステートメント数 (java 4 + python 3 + その他)
 
         # summary_only モードテスト
         result = await mcp_server.find_and_grep_tool.execute(
@@ -357,7 +361,7 @@ This will find all Java files and count TODO comments.
         assert stats["project_path"] == temp_project
 
         # 言語が検出されていることを確認
-        assert len(stats["languages"]) > 0
+        assert len(stats["languages"]) == 3
         assert "java" in stats["languages"]
 
     @pytest.mark.asyncio
@@ -372,16 +376,16 @@ This will find all Java files and count TODO comments.
         # 言語統計検証
         assert "languages" in stats
         assert "total_languages" in stats
-        assert len(stats["languages"]) > 0
+        assert len(stats["languages"]) == 3
 
         # Java言語が含まれていることを確認
         java_found = False
         for lang in stats["languages"]:
             if lang["name"] == "java":
                 java_found = True
-                assert lang["file_count"] >= 2  # Service.java + ServiceTest.java
-                assert lang["line_count"] > 0
-                assert lang["percentage"] > 0
+                assert lang["file_count"] == 2  # Service.java + ServiceTest.java
+                assert lang["line_count"] == 34
+                assert lang["percentage"] == 31.78
                 break
 
         assert java_found, "Java language should be detected"
@@ -398,7 +402,7 @@ This will find all Java files and count TODO comments.
         # ファイル統計検証
         assert "files" in stats
         assert "total_count" in stats
-        assert len(stats["files"]) > 0
+        assert len(stats["files"]) == 4
 
         # 特定ファイルが含まれていることを確認
         service_java_found = False
@@ -406,8 +410,8 @@ This will find all Java files and count TODO comments.
             if "Service.java" in file_info["path"]:
                 service_java_found = True
                 assert file_info["language"] == "java"
-                assert file_info["line_count"] > 0
-                assert file_info["size_bytes"] > 0
+                assert file_info["line_count"] == 17
+                assert file_info["size_bytes"] == 318
                 break
 
         assert service_java_found, "Service.java should be in file statistics"
@@ -424,7 +428,7 @@ This will find all Java files and count TODO comments.
         )
         overview = json.loads(overview_content)
 
-        assert overview["total_files"] > 0
+        assert overview["total_files"] == 4
         assert "java" in overview["languages"]
 
         # Step 2: TODOコメントを検索 (use JSON output_format for test assertions)
@@ -439,7 +443,7 @@ This will find all Java files and count TODO comments.
             }
         )
 
-        assert len(search_result["results"]) > 0
+        assert len(search_result["results"]) == 30
 
         # Step 3: 見つかったファイルの詳細内容を確認
         for match in search_result["results"]:
@@ -473,7 +477,7 @@ This will find all Java files and count TODO comments.
                 break
 
         assert java_stats is not None
-        assert java_stats["file_count"] >= 2
+        assert java_stats["file_count"] == 2
 
         # Step 2: Javaファイルでpublicメソッドを検索 (use JSON output_format)
         search_result = await mcp_server.find_and_grep_tool.execute(
@@ -486,7 +490,7 @@ This will find all Java files and count TODO comments.
             }
         )
 
-        assert len(search_result["results"]) > 0
+        assert len(search_result["results"]) == 5
 
         # Step 3: 複雑度統計を確認
         complexity_content = await mcp_server.project_stats_resource.read_resource(
@@ -496,7 +500,7 @@ This will find all Java files and count TODO comments.
 
         assert "average_complexity" in complexity
         assert "total_files_analyzed" in complexity
-        assert complexity["total_files_analyzed"] > 0
+        assert complexity["total_files_analyzed"] == 2
 
     @pytest.mark.requires_fd
     @pytest.mark.requires_ripgrep
@@ -523,6 +527,7 @@ public class NewService {
 }
 """,
             encoding="utf-8",
+            newline="\n",
         )
 
         # Step 3: プロジェクト境界を再設定（リフレッシュ）
@@ -547,7 +552,7 @@ public class NewService {
             }
         )
 
-        assert len(search_result["results"]) > 0
+        assert len(search_result["results"]) == 4
 
         # 新しいファイルが見つかることを確認
         new_service_found = False
@@ -608,11 +613,12 @@ public class NewService {
             f"Statistics generation took too long: {execution_time}s"
         )
 
-        # すべての結果が有効なJSONであることを確認
-        for result in results:
+        # すべての結果が有効なJSONであることを確認 (overview=5 keys, languages=3 keys, files=3 keys)
+        expected_lens = [5, 3, 3]
+        for i, result in enumerate(results):
             stats = json.loads(result)
             assert isinstance(stats, dict)
-            assert len(stats) > 0
+            assert len(stats) == expected_lens[i]
 
     @pytest.mark.asyncio
     async def test_concurrent_access_integration(self, mcp_server, temp_project):

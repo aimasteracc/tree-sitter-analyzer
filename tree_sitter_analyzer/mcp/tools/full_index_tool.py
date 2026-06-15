@@ -150,9 +150,16 @@ class CodeGraphFullIndexTool(BaseMCPTool):
 
         stats = self._collect_final_stats()
 
+        # #860: propagate phase-level errors to top-level verdict so callers
+        # don't receive "success: True / verdict: INFO" when a DB flush failed.
+        any_phase_error = any(
+            p.get("status") == "error" for p in phases.values() if isinstance(p, dict)
+        )
+        top_verdict = "WARN" if any_phase_error else "INFO"
+
         result: dict[str, Any] = {
             "success": True,
-            "verdict": "INFO",
+            "verdict": top_verdict,
             "mode": mode,
             "elapsed_seconds": elapsed,
             "phases": phases,
@@ -214,14 +221,18 @@ class CodeGraphFullIndexTool(BaseMCPTool):
             result = sync.sync(max_files=20_000)
             cache.close()
             elapsed = round(time.monotonic() - t0, 3)
+            # #860: surface DB flush failures — sync catches them into result.errors
+            # so they never raise but also must NOT be silently reported as "ok".
+            status = "error" if result.errors > 0 else "ok"
             return {
-                "status": "ok",
+                "status": status,
                 "elapsed_seconds": elapsed,
                 "scanned": result.scanned,
                 "new_files": result.new_files,
                 "updated_files": result.updated_files,
                 "deleted_files": result.deleted_files,
                 "unchanged_files": result.unchanged_files,
+                "errors": result.errors,
             }
         except Exception as exc:
             return {

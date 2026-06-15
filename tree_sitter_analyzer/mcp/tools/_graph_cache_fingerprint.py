@@ -11,4 +11,5 @@ from ..._graph_cache_fingerprint import (  # noqa: F401
     _SOURCE_EXTS,
     GraphFingerprint,
     compute_graph_fingerprint,
+    is_ast_index_stale,
 )

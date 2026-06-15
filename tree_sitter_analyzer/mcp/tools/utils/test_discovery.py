@@ -6,6 +6,7 @@ Finds test files for a given source file using language-specific naming
 conventions (test_*.py, *Test.java, *_test.go, etc.).
 """
 
+import re
 from pathlib import Path
 
 from .test_discovery_languages import find_language_specific_tests
@@ -115,6 +116,7 @@ def find_test_files(
 
     _find_pattern_tests(root, stem, patterns, test_dirs, results)
     _find_colocated_tests(p, stem, patterns, root, results)
+    _find_symbol_reference_tests(p, language, root, results)
     find_language_specific_tests(
         p,
         stem,
@@ -197,3 +199,51 @@ def _add_result(results: list[str], candidate: Path, root: Path) -> None:
     rel = rel.replace("\\", "/")
     if rel not in results:
         results.append(rel)
+
+
+def _find_symbol_reference_tests(
+    source_path: Path,
+    language: str,
+    root: Path,
+    results: list[str],
+) -> None:
+    """Union proximity matches with tests that reference public source symbols."""
+    if language != "python" or not source_path.exists():
+        return
+    symbols = _python_public_symbols(source_path)
+    if not symbols:
+        return
+    symbol_re = re.compile(
+        r"\b(?:" + "|".join(re.escape(sym) for sym in symbols) + r")\b"
+    )
+    matches: list[tuple[int, str, Path]] = []
+    for test_dir in _TEST_DIRS.get("python", ["tests"]):
+        base = root / test_dir
+        if not base.is_dir():
+            continue
+        for candidate in base.rglob("test_*.py"):
+            try:
+                text = candidate.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            hit_count = len(symbol_re.findall(text))
+            if hit_count:
+                matches.append((-hit_count, candidate.as_posix(), candidate))
+    for _, _, candidate in sorted(matches):
+        _add_result(results, candidate, root)
+
+
+def _python_public_symbols(source_path: Path) -> list[str]:
+    """Extract public Python def/class names with a cheap line-based scan."""
+    try:
+        text = source_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    symbols: list[str] = []
+    for match in re.finditer(
+        r"^\s*(?:async\s+def|def|class)\s+([A-Za-z_]\w*)\b", text, re.M
+    ):
+        name = match.group(1)
+        if not name.startswith("_") and name not in symbols:
+            symbols.append(name)
+    return symbols

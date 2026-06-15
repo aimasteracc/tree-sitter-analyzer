@@ -277,7 +277,7 @@ class TestCssSelectorRecognition:
         elements = extractor.extract_css_rules(tree, SELECTOR_CODE)
 
         class_selectors = [e for e in elements if e.selector == ".class-selector"]
-        assert len(class_selectors) >= 0
+        assert len(class_selectors) == 1
 
     def test_extract_id_selector(self):
         """Test extraction of ID selector."""
@@ -287,7 +287,7 @@ class TestCssSelectorRecognition:
         elements = extractor.extract_css_rules(tree, SELECTOR_CODE)
 
         id_selectors = [e for e in elements if e.selector == "#id-selector"]
-        assert len(id_selectors) >= 0
+        assert len(id_selectors) == 1
 
     def test_extract_element_selector(self):
         """Test extraction of element selector."""
@@ -297,7 +297,7 @@ class TestCssSelectorRecognition:
         elements = extractor.extract_css_rules(tree, SELECTOR_CODE)
 
         element_selectors = [e for e in elements if e.selector == "body"]
-        assert len(element_selectors) >= 0
+        assert len(element_selectors) == 1
 
     def test_extract_attribute_selector(self):
         """Test extraction of attribute selector."""
@@ -306,10 +306,16 @@ class TestCssSelectorRecognition:
         extractor = plugin.create_extractor()
         elements = extractor.extract_css_rules(tree, SELECTOR_CODE)
 
+        # Match bracketed attribute selectors so prefix-match operators
+        # ([href^=...]) count too — a literal 'href=' substring misses them
         attr_selectors = [
-            e for e in elements if "type=" in e.selector or "href=" in e.selector
+            e for e in elements if "[type=" in e.selector or "[href^=" in e.selector
         ]
-        assert len(attr_selectors) >= 0
+        assert len(attr_selectors) == 2
+        assert sorted(e.selector for e in attr_selectors) == [
+            'a[href^="https"]',
+            'input[type="text"]',
+        ]
 
     def test_extract_pseudo_class_selector(self):
         """Test extraction of pseudo-class selector."""
@@ -321,7 +327,7 @@ class TestCssSelectorRecognition:
         pseudo_selectors = [
             e for e in elements if ":hover" in e.selector or ":focus" in e.selector
         ]
-        assert len(pseudo_selectors) >= 0
+        assert len(pseudo_selectors) == 2
 
     def test_extract_pseudo_element_selector(self):
         """Test extraction of pseudo-element selector."""
@@ -333,7 +339,7 @@ class TestCssSelectorRecognition:
         pseudo_element_selectors = [
             e for e in elements if "::before" in e.selector or "::after" in e.selector
         ]
-        assert len(pseudo_element_selectors) >= 0
+        assert len(pseudo_element_selectors) == 2
 
     def test_extract_combinator_selector(self):
         """Test extraction of combinator selector."""
@@ -350,7 +356,7 @@ class TestCssSelectorRecognition:
             or "+" in e.selector
             or "~" in e.selector
         ]
-        assert len(combinator_selectors) >= 0
+        assert len(combinator_selectors) == 4
 
     def test_selector_complexity(self):
         """Test that complex selectors are handled."""
@@ -362,7 +368,7 @@ class TestCssSelectorRecognition:
         complex_selectors = [
             e for e in elements if ":" in e.selector and " " in e.selector
         ]
-        assert len(complex_selectors) >= 0
+        assert len(complex_selectors) == 1
 
 
 class TestCssPropertyRecognition:
@@ -376,7 +382,7 @@ class TestCssPropertyRecognition:
         elements = extractor.extract_css_rules(tree, PROPERTY_CODE)
 
         layout_elements = [e for e in elements if e.element_class == "layout"]
-        assert len(layout_elements) >= 0
+        assert len(layout_elements) == 1
 
     def test_extract_typography_properties(self):
         """Test extraction of typography properties."""
@@ -454,7 +460,7 @@ class TestCssRuleRecognition:
         tree = get_tree_for_code(SELECTOR_CODE, plugin)
         elements = plugin.create_extractor().extract_css_rules(tree, SELECTOR_CODE)
 
-        assert len(elements) >= 1
+        assert len(elements) == 13
 
     def test_extract_multiple_rules(self):
         """Test extraction of multiple CSS rules."""
@@ -462,7 +468,7 @@ class TestCssRuleRecognition:
         tree = get_tree_for_code(PROPERTY_CODE, plugin)
         elements = plugin.create_extractor().extract_css_rules(tree, PROPERTY_CODE)
 
-        assert len(elements) >= 5
+        assert len(elements) == 6
 
     def test_rule_selector(self):
         """Test that rule selector is captured."""
@@ -472,7 +478,7 @@ class TestCssRuleRecognition:
 
         for element in elements:
             assert element.selector is not None
-            assert len(element.selector) > 0
+            assert element.selector != ""
 
     def test_rule_properties(self):
         """Test that rule properties are captured."""
@@ -480,9 +486,14 @@ class TestCssRuleRecognition:
         tree = get_tree_for_code(PROPERTY_CODE, plugin)
         elements = plugin.create_extractor().extract_css_rules(tree, PROPERTY_CODE)
 
-        for element in elements:
-            if element.properties:
-                assert len(element.properties) > 0
+        assert sorted(len(e.properties) for e in elements if e.properties) == [
+            3,
+            4,
+            6,
+            6,
+            6,
+            8,
+        ]
 
     def test_rule_line_numbers(self):
         """Test that rule line numbers are accurate."""
@@ -490,8 +501,8 @@ class TestCssRuleRecognition:
         tree = get_tree_for_code(PROPERTY_CODE, plugin)
         elements = plugin.create_extractor().extract_css_rules(tree, PROPERTY_CODE)
 
+        assert sorted(e.start_line for e in elements) == [3, 10, 20, 32, 42, 52]
         for element in elements:
-            assert element.start_line > 0
             assert element.end_line >= element.start_line
 
 
@@ -505,7 +516,7 @@ class TestCssMediaQueryRecognition:
         elements = plugin.create_extractor().extract_css_rules(tree, MEDIA_QUERY_CODE)
 
         media_queries = [e for e in elements if e.selector.startswith("@media")]
-        assert len(media_queries) >= 1
+        assert len(media_queries) == 4
 
     def test_extract_max_width_media_query(self):
         """Test extraction of max-width media query."""
@@ -514,7 +525,7 @@ class TestCssMediaQueryRecognition:
         elements = plugin.create_extractor().extract_css_rules(tree, MEDIA_QUERY_CODE)
 
         max_width_queries = [e for e in elements if "max-width" in e.selector]
-        assert len(max_width_queries) >= 1
+        assert len(max_width_queries) == 2
 
     def test_extract_min_width_media_query(self):
         """Test extraction of min-width media query."""
@@ -523,7 +534,7 @@ class TestCssMediaQueryRecognition:
         elements = plugin.create_extractor().extract_css_rules(tree, MEDIA_QUERY_CODE)
 
         min_width_queries = [e for e in elements if "min-width" in e.selector]
-        assert len(min_width_queries) >= 1
+        assert len(min_width_queries) == 1
 
     def test_extract_combined_media_query(self):
         """Test extraction of combined media query."""
@@ -532,7 +543,7 @@ class TestCssMediaQueryRecognition:
         elements = plugin.create_extractor().extract_css_rules(tree, MEDIA_QUERY_CODE)
 
         combined_queries = [e for e in elements if "and" in e.selector]
-        assert len(combined_queries) >= 1
+        assert len(combined_queries) == 2
 
     def test_extract_print_media_query(self):
         """Test extraction of print media query."""
@@ -541,7 +552,7 @@ class TestCssMediaQueryRecognition:
         elements = plugin.create_extractor().extract_css_rules(tree, MEDIA_QUERY_CODE)
 
         print_queries = [e for e in elements if "print" in e.selector]
-        assert len(print_queries) >= 1
+        assert len(print_queries) == 2
 
     def test_extract_prefers_color_scheme_media_query(self):
         """Test extraction of prefers-color-scheme media query."""
@@ -552,4 +563,4 @@ class TestCssMediaQueryRecognition:
         color_scheme_queries = [
             e for e in elements if "prefers-color-scheme" in e.selector
         ]
-        assert len(color_scheme_queries) >= 1
+        assert len(color_scheme_queries) == 1

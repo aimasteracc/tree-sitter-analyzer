@@ -214,3 +214,40 @@ class TestAnalyzeCodeStructureToolValidateArguments:
         arguments = {"file_path": "test.py", "suppress_output": "true"}
         with pytest.raises(ValueError, match="suppress_output must be a boolean"):
             tool.validate_arguments(arguments)
+
+
+@pytest.mark.asyncio
+class TestAnalyzeSurfacesParseErrors:
+    """#572: a wrong-language / corrupt file must not be reported as a clean
+    INFO with phantom symbols. tree-sitter's parse error is surfaced as
+    parse_errors + verdict WARN so an agent doesn't trust the garbage."""
+
+    async def test_wrong_language_file_flags_parse_errors(self, tmp_path):
+        # C++ source in a .py file parses with errors (phantom 'public' class).
+        f = tmp_path / "evil.py"
+        f.write_text("class Foo { public: int x; void bar() {} };\n")
+        tool = AnalyzeCodeStructureTool(project_root=str(tmp_path))
+        result = await tool.execute({"file_path": str(f), "output_format": "json"})
+        assert result["parse_errors"] is True
+        assert result["verdict"] == "WARN"
+        assert result["agent_summary"]["verdict"] == "WARN"
+
+    async def test_valid_file_has_no_parse_errors_flag(self, tmp_path):
+        # Regression: a clean parse keeps the INFO envelope, no parse_errors key.
+        f = tmp_path / "good.py"
+        f.write_text("class Foo:\n    def bar(self):\n        return 1\n")
+        tool = AnalyzeCodeStructureTool(project_root=str(tmp_path))
+        result = await tool.execute({"file_path": str(f), "output_format": "json"})
+        assert "parse_errors" not in result
+        assert result["verdict"] == "INFO"
+
+    async def test_relative_file_path_with_project_root_still_flags(self, tmp_path):
+        # Codex #682 P1: a project-relative file_path (the common MCP shape) must
+        # use the resolved path for the validity check. The raw "evil.py" does
+        # not exist from the pytest cwd, so a check against file_path would skip
+        # and report the phantom symbols as clean.
+        (tmp_path / "evil.py").write_text("class Foo { public: int x; };\n")
+        tool = AnalyzeCodeStructureTool(project_root=str(tmp_path))
+        result = await tool.execute({"file_path": "evil.py", "output_format": "json"})
+        assert result["parse_errors"] is True
+        assert result["verdict"] == "WARN"

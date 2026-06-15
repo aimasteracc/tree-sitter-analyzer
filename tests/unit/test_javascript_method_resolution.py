@@ -495,3 +495,97 @@ def test_no_cross_language_builtin_suppression_ignores_foreign_owner() -> None:
         "builtin",
         "",
     )
+
+
+# ---------------------------------------------------------------------------
+# Issue #626 — shadow gate narrowed to module-scope variables (approved as a
+# precision gain): function-local declarators no longer reach
+# ast_symbol_rows, so the project-wide JS builtin-shadow set sees module-
+# level shadows only.
+# ---------------------------------------------------------------------------
+def _index_js(tmp_path, files: dict[str, str]):
+    """Index *files* into a tmp project; return a row-factory sqlite conn."""
+    import sqlite3
+
+    from tree_sitter_analyzer.ast_cache import ASTCache
+
+    for name, body in files.items():
+        (tmp_path / name).write_text(body)
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_project()
+    finally:
+        cache.close()
+    conn = sqlite3.connect(str(tmp_path / ".ast-cache" / "index.db"))
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def test_shadow_set_from_cache_is_module_scope_only(tmp_path) -> None:
+    """SET-CONSTRUCTION pin through the real cache (#626): a module-level
+    ``const Math = {...}`` enters the shadow set; a function-local
+    ``const Map = ...`` no longer does (before #626 both did)."""
+    from tree_sitter_analyzer.synapse_resolver.languages.javascript import (
+        _js_shadowed_globals_from_conn,
+    )
+
+    conn = _index_js(
+        tmp_path,
+        {
+            "app.js": (
+                "const Math = { max(x) { return x; } };\n"
+                "function f() { const Map = 1; }\n"
+            ),
+        },
+    )
+    try:
+        assert _js_shadowed_globals_from_conn(conn, {}) == frozenset({"Math"})
+    finally:
+        conn.close()
+
+
+def test_module_level_variable_shadow_still_suppresses_builtin(tmp_path) -> None:
+    """FULL INDEX PATH (#626 keep-side): module-scope ``const Math = {...}``
+    must still suppress the terminal ``builtin`` tier for ``Math.max()``."""
+    conn = _index_js(
+        tmp_path,
+        {
+            "app.js": (
+                "const Math = { max(x) { return x; } };\n"
+                "function g() { Math.max(1); }\n"
+            ),
+        },
+    )
+    try:
+        rows = conn.execute(
+            "SELECT callee_resolution FROM edges "
+            "WHERE kind = 'calls' AND callee_name = 'max'"
+        ).fetchall()
+    finally:
+        conn.close()
+    res = [r["callee_resolution"] for r in rows]
+    assert res, "expected a Math.max() edge"
+    assert "builtin" not in res
+
+
+def test_function_local_shadow_no_longer_suppresses_builtin(tmp_path) -> None:
+    """FULL INDEX PATH (#626 precision gain): a function-local ``const Math``
+    in ANOTHER file used to suppress builtin classification project-wide
+    (the set is file-insensitive); after the contraction ``Math.max()``
+    classifies ``builtin`` again."""
+    conn = _index_js(
+        tmp_path,
+        {
+            "shadow.js": "function f() { const Math = { max(x) { return x; } }; }\n",
+            "caller.js": "function g() { Math.max(1); }\n",
+        },
+    )
+    try:
+        rows = conn.execute(
+            "SELECT callee_resolution FROM edges "
+            "WHERE kind = 'calls' AND callee_name = 'max'"
+        ).fetchall()
+    finally:
+        conn.close()
+    res = [r["callee_resolution"] for r in rows]
+    assert res == ["builtin"]

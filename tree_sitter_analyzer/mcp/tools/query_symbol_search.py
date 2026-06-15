@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from ...ast_cache import ASTCache
+from ...constants import EXCLUDE_DIRS
 from ...utils import setup_logger
 
 logger = setup_logger(__name__)
@@ -38,24 +39,6 @@ _SYMBOL_SEARCH_EXTS = {
     ".c",
     ".cpp",
 }
-_SYMBOL_SEARCH_EXCLUDE = {
-    "node_modules",
-    ".git",
-    "__pycache__",
-    ".venv",
-    "venv",
-    ".tox",
-    ".mypy_cache",
-    ".pytest_cache",
-    ".ruff_cache",
-    "dist",
-    "build",
-    "htmlcov",
-    ".cache",
-    ".eggs",
-    ".claude",
-}
-
 # r37bc: scan limits — module-level so the file collection helper +
 # response envelope cap stay in sync (was a magic 500 / 50 in 2+ places).
 _SYMBOL_SEARCH_MAX_FILES = 500
@@ -185,11 +168,27 @@ def _resolve_project_root(project_root: str | None) -> Path:
 
 
 def _collect_source_files(root: Path) -> list[Path]:
-    """Walk ``root`` for source files, applying excludes + the 500 cap."""
+    """Walk ``root`` for source files, applying excludes + the 500 cap.
+
+    Uses the shared EXCLUDE_DIRS constant (single source of truth) and also
+    skips any path component that starts with '.' (generic dotdir guard,
+    e.g. .benchmark-repos, .vendored) so vendored/build/dot trees cannot
+    consume the 500-file budget before real source is reached (#568).
+    """
     source_files: list[Path] = []
     for ext in _SYMBOL_SEARCH_EXTS:
         for f in root.rglob(f"*{ext}"):
-            if any(part in _SYMBOL_SEARCH_EXCLUDE for part in f.parts):
+            # Codex P2 (#699): check only the parts BELOW the project root.
+            # Using ``f.parts`` (absolute) wrongly excludes the whole project
+            # when the root itself lives under a dotted/excluded-named ancestor
+            # (e.g. a checkout at ``~/.local/share/proj`` or ``/build/proj``).
+            try:
+                parts = f.relative_to(root).parts
+            except ValueError:  # pragma: no cover - rglob(root) only yields descendants
+                parts = f.parts
+            if any(part in EXCLUDE_DIRS for part in parts):
+                continue
+            if any(part.startswith(".") for part in parts):
                 continue
             source_files.append(f)
     if len(source_files) > _SYMBOL_SEARCH_MAX_FILES:

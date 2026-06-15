@@ -83,7 +83,7 @@ class TestEstimateTokens:
         """Test token estimation with simple code."""
         content = "def hello():\n    print('world')"
         tokens = _estimate_tokens(content)
-        assert tokens > 0
+        assert tokens == 11
         assert isinstance(tokens, int)
 
     def test_estimate_tokens_empty(self):
@@ -102,21 +102,20 @@ class TestEstimateTokens:
         """Test token estimation with keywords."""
         content = "def class return if else while for in"
         tokens = _estimate_tokens(content)
-        assert tokens > 0
+        assert tokens == 8
         # Each keyword should be counted as a token
-        assert tokens >= 8
 
     def test_estimate_tokens_with_operators(self):
         """Test token estimation with operators."""
         content = "= + - * / % & | ^ ~ ! ?"
         tokens = _estimate_tokens(content)
-        assert tokens > 0
+        assert tokens == 12
 
     def test_estimate_tokens_with_identifiers(self):
         """Test token estimation with identifiers."""
         content = "variable_name function_name ClassName"
         tokens = _estimate_tokens(content)
-        assert tokens > 0
+        assert tokens == 3
 
     def test_estimate_tokens_with_numbers(self):
         """Test token estimation with numbers."""
@@ -497,7 +496,7 @@ class TestComputeFileMetrics:
 
         result = compute_file_metrics("/test/file.py")
 
-        assert result["estimated_tokens"] > 0
+        assert result["estimated_tokens"] == 11
         assert isinstance(result["estimated_tokens"], int)
 
 
@@ -535,11 +534,11 @@ def main():
         assert "content_hash" in result
 
         # Verify values make sense
-        assert result["total_lines"] > 0
-        assert result["code_lines"] > 0
-        assert result["comment_lines"] > 0
-        assert result["estimated_tokens"] > 0
-        assert result["file_size_bytes"] > 0
+        assert result["total_lines"] == 9
+        assert result["code_lines"] == 4
+        assert result["comment_lines"] == 3
+        assert result["estimated_tokens"] == 38
+        assert result["file_size_bytes"] == 153
         assert len(result["content_hash"]) == 64  # SHA256 hex length
 
     @patch("tree_sitter_analyzer.mcp.utils.file_metrics.read_file_safe")

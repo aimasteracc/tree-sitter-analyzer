@@ -5,6 +5,8 @@
 > **8 facade tools** (the legacy names still work for one deprecation cycle via
 > a shim). For the current, registry-synced tool surface see
 > **[`../CODEMAPS/mcp-tools.md`](../CODEMAPS/mcp-tools.md)**.
+> For the per-action parameter reference (params/required/CLI twins,
+> auto-generated, drift-gated) see **[`facade-actions.md`](facade-actions.md)**.
 
 **Version**: 1.13.0
 **Date**: 2026-05-15

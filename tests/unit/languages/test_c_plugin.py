@@ -624,3 +624,68 @@ class TestCPluginLegacyTests:
 
         out = await p.analyze_file(path, ar)
         assert out is not None
+
+
+# ---------------------------------------------------------------------------
+# Issue #534 — C macro deduplication across #ifdef / #else branches (Scope B)
+# ---------------------------------------------------------------------------
+
+
+class TestCMacroDeduplication:
+    """Macros defined identically in both #ifdef and #else branches appear once."""
+
+    def test_macro_not_duplicated_across_ifdef_else(self) -> None:
+        """SQUARE and LOG must appear exactly once even when defined in both
+        #ifdef and #else branches (Issue #534 Scope B)."""
+        import tree_sitter
+
+        p = CPlugin()
+        lang = p.get_tree_sitter_language()
+        parser = tree_sitter.Parser(lang)
+        code = (
+            "#include <stdio.h>\n"
+            "int add(int a, int b) { return a + b; }\n"
+            "#ifdef DEBUG\n"
+            "#define SQUARE(x) ((x) * (x))\n"
+            "#define LOG(msg) printf(msg)\n"
+            "#else\n"
+            "#define SQUARE(x) ((x) * (x))\n"
+            "#define LOG(msg) printf(msg)\n"
+            "#endif\n"
+        )
+        tree = parser.parse(bytes(code, "utf-8"))
+        extractor = p.extractor
+        fns = extractor.extract_functions(tree, code)
+        macro_names = [f.name for f in fns if f.return_type == "macro"]
+        assert macro_names.count("SQUARE") == 1, f"SQUARE duplicated: {macro_names}"
+        assert macro_names.count("LOG") == 1, f"LOG duplicated: {macro_names}"
+        # Total: 1 real function + 2 macros = 3
+        assert len(fns) == 3
+
+
+class TestMacroRedefinitionSurvives:
+    """Codex P2 on #566: same-name dedup must NOT swallow a legitimate
+    #undef + #define redefinition outside any shared conditional."""
+
+    CODE = """
+#define SQUARE(x) ((x) * (x))
+int use1(void) { return SQUARE(2); }
+#undef SQUARE
+#define SQUARE(x) ((x) + (x))
+int use2(void) { return SQUARE(3); }
+"""
+
+    def test_both_definitions_extracted(self):
+        import tree_sitter
+        import tree_sitter_c
+
+        from tree_sitter_analyzer.languages.c_plugin import CElementExtractor
+
+        lang = tree_sitter.Language(tree_sitter_c.language())
+        parser = tree_sitter.Parser(lang)
+        tree = parser.parse(self.CODE.encode())
+        extractor = CElementExtractor()
+        functions = extractor.extract_functions(tree, self.CODE)
+        squares = [f for f in functions if f.name == "SQUARE"]
+        assert len(squares) == 2
+        assert len(functions) == 4  # 2 macros + use1 + use2

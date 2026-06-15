@@ -182,11 +182,14 @@ class TestComprehensiveFormatValidation:
             mock_analyzer_function, test_data_sources
         )
 
-        assert results.total_tests > 0
+        # 13 = golden master + schema + spec compliance + format contract +
+        # enhanced assertion phases over 1 data source (exact fact; update
+        # when suite phases change)
+        assert results.total_tests == 13
         # execution_time_seconds可能为0（测试执行非常快时）
-        assert results.execution_time_seconds >= 0
+        assert results.execution_time_seconds >= 0  # ratchet: nondeterministic timing
         assert results.timestamp is not None
-        assert 0 <= results.success_rate <= 100
+        assert results.success_rate == 100.0
 
     def test_mock_analyzer_function_formats(self):
         """Test mock analyzer function produces expected formats"""
@@ -318,8 +321,12 @@ class TestComprehensiveFormatValidation:
         assert "compact" in results
         assert results["full"].success is True
         assert results["compact"].success is True
-        assert results["full"].execution_time_ms >= 0
-        assert results["compact"].execution_time_ms >= 0
+        assert (
+            results["full"].execution_time_ms >= 0
+        )  # ratchet: nondeterministic timing
+        assert (
+            results["compact"].execution_time_ms >= 0
+        )  # ratchet: nondeterministic timing
 
     @pytest.mark.asyncio
     async def test_test_data_manager(self, temp_results_dir):
@@ -334,7 +341,9 @@ class TestComprehensiveFormatValidation:
         assert test_data.metadata.language == "python"
         assert test_data.metadata.complexity_level == "simple"
         assert test_data.source_code is not None
-        assert len(test_data.source_code) > 0
+        # Generated python/simple template has a fixed shape: random name
+        # suffixes are fixed-length (k=5), so the total length is exact
+        assert len(test_data.source_code) == 135
 
         # Store test data
         test_id = manager.repository.store_test_data(test_data)
@@ -438,10 +447,11 @@ class TestFormatRegressionPrevention:
             compact_output = mock_analyzer_function(test_case, "compact")
             csv_output = mock_analyzer_function(test_case, "csv")
 
-            # Basic consistency checks
-            assert len(full_output) > 0
-            assert len(compact_output) > 0
-            assert len(csv_output) > 0
+            # Mock analyzer output is input-independent: exact sizes per
+            # format (update when mock_analyzer_function templates change)
+            assert len(full_output) == 355
+            assert len(compact_output) == 91
+            assert len(csv_output) == 125
 
             # Format-specific checks
             assert "# Analysis Results" in full_output

@@ -49,7 +49,10 @@ class TestBaseTableFormatter:
         formatter = TestFormatter()
         newline = formatter._get_platform_newline()
         assert isinstance(newline, str)
-        assert len(newline) > 0
+        # Platform-binary pin mirroring the implementation branch (os.name)
+        import os
+
+        assert newline == ("\r\n" if os.name == "nt" else "\n")
 
     def test_newline_conversion(self):
         """Test newline conversion functionality."""
@@ -192,7 +195,8 @@ class TestJavaTableFormatter:
 
         result = formatter.format_structure(structure_data)
         assert isinstance(result, str)
-        assert len(result) > 0
+        # Normalize platform newlines (Windows CRLF) before the exact pin
+        assert len(result.replace("\r\n", "\n")) == 253
 
     def test_format_java_structure_with_methods_and_fields(self):
         """Test formatting Java structure with methods and fields."""
@@ -228,7 +232,7 @@ class TestJavaTableFormatter:
 
         result = formatter.format_structure(data)
         assert isinstance(result, str)
-        assert len(result) > 0
+        assert len(result.replace("\r\n", "\n")) == 259
 
     def test_format_java_structure_compact(self):
         """Test formatting Java structure in compact format."""
@@ -247,7 +251,7 @@ class TestJavaTableFormatter:
 
         result = formatter.format_structure(structure_data)
         assert isinstance(result, str)
-        assert len(result) > 0
+        assert len(result.replace("\r\n", "\n")) == 131
 
     def test_format_java_structure_csv(self):
         """Test formatting Java structure in CSV format."""
@@ -265,7 +269,7 @@ class TestJavaTableFormatter:
 
         result = formatter.format_structure(structure_data)
         assert isinstance(result, str)
-        assert len(result) > 0
+        assert len(result.replace("\r\n", "\n")) == 51
 
 
 class TestPythonTableFormatter:
@@ -307,7 +311,7 @@ class TestPythonTableFormatter:
 
         result = formatter.format_structure(structure_data)
         assert isinstance(result, str)
-        assert len(result) > 0
+        assert len(result.replace("\r\n", "\n")) == 177
 
     def test_format_python_structure_with_functions_and_classes(self):
         """Test formatting complex Python structure."""
@@ -347,7 +351,7 @@ class TestPythonTableFormatter:
 
         result = formatter.format_structure(data)
         assert isinstance(result, str)
-        assert len(result) > 0
+        assert len(result.replace("\r\n", "\n")) == 385
 
     def test_format_python_structure_compact(self):
         """Test formatting Python structure in compact format."""
@@ -360,7 +364,7 @@ class TestPythonTableFormatter:
 
         result = formatter.format_structure(structure_data)
         assert isinstance(result, str)
-        assert len(result) > 0
+        assert len(result.replace("\r\n", "\n")) == 199
 
     def test_format_python_structure_csv(self):
         """Test formatting Python structure in CSV format."""
@@ -373,7 +377,7 @@ class TestPythonTableFormatter:
 
         result = formatter.format_structure(structure_data)
         assert isinstance(result, str)
-        assert len(result) > 0
+        assert len(result.replace("\r\n", "\n")) == 51
 
 
 class TestFormatterErrorHandling:
@@ -464,7 +468,7 @@ class TestFormatterIntegration:
         result = formatter.format_structure(java_data)
 
         assert isinstance(result, str)
-        assert len(result) > 0
+        assert len(result.replace("\r\n", "\n")) == 294
 
     def test_all_format_types_produce_output(self):
         """Test that all format types produce valid output."""
@@ -481,6 +485,16 @@ class TestFormatterIntegration:
         format_types = ["full", "compact", "csv"]
         languages = ["java", "python"]
 
+        # Exact newline-normalized output length per (language, format_type)
+        expected_lengths = {
+            ("java", "full"): 204,
+            ("java", "compact"): 93,
+            ("java", "csv"): 51,
+            ("python", "full"): 174,
+            ("python", "compact"): 199,
+            ("python", "csv"): 51,
+        }
+
         for language in languages:
             for format_type in format_types:
                 formatter = FormatterRegistry.get_formatter_for_language(
@@ -489,4 +503,7 @@ class TestFormatterIntegration:
                 result = formatter.format_structure(test_data)
 
                 assert isinstance(result, str)
-                assert len(result) >= 0  # Allow empty string for some formats
+                assert (
+                    len(result.replace("\r\n", "\n"))
+                    == expected_lengths[(language, format_type)]
+                )

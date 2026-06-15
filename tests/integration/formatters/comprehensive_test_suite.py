@@ -24,11 +24,6 @@ from ._comprehensive_suite_reporting import (
 from ._comprehensive_suite_runner import run_enabled_phases
 from .enhanced_assertions import EnhancedAssertions
 from .golden_master import GoldenMasterManager, GoldenMasterTester
-from .integration_tests import (
-    TestFormatConsistency,
-    TestRealImplementationValidation,
-    TestTableFormatToolIntegration,
-)
 from .performance_tests import FormatPerformanceTester
 from .schema_validation import (
     CSVFormatValidator,
@@ -36,6 +31,11 @@ from .schema_validation import (
     MarkdownTableValidator,
 )
 from .test_data_manager import FormatTestDataManager
+from .test_formatter_integration import (
+    TestFormatConsistency,
+    TestRealImplementationValidation,
+    TestTableFormatToolIntegration,
+)
 
 __all__ = [
     "ComprehensiveFormatTestSuite",

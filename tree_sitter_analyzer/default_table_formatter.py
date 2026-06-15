@@ -390,8 +390,11 @@ class DefaultTableFormatter:
         classes = data.get("classes", [])
         if classes is None:
             classes = []
+        file_path = str(data.get("file_path", ""))
 
-        lines.append(f"# {_compact_table_header_helper(package_name, classes)}")
+        lines.append(
+            f"# {_compact_table_header_helper(package_name, classes, file_path)}"
+        )
         lines.append("")
 
         methods = data.get("methods", []) or []

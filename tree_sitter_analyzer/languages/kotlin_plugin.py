@@ -29,6 +29,9 @@ from .kotlin_helpers import (
     extract_kotlin_function as _extract_func_standalone,
 )
 from .kotlin_helpers import (
+    extract_kotlin_primary_constructor as _extract_primary_ctor_standalone,
+)
+from .kotlin_helpers import (
     extract_kotlin_property as _extract_prop_standalone,
 )
 
@@ -56,7 +59,12 @@ class KotlinElementExtractor(ElementExtractor):
 
         self._traverse_and_extract(
             tree.root_node,
-            {"function_declaration": self._extract_function},
+            {
+                "function_declaration": self._extract_function,
+                # Issue #567 scope-B: primary_constructor nodes were not
+                # dispatched — emit them as Function(is_constructor=True).
+                "primary_constructor": self._extract_primary_constructor,
+            },
             functions,
         )
 
@@ -120,6 +128,11 @@ class KotlinElementExtractor(ElementExtractor):
         imports: list[Import] = []
 
         extractors = {
+            # The installed tree-sitter-kotlin grammar emits node type "import"
+            # (not "import_header" — that was the expected name but the grammar
+            # never used it). Keep "import_header" as well so older grammar
+            # versions that do emit it continue to work.
+            "import": self._extract_import,
             "import_header": self._extract_import,
         }
 
@@ -232,6 +245,12 @@ class KotlinElementExtractor(ElementExtractor):
         """Extract function information"""
         return _extract_func_standalone(node, self._get_node_text, self.current_package)
 
+    def _extract_primary_constructor(self, node: tree_sitter.Node) -> Function | None:
+        """Extract primary_constructor as Function(is_constructor=True)."""
+        return _extract_primary_ctor_standalone(
+            node, self._get_node_text, self.current_package
+        )
+
     def _extract_class(self, node: tree_sitter.Node) -> Class | None:
         """Extract class declaration"""
         return self._extract_class_or_object(node, "class")
@@ -249,7 +268,18 @@ class KotlinElementExtractor(ElementExtractor):
         )
 
     def _extract_property(self, node: tree_sitter.Node) -> Variable | None:
-        """Extract property declaration"""
+        """Extract property declaration.
+
+        Issue #759: Local val/var declarations inside function bodies share the
+        same ``property_declaration`` node type as class fields.  The recursive
+        traversal visits them all.  Skip any property whose immediate parent is
+        a ``block`` node — that is the body of a function, if-branch, or loop.
+        Class-body properties live directly under ``class_body``; top-level
+        properties live directly under ``source_file``.
+        """
+        parent = node.parent
+        if parent is not None and parent.type == "block":
+            return None
         return _extract_prop_standalone(node, self._get_node_text)
 
     def _extract_import(self, node: tree_sitter.Node) -> Import | None:

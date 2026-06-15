@@ -44,7 +44,7 @@ class TestJavaScriptFormatterRobustness:
 
         # Should handle empty data gracefully
         assert isinstance(result, str)
-        assert len(result) > 0
+        assert result == "# Unknown"
 
     def test_format_compact_with_empty_data(self, formatter):
         """Test compact formatting with completely empty data"""
@@ -54,7 +54,16 @@ class TestJavaScriptFormatterRobustness:
 
         # Should handle empty data gracefully
         assert isinstance(result, str)
-        assert len(result) > 0
+        assert result == (
+            "# Unknown\n"
+            "\n"
+            "## Info\n"
+            "| Property | Value |\n"
+            "|----------|-------|\n"
+            "| Package |  |\n"
+            "| Methods | 0 |\n"
+            "| Fields | 0 |"
+        )
 
     def test_format_csv_with_empty_data(self, formatter):
         """Test CSV formatting with completely empty data"""
@@ -64,7 +73,7 @@ class TestJavaScriptFormatterRobustness:
 
         # Should handle empty data gracefully
         assert isinstance(result, str)
-        assert len(result) > 0
+        assert result == "Type,Name,Signature,Visibility,Lines,Complexity,Doc"
 
     def test_format_json_with_empty_data(self, formatter):
         """Test JSON formatting with completely empty data"""
@@ -74,7 +83,7 @@ class TestJavaScriptFormatterRobustness:
 
         # Should handle empty data gracefully
         assert isinstance(result, str)
-        assert len(result) > 0
+        assert result == "{}"
 
     def test_format_with_none_values(self, formatter):
         """Test formatting with None values in data"""
@@ -90,9 +99,9 @@ class TestJavaScriptFormatterRobustness:
 
         result = formatter._format_full_table(data)
 
-        # Should handle None values gracefully
+        # Should handle None values gracefully (same fallback as empty data)
         assert isinstance(result, str)
-        assert len(result) > 0
+        assert result == "# Unknown"
 
     def test_format_with_malformed_data(self, formatter):
         """Test formatting with malformed data structures"""
@@ -266,7 +275,7 @@ class TestJavaScriptFormatterRobustness:
         # Should complete within reasonable time (5 seconds)
         assert end_time - start_time < 5.0
         assert isinstance(result, str)
-        assert len(result) > 0
+        assert len(result) == 3124  # exact output size for this fixed dataset
 
         # Test compact table formatting
         start_time = time.time()
@@ -276,7 +285,7 @@ class TestJavaScriptFormatterRobustness:
         # Should complete within reasonable time (5 seconds)
         assert end_time - start_time < 5.0
         assert isinstance(result, str)
-        assert len(result) > 0
+        assert len(result) == 105  # exact output size for this fixed dataset
 
     def test_unicode_handling(self, formatter):
         """Test handling of Unicode characters in data"""
@@ -311,7 +320,8 @@ class TestJavaScriptFormatterRobustness:
         # Should handle special characters without errors
         result = formatter._format_full_table(special_data)
         assert isinstance(result, str)
-        assert len(result) > 0
+        assert len(result) == 217  # exact output size for this fixed dataset
+        assert 'Class"quote' in result
 
     def test_memory_usage_with_repeated_calls(self, formatter):
         """Test memory usage with repeated formatting calls"""
@@ -382,7 +392,7 @@ class TestJavaScriptFormatterRobustness:
             if status == "success":
                 success_count += 1
                 assert isinstance(result, str)
-                assert len(result) > 0
+                assert len(result) == 196  # exact output size for this fixed dataset
 
         # All threads should succeed
         assert success_count == 5

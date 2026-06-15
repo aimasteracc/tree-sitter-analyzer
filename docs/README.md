@@ -14,7 +14,8 @@ For the project overview and install-and-go instructions, see the
 |---|---|
 | [installation.md](installation.md) | Install via pip/uv, system dependencies (fd, ripgrep) |
 | [cli-reference.md](cli-reference.md) | All CLI flags and commands |
-| [features.md](features.md) | Feature overview |
+| [features.md](features.md) | Feature overview (languages, token optimisation, UML diagrams) |
+| [index-lifecycle.md](index-lifecycle.md) | Index operations: build / full / sync / auto, partial-cache trap, health check |
 | [smart-workflow.md](smart-workflow.md) | The SMART five-step workflow for AI-assisted analysis |
 
 ## Output Formats

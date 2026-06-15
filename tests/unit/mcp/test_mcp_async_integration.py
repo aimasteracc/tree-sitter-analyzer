@@ -143,8 +143,8 @@ class Class_{i}:
 
         assert result["success"] is True
         assert (
-            result["count"] >= 3
-        )  # example_function + async_example_function + utility_function
+            result["count"] == 8
+        )  # example_function + async_example_function + utility_function + nested definitions
         assert "results" in result
         assert isinstance(result["results"], list)
 
@@ -169,7 +169,7 @@ class Class_{i}:
         )
 
         assert result["success"] is True
-        assert result["count"] >= 2  # ExampleClass + UtilityClass
+        assert result["count"] == 2  # ExampleClass + UtilityClass
         assert "results" in result
 
         # クラス名の確認
@@ -196,8 +196,8 @@ class Class_{i}:
 
         assert result["success"] is True
         assert (
-            result["count"] >= 2
-        )  # exampleFunction + asyncExampleFunction (arrowFunctionは検出されない場合がある)
+            result["count"] == 2
+        )  # exampleFunction + asyncExampleFunction (arrow function not detected in JavaScript)
         assert "results" in result
 
     @pytest.mark.asyncio
@@ -244,7 +244,7 @@ class Class_{i}:
         )
 
         assert result["success"] is True
-        assert result["count"] >= 3
+        assert result["count"] == 8
         assert "results" in result
 
     @pytest.mark.asyncio
@@ -292,7 +292,7 @@ class Class_{i}:
         )
 
         assert result["success"] is True
-        assert result["count"] >= 3
+        assert result["count"] == 8
         assert "results" in result
 
     @pytest.mark.asyncio
@@ -363,7 +363,7 @@ class Class_{i}:
         else:
             # 成功の場合、空結果または何らかの結果があることを確認
             assert "results" in result
-            assert result["count"] >= 0
+            assert result["count"] == 0
 
     @pytest.mark.asyncio
     async def test_query_tool_error_handling_malformed_query_string(
@@ -424,12 +424,11 @@ class Class_{i}:
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         # 全てのタスクが正常に完了することを確認
-        successful_results = 0
+        counts: list[int] = []
         for result in results:
             if isinstance(result, dict) and result.get("success"):
-                successful_results += 1
                 assert "results" in result
-                assert result["count"] >= 0
+                counts.append(result["count"])
             elif isinstance(result, Exception):
                 pytest.fail(f"Task failed with exception: {result}")
             else:
@@ -437,7 +436,8 @@ class Class_{i}:
                 assert isinstance(result, dict)
                 assert "error" in result
 
-        assert successful_results >= 2, "At least 2 tasks should succeed"
+        # 固定 fixture に対する決定的な件数: class=2, function=8 (x2)
+        assert sorted(counts) == [2, 8, 8]
 
     @pytest.mark.asyncio
     async def test_multiple_languages_concurrent(
@@ -468,16 +468,16 @@ class Class_{i}:
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         # 両方の結果が正常に取得できることを確認
-        successful_results = 0
+        counts: list[int] = []
         for result in results:
             if isinstance(result, dict) and result.get("success"):
-                successful_results += 1
                 assert "results" in result
-                assert result["count"] >= 1
+                counts.append(result["count"])
             elif isinstance(result, Exception):
                 pytest.fail(f"Task failed with exception: {result}")
 
-        assert successful_results >= 1, "At least 1 language should work"
+        # 固定 fixture に対する決定的な件数: javascript function=2, python function=8
+        assert sorted(counts) == [2, 8]
 
     @pytest.mark.asyncio
     async def test_large_file_mcp_processing(self, large_code_file):
@@ -493,9 +493,9 @@ class Class_{i}:
         )
 
         assert result["success"] is True
-        assert result["count"] >= 50  # 50個の関数が見つかることを確認
+        assert result["count"] == 150  # 50個のクラス + 50個の関数 + 50個のメソッド
         assert "results" in result
-        assert len(result["results"]) >= 50
+        assert len(result["results"]) == 150
 
     @pytest.mark.asyncio
     async def test_mcp_performance_baseline(self, sample_code_file):
@@ -518,7 +518,7 @@ class Class_{i}:
         duration = end_time - start_time
 
         assert result["success"] is True
-        assert result["count"] >= 3
+        assert result["count"] == 8
 
         # パフォーマンス要件: 5秒以内
         assert duration < 5.0, f"MCP execution took too long: {duration:.2f}s"
@@ -550,11 +550,11 @@ class Class_{i}:
             if isinstance(result, dict) and result.get("success"):
                 successful_results += 1
                 assert "results" in result
-                assert result["count"] >= 3
+                assert result["count"] == 8
             elif isinstance(result, Exception):
                 pytest.fail(f"Task failed with exception: {result}")
 
-        assert successful_results >= 8, "At least 8 out of 10 tasks should succeed"
+        assert successful_results == 10, "All 10 tasks should succeed"
 
     @pytest.mark.asyncio
     async def test_mcp_tool_argument_validation(self):

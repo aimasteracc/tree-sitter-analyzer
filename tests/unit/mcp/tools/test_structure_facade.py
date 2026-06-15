@@ -73,10 +73,11 @@ def test_structure_facade_read_is_bespoke() -> None:
 
 
 def test_structure_facade_action_map_entries() -> None:
-    """All non-read actions are in action_map (plain inner tool delegation)."""
+    """All non-bespoke actions are in action_map (plain inner tool delegation)."""
     facade = build_structure_facade(project_root=None)
-    # "read" and "signatures" are bespoke routes — not in action_map
-    _bespoke = {"read", "signatures"}
+    # "read", "signatures", and "class_detail" are bespoke routes — not in action_map.
+    # class_detail is bespoke so it can alias query/symbol → class_name (#804).
+    _bespoke = {"read", "signatures", "class_detail"}
     for action in _EXPECTED_ACTIONS - _bespoke:
         assert action in facade.action_map, f"Missing action_map entry: {action}"
 
@@ -126,10 +127,16 @@ def test_action_routing_class_tree() -> None:
 
 
 def test_action_routing_class_detail() -> None:
+    """class_detail is a bespoke route (#804) — not in action_map but registered
+    as a bespoke inner so G3 rebind propagates to the ClassInspectTool instance."""
     from tree_sitter_analyzer.mcp.tools.class_inspect_tool import ClassInspectTool
 
     facade = build_structure_facade(project_root=None)
-    assert isinstance(facade.action_map["class_detail"], ClassInspectTool)
+    # class_detail moved to bespoke_map so query/symbol→class_name aliasing works.
+    assert "class_detail" in facade.bespoke_map
+    # The inner ClassInspectTool must be registered for G3 rebind.
+    inner_types = {type(inner) for inner in facade._bespoke_inners}
+    assert ClassInspectTool in inner_types
 
 
 def test_action_routing_explore() -> None:
@@ -326,26 +333,36 @@ def test_set_project_path_rebinds_action_map_inners(tmp_path: Any) -> None:
 
 
 def test_set_project_path_rebinds_bespoke_inners(tmp_path: Any) -> None:
-    """G3: the bespoke ReadPartialTool instance must also be rebound."""
+    """G3: all bespoke inners (ReadPartialTool, AnalyzeCodeStructureTool,
+    ClassInspectTool) must be rebound when set_project_path is called."""
+    from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (
+        AnalyzeCodeStructureTool,
+    )
+    from tree_sitter_analyzer.mcp.tools.class_inspect_tool import ClassInspectTool
     from tree_sitter_analyzer.mcp.tools.read_partial_tool import ReadPartialTool
 
     facade = build_structure_facade(project_root=None)
     assert facade._bespoke_inners, "No bespoke inners registered"
-    bespoke_inner = facade._bespoke_inners[0]
-    assert isinstance(bespoke_inner, ReadPartialTool)
+    inner_types = {type(inner) for inner in facade._bespoke_inners}
+    assert ReadPartialTool in inner_types
+    assert AnalyzeCodeStructureTool in inner_types
+    assert ClassInspectTool in inner_types
 
     target = str(tmp_path)
     facade.set_project_path(target)
-    assert bespoke_inner.project_root == target, (
-        f"bespoke ReadPartialTool not rebound: project_root={bespoke_inner.project_root!r}"
-    )
+    for inner in facade._bespoke_inners:
+        assert inner.project_root == target, (
+            f"{type(inner).__name__} not rebound: project_root={inner.project_root!r}"
+        )
 
 
 def test_bespoke_inner_is_read_partial_tool_registered() -> None:
-    """ReadPartialTool and AnalyzeCodeStructureTool must be registered as bespoke inners."""
+    """ReadPartialTool, AnalyzeCodeStructureTool, and ClassInspectTool must be
+    registered as bespoke inners for G3 rebind propagation."""
     from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (
         AnalyzeCodeStructureTool,
     )
+    from tree_sitter_analyzer.mcp.tools.class_inspect_tool import ClassInspectTool
     from tree_sitter_analyzer.mcp.tools.read_partial_tool import ReadPartialTool
 
     facade = build_structure_facade(project_root=None)
@@ -354,6 +371,7 @@ def test_bespoke_inner_is_read_partial_tool_registered() -> None:
     assert AnalyzeCodeStructureTool in inner_types, (
         "AnalyzeCodeStructureTool not in bespoke inners"
     )
+    assert ClassInspectTool in inner_types, "ClassInspectTool not in bespoke inners"
 
 
 # ---------------------------------------------------------------------------
@@ -548,3 +566,149 @@ def test_class_hierarchy_validate_accepts_named_class_without_mode() -> None:
 
     tool = ClassHierarchyTool(project_root=None)
     assert tool.validate_arguments({"class_name": "Foo"}) is True
+
+
+# ---------------------------------------------------------------------------
+# Bug #802 — class_tree mode='supers' must work (alias for 'superclasses')
+# ---------------------------------------------------------------------------
+
+
+def test_class_tree_supers_in_schema_enum() -> None:
+    """'supers' must appear in the mode enum of ClassHierarchyTool's schema."""
+    from tree_sitter_analyzer.mcp.tools.class_hierarchy_tool import ClassHierarchyTool
+
+    tool = ClassHierarchyTool(project_root=None)
+    schema = tool.get_tool_schema()
+    mode_enum = schema["properties"]["mode"]["enum"]
+    assert "supers" in mode_enum
+
+
+def test_class_tree_supers_alias_normalizes_to_superclasses() -> None:
+    """ClassHierarchyTool._normalize_mode must map 'supers' → 'superclasses'."""
+    from tree_sitter_analyzer.mcp.tools.class_hierarchy_tool import ClassHierarchyTool
+
+    assert ClassHierarchyTool._normalize_mode("supers") == "superclasses"
+    # Other modes are unchanged.
+    assert ClassHierarchyTool._normalize_mode("superclasses") == "superclasses"
+    assert ClassHierarchyTool._normalize_mode("subclasses") == "subclasses"
+    assert ClassHierarchyTool._normalize_mode("tree") == "tree"
+
+
+def test_class_tree_mode_supers_does_not_return_unknown_mode_error() -> None:
+    """Calling class_tree with mode='supers' must NOT return 'Unknown mode: supers'.
+
+    The alias should produce the same result shape as mode='superclasses' (#802).
+    """
+    from unittest.mock import MagicMock, patch
+
+    from tree_sitter_analyzer.mcp.tools.class_hierarchy_tool import ClassHierarchyTool
+
+    tool = ClassHierarchyTool(project_root="/fake/root")
+
+    # Stub _get_hierarchy so we don't need a real index.
+    mock_hierarchy = MagicMock()
+    mock_hierarchy.superclasses_of.return_value = ["Base"]
+    mock_hierarchy.has_class.return_value = True
+    mock_hierarchy.build.return_value = None
+
+    with patch.object(tool, "_get_hierarchy", return_value=mock_hierarchy):
+        result = asyncio.run(
+            tool.execute(
+                {"class_name": "Child", "mode": "supers", "output_format": "json"}
+            )
+        )
+
+    # Must NOT be the error path.
+    assert result.get("success") is True, f"Got error response: {result}"
+    assert "Unknown mode" not in str(result.get("error", ""))
+    # mode field in the response should be 'superclasses' (canonical form).
+    assert result.get("mode") == "superclasses"
+
+
+# ---------------------------------------------------------------------------
+# Bug #804 — class_detail: class_name declared in schema + query alias works
+# ---------------------------------------------------------------------------
+
+
+def test_class_detail_class_name_in_facade_schema() -> None:
+    """class_name must be a declared property in the facade's public schema (#804).
+
+    Agents discover parameters from the schema; undeclared params are invisible.
+    """
+    facade = build_structure_facade(project_root=None)
+    schema = facade.get_tool_schema()
+    assert "class_name" in schema["properties"], (
+        "class_name not declared in structure facade public schema"
+    )
+
+
+def test_class_detail_query_alias_resolves_to_class_name() -> None:
+    """Passing query=X for class_detail must behave the same as class_name=X (#804)."""
+
+    from tree_sitter_analyzer.mcp.tools.class_inspect_tool import ClassInspectTool
+
+    facade = build_structure_facade(project_root=None)
+
+    # Find the ClassInspectTool bespoke inner.
+    inspect_tool = next(
+        inner for inner in facade._bespoke_inners if isinstance(inner, ClassInspectTool)
+    )
+
+    captured: list[dict] = []
+
+    async def spy_execute(args: dict) -> dict:
+        captured.append(dict(args))
+        return {"success": True, "verdict": "INFO", "agent_summary": {}}
+
+    inspect_tool.execute = spy_execute  # type: ignore[method-assign]
+
+    asyncio.run(
+        facade.execute(
+            {"action": "class_detail", "query": "MyClass", "output_format": "json"}
+        )
+    )
+
+    assert captured, "ClassInspectTool.execute was not called"
+    # The bespoke route must have aliased query → class_name.
+    assert captured[0].get("class_name") == "MyClass", (
+        f"query was not aliased to class_name: captured={captured[0]}"
+    )
+
+
+def test_class_detail_class_name_direct_still_works() -> None:
+    """Passing class_name=X directly (without query) must still work (#804)."""
+    from tree_sitter_analyzer.mcp.tools.class_inspect_tool import ClassInspectTool
+
+    facade = build_structure_facade(project_root=None)
+
+    inspect_tool = next(
+        inner for inner in facade._bespoke_inners if isinstance(inner, ClassInspectTool)
+    )
+
+    captured: list[dict] = []
+
+    async def spy_execute(args: dict) -> dict:
+        captured.append(dict(args))
+        return {"success": True, "verdict": "INFO", "agent_summary": {}}
+
+    inspect_tool.execute = spy_execute  # type: ignore[method-assign]
+
+    asyncio.run(
+        facade.execute(
+            {
+                "action": "class_detail",
+                "class_name": "DirectClass",
+                "output_format": "json",
+            }
+        )
+    )
+
+    assert captured, "ClassInspectTool.execute was not called"
+    assert captured[0].get("class_name") == "DirectClass"
+
+
+def test_class_detail_is_bespoke_route() -> None:
+    """class_detail must be in bespoke_map (not action_map) for the alias to work."""
+    facade = build_structure_facade(project_root=None)
+    assert "class_detail" in facade.bespoke_map
+    assert "class_detail" not in facade.action_map

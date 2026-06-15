@@ -138,6 +138,31 @@ class CodeGraphXRefTool(BaseMCPTool):
             file_path = arguments.get("file_path", "")
             file_result = engine.file_xref(file_path)
             verdict = "INFO" if file_result.get("symbol_count", 0) > 0 else "NOT_FOUND"
+            # #669: add agent_summary with count_semantics so agents don't
+            # misread caller_count=0 as 'no inbound deps' when
+            # import_dependent_count shows files that import this module.
+            # The canonical verdict + summary_line are populated here (not left
+            # to the MCP success post-hook) so both the agent_summary AND the
+            # TOP-LEVEL summary_line are complete on the CLI-bridged direct
+            # execute() path too, where the post-hook never runs (Codex P2).
+            summary_line = (
+                f"xref file {file_path}: "
+                f"{file_result.get('caller_count', 0)} callers, "
+                f"{file_result.get('import_dependent_count', 0)} importers"
+            )
+            file_result["summary_line"] = summary_line
+            file_result["agent_summary"] = {
+                "verdict": verdict,
+                "summary_line": summary_line,
+                "next_step": "",
+                "count_semantics": (
+                    "caller_count / file_dependent_count = inbound calls the "
+                    "resolver tied to THIS file (resolved-only; unresolved "
+                    "library/method calls are not counted); "
+                    "import_dependent_count = files that import this module. "
+                    "A file may have 0 callers but multiple import_dependents."
+                ),
+            }
             # build_response prepends success+verdict; remaining file_xref
             # payload merges in via **kwargs preserving every existing key.
             result = build_response(verdict=verdict, mode="file", **file_result)

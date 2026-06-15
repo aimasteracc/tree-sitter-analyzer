@@ -37,7 +37,7 @@ fun greet(name: String, age: Int, active: Boolean): String {
 """
         tree = parser.parse(code.encode("utf-8"))
         functions = extractor.extract_functions(tree, code)
-        assert len(functions) >= 1
+        assert len(functions) == 1
         # Check parameters are extracted
         func = functions[0]
         assert func.name == "greet"
@@ -51,7 +51,7 @@ fun process(data: String?, count: Int?): Boolean? {
 """
         tree = parser.parse(code.encode("utf-8"))
         functions = extractor.extract_functions(tree, code)
-        assert len(functions) >= 1
+        assert len(functions) == 1
 
     def test_function_with_lambda_parameter(self, extractor, parser):
         """Test function with lambda parameter."""
@@ -62,7 +62,7 @@ fun execute(callback: (String) -> Unit) {
 """
         tree = parser.parse(code.encode("utf-8"))
         functions = extractor.extract_functions(tree, code)
-        assert len(functions) >= 1
+        assert len(functions) == 1
 
     def test_function_with_vararg(self, extractor, parser):
         """Test function with vararg parameter."""
@@ -73,7 +73,7 @@ fun printAll(vararg items: String) {
 """
         tree = parser.parse(code.encode("utf-8"))
         functions = extractor.extract_functions(tree, code)
-        assert len(functions) >= 1
+        assert len(functions) == 1
 
 
 class TestKotlinExtractorVisibility:
@@ -97,7 +97,7 @@ open class Base {
 """
         tree = parser.parse(code.encode("utf-8"))
         functions = extractor.extract_functions(tree, code)
-        assert len(functions) >= 1
+        assert len(functions) == 1
 
     def test_internal_function(self, extractor, parser):
         """Test internal visibility."""
@@ -106,7 +106,7 @@ internal fun moduleHelper(): String = "internal"
 """
         tree = parser.parse(code.encode("utf-8"))
         functions = extractor.extract_functions(tree, code)
-        assert len(functions) >= 1
+        assert len(functions) == 1
 
     def test_private_class(self, extractor, parser):
         """Test private class."""
@@ -117,7 +117,7 @@ private class Secret {
 """
         tree = parser.parse(code.encode("utf-8"))
         classes = extractor.extract_classes(tree, code)
-        assert len(classes) >= 1
+        assert len(classes) == 1
 
 
 class TestKotlinExtractorProperties:
@@ -234,7 +234,7 @@ fun add(a: Int, b: Int): Int = a + b
 """
         tree = parser.parse(code.encode("utf-8"))
         functions = extractor.extract_functions(tree, code)
-        assert len(functions) >= 1
+        assert len(functions) == 1
 
     def test_class_with_kdoc(self, extractor, parser):
         """Test class with KDoc comment."""
@@ -248,7 +248,7 @@ data class User(val name: String, val age: Int)
 """
         tree = parser.parse(code.encode("utf-8"))
         classes = extractor.extract_classes(tree, code)
-        assert len(classes) >= 1
+        assert len(classes) == 1
 
 
 class TestKotlinExtractorErrorPaths:
@@ -289,6 +289,7 @@ class Broken {
 
         # Mock node with unusual positions
         mock_node = Mock()
+        mock_node.parent = None
         mock_node.start_point = (0, 0)
         mock_node.end_point = (0, 13)
         mock_node.start_byte = 0
@@ -370,7 +371,7 @@ class Service {
 """
         tree = parser.parse(code.encode("utf-8"))
         classes = extractor.extract_classes(tree, code)
-        assert len(classes) >= 1
+        assert len(classes) == 1
         cls = classes[0]
         assert cls.name == "Service"
 
@@ -384,7 +385,7 @@ abstract class Shape {
 """
         tree = parser.parse(code.encode("utf-8"))
         classes = extractor.extract_classes(tree, code)
-        assert len(classes) >= 1
+        assert len(classes) == 1
 
     def test_extract_interface(self, extractor, parser):
         """Test interface extraction."""
@@ -409,7 +410,7 @@ class Circle(val radius: Double) : Shape() {
 """
         tree = parser.parse(code.encode("utf-8"))
         classes = extractor.extract_classes(tree, code)
-        assert len(classes) >= 1
+        assert len(classes) == 1
 
     def test_extract_object_with_methods(self, extractor, parser):
         """Test object declaration with methods."""
@@ -428,7 +429,7 @@ object DatabaseManager {
 """
         tree = parser.parse(code.encode("utf-8"))
         classes = extractor.extract_classes(tree, code)
-        assert len(classes) >= 1
+        assert len(classes) == 1
 
 
 class TestKotlinTextExtractionEdgeCases:
@@ -444,6 +445,7 @@ class TestKotlinTextExtractionEdgeCases:
         extractor.content_lines = ["val x = 1"]
 
         mock_node = Mock()
+        mock_node.parent = None
         mock_node.start_byte = 0
         mock_node.end_byte = 9
         mock_node.start_point = (0, 0)
@@ -465,6 +467,7 @@ class TestKotlinTextExtractionEdgeCases:
         extractor.content_lines = code.split("\n")
 
         mock_node = Mock()
+        mock_node.parent = None
         mock_node.start_byte = 0
         mock_node.end_byte = len(code)
         mock_node.start_point = (0, 0)
@@ -479,6 +482,7 @@ class TestKotlinTextExtractionEdgeCases:
         extractor.content_lines = ["short"]
 
         mock_node = Mock()
+        mock_node.parent = None
         mock_node.start_byte = 100
         mock_node.end_byte = 200
         mock_node.start_point = (10, 0)
@@ -507,6 +511,7 @@ class TestKotlinExtractorExceptionPaths:
 
         # Create a mock node that will cause an exception
         mock_node = Mock()
+        mock_node.parent = None
         mock_node.start_point = Mock(side_effect=Exception("test error"))
 
         result = extractor._extract_function(mock_node)
@@ -518,6 +523,7 @@ class TestKotlinExtractorExceptionPaths:
         extractor.content_lines = []
 
         mock_node = Mock()
+        mock_node.parent = None
         mock_node.start_point = Mock(side_effect=Exception("test error"))
 
         result = extractor._extract_class(mock_node)
@@ -529,6 +535,7 @@ class TestKotlinExtractorExceptionPaths:
         extractor.content_lines = []
 
         mock_node = Mock()
+        mock_node.parent = None
         mock_node.start_point = Mock(side_effect=Exception("test error"))
 
         result = extractor._extract_property(mock_node)
@@ -540,6 +547,7 @@ class TestKotlinExtractorExceptionPaths:
         extractor.content_lines = []
 
         mock_node = Mock()
+        mock_node.parent = None
         mock_node.start_point = Mock(side_effect=Exception("test error"))
 
         result = extractor._extract_import(mock_node)
@@ -551,6 +559,7 @@ class TestKotlinExtractorExceptionPaths:
         extractor.content_lines = ["import"]
 
         mock_node = Mock()
+        mock_node.parent = None
         mock_node.start_point = (0, 0)
         mock_node.end_point = (0, 6)
         mock_node.start_byte = 0
@@ -563,5 +572,6 @@ class TestKotlinExtractorExceptionPaths:
     def test_extract_docstring(self, extractor):
         """Test docstring extraction."""
         mock_node = Mock()
+        mock_node.parent = None
         result = extractor._extract_docstring(mock_node)
         assert result is None

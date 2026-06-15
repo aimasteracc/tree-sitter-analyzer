@@ -125,7 +125,9 @@ class TestQueryExecutorExecuteQuery:
         assert executor._execution_stats["total_queries"] == 1
         assert executor._execution_stats["successful_queries"] == 1
         assert executor._execution_stats["failed_queries"] == 0
-        assert executor._execution_stats["total_execution_time"] >= 0
+        assert (
+            executor._execution_stats["total_execution_time"] >= 0
+        )  # ratchet: nondeterministic wall-clock elapsed time
 
 
 class TestQueryExecutorExecuteQueryWithLanguageName:
@@ -451,7 +453,7 @@ class TestQueryExecutorGetAvailableQueries:
         queries = executor.get_available_queries("python")
 
         assert isinstance(queries, list)
-        assert len(queries) >= 0
+        assert len(queries) == 88
 
     def test_get_available_queries_empty_language(self):
         """测试空语言获取查询"""
@@ -459,7 +461,7 @@ class TestQueryExecutorGetAvailableQueries:
         queries = executor.get_available_queries("")
 
         assert isinstance(queries, list)
-        assert len(queries) >= 0
+        assert len(queries) == 0
 
 
 class TestQueryExecutorGetQueryDescription:
@@ -549,9 +551,13 @@ class TestQueryExecutorGetQueryStatistics:
         assert stats["total_queries"] == 1
         assert stats["successful_queries"] == 1
         assert stats["failed_queries"] == 0
-        assert stats["total_execution_time"] >= 0
+        assert (
+            stats["total_execution_time"] >= 0
+        )  # ratchet: nondeterministic wall-clock elapsed time
         assert stats["success_rate"] == 1.0
-        assert stats["average_execution_time"] >= 0
+        assert (
+            stats["average_execution_time"] >= 0
+        )  # ratchet: nondeterministic wall-clock elapsed time
 
 
 class TestQueryExecutorResetStatistics:

@@ -20,6 +20,7 @@ from ...utils import setup_logger
 from ..utils.auto_index_guard import ensure_indexed, is_indexed
 from ..utils.format_helper import apply_toon_format_to_response
 from ._response_builder import build_error, build_response
+from ._validators import invalid_enum_error
 from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
@@ -77,8 +78,9 @@ class CodeGraphIncrementalSyncTool(BaseMCPTool):
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         mode = arguments.get("mode", "sync")
-        if mode not in ("sync", "changes", "status"):
-            raise ValueError(f"Invalid mode: {mode}")
+        valid_modes = ["sync", "changes", "status"]
+        if mode not in valid_modes:
+            raise invalid_enum_error("mode", mode, valid_modes)
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -119,7 +121,10 @@ class CodeGraphIncrementalSyncTool(BaseMCPTool):
         try:
             sync_result = sync.sync(max_files=max_files)
         except Exception as exc:
-            result = build_error(error=f"Sync failed: {exc}")
+            logger.exception("Incremental sync raised %s", type(exc).__name__)
+            result = build_error(
+                error=f"Sync failed ({type(exc).__name__}): {exc}",
+            )
             return apply_toon_format_to_response(result, output_format)
 
         result = build_response(

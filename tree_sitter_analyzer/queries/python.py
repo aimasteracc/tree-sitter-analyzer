@@ -16,11 +16,6 @@ FUNCTIONS = """
     name: (identifier) @function.name
     parameters: (parameters) @function.params
     body: (block) @function.body) @function.definition
-
-(function_definition
-    name: (identifier) @function.name
-    parameters: (parameters) @function.params
-    body: (block) @function.body) @function.async
 """
 
 # Class definitions

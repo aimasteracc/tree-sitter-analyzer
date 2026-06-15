@@ -85,18 +85,40 @@ def extract_use_statement(
     node: Any,
     get_node_text: Callable[..., str],
 ) -> list[Import]:
-    """Extract use statement elements.
+    """Extract use statement elements from a ``namespace_use_declaration``.
 
     r37co (dogfood): extracted per-clause logic to flatten nesting 7 → 3.
+
+    #617: handles the declaration shapes of tree-sitter-php 0.24:
+    - simple/function/const/aliased use → direct ``namespace_use_clause``
+      children;
+    - group use (``use App\\Models\\{User, Post};``) → clauses nested inside
+      a ``namespace_use_group``, prefixed by the sibling ``namespace_name``.
+
+    Class-body trait use (``use TraitName;``) parses as ``use_declaration``,
+    a different node type, and is intentionally NOT an import — it is
+    composition, not a namespace binding.
     """
     imports: list[Import] = []
     try:
+        group_prefix = ""
         for child in node.children:
-            if child.type != "namespace_use_clause":
-                continue
-            imp = _build_use_clause_import(node, child, get_node_text)
-            if imp is not None:
-                imports.append(imp)
+            if child.type == "namespace_name":
+                # Group-use form: the shared namespace prefix.
+                group_prefix = get_node_text(child)
+            elif child.type == "namespace_use_clause":
+                imp = _build_use_clause_import(node, child, get_node_text)
+                if imp is not None:
+                    imports.append(imp)
+            elif child.type == "namespace_use_group":
+                for clause in child.children:
+                    if clause.type != "namespace_use_clause":
+                        continue
+                    imp = _build_use_clause_import(
+                        node, clause, get_node_text, prefix=group_prefix
+                    )
+                    if imp is not None:
+                        imports.append(imp)
     except Exception as e:
         log_error(f"Error extracting use statement: {e}")
     return imports
@@ -106,19 +128,38 @@ def _build_use_clause_import(
     use_node: Any,
     clause_node: Any,
     get_node_text: Callable[..., str],
+    prefix: str = "",
 ) -> Import | None:
-    """Build one ``Import`` from a ``namespace_use_clause`` node."""
+    """Build one ``Import`` from a ``namespace_use_clause`` node.
+
+    #617 root cause: tree-sitter-php 0.24 exposes the imported name as a
+    plain ``qualified_name``/``name`` child (there is no ``name`` field on
+    the clause) — the old ``child_by_field_name("name")`` lookup always
+    returned ``None``, so PHP files reported 0 imports. Keep the field
+    lookup as a fast path for grammars that do provide it, fall back to
+    child iteration (the alias ``name`` always follows ``as``, so the
+    first match in document order is the imported name, never the alias).
+    """
     name_node = clause_node.child_by_field_name("name")
-    if not name_node:
+    if name_node is None:
+        for child in clause_node.children:
+            if child.type in ("qualified_name", "name"):
+                name_node = child
+                break
+    if name_node is None:
         return None
     alias_node = clause_node.child_by_field_name("alias")
     alias = get_node_text(alias_node) if alias_node else None
+    name = get_node_text(name_node)
+    if prefix:
+        name = f"{prefix}\\{name}"
     return Import(
-        name=get_node_text(name_node),
+        name=name,
         start_line=use_node.start_point[0] + 1,
         end_line=use_node.end_point[0] + 1,
         alias=alias,
         is_wildcard=False,
+        module_name=name,
     )
 
 
@@ -255,7 +296,7 @@ def extract_php_method_element(
             return_type = get_node_text(return_type_node)
 
         return Function(
-            name=f"{parent_class}::{name}" if parent_class else name,
+            name=name,  # bare name — owner lives in receiver_type (#535)
             start_line=node.start_point[0] + 1,
             end_line=node.end_point[0] + 1,
             visibility=visibility,
@@ -266,6 +307,8 @@ def extract_php_method_element(
             return_type=return_type,
             modifiers=modifiers,
             annotations=[{"name": attr["name"]} for attr in attributes],
+            receiver_type=parent_class if parent_class else None,
+            is_constructor=name == "__construct",
         )
     except Exception as e:
         log_error(f"Error extracting method element: {e}")
@@ -301,10 +344,11 @@ def extract_php_function_element(
         if return_type_node:
             return_type = get_node_text(return_type_node)
 
-        full_name = f"{current_namespace}\\{name}" if current_namespace else name
-
+        # #765: use bare name — consistent with class methods (always bare,
+        # receiver_type carries owner). Namespace-prefixed names broke symbol
+        # search ("createUser" not found when file has a namespace).
         return Function(
-            name=full_name,
+            name=name,
             start_line=node.start_point[0] + 1,
             end_line=node.end_point[0] + 1,
             visibility="public",
@@ -370,9 +414,10 @@ def _build_php_property_variable(
     if name_node is None:
         return None
     name = get_node_text(name_node).lstrip("$")
-    full_name = f"{parent_class}::{name}" if parent_class else name
+    # bare name — owner travels in receiver_type (#535, Codex P2: without it
+    # multi-class files collide on field names in structured output)
     return Variable(
-        name=full_name,
+        name=name,
         start_line=property_node.start_point[0] + 1,
         end_line=property_node.end_point[0] + 1,
         visibility=visibility,
@@ -382,6 +427,7 @@ def _build_php_property_variable(
         is_readonly="readonly" in modifiers,
         variable_type=var_type,
         modifiers=modifiers,
+        receiver_type=parent_class or None,
     )
 
 
@@ -420,13 +466,19 @@ def _build_php_constant_variable(
     visibility: str,
 ) -> Variable | None:
     """Build a ``Variable`` from one ``const_element`` AST child."""
+    # tree-sitter-php const_element carries NO ``name`` field — the
+    # identifier is a bare ``name`` child (#624; the field lookup silently
+    # dropped every const). Keep the field lookup first for grammar
+    # forward-compatibility, then fall back to the child scan.
     name_node = element_node.child_by_field_name("name")
+    if name_node is None:
+        name_node = next((c for c in element_node.children if c.type == "name"), None)
     if name_node is None:
         return None
     name = get_node_text(name_node)
-    full_name = f"{parent_class}::{name}" if parent_class else name
+    # bare name — owner travels in receiver_type (#535, Codex P2)
     return Variable(
-        name=full_name,
+        name=name,
         start_line=const_node.start_point[0] + 1,
         end_line=const_node.end_point[0] + 1,
         visibility=visibility,
@@ -435,4 +487,5 @@ def _build_php_constant_variable(
         is_final=True,
         variable_type="const",
         modifiers=modifiers,
+        receiver_type=parent_class or None,
     )

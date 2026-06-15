@@ -76,7 +76,7 @@ class TestCodeGraphSymbolSearchExecution:
         tool = CodeGraphSymbolSearchTool(str(indexed_project))
         result = await tool.execute({"query": "UserService", "output_format": "json"})
         assert result["success"] is True
-        assert result["match_count"] >= 1
+        assert result["match_count"] == 1
         names = [r["name"] for r in result["results"]]
         assert "UserService" in names
 
@@ -92,7 +92,10 @@ class TestCodeGraphSymbolSearchExecution:
         tool = CodeGraphSymbolSearchTool(str(indexed_project))
         result = await tool.execute({"query": "~user", "output_format": "json"})
         assert result["success"] is True
-        assert result["match_count"] >= 1
+        # 4 symbols contain "user": get_user, _find_user, format_user, UserService.
+        # UserService found via user* prefix on token "userservice" (#739) AND via
+        # linear-scan supplement that catches suffix matches FTS misses (#922).
+        assert result["match_count"] == 4
 
     async def test_wildcard_match(self, indexed_project):
         tool = CodeGraphSymbolSearchTool(str(indexed_project))
@@ -144,12 +147,12 @@ class TestCodeGraphSymbolSearchExecution:
     async def test_result_has_file_and_line(self, indexed_project):
         tool = CodeGraphSymbolSearchTool(str(indexed_project))
         result = await tool.execute({"query": "UserService", "output_format": "json"})
-        assert result["match_count"] >= 1
+        assert result["match_count"] == 1
         hit = result["results"][0]
         assert "file" in hit
         assert "line" in hit
         assert "code" in hit
-        assert hit["line"] > 0
+        assert hit["line"] == 1
 
     async def test_next_step_points_to_bulk_explore(self, indexed_project):
         tool = CodeGraphSymbolSearchTool(str(indexed_project))
@@ -160,7 +163,7 @@ class TestCodeGraphSymbolSearchExecution:
         """P2: top matches carry an inlined verbatim source body (no Read)."""
         tool = CodeGraphSymbolSearchTool(str(indexed_project))
         result = await tool.execute({"query": "get_user", "output_format": "json"})
-        assert result["match_count"] >= 1
+        assert result["match_count"] == 1
         hit = next(r for r in result["results"] if r["name"] == "get_user")
         assert "body" in hit, "top match must carry inlined body"
         assert "content" in hit["body"]
@@ -197,7 +200,9 @@ class TestCodeGraphSymbolSearchExecution:
         tool = CodeGraphSymbolSearchTool(str(indexed_project))
         result = await tool.execute({"query": "format_user", "output_format": "json"})
         assert result["success"] is True
-        assert result["match_count"] >= 1, "fixture must have a format_user symbol"
+        assert result["match_count"] == 1, (
+            "fixture must have exactly one format_user symbol"
+        )
         # Indexed project always has FTS5 via ASTCache.index_project
         assert result["data_source"] == "fts5", (
             f"expected fts5 data source, got {result['data_source']}"
@@ -208,6 +213,44 @@ class TestCodeGraphSymbolSearchExecution:
             )
             score = hit["relevance_score"]
             assert 0.0 <= score <= 1.0, f"score out of range: {score}"
+
+    async def test_fuzzy_suffix_finds_camelcase_class(self, indexed_project):
+        """#919: ~Service must match UserService via linear supplement when FTS5 is present.
+
+        FTS5 prefix matching ("service"*) only matches tokens that START with
+        "service" — it misses "userservice" because that token starts with "user".
+        _linear_search supplements FTS5 results to catch suffix matches FTS misses.
+        """
+        tool = CodeGraphSymbolSearchTool(str(indexed_project))
+        result = await tool.execute({"query": "~Service", "output_format": "json"})
+        assert result["success"] is True
+        names = [r["name"] for r in result["results"]]
+        assert "UserService" in names, (
+            f"~Service must find UserService via linear infix supplement; got {names}"
+        )
+
+    async def test_fuzzy_prefix_finds_camelcase_class(self, indexed_project):
+        """#739: ~User must match UserService via FTS5 prefix (user*), not exact-token."""
+        tool = CodeGraphSymbolSearchTool(str(indexed_project))
+        result = await tool.execute({"query": "~User", "output_format": "json"})
+        assert result["success"] is True
+        names = [r["name"] for r in result["results"]]
+        assert "UserService" in names, (
+            f"~User must find UserService via prefix match; got {names}"
+        )
+
+    async def test_fuzzy_special_chars_do_not_crash(self, indexed_project):
+        """Codex P2 / #739: ~foo-bar must not raise sqlite3.OperationalError.
+
+        Plain term* drops quoting, so FTS5 special chars (-, ., :) in the query
+        cause a syntax error.  Quoted-prefix ("term"*) is always safe.
+        """
+        tool = CodeGraphSymbolSearchTool(str(indexed_project))
+        for bad_query in ["~foo-bar", "~foo.bar", "~foo:bar"]:
+            result = await tool.execute({"query": bad_query, "output_format": "json"})
+            assert result["success"] is True, (
+                f"Query {bad_query!r} must not crash; got {result}"
+            )
 
     async def test_plain_query_cascade_fuzzy_finds_typo(self, indexed_project):
         tool = CodeGraphSymbolSearchTool(str(indexed_project))
@@ -337,7 +380,7 @@ class TestCodeGraphSymbolSearchSourceContext:
         class LinearOnlyCache:
             fts5_available = False
 
-            def search_symbols(self, query, language=None):
+            def _search_symbols_linear(self, query, language=None):
                 assert query == "UserService"
                 assert language == "python"
                 return [
@@ -401,6 +444,79 @@ class TestCodeGraphSymbolSearchSourceContext:
         assert results[1]["match_tier"] == "fts5"
         assert results[1]["relevance_score"] == 0.7
 
+    def test_fuzzy_merge_supplements_fts_with_linear_suffix_hits(self):
+        """Codex P2 (#922): FTS5 returning partial token matches must be supplemented
+        by linear scan so suffix-only symbols (UserService when searching ~Service)
+        appear even when FTS5 found an exact-token match (Service class).
+        """
+        import sqlite3
+
+        class FTSAndLinearCache:
+            fts5_available = True
+
+            def get_conn(self):
+                conn = sqlite3.connect(":memory:")
+                conn.row_factory = sqlite3.Row
+                conn.execute(
+                    "CREATE VIRTUAL TABLE ast_symbols_fts USING fts5(name, kind, docstring)"
+                )
+                conn.execute(
+                    "CREATE TABLE ast_symbol_rows"
+                    "(id INTEGER PRIMARY KEY, name TEXT, kind TEXT, file_path TEXT,"
+                    " language TEXT, line INTEGER, end_line INTEGER)"
+                )
+                # "Service" tokenizes to "service" — FTS5 exact match
+                conn.execute(
+                    "INSERT INTO ast_symbol_rows VALUES (1,'Service','class','svc.py','python',1,10)"
+                )
+                conn.execute(
+                    "INSERT INTO ast_symbols_fts(rowid,name,kind) VALUES (1,'Service','class')"
+                )
+                # "UserService" tokenizes to "userservice" — NOT found by "Service" FTS token
+                conn.execute(
+                    "INSERT INTO ast_symbol_rows VALUES (2,'UserService','class','app.py','python',5,20)"
+                )
+                conn.execute(
+                    "INSERT INTO ast_symbols_fts(rowid,name,kind) VALUES (2,'UserService','class')"
+                )
+                conn.commit()
+                return conn
+
+            def _search_symbols_linear(self, query, language=None):
+                # Linear scan finds both via substring match
+                return [
+                    {
+                        "name": "Service",
+                        "kind": "class",
+                        "file": "svc.py",
+                        "language": "python",
+                        "line": 1,
+                        "end_line": 10,
+                    },
+                    {
+                        "name": "UserService",
+                        "kind": "class",
+                        "file": "app.py",
+                        "language": "python",
+                        "line": 5,
+                        "end_line": 20,
+                    },
+                ]
+
+        tool = CodeGraphSymbolSearchTool()
+        results = tool._fuzzy_search(
+            FTSAndLinearCache(), "Service", language=None, kind="any", limit=10
+        )
+        names = [r["name"] for r in results]
+        assert "Service" in names, f"FTS5 hit Service must appear; got {names}"
+        assert "UserService" in names, (
+            f"Linear supplement must add UserService; got {names}"
+        )
+        # FTS hit comes first (has relevance_score); linear supplement has no score
+        assert results[0]["name"] == "Service"
+        service_hit = next(r for r in results if r["name"] == "Service")
+        assert "relevance_score" in service_hit, "FTS hit must carry relevance_score"
+
     def test_add_source_context_skips_invalid_line_numbers(self, indexed_project):
         tool = CodeGraphSymbolSearchTool(str(indexed_project))
         results = [{"file": "app.py", "line": 0}]
@@ -448,3 +564,58 @@ class TestCodeGraphSymbolSearchRegistration:
 
         _, tools = _create_tool_registry(None)
         assert "callees" in tools["nav"].bespoke_map
+
+
+# ---------------------------------------------------------------------------
+# Issue #540 — Leg 2: positive-int validation for limit
+# ---------------------------------------------------------------------------
+
+
+class TestSymbolSearchLimitValidation:
+    """validate_arguments must reject limit <= 0."""
+
+    def test_negative_limit_raises(self):
+        tool = CodeGraphSymbolSearchTool()
+        with pytest.raises(ValueError, match="limit"):
+            tool.validate_arguments({"query": "foo", "limit": -5})
+
+    def test_zero_limit_raises(self):
+        tool = CodeGraphSymbolSearchTool()
+        with pytest.raises(ValueError, match="limit"):
+            tool.validate_arguments({"query": "foo", "limit": 0})
+
+    def test_positive_limit_passes(self):
+        tool = CodeGraphSymbolSearchTool()
+        # Must not raise
+        tool.validate_arguments({"query": "foo", "limit": 1})
+
+
+class TestSymbolSearchTruncation:
+    """#736: truncated flag must be set when results hit the limit."""
+
+    @pytest.mark.asyncio
+    async def test_not_truncated_when_below_limit(self, indexed_project):
+        """Few results → truncated must be False."""
+        tool = CodeGraphSymbolSearchTool(str(indexed_project))
+        # Searching 'UserService' returns 1 result; limit defaults to 15
+        result = await tool.execute({"query": "UserService", "output_format": "json"})
+        assert result["truncated"] is False
+
+    @pytest.mark.asyncio
+    async def test_truncated_when_at_limit(self, indexed_project):
+        """Results == limit → truncated must be True and next_step advises raising limit."""
+        tool = CodeGraphSymbolSearchTool(str(indexed_project))
+        # Set limit=1 — with 5 symbols total, 1 result == limit → truncated
+        result = await tool.execute({"query": "*", "limit": 1, "output_format": "json"})
+        if result["match_count"] == 1:
+            assert result["truncated"] is True
+            assert "limit" in result["next_step"].lower()
+
+    @pytest.mark.asyncio
+    async def test_truncated_field_always_present(self, indexed_project):
+        """truncated key must always exist in the response envelope."""
+        tool = CodeGraphSymbolSearchTool(str(indexed_project))
+        result = await tool.execute(
+            {"query": "nonexistent_xyz", "output_format": "json"}
+        )
+        assert "truncated" in result

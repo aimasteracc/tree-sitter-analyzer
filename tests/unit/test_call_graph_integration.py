@@ -80,9 +80,9 @@ class TestCallGraphBuild:
         cg = CallGraph(str(PY_PROJECT))
         cg.build()
         s = cg.summary()
-        assert s["function_count"] > 0
-        assert s["call_edge_count"] >= 0
-        assert s["file_count"] > 0
+        assert s["function_count"] == 15
+        assert s["call_edge_count"] == 8
+        assert s["file_count"] == 5
 
 
 class TestCallGraphCallersOf:
@@ -131,12 +131,12 @@ class TestCallChain:
         cg = CallGraph(str(PY_PROJECT))
         cg.build()
         chain = cg.call_chain("main", depth=3)
-        assert len(chain) > 0
+        assert len(chain) == 4
         for edge in chain:
             assert "caller" in edge
             assert "callee" in edge
             assert "depth" in edge
-            assert edge["depth"] >= 1
+            assert edge["depth"] == 1
 
     def test_call_chain_depth_limit(self):
         cg = CallGraph(str(PY_PROJECT))
@@ -167,7 +167,7 @@ class TestCallGraphPythonClassMethods:
         user_service_methods = [
             f for f in funcs if f["name"] in ("get_user", "delete_user", "_fetch")
         ]
-        assert len(user_service_methods) >= 1
+        assert len(user_service_methods) == 6
         for m in user_service_methods:
             if "receiver" in m:
                 assert m["receiver"] == "UserService"
@@ -214,7 +214,7 @@ class TestCallGraphJavaProject:
         cg.build()
         funcs = cg.all_functions()
         names = {f["name"] for f in funcs}
-        assert len(names) > 0
+        assert len(names) == 5
 
     def test_java_callers(self):
         cg = CallGraph(str(JAVA_PROJECT))
@@ -226,8 +226,8 @@ class TestCallGraphJavaProject:
 class TestCallGraphInternalMethods:
     def test_find_enclosing_func(self):
         cg = CallGraph(str(PY_PROJECT))
-        ref1 = FunctionRef("main.py", "foo", 10, "python")
-        ref2 = FunctionRef("main.py", "bar", 5, "python")
+        ref1 = FunctionRef("main.py", "foo", 10, "python", end_line=20)
+        ref2 = FunctionRef("main.py", "bar", 5, "python", end_line=8)
         file_funcs = {"foo": ref1, "bar": ref2}
         result = cg.find_enclosing_func(file_funcs, 12)
         assert result is not None
@@ -235,8 +235,8 @@ class TestCallGraphInternalMethods:
 
     def test_find_enclosing_func_tightest(self):
         cg = CallGraph(str(PY_PROJECT))
-        ref1 = FunctionRef("main.py", "outer", 1, "python")
-        ref2 = FunctionRef("main.py", "inner", 5, "python")
+        ref1 = FunctionRef("main.py", "outer", 1, "python", end_line=20)
+        ref2 = FunctionRef("main.py", "inner", 5, "python", end_line=10)
         file_funcs = {"outer": ref1, "inner": ref2}
         result = cg.find_enclosing_func(file_funcs, 7)
         assert result is not None
@@ -333,7 +333,7 @@ class TestCallGraphPublicAdjacencyAPI:
         refs1 = cg.all_function_refs()
         refs1.clear()
         refs2 = cg.all_function_refs()
-        assert len(refs2) > 0
+        assert len(refs2) == 15
 
     def test_all_function_refs_count_matches_all_functions(self):
         cg = CallGraph(str(PY_PROJECT))
@@ -352,7 +352,7 @@ class TestCallGraphPublicAdjacencyAPI:
         cm1 = cg.callers_map()
         cm1.clear()
         cm2 = cg.callers_map()
-        assert len(cm2) > 0
+        assert len(cm2) == 7
 
     def test_callees_map_returns_dict(self):
         cg = CallGraph(str(PY_PROJECT))
@@ -367,7 +367,7 @@ class TestCallGraphPublicAdjacencyAPI:
         cm1 = cg.callees_map()
         cm1.clear()
         cm2 = cg.callees_map()
-        assert len(cm2) > 0
+        assert len(cm2) == 5
 
     def test_functions_by_file_keys_are_strings(self):
         cg = CallGraph(str(PY_PROJECT))
@@ -384,7 +384,7 @@ class TestCallGraphPublicAdjacencyAPI:
         fbf1 = cg.functions_by_file()
         fbf1.clear()
         fbf2 = cg.functions_by_file()
-        assert len(fbf2) > 0
+        assert len(fbf2) == 5
 
     def test_resolve_targets_returns_function_refs(self):
         cg = CallGraph(str(PY_PROJECT))
@@ -406,7 +406,7 @@ class TestCallGraphPublicAdjacencyAPI:
         callers = cg.callers_of("load_data")
         # If symbol exists, both resolve correctly
         if refs:
-            assert len(callers) >= 0  # callers_of may return 0 even if symbol exists
+            assert len(callers) == 1  # main calls load_data
 
 
 class TestCallGraphAllCallEdges:
@@ -425,8 +425,8 @@ class TestCallGraphAllCallEdges:
         cg = CallGraph(str(PY_PROJECT))
         # Graph not yet built — calling all_call_edges() should trigger build.
         # After the call, functions and edges are populated.
-        assert len(cg.all_call_edges()) >= 0
-        assert len(cg.all_functions()) > 0
+        assert len(cg.all_call_edges()) == 8
+        assert len(cg.all_functions()) == 15
 
     def test_all_call_edges_count_matches_summary(self):
         """all_call_edges() count must match the summary call_edge_count."""
@@ -441,4 +441,4 @@ class TestCallGraphAllCallEdges:
         edges1 = cg.all_call_edges()
         edges1.clear()
         edges2 = cg.all_call_edges()
-        assert len(edges2) > 0  # internal list unaffected
+        assert len(edges2) == 8  # internal list unaffected

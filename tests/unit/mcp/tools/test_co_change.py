@@ -231,6 +231,67 @@ def test_cache_hit_skips_subprocess() -> None:
     assert result1["co_changed_files"] == result2["co_changed_files"]
 
 
+def test_cache_key_includes_result_shaping_parameters() -> None:
+    """Changing max_commits/min_shared/max_results must trigger a fresh log walk."""
+    small_window = [(_sha(i), ["src/handler.py"]) for i in range(5)]
+    large_window = [(_sha(i), ["src/handler.py", "src/schema.py"]) for i in range(12)]
+    head_sha = "ca" * 20
+
+    with patch(
+        "tree_sitter_analyzer.mcp.tools.utils.co_change._run_git"
+    ) as mock_run_git:
+        mock_run_git.side_effect = [
+            (0, head_sha),
+            (0, _make_git_log(small_window)),
+            (0, head_sha),
+            (0, _make_git_log(large_window)),
+        ]
+        _CO_CHANGE_CACHE.clear()
+        result1 = _compute_co_change(
+            "/fake/repo",
+            "src/handler.py",
+            max_commits=5,
+            min_shared=3,
+            max_results=20,
+        )
+        result2 = _compute_co_change(
+            "/fake/repo",
+            "src/handler.py",
+            max_commits=500,
+            min_shared=4,
+            max_results=1,
+        )
+
+    assert mock_run_git.call_count == 4
+    assert result1["commits_analyzed"] == 5
+    assert result1["window"] == "last 5 commits"
+    assert result2["commits_analyzed"] == 12
+    assert result2["window"] == "last 500 commits"
+    assert result2["co_changed_files"] == [
+        {"file": "src/schema.py", "shared_commits": 12, "lift": 1.0}
+    ]
+
+
+def test_git_log_walks_from_head_explicitly() -> None:
+    """Detached worktrees must walk history reachable from HEAD, not a branch ref."""
+    commits = [(_sha(i), ["src/handler.py"]) for i in range(3)]
+    head_sha = "cb" * 20
+
+    with patch(
+        "tree_sitter_analyzer.mcp.tools.utils.co_change._run_git"
+    ) as mock_run_git:
+        mock_run_git.side_effect = [
+            (0, head_sha),
+            (0, _make_git_log(commits)),
+        ]
+        _CO_CHANGE_CACHE.clear()
+        _compute_co_change("/fake/repo", "src/handler.py", max_commits=10)
+
+    log_args = mock_run_git.call_args_list[1].args[0]
+    assert "HEAD" in log_args
+    assert log_args[-1] == "HEAD"
+
+
 # ---------------------------------------------------------------------------
 # 4. min_shared filter
 # ---------------------------------------------------------------------------
@@ -717,15 +778,17 @@ def test_lru_cache_evicts_at_maxsize() -> None:
 
     # Fill to exactly maxsize
     for i in range(_CO_CHANGE_CACHE_MAXSIZE):
-        _co_change_cache_put((f"/repo{i}", "f.py", f"sha{i:040x}"), sentinel)
+        _co_change_cache_put(
+            (f"/repo{i}", "f.py", f"sha{i:040x}", 500, 3, 20), sentinel
+        )
 
     assert len(_CO_CHANGE_CACHE) == _CO_CHANGE_CACHE_MAXSIZE
 
     # One more entry must evict the oldest
-    _co_change_cache_put(("/repo_new", "f.py", "a" * 40), sentinel)
+    _co_change_cache_put(("/repo_new", "f.py", "a" * 40, 500, 3, 20), sentinel)
     assert len(_CO_CHANGE_CACHE) == _CO_CHANGE_CACHE_MAXSIZE
     # oldest key evicted
-    assert ("/repo0", "f.py", f"{'0' * 40}") not in _CO_CHANGE_CACHE
+    assert ("/repo0", "f.py", f"{'0' * 40}", 500, 3, 20) not in _CO_CHANGE_CACHE
 
     _CO_CHANGE_CACHE.clear()
 

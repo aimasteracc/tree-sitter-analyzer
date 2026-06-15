@@ -34,7 +34,7 @@ class TestRegexSafetyCheckerInitialization:
 
     def test_dangerous_patterns_list(self):
         """测试危险模式列表"""
-        assert len(RegexSafetyChecker.DANGEROUS_PATTERNS) > 0
+        assert len(RegexSafetyChecker.DANGEROUS_PATTERNS) == 13
         assert isinstance(RegexSafetyChecker.DANGEROUS_PATTERNS, list)
         assert all(isinstance(p, str) for p in RegexSafetyChecker.DANGEROUS_PATTERNS)
 
@@ -350,7 +350,7 @@ class TestAnalyzeComplexity:
         checker = RegexSafetyChecker()
         metrics = checker.analyze_complexity(r"a+b*c?")
         assert metrics["quantifiers"] == 3
-        assert metrics["complexity_score"] > 0
+        assert metrics["complexity_score"] == 6
 
     def test_analyze_complexity_with_groups(self):
         """测试带分组的模式复杂度分析"""
@@ -382,7 +382,7 @@ class TestAnalyzeComplexity:
         metrics = checker.analyze_complexity(r"^test[a-z]+\.py$")
 
         # Verify score is calculated and positive
-        assert metrics["complexity_score"] > 0
+        assert metrics["complexity_score"] == 4
         # Verify individual metrics are calculated correctly
         # Pattern: ^test[a-z]+\.py$ has length 16
         assert metrics["length"] == 16
@@ -620,7 +620,7 @@ class TestIntegration:
 
         # Analyze complexity
         metrics = checker.analyze_complexity(r"^test[a-z]+\.py$")
-        assert metrics["length"] > 0
+        assert metrics["length"] == 16
 
         # Create safe pattern
         pattern = checker.create_safe_pattern(r"^test[a-z]+\.py$")
@@ -651,15 +651,15 @@ class TestIntegration:
         """测试复杂度分析工作流"""
         checker = RegexSafetyChecker()
 
-        patterns = [
-            r"simple",
-            r"test[a-z]+",
-            r"^(test|demo)+[a-z]{3}$",
-            r"(?P<name>[a-z]+)(?P<value>\d+)",
-        ]
+        pattern_expected_scores = {
+            r"simple": 0,
+            r"test[a-z]+": 4,
+            r"^(test|demo)+[a-z]{3}$": 11,
+            r"(?P<name>[a-z]+)(?P<value>\d+)": 15,
+        }
 
-        for pattern in patterns:
+        for pattern, expected_score in pattern_expected_scores.items():
             metrics = checker.analyze_complexity(pattern)
             assert "length" in metrics
             assert "complexity_score" in metrics
-            assert metrics["complexity_score"] >= 0
+            assert metrics["complexity_score"] == expected_score

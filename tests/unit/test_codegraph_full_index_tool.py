@@ -70,3 +70,30 @@ class TestExecute:
         result = await tool_with_root.execute({"mode": "incremental"})
         assert result["format"] == "toon"
         assert "toon_content" in result
+
+    async def test_verdict_is_warn_when_incremental_sync_has_errors(
+        self, tool_with_root
+    ):
+        """#860: DB flush errors in incremental_sync must escalate verdict to WARN."""
+        from unittest.mock import patch
+
+        from tree_sitter_analyzer.incremental_sync import SyncResult
+
+        bad_result = SyncResult(
+            scanned=5,
+            new_files=0,
+            updated_files=0,
+            deleted_files=0,
+            unchanged_files=5,
+            errors=1,
+        )
+        with patch("tree_sitter_analyzer.incremental_sync.IncrementalSync") as MockSync:
+            MockSync.return_value.sync.return_value = bad_result
+            result = await tool_with_root.execute(
+                {"mode": "incremental", "output_format": "json"}
+            )
+
+        assert result["success"] is True
+        assert result["verdict"] == "WARN"
+        assert result["phases"]["incremental_sync"]["status"] == "error"
+        assert result["phases"]["incremental_sync"]["errors"] == 1

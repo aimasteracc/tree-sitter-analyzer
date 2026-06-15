@@ -83,7 +83,7 @@ class TestXRefEngineSymbol:
         assert isinstance(result, XRefResult)
         assert result.symbol == "alpha"
         assert result.data_source == "cache"
-        assert len(result.definitions) >= 1
+        assert len(result.definitions) == 1
         assert result.definitions[0]["name"] == "alpha"
         assert result.definitions[0]["kind"] == "function"
 
@@ -127,7 +127,7 @@ class TestXRefEngineSymbol:
         _, cache = indexed_project
         engine = XRefEngine(cache)
         result = engine.xref("beta", file_path="b.py")
-        assert len(result.definitions) >= 1
+        assert len(result.definitions) == 1
         assert result.definitions[0]["file"] == "b.py"
 
     def test_xref_unknown_symbol(self, indexed_project):
@@ -160,7 +160,7 @@ class TestXRefEngineFile:
         engine = XRefEngine(cache)
         result = engine.file_xref("a.py")
         assert result["file"] == "a.py"
-        assert result["symbol_count"] >= 2
+        assert result["symbol_count"] == 2
         assert result["data_source"] == "cache"
 
     def test_file_xref_symbols(self, indexed_project):
@@ -176,6 +176,94 @@ class TestXRefEngineFile:
         engine = XRefEngine(cache)
         result = engine.file_xref("nonexistent.py")
         assert result["symbol_count"] == 0
+
+    def test_file_xref_inbound_callers_resolved(self, indexed_project):
+        # #669 Codex P2: the file-mode inbound counts were structurally always 0
+        # (caller query bound `file_path = ? AND file_path != ?`; file-dependent
+        # query selected edges where THIS file is the caller, then discarded them
+        # all). a.py defines alpha/gamma; b.delta() and c.epsilon() both call
+        # alpha() from other files, so the real inbound count is exactly 2.
+        _, cache = indexed_project
+        engine = XRefEngine(cache)
+        result = engine.file_xref("a.py")
+        assert result["caller_count"] == 2
+        caller_files = sorted(c["caller_file"] for c in result["callers"])
+        assert caller_files == ["b.py", "c.py"]
+        assert result["file_dependent_count"] == 2
+        assert sorted(d["file"] for d in result["file_dependents"]) == ["b.py", "c.py"]
+
+    def test_symbol_xref_file_dependents_resolved(self, indexed_project):
+        # Same shared `_find_file_dependents` bug surfaced in symbol mode: alpha
+        # is called from b.py and c.py, so file_dependents is exactly those two.
+        _, cache = indexed_project
+        engine = XRefEngine(cache)
+        result = engine.xref("alpha")
+        assert sorted(d["file"] for d in result.file_dependents) == ["b.py", "c.py"]
+
+    def test_file_xref_excludes_same_name_resolved_to_other_file(self, tmp_path):
+        # Codex P2 (round 2): bare callee_name matching over-counts when two
+        # files define the same callable. a.py and b.py both define `helper`;
+        # c.py calls the resolved `b.helper` (callee_resolved_file='b.py'). The
+        # callee_resolved_file gate must keep c.py OUT of a.py's callers and IN
+        # b.py's — name-only matching wrongly credited a.py with c.py.
+        project = tmp_path / "proj_same_name"
+        project.mkdir()
+        (project / "a.py").write_text("def helper():\n    pass\n")
+        (project / "b.py").write_text("def helper():\n    pass\n")
+        (project / "c.py").write_text("import b\n\ndef caller():\n    b.helper()\n")
+        cache = ASTCache(str(project))
+        cache.index_project(max_files=100)
+        engine = XRefEngine(cache)
+        a_result = engine.file_xref("a.py")
+        assert a_result["caller_count"] == 0
+        assert a_result["file_dependent_count"] == 0
+        b_result = engine.file_xref("b.py")
+        assert b_result["caller_count"] == 1
+        assert [c["caller_file"] for c in b_result["callers"]] == ["c.py"]
+        assert [d["file"] for d in b_result["file_dependents"]] == ["c.py"]
+
+    def test_file_xref_chunks_large_symbol_list(self, tmp_path, monkeypatch):
+        # Codex P2 (round 5): a file with more symbols than SQLite's bound-var
+        # cap (999 on capped builds) would raise "too many SQL variables" in the
+        # IN(...) query. The name list must be chunked. Modern SQLite defaults to
+        # 32766 vars so the raw limit can't be hit portably in a test — instead
+        # shrink the chunk size and assert multi-chunk concatenation + dedup
+        # still resolves the inbound call correctly. big.py defines 5 functions;
+        # caller.py calls the resolved big.f3(); chunk size 2 → 3 chunks.
+        import tree_sitter_analyzer.xref as xref_mod
+
+        monkeypatch.setattr(xref_mod, "_XREF_NAME_CHUNK", 2)
+        project = tmp_path / "proj_big"
+        project.mkdir()
+        (project / "big.py").write_text(
+            "".join(f"def f{i}():\n    pass\n\n" for i in range(5))
+        )
+        (project / "caller.py").write_text("import big\n\ndef use():\n    big.f3()\n")
+        cache = ASTCache(str(project))
+        cache.index_project(max_files=100)
+        engine = XRefEngine(cache)
+        result = engine.file_xref("big.py")
+        assert result["caller_count"] == 1
+        assert [c["caller_file"] for c in result["callers"]] == ["caller.py"]
+        assert [d["file"] for d in result["file_dependents"]] == ["caller.py"]
+
+    def test_file_xref_excludes_unresolved_stdlib_name_collision(self, tmp_path):
+        # Codex P2 (round 4): the resolved-only gate must NOT fall back to
+        # name-only for unresolved rows. a.py defines `format`; b.py calls
+        # str.format via "x".format() — an unresolved edge (callee_name='format',
+        # callee_resolved_file=''). It must NOT be credited to a.py, or every
+        # file defining a common method name (format/get/items) over-reports its
+        # blast radius.
+        project = tmp_path / "proj_stdlib"
+        project.mkdir()
+        (project / "a.py").write_text("def format():\n    pass\n")
+        (project / "b.py").write_text('def use():\n    return "x".format()\n')
+        cache = ASTCache(str(project))
+        cache.index_project(max_files=100)
+        engine = XRefEngine(cache)
+        a_result = engine.file_xref("a.py")
+        assert a_result["caller_count"] == 0
+        assert a_result["file_dependent_count"] == 0
 
     def test_file_xref_includes_methods(self, tmp_path):
         """Codex P2 on #314: class methods (kind='method') must appear in file
@@ -200,7 +288,7 @@ class TestXRefEngineFile:
         assert "process" in names, f"method missing from xref: {names}"
         assert "Service" in names
         # class + 2 methods, all surfaced.
-        assert result["symbol_count"] >= 3
+        assert result["symbol_count"] == 3
 
 
 class TestXRefResult:
