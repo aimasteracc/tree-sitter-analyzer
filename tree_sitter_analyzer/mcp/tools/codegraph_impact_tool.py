@@ -127,6 +127,13 @@ def _compute_risk_score(
             "tests": {"test_callers_count": 0, "test_callees_count": 0},
         }
 
+    # Ambiguity guard (#799): multiple definitions of the same name exist.
+    # Picking targets[0] silently would produce misleading low-risk verdicts for
+    # highly-overloaded names (e.g. 'execute' across 30+ MCP tool classes).
+    # Surface candidate_count and ambiguous flag so callers can warn the user.
+    candidate_count = len(targets)
+    ambiguous = candidate_count > 1 and file_path is None
+
     target = targets[0]
     all_callers = graph.caller_refs_of(target)
     all_callees = graph.callee_refs_of(target)
@@ -195,7 +202,7 @@ def _compute_risk_score(
         tests_bucket["test_caller_files"] = sorted({r.file_path for r in test_callers})
         tests_bucket["test_callee_files"] = sorted({r.file_path for r in test_callees})
 
-    return {
+    result: dict[str, Any] = {
         "score": score,
         "level": level,
         "factors": factors,
@@ -203,6 +210,14 @@ def _compute_risk_score(
         "file": target.file_path,
         "tests": tests_bucket,
     }
+    if ambiguous:
+        # Do NOT emit a confident verdict — the picked candidate may not be the
+        # one the caller intended. Flip level to "unknown" so the facade emits
+        # a warning next_step instead of "low risk, proceed".
+        result["ambiguous"] = True
+        result["candidate_count"] = candidate_count
+        result["level"] = "unknown"
+    return result
 
 
 def _blast_radius_for_functions(
@@ -484,6 +499,16 @@ class CodeGraphImpactTool(BaseMCPTool):
             next_step = (
                 "Symbol not found in the call graph. "
                 "Check the function name or run index action=auto."
+            )
+        elif result.get("ambiguous"):
+            # #799: multiple definitions; the picked candidate may not be the
+            # intended one — do NOT say "proceed with edit".
+            candidate_count = result.get("candidate_count", 2)
+            next_step = (
+                f"Ambiguous symbol — {candidate_count} definitions found. "
+                "Re-run with file_path to disambiguate "
+                "(e.g. nav action=impact mode=risk_score "
+                "function_name=execute file_path=path/to/file.py)."
             )
         elif verdict in ("CAUTION", "REVIEW"):
             next_step = (
