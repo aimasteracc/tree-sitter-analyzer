@@ -183,6 +183,16 @@ _CLASS_LIKE = frozenset(
     | _ENUM_LIKE
 )
 
+_SCALA_CLASS_LIKE = frozenset(
+    {
+        "object_definition",
+        "trait_definition",
+        "enum_definition",
+        "given_definition",
+        "type_definition",
+    }
+)
+
 _IMPORT_LIKE = frozenset(
     {
         "import_statement",
@@ -433,6 +443,19 @@ _CSHARP_SCOPE_BODY_NODES = frozenset(
         "lambda_expression",
         "anonymous_method_expression",
         "ERROR",
+    }
+)
+
+# #961: Scala method bodies must mark their descendants as enclosed so a
+# method-local ``given``/``type`` is NOT emitted as a top-level class-like
+# symbol (mirrors the scala_plugin path, which ``continue``s instead of
+# descending into ``function_definition``/``function_declaration``). The
+# scope node itself is enough — gating on it makes the body container
+# (``block`` / ``indented_block``) and everything below it enclosed.
+_SCALA_SCOPE_BODY_NODES = frozenset(
+    {
+        "function_definition",
+        "function_declaration",
     }
 )
 
@@ -849,6 +872,50 @@ def _bash_subscript_base(subscript: Any) -> Any:
     return None
 
 
+def _scala_symbol_from_node(node: Any, source: str) -> dict[str, Any] | None:
+    node_type = node.type
+    if node_type not in _SCALA_CLASS_LIKE:
+        return None
+    name = _scala_symbol_name(node, source)
+    if not name:
+        return None
+    return {
+        "kind": "enum" if node_type == "enum_definition" else "class",
+        "name": name,
+        "line": node.start_point[0] + 1,
+        "end_line": node.end_point[0] + 1,
+        "language": "scala",
+    }
+
+
+def _scala_symbol_name(node: Any, source: str) -> str | None:
+    name_node = node.child_by_field_name("name")
+    if name_node is not None:
+        return _node_text(name_node, source)
+    for child in node.children:
+        if child.type in ("identifier", "type_identifier"):
+            return _node_text(child, source)
+    if node.type == "given_definition":
+        type_name = _scala_given_type_text(node, source)
+        if type_name:
+            return f"given {type_name}"
+        return f"anonymous_given_{node.start_point[0] + 1}"
+    return None
+
+
+def _scala_given_type_text(node: Any, source: str) -> str | None:
+    for child in node.children:
+        if child.type in (
+            "generic_type",
+            "type_identifier",
+            "stable_type_identifier",
+            "tuple_type",
+            "function_type",
+        ):
+            return _node_text(child, source)
+    return None
+
+
 _WALK_MAX_DEPTH = (
     100  # #779: DoS protection — functions nested beyond this are dropped.
 )
@@ -928,6 +995,13 @@ def _walk_for_symbols(
             sym["kind"] = "method"
             sym["class"] = parent_cls
         symbols.append(sym)
+    elif language == "scala" and node_type in _SCALA_CLASS_LIKE and not enclosed:
+        # #961: ``not enclosed`` keeps a method-local ``given``/``type`` out of
+        # the top-level symbol set (CLI/plugin already excludes it; the
+        # ast_cache path must match — otherwise CLI vs MCP diverge).
+        scala_sym = _scala_symbol_from_node(node, source)
+        if scala_sym is not None:
+            symbols.append(scala_sym)
     elif node_type in _CLASS_LIKE and name_node is not None:
         name = _node_text(name_node, source)
         parents = _extract_parent_classes(node, source, language)
@@ -1033,6 +1107,7 @@ def _walk_for_symbols(
         )
         or (language == "java" and node_type in _JAVA_SCOPE_BODY_NODES)
         or (language == "csharp" and node_type in _CSHARP_SCOPE_BODY_NODES)
+        or (language == "scala" and node_type in _SCALA_SCOPE_BODY_NODES)
     )
     for child in node.children:
         _walk_for_symbols(

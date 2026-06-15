@@ -138,16 +138,7 @@ class ScalaElementExtractor(ElementExtractor):
 
         functions: list[Function] = []
 
-        extractors = {
-            "function_definition": self._extract_function,
-            "function_declaration": self._extract_function_declaration,
-        }
-
-        self._traverse_and_extract(
-            tree.root_node,
-            extractors,
-            functions,
-        )
+        self._traverse_functions_with_context(tree.root_node, functions, None, None)
 
         log_debug(f"Extracted {len(functions)} Scala functions")
         return functions
@@ -408,9 +399,6 @@ class ScalaElementExtractor(ElementExtractor):
                 cls = self._extract_given(current, current_parent)
                 if cls:
                     results.append(cls)
-                # given bodies can theoretically contain nested defs.
-                for child in reversed(current.children):
-                    stack.append((child, current_parent))
 
             elif node_type == "type_definition":
                 # #764: type alias inside an object/trait — carry parent_class.
@@ -418,10 +406,78 @@ class ScalaElementExtractor(ElementExtractor):
                 if cls:
                     results.append(cls)
 
+            elif node_type == "extension_definition":
+                cls = self._extract_extension(current, current_parent)
+                if cls:
+                    results.append(cls)
+
+            elif node_type in ("function_definition", "function_declaration"):
+                continue
+
             else:
                 # Generic node: descend preserving context.
                 for child in reversed(current.children):
                     stack.append((child, current_parent))
+
+    def _traverse_functions_with_context(
+        self,
+        node: tree_sitter.Node,
+        results: list[Function],
+        parent_class: str | None,
+        receiver_type: str | None,
+    ) -> None:
+        stack: list[tuple[tree_sitter.Node, str | None, str | None]] = [
+            (node, parent_class, receiver_type)
+        ]
+        while stack:
+            current, current_parent, current_receiver = stack.pop()
+            node_type = current.type
+
+            if node_type in (
+                "class_definition",
+                "object_definition",
+                "trait_definition",
+                "enum_definition",
+            ):
+                new_parent = self._scala_class_like_name(current)
+                for child in reversed(current.children):
+                    stack.append((child, new_parent, None))
+                continue
+
+            if node_type == "given_definition":
+                new_parent = self._scala_given_name(current)
+                for child in reversed(current.children):
+                    stack.append((child, new_parent, None))
+                continue
+
+            if node_type == "extension_definition":
+                new_receiver = self._scala_extension_receiver_type(current)
+                for child in reversed(current.children):
+                    stack.append((child, current_parent, new_receiver))
+                continue
+
+            if node_type == "function_definition":
+                fn = self._extract_function(current)
+                if fn:
+                    fn.parent_class = current_parent
+                    fn.receiver_type = current_receiver
+                    results.append(fn)
+                for child in reversed(current.children):
+                    stack.append((child, current_parent, current_receiver))
+                continue
+
+            if node_type == "function_declaration":
+                fn = self._extract_function_declaration(current)
+                if fn:
+                    fn.parent_class = current_parent
+                    fn.receiver_type = current_receiver
+                    results.append(fn)
+                for child in reversed(current.children):
+                    stack.append((child, current_parent, current_receiver))
+                continue
+
+            for child in reversed(current.children):
+                stack.append((child, current_parent, current_receiver))
 
     def _extract_class_like_with_parent(
         self,
@@ -441,7 +497,7 @@ class ScalaElementExtractor(ElementExtractor):
         parent_class: str | None,
         results: list[Class],
     ) -> None:
-        """Emit the enum itself and each ``simple_enum_case`` as enum_member.
+        """Emit the enum itself and each enum case as enum_member.
 
         AST shape (tree-sitter-scala):
             enum_definition
@@ -452,7 +508,7 @@ class ScalaElementExtractor(ElementExtractor):
                 ':'
                 enum_case_definitions*
                   'case'
-                  simple_enum_case+  ← one or more cases
+                  simple_enum_case+ / full_enum_case+  ← one or more cases
                     identifier       ← case name
                     extends_clause?
 
@@ -479,6 +535,7 @@ class ScalaElementExtractor(ElementExtractor):
             superclass=superclass,
             interfaces=interfaces,
             parent_class=parent_class,
+            modifiers=self._scala_modifiers(node),
         )
         results.append(enum_cls)
 
@@ -490,9 +547,12 @@ class ScalaElementExtractor(ElementExtractor):
                 if case_defs.type != "enum_case_definitions":
                     continue
                 for case_node in case_defs.children:
-                    if case_node.type != "simple_enum_case":
+                    if case_node.type not in ("simple_enum_case", "full_enum_case"):
                         continue
                     case_name = self._scala_class_like_name(case_node)
+                    case_superclass, case_interfaces = (
+                        self._extract_scala_extends_clause(case_node)
+                    )
                     results.append(
                         Class(
                             name=case_name,
@@ -501,9 +561,12 @@ class ScalaElementExtractor(ElementExtractor):
                             raw_text=self._get_node_text(case_node),
                             language="scala",
                             class_type="enum_member",
-                            visibility="public",
+                            visibility=self._scala_visibility(case_node),
                             package_name=self.current_package,
                             parent_class=enum_name,
+                            superclass=case_superclass,
+                            interfaces=case_interfaces,
+                            modifiers=self._scala_modifiers(case_node),
                         )
                     )
 
@@ -524,19 +587,7 @@ class ScalaElementExtractor(ElementExtractor):
               <expr>
         """
         try:
-            name_node = node.child_by_field_name("name")
-            if name_node:
-                name = self._get_node_text(name_node)
-            else:
-                # Fall back to first identifier child.
-                name = next(
-                    (
-                        self._get_node_text(c)
-                        for c in node.children
-                        if c.type == "identifier"
-                    ),
-                    "anonymous_given",
-                )
+            name = self._scala_given_name(node)
             return Class(
                 name=name,
                 start_line=node.start_point[0] + 1,
@@ -544,7 +595,8 @@ class ScalaElementExtractor(ElementExtractor):
                 raw_text=self._get_node_text(node),
                 language="scala",
                 class_type="given",
-                visibility="public",
+                visibility=self._scala_visibility(node),
+                modifiers=self._scala_modifiers(node),
                 package_name=self.current_package,
                 parent_class=parent_class,
             )
@@ -575,19 +627,49 @@ class ScalaElementExtractor(ElementExtractor):
                 ),
                 "unknown_type",
             )
+            class_type = (
+                "type_alias"
+                if self._scala_type_has_alias_target(node)
+                else "type_member"
+            )
             return Class(
                 name=name,
                 start_line=node.start_point[0] + 1,
                 end_line=node.end_point[0] + 1,
                 raw_text=self._get_node_text(node),
                 language="scala",
-                class_type="type_alias",
-                visibility="public",
+                class_type=class_type,
+                visibility=self._scala_visibility(node),
+                modifiers=self._scala_modifiers(node),
                 package_name=self.current_package,
                 parent_class=parent_class,
             )
         except Exception as e:
             log_error(f"Error extracting Scala type alias: {e}")
+            return None
+
+    def _extract_extension(
+        self,
+        node: tree_sitter.Node,
+        parent_class: str | None,
+    ) -> Class | None:
+        try:
+            receiver_type = self._scala_extension_receiver_type(node)
+            suffix = receiver_type or str(node.start_point[0] + 1)
+            return Class(
+                name=f"extension[{suffix}]",
+                start_line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                raw_text=self._get_node_text(node),
+                language="scala",
+                class_type="extension",
+                visibility=self._scala_visibility(node),
+                modifiers=self._scala_modifiers(node),
+                package_name=self.current_package,
+                parent_class=parent_class,
+            )
+        except Exception as e:
+            log_error(f"Error extracting Scala extension: {e}")
             return None
 
     def _extract_function(self, node: tree_sitter.Node) -> Function | None:
@@ -628,6 +710,7 @@ class ScalaElementExtractor(ElementExtractor):
                 parameters=parameters,
                 return_type=return_type,
                 visibility=visibility,
+                modifiers=self._scala_modifiers(node),
                 docstring=docstring,
                 is_constructor=name == "this",
             )
@@ -744,17 +827,76 @@ class ScalaElementExtractor(ElementExtractor):
         Scans for the first ``modifiers`` child and checks its text for
         the explicit keywords. Defaults to ``public`` when no modifiers
         node is present or contains neither keyword.
+
+        Qualified-access modifiers such as ``private[pkg]`` /
+        ``protected[this]`` are emitted by ``_scala_modifiers`` as the
+        single literal token ``private[pkg]`` (not a bare ``private``), so
+        match the keyword as a prefix rather than by exact membership —
+        otherwise ``private[pkg] class Secret`` is misreported as public.
         """
+        modifiers = self._scala_modifiers(node)
+        if any(m == "private" or m.startswith("private[") for m in modifiers):
+            return "private"
+        if any(m == "protected" or m.startswith("protected[") for m in modifiers):
+            return "protected"
+        return "public"
+
+    def _scala_modifiers(self, node: tree_sitter.Node) -> list[str]:
+        modifiers: list[str] = []
         for child in node.children:
             if child.type != "modifiers":
                 continue
-            modifiers_text = self._get_node_text(child)
-            if "private" in modifiers_text:
-                return "private"
-            if "protected" in modifiers_text:
-                return "protected"
-            return "public"
-        return "public"
+            for modifier in child.children:
+                text = self._get_node_text(modifier)
+                if text:
+                    modifiers.append(text)
+            if not modifiers:
+                text = self._get_node_text(child)
+                if text:
+                    modifiers.extend(text.split())
+            break
+        return modifiers
+
+    def _scala_given_name(self, node: tree_sitter.Node) -> str:
+        name_node = node.child_by_field_name("name")
+        if name_node:
+            return self._get_node_text(name_node)
+        for child in node.children:
+            if child.type == "identifier":
+                return self._get_node_text(child)
+        type_name = self._scala_given_type_name(node)
+        if type_name:
+            return f"given {type_name}"
+        return f"anonymous_given_{node.start_point[0] + 1}"
+
+    def _scala_given_type_name(self, node: tree_sitter.Node) -> str | None:
+        for child in node.children:
+            if child.type in (
+                "generic_type",
+                "type_identifier",
+                "stable_type_identifier",
+                "tuple_type",
+                "function_type",
+            ):
+                return self._get_node_text(child)
+        return None
+
+    @staticmethod
+    def _scala_type_has_alias_target(node: tree_sitter.Node) -> bool:
+        return any(child.type == "=" for child in node.children)
+
+    def _scala_extension_receiver_type(self, node: tree_sitter.Node) -> str | None:
+        for child in node.children:
+            if child.type != "parameters":
+                continue
+            params = self._extract_parameters(child)
+            if not params:
+                return None
+            first = params[0]
+            if ":" in first:
+                return first.split(":", 1)[1].strip()
+            return first
+        return None
 
     def _extract_parameters(self, param_node: tree_sitter.Node) -> list[str]:
         """Extract parameters from a parameter clause.
@@ -886,6 +1028,7 @@ class ScalaElementExtractor(ElementExtractor):
                 language="scala",
                 class_type=kind,
                 visibility=visibility,
+                modifiers=self._scala_modifiers(node),
                 package_name=self.current_package,
                 docstring=docstring,
                 superclass=superclass,

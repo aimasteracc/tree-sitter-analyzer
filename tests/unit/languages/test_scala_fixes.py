@@ -133,6 +133,29 @@ class TestEnumCaseExtraction:
         classes = _classes(_ENUM_WITH_PARAMS)
         assert classes["Mercury"].parent_class == "Planet"
 
+    def test_full_enum_cases_with_constructor_params_are_extracted(self) -> None:
+        code = """\
+enum Command:
+  case Quit
+  case Move(dx: Int, dy: Int)
+  case Error(code: Int) extends Command
+"""
+        classes = _classes(code)
+        assert classes["Move"].class_type == "enum_member"
+        assert classes["Move"].parent_class == "Command"
+        assert "dx: Int" in classes["Move"].raw_text
+        assert classes["Error"].superclass == "Command"
+
+    def test_enum_modifiers_are_preserved(self) -> None:
+        classes = _classes(
+            """\
+private enum Secret:
+  case Token
+"""
+        )
+        assert classes["Secret"].visibility == "private"
+        assert "private" in classes["Secret"].modifiers
+
 
 # ---------------------------------------------------------------------------
 # Bug #764: given/type/extension inside object/trait must carry parent_class
@@ -239,3 +262,273 @@ class TestGivenTypeParentClass:
     def test_nested_type_alias_parent_class(self) -> None:
         classes = _classes(_NESTED_MIX)
         assert classes["AliasT"].parent_class == "Outer"
+
+    def test_local_given_and_type_inside_method_are_not_members(self) -> None:
+        classes = _classes(
+            """\
+object Ops:
+  def configure(): Unit =
+    given localOrdering: Ordering[Int] = Ordering.Int
+    type LocalAlias = String
+"""
+        )
+        assert "localOrdering" not in classes
+        assert "LocalAlias" not in classes
+
+    def test_given_and_type_modifiers_are_preserved(self) -> None:
+        classes = _classes(
+            """\
+object Api:
+  private given secret: String = "s"
+  protected type Hidden = Int
+"""
+        )
+        assert classes["secret"].visibility == "private"
+        assert "private" in classes["secret"].modifiers
+        assert classes["Hidden"].visibility == "protected"
+        assert "protected" in classes["Hidden"].modifiers
+
+    def test_qualified_access_class_visibility_is_private(self) -> None:
+        # #961 regression: ``_scala_modifiers`` yields the literal token
+        # ``private[pkg]`` (not bare ``private``), so the exact-membership
+        # check reported ``public``. Match the keyword as a prefix instead.
+        classes = _classes("private[pkg] class Secret(x: Int)\n")
+        assert classes["Secret"].visibility == "private"
+
+    def test_qualified_access_protected_def_visibility(self) -> None:
+        functions = _functions(
+            """\
+object O:
+  protected[this] def f(): Int = 1
+"""
+        )
+        assert functions["f"].visibility == "protected"
+
+    def test_anonymous_givens_use_distinct_type_based_names(self) -> None:
+        classes = _classes(
+            """\
+object Instances:
+  given Ordering[Int] = Ordering.Int
+  given Ordering[String] = Ordering.String
+"""
+        )
+        assert "given Ordering[Int]" in classes
+        assert "given Ordering[String]" in classes
+
+    def test_abstract_type_members_are_not_reported_as_aliases(self) -> None:
+        classes = _classes(
+            """\
+trait Api:
+  type Out
+  type In <: String
+  type Alias = Int
+"""
+        )
+        assert classes["Out"].class_type == "type_member"
+        assert classes["In"].class_type == "type_member"
+        assert classes["Alias"].class_type == "type_alias"
+
+    def test_extension_symbol_and_method_keep_owner_context(self) -> None:
+        code = """\
+object Ops:
+  extension (s: String)
+    def shout: String = s.toUpperCase
+"""
+        classes = _classes(code)
+        functions = _functions(code)
+        assert classes["extension[String]"].class_type == "extension"
+        assert classes["extension[String]"].parent_class == "Ops"
+        assert functions["shout"].parent_class == "Ops"
+        assert functions["shout"].receiver_type == "String"
+
+
+class TestScalaVisibilityBranches:
+    """#972: cover every prefix branch of ``_scala_visibility`` / ``_scala_modifiers``."""
+
+    def test_private_qualified_class_is_private(self) -> None:
+        classes = _classes("private[pkg] class Secret(x: Int)\n")
+        assert classes["Secret"].visibility == "private"
+        assert classes["Secret"].modifiers == ["private[pkg]"]
+
+    def test_protected_qualified_def_is_protected(self) -> None:
+        functions = _functions(
+            """\
+object O:
+  protected[this] def f(): Int = 1
+"""
+        )
+        assert functions["f"].visibility == "protected"
+        assert functions["f"].modifiers == ["protected[this]"]
+
+    def test_bare_private_class_is_private(self) -> None:
+        classes = _classes("private class Hidden(x: Int)\n")
+        assert classes["Hidden"].visibility == "private"
+
+    def test_bare_protected_class_is_protected(self) -> None:
+        classes = _classes("protected class Guarded(x: Int)\n")
+        assert classes["Guarded"].visibility == "protected"
+
+    def test_no_modifier_class_defaults_public(self) -> None:
+        classes = _classes("class Plain(x: Int)\n")
+        assert classes["Plain"].visibility == "public"
+        assert classes["Plain"].modifiers == []
+
+    def test_non_visibility_modifier_stays_public(self) -> None:
+        # ``final`` is a modifier but not a visibility keyword: visibility stays
+        # public while the modifier is still captured.
+        classes = _classes("final class Sealed(x: Int)\n")
+        assert classes["Sealed"].visibility == "public"
+        assert classes["Sealed"].modifiers == ["final"]
+
+
+class TestScalaGivenNameBranches:
+    """#972: cover the named / typed / anonymous arms of ``_scala_given_name``."""
+
+    def test_named_given_uses_identifier(self) -> None:
+        classes = _classes("object O:\n  given namedGiven: Int = 1\n")
+        assert "namedGiven" in classes
+
+    def test_anonymous_given_uses_generic_type(self) -> None:
+        classes = _classes("object O:\n  given Ordering[Int] = ???\n")
+        assert classes["given Ordering[Int]"].class_type == "given"
+
+    def test_anonymous_given_uses_tuple_type(self) -> None:
+        classes = _classes("object O:\n  given (Int, String) = ???\n")
+        assert "given (Int, String)" in classes
+
+    def test_anonymous_given_uses_function_type(self) -> None:
+        classes = _classes("object O:\n  given (Int => String) = ???\n")
+        assert "given (Int => String)" in classes
+
+    def test_anonymous_given_uses_stable_type_identifier(self) -> None:
+        classes = _classes("object O:\n  given Foo.Bar = ???\n")
+        assert "given Foo.Bar" in classes
+
+    def test_degenerate_given_falls_back_to_line_based_name(self) -> None:
+        # ``given = 1`` has neither a name identifier nor a recognizable type
+        # child, so ``_scala_given_name`` falls back to ``anonymous_given_<line>``
+        # (and ``_scala_given_type_name`` returns None).
+        classes = _classes("object O:\n  given = 1\n")
+        assert "anonymous_given_2" in classes
+
+
+class TestScalaExtensionReceiver:
+    """#972: cover ``_scala_extension_receiver_type`` typed / no-param arms."""
+
+    def test_typed_receiver_is_split_after_colon(self) -> None:
+        classes = _classes(
+            """\
+object Ops:
+  extension (xs: List[Int])
+    def f: Int = 1
+"""
+        )
+        assert classes["extension[List[Int]]"].class_type == "extension"
+        assert classes["extension[List[Int]]"].parent_class == "Ops"
+
+    def test_no_valid_params_falls_back_to_line_suffix(self) -> None:
+        # ``extension (s)`` (no type) parses with an ERROR node, so
+        # ``_extract_parameters`` yields nothing and the receiver type is None,
+        # forcing the line-number suffix.
+        classes = _classes("extension (s)\n  def f: Int = 1\n")
+        assert "extension[1]" in classes
+        assert classes["extension[1]"].class_type == "extension"
+
+    def test_no_parameters_child_falls_back_to_line_suffix(self) -> None:
+        # ``extension EmptyExt`` has no ``parameters`` child at all, so
+        # ``_scala_extension_receiver_type`` returns None via its final
+        # ``return None`` and the line-number suffix is used.
+        classes = _classes(
+            """\
+object O:
+  extension EmptyExt
+    def f: Int = 1
+"""
+        )
+        assert "extension[2]" in classes
+        assert classes["extension[2]"].class_type == "extension"
+
+
+class TestScalaTypeMemberVsAlias:
+    """#972: ``_scala_type_has_alias_target`` decides type_alias vs type_member."""
+
+    def test_assigned_type_is_alias(self) -> None:
+        classes = _classes("trait Api:\n  type Alias = Int\n")
+        assert classes["Alias"].class_type == "type_alias"
+
+    def test_abstract_type_is_member(self) -> None:
+        classes = _classes("trait Api:\n  type Out\n")
+        assert classes["Out"].class_type == "type_member"
+
+    def test_bounded_abstract_type_is_member(self) -> None:
+        classes = _classes("trait Api:\n  type In <: String\n")
+        assert classes["In"].class_type == "type_member"
+
+
+class TestScalaFunctionContext:
+    """#972: ``_traverse_functions_with_context`` propagates parent_class /
+    receiver_type through class-like, given, and extension scopes."""
+
+    def test_method_in_object_has_parent_class(self) -> None:
+        functions = _functions(
+            """\
+object Calc:
+  def add(a: Int, b: Int): Int = a + b
+"""
+        )
+        assert functions["add"].parent_class == "Calc"
+        assert functions["add"].receiver_type is None
+
+    def test_method_in_trait_has_parent_class(self) -> None:
+        functions = _functions(
+            """\
+trait Shape:
+  def area(): Double = 0.0
+"""
+        )
+        assert functions["area"].parent_class == "Shape"
+
+    def test_abstract_method_declaration_has_parent_class(self) -> None:
+        # ``function_declaration`` (no body) goes through the declaration arm.
+        functions = _functions(
+            """\
+trait Shape:
+  def perimeter(): Double
+"""
+        )
+        assert functions["perimeter"].parent_class == "Shape"
+
+    def test_method_inside_given_with_block_has_given_parent(self) -> None:
+        functions = _functions(
+            """\
+object O:
+  given listOrd: Ordering[List[Int]] with
+    def compare(a: List[Int], b: List[Int]): Int = 0
+"""
+        )
+        assert functions["compare"].parent_class == "listOrd"
+        assert functions["compare"].receiver_type is None
+
+    def test_top_level_function_has_no_parent(self) -> None:
+        functions = _functions("def free(x: Int): Int = x\n")
+        assert functions["free"].parent_class is None
+        assert functions["free"].receiver_type is None
+
+
+def test_scala_ast_cache_symbol_path_indexes_new_constructs() -> None:
+    from tree_sitter_analyzer._ast_extraction import _extract_symbols
+
+    code = """\
+object Instances:
+  given Ordering[Int] = Ordering.Int
+  type Alias = Int
+
+enum Color:
+  case Red
+"""
+    symbols = _extract_symbols(_parse(code), code, "scala")["symbols"]
+    by_name = {s["name"]: s for s in symbols}
+    assert by_name["Instances"]["kind"] == "class"
+    assert by_name["given Ordering[Int]"]["kind"] == "class"
+    assert by_name["Alias"]["kind"] == "class"
+    assert by_name["Color"]["kind"] == "enum"
