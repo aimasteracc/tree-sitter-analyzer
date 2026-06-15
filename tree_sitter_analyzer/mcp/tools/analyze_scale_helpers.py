@@ -18,10 +18,20 @@ from .base_tool import format_summary_line
 
 logger = setup_logger(__name__)
 
+# ---------------------------------------------------------------------------
+# Output size cap for the methods list (Bug #755).
+# A large file can have tens of thousands of methods — emitting all of them
+# inline produces multi-MB JSON that can crash agents. Cap the list and emit
+# metadata so callers know the full count without the payload cost.
+# ---------------------------------------------------------------------------
+METHODS_OUTPUT_CAP = 50
+
 
 # Tree-sitter element extraction for structure view
 # Converts unified analysis engine results into LLM-consumable dicts
-def extract_structural_overview(analysis_result: Any) -> dict[str, Any]:
+def extract_structural_overview(
+    analysis_result: Any, *, method_cap: int = METHODS_OUTPUT_CAP
+) -> dict[str, Any]:
     """Extract structural overview with position information for LLM guidance.
 
     r37bd (dogfood): tool flagged this at 112 lines. Split into 4
@@ -37,9 +47,14 @@ def extract_structural_overview(analysis_result: Any) -> dict[str, Any]:
         "imports": _extract_import_infos(elements),
         "complexity_hotspots": [],
     }
-    overview["methods"], overview["complexity_hotspots"] = _extract_method_infos(
-        elements
-    )
+    all_methods, overview["complexity_hotspots"] = _extract_method_infos(elements)
+    total_methods = len(all_methods)
+    overview["total_methods"] = total_methods
+    if total_methods > method_cap:
+        overview["methods"] = all_methods[:method_cap]
+        overview["methods_truncated"] = True
+    else:
+        overview["methods"] = all_methods
     return overview
 
 
@@ -151,8 +166,17 @@ def _make_hotspot_entry(
 # Universal extraction for non-Java/Python languages using tree-sitter
 def extract_structural_overview_universal(
     analysis_result: Any,
+    *,
+    method_cap: int = METHODS_OUTPUT_CAP,
 ) -> dict[str, Any]:
-    """Extract structural overview from universal analysis result (non-Java languages)."""
+    """Extract structural overview from universal analysis result (non-Java languages).
+
+    Bug #755: the methods list is capped at ``method_cap`` entries (default
+    ``METHODS_OUTPUT_CAP`` = 50) to prevent multi-MB output for large files.
+    When the cap fires, two extra fields appear:
+      - ``total_methods``: the full method count (always present)
+      - ``methods_truncated``: True (only when the list was cut)
+    """
     # Initialize empty overview containers
     overview: dict[str, Any] = {
         "classes": [],
@@ -165,11 +189,12 @@ def extract_structural_overview_universal(
 
     # Guard against empty or invalid analysis results
     if not analysis_result or not hasattr(analysis_result, "elements"):
+        overview["total_methods"] = 0
         return overview
 
     # Pre-bind lists to avoid deep subscript chains inside the loop
     _classes = overview["classes"]
-    _methods = overview["methods"]
+    _all_methods: list[dict[str, Any]] = []
     _fields = overview["fields"]
     _imports = overview["imports"]
     _hotspots = overview["complexity_hotspots"]
@@ -201,7 +226,7 @@ def extract_structural_overview_universal(
                 "line_span": _line_span,
                 "complexity": _complexity_score,
             }
-            _methods.append(method_info)
+            _all_methods.append(method_info)
             _entry = _make_hotspot_entry(name, _complexity_score, start_line, end_line)
             if _complexity_score and _complexity_score >= _COMPLEXITY_HOTSPOT_THRESHOLD:
                 _hotspots.append(_entry)
@@ -211,6 +236,15 @@ def extract_structural_overview_universal(
             )
         elif etype == "import":
             _imports.append({"name": name, "line": start_line})
+
+    # Apply output cap (Bug #755)
+    total_methods = len(_all_methods)
+    overview["total_methods"] = total_methods
+    if total_methods > method_cap:
+        overview["methods"] = _all_methods[:method_cap]
+        overview["methods_truncated"] = True
+    else:
+        overview["methods"] = _all_methods
 
     return overview
 
