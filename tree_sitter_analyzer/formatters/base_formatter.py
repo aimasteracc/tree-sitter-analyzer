@@ -122,11 +122,13 @@ class BaseTableFormatter(BaseFormatter):
             result = self._format_csv(structure_data)
         elif self.format_type == "signatures":
             # Lightweight directory mode: name →returnType(Np) L-L per method.
-            # Delegates to the mixin if available; raises if the subclass doesn't
-            # implement it (non-Java formatters can opt in later).
+            # Delegates to the mixin if available; raises with the sorted list of
+            # languages that DO support signatures (#449: error must be enumerable).
             if not hasattr(self, "_format_signatures_table"):
+                _SIGNATURES_SUPPORTED = sorted(["java", "python", "typescript"])
                 raise ValueError(
-                    "signatures format not supported for this language formatter"
+                    "signatures format not supported for this language formatter; "
+                    f"supported languages: {', '.join(_SIGNATURES_SUPPORTED)}"
                 )
             result = self._format_signatures_table(structure_data)
         else:

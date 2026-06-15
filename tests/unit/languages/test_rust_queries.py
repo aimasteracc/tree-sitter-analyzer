@@ -24,7 +24,7 @@ class TestRustQueriesDict:
 
     def test_rust_queries_not_empty(self):
         """RUST_QUERIES should not be empty."""
-        assert len(RUST_QUERIES) > 0
+        assert len(RUST_QUERIES) == 24
 
     def test_all_queries_are_strings(self):
         """All query values should be strings."""
@@ -110,7 +110,7 @@ class TestRustQueryDescriptions:
 
     def test_descriptions_not_empty(self):
         """RUST_QUERY_DESCRIPTIONS should not be empty."""
-        assert len(RUST_QUERY_DESCRIPTIONS) > 0
+        assert len(RUST_QUERY_DESCRIPTIONS) == 24
 
     def test_all_descriptions_are_strings(self):
         """All description values should be strings."""
@@ -156,7 +156,7 @@ class TestGetRustQueryDescription:
         """get_rust_query_description should return description for valid name."""
         result = get_rust_query_description("fn")
         assert isinstance(result, str)
-        assert len(result) > 0
+        assert len(result) == 34
 
     def test_get_all_descriptions(self):
         """get_rust_query_description should work for all defined queries."""
@@ -179,7 +179,7 @@ class TestAllQueries:
 
     def test_all_queries_not_empty(self):
         """ALL_QUERIES should not be empty."""
-        assert len(ALL_QUERIES) > 0
+        assert len(ALL_QUERIES) == 29
 
     def test_all_queries_structure(self):
         """ALL_QUERIES should have correct structure."""
@@ -247,7 +247,7 @@ class TestListQueries:
     def test_not_empty(self):
         """list_queries should not be empty."""
         result = list_queries()
-        assert len(result) > 0
+        assert len(result) == 29
 
     def test_contains_all_query_names(self):
         """list_queries should contain all query names."""
@@ -267,7 +267,7 @@ class TestGetAvailableRustQueries:
     def test_not_empty(self):
         """get_available_rust_queries should not be empty."""
         result = get_available_rust_queries()
-        assert len(result) > 0
+        assert len(result) == 24
 
     def test_contains_all_query_names(self):
         """get_available_rust_queries should contain all RUST_QUERIES names."""

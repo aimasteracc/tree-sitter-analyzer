@@ -84,8 +84,8 @@ if __name__ == "__main__":
             assert result["file_info"]["path"] == sample_java_file
             assert result["language_info"]["language"] == "java"
             assert "elements" in result
-            assert len(result["elements"]) > 0
-            assert result["ast_info"]["node_count"] > 0
+            assert len(result["elements"]) == 6
+            assert result["ast_info"]["node_count"] == 86
 
         finally:
             Path(sample_java_file).unlink()
@@ -100,7 +100,7 @@ if __name__ == "__main__":
             assert result["file_info"]["path"] == sample_python_file
             assert result["language_info"]["language"] == "python"
             assert "elements" in result
-            assert len(result["elements"]) > 0
+            assert len(result["elements"]) == 6
 
         finally:
             Path(sample_python_file).unlink()
@@ -192,7 +192,7 @@ class TestClass:
             assert isinstance(result, dict)
             assert result["success"] is True
             assert "elements" in result
-            assert len(result["elements"]) > 0
+            assert len(result["elements"]) == 6
 
         finally:
             Path(sample_java_file).unlink()
@@ -205,7 +205,7 @@ class TestClass:
             assert isinstance(result, dict)
             assert result["success"] is True
             assert "elements" in result
-            assert len(result["elements"]) > 0
+            assert len(result["elements"]) == 6
 
         finally:
             Path(sample_python_file).unlink()
@@ -528,7 +528,7 @@ public class ConsistencyTest {
             result = api.analyze_file(temp_path)
             assert isinstance(result, dict)
             assert result["success"] is True
-            assert result["ast_info"]["node_count"] > 0
+            assert result["ast_info"]["node_count"] == 3809
 
         finally:
             Path(temp_path).unlink()

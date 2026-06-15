@@ -1,3 +1,5 @@
+import os
+
 import pytest
 
 from tree_sitter_analyzer.mcp.tools.find_and_grep_tool import FindAndGrepTool
@@ -41,19 +43,19 @@ async def test_fd_02_multi_file_search(tmp_path, monkeypatch):
     tool = ListFilesTool(str(tmp_path))
 
     async def fake_run(cmd, cwd=None, timeout=None, timeout_ms=None):
-        # Check which directories are being searched
-        roots = []
-        for i, arg in enumerate(cmd):
-            if i > 0 and not arg.startswith("-") and arg != "fd" and "." not in arg:
-                roots.append(arg)
+        # realpath both sides: macOS tmp_path is /private/var/... while the
+        # command builder may carry the /var/... alias — naive membership
+        # differs by platform (same trap as fd_56)
+        resolved = {os.path.realpath(str(arg)) for arg in cmd}
 
         files = []
-        if str(tmp_path / "dir1") in roots or not roots:
-            files.append(str(tmp_path / "dir1" / "file1.txt"))
-        if str(tmp_path / "dir2") in roots or not roots:
-            files.append(str(tmp_path / "dir2" / "file2.txt"))
-        if str(tmp_path / "dir3") in roots or not roots:
-            files.append(str(tmp_path / "dir3" / "file3.txt"))
+        for dirname, filename in (
+            ("dir1", "file1.txt"),
+            ("dir2", "file2.txt"),
+            ("dir3", "file3.txt"),
+        ):
+            if os.path.realpath(str(tmp_path / dirname)) in resolved:
+                files.append(str(tmp_path / dirname / filename))
 
         out = "\n".join(files).encode()
         return 0, out, b""
@@ -76,7 +78,8 @@ async def test_fd_02_multi_file_search(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 0
+    # All three roots match → one file from each directory
+    assert result["count"] == 3
 
 
 @pytest.mark.asyncio
@@ -127,8 +130,10 @@ async def test_fd_04_explicit_root_path(tmp_path, monkeypatch):
     tool = ListFilesTool(str(tmp_path))
 
     async def fake_run(cmd, cwd=None, timeout=None, timeout_ms=None):
-        # Check if searching in subdir specifically
-        if str(tmp_path / "root" / "subdir") in cmd:
+        # Check if searching in subdir specifically. realpath both sides:
+        # macOS /private/var vs /var alias (same trap as fd_56).
+        subdir_real = os.path.realpath(str(tmp_path / "root" / "subdir"))
+        if any(os.path.realpath(str(arg)) == subdir_real for arg in cmd):
             files = [str(tmp_path / "root" / "subdir" / "file.txt")]
         else:
             files = [
@@ -149,7 +154,8 @@ async def test_fd_04_explicit_root_path(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 0
+    # Subdir root matches → only the file inside subdir
+    assert result["count"] == 1
 
 
 @pytest.mark.asyncio
@@ -185,7 +191,7 @@ async def test_fd_05_and_basic_simulation(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 0
+    assert result["count"] == 0
 
 
 @pytest.mark.asyncio
@@ -212,7 +218,7 @@ async def test_fd_06_and_empty_pattern_simulation(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 0
+    assert result["count"] == 0
 
 
 @pytest.mark.asyncio
@@ -239,8 +245,8 @@ async def test_fd_07_and_bad_pattern_simulation(tmp_path, monkeypatch):
         }
     )
 
-    # Should handle bad patterns gracefully
-    assert result["success"] is False or result["count"] >= 0
+    # Invalid regex makes fd exit non-zero — the tool must report failure
+    assert result["success"] is False
 
 
 @pytest.mark.asyncio
@@ -319,7 +325,7 @@ async def test_fd_09_and_plus_extension(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 0
+    assert result["count"] == 0
 
 
 @pytest.mark.asyncio
@@ -352,4 +358,4 @@ async def test_fd_10_and_plus_type(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 0
+    assert result["count"] == 0

@@ -225,6 +225,9 @@ class PHPElementExtractor(ElementExtractor):
         """
         self.source_code = source_code
         self.content_lines = source_code.splitlines()
+        # #765: set current_namespace so the result is order-independent —
+        # same regardless of whether extract_classes was called first.
+        self._extract_namespace(tree.root_node)
 
         functions: list[Function] = []
 
@@ -243,12 +246,15 @@ class PHPElementExtractor(ElementExtractor):
                 if func_elem:
                     functions.append(func_elem)
 
-            # Track parent class for methods
+            # Track parent class for methods.
+            # enum_declaration added (#763): enum methods had receiver_type=None
+            # because enum was not tracked as a parent container.
             new_parent = parent_class
             if node.type in (
                 "class_declaration",
                 "interface_declaration",
                 "trait_declaration",
+                "enum_declaration",
             ):
                 name_node = node.child_by_field_name("name")
                 if name_node:
@@ -311,12 +317,15 @@ class PHPElementExtractor(ElementExtractor):
                 var_elems = self._extract_constant_elements(node, parent_class)
                 variables.extend(var_elems)
 
-            # Track parent class
+            # Track parent class — enums may declare consts too (Codex P2
+            # on #625): without enum_declaration here, an enum const emits
+            # with receiver_type=None and masquerades as a global.
             new_parent = parent_class
             if node.type in (
                 "class_declaration",
                 "interface_declaration",
                 "trait_declaration",
+                "enum_declaration",
             ):
                 name_node = node.child_by_field_name("name")
                 if name_node:
@@ -498,6 +507,7 @@ class PHPPlugin(LanguagePlugin):
                 file_path=file_path,
                 success=True,
                 elements=all_elements,
+                line_count=len(content.splitlines()),
                 node_count=self._count_nodes(tree.root_node),
             )
         except Exception as e:

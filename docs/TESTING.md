@@ -35,10 +35,11 @@ tests/
 │   ├── data_generators.py     # Test data generators
 │   └── assertion_helpers.py   # Custom assertion functions
 ├── unit/                   # Unit tests
+│   ├── mcp/                # MCP-specific unit tests
+│   └── security/           # Security unit tests
 ├── integration/            # Integration tests
-├── mcp/                    # MCP-specific tests
-├── security/               # Security tests
-└── performance/            # Performance benchmarks
+├── regression/             # Regression tests
+└── benchmarks/             # Performance benchmarks
 ```
 
 ## Writing Tests

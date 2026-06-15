@@ -69,9 +69,46 @@ class DocSyncTool(BaseMCPTool):
 
         result = run_doc_sync(project_root, doc_patterns=doc_patterns)
 
+        # #577: inject verdict + agent_summary so the envelope is uniform.
+        # verdict=SAFE when no stale refs; REVIEW when stale refs found
+        # (agent should fix broken doc pointers before confusing future readers).
+        stale_count: int = result.get("stale_count", 0)
+        verdict = "SAFE" if stale_count == 0 else "REVIEW"
+        docs_scanned: int = result.get("docs_scanned", 0)
+        total_refs: int = result.get("total_refs_checked", 0)
+        summary_line = (
+            f"doc_sync: {docs_scanned} doc(s) scanned, "
+            f"{total_refs} ref(s) checked, {stale_count} stale"
+        )
+        if stale_count == 0:
+            next_step = "Documentation is in sync — no stale file references found."
+        else:
+            next_step = (
+                f"{stale_count} stale reference(s) found. "
+                "Update or remove the broken links listed in stale_refs."
+            )
+        agent_summary = {
+            "summary_line": summary_line,
+            "verdict": verdict,
+            "next_step": next_step,
+        }
+
+        # Build the canonical envelope that both paths share.
+        envelope: dict[str, Any] = {
+            **result,
+            "verdict": verdict,
+            "agent_summary": agent_summary,
+        }
+
         if output_format == "toon":
-            return {"format": "toon", "toon_content": self._to_toon(result)}
-        return result
+            return {
+                "format": "toon",
+                "toon_content": self._to_toon(result),
+                "success": result.get("success", True),
+                "verdict": verdict,
+                "agent_summary": agent_summary,
+            }
+        return envelope
 
     @staticmethod
     def _to_toon(result: dict[str, Any]) -> str:

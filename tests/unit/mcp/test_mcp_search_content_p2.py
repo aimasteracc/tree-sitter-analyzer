@@ -1,7 +1,27 @@
+import json
+
 import pytest
 
 from tree_sitter_analyzer.mcp.tools.list_files_tool import ListFilesTool
 from tree_sitter_analyzer.mcp.tools.search_content_tool import SearchContentTool
+
+
+def _rg_json(file_paths: list) -> bytes:
+    """Build minimal ripgrep --json event stream for a list of file paths."""
+    lines = []
+    for path in file_paths:
+        evt = {
+            "type": "match",
+            "data": {
+                "path": {"text": path},
+                "lines": {"text": "content\n"},
+                "line_number": 1,
+                "absolute_offset": 0,
+                "submatches": [{"match": {"text": "content"}, "start": 0, "end": 7}],
+            },
+        }
+        lines.append(json.dumps(evt))
+    return "\n".join(lines).encode()
 
 
 @pytest.fixture(autouse=True)
@@ -54,7 +74,7 @@ async def test_fd_19_case_sensitive_search(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 0
+    assert result["count"] == 1
 
 
 @pytest.mark.asyncio
@@ -68,17 +88,17 @@ async def test_fd_20_case_insensitive_search(tmp_path, monkeypatch):
     tool = SearchContentTool(str(tmp_path))
 
     async def fake_run(cmd, cwd=None, timeout=None, timeout_ms=None):
-        # Case insensitive content search
+        # Case insensitive content search — SearchContentTool uses rg --json output
         if "-i" in cmd:  # Case insensitive flag
-            files = [
-                str(tmp_path / "Test.txt"),
-                str(tmp_path / "test.txt"),
-                str(tmp_path / "TEST.txt"),
-            ]
+            out = _rg_json(
+                [
+                    str(tmp_path / "Test.txt"),
+                    str(tmp_path / "test.txt"),
+                    str(tmp_path / "TEST.txt"),
+                ]
+            )
         else:
-            files = [str(tmp_path / "test.txt")]
-
-        out = "\n".join(files).encode()
+            out = _rg_json([str(tmp_path / "test.txt")])
         return 0, out, b""
 
     monkeypatch.setattr(
@@ -89,11 +109,16 @@ async def test_fd_20_case_insensitive_search(tmp_path, monkeypatch):
     # F5: ``case`` is the schema-declared field; ``case_insensitive`` was
     # silently dropped before F5.
     result = await tool.execute(
-        {"roots": [str(tmp_path)], "query": "content", "case": "insensitive"}
+        {
+            "roots": [str(tmp_path)],
+            "query": "content",
+            "case": "insensitive",
+            "output_format": "json",
+        }
     )
 
     assert result["success"] is True
-    assert result["count"] >= 0
+    assert result["count"] == 3
 
 
 @pytest.mark.asyncio
@@ -127,7 +152,7 @@ async def test_fd_26_regex_overrides_glob(tmp_path, monkeypatch):
     )
 
     assert result1["success"] is True
-    assert result1["count"] >= 1
+    assert result1["count"] == 1
 
 
 @pytest.mark.asyncio
@@ -175,7 +200,7 @@ async def test_fd_27_full_path_searches(tmp_path, monkeypatch):
     )
 
     assert result1["success"] is True
-    assert result1["count"] >= 1
+    assert result1["count"] == 1
 
 
 @pytest.mark.asyncio
@@ -189,19 +214,13 @@ async def test_fd_28_fixed_strings_search(tmp_path, monkeypatch):
     tool = SearchContentTool(str(tmp_path))
 
     async def fake_run(cmd, cwd=None, timeout=None, timeout_ms=None):
-        # Fixed strings search (literal, not regex)
-        if "-F" in cmd:  # Fixed strings flag
-            if "test.file" in cmd:  # Literal dot
-                files = [str(tmp_path / "test.file")]
-            else:
-                files = []
-        else:  # Regex search
-            if "test.file" in cmd:  # Dot matches any character in regex
-                files = [str(tmp_path / "test.file"), str(tmp_path / "testXfile.py")]
-            else:
-                files = []
-
-        out = "\n".join(files).encode()
+        # Fixed strings search — SearchContentTool uses rg --json output
+        if "-F" in cmd:  # Fixed strings flag: literal dot matches only test.file
+            out = _rg_json([str(tmp_path / "test.file")])
+        else:  # Regex: dot matches any char, also matches testXfile.py
+            out = _rg_json(
+                [str(tmp_path / "test.file"), str(tmp_path / "testXfile.py")]
+            )
         return 0, out, b""
 
     monkeypatch.setattr(
@@ -210,11 +229,16 @@ async def test_fd_28_fixed_strings_search(tmp_path, monkeypatch):
 
     # Test fixed strings search
     result = await tool.execute(
-        {"roots": [str(tmp_path)], "query": "content", "fixed_strings": True}
+        {
+            "roots": [str(tmp_path)],
+            "query": "content",
+            "fixed_strings": True,
+            "output_format": "json",
+        }
     )
 
     assert result["success"] is True
-    assert result["count"] >= 0
+    assert result["count"] == 1
 
 
 @pytest.mark.asyncio
@@ -247,7 +271,7 @@ async def test_fd_66_count_only_mode_advanced(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["total_count"] >= 7
+    assert result["total_count"] == 7
     assert result["count_only"] is True
     # In count_only mode the canonical envelope still includes results=[].
     # The functional result lives in total_count, not results.

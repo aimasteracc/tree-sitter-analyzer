@@ -22,7 +22,12 @@ def _add_analysis_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--structure",
         action="store_true",
-        help="Output detailed structure information in JSON format",
+        help=(
+            "Output detailed structure information in JSON format. "
+            "For the richer MCP-equivalent outline schema (nested methods under "
+            "classes, params, return_type, is_constructor, is_static, extends, "
+            "implements), use --outline FILE instead."
+        ),
     )
     parser.add_argument(
         "--statistics",
@@ -37,6 +42,15 @@ def _add_analysis_options(parser: argparse.ArgumentParser) -> None:
 
 def _add_mcp_health_options(parser: argparse.ArgumentParser) -> None:
     """Add project and file health MCP mirror flags."""
+    parser.add_argument(
+        "--check-scale",
+        metavar="FILE",
+        help=(
+            "Structural metrics for a single file: line count, method/class/"
+            "field/import counts, complexity estimate. "
+            "Use this FIRST when sizing an unknown file (health action=scale parity)."
+        ),
+    )
     parser.add_argument(
         "--file-health",
         action="store_true",
@@ -109,6 +123,16 @@ def _add_mcp_change_options(parser: argparse.ArgumentParser) -> None:
         ),
     )
     parser.add_argument(
+        "--change-impact-resource-profile",
+        default="default",
+        choices=["default", "local_low_impact"],
+        help=(
+            "Verification command resource profile: default preserves existing "
+            "commands; local_low_impact emits nice/xdist-capped local pytest "
+            "commands and keeps the original CI command separate"
+        ),
+    )
+    parser.add_argument(
         "--change-impact-no-tests",
         dest="change_impact_include_tests",
         action="store_false",
@@ -133,6 +157,19 @@ def _add_mcp_change_options(parser: argparse.ArgumentParser) -> None:
             "Emit the full 145KB --change-impact envelope (default since "
             "v1.12: trimmed agent-summary). Use this when you genuinely "
             "need verification_command, raw_files, raw_test_paths, etc."
+        ),
+    )
+    parser.add_argument(
+        "--change-impact-fail-on-risk",
+        nargs="?",
+        const="review",
+        default=None,
+        metavar="THRESHOLD",
+        choices=["review", "caution", "unsafe"],
+        help=(
+            "Exit 1 when change-impact verdict reaches THRESHOLD or higher "
+            "(review | caution | unsafe). Omitting THRESHOLD defaults to "
+            "review. Does not change the output — only the exit code."
         ),
     )
 
@@ -170,10 +207,25 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--outline",
-        action="store_true",
+        nargs="?",
+        const="__POSITIONAL__",
+        metavar="FILE",
         help=(
-            "Hierarchical outline (package → class → method) without "
-            "method bodies — the navigation-first view of a file."
+            "Rich MCP-equivalent outline for FILE: nested methods under classes "
+            "with params, return_type, is_constructor, is_static, extends, "
+            "implements, and honest-truncation fields. "
+            "JSON to stdout; exit 0 on success, 1 on error. "
+            "(structure action=structure parity with the full MCP schema)"
+        ),
+    )
+    parser.add_argument(
+        "--outline-listed-cap",
+        type=int,
+        default=50,
+        metavar="N",
+        help=(
+            "Maximum number of classes (and top-level functions) to list in "
+            "--outline output (default: 50). Pre-cap totals are always present."
         ),
     )
     parser.add_argument(
@@ -420,6 +472,16 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--ast-diff-language",
         help="Language override for --ast-diff (auto-detected from file extension if omitted)",
+    )
+    parser.add_argument(
+        "--ast-diff-include-bodies",
+        action="store_true",
+        default=False,
+        help=(
+            "Include full recursive AST children in each hunk node. "
+            "Off by default (compact summaries only). "
+            "A 32 KB budget is enforced; excess triggers children_truncated flag."
+        ),
     )
     # AST-path, codegraph-navigate/explore/query, callers, call-path, import-graph,
     # dead-code, doc-sync, symbol-search, code-similarity —

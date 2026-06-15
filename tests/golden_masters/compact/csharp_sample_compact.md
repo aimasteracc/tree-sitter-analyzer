@@ -18,10 +18,10 @@
 | DisplayName | ():string | + | 32-32 | 1 | - |
 | User | (string,string,string):void | + | 35-41 | 1 | - |
 | UpdateEmail | (string):void | + | 44-52 | 2 | - |
-| IsValid | ():void | + | 54-59 | 1 | - |
-| ToString | ():void | + | 61-64 | 1 | - |
-| GetById | (i):void | + | 72-72 | 1 | - |
-| GetAll | ():void | + | 73-73 | 1 | - |
+| IsValid | ():bool | + | 54-59 | 1 | - |
+| ToString | ():string | + | 61-64 | 1 | - |
+| GetById | (i):User | + | 72-72 | 1 | - |
+| GetAll | ():IEnumerable<User> | + | 73-73 | 1 | - |
 | Add | (User):void | + | 74-74 | 1 | - |
 | Update | (User):void | + | 75-75 | 1 | - |
 | Delete | (i):void | + | 76-76 | 1 | - |

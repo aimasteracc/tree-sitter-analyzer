@@ -1,11 +1,11 @@
 {
   "counts_by_type": {
     "Class": 6,
-    "Function": 11,
+    "Function": 10,
     "Import": 3,
     "Variable": 15
   },
-  "element_total": 35,
+  "element_total": 34,
   "names_by_type": {
     "Class": [
       "Color",

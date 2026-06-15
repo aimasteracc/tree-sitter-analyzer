@@ -91,7 +91,7 @@ class TestInputValidation:
                 (SecurityError, ValidationError, FileNotFoundError, ValueError)
             ):
                 await tool.execute({"file_path": malicious_path})
-        assert len(malicious_paths) > 0
+        assert len(malicious_paths) == 12
 
     @pytest.mark.asyncio
     async def test_directory_path_validation(
@@ -99,7 +99,7 @@ class TestInputValidation:
     ):
         """ディレクトリパス検証テスト"""
         await assert_directory_paths_rejected(malicious_paths)
-        assert len(malicious_paths) > 0
+        assert len(malicious_paths) == 12
 
     @pytest.mark.asyncio
     async def test_null_byte_injection(self, safe_project_structure):
@@ -146,7 +146,7 @@ class TestInputValidation:
 
         with pytest.raises((SecurityError, ValidationError, OSError, ValueError)):
             await tool.execute({"file_path": long_path})
-        assert len(long_path) > 4096
+        assert len(long_path) == 10003
 
     @pytest.mark.asyncio
     async def test_special_character_injection(self, safe_project_structure):
@@ -307,7 +307,9 @@ class TestSecurityBestPractices:
         # リソース制限が適用されることを確認
         assert result["success"] is True
         if "count" in result:
-            assert result["count"] <= 10000  # 実装で定義された上限
+            assert (
+                result["count"] <= 10000
+            )  # ratchet: nondeterministic — implementation-defined upper limit, not a fixture count
 
     @pytest.mark.requires_ripgrep
     @pytest.mark.asyncio

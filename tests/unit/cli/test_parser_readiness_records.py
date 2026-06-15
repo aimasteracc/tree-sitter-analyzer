@@ -102,9 +102,7 @@ class TestModuleNameForLanguage:
         assert result == "tree_sitter_python"
 
     def test_csharp_uses_alias(self):
-        result = _module_name_for_language(
-            "csharp", {}, {"cs": "tree_sitter_csharp"}
-        )
+        result = _module_name_for_language("csharp", {}, {"cs": "tree_sitter_csharp"})
         assert result == "tree_sitter_csharp"
 
     def test_from_parser_package(self):
@@ -232,25 +230,60 @@ class TestReadinessScore:
 
 class TestIsSupported:
     def test_supported(self):
-        assert _is_supported({
-            "plugin_entrypoint": True,
-            "loader_mapping": True,
-            "unit_tests": True,
-        }) is True
+        assert (
+            _is_supported(
+                {
+                    "plugin_entrypoint": True,
+                    "loader_mapping": True,
+                    "parser_installed": True,
+                    "unit_tests": True,
+                    "golden_masters": True,
+                }
+            )
+            is True
+        )
 
     def test_missing_unit_tests(self):
-        assert _is_supported({
-            "plugin_entrypoint": True,
-            "loader_mapping": True,
-            "unit_tests": False,
-        }) is False
+        assert (
+            _is_supported(
+                {
+                    "plugin_entrypoint": True,
+                    "loader_mapping": True,
+                    "parser_installed": True,
+                    "unit_tests": False,
+                    "golden_masters": True,
+                }
+            )
+            is False
+        )
 
     def test_missing_loader(self):
-        assert _is_supported({
-            "plugin_entrypoint": True,
-            "loader_mapping": False,
-            "unit_tests": True,
-        }) is False
+        assert (
+            _is_supported(
+                {
+                    "plugin_entrypoint": True,
+                    "loader_mapping": False,
+                    "parser_installed": True,
+                    "unit_tests": True,
+                    "golden_masters": True,
+                }
+            )
+            is False
+        )
+
+    def test_missing_golden_master(self):
+        assert (
+            _is_supported(
+                {
+                    "plugin_entrypoint": True,
+                    "loader_mapping": True,
+                    "parser_installed": True,
+                    "unit_tests": True,
+                    "golden_masters": False,
+                }
+            )
+            is False
+        )
 
 
 class TestReadinessStatus:
@@ -258,7 +291,9 @@ class TestReadinessStatus:
         signals = {
             "plugin_entrypoint": True,
             "loader_mapping": True,
+            "parser_installed": True,
             "unit_tests": True,
+            "golden_masters": True,
             "parser_dependency_declared": True,
         }
         assert _readiness_status(signals) == "supported"
@@ -267,7 +302,9 @@ class TestReadinessStatus:
         signals = {
             "plugin_entrypoint": True,
             "loader_mapping": False,
+            "parser_installed": True,
             "unit_tests": False,
+            "golden_masters": False,
             "parser_dependency_declared": True,
         }
         assert _readiness_status(signals) == "needs_hardening"
@@ -276,7 +313,9 @@ class TestReadinessStatus:
         signals = {
             "plugin_entrypoint": False,
             "loader_mapping": False,
+            "parser_installed": False,
             "unit_tests": False,
+            "golden_masters": False,
             "parser_dependency_declared": True,
         }
         assert _readiness_status(signals) == "candidate"
@@ -285,7 +324,20 @@ class TestReadinessStatus:
         signals = {
             "plugin_entrypoint": False,
             "loader_mapping": False,
+            "parser_installed": False,
             "unit_tests": False,
+            "golden_masters": False,
+            "parser_dependency_declared": False,
+        }
+        assert _readiness_status(signals) == "missing_parser_package"
+
+    def test_plugin_without_parser_package_is_missing_parser_package(self):
+        signals = {
+            "plugin_entrypoint": True,
+            "loader_mapping": False,
+            "parser_installed": False,
+            "unit_tests": True,
+            "golden_masters": True,
             "parser_dependency_declared": False,
         }
         assert _readiness_status(signals) == "missing_parser_package"
@@ -316,7 +368,10 @@ class TestPackagedFileSignal:
         assert _packaged_file_signal(None, "grammar.json") == "unknown_local_only"
 
     def test_nonexistent_root(self, tmp_path):
-        assert _packaged_file_signal(tmp_path / "nope", "grammar.json") == "unknown_local_only"
+        assert (
+            _packaged_file_signal(tmp_path / "nope", "grammar.json")
+            == "unknown_local_only"
+        )
 
     def test_file_found(self, tmp_path):
         pkg = tmp_path / "pkg"
@@ -371,7 +426,11 @@ class TestLanguageRecordMetadata:
     def test_fields(self):
         result = _language_record_metadata(
             "python",
-            {"package": "tree-sitter-python", "requirements": ["req1"], "sources": ["src1"]},
+            {
+                "package": "tree-sitter-python",
+                "requirements": ["req1"],
+                "sources": ["src1"],
+            },
             {"python": "plugins.python_plugin"},
             "supported",
             85,
@@ -384,7 +443,9 @@ class TestLanguageRecordMetadata:
         assert result["plugin_entrypoint_target"] == "plugins.python_plugin"
 
     def test_empty_parser_info(self):
-        result = _language_record_metadata("python", {}, {}, "missing_parser_package", 0)
+        result = _language_record_metadata(
+            "python", {}, {}, "missing_parser_package", 0
+        )
         assert result["parser_package"] == ""
         assert result["requirements"] == []
         assert result["plugin_entrypoint_target"] == ""
@@ -408,7 +469,7 @@ class TestLanguageRecordActions:
         assert "signals" in result
         assert "next_steps" in result
         assert "verification_commands" in result
-        assert len(result["next_steps"]) > 0
+        assert len(result["next_steps"]) == 8
 
 
 class TestNextSteps:
@@ -426,7 +487,7 @@ class TestNextSteps:
             "upstream_maintenance": "unknown_local_only",
         }
         steps = _next_steps("python", signals)
-        assert len(steps) >= 5
+        assert len(steps) == 8
         assert any("python" in s for s in steps)
 
     def test_all_true_few_steps(self):
@@ -443,7 +504,7 @@ class TestNextSteps:
             "upstream_maintenance": "requires_online_check",
         }
         steps = _next_steps("python", signals)
-        assert len(steps) >= 1
+        assert len(steps) == 2
 
 
 class TestUpstreamNextSteps:
@@ -499,7 +560,7 @@ class TestVerificationCommands:
     def test_returns_list(self):
         cmds = _verification_commands("python")
         assert isinstance(cmds, list)
-        assert len(cmds) >= 1
+        assert len(cmds) == 3
 
     def test_contains_pytest(self):
         cmds = _verification_commands("python")
@@ -553,8 +614,6 @@ class TestBuildLanguageRecord:
         assert "verification_commands" in record
 
     def test_missing_language_has_low_score(self, tmp_path):
-        record = _build_language_record(
-            tmp_path, "fortran", {}, {}, {}
-        )
+        record = _build_language_record(tmp_path, "fortran", {}, {}, {})
         assert record["score"] < 50
         assert record["status"] == "missing_parser_package"

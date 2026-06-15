@@ -352,13 +352,15 @@ class TableCommand(BaseCommand):
         include_javadoc = getattr(self.args, "include_javadoc", False)
         javadoc = getattr(element, "docstring", "") or "" if include_javadoc else ""
 
-        return {
+        result: dict[str, Any] = {
             "name": getattr(element, "name", str(element)),
             "visibility": visibility,
             "return_type": getattr(element, "return_type", "Any"),
             "parameters": processed_params,
             "is_constructor": getattr(element, "is_constructor", False),
             "is_static": getattr(element, "is_static", False),
+            "is_async": getattr(element, "is_async", False),
+            "is_abstract": getattr(element, "is_abstract", False),
             "complexity_score": getattr(element, "complexity_score", 1),
             "line_range": {
                 "start": getattr(element, "start_line", 0),
@@ -366,6 +368,11 @@ class TableCommand(BaseCommand):
             },
             "javadoc": javadoc,
         }
+        # Propagate receiver_type as parent_class for PHP/Ruby formatters (#535).
+        receiver_type = getattr(element, "receiver_type", None)
+        if receiver_type:
+            result["parent_class"] = receiver_type
+        return result
 
     # Convert between formats: _convert_variable_element
     def _convert_variable_element(self, element: Any, language: str) -> dict[str, Any]:
@@ -385,7 +392,7 @@ class TableCommand(BaseCommand):
         include_javadoc = getattr(self.args, "include_javadoc", False)
         javadoc = getattr(element, "docstring", "") or "" if include_javadoc else ""
 
-        return {
+        result: dict[str, Any] = {
             "name": getattr(element, "name", str(element)),
             "type": field_type,
             "visibility": field_visibility,
@@ -399,6 +406,13 @@ class TableCommand(BaseCommand):
             },
             "javadoc": javadoc,
         }
+        # Propagate receiver_type as parent_class for fields too — without it
+        # multi-class files collide (User::$id vs AdminUser::$id) in CSV/TOON
+        # output (#535, Codex P2).
+        receiver_type = getattr(element, "receiver_type", None)
+        if receiver_type:
+            result["parent_class"] = receiver_type
+        return result
 
     # Convert between formats: _convert_import_element
     def _convert_import_element(self, element: Any) -> dict[str, Any]:

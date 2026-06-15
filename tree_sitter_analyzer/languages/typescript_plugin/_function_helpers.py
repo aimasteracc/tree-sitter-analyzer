@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, TypeAlias
 
 from ...models import Function
 from ...utils import log_debug, log_error
+from ._class_helpers import _extract_preceding_decorator_names
 from ._signature_helpers import FunctionSignature, MethodSignature
 
 if TYPE_CHECKING:
@@ -161,6 +162,7 @@ def extract_method(
             is_method=True,
             framework_type=framework_type,
             visibility=visibility,
+            decorators=_extract_preceding_decorator_names(node),
         )
     except Exception as e:
         log_debug(f"Failed to extract method info: {e}")
@@ -266,6 +268,7 @@ def extract_abstract_method_signature(
             return_type=return_type or "any",
             is_async=is_async,
             is_static=is_static,
+            is_abstract=True,
             docstring=extract_tsdoc(start_line),
             complexity_score=0,
             is_arrow=False,

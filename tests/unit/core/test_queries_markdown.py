@@ -46,7 +46,7 @@ class TestMarkdownQueries:
         for query in expected_queries:
             assert query in MARKDOWN_QUERIES
             assert isinstance(MARKDOWN_QUERIES[query], str)
-            assert len(MARKDOWN_QUERIES[query].strip()) > 0
+            assert MARKDOWN_QUERIES[query].strip()
 
     def test_query_aliases_exist(self):
         """Test that query aliases are properly defined"""
@@ -111,7 +111,7 @@ class TestMarkdownQueries:
         """Test getting list of available queries"""
         queries = get_available_queries()
         assert isinstance(queries, list)
-        assert len(queries) > 0
+        assert len(queries) == 53
         assert "headers" in queries
         assert "heading" in queries  # alias
         assert sorted(queries) == queries  # Should be sorted
@@ -147,7 +147,7 @@ class TestMarkdownQueries:
         """Test query descriptions"""
         description = _get_query_description("headers")
         assert isinstance(description, str)
-        assert len(description) > 0
+        assert len(description) == 64
         assert "heading" in description.lower()
 
         # Test unknown description
@@ -288,7 +288,7 @@ class TestMarkdownQueryValidation:
         """Test that all queries are valid strings"""
         for _query_name, query_string in MARKDOWN_QUERIES.items():
             assert isinstance(query_string, str)
-            assert len(query_string.strip()) > 0
+            assert query_string.strip()
             # Basic syntax check - should contain @ symbols for captures
             assert "@" in query_string
 
@@ -314,7 +314,7 @@ class TestMarkdownQueryValidation:
             # Captures should not be empty
             lines = query_string.split("\n")
             capture_lines = [line for line in lines if "@" in line]
-            assert len(capture_lines) > 0
+            assert capture_lines
 
     def test_query_syntax_basics(self):
         """Test basic query syntax"""

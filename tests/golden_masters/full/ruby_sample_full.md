@@ -11,41 +11,35 @@ import concerns/timestampable
 | Class | Type | Visibility | Lines | Methods | Fields |
 |-------|------|------------|-------|---------|--------|
 | Authentication | module | public | 5-139 | 0 | 0 |
-| User | class | public | 9-88 | 15 | 15 |
-| AdminUser | class | public | 91-116 | 6 | 2 |
+| User | class | public | 9-88 | 15 | 9 |
+| AdminUser | class | public | 91-116 | 6 | 1 |
 | Session | module | public | 119-138 | 3 | 0 |
-| UserRepository | class | public | 142-184 | 6 | 4 |
+| UserRepository | class | public | 142-184 | 6 | 2 |
 
 ## Authentication (5-139)
 ## User (9-88)
 ### Fields
 | Name | Type | Vis | Modifiers | Line | Doc |
 |------|------|-----|-----------|------|-----|
-| User::STATUS_ACTIVE | None | + |  | 13 | - |
-| User::STATUS_INACTIVE | None | + |  | 14 | - |
-| User::MAX_LOGIN_ATTEMPTS | None | + |  | 15 | - |
+| STATUS_ACTIVE | None | + |  | 13 | - |
+| STATUS_INACTIVE | None | + |  | 14 | - |
+| MAX_LOGIN_ATTEMPTS | None | + |  | 15 | - |
 | instance_count | None | - |  | 23 | - |
 | username | None | - |  | 27 | - |
 | email | None | - |  | 28 | - |
 | created_at | None | - |  | 29 | - |
 | password_hash | None | - |  | 30 | - |
 | last_login_at | None | - |  | 31 | - |
-| email | None | - |  | 44 | - |
-| username | None | - |  | 45 | - |
-| status | None | - |  | 56 | - |
-| deactivated_at | None | - |  | 57 | - |
-| user | None | - |  | 73 | - |
-| user.password_hash | None | - |  | 74 | - |
 
 ### Public Methods
 | Method | Signature | Vis | Lines | Cx | Doc |
 |--------|-----------|-----|-------|----|----|
+| User#initialize | (username:Any, email:Any): | + | 26-33 | 1 | - |
 | User#username | (): | + | 18-18 | 1 | - |
 | User#email | (): | + | 18-18 | 1 | - |
 | User#id | (): | + | 19-19 | 1 | - |
 | User#created_at | (): | + | 19-19 | 1 | - |
 | User#password_hash | (): | + | 20-20 | 1 | - |
-| User#initialize | (username:Any, email:Any): | + | 26-33 | 1 | - |
 | User#authenticate | (password:Any): | + | 36-40 | 1 | - |
 | User#update_profile | (data:Any): | + | 43-47 | 1 | - |
 | User#active? | (): | + | 50-52 | 1 | - |
@@ -61,13 +55,12 @@ import concerns/timestampable
 | Name | Type | Vis | Modifiers | Line | Doc |
 |------|------|-----|-----------|------|-----|
 | permissions | None | - |  | 96 | - |
-| permissions | None | - |  | 114 | - |
 
 ### Public Methods
 | Method | Signature | Vis | Lines | Cx | Doc |
 |--------|-----------|-----|-------|----|----|
+| AdminUser#initialize | (username:Any, email:Any, permissions:Any): | + | 94-97 | 1 | - |
 | AdminUser#permissions | (): | + | 92-92 | 1 | - |
-| AdminUser#initialize | (username:Any, email:Any, []:permissions =): | + | 94-97 | 1 | - |
 | AdminUser#has_permission? | (permission:Any): | + | 99-101 | 1 | - |
 | AdminUser#grant_permission | (permission:Any): | + | 103-105 | 1 | - |
 | AdminUser#revoke_permission | (permission:Any): | + | 107-109 | 1 | - |
@@ -87,8 +80,6 @@ import concerns/timestampable
 |------|------|-----|-----------|------|-----|
 | database | None | - |  | 144 | - |
 | cache | None | - |  | 145 | - |
-| user | None | - |  | 151 | - |
-| cache[id] | None | - |  | 152 | - |
 
 ### Public Methods
 | Method | Signature | Vis | Lines | Cx | Doc |

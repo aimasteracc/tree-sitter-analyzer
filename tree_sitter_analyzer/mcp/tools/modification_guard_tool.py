@@ -46,6 +46,17 @@ _VERDICT_TO_RISK: dict[str, str] = {
     "UNSAFE": "high",
 }
 
+# Authoritative enum for the modification_type parameter.
+# Used by get_tool_schema, validate_arguments, and the edit facade's
+# extra_public_params — single source so they can never drift.
+MODIFICATION_TYPES: tuple[str, ...] = (
+    "behavior_change",
+    "delete",
+    "refactor",
+    "rename",
+    "signature_change",
+)
+
 CRITICAL_NODES_FILE = ".tree-sitter-cache/critical_nodes.json"
 
 
@@ -83,10 +94,12 @@ def _build_agent_summary(
         "symbol": symbol,
         "modification_type": modification_type,
         "total_callers": total_callers,
+        "ripgrep_occurrences": total_callers,
+        "count_unit": "ripgrep_occurrences",
         "recommendation": proceed_recommendation,
         "stop_condition": (
-            f"safety_verdict resolves to SAFE or all {total_callers} caller(s) "
-            "have been reviewed/updated."
+            f"safety_verdict resolves to SAFE or all {total_callers} ripgrep "
+            "occurrence(s) have been reconciled with AST callers or reviewed."
         ),
     }
 
@@ -109,18 +122,19 @@ def _next_step_for_verdict(
         return f"Proceed with {modification_type} for '{symbol}'."
     if safety_verdict == "CAUTION":
         return (
-            f"Run batch_search(['{symbol}']) to review {total_callers} caller(s), "
-            "then proceed with the edit."
+            f"Run batch_search(['{symbol}']) to review {total_callers} ripgrep "
+            "occurrence(s), then compare nav action=callers before editing."
         )
     if safety_verdict == "REVIEW":
         return (
-            f"Audit all {total_callers} call sites via batch_search(['{symbol}']) "
-            "before changing the signature."
+            f"Audit all {total_callers} ripgrep occurrence(s) via "
+            f"batch_search(['{symbol}']) and compare nav action=callers before "
+            "changing the signature."
         )
     # UNSAFE / anything else: highest caution
     return (
         f"Do NOT modify '{symbol}' yet — plan a deprecation strategy and "
-        f"update all {total_callers} call sites atomically."
+        f"reconcile all {total_callers} ripgrep occurrence(s) with AST callers."
     )
 
 
@@ -141,17 +155,20 @@ def _build_proceed_recommendation(
         return f"No callers found for '{symbol}'. Safe to {modification_type}."
     if safety_verdict == "CAUTION":
         return (
-            f"Review {total_callers} caller(s) before proceeding. "
-            f"Use batch_search(['{symbol}']) to inspect usage patterns."
+            f"Review {total_callers} ripgrep occurrence(s) before proceeding. "
+            f"Use batch_search(['{symbol}']) and nav action=callers to inspect "
+            "usage patterns."
         )
     if safety_verdict == "REVIEW":
         return (
-            f"Check all {total_callers} call sites before modifying. "
-            f"Use batch_search(['{symbol}']) to see all usage patterns."
+            f"Check all {total_callers} ripgrep occurrence(s) before modifying. "
+            f"Use batch_search(['{symbol}']) and nav action=callers to see all "
+            "usage patterns."
         )
     return (
-        f"Review all {total_callers} callers first. "
-        f"Use batch_search(['{symbol}']) to see all usage patterns."
+        f"Review all {total_callers} ripgrep occurrence(s) first. "
+        f"Use batch_search(['{symbol}']) and nav action=callers to see all usage "
+        "patterns."
     )
 
 
@@ -179,12 +196,31 @@ def _format_modification_summary_line(
     parts = [
         symbol,
         rank_str,
-        f"callers={total_callers}",
+        f"ripgrep_occurrences={total_callers}",
         f"verdict={final_verdict}",
     ]
     if pr_str:
         parts.insert(2, pr_str)
     return format_summary_line(*parts)
+
+
+def _guard_impact_badge(impact: dict[str, Any], total_callers: int) -> str:
+    """Render guard impact with the correct unit for its trace-derived count."""
+    badge = str(impact["badge"])
+    if total_callers > 20:
+        return f"🚨 HIGH IMPACT — {total_callers} RIPGREP OCCURRENCES"
+    return badge
+
+
+def _guard_impact_guidance(impact: dict[str, Any], total_callers: int) -> str:
+    """Render guard guidance without calling trace occurrences AST callers."""
+    if total_callers == 0:
+        return str(impact["guidance"])
+    return (
+        f"{total_callers} source ripgrep occurrence(s) found after filtering. "
+        "Compare ast_caller_count or nav action=callers for AST direct caller "
+        "fan-in before changing signatures."
+    )
 
 
 def _load_critical_nodes(project_root: str | None) -> list[dict[str, Any]]:
@@ -226,7 +262,9 @@ def _build_required_actions(
         actions.append("No callers found — safe to proceed.")
         return actions
 
-    actions.append(f"Review all {total_callers} call site(s) before modifying.")
+    actions.append(
+        f"Review all {total_callers} ripgrep occurrence(s) before modifying."
+    )
     actions.append(f"Use batch_search to find callers: ['{symbol}']")
 
     if modification_type in ("rename", "signature_change"):
@@ -305,13 +343,7 @@ class ModificationGuardTool(BaseMCPTool):
                 },
                 "modification_type": {
                     "type": "string",
-                    "enum": [
-                        "rename",
-                        "signature_change",
-                        "delete",
-                        "behavior_change",
-                        "refactor",
-                    ],
+                    "enum": list(MODIFICATION_TYPES),
                     "description": "Type of modification you plan to make.",
                 },
                 "file_path": {
@@ -405,13 +437,7 @@ class ModificationGuardTool(BaseMCPTool):
             )
 
         modification_type = arguments.get("modification_type")
-        valid_types = {
-            "rename",
-            "signature_change",
-            "delete",
-            "behavior_change",
-            "refactor",
-        }
+        valid_types = set(MODIFICATION_TYPES)
         if not modification_type or modification_type not in valid_types:
             raise ValueError(
                 f"modification_type must be one of: {', '.join(sorted(valid_types))}"
@@ -458,6 +484,7 @@ class ModificationGuardTool(BaseMCPTool):
             return self._build_not_found_result(symbol, modification_type)
 
         total_callers = trace_result.get("call_count", 0)
+        ast_caller_count = await self._try_ast_caller_count(symbol, file_path)
         impact = _get_impact_level(total_callers)
         impact_level = impact["level"]
         safety_verdict = _VERDICT_MAP.get(impact_level, "REVIEW")
@@ -483,6 +510,7 @@ class ModificationGuardTool(BaseMCPTool):
             safety_verdict=safety_verdict,
             required_actions=required_actions,
             proceed_recommendation=proceed_recommendation,
+            ast_caller_count=ast_caller_count,
         )
 
         self._apply_pagerank_boost(result, symbol, safety_verdict)
@@ -548,6 +576,28 @@ class ModificationGuardTool(BaseMCPTool):
         result = await self._trace_impact_tool.execute(trace_args)
         return result  # type: ignore[no-any-return]
 
+    async def _try_ast_caller_count(
+        self, symbol: str, file_path: str | None
+    ) -> int | None:
+        """Best-effort AST caller count for guard/callers count reconciliation."""
+        if not file_path:
+            return None
+        try:
+            from .callers_tool import CodeGraphCallersTool
+
+            callers_tool = CodeGraphCallersTool(self.project_root)
+            args: dict[str, Any] = {
+                "function_name": symbol,
+                "file_path": file_path,
+                "limit": 1,
+                "output_format": "json",
+            }
+            result = await callers_tool.execute(args)
+        except Exception:  # nosec B110 - guard still returns trace evidence
+            return None
+        caller_count = result.get("caller_count")
+        return caller_count if isinstance(caller_count, int) else None
+
     @staticmethod
     def _build_initial_result(
         *,
@@ -560,16 +610,24 @@ class ModificationGuardTool(BaseMCPTool):
         safety_verdict: str,
         required_actions: list[Any],
         proceed_recommendation: str,
+        ast_caller_count: int | None = None,
     ) -> dict[str, Any]:
         """Canonical safety report — incl. ``count`` alias + ``verdict`` alias."""
-        return {
+        result: dict[str, Any] = {
             "success": True,
             "symbol": symbol,
             "modification_type": modification_type,
             "impact_level": impact_level,
-            "impact_badge": impact["badge"],
-            "impact_guidance": impact["guidance"],
+            "impact_badge": _guard_impact_badge(impact, total_callers),
+            "impact_guidance": _guard_impact_guidance(impact, total_callers),
             "total_callers": total_callers,
+            "ripgrep_occurrences": total_callers,
+            "count_unit": "ripgrep_occurrences",
+            "count_caveat": (
+                "modification_guard counts source ripgrep occurrences after "
+                "comment/import/string filtering; compare ast_caller_count or "
+                "nav action=callers for graph-derived direct caller fan-in."
+            ),
             # ``count`` is the cross-tool canonical alias.
             "count": total_callers,
             "callers_by_file": callers_by_file,
@@ -581,6 +639,9 @@ class ModificationGuardTool(BaseMCPTool):
             # ``recommendation`` aligns with safe_to_edit / file_health naming.
             "recommendation": proceed_recommendation,
         }
+        if ast_caller_count is not None:
+            result["ast_caller_count"] = ast_caller_count
+        return result
 
     def _apply_pagerank_boost(
         self, result: dict[str, Any], symbol: str, safety_verdict: str

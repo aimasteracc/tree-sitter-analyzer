@@ -18,6 +18,7 @@ from ._toon_encoder_string_helpers import escape_string, needs_quotes
 from ._toon_encoder_table_helpers import (
     encode_array_table_lines,
     encode_public_array_table,
+    union_schema,
 )
 from ._toon_encoder_task_helpers import build_task_handlers
 
@@ -289,8 +290,16 @@ class ToonEncoder:
             # Nested dict
             output.append(f"{indent_str}{key}:")
             stack.append(_Task(_TaskType.ENCODE_DICT_START, value, indent + 1))
-        elif isinstance(value, list) and value and isinstance(value[0], dict):
-            # Homogeneous array of dicts - use table format
+        elif (
+            isinstance(value, list)
+            and value
+            and all(isinstance(item, dict) for item in value)
+        ):
+            # Array of dicts — use table format. The table schema is the
+            # UNION of all rows' keys (issue #637: a first-row-only schema
+            # silently dropped fields later rows carry). Mixed dict/non-dict
+            # lists fall through to the inline form below — they would crash
+            # the row encoder (only dicts have .get).
             output.append(f"{indent_str}{key}:")
             stack.append(_Task(_TaskType.ENCODE_ARRAY_TABLE, value, indent + 1))
         elif (
@@ -332,9 +341,10 @@ class ToonEncoder:
             return
 
         # Use the array-table format ONLY for *homogeneous* dict arrays
-        # (every item is a dict AND shares the same key set). A mixed-key
-        # list like ``[{"a": 1}, {"b": 2}]`` would silently drop entries
-        # under the table schema, so encode those inline instead.
+        # (every item is a dict AND shares the same key set). Mixed-key
+        # lists like ``[{"a": 1}, {"b": 2}]`` keep the (lossless) inline
+        # form at this top-level/list-nested path; dict-valued lists route
+        # through ENCODE_ARRAY_TABLE with a union schema instead (#637).
         if items and all(isinstance(item, dict) for item in items):
             first_keys = tuple(items[0].keys())
             if all(tuple(item.keys()) == first_keys for item in items):
@@ -399,7 +409,9 @@ class ToonEncoder:
         seen_ids.add(obj_id)
 
         try:
-            schema = list(items[0].keys())
+            # Union of all rows' keys — a first-row-only schema silently
+            # dropped fields absent from row 0 (issue #637).
+            schema = union_schema(items)
             indent_str = "  " * indent
             output.extend(
                 encode_array_table_lines(
@@ -666,7 +678,8 @@ class ToonEncoder:
 
         Args:
             items: List of dictionaries with similar keys
-            schema: Optional explicit schema order; if None, inferred from first item
+            schema: Optional explicit schema order; if None, inferred as the
+                union of all items' keys in first-seen order (#637)
             indent: Indentation level
 
         Returns:
@@ -685,7 +698,8 @@ class ToonEncoder:
         """
         Infer common schema from array items.
 
-        Uses the keys from the first item as the schema.
+        Uses the union of all items' keys in first-seen order (#637) —
+        a first-item-only schema silently dropped later rows' extra fields.
 
         Args:
             items: List of dictionaries
@@ -693,11 +707,7 @@ class ToonEncoder:
         Returns:
             List of field names
         """
-        if not items:
-            return []
-
-        # Use first item's keys as schema
-        return list(items[0].keys())
+        return union_schema(items)
 
     def encode_safe(self, data: Any, indent: int = 0) -> str:
         """

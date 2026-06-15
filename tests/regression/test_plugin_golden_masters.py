@@ -58,6 +58,9 @@ _FIXTURES: list[tuple[str, str]] = [
     ("yaml", "sample_config.yaml"),
     ("html", "comprehensive_sample.html"),
     ("css", "comprehensive_sample.css"),
+    ("bash", "sample.sh"),
+    ("json", "sample.json"),
+    ("scala", "sample.scala"),
 ]
 
 

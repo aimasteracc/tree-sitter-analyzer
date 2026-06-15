@@ -214,7 +214,7 @@ def _build_build_project_index_tool_args(
 
 
 def _build_change_impact_tool_args(args: Any, output_format: str) -> dict[str, Any]:
-    return {
+    tool_args = {
         "mode": getattr(args, "change_impact_mode", "diff") or "diff",
         "pr_url": getattr(args, "pr_url", "") or "",
         "include_tests": bool(getattr(args, "change_impact_include_tests", True)),
@@ -224,6 +224,12 @@ def _build_change_impact_tool_args(args: Any, output_format: str) -> dict[str, A
         "agent_summary_only": not bool(getattr(args, "change_impact_full", False)),
         "compact_only": bool(getattr(args, "compact_toon", False)),
     }
+    # Always pass resource_profile explicitly so the MCP tool's fallback default
+    # ("local_low_impact" for MCP callers) never silently overrides the CLI path.
+    tool_args["resource_profile"] = (
+        getattr(args, "change_impact_resource_profile", "default") or "default"
+    )
+    return tool_args
 
 
 def _build_codegraph_status_tool_args(args: Any, output_format: str) -> dict[str, Any]:

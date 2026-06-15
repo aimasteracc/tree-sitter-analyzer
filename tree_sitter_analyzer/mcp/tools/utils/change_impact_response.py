@@ -51,6 +51,48 @@ CHANGE_IMPACT_VERDICT_CLEAN = "SAFE"
 CHANGE_IMPACT_VERDICT_REVIEW = "REVIEW"
 CHANGE_IMPACT_VERDICT_WARN = "WARN"
 
+# #782: the top-level ``verdict`` (risk-derived, possibly constraint-escalated)
+# and ``agent_summary["verdict"]`` (content-aware: SAFE/REVIEW/WARN) are computed
+# independently and could disagree (e.g. top=INFO while agent=REVIEW for a
+# changed_count>0 diff). ``mirror_summary_line`` only fills a *missing* verdict,
+# not a divergent one, so we reconcile them to the MORE SEVERE here. Kept in sync
+# with ``change_impact_tool._JOURNAL_VERDICT_RANK`` (duplicated to avoid a
+# circular import: that module imports this one).
+_VERDICT_SEVERITY: dict[str, int] = {
+    "SAFE": 0,
+    "INFO": 0,
+    "NOT_FOUND": 0,
+    "CAUTION": 1,
+    "REVIEW": 2,
+    "WARN": 3,
+    "ERROR": 4,
+    "UNSAFE": 5,
+}
+
+
+def _reconcile_envelope_verdict(
+    result: dict[str, Any], agent_summary: dict[str, Any]
+) -> None:
+    """Force top-level ``verdict`` and ``agent_summary["verdict"]`` to agree.
+
+    Picks the more severe of the two by :data:`_VERDICT_SEVERITY` (never a
+    downgrade — a constraint-escalated UNSAFE top-level survives, and a
+    content-aware REVIEW lifts a stale INFO top-level). Ties keep the top-level
+    value. No-ops when either side is missing — ``mirror_summary_line`` then
+    fills the gap as before.
+    """
+    top = result.get("verdict")
+    agent = agent_summary.get("verdict")
+    if not (isinstance(top, str) and top) or not (isinstance(agent, str) and agent):
+        return
+    final = (
+        agent
+        if _VERDICT_SEVERITY.get(agent, 0) > _VERDICT_SEVERITY.get(top, 0)
+        else top
+    )
+    result["verdict"] = final
+    agent_summary["verdict"] = final
+
 
 @dataclass(frozen=True)
 class AgentSummaryContext:
@@ -129,7 +171,7 @@ def build_agent_summary_only_response(result: dict[str, Any]) -> dict[str, Any]:
     """Return a compact change-impact response for agent decision loops."""
     summary = result.get("agent_summary", {})
     risk = result.get("risk_level", summary.get("risk", "none"))
-    return {
+    response = {
         "success": result.get("success", False),
         "verdict": _change_impact_risk_to_verdict(risk),
         "mode": result.get("mode", "diff"),
@@ -159,12 +201,28 @@ def build_agent_summary_only_response(result: dict[str, Any]) -> dict[str, Any]:
         "verification_steps": result.get("verification_steps", []),
         "stop_condition": summary.get("stop_condition", ""),
     }
+    for key in (
+        "resource_profile",
+        "local_verification_command",
+        "low_impact_focused_test_command",
+        "ci_verification_command",
+    ):
+        value = result.get(key, summary.get(key))
+        if value:
+            response[key] = value
+    # #782: the compact builder recomputes the top-level verdict from risk_level
+    # above, which would discard the reconciliation apply_scope_validation did on
+    # the full result. Re-reconcile so the compact path — the surface gating
+    # agents read most — never ships top=INFO while agent_summary=REVIEW/UNSAFE.
+    _reconcile_envelope_verdict(response, summary)
+    return response
 
 
 def build_agent_summary(context: AgentSummaryContext) -> dict[str, Any]:
     """Build the compact decision surface agents need from change-impact."""
     verification = context.verification
     strategy = context.strategy
+    verification_command = _effective_verification_command(verification, strategy)
     summary: dict[str, Any] = {
         "risk": context.risk,
         "scope": "scoped" if context.scope_paths else "workspace",
@@ -172,7 +230,7 @@ def build_agent_summary(context: AgentSummaryContext) -> dict[str, Any]:
         "affected_count": context.affected_count,
         "tests_to_run_count": context.tests_to_run_count,
         "next_step": _agent_next_step(verification, strategy),
-        "verification_command": verification["verification_command"],
+        "verification_command": verification_command,
         "verification_strategy": strategy["verification_strategy"],
         "stop_condition": _agent_stop_condition(context.risk, verification, strategy),
     }
@@ -180,6 +238,16 @@ def build_agent_summary(context: AgentSummaryContext) -> dict[str, Any]:
     focused = strategy.get("focused_test_command")
     if focused:
         summary["focused_test_command"] = focused
+
+    for key in (
+        "resource_profile",
+        "local_verification_command",
+        "low_impact_focused_test_command",
+        "ci_verification_command",
+    ):
+        value = strategy.get(key)
+        if value:
+            summary[key] = value
 
     if context.changed_files:
         # Pol3 (round-21): expose the cap + truncation flag whenever the
@@ -236,9 +304,7 @@ def attach_queue_ledger(
     verification_command = result.get("verification_command") or result.get(
         "agent_summary", {}
     ).get("verification_command", "")
-    out_of_scope_preview = (
-        [] if strict else out_of_scope[:CHANGE_IMPACT_PREVIEW_LIMIT]
-    )
+    out_of_scope_preview = [] if strict else out_of_scope[:CHANGE_IMPACT_PREVIEW_LIMIT]
     # Pol3 (round-21): a cap on either preview without a transparency flag
     # would let an agent think it had the full picture. Surface
     # ``preview_limit`` + ``preview_truncated`` whenever the underlying
@@ -317,7 +383,8 @@ def build_change_impact_response(
     )
     agent_summary = dict(context.agent_summary)
     agent_summary.setdefault("summary_line", summary_line)
-    return {
+    verification_command = _effective_verification_command(verification, strategy)
+    response = {
         "success": True,
         "mode": request.mode,
         "scope_paths": request.scope_paths or [],
@@ -341,7 +408,7 @@ def build_change_impact_response(
         "pytest_required": verification["pytest_required"],
         "pytest_command": verification["pytest_command"],
         "test_command": verification["test_command"],
-        "verification_command": verification["verification_command"],
+        "verification_command": verification_command,
         "verification_reason": verification["verification_reason"],
         "focused_test_command": strategy["focused_test_command"],
         "verification_strategy": strategy["verification_strategy"],
@@ -350,12 +417,31 @@ def build_change_impact_response(
         "test_mapping": context.test_mapping if context.test_mapping else {},
         "diff_stat": request.diff_stat[:500] if request.diff_stat else "",
     }
+    for key in (
+        "resource_profile",
+        "local_verification_command",
+        "low_impact_focused_test_command",
+        "ci_verification_command",
+    ):
+        value = strategy.get(key)
+        if value:
+            response[key] = value
+    return response
 
 
 def _agent_next_step(verification: dict[str, Any], strategy: dict[str, Any]) -> str:
     """Return one concise next action for agent decision-making."""
     if not verification["test_required"]:
         return "Run git diff --check; pytest is not required for docs-only changes."
+    local = strategy.get("local_verification_command")
+    if local:
+        ci = strategy.get("ci_verification_command")
+        if ci and ci != local:
+            return (
+                f"Run low-impact local verification: {local}; keep {ci} "
+                "for CI or queue boundary."
+            )
+        return f"Run low-impact local verification: {local}"
     focused = strategy.get("focused_test_command")
     if focused and focused != verification["verification_command"]:
         return f"Run focused verification first: {focused}"
@@ -375,6 +461,15 @@ def _agent_stop_condition(
         return (
             "docs-only change: git diff --check passes and no runtime files are added."
         )
+    local = strategy.get("local_verification_command")
+    if local:
+        ci = strategy.get("ci_verification_command")
+        if ci and ci != local:
+            return (
+                f"{local} exits successfully locally; {ci} remains the CI "
+                "or queue-boundary command."
+            )
+        return f"{local} exits successfully locally."
     if (
         risk == "high"
         and verification["verification_command"] != verification["default_test_command"]
@@ -385,6 +480,18 @@ def _agent_stop_condition(
         )
     steps = strategy.get("verification_steps") or [verification["verification_command"]]
     return f"{steps[-1]} exits successfully."
+
+
+def _effective_verification_command(
+    verification: dict[str, Any],
+    strategy: dict[str, Any],
+) -> str:
+    """Return the command the local agent should run for this response."""
+    local_command = strategy.get("local_verification_command")
+    if isinstance(local_command, str) and local_command:
+        return local_command
+    command = verification["verification_command"]
+    return command if isinstance(command, str) else str(command)
 
 
 def apply_scope_validation(
@@ -439,6 +546,9 @@ def apply_scope_validation(
         )
         agent_summary.setdefault("verdict", default_verdict)
 
+    # #782: the top-level and agent_summary verdicts were computed by separate
+    # steps; force them to agree (more severe wins) before mirror_summary_line.
+    _reconcile_envelope_verdict(result, agent_summary)
     return result
 
 

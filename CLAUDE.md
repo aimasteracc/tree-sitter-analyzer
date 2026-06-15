@@ -39,7 +39,7 @@ These look like inconsistencies in a dogfood pass, but they are intentional and 
 ### 2. project_root canonicalisation is a foundational change
 
 - **Why**: macOS `/var/folders/...` symlinks to `/private/var/folders/...`. Naive `os.path.abspath()` doesn't resolve the symlink but `realpath()` does. The SecurityValidator and test fixtures use different resolutions, so any change to `BaseMCPTool.__init__` propagates through 164+ tests.
-- **Symptom that looks like a bug**: MCP `safe_to_edit(project_root='.')` returns SAFE while CLI returns UNSAFE (different downstream counts because `DependencyGraph('.')` walks a different tree than `DependencyGraph('/abs/path')`).
+- **Symptom that looks like a bug**: MCP `edit action=safe` (formerly `safe_to_edit`) with `project_root='.'` returns SAFE while CLI returns UNSAFE (different downstream counts because `DependencyGraph('.')` walks a different tree than `DependencyGraph('/abs/path')`).
 - **Correct action**: if you fix this, study the macOS symlink behavior and the test fixture conventions FIRST. Use `os.path.abspath` only after confirming SecurityValidator / PathResolver / test fixtures all use the same resolution. Test on macOS specifically. Land it in a dedicated commit, never bundled with other fixes.
 - **Past incident**: r36 attempted "R1: canonicalise project_root in BaseMCPTool" — broke 164 tests on macOS, rolled back.
 
@@ -75,12 +75,12 @@ Rules distilled from a full mycelium + call-graph analysis sprint. Violations he
 
 ### 7. After changing the LanguagePlugin interface, always test cli/info_commands
 
-**Why**: `cli/info_commands.py` (15 methods: `--show-languages`, `--show-extensions`, etc.) has **zero tests** and reads directly from the plugin registry. Any change to `REQUIRED_PLUGIN_METHODS`, plugin removal, or extractor interface changes can silently break these commands. The call graph won't catch this because the commands are never called by tests.
+**Why**: `cli/info_commands.py` (15 methods: `--show-supported-languages`, `--show-supported-extensions`, etc.) has **zero tests** and reads directly from the plugin registry. Any change to `REQUIRED_PLUGIN_METHODS`, plugin removal, or extractor interface changes can silently break these commands. The call graph won't catch this because the commands are never called by tests.
 
 **Mandatory check**: After any plugin interface change, run:
 ```bash
-uv run python -m tree_sitter_analyzer --show-languages
-uv run python -m tree_sitter_analyzer --show-extensions
+uv run python -m tree_sitter_analyzer --show-supported-languages
+uv run python -m tree_sitter_analyzer --show-supported-extensions
 ```
 and verify the output is sane before committing.
 

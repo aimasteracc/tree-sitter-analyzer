@@ -25,13 +25,13 @@ class TestRouteCachePersistence:
         d1 = RouteDetector(str(flask_project))
         first = d1.detect_all()
         s1 = d1.cache_stats()
-        assert s1["misses"] >= 1
+        assert s1["misses"] == 1
         assert s1["hits"] == 0
 
         d2 = RouteDetector(str(flask_project))
         second = d2.detect_all()
         s2 = d2.cache_stats()
-        assert s2["hits"] >= 1
+        assert s2["hits"] == 1
         assert s2["misses"] == 0
         # Same URL pattern set across runs.
         assert sorted(r.url_pattern for r in first) == sorted(
@@ -55,8 +55,8 @@ class TestRouteCachePersistence:
         assert "/new" in urls
         # The two unchanged files should still be cache hits.
         s = d2.cache_stats()
-        assert s["hits"] >= 1
-        assert s["misses"] >= 1  # the modified app.py
+        assert s["hits"] == 2
+        assert s["misses"] == 1  # the modified app.py
 
     def test_cache_disabled_flag(self, flask_project: Path):
         d = RouteDetector(str(flask_project), cache_enabled=False)
@@ -134,7 +134,9 @@ class TestRouteCachePersistence:
         results = sorted(trial() for _ in range(3))
         cold_med, warm_med = results[1]
         speedup = cold_med / max(warm_med, 1e-6)
-        assert speedup >= 3, (
+        assert (
+            speedup >= 3
+        ), (  # ratchet: nondeterministic wall-clock timing, marked flaky(reruns=2)
             f"Expected >=3x speedup, got {speedup:.1f}x "
             f"(cold={cold_med * 1000:.1f}ms warm={warm_med * 1000:.1f}ms). "
             "PERF-1 contract regressed — cache may be disabled or fast path broken."
@@ -361,7 +363,7 @@ class TestRouteEnvelopeConsistency:
         """
         tool = RouteDetectorTool(str(flask_project))
         result = self._run(tool, {"mode": "summary", "output_format": "json"})
-        assert result["total_routes"] > 0
+        assert result["total_routes"] == 3
         # The critical F4 invariant: list length matches the count claim.
         assert len(result["routes"]) == result["total_routes"]
         # Aggregates derived from the same list so their cardinality matches.

@@ -150,12 +150,12 @@ class TestLoggerInstances:
     def test_logger_has_name(self) -> None:
         """Test logger has a name."""
         assert logger.name is not None
-        assert len(logger.name) > 0
+        assert len(logger.name) == 20
 
     def test_perf_logger_has_name(self) -> None:
         """Test perf_logger has a name."""
         assert perf_logger.name is not None
-        assert len(perf_logger.name) > 0
+        assert len(perf_logger.name) == 32
 
 
 class TestModuleAttributes:
@@ -167,7 +167,7 @@ class TestModuleAttributes:
 
         assert hasattr(utils, "__all__")
         assert isinstance(utils.__all__, list)
-        assert len(utils.__all__) > 0
+        assert len(utils.__all__) == 20
 
     def test_all_attribute_completeness(self) -> None:
         """Test __all__ contains expected items."""
@@ -227,7 +227,7 @@ class TestModuleDocstring:
         from tree_sitter_analyzer import utils
 
         assert utils.__doc__ is not None
-        assert len(utils.__doc__) > 0
+        assert len(utils.__doc__) == 163
 
     def test_docstring_describes_purpose(self) -> None:
         """Test docstring describes module purpose."""

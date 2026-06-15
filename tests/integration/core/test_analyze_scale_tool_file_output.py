@@ -28,6 +28,7 @@ class TestAnalyzeScaleToolFileOutput:
 
             # Create a comprehensive Java test file (since analyze_scale_tool works best with Java)
             java_file = project_path / "ComplexSample.java"
+            # newline="\n" pins byte counts cross-platform (Windows CRLF inflation)
             java_file.write_text(
                 """package com.example.complex;
 
@@ -159,7 +160,8 @@ public class ComplexSample {
         ACTIVE, INACTIVE, PENDING
     }
 }
-"""
+""",
+                newline="\n",
             )
 
             # Create a Python test file
@@ -239,7 +241,8 @@ def main():
 
 if __name__ == "__main__":
     main()
-"""
+""",
+                newline="\n",
             )
 
             yield str(project_path)
@@ -249,6 +252,17 @@ if __name__ == "__main__":
         """Create AnalyzeScaleTool instance"""
         return AnalyzeScaleTool(project_root=temp_project_dir)
 
+    @staticmethod
+    def _named_annotation(name):
+        """Annotation mock with a real .name string.
+
+        MagicMock(name=...) sets the mock's repr name, NOT the .name
+        attribute — the old inline form leaked MagicMocks into the output.
+        """
+        ann = MagicMock()
+        ann.name = name
+        return ann
+
     def create_mock_analysis_result(self, file_type="java"):
         """Create mock analysis result"""
         mock_result = MagicMock()
@@ -256,11 +270,14 @@ if __name__ == "__main__":
         mock_result.error_message = None
 
         if file_type == "java":
-            # Mock Java elements
+            # Mock Java elements. element_type drives the production
+            # classifier (constants.get_element_type) — without it the
+            # mocks fell into a dead branch and every count stayed 0.
             mock_elements = []
 
             # Mock class element
             mock_class = MagicMock()
+            mock_class.element_type = "class"
             mock_class.name = "ComplexSample"
             mock_class.class_type = "class"
             mock_class.start_line = 12
@@ -269,13 +286,14 @@ if __name__ == "__main__":
             mock_class.extends_class = None
             mock_class.implements_interfaces = []
             mock_class.annotations = [
-                MagicMock(name="Component"),
-                MagicMock(name="Service"),
+                self._named_annotation("Component"),
+                self._named_annotation("Service"),
             ]
             mock_elements.append(mock_class)
 
             # Mock method elements
             mock_method1 = MagicMock()
+            mock_method1.element_type = "function"
             mock_method1.name = "complexCalculation"
             mock_method1.start_line = 30
             mock_method1.end_line = 65
@@ -285,10 +303,11 @@ if __name__ == "__main__":
             mock_method1.complexity_score = 15  # High complexity
             mock_method1.is_constructor = False
             mock_method1.is_static = False
-            mock_method1.annotations = [MagicMock(name="Transactional")]
+            mock_method1.annotations = [self._named_annotation("Transactional")]
             mock_elements.append(mock_method1)
 
             mock_method2 = MagicMock()
+            mock_method2.element_type = "function"
             mock_method2.name = "recursiveHelper"
             mock_method2.start_line = 67
             mock_method2.end_line = 75
@@ -303,6 +322,7 @@ if __name__ == "__main__":
 
             # Mock field elements
             mock_field = MagicMock()
+            mock_field.element_type = "variable"
             mock_field.name = "items"
             mock_field.field_type = "List<String>"
             mock_field.start_line = 15
@@ -494,10 +514,19 @@ if __name__ == "__main__":
             structural = result["structural_overview"]
             assert "complexity_hotspots" in structural
 
-            # Should detect high complexity method
+            # Should detect the one high-complexity method (score 15 >= 8
+            # threshold). The old `if hotspots:` guard was a dead branch
+            # while the mock lacked element_type — pin the full entry.
             hotspots = structural["complexity_hotspots"]
-            if hotspots:  # If any hotspots detected
-                assert any(hotspot["complexity"] > 10 for hotspot in hotspots)
+            assert hotspots == [
+                {
+                    "type": "method",
+                    "name": "complexCalculation",
+                    "complexity": 15,
+                    "start_line": 30,
+                    "end_line": 65,
+                }
+            ]
 
     @pytest.mark.asyncio
     async def test_llm_guidance_generation(self, analyze_scale_tool, temp_project_dir):
@@ -649,13 +678,14 @@ if __name__ == "__main__":
 
             result = await analyze_scale_tool.execute(arguments)
 
-            # Check file metrics are calculated
+            # Check file metrics are calculated (exact pins on the fixture
+            # file, byte-stable via newline="\n" in the fixture writes)
             metrics = result["file_metrics"]
-            assert metrics["total_lines"] > 0
-            assert metrics["code_lines"] > 0
-            assert metrics["estimated_tokens"] > 0
-            assert metrics["file_size_bytes"] > 0
-            assert metrics["file_size_kb"] > 0
+            assert metrics["total_lines"] == 130
+            assert metrics["code_lines"] == 101
+            assert metrics["estimated_tokens"] == 641
+            assert metrics["file_size_bytes"] == 3371
+            assert metrics["file_size_kb"] == 3.29
 
             # Check that total lines equals sum of components
             assert metrics["total_lines"] == (
@@ -717,11 +747,12 @@ if __name__ == "__main__":
             assert "llm_guidance" in result
             assert "detailed_analysis" in result
 
-            # Verify all components are properly populated
-            assert result["file_metrics"]["total_lines"] > 0
-            assert result["summary"]["classes"] >= 0
-            assert result["summary"]["methods"] >= 0
-            assert len(result["structural_overview"]["classes"]) >= 0
+            # Verify all components are properly populated (the >= 0 forms
+            # were tautologies that hid the mock's dead-branch zeros)
+            assert result["file_metrics"]["total_lines"] == 130
+            assert result["summary"]["classes"] == 1
+            assert result["summary"]["methods"] == 2
+            assert len(result["structural_overview"]["classes"]) == 1
             assert result["llm_guidance"]["size_category"] in [
                 "small",
                 "medium",

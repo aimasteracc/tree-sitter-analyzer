@@ -141,3 +141,44 @@ class TestBaseMCPToolContract:
             f"{_tool_id(tool)}: output_format.default must be 'toon', got {default!r}. "
             "See CLAUDE.md §1: MCP defaults to TOON — LOCKED."
         )
+
+
+class TestUniversalOutputFormatParam:
+    """#651: output_format is a universal envelope param. enforce_strict_params
+    must accept it even when a tool's schema omits it (modification_guard and
+    batch_search rejected it with ValueError), so an agent can set it uniformly
+    across every call — while still rejecting genuinely-unknown keys."""
+
+    def test_output_format_accepted_when_schema_omits_it(self) -> None:
+        from tree_sitter_analyzer.mcp.utils.schema_strictness import (
+            enforce_strict_params,
+        )
+
+        # modification_guard's schema (no output_format) — must NOT raise.
+        schema = {
+            "properties": {"symbol": {}, "modification_type": {}, "file_path": {}}
+        }
+        enforce_strict_params(
+            "modification_guard",
+            schema,
+            {"symbol": "x", "file_path": "f", "output_format": "json"},
+        )
+
+    def test_genuinely_unknown_param_still_rejected(self) -> None:
+        from tree_sitter_analyzer.mcp.utils.schema_strictness import (
+            enforce_strict_params,
+        )
+
+        schema = {"properties": {"symbol": {}}}
+        with pytest.raises(ValueError, match="unknown parameter 'bogus'"):
+            enforce_strict_params("t", schema, {"symbol": "x", "bogus": 1})
+
+    @pytest.mark.parametrize("tool", TOOLS, ids=_tool_id)
+    def test_every_contract_tool_accepts_output_format(self, tool: object) -> None:
+        from tree_sitter_analyzer.mcp.utils.schema_strictness import (
+            enforce_strict_params,
+        )
+
+        schema = tool.get_tool_definition().get("inputSchema")
+        # Must not raise for any tool, whether or not output_format is declared.
+        enforce_strict_params(_tool_id(tool), schema, {"output_format": "json"})

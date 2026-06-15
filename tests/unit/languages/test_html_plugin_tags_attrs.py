@@ -1,6 +1,5 @@
 """HTML plugin tests — tag and attribute recognition."""
 
-
 from tests.unit.languages._html_test_data import (
     ATTRIBUTE_CODE,
     TAG_CODE,
@@ -19,7 +18,9 @@ class TestHtmlTagRecognition:
         elements = plugin.create_extractor().extract_html_elements(tree, TAG_CODE)
 
         structure_tags = [e for e in elements if e.element_class == "structure"]
-        assert len(structure_tags) >= 0
+        # TAG_CODE has exactly 8 structure-class elements: div, header, nav,
+        # main, section, article, aside, footer (tree-sitter-html 0.23.2)
+        assert len(structure_tags) == 8
 
     def test_extract_heading_tags(self):
         """Test extraction of heading tags."""
@@ -28,7 +29,9 @@ class TestHtmlTagRecognition:
         elements = plugin.create_extractor().extract_html_elements(tree, TAG_CODE)
 
         heading_tags = [e for e in elements if e.element_class == "heading"]
-        assert len(heading_tags) >= 0
+        # TAG_CODE has exactly 4 headings: h1-h4 (tree-sitter-html 0.23.2)
+        assert len(heading_tags) == 4
+        assert {e.tag_name for e in heading_tags} == {"h1", "h2", "h3", "h4"}
 
     def test_extract_text_tags(self):
         """Test extraction of text tags."""
@@ -37,7 +40,10 @@ class TestHtmlTagRecognition:
         elements = plugin.create_extractor().extract_html_elements(tree, TAG_CODE)
 
         text_tags = [e for e in elements if e.element_class == "text"]
-        assert len(text_tags) >= 0
+        # TAG_CODE has exactly 19 text-class elements: 8 <p>, 3 <a>, and the
+        # 8 inline tags strong/em/mark/del/ins/sub/sup/small
+        # (tree-sitter-html 0.23.2)
+        assert len(text_tags) == 19
 
     def test_extract_div_tag(self):
         """Test extraction of div tag."""
@@ -46,7 +52,8 @@ class TestHtmlTagRecognition:
         elements = plugin.create_extractor().extract_html_elements(tree, TAG_CODE)
 
         div_elements = [e for e in elements if e.tag_name == "div"]
-        assert len(div_elements) >= 1
+        # TAG_CODE has exactly 1 <div> (tree-sitter-html 0.23.2)
+        assert len(div_elements) == 1
 
     def test_extract_span_tag(self):
         """Test extraction of span tag."""
@@ -55,7 +62,9 @@ class TestHtmlTagRecognition:
         elements = plugin.create_extractor().extract_html_elements(tree, TAG_CODE)
 
         span_elements = [e for e in elements if e.tag_name == "span"]
-        assert len(span_elements) >= 0
+        # TAG_CODE contains NO <span> — the old `>= 0` was vacuously true.
+        # Pin the actual count; re-pin if a span is added to the fixture.
+        assert len(span_elements) == 0
 
     def test_extract_paragraph_tag(self):
         """Test extraction of paragraph tag."""
@@ -64,7 +73,8 @@ class TestHtmlTagRecognition:
         elements = plugin.create_extractor().extract_html_elements(tree, TAG_CODE)
 
         p_elements = [e for e in elements if e.tag_name == "p"]
-        assert len(p_elements) >= 1
+        # TAG_CODE has exactly 8 <p> elements (tree-sitter-html 0.23.2)
+        assert len(p_elements) == 8
 
     def test_extract_list_tags(self):
         """Test extraction of list tags."""
@@ -74,8 +84,9 @@ class TestHtmlTagRecognition:
 
         ul_elements = [e for e in elements if e.tag_name == "ul"]
         li_elements = [e for e in elements if e.tag_name == "li"]
-        assert len(ul_elements) >= 1
-        assert len(li_elements) >= 1
+        # TAG_CODE has exactly 1 <ul> with 3 <li> (tree-sitter-html 0.23.2)
+        assert len(ul_elements) == 1
+        assert len(li_elements) == 3
 
     def test_extract_inline_tags(self):
         """Test extraction of inline tags."""
@@ -89,7 +100,19 @@ class TestHtmlTagRecognition:
             if e.tag_name
             in ["strong", "em", "mark", "del", "ins", "sub", "sup", "small"]
         ]
-        assert len(inline_tags) >= 0
+        # TAG_CODE has exactly one of each of the 8 inline tags
+        # (tree-sitter-html 0.23.2)
+        assert len(inline_tags) == 8
+        assert {e.tag_name for e in inline_tags} == {
+            "strong",
+            "em",
+            "mark",
+            "del",
+            "ins",
+            "sub",
+            "sup",
+            "small",
+        }
 
 
 class TestHtmlAttributeRecognition:
@@ -214,5 +237,3 @@ class TestHtmlAttributeRecognition:
             assert "id" in div_with_multiple.attributes
             assert "class" in div_with_multiple.attributes
             assert "data-id" in div_with_multiple.attributes
-
-

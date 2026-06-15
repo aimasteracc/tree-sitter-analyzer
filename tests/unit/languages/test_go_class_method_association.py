@@ -451,9 +451,19 @@ class TestGoSampleIntegration:
         assert len(outline["top_level_functions"]) == 7
 
     def test_total_method_count_unchanged(self) -> None:
-        """statistics.method_count still equals 18 (unchanged — all methods counted)."""
+        """statistics.method_count == 20: 18 receiver methods + Reader.Read and
+        Writer.Write interface signatures (owned via receiver_type since #588)."""
         outline = self._build_outline_for_go_sample()
-        assert outline["statistics"]["method_count"] == 18
+        assert outline["statistics"]["method_count"] == 20
+
+    def test_interface_method_signatures_nested_under_interface(self) -> None:
+        """#588: Reader/Writer interfaces own their method signatures."""
+        outline = self._build_outline_for_go_sample()
+        by_name = {c["name"]: c for c in outline["classes"]}
+        assert [m["name"] for m in by_name["Reader"]["methods"]] == ["Read"]
+        assert [m["name"] for m in by_name["Writer"]["methods"]] == ["Write"]
+        # Embedding-only interface gains no phantom methods.
+        assert by_name["ReadWriter"]["methods"] == []
 
 
 # ---------------------------------------------------------------------------

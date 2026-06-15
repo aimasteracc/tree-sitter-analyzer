@@ -98,7 +98,11 @@ class IncrementalSync:
         self._invalidate_deleted_files(deleted_paths, result, callback)
         self._index_or_reindex_files(disk_files, indexed_rows, conn, result, callback)
 
-        conn.commit()
+        try:
+            conn.commit()
+        except Exception as exc:  # pragma: no cover - DB commit failure is rare
+            logger.error("Final DB commit failed after partial sync: %s", exc)
+            result.errors += 1
 
         # Synapse second pass: per-file resolution during indexing sees an
         # incomplete file_class_methods (other files not yet indexed), so
@@ -233,7 +237,40 @@ class IncrementalSync:
         # "unknown"). Previously this was a single ``action`` field that
         # confusingly read ``action: "indexed", status: "skipped"`` for files
         # the cache refused. ``action`` is preserved as a back-compat alias.
-        index_result = self._cache.index_file(abs_path)
+        try:
+            index_result = self._cache.index_file(abs_path)
+        except Exception as exc:
+            # #886: if index_file wrote partial rows before raising, clean them
+            # all up (ast_index + ast_symbol_rows + ast_symbols_fts) so the next
+            # sync treats the file as new rather than silently "unchanged" with
+            # missing symbols. Codex P2: wrap best-effort cleanup so a locked/
+            # full DB doesn't abort the whole sync — we already have the error.
+            try:
+                conn.execute("DELETE FROM ast_index WHERE file_path = ?", (rel_path,))
+                conn.execute(
+                    "DELETE FROM ast_symbol_rows WHERE file_path = ?", (rel_path,)
+                )
+                conn.execute(
+                    "DELETE FROM ast_symbols_fts WHERE file_path = ?", (rel_path,)
+                )
+            except Exception:
+                logger.debug("Cleanup DELETE failed for %s — continuing", rel_path)
+            # Issue #806/#805: catch all per-file errors so one pathological
+            # file cannot abort the whole sync and discard accumulated results.
+            logger.error(
+                "Error indexing %s (%s): %s",
+                rel_path,
+                type(exc).__name__,
+                exc,
+            )
+            return {
+                "file": rel_path,
+                "considered": "indexed",
+                "action": "indexed",
+                "status": "error",
+                "error_type": type(exc).__name__,
+                "error_message": str(exc),
+            }
         status = index_result.get("status", "unknown")
         return {
             "file": rel_path,
@@ -249,7 +286,35 @@ class IncrementalSync:
         conn: sqlite3.Connection,
     ) -> dict[str, Any]:
         self._cache.invalidate(abs_path)
-        index_result = self._cache.index_file(abs_path)
+        try:
+            index_result = self._cache.index_file(abs_path)
+        except Exception as exc:
+            # #886: same three-table cleanup as _index_new_file (Codex P2 parity).
+            try:
+                conn.execute("DELETE FROM ast_index WHERE file_path = ?", (rel_path,))
+                conn.execute(
+                    "DELETE FROM ast_symbol_rows WHERE file_path = ?", (rel_path,)
+                )
+                conn.execute(
+                    "DELETE FROM ast_symbols_fts WHERE file_path = ?", (rel_path,)
+                )
+            except Exception:
+                logger.debug("Cleanup DELETE failed for %s — continuing", rel_path)
+            # Issue #806/#805: same broad guard for re-index path.
+            logger.error(
+                "Error re-indexing %s (%s): %s",
+                rel_path,
+                type(exc).__name__,
+                exc,
+            )
+            return {
+                "file": rel_path,
+                "considered": "updated",
+                "action": "updated",
+                "status": "error",
+                "error_type": type(exc).__name__,
+                "error_message": str(exc),
+            }
         status = index_result.get("status", "unknown")
         return {
             "file": rel_path,

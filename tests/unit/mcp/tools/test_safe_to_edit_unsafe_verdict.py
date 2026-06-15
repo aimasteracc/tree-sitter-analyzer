@@ -215,6 +215,42 @@ class TestSafeToEditConstraintIntegration:
             f"Got risk_factors: {risk_factors}"
         )
 
+    def test_summary_line_matches_escalated_verdict(self, tmp_path: Path) -> None:
+        """#781: an escalated verdict must reach the summary_line too.
+
+        Before the fix, a constraint escalation patched ``summary["verdict"]``
+        to UNSAFE but left ``summary_line`` built from the un-escalated base
+        verdict, so the one-line decision surface read verdict=CAUTION/SAFE
+        while the structured verdict said UNSAFE — a gating disagreement that
+        can let an unsafe edit slip through.
+        """
+        project = _scaffold_min_project(tmp_path)
+        _stage_dogfood_constraints(project)
+
+        db_path = project / ".ast-cache" / "index.db"
+        _init_violations_db(db_path)
+        _seed_violation(
+            db_path,
+            rule_id="mcp-no-cli",
+            caller_file=TARGET_FILE_REL,
+            severity="error",
+            caller_line=2,
+        )
+
+        tool = _make_safe_to_edit_tool(project)
+        result = _run(
+            tool.execute({"file_path": TARGET_FILE_REL, "output_format": "json"})
+        )
+
+        verdict = result["verdict"]
+        assert verdict == "UNSAFE", verdict
+        summary = result["agent_summary"]
+        assert summary["verdict"] == verdict
+        assert f"verdict={verdict}" in summary["summary_line"], summary["summary_line"]
+        # The mirrored top-level summary_line must be present and agree too.
+        assert "summary_line" in result, sorted(result)
+        assert f"verdict={verdict}" in result["summary_line"], result["summary_line"]
+
     def test_safe_to_edit_emits_CAUTION_on_warn_violation(self, tmp_path: Path) -> None:
         """Only warn-severity → CAUTION (not the legacy ``REVIEW``).
 

@@ -78,7 +78,7 @@ class TestAnalysisEngine:
             assert result.success
             assert result.language == "java"
             assert result.file_path == temp_file
-            assert len(result.elements) > 0
+            assert len(result.elements) == 3
         finally:
             os.unlink(temp_file)
 
@@ -103,7 +103,7 @@ class Greeter:
         assert result.success
         assert result.language == "python"
         assert result.file_path == "string"  # Default filename for code analysis
-        assert len(result.elements) > 0
+        assert len(result.elements) == 5
 
         element_types = [elem.element_type for elem in result.elements]
         assert "import" in element_types
@@ -189,7 +189,7 @@ class TestUnifiedEngineSyncAnalysis:
         result = engine.analyze_sync(request)
         assert result.success is True
         assert result.language == "java"
-        assert len(result.elements) >= 2  # Class and Method
+        assert len(result.elements) == 2  # Class and Method
 
 
 class TestUnifiedEngineAnalyzeCode:
@@ -229,7 +229,7 @@ class TestUnifiedEngineQueryExecution:
         result = engine.analyze_sync(request)
         assert result.success is True
         assert "function" in result.query_results
-        assert len(result.query_results["function"]) > 0
+        assert len(result.query_results["function"]) == 1
 
 
 class TestUnifiedEngineNonexistentFile:
@@ -355,8 +355,7 @@ class TestUnifiedAnalysisEnginePluginManagement:
         engine = UnifiedAnalysisEngine()
         languages = engine.get_supported_languages()
         assert isinstance(languages, list)
-        # Should at least have some languages
-        assert len(languages) > 0
+        assert len(languages) == 25
 
     def test_plugin_manager_property(self):
         """Test accessing plugin manager property."""
@@ -387,8 +386,7 @@ class TestUnifiedAnalysisEngineCacheManagement:
         engine = UnifiedAnalysisEngine()
         stats = engine.get_cache_stats()
         assert isinstance(stats, dict)
-        # Should have at least some stats keys
-        assert len(stats) > 0
+        assert len(stats) == 12
 
     def test_cache_service_property(self):
         """Test accessing cache service property."""
@@ -1367,7 +1365,7 @@ class TestAnalysisEnginePerformanceExtended:
 
             # Check that some analyses completed
             successful_results = [r for r in results if isinstance(r, AnalysisResult)]
-            assert len(successful_results) >= 0  # At least some should succeed
+            assert len(successful_results) == 5
 
     @pytest.mark.slow  # exceeds conftest 5s per-test budget on Windows CI
     @pytest.mark.asyncio

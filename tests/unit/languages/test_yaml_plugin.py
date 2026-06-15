@@ -35,7 +35,7 @@ class TestYAMLPlugin:
         plugin = YAMLPlugin()
         queries = plugin.get_queries()
         assert isinstance(queries, dict)
-        assert len(queries) > 0
+        assert len(queries) == 31
         assert "document" in queries
         assert "block_mapping" in queries
 
@@ -120,7 +120,7 @@ enabled: true
 
         assert result.success
         assert result.language == "yaml"
-        assert len(result.elements) > 0
+        assert len(result.elements) == 4
 
     async def test_analyze_yaml_with_anchors(self, tmp_path) -> None:
         """Test analyzing YAML with anchors and aliases."""
@@ -147,7 +147,7 @@ production:
         anchors = [
             e for e in result.elements if getattr(e, "element_type", "") == "anchor"
         ]
-        assert len(anchors) >= 1
+        assert len(anchors) == 1
 
     async def test_analyze_multi_document_yaml(self, tmp_path) -> None:
         """Test analyzing multi-document YAML."""
@@ -170,7 +170,7 @@ doc2: value2
         documents = [
             e for e in result.elements if getattr(e, "element_type", "") == "document"
         ]
-        assert len(documents) >= 2
+        assert len(documents) == 2
 
     async def test_analyze_yaml_with_sequences(self, tmp_path) -> None:
         """Test analyzing YAML with sequences."""
@@ -194,4 +194,4 @@ items:
         sequences = [
             e for e in result.elements if getattr(e, "element_type", "") == "sequence"
         ]
-        assert len(sequences) >= 1
+        assert len(sequences) == 1

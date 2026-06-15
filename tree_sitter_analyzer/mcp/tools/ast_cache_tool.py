@@ -17,6 +17,7 @@ from ...ast_cache import ASTCache
 from ...file_watcher import FileWatcherDaemon
 from ...incremental_sync import IncrementalSync
 from ...utils import setup_logger
+from ._validators import invalid_enum_error
 from .base_tool import BaseMCPTool, _canonicalize_verdict, mirror_summary_line
 
 logger = setup_logger(__name__)
@@ -275,6 +276,13 @@ class ASTCacheTool(BaseMCPTool):
                     "type": "string",
                     "description": "Symbol search query (for search mode)",
                 },
+                "symbol": {
+                    "type": "string",
+                    "description": (
+                        "Alias for query (the facade's canonical identifier); "
+                        "searching for this symbol (#575)."
+                    ),
+                },
                 "limit": {
                     "type": "integer",
                     "description": "Max results for search (default: 100)",
@@ -356,7 +364,10 @@ class ASTCacheTool(BaseMCPTool):
             "watch_status",
         }
         if mode not in valid_modes:
-            raise ValueError(f"Invalid mode: {mode}. Must be one of {valid_modes}")
+            # ``fts_search`` is still accepted above (deprecated alias, J1) but is
+            # intentionally omitted from the enumerated guidance so agents are
+            # steered to the supported ``search`` name.
+            raise invalid_enum_error("mode", mode, sorted(valid_modes - {"fts_search"}))
         if mode in ("lookup", "invalidate") and not arguments.get("file_path"):
             raise ValueError(f"file_path is required for mode '{mode}'")
         if mode in ("search", "fts_search") and not arguments.get("query"):
@@ -370,6 +381,12 @@ class ASTCacheTool(BaseMCPTool):
         each of the 7 modes into a focused ``_handle_*`` method. M15 / J1
         / J8 / K7 contracts preserved exactly.
         """
+        # #575: ``symbol`` is the facade's canonical identifier; accept it as an
+        # alias for ``query`` so ``index action=cache symbol=X`` searches for the
+        # symbol instead of silently falling back to ``stats`` (the facade used
+        # to strip ``symbol`` → no query → mode=stats → wrong answer, no hint).
+        if arguments.get("symbol") and not arguments.get("query"):
+            arguments = {**arguments, "query": arguments["symbol"]}
         self.validate_arguments(arguments)
         mode = self._resolve_mode(arguments)
 
@@ -477,6 +494,10 @@ class ASTCacheTool(BaseMCPTool):
             raw_results = cache.fts_search_ranked(query, language=language, limit=limit)
         else:
             raw_results = cache.fts_search(query, language=language, limit=limit)
+        # #737: measure truncation BEFORE _apply_legacy_import_split — that helper
+        # can expand rows (multi-symbol imports), so post-split len may exceed limit
+        # even without the DB capping results, producing a false positive.
+        truncated = len(raw_results) >= limit
         # K7: defensively split legacy multi-symbol import rows.
         results = _apply_legacy_import_split(raw_results)
         summary_line = (
@@ -504,6 +525,7 @@ class ASTCacheTool(BaseMCPTool):
             "query": query,
             "results": results,
             "count": len(results),
+            "truncated": truncated,
             "fts5_available": fts5_available,
         }
         if use_ranked and results:

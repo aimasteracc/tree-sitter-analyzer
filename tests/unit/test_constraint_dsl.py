@@ -149,6 +149,42 @@ def _build_call_edges_db(
         conn.close()
 
 
+def _populate_ast_imports(
+    db_path: Path,
+    rows: list[tuple[str, str]],
+) -> None:
+    """Insert rows into ``ast_imports`` in the given DB.
+
+    Each tuple is ``(file_path, module_path)``.  The table is created if
+    absent so this helper can be called on a DB built by
+    ``_build_call_edges_db`` (which only creates the ``edges`` schema).
+    """
+    conn = sqlite3.connect(str(db_path))
+    try:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS ast_imports (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                file_path   TEXT NOT NULL,
+                language    TEXT NOT NULL DEFAULT 'python',
+                module_path TEXT NOT NULL,
+                local_name  TEXT NOT NULL DEFAULT '',
+                is_relative INTEGER NOT NULL DEFAULT 0,
+                is_star     INTEGER NOT NULL DEFAULT 0,
+                alias_of    TEXT NOT NULL DEFAULT '',
+                line        INTEGER NOT NULL DEFAULT 0
+            )
+            """
+        )
+        conn.executemany(
+            "INSERT INTO ast_imports (file_path, module_path) VALUES (?, ?)",
+            rows,
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 # ---------------------------------------------------------------------------
 # Parser tests
 # ---------------------------------------------------------------------------
@@ -493,3 +529,221 @@ class TestEvaluator:
             f"budget is 500 ms. See spec — constraint checking runs on "
             f"every change_impact call and must stay cheap."
         )
+
+    def test_duplicate_pk_violations_deduplicated(self, tmp_path: Path) -> None:
+        """evaluate() dedupes violations that share the same PK.
+
+        Regression test for #544: when the ``edges`` table contains two rows
+        for the same call site (same caller_file, caller_line, callee_name)
+        but with different ``callee_resolved_file`` values (e.g., because the
+        same call was indexed twice via different resolution paths), both rows
+        can match the same constraint rule and produce two ``Violation``
+        objects with identical ``(rule_id, caller_file, caller_line,
+        callee_name)`` — which is the PRIMARY KEY of
+        ``ast_constraint_violations``.  The old code's ``executemany`` would
+        then crash with ``UNIQUE constraint failed``.
+
+        Fix: evaluate() must deduplicate on PK before returning so the persist
+        path always receives at most one Violation per PK tuple.
+
+        The test asserts that exactly 1 violation is returned (not 2) so the
+        pin is tight and drift raises the test rather than silently passing
+        with a loose bound.
+        """
+        import json as _json
+
+        from tree_sitter_analyzer.constraints import evaluate, load_constraints
+        from tree_sitter_analyzer.graph.edge_store import (
+            EDGE_STORE_SCHEMA,
+            EdgeKind,
+            symbol_node,
+        )
+
+        project = _stage_constraints_file(tmp_path, "dogfood_minimal.yml")
+        db_path = project / ".ast-cache" / "index.db"
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Build two edges with identical (caller_file, caller_line, callee_name)
+        # but different callee_resolved_file — simulating a call site that was
+        # resolved to two targets by different indexing passes.
+        caller_file = "tree_sitter_analyzer/mcp/x.py"
+        caller_name = "do_thing"
+        caller_line = 42
+        callee_name = "cli_helper"
+        callee_file_a = "tree_sitter_analyzer/cli/y.py"
+        callee_file_b = "tree_sitter_analyzer/cli/z.py"
+
+        conn = sqlite3.connect(str(db_path))
+        try:
+            conn.executescript(EDGE_STORE_SCHEMA)
+            for callee_file in (callee_file_a, callee_file_b):
+                source = symbol_node(caller_file, caller_name, caller_line)
+                target = symbol_node(callee_file, callee_name, 0)
+                metadata = _json.dumps(
+                    {
+                        "language": "python",
+                        "caller_name": caller_name,
+                        "caller_line": caller_line,
+                        "callee_name": callee_name,
+                        "callee_full": callee_name,
+                        "callee_resolution": "project",
+                        "callee_resolved_file": callee_file,
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                )
+                conn.execute(
+                    "INSERT OR REPLACE INTO edges "
+                    "(source_node_id, target_node_id, kind, line, provenance, "
+                    " metadata, caller_name, callee_name, file_path, caller_line, "
+                    " callee_full, callee_line, language, callee_resolution, "
+                    " callee_resolved_file) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        source,
+                        target,
+                        EdgeKind.CALLS.value,
+                        caller_line,
+                        "tree-sitter",
+                        metadata,
+                        caller_name,
+                        callee_name,
+                        caller_file,
+                        caller_line,
+                        callee_name,
+                        0,
+                        "python",
+                        "project",
+                        callee_file,
+                    ),
+                )
+            conn.commit()
+
+            constraints = load_constraints(str(project))
+            # Must NOT raise — two same-PK violations must be deduplicated.
+            violations = evaluate(constraints, conn)
+        finally:
+            conn.close()
+
+        # Exactly 1 violation: the PK is (rule_id, caller_file, caller_line,
+        # callee_name).  Two edges with the same call site are ONE violation,
+        # not two.  The exact count is pinned so drift raises the test.
+        assert len(violations) == 1, (
+            f"Expected exactly 1 violation after PK deduplication, "
+            f"got {len(violations)}: {violations}"
+        )
+        v = violations[0]
+        assert v.rule_id == "dogfood-mcp-no-cli"
+        assert v.caller_file == caller_file
+        assert v.caller_line == caller_line
+        assert v.callee_name == callee_name
+
+    def test_phantom_bare_name_resolution_skipped_when_no_import(
+        self, tmp_path: Path
+    ) -> None:
+        """Regression #780: bare-name callee resolved to forbidden module is
+        SKIPPED when the caller has no import from that module.
+
+        Scenario mirrors the real bug: ``_hash_one_file`` in a core file
+        calls ``sha256_hash.update()``.  The synapse resolver resolves
+        ``update`` to ``file_health_blocks.py`` (a forbidden mcp module)
+        because both define a method named ``update``.  The caller imports
+        only ``hashlib`` — no ``mcp`` import at all.  The evaluator must
+        NOT flag this as a constraint violation.
+        """
+        from tree_sitter_analyzer.constraints import evaluate, load_constraints
+
+        project = _stage_constraints_file(tmp_path, "dogfood_minimal.yml")
+        db_path = project / ".ast-cache" / "index.db"
+
+        # Edge: core/_hash_one_file calls update(), resolver wrongly sets
+        # callee_resolved_file to an mcp module.
+        _build_call_edges_db(
+            db_path,
+            rows=[
+                (
+                    "_hash_one_file",  # caller_name
+                    "tree_sitter_analyzer/core/analysis_session.py",  # caller_file
+                    188,  # caller_line
+                    "update",  # callee_name
+                    "sha256_hash.update",  # callee_full
+                    "tree_sitter_analyzer/mcp/tools/utils/file_health_blocks.py",  # callee_file (WRONG resolution)
+                ),
+            ],
+        )
+
+        # Populate ast_imports: analysis_session.py imports only hashlib,
+        # NOT file_health_blocks or any mcp module.
+        _populate_ast_imports(
+            db_path,
+            rows=[
+                ("tree_sitter_analyzer/core/analysis_session.py", "hashlib"),
+                ("tree_sitter_analyzer/core/analysis_session.py", "json"),
+                ("tree_sitter_analyzer/core/analysis_session.py", "pathlib"),
+            ],
+        )
+
+        constraints = load_constraints(str(project))
+        conn = sqlite3.connect(str(db_path))
+        try:
+            violations = evaluate(constraints, conn)
+        finally:
+            conn.close()
+
+        assert len(violations) == 0, (
+            f"Expected 0 violations (phantom bare-name resolution must be filtered), "
+            f"got {len(violations)}: {violations}"
+        )
+
+    def test_real_violation_not_filtered_when_import_present(
+        self, tmp_path: Path
+    ) -> None:
+        """Regression #780: a genuine cross-boundary call IS flagged when the
+        caller actually imports from the forbidden module.
+
+        Ensures the import-reachability guard does not over-filter real
+        violations — only phantom bare-name resolutions are suppressed.
+        """
+        from tree_sitter_analyzer.constraints import evaluate, load_constraints
+
+        project = _stage_constraints_file(tmp_path, "dogfood_minimal.yml")
+        db_path = project / ".ast-cache" / "index.db"
+
+        # Edge: mcp/x.py calls cli_helper() which is genuinely in cli/y.py.
+        _build_call_edges_db(
+            db_path,
+            rows=[
+                (
+                    "do_thing",  # caller_name
+                    "tree_sitter_analyzer/mcp/x.py",  # caller_file
+                    42,  # caller_line
+                    "cli_helper",  # callee_name
+                    "cli_helper",  # callee_full
+                    "tree_sitter_analyzer/cli/y.py",  # callee_file (REAL violation)
+                ),
+            ],
+        )
+
+        # mcp/x.py really does import from cli/y — this is the genuine case.
+        _populate_ast_imports(
+            db_path,
+            rows=[
+                ("tree_sitter_analyzer/mcp/x.py", "tree_sitter_analyzer.cli.y"),
+            ],
+        )
+
+        constraints = load_constraints(str(project))
+        conn = sqlite3.connect(str(db_path))
+        try:
+            violations = evaluate(constraints, conn)
+        finally:
+            conn.close()
+
+        assert len(violations) == 1, (
+            f"Expected exactly 1 real violation (import IS present), "
+            f"got {len(violations)}: {violations}"
+        )
+        v = violations[0]
+        assert v.rule_id == "dogfood-mcp-no-cli"
+        assert v.caller_file == "tree_sitter_analyzer/mcp/x.py"
+        assert v.callee_file == "tree_sitter_analyzer/cli/y.py"

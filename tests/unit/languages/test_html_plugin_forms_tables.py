@@ -1,6 +1,5 @@
 """HTML plugin tests — forms and tables."""
 
-
 from tests.unit.languages._html_test_data import (
     FORM_CODE,
     TABLE_CODE,
@@ -19,7 +18,7 @@ class TestHtmlFormRecognition:
         elements = plugin.create_extractor().extract_html_elements(tree, FORM_CODE)
 
         form_elements = [e for e in elements if e.tag_name == "form"]
-        assert len(form_elements) >= 1
+        assert len(form_elements) == 1
 
     def test_extract_input_tags(self):
         """Test extraction of input tags."""
@@ -28,7 +27,7 @@ class TestHtmlFormRecognition:
         elements = plugin.create_extractor().extract_html_elements(tree, FORM_CODE)
 
         input_elements = [e for e in elements if e.tag_name == "input"]
-        assert len(input_elements) >= 1
+        assert len(input_elements) == 6
 
     def test_extract_text_input(self):
         """Test extraction of text input."""
@@ -113,7 +112,7 @@ class TestHtmlFormRecognition:
         elements = plugin.create_extractor().extract_html_elements(tree, FORM_CODE)
 
         select_elements = [e for e in elements if e.tag_name == "select"]
-        assert len(select_elements) >= 1
+        assert len(select_elements) == 1
 
     def test_extract_option_tags(self):
         """Test extraction of option tags."""
@@ -122,7 +121,7 @@ class TestHtmlFormRecognition:
         elements = plugin.create_extractor().extract_html_elements(tree, FORM_CODE)
 
         option_elements = [e for e in elements if e.tag_name == "option"]
-        assert len(option_elements) >= 1
+        assert len(option_elements) == 3
 
     def test_extract_textarea_tag(self):
         """Test extraction of textarea tag."""
@@ -131,7 +130,7 @@ class TestHtmlFormRecognition:
         elements = plugin.create_extractor().extract_html_elements(tree, FORM_CODE)
 
         textarea_elements = [e for e in elements if e.tag_name == "textarea"]
-        assert len(textarea_elements) >= 1
+        assert len(textarea_elements) == 1
 
     def test_extract_button_tag(self):
         """Test extraction of button tag."""
@@ -140,7 +139,7 @@ class TestHtmlFormRecognition:
         elements = plugin.create_extractor().extract_html_elements(tree, FORM_CODE)
 
         button_elements = [e for e in elements if e.tag_name == "button"]
-        assert len(button_elements) >= 1
+        assert len(button_elements) == 2
 
     def test_extract_label_tag(self):
         """Test extraction of label tag."""
@@ -149,7 +148,7 @@ class TestHtmlFormRecognition:
         elements = plugin.create_extractor().extract_html_elements(tree, FORM_CODE)
 
         label_elements = [e for e in elements if e.tag_name == "label"]
-        assert len(label_elements) >= 1
+        assert len(label_elements) == 8
 
 
 class TestHtmlTableRecognition:
@@ -162,7 +161,7 @@ class TestHtmlTableRecognition:
         elements = plugin.create_extractor().extract_html_elements(tree, TABLE_CODE)
 
         table_elements = [e for e in elements if e.tag_name == "table"]
-        assert len(table_elements) >= 1
+        assert len(table_elements) == 2
 
     def test_extract_thead_tag(self):
         """Test extraction of thead tag."""
@@ -171,7 +170,7 @@ class TestHtmlTableRecognition:
         elements = plugin.create_extractor().extract_html_elements(tree, TABLE_CODE)
 
         thead_elements = [e for e in elements if e.tag_name == "thead"]
-        assert len(thead_elements) >= 1
+        assert len(thead_elements) == 2
 
     def test_extract_tbody_tag(self):
         """Test extraction of tbody tag."""
@@ -180,7 +179,7 @@ class TestHtmlTableRecognition:
         elements = plugin.create_extractor().extract_html_elements(tree, TABLE_CODE)
 
         tbody_elements = [e for e in elements if e.tag_name == "tbody"]
-        assert len(tbody_elements) >= 1
+        assert len(tbody_elements) == 2
 
     def test_extract_tfoot_tag(self):
         """Test extraction of tfoot tag."""
@@ -189,7 +188,7 @@ class TestHtmlTableRecognition:
         elements = plugin.create_extractor().extract_html_elements(tree, TABLE_CODE)
 
         tfoot_elements = [e for e in elements if e.tag_name == "tfoot"]
-        assert len(tfoot_elements) >= 1
+        assert len(tfoot_elements) == 1
 
     def test_extract_tr_tag(self):
         """Test extraction of tr tag."""
@@ -198,7 +197,7 @@ class TestHtmlTableRecognition:
         elements = plugin.create_extractor().extract_html_elements(tree, TABLE_CODE)
 
         tr_elements = [e for e in elements if e.tag_name == "tr"]
-        assert len(tr_elements) >= 1
+        assert len(tr_elements) == 7
 
     def test_extract_th_tag(self):
         """Test extraction of th tag."""
@@ -207,7 +206,7 @@ class TestHtmlTableRecognition:
         elements = plugin.create_extractor().extract_html_elements(tree, TABLE_CODE)
 
         th_elements = [e for e in elements if e.tag_name == "th"]
-        assert len(th_elements) >= 1
+        assert len(th_elements) == 6
 
     def test_extract_td_tag(self):
         """Test extraction of td tag."""
@@ -216,7 +215,7 @@ class TestHtmlTableRecognition:
         elements = plugin.create_extractor().extract_html_elements(tree, TABLE_CODE)
 
         td_elements = [e for e in elements if e.tag_name == "td"]
-        assert len(td_elements) >= 1
+        assert len(td_elements) == 13
 
     def test_extract_caption_tag(self):
         """Test extraction of caption tag."""
@@ -225,7 +224,7 @@ class TestHtmlTableRecognition:
         elements = plugin.create_extractor().extract_html_elements(tree, TABLE_CODE)
 
         caption_elements = [e for e in elements if e.tag_name == "caption"]
-        assert len(caption_elements) >= 0
+        assert len(caption_elements) == 1
 
     def test_extract_table_attributes(self):
         """Test extraction of table attributes."""
@@ -241,5 +240,3 @@ class TestHtmlTableRecognition:
                 "id" in table_with_attrs.attributes
                 or "class" in table_with_attrs.attributes
             )
-
-

@@ -121,6 +121,41 @@ class TestExecuteWithIndex:
         assert result["lag_seconds"] is None
 
     @pytest.mark.asyncio
+    async def test_storage_counters_are_surfaced(self, tool_with_root, tmp_path):
+        cache_dir = tmp_path / ".ast-cache"
+        cache_dir.mkdir()
+        (cache_dir / "index.db").write_bytes(b"sqlite3-fake")
+
+        mock_cache = MagicMock()
+        mock_cache.get_stats.return_value = {
+            "total_files": 2,
+            "total_symbols": 3,
+            "total_edges": 4,
+            "fts5_available": True,
+            "db_size_bytes": 45056,
+            "db_page_size": 4096,
+            "db_page_count": 11,
+            "db_free_pages": 3,
+            "db_free_bytes": 12288,
+            "db_auto_vacuum_mode": 0,
+        }
+
+        with patch(
+            "tree_sitter_analyzer.ast_cache.ASTCache",
+            return_value=mock_cache,
+        ):
+            result = await tool_with_root.execute(
+                {"output_format": "json", "include_lag": False}
+            )
+
+        assert result["db_size_bytes"] == 45056
+        assert result["db_page_size"] == 4096
+        assert result["db_page_count"] == 11
+        assert result["db_free_pages"] == 3
+        assert result["db_free_bytes"] == 12288
+        assert result["db_auto_vacuum_mode"] == 0
+
+    @pytest.mark.asyncio
     async def test_total_edges_reported_for_graph_density(
         self, tool_with_root, tmp_path
     ):

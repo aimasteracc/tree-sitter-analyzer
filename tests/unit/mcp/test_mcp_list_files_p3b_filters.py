@@ -82,7 +82,7 @@ async def test_fd_76_modified_absolute_time(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 0
+    assert result["count"] == 0
 
 
 @pytest.mark.asyncio
@@ -95,7 +95,8 @@ async def test_fd_77_size_filtering_advanced(tmp_path, monkeypatch):
     tool = ListFilesTool(str(tmp_path))
 
     async def fake_run(cmd, cwd=None, timeout=None, timeout_ms=None):
-        if "--size" in cmd:
+        # Production builds size filters as ["-S", "+100b"], not "--size"
+        if "-S" in cmd:
             if "+100b" in cmd:
                 files = [str(tmp_path / "large.txt")]  # Only large files
             elif "-100b" in cmd:
@@ -118,7 +119,7 @@ async def test_fd_77_size_filtering_advanced(tmp_path, monkeypatch):
     )
 
     assert result1["success"] is True
-    assert result1["count"] >= 0
+    assert result1["count"] == 1
 
     # Test files smaller than 100 bytes
     result2 = await tool.execute(
@@ -126,7 +127,7 @@ async def test_fd_77_size_filtering_advanced(tmp_path, monkeypatch):
     )
 
     assert result2["success"] is True
-    assert result2["count"] >= 0
+    assert result2["count"] == 1
 
 
 @pytest.mark.asyncio
@@ -160,7 +161,7 @@ async def test_fd_78_no_extension_filter(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 0
+    assert result["count"] == 3
 
 
 @pytest.mark.asyncio
@@ -189,7 +190,7 @@ async def test_fd_79_owner_ignore_all(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 0
+    assert result["count"] == 2
 
 
 @pytest.mark.asyncio
@@ -218,7 +219,7 @@ async def test_fd_80_owner_current_user(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 0
+    assert result["count"] == 2
 
 
 @pytest.mark.asyncio
@@ -246,7 +247,7 @@ async def test_fd_81_owner_current_group(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 0
+    assert result["count"] == 1
 
 
 @pytest.mark.asyncio
@@ -274,7 +275,7 @@ async def test_fd_82_owner_root(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 0  # No root files
+    assert result["count"] == 0
 
 
 @pytest.mark.asyncio
@@ -302,7 +303,7 @@ async def test_fd_83_quiet_mode_simulation(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 0
+    assert result["count"] == 1
 
 
 @pytest.mark.asyncio
@@ -318,8 +319,13 @@ async def test_fd_84_max_results_advanced(tmp_path, monkeypatch):
         # Simulate max results limiting
         all_files = [str(tmp_path / f"file{i}.txt") for i in range(10)]
 
-        # Check for limit in command
-        files = all_files[:5] if any("limit" in str(arg) for arg in cmd) else all_files
+        # Production passes ["--max-results", "<n>"] (a default cap is
+        # appended even without an explicit limit) — honor the actual value
+        if "--max-results" in cmd:
+            n = int(cmd[cmd.index("--max-results") + 1])
+            files = all_files[:n]
+        else:
+            files = all_files
 
         out = "\n".join(files).encode()
         return 0, out, b""
@@ -328,13 +334,13 @@ async def test_fd_84_max_results_advanced(tmp_path, monkeypatch):
         "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
     )
 
-    # Test with limit
+    # Test with limit — the bounded fd pass returns only the requested prefix
     result1 = await tool.execute(
         {"roots": [str(tmp_path)], "pattern": "*", "glob": True, "limit": 5}
     )
 
     assert result1["success"] is True
-    assert result1["count"] >= 0
+    assert result1["count"] == 5
 
     # Test without limit
     result2 = await tool.execute(
@@ -342,7 +348,7 @@ async def test_fd_84_max_results_advanced(tmp_path, monkeypatch):
     )
 
     assert result2["success"] is True
-    assert result2["count"] >= 0
+    assert result2["count"] == 10
 
 
 @pytest.mark.asyncio
@@ -376,7 +382,7 @@ async def test_fd_86_list_details_advanced(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 0
+    assert result["count"] == 2
 
     # Verify detailed information is present in successful results
     if result["success"] and result["count"] > 0:

@@ -453,3 +453,49 @@ def test_integration_no_cross_language_mis_wire(tmp_path: Path) -> None:
             "(cross-language mis-wire — the CodeGraph failure)"
         )
         assert r["callee_resolution"] in ("local", "project", "unknown")
+
+
+# ---------------------------------------------------------------------------
+# Issue #626 — per-file TS shadow map narrowed to module/namespace-scope
+# variables (approved as a precision gain): function-local declarators no
+# longer reach symbols_json, so they stop suppressing the builtin tier.
+# ---------------------------------------------------------------------------
+def test_shadow_locals_from_cache_are_module_scope_only(tmp_path: Path) -> None:
+    """SET-CONSTRUCTION pin through the real cache (#626): module-level
+    ``const Promise`` stays in the per-file shadow map; the function-local
+    ``const Map`` no longer does (before #626 both did)."""
+    from tree_sitter_analyzer.synapse_resolver.languages.typescript import (
+        _build_shadow_locals,
+    )
+
+    db = _index(
+        tmp_path,
+        {
+            "svc.ts": ("const Promise = 1;\nfunction f(): void { const Map = 1; }\n"),
+        },
+    )
+    conn = sqlite3.connect(db)
+    conn.row_factory = sqlite3.Row
+    try:
+        assert _build_shadow_locals(conn) == {"svc.ts": {"Promise"}}
+    finally:
+        conn.close()
+
+
+def test_function_local_shadow_no_longer_suppresses_builtin(tmp_path: Path) -> None:
+    """FULL INDEX PATH (#626 precision gain): ``function f() { const Math = 1 }``
+    no longer shadows the ``Math`` global — ``Math.random()`` elsewhere in the
+    file classifies ``builtin`` again (module-level shadows still suppress,
+    pinned by test_shadow_locals_from_cache_are_module_scope_only +
+    test_variable_shadow_suppresses_builtin)."""
+    db = _index(
+        tmp_path,
+        {
+            "svc.ts": (
+                "function f(): void { const Math = 1; }\n"
+                "function g(): void { Math.random(); }\n"
+            ),
+        },
+    )
+    res = _resolution_for(db, "random")
+    assert res == ["builtin"]

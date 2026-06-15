@@ -491,8 +491,8 @@ if __name__ == '__main__':
         assert "summary" in scale_result
 
         summary = scale_result["summary"]
-        assert summary["classes"] >= 1
-        assert summary["methods"] >= 3
+        assert summary["classes"] == 1
+        assert summary["methods"] == 6
 
         # Step 2: Analyze code structure (use JSON format for test assertions)
         structure_args = {
@@ -512,8 +512,8 @@ if __name__ == '__main__':
         assert "table_output" in structure_result
 
         metadata = structure_result["metadata"]
-        assert metadata["classes_count"] >= 1
-        assert metadata["methods_count"] >= 3
+        assert metadata["classes_count"] == 1
+        assert metadata["methods_count"] == 6
 
         # Step 3: Verify integration consistency
         # Scale and structure results should be consistent
@@ -542,7 +542,7 @@ if __name__ == '__main__':
 
         # Verify this is a large file
         file_metrics = scale_result["file_metrics"]
-        assert file_metrics["total_lines"] > 100  # Should be a large file
+        assert file_metrics["total_lines"] == 315  # py_large fixture line count
 
         # Step 2: Structure analysis with token optimization
         # Test without output_file first to verify basic functionality (use JSON format)
@@ -561,7 +561,9 @@ if __name__ == '__main__':
         # Test token optimization by checking if suppress_output would work
         # (Note: actual file output testing may require different approach)
         table_output = structure_result["table_output"]
-        assert len(table_output) > 100  # Should have substantial content
+        # Content pin (not byte-length: the temp-file stem appears in the
+        # header line, so byte length varies per run)
+        assert table_output.count("\n") == 38
         assert "ProcessorInterface" in table_output  # Adjust based on actual content
 
     @pytest.mark.asyncio
@@ -723,7 +725,9 @@ if __name__ == '__main__':
         # Should provide detailed structure table
         assert "table_output" in structure_result
         table_output = structure_result["table_output"]
-        assert len(table_output) > 100  # Should be substantial
+        # Content pin (not byte-length: the temp-file stem appears in the
+        # header line, so byte length varies per run)
+        assert table_output.count("\n") == 31
 
         # US1-AC3: Analysis completes within 3 seconds for typical files
         # (Tested in test_performance_requirements)

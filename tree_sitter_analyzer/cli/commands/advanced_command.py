@@ -122,7 +122,13 @@ def _build_elements_payload(
     elements_list = list(elements)
     for element in elements_list:
         elem_dict = element_to_dict(element, elements_list)
-        elem_dict["type"] = get_element_type(element)
+        # For Class-model objects (enums/interfaces/type-aliases in TS/JS/etc.),
+        # prefer the granular class_type over the generic "class" group key so
+        # that type:"enum", type:"interface", type:"type" reach the caller.
+        elem_type = get_element_type(element)
+        if elem_type == ELEMENT_TYPE_CLASS:
+            elem_type = getattr(element, "class_type", None) or elem_type
+        elem_dict["type"] = elem_type
         elem_dict["complexity"] = elem_dict.get("complexity_score")
         payload.append(elem_dict)
     return payload

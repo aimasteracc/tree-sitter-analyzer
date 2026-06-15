@@ -227,6 +227,7 @@ class CppTableFormatterConvertMixin:
 
         return {
             "name": getattr(element, "name", str(element)),
+            "receiver_type": getattr(element, "receiver_type", None),
             "visibility": visibility,
             "return_type": getattr(element, "return_type", "Any"),
             "parameters": processed_params,

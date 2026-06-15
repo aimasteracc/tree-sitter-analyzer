@@ -84,7 +84,7 @@ def _make_ruby_attr_function(
     block so its 20-line literal stops counting as nesting depth.
     """
     return Function(
-        name=(f"{parent_class}#{attr_name}" if parent_class else attr_name),
+        name=attr_name,  # bare name — owner lives in receiver_type (#535)
         start_line=call_node.start_point[0] + 1,
         end_line=call_node.end_point[0] + 1,
         visibility="public",
@@ -96,4 +96,5 @@ def _make_ruby_attr_function(
         modifiers=[],
         annotations=[],
         is_property=True,
+        receiver_type=parent_class if parent_class else None,
     )

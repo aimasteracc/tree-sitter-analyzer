@@ -804,7 +804,8 @@ def test_facade_delegation_routes_each_action_to_expected_inner() -> None:
         ("structure", "ast_path"): "CodeGraphASTPathTool",
         ("structure", "sitemap"): "CodeGraphSitemapTool",
         ("structure", "class_tree"): "ClassHierarchyTool",
-        ("structure", "class_detail"): "ClassInspectTool",
+        # class_detail is a bespoke route (#804) so query/symbol→class_name aliasing works.
+        ("structure", "class_detail"): "<bespoke>",
         ("structure", "explore"): "CodeGraphExploreTool",
         ("structure", "read"): "<bespoke>",
         ("health", "project"): "ProjectHealthTool",

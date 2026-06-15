@@ -230,7 +230,7 @@ class TestRubyClassExtraction:
         extractor = plugin.create_extractor()
         classes = extractor.extract_classes(tree, SIMPLE_CLASS_CODE)
 
-        assert all(c.start_line > 0 for c in classes)
+        assert min(c.start_line for c in classes) == 5
         assert all(c.end_line >= c.start_line for c in classes)
 
     def test_extract_empty_tree(self):
@@ -255,7 +255,8 @@ class TestRubyFunctionExtraction:
 
         func_names = [f.name for f in functions]
         # Should find initialize, greet, generate_id, and attr_ methods
-        assert any("initialize" in name for name in func_names)
+        # #535 fixed: names are bare — exact membership, no substring accommodation
+        assert "initialize" in func_names
         assert any("greet" in name for name in func_names)
 
     def test_extract_singleton_methods(self):
@@ -279,7 +280,7 @@ class TestRubyFunctionExtraction:
 
         # attr_accessor creates getter/setter methods
         func_names = [f.name for f in functions]
-        assert any("name" in name for name in func_names) or len(functions) > 0
+        assert any("name" in name for name in func_names)
 
     def test_extract_method_parameters(self):
         """Test extraction of method parameters."""
@@ -291,7 +292,7 @@ class TestRubyFunctionExtraction:
         initialize_method = next((f for f in functions if "initialize" in f.name), None)
         assert initialize_method is not None
         # Should have name and age parameters
-        assert len(initialize_method.parameters) >= 0
+        assert len(initialize_method.parameters) == 2
 
     def test_extract_splat_parameters(self):
         """Test extraction of splat parameters."""
@@ -312,7 +313,7 @@ class TestRubyFunctionExtraction:
 
         # Singleton methods should be marked as static
         singleton_methods = [f for f in functions if f.is_static]
-        assert len(singleton_methods) >= 0  # May vary by extraction
+        assert len(singleton_methods) == 2
 
     def test_extract_functions_empty_tree(self):
         """Test function extraction with empty code."""
@@ -336,7 +337,8 @@ class TestRubyVariableExtraction:
 
         var_names = [v.name for v in variables]
         # Should find MAX_USERS, DEFAULT_TIMEOUT, API_VERSION
-        assert any("MAX_USERS" in name for name in var_names) or len(variables) > 0
+        # #535 fixed: names are bare — exact membership
+        assert "MAX_USERS" in var_names
 
     def test_constant_is_marked_constant(self):
         """Test that constants are marked as constant."""
@@ -347,7 +349,7 @@ class TestRubyVariableExtraction:
 
         constants = [v for v in variables if v.is_constant]
         # Should have constant variables
-        assert len(constants) >= 0
+        assert len(constants) == 3
 
     def test_extract_class_variables(self):
         """Test extraction of class variables."""
@@ -358,7 +360,8 @@ class TestRubyVariableExtraction:
 
         # @@instance_count should be extracted
         var_names = [v.name for v in variables]
-        assert any("instance_count" in name for name in var_names) or len(variables) > 0
+        # #535 fixed: names are bare — exact membership
+        assert "instance_count" in var_names
 
     def test_variable_line_numbers(self):
         """Test that variable line numbers are correct."""
@@ -367,7 +370,7 @@ class TestRubyVariableExtraction:
         extractor = plugin.create_extractor()
         variables = extractor.extract_variables(tree, CONSTANTS_CODE)
 
-        assert all(v.start_line > 0 for v in variables)
+        assert min(v.start_line for v in variables) == 3
         assert all(v.end_line >= v.start_line for v in variables)
 
     def test_extract_variables_empty_tree(self):
@@ -378,6 +381,31 @@ class TestRubyVariableExtraction:
         variables = extractor.extract_variables(tree, "")
 
         assert variables == []
+
+    def test_scoped_constant_assignment_not_dropped(self):
+        """#902 Codex P2: Config::TIMEOUT = 30 must not be silently dropped.
+
+        tree-sitter reports the LHS of a scope_resolution assignment as
+        ``scope_resolution``, not ``constant``.  Without the guard the
+        scoped constant was filtered out by the phantom-field fix (#770).
+        """
+        code = """
+class MyApp
+  Config::DEFAULT_TIMEOUT = 30
+  Config::MAX_RETRIES = 5
+end
+"""
+        plugin = RubyPlugin()
+        tree = get_tree_for_code(code, plugin)
+        extractor = plugin.create_extractor()
+        variables = extractor.extract_variables(tree, code)
+
+        names = [v.name for v in variables]
+        assert "Config::DEFAULT_TIMEOUT" in names
+        assert "Config::MAX_RETRIES" in names
+        # Scoped constants are treated as constants (public, is_constant=True)
+        for v in variables:
+            assert v.is_constant is True
 
 
 class TestRubyImportExtraction:
@@ -421,7 +449,7 @@ class TestRubyImportExtraction:
         extractor = plugin.create_extractor()
         imports = extractor.extract_imports(tree, REQUIRE_STATEMENTS_CODE)
 
-        assert all(i.start_line > 0 for i in imports)
+        assert min(i.start_line for i in imports) == 2
         assert all(i.end_line >= i.start_line for i in imports)
 
     def test_extract_imports_empty_tree(self):
@@ -555,7 +583,7 @@ class TestRubyPluginAnalyzeFile:
         assert result.success is True
         assert result.language == "ruby"
         assert result.file_path == str(rb_file)
-        assert len(result.elements) > 0
+        assert len(result.elements) == 12
 
     @pytest.mark.asyncio
     async def test_analyze_file_node_count(self, tmp_path):
@@ -566,7 +594,18 @@ class TestRubyPluginAnalyzeFile:
         plugin = RubyPlugin()
         result = await plugin.analyze_file(str(rb_file), None)
 
-        assert result.node_count > 0
+        assert result.node_count == 77
+
+    @pytest.mark.asyncio
+    async def test_analyze_file_line_count_nonzero(self, tmp_path):
+        """#769: line_count must reflect actual file line count, not default 0."""
+        rb_file = tmp_path / "test.rb"
+        rb_file.write_text(SIMPLE_CLASS_CODE, encoding="utf-8")
+
+        plugin = RubyPlugin()
+        result = await plugin.analyze_file(str(rb_file), None)
+
+        assert result.line_count == len(SIMPLE_CLASS_CODE.splitlines())
 
 
 class TestRubyIntegration:
@@ -595,9 +634,9 @@ class TestRubyIntegration:
         extractor.extract_variables(tree, SIMPLE_CLASS_CODE)
         imports = extractor.extract_imports(tree, SIMPLE_CLASS_CODE)
 
-        assert len(classes) > 0
-        assert len(functions) > 0
-        assert len(imports) > 0
+        assert len(classes) == 1
+        assert len(functions) == 6
+        assert len(imports) == 2
 
     def test_module_extraction(self):
         """Test extraction from module code."""
@@ -609,9 +648,9 @@ class TestRubyIntegration:
         functions = extractor.extract_functions(tree, MODULE_CODE)
 
         # Should find modules and nested classes
-        assert len(classes) >= 1
+        assert len(classes) == 3
         # Should find methods
-        assert len(functions) >= 0
+        assert len(functions) == 2
 
     def test_inheritance_chain(self):
         """Test extraction of inheritance relationships."""
@@ -630,3 +669,119 @@ class TestRubyIntegration:
         # Superclass extraction may vary - check it's not None
         assert dog.superclass is not None
         assert cat.superclass is not None
+
+
+class TestRubyMethodNameClean:
+    """Issue #535 — method name must be bare; owner in receiver_type."""
+
+    def test_instance_method_name_is_bare(self):
+        """Method name must NOT contain 'ClassName#' prefix."""
+        plugin = RubyPlugin()
+        tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
+        extractor = plugin.create_extractor()
+        functions = extractor.extract_functions(tree, SIMPLE_CLASS_CODE)
+
+        init = next(f for f in functions if f.name == "initialize")
+        assert init.name == "initialize"
+        assert "#" not in init.name
+        assert "Person" not in init.name
+
+    def test_instance_method_receiver_type_is_owner(self):
+        """receiver_type must carry the owner class name for instance methods."""
+        plugin = RubyPlugin()
+        tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
+        extractor = plugin.create_extractor()
+        functions = extractor.extract_functions(tree, SIMPLE_CLASS_CODE)
+
+        for func in functions:
+            assert func.receiver_type == "Person", (
+                f"{func.name!r} has receiver_type={func.receiver_type!r}, expected 'Person'"
+            )
+
+    def test_singleton_method_name_is_bare(self):
+        """Class method name must NOT contain 'ClassName.' prefix."""
+        plugin = RubyPlugin()
+        tree = get_tree_for_code(SINGLETON_METHODS_CODE, plugin)
+        extractor = plugin.create_extractor()
+        functions = extractor.extract_functions(tree, SINGLETON_METHODS_CODE)
+
+        add_method = next(f for f in functions if f.name == "add")
+        assert add_method.name == "add"
+        assert "." not in add_method.name
+        assert add_method.receiver_type == "MathUtils"
+        assert add_method.is_static is True
+
+    def test_attr_method_name_is_bare(self):
+        """Attribute methods must have bare names."""
+        plugin = RubyPlugin()
+        tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
+        extractor = plugin.create_extractor()
+        functions = extractor.extract_functions(tree, SIMPLE_CLASS_CODE)
+
+        attr_funcs = [f for f in functions if f.is_property]
+        assert len(attr_funcs) == 3  # name, age, id
+        for f in attr_funcs:
+            assert "#" not in f.name
+            assert "Person" not in f.name
+            assert f.receiver_type == "Person"
+
+    def test_user_contains_initialize(self):
+        """Acceptance: User.methods contains initialize (bare name)."""
+        plugin = RubyPlugin()
+        # Use MODULE_CODE which has Authentication::User
+        code = """
+class User
+  def initialize(name)
+    @name = name
+  end
+  def greet
+    'hello'
+  end
+end
+"""
+        tree = get_tree_for_code(code, plugin)
+        extractor = plugin.create_extractor()
+        functions = extractor.extract_functions(tree, code)
+        user_methods = [f for f in functions if f.receiver_type == "User"]
+        method_names = [f.name for f in user_methods]
+        assert "initialize" in method_names
+
+
+_OPTIONAL_PARAM_CODE = """\
+class AdminUser
+  def initialize(username, email, permissions = [])
+    @username = username
+    @email = email
+    @permissions = permissions
+  end
+
+  def configure(mode: :strict, timeout: 30)
+    @mode = mode
+    @timeout = timeout
+  end
+end
+"""
+
+
+class TestRubyOptionalParamExtraction:
+    """#768: optional/keyword parameters must appear in .parameters (not silently dropped)."""
+
+    def test_optional_parameter_included_with_default(self):
+        """permissions = [] must appear as 'permissions = []', not be silently dropped."""
+        plugin = RubyPlugin()
+        tree = get_tree_for_code(_OPTIONAL_PARAM_CODE, plugin)
+        extractor = plugin.create_extractor()
+        functions = extractor.extract_functions(tree, _OPTIONAL_PARAM_CODE)
+
+        init = next(f for f in functions if f.name == "initialize")
+        assert init.parameters == ["username", "email", "permissions = []"]
+
+    def test_keyword_parameter_included_with_default(self):
+        """mode: :strict must appear as 'mode: :strict', not be silently dropped."""
+        plugin = RubyPlugin()
+        tree = get_tree_for_code(_OPTIONAL_PARAM_CODE, plugin)
+        extractor = plugin.create_extractor()
+        functions = extractor.extract_functions(tree, _OPTIONAL_PARAM_CODE)
+
+        configure = next(f for f in functions if f.name == "configure")
+        assert configure.parameters == ["mode: :strict", "timeout: 30"]

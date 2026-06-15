@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pytest
 
+from tree_sitter_analyzer import _ast_cache_build_state as build_state
+from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.mcp.tools.callees_tool import CodeGraphCalleesTool
 from tree_sitter_analyzer.mcp.tools.callers_tool import CodeGraphCallersTool
 from tree_sitter_analyzer.mcp.tools.codegraph_relation_tool import (
@@ -73,6 +75,7 @@ class TestCodeGraphCallersTool:
         assert result["success"] is True
 
     @pytest.mark.asyncio
+    @pytest.mark.slow_ok  # Real call-graph build on Windows I/O exceeds 5s budget
     async def test_execute_toon_format(self, tiny_project_root):
         callers_tool = CodeGraphCallersTool(tiny_project_root)
         result = await callers_tool.execute(
@@ -160,6 +163,7 @@ class TestCodeGraphCalleesTool:
         assert "no Read needed" in result["next_step"]
 
     @pytest.mark.asyncio
+    @pytest.mark.slow_ok  # Real call-graph build on Windows I/O exceeds 5s budget
     async def test_execute_toon_format(self, tiny_project_root):
         callees_tool = CodeGraphCalleesTool(tiny_project_root)
         result = await callees_tool.execute(
@@ -453,3 +457,318 @@ def test_cli_call_limit_flag_parity() -> None:
     # default mirrors the MCP schema default
     args_default = parser.parse_args(["--callers", "execute"])
     assert args_default.call_limit == 50
+
+
+class TestEmptyIndexHint:
+    """#548: callers/callees on an empty/partial call-graph index must surface
+    a --full-index hint so users know why NOT_FOUND is returned.
+
+    An empty tmp_path has no indexed call edges — ``has_call_edges()`` returns
+    False and the graph-parse fallback produces zero results.  The NOT_FOUND
+    response's next_step MUST mention ``--full-index`` so the user is told
+    what to do next.
+    """
+
+    @pytest.mark.asyncio
+    async def test_callers_empty_index_hint_mentions_full_index(self, tmp_path) -> None:
+        """Callers NOT_FOUND on empty index carries --full-index hint."""
+        tool = CodeGraphCallersTool(str(tmp_path))
+        result = await tool.execute(
+            {"function_name": "some_function", "output_format": "json"}
+        )
+        assert result["verdict"] == "NOT_FOUND"
+        next_step = result.get("next_step", "")
+        assert "--full-index" in next_step, (
+            f"next_step should mention --full-index when call graph is empty; "
+            f"got: {next_step!r}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_callees_empty_index_hint_mentions_full_index(self, tmp_path) -> None:
+        """Callees NOT_FOUND on empty index carries --full-index hint."""
+        tool = CodeGraphCalleesTool(str(tmp_path))
+        result = await tool.execute(
+            {"function_name": "some_function", "output_format": "json"}
+        )
+        assert result["verdict"] == "NOT_FOUND"
+        next_step = result.get("next_step", "")
+        assert "--full-index" in next_step, (
+            f"next_step should mention --full-index when call graph is empty; "
+            f"got: {next_step!r}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_callers_rebuild_marker_warns_without_phantom_count(
+        self, tmp_path
+    ) -> None:
+        (tmp_path / "sample.py").write_text(
+            "def foo():\n    bar()\n\ndef bar():\n    return 1\n",
+            encoding="utf-8",
+        )
+        cache = ASTCache(str(tmp_path))
+        try:
+            cache.index_project(workers=0)
+            build_state.mark_build_in_progress(cache.get_conn())
+
+            tool = CodeGraphCallersTool(str(tmp_path))
+            result = await tool.execute(
+                {"function_name": "bar", "output_format": "json"}
+            )
+        finally:
+            build_state.clear_build_in_progress(cache.get_conn())
+            cache.close()
+
+        assert result["verdict"] == "WARN"
+        assert result["index_rebuilding"] is True
+        assert result["data_source"] == "cache_rebuilding"
+        assert "caller_count" not in result
+        assert "callers" not in result
+        assert "--full-index" not in result["next_step"]
+        assert result["agent_summary"]["verdict"] == "WARN"
+
+    @pytest.mark.asyncio
+    async def test_callees_rebuild_marker_warns_without_phantom_count(
+        self, tmp_path
+    ) -> None:
+        (tmp_path / "sample.py").write_text(
+            "def foo():\n    bar()\n\ndef bar():\n    return 1\n",
+            encoding="utf-8",
+        )
+        cache = ASTCache(str(tmp_path))
+        try:
+            cache.index_project(workers=0)
+            build_state.mark_build_in_progress(cache.get_conn())
+
+            tool = CodeGraphCalleesTool(str(tmp_path))
+            result = await tool.execute(
+                {"function_name": "foo", "output_format": "json"}
+            )
+        finally:
+            build_state.clear_build_in_progress(cache.get_conn())
+            cache.close()
+
+        assert result["verdict"] == "WARN"
+        assert result["index_rebuilding"] is True
+        assert result["data_source"] == "cache_rebuilding"
+        assert "callee_count" not in result
+        assert "callees" not in result
+        assert "--full-index" not in result["next_step"]
+        assert result["agent_summary"]["verdict"] == "WARN"
+
+    @pytest.mark.asyncio
+    async def test_callers_non_empty_index_no_spurious_hint(
+        self, tiny_project_root
+    ) -> None:
+        """When the index has call edges, NOT_FOUND for unknown symbol does NOT
+        mention --full-index (it's the symbol that's missing, not the index)."""
+        tool = CodeGraphCallersTool(tiny_project_root)
+        result = await tool.execute(
+            {
+                "function_name": "zzz_definitely_not_in_tiny_project",
+                "output_format": "json",
+            }
+        )
+        # tiny_project_root has foo→bar edges, so the call graph is populated
+        assert result["verdict"] == "NOT_FOUND"
+        next_step = result.get("next_step", "")
+        assert "--full-index" not in next_step, (
+            f"--full-index hint must NOT appear when index has edges; "
+            f"got: {next_step!r}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_callers_built_index_zero_edges_no_hint(self, tmp_path) -> None:
+        """#705 follow-up: index IS built (total_files > 0) but the project has
+        no call edges (e.g. a single ``def solo(): return 1``).  NOT_FOUND must
+        NOT carry a --full-index hint — the user already indexed; they just have
+        a project with no calls."""
+        from tree_sitter_analyzer.ast_cache import ASTCache
+
+        (tmp_path / "solo.py").write_text(
+            "def solo():\n    return 1\n", encoding="utf-8"
+        )
+        cache = ASTCache(str(tmp_path))
+        cache.index_project()
+        assert cache.get_stats()["total_files"] == 1
+        assert not cache.has_call_edges()
+        cache.close()
+
+        tool = CodeGraphCallersTool(str(tmp_path))
+        result = await tool.execute({"function_name": "solo", "output_format": "json"})
+        assert result["verdict"] == "NOT_FOUND"
+        next_step = result.get("next_step", "")
+        assert "--full-index" not in next_step, (
+            f"--full-index hint must NOT appear when the index is built "
+            f"(zero-edge project); got: {next_step!r}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_callees_built_index_zero_edges_no_hint(self, tmp_path) -> None:
+        """#705 follow-up: same zero-edge scenario for callees."""
+        from tree_sitter_analyzer.ast_cache import ASTCache
+
+        (tmp_path / "solo.py").write_text(
+            "def solo():\n    return 1\n", encoding="utf-8"
+        )
+        cache = ASTCache(str(tmp_path))
+        cache.index_project()
+        assert cache.get_stats()["total_files"] == 1
+        assert not cache.has_call_edges()
+        cache.close()
+
+        tool = CodeGraphCalleesTool(str(tmp_path))
+        result = await tool.execute({"function_name": "solo", "output_format": "json"})
+        assert result["verdict"] == "NOT_FOUND"
+        next_step = result.get("next_step", "")
+        assert "--full-index" not in next_step, (
+            f"--full-index hint must NOT appear when the index is built "
+            f"(zero-edge project); got: {next_step!r}"
+        )
+
+
+class TestAgentSummaryCallers:
+    """#546 seam 3 / #577 leftover: callers must emit agent_summary with
+    verdict + summary_line + next_step, mirroring the top-level verdict."""
+
+    @pytest.mark.asyncio
+    async def test_callers_has_agent_summary_found(self, tiny_project_root) -> None:
+        """INFO case: foo calls bar → bar has 1 caller (foo).
+        agent_summary must be present and summary_line must report count == 1.
+        Top-level verdict must mirror agent_summary.verdict.
+        """
+        tool = CodeGraphCallersTool(tiny_project_root)
+        result = await tool.execute({"function_name": "bar", "output_format": "json"})
+        assert result["verdict"] == "INFO"
+        agent_summary = result.get("agent_summary")
+        assert isinstance(agent_summary, dict), "agent_summary must be a dict"
+        assert agent_summary.get("verdict") in (
+            "INFO",
+            "NOT_FOUND",
+            "CAUTION",
+            "REVIEW",
+            "ERROR",
+        )
+        assert result["verdict"] == agent_summary["verdict"], (
+            "top-level verdict must mirror agent_summary.verdict"
+        )
+        summary_line = agent_summary.get("summary_line", "")
+        assert isinstance(summary_line, str) and summary_line, (
+            "summary_line must be non-empty"
+        )
+        # Extract the count from summary_line — fixture has exactly 1 caller (foo→bar).
+        import re
+
+        m = re.search(r"(\d+)\s+caller", summary_line)
+        assert m is not None, (
+            f"summary_line must mention caller count; got: {summary_line!r}"
+        )
+        assert int(m.group(1)) == 1, (
+            f"summary_line must report TRUE count 1, got {m.group(1)!r} in {summary_line!r}"
+        )
+        next_step = agent_summary.get("next_step", "")
+        assert isinstance(next_step, str) and next_step, "next_step must be non-empty"
+
+    @pytest.mark.asyncio
+    async def test_callers_has_agent_summary_not_found(self, tiny_project_root) -> None:
+        """NOT_FOUND case: unknown symbol → agent_summary present, verdict NOT_FOUND."""
+        tool = CodeGraphCallersTool(tiny_project_root)
+        result = await tool.execute(
+            {"function_name": "zzz_nonexistent_xyz", "output_format": "json"}
+        )
+        assert result["verdict"] == "NOT_FOUND"
+        agent_summary = result.get("agent_summary")
+        assert isinstance(agent_summary, dict), (
+            "agent_summary must be present even on NOT_FOUND"
+        )
+        assert agent_summary["verdict"] == "NOT_FOUND"
+        assert result["verdict"] == agent_summary["verdict"]
+        summary_line = agent_summary.get("summary_line", "")
+        assert isinstance(summary_line, str) and summary_line
+
+    @pytest.mark.asyncio
+    async def test_callers_verdict_mirrors_agent_summary(
+        self, tiny_project_root
+    ) -> None:
+        """Top-level verdict must always equal agent_summary.verdict (N4/r37u pattern)."""
+        tool = CodeGraphCallersTool(tiny_project_root)
+        for fn in ("bar", "foo", "zzz_nonexistent_xyz"):
+            result = await tool.execute({"function_name": fn, "output_format": "json"})
+            agent_summary = result.get("agent_summary", {})
+            assert result.get("verdict") == agent_summary.get("verdict"), (
+                f"verdict mismatch for {fn!r}: "
+                f"top={result.get('verdict')!r} summary={agent_summary.get('verdict')!r}"
+            )
+
+
+class TestAgentSummaryCallees:
+    """#546 seam 3 / #577 leftover: callees must emit agent_summary with
+    verdict + summary_line + next_step, mirroring the top-level verdict."""
+
+    @pytest.mark.asyncio
+    async def test_callees_has_agent_summary_found(self, tiny_project_root) -> None:
+        """INFO case: foo calls bar → foo has 1 callee (bar).
+        agent_summary must be present and summary_line must report count == 1.
+        Top-level verdict must mirror agent_summary.verdict.
+        """
+        tool = CodeGraphCalleesTool(tiny_project_root)
+        result = await tool.execute({"function_name": "foo", "output_format": "json"})
+        assert result["verdict"] == "INFO"
+        agent_summary = result.get("agent_summary")
+        assert isinstance(agent_summary, dict), "agent_summary must be a dict"
+        assert agent_summary.get("verdict") in (
+            "INFO",
+            "NOT_FOUND",
+            "CAUTION",
+            "REVIEW",
+            "ERROR",
+        )
+        assert result["verdict"] == agent_summary["verdict"], (
+            "top-level verdict must mirror agent_summary.verdict"
+        )
+        summary_line = agent_summary.get("summary_line", "")
+        assert isinstance(summary_line, str) and summary_line, (
+            "summary_line must be non-empty"
+        )
+        # Extract the count from summary_line — fixture has exactly 1 callee (foo→bar).
+        import re
+
+        m = re.search(r"(\d+)\s+(?:callee|function)", summary_line)
+        assert m is not None, (
+            f"summary_line must mention callee count; got: {summary_line!r}"
+        )
+        assert int(m.group(1)) == 1, (
+            f"summary_line must report TRUE count 1, got {m.group(1)!r} in {summary_line!r}"
+        )
+        next_step = agent_summary.get("next_step", "")
+        assert isinstance(next_step, str) and next_step, "next_step must be non-empty"
+
+    @pytest.mark.asyncio
+    async def test_callees_has_agent_summary_not_found(self, tiny_project_root) -> None:
+        """NOT_FOUND case: unknown symbol → agent_summary present, verdict NOT_FOUND."""
+        tool = CodeGraphCalleesTool(tiny_project_root)
+        result = await tool.execute(
+            {"function_name": "zzz_nonexistent_xyz", "output_format": "json"}
+        )
+        assert result["verdict"] == "NOT_FOUND"
+        agent_summary = result.get("agent_summary")
+        assert isinstance(agent_summary, dict), (
+            "agent_summary must be present even on NOT_FOUND"
+        )
+        assert agent_summary["verdict"] == "NOT_FOUND"
+        assert result["verdict"] == agent_summary["verdict"]
+        summary_line = agent_summary.get("summary_line", "")
+        assert isinstance(summary_line, str) and summary_line
+
+    @pytest.mark.asyncio
+    async def test_callees_verdict_mirrors_agent_summary(
+        self, tiny_project_root
+    ) -> None:
+        """Top-level verdict must always equal agent_summary.verdict (N4/r37u pattern)."""
+        tool = CodeGraphCalleesTool(tiny_project_root)
+        for fn in ("foo", "bar", "zzz_nonexistent_xyz"):
+            result = await tool.execute({"function_name": fn, "output_format": "json"})
+            agent_summary = result.get("agent_summary", {})
+            assert result.get("verdict") == agent_summary.get("verdict"), (
+                f"verdict mismatch for {fn!r}: "
+                f"top={result.get('verdict')!r} summary={agent_summary.get('verdict')!r}"
+            )

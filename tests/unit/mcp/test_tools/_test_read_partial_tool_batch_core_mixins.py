@@ -80,13 +80,13 @@ class ReadPartialToolExecuteBatchValidationMixin:
     async def test_execute_batch_invalid_request_entry(self):
         """Test that batch mode handles invalid request entries."""
         tool = ReadPartialTool()
-        args = {"requests": ["not a dict"], "fail_fast": False}
+        # output_format=json keeps 'results' as a top-level key (TOON folds it
+        # into toon_content), so the error assertion actually executes
+        args = {"requests": ["not a dict"], "fail_fast": False, "output_format": "json"}
         result = await tool._execute_batch(args)
         assert result["success"] is False
         assert result["count_files"] == 1
-        # Check if results key exists
-        if "results" in result:
-            assert len(result["results"][0]["errors"]) > 0
+        assert len(result["results"][0]["errors"]) == 1
 
     @pytest.mark.asyncio
     async def test_execute_batch_invalid_file_path(self):
@@ -95,11 +95,11 @@ class ReadPartialToolExecuteBatchValidationMixin:
         args = {
             "requests": [{"file_path": "", "sections": [{"start_line": 1}]}],
             "fail_fast": False,
+            "output_format": "json",
         }
         result = await tool._execute_batch(args)
         assert result["count_files"] == 1
-        if "results" in result:
-            assert len(result["results"][0]["errors"]) > 0
+        assert len(result["results"][0]["errors"]) == 1
 
     @pytest.mark.asyncio
     async def test_execute_batch_invalid_sections(self):
@@ -108,11 +108,11 @@ class ReadPartialToolExecuteBatchValidationMixin:
         args = {
             "requests": [{"file_path": "test.py", "sections": "not a list"}],
             "fail_fast": False,
+            "output_format": "json",
         }
         result = await tool._execute_batch(args)
         assert result["count_files"] == 1
-        if "results" in result:
-            assert len(result["results"][0]["errors"]) > 0
+        assert len(result["results"][0]["errors"]) == 1
 
     @pytest.mark.asyncio
     async def test_execute_batch_too_many_sections_per_file(self):
@@ -130,15 +130,28 @@ class ReadPartialToolExecuteBatchValidationMixin:
     async def test_execute_batch_too_many_sections_per_file_with_truncate(self):
         """Test that batch mode truncates sections when allow_truncate=True."""
         tool = ReadPartialTool()
-        sections = [{"start_line": i} for i in range(60)]
+        test_content = "\n".join(f"line{i}" for i in range(1, 61))
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+            f.write(test_content)
+            f.flush()
+            test_file = Path(f.name)
+
+        sections = [{"start_line": i} for i in range(1, 61)]
         args = {
             "requests": [{"file_path": "test.py", "sections": sections}],
             "allow_truncate": True,
+            "output_format": "json",
         }
-        result = await tool._execute_batch(args)
-        assert result["truncated"] is True
-        if "results" in result:
+        try:
+            with patch.object(
+                tool, "resolve_and_validate_file_path", return_value=str(test_file)
+            ):
+                result = await tool._execute_batch(args)
+            assert result["truncated"] is True
             assert len(result["results"][0]["sections"]) == 50  # max_sections_per_file
+        finally:
+            if test_file.exists():
+                test_file.unlink()
 
 
 class ReadPartialToolExecuteBatchProcessingMixin:
@@ -153,6 +166,7 @@ class ReadPartialToolExecuteBatchProcessingMixin:
                 {"file_path": "nonexistent.py", "sections": [{"start_line": 1}]}
             ],
             "fail_fast": False,
+            "output_format": "json",
         }
         with (
             patch.object(
@@ -162,8 +176,7 @@ class ReadPartialToolExecuteBatchProcessingMixin:
         ):
             result = await tool._execute_batch(args)
         assert result["count_files"] == 1
-        if "results" in result:
-            assert len(result["results"][0]["errors"]) > 0
+        assert len(result["results"][0]["errors"]) == 1
 
     @pytest.mark.asyncio
     async def test_execute_batch_invalid_section_entry(self):
@@ -180,6 +193,7 @@ class ReadPartialToolExecuteBatchProcessingMixin:
         args = batch_args(
             batch_request("test_data.py", ["not a dict"]),
             fail_fast=False,
+            output_format="json",
         )
 
         try:
@@ -188,8 +202,7 @@ class ReadPartialToolExecuteBatchProcessingMixin:
             ):
                 result = await tool._execute_batch(args)
             assert result["count_files"] == 1
-            if "results" in result:
-                assert len(result["results"][0]["errors"]) > 0
+            assert len(result["results"][0]["errors"]) == 1
         finally:
             if test_file.exists():
                 test_file.unlink()
@@ -209,6 +222,7 @@ class ReadPartialToolExecuteBatchProcessingMixin:
         args = batch_args(
             batch_request("test_data.py", [{"start_line": 0}]),
             fail_fast=False,
+            output_format="json",
         )
 
         try:
@@ -217,8 +231,7 @@ class ReadPartialToolExecuteBatchProcessingMixin:
             ):
                 result = await tool._execute_batch(args)
             assert result["count_files"] == 1
-            if "results" in result:
-                assert len(result["results"][0]["errors"]) > 0
+            assert len(result["results"][0]["errors"]) == 1
         finally:
             if test_file.exists():
                 test_file.unlink()
@@ -238,6 +251,7 @@ class ReadPartialToolExecuteBatchProcessingMixin:
         args = batch_args(
             batch_request("test_data.py", [{"start_line": 10, "end_line": 5}]),
             fail_fast=False,
+            output_format="json",
         )
 
         try:
@@ -246,8 +260,7 @@ class ReadPartialToolExecuteBatchProcessingMixin:
             ):
                 result = await tool._execute_batch(args)
             assert result["count_files"] == 1
-            if "results" in result:
-                assert len(result["results"][0]["errors"]) > 0
+            assert len(result["results"][0]["errors"]) == 1
         finally:
             if test_file.exists():
                 test_file.unlink()
@@ -268,7 +281,7 @@ class ReadPartialToolExecuteBatchProcessingMixin:
             {"start_line": 1, "end_line": 2, "label": "section1"},
             {"start_line": 4, "end_line": 5, "label": "section2"},
         ]
-        args = batch_args(batch_request("test_data.py", sections))
+        args = batch_args(batch_request("test_data.py", sections), output_format="json")
 
         try:
             with patch.object(
@@ -277,10 +290,8 @@ class ReadPartialToolExecuteBatchProcessingMixin:
                 result = await tool._execute_batch(args)
             assert result["success"] is True
             assert result["count_files"] == 1
-            # count_sections may be less than expected if some sections fail
-            assert result["count_sections"] >= 1
-            if "results" in result:
-                assert len(result["results"][0]["sections"]) >= 1
+            assert result["count_sections"] == 2
+            assert len(result["results"][0]["sections"]) == 2
         finally:
             if test_file.exists():
                 test_file.unlink()

@@ -181,7 +181,7 @@ class MarkdownBlockPrivateExtractionMixin:
                     language_info="indented",
                 )
                 code_block.language = "text"
-                code_block.line_count = end_line - start_line + 1
+                # line_count is computed from start_line/end_line (CodeElement property)
                 code_block.type = "code_block"
                 code_blocks.append(code_block)
             except Exception as e:

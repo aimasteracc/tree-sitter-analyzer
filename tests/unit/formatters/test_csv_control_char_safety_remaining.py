@@ -100,7 +100,7 @@ def test_base_formatter_handles_control_chars(name: str) -> None:
     """base_formatter CSV must serialize a control-char name without raising."""
     result = _base_csv(name)
     assert isinstance(result, str)
-    assert len(result) > 0
+    assert result != ""
 
 
 @pytest.mark.parametrize("name", CR_NAMES)
@@ -108,7 +108,7 @@ def test_base_formatter_output_is_readable_with_cr(name: str) -> None:
     """base_formatter CSV must round-trip through csv.reader for CR-laden names."""
     result = _base_csv(name)
     rows = list(csv.reader(io.StringIO(result)))
-    assert len(rows) >= 2  # header + at least one data row
+    assert len(rows) == 3  # header + 2 data rows (method + field)
     assert "\r" not in result
 
 
@@ -134,7 +134,7 @@ def test_legacy_csv_handles_control_chars(name: str) -> None:
     """legacy CSV must serialize a control-char name without raising."""
     result = _legacy_csv(name)
     assert isinstance(result, str)
-    assert len(result) > 0
+    assert result != ""
 
 
 @pytest.mark.parametrize("name", CR_NAMES)
@@ -142,7 +142,7 @@ def test_legacy_csv_output_is_readable_with_cr(name: str) -> None:
     """legacy CSV must round-trip through csv.reader for CR-laden names."""
     result = _legacy_csv(name)
     rows = list(csv.reader(io.StringIO(result)))
-    assert len(rows) >= 2  # header + at least one data row
+    assert len(rows) == 4  # header + 3 data rows (class + method + field)
     assert "\r" not in result
 
 

@@ -1,6 +1,8 @@
 file_path: examples/Sample.cs
 language: csharp
-package: null
+package:
+  name: MyApp.Models
+  line_range: (5, 106)
 classes:
   [4]{name,visibility,line_range(a,b)}:
     User,public,(10,65)
@@ -19,11 +21,11 @@ methods:
     UpdateEmail,public,(44,52)
     IsValid,public,(54,59)
     ToString,public,(61,64)
-    GetById,private,(72,72)
-    GetAll,private,(73,73)
-    Add,private,(74,74)
-    Update,private,(75,75)
-    Delete,private,(76,76)
+    GetById,public,(72,72)
+    GetAll,public,(73,73)
+    Add,public,(74,74)
+    Update,public,(75,75)
+    Delete,public,(76,76)
     EmailNotifications,public,(95,95)
     SmsNotifications,public,(96,96)
     Theme,public,(97,97)

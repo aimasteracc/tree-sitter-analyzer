@@ -331,16 +331,23 @@ def _readiness_score(signals: dict[str, Any]) -> int:
 def _readiness_status(signals: dict[str, Any]) -> str:
     if _is_supported(signals):
         return "supported"
+    if not signals["parser_dependency_declared"]:
+        return "missing_parser_package"
     if signals["plugin_entrypoint"]:
         return "needs_hardening"
-    if signals["parser_dependency_declared"]:
-        return "candidate"
-    return "missing_parser_package"
+    return "candidate"
 
 
 def _is_supported(signals: dict[str, Any]) -> bool:
     return all(
-        signals[name] for name in ("plugin_entrypoint", "loader_mapping", "unit_tests")
+        signals.get(name)
+        for name in (
+            "plugin_entrypoint",
+            "loader_mapping",
+            "parser_installed",
+            "unit_tests",
+            "golden_masters",
+        )
     )
 
 

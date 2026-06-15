@@ -173,6 +173,55 @@ def _extract_fields_from_source(
     return fields
 
 
+# Decorator patterns that mark a method as abstract in Python.
+_ABSTRACTMETHOD_PATTERN = re.compile(r"^\s*@(?:abc\.)?abstractmethod\s*$")
+
+
+def _is_method_abstract(source_lines: list[str], def_line_1indexed: int) -> bool:
+    """Return True if the line immediately before *def_line_1indexed* is ``@abstractmethod``.
+
+    *def_line_1indexed* is the 1-based line number of the ``def`` keyword.
+    Looks at the preceding line (and up to 3 lines back to handle stacked
+    decorators like ``@property`` + ``@abstractmethod``).
+
+    Falls back to False when the line is out of range or no match is found.
+    """
+    # Convert to 0-based index
+    def_idx = def_line_1indexed - 1
+    # Scan up to 4 preceding lines (covers stacked decorators)
+    for offset in range(1, 5):
+        check_idx = def_idx - offset
+        if check_idx < 0:
+            break
+        line = source_lines[check_idx]
+        stripped = line.strip()
+        # Blank lines and comments may sit between stacked decorators and the
+        # def (Codex P2 on #665) — skip them, keep scanning upward.
+        if not stripped or stripped.startswith("#"):
+            continue
+        if _ABSTRACTMETHOD_PATTERN.match(line):
+            return True
+        # A non-decorator, non-blank, non-comment line ends the decorator block.
+        if not stripped.startswith("@"):
+            break
+    return False
+
+
+def _read_source_lines(file_path: str, project_root: str) -> list[str]:
+    """Read and return source lines for *file_path*, resolved against *project_root*.
+
+    Returns [] on any IO error so callers can safely fall back.
+    """
+    abs_path = (
+        file_path if os.path.isabs(file_path) else os.path.join(project_root, file_path)
+    )
+    try:
+        with open(abs_path, encoding="utf-8", errors="replace") as fh:
+            return fh.readlines()
+    except OSError:
+        return []
+
+
 class ClassInspectTool(BaseMCPTool):
     """Inspect a single class: fields, methods (no closures), visibility, extends."""
 
@@ -231,7 +280,7 @@ class ClassInspectTool(BaseMCPTool):
         try:
             conn = cache.get_conn()
             rows = conn.execute(
-                "SELECT file_path, symbols_json FROM ast_index"
+                "SELECT file_path, symbols_json FROM ast_index ORDER BY file_path"
             ).fetchall()
         except Exception:
             return None
@@ -252,9 +301,16 @@ class ClassInspectTool(BaseMCPTool):
         return None
 
     def _collect_raw_methods(
-        self, cache: ASTCache, class_name: str
+        self,
+        cache: ASTCache,
+        class_name: str,
+        file_path: str | None = None,
     ) -> list[dict[str, Any]]:
-        """Return ALL method/function symbols whose enclosing class is class_name.
+        """Return method/function symbols whose enclosing class is class_name.
+
+        When *file_path* is given only symbols from that file are returned,
+        preventing same-named classes in different files from being merged
+        (issue #660).
 
         This includes closures — caller is responsible for filtering via
         :func:`_filter_closures`.
@@ -262,13 +318,16 @@ class ClassInspectTool(BaseMCPTool):
         try:
             conn = cache.get_conn()
             rows = conn.execute(
-                "SELECT file_path, symbols_json FROM ast_index"
+                "SELECT file_path, symbols_json FROM ast_index ORDER BY file_path"
             ).fetchall()
         except Exception:
             return []
 
         methods: list[dict[str, Any]] = []
         for row in rows:
+            # When a file_path scope is requested, skip other files.
+            if file_path is not None and row["file_path"] != file_path:
+                continue
             try:
                 symbols = json.loads(row["symbols_json"])
             except (json.JSONDecodeError, TypeError):
@@ -469,9 +528,19 @@ class ClassInspectTool(BaseMCPTool):
         class_info = self._collect_class_info(cache, class_name)
         extends: list[str] = class_info["parents"] if class_info else []
 
+        # Scope method collection to the same file as the class definition
+        # to prevent same-named classes across files from being merged (#660).
+        class_file: str | None = class_info["file"] if class_info else None
+
         # Collect all raw method symbols, then filter closures
-        raw_methods = self._collect_raw_methods(cache, class_name)
+        raw_methods = self._collect_raw_methods(cache, class_name, file_path=class_file)
         direct_methods = _filter_closures(raw_methods)
+
+        # Read source once for is_abstract detection (falls back to [] on IO error)
+        project_root = self.project_root or ""
+        source_lines: list[str] = (
+            _read_source_lines(class_file, project_root) if class_file else []
+        )
 
         # Override detection
         parent_method_names = self._parent_method_names(hierarchy, class_name, cache)
@@ -479,6 +548,9 @@ class ClassInspectTool(BaseMCPTool):
         methods: list[dict[str, Any]] = []
         for m in direct_methods:
             is_override = m["name"] in parent_method_names
+            is_abstract = (
+                _is_method_abstract(source_lines, m["line"]) if source_lines else False
+            )
             entry: dict[str, Any] = {
                 "name": m["name"],
                 "line": m["line"],
@@ -486,6 +558,7 @@ class ClassInspectTool(BaseMCPTool):
                 "file": m["file"],
                 "visibility": _compute_visibility(m["name"]),
                 "is_override": is_override,
+                "is_abstract": is_abstract,
             }
             if is_override:
                 src = self._find_override_source(

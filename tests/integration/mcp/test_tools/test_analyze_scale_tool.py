@@ -171,7 +171,9 @@ public class SampleClass {
             assert "fields" in summary
             assert "imports" in summary
             assert summary["classes"] == 1  # SampleClass
-            assert summary["methods"] >= 3  # Constructor + getName + complexCalculation
+            assert summary["methods"] == 3  # Constructor + getName + complexCalculation
+            assert summary["fields"] == 2  # name + value
+            assert summary["imports"] == 2  # List + ArrayList
 
             # Test structural overview
             overview = result["structural_overview"]
@@ -289,21 +291,25 @@ public class Test {
 }
 """
 
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".java", delete=False) as f:
+        # newline="\n" fixes the byte-level pins below across platforms
+        # (Windows CRLF would otherwise inflate file_size_bytes)
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".java", delete=False, newline="\n"
+        ) as f:
             f.write(test_content)
             temp_path = f.name
 
         try:
             metrics = self.tool._calculate_file_metrics(temp_path)
 
-            # Test that metrics are calculated
-            assert metrics["total_lines"] > 0
-            assert metrics["code_lines"] > 0
-            assert metrics["comment_lines"] > 0
-            assert metrics["blank_lines"] >= 0
-            assert metrics["estimated_tokens"] > 0
-            assert metrics["file_size_bytes"] > 0
-            assert metrics["file_size_kb"] > 0
+            # Exact metrics for the 11-line fixture above
+            assert metrics["total_lines"] == 11
+            assert metrics["code_lines"] == 6
+            assert metrics["comment_lines"] == 2
+            assert metrics["blank_lines"] == 3
+            assert metrics["estimated_tokens"] == 40
+            assert metrics["file_size_bytes"] == 178
+            assert metrics["file_size_kb"] == 0.17
 
         finally:
             Path(temp_path).unlink(missing_ok=True)
@@ -402,7 +408,7 @@ public class SimpleClass {
             # Test that we get expected analysis results
             summary = result["summary"]
             assert summary["classes"] == 1
-            assert summary["methods"] >= 1
+            assert summary["methods"] == 1  # simpleMethod
 
         finally:
             Path(temp_path).unlink(missing_ok=True)

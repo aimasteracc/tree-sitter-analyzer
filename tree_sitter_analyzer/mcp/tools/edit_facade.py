@@ -59,7 +59,8 @@ _EDIT_DESCRIPTION = (
     "- action=safe — pre-edit safety gate: is this file safe to edit right now? "
     "Returns SAFE/UNSAFE verdict. Params: file_path, edit_type, output_format.\n"
     "- action=guard — blast-radius guard BEFORE touching a symbol: how many callers, "
-    "what test coverage, what risk level. Params: symbol, modification_type, file_path.\n"
+    "what test coverage, what risk level. "
+    "Params: symbol* (required), modification_type* (required), file_path.\n"
     "- action=impact — post-edit dependency blast-radius scan combining git diff + "
     "dependency graph: affected files, must-run tests, risk verdict (SAFE/REVIEW/WARN). "
     "Call after every non-trivial edit. Params: scope_paths, output_format.\n"
@@ -77,8 +78,11 @@ _EDIT_DESCRIPTION = (
     "file/git-ref mode. Params: file_path | old_source+new_source+language, "
     "output_format.\n"
     "- action=ast_diff — structural AST diff between two snapshots/versions of "
-    "a file: added/removed/changed nodes. Params: file_path, before, after or "
-    "git ref params (see inner schema).\n"
+    "a file: added/removed/changed nodes. Mode is inferred from args when omitted. "
+    "Modes: diff_files (old_file + new_file), "
+    "diff_strings (old_source + new_source + language), "
+    "diff_git (old_ref + new_ref + file_path). "
+    "Params: see inner schema.\n"
     "NOTE: ``safe``/``impact``/``classify``/``constraints``/``pr``/``ast_diff`` are "
     "read-only in practice; ``refactor``/``guard`` suggest changes but do not write "
     "files. readOnlyHint is False for the whole facade (mixed action set)."
@@ -96,6 +100,7 @@ def build_edit_facade(project_root: str | None = None) -> FacadeTool:
     from .ast_diff_tool import ASTDiffTool
     from .change_impact_tool import ChangeImpactTool
     from .codegraph_pr_review_tool import CodeGraphPRReviewTool
+    from .modification_guard_tool import MODIFICATION_TYPES
 
     class _PRReviewViaFacade(CodeGraphPRReviewTool):
         """Facade ``action=pr`` implies ``mode=pr``.
@@ -135,6 +140,21 @@ def build_edit_facade(project_root: str | None = None) -> FacadeTool:
         description=_EDIT_DESCRIPTION,
         annotations=_EDIT_ANNOTATIONS,
         project_root=project_root,
+        # #641: modification_type is required for action=guard but was only
+        # reachable via additionalProperties — invisible to schema-reading
+        # agents. Surface it with the authoritative enum from the inner tool
+        # so facade/inner never drift. Never added to required[] (runtime-
+        # resolved param convention, locked #397 family).
+        extra_public_params={
+            "modification_type": {
+                "type": "string",
+                "enum": list(MODIFICATION_TYPES),
+                "description": (
+                    "Required for action=guard: type of planned modification. "
+                    "One of: " + ", ".join(MODIFICATION_TYPES) + "."
+                ),
+            },
+        },
     )
     # No bespoke inners to register (G3 rebind is automatic for action_map).
     return facade

@@ -82,7 +82,7 @@ The project root is configured at server startup. Use either:
 Find all Java files containing "BigService" in the project
 ```
 
-The AI will use `find_and_grep` to locate relevant files.
+The AI will use `search action=grep` to locate relevant files.
 
 **Scenario 2: Known file path**
 
@@ -110,7 +110,7 @@ List all Python files in the src directory
 Please analyze the structure of examples/BigService.java, I want to know how big this file is and what main components it contains
 ```
 
-The AI will call `analyze_code_structure` and return:
+The AI will call `structure action=analyze` and return:
 
 ```json
 {
@@ -312,10 +312,10 @@ For files > 500 lines:
 | Workflow Step | Primary MCP Tool | CLI Equivalent |
 |---------------|------------------|----------------|
 | Set | `TREE_SITTER_PROJECT_ROOT` env var (server startup) | `--project-root /path` |
-| Map | `list_files`, `find_and_grep`, `advise_parser_readiness` | `list-files`, `find-and-grep`, `parser-readiness` |
-| Analyze | `analyze_code_structure`, `check_code_scale`, `check_file_health` | `--structure`, `--metrics-only`, `--file-health` |
-| Retrieve | `extract_code_section`, `query_code` | `--partial-read`, `--query-key` |
-| Trace | `search_content`, `analyze_dependencies`, `analyze_change_impact`, `safe_to_edit` | `search-content`, `--dependencies`, `--change-impact`, `--safe-to-edit` |
+| Map | `project action=files`, `search action=grep`, `project action=parser` | `list-files`, `find-and-grep`, `parser-readiness` |
+| Analyze | `structure action=analyze`, `health action=scale`, `health action=file` | `--structure`, `--metrics-only`, `--file-health` |
+| Retrieve | `structure action=read`, `search action=query` | `--partial-read`, `--query-key` |
+| Trace | `search action=content`, `health action=deps`, `edit action=impact`, `edit action=safe` | `search-content`, `--dependencies`, `--change-impact`, `--safe-to-edit` |
 
 ## Troubleshooting
 

@@ -136,3 +136,117 @@ def test_cascade_private_fallback_helpers_cover_error_paths() -> None:
     conn.execute("DROP TABLE ast_symbol_rows")
     assert _like_rows(conn, "handle", None, 10) == []
     assert _fuzzy_rows(conn, None, 10) == []
+
+
+# ---------------------------------------------------------------------------
+# Issue #607 — test-file demotion must survive the cascade's final re-sort.
+#
+# fts_search_ranked demotes test files internally, but search_symbols_cascade
+# re-sorted purely by relevance_score, so long descriptive test_* names (which
+# match more conceptual-query tokens, hence better BM25) buried every
+# production symbol below the truncation window.
+# ---------------------------------------------------------------------------
+
+_Q3_STYLE_QUERY = "where are stop words filtered out of search queries"
+
+
+def _make_fts_conn() -> sqlite3.Connection:
+    """In-memory conn with the production FTS5 schema (porter, #604/#606)."""
+    conn = _make_conn()
+    conn.execute(
+        """CREATE VIRTUAL TABLE ast_symbols_fts
+           USING fts5(name, kind, file_path, language, content='',
+                      tokenize='porter unicode61')"""
+    )
+    return conn
+
+
+def _insert_fts(
+    conn: sqlite3.Connection,
+    name: str,
+    kind: str = "function",
+    file_path: str = "app.py",
+    language: str = "python",
+    line: int = 1,
+) -> None:
+    _insert(conn, name, kind=kind, file_path=file_path, language=language, line=line)
+    row_id = conn.execute(
+        "SELECT id FROM ast_symbol_rows WHERE name = ? AND file_path = ? AND line = ?",
+        (name, file_path, line),
+    ).fetchone()["id"]
+    conn.execute(
+        "INSERT INTO ast_symbols_fts(rowid, name, kind, file_path, language) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (row_id, name, kind, file_path, language),
+    )
+
+
+_Q3_STYLE_TEST_NAMES = (
+    "test_stop_words_filtered_out_of_search_queries",
+    "test_stop_word_filter_applies_to_search_query",
+    "test_filtered_stop_words_removed_from_search_queries",
+    "test_search_query_stop_words_filtered",
+    "test_stop_words_are_filtered_from_queries",
+    "test_query_search_filters_out_stop_words",
+)
+
+
+def _seed_q3_style_rows(conn: sqlite3.Connection) -> None:
+    """1 production symbol + 6 test symbols sharing MORE query tokens."""
+    _insert_fts(
+        conn,
+        "filter_stop_words",
+        file_path="tree_sitter_analyzer/search_filters.py",
+    )
+    for i, name in enumerate(_Q3_STYLE_TEST_NAMES, start=1):
+        _insert_fts(
+            conn,
+            name,
+            file_path="tests/unit/test_search_filters.py",
+            line=i * 10,
+        )
+
+
+def test_cascade_conceptual_query_promotes_production_above_tests() -> None:
+    """#607 RED: top-`limit` window must not be saturated by test symbols."""
+    from tree_sitter_analyzer._ast_cache_search import search_symbols_cascade
+    from tree_sitter_analyzer.utils.test_detection import is_test_file
+
+    conn = _make_fts_conn()
+    _seed_q3_style_rows(conn)
+
+    out = search_symbols_cascade(conn, _Q3_STYLE_QUERY, limit=5)
+
+    assert len(out) == 5
+    assert out[0]["name"] == "filter_stop_words"
+    assert [is_test_file(str(r["file"])) for r in out] == [
+        False,
+        True,
+        True,
+        True,
+        True,
+    ]
+
+
+def test_cascade_test_intent_query_keeps_test_symbols_on_top() -> None:
+    """Counter-direction pin: a query that asks about tests is NOT demoted."""
+    from tree_sitter_analyzer._ast_cache_search import search_symbols_cascade
+    from tree_sitter_analyzer.utils.test_detection import is_test_file
+
+    conn = _make_fts_conn()
+    _seed_q3_style_rows(conn)
+
+    out = search_symbols_cascade(
+        conn, "tests for stop words filtered out of search queries", limit=5
+    )
+
+    assert len(out) == 5
+    # query_wants_tests('tests ...') is True -> no demotion: the descriptive
+    # test_* names keep their better BM25 rank, exactly as before the fix.
+    assert [is_test_file(str(r["file"])) for r in out] == [
+        True,
+        True,
+        True,
+        True,
+        True,
+    ]

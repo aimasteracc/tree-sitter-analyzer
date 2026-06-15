@@ -8,14 +8,51 @@ from ..utils import log_error
 
 
 def extract_import(node: Any, get_node_text: Callable[..., str]) -> Import | None:
-    """Extract import header."""
+    """Extract a Kotlin import statement.
+
+    Reads the AST children instead of splitting the statement text, so
+    trailing semicolons, inline comments, wildcards and aliases all yield
+    clean qualified names:
+
+        import (statement node)
+          'import' keyword leaf  <- same node type; has no children -- skip
+          qualified_identifier   <- the module path
+          [ '.' '*' ]            <- wildcard import
+          [ 'as' identifier ]    <- alias import
+          [ ';' ]                <- optional terminator
+
+    Falls back to whitespace parsing for grammar versions that emit
+    ``import_header`` without a ``qualified_identifier`` child.
+    """
     try:
         raw_text = get_node_text(node)
         start_line = node.start_point[0] + 1
         end_line = node.end_point[0] + 1
 
-        parts = raw_text.split()
-        name = parts[1] if len(parts) > 1 else "unknown"
+        qualified: str | None = None
+        is_wildcard = False
+        alias: str | None = None
+        saw_as = False
+        for child in node.children:
+            if child.type == "qualified_identifier":
+                qualified = get_node_text(child)
+            elif child.type == "*":
+                is_wildcard = True
+            elif child.type == "as":
+                saw_as = True
+            elif child.type == "identifier" and saw_as:
+                alias = get_node_text(child)
+
+        if qualified is None:
+            # Leaf 'import' keyword token (no children) or an older grammar's
+            # import_header: fall back to text parsing.
+            parts = raw_text.split()
+            if len(parts) < 2:
+                return None
+            name = parts[1].rstrip(";")
+            is_wildcard = name.endswith(".*")
+        else:
+            name = qualified + (".*" if is_wildcard else "")
 
         return Import(
             name=name,
@@ -24,6 +61,9 @@ def extract_import(node: Any, get_node_text: Callable[..., str]) -> Import | Non
             raw_text=raw_text,
             language="kotlin",
             import_statement=raw_text,
+            module_name=name,
+            is_wildcard=is_wildcard,
+            alias=alias,
         )
     except Exception as e:
         log_error(f"Error extracting Kotlin import: {e}")
@@ -195,6 +235,45 @@ def _kotlin_owning_type(node: Any) -> tuple[str | None, bool]:
     return None, False
 
 
+def _kotlin_expression_body_type(
+    node: Any,
+    get_node_text: Callable[..., str],
+) -> str | None:
+    """Infer the return type of an expression-body function (issue #591).
+
+    Returns:
+        * ``None`` — no expression body (block body or abstract fun);
+          caller keeps the ``Unit`` default, which is correct there.
+        * a pinned literal type (``String``/``Int``/``Boolean``/``Double``)
+          for trivial literal bodies.
+        * ``""`` (unknown) for any other expression body — honest "no
+          claim", never a fabricated ``Unit``.
+    """
+    body = None
+    for child in node.children:
+        if child.type == "function_body":
+            body = child
+            break
+    if body is None or body.child_count == 0 or body.children[0].type != "=":
+        return None  # block body or no body → Unit default is correct
+    if body.child_count < 2:
+        return ""
+    expr = body.children[1]
+    if expr.type in ("string_literal", "multiline_string_literal"):
+        return "String"
+    if expr.type == "float_literal":
+        return "Double"
+    if expr.type == "number_literal":
+        # Only pure-digit literals are Int; 42L / 0xFF etc. stay unknown.
+        text = get_node_text(expr)
+        return "Int" if text.isdigit() else ""
+    if expr.type in ("boolean_literal", "identifier"):
+        if get_node_text(expr) in ("true", "false"):
+            return "Boolean"
+        return ""
+    return ""
+
+
 def extract_kotlin_function(
     node: Any,
     get_node_text: Callable[..., str],
@@ -226,11 +305,22 @@ def extract_kotlin_function(
         parameters = extract_kotlin_parameters(node, get_node_text)
 
         return_type = "Unit"
+        explicit_type = False
         for i, child in enumerate(node.children):
             if child.type == ":":
                 if i + 1 < len(node.children):
                     return_type = get_node_text(node.children[i + 1])
+                    explicit_type = True
                 break
+        if not explicit_type:
+            # Issue #591: ``fun get() = "legacy"`` must not claim Unit — the
+            # expression body infers the type. Full inference is a non-goal;
+            # pin trivial literals, otherwise emit "" (unknown, matching the
+            # Go plugin's absent-return-type convention). Block bodies
+            # ``{ ... }`` without an explicit type really are Unit — keep.
+            inferred = _kotlin_expression_body_type(node, get_node_text)
+            if inferred is not None:
+                return_type = inferred
 
         visibility = "public"
         is_suspend = False
@@ -287,6 +377,89 @@ def extract_kotlin_function(
         return None
 
 
+def _kotlin_primary_ctor_class_name(
+    node: Any, get_node_text: Callable[..., str]
+) -> str:
+    """Return the enclosing class name for a ``primary_constructor`` node.
+
+    Grammar shape:
+        class_declaration
+          identifier  ← class name
+          primary_constructor  ← ``node`` is here
+          ...
+
+    Walk up one level (node.parent = class_declaration) and read the first
+    ``identifier`` child.
+    """
+    parent = node.parent
+    if parent is None:
+        return "anonymous"
+    for child in parent.children:
+        if child.type == "identifier":
+            return get_node_text(child)
+    return "anonymous"
+
+
+def extract_kotlin_primary_constructor(
+    node: Any,
+    get_node_text: Callable[..., str],
+    current_package: str,
+) -> Function | None:
+    """Extract a Kotlin ``primary_constructor`` as a Function(is_constructor=True).
+
+    Issue #567 scope-B: ``primary_constructor`` nodes were not in the
+    extractor dispatch map so ``data class Point(val x: Int, val y: Int)``
+    produced no constructor element — an agent could not distinguish class
+    instantiation from method calls.
+
+    Convention (matching C++ same-name-constructor and Java constructor):
+    - ``name`` = enclosing class name
+    - ``is_constructor = True``
+    - ``parameters`` extracted from ``class_parameters`` child nodes
+
+    Visibility defaults to public; Kotlin primary constructors can carry an
+    explicit ``constructor_modifier`` but that is rare and left for a
+    follow-up.
+    """
+    try:
+        name = _kotlin_primary_ctor_class_name(node, get_node_text)
+        start_line = node.start_point[0] + 1
+        end_line = node.end_point[0] + 1
+        raw_text = get_node_text(node)
+
+        # Parameters live in class_parameters > class_parameter children.
+        parameters: list[str] = []
+        for child in node.children:
+            if child.type == "class_parameters":
+                for param in child.children:
+                    if param.type == "class_parameter":
+                        param_name, param_type = _kotlin_parameter_pair(
+                            param, get_node_text
+                        )
+                        if param_name:
+                            parameters.append(f"{param_name}: {param_type or 'Any'}")
+                break
+
+        # Issue #761: constructors have no return type in Kotlin.
+        # Previously emitted return_type="void" which is wrong — Kotlin
+        # constructors are not functions with a void return; use None.
+        return Function(
+            name=name,
+            start_line=start_line,
+            end_line=end_line,
+            raw_text=raw_text,
+            language="kotlin",
+            parameters=parameters,
+            return_type=None,
+            visibility="public",
+            is_constructor=True,
+        )
+
+    except Exception as e:
+        log_error(f"Error extracting Kotlin primary constructor: {e}")
+        return None
+
+
 # Extract elements from AST: extract_kotlin_class_or_object
 _KOTLIN_CLASS_KIND_MODIFIERS = frozenset({"enum", "annotation", "data", "sealed"})
 
@@ -305,6 +478,53 @@ def _refine_kotlin_class_kind(node: Any, get_node_text: Callable[..., str]) -> s
             if text in _KOTLIN_CLASS_KIND_MODIFIERS:
                 return str(text)
     return "class"
+
+
+def _extract_kotlin_delegation(
+    node: Any, get_node_text: Callable[..., str]
+) -> tuple[str | None, list[str]]:
+    """Return ``(superclass, interfaces)`` from a ``class_declaration`` node.
+
+    Iterates the ``delegation_specifiers`` child (if present).  Each
+    ``delegation_specifier`` contains either a ``constructor_invocation``
+    (= superclass — e.g. ``Result(value)``) or a plain ``user_type``
+    (= interface — e.g. ``Displayable``).
+
+    Grammar shape (from live AST dump):
+        delegation_specifiers
+          delegation_specifier
+            constructor_invocation   <- superclass with call args
+              user_type  "Result"
+              value_arguments  "(value)"
+          delegation_specifier
+            user_type  "Displayable"   <- interface
+
+    At most one ``constructor_invocation`` is valid Kotlin; we take the
+    first.  All plain ``user_type`` delegates (no constructor call) are
+    collected as interfaces.
+    """
+    superclass: str | None = None
+    interfaces: list[str] = []
+
+    for child in node.children:
+        if child.type != "delegation_specifiers":
+            continue
+        for spec in child.children:
+            if spec.type != "delegation_specifier":
+                continue
+            for inner in spec.children:
+                if inner.type == "constructor_invocation":
+                    # First child of constructor_invocation is user_type
+                    for sub in inner.children:
+                        if sub.type == "user_type":
+                            if superclass is None:
+                                superclass = get_node_text(sub)
+                            break
+                elif inner.type == "user_type":
+                    interfaces.append(get_node_text(inner))
+        break  # only one delegation_specifiers node
+
+    return superclass, interfaces
 
 
 def extract_kotlin_class_or_object(
@@ -349,6 +569,11 @@ def extract_kotlin_class_or_object(
             if kind == "class":
                 kind = _refine_kotlin_class_kind(node, get_node_text)
 
+        # Issue #561: read delegation_specifiers to populate superclass /
+        # interfaces. Previously this was never read so all Kotlin classes
+        # showed empty inheritance data in outline surfaces.
+        superclass, interfaces = _extract_kotlin_delegation(node, get_node_text)
+
         raw_text = get_node_text(node)
 
         return Class(
@@ -360,6 +585,8 @@ def extract_kotlin_class_or_object(
             class_type=kind,
             visibility=visibility,
             package_name=current_package,
+            superclass=superclass,
+            interfaces=interfaces,
         )
 
     except Exception as e:
@@ -376,6 +603,10 @@ def _extract_kotlin_property_name(
     r37ci (dogfood): extracted from ``extract_kotlin_property`` so the
     three lookup forms (``name`` field / ``variable_declaration`` /
     ``simple_identifier``) read as a flat chain.
+
+    Issues #758/#760: the installed grammar emits ``identifier`` (not
+    ``simple_identifier``) as the name child inside ``variable_declaration``.
+    Accept both so the helper works across grammar versions.
     """
     name_node = node.child_by_field_name("name")
     if name_node:
@@ -383,11 +614,53 @@ def _extract_kotlin_property_name(
     for child in node.children:
         if child.type == "variable_declaration":
             for grandchild in child.children:
-                if grandchild.type == "simple_identifier":
+                if grandchild.type in ("simple_identifier", "identifier"):
                     return str(get_node_text(grandchild))
-        elif child.type == "simple_identifier":
+        elif child.type in ("simple_identifier", "identifier"):
             return str(get_node_text(child))
     return "unknown"
+
+
+# Modifier keyword sets for Kotlin properties (#760)
+_KOTLIN_PROPERTY_VISIBILITY_MODIFIERS = frozenset(
+    {"private", "protected", "internal", "public"}
+)
+_KOTLIN_PROPERTY_OTHER_MODIFIERS = frozenset(
+    {"override", "lateinit", "const", "open", "abstract", "final", "suspend"}
+)
+
+
+def _extract_kotlin_property_modifiers(
+    node: Any,
+    get_node_text: Callable[..., str],
+) -> tuple[str, list[str]]:
+    """Return ``(visibility, modifiers_list)`` from a property_declaration node.
+
+    Issue #760: ``child_by_field_name("modifiers")`` always returns None for
+    the Kotlin grammar — the field is not named in the grammar's node-types.
+    Scan children by type instead.  Each modifier keyword is a separate leaf
+    node inside the ``modifiers`` container.
+    """
+    visibility = "public"
+    modifiers: list[str] = []
+
+    for child in node.children:
+        if child.type != "modifiers":
+            continue
+        # Walk all descendants of the modifiers node to collect keywords.
+        # Direct children are modifier wrappers (visibility_modifier,
+        # member_modifier, etc.) whose own children are the keyword tokens.
+        for mod_child in child.children:
+            keyword = get_node_text(mod_child).strip()
+            if not keyword:
+                continue
+            if keyword in _KOTLIN_PROPERTY_VISIBILITY_MODIFIERS:
+                visibility = keyword
+            if keyword in _KOTLIN_PROPERTY_OTHER_MODIFIERS:
+                modifiers.append(keyword)
+        break  # only one modifiers node per declaration
+
+    return visibility, modifiers
 
 
 # Extract elements from AST: extract_kotlin_property
@@ -395,15 +668,30 @@ def extract_kotlin_property(
     node: Any,
     get_node_text: Callable[..., str],
 ) -> Variable | None:
-    """Extract Kotlin property declaration."""
+    """Extract Kotlin property declaration.
+
+    Fixes applied:
+    - #758: val/var/const detection from AST token, not raw-text prefix.
+    - #759: Local val/var inside function bodies are blocked at the traversal
+      level; this function only sees class-body / top-level properties.
+    - #760: Capture modifiers by scanning children instead of
+      child_by_field_name (which the grammar doesn't populate).
+    - ``is_static`` / ``is_readonly``: set True for ``const val`` properties
+      (Kotlin ``const`` implies compile-time constant = static & immutable).
+    """
     try:
+        # Detect val/var from AST token children, not raw text.
+        # When modifiers precede the keyword (e.g. "private val") the text
+        # does NOT start with "val " — always scan by child type.
         is_val = False
         is_var = False
-        text = get_node_text(node)
-        if text.startswith("val "):
-            is_val = True
-        elif text.startswith("var "):
-            is_var = True
+        for child in node.children:
+            if child.type == "val":
+                is_val = True
+                break
+            if child.type == "var":
+                is_var = True
+                break
 
         # r37ci (dogfood): extracted to drop nesting from 7 to ≤3.
         name = _extract_kotlin_property_name(node, get_node_text)
@@ -411,12 +699,22 @@ def extract_kotlin_property(
         start_line = node.start_point[0] + 1
         end_line = node.end_point[0] + 1
 
+        # Extract declared type from variable_declaration children.
+        # Grammar shape:  variable_declaration → identifier ':' user_type
+        # Falls back to "Inferred" when no type annotation is present.
         prop_type = "Inferred"
+        for child in node.children:
+            if child.type == "variable_declaration":
+                for grandchild in child.children:
+                    if "type" in grandchild.type or grandchild.type == "user_type":
+                        prop_type = get_node_text(grandchild)
+                        break
+                break
 
-        visibility = "public"
-        modifiers_node = node.child_by_field_name("modifiers")
-        if modifiers_node:
-            visibility = determine_visibility(get_node_text(modifiers_node))
+        # child_by_field_name("modifiers") always returns None for the Kotlin
+        # grammar; use the child-type scan helper instead (#760).
+        visibility, modifiers = _extract_kotlin_property_modifiers(node, get_node_text)
+        is_const = "const" in modifiers
 
         raw_text = get_node_text(node)
 
@@ -428,9 +726,14 @@ def extract_kotlin_property(
             language="kotlin",
             variable_type=prop_type,
             visibility=visibility,
+            modifiers=modifiers,
         )
         var.is_val = is_val
         var.is_var = is_var
+        # Kotlin `const val` is a compile-time constant: static and readonly.
+        if is_const:
+            var.is_static = True
+            var.is_readonly = True
 
         return var
 

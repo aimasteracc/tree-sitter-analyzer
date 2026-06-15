@@ -126,6 +126,13 @@ class FacadeTool(BaseMCPTool):
         Optional MCP annotations dict. A facade spanning read + mutating
         actions cannot honestly declare a single ``readOnlyHint``; callers
         pass the honest (usually non-read-only) set or omit it.
+    extra_public_params:
+        Optional ``{param_name: json_schema_spec}`` of facade-specific params
+        surfaced on THIS facade's public inputSchema in addition to
+        ``_CORE_FACADE_PARAMS`` (#640: ``kind`` worked via
+        additionalProperties but was undiscoverable to schema-reading
+        agents). Use sparingly — one high-value param, never a per-inner
+        union (the Wave D token diet stands). Never added to ``required``.
     """
 
     def __init__(
@@ -137,6 +144,7 @@ class FacadeTool(BaseMCPTool):
         description: str = "",
         annotations: dict[str, Any] | None = None,
         project_root: str | None = None,
+        extra_public_params: dict[str, dict[str, Any]] | None = None,
     ) -> None:
         self.facade_name = facade_name
         self.action_map: dict[str, BaseMCPTool] = dict(action_map)
@@ -147,6 +155,9 @@ class FacadeTool(BaseMCPTool):
         self._bespoke_inners: list[BaseMCPTool] = []
         self._description = description
         self._annotations = annotations
+        self._extra_public_params: dict[str, dict[str, Any]] = dict(
+            extra_public_params or {}
+        )
         # BaseMCPTool.__init__ wires security/path resolver + fires
         # _on_project_root_changed (which forwards to inner instances).
         super().__init__(project_root)
@@ -388,6 +399,9 @@ class FacadeTool(BaseMCPTool):
         }
         # Core shared params — copy specs so callers can't mutate our constants.
         for key, spec in _CORE_FACADE_PARAMS.items():
+            properties[key] = dict(spec)
+        # Facade-specific public params (#640) — declared, never required.
+        for key, spec in self._extra_public_params.items():
             properties[key] = dict(spec)
 
         return {

@@ -317,7 +317,7 @@ async def test_fd_67_performance_large_dataset(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 50
+    assert result["count"] == 50
 
 
 @pytest.mark.asyncio
@@ -344,7 +344,7 @@ async def test_fd_68_command_timeout_handling(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 0
+    assert result["count"] == 1
 
 
 @pytest.mark.asyncio
@@ -370,8 +370,8 @@ async def test_fd_69_invalid_regex_handling(tmp_path, monkeypatch):
         {"roots": [str(tmp_path)], "pattern": "[invalid_regex"}  # Invalid regex
     )
 
-    # Should handle gracefully
-    assert result["success"] is False or result["count"] >= 0
+    # Should handle gracefully — fd rejects the pattern; success is False, no count field
+    assert result["success"] is False
 
 
 @pytest.mark.asyncio
@@ -399,7 +399,7 @@ async def test_fd_70_memory_usage_optimization(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 20
+    assert result["count"] == 20
 
 
 @pytest.mark.asyncio
@@ -432,7 +432,7 @@ async def test_fd_71_cross_platform_compatibility(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 2  # Should find files regardless of case
+    assert result["count"] == 3  # Should find files regardless of case
 
 
 @pytest.mark.asyncio
@@ -469,7 +469,7 @@ async def test_fd_72_edge_case_patterns(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 3
+    assert result["count"] == 4
 
 
 @pytest.mark.asyncio
@@ -497,7 +497,7 @@ async def test_fd_73_concurrent_execution_safety(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 2
+    assert result["count"] == 2
 
 
 @pytest.mark.asyncio
@@ -523,7 +523,7 @@ async def test_fd_74_resource_cleanup(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 0
+    assert result["count"] == 1
 
 
 @pytest.mark.asyncio
@@ -552,7 +552,7 @@ async def test_fd_85_invalid_utf8_handling(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 0
+    assert result["count"] == 2
 
 
 @pytest.mark.asyncio
@@ -581,7 +581,7 @@ async def test_fd_87_single_and_multithreaded_execution(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 0
+    assert result["count"] == 5
 
 
 @pytest.mark.asyncio
@@ -675,8 +675,8 @@ async def test_fd_90_error_if_hidden_not_set_and_pattern_starts_with_dot(
         {"roots": [str(tmp_path)], "pattern": ".hidden", "hidden": False}
     )
 
-    # Should handle gracefully (may succeed or fail)
-    assert result1["success"] is False or result1["count"] >= 0
+    # Should handle gracefully — fd rejects pattern starting with dot without -H; success is False
+    assert result1["success"] is False
 
     # Test hidden pattern with hidden flag
     result2 = await tool.execute(

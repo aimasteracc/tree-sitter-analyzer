@@ -179,8 +179,20 @@ def _append_global_functions(
     lines.append("| Method | Signature | Vis | Lines | Cols | Cx | Doc |")
     lines.append("|--------|-----------|-----|-------|------|----|----|")
     for method in global_methods:
-        lines.append(formatter.format_method_row(method))
+        lines.append(formatter.format_method_row(_owner_qualified(method)))
     lines.append("")
+
+
+def _owner_qualified(method: dict[str, Any]) -> dict[str, Any]:
+    """Display copy with the owner prefixed (#590): ``math`` + ``max`` → ``math::max``.
+
+    Lexically global rows would otherwise show a bare ``max``/``bar`` and the
+    namespace/class association would be invisible at the table surface.
+    """
+    receiver = method.get("receiver_type")
+    if not receiver:
+        return method
+    return {**method, "name": f"{receiver}::{method.get('name', '')}"}
 
 
 def _append_global_variables(

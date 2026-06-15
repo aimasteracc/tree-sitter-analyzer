@@ -168,7 +168,7 @@ class TestTypeScriptTableFormatter:
         result = formatter.format(sample_data)
 
         assert isinstance(result, str)
-        assert len(result) > 0
+        assert len(result.replace("\r\n", "\n")) == 879  # normalize CRLF for Windows
 
         assert "UserService" in result
         assert "class" in result or "interface" in result
@@ -256,7 +256,7 @@ class TestTypeScriptTableFormatter:
         result = formatter.format(sample_data)
 
         assert isinstance(result, str)
-        assert len(result) > 0
+        assert len(result.replace("\r\n", "\n")) == 416  # normalize CRLF for Windows
 
         assert "UserService" in result
         assert "## Info" in result
@@ -268,10 +268,10 @@ class TestTypeScriptTableFormatter:
         result = formatter.format(sample_data)
 
         assert isinstance(result, str)
-        assert len(result) > 0
+        assert len(result) == 402
 
         lines = result.split("\n")
-        assert len(lines) > 1
+        assert len(lines) == 8
         header = lines[0]
         assert "Type" in header or "Name" in header
         assert any("validate" in line for line in lines)

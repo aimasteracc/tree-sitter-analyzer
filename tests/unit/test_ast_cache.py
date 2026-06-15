@@ -88,7 +88,7 @@ class TestIndexFile:
         f = str(tmp_project / "src" / "main.py")
         result = cache.index_file(f)
         assert result["status"] == "indexed"
-        assert result["symbols"] > 0
+        assert result["symbols"] == 2
 
     def test_index_unsupported_language(self, cache, tmp_project):
         f = str(tmp_project / "readme.md")
@@ -227,13 +227,13 @@ class TestIndexFile:
 class TestIndexProject:
     def test_index_project(self, cache):
         result = cache.index_project()
-        assert result["total_files"] >= 2
-        assert result["indexed"] >= 2
+        assert result["total_files"] == 2
+        assert result["indexed"] == 2
 
     def test_index_project_cached(self, cache):
         cache.index_project()
         result = cache.index_project()
-        assert result["cached"] >= 2
+        assert result["cached"] == 2
 
     def test_index_project_reindexes_stale_extractor_version(self, cache):
         cache.index_project(workers=0)
@@ -243,13 +243,13 @@ class TestIndexProject:
 
         result = cache.index_project(workers=0)
 
-        assert result["indexed"] >= 2
+        assert result["indexed"] == 2
         assert result["cached"] == 0
 
     def test_index_project_force(self, cache):
         cache.index_project()
         result = cache.index_project(force=True)
-        assert result["indexed"] >= 2
+        assert result["indexed"] == 2
 
     def test_index_project_max_files(self, cache):
         result = cache.index_project(max_files=1)
@@ -385,13 +385,13 @@ class TestSearchSymbols:
     def test_search_by_name(self, cache, tmp_project):
         cache.index_project()
         results = cache.search_symbols("hello")
-        assert len(results) >= 1
+        assert len(results) == 1
         assert any(r["name"] == "hello" for r in results)
 
     def test_search_by_language(self, cache, tmp_project):
         cache.index_project()
         results = cache.search_symbols("add", language="javascript")
-        assert len(results) >= 1
+        assert len(results) == 1
 
     def test_search_no_results(self, cache, tmp_project):
         cache.index_project()
@@ -403,7 +403,7 @@ class TestSearchSymbols:
         cache.index_project()
         cache._fts5_available = False
         results = cache.search_symbols("hello")
-        assert len(results) >= 1
+        assert len(results) == 1
         assert any(r["name"] == "hello" for r in results)
 
 
@@ -416,8 +416,8 @@ class TestStats:
     def test_stats_after_index(self, cache):
         cache.index_project()
         stats = cache.get_stats()
-        assert stats["total_files"] >= 2
-        assert stats["total_symbols"] > 0
+        assert stats["total_files"] == 2
+        assert stats["total_symbols"] == 3
         assert "python" in stats["by_language"]
 
     def test_stats_uses_symbol_rows_when_fts_available(self, cache):
@@ -432,7 +432,7 @@ class TestStats:
             stats = cache.get_stats()
 
         assert stats["total_symbols"] == stats["fts_indexed_symbols"]
-        assert stats["total_symbols"] > 0
+        assert stats["total_symbols"] == 3
 
     def test_stats_falls_back_to_symbols_json_without_fts(self, cache):
         cache.index_project()
@@ -440,7 +440,7 @@ class TestStats:
 
         stats = cache.get_stats()
 
-        assert stats["total_symbols"] > 0
+        assert stats["total_symbols"] == 3
         assert stats["fts5_available"] is False
 
     def test_stats_falls_back_when_symbol_rows_table_missing(self, cache):
@@ -453,7 +453,7 @@ class TestStats:
 
         stats = cache.get_stats()
 
-        assert stats["total_symbols"] > 0
+        assert stats["total_symbols"] == 3
 
     def test_clear_activation_for_file_ignores_missing_table(self, cache):
         conn = sqlite3.connect(":memory:")
@@ -628,13 +628,13 @@ class TestFtsSearch:
     def test_fts_search_basic(self, cache, tmp_project):
         cache.index_project()
         results = cache.fts_search("hello")
-        assert len(results) >= 1
+        assert len(results) == 1
         assert any(r["name"] == "hello" for r in results)
 
     def test_fts_search_by_language(self, cache, tmp_project):
         cache.index_project()
         results = cache.fts_search("add", language="javascript")
-        assert len(results) >= 1
+        assert len(results) == 1
         assert all(r["language"] == "javascript" for r in results)
 
     def test_fts_search_no_results(self, cache, tmp_project):
@@ -645,7 +645,7 @@ class TestFtsSearch:
     def test_fts_search_multi_term(self, cache, tmp_project):
         cache.index_project()
         results = cache.fts_search("hello foo")
-        assert len(results) >= 1
+        assert len(results) == 2
 
     def test_fts_search_with_limit(self, cache, tmp_project):
         cache.index_project()
@@ -655,7 +655,7 @@ class TestFtsSearch:
     def test_fts_search_returns_ranked(self, cache, tmp_project):
         cache.index_project()
         results = cache.fts_search("hello")
-        assert len(results) >= 1
+        assert len(results) == 1
         for r in results:
             assert "file" in r
             assert "name" in r
@@ -665,7 +665,7 @@ class TestFtsSearch:
     def test_search_symbols_uses_fts5_when_available(self, cache, tmp_project):
         cache.index_project()
         results = cache.search_symbols("hello")
-        assert len(results) >= 1
+        assert len(results) == 1
         if cache.fts5_available:
             assert any(r["name"] == "hello" for r in results)
 
@@ -675,14 +675,14 @@ class TestFtsSearch:
         if cache.fts5_available:
             assert stats["fts5_available"] is True
             assert "fts_indexed_symbols" in stats
-            assert stats["fts_indexed_symbols"] > 0
+            assert stats["fts_indexed_symbols"] == 3
 
     def test_invalidate_removes_fts_rows(self, cache, tmp_project):
         f = str(tmp_project / "src" / "main.py")
         cache.index_file(f)
         if cache.fts5_available:
             results_before = cache.fts_search("hello")
-            assert len(results_before) >= 1
+            assert len(results_before) == 1
             cache.invalidate(f)
             results_after = cache.fts_search("hello")
             assert len(results_after) == 0
@@ -694,7 +694,7 @@ class TestFtsSearch:
             cache.invalidate(f)
             cache.index_file(f)
             results = cache.fts_search("hello")
-            assert len(results) >= 1
+            assert len(results) == 1
 
     def test_fts_search_falls_back_to_linear_when_fts_disabled(
         self, cache, tmp_project
@@ -703,7 +703,7 @@ class TestFtsSearch:
         cache.index_project()
         cache._fts5_available = False
         results = cache.fts_search("hello")
-        assert len(results) >= 1
+        assert len(results) == 1
         assert any(r["name"] == "hello" for r in results)
 
     def test_get_functions_by_file_returns_functions_for_indexed_file(
@@ -713,7 +713,7 @@ class TestFtsSearch:
         f = str(tmp_project / "src" / "main.py")
         cache.index_file(f)
         funcs = cache.get_functions_by_file("src/main.py")
-        assert len(funcs) >= 1
+        assert len(funcs) == 1
         for fn in funcs:
             assert "name" in fn
             assert "file" in fn
@@ -797,21 +797,21 @@ class TestSQLNativeCallGraph:
 
     def test_query_callees_with_file_filter(self, call_cache):
         callees = call_cache.query_callees("foo", caller_file="src/a.py")
-        assert len(callees) > 0
+        assert len(callees) == 2
         for e in callees:
             assert e["caller_file"] == "src/a.py"
 
     def test_query_callers_with_file_filter(self, call_cache):
         callers = call_cache.query_callers("bar", callee_file="src/a.py")
-        assert len(callers) > 0
+        assert len(callers) == 1
 
     def test_query_callers_transitive(self, call_cache):
         callers = call_cache.query_callers("bar", max_depth=3)
-        assert len(callers) >= 1
+        assert len(callers) == 1
 
     def test_query_callees_transitive(self, call_cache):
         callees = call_cache.query_callees("foo", max_depth=3)
-        assert len(callees) >= 1
+        assert len(callees) == 2
 
     def test_has_call_edges(self, call_cache):
         assert call_cache.has_call_edges() is True
@@ -841,7 +841,7 @@ class TestSQLNativeCallGraph:
     def test_query_callers_returns_depth(self, call_cache):
         callers = call_cache.query_callers("bar")
         for e in callers:
-            assert e["depth"] >= 1
+            assert e["depth"] == 1
 
 
 # ---------------------------------------------------------------------------
@@ -899,7 +899,7 @@ class TestPostIndexEdgeRefreshSkip:
             assert calls["n"] == 0
             # ...and the edges are present regardless.
             conn = c._get_conn()
-            assert conn.execute("SELECT COUNT(*) FROM edges").fetchone()[0] >= 0
+            assert conn.execute("SELECT COUNT(*) FROM edges").fetchone()[0] == 1
         finally:
             c.close()
 
@@ -961,8 +961,9 @@ class TestMethodKindClassification:
             method_count = conn.execute(
                 "SELECT COUNT(*) FROM ast_symbol_rows WHERE kind='method'"
             ).fetchone()[0]
-            assert method_count > 0, (
-                "Expected at least one kind='method' row but got 0. "
+            assert method_count == 1, (
+                "Expected exactly one kind='method' row but got "
+                f"{method_count}. "
                 "Class methods are being incorrectly stored as kind='function'."
             )
         finally:

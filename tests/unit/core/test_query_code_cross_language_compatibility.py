@@ -155,8 +155,8 @@ public class JavaClass {
             assert functions_results is not None, (
                 "functions query should return results"
             )
-            assert len(function_results) > 0, "Should find JavaScript functions"
-            assert len(functions_results) > 0, "Should find JavaScript functions"
+            assert len(function_results) == 2, "Should find JavaScript functions"
+            assert len(functions_results) == 23, "Should find JavaScript functions"
 
             # Test class queries
             class_results = await query_service.execute_query(
@@ -168,8 +168,8 @@ public class JavaClass {
 
             assert class_results is not None, "class query should return results"
             assert classes_results is not None, "classes query should return results"
-            assert len(class_results) > 0, "Should find JavaScript classes"
-            assert len(classes_results) > 0, "Should find JavaScript classes"
+            assert len(class_results) == 1, "Should find JavaScript classes"
+            assert len(classes_results) == 3, "Should find JavaScript classes"
 
             # Test method queries (this was the original bug)
             method_results = await query_service.execute_query(
@@ -181,8 +181,8 @@ public class JavaClass {
 
             assert method_results is not None, "method query should return results"
             assert methods_results is not None, "methods query should return results"
-            assert len(method_results) > 0, "Should find JavaScript methods"
-            assert len(methods_results) > 0, "Should find JavaScript methods"
+            assert len(method_results) == 12, "Should find JavaScript methods"
+            assert len(methods_results) == 12, "Should find JavaScript methods"
 
         finally:
             os.unlink(temp_file)
@@ -205,8 +205,8 @@ public class JavaClass {
             assert functions_results is not None, (
                 "functions query should return results"
             )
-            assert len(function_results) > 0, "Should find TypeScript functions"
-            assert len(functions_results) > 0, "Should find TypeScript functions"
+            assert len(function_results) == 19, "Should find TypeScript functions"
+            assert len(functions_results) == 19, "Should find TypeScript functions"
 
             # Test class queries
             class_results = await query_service.execute_query(
@@ -218,8 +218,8 @@ public class JavaClass {
 
             assert class_results is not None, "class query should return results"
             assert classes_results is not None, "classes query should return results"
-            assert len(class_results) > 0, "Should find TypeScript classes"
-            assert len(classes_results) > 0, "Should find TypeScript classes"
+            assert len(class_results) == 3, "Should find TypeScript classes"
+            assert len(classes_results) == 3, "Should find TypeScript classes"
 
             # Test interface queries (TypeScript specific)
             interface_results = await query_service.execute_query(
@@ -235,8 +235,8 @@ public class JavaClass {
             assert interfaces_results is not None, (
                 "interfaces query should return results"
             )
-            assert len(interface_results) > 0, "Should find TypeScript interfaces"
-            assert len(interfaces_results) > 0, "Should find TypeScript interfaces"
+            assert len(interface_results) == 3, "Should find TypeScript interfaces"
+            assert len(interfaces_results) == 3, "Should find TypeScript interfaces"
 
             # Test type queries (TypeScript specific)
             type_results = await query_service.execute_query(
@@ -248,8 +248,8 @@ public class JavaClass {
 
             assert type_results is not None, "type query should return results"
             assert types_results is not None, "types query should return results"
-            assert len(type_results) > 0, "Should find TypeScript types"
-            assert len(types_results) > 0, "Should find TypeScript types"
+            assert len(type_results) == 3, "Should find TypeScript types"
+            assert len(types_results) == 3, "Should find TypeScript types"
 
         finally:
             os.unlink(temp_file)
@@ -272,8 +272,10 @@ public class JavaClass {
             assert functions_results is not None, (
                 "functions query should return results"
             )
-            assert len(function_results) > 0, "Should find Python functions"
-            assert len(functions_results) > 0, "Should find Python functions"
+            assert len(function_results) == 4, "Should find Python functions"
+            assert len(functions_results) == 16, (
+                "Should find Python functions"
+            )  # was 32 (double-captured before #557); 16 is the correct single-capture count
 
             # Test class queries
             class_results = await query_service.execute_query(
@@ -285,8 +287,8 @@ public class JavaClass {
 
             assert class_results is not None, "class query should return results"
             assert classes_results is not None, "classes query should return results"
-            assert len(class_results) > 0, "Should find Python classes"
-            assert len(classes_results) > 0, "Should find Python classes"
+            assert len(class_results) == 1, "Should find Python classes"
+            assert len(classes_results) == 3, "Should find Python classes"
 
             # Test import queries
             import_results = await query_service.execute_query(
@@ -298,8 +300,8 @@ public class JavaClass {
 
             assert import_results is not None, "import query should return results"
             assert imports_results is not None, "imports query should return results"
-            assert len(import_results) > 0, "Should find Python imports"
-            assert len(imports_results) > 0, "Should find Python imports"
+            assert len(import_results) == 1, "Should find Python imports"
+            assert len(imports_results) == 5, "Should find Python imports"
 
         finally:
             os.unlink(temp_file)
@@ -320,8 +322,8 @@ public class JavaClass {
 
             assert method_results is not None, "method query should return results"
             assert methods_results is not None, "methods query should return results"
-            assert len(method_results) > 0, "Should find Java methods"
-            assert len(methods_results) > 0, "Should find Java methods"
+            assert len(method_results) == 3, "Should find Java methods"
+            assert len(methods_results) == 3, "Should find Java methods"
 
             # Test class queries
             class_results = await query_service.execute_query(
@@ -333,8 +335,8 @@ public class JavaClass {
 
             assert class_results is not None, "class query should return results"
             assert classes_results is not None, "classes query should return results"
-            assert len(class_results) > 0, "Should find Java classes"
-            assert len(classes_results) > 0, "Should find Java classes"
+            assert len(class_results) == 1, "Should find Java classes"
+            assert len(classes_results) == 1, "Should find Java classes"
 
         finally:
             os.unlink(temp_file)
@@ -357,7 +359,7 @@ public class JavaClass {
 
             # Should not be None or empty
             assert results is not None, "functions query should not return None"
-            assert len(results) > 0, "functions query should find results"
+            assert len(results) == 23, "functions query should find results"
 
             # Should find multiple function types
             function_types = {result.get("node_type") for result in results}
@@ -368,7 +370,7 @@ public class JavaClass {
             }
 
             # Should find at least some of the expected function types
-            assert len(function_types.intersection(expected_types)) > 0, (
+            assert len(function_types.intersection(expected_types)) == 3, (
                 f"Should find function types, got: {function_types}"
             )
 
@@ -395,6 +397,16 @@ public class JavaClass {
             (self.PYTHON_CODE, ".py", "python", "functions"),
             (self.JAVA_CODE, ".java", "java", "methods"),
         ]
+        # Exact counts over the inline fixtures above (deterministic)
+        expected_counts = {
+            ("javascript", "functions"): 23,
+            ("typescript", "functions"): 19,
+            (
+                "python",
+                "functions",
+            ): 16,  # was 32 (double-captured before #557); 16 is the correct single-capture count
+            ("java", "methods"): 3,
+        }
 
         for code, extension, language, query_key in test_cases:
             temp_file = self.create_temp_file(code, extension)
@@ -407,7 +419,9 @@ public class JavaClass {
                 assert results is not None, (
                     f"{language} {query_key} should return results"
                 )
-                assert len(results) > 0, f"{language} {query_key} should find results"
+                assert len(results) == expected_counts[(language, query_key)], (
+                    f"{language} {query_key} should find results"
+                )
 
                 # Check result structure consistency
                 for result in results:
@@ -429,7 +443,7 @@ public class JavaClass {
 
             # Should work even if tree-sitter query fails and falls back to manual execution
             assert results is not None, "Manual fallback should work"
-            assert len(results) > 0, "Manual fallback should find results"
+            assert len(results) == 23, "Manual fallback should find results"
 
             # Verify that the manual execution correctly identifies JavaScript functions
             node_types = {result.get("node_type") for result in results}
@@ -442,7 +456,7 @@ public class JavaClass {
             }
             found_types = node_types.intersection(expected_manual_types)
 
-            assert len(found_types) > 0, (
+            assert len(found_types) == 3, (
                 f"Manual execution should find function types, got: {node_types}"
             )
 

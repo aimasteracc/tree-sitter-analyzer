@@ -93,7 +93,7 @@ class TestSetupLogger:
         logger = setup_logger(name="test_logger_handlers")
         assert logger.name == "test_logger_handlers"
         # Test logger should have handlers cleared
-        assert len(logger.handlers) > 0
+        assert len(logger.handlers) == 1
 
     @pytest.mark.skipif(
         sys.platform == "win32",
@@ -116,7 +116,7 @@ class TestSetupLogger:
             ):
                 logger = setup_logger(name=logger_name)
                 # Should have at least one handler
-                assert len(logger.handlers) >= 1
+                assert len(logger.handlers) == 2
 
     @pytest.mark.skipif(
         sys.platform == "win32",
@@ -142,7 +142,9 @@ class TestSetupLogger:
                 file_handlers = [
                     h for h in logger.handlers if isinstance(h, logging.FileHandler)
                 ]
-                assert len(file_handlers) >= 0  # May or may not have file handler
+                assert (
+                    len(file_handlers) == 1
+                )  # File logging enabled: expect 1 file handler
 
     @pytest.mark.skipif(
         sys.platform == "win32",
@@ -169,7 +171,9 @@ class TestSetupLogger:
                 file_handlers = [
                     h for h in logger.handlers if isinstance(h, logging.FileHandler)
                 ]
-                assert len(file_handlers) >= 0  # May or may not have file handler
+                assert (
+                    len(file_handlers) == 1
+                )  # File logging enabled: expect 1 file handler
 
 
 class TestSafeStreamHandler:
@@ -669,7 +673,7 @@ class TestCreatePerformanceLogger:
     def test_create_performance_logger_handler(self):
         """测试性能日志器处理器"""
         logger = create_performance_logger("test_perf_handler")
-        assert len(logger.handlers) > 0
+        assert len(logger.handlers) == 1
 
     def test_create_performance_logger_inherits_root_level(self):
         """Perf logger inherits root level (no hard-coded DEBUG).

@@ -20,6 +20,10 @@ from .codegraph_relation_tool import (
     _is_stale_resolution,
     classify_callee_resolution,
 )
+from .index_rebuild_signal import (
+    is_index_rebuilding,
+    rebuild_in_progress_next_step,
+)
 
 logger = setup_logger(__name__)
 
@@ -108,12 +112,35 @@ class CodeGraphCalleesTool(CodeGraphRelationToolMixin, BaseMCPTool):
         include_activation = bool(arguments.get("include_activation", False))
         listed_cap = int(arguments.get("limit", 50))
 
+        if is_index_rebuilding(self.project_root):
+            rebuild_next_step = rebuild_in_progress_next_step()
+            result = build_response(
+                verdict="WARN",
+                data_source="cache_rebuilding",
+                function=func_name,
+                index_rebuilding=True,
+                next_step=rebuild_next_step,
+                agent_summary={
+                    "summary_line": f"callees: {func_name!r} unavailable during full rebuild",
+                    "verdict": "WARN",
+                    "next_step": rebuild_next_step,
+                },
+            )
+            from ..utils.format_helper import apply_toon_format_to_response
+
+            return apply_toon_format_to_response(result, output_format)
+
         cache = self._try_get_cache()
-        if cache is not None and cache.has_call_edges():
+        call_graph_built = (
+            self._cache_call_graph_built(cache) if cache is not None else False
+        )
+        call_graph_indexed = cache is not None and cache.has_call_edges()
+        if call_graph_indexed:
             callees = self._sql_native_callees(
                 cache, func_name, file_path, include_activation
             )
             data_source = "sql"
+            has_any_call_edges = True  # SQL path only runs when edges exist
         else:
             graph = self._get_call_graph()
             callees = graph.callees_of(func_name, file_path)
@@ -121,6 +148,14 @@ class CodeGraphCalleesTool(CodeGraphRelationToolMixin, BaseMCPTool):
             if include_activation:
                 self._enrich_graph_callees_with_activation(callees)
             self._enrich_callees_with_resolution(callees)
+            # Suppress the --full-index hint when either:
+            #   (a) the index was built (data_source=="cache") — even if it
+            #       has zero call edges, the user already ran --full-index; or
+            #   (b) the parse fallback itself found call edges — the project
+            #       has calls, so the symbol just isn't there.
+            # Only fire the hint when the index is absent AND the parse found
+            # no edges at all (truly empty/unbuilt state).
+            has_any_call_edges = call_graph_built or len(graph.call_edges()) > 0
 
         warnings_list: list[str] = []
         if _is_stale_resolution(callees):
@@ -155,8 +190,40 @@ class CodeGraphCalleesTool(CodeGraphRelationToolMixin, BaseMCPTool):
             )
             # Combine truncation note with any body-inlining deterrent.
             next_step = f"{trunc_note}. {next_step}" if next_step else trunc_note
+        # #548: when the call-graph has no edges at all (NOT_FOUND AND the graph
+        # itself is empty), surface a --full-index hint so users know why
+        # results are empty.  We deliberately skip the hint when the graph has
+        # edges but the specific symbol was simply not found.
+        if result.get("verdict") == "NOT_FOUND" and not has_any_call_edges:
+            index_hint = (
+                "Call-graph index is empty or has not been built yet. "
+                "Run `tree-sitter-analyzer --full-index` first, then retry."
+            )
+            next_step = f"{index_hint} {next_step}" if next_step else index_hint
         if next_step:
             result["next_step"] = next_step
+
+        # #546 seam 3 / #577 leftover: uniform agent_summary across all nav actions.
+        verdict = result.get("verdict", "NOT_FOUND")
+        if verdict == "NOT_FOUND":
+            as_summary_line = f"callees: {func_name!r} calls 0 function(s)"
+            as_next_step = result.get("next_step") or (
+                f"No callees found for '{func_name}'. "
+                "Check spelling or run --full-index to build the call graph."
+            )
+        else:
+            as_summary_line = (
+                f"callees: {func_name!r} calls {total_callees} function(s)"
+            )
+            as_next_step = result.get("next_step") or (
+                "Review callees above, run tests for dependencies, "
+                "or use nav action=callee_tree for the full call tree."
+            )
+        result["agent_summary"] = {
+            "summary_line": as_summary_line,
+            "verdict": verdict,
+            "next_step": as_next_step,
+        }
 
         from ..utils.format_helper import apply_toon_format_to_response
 

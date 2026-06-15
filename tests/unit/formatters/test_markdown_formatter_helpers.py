@@ -4,7 +4,6 @@ from tree_sitter_analyzer.formatters.markdown_formatter import MarkdownFormatter
 
 
 class TestFormatTable:
-
     def test_format_table_basic(self):
         formatter = MarkdownFormatter()
         analysis_result = {
@@ -418,7 +417,6 @@ class TestFormatTable:
 
 
 class TestFormatAnalysisResult:
-
     def test_format_analysis_result(self):
         formatter = MarkdownFormatter()
 
@@ -492,7 +490,6 @@ class TestFormatAnalysisResult:
 
 
 class TestCollectImages:
-
     def test_collect_images_basic(self):
         formatter = MarkdownFormatter()
         elements = [
@@ -586,11 +583,11 @@ class TestCollectImages:
 
         images = formatter._collect_images(elements)
 
-        assert len(images) >= 1
+        assert len(images) == 1
+        assert images[0]["alt"] == "Test"
 
 
 class TestCalculateDocumentComplexity:
-
     def test_complexity_simple(self):
         formatter = MarkdownFormatter()
         headers = [{"level": 1}]
@@ -658,7 +655,6 @@ class TestCalculateDocumentComplexity:
 
 
 class TestComputeRobustCounts:
-
     @patch("tree_sitter_analyzer.encoding_utils.read_file_safe")
     def test_compute_robust_counts_basic(self, mock_read):
         formatter = MarkdownFormatter()
@@ -669,20 +665,20 @@ class TestComputeRobustCounts:
 
         counts = formatter._compute_robust_counts_from_file("test.md")
 
-        assert counts["link_count"] >= 1
-        assert counts["image_count"] >= 1
+        assert counts["link_count"] == 1
+        assert counts["image_count"] == 1
 
     @patch("tree_sitter_analyzer.encoding_utils.read_file_safe")
     def test_compute_robust_counts_autolinks(self, mock_read):
         formatter = MarkdownFormatter()
         mock_read.return_value = (
-            "<http://example.com>\n<mailto:test@example.com>",
+            "<http://example.com>\n<mailto:test@example.com>",  # pragma: allowlist secret
             None,
         )
 
         counts = formatter._compute_robust_counts_from_file("test.md")
 
-        assert counts["link_count"] >= 2
+        assert counts["link_count"] == 2
 
     @patch("tree_sitter_analyzer.encoding_utils.read_file_safe")
     def test_compute_robust_counts_reference_links(self, mock_read):
@@ -694,7 +690,7 @@ class TestComputeRobustCounts:
 
         counts = formatter._compute_robust_counts_from_file("test.md")
 
-        assert counts["link_count"] >= 1
+        assert counts["link_count"] == 1
 
     @patch("tree_sitter_analyzer.encoding_utils.read_file_safe")
     def test_compute_robust_counts_image_references(self, mock_read):
@@ -703,7 +699,10 @@ class TestComputeRobustCounts:
 
         counts = formatter._compute_robust_counts_from_file("test.md")
 
-        assert counts["image_count"] >= 1
+        # 2 = the ![Alt][imgref] reference + its used [imgref]: definition
+        # (count_markdown_images counts both; exact fact, update if the
+        # counting rules change)
+        assert counts["image_count"] == 2
 
     @patch("tree_sitter_analyzer.encoding_utils.read_file_safe")
     def test_compute_robust_counts_mixed_content(self, mock_read):
@@ -721,8 +720,11 @@ class TestComputeRobustCounts:
 
         counts = formatter._compute_robust_counts_from_file("test.md")
 
-        assert counts["link_count"] > 0
-        assert counts["image_count"] > 0
+        # links: Link1 inline + Link2 reference + autolink = 3
+        # images: Image1 inline + Image2 reference = 2 (indented [imgref]:
+        # definition lines do not match the ^-anchored definition pattern)
+        assert counts["link_count"] == 3
+        assert counts["image_count"] == 2
 
     @patch("tree_sitter_analyzer.encoding_utils.read_file_safe")
     def test_compute_robust_counts_file_read_error(self, mock_read):
@@ -756,11 +758,11 @@ class TestComputeRobustCounts:
 
         counts = formatter._compute_robust_counts_from_file("test.md")
 
-        assert counts["image_count"] >= 4
+        assert counts["image_count"] == 4
+        assert counts["link_count"] == 1
 
 
 class TestFormatJsonOutput:
-
     def test_format_json_output_basic(self):
         formatter = MarkdownFormatter()
         data = {"key": "value", "number": 42}

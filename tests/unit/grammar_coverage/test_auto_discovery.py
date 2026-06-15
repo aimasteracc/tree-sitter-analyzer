@@ -40,7 +40,9 @@ def python_report(engine: AutoDiscoveryEngine, python_corpus: str) -> CoverageGa
 def test_get_all_node_types_python(engine: AutoDiscoveryEngine) -> None:
     types = engine.get_all_node_types("python")
     assert isinstance(types, list)
-    assert len(types) >= 50, f"Expected >= 50 node types, got {len(types)}"
+    # Python grammar exposes exactly 129 named node types
+    # (measured with tree-sitter-python 0.23.6)
+    assert len(types) == 129, f"Expected 129 node types, got {len(types)}"
 
 
 def test_get_all_node_types_is_sorted(engine: AutoDiscoveryEngine) -> None:
@@ -71,7 +73,9 @@ def test_get_all_node_types_unsupported_language(engine: AutoDiscoveryEngine) ->
 
 def test_get_all_node_types_typescript(engine: AutoDiscoveryEngine) -> None:
     types = engine.get_all_node_types("typescript")
-    assert len(types) >= 80
+    # TypeScript grammar exposes exactly 191 named node types
+    # (measured with tree-sitter-typescript 0.23.2)
+    assert len(types) == 191
 
 
 # ---------------------------------------------------------------------------
@@ -82,9 +86,12 @@ def test_get_all_node_types_typescript(engine: AutoDiscoveryEngine) -> None:
 def test_get_all_field_names_python(engine: AutoDiscoveryEngine) -> None:
     fields = engine.get_all_field_names("python")
     assert isinstance(fields, list)
-    assert len(fields) > 5
+    # Python grammar exposes exactly 31 field names
+    # (measured with tree-sitter-python 0.23.6)
+    assert len(fields) == 31
     # Python should have common fields
-    assert "name" in fields or "body" in fields
+    assert "name" in fields
+    assert "body" in fields
 
 
 def test_get_all_field_names_unavailable_language(engine: AutoDiscoveryEngine) -> None:
@@ -157,7 +164,9 @@ def test_enumerate_syntax_paths_returns_list(
 ) -> None:
     paths = engine.enumerate_syntax_paths("python", python_corpus)
     assert isinstance(paths, list)
-    assert len(paths) > 0
+    # BUILTIN_CORPUS["python"] yields exactly 57 unique syntax paths at the
+    # default max_depth (measured with tree-sitter-python 0.23.6)
+    assert len(paths) == 57
 
 
 def test_enumerate_syntax_paths_format(
@@ -189,7 +198,9 @@ def test_enumerate_syntax_paths_max_depth(
 # ---------------------------------------------------------------------------
 
 
-def test_analyze_coverage_gap_has_required_keys(python_report: CoverageGapReport) -> None:
+def test_analyze_coverage_gap_has_required_keys(
+    python_report: CoverageGapReport,
+) -> None:
     assert python_report.language == "python"
     assert isinstance(python_report.total_node_types, int)
     assert isinstance(python_report.discovered_node_types, list)
@@ -199,20 +210,27 @@ def test_analyze_coverage_gap_has_required_keys(python_report: CoverageGapReport
     assert isinstance(python_report.elapsed_ms, float)
 
 
-def test_analyze_coverage_gap_coverage_positive(python_report: CoverageGapReport) -> None:
+def test_analyze_coverage_gap_coverage_positive(
+    python_report: CoverageGapReport,
+) -> None:
     assert python_report.coverage_rate > 0.0
     assert python_report.coverage_rate <= 100.0
 
 
-def test_analyze_coverage_gap_total_types_positive(python_report: CoverageGapReport) -> None:
-    assert python_report.total_node_types > 0
+def test_analyze_coverage_gap_total_types_positive(
+    python_report: CoverageGapReport,
+) -> None:
+    # Equals the Python grammar's 129 named node types
+    # (measured with tree-sitter-python 0.23.6)
+    assert python_report.total_node_types == 129
 
 
 def test_analyze_coverage_gap_consistency(python_report: CoverageGapReport) -> None:
     # discovered + missing should be consistent with total grammar types
     discovered_set = set(python_report.discovered_node_types)
-    # discovered_set should be non-empty if total > 0
-    assert len(discovered_set) > 0
+    # BUILTIN_CORPUS["python"] discovers exactly 73 distinct node types
+    # (measured with tree-sitter-python 0.23.6)
+    assert len(discovered_set) == 73
 
 
 def test_analyze_coverage_gap_is_ok(python_report: CoverageGapReport) -> None:
@@ -235,7 +253,7 @@ def test_analyze_coverage_gap_unavailable_language(engine: AutoDiscoveryEngine) 
 
 def test_analyze_coverage_gap_elapsed_ms(python_report: CoverageGapReport) -> None:
     # Should complete reasonably fast
-    assert python_report.elapsed_ms > 0
+    assert python_report.elapsed_ms > 0  # ratchet: nondeterministic wall-clock timing
     assert python_report.elapsed_ms < 10_000  # 10 seconds absolute upper bound
 
 
@@ -247,7 +265,24 @@ def test_analyze_coverage_gap_elapsed_ms(python_report: CoverageGapReport) -> No
 def test_analyze_all_languages_no_crash(engine: AutoDiscoveryEngine) -> None:
     results = engine.analyze_all_languages()
     assert isinstance(results, dict)
-    assert len(results) > 0
+    # BUILTIN_CORPUS covers exactly these 14 languages (full grammar set
+    # installed via `uv sync --all-extras`)
+    assert set(results.keys()) == {
+        "c",
+        "cpp",
+        "csharp",
+        "go",
+        "java",
+        "javascript",
+        "kotlin",
+        "php",
+        "python",
+        "ruby",
+        "rust",
+        "sql",
+        "typescript",
+        "yaml",
+    }
 
 
 def test_analyze_all_languages_contains_python(engine: AutoDiscoveryEngine) -> None:
@@ -277,7 +312,10 @@ def test_generate_report_not_empty(engine: AutoDiscoveryEngine) -> None:
     results = engine.analyze_all_languages(["python"])
     report = engine.generate_report(results)
     assert isinstance(report, str)
-    assert len(report) > 100
+    # The python-only report renders exactly 40 lines; byte length is NOT
+    # pinnable (the "Analysis time" line embeds wall-clock ms)
+    # (measured with tree-sitter-python 0.23.6)
+    assert len(report.splitlines()) == 40
 
 
 def test_generate_report_contains_language(engine: AutoDiscoveryEngine) -> None:

@@ -54,9 +54,10 @@ class GoldenMasterTester:
             return
 
         expected = golden_file.read_text(encoding="utf-8")
-        if actual_output != expected:
+        comparable_expected = _normalize_storage_newline(expected, actual_output)
+        if actual_output != comparable_expected:
             # Generate detailed diff and fail
-            diff = self._generate_diff(expected, actual_output, test_name)
+            diff = self._generate_diff(comparable_expected, actual_output, test_name)
             pytest.fail(f"Output differs from golden master:\n{diff}")
 
     def get_golden_master_content(self, test_name: str) -> str | None:
@@ -148,6 +149,13 @@ class GoldenMasterTester:
         ]
 
         return "\n".join(summary + diff_lines)
+
+
+def _normalize_storage_newline(expected: str, actual: str) -> str:
+    """Allow golden files to keep a POSIX EOF newline when payloads omit it."""
+    if expected.endswith("\n") and not actual.endswith("\n"):
+        return expected[:-1]
+    return expected
 
 
 class GoldenMasterManager:

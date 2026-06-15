@@ -36,7 +36,7 @@ def test_get_available_queries():
     queries = list_queries(TEST_LANGUAGE)
 
     assert isinstance(queries, list)
-    assert len(queries) > 0
+    assert len(queries) == 71
     assert "class" in queries
     assert "method" in queries
     assert "interface" in queries
@@ -68,7 +68,7 @@ def test_get_query_description_all_keys():
     for key in list_queries(TEST_LANGUAGE):
         description = loader.get_query_description(TEST_LANGUAGE, key)
         assert isinstance(description, str)
-        assert len(description) > 0
+        assert description != ""
 
 
 def test_queries_dict_structure():
@@ -76,7 +76,7 @@ def test_queries_dict_structure():
     loader = get_query_loader()
     queries = loader.load_language_queries(TEST_LANGUAGE)
     assert isinstance(queries, dict)
-    assert len(queries) > 0
+    assert len(queries) == 71
 
     # Test some expected keys
     expected_keys = [
@@ -141,7 +141,7 @@ def test_query_descriptions_completeness():
         description = loader.get_query_description(TEST_LANGUAGE, query_key)
         # Should not be empty or default "No description"
         assert description is not None
-        assert len(description) > 0
+        assert description != ""
 
 
 if __name__ == "__main__":

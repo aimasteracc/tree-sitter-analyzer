@@ -1,12 +1,12 @@
 {
   "counts_by_type": {
-    "Class": 9,
-    "Function": 18,
+    "Class": 10,
+    "Function": 20,
     "Import": 5,
     "Package": 1,
-    "Variable": 9
+    "Variable": 22
   },
-  "element_total": 42,
+  "element_total": 58,
   "names_by_type": {
     "Class": [
       "Config",
@@ -16,6 +16,7 @@
       "Reader",
       "Service",
       "Status",
+      "StringSlice",
       "WorkerPool",
       "Writer"
     ],
@@ -26,12 +27,14 @@
       "NewService",
       "NewWorkerPool",
       "ProcessData",
+      "Read",
       "Shutdown",
       "Start",
       "Stop",
       "Submit",
       "WithRetry",
       "WithTimeout",
+      "Write",
       "process",
       "run",
       "stop",
@@ -49,15 +52,28 @@
       "sample"
     ],
     "Variable": [
+      "Debug",
       "DefaultTimeout",
       "ErrNotFound",
+      "Host",
       "MaxRetries",
+      "Port",
       "RetryInterval",
       "StatusCompleted",
       "StatusFailed",
       "StatusPending",
       "StatusRunning",
-      "lastErr"
+      "Timeout",
+      "config",
+      "done",
+      "jobs",
+      "lastErr",
+      "metadata",
+      "mu",
+      "name",
+      "running",
+      "wg",
+      "workers"
     ]
   },
   "types": [

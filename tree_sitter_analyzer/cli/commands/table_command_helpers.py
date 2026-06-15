@@ -29,6 +29,14 @@ TYPE_SUFFIX_LANGUAGES = {
     "typescript",
     "ts",
     "scala",
+    # JS has no type annotations; routing through the suffix path preserves
+    # destructuring patterns (e.g. { x, y }) without mangling (#745).
+    "javascript",
+    "js",
+    # Ruby has no type annotations; routing through the suffix path prevents
+    # rfind-based mangling of default-valued params (`permissions = []` → #768).
+    "ruby",
+    "rb",
 }
 
 PACKAGED_LANGUAGES = {"java", "kotlin", "scala", "csharp", "cpp", "c++"}
@@ -316,6 +324,13 @@ def _process_single_parameter(param: Any, language: str) -> dict[str, str]:
 
 def _process_type_suffix_parameter(param: str) -> dict[str, str]:
     """Process name-first parameter syntax, such as Python or TypeScript."""
+    # Strip `= default` when the `=` appears before any type annotation (`:`).
+    # This handles Ruby `permissions = []` → name="permissions" (#768) and
+    # Python bare-name defaults like `limit = 10`.
+    colon_idx = param.find(":")
+    eq_idx = param.find("=")
+    if eq_idx != -1 and (colon_idx == -1 or eq_idx < colon_idx):
+        param = param[:eq_idx].strip()
     if ":" not in param:
         return {"name": param, "type": "Any"}
     name, param_type = param.split(":", 1)
@@ -324,6 +339,13 @@ def _process_type_suffix_parameter(param: str) -> dict[str, str]:
 
 def _process_type_prefix_parameter(param: str) -> dict[str, str]:
     """Process type-first parameter syntax, such as Java."""
+    # JS-style object destructuring arrives here for non-JS languages that share
+    # parameter-string processing; no type-prefix language uses { at the start
+    # of a parameter string, so this guard is universally safe (#745).
+    # NOTE: [ is intentionally NOT guarded — C# attributes ([FromBody], etc.)
+    # and C++ attributes ([[maybe_unused]]) must be parsed as type-prefix strings.
+    if param.startswith("{"):
+        return {"name": param, "type": ""}
     last_space_idx = param.rfind(" ")
     if last_space_idx == -1:
         return {"name": param, "type": "Any"}

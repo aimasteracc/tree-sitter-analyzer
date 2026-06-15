@@ -35,8 +35,8 @@ def test_cpp_plugin_basic(plugin):
     tree = _parse(code)
     elements_dict = plugin.extract_elements(tree, code)
     assert elements_dict is not None
-    assert len(elements_dict["functions"]) > 0
-    assert len(elements_dict["classes"]) > 0
+    assert len(elements_dict["functions"]) == 2
+    assert len(elements_dict["classes"]) == 1
 
     names = [e.name for e in elements_dict["functions"]]
     assert "my_method" in names
@@ -70,9 +70,9 @@ def test_union_extraction(extractor):
     code = "union Data { int i; float f; char c; };\n"
     tree = _parse(code)
     classes = extractor.extract_classes(tree, code)
-    assert len(classes) >= 1
+    assert len(classes) == 1
     unions = [c for c in classes if c.class_type == "union"]
-    assert len(unions) >= 1
+    assert len(unions) == 1
     assert unions[0].name == "Data"
 
 
@@ -81,7 +81,7 @@ def test_namespace_extraction(extractor):
     code = "namespace physics { double gravity = 9.8; }\n"
     tree = _parse(code)
     packages = extractor.extract_packages(tree, code)
-    assert len(packages) >= 1
+    assert len(packages) == 1
     assert packages[0].name == "physics"
 
 
@@ -90,7 +90,7 @@ def test_using_declaration_import(extractor):
     code = "using namespace std;\n"
     tree = _parse(code)
     imports = extractor.extract_imports(tree, code)
-    assert len(imports) >= 1
+    assert len(imports) == 1
     assert any("using" in i.import_statement for i in imports)
 
 
@@ -99,7 +99,7 @@ def test_alias_declaration_import(extractor):
     code = "using IntVec = vector<int>;\n"
     tree = _parse(code)
     imports = extractor.extract_imports(tree, code)
-    assert len(imports) >= 1
+    assert len(imports) == 1
     assert any("IntVec" in i.name for i in imports)
 
 
@@ -141,7 +141,7 @@ def test_pure_virtual_function(extractor):
     tree = _parse(code)
     funcs = extractor.extract_functions(tree, code)
     area_funcs = [f for f in funcs if f.name == "area"]
-    assert len(area_funcs) >= 1
+    assert len(area_funcs) == 1
 
 
 # --- Static and const modifiers ---
@@ -149,9 +149,9 @@ def test_static_const_modifiers(extractor):
     code = "class Config { public: static const int MAX_SIZE = 100; };\n"
     tree = _parse(code)
     variables = extractor.extract_variables(tree, code)
-    assert len(variables) >= 1
+    assert len(variables) == 1
     max_var = [v for v in variables if v.name == "MAX_SIZE"]
-    assert len(max_var) >= 1
+    assert len(max_var) == 1
     assert max_var[0].is_static is True
     assert max_var[0].is_constant is True
 
@@ -161,7 +161,7 @@ def test_global_variable(extractor):
     code = "int counter = 0;\nstatic double pi = 3.14;\n"
     tree = _parse(code)
     variables = extractor.extract_variables(tree, code)
-    assert len(variables) >= 1
+    assert len(variables) == 2
     names = [v.name for v in variables]
     assert "counter" in names
 
@@ -181,11 +181,11 @@ def test_visibility_in_class(extractor):
     tree = _parse(code)
     funcs = extractor.extract_functions(tree, code)
     show_funcs = [f for f in funcs if f.name == "show"]
-    assert len(show_funcs) >= 1
+    assert len(show_funcs) == 1
     assert show_funcs[0].visibility == "public"
 
     internal_funcs = [f for f in funcs if f.name == "internal"]
-    assert len(internal_funcs) >= 1
+    assert len(internal_funcs) == 1
     assert internal_funcs[0].visibility == "protected"
 
 
@@ -195,7 +195,7 @@ def test_struct_default_visibility(extractor):
     tree = _parse(code)
     variables = extractor.extract_variables(tree, code)
     x_vars = [v for v in variables if v.name == "x"]
-    assert len(x_vars) >= 1
+    assert len(x_vars) == 1
     assert x_vars[0].visibility == "public"
 
 
@@ -215,7 +215,7 @@ def test_triple_slash_comment(extractor):
     tree = _parse(code)
     funcs = extractor.extract_functions(tree, code)
     sum_funcs = [f for f in funcs if f.name == "sum"]
-    assert len(sum_funcs) >= 1
+    assert len(sum_funcs) == 1
     assert sum_funcs[0].docstring is not None
     assert "Computes" in sum_funcs[0].docstring
 
@@ -234,8 +234,8 @@ def test_complexity_with_control_flow(extractor):
     tree = _parse(code)
     funcs = extractor.extract_functions(tree, code)
     classify = [f for f in funcs if f.name == "classify"]
-    assert len(classify) >= 1
-    assert classify[0].complexity_score > 1
+    assert len(classify) == 1
+    assert classify[0].complexity_score == 5
 
 
 # --- Qualified identifier function name (namespace-qualified) ---
@@ -251,7 +251,7 @@ def test_qualified_function(extractor):
     tree = _parse(code)
     funcs = extractor.extract_functions(tree, code)
     bar_funcs = [f for f in funcs if f.name == "bar"]
-    assert len(bar_funcs) >= 1
+    assert len(bar_funcs) == 1
 
 
 # --- extract_elements with None tree ---
@@ -269,7 +269,7 @@ def test_count_tree_nodes(plugin):
     code = "int main() { return 0; }\n"
     tree = _parse(code)
     count = plugin._count_tree_nodes(tree.root_node)
-    assert count >= 1
+    assert count == 15
 
 
 def test_count_tree_nodes_none(plugin):
@@ -281,7 +281,7 @@ def test_variable_with_init_declarator(extractor):
     code = "int x = 42;\n"
     tree = _parse(code)
     variables = extractor.extract_variables(tree, code)
-    assert len(variables) >= 1
+    assert len(variables) == 1
     assert variables[0].name == "x"
     assert variables[0].variable_type == "int"
 
@@ -292,7 +292,7 @@ def test_field_with_init_declarator(extractor):
     tree = _parse(code)
     variables = extractor.extract_variables(tree, code)
     val_vars = [v for v in variables if v.name == "val"]
-    assert len(val_vars) >= 1
+    assert len(val_vars) == 1
 
 
 # --- Destructor function name ---
@@ -301,7 +301,7 @@ def test_destructor_extraction(extractor):
     tree = _parse(code)
     funcs = extractor.extract_functions(tree, code)
     dtor_funcs = [f for f in funcs if f.name and "~" in f.name]
-    assert len(dtor_funcs) >= 1
+    assert len(dtor_funcs) == 1
 
 
 # --- Const qualified method ---
@@ -310,7 +310,7 @@ def test_const_method(extractor):
     tree = _parse(code)
     funcs = extractor.extract_functions(tree, code)
     get_funcs = [f for f in funcs if f.name == "get"]
-    assert len(get_funcs) >= 1
+    assert len(get_funcs) == 1
 
 
 # --- Static global variable is private visibility ---
@@ -319,7 +319,7 @@ def test_static_global_private_visibility(extractor):
     tree = _parse(code)
     variables = extractor.extract_variables(tree, code)
     ctr_vars = [v for v in variables if v.name == "internal_counter"]
-    assert len(ctr_vars) >= 1
+    assert len(ctr_vars) == 1
     assert ctr_vars[0].visibility == "private"
 
 
@@ -340,7 +340,7 @@ def test_function_declaration(extractor):
     tree = _parse(code)
     funcs = extractor.extract_functions(tree, code)
     init_funcs = [f for f in funcs if f.name == "initialize"]
-    assert len(init_funcs) >= 1
+    assert len(init_funcs) == 1
     assert init_funcs[0].return_type == "void"
 
 
@@ -359,7 +359,7 @@ def test_mixed_includes(extractor):
     code = '#include <iostream>\n#include "utils.h"\n'
     tree = _parse(code)
     imports = extractor.extract_imports(tree, code)
-    assert len(imports) >= 2
+    assert len(imports) == 2
 
 
 # --- Fallback regex for includes ---
@@ -378,7 +378,7 @@ def test_reference_return_function(extractor):
     tree = _parse(code)
     funcs = extractor.extract_functions(tree, code)
     ref_funcs = [f for f in funcs if f.name == "get_ref"]
-    assert len(ref_funcs) >= 1
+    assert len(ref_funcs) == 1
 
 
 # --- Pointer declarator (pointer return type) ---
@@ -387,7 +387,7 @@ def test_pointer_return_function(extractor):
     tree = _parse(code)
     funcs = extractor.extract_functions(tree, code)
     ptr_funcs = [f for f in funcs if f.name == "create_ptr"]
-    assert len(ptr_funcs) >= 1
+    assert len(ptr_funcs) == 1
 
 
 # --- Operator overloading ---
@@ -396,7 +396,7 @@ def test_operator_function(extractor):
     tree = _parse(code)
     funcs = extractor.extract_functions(tree, code)
     op_funcs = [f for f in funcs if f.name and "operator" in f.name]
-    assert len(op_funcs) >= 1
+    assert len(op_funcs) == 1
 
 
 # --- Nested namespace ---
@@ -414,7 +414,7 @@ def test_class_default_visibility(extractor):
     tree = _parse(code)
     variables = extractor.extract_variables(tree, code)
     val_vars = [v for v in variables if v.name == "value"]
-    assert len(val_vars) >= 1
+    assert len(val_vars) == 1
     assert val_vars[0].visibility == "private"
 
 
@@ -432,7 +432,7 @@ def test_variable_template_type(extractor):
     code = "vector<int> nums;\n"
     tree = _parse(code)
     variables = extractor.extract_variables(tree, code)
-    assert len(variables) >= 1
+    assert len(variables) == 1
     assert "vector" in (variables[0].variable_type or "")
 
 
@@ -442,7 +442,7 @@ def test_function_with_static(extractor):
     tree = _parse(code)
     funcs = extractor.extract_functions(tree, code)
     helper_funcs = [f for f in funcs if f.name == "helper"]
-    assert len(helper_funcs) >= 1
+    assert len(helper_funcs) == 1
     assert helper_funcs[0].is_static is True
 
 
@@ -458,5 +458,5 @@ def test_template_struct(extractor):
     tree = _parse(code)
     classes = extractor.extract_classes(tree, code)
     holders = [c for c in classes if c.name == "Holder"]
-    assert len(holders) >= 1
+    assert len(holders) == 1
     assert "template" in (holders[0].modifiers or [])
