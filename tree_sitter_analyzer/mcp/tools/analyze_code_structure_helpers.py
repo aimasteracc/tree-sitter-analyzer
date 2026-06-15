@@ -88,10 +88,17 @@ def _parse_string_parameter(param_str: str) -> dict[str, str] | None:
     Handles the default-valued forms #533 introduced (Codex P2 on #581):
     ``limit = 10`` and ``breed: str = "Mixed"`` must not be whitespace-split
     into ``{"name": "10", "type": "limit ="}``.
+
+    Destructuring patterns (``{ x, y }`` / ``[a, b]``) are preserved whole
+    as the parameter name so they are not torn apart by whitespace splitting
+    (issue #745).
     """
     text = param_str.strip()
     if not text:
         return None
+    # Destructuring patterns must not be whitespace-split.
+    if text.startswith("{") or text.startswith("["):
+        return {"name": text, "type": ""}
     default: str | None = None
     if "=" in text:
         head, default = (s.strip() for s in text.split("=", 1))

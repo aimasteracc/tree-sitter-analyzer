@@ -324,6 +324,9 @@ def _process_type_suffix_parameter(param: str) -> dict[str, str]:
 
 def _process_type_prefix_parameter(param: str) -> dict[str, str]:
     """Process type-first parameter syntax, such as Java."""
+    # Destructuring patterns must not be split; preserve whole as name (#745).
+    if param.startswith("{") or param.startswith("["):
+        return {"name": param, "type": ""}
     last_space_idx = param.rfind(" ")
     if last_space_idx == -1:
         return {"name": param, "type": "Any"}
