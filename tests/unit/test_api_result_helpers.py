@@ -104,6 +104,42 @@ class TestElementToDict:
         result = element_to_dict(elem)
         assert result["type"] == "class"
 
+    def test_sql_parameter_dataclass_is_serialized_to_dict(self):
+        """SQLParameter dataclass instances in parameters[] must become plain dicts.
+
+        Issue #775: json.dumps crashed with 'SQLParameter not JSON serializable'
+        because element_to_dict passed the raw dataclass list through unchanged.
+        """
+        import dataclasses
+        import json
+
+        @dataclasses.dataclass
+        class FakeSQLParameter:
+            name: str
+            data_type: str
+            direction: str = "IN"
+
+        params = [
+            FakeSQLParameter("uid", "INT"),
+            FakeSQLParameter("v", "VARCHAR", "OUT"),
+        ]
+        elem = _make_elem(parameters=params)
+        result = element_to_dict(elem)
+        # Must be JSON-serializable (no crash).
+        serialized = json.dumps(result)
+        assert "uid" in serialized
+        # Each parameter must be a plain dict, not a dataclass instance.
+        assert result["parameters"] == [
+            {"name": "uid", "data_type": "INT", "direction": "IN"},
+            {"name": "v", "data_type": "VARCHAR", "direction": "OUT"},
+        ]
+
+    def test_string_parameters_pass_through_unchanged(self):
+        """String parameters (non-dataclass) are not modified."""
+        elem = _make_elem(parameters=["x: int", "y: str"])
+        result = element_to_dict(elem)
+        assert result["parameters"] == ["x: int", "y: str"]
+
 
 class TestFindClassName:
     """Tests for find_class_name."""
