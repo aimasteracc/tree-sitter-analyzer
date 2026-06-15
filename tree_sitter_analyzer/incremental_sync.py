@@ -240,11 +240,21 @@ class IncrementalSync:
         try:
             index_result = self._cache.index_file(abs_path)
         except Exception as exc:
-            # #886: if index_file wrote a partial ast_index row before raising
-            # (INSERT committed or uncommitted), DELETE it so the next sync
-            # treats the file as new rather than silently skipping it as
-            # "unchanged" with missing symbols/edges.
-            conn.execute("DELETE FROM ast_index WHERE file_path = ?", (rel_path,))
+            # #886: if index_file wrote partial rows before raising, clean them
+            # all up (ast_index + ast_symbol_rows + ast_symbols_fts) so the next
+            # sync treats the file as new rather than silently "unchanged" with
+            # missing symbols. Codex P2: wrap best-effort cleanup so a locked/
+            # full DB doesn't abort the whole sync — we already have the error.
+            try:
+                conn.execute("DELETE FROM ast_index WHERE file_path = ?", (rel_path,))
+                conn.execute(
+                    "DELETE FROM ast_symbol_rows WHERE file_path = ?", (rel_path,)
+                )
+                conn.execute(
+                    "DELETE FROM ast_symbols_fts WHERE file_path = ?", (rel_path,)
+                )
+            except Exception:
+                logger.debug("Cleanup DELETE failed for %s — continuing", rel_path)
             # Issue #806/#805: catch all per-file errors so one pathological
             # file cannot abort the whole sync and discard accumulated results.
             logger.error(
@@ -279,8 +289,17 @@ class IncrementalSync:
         try:
             index_result = self._cache.index_file(abs_path)
         except Exception as exc:
-            # #886: same DELETE-on-failure guard as _index_new_file.
-            conn.execute("DELETE FROM ast_index WHERE file_path = ?", (rel_path,))
+            # #886: same three-table cleanup as _index_new_file (Codex P2 parity).
+            try:
+                conn.execute("DELETE FROM ast_index WHERE file_path = ?", (rel_path,))
+                conn.execute(
+                    "DELETE FROM ast_symbol_rows WHERE file_path = ?", (rel_path,)
+                )
+                conn.execute(
+                    "DELETE FROM ast_symbols_fts WHERE file_path = ?", (rel_path,)
+                )
+            except Exception:
+                logger.debug("Cleanup DELETE failed for %s — continuing", rel_path)
             # Issue #806/#805: same broad guard for re-index path.
             logger.error(
                 "Error re-indexing %s (%s): %s",
