@@ -207,6 +207,14 @@ def is_ast_index_stale(project_root: str) -> bool:
             return True
         if current_mtime_ns > recorded_mtime_ns:
             return True
+    # #978 Fix 2 (perf): the os.walk below runs on every call (e.g. per lineage
+    # execute()) to detect newly-added, not-yet-indexed source files. It is only
+    # reached when no indexed file was modified (the cheap mtime loop above
+    # short-circuits first), and it itself short-circuits on the first unindexed
+    # path. Cross-call memoisation was considered and rejected: it would let a
+    # file added between two same-call invocations slip through, trading a
+    # correctness guarantee for a micro-optimisation. Left as a single correct
+    # walk per call — correctness over premature optimisation.
     for rel_path in _walk_supported_source_paths(root):
         if rel_path not in indexed_paths:
             return True

@@ -3,17 +3,26 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import subprocess
 import sys
 import time
 from pathlib import Path
 from typing import Any
+from unittest import mock
 
 import pytest
 
 from tree_sitter_analyzer import _ast_cache_callgraph_state as callgraph_state
-from tree_sitter_analyzer.ast_cache import ASTCache
+from tree_sitter_analyzer._graph_cache_fingerprint import (
+    _walk_supported_source_paths,
+)
+from tree_sitter_analyzer.ast_cache import (
+    ASTCache,
+    _language_from_ext,
+    _walk_source_files,
+)
 from tree_sitter_analyzer.mcp.tools.callees_tool import CodeGraphCalleesTool
 from tree_sitter_analyzer.mcp.tools.callers_tool import CodeGraphCallersTool
 from tree_sitter_analyzer.mcp.tools.codegraph_relation_tool import (
@@ -361,6 +370,143 @@ def test_indexed_source_files_complete_false_when_source_added_after_index(
         assert cache._indexed_source_files_are_complete() is False
     finally:
         cache.close()
+
+
+# --- index_project marker on complete incremental runs (#978) ---------------
+
+
+def test_fully_cached_rerun_stamps_marker_when_index_complete(
+    tmp_path: Path,
+) -> None:
+    # #978 false-negative: a project that is fully indexed but whose marker was
+    # cleared (e.g. predates #708) must regain the marker on a re-run even when
+    # nothing is re-indexed (indexed == 0, every file cached).
+    (tmp_path / "a.py").write_text("def a():\n    return 1\n", encoding="utf-8")
+    (tmp_path / "b.py").write_text("def b():\n    return 2\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    try:
+        first = cache.index_project(workers=0)
+        assert first["indexed"] == 2
+        # Simulate a cleared/absent marker over an already-complete index.
+        callgraph_state.clear_call_graph_built(cache.get_conn())
+        assert cache.call_graph_built() is False
+        assert cache._indexed_source_files_are_complete() is True
+
+        rerun = cache.index_project(workers=0)
+
+        assert rerun["indexed"] == 0
+        assert rerun["cached"] == 2
+        assert rerun["skipped"] == 0
+        assert cache.call_graph_built() is True
+    finally:
+        cache.close()
+
+
+def test_mixed_incremental_rerun_keeps_marker_true(
+    tmp_path: Path,
+) -> None:
+    # Mixed run: one file re-indexed, one cached, index still complete.
+    (tmp_path / "a.py").write_text("def a():\n    return 1\n", encoding="utf-8")
+    (tmp_path / "b.py").write_text("def b():\n    return 2\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    try:
+        first = cache.index_project(workers=0)
+        assert first["indexed"] == 2
+        callgraph_state.clear_call_graph_built(cache.get_conn())
+        assert cache.call_graph_built() is False
+
+        time.sleep(0.01)
+        (tmp_path / "a.py").write_text("def a():\n    return 99\n", encoding="utf-8")
+        rerun = cache.index_project(workers=0)
+
+        assert rerun["indexed"] == 1
+        assert rerun["cached"] == 1
+        assert rerun["skipped"] == 0
+        assert rerun["errors"] == 0
+        assert cache.call_graph_built() is True
+    finally:
+        cache.close()
+
+
+def test_truncated_rerun_does_not_stamp_marker_when_incomplete(
+    tmp_path: Path,
+) -> None:
+    # #970 guard: a truncated run leaves the source set under-indexed, so the
+    # marker must STAY false (no false-positive).
+    (tmp_path / "a.py").write_text("def a():\n    return 1\n", encoding="utf-8")
+    (tmp_path / "b.py").write_text("def b():\n    return 2\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    try:
+        result = cache.index_project(max_files=1, workers=0)
+
+        assert result["indexed"] == 1
+        assert result["truncated_by_max_files"] is True
+        assert cache._indexed_source_files_are_complete() is False
+        assert cache.call_graph_built() is False
+    finally:
+        cache.close()
+
+
+def test_errored_file_does_not_stamp_marker_when_incomplete(
+    tmp_path: Path,
+) -> None:
+    # #970 guard: a file that errors during indexing is missing from the index,
+    # so the source set is incomplete and the marker must STAY false.
+    (tmp_path / "a.py").write_text("def a():\n    return 1\n", encoding="utf-8")
+    bad = tmp_path / "b.py"
+    bad.write_text("def b():\n    return 2\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+
+    real_stat = os.stat
+
+    def _stat_raising_on_b(path: object, *args: object, **kwargs: object) -> object:
+        if str(path) == str(bad):
+            raise OSError("simulated unreadable file")
+        return real_stat(path, *args, **kwargs)
+
+    try:
+        with mock.patch(
+            "tree_sitter_analyzer._ast_cache_indexer.os.stat",
+            side_effect=_stat_raising_on_b,
+        ):
+            result = cache.index_project(workers=0)
+
+        assert result["errors"] == 1
+        assert result["indexed"] == 1
+        assert cache._indexed_source_files_are_complete() is False
+        assert cache.call_graph_built() is False
+    finally:
+        cache.close()
+
+
+# --- _walk_supported_source_paths drift guard (#978 Fix 3) ------------------
+
+
+def test_stale_walk_agrees_with_indexer_file_selection(
+    tmp_path: Path,
+) -> None:
+    # Fix 3: _walk_supported_source_paths (stale check) must yield exactly the
+    # rel-paths the indexer (_walk_source_files + EXT_TO_LANG) would index, so a
+    # future divergence cannot cause permanent false-stale.
+    (tmp_path / "a.py").write_text("def a():\n    return 1\n", encoding="utf-8")
+    (tmp_path / "b.js").write_text("function b() { return 2; }\n", encoding="utf-8")
+    (tmp_path / "notes.txt").write_text("not source\n", encoding="utf-8")
+    pkg = tmp_path / "pkg"
+    pkg.mkdir()
+    (pkg / "c.py").write_text("def c():\n    return 3\n", encoding="utf-8")
+    excluded = tmp_path / "node_modules"
+    excluded.mkdir()
+    (excluded / "dep.js").write_text("module.exports = 1;\n", encoding="utf-8")
+
+    indexer_set = {
+        os.path.relpath(abs_path, str(tmp_path)).replace("\\", "/")
+        for abs_path in _walk_source_files(str(tmp_path))
+        if _language_from_ext(abs_path) is not None
+    }
+    stale_walk_set = set(_walk_supported_source_paths(Path(str(tmp_path))))
+
+    assert stale_walk_set == indexer_set
+    assert stale_walk_set == {"a.py", "b.js", "pkg/c.py"}
 
 
 # --- _mark_single_file_index_complete_if_needed -----------------------------
