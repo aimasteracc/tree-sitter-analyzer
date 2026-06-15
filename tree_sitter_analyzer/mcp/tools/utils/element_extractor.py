@@ -9,6 +9,7 @@ plugin system so that all 15 supported languages get full MCP tool value.
 from __future__ import annotations
 
 import ast
+import re
 from pathlib import Path
 from typing import Any
 
@@ -137,14 +138,18 @@ def get_all_exports(result: AnalysisResult) -> list[dict[str, Any]]:
     for e in result.elements:
         if is_element_of_type(e, ELEMENT_TYPE_CLASS):
             methods = getattr(e, "methods", [])
-            exports.append(
-                {
-                    "name": e.name,
-                    "kind": "class",
-                    "line": e.start_line,
-                    "methods": len(methods),
-                }
-            )
+            class_type = getattr(e, "class_type", "class")
+            export: dict[str, Any] = {
+                "name": e.name,
+                "kind": "enum" if class_type == "enum" else "class",
+                "line": e.start_line,
+                "methods": len(methods),
+            }
+            if class_type == "enum":
+                export["members"] = _enum_members_from_raw_text(
+                    getattr(e, "raw_text", "")
+                )
+            exports.append(export)
             seen_names.add(e.name)
         elif is_element_of_type(e, ELEMENT_TYPE_FUNCTION):
             if not e.name.startswith("_"):
@@ -180,6 +185,21 @@ def get_all_exports(result: AnalysisResult) -> list[dict[str, Any]]:
             seen_names.add(reexport["name"])
 
     return exports
+
+
+def _enum_members_from_raw_text(raw_text: str) -> list[str]:
+    body_match = re.search(r"\{(?P<body>.*)\}", raw_text, flags=re.DOTALL)
+    if not body_match:
+        return []
+    members: list[str] = []
+    for part in body_match.group("body").split(","):
+        candidate = part.split("=", 1)[0].strip()
+        if not candidate:
+            continue
+        name = re.match(r"[A-Za-z_$][\w$]*", candidate)
+        if name:
+            members.append(name.group(0))
+    return members
 
 
 def _extract_all_reexports(file_path: str) -> list[dict[str, Any]]:

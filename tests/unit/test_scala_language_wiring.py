@@ -92,7 +92,9 @@ def test_ast_cache_indexes_scala_file() -> None:
         cache.index_project()
         conn = cache.get_conn()
         count = conn.execute("SELECT COUNT(*) FROM ast_symbol_rows").fetchone()[0]
-        assert count == 86, f"expected exactly 86 scala symbols indexed, got {count}"
+        # Repinned 2026-06-15: Scala object/trait/enum/given/type symbols are
+        # now indexed in the AST cache instead of only the plugin extractor.
+        assert count == 107, f"expected exactly 107 scala symbols indexed, got {count}"
         cache.close()
     finally:
         shutil.rmtree(d, ignore_errors=True)

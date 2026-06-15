@@ -58,6 +58,7 @@ def extract_property(
             is_static=parts.is_static,
             is_constant=False,
             visibility=parts.visibility,
+            decorators=_extract_direct_decorator_names(node),
         )
     except Exception as e:
         log_debug(f"Failed to extract property info: {e}")
@@ -142,10 +143,21 @@ def is_framework_component(
 
 
 def is_exported_class(class_name: str, source_code: str) -> bool:
-    """Check if class is exported."""
+    """Check if a TypeScript type-like symbol is exported."""
+    export_prefixes = (
+        "class",
+        "abstract class",
+        "interface",
+        "type",
+        "enum",
+        "const enum",
+    )
     return (
-        f"export class {class_name}" in source_code
+        any(
+            f"export {prefix} {class_name}" in source_code for prefix in export_prefixes
+        )
         or f"export default {class_name}" in source_code
+        or f"export {{ {class_name} }}" in source_code
     )
 
 
@@ -236,6 +248,35 @@ def _apply_property_child(
         parts.type_name = get_node_text(child).lstrip(": ")
     elif child.type in ["string", "number", "true", "false", "null"]:
         parts.value = get_node_text(child)
+
+
+def _extract_direct_decorator_names(node: tree_sitter.Node) -> list[str]:
+    names: list[str] = []
+    for child in node.children:
+        if child.type != "decorator":
+            continue
+        name = _decorator_name(child)
+        if name:
+            names.append(name)
+    return names
+
+
+def _decorator_name(node: tree_sitter.Node) -> str | None:
+    for child in node.children:
+        if child.type == "identifier":
+            return _node_text(child)
+        if child.type == "call_expression":
+            for grandchild in child.children:
+                if grandchild.type == "identifier":
+                    return _node_text(grandchild)
+    return None
+
+
+def _node_text(node: tree_sitter.Node) -> str:
+    text = node.text
+    if isinstance(text, bytes):
+        return text.decode("utf-8", errors="replace")
+    return str(text or "")
 
 
 def _parse_variable_parts(

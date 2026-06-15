@@ -167,6 +167,8 @@ class Variable(CodeElement):
     # Owning struct/class for class-level fields (#794) — mirrors
     # Function.receiver_type; names stay bare, the owner travels here.
     receiver_type: str | None = None  # Go struct field owner
+    # TypeScript/JavaScript property decorators (without '@'), e.g. ['Column']
+    decorators: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=False)
