@@ -267,15 +267,20 @@ class TestNavImpactBoundary:
 
     @pytest.mark.asyncio
     async def test_file_path_mismatch_gives_candidate_hint(self, tmp_path) -> None:
-        """#867: when file_path is set but doesn't match, warn with candidate files."""
+        """#867/#873: when file_path is set but doesn't match, warn with candidate files.
+
+        CallGraph._resolve_targets falls back to unscoped candidates rather than
+        returning [] — so targets is non-empty even for a wrong file_path.  The
+        mismatch must be detected by checking whether any target lives in the
+        requested file, not by testing for an empty list.
+        """
         func_ref_a = _make_ref("execute", "src/tool_a.py")
         graph = MagicMock()
 
-        # With file_path set: returns nothing (mismatch)
-        # Without file_path: returns the real candidate
+        # Real CallGraph fallback: always returns the candidate even when a
+        # non-matching file_path is supplied — the scoped lookup fails and
+        # _resolve_targets falls back to the unscoped list.
         def resolve_side_effect(name, fp=None):
-            if fp is not None:
-                return []
             return [func_ref_a]
 
         graph.resolve_targets.side_effect = resolve_side_effect
