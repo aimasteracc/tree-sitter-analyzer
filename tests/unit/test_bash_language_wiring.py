@@ -111,6 +111,103 @@ def test_subscript_assignment_target_unwrapped_to_base_variable() -> None:
     assert subscripts[0].name == "arr"
 
 
+class _FakeBashNode:
+    """Minimal tree-sitter node stand-in for ``_extract_subscript`` fallback.
+
+    Real tree-sitter-bash always exposes a subscript assignment target's base
+    under the ``name`` field, so the inline ``children`` scan (#949) is
+    defensive code that only a synthetic node can reach. ``text`` is the value
+    a stubbed ``_get_node_text_optimized`` returns for this node.
+    """
+
+    def __init__(self, type_: str, text: str = "", children=None) -> None:
+        self.type = type_
+        self.text = text
+        self.children = children or []
+        self.start_point = (0, 0)
+        self.end_point = (0, 0)
+        self.start_byte = 0
+        self.end_byte = len(text)
+        self.parent = None
+        self._name_field = None
+        # ``_extract_subscript`` compares ``name_field.id == node.id`` to decide
+        # whether the subscript is the assignment target; ``id(self)`` is stable.
+        self.id = id(self)
+
+    def child_by_field_name(self, field: str):
+        return self._name_field if field == "name" else None
+
+
+def _make_subscript_extractor(monkeypatch):
+    from tree_sitter_analyzer.languages.bash_plugin import BashElementExtractor
+
+    extractor = BashElementExtractor()
+    # Map a node to its declared ``text`` so the byte-offset machinery is
+    # bypassed for these synthetic nodes.
+    monkeypatch.setattr(
+        BashElementExtractor,
+        "_get_node_text_optimized",
+        lambda self, node: getattr(node, "text", ""),
+    )
+    return extractor
+
+
+def test_subscript_fallback_child_when_name_field_absent(monkeypatch) -> None:
+    """#949 — assignment target whose subscript lacks a ``name`` field falls
+    back to the first ``variable_name`` child for the base name."""
+    extractor = _make_subscript_extractor(monkeypatch)
+
+    var_child = _FakeBashNode("variable_name", text="arr")
+    subscript = _FakeBashNode(
+        "subscript", text="arr[0]", children=[var_child, _FakeBashNode("[")]
+    )
+    # subscript has NO name field — child_by_field_name('name') returns None.
+    assignment = _FakeBashNode("variable_assignment", text="arr[0]=x")
+    assignment._name_field = subscript  # the subscript IS the assignment target
+    subscript.parent = assignment
+
+    expr = extractor._extract_subscript(subscript)
+    assert expr is not None
+    assert expr.name == "arr"
+    assert expr.expression_kind == "subscript"
+
+
+def test_subscript_fallback_word_child_when_name_field_absent(monkeypatch) -> None:
+    """#949 — fallback also accepts a ``word`` child as the base name."""
+    extractor = _make_subscript_extractor(monkeypatch)
+
+    word_child = _FakeBashNode("word", text="map")
+    subscript = _FakeBashNode(
+        "subscript", text="map[k]", children=[_FakeBashNode("["), word_child]
+    )
+    assignment = _FakeBashNode("variable_assignment", text="map[k]=v")
+    assignment._name_field = subscript
+    subscript.parent = assignment
+
+    expr = extractor._extract_subscript(subscript)
+    assert expr is not None
+    assert expr.name == "map"
+
+
+def test_subscript_assignment_target_no_base_keeps_subscript_label(
+    monkeypatch,
+) -> None:
+    """#949 — assignment target with neither a ``name`` field nor a
+    ``variable_name``/``word`` child keeps the literal ``subscript`` name."""
+    extractor = _make_subscript_extractor(monkeypatch)
+
+    subscript = _FakeBashNode(
+        "subscript", text="[0]", children=[_FakeBashNode("["), _FakeBashNode("number")]
+    )
+    assignment = _FakeBashNode("variable_assignment", text="[0]=x")
+    assignment._name_field = subscript
+    subscript.parent = assignment
+
+    expr = extractor._extract_subscript(subscript)
+    assert expr is not None
+    assert expr.name == "subscript"
+
+
 def test_ast_cache_indexes_sh_file() -> None:
     """The project indexer must index .sh files without errors."""
     from tree_sitter_analyzer.ast_cache import ASTCache
