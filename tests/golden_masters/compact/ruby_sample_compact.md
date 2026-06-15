@@ -5,7 +5,7 @@
 |----------|-------|
 | Package |  |
 | Methods | 33 |
-| Fields | 25 |
+| Fields | 16 |
 
 ## Methods
 | Method | Sig | V | L | Cx | Doc |

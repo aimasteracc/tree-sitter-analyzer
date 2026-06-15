@@ -27,8 +27,8 @@ heading,Definition Lists,2,133,134
 heading,Abbreviations,2,142,143
 heading,Math (if supported),2,149,150
 heading,Conclusion,2,158,159
-code_block,python,7,62,71
-code_block,text,2,73,77
+code_block,python,10,62,71
+code_block,text,5,73,77
 code_block,text,6,80,85
 link,Inline link -> https://example.com,-,22,22
 link,Link with title -> https://example.com,-,23,23
