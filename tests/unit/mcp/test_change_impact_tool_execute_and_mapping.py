@@ -751,3 +751,70 @@ def test_validate_arguments_rejects_bad_scope_mode():
     tool = tool_module.ChangeImpactTool(project_root="/repo")
     with pytest.raises(ValueError, match=r"scope_mode must be report\|strict"):
         tool.validate_arguments({"scope_mode": "nonsense"})
+
+
+# ── Issue #732 — doc-drift hints ──────────────────────────────────────────────
+
+
+def test_doc_drift_hints_absent_for_unrelated_files():
+    """No doc_drift_checks when changed files don't touch CLI or MCP tools."""
+    from tree_sitter_analyzer.mcp.tools.utils.change_impact_analysis import (
+        _attach_doc_drift_hints,
+    )
+
+    result = _attach_doc_drift_hints({}, ["tree_sitter_analyzer/plugins/python.py"])
+    assert "doc_drift_checks" not in result
+
+
+def test_doc_drift_hints_cli_main_triggers_readme_count_check():
+    """Changing cli_main.py must append the README-count test to doc_drift_checks."""
+    from tree_sitter_analyzer.mcp.tools.utils.change_impact_analysis import (
+        _attach_doc_drift_hints,
+    )
+
+    result = _attach_doc_drift_hints({}, ["tree_sitter_analyzer/cli_main.py"])
+    assert "doc_drift_checks" in result
+    assert any(
+        "test_readme_counts_match_registry" in step
+        for step in result["doc_drift_checks"]
+    )
+
+
+def test_doc_drift_hints_tool_registry_triggers_readme_count_check():
+    """Changing _tool_registry.py must also append the README-count test."""
+    from tree_sitter_analyzer.mcp.tools.utils.change_impact_analysis import (
+        _attach_doc_drift_hints,
+    )
+
+    result = _attach_doc_drift_hints({}, ["tree_sitter_analyzer/mcp/_tool_registry.py"])
+    assert any(
+        "test_readme_counts_match_registry" in step
+        for step in result["doc_drift_checks"]
+    )
+
+
+def test_doc_drift_hints_facade_tool_triggers_doc_regen():
+    """Changing a facade tool must append the facade-actions.md regen step."""
+    from tree_sitter_analyzer.mcp.tools.utils.change_impact_analysis import (
+        _attach_doc_drift_hints,
+    )
+
+    result = _attach_doc_drift_hints(
+        {}, ["tree_sitter_analyzer/mcp/tools/symbol_search_tool.py"]
+    )
+    assert "doc_drift_checks" in result
+    assert any(
+        "generate_facade_actions_doc" in step for step in result["doc_drift_checks"]
+    )
+
+
+def test_doc_drift_hints_util_file_not_treated_as_facade_tool():
+    """Files under mcp/tools/utils/ must NOT trigger facade-actions regen."""
+    from tree_sitter_analyzer.mcp.tools.utils.change_impact_analysis import (
+        _attach_doc_drift_hints,
+    )
+
+    result = _attach_doc_drift_hints(
+        {}, ["tree_sitter_analyzer/mcp/tools/utils/change_impact_analysis.py"]
+    )
+    assert "doc_drift_checks" not in result
