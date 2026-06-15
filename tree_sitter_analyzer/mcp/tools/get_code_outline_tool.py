@@ -511,10 +511,7 @@ class GetCodeOutlineTool(BaseMCPTool):
         result["top_level_functions"] = fns_capped
         if outline.get("top_level_fields"):
             result["top_level_fields"] = outline["top_level_fields"]
-        # 3) ``top_level_functions`` also surfaces as ``methods``.
-        if "methods" not in result:
-            result["methods"] = fns_capped
-        # 4) Hoist the count summaries from outline.statistics — PRE-cap totals
+        # 3) Hoist the count summaries from outline.statistics — PRE-cap totals
         #    (aggregate-mode invariant: totals must equal the full element count,
         #    never the capped slice).
         stats = outline.get("statistics")
