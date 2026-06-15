@@ -77,6 +77,7 @@ class ClassHierarchyTool(BaseMCPTool):
                     "enum": [
                         "subclasses",
                         "superclasses",
+                        "supers",
                         "tree",
                         "impact",
                         "all",
@@ -84,7 +85,8 @@ class ClassHierarchyTool(BaseMCPTool):
                     ],
                     "description": (
                         "Query mode. Optional: when omitted, defaults to 'tree' "
-                        "if class_name is given, else the global 'summary'."
+                        "if class_name is given, else the global 'summary'. "
+                        "'supers' is an alias for 'superclasses'."
                     ),
                 },
                 "class_name": {
@@ -148,8 +150,18 @@ class ClassHierarchyTool(BaseMCPTool):
         mode = str(mode)
         return cls._MODE_ALIASES.get(mode, mode)
 
+    @staticmethod
+    def _normalize_mode(mode: str) -> str:
+        """Resolve mode aliases to their canonical form.
+
+        'supers' is a documented alias for 'superclasses' (#802).
+        """
+        if mode == "supers":
+            return "superclasses"
+        return mode
+
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
-        mode = self._resolve_mode(arguments)
+        mode = self._normalize_mode(self._resolve_mode(arguments))
         if mode in ("subclasses", "superclasses", "tree", "impact"):
             if not arguments.get("class_name"):
                 raise ValueError(f"class_name is required for mode '{mode}'")
@@ -158,7 +170,7 @@ class ClassHierarchyTool(BaseMCPTool):
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate_arguments(arguments)
 
-        mode = self._resolve_mode(arguments)
+        mode = self._normalize_mode(self._resolve_mode(arguments))
         class_name = arguments.get("class_name", "")
         max_depth = arguments.get("max_depth", 10)
         output_format = arguments.get("output_format", "toon")
