@@ -98,7 +98,11 @@ class IncrementalSync:
         self._invalidate_deleted_files(deleted_paths, result, callback)
         self._index_or_reindex_files(disk_files, indexed_rows, conn, result, callback)
 
-        conn.commit()
+        try:
+            conn.commit()
+        except Exception as exc:  # pragma: no cover - DB commit failure is rare
+            logger.error("Final DB commit failed after partial sync: %s", exc)
+            result.errors += 1
 
         # Synapse second pass: per-file resolution during indexing sees an
         # incomplete file_class_methods (other files not yet indexed), so
